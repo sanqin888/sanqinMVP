@@ -1,0 +1,21 @@
+name: ci
+on:
+  push: { branches: [dev, main] }
+  pull_request: { branches: [main] }
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - name: Install deps
+        run: |
+          npm -v || true
+          echo "(placeholder) install workspaces deps"
+      - name: Lint
+        run: echo "(placeholder) run lint"
+      - name: Build
+        run: echo "(placeholder) run build"
+      - name: Test
+        run: echo "(placeholder) run tests"
