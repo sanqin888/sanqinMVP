@@ -10,10 +10,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-  with:
-    node-version: '20'
-    cache: 'npm'
-    cache-dependency-path: apps/${{ matrix.app }}/package-lock.json
+        with:
+          node-version: '20'
+          cache: 'npm'
+          # 关键：告诉它每个矩阵的 lock 文件在子目录
+          cache-dependency-path: apps/${{ matrix.app }}/package-lock.json
+  
       - name: Install
         working-directory: apps/${{ matrix.app }}
         run: npm ci
