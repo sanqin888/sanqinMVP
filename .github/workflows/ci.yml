@@ -6,24 +6,31 @@ jobs:
   build-test:
     runs-on: ubuntu-latest
     strategy:
-      matrix: { app: [web, api] }
+      fail-fast: false              # ← 关键：关闭“有一项失败就取消其它项”
+      matrix:
+        app: [web, api]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-          # 关键：告诉它每个矩阵的 lock 文件在子目录
+          # 关键：每个矩阵 app 的 lock 文件在子目录
           cache-dependency-path: apps/${{ matrix.app }}/package-lock.json
+
       - name: Install
         working-directory: apps/${{ matrix.app }}
-        run: npm ci
+        run: npm ci --no-audit --no-fund
+
       - name: Lint
         working-directory: apps/${{ matrix.app }}
         run: npm run lint --if-present
+
       - name: Build
         working-directory: apps/${{ matrix.app }}
         run: npm run build --if-present
+
       - name: Test
         working-directory: apps/${{ matrix.app }}
         run: npm test --if-present
+
