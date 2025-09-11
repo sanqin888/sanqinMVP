@@ -5,17 +5,32 @@ on:
 jobs:
   build-test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false              # ← 关键：关闭“有一项失败就取消其它项”
+      matrix:
+        app: [web, api]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '20' }
-      - name: Install deps
-        run: |
-          npm -v || true
-          echo "(placeholder) install workspaces deps"
+        with:
+          node-version: '20'
+          cache: 'npm'
+          # 关键：每个矩阵 app 的 lock 文件在子目录
+          cache-dependency-path: apps/${{ matrix.app }}/package-lock.json
+
+      - name: Install
+        working-directory: apps/${{ matrix.app }}
+        run: npm ci --no-audit --no-fund
+
       - name: Lint
-        run: echo "(placeholder) run lint"
+        working-directory: apps/${{ matrix.app }}
+        run: npm run lint --if-present
+
       - name: Build
-        run: echo "(placeholder) run build"
+        working-directory: apps/${{ matrix.app }}
+        run: npm run build --if-present
+
       - name: Test
-        run: echo "(placeholder) run tests"
+        working-directory: apps/${{ matrix.app }}
+        run: npm test --if-present
+
