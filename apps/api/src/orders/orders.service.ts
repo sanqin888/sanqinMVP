@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { CreateOrderDto } from './dto/create-order.dto';
+import type { Order } from './types';
 
 function uuid() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
@@ -11,18 +12,27 @@ function uuid() {
 
 @Injectable()
 export class OrdersService {
-  private orders: any[] = [];
-
-  create(dto: CreateOrderDto) {
+  create(dto: CreateOrderDto): Order {                 // ← 明确返回 Order
     const id = uuid();
-    const pickupCode = Math.floor(1000 + Math.random() * 9000).toString();
-    const now = new Date().toISOString();
-    const record = { id, pickupCode, status: 'paid', createdAt: now, ...dto };
-    this.orders.push(record);
-    return record;
-  }
+    const pickupCode = Math.floor(Math.random() * 9000 + 1000).toString();
 
-  findOne(id: string) {
-    return this.orders.find(o => o.id === id);
+    const order: Order = {
+      id,
+      pickupCode,
+      status: 'paid',
+      createdAt: new Date().toISOString(),
+      channel: dto.channel,
+      items: dto.items.map((i) => ({
+        productId: i.productId,
+        qty: i.qty,
+        options: i.options,
+      })),
+      subtotal: dto.subtotal,
+      taxTotal: dto.taxTotal,
+      total: dto.total,
+      fulfillmentType: dto.fulfillmentType,
+    };
+
+    return order;
   }
 }

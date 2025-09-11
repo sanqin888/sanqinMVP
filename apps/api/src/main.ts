@@ -6,4 +6,4 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
   await app.listen(4000);
 }
-bootstrap();
+void bootstrap(); // 显式忽略返回的 Promise，符合 no-floating-promises 规则
