@@ -9,3 +9,4 @@ build
 
 # Docker
 *.log
+/package-lock.json
