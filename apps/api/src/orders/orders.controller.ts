@@ -1,14 +1,13 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Controller, Post, Body } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
-import type { Order } from './types';
 
-@Controller('orders')
+@Controller('orders')      
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(private readonly orders: OrdersService) {}
 
   @Post()
-  create(@Body() dto: CreateOrderDto): Order {         // ← 返回 Order
-    return this.ordersService.create(dto);
+  create(@Body() dto: CreateOrderDto) {
+    return this.orders.create(dto);
   }
 }
