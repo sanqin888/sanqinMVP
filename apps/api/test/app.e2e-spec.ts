@@ -1,3 +1,4 @@
+// apps/api/test/app.e2e-spec.ts
 import request, { SuperTest, Test } from 'supertest';
 import { INestApplication } from '@nestjs/common';
 import { Test as NestTest, TestingModule } from '@nestjs/testing';
@@ -14,6 +15,7 @@ describe('AppController (e2e)', () => {
 
     app = moduleFixture.createNestApplication();
     await app.init();
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
     http = request(app.getHttpServer());
   });
 
@@ -21,7 +23,7 @@ describe('AppController (e2e)', () => {
     await app.close();
   });
 
-  it('GET /', async () => {
-    await http.get('/').expect(200).expect('Hello World!');
+  it('GET /api/health', async () => {
+    await http.get('/api/health').expect(200).expect({ status: 'ok' });
   });
 });
