@@ -10,3 +10,7 @@ build
 # Docker
 *.log
 /package-lock.json
+
+# local env files
+.env.local
+apps/web/.env.local
