@@ -1,0 +1,29 @@
+name: Sync main → dev
+
+on:
+  push:
+    branches: [ main ]       # main 有新提交就触发
+  workflow_dispatch:         # 允许手动触发
+  schedule:
+    - cron: '0 5 * * *'      # 每天 05:00 UTC 再检查一次（可删）
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  open-sync-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Open/Update PR main → dev
+        uses: repo-sync/pull-request@v2
+        with:
+          source_branch: "main"               # 从 main
+          destination_branch: "dev"           # 到 dev
+          pr_title: "chore: Sync main → dev"
+          pr_body: |
+            This PR is opened automatically because **main** has new commits.
+            Merge it to bring **dev** up to date with **main**.
+          pr_draft: false
+          pr_allow_empty: false               # 没差异时不创建
+          github_token: ${{ secrets.GITHUB_TOKEN }}
