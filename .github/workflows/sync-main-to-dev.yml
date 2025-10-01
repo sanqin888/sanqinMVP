@@ -1,29 +1,47 @@
-name: Sync main → dev
-
+name: Sync main -> dev
 on:
   push:
-    branches: [ main ]       # main 有新提交就触发
-  workflow_dispatch:         # 允许手动触发
-  schedule:
-    - cron: '0 5 * * *'      # 每天 05:00 UTC 再检查一次（可删）
+    branches: [ main ]
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
 
 jobs:
   open-sync-pr:
     runs-on: ubuntu-latest
     steps:
-      - name: Open/Update PR main → dev
-        uses: repo-sync/pull-request@v2
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
-          source_branch: "main"               # 从 main
-          destination_branch: "dev"           # 到 dev
-          pr_title: "chore: Sync main → dev"
-          pr_body: |
-            This PR is opened automatically because **main** has new commits.
-            Merge it to bring **dev** up to date with **main**.
-          pr_draft: false
-          pr_allow_empty: false               # 没差异时不创建
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      # 先尝试无冲突快进 dev（可选；dev 受保护时会跳过）
+      - name: Try fast-forward dev
+        id: ff
+        run: |
+          set -e
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin dev
+          git checkout -B dev origin/dev
+          if git merge --ff-only origin/main; then
+            # 若 dev 未受保护可直接推送；受保护时这里会失败，下面会走 PR
+            git push origin dev
+            echo "result=ff-ok" >> $GITHUB_OUTPUT
+          else
+            echo "result=need-pr" >> $GITHUB_OUTPUT
+          fi
+
+      # 快进失败或 dev 受保护 -> 发 PR
+      - name: Create / Update PR main -> dev
+        if: steps.ff.outputs.result != 'ff-ok'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ github.token }}
+          title: "Sync main → dev"
+          body: "Automated PR to sync **main** into **dev**."
+          base: dev
+          head: main
+          draft: false
+          labels: sync
