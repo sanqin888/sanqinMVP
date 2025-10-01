@@ -1,12 +1,17 @@
+// apps/api/src/app.controller.ts
 import { Controller, Get } from '@nestjs/common';
-import { AppService } from './app.service';
 
-@Controller()
+@Controller('api')
 export class AppController {
-  constructor(private readonly appService: AppService) {}
-
+  /** GET /api */
   @Get()
-  getHello(): string {
-    return this.appService.getHello();
+  root() {
+    return { ok: true };
+  }
+
+  /** GET /api/health */
+  @Get('health')
+  health() {
+    return { status: 'ok' };
   }
 }
