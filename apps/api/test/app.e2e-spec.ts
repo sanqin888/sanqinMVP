@@ -1,4 +1,3 @@
-// apps/api/test/app.e2e-spec.ts
 import request, { SuperTest, Test } from 'supertest';
 import { INestApplication } from '@nestjs/common';
 import { Test as NestTest, TestingModule } from '@nestjs/testing';

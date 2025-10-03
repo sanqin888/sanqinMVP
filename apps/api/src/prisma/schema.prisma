@@ -10,9 +10,8 @@ datasource db {
 model Order {
   id              String      @id @default(uuid())
   createdAt       DateTime    @default(now())
-  channel         String      // web | in_store | ubereats
-  fulfillmentType String      // pickup | dine_in
-  status          String      @default("pending")
+  channel         String
+  fulfillmentType String
   subtotalCents   Int
   taxCents        Int
   totalCents      Int
@@ -23,7 +22,7 @@ model Order {
 model OrderItem {
   id             String  @id @default(uuid())
   orderId        String
-  order          Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order          Order   @relation(fields: [orderId], references: [id])
   productId      String
   qty            Int
   unitPriceCents Int?
