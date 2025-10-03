@@ -9,13 +9,13 @@ export interface OrderItem {
 
 export interface Order {
   id: string;
+  createdAt: string;
+  channel: 'web' | 'in_store' | 'ubereats';
+  items: Array<{ productId: string; qty: number }>;
+  subtotal: number;
+  taxTotal: number;
+  total: number;
+  fulfillmentType: 'pickup' | 'dine_in';
   pickupCode: string;
   status: 'paid' | 'pending';
-  createdAt: string;            // ISO 字符串
-  channel: Channel;
-  items: OrderItem[];
-  subtotal: number;             // 不含税
-  taxTotal: number;             // 税额
-  total: number;                // 含税
-  fulfillmentType: Fulfillment;
 }
