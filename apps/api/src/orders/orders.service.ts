@@ -1,44 +1,48 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client'; // 仅需要 Prisma 类型
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
+
+type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 
 @Injectable()
 export class OrdersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(dto: CreateOrderDto) {
+  async create(dto: CreateOrderDto): Promise<OrderWithItems> {
+    const itemsData: Prisma.OrderItemUncheckedCreateWithoutOrderInput[] =
+      dto.items.map((i) => {
+        const base: Prisma.OrderItemUncheckedCreateWithoutOrderInput = {
+          productId: i.productId,
+          qty: i.qty,
+        };
+        const withPrice =
+          typeof i.unitPrice === 'number' && Number.isFinite(i.unitPrice)
+            ? { unitPriceCents: Math.round(i.unitPrice * 100) }
+            : {};
+        const withOptions =
+          typeof i.options !== 'undefined'
+            ? { optionsJson: i.options as Prisma.InputJsonValue }
+            : {};
+        return { ...base, ...withPrice, ...withOptions };
+      });
+
     return this.prisma.order.create({
       data: {
-        channel: dto.channel,                 // 'web' | 'in_store' | 'ubereats'
-        fulfillmentType: dto.fulfillmentType, // 'pickup' | 'dine_in'
+        channel: dto.channel,
+        fulfillmentType: dto.fulfillmentType,
         subtotalCents: Math.round(dto.subtotal * 100),
         taxCents: Math.round(dto.taxTotal * 100),
         totalCents: Math.round(dto.total * 100),
         pickupCode: (1000 + Math.floor(Math.random() * 9000)).toString(),
-        items: {
-          create: dto.items.map((i) => {
-            const item: any = {
-              productId: i.productId,
-              qty: i.qty,
-            };
-            if (typeof i.unitPrice === 'number') {
-              item.unitPriceCents = Math.round(i.unitPrice * 100);
-            }
-            if (typeof i.options !== 'undefined') {
-              // 仅在有值时设置；类型上转成 Prisma 接受的 JSON 输入
-              item.optionsJson = i.options as Prisma.InputJsonValue;
-            }
-            return item;
-          }),
-        },
+        items: { create: itemsData },
       },
-      include: { items: true }, // 保证控制器的返回类型匹配
+      include: { items: true },
     });
   }
 
-  /** 最近 N 单（默认 10，最大 100），包含明细 items */
-  async recent(limit = 10) {
+  /** 最近 N 单（默认 10，最大 100），包含 items */
+  async recent(limit = 10): Promise<OrderWithItems[]> {
     const take = Math.max(1, Math.min(limit, 100));
     return this.prisma.order.findMany({
       orderBy: { createdAt: 'desc' },
