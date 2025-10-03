@@ -41,7 +41,7 @@ export class OrdersService {
     });
   }
 
-  /** 最近 N 单（默认 10，最大 100），包含 items */
+  /** 最近 N 单（默认 10，最大 100） */
   async recent(limit = 10): Promise<OrderWithItems[]> {
     const take = Math.max(1, Math.min(limit, 100));
     return this.prisma.order.findMany({
