@@ -29,6 +29,16 @@ function cents(n: number) {
   return (n / 100).toFixed(2);
 }
 
+function errorMessage(e: unknown, fallback: string) {
+  if (e instanceof Error) return e.message;
+  if (typeof e === 'string') return e;
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return fallback;
+  }
+}
+
 export default function TestOrderPage() {
   const [creating, setCreating] = useState(false);
   const [created, setCreated] = useState<Order | null>(null);
@@ -58,8 +68,8 @@ export default function TestOrderPage() {
       }
       const data = (await res.json()) as Order;
       setCreated(data);
-    } catch (e: any) {
-      setError(e?.message ?? '下单失败');
+    } catch (e: unknown) {
+      setError(errorMessage(e, '下单失败'));
     } finally {
       setCreating(false);
     }
@@ -69,15 +79,17 @@ export default function TestOrderPage() {
     setLoadingRecent(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/api/orders/recent?limit=${limit}`, { cache: 'no-store' });
+      const res = await fetch(`${API_BASE}/api/orders/recent?limit=${limit}`, {
+        cache: 'no-store',
+      });
       if (!res.ok) {
         const text = await res.text();
         throw new Error(`GET /api/orders/recent -> ${res.status}: ${text}`);
       }
       const list = (await res.json()) as Order[];
       setRecent(list);
-    } catch (e: any) {
-      setError(e?.message ?? '获取最近订单失败');
+    } catch (e: unknown) {
+      setError(errorMessage(e, '获取最近订单失败'));
     } finally {
       setLoadingRecent(false);
     }
