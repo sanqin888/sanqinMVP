@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, PrismaClient } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 
@@ -38,10 +38,10 @@ export class OrdersService {
     });
   }
 
-  // 最近 10 单（含 items），按创建时间倒序
+  // 最近 10 单
   async listRecent(limit = 10) {
     return this.prisma.order.findMany({
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: 'asc' },
       take: limit,
       include: { items: true },
     });
