@@ -11,12 +11,12 @@ export class OrdersController {
 
   @Post('orders')
   async create(@Body() dto: CreateOrderDto): Promise<OrderWithItems> {
-    // 不做 try/catch，交给 Nest 统一异常处理，避免直接返回/调用 unknown
+    // 不做 try/catch 返回错误对象，交给全局异常过滤器处理，避免 no-unsafe-return/call
     return this.ordersService.create(dto);
   }
 
   @Get('orders/recent')
-  listRecent(): Promise<OrderWithItems[]> {
-    return this.ordersService.listRecent(10);
+  recent(): Promise<OrderWithItems[]> {
+    return this.ordersService.recent(10);
   }
 }

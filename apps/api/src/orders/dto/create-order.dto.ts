@@ -1,7 +1,6 @@
 import { Type } from 'class-transformer';
 import {
   IsArray,
-  IsEnum,
   IsInt,
   IsNumber,
   IsOptional,
@@ -9,6 +8,7 @@ import {
   Min,
   ValidateNested,
   IsObject,
+  IsIn,
 } from 'class-validator';
 
 export type Channel = 'web' | 'in_store' | 'ubereats';
@@ -28,15 +28,14 @@ export class OrderItemDto {
 
   @IsOptional()
   @IsObject()
-  // 仅用于透传到 JSONB；不返回 any
   options?: Record<string, unknown>;
 }
 
 export class CreateOrderDto {
-  @IsEnum(['web', 'in_store', 'ubereats'])
+  @IsIn(['web', 'in_store', 'ubereats'])
   channel!: Channel;
 
-  @IsEnum(['pickup', 'dine_in'])
+  @IsIn(['pickup', 'dine_in'])
   fulfillmentType!: FulfillmentType;
 
   @IsNumber()

@@ -8,21 +8,19 @@ export class OrdersService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreateOrderDto) {
-    const itemsData: Prisma.OrderItemCreateWithoutOrderInput[] = dto.items.map(
-      (i) => {
-        const item: Prisma.OrderItemCreateWithoutOrderInput = {
-          productId: i.productId,
-          qty: i.qty,
-        };
-        if (typeof i.unitPrice === 'number') {
-          item.unitPriceCents = Math.round(i.unitPrice * 100);
-        }
-        if (typeof i.options !== 'undefined') {
-          item.optionsJson = i.options as Prisma.InputJsonValue;
-        }
-        return item;
-      },
-    );
+    const itemsData: Prisma.OrderItemCreateWithoutOrderInput[] = dto.items.map((i) => {
+      const item: Prisma.OrderItemCreateWithoutOrderInput = {
+        productId: i.productId,
+        qty: i.qty,
+      };
+      if (typeof i.unitPrice === 'number' && Number.isFinite(i.unitPrice)) {
+        item.unitPriceCents = Math.round(i.unitPrice * 100);
+      }
+      if (typeof i.options !== 'undefined') {
+        item.optionsJson = i.options as Prisma.InputJsonValue;
+      }
+      return item;
+    });
 
     return this.prisma.order.create({
       data: {
@@ -38,11 +36,12 @@ export class OrdersService {
     });
   }
 
-  // 最近 10 单
-  async listRecent(limit = 10) {
+  /** 最近 N 单（默认 10） */
+  async recent(limit = 10) {
+    const take = Math.max(1, Math.min(limit, 100));
     return this.prisma.order.findMany({
-      orderBy: { createdAt: 'asc' },
-      take: limit,
+      orderBy: { createdAt: 'desc' },
+      take,
       include: { items: true },
     });
   }
