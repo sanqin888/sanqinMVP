@@ -1,16 +1,8 @@
-import {
-  INestApplication,
-  Injectable,
-  OnModuleInit,
-  OnModuleDestroy,
-} from '@nestjs/common';
+import { INestApplication, Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 
 @Injectable()
-export class PrismaService
-  extends PrismaClient
-  implements OnModuleInit, OnModuleDestroy
-{
+export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   async onModuleInit(): Promise<void> {
     await this.$connect();
   }
@@ -19,7 +11,7 @@ export class PrismaService
     await this.$disconnect();
   }
 
-  // 用 Node 进程事件做优雅关停，避免 $on('beforeExit') 的类型问题
+  /** 使用 Node 进程事件做优雅关停，避免 $on('beforeExit') 类型问题 */
   enableShutdownHooks(app: INestApplication): void {
     process.once('beforeExit', () => {
       void app.close();

@@ -1,20 +1,55 @@
+import { Type } from 'class-transformer';
+import {
+  IsArray,
+  IsEnum,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+  ValidateNested,
+  IsObject,
+} from 'class-validator';
+
 export type Channel = 'web' | 'in_store' | 'ubereats';
 export type FulfillmentType = 'pickup' | 'dine_in';
 
-export interface CreateOrderItemInput {
-  productId: string;
-  qty: number;
-  /** 单价（元）；如传则服务端换算为 cents */
+export class OrderItemDto {
+  @IsString()
+  productId!: string;
+
+  @IsInt()
+  @Min(1)
+  qty!: number;
+
+  @IsOptional()
+  @IsNumber()
   unitPrice?: number;
-  /** 规格/加料等自由结构 */
+
+  @IsOptional()
+  @IsObject()
+  // 仅用于透传到 JSONB；不返回 any
   options?: Record<string, unknown>;
 }
 
 export class CreateOrderDto {
+  @IsEnum(['web', 'in_store', 'ubereats'])
   channel!: Channel;
+
+  @IsEnum(['pickup', 'dine_in'])
   fulfillmentType!: FulfillmentType;
-  items!: CreateOrderItemInput[];
-  /** 小计（元） */ subtotal!: number;
-  /** 税额（元） */ taxTotal!: number;
-  /** 合计（元） */ total!: number;
+
+  @IsNumber()
+  subtotal!: number;
+
+  @IsNumber()
+  taxTotal!: number;
+
+  @IsNumber()
+  total!: number;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => OrderItemDto)
+  items!: OrderItemDto[];
 }

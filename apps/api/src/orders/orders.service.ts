@@ -3,29 +3,26 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 
-type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
-
 @Injectable()
 export class OrdersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(dto: CreateOrderDto): Promise<OrderWithItems> {
-    const itemsData: Prisma.OrderItemUncheckedCreateWithoutOrderInput[] =
-      dto.items.map((i) => {
-        const base: Prisma.OrderItemUncheckedCreateWithoutOrderInput = {
+  async create(dto: CreateOrderDto) {
+    const itemsData: Prisma.OrderItemCreateWithoutOrderInput[] = dto.items.map(
+      (i) => {
+        const item: Prisma.OrderItemCreateWithoutOrderInput = {
           productId: i.productId,
           qty: i.qty,
         };
-        const withPrice =
-          typeof i.unitPrice === 'number' && Number.isFinite(i.unitPrice)
-            ? { unitPriceCents: Math.round(i.unitPrice * 100) }
-            : {};
-        const withOptions =
-          typeof i.options !== 'undefined'
-            ? { optionsJson: i.options as Prisma.InputJsonValue }
-            : {};
-        return { ...base, ...withPrice, ...withOptions };
-      });
+        if (typeof i.unitPrice === 'number') {
+          item.unitPriceCents = Math.round(i.unitPrice * 100);
+        }
+        if (typeof i.options !== 'undefined') {
+          item.optionsJson = i.options as Prisma.InputJsonValue;
+        }
+        return item;
+      },
+    );
 
     return this.prisma.order.create({
       data: {
@@ -41,12 +38,11 @@ export class OrdersService {
     });
   }
 
-  /** 最近 N 单（默认 10，最大 100） */
-  async recent(limit = 10): Promise<OrderWithItems[]> {
-    const take = Math.max(1, Math.min(limit, 100));
+  // 最近 10 单
+  async listRecent(limit = 10) {
     return this.prisma.order.findMany({
-      orderBy: { createdAt: 'desc' },
-      take,
+      orderBy: { createdAt: 'asc' },
+      take: limit,
       include: { items: true },
     });
   }
