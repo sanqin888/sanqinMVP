@@ -1,54 +1,60 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:4000';
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:4000';
 
 type OrderItem = {
   id: string;
+  orderId: string;
   productId: string;
   qty: number;
   unitPriceCents: number | null;
-  optionsJson?: unknown | null;
+  optionsJson: Record<string, unknown> | null;
 };
 
 type Order = {
   id: string;
-  createdAt: string;
-  channel: string;
-  fulfillmentType: string;
-  status: string;
+  status: 'pending' | 'paid' | 'making' | 'ready' | 'completed';
+  channel: 'web' | 'in_store' | 'ubereats';
   subtotalCents: number;
   taxCents: number;
   totalCents: number;
+  fulfillmentType: 'pickup' | 'dine_in';
   pickupCode: string;
+  createdAt: string; // ISO
   items: OrderItem[];
 };
 
-function cents(n: number) {
+function cents(n: number): string {
   return (n / 100).toFixed(2);
 }
 
-function errorMessage(e: unknown, fallback: string) {
-  if (e instanceof Error) return e.message;
-  if (typeof e === 'string') return e;
-  try {
-    return JSON.stringify(e);
-  } catch {
-    return fallback;
-  }
-}
-
 export default function TestOrderPage() {
+  const [loading, setLoading] = useState(false);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [creating, setCreating] = useState(false);
-  const [created, setCreated] = useState<Order | null>(null);
-  const [recent, setRecent] = useState<Order[] | null>(null);
-  const [loadingRecent, setLoadingRecent] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  async function createTestOrder() {
+  const fetchRecent = useCallback(async () => {
+    setErrorMsg(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/orders/recent`, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`recent http ${res.status}`);
+      const data: Order[] = await res.json();
+      setOrders(data);
+    } catch (e) {
+      setErrorMsg((e as Error).message);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchRecent();
+  }, [fetchRecent]);
+
+  const createDemo = useCallback(async () => {
     setCreating(true);
-    setError(null);
+    setErrorMsg(null);
     try {
       const res = await fetch(`${API_BASE}/api/orders`, {
         method: 'POST',
@@ -62,105 +68,128 @@ export default function TestOrderPage() {
           total: 10,
         }),
       });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`POST /api/orders -> ${res.status}: ${text}`);
-      }
-      const data = (await res.json()) as Order;
-      setCreated(data);
-    } catch (e: unknown) {
-      setError(errorMessage(e, '下单失败'));
+      if (!res.ok) throw new Error(`create http ${res.status}`);
+      await fetchRecent();
+    } catch (e) {
+      setErrorMsg((e as Error).message);
     } finally {
       setCreating(false);
     }
-  }
+  }, [fetchRecent]);
 
-  async function fetchRecent(limit = 10) {
-    setLoadingRecent(true);
-    setError(null);
-    try {
-      const res = await fetch(`${API_BASE}/api/orders/recent?limit=${limit}`, {
-        cache: 'no-store',
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`GET /api/orders/recent -> ${res.status}: ${text}`);
+  const setPaid = useCallback(
+    async (id: string) => {
+      setLoading(true);
+      setErrorMsg(null);
+      try {
+        const res = await fetch(`${API_BASE}/api/orders/${id}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'paid' }),
+        });
+        if (!res.ok) throw new Error(`setPaid http ${res.status}`);
+        await fetchRecent();
+      } catch (e) {
+        setErrorMsg((e as Error).message);
+      } finally {
+        setLoading(false);
       }
-      const list = (await res.json()) as Order[];
-      setRecent(list);
-    } catch (e: unknown) {
-      setError(errorMessage(e, '获取最近订单失败'));
-    } finally {
-      setLoadingRecent(false);
-    }
-  }
+    },
+    [fetchRecent],
+  );
+
+  const advance = useCallback(
+    async (id: string) => {
+      setLoading(true);
+      setErrorMsg(null);
+      try {
+        const res = await fetch(`${API_BASE}/api/orders/${id}/advance`, {
+          method: 'POST',
+        });
+        if (!res.ok) throw new Error(`advance http ${res.status}`);
+        await fetchRecent();
+      } catch (e) {
+        setErrorMsg((e as Error).message);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [fetchRecent],
+  );
+
+  const nextLabel = useMemo(
+    () => ({
+      pending: '→ paid',
+      paid: '→ making',
+      making: '→ ready',
+      ready: '→ completed',
+      completed: '终态',
+    }),
+    [],
+  );
 
   return (
     <main className="mx-auto max-w-3xl p-6 space-y-6">
-      <h1 className="text-2xl font-semibold">测试下单 / 最近订单</h1>
+      <h1 className="text-2xl font-bold">下单测试 / 最近十单</h1>
 
-      <section className="space-x-3">
+      <div className="flex items-center gap-3">
         <button
-          onClick={createTestOrder}
+          onClick={createDemo}
           disabled={creating}
           className="rounded-lg border px-4 py-2 hover:bg-gray-50 disabled:opacity-60"
         >
-          {creating ? '下单中…' : '下单测试（￥10.00）'}
+          {creating ? '创建中…' : '创建一单（demo $10）'}
         </button>
 
         <button
-          onClick={() => fetchRecent(10)}
-          disabled={loadingRecent}
+          onClick={() => void fetchRecent()}
+          disabled={loading}
           className="rounded-lg border px-4 py-2 hover:bg-gray-50 disabled:opacity-60"
         >
-          {loadingRecent ? '加载中…' : '查看最近 10 单'}
+          刷新
         </button>
-      </section>
 
-      {error && (
-        <div className="rounded-md border border-red-300 bg-red-50 p-3 text-red-700">
-          {error}
-        </div>
-      )}
+        {errorMsg && <span className="text-sm text-red-600">错误：{errorMsg}</span>}
+      </div>
 
-      {created && (
-        <section className="rounded-lg border p-4">
-          <h2 className="mb-2 font-medium">最新创建的订单</h2>
-          <pre className="overflow-auto text-sm">{JSON.stringify(created, null, 2)}</pre>
-        </section>
-      )}
-
-      {recent && (
-        <section className="rounded-lg border p-4">
-          <h2 className="mb-3 font-medium">最近订单</h2>
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="text-left">
-                  <th className="px-3 py-2">时间</th>
-                  <th className="px-3 py-2">订单ID</th>
-                  <th className="px-3 py-2">渠道</th>
-                  <th className="px-3 py-2">取餐码</th>
-                  <th className="px-3 py-2">总额</th>
-                  <th className="px-3 py-2">明细数</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recent.map((o) => (
-                  <tr key={o.id} className="border-t">
-                    <td className="px-3 py-2">{new Date(o.createdAt).toLocaleString()}</td>
-                    <td className="px-3 py-2 font-mono">{o.id.slice(0, 8)}…</td>
-                    <td className="px-3 py-2">{o.channel}</td>
-                    <td className="px-3 py-2">{o.pickupCode}</td>
-                    <td className="px-3 py-2">￥{cents(o.totalCents)}</td>
-                    <td className="px-3 py-2">{o.items?.length ?? 0}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
+      <ul className="divide-y rounded-lg border">
+        {orders.map((o) => (
+          <li key={o.id} className="p-4 flex items-start justify-between gap-4">
+            <div>
+              <div className="font-medium">
+                #{o.pickupCode} · {o.status.toUpperCase()} · ${cents(o.totalCents)}
+              </div>
+              <div className="text-sm text-gray-600">
+                {new Date(o.createdAt).toLocaleString()} · {o.channel} · {o.fulfillmentType}
+              </div>
+              <div className="text-sm text-gray-700">
+                项目：{o.items.map((i) => `${i.productId}×${i.qty}`).join('，')}
+              </div>
+              <div className="text-xs text-gray-500 break-all">ID: {o.id}</div>
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              {o.status === 'pending' && (
+                <button
+                  onClick={() => void setPaid(o.id)}
+                  className="rounded-md border px-3 py-1 text-sm hover:bg-gray-50"
+                >
+                  标记为 paid
+                </button>
+              )}
+              <button
+                onClick={() => void advance(o.id)}
+                disabled={o.status === 'completed'}
+                className="rounded-md border px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-60"
+              >
+                {nextLabel[o.status]}
+              </button>
+            </div>
+          </li>
+        ))}
+        {orders.length === 0 && (
+          <li className="p-6 text-gray-500">暂无订单，点上面的“创建一单”试试。</li>
+        )}
+      </ul>
     </main>
   );
 }
