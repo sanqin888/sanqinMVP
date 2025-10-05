@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma, OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -8,19 +12,21 @@ export class OrdersService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreateOrderDto) {
-    const itemsData: Prisma.OrderItemCreateWithoutOrderInput[] = dto.items.map((i) => {
-      const item: Prisma.OrderItemCreateWithoutOrderInput = {
-        productId: i.productId,
-        qty: i.qty,
-      };
-      if (typeof i.unitPrice === 'number' && Number.isFinite(i.unitPrice)) {
-        item.unitPriceCents = Math.round(i.unitPrice * 100);
-      }
-      if (typeof i.options !== 'undefined') {
-        item.optionsJson = i.options as Prisma.InputJsonValue;
-      }
-      return item;
-    });
+    const itemsData: Prisma.OrderItemCreateWithoutOrderInput[] = dto.items.map(
+      (i) => {
+        const item: Prisma.OrderItemCreateWithoutOrderInput = {
+          productId: i.productId,
+          qty: i.qty,
+        };
+        if (typeof i.unitPrice === 'number' && Number.isFinite(i.unitPrice)) {
+          item.unitPriceCents = Math.round(i.unitPrice * 100);
+        }
+        if (typeof i.options !== 'undefined') {
+          item.optionsJson = i.options as Prisma.InputJsonValue;
+        }
+        return item;
+      },
+    );
 
     return this.prisma.order.create({
       data: {
@@ -47,7 +53,10 @@ export class OrdersService {
   }
 
   // 合法状态流
-  private static readonly ALLOWED: Record<OrderStatus, ReadonlyArray<OrderStatus>> = {
+  private static readonly ALLOWED: Record<
+    OrderStatus,
+    ReadonlyArray<OrderStatus>
+  > = {
     pending: ['paid'],
     paid: ['making'],
     making: ['ready'],
@@ -64,7 +73,10 @@ export class OrdersService {
     if (!cur) throw new NotFoundException('Order not found');
 
     const next = OrdersService.ALLOWED[cur.status][0];
-    if (!next) throw new BadRequestException(`Order already at terminal status: ${cur.status}`);
+    if (!next)
+      throw new BadRequestException(
+        `Order already at terminal status: ${cur.status}`,
+      );
 
     return this.updateStatus(id, next);
   }
@@ -79,7 +91,9 @@ export class OrdersService {
 
     const allowedNexts = OrdersService.ALLOWED[cur.status];
     if (!allowedNexts.includes(next)) {
-      throw new BadRequestException(`Invalid transition: ${cur.status} -> ${next}`);
+      throw new BadRequestException(
+        `Invalid transition: ${cur.status} -> ${next}`,
+      );
     }
 
     return this.prisma.order.update({

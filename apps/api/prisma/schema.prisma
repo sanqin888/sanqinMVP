@@ -7,18 +7,32 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Order {
-  id              String      @id @default(uuid())
-  createdAt       DateTime    @default(now())
-  channel         String      // web | in_store | ubereats
-  fulfillmentType String      // pickup | dine_in
-  status          String      @default("pending")
-  subtotalCents   Int
-  taxCents        Int
-  totalCents      Int
-  pickupCode      String
-  items           OrderItem[]
+// === 新增：订单状态枚举 ===
+enum OrderStatus {
+  pending
+  paid
+  making
+  ready
+  completed
 }
+
+// ... 其他已有内容
+
+model Order {
+  id             String       @id @default(uuid())
+  // 原来如果是 String 或 Text，这里改成枚举：
+  status         OrderStatus  @default(pending)
+  channel        String
+  subtotalCents  Int
+  taxCents       Int
+  totalCents     Int
+  fulfillmentType String
+  pickupCode     String?
+  createdAt      DateTime     @default(now())
+
+  items          OrderItem[]
+}
+
 
 model OrderItem {
   id             String  @id @default(uuid())
