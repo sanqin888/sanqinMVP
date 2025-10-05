@@ -20,7 +20,6 @@ export class OrdersController {
     return this.ordersService.recent(10);
   }
 
-  // 设置为指定状态（pending→paid→making→ready→completed）
   @Patch('orders/:id/status')
   setStatus(
     @Param('id') id: string,
@@ -29,9 +28,8 @@ export class OrdersController {
     return this.ordersService.updateStatus(id, dto.status);
   }
 
-  // 前进一步（例如 paid→making）
   @Post('orders/:id/advance')
   advance(@Param('id') id: string): Promise<OrderWithItems> {
-    return this.ordersService.advanceStatus(id);
+    return this.ordersService.advance(id);
   }
 }
