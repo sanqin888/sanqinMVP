@@ -14,3 +14,7 @@ build
 # local env files
 .env.local
 apps/web/.env.local
+
+# web temp
+apps/web/api@0.0.1
+apps/web/eslint
