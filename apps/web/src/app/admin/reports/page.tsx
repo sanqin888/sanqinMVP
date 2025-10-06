@@ -6,22 +6,20 @@ import { useEffect, useMemo, useState } from 'react';
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:4000';
 
 // 后端返回的基础结构（尽量宽松，避免类型冲突）
-type ByChannelValue =
-  | number
-  | {
-      orders?: number;
-      subtotalCents?: number;
-      taxCents?: number;
-      totalCents?: number;
-    };
-
-type DailyReport = {
-  date: string;
-  orders: number;
+type ChannelBucket = {
   subtotalCents: number;
   taxCents: number;
   totalCents: number;
-  byChannel?: Record<string, ByChannelValue>;
+  count: number;
+};
+
+type DailyReport = {
+  date: string;
+  subtotalCents: number;
+  taxCents: number;
+  totalCents: number;
+  count: number;
+  channel?: Record<string, ChannelBucket>;
 };
 
 function toYMD(d = new Date()) {
@@ -97,14 +95,14 @@ export default function AdminDailyReportPage() {
 
       {/* 汇总卡片 */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <StatCard label="订单数" value={data?.orders ?? '-'} />
+        <StatCard label="订单数" value={data?.count ?? '-'} />
         <StatCard label="不含税小计 (￥)" value={moneyFromCents(data?.subtotalCents)} />
         <StatCard label="税额 (￥)" value={moneyFromCents(data?.taxCents)} />
         <StatCard label="合计 (￥)" value={moneyFromCents(data?.totalCents)} />
       </div>
 
       {/* 渠道拆分 */}
-      {data?.byChannel && (
+      {data?.channel && (
         <div className="border rounded-lg p-4">
           <div className="font-medium mb-2">按渠道</div>
           <div className="overflow-x-auto">
@@ -119,21 +117,11 @@ export default function AdminDailyReportPage() {
                 </tr>
               </thead>
               <tbody>
-                {Object.entries(data.byChannel).map(([ch, v]) => {
-                  // v 可能是 number（订单数），也可能是对象（带金额）
-                  const orders =
-                    typeof v === 'number'
-                      ? v
-                      : typeof v?.orders === 'number'
-                      ? v.orders
-                      : '-';
-                  const subtotalCents =
-                    typeof v === 'number' ? undefined : v?.subtotalCents;
-                  const taxCents =
-                    typeof v === 'number' ? undefined : v?.taxCents;
-                  const totalCents =
-                    typeof v === 'number' ? undefined : v?.totalCents;
-
+                {Object.entries(data.channel).map(([ch, bucket]) => {
+                  const orders = bucket?.count ?? '-';
+                  const subtotalCents = bucket?.subtotalCents;
+                  const taxCents = bucket?.taxCents;
+                  const totalCents = bucket?.totalCents;
                   return (
                     <tr key={ch} className="border-b last:border-none">
                       <td className="py-2 pr-4">{ch}</td>
