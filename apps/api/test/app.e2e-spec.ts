@@ -25,4 +25,8 @@ describe('AppController (e2e)', () => {
   it('GET /api/health', async () => {
     await http.get('/api/health').expect(200).expect({ status: 'ok' });
   });
+  
+  it('GET /api', async () => {
+    await http.get('/api').expect(200).expect({ ok: true });
+  });
 });
