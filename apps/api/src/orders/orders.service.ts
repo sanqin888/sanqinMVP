@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  HttpException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
@@ -22,6 +23,9 @@ export class OrdersService {
 
   // 统一处理 Prisma 错误，避免 “unsafe assignment”
   private handlePrismaError(e: unknown): never {
+    if (e instanceof HttpException) {
+      throw e;
+    }
     if (e instanceof Prisma.PrismaClientKnownRequestError) {
       if (e.code === 'P2025') {
         throw new NotFoundException('Order not found');
