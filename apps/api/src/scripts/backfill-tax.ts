@@ -3,7 +3,13 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
-  const rate = Number(process.env.SALES_TAX_RATE ?? 0.13);
+  const rateRaw = process.env.SALES_TAX_RATE ?? 0.13;
+  const rateNumber = Number(String(rateRaw).replace('%', ''));
+  const rate = Number.isFinite(rateNumber)
+    ? rateNumber > 1
+      ? rateNumber / 100
+      : rateNumber
+    : 0.13;
   const targets = await prisma.order.findMany({
     where: { taxCents: 0 },
     select: { id: true, subtotalCents: true },
@@ -24,16 +30,19 @@ async function main() {
       data: { taxCents, totalCents },
     });
     updated++;
-    if (updated % 50 === 0) console.log(`Updated ${updated}/${targets.length}...`);
+    if (updated % 50 === 0)
+      console.log(`Updated ${updated}/${targets.length}...`);
   }
   console.log(`✅ Done. Updated ${updated} orders.`);
 }
 
-main()
-  .catch((e) => {
-    console.error(e);
+void (async () => {
+  try {
+    await main();
+  } catch (error) {
+    console.error(error);
     process.exit(1);
-  })
-  .finally(async () => {
+  } finally {
     await prisma.$disconnect();
-  });
+  }
+})();

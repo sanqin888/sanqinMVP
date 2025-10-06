@@ -26,7 +26,7 @@ export class OrdersService {
 
     return this.prisma.order.create({
       data: {
-        channel: dto.channel,                 // 'web' | 'in_store' | 'ubereats'
+        channel: dto.channel, // 'web' | 'in_store' | 'ubereats'
         fulfillmentType: dto.fulfillmentType, // 'pickup' | 'dine_in'
         status: 'pending',
         subtotalCents,
@@ -34,19 +34,21 @@ export class OrdersService {
         totalCents,
         pickupCode: (1000 + Math.floor(Math.random() * 9000)).toString(),
         items: {
-          create: dto.items.map((i): Prisma.OrderItemCreateWithoutOrderInput => {
-            const item: Prisma.OrderItemCreateWithoutOrderInput = {
-              productId: i.productId,
-              qty: i.qty,
-            };
-            if (typeof i.unitPrice === 'number') {
-              item.unitPriceCents = Math.round(i.unitPrice * 100);
-            }
-            if (typeof i.options !== 'undefined') {
-              item.optionsJson = i.options as Prisma.InputJsonValue;
-            }
-            return item;
-          }),
+          create: dto.items.map(
+            (i): Prisma.OrderItemCreateWithoutOrderInput => {
+              const item: Prisma.OrderItemCreateWithoutOrderInput = {
+                productId: i.productId,
+                qty: i.qty,
+              };
+              if (typeof i.unitPrice === 'number') {
+                item.unitPriceCents = Math.round(i.unitPrice * 100);
+              }
+              if (typeof i.options !== 'undefined') {
+                item.optionsJson = i.options as Prisma.InputJsonValue;
+              }
+              return item;
+            },
+          ),
         },
       },
       include: { items: true },
@@ -55,9 +57,9 @@ export class OrdersService {
 
   /** 最近 N 单（默认 10 单） */
   async recent(limit = 10): Promise<OrderWithItems[]> {
-    try {
-      const normalizedLimit = Number.isFinite(limit) ? Math.trunc(limit) : 10;
-      const take = Math.min(50, Math.max(1, normalizedLimit));
+    const normalizedLimit = Number.isFinite(limit) ? Math.trunc(limit) : 10;
+    const take = Math.min(50, Math.max(1, normalizedLimit));
+
     return this.prisma.order.findMany({
       orderBy: { createdAt: 'desc' },
       take,
@@ -82,7 +84,7 @@ export class OrdersService {
     const current = await this.prisma.order.findUnique({ where: { id } });
     if (!current) throw new NotFoundException('Order not found');
 
-    const next = this.nextStatus(current.status as OrderStatus);
+    const next = this.nextStatus(current.status);
     if (next === current.status) {
       // 已经终态，直接带 items 返回
       const withItems = await this.prisma.order.findUnique({
@@ -102,11 +104,16 @@ export class OrdersService {
   /** 内部：根据当前状态得到下一个状态 */
   private nextStatus(current: OrderStatus): OrderStatus {
     switch (current) {
-      case 'pending':  return 'paid';
-      case 'paid':     return 'making';
-      case 'making':   return 'ready';
-      case 'ready':    return 'completed';
-      default:         return current; // completed/refunded 等
+      case 'pending':
+        return 'paid';
+      case 'paid':
+        return 'making';
+      case 'making':
+        return 'ready';
+      case 'ready':
+        return 'completed';
+      default:
+        return current; // completed/refunded 等
     }
   }
 }
