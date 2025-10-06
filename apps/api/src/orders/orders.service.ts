@@ -55,9 +55,12 @@ export class OrdersService {
 
   /** 最近 N 单（默认 10 单） */
   async recent(limit = 10): Promise<OrderWithItems[]> {
+    try {
+      const normalizedLimit = Number.isFinite(limit) ? Math.trunc(limit) : 10;
+      const take = Math.min(50, Math.max(1, normalizedLimit));
     return this.prisma.order.findMany({
       orderBy: { createdAt: 'desc' },
-      take: limit,
+      take,
       include: { items: true },
     });
   }
