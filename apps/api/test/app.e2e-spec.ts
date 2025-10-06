@@ -2,15 +2,31 @@ import request, { SuperTest, Test } from 'supertest';
 import { INestApplication } from '@nestjs/common';
 import { Test as NestTest, TestingModule } from '@nestjs/testing';
 import { AppModule } from '../src/app.module';
+import { PrismaService } from '../src/prisma/prisma.service';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication;
   let http: SuperTest<Test>;
 
   beforeAll(async () => {
+    const prismaServiceStub = {
+      onModuleInit: async (): Promise<void> => {
+        /* no-op: skip real DB connection in e2e */
+      },
+      onModuleDestroy: async (): Promise<void> => {
+        /* no-op */
+      },
+      enableShutdownHooks: (): void => {
+        /* no-op */
+      },
+    } satisfies Partial<PrismaService>;
+
     const moduleFixture: TestingModule = await NestTest.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(PrismaService)
+      .useValue(prismaServiceStub)
+      .compile();
 
     app = moduleFixture.createNestApplication();
     await app.init();
