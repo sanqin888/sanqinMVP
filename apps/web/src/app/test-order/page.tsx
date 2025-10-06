@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:4000';
 
@@ -13,16 +14,20 @@ type OrderItem = {
   optionsJson: Record<string, unknown> | null;
 };
 
+type OrderStatus = 'pending' | 'paid' | 'making' | 'ready' | 'completed';
+type Channel = 'web' | 'in_store' | 'ubereats';
+type Fulfillment = 'pickup' | 'dine_in';
+
 type Order = {
   id: string;
-  status: 'pending' | 'paid' | 'making' | 'ready' | 'completed';
-  channel: 'web' | 'in_store' | 'ubereats';
+  status: OrderStatus;
+  channel: Channel;
   subtotalCents: number;
   taxCents: number;
   totalCents: number;
-  fulfillmentType: 'pickup' | 'dine_in';
+  fulfillmentType: Fulfillment;
   pickupCode: string;
-  createdAt: string; // ISO
+  createdAt: string; // ISO string
   items: OrderItem[];
 };
 
@@ -31,9 +36,9 @@ function cents(n: number): string {
 }
 
 export default function TestOrderPage() {
-  const [loading, setLoading] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [creating, setCreating] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const fetchRecent = useCallback(async () => {
@@ -59,6 +64,7 @@ export default function TestOrderPage() {
       const res = await fetch(`${API_BASE}/api/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        // 后端会按 SALES_TAX_RATE 计算税额与合计，这里给出演示小计 10
         body: JSON.stringify({
           channel: 'web',
           fulfillmentType: 'pickup',
@@ -77,47 +83,39 @@ export default function TestOrderPage() {
     }
   }, [fetchRecent]);
 
-  const setPaid = useCallback(
-    async (id: string) => {
-      setLoading(true);
-      setErrorMsg(null);
-      try {
-        const res = await fetch(`${API_BASE}/api/orders/${id}/status`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: 'paid' }),
-        });
-        if (!res.ok) throw new Error(`setPaid http ${res.status}`);
-        await fetchRecent();
-      } catch (e) {
-        setErrorMsg((e as Error).message);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [fetchRecent],
-  );
+  const setPaid = useCallback(async (id: string) => {
+    setLoading(true);
+    setErrorMsg(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/orders/${id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'paid' as OrderStatus }),
+      });
+      if (!res.ok) throw new Error(`setPaid http ${res.status}`);
+      await fetchRecent();
+    } catch (e) {
+      setErrorMsg((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchRecent]);
 
-  const advance = useCallback(
-    async (id: string) => {
-      setLoading(true);
-      setErrorMsg(null);
-      try {
-        const res = await fetch(`${API_BASE}/api/orders/${id}/advance`, {
-          method: 'POST',
-        });
-        if (!res.ok) throw new Error(`advance http ${res.status}`);
-        await fetchRecent();
-      } catch (e) {
-        setErrorMsg((e as Error).message);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [fetchRecent],
-  );
+  const advance = useCallback(async (id: string) => {
+    setLoading(true);
+    setErrorMsg(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/orders/${id}/advance`, { method: 'POST' });
+      if (!res.ok) throw new Error(`advance http ${res.status}`);
+      await fetchRecent();
+    } catch (e) {
+      setErrorMsg((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchRecent]);
 
-  const nextLabel = useMemo(
+  const nextLabel = useMemo<Record<OrderStatus, string>>(
     () => ({
       pending: '→ paid',
       paid: '→ making',
@@ -130,7 +128,15 @@ export default function TestOrderPage() {
 
   return (
     <main className="mx-auto max-w-3xl p-6 space-y-6">
-      <h1 className="text-2xl font-bold">下单测试 / 最近十单</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">下单测试 / 最近十单</h1>
+        <Link
+          href="/admin/reports"
+          className="rounded-lg bg-neutral-800 px-3 py-2 text-white hover:opacity-90"
+        >
+          打开日报报表
+        </Link>
+      </div>
 
       <div className="flex items-center gap-3">
         <button
@@ -154,10 +160,11 @@ export default function TestOrderPage() {
 
       <ul className="divide-y rounded-lg border">
         {orders.map((o) => (
-          <li key={o.id} className="p-4 flex items-start justify-between gap-4">
+          <li key={o.id} className="flex items-start justify-between gap-4 p-4">
             <div>
               <div className="font-medium">
-                #{o.pickupCode} · {o.status.toUpperCase()} · ${cents(o.totalCents)}
+                #{o.pickupCode} · {o.status.toUpperCase()} · $
+                {cents(o.totalCents)}（小计 ${cents(o.subtotalCents)} / 税 ${cents(o.taxCents)}）
               </div>
               <div className="text-sm text-gray-600">
                 {new Date(o.createdAt).toLocaleString()} · {o.channel} · {o.fulfillmentType}
@@ -165,7 +172,7 @@ export default function TestOrderPage() {
               <div className="text-sm text-gray-700">
                 项目：{o.items.map((i) => `${i.productId}×${i.qty}`).join('，')}
               </div>
-              <div className="text-xs text-gray-500 break-all">ID: {o.id}</div>
+              <div className="break-all text-xs text-gray-500">ID: {o.id}</div>
             </div>
             <div className="flex flex-col items-end gap-2">
               {o.status === 'pending' && (

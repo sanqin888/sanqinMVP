@@ -1,132 +1,109 @@
-import {
-  BadRequestException,
-  Injectable,
-  InternalServerErrorException,
-  NotFoundException,
-} from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma, OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
-import type { OrderStatus } from './dto/update-order-status.dto';
 
-const FLOW: OrderStatus[] = ['pending', 'paid', 'making', 'ready', 'completed'];
-
-function nextOf(s: OrderStatus): OrderStatus {
-  const i = FLOW.indexOf(s);
-  return i >= 0 && i < FLOW.length - 1 ? FLOW[i + 1] : s;
-}
+// 返回值统一带 items，避免 any 推断
+type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 
 @Injectable()
 export class OrdersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // 统一处理 Prisma 错误，避免 “unsafe assignment”
-  private handlePrismaError(e: unknown): never {
-    if (e instanceof Prisma.PrismaClientKnownRequestError) {
-      if (e.code === 'P2025') {
-        throw new NotFoundException('Order not found');
-      }
-      throw new InternalServerErrorException(e.message);
-    }
-    if (e instanceof Error) {
-      throw new InternalServerErrorException(e.message);
-    }
-    throw new InternalServerErrorException('Unknown error');
+  /** 支持 0.13 或 "13" / "13%" 的写法，默认 13% */
+  private getTaxRate(): number {
+    const raw = process.env.SALES_TAX_RATE ?? '0.13';
+    const n = Number(String(raw).replace('%', ''));
+    if (Number.isNaN(n)) return 0.13;
+    return n > 1 ? n / 100 : n;
   }
 
-  async create(dto: CreateOrderDto) {
-    try {
-      return await this.prisma.order.create({
-        data: {
-          channel: dto.channel,
-          fulfillmentType: dto.fulfillmentType,
-          subtotalCents: Math.round(dto.subtotal * 100),
-          taxCents: Math.round(dto.taxTotal * 100),
-          totalCents: Math.round(dto.total * 100),
-          pickupCode: (1000 + Math.floor(Math.random() * 9000)).toString(),
-          // status 默认由 DB/应用层给 pending，如需显式设置可加上
-          items: {
-            create: dto.items.map((i) => {
-              const out: Prisma.OrderItemCreateWithoutOrderInput = {
-                productId: i.productId,
-                qty: i.qty,
-              };
-              if (typeof i.unitPrice === 'number') {
-                out.unitPriceCents = Math.round(i.unitPrice * 100);
-              }
-              if (typeof i.options !== 'undefined') {
-                out.optionsJson = i.options as Prisma.InputJsonValue;
-              }
-              return out;
-            }),
-          },
+  /** 创建订单（金额统一在后端计算） */
+  async create(dto: CreateOrderDto): Promise<OrderWithItems> {
+    const subtotalCents = Math.round(dto.subtotal * 100);
+    const taxCents = Math.round(subtotalCents * this.getTaxRate());
+    const totalCents = subtotalCents + taxCents;
+
+    return this.prisma.order.create({
+      data: {
+        channel: dto.channel,                 // 'web' | 'in_store' | 'ubereats'
+        fulfillmentType: dto.fulfillmentType, // 'pickup' | 'dine_in'
+        status: 'pending',
+        subtotalCents,
+        taxCents,
+        totalCents,
+        pickupCode: (1000 + Math.floor(Math.random() * 9000)).toString(),
+        items: {
+          create: dto.items.map((i): Prisma.OrderItemCreateWithoutOrderInput => {
+            const item: Prisma.OrderItemCreateWithoutOrderInput = {
+              productId: i.productId,
+              qty: i.qty,
+            };
+            if (typeof i.unitPrice === 'number') {
+              item.unitPriceCents = Math.round(i.unitPrice * 100);
+            }
+            if (typeof i.options !== 'undefined') {
+              item.optionsJson = i.options as Prisma.InputJsonValue;
+            }
+            return item;
+          }),
         },
-        include: { items: true },
-      });
-    } catch (e: unknown) {
-      this.handlePrismaError(e);
-    }
+      },
+      include: { items: true },
+    });
   }
 
-  async updateStatus(id: string, next: OrderStatus) {
-    try {
-      const order = await this.prisma.order.findUnique({
-        where: { id },
-        include: { items: true },
-      });
-      if (!order) throw new NotFoundException('Order not found');
-
-      const cur = order.status as OrderStatus;
-      const curIdx = FLOW.indexOf(cur);
-      const nextIdx = FLOW.indexOf(next);
-      if (curIdx === -1 || nextIdx === -1 || nextIdx < curIdx) {
-        throw new BadRequestException('Illegal status transition');
-      }
-
-      return await this.prisma.order.update({
-        where: { id },
-        data: { status: next },
-        include: { items: true },
-      });
-    } catch (e: unknown) {
-      this.handlePrismaError(e);
-    }
+  /** 最近 N 单（默认 10 单） */
+  async recent(limit = 10): Promise<OrderWithItems[]> {
+    return this.prisma.order.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      include: { items: true },
+    });
   }
 
-  async advance(id: string) {
-    try {
-      const order = await this.prisma.order.findUnique({
-        where: { id },
-        include: { items: true },
-      });
-      if (!order) throw new NotFoundException('Order not found');
+  /** 显式更新订单状态 */
+  async updateStatus(id: string, status: OrderStatus): Promise<OrderWithItems> {
+    const exists = await this.prisma.order.findUnique({ where: { id } });
+    if (!exists) throw new NotFoundException('Order not found');
 
-      const cur = order.status as OrderStatus;
-      const nxt = nextOf(cur);
-      if (nxt === cur) {
-        // 已是 completed，不再前进
-        return order;
-      }
-
-      return await this.prisma.order.update({
-        where: { id },
-        data: { status: nxt },
-        include: { items: true },
-      });
-    } catch (e: unknown) {
-      this.handlePrismaError(e);
-    }
+    return this.prisma.order.update({
+      where: { id },
+      data: { status },
+      include: { items: true },
+    });
   }
 
-  async recent(limit = 10) {
-    try {
-      return await this.prisma.order.findMany({
-        orderBy: { createdAt: 'desc' },
-        take: limit,
+  /** 状态推进：pending→paid→making→ready→completed；终态保持不变 */
+  async advance(id: string): Promise<OrderWithItems> {
+    const current = await this.prisma.order.findUnique({ where: { id } });
+    if (!current) throw new NotFoundException('Order not found');
+
+    const next = this.nextStatus(current.status as OrderStatus);
+    if (next === current.status) {
+      // 已经终态，直接带 items 返回
+      const withItems = await this.prisma.order.findUnique({
+        where: { id },
         include: { items: true },
       });
-    } catch (e: unknown) {
-      this.handlePrismaError(e);
+      return withItems as OrderWithItems;
+    }
+
+    return this.prisma.order.update({
+      where: { id },
+      data: { status: next },
+      include: { items: true },
+    });
+  }
+
+  /** 内部：根据当前状态得到下一个状态 */
+  private nextStatus(current: OrderStatus): OrderStatus {
+    switch (current) {
+      case 'pending':  return 'paid';
+      case 'paid':     return 'making';
+      case 'making':   return 'ready';
+      case 'ready':    return 'completed';
+      default:         return current; // completed/refunded 等
     }
   }
 }
