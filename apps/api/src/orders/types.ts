@@ -1,21 +1,24 @@
 export type Channel = 'web' | 'in_store' | 'ubereats';
-export type Fulfillment = 'pickup' | 'dine_in';
+export type FulfillmentType = 'pickup' | 'dine_in';
 
 export interface OrderItem {
+  id: string;
+  orderId: string;
   productId: string;
   qty: number;
-  options?: Record<string, unknown>;
+  unitPriceCents: number | null;
+  optionsJson: Record<string, unknown> | null;
 }
 
 export interface Order {
   id: string;
   createdAt: string;
-  channel: 'web' | 'in_store' | 'ubereats';
-  items: Array<{ productId: string; qty: number }>;
-  subtotal: number;
-  taxTotal: number;
-  total: number;
-  fulfillmentType: 'pickup' | 'dine_in';
+  channel: Channel;
+  items: OrderItem[];
+  subtotalCents: number;
+  taxCents: number;
+  totalCents: number;
+  fulfillmentType: FulfillmentType;
   pickupCode: string;
-  status: 'paid' | 'pending';
+  status: 'pending' | 'paid' | 'making' | 'ready' | 'completed';
 }

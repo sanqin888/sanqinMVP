@@ -120,9 +120,11 @@ export class OrdersService {
 
   async recent(limit = 10) {
     try {
+      const normalizedLimit = Number.isFinite(limit) ? Math.trunc(limit) : 10;
+      const take = Math.min(50, Math.max(1, normalizedLimit));
       return await this.prisma.order.findMany({
         orderBy: { createdAt: 'desc' },
-        take: limit,
+        take,
         include: { items: true },
       });
     } catch (e: unknown) {
