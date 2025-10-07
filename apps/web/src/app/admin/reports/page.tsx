@@ -1,163 +1,81 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 
-// 你后端 API 基地址（已在 .env.local 里配了 NEXT_PUBLIC_API_BASE=http://localhost:4000）
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:4000';
-
-// 后端返回的基础结构（尽量宽松，避免类型冲突）
-type ByChannelValue =
-  | number
-  | {
-      orders?: number;
-      subtotalCents?: number;
-      taxCents?: number;
-      totalCents?: number;
-    };
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:4000';
 
 type DailyReport = {
-  date: string;
-  orders: number;
+  orderCount: number;
   subtotalCents: number;
   taxCents: number;
   totalCents: number;
-  byChannel?: Record<string, ByChannelValue>;
 };
 
-function toYMD(d = new Date()) {
-  // 浏览器本地时区 -> YYYY-MM-DD
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
+const money = (cents: number) => (cents / 100).toFixed(2);
 
-function moneyFromCents(cents?: number) {
-  if (typeof cents !== 'number') return '-';
-  return (cents / 100).toFixed(2);
-}
-
-export default function AdminDailyReportPage() {
-  const [date, setDate] = useState<string>(toYMD());
+export default function DailyReportPage() {
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [data, setData] = useState<DailyReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [data, setData] = useState<DailyReport | null>(null);
 
-  const url = useMemo(
-    () => `${API_BASE}/api/reports/daily?date=${encodeURIComponent(date)}`,
-    [date]
-  );
-
-  async function load() {
+  async function fetchData(d: string) {
     setLoading(true);
     setErr(null);
     try {
-      const res = await fetch(url, { headers: { Accept: 'application/json' } });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`HTTP ${res.status}: ${text}`);
-      }
-      const json = (await res.json()) as DailyReport;
+      const res = await fetch(`${API_BASE}/api/reports/daily?date=${d}`, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`http ${res.status}`);
+      const json: DailyReport = await res.json();
       setData(json);
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : String(e));
-      setData(null);
+    } catch (e) {
+      setErr((e as Error).message);
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url]);
+    void fetchData(date); // 首次加载默认当天
+  }, []); // 不自动跟随日期变更，只在点击“查询”触发
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <h1 className="text-2xl font-semibold">每日营收报表</h1>
+    <main className="mx-auto max-w-5xl p-6 space-y-6">
+      <h1 className="text-3xl font-bold">每日营收报表</h1>
 
-      {/* 查询条件 */}
       <div className="flex items-center gap-3">
-        <label className="text-sm text-gray-600">日期</label>
         <input
           type="date"
-          className="border rounded px-3 py-2"
           value={date}
           onChange={(e) => setDate(e.target.value)}
+          className="rounded-md border px-3 py-2"
         />
         <button
-          onClick={() => load()}
-          className="rounded px-4 py-2 bg-gray-900 text-white disabled:opacity-50"
+          onClick={() => void fetchData(date)}
           disabled={loading}
+          className="rounded-md bg-black text-white px-4 py-2 disabled:opacity-60"
         >
           {loading ? '查询中…' : '查询'}
         </button>
-        {err && <span className="text-red-600 text-sm">错误：{err}</span>}
+        {err && <span className="text-sm text-red-600">错误：{err}</span>}
       </div>
 
-      {/* 汇总卡片 */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <StatCard label="订单数" value={data?.orders ?? '-'} />
-        <StatCard label="不含税小计 (￥)" value={moneyFromCents(data?.subtotalCents)} />
-        <StatCard label="税额 (￥)" value={moneyFromCents(data?.taxCents)} />
-        <StatCard label="合计 (￥)" value={moneyFromCents(data?.totalCents)} />
+      <div className="grid grid-cols-4 gap-4">
+        <Card title="订单数">
+          {typeof data?.orderCount === 'number' ? String(data.orderCount) : '—'}
+        </Card>
+        <Card title="不含税小计（¥）">{data ? money(data.subtotalCents) : '—'}</Card>
+        <Card title="税额（¥）">{data ? money(data.taxCents) : '—'}</Card>
+        <Card title="合计（¥）">{data ? money(data.totalCents) : '—'}</Card>
       </div>
-
-      {/* 渠道拆分 */}
-      {data?.byChannel && (
-        <div className="border rounded-lg p-4">
-          <div className="font-medium mb-2">按渠道</div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left border-b">
-                  <th className="py-2 pr-4">渠道</th>
-                  <th className="py-2 pr-4">订单数</th>
-                  <th className="py-2 pr-4">不含税小计(￥)</th>
-                  <th className="py-2 pr-4">税额(￥)</th>
-                  <th className="py-2 pr-4">合计(￥)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(data.byChannel).map(([ch, v]) => {
-                  // v 可能是 number（订单数），也可能是对象（带金额）
-                  const orders =
-                    typeof v === 'number'
-                      ? v
-                      : typeof v?.orders === 'number'
-                      ? v.orders
-                      : '-';
-                  const subtotalCents =
-                    typeof v === 'number' ? undefined : v?.subtotalCents;
-                  const taxCents =
-                    typeof v === 'number' ? undefined : v?.taxCents;
-                  const totalCents =
-                    typeof v === 'number' ? undefined : v?.totalCents;
-
-                  return (
-                    <tr key={ch} className="border-b last:border-none">
-                      <td className="py-2 pr-4">{ch}</td>
-                      <td className="py-2 pr-4">{orders}</td>
-                      <td className="py-2 pr-4">{moneyFromCents(subtotalCents)}</td>
-                      <td className="py-2 pr-4">{moneyFromCents(taxCents)}</td>
-                      <td className="py-2 pr-4">{moneyFromCents(totalCents)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-    </div>
+    </main>
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string | number }) {
+function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border p-4">
-      <div className="text-sm text-gray-500">{label}</div>
-      <div className="mt-1 text-2xl font-semibold">{value}</div>
+    <div className="rounded-xl border p-5">
+      <div className="text-gray-500 text-sm mb-1">{title}</div>
+      <div className="text-3xl font-semibold">{children}</div>
     </div>
   );
 }
