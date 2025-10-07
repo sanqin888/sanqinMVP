@@ -27,3 +27,7 @@ apps/web/eslint
 apps/api/next/
 apps/api/web@0.1.0/
 apps/web/nest/
+
+# stray npm artifacts
+/api@*
+/eslint
