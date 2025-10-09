@@ -6,7 +6,10 @@ const prisma = new PrismaClient();
 // 从环境变量读税率，默认 13%
 const SALES_TAX_RATE: number = Number(process.env.SALES_TAX_RATE ?? 0.13);
 
-function calcTax(subtotalCents: number): { taxCents: number; totalCents: number } {
+function calcTax(subtotalCents: number): {
+  taxCents: number;
+  totalCents: number;
+} {
   const taxCents = Math.round(subtotalCents * SALES_TAX_RATE);
   return { taxCents, totalCents: subtotalCents + taxCents };
 }
@@ -43,11 +46,13 @@ async function backfill(): Promise<number> {
 async function main(): Promise<void> {
   try {
     const updated = await backfill();
-    // eslint-disable-next-line no-console
+
     console.log(`Backfill done. Updated ${updated} order(s).`);
   } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('Backfill failed:', err instanceof Error ? err.message : String(err));
+    console.error(
+      'Backfill failed:',
+      err instanceof Error ? err.message : String(err),
+    );
     process.exitCode = 1;
   } finally {
     await prisma.$disconnect();

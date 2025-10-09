@@ -29,9 +29,9 @@ describe('OrdersService', () => {
   it('propagates NotFoundException when the order is missing during update', async () => {
     prisma.order.findUnique.mockResolvedValue(null);
 
-    await expect(service.updateStatus('missing', 'paid')).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
+    await expect(
+      service.updateStatus('missing', 'paid'),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('propagates BadRequestException for illegal status transitions', async () => {
@@ -41,15 +41,17 @@ describe('OrdersService', () => {
       items: [],
     });
 
-    await expect(service.updateStatus('order-1', 'pending')).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(
+      service.updateStatus('order-1', 'pending'),
+    ).rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.order.update).not.toHaveBeenCalled();
   });
 
   it('propagates NotFoundException when advancing a missing order', async () => {
     prisma.order.findUnique.mockResolvedValue(null);
 
-    await expect(service.advance('missing-order')).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.advance('missing-order')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 });
