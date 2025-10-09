@@ -69,17 +69,17 @@ export default function AdminDailyReportPage() {
         </div>
 
         <div className="rounded-xl border p-6">
-          <div className="text-muted-foreground mb-2">不含税小计（¥）</div>
+          <div className="text-muted-foreground mb-2">不含税小计（$）</div>
           <div className="text-4xl font-semibold">{moneyFromCents(report?.subtotalCents)}</div>
         </div>
 
         <div className="rounded-xl border p-6">
-          <div className="text-muted-foreground mb-2">税额（¥）</div>
+          <div className="text-muted-foreground mb-2">税额（$）</div>
           <div className="text-4xl font-semibold">{moneyFromCents(report?.taxCents)}</div>
         </div>
 
         <div className="rounded-xl border p-6">
-          <div className="text-muted-foreground mb-2">合计（¥）</div>
+          <div className="text-muted-foreground mb-2">合计（$）</div>
           <div className="text-4xl font-semibold">{moneyFromCents(report?.totalCents)}</div>
         </div>
       </div>
