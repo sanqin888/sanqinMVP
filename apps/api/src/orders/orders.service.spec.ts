@@ -1,6 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { LoyaltyService } from '../loyalty/loyalty.service';
 
 describe('OrdersService', () => {
   let service: OrdersService;
@@ -11,6 +12,9 @@ describe('OrdersService', () => {
       create: jest.Mock;
       findMany: jest.Mock;
     };
+  };
+  let loyalty: {
+    earnOnOrderPaid: jest.Mock;
   };
 
   beforeEach(() => {
@@ -23,7 +27,14 @@ describe('OrdersService', () => {
       },
     };
 
-    service = new OrdersService(prisma as unknown as PrismaService);
+    loyalty = {
+      earnOnOrderPaid: jest.fn(),
+    };
+
+    service = new OrdersService(
+      prisma as unknown as PrismaService,
+      loyalty as unknown as LoyaltyService,
+    );
   });
 
   it('propagates NotFoundException when the order is missing during update', async () => {
