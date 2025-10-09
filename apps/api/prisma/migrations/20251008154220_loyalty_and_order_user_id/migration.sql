@@ -6,11 +6,24 @@
 */
 -- AlterEnum
 BEGIN;
-CREATE TYPE "LoyaltyEntryType_new" AS ENUM ('EARN_ON_PURCHASE', 'ADJUST_MANUAL', 'REDEEM');
-ALTER TABLE "LoyaltyLedger" ALTER COLUMN "type" TYPE "LoyaltyEntryType_new" USING ("type"::text::"LoyaltyEntryType_new");
-ALTER TYPE "LoyaltyEntryType" RENAME TO "LoyaltyEntryType_old";
-ALTER TYPE "LoyaltyEntryType_new" RENAME TO "LoyaltyEntryType";
-DROP TYPE "public"."LoyaltyEntryType_old";
+ALTER TABLE "LoyaltyLedger"
+  ALTER COLUMN "type" TYPE TEXT
+  USING "type"::text;
+
+UPDATE "LoyaltyLedger"
+SET "type" = CASE "type"
+  WHEN 'earn' THEN 'EARN_ON_PURCHASE'
+  WHEN 'burn' THEN 'REDEEM'
+  WHEN 'adjust' THEN 'ADJUST_MANUAL'
+  ELSE "type"
+END;
+
+DROP TYPE "LoyaltyEntryType";
+CREATE TYPE "LoyaltyEntryType" AS ENUM ('EARN_ON_PURCHASE', 'ADJUST_MANUAL', 'REDEEM');
+
+ALTER TABLE "LoyaltyLedger"
+  ALTER COLUMN "type" TYPE "LoyaltyEntryType"
+  USING "type"::"LoyaltyEntryType";
 COMMIT;
 
 -- DropForeignKey
