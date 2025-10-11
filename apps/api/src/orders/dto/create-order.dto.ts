@@ -1,58 +1,45 @@
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  IsIn,
   IsInt,
-  IsNumber,
   IsOptional,
   IsString,
   Min,
   ValidateNested,
-  IsObject,
-  IsIn,
 } from 'class-validator';
 
-export type Channel = 'web' | 'in_store' | 'ubereats';
-export type FulfillmentType = 'pickup' | 'dine_in';
+class CreateOrderItemDto {
+  @IsString() productId!: string;
+  @IsInt() @Min(1) qty!: number;
 
-export class OrderItemDto {
-  @IsString()
-  productId!: string;
-
-  @IsInt()
-  @Min(1)
-  qty!: number;
-
-  @IsOptional()
-  @IsNumber()
-  unitPrice?: number;
-
-  @IsOptional()
-  @IsObject()
-  options?: Record<string, unknown>;
+  // 可选：单价、加料
+  @IsOptional() unitPrice?: number;
+  @IsOptional() options?: Record<string, unknown>;
 }
 
 export class CreateOrderDto {
+  @IsOptional() @IsString() userId?: string;
+
   @IsIn(['web', 'in_store', 'ubereats'])
-  channel!: Channel;
+  channel!: 'web' | 'in_store' | 'ubereats';
 
   @IsIn(['pickup', 'dine_in'])
-  fulfillmentType!: FulfillmentType;
-
-  @IsNumber()
-  subtotal!: number;
-
-  @IsNumber()
-  taxTotal!: number;
-
-  @IsNumber()
-  total!: number;
+  fulfillmentType!: 'pickup' | 'dine_in';
 
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => OrderItemDto)
-  items!: OrderItemDto[];
+  @Type(() => CreateOrderItemDto)
+  items!: CreateOrderItemDto[];
 
+  /** 本单打算使用的积分（整数“点”），可选 */
   @IsOptional()
-  @IsString()
-  userId?: string;
+  @IsInt()
+  @Min(0)
+  pointsToRedeem?: number;
+
+  /** 仍然保留前端传入口径，但金额实际以后端为准 */
+  @IsInt() @Min(0) subtotal!: number;
+  @IsInt() @Min(0) taxTotal!: number;
+  @IsInt() @Min(0) total!: number;
 }

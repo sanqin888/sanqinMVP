@@ -4,10 +4,10 @@ import { AppService } from './app.service';
 import { OrdersModule } from './orders/orders.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ReportsModule } from './reports/reports.module';
-// 还有 LoyaltyModule 等按你项目实际
+import { LoyaltyModule } from './loyalty/loyalty.module';
 
 @Module({
-  imports: [PrismaModule, OrdersModule, ReportsModule],
+  imports: [PrismaModule, OrdersModule, ReportsModule, LoyaltyModule],
   controllers: [AppController],
   providers: [AppService],
 })
