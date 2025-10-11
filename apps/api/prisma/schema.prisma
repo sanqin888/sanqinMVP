@@ -1,3 +1,4 @@
+// === Prisma 基础 ===
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,7 +8,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// === 新增：订单状态枚举 ===
+// === Enums ===
 enum OrderStatus {
   pending
   paid
@@ -17,40 +18,15 @@ enum OrderStatus {
   refunded
 }
 
-// ... 其他已有内容
-
-model Order {
-  id             String       @id @default(uuid())
-  userId         String?      // <— 新增/确认存在
-  channel        String
-  fulfillmentType String
-  status         OrderStatus  @default(pending)
-  subtotalCents  Int
-  taxCents       Int
-  totalCents     Int
-  pickupCode     String?
-  createdAt      DateTime     @default(now())
-  items          OrderItem[]
-
-  @@index([createdAt])
+enum FulfillmentType {
+  pickup
+  dine_in
 }
 
-
-model OrderItem {
-  id             String  @id @default(uuid())
-  orderId        String
-  order          Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId      String
-  qty            Int
-  unitPriceCents Int?
-  optionsJson    Json?
-}
-
-// === Loyalty Enums ===
-enum LoyaltyEntryType {
-  EARN_ON_PURCHASE
-  ADJUST_MANUAL
-  REDEEM
+enum Channel {
+  web
+  in_store
+  ubereats
 }
 
 enum LoyaltyTier {
@@ -60,26 +36,68 @@ enum LoyaltyTier {
   PLATINUM
 }
 
-// === Loyalty Models ===
+enum LoyaltyEntryType {
+  EARN_ON_PURCHASE     // 支付后赚取
+  REDEEM_ON_ORDER      // 下单时抵扣
+  REFUND_REVERSE_EARN  // 退款时冲回赚取
+  REFUND_RETURN_REDEEM // 退款时退回抵扣
+}
+
+// === Models ===
+model Order {
+  id              String          @id @default(uuid()) @db.Uuid
+  userId          String?         @db.Uuid
+  channel         Channel
+  fulfillmentType FulfillmentType
+  status          OrderStatus     @default(pending)
+  subtotalCents   Int
+  taxCents        Int
+  totalCents      Int
+  pickupCode      String?
+  createdAt       DateTime        @default(now())
+
+  items           OrderItem[]
+
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id             String   @id @default(uuid()) @db.Uuid
+  orderId        String   @db.Uuid
+  productId      String
+  qty            Int
+  unitPriceCents Int?
+  optionsJson    Json?
+
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
 model LoyaltyAccount {
-  id             String        @id @default(uuid())
-  userId         String        @unique                      // 不强制外键，便于先行接入
-  pointsMicro    BigInt        @default(0)                  // 以 1e-4 点为单位存储，避免小数
-  tier           LoyaltyTier   @default(BRONZE)
-  createdAt      DateTime      @default(now())
-  ledger       LoyaltyLedger[]
+  id          String        @id @default(uuid()) @db.Uuid
+  userId      String        @unique
+  pointsMicro BigInt        @db.BigInt
+  tier        LoyaltyTier   @default(BRONZE)
+  createdAt   DateTime      @default(now())
+
+  ledger      LoyaltyLedger[]
+
+  @@index([userId])
 }
 
 model LoyaltyLedger {
-  id                 String            @id @default(uuid())
-  accountId          String
-  account            LoyaltyAccount    @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  type               LoyaltyEntryType
-  orderId            String?
-  deltaMicro         BigInt            // 本次增加/减少的微点
-  balanceAfterMicro  BigInt            // 记账后的余额
-  note               String?
-  createdAt          DateTime          @default(now())
+  id                String            @id @default(uuid()) @db.Uuid
+  accountId         String            @db.Uuid
+  orderId           String?           @db.Uuid
+  type              LoyaltyEntryType
+  deltaMicro        BigInt            @db.BigInt
+  balanceAfterMicro BigInt            @db.BigInt
+  note              String?
+  createdAt         DateTime          @default(now())
 
-  @@unique([orderId, type], name: "orderId_type")
+  account           LoyaltyAccount    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, createdAt])
+  @@unique([orderId, type])
 }

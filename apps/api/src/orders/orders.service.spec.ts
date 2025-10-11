@@ -39,7 +39,6 @@ describe('OrdersService', () => {
 
   it('propagates NotFoundException when the order is missing during update', async () => {
     prisma.order.findUnique.mockResolvedValue(null);
-
     await expect(
       service.updateStatus('missing', 'paid'),
     ).rejects.toBeInstanceOf(NotFoundException);
@@ -60,8 +59,7 @@ describe('OrdersService', () => {
 
   it('propagates NotFoundException when advancing a missing order', async () => {
     prisma.order.findUnique.mockResolvedValue(null);
-
-    await expect(service.advance('missing-order')).rejects.toBeInstanceOf(
+    await expect(service.advance('nope')).rejects.toBeInstanceOf(
       NotFoundException,
     );
   });
