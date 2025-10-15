@@ -46,30 +46,30 @@ enum LoyaltyEntryType {
 // === Models ===
 model Order {
   id              String          @id @default(uuid()) @db.Uuid
-  userId          String?         @db.Uuid
-  channel         Channel
-  fulfillmentType FulfillmentType
+  userId          String?         
+  channel         Channel         @default(web)
+  fulfillmentType FulfillmentType @default(pickup)
   status          OrderStatus     @default(pending)
-  subtotalCents   Int
-  taxCents        Int
-  totalCents      Int
+  subtotalCents   Int             @default(0)
+  taxCents        Int             @default(0)
+  totalCents      Int             @default(0)
   pickupCode      String?
   createdAt       DateTime        @default(now())
 
-  items           OrderItem[]
+  items OrderItem[]
 
   @@index([createdAt])
 }
 
 model OrderItem {
-  id             String   @id @default(uuid()) @db.Uuid
-  orderId        String   @db.Uuid
+  id             String  @id @default(uuid()) @db.Uuid
+  orderId        String  @db.Uuid
   productId      String
   qty            Int
   unitPriceCents Int?
   optionsJson    Json?
 
-  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order          Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId])
 }
