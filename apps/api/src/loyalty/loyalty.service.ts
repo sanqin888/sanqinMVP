@@ -80,10 +80,13 @@ export class LoyaltyService {
           select: { id: true, pointsMicro: true, tier: true },
         }));
       // 标准 Postgres 行锁
-      await tx.$executeRawUnsafe(
-        `SELECT id FROM "LoyaltyAccount" WHERE id = $1 FOR UPDATE`,
-        acc.id,
-      );
+          await tx.$queryRaw`
+            SELECT id
+            FROM "LoyaltyAccount"
+            WHERE id = ${acc.id}::uuid
+            FOR UPDATE
+      `;
+
 
       let balance = acc.pointsMicro;
 
@@ -166,10 +169,12 @@ export class LoyaltyService {
 
     await this.prisma.$transaction(async (tx) => {
       const acc = await this.ensureAccount(order.userId!);
-      await tx.$executeRawUnsafe(
-        `SELECT id FROM "LoyaltyAccount" WHERE id = $1 FOR UPDATE`,
-        acc.id,
-      );
+    await tx.$queryRaw`
+      SELECT id
+      FROM "LoyaltyAccount"
+      WHERE id = ${acc.id}::uuid
+      FOR UPDATE
+      `;
 
       let balance = acc.pointsMicro;
 
