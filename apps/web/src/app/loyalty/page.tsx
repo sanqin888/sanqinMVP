@@ -19,27 +19,15 @@ type LedgerBase = {
   id: string;
   createdAt: string; // ISO 字符串
   type: 'EARN_ON_PURCHASE' | 'ADJUST' | 'REDEEM' | 'REFUND' | string;
-  deltaPoints?: number | string;
-  balanceAfterPoints?: number | string;
-  deltaPoints?: number | string;
-  balanceAfterPoints?: number | string;
   note?: string | null;
   orderId?: string | null;
 };
-type LedgerMicroFields = {
-  deltaMicro: number | string;
-  balanceAfterMicro: number | string;
+type LedgerEntry = LedgerBase & {
+  deltaMicro?: number | string;
+  balanceAfterMicro?: number | string;
+  deltaPoints?: number | string;
+  balanceAfterPoints?: number | string;
 };
-
-type LedgerPointsFields = {
-  deltaPoints: number | string;
-  balanceAfterPoints: number | string;
-};
-
-type LedgerEntry =
-  & LedgerBase
-  & Partial<LedgerMicroFields>
-  & Partial<LedgerPointsFields>;
 
 function toNumber(n: number | string | undefined | null): number {
   if (n === undefined || n === null) return 0;
