@@ -44,13 +44,34 @@ export class OrdersService {
   }
 
   async create(dto: CreateOrderDto): Promise<OrderWithItems> {
-    // 1) 服务端重算金额
-    const subtotalCents = Math.round(dto.subtotal * 100);
+    // 1) 服务端重算金额（兼容旧版“单位：分”字段）
+    const subtotalCentsRaw =
+      typeof dto.subtotalCents === 'number'
+        ? dto.subtotalCents
+        : typeof dto.subtotal === 'number'
+          ? Math.round(dto.subtotal * 100)
+          : undefined;
+
+    if (
+      typeof subtotalCentsRaw !== 'number' ||
+      Number.isNaN(subtotalCentsRaw)
+    ) {
+      throw new BadRequestException('subtotal is required');
+    }
+    const subtotalCents = subtotalCentsRaw;
+
+    const requestedPoints =
+      typeof dto.pointsToRedeem === 'number'
+        ? dto.pointsToRedeem
+        : typeof dto.redeemValueCents === 'number' &&
+            REDEEM_DOLLAR_PER_POINT > 0
+          ? Math.floor(dto.redeemValueCents / (REDEEM_DOLLAR_PER_POINT * 100))
+          : undefined;
 
     // 2) 计算本单抵扣
     const redeemValueCents = await this.calcRedeemCents(
       dto.userId,
-      dto.pointsToRedeem,
+      requestedPoints,
       subtotalCents,
     );
 
@@ -70,7 +91,7 @@ export class OrdersService {
         totalCents,
         pickupCode: (1000 + Math.floor(Math.random() * 9000)).toString(),
         items: {
-          create: dto.items.map(
+          create: (Array.isArray(dto.items) ? dto.items : []).map(
             (i): Prisma.OrderItemCreateWithoutOrderInput => ({
               productId: i.productId,
               qty: i.qty,

@@ -27,10 +27,11 @@ export class CreateOrderDto {
   @IsIn(['pickup', 'dine_in'])
   fulfillmentType!: 'pickup' | 'dine_in';
 
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateOrderItemDto)
-  items!: CreateOrderItemDto[];
+  items?: CreateOrderItemDto[];
 
   /** 本单打算使用的积分（整数“点”），可选 */
   @IsOptional()
@@ -38,8 +39,19 @@ export class CreateOrderDto {
   @Min(0)
   pointsToRedeem?: number;
 
+  /** 兼容旧版前端传的“抵扣金额（分）” */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  redeemValueCents?: number;
+
   /** 仍然保留前端传入口径，但金额实际以后端为准 */
-  @IsInt() @Min(0) subtotal!: number;
-  @IsInt() @Min(0) taxTotal!: number;
-  @IsInt() @Min(0) total!: number;
+  @IsOptional() @IsInt() @Min(0) subtotal?: number;
+  @IsOptional() @IsInt() @Min(0) taxTotal?: number;
+  @IsOptional() @IsInt() @Min(0) total?: number;
+
+  /** 兼容旧版接口的“单位：分”字段 */
+  @IsOptional() @IsInt() @Min(0) subtotalCents?: number;
+  @IsOptional() @IsInt() @Min(0) taxCents?: number;
+  @IsOptional() @IsInt() @Min(0) totalCents?: number;
 }

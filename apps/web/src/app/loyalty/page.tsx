@@ -23,6 +23,8 @@ type LedgerEntry = {
   balanceAfterMicro?: number | string;
   deltaPoints?: number | string;
   balanceAfterPoints?: number | string;
+  deltaPoints?: number | string;
+  balanceAfterPoints?: number | string;
   note?: string | null;
   orderId?: string | null;
 };
