@@ -15,14 +15,18 @@ type AccountResp = {
   tier: LoyaltyTier;
 };
 
-type LedgerEntry = {
+type LedgerBase = {
   id: string;
   createdAt: string; // ISO 字符串
   type: 'EARN_ON_PURCHASE' | 'ADJUST' | 'REDEEM' | 'REFUND' | string;
-  deltaMicro: number | string;
-  balanceAfterMicro: number | string;
   note?: string | null;
   orderId?: string | null;
+};
+type LedgerEntry = LedgerBase & {
+  deltaMicro?: number | string;
+  balanceAfterMicro?: number | string;
+  deltaPoints?: number | string;
+  balanceAfterPoints?: number | string;
 };
 
 function toNumber(n: number | string | undefined | null): number {
@@ -31,9 +35,9 @@ function toNumber(n: number | string | undefined | null): number {
   return Number.isFinite(x) ? (x as number) : 0;
 }
 
-// 把微积分（1 点 = 10000 micro）转成可读的“点”
+// 把微积分（1 点 = 1_000_000 micro）转成可读的“点”
 function microToPoints(micro?: number | string | null): number {
-  return toNumber(micro) / 10000;
+  return toNumber(micro) / 1_000_000;
 }
 
 function formatDate(s: string) {
@@ -166,8 +170,12 @@ export default function LoyaltyCenterPage() {
         ) : (
           <ul className="divide-y">
             {ledger.map((e) => {
-              const delta = microToPoints(e.deltaMicro);
-              const bal = microToPoints(e.balanceAfterMicro);
+              const deltaPoints =
+                e.deltaPoints ?? microToPoints(e.deltaMicro);
+              const balancePoints =
+                e.balanceAfterPoints ?? microToPoints(e.balanceAfterMicro);
+              const delta = toNumber(deltaPoints);
+              const bal = toNumber(balancePoints);
               const sign = delta > 0 ? '+' : '';
               return (
                 <li key={e.id} className="py-3 flex items-start justify-between gap-3">

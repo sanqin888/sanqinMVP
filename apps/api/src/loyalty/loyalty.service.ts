@@ -80,13 +80,12 @@ export class LoyaltyService {
           select: { id: true, pointsMicro: true, tier: true },
         }));
       // 标准 Postgres 行锁
-          await tx.$queryRaw`
+      await tx.$queryRaw`
             SELECT id
             FROM "LoyaltyAccount"
             WHERE id = ${acc.id}::uuid
             FOR UPDATE
       `;
-
 
       let balance = acc.pointsMicro;
 
@@ -169,7 +168,7 @@ export class LoyaltyService {
 
     await this.prisma.$transaction(async (tx) => {
       const acc = await this.ensureAccount(order.userId!);
-    await tx.$queryRaw`
+      await tx.$queryRaw`
       SELECT id
       FROM "LoyaltyAccount"
       WHERE id = ${acc.id}::uuid
