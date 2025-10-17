@@ -20,7 +20,7 @@ jobs:
 
       - name: Install
         working-directory: apps/${{ matrix.app }}
-        run: npm ci --no-audit --no-fund
+        run: $GITHUB_WORKSPACE/scripts/ci/npm-ci.sh
 
       - name: Lint
         working-directory: apps/${{ matrix.app }}
@@ -28,9 +28,9 @@ jobs:
 
       - name: Build
         working-directory: apps/${{ matrix.app }}
-        run: npm run build --if-present
+        run: $GITHUB_WORKSPACE/scripts/ci/npm-build.sh
 
       - name: Test
         working-directory: apps/${{ matrix.app }}
-        run: npm test --if-present
+        run: $GITHUB_WORKSPACE/scripts/ci/npm-test.sh
 
