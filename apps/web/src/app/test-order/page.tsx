@@ -35,11 +35,61 @@ function cents(n: number): string {
   return (n / 100).toFixed(2);
 }
 
+type PrintJobType = 'receipt' | 'kitchen';
+
+type PrintJob = {
+  id: string;
+  orderId: string;
+  pickupCode: string;
+  type: PrintJobType;
+  createdAt: number;
+  content: string;
+};
+
+function buildPrintContent(order: Order, type: PrintJobType): string {
+  const lines: string[] = [];
+  const createdAt = new Date(order.createdAt).toLocaleString();
+
+  if (type === 'receipt') {
+    lines.push('SANQIN CAFE');
+    lines.push(`订单号: ${order.pickupCode}`);
+    lines.push(`渠道: ${order.channel} · ${order.fulfillmentType}`);
+    lines.push(`时间: ${createdAt}`);
+    lines.push('------------------------------');
+    order.items.forEach((item) => {
+      lines.push(`${item.productId}  x${item.qty}`);
+    });
+    lines.push('------------------------------');
+    lines.push(`小计: $${cents(order.subtotalCents)}`);
+    lines.push(`税额: $${cents(order.taxCents)}`);
+    lines.push(`合计: $${cents(order.totalCents)}`);
+    lines.push('谢谢惠顾，欢迎再次光临!');
+  } else {
+    lines.push('后厨联 · 准备中');
+    lines.push(`取餐码: ${order.pickupCode}`);
+    lines.push(`下单渠道: ${order.channel}`);
+    lines.push(`下单时间: ${createdAt}`);
+    lines.push('------------------------------');
+    order.items.forEach((item) => {
+      const price = typeof item.unitPriceCents === 'number' ? `@$${cents(item.unitPriceCents)}` : '';
+      lines.push(`${item.productId} x${item.qty} ${price}`.trim());
+      if (item.optionsJson && Object.keys(item.optionsJson).length > 0) {
+        lines.push(`  选项: ${JSON.stringify(item.optionsJson)}`);
+      }
+    });
+    lines.push('------------------------------');
+    lines.push('提醒: 保持制作顺序，注意过敏源标识。');
+  }
+
+  return lines.join('\n');
+}
+
 export default function TestOrderPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [printJobs, setPrintJobs] = useState<PrintJob[]>([]);
 
   const fetchRecent = useCallback(async () => {
     setErrorMsg(null);
@@ -126,6 +176,35 @@ export default function TestOrderPage() {
     [],
   );
 
+  const groupedJobs = useMemo(
+    () =>
+      printJobs.reduce<{ receipt: PrintJob[]; kitchen: PrintJob[] }>(
+        (acc, job) => {
+          acc[job.type].push(job);
+          return acc;
+        },
+        { receipt: [], kitchen: [] },
+      ),
+    [printJobs],
+  );
+
+  const simulatePrint = useCallback(
+    (order: Order, type: PrintJobType) => {
+      const job: PrintJob = {
+        id: `${order.id}-${type}-${Date.now()}`,
+        orderId: order.id,
+        pickupCode: order.pickupCode,
+        type,
+        createdAt: Date.now(),
+        content: buildPrintContent(order, type),
+      };
+      setPrintJobs((prev) => [job, ...prev]);
+    },
+    [],
+  );
+
+  const formatTimestamp = useCallback((timestamp: number) => new Date(timestamp).toLocaleTimeString(), []);
+
   return (
     <main className="mx-auto max-w-3xl p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -190,6 +269,20 @@ export default function TestOrderPage() {
               >
                 {nextLabel[o.status]}
               </button>
+              <div className="flex flex-wrap justify-end gap-2 pt-1">
+                <button
+                  onClick={() => simulatePrint(o, 'receipt')}
+                  className="rounded border px-3 py-1 text-xs hover:bg-gray-50"
+                >
+                  模拟前台打印
+                </button>
+                <button
+                  onClick={() => simulatePrint(o, 'kitchen')}
+                  className="rounded border px-3 py-1 text-xs hover:bg-gray-50"
+                >
+                  模拟后厨打印
+                </button>
+              </div>
             </div>
           </li>
         ))}
@@ -197,6 +290,43 @@ export default function TestOrderPage() {
           <li className="p-6 text-gray-500">暂无订单，点上面的“创建一单”试试。</li>
         )}
       </ul>
+
+      <section className="space-y-4">
+        <h2 className="text-xl font-semibold">打印模拟面板</h2>
+        <p className="text-sm text-gray-600">
+          点击订单操作中的“模拟前台打印”或“模拟后厨打印”按钮后，这里会显示对应的打印内容，便于调试与确认格式。
+        </p>
+        <div className="grid gap-4 md:grid-cols-2">
+          <PrintPreview title="前台收据（Receipt）" jobs={groupedJobs.receipt} formatTime={formatTimestamp} />
+          <PrintPreview title="后厨小票（Kitchen）" jobs={groupedJobs.kitchen} formatTime={formatTimestamp} />
+        </div>
+      </section>
     </main>
+  );
+}
+
+type PrintPreviewProps = {
+  title: string;
+  jobs: PrintJob[];
+  formatTime: (ts: number) => string;
+};
+
+function PrintPreview({ title, jobs, formatTime }: PrintPreviewProps) {
+  return (
+    <div className="flex h-full flex-col rounded-lg border">
+      <div className="border-b px-4 py-3 text-sm font-medium uppercase tracking-wide text-gray-600">{title}</div>
+      <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3 text-sm">
+        {jobs.length === 0 && <div className="text-gray-400">暂无打印任务。</div>}
+        {jobs.map((job) => (
+          <article key={job.id} className="space-y-1 rounded-md bg-gray-50 p-3">
+            <div className="flex items-center justify-between text-xs text-gray-500">
+              <span>#{job.pickupCode}</span>
+              <span>{formatTime(job.createdAt)}</span>
+            </div>
+            <pre className="whitespace-pre-wrap break-words font-mono text-xs text-gray-800">{job.content}</pre>
+          </article>
+        ))}
+      </div>
+    </div>
   );
 }
