@@ -1,4 +1,9 @@
-import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadGatewayException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 
 interface CloverRequestOptions {
   readonly searchParams?: Record<string, string | number | undefined>;
@@ -11,6 +16,7 @@ export class CloverService {
   private readonly merchantId: string;
   private readonly accessToken: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly isConfigured: boolean;
 
   constructor() {
     this.baseUrl = (
@@ -18,13 +24,12 @@ export class CloverService {
     ).replace(/\/$/, '');
     this.merchantId = process.env.CLOVER_MERCHANT_ID ?? '';
     this.accessToken = process.env.CLOVER_ACCESS_TOKEN ?? '';
+    this.isConfigured = Boolean(this.merchantId && this.accessToken);
 
-    if (!this.merchantId) {
-      throw new Error('CLOVER_MERCHANT_ID is required');
-    }
-
-    if (!this.accessToken) {
-      throw new Error('CLOVER_ACCESS_TOKEN is required');
+    if (!this.isConfigured) {
+      this.logger.warn(
+        'Clover integration is disabled. Set CLOVER_MERCHANT_ID and CLOVER_ACCESS_TOKEN to enable it.',
+      );
     }
 
     const fetchFn = globalThis.fetch as typeof fetch | undefined;
@@ -56,6 +61,10 @@ export class CloverService {
     path: string,
     { searchParams }: CloverRequestOptions = {},
   ): Promise<T> {
+    if (!this.isConfigured) {
+      throw new ServiceUnavailableException('Clover integration is not configured');
+    }
+
     const url = this.buildUrl(path, searchParams);
 
     const response = await this.fetchImpl(url, {

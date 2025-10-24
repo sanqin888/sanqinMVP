@@ -1,4 +1,4 @@
-import { BadGatewayException } from '@nestjs/common';
+import { BadGatewayException, ServiceUnavailableException } from '@nestjs/common';
 import { CloverService } from './clover.service';
 
 describe('CloverService', () => {
@@ -59,5 +59,17 @@ describe('CloverService', () => {
     await expect(service.getMerchantProfile()).rejects.toBeInstanceOf(
       BadGatewayException,
     );
+  });
+
+  it('throws ServiceUnavailableException when not configured', async () => {
+    delete process.env.CLOVER_ACCESS_TOKEN;
+    delete process.env.CLOVER_MERCHANT_ID;
+
+    const service = new CloverService();
+
+    await expect(service.listOrders()).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
