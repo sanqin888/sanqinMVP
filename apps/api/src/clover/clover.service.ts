@@ -80,7 +80,9 @@ export class CloverService {
       this.logger.error(
         `Clover request failed: ${response.status} ${response.statusText} -> ${body}`,
       );
-      throw new BadGatewayException('Clover API request failed');
+      throw new BadGatewayException(
+        `Clover API request failed: ${response.status} ${response.statusText}`.trim(),
+      );
     }
 
     return (await response.json()) as T;
