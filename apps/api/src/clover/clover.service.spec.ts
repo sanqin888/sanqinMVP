@@ -56,8 +56,15 @@ describe('CloverService', () => {
 
     const service = new CloverService();
 
-    await expect(service.getMerchantProfile()).rejects.toBeInstanceOf(
-      BadGatewayException,
-    );
+    expect.hasAssertions();
+
+    try {
+      await service.getMerchantProfile();
+    } catch (error) {
+      expect(error).toBeInstanceOf(BadGatewayException);
+      expect(error).toMatchObject({
+        message: 'Clover API request failed: 500 Internal Server Error',
+      });
+    }
   });
 });
