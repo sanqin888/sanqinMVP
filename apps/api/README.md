@@ -31,6 +31,20 @@
 $ npm install
 ```
 
+### Clover POS integration
+
+Set the following environment variables before starting the API in order to
+exercise the Clover POS proof-of-concept endpoints:
+
+| Variable | Description |
+| --- | --- |
+| `CLOVER_API_BASE_URL` | Optional. Defaults to the Clover sandbox (`https://sandbox.dev.clover.com/v3`). |
+| `CLOVER_MERCHANT_ID` | Required. Merchant identifier issued by Clover. |
+| `CLOVER_ACCESS_TOKEN` | Required. OAuth access token with permissions to read the merchant profile and orders. |
+
+With the variables defined you can call `/clover/merchant` and `/clover/orders`
+to proxy requests to Clover.
+
 ## Compile and run the project
 
 ```bash
