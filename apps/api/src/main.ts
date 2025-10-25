@@ -15,6 +15,9 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
 
   app.useGlobalInterceptors(new BigIntToStringInterceptor());
+  app.enableCors({
+    origin: process.env.CORS_ORIGIN ?? true,
+  });
 
   const port = Number(process.env.PORT || 4000);
   await app.listen(port);
