@@ -67,4 +67,31 @@ describe('CloverService', () => {
       });
     }
   });
+
+  it('sends POST request with JSON body when simulating online payment', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const service = new CloverService();
+    const payload = { orderId: 'order-1', result: 'SUCCESS' };
+    await service.simulateOnlinePayment(payload);
+
+    const lastCall = fetchMock.mock.calls.at(-1);
+    expect(lastCall?.[0]).toContain(
+      '/merchants/merchant-123/pay/online/simulate',
+    );
+    expect(lastCall?.[1]).toMatchObject({
+      method: 'POST',
+      headers: expect.objectContaining({
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        Authorization: 'Bearer token-abc',
+      }),
+      body: JSON.stringify(payload),
+    });
+  });
 });
