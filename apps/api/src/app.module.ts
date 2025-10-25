@@ -8,7 +8,6 @@ import { LoyaltyModule } from './loyalty/loyalty.module';
 import { CloverModule } from './clover/clover.module';
 import { CloverWebhooksModule } from './clover/clover-webhooks.module';
 
-
 @Module({
   imports: [
     PrismaModule,
@@ -16,7 +15,7 @@ import { CloverWebhooksModule } from './clover/clover-webhooks.module';
     ReportsModule,
     LoyaltyModule,
     CloverModule,
-    CloverWebhooksModule
+    CloverWebhooksModule,
   ],
   controllers: [AppController],
   providers: [AppService],
