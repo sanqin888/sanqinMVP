@@ -37,12 +37,15 @@ describe('CloverService', () => {
     const service = new CloverService();
     await service.listOrders(25);
 
-    const lastCall = fetchMock.mock.calls.at(-1);
-    expect(lastCall?.[0]).toContain('/merchants/merchant-123/orders?limit=25');
-    expect(lastCall?.[1]?.headers).toMatchObject({
-      Authorization: 'Bearer token-abc',
-      Accept: 'application/json',
-    });
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      expect.stringContaining('/merchants/merchant-123/orders?limit=25'),
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer token-abc',
+          Accept: 'application/json',
+        }),
+      }),
+    );
   });
 
   it('throws BadGatewayException when Clover responds with an error', async () => {
@@ -68,6 +71,7 @@ describe('CloverService', () => {
     }
   });
 
+ 
   it('sends POST request with JSON body when simulating online payment', async () => {
     fetchMock.mockResolvedValue(
       new Response(JSON.stringify({ ok: true }), {
@@ -80,18 +84,17 @@ describe('CloverService', () => {
     const payload = { orderId: 'order-1', result: 'SUCCESS' };
     await service.simulateOnlinePayment(payload);
 
-    const lastCall = fetchMock.mock.calls.at(-1);
-    expect(lastCall?.[0]).toContain(
-      '/merchants/merchant-123/pay/online/simulate',
-    );
-    expect(lastCall?.[1]).toMatchObject({
-      method: 'POST',
-      headers: expect.objectContaining({
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        Authorization: 'Bearer token-abc',
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      expect.stringContaining('/merchants/merchant-123/pay/online/simulate'),
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: 'Bearer token-abc',
+        }),
+        body: JSON.stringify(payload),
       }),
-      body: JSON.stringify(payload),
-    });
+    );
   });
 });
