@@ -63,7 +63,9 @@ export class CloverService {
         );
         this.hasLoggedMissingConfig = true;
       }
-      throw new ServiceUnavailableException('Clover integration is not configured');
+      throw new ServiceUnavailableException(
+        'Clover integration is not configured',
+      );
     }
 
     const url = this.buildUrl(path, searchParams);
