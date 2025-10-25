@@ -1,6 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import * as express from 'express';
+import { BigIntToStringInterceptor } from './common/interceptors/bigint-to-string.interceptor';
 import type { INestApplication } from '@nestjs/common';
 
 let appRef: INestApplication | null = null; // 防止重复 listen
@@ -12,20 +12,13 @@ async function bootstrap() {
     return;
   }
 
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { rawBody: true });
 
-  // 让请求对象携带 rawBody —— Clover HCO 的签名校验要用“原始报文”
-  app.use(express.json({
-    verify: (req: any, _res, buf) => { req.rawBody = buf; },
-  }));
-  app.use(express.urlencoded({
-    extended: true,
-    verify: (req: any, _res, buf) => { req.rawBody = buf; },
-  }));
+  app.useGlobalInterceptors(new BigIntToStringInterceptor());
 
   const port = Number(process.env.PORT || 4000);
   await app.listen(port);
   appRef = app;
   console.log(`[API] listening on http://localhost:${port}`);
 }
-bootstrap();
+void bootstrap();
