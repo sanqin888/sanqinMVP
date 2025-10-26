@@ -1,6 +1,8 @@
 import {
+  Body,
   Controller,
   Get,
+  Post,
   Query,
   UsePipes,
   ValidationPipe,
@@ -27,5 +29,10 @@ export class CloverController {
   )
   listOrders(@Query() query: ListOrdersQueryDto) {
     return this.clover.listOrders(query.limit);
+  }
+
+  @Post('pay/online/simulate')
+  simulateOnlinePayment(@Body() payload: Record<string, unknown>) {
+    return this.clover.simulateOnlinePayment(payload);
   }
 }
