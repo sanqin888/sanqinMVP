@@ -3,6 +3,8 @@ import { CloverService } from './clover.service';
 
 describe('CloverService', () => {
   const originalEnv = { ...process.env };
+
+  // 类型安全的 fetch mock
   const fetchMock: jest.MockedFunction<typeof fetch> = jest.fn();
 
   beforeEach(() => {
@@ -15,6 +17,8 @@ describe('CloverService', () => {
     };
 
     fetchMock.mockReset();
+
+    // 类型安全地挂到全局（避免 any 赋值）
     (
       globalThis as typeof globalThis & {
         fetch: jest.MockedFunction<typeof fetch>;
@@ -40,6 +44,7 @@ describe('CloverService', () => {
     expect(fetchMock).toHaveBeenLastCalledWith(
       expect.stringContaining('/merchants/merchant-123/orders?limit=25'),
       expect.objectContaining({
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         headers: expect.objectContaining({
           Authorization: 'Bearer token-abc',
           Accept: 'application/json',
@@ -71,7 +76,6 @@ describe('CloverService', () => {
     }
   });
 
- 
   it('sends POST request with JSON body when simulating online payment', async () => {
     fetchMock.mockResolvedValue(
       new Response(JSON.stringify({ ok: true }), {
@@ -81,13 +85,24 @@ describe('CloverService', () => {
     );
 
     const service = new CloverService();
-    const payload = { orderId: 'order-1', result: 'SUCCESS' };
+
+    // 明确 payload 类型，避免隐式 any 传播
+    type SimulateOnlinePaymentPayload = {
+      orderId: string;
+      result: 'SUCCESS' | 'FAILURE' | string;
+    };
+    const payload: SimulateOnlinePaymentPayload = {
+      orderId: 'order-1',
+      result: 'SUCCESS',
+    };
+
     await service.simulateOnlinePayment(payload);
 
     expect(fetchMock).toHaveBeenLastCalledWith(
       expect.stringContaining('/merchants/merchant-123/pay/online/simulate'),
       expect.objectContaining({
         method: 'POST',
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         headers: expect.objectContaining({
           'Content-Type': 'application/json',
           Accept: 'application/json',
@@ -98,3 +113,4 @@ describe('CloverService', () => {
     );
   });
 });
+
