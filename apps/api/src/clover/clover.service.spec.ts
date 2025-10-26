@@ -86,10 +86,10 @@ describe('CloverService', () => {
 
     const service = new CloverService();
 
-    // 明确 payload 类型，避免隐式 any 传播
+    // 明确 payload 类型（移除 `| string`，避免 no-redundant-type-constituents）
     type SimulateOnlinePaymentPayload = {
       orderId: string;
-      result: 'SUCCESS' | 'FAILURE' | string;
+      result: 'SUCCESS' | 'FAILURE';
     };
     const payload: SimulateOnlinePaymentPayload = {
       orderId: 'order-1',
@@ -113,4 +113,3 @@ describe('CloverService', () => {
     );
   });
 });
-
