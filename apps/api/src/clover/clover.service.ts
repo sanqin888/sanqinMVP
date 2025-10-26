@@ -7,6 +7,9 @@ import {
 
 interface CloverRequestOptions {
   readonly searchParams?: Record<string, string | number | undefined>;
+  readonly method?: string;
+  readonly body?: unknown;
+  readonly headers?: Record<string, string>;
 }
 
 @Injectable()
@@ -54,7 +57,7 @@ export class CloverService {
 
   private async request<T>(
     path: string,
-    { searchParams }: CloverRequestOptions = {},
+    { searchParams, method = 'GET', body, headers = {} }: CloverRequestOptions = {},
   ): Promise<T> {
     if (!this.isConfigured) {
       if (!this.hasLoggedMissingConfig) {
@@ -70,12 +73,21 @@ export class CloverService {
 
     const url = this.buildUrl(path, searchParams);
 
-    const response = await this.fetchImpl(url, {
+    const init: RequestInit = {
+      method,
       headers: {
         Accept: 'application/json',
         Authorization: `Bearer ${this.accessToken}`,
+        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...headers,
       },
-    });
+    };
+
+    if (body !== undefined) {
+      init.body = JSON.stringify(body);
+    }
+
+    const response = await this.fetchImpl(url, init);
 
     if (!response.ok) {
       const body = await response.text();
@@ -102,6 +114,13 @@ export class CloverService {
             ? Math.max(1, Math.min(100, limit))
             : undefined,
       },
+    });
+  }
+
+  async simulateOnlinePayment(payload: Record<string, unknown>): Promise<unknown> {
+    return this.request(`merchants/${this.merchantId}/pay/online/simulate`, {
+      method: 'POST',
+      body: payload,
     });
   }
 }

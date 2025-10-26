@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:4000';
+const CLOVER_SANDBOX_PAY_URL =
+  process.env.NEXT_PUBLIC_CLOVER_SANDBOX_PAY_URL ?? 'https://sandbox.dev.clover.com/pay/online';
 
 type OrderItem = {
   id: string;
@@ -233,6 +235,15 @@ export default function TestOrderPage() {
         >
           刷新
         </button>
+
+        <Link
+          href={CLOVER_SANDBOX_PAY_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded-lg border px-4 py-2 hover:bg-gray-50"
+        >
+          跳转 Clover Sandbox 支付页
+        </Link>
 
         {errorMsg && <span className="text-sm text-red-600">错误：{errorMsg}</span>}
       </div>
