@@ -1,27 +1,32 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { BigIntToStringInterceptor } from './common/interceptors/bigint-to-string.interceptor';
-import type { INestApplication } from '@nestjs/common';
-
-let appRef: INestApplication | null = null; // 防止重复 listen
+import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
-  if (appRef) {
-    // 已经在监听了，避免第二次调用造成 ERR_SERVER_ALREADY_LISTEN
-    console.log('[API] already listening, skip second start');
-    return;
-  }
+  const app = await NestFactory.create(AppModule);
 
-  const app = await NestFactory.create(AppModule, { rawBody: true });
+  // 全局前缀：/api
+  app.setGlobalPrefix('api');
 
-  app.useGlobalInterceptors(new BigIntToStringInterceptor());
+  // CORS：允许本地、ngrok、任意来源（如需更严谨可改成白名单）
   app.enableCors({
-    origin: process.env.CORS_ORIGIN ?? true,
+    origin: true,
+    credentials: true,
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    allowedHeaders: 'Content-Type,Authorization',
   });
 
-  const port = Number(process.env.PORT || 4000);
+  // 校验：自动验证 DTO，剔除多余字段
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      forbidUnknownValues: false,
+    }),
+  );
+
+  const port = process.env.PORT ? Number(process.env.PORT) : 4000;
   await app.listen(port);
-  appRef = app;
-  console.log(`[API] listening on http://localhost:${port}`);
+  console.log(`API listening on http://localhost:${port}/api`);
 }
-void bootstrap();
+bootstrap();

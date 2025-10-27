@@ -3,10 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:4000';
-const CLOVER_SANDBOX_PAY_URL =
-  process.env.NEXT_PUBLIC_CLOVER_SANDBOX_PAY_URL ?? 'https://sandbox.dev.clover.com/pay/online';
-
 type OrderItem = {
   id: string;
   orderId: string;
@@ -29,16 +25,11 @@ type Order = {
   totalCents: number;
   fulfillmentType: Fulfillment;
   pickupCode: string;
-  createdAt: string; // ISO string
+  createdAt: string;
   items: OrderItem[];
 };
 
-function cents(n: number): string {
-  return (n / 100).toFixed(2);
-}
-
 type PrintJobType = 'receipt' | 'kitchen';
-
 type PrintJob = {
   id: string;
   orderId: string;
@@ -47,6 +38,10 @@ type PrintJob = {
   createdAt: number;
   content: string;
 };
+
+function cents(n: number): string {
+  return (n / 100).toFixed(2);
+}
 
 function buildPrintContent(order: Order, type: PrintJobType): string {
   const lines: string[] = [];
@@ -58,9 +53,7 @@ function buildPrintContent(order: Order, type: PrintJobType): string {
     lines.push(`渠道: ${order.channel} · ${order.fulfillmentType}`);
     lines.push(`时间: ${createdAt}`);
     lines.push('------------------------------');
-    order.items.forEach((item) => {
-      lines.push(`${item.productId}  x${item.qty}`);
-    });
+    order.items.forEach((item) => { lines.push(`${item.productId}  x${item.qty}`); });
     lines.push('------------------------------');
     lines.push(`小计: $${cents(order.subtotalCents)}`);
     lines.push(`税额: $${cents(order.taxCents)}`);
@@ -82,7 +75,6 @@ function buildPrintContent(order: Order, type: PrintJobType): string {
     lines.push('------------------------------');
     lines.push('提醒: 保持制作顺序，注意过敏源标识。');
   }
-
   return lines.join('\n');
 }
 
@@ -96,35 +88,31 @@ export default function TestOrderPage() {
   const fetchRecent = useCallback(async () => {
     setErrorMsg(null);
     try {
-      const res = await fetch(`${API_BASE}/api/orders/recent`, { cache: 'no-store' });
+      const res = await fetch('/api/orders/recent', { cache: 'no-store', headers: { Accept: 'application/json' } });
       if (!res.ok) throw new Error(`recent http ${res.status}`);
+      const ct = res.headers.get('content-type') || '';
+      if (!ct.includes('application/json')) {
+        const body = await res.text();
+        throw new Error(`recent non-JSON（${ct || 'unknown'}）。返回片段：` + body.slice(0, 180).replace(/\s+/g, ' '));
+      }
       const data: Order[] = await res.json();
       setOrders(data);
     } catch (e) {
       setErrorMsg((e as Error).message);
+      setOrders([]);
     }
   }, []);
 
-  useEffect(() => {
-    void fetchRecent();
-  }, [fetchRecent]);
+  useEffect(() => { void fetchRecent(); }, [fetchRecent]);
 
   const createDemo = useCallback(async () => {
     setCreating(true);
     setErrorMsg(null);
     try {
-      const res = await fetch(`${API_BASE}/api/orders`, {
+      const res = await fetch('/api/orders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        // 后端会按 SALES_TAX_RATE 计算税额与合计，这里给出演示小计 10
-        body: JSON.stringify({
-          channel: 'web',
-          fulfillmentType: 'pickup',
-          items: [{ productId: 'demo', qty: 1 }],
-          subtotal: 10,
-          taxTotal: 0,
-          total: 10,
-        }),
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ channel: 'web', fulfillmentType: 'pickup', items: [{ productId: 'demo', qty: 1 }], subtotal: 10, taxTotal: 0, total: 10 }),
       });
       if (!res.ok) throw new Error(`create http ${res.status}`);
       await fetchRecent();
@@ -139,9 +127,9 @@ export default function TestOrderPage() {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const res = await fetch(`${API_BASE}/api/orders/${id}/status`, {
+      const res = await fetch(`/api/orders/${id}/status`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ status: 'paid' as OrderStatus }),
       });
       if (!res.ok) throw new Error(`setPaid http ${res.status}`);
@@ -153,11 +141,50 @@ export default function TestOrderPage() {
     }
   }, [fetchRecent]);
 
+  // —— 关键：模拟 Clover 支付，20s 超时 + 明确错误展示 ——
+  const simulateCloverPay = useCallback(async (id: string) => {
+    setLoading(true);
+    setErrorMsg(null);
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20000); // 20s
+
+    try {
+      const res = await fetch('/api/clover/pay/online/simulate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ orderId: id, result: 'SUCCESS' }),
+        signal: controller.signal,
+      });
+
+      const raw = await res.text().catch(() => '');
+      let data: any = {};
+      try { data = raw ? JSON.parse(raw) : {}; } catch { data = { raw }; }
+
+      if (!res.ok) {
+        throw new Error(`simulate http ${res.status} ${res.statusText} :: ${raw.slice(0, 200).replace(/\s+/g, ' ')}`);
+      }
+      if (!data?.ok) {
+        setErrorMsg(`Clover 返回未成功：${JSON.stringify(data).slice(0, 200)}`);
+      }
+      await fetchRecent();
+    } catch (e: any) {
+      if (e?.name === 'AbortError') {
+        setErrorMsg('支付模拟超时(20s)：请检查密钥/网络/防火墙或稍后再试');
+      } else {
+        setErrorMsg(e?.message || '支付模拟失败');
+      }
+    } finally {
+      clearTimeout(timer);
+      setLoading(false);
+    }
+  }, [fetchRecent]);
+
   const advance = useCallback(async (id: string) => {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const res = await fetch(`${API_BASE}/api/orders/${id}/advance`, { method: 'POST' });
+      const res = await fetch(`/api/orders/${id}/advance`, { method: 'POST' });
       if (!res.ok) throw new Error(`advance http ${res.status}`);
       await fetchRecent();
     } catch (e) {
@@ -168,84 +195,39 @@ export default function TestOrderPage() {
   }, [fetchRecent]);
 
   const nextLabel = useMemo<Record<OrderStatus, string>>(
-    () => ({
-      pending: '→ paid',
-      paid: '→ making',
-      making: '→ ready',
-      ready: '→ completed',
-      completed: '终态',
-    }),
-    [],
+    () => ({ pending: '→ paid', paid: '→ making', making: '→ ready', ready: '→ completed', completed: '终态' }),
+    []
   );
 
   const groupedJobs = useMemo(
-    () =>
-      printJobs.reduce<{ receipt: PrintJob[]; kitchen: PrintJob[] }>(
-        (acc, job) => {
-          acc[job.type].push(job);
-          return acc;
-        },
-        { receipt: [], kitchen: [] },
-      ),
-    [printJobs],
+    () => printJobs.reduce<{ receipt: PrintJob[]; kitchen: PrintJob[] }>((acc, job) => { acc[job.type].push(job); return acc; }, { receipt: [], kitchen: [] }),
+    [printJobs]
   );
 
-  const simulatePrint = useCallback(
-    (order: Order, type: PrintJobType) => {
-      const job: PrintJob = {
-        id: `${order.id}-${type}-${Date.now()}`,
-        orderId: order.id,
-        pickupCode: order.pickupCode,
-        type,
-        createdAt: Date.now(),
-        content: buildPrintContent(order, type),
-      };
-      setPrintJobs((prev) => [job, ...prev]);
-    },
-    [],
-  );
+  const simulatePrint = useCallback((order: Order, type: PrintJobType) => {
+    const job: PrintJob = { id: `${order.id}-${type}-${Date.now()}`, orderId: order.id, pickupCode: order.pickupCode, type, createdAt: Date.now(), content: buildPrintContent(order, type) };
+    setPrintJobs((prev) => [job, ...prev]);
+  }, []);
 
-  const formatTimestamp = useCallback((timestamp: number) => new Date(timestamp).toLocaleTimeString(), []);
+  const formatTimestamp = useCallback((ts: number) => new Date(ts).toLocaleTimeString(), []);
 
   return (
     <main className="mx-auto max-w-3xl p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">下单测试 / 最近十单</h1>
-        <Link
-          href="/admin/reports"
-          className="rounded-lg bg-neutral-800 px-3 py-2 text-white hover:opacity-90"
-        >
-          打开日报报表
-        </Link>
+        <Link href="/admin/reports" className="rounded-lg bg-neutral-800 px-3 py-2 text-white hover:opacity-90">打开日报报表</Link>
       </div>
 
       <div className="flex items-center gap-3">
-        <button
-          onClick={createDemo}
-          disabled={creating}
-          className="rounded-lg border px-4 py-2 hover:bg-gray-50 disabled:opacity-60"
-        >
+        <button onClick={createDemo} disabled={creating} className="rounded-lg border px-4 py-2 hover:bg-gray-50 disabled:opacity-60">
           {creating ? '创建中…' : '创建一单（demo $10）'}
         </button>
 
-        <button
-          onClick={() => void fetchRecent()}
-          disabled={loading}
-          className="rounded-lg border px-4 py-2 hover:bg-gray-50 disabled:opacity-60"
-        >
+        <button onClick={() => void fetchRecent()} disabled={loading} className="rounded-lg border px-4 py-2 hover:bg-gray-50 disabled:opacity-60">
           刷新
         </button>
 
-        <Link
-          href={CLOVER_SANDBOX_PAY_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="rounded-lg border px-4 py-2 hover:bg-gray-50"
-        >
-          跳转 Clover Sandbox 支付页
-        </Link>
-
-        {errorMsg && <span className="text-sm text-red-600">错误：{errorMsg}</span>}
+        {errorMsg && <span className="text-sm text-red-600 break-all">{errorMsg}</span>}
       </div>
 
       <ul className="divide-y rounded-lg border">
@@ -253,8 +235,7 @@ export default function TestOrderPage() {
           <li key={o.id} className="flex items-start justify-between gap-4 p-4">
             <div>
               <div className="font-medium">
-                #{o.pickupCode} · {o.status.toUpperCase()} · $
-                {cents(o.totalCents)}（小计 ${cents(o.subtotalCents)} / 税 ${cents(o.taxCents)}）
+                #{o.pickupCode} · {o.status.toUpperCase()} · ${cents(o.totalCents)}（小计 ${cents(o.subtotalCents)} / 税 ${cents(o.taxCents)}）
               </div>
               <div className="text-sm text-gray-600">
                 {new Date(o.createdAt).toLocaleString()} · {o.channel} · {o.fulfillmentType}
@@ -266,50 +247,34 @@ export default function TestOrderPage() {
             </div>
             <div className="flex flex-col items-end gap-2">
               {o.status === 'pending' && (
-                <button
-                  onClick={() => void setPaid(o.id)}
-                  className="rounded-md border px-3 py-1 text-sm hover:bg-gray-50"
-                >
-                  标记为 paid
-                </button>
+                <>
+                  <button onClick={() => void simulateCloverPay(o.id)} className="rounded-md border px-3 py-1 text-sm hover:bg-gray-50">
+                    模拟在线支付（Clover）
+                  </button>
+                  <button onClick={() => void setPaid(o.id)} className="rounded-md border px-3 py-1 text-sm hover:bg-gray-50">
+                    直接标记为 paid
+                  </button>
+                </>
               )}
-              <button
-                onClick={() => void advance(o.id)}
-                disabled={o.status === 'completed'}
-                className="rounded-md border px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-60"
-              >
+              <button onClick={() => void advance(o.id)} disabled={o.status === 'completed'} className="rounded-md border px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-60">
                 {nextLabel[o.status]}
               </button>
               <div className="flex flex-wrap justify-end gap-2 pt-1">
-                <button
-                  onClick={() => simulatePrint(o, 'receipt')}
-                  className="rounded border px-3 py-1 text-xs hover:bg-gray-50"
-                >
-                  模拟前台打印
-                </button>
-                <button
-                  onClick={() => simulatePrint(o, 'kitchen')}
-                  className="rounded border px-3 py-1 text-xs hover:bg-gray-50"
-                >
-                  模拟后厨打印
-                </button>
+                <button onClick={() => simulatePrint(o, 'receipt')} className="rounded border px-3 py-1 text-xs hover:bg-gray-50">模拟前台打印</button>
+                <button onClick={() => simulatePrint(o, 'kitchen')} className="rounded border px-3 py-1 text-xs hover:bg-gray-50">模拟后厨打印</button>
               </div>
             </div>
           </li>
         ))}
-        {orders.length === 0 && (
-          <li className="p-6 text-gray-500">暂无订单，点上面的“创建一单”试试。</li>
-        )}
+        {orders.length === 0 && <li className="p-6 text-gray-500">暂无订单，点上面的“创建一单”试试。</li>}
       </ul>
 
       <section className="space-y-4">
         <h2 className="text-xl font-semibold">打印模拟面板</h2>
-        <p className="text-sm text-gray-600">
-          点击订单操作中的“模拟前台打印”或“模拟后厨打印”按钮后，这里会显示对应的打印内容，便于调试与确认格式。
-        </p>
+        <p className="text-sm text-gray-600">点击订单操作中的“模拟前台打印”或“模拟后厨打印”按钮后，这里会显示对应的打印内容，便于调试与确认格式。</p>
         <div className="grid gap-4 md:grid-cols-2">
-          <PrintPreview title="前台收据（Receipt）" jobs={groupedJobs.receipt} formatTime={formatTimestamp} />
-          <PrintPreview title="后厨小票（Kitchen）" jobs={groupedJobs.kitchen} formatTime={formatTimestamp} />
+          <PrintPreview title="前台收据（RECEIPT）" jobs={groupedJobs.receipt} formatTime={formatTimestamp} />
+          <PrintPreview title="后厨小票（KITCHEN）" jobs={groupedJobs.kitchen} formatTime={formatTimestamp} />
         </div>
       </section>
     </main>
