@@ -1,8 +1,13 @@
 {
   "name": "sanqinMVP",
   "private": true,
-  "workspaces": ["apps/*", "libs/*"],
-  "engines": { "node": ">=18.18.0" },
+  "workspaces": [
+    "apps/*",
+    "libs/*"
+  ],
+  "engines": {
+    "node": ">=18.18.0"
+  },
   "scripts": {
     "dev": "npm run dev -w apps/web",
     "dev:web": "npm run dev -w apps/web",
