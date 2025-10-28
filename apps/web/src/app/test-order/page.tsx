@@ -158,21 +158,23 @@ export default function TestOrderPage() {
       });
 
       const raw = await res.text().catch(() => '');
-      let data: any = {};
-      try { data = raw ? JSON.parse(raw) : {}; } catch { data = { raw }; }
+      type CloverSimulateResponse = { ok?: boolean; [key: string]: unknown };
+      let data: CloverSimulateResponse | { raw: string } = {};
+      try { data = raw ? (JSON.parse(raw) as CloverSimulateResponse) : {}; } catch { data = { raw }; }
 
       if (!res.ok) {
         throw new Error(`simulate http ${res.status} ${res.statusText} :: ${raw.slice(0, 200).replace(/\s+/g, ' ')}`);
       }
-      if (!data?.ok) {
+      if (!('ok' in data) || data.ok !== true) {
         setErrorMsg(`Clover 返回未成功：${JSON.stringify(data).slice(0, 200)}`);
       }
       await fetchRecent();
-    } catch (e: any) {
-      if (e?.name === 'AbortError') {
+    } catch (error: unknown) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
         setErrorMsg('支付模拟超时(20s)：请检查密钥/网络/防火墙或稍后再试');
       } else {
-        setErrorMsg(e?.message || '支付模拟失败');
+        const message = error instanceof Error ? error.message : '支付模拟失败';
+        setErrorMsg(message);
       }
     } finally {
       clearTimeout(timer);
