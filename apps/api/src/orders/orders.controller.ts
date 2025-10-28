@@ -4,7 +4,6 @@ import {
   Get,
   HttpCode,
   Param,
-  ParseIntPipe,
   Patch,
   Post,
   Query,
@@ -62,10 +61,7 @@ export class OrdersController {
    * Body: { status: 'paid' | 'making' | ... }
    */
   @Patch(':id/status')
-  async setStatus(
-    @Param('id') id: string,
-    @Body() body: UpdateOrderStatusDto,
-  ) {
+  async setStatus(@Param('id') id: string, @Body() body: UpdateOrderStatusDto) {
     return this.ordersService.updateStatus(id, body.status);
   }
 

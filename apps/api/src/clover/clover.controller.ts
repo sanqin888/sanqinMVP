@@ -14,7 +14,7 @@ export class CloverController {
   // 最终路径（有全局前缀时）: /api/clover/pay/online/simulate
   @Post('pay/online/simulate')
   @HttpCode(200)
-  async simulateOnlinePayment(@Body() body: SimulateOnlinePaymentPayload) {
+  simulateOnlinePayment(@Body() body: SimulateOnlinePaymentPayload) {
     const { orderId, result = 'SUCCESS' } = body ?? {};
     // 保持向后兼容：若你的旧控制器还调用 simulateOnlinePayment(payload)，Service 里已有兼容方法
     return this.clover.simulateByChargeAndMarkIfSuccess(orderId, result);
