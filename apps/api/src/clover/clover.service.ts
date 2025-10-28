@@ -1,5 +1,6 @@
 // apps/api/src/clover/clover.service.ts
 import { Injectable, Logger } from '@nestjs/common';
+import { OrdersService } from '../orders/orders.service';
 
 export type SimResult = 'SUCCESS' | 'FAILURE';
 
@@ -17,12 +18,14 @@ export interface PaymentSimulation {
 @Injectable()
 export class CloverService {
   private readonly logger = new Logger(CloverService.name);
+ 
+  constructor(private readonly orders: OrdersService) {}
 
   /**
    * Simulate an online payment and (optionally) mark order as paid.
    * Purely local logic; no network calls here to keep types strictly safe.
    */
-  public simulateOnlinePayment(
+  public async simulateOnlinePayment(
     payload: SimulateOnlinePaymentPayload,
   ): Promise<PaymentSimulation> {
     const { orderId, result = 'SUCCESS' } = payload;
@@ -47,7 +50,28 @@ export class CloverService {
     // In a real impl, you might look up the order in db and mark paid.
     // Here just log and return typed result to avoid any/unknown leakage.
     this.logger.log(`Simulated payment SUCCESS for order ${orderId}`);
-    return Promise.resolve({ ok: true, markedPaid: true });
+
+    try {
+      let order = await this.orders.advance(orderId);
+
+      // pending -> paid (advance once), then paid -> making (advance again)
+      if (order.status === 'paid') {
+        order = await this.orders.advance(orderId);
+      }
+
+      const markedPaid = order.status !== 'pending';
+      return { ok: true, markedPaid };
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `Failed to advance order ${orderId} after simulated payment: ${message}`,
+      );
+      return {
+        ok: false,
+        markedPaid: false,
+        reason: `Failed to advance order ${orderId}: ${message}`,
+      };
+    }
   }
 
   /**
