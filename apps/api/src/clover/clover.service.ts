@@ -22,21 +22,41 @@ export class CloverService {
    * Simulate an online payment and (optionally) mark order as paid.
    * Purely local logic; no network calls here to keep types strictly safe.
    */
-  public async simulateOnlinePayment(payload: SimulateOnlinePaymentPayload): Promise<PaymentSimulation> {
+  public simulateOnlinePayment(
+    payload: SimulateOnlinePaymentPayload,
+  ): Promise<PaymentSimulation> {
     const { orderId, result = 'SUCCESS' } = payload;
 
     if (!orderId) {
-      return { ok: false, markedPaid: false, reason: 'Missing orderId' };
+      return Promise.resolve({
+        ok: false,
+        markedPaid: false,
+        reason: 'Missing orderId',
+      });
     }
 
     if (result !== 'SUCCESS') {
       this.logger.warn(`Simulated payment FAILURE for order ${orderId}`);
-      return { ok: false, markedPaid: false, reason: 'Simulated FAILURE' };
+      return Promise.resolve({
+        ok: false,
+        markedPaid: false,
+        reason: 'Simulated FAILURE',
+      });
     }
 
     // In a real impl, you might look up the order in db and mark paid.
     // Here just log and return typed result to avoid any/unknown leakage.
     this.logger.log(`Simulated payment SUCCESS for order ${orderId}`);
-    return { ok: true, markedPaid: true };
+    return Promise.resolve({ ok: true, markedPaid: true });
+  }
+
+  /**
+   * Backwards compatible helper matching the previous public API used by the controller.
+   */
+  public simulateByChargeAndMarkIfSuccess(
+    orderId: string,
+    result: SimResult = 'SUCCESS',
+  ): Promise<PaymentSimulation> {
+    return this.simulateOnlinePayment({ orderId, result });
   }
 }

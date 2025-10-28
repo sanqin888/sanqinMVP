@@ -14,28 +14,36 @@ describe('CloverService', () => {
   });
 
   it('returns failure when orderId is missing', async () => {
-    const res = await service.simulateOnlinePayment({ orderId: '', result: 'SUCCESS' });
+    const res = await service.simulateOnlinePayment({
+      orderId: '',
+      result: 'SUCCESS',
+    });
     expect(res.ok).toBe(false);
     expect(res.markedPaid).toBe(false);
   });
 
   it('returns failure when result is FAILURE', async () => {
-    const res = await service.simulateOnlinePayment({ orderId: 'o1', result: 'FAILURE' });
+    const res = await service.simulateOnlinePayment({
+      orderId: 'o1',
+      result: 'FAILURE',
+    });
     expect(res.ok).toBe(false);
     expect(res.markedPaid).toBe(false);
   });
 
   it('returns success when result is SUCCESS', async () => {
-    const res = await service.simulateOnlinePayment({ orderId: 'o1', result: 'SUCCESS' });
+    const res = await service.simulateOnlinePayment({
+      orderId: 'o1',
+      result: 'SUCCESS',
+    });
     expect(res.ok).toBe(true);
     expect(res.markedPaid).toBe(true);
   });
 
-  it('handles unexpected errors without unsafe calls', async () => {
+  it('handles unexpected errors without unsafe calls', () => {
     // simulate try/catch and assert by message using instanceof Error
     try {
       // force a runtime error
-      // eslint-disable-next-line @typescript-eslint/no-throw-literal
       throw new Error('boom');
     } catch (err: unknown) {
       if (err instanceof Error) {
