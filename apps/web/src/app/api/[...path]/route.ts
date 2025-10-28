@@ -19,7 +19,7 @@ const HOP_BY_HOP = new Set([
 ]);
 
 function buildUpstreamUrl(req: NextRequest, parts: string[]) {
-  // 你的后端有全局 /api 前缀
+  // 你的后端有全局 /api/v1 前缀
   const base = `${UPSTREAM}/api`;
   const url = new URL(`${base}/${parts.join('/')}`);
   // 透传查询

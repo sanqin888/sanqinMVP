@@ -3,10 +3,16 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, OrderStatus } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { CreateOrderDto } from './dto/create-order.dto';
+import {
+  ORDER_STATUS_ADVANCE_FLOW,
+  ORDER_STATUS_TRANSITIONS,
+  OrderStatus,
+} from './order-status';
+import { normalizeStableId } from '../common/utils/stable-id';
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 
@@ -43,7 +49,24 @@ export class OrdersService {
     return Math.max(0, Math.min(byUserInput, subtotalCents ?? byUserInput));
   }
 
-  async create(dto: CreateOrderDto): Promise<OrderWithItems> {
+  async create(
+    dto: CreateOrderDto,
+    idempotencyKey?: string,
+  ): Promise<OrderWithItems> {
+    const rawKey = idempotencyKey ?? dto.clientRequestId;
+    const stableKey = normalizeStableId(rawKey);
+    if (rawKey && !stableKey) {
+      throw new BadRequestException('Idempotency-Key must be a cuid/uuid');
+    }
+
+    if (stableKey) {
+      const existing = await this.prisma.order.findUnique({
+        where: { clientRequestId: stableKey },
+        include: { items: true },
+      });
+      if (existing) return existing;
+    }
+
     // 1) 服务端重算金额（兼容旧版“单位：分”字段）
     const subtotalCentsRaw =
       typeof dto.subtotalCents === 'number'
@@ -84,6 +107,7 @@ export class OrdersService {
     const order = await this.prisma.order.create({
       data: {
         userId: dto.userId ?? null,
+        ...(stableKey ? { clientRequestId: stableKey } : {}),
         channel: dto.channel,
         fulfillmentType: dto.fulfillmentType,
         subtotalCents,
@@ -119,16 +143,16 @@ export class OrdersService {
     });
   }
 
-  /** 允许的状态迁移（⚠️ ready 不可退款） */
-  private readonly transitions: Record<OrderStatus, readonly OrderStatus[]> = {
-    pending: ['paid'],
-    paid: ['making', 'refunded'],
-    making: ['ready', 'refunded'],
-    ready: ['completed'], // ← 这里去掉 'refunded'
-    completed: [],
-    refunded: [],
-  };
+  async getById(id: string): Promise<OrderWithItems> {
+    const order = await this.prisma.order.findUnique({
+      where: { id },
+      include: { items: true },
+    });
+    if (!order) throw new NotFoundException('order not found');
+    return order;
+  }
 
+  /** 允许的状态迁移（⚠️ ready 不可退款） */
   async updateStatus(id: string, next: OrderStatus): Promise<OrderWithItems> {
     const current = await this.prisma.order.findUnique({
       where: { id },
@@ -136,7 +160,7 @@ export class OrdersService {
     });
     if (!current) throw new NotFoundException('order not found');
 
-    if (!this.transitions[current.status].includes(next)) {
+    if (!ORDER_STATUS_TRANSITIONS[current.status].includes(next)) {
       throw new BadRequestException(
         `illegal transition ${current.status} -> ${next}`,
       );
@@ -176,15 +200,7 @@ export class OrdersService {
     });
     if (!order) throw new NotFoundException('order not found');
 
-    const flow: Record<OrderStatus, OrderStatus | null> = {
-      pending: 'paid',
-      paid: 'making',
-      making: 'ready',
-      ready: 'completed',
-      completed: null,
-      refunded: null,
-    };
-    const next = flow[order.status];
+    const next = ORDER_STATUS_ADVANCE_FLOW[order.status];
     if (!next)
       return (await this.prisma.order.findUnique({
         where: { id },
