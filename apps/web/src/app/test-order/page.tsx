@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { apiFetch } from '../../lib/api-client';
+import { ORDER_STATUS_ADVANCE, OrderStatus } from '../../lib/status/order';
 
 type OrderItem = {
   id: string;
@@ -12,7 +14,6 @@ type OrderItem = {
   optionsJson: Record<string, unknown> | null;
 };
 
-type OrderStatus = 'pending' | 'paid' | 'making' | 'ready' | 'completed';
 type Channel = 'web' | 'in_store' | 'ubereats';
 type Fulfillment = 'pickup' | 'dine_in';
 
@@ -88,15 +89,8 @@ export default function TestOrderPage() {
   const fetchRecent = useCallback(async () => {
     setErrorMsg(null);
     try {
-      const res = await fetch('/api/orders/recent', { cache: 'no-store', headers: { Accept: 'application/json' } });
-      if (!res.ok) throw new Error(`recent http ${res.status}`);
-      const ct = res.headers.get('content-type') || '';
-      if (!ct.includes('application/json')) {
-        const body = await res.text();
-        throw new Error(`recent non-JSON（${ct || 'unknown'}）。返回片段：` + body.slice(0, 180).replace(/\s+/g, ' '));
-      }
-      const data: Order[] = await res.json();
-      setOrders(data);
+      const data = await apiFetch<Order[]>('/orders/recent');
+      setOrders(data ?? []);
     } catch (e) {
       setErrorMsg((e as Error).message);
       setOrders([]);
@@ -109,12 +103,21 @@ export default function TestOrderPage() {
     setCreating(true);
     setErrorMsg(null);
     try {
-      const res = await fetch('/api/orders', {
+      await apiFetch<Order>('/orders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ channel: 'web', fulfillmentType: 'pickup', items: [{ productId: 'demo', qty: 1 }], subtotal: 10, taxTotal: 0, total: 10 }),
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': crypto.randomUUID(),
+        },
+        body: JSON.stringify({
+          channel: 'web',
+          fulfillmentType: 'pickup',
+          items: [{ productId: 'demo', qty: 1 }],
+          subtotal: 10,
+          taxTotal: 0,
+          total: 10,
+        }),
       });
-      if (!res.ok) throw new Error(`create http ${res.status}`);
       await fetchRecent();
     } catch (e) {
       setErrorMsg((e as Error).message);
@@ -127,12 +130,11 @@ export default function TestOrderPage() {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const res = await fetch(`/api/orders/${id}/status`, {
+      await apiFetch<Order>(`/orders/${id}/status`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'paid' as OrderStatus }),
       });
-      if (!res.ok) throw new Error(`setPaid http ${res.status}`);
       await fetchRecent();
     } catch (e) {
       setErrorMsg((e as Error).message);
@@ -150,24 +152,12 @@ export default function TestOrderPage() {
     const timer = setTimeout(() => controller.abort(), 20000); // 20s
 
     try {
-      const res = await fetch('/api/clover/pay/online/simulate', {
+      await apiFetch<{ ok: boolean }>('/clover/pay/online/simulate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId: id, result: 'SUCCESS' }),
         signal: controller.signal,
       });
-
-      const raw = await res.text().catch(() => '');
-      type CloverSimulateResponse = { ok?: boolean; [key: string]: unknown };
-      let data: CloverSimulateResponse | { raw: string } = {};
-      try { data = raw ? (JSON.parse(raw) as CloverSimulateResponse) : {}; } catch { data = { raw }; }
-
-      if (!res.ok) {
-        throw new Error(`simulate http ${res.status} ${res.statusText} :: ${raw.slice(0, 200).replace(/\s+/g, ' ')}`);
-      }
-      if (!('ok' in data) || data.ok !== true) {
-        setErrorMsg(`Clover 返回未成功：${JSON.stringify(data).slice(0, 200)}`);
-      }
       await fetchRecent();
     } catch (error: unknown) {
       if (error instanceof DOMException && error.name === 'AbortError') {
@@ -186,8 +176,7 @@ export default function TestOrderPage() {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const res = await fetch(`/api/orders/${id}/advance`, { method: 'POST' });
-      if (!res.ok) throw new Error(`advance http ${res.status}`);
+      await apiFetch<Order>(`/orders/${id}/advance`, { method: 'POST' });
       await fetchRecent();
     } catch (e) {
       setErrorMsg((e as Error).message);
@@ -197,8 +186,15 @@ export default function TestOrderPage() {
   }, [fetchRecent]);
 
   const nextLabel = useMemo<Record<OrderStatus, string>>(
-    () => ({ pending: '→ paid', paid: '→ making', making: '→ ready', ready: '→ completed', completed: '终态' }),
-    []
+    () => ({
+      pending: '→ paid',
+      paid: '→ making',
+      making: '→ ready',
+      ready: '→ completed',
+      completed: '终态',
+      refunded: '终态',
+    }),
+    [],
   );
 
   const groupedJobs = useMemo(
@@ -245,7 +241,15 @@ export default function TestOrderPage() {
               <div className="text-sm text-gray-700">
                 项目：{o.items.map((i) => `${i.productId}×${i.qty}`).join('，')}
               </div>
-              <div className="break-all text-xs text-gray-500">ID: {o.id}</div>
+              <div className="flex flex-wrap gap-2 text-xs text-gray-500">
+                <span className="break-all">ID: {o.id}</span>
+                <Link
+                  href={`/order/${o.id}`}
+                  className="rounded border px-2 py-0.5 text-[11px] uppercase tracking-wide hover:bg-gray-100"
+                >
+                  打开详情
+                </Link>
+              </div>
             </div>
             <div className="flex flex-col items-end gap-2">
               {o.status === 'pending' && (
@@ -258,7 +262,11 @@ export default function TestOrderPage() {
                   </button>
                 </>
               )}
-              <button onClick={() => void advance(o.id)} disabled={o.status === 'completed'} className="rounded-md border px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-60">
+              <button
+                onClick={() => void advance(o.id)}
+                disabled={ORDER_STATUS_ADVANCE[o.status] === null}
+                className="rounded-md border px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-60"
+              >
                 {nextLabel[o.status]}
               </button>
               <div className="flex flex-wrap justify-end gap-2 pt-1">

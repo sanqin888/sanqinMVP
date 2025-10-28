@@ -1,8 +1,19 @@
 import { Injectable } from '@nestjs/common';
+import { getApiPrefix } from './app.bootstrap';
 
 @Injectable()
 export class AppService {
-  getHello(): string {
-    return 'Hello World!';
+  root() {
+    return {
+      service: 'sanqin-api',
+      version: getApiPrefix(),
+    };
+  }
+
+  health() {
+    return {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+    };
   }
 }

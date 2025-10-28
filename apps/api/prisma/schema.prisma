@@ -46,7 +46,8 @@ enum LoyaltyEntryType {
 // === Models ===
 model Order {
   id              String          @id @default(uuid()) @db.Uuid
-  userId          String?         
+  userId          String?
+  clientRequestId String?         @unique
   channel         Channel         @default(web)
   fulfillmentType FulfillmentType @default(pickup)
   status          OrderStatus     @default(pending)
