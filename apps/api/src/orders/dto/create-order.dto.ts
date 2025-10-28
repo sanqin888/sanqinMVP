@@ -8,6 +8,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
+import { IsStableId } from '../../common/validators/is-stable-id.validator';
 
 class CreateOrderItemDto {
   @IsString() productId!: string;
@@ -19,7 +20,13 @@ class CreateOrderItemDto {
 }
 
 export class CreateOrderDto {
-  @IsOptional() @IsString() userId?: string;
+  @IsOptional()
+  @IsStableId({ message: 'userId must be a cuid/uuid when provided' })
+  userId?: string;
+
+  @IsOptional()
+  @IsStableId({ message: 'clientRequestId must be a cuid/uuid when provided' })
+  clientRequestId?: string;
 
   @IsIn(['web', 'in_store', 'ubereats'])
   channel!: 'web' | 'in_store' | 'ubereats';

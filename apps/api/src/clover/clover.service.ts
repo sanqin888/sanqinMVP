@@ -18,7 +18,7 @@ export interface PaymentSimulation {
 @Injectable()
 export class CloverService {
   private readonly logger = new Logger(CloverService.name);
- 
+
   constructor(private readonly orders: OrdersService) {}
 
   /**
