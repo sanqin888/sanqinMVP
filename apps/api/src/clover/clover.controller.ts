@@ -1,38 +1,22 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Post,
-  Query,
-  UsePipes,
-  ValidationPipe,
-} from '@nestjs/common';
+// apps/api/src/clover/clover.controller.ts
+import { Body, Controller, HttpCode, Post } from '@nestjs/common';
 import { CloverService } from './clover.service';
-import { ListOrdersQueryDto } from './dto/list-orders.dto';
+
+type SimulateOnlinePaymentPayload = {
+  orderId: string;
+  result?: 'SUCCESS' | 'FAILURE';
+};
 
 @Controller('clover')
 export class CloverController {
   constructor(private readonly clover: CloverService) {}
 
-  @Get('merchant')
-  getMerchant() {
-    return this.clover.getMerchantProfile();
-  }
-
-  @Get('orders')
-  @UsePipes(
-    new ValidationPipe({
-      transform: true,
-      whitelist: true,
-      forbidNonWhitelisted: true,
-    }),
-  )
-  listOrders(@Query() query: ListOrdersQueryDto) {
-    return this.clover.listOrders(query.limit);
-  }
-
+  // 最终路径（有全局前缀时）: /api/clover/pay/online/simulate
   @Post('pay/online/simulate')
-  simulateOnlinePayment(@Body() payload: Record<string, unknown>) {
-    return this.clover.simulateOnlinePayment(payload);
+  @HttpCode(200)
+  simulateOnlinePayment(@Body() body: SimulateOnlinePaymentPayload) {
+    const { orderId, result = 'SUCCESS' } = body ?? {};
+    // 保持向后兼容：若你的旧控制器还调用 simulateOnlinePayment(payload)，Service 里已有兼容方法
+    return this.clover.simulateByChargeAndMarkIfSuccess(orderId, result);
   }
 }

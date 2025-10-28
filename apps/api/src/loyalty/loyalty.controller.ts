@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 
 const MICRO_PER_POINT = 1_000_000;
 
-@Controller('api/loyalty')
+@Controller('loyalty')
 export class LoyaltyController {
   constructor(
     private readonly loyalty: LoyaltyService,

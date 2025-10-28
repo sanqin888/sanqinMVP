@@ -1,27 +1,27 @@
+/* apps/api/src/main.ts */
 import { NestFactory } from '@nestjs/core';
+import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
-import { BigIntToStringInterceptor } from './common/interceptors/bigint-to-string.interceptor';
-import type { INestApplication } from '@nestjs/common';
 
-let appRef: INestApplication | null = null; // 防止重复 listen
+async function bootstrap(): Promise<void> {
+  const app = await NestFactory.create(AppModule, { cors: true });
 
-async function bootstrap() {
-  if (appRef) {
-    // 已经在监听了，避免第二次调用造成 ERR_SERVER_ALREADY_LISTEN
-    console.log('[API] already listening, skip second start');
-    return;
-  }
+  app.setGlobalPrefix('api');
 
-  const app = await NestFactory.create(AppModule, { rawBody: true });
+  // Global validation pipe
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      forbidUnknownValues: false,
+    }),
+  );
 
-  app.useGlobalInterceptors(new BigIntToStringInterceptor());
-  app.enableCors({
-    origin: process.env.CORS_ORIGIN ?? true,
-  });
-
-  const port = Number(process.env.PORT || 4000);
+  const port = process.env.PORT ? Number(process.env.PORT) : 4000;
   await app.listen(port);
-  appRef = app;
-  console.log(`[API] listening on http://localhost:${port}`);
+
+  console.log(`API listening on http://localhost:${port}/api`);
 }
+
+// Use void to explicitly ignore the returned promise and satisfy eslint
 void bootstrap();
