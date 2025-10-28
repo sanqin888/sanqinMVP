@@ -1,36 +1,44 @@
 name: ci
+
 on:
-  push: { branches: [dev, main] }
-  pull_request: { branches: [main] }
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [main]
+
 jobs:
   build-test:
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false              # ← 关键：关闭“有一项失败就取消其它项”
+      fail-fast: false
       matrix:
         app: [web, api]
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-          # 关键：每个矩阵 app 的 lock 文件在子目录
-          cache-dependency-path: apps/${{ matrix.app }}/package-lock.json
+          # 只用根锁文件作为缓存 key（配合 npm cache）
+          cache-dependency-path: package-lock.json
 
-      - name: Install
-        working-directory: apps/${{ matrix.app }}
-        run: $GITHUB_WORKSPACE/scripts/ci/npm-ci.sh
+      # 关键：用根锁文件一次性安装全部 workspaces 依赖
+      - name: Install (root, all workspaces)
+        run: npm ci --workspaces --include-workspace-root
 
-      - name: Lint
+      # 下面三步对每个 workspace 分别执行
+      - name: Lint (${{ matrix.app }})
         working-directory: apps/${{ matrix.app }}
         run: npm run lint --if-present
 
-      - name: Build
+      - name: Build (${{ matrix.app }})
         working-directory: apps/${{ matrix.app }}
-        run: $GITHUB_WORKSPACE/scripts/ci/npm-build.sh
+        run: npm run build --if-present
 
-      - name: Test
+      - name: Test (${{ matrix.app }})
         working-directory: apps/${{ matrix.app }}
-        run: $GITHUB_WORKSPACE/scripts/ci/npm-test.sh
-
+        run: npm test --if-present

@@ -9,7 +9,6 @@ export const dynamic = 'force-dynamic';
 const UPSTREAM = (process.env.API_UPSTREAM ?? '').replace(/\/$/, '');
 if (!UPSTREAM) {
   // 在开发时也要给出清楚的错误，避免“没反应”
-  // eslint-disable-next-line no-console
   console.error('[api-proxy] Missing API_UPSTREAM in .env.local');
 }
 
@@ -58,17 +57,17 @@ async function proxy(req: NextRequest, ctx: ParamsPromise) {
   const controller = new AbortController();
   const timeout = setTimeout(() => {
     controller.abort();
-    // eslint-disable-next-line no-console
     console.error('[api-proxy] upstream timeout:', upstreamUrl.toString());
   }, 25000);
 
   let res: Response;
   try {
     res = await fetch(upstreamUrl, { ...init, signal: controller.signal });
-  } catch (e: any) {
+  } catch (error: unknown) {
     clearTimeout(timeout);
+    const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { ok: false, reason: 'Upstream fetch failed', detail: String(e?.message ?? e) },
+      { ok: false, reason: 'Upstream fetch failed', detail: message },
       { status: 502 },
     );
   }
