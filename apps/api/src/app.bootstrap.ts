@@ -3,7 +3,11 @@ import { ApiExceptionFilter } from './common/filters/api-exception.filter';
 import { ApiResponseInterceptor } from './common/interceptors/api-response.interceptor';
 import { BigIntToStringInterceptor } from './common/interceptors/bigint-to-string.interceptor';
 
+const API_PREFIX = 'api/v1';
+
 export function configureApp(app: INestApplication): void {
+  app.setGlobalPrefix(API_PREFIX);
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -21,5 +25,5 @@ export function configureApp(app: INestApplication): void {
 }
 
 export function getApiPrefix(): string {
-  return 'api/v1';
+  return API_PREFIX;
 }
