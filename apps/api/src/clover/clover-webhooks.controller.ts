@@ -4,7 +4,7 @@ import { createHmac, timingSafeEqual } from 'crypto';
 
 type RawBodyRequest = Request & { rawBody?: Buffer };
 
-@Controller('webhooks') // 最终路由：/api/webhooks/clover-hco
+@Controller('webhooks') // 最终路由：/api/v1/webhooks/clover-hco
 export class CloverHcoWebhookController {
   @Post('clover-hco')
   @HttpCode(200)

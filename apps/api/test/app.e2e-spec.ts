@@ -5,6 +5,7 @@ import { Test as NestTest, TestingModule } from '@nestjs/testing';
 import { OrderStatus, Prisma } from '@prisma/client';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { configureApp, getApiPrefix } from '../src/app.bootstrap';
 
 type StoredOrderItem = {
   id: string;
@@ -26,6 +27,7 @@ type StoredOrder = {
   pickupCode: string | null;
   createdAt: Date;
   items: StoredOrderItem[];
+  clientRequestId: string | null;
 };
 
 class InMemoryPrismaService implements Partial<PrismaService> {
@@ -73,6 +75,7 @@ class InMemoryPrismaService implements Partial<PrismaService> {
       pickupCode: (data.pickupCode as string | null) ?? null,
       createdAt: (data.createdAt as Date | undefined) ?? new Date(),
       items: [],
+      clientRequestId: data.clientRequestId ?? null,
     };
 
     const nestedItems =
@@ -150,7 +153,14 @@ class InMemoryPrismaService implements Partial<PrismaService> {
       include: args.include ?? null,
     };
     const id = args.where.id;
-    const found = this.orders.find((order) => order.id === id);
+    const clientRequestId = args.where.clientRequestId;
+    const found = this.orders.find((order) => {
+      if (id) return order.id === id;
+      if (clientRequestId) {
+        return order.clientRequestId === clientRequestId;
+      }
+      return false;
+    });
     return found ? this.projectOrder(found, selection) : null;
   }
 
@@ -230,6 +240,7 @@ describe('AppController (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
+    configureApp(app);
     await app.init();
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
     http = request(app.getHttpServer());
@@ -243,11 +254,43 @@ describe('AppController (e2e)', () => {
     prismaStub.reset();
   });
 
-  it('GET /api/health', async () => {
-    await http.get('/api/health').expect(200).expect({ status: 'ok' });
+  const apiPrefix = `/${getApiPrefix()}`;
+
+  it('GET /api/v1/health returns envelope', async () => {
+    await http
+      .get(`${apiPrefix}/health`)
+      .expect(200)
+      .expect(({ body }) => {
+        const envelope = body as {
+          code: string;
+          message: string;
+          details: Record<string, unknown>;
+        };
+        expect(envelope.code).toBe('OK');
+        expect(envelope.message).toBe('success');
+        expect(envelope.details).toMatchObject({ status: 'ok' });
+        expect(envelope.details).toHaveProperty('timestamp');
+      });
   });
 
-  it('GET /api', async () => {
-    await http.get('/api').expect(200).expect({ ok: true });
+  it('GET /api/v1 returns service metadata', async () => {
+    await http
+      .get(apiPrefix)
+      .expect(200)
+      .expect(({ body }) => {
+        const envelope = body as {
+          code: string;
+          message: string;
+          details: Record<string, unknown>;
+        };
+        expect(envelope).toEqual({
+          code: 'OK',
+          message: 'success',
+          details: {
+            service: 'sanqin-api',
+            version: getApiPrefix(),
+          },
+        });
+      });
   });
 });

@@ -37,16 +37,17 @@ enum LoyaltyTier {
 }
 
 enum LoyaltyEntryType {
-  EARN_ON_PURCHASE     // 支付后赚取
-  REDEEM_ON_ORDER      // 下单时抵扣
-  REFUND_REVERSE_EARN  // 退款时冲回赚取
+  EARN_ON_PURCHASE // 支付后赚取
+  REDEEM_ON_ORDER // 下单时抵扣
+  REFUND_REVERSE_EARN // 退款时冲回赚取
   REFUND_RETURN_REDEEM // 退款时退回抵扣
 }
 
 // === Models ===
 model Order {
   id              String          @id @default(uuid()) @db.Uuid
-  userId          String?         
+  userId          String?
+  clientRequestId String?         @unique
   channel         Channel         @default(web)
   fulfillmentType FulfillmentType @default(pickup)
   status          OrderStatus     @default(pending)
@@ -62,42 +63,42 @@ model Order {
 }
 
 model OrderItem {
-  id             String  @id @default(uuid()) @db.Uuid
-  orderId        String  @db.Uuid
+  id             String @id @default(uuid()) @db.Uuid
+  orderId        String @db.Uuid
   productId      String
   qty            Int
   unitPriceCents Int?
   optionsJson    Json?
 
-  order          Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId])
 }
 
 model LoyaltyAccount {
-  id          String        @id @default(uuid()) @db.Uuid
-  userId      String        @unique
-  pointsMicro BigInt        @db.BigInt
-  tier        LoyaltyTier   @default(BRONZE)
-  createdAt   DateTime      @default(now())
+  id          String      @id @default(uuid()) @db.Uuid
+  userId      String      @unique
+  pointsMicro BigInt      @db.BigInt
+  tier        LoyaltyTier @default(BRONZE)
+  createdAt   DateTime    @default(now())
 
-  ledger      LoyaltyLedger[]
+  ledger LoyaltyLedger[]
 
   @@index([userId])
 }
 
 model LoyaltyLedger {
-  id                String            @id @default(uuid()) @db.Uuid
-  accountId         String            @db.Uuid
-  orderId           String?           @db.Uuid
+  id                String           @id @default(uuid()) @db.Uuid
+  accountId         String           @db.Uuid
+  orderId           String?          @db.Uuid
   type              LoyaltyEntryType
-  deltaMicro        BigInt            @db.BigInt
-  balanceAfterMicro BigInt            @db.BigInt
+  deltaMicro        BigInt           @db.BigInt
+  balanceAfterMicro BigInt           @db.BigInt
   note              String?
-  createdAt         DateTime          @default(now())
+  createdAt         DateTime         @default(now())
 
-  account           LoyaltyAccount    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account LoyaltyAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
-  @@index([accountId, createdAt])
   @@unique([orderId, type])
+  @@index([accountId, createdAt])
 }
