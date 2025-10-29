@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -23,6 +24,8 @@ const REDEEM_DOLLAR_PER_POINT = Number(
 
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger(OrdersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly loyalty: LoyaltyService,
@@ -53,11 +56,17 @@ export class OrdersService {
     dto: CreateOrderDto,
     idempotencyKey?: string,
   ): Promise<OrderWithItems> {
-    const rawKey = idempotencyKey ?? dto.clientRequestId;
-    const stableKey = normalizeStableId(rawKey);
-    if (rawKey && !stableKey) {
-      throw new BadRequestException('Idempotency-Key must be a cuid/uuid');
+    const headerKey =
+      typeof idempotencyKey === 'string' ? idempotencyKey.trim() : undefined;
+    const normalizedHeaderKey = normalizeStableId(headerKey);
+    if (headerKey && !normalizedHeaderKey) {
+      this.logger.warn(
+        `Ignoring invalid Idempotency-Key header: ${headerKey}`,
+      );
     }
+
+    const bodyStableKey = normalizeStableId(dto.clientRequestId);
+    const stableKey = normalizedHeaderKey ?? bodyStableKey;
 
     if (stableKey) {
       const existing = await this.prisma.order.findUnique({
