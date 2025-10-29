@@ -293,4 +293,79 @@ describe('AppController (e2e)', () => {
         });
       });
   });
+
+  it('POST /api/v1/orders tolerates invalid idempotency key', async () => {
+    const response = await http
+      .post(`${apiPrefix}/orders`)
+      .set('Idempotency-Key', 'demo-order')
+      .send({
+        channel: 'web',
+        fulfillmentType: 'pickup',
+        items: [{ productId: 'americano', qty: 1 }],
+        subtotal: 10,
+        taxTotal: 0,
+        total: 10,
+      })
+      .expect(201);
+
+    const envelope = response.body as {
+      code: string;
+      message: string;
+      details: Record<string, unknown>;
+    };
+
+    expect(envelope.code).toBe('OK');
+    expect(envelope.message).toBe('success');
+    expect(envelope.details).toMatchObject({
+      channel: 'web',
+      fulfillmentType: 'pickup',
+      subtotalCents: 1000,
+      taxCents: 130,
+      totalCents: 1130,
+      clientRequestId: null,
+      items: [
+        {
+          productId: 'americano',
+          qty: 1,
+          unitPriceCents: null,
+        },
+      ],
+    });
+  });
+
+  it('POST /api/v1/orders reuses existing order for a stable idempotency key', async () => {
+    const key = randomUUID();
+    const payload = {
+      channel: 'web',
+      fulfillmentType: 'pickup',
+      items: [{ productId: 'latte', qty: 2 }],
+      subtotal: 20,
+      taxTotal: 0,
+      total: 20,
+    };
+
+    const first = await http
+      .post(`${apiPrefix}/orders`)
+      .set('Idempotency-Key', key)
+      .send(payload)
+      .expect(201);
+
+    const second = await http
+      .post(`${apiPrefix}/orders`)
+      .set('Idempotency-Key', key)
+      .send({ ...payload, subtotal: 25 })
+      .expect(201);
+
+    const firstEnvelope = first.body as {
+      details: { id: string; clientRequestId: string };
+    };
+    const secondEnvelope = second.body as {
+      details: { id: string; clientRequestId: string };
+    };
+
+    expect(firstEnvelope.details.id).toBeTruthy();
+    expect(secondEnvelope.details.id).toBe(firstEnvelope.details.id);
+    expect(firstEnvelope.details.clientRequestId).toBe(key);
+    expect(secondEnvelope.details.clientRequestId).toBe(key);
+  });
 });
