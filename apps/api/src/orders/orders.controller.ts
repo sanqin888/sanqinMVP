@@ -8,14 +8,16 @@ import {
   Patch,
   Post,
   Query,
+  DefaultValuePipe,
+  ParseIntPipe,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { IsEnum } from 'class-validator';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { OrderStatus } from './order-status';
-import { CuidOrUuidPipe } from '../common/pipes/cuid-or-uuid.pipe';
 
-export class UpdateOrderStatusDto {
+class UpdateStatusDto {
   @IsEnum(OrderStatus)
   status!: OrderStatus;
 }
@@ -25,48 +27,43 @@ export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
   /**
-   * 创建一单（前端“创建一单”按钮）
+   * 创建订单
    * POST /api/v1/orders
-   * 返回 201 + JSON
    */
   @Post()
-  async create(
-    @Body() dto: CreateOrderDto,
-    @Headers('idempotency-key') idempotencyKey?: string,
-  ) {
-    const order = await this.ordersService.create(dto, idempotencyKey);
-    return order;
+  @HttpCode(201)
+  async create(@Body() dto: CreateOrderDto, @Headers('x-request-id') _reqId?: string) {
+    return this.ordersService.create(dto);
   }
 
   /**
-   * 订单详情
+   * 最近订单（仅 limit，绝不读取/校验 id）
+   * GET /api/v1/orders/recent?limit=10
+   */
+  @Get('recent')
+  async recent(
+    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
+  ) {
+    return this.ordersService.recent(limit); // 对齐 Service 方法名
+  }
+
+  /**
+   * 按 ID 获取订单（仅接受 UUID v4）
    * GET /api/v1/orders/:id
    */
   @Get(':id')
-  async getOne(@Param('id', CuidOrUuidPipe) id: string) {
-    return this.ordersService.getById(id);
+  async findOne(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    return this.ordersService.getById(id); // 对齐 Service 方法名
   }
 
   /**
-   * 最近十单（前端“刷新”按钮）
-   * GET /api/v1/orders/recent?limit=10
-   * 默认 10
-   */
-  @Get('recent')
-  async recent(@Query('limit') limit?: string) {
-    const n = limit ? parseInt(limit, 10) : 10;
-    return this.ordersService.recent(Number.isFinite(n) ? n : 10);
-  }
-
-  /**
-   * 设置订单状态（前端“标记为已支付”等）
+   * 更新订单状态（仅接受 UUID）
    * PATCH /api/v1/orders/:id/status
-   * Body: { status: 'paid' | 'making' | ... }
    */
   @Patch(':id/status')
-  async setStatus(
-    @Param('id', CuidOrUuidPipe) id: string,
-    @Body() body: UpdateOrderStatusDto,
+  async updateStatus(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() body: UpdateStatusDto,
   ) {
     return this.ordersService.updateStatus(id, body.status);
   }
@@ -74,11 +71,11 @@ export class OrdersController {
   /**
    * 推进订单状态（前端“推进状态”按钮：paid→making→ready→completed）
    * POST /api/v1/orders/:id/advance
-   * 返回推进后的订单
+   * 返回推进后的订单（仅接受 UUID）
    */
   @Post(':id/advance')
   @HttpCode(200)
-  async advance(@Param('id', CuidOrUuidPipe) id: string) {
+  async advance(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
     return this.ordersService.advance(id);
   }
 }

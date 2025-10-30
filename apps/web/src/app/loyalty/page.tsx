@@ -73,23 +73,33 @@ export default function LoyaltyCenterPage() {
       setLoading(true);
       setErrorMsg(null);
       try {
-        // account
+        // ------- account -------
         const aRes = await fetch(
-          `${API_BASE}/api/loyalty/account?userId=${encodeURIComponent(uid)}`,
-          { cache: 'no-store' },
+          `${API_BASE}/api/v1/loyalty/account?userId=${encodeURIComponent(uid)}`,
+          { cache: 'no-store', headers: { Accept: 'application/json' } },
         );
-        if (!aRes.ok) throw new Error(`account http ${aRes.status}`);
-        const aJson: AccountResp = await aRes.json();
-        setAcc(aJson);
+        if (aRes.status === 404) {
+          setAcc(null);
+        } else {
+          if (!aRes.ok) throw new Error(`account http ${aRes.status}`);
+          const aRaw = await aRes.json();
+          const aJson: AccountResp = (aRaw && typeof aRaw === 'object' && 'details' in aRaw ? aRaw.details : aRaw) as AccountResp;
+          setAcc(aJson);
+        }
 
-        // ledger
+        // ------- ledger -------
         const lRes = await fetch(
-          `${API_BASE}/api/loyalty/ledger?userId=${encodeURIComponent(uid)}&limit=50`,
-          { cache: 'no-store' },
+          `${API_BASE}/api/v1/loyalty/ledger?userId=${encodeURIComponent(uid)}&limit=50`,
+          { cache: 'no-store', headers: { Accept: 'application/json' } },
         );
-        if (!lRes.ok) throw new Error(`ledger http ${lRes.status}`);
-        const lJson: LedgerEntry[] = await lRes.json();
-        setLedger(lJson);
+        if (lRes.status === 404) {
+          setLedger([]);
+        } else {
+          if (!lRes.ok) throw new Error(`ledger http ${lRes.status}`);
+          const lRaw = await lRes.json();
+          const lJson: LedgerEntry[] = (lRaw && typeof lRaw === 'object' && 'details' in lRaw ? lRaw.details : lRaw) as LedgerEntry[];
+          setLedger(Array.isArray(lJson) ? lJson : []);
+        }
       } catch (e) {
         setErrorMsg((e as Error).message);
         setAcc(null);

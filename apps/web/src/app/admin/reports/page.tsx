@@ -2,11 +2,11 @@
 
 import { useState } from 'react';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:4000';
+const RAW_API_BASE = process.env.NEXT_PUBLIC_API_BASE || '';
 
 type DailyReport = {
-  date: string;          // YYYY-MM-DD
-  count: number;         // ← 注意用 count
+  date?: string;          // YYYY-MM-DD （可选）
+  count: number;
   subtotalCents: number;
   taxCents: number;
   totalCents: number;
@@ -15,6 +15,26 @@ type DailyReport = {
 function moneyFromCents(cents?: number) {
   if (typeof cents !== 'number') return '—';
   return (cents / 100).toFixed(2);
+}
+
+/**
+ * 根据 NEXT_PUBLIC_API_BASE 拼接最终的 /reports/daily URL
+ */
+function buildDailyUrl(dateISO: string) {
+  const base = RAW_API_BASE.replace(/\/+$/, ''); // 去掉结尾斜杠
+  let urlBase: string;
+
+  if (!base) {
+    urlBase = '/api/v1';
+  } else if (/\/api\/v\d+$/i.test(base)) {
+    urlBase = base;                   // .../api/v1
+  } else if (/\/api$/i.test(base)) {
+    urlBase = `${base}/v1`;           // .../api → .../api/v1
+  } else {
+    urlBase = `${base}/api/v1`;       // ... → .../api/v1
+  }
+
+  return `${urlBase}/reports/daily?date=${encodeURIComponent(dateISO)}`;
 }
 
 export default function AdminDailyReportPage() {
@@ -27,9 +47,33 @@ export default function AdminDailyReportPage() {
     setLoading(true);
     setErr(null);
     try {
-      const res = await fetch(`${API_BASE}/api/reports/daily?date=${date}`, { cache: 'no-store' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: DailyReport = await res.json();
+      const url = buildDailyUrl(date);
+
+      const res = await fetch(url, {
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      });
+
+      const ct = res.headers.get('content-type') || '';
+
+      if (!res.ok) {
+        const msg = ct.includes('application/json')
+          ? JSON.stringify(await res.json())
+          : await res.text();
+        throw new Error(msg || `HTTP ${res.status}`);
+      }
+
+      if (!ct.includes('application/json')) {
+        const text = await res.text();
+        throw new Error(
+          `非 JSON 响应（content-type=${ct}）：${text.slice(0, 160)}`
+        );
+      }
+
+      // ✅ 兼容“信封结构”和“直接数据结构”
+      const raw = await res.json();
+      const data: DailyReport = ('details' in raw ? raw.details : raw) as DailyReport;
+
       setReport(data);
     } catch (e) {
       setErr((e as Error).message);
