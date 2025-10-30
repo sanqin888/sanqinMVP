@@ -2,7 +2,6 @@ import {
   Body,
   Controller,
   Get,
-  Headers,
   HttpCode,
   Param,
   Patch,
@@ -32,7 +31,7 @@ export class OrdersController {
    */
   @Post()
   @HttpCode(201)
-  async create(@Body() dto: CreateOrderDto, @Headers('x-request-id') _reqId?: string) {
+  async create(@Body() dto: CreateOrderDto) {
     return this.ordersService.create(dto);
   }
 
