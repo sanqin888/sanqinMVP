@@ -1,6 +1,7 @@
 import { Body, Controller, HttpCode, Post } from '@nestjs/common';
 import { CloverService } from './clover.service';
 import { SimulateOnlinePaymentDto } from './dto/simulate-online-payment.dto';
+import { CreateHostedCheckoutDto } from './dto/create-hosted-checkout.dto';
 
 @Controller('clover')
 export class CloverPayController {
@@ -15,5 +16,11 @@ export class CloverPayController {
       result: payload.result ?? 'SUCCESS',
     });
     return { ok: true };
+  }
+
+  @Post('pay/online/hosted-checkout')
+  @HttpCode(201)
+  createHostedCheckout(@Body() body: CreateHostedCheckoutDto) {
+    return this.clover.createHostedCheckout(body);
   }
 }
