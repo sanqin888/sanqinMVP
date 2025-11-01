@@ -1,204 +1,158 @@
-// apps/api/src/clover/clover.service.ts
-import { Injectable, Logger } from '@nestjs/common';
-import { OrdersService } from '../orders/orders.service';
-import { CreateHostedCheckoutDto } from './dto/create-hosted-checkout.dto';
+import { Injectable, HttpException } from "@nestjs/common";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object';
-}
+type HostedCheckoutCreateInput = {
+  amountCents?: number;
+  currency?: "CAD" | "USD";
+  referenceId?: string;
+  description?: string;
+  returnUrl?: string;
+  metadata?: {
+    locale?: string;
+    fulfillment?: "pickup" | "delivery";
+    schedule?: string;
+    customer?: { name?: string; phone?: string; address?: string };
+    items: { id: string; name: string; quantity: number; price: number; notes?: string }[];
+    subtotal?: number;
+    serviceFee?: number;
+    deliveryFee?: number;
 
-export type SimResult = 'SUCCESS' | 'FAILURE';
-
-export interface SimulateOnlinePaymentPayload {
-  orderId: string;
-  result?: SimResult;
-}
-
-export interface PaymentSimulation {
-  ok: boolean;
-  markedPaid: boolean;
-  reason?: string;
-}
+    // ✅ 新增：前端传来的税额与税率（可选）
+    tax?: number;
+    taxRate?: number;
+  };
+};
 
 @Injectable()
 export class CloverService {
-  private readonly logger = new Logger(CloverService.name);
+  private readonly base = process.env.CLOVER_API_BASE ?? "https://apisandbox.dev.clover.com";
+  private readonly merchantId = process.env.CLOVER_MERCHANT_ID!;
+  private readonly privateKey = process.env.CLOVER_PRIVATE_KEY!;
 
-  constructor(private readonly orders: OrdersService) {}
-
-  /**
-   * Simulate an online payment and (optionally) mark order as paid.
-   * Purely local logic; no network calls here to keep types strictly safe.
-   */
-  public async simulateOnlinePayment(
-    payload: SimulateOnlinePaymentPayload,
-  ): Promise<PaymentSimulation> {
-    const { orderId, result = 'SUCCESS' } = payload;
-
-    if (!orderId) {
-      return Promise.resolve({
-        ok: false,
-        markedPaid: false,
-        reason: 'Missing orderId',
-      });
-    }
-
-    if (result !== 'SUCCESS') {
-      this.logger.warn(`Simulated payment FAILURE for order ${orderId}`);
-      return Promise.resolve({
-        ok: false,
-        markedPaid: false,
-        reason: 'Simulated FAILURE',
-      });
-    }
-
-    // In a real impl, you might look up the order in db and mark paid.
-    // Here just log and return typed result to avoid any/unknown leakage.
-    this.logger.log(`Simulated payment SUCCESS for order ${orderId}`);
-
-    try {
-      let order = await this.orders.advance(orderId);
-
-      // pending -> paid (advance once), then paid -> making (advance again)
-      if (order.status === 'paid') {
-        order = await this.orders.advance(orderId);
-      }
-
-      const markedPaid = order.status !== 'pending';
-      return { ok: true, markedPaid };
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(
-        `Failed to advance order ${orderId} after simulated payment: ${message}`,
-      );
-      return {
-        ok: false,
-        markedPaid: false,
-        reason: `Failed to advance order ${orderId}: ${message}`,
-      };
-    }
+  private get headers() {
+    return {
+      accept: "application/json",
+      "content-type": "application/json",
+      "X-Clover-Merchant-Id": this.merchantId,
+      authorization: `Bearer ${this.privateKey}`,
+    };
   }
 
   /**
-   * Backwards compatible helper matching the previous public API used by the controller.
+   * 创建 Hosted Checkout 会话并返回跳转链接
+   * 文档：/invoicingcheckoutservice/v1/checkouts（返回 href 和 checkoutSessionId）
    */
-  public simulateByChargeAndMarkIfSuccess(
-    orderId: string,
-    result: SimResult = 'SUCCESS',
-  ): Promise<PaymentSimulation> {
-    return this.simulateOnlinePayment({ orderId, result });
-  }
-
-  public async createHostedCheckout(
-    dto: CreateHostedCheckoutDto,
-  ): Promise<{ checkoutUrl: string; checkoutId?: string }> {
-    if (!Number.isFinite(dto.amountCents) || dto.amountCents <= 0) {
-      throw new Error('amountCents must be a positive integer');
+  async createHostedCheckout(input: HostedCheckoutCreateInput) {
+    if (!this.merchantId || !this.privateKey) {
+      throw new HttpException("Clover credentials are missing on server", 500);
     }
 
-    const template = process.env.CLOVER_HCO_URL_TEMPLATE;
-    if (template) {
-      const amount = (dto.amountCents / 100).toFixed(2);
-      const checkoutUrl = template
-        .replace(/\{amountCents\}/g, String(dto.amountCents))
-        .replace(/\{amount\}/g, amount)
-        .replace(/\{referenceId\}/g, dto.referenceId ?? '')
-        .replace(/\{orderId\}/g, dto.referenceId ?? '');
-      return { checkoutUrl };
+    const items = input.metadata?.items ?? [];
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new HttpException("No items provided for Hosted Checkout", 400);
     }
 
-    const merchantId = process.env.CLOVER_MERCHANT_ID;
-    const accessToken = process.env.CLOVER_ACCESS_TOKEN;
-    const apiBase = (
-      process.env.CLOVER_API_BASE_URL ?? 'https://sandbox.dev.clover.com/v3'
-    ).replace(/\/$/, '');
+    // 组装 lineItems（价格单位为“分”）
 
-    if (!merchantId || !accessToken) {
-      throw new Error(
-        'Missing Clover credentials: please configure CLOVER_MERCHANT_ID and CLOVER_ACCESS_TOKEN.',
-      );
-    }
+const itemLines = items.map((it) => ({
+  name: it.name || "Item",
+  price: Math.round(it.price * 100), // 元->分
+  unitQty: Math.max(1, Math.floor(it.quantity || 1)),
+  note: [input.referenceId, input.description, it.notes].filter(Boolean).join(" | "),
+}));
 
-    const url = `${apiBase}/merchants/${merchantId}/pay/onlinecheckout`;
-    const payload: Record<string, unknown> = {
-      amount: dto.amountCents,
-      currency: dto.currency ?? 'CNY',
-      channel: 'WEB',
-      metadata: dto.metadata ?? {},
+const extraLines: Array<{ name: string; price: number; unitQty: number }> = [];
+
+// 打包费（你现在为 0 则不会加入）
+if (input.metadata?.serviceFee && input.metadata.serviceFee > 0) {
+  extraLines.push({
+    name: input.metadata?.locale === "zh" ? "打包服务费" : "Packaging fee",
+    price: Math.round(input.metadata.serviceFee * 100),
+    unitQty: 1,
+  });
+}
+
+// 配送费
+if (input.metadata?.deliveryFee && input.metadata.deliveryFee > 0) {
+  extraLines.push({
+    name: input.metadata?.locale === "zh" ? "配送费" : "Delivery fee",
+    price: Math.round(input.metadata.deliveryFee * 100),
+    unitQty: 1,
+  });
+}
+
+// 税费（优先用前端传来的 tax；没有则用后端 SALES_TAX_RATE 兜底）
+const DEFAULT_TAX_RATE = Number.parseFloat(process.env.SALES_TAX_RATE ?? "0");
+const hasTaxFromClient = typeof input.metadata?.tax === "number";
+
+let taxValue = 0;
+if (hasTaxFromClient) {
+  taxValue = Math.max(0, input.metadata!.tax!);
+} else if (DEFAULT_TAX_RATE > 0) {
+  const itemsTotal = items.reduce((s, it) => s + it.price * (it.quantity || 1), 0);
+  const feeBase = (input.metadata?.serviceFee || 0) + (input.metadata?.deliveryFee || 0);
+  taxValue = Math.round((itemsTotal + feeBase) * DEFAULT_TAX_RATE * 100) / 100;
+}
+
+if (taxValue > 0) {
+  extraLines.push({
+    name: input.metadata?.locale === "zh" ? "税费（HST）" : "Tax (HST)",
+    price: Math.round(taxValue * 100),
+    unitQty: 1,
+  });
+}
+
+const lineItems = [...itemLines, ...extraLines];
+
+    // 客户信息（HCO 可空；若启用“收集客户信息”功能，传 firstName/lastName/email 等）
+    const [firstName, ...lastParts] = (input?.metadata?.customer?.name || "").trim().split(/\s+/);
+    const lastName = lastParts.join(" ");
+    const customer =
+      firstName || lastName || input?.metadata?.customer?.phone
+        ? {
+            firstName: firstName || undefined,
+            lastName: lastName || undefined,
+            phoneNumber: input?.metadata?.customer?.phone || undefined,
+          }
+        : {}; // 空对象也合法（见文档）
+
+    const body: any = {
+      customer,
+      shoppingCart: { lineItems },
     };
 
-    if (dto.referenceId) payload.externalReferenceId = dto.referenceId;
-    if (dto.description) payload.description = dto.description;
-    if (dto.returnUrl) {
-      payload.redirectUrl = dto.returnUrl;
-      payload.returnUrl = dto.returnUrl;
+    // 可选：支付完成后的跳转（注意 Clover 要求 HTTPS）
+    if (input.returnUrl?.startsWith("https://")) {
+      body.redirectUrls = {
+        success: input.returnUrl,
+        failure: input.returnUrl,
+      };
     }
-    if (dto.cancelUrl) payload.cancelUrl = dto.cancelUrl;
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify(payload),
+    const url = `${this.base}/hosted-checkout-service/v1/checkouts`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: this.headers,
+      body: JSON.stringify(body),
     });
 
-    const rawText = await response.text();
-    let parsed: unknown = null;
-    if (rawText) {
-      try {
-        parsed = JSON.parse(rawText);
-      } catch (error) {
-        this.logger.warn(
-          `Failed to parse Clover response as JSON: ${(error as Error).message}`,
-        );
-        parsed = rawText;
-      }
+    const text = await res.text();
+    let json: any = {};
+    try { json = text ? JSON.parse(text) : {}; } catch {}
+
+    if (!res.ok) {
+      // 将 Clover 的错误透出一点，便于你在 Network 面板排查
+      const msg = json?.message || json?.error || `${res.status} ${res.statusText}`;
+      throw new HttpException(`Clover HCO create failed: ${msg}`, res.status);
     }
 
-    if (!response.ok) {
-      const reason =
-        typeof parsed === 'string'
-          ? parsed
-          : isRecord(parsed)
-            ? JSON.stringify(parsed)
-            : rawText || response.statusText;
-      throw new Error(
-        `Failed to create Clover hosted checkout: ${response.status} ${reason}`,
-      );
+    // 期待得到 href（跳转 URL）与 checkoutSessionId
+    const href: string | undefined = json?.href;
+    const checkoutId: string | undefined = json?.checkoutSessionId;
+
+    if (!href) {
+      throw new HttpException("Clover HCO: response missing href", 502);
     }
 
-    let checkoutUrl: string | undefined;
-    let checkoutId: string | undefined;
-
-    if (isRecord(parsed)) {
-      const checkout = isRecord(parsed.checkout) ? parsed.checkout : undefined;
-
-      if (typeof parsed.checkoutUrl === 'string') {
-        checkoutUrl = parsed.checkoutUrl;
-      } else if (typeof parsed.url === 'string') {
-        checkoutUrl = parsed.url;
-      } else if (checkout && typeof checkout.checkoutPageUrl === 'string') {
-        checkoutUrl = checkout.checkoutPageUrl;
-      } else if (checkout && typeof checkout.href === 'string') {
-        checkoutUrl = checkout.href;
-      }
-
-      if (typeof parsed.checkoutId === 'string') {
-        checkoutId = parsed.checkoutId;
-      } else if (checkout && typeof checkout.id === 'string') {
-        checkoutId = checkout.id;
-      } else if (typeof parsed.id === 'string') {
-        checkoutId = parsed.id;
-      }
-    }
-
-    if (!checkoutUrl) {
-      throw new Error('Clover response missing checkout URL');
-    }
-
-    return { checkoutUrl, checkoutId };
+    return { checkoutUrl: href, checkoutId };
   }
 }

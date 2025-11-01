@@ -1,11 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { apiFetch } from "../lib/api-client";
+import { useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { apiFetch } from "../../lib/api-client";
 
 type Locale = "zh" | "en";
 const LOCALES: Locale[] = ["zh", "en"];
 const LANGUAGE_NAMES: Record<Locale, string> = { zh: "中文", en: "English" };
+// 税率：默认 13%（可用 NEXT_PUBLIC_SALES_TAX_RATE 覆盖）
+const TAX_RATE = Number.parseFloat(process.env.NEXT_PUBLIC_SALES_TAX_RATE ?? "0.13");
+// 配送费是否计税（按你业务需要；加拿大多数场景是计税）
+const TAX_ON_DELIVERY = (process.env.NEXT_PUBLIC_TAX_ON_DELIVERY ?? "true") === "true";
 
 type LocalizedText = Record<Locale, string>;
 
@@ -222,64 +227,67 @@ function buildLocalizedMenu(locale: Locale): MenuCategoryLocalized[] {
   }));
 }
 
-const UI_STRINGS: Record<Locale, {
-  tagline: string;
-  heroTitle: string;
-  heroDescription: string;
-  orderSteps: { id: number; label: string }[];
-  limitedDaily: string;
-  addToCart: string;
-  cartTitle: string;
-  cartEmpty: string;
-  cartNotesLabel: string;
-  cartNotesPlaceholder: string;
-  quantity: { decrease: string; increase: string };
-  fulfillmentLabel: string;
-  fulfillment: {
-    pickup: string;
-    delivery: string;
-    pickupNote: string;
-  };
-  summary: {
-    subtotal: string;
-    serviceFee: string;
-    deliveryFee: string;
-    total: string;
-  };
-  paymentHint: string;
-  scheduleLabel: string;
-  scheduleOptions: { id: ScheduleSlot; label: string }[];
-  contactInfoLabel: string;
-  contactFields: {
-    name: string;
-    namePlaceholder: string;
-    phone: string;
-    phonePlaceholder: string;
-    address: string;
-    addressPlaceholder: string;
-    notes: string;
-    notesPlaceholder: string;
-  };
-  payCta: string;
-  processing: string;
-  languageSwitch: string;
-  errors: {
-    checkoutFailed: string;
-    missingCheckoutUrl: string;
-  };
-  confirmation: {
-    title: string;
-    pickup: string;
-    delivery: string;
-    pickupMeta: string;
-    deliveryMeta: string;
-  };
-}> = {
+const UI_STRINGS: Record<
+  Locale,
+  {
+    tagline: string;
+    heroTitle: string;
+    heroDescription: string;
+    orderSteps: { id: number; label: string }[];
+    limitedDaily: string;
+    addToCart: string;
+    cartTitle: string;
+    cartEmpty: string;
+    cartNotesLabel: string;
+    cartNotesPlaceholder: string;
+    quantity: { decrease: string; increase: string };
+    fulfillmentLabel: string;
+    fulfillment: {
+      pickup: string;
+      delivery: string;
+      pickupNote: string;
+    };
+    summary: {
+      subtotal: string;
+      tax: string;
+      serviceFee: string;
+      deliveryFee: string;
+      total: string;
+    };
+    paymentHint: string;
+    scheduleLabel: string;
+    scheduleOptions: { id: ScheduleSlot; label: string }[];
+    contactInfoLabel: string;
+    contactFields: {
+      name: string;
+      namePlaceholder: string;
+      phone: string;
+      phonePlaceholder: string;
+      address: string;
+      addressPlaceholder: string;
+      notes: string;
+      notesPlaceholder: string;
+    };
+    payCta: string;
+    processing: string;
+    languageSwitch: string;
+    errors: {
+      checkoutFailed: string;
+      missingCheckoutUrl: string;
+    };
+    confirmation: {
+      title: string;
+      pickup: string;
+      delivery: string;
+      pickupMeta: string;
+      deliveryMeta: string;
+    };
+  }
+> = {
   zh: {
     tagline: "三秦面馆 · 晚市菜单",
     heroTitle: "智能点餐，安心堂食与外送",
-    heroDescription:
-      "结合顾客习惯设计的点餐流。先挑选喜爱的菜品，再确认取餐方式并填写联系信息，最后一键跳转 Clover 完成支付。",
+    heroDescription: `结合顾客习惯设计的点餐流。先挑选喜爱的菜品，再确认取餐方式并填写联系信息，最后一键跳转 Clover 完成支付。`,
     orderSteps: [
       { id: 1, label: "挑选菜品" },
       { id: 2, label: "确认方式" },
@@ -305,6 +313,7 @@ const UI_STRINGS: Record<Locale, {
     },
     summary: {
       subtotal: "菜品小计",
+      tax: "税费（HST）",
       serviceFee: "打包服务费",
       deliveryFee: "骑手配送费",
       total: "预计支付",
@@ -378,11 +387,13 @@ const UI_STRINGS: Record<Locale, {
     },
     summary: {
       subtotal: "Subtotal",
+      tax: "Tax (HST)",
       serviceFee: "Packaging fee",
       deliveryFee: "Delivery fee",
       total: "Estimated total",
     },
-    paymentHint: "A secure Clover checkout will open in a new tab after you continue.",
+    paymentHint:
+      "A secure Clover checkout will open in a new tab after you continue.",
     scheduleLabel: "Delivery window",
     scheduleOptions: [
       { id: "asap", label: "ASAP (≈30 minutes)" },
@@ -423,24 +434,32 @@ const UI_STRINGS: Record<Locale, {
   },
 };
 
+// —— URL 前缀切换工具 ——
+function removeLeadingLocale(path: string) {
+  return path.replace(/^\/(zh|en)(?=\/|$)/, "");
+}
+function addLocaleToPath(locale: Locale, path: string) {
+  if (!path.startsWith("/")) path = `/${path}`;
+  return `/${locale}${removeLeadingLocale(path)}`;
+}
+
 function formatWithTotal(template: string, total: string): string {
   return template.replace("{total}", total);
 }
-
-function formatWithOrder(
-  template: string,
-  order: string,
-  total: string,
-  schedule: string,
-): string {
-  return template
-    .replace("{order}", order)
-    .replace("{total}", total)
-    .replace("{schedule}", schedule);
+function formatWithOrder(template: string, order: string, total: string, schedule: string): string {
+  return template.replace("{order}", order).replace("{total}", total).replace("{schedule}", schedule);
 }
 
-export default function Home() {
-  const [locale, setLocale] = useState<Locale>("zh");
+export default function Page() {
+  // —— 只在这里定义一次路由相关变量 ——
+  const pathname = usePathname() || "/";
+  const locale = (pathname.startsWith("/zh") ? "zh" : "en") as Locale;
+
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const q = searchParams?.toString();
+
+  // === 以下为下单逻辑（保持你的原始实现） ===
   const [cartItems, setCartItems] = useState<CartEntry[]>([]);
   const [fulfillment, setFulfillment] = useState<"pickup" | "delivery">("pickup");
   const [schedule, setSchedule] = useState<ScheduleSlot>("asap");
@@ -455,23 +474,6 @@ export default function Home() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const strings = UI_STRINGS[locale];
-
-  useEffect(() => {
-    const navLang =
-      typeof navigator !== "undefined"
-        ? navigator.languages?.[0] ?? navigator.language
-        : undefined;
-    if (!navLang) return;
-    const normalized = navLang.toLowerCase();
-    setLocale(normalized.startsWith("zh") ? "zh" : "en");
-  }, []);
-
-  useEffect(() => {
-    if (typeof document !== "undefined") {
-      document.documentElement.lang = locale === "zh" ? "zh-Hans" : "en";
-    }
-  }, [locale]);
-
   const menu = useMemo(() => buildLocalizedMenu(locale), [locale]);
 
   const localizedCartItems = useMemo<LocalizedCartItem[]>(() => {
@@ -486,27 +488,27 @@ export default function Home() {
 
   const currencyFormatter = useMemo(
     () =>
-      new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en-US", {
+      new Intl.NumberFormat(locale === "zh" ? "zh-Hans-CA" : "en-CA", {
         style: "currency",
-        currency: "CNY",
-        minimumFractionDigits: 0,
+        currency: "CAD",
+        minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       }),
     [locale],
   );
+  const formatMoney = (x: number) => currencyFormatter.format(x).replace(/^CA\$\s?/, "$");
 
   const subtotal = useMemo(
-    () =>
-      localizedCartItems.reduce(
-        (total, cartItem) => total + cartItem.item.price * cartItem.quantity,
-        0,
-      ),
+    () => localizedCartItems.reduce((total, cartItem) => total + cartItem.item.price * cartItem.quantity, 0),
     [localizedCartItems],
   );
 
-  const serviceFee = subtotal > 0 ? 3.5 : 0;
+  const serviceFee: number = 0;
   const deliveryFee = fulfillment === "delivery" && subtotal > 0 ? 6 : 0;
-  const total = subtotal + serviceFee + deliveryFee;
+  const taxableBase =
+    subtotal + /* serviceFee=0 */ (TAX_ON_DELIVERY ? deliveryFee : 0);
+  const tax = Math.round(taxableBase * TAX_RATE * 100) / 100;
+  const total = subtotal + deliveryFee + tax;
 
   const canPlaceOrder =
     localizedCartItems.length > 0 &&
@@ -514,9 +516,7 @@ export default function Home() {
     customer.phone.trim().length >= 6 &&
     (fulfillment === "pickup" || customer.address.trim().length > 5);
 
-  const scheduleLabel = strings.scheduleOptions.find(
-    (option) => option.id === schedule,
-  )?.label ?? "";
+  const scheduleLabel = strings.scheduleOptions.find((option) => option.id === schedule)?.label ?? "";
 
   const handleAddToCart = (itemId: string) => {
     setConfirmation(null);
@@ -524,11 +524,7 @@ export default function Home() {
     setCartItems((prev) => {
       const existing = prev.find((entry) => entry.itemId === itemId);
       if (existing) {
-        return prev.map((entry) =>
-          entry.itemId === itemId
-            ? { ...entry, quantity: entry.quantity + 1 }
-            : entry,
-        );
+        return prev.map((entry) => (entry.itemId === itemId ? { ...entry, quantity: entry.quantity + 1 } : entry));
       }
       return [...prev, { itemId, quantity: 1, notes: "" }];
     });
@@ -538,27 +534,16 @@ export default function Home() {
     setConfirmation(null);
     setCartItems((prev) =>
       prev
-        .map((entry) =>
-          entry.itemId === itemId
-            ? { ...entry, quantity: entry.quantity + delta }
-            : entry,
-        )
+        .map((entry) => (entry.itemId === itemId ? { ...entry, quantity: entry.quantity + delta } : entry))
         .filter((entry) => entry.quantity > 0),
     );
   };
 
   const updateNotes = (itemId: string, notes: string) => {
-    setCartItems((prev) =>
-      prev.map((entry) =>
-        entry.itemId === itemId ? { ...entry, notes } : entry,
-      ),
-    );
+    setCartItems((prev) => prev.map((entry) => (entry.itemId === itemId ? { ...entry, notes } : entry)));
   };
 
-  const handleCustomerChange = (
-    field: "name" | "phone" | "address" | "notes",
-    value: string,
-  ) => {
+  const handleCustomerChange = (field: "name" | "phone" | "address" | "notes", value: string) => {
     setCustomer((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -575,20 +560,19 @@ export default function Home() {
       setIsSubmitting(true);
 
       const payload = {
-        amountCents: totalCents,
-        currency: "CNY",
+        amountCents: Math.round(total * 100),
+        currency: "CAD",
         referenceId: orderNumber,
         description: `San Qin online order ${orderNumber}`,
-        returnUrl:
-          typeof window !== "undefined"
-            ? `${window.location.origin}/order/${orderNumber}`
-            : undefined,
+        returnUrl: typeof window !== "undefined" ? `${window.location.origin}/order/${orderNumber}` : undefined,
         metadata: {
           locale,
           fulfillment,
           schedule,
           customer,
           subtotal,
+          tax, 
+          taxRate: TAX_RATE,
           serviceFee,
           deliveryFee,
           items: localizedCartItems.map((cartItem) => ({
@@ -601,14 +585,11 @@ export default function Home() {
         },
       };
 
-      const { checkoutUrl } = await apiFetch<HostedCheckoutResponse>(
-        "/clover/pay/online/hosted-checkout",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        },
-      );
+      const { checkoutUrl } = await apiFetch<HostedCheckoutResponse>("/clover/pay/online/hosted-checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
       if (!checkoutUrl) {
         throw new Error(strings.errors.missingCheckoutUrl);
@@ -620,8 +601,7 @@ export default function Home() {
         setConfirmation({ orderNumber, total, fulfillment });
       }
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : strings.errors.checkoutFailed;
+      const message = error instanceof Error ? error.message : strings.errors.checkoutFailed;
       setErrorMessage(message);
       setConfirmation({ orderNumber, total, fulfillment });
     } finally {
@@ -629,40 +609,22 @@ export default function Home() {
     }
   };
 
-  const payButtonLabel = isSubmitting
-    ? strings.processing
-    : formatWithTotal(strings.payCta, currencyFormatter.format(total));
+  const payButtonLabel = isSubmitting ? strings.processing : formatWithTotal(strings.payCta, currencyFormatter.format(total));
 
+  // —— 页面渲染 —— //
   return (
     <div className="min-h-screen bg-slate-50 pb-16 text-slate-900">
       <div className="mx-auto max-w-6xl px-4 pb-12 pt-10">
         <header className="rounded-3xl bg-white/90 p-8 shadow-sm backdrop-blur">
-          <p className="text-sm font-medium uppercase tracking-[0.3em] text-slate-500">
-            {strings.tagline}
-          </p>
+          <p className="text-sm font-medium uppercase tracking-[0.3em] text-slate-500">{strings.tagline}</p>
           <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <h1 className="text-3xl font-semibold tracking-tight text-slate-900 md:text-4xl">
-                {strings.heroTitle}
-              </h1>
-              <p className="mt-3 max-w-2xl text-base text-slate-600">
-                {strings.heroDescription}
-              </p>
+              <h1 className="text-3xl font-semibold tracking-tight text-slate-900 md:text-4xl">{strings.heroTitle}</h1>
+              <p className="mt-3 max-w-2xl text-base text-slate-600">{strings.heroDescription}</p>
             </div>
+
+            {/* 语言切换：跳转到 /zh 或 /en */}
             <div className="flex flex-col items-start gap-4 lg:items-end">
-              <div className="flex flex-wrap gap-3 text-sm font-medium text-slate-600">
-                {strings.orderSteps.map((step) => (
-                  <div
-                    key={step.id}
-                    className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-100 px-4 py-2"
-                  >
-                    <span className="grid h-7 w-7 place-items-center rounded-full bg-slate-900 text-white">
-                      {step.id}
-                    </span>
-                    <span>{step.label}</span>
-                  </div>
-                ))}
-              </div>
               <div className="flex items-center gap-2 text-xs text-slate-500">
                 <span className="font-medium">{strings.languageSwitch}</span>
                 <div className="inline-flex gap-1 rounded-full bg-slate-200 p-1">
@@ -670,11 +632,16 @@ export default function Home() {
                     <button
                       key={code}
                       type="button"
-                      onClick={() => setLocale(code)}
+                      onClick={() => {
+                        try {
+                          document.cookie = `locale=${code}; path=/; max-age=${60 * 60 * 24 * 365}`;
+                          localStorage.setItem("preferred-locale", code);
+                        } catch {}
+                        const nextPath = addLocaleToPath(code, pathname || "/");
+                        router.push(q ? `${nextPath}?${q}` : nextPath);
+                      }}
                       className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                        locale === code
-                          ? "bg-white text-slate-900 shadow"
-                          : "text-slate-600 hover:bg-white/70"
+                        locale === code ? "bg-white text-slate-900 shadow" : "text-slate-600 hover:bg-white/70"
                       }`}
                       aria-pressed={locale === code}
                     >
@@ -693,12 +660,8 @@ export default function Home() {
               <div key={category.id} className="space-y-4">
                 <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
                   <div>
-                    <h2 className="text-2xl font-semibold text-slate-900">
-                      {category.name}
-                    </h2>
-                    <p className="mt-1 max-w-2xl text-sm text-slate-600">
-                      {category.description}
-                    </p>
+                    <h2 className="text-2xl font-semibold text-slate-900">{category.name}</h2>
+                    <p className="mt-1 max-w-2xl text-sm text-slate-600">{category.description}</p>
                   </div>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
@@ -710,12 +673,8 @@ export default function Home() {
                       <div className="space-y-3">
                         <div className="flex items-start justify-between gap-4">
                           <div>
-                            <h3 className="text-lg font-semibold text-slate-900">
-                              {item.name}
-                            </h3>
-                            <p className="mt-1 text-sm text-slate-600">
-                              {item.description}
-                            </p>
+                            <h3 className="text-lg font-semibold text-slate-900">{item.name}</h3>
+                            <p className="mt-1 text-sm text-slate-600">{item.description}</p>
                           </div>
                           <span className="rounded-full bg-slate-900/90 px-3 py-1 text-sm font-semibold text-white">
                             {currencyFormatter.format(item.price)}
@@ -723,10 +682,7 @@ export default function Home() {
                         </div>
                         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                           {item.tags?.map((tag) => (
-                            <span
-                              key={tag}
-                              className="rounded-full bg-slate-100 px-2 py-1 font-medium text-slate-600"
-                            >
+                            <span key={tag} className="rounded-full bg-slate-100 px-2 py-1 font-medium text-slate-600">
                               #{tag}
                             </span>
                           ))}
@@ -767,9 +723,7 @@ export default function Home() {
                     <li key={cartItem.itemId} className="rounded-2xl border border-slate-200 p-4">
                       <div className="flex items-start justify-between gap-4">
                         <div>
-                          <p className="text-sm font-semibold text-slate-900">
-                            {cartItem.item.name}
-                          </p>
+                          <p className="text-sm font-semibold text-slate-900">{cartItem.item.name}</p>
                           <p className="mt-1 text-xs text-slate-500">
                             {currencyFormatter.format(cartItem.item.price)} × {cartItem.quantity}
                           </p>
@@ -783,9 +737,7 @@ export default function Home() {
                           >
                             −
                           </button>
-                          <span className="min-w-[1.5rem] text-center text-sm font-medium">
-                            {cartItem.quantity}
-                          </span>
+                          <span className="min-w-[1.5rem] text-center text-sm font-medium">{cartItem.quantity}</span>
                           <button
                             type="button"
                             onClick={() => updateQuantity(cartItem.itemId, 1)}
@@ -847,10 +799,17 @@ export default function Home() {
                     <span>{strings.summary.subtotal}</span>
                     <span>{currencyFormatter.format(subtotal)}</span>
                   </div>
-                  <div className="mt-2 flex items-center justify-between text-xs">
+                 {serviceFee > 0 ? (
+                    <div className="mt-2 flex items-center justify-between text-xs">
                     <span>{strings.summary.serviceFee}</span>
                     <span>{currencyFormatter.format(serviceFee)}</span>
-                  </div>
+                    </div>
+                 ) : null}
+                 {/* 税费 */}
+                    <div className="mt-2 flex items-center justify-between text-xs">
+                      <span>{strings.summary.tax}</span>
+                      <span>{formatMoney(tax)}</span>
+                    </div>
                   {fulfillment === "delivery" ? (
                     <div className="mt-2 flex items-center justify-between text-xs">
                       <span>{strings.summary.deliveryFee}</span>
@@ -937,9 +896,7 @@ export default function Home() {
                 <div className="space-y-2">
                   <p className="text-xs text-slate-500">{strings.paymentHint}</p>
                   {errorMessage ? (
-                    <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-xs text-red-600">
-                      {errorMessage}
-                    </div>
+                    <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-xs text-red-600">{errorMessage}</div>
                   ) : null}
                 </div>
 
@@ -958,9 +915,7 @@ export default function Home() {
                   <p className="font-semibold">{strings.confirmation.title}</p>
                   <p className="mt-1">
                     {formatWithOrder(
-                      confirmation.fulfillment === "delivery"
-                        ? strings.confirmation.delivery
-                        : strings.confirmation.pickup,
+                      confirmation.fulfillment === "delivery" ? strings.confirmation.delivery : strings.confirmation.pickup,
                       confirmation.orderNumber,
                       currencyFormatter.format(confirmation.total),
                       scheduleLabel,
@@ -968,9 +923,7 @@ export default function Home() {
                   </p>
                   <p className="mt-1 text-xs text-emerald-600">
                     {formatWithOrder(
-                      confirmation.fulfillment === "delivery"
-                        ? strings.confirmation.deliveryMeta
-                        : strings.confirmation.pickupMeta,
+                      confirmation.fulfillment === "delivery" ? strings.confirmation.deliveryMeta : strings.confirmation.pickupMeta,
                       confirmation.orderNumber,
                       currencyFormatter.format(confirmation.total),
                       scheduleLabel,

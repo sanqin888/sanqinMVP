@@ -1,26 +1,30 @@
-import { Body, Controller, HttpCode, Post } from '@nestjs/common';
-import { CloverService } from './clover.service';
-import { SimulateOnlinePaymentDto } from './dto/simulate-online-payment.dto';
-import { CreateHostedCheckoutDto } from './dto/create-hosted-checkout.dto';
+import { Body, Controller, HttpCode, Post } from "@nestjs/common";
+import { CloverService } from "./clover.service";
 
-@Controller('clover')
+@Controller("clover")
 export class CloverPayController {
   constructor(private readonly clover: CloverService) {}
 
-  // 有全局前缀后的最终路由：/api/v1/clover/pay/online/simulate
-  @Post('pay/online/simulate')
+  /**
+   * 前端调用：POST /clover/pay/online/hosted-checkout
+   * 作用：创建 Clover Hosted Checkout 会话并返回跳转链接
+   */
+  @Post("pay/online/hosted-checkout")
   @HttpCode(200)
-  async simulate(@Body() payload: SimulateOnlinePaymentDto) {
-    await this.clover.simulateOnlinePayment({
-      orderId: payload.orderId,
-      result: payload.result ?? 'SUCCESS',
-    });
-    return { ok: true };
-  }
+  async createHostedCheckout(
+    // 用 any 接 DTO，避免和 Service 入参的货币联合类型冲突
+    @Body() body: any,
+  ) {
+    // 把前端传来的 currency 规范化为 Clover 可接受的联合类型
+    const currency: "CAD" | "USD" = body?.currency === "USD" ? "USD" : "CAD";
 
-  @Post('pay/online/hosted-checkout')
-  @HttpCode(201)
-  createHostedCheckout(@Body() body: CreateHostedCheckoutDto) {
-    return this.clover.createHostedCheckout(body);
+    return this.clover.createHostedCheckout({
+      amountCents: body?.amountCents,
+      currency,
+      referenceId: body?.referenceId,
+      description: body?.description,
+      returnUrl: body?.returnUrl,
+      metadata: body?.metadata,
+    });
   }
 }
