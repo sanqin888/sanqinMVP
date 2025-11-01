@@ -5,7 +5,7 @@ const ORIGINAL_FETCH = global.fetch;
 
 describe('CloverService', () => {
   let service: CloverService;
-  let fetchMock: jest.Mock;
+  let fetchMock: jest.MockedFunction<typeof fetch>;
 
   beforeEach(() => {
     jest.resetModules();
@@ -15,8 +15,8 @@ describe('CloverService', () => {
       CLOVER_API_KEY: 'secret-key',
     };
 
-    fetchMock = jest.fn();
-    global.fetch = fetchMock as unknown as typeof fetch;
+    fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>();
+    global.fetch = fetchMock;
 
     service = new CloverService();
   });
@@ -29,11 +29,12 @@ describe('CloverService', () => {
 
   it('returns redirect information when the API responds with success payload', async () => {
     fetchMock.mockResolvedValue({
-      json: async () => ({
-        redirectUrls: { href: 'https://pay.me/here' },
-        checkoutSessionId: 'session-123',
-      }),
-    });
+      json: () =>
+        Promise.resolve({
+          redirectUrls: { href: 'https://pay.me/here' },
+          checkoutSessionId: 'session-123',
+        }),
+    } as unknown as Response);
 
     const result = await service.createHostedCheckout({
       amountCents: 1234,
@@ -58,24 +59,22 @@ describe('CloverService', () => {
           'content-type': 'application/json',
           authorization: 'Bearer secret-key',
         },
+        body: JSON.stringify({
+          currency: 'USD',
+          amount: 1234,
+          referenceId: 'order-42',
+          description: 'Test checkout',
+          returnUrl: 'https://return.here',
+          metadata: { foo: 'bar' },
+        }),
       }),
     );
-
-    const body = JSON.parse(fetchMock.mock.calls[0][1]?.body as string);
-    expect(body).toEqual({
-      currency: 'USD',
-      amount: 1234,
-      referenceId: 'order-42',
-      description: 'Test checkout',
-      returnUrl: 'https://return.here',
-      metadata: { foo: 'bar' },
-    });
   });
 
   it('returns failure when API payload lacks redirect information', async () => {
     fetchMock.mockResolvedValue({
-      json: async () => ({ message: 'missing redirect' }),
-    });
+      json: () => Promise.resolve({ message: 'missing redirect' }),
+    } as unknown as Response);
 
     await expect(
       service.createHostedCheckout({
