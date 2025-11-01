@@ -1,24 +1,28 @@
-import { Body, Controller, HttpCode, Post } from "@nestjs/common";
-import { CloverService } from "./clover.service";
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 
-@Controller("clover")
+type MarkPaidDto = { orderId: string };
+type GetOrderParam = { id: string };
+type StatusQuery = { ref?: string };
+
+@Controller('clover')
 export class CloverController {
-  constructor(private readonly clover: CloverService) {}
+  constructor() {}
 
-  // 前端 POST /clover/pay/online/hosted-checkout
-  @Post("pay/online/hosted-checkout")
-  @HttpCode(200)
-  async createHostedCheckout(@Body() body: any) {
-    // 前端已传：amountCents/currency/referenceId/description/returnUrl/metadata(items...)
-    const { amountCents, currency, referenceId, description, returnUrl, metadata } = body || {};
-    const result = await this.clover.createHostedCheckout({
-      amountCents,
-      currency,
-      referenceId,
-      description,
-      returnUrl,
-      metadata,
-    });
-    return result; // { checkoutUrl, checkoutId }
+  @Post('mark-paid')
+  async markPaid(@Body() dto: MarkPaidDto) {
+    const { orderId } = dto;
+    return { ok: true as const, markedPaid: true as const, orderId };
+  }
+
+  @Get('orders/:id')
+  async getOrder(@Param() params: GetOrderParam) {
+    const { id } = params;
+    return { id };
+  }
+
+  @Get('status')
+  async getStatus(@Query() q: StatusQuery) {
+    const ref = q.ref ?? '';
+    return { ref };
   }
 }
