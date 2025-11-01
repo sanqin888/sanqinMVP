@@ -1,4 +1,5 @@
 import { CloverService } from './clover.service';
+import { HOSTED_CHECKOUT_CURRENCY } from './dto/create-hosted-checkout.dto';
 
 const ORIGINAL_ENV = process.env;
 const ORIGINAL_FETCH = global.fetch;
@@ -43,7 +44,6 @@ describe('CloverService', () => {
 
     const result = await service.createHostedCheckout({
       amountCents: 1234,
-      currency: 'USD',
       referenceId: 'order-42',
       description: 'Test checkout',
       returnUrl: 'https://return.here',
@@ -65,7 +65,7 @@ describe('CloverService', () => {
           authorization: 'Bearer secret-key',
         },
         body: JSON.stringify({
-          currency: 'USD',
+          currency: HOSTED_CHECKOUT_CURRENCY,
           amount: 1234,
           referenceId: 'order-42',
           description: 'Test checkout',
@@ -87,7 +87,6 @@ describe('CloverService', () => {
     await expect(
       service.createHostedCheckout({
         amountCents: 500,
-        currency: 'USD',
         referenceId: 'order-1',
         description: 'desc',
         returnUrl: 'https://return',
@@ -103,7 +102,6 @@ describe('CloverService', () => {
     await expect(
       service.createHostedCheckout({
         amountCents: 999,
-        currency: 'USD',
         referenceId: 'order-2',
         description: 'desc',
         returnUrl: 'https://return',
@@ -129,7 +127,6 @@ describe('CloverService', () => {
     await expect(
       service.createHostedCheckout({
         amountCents: 100,
-        currency: 'USD',
         referenceId: 'order-3',
         description: 'desc',
         returnUrl: 'https://return',
@@ -140,5 +137,42 @@ describe('CloverService', () => {
     expect(warnSpy).toHaveBeenCalledWith(
       'createHostedCheckout received non-JSON error response (status 502)',
     );
+  });
+
+  it('overrides non-CAD currency requests and logs a warning', async () => {
+    const warnSpy = jest.spyOn<any, any>(service['logger'], 'warn');
+
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      text: () =>
+        Promise.resolve(
+          JSON.stringify({
+            redirectUrls: { href: 'https://pay.me/override' },
+            checkoutSessionId: 'session-override',
+          }),
+        ),
+    } as unknown as Response);
+
+    await service.createHostedCheckout({
+      amountCents: 2500,
+      currency: 'usd',
+      referenceId: 'order-override',
+      description: 'desc',
+      returnUrl: 'https://return',
+      metadata: {},
+    });
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      `createHostedCheckout overriding requested currency USD to ${HOSTED_CHECKOUT_CURRENCY}`,
+    );
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init).toBeDefined();
+    expect(JSON.parse((init as RequestInit).body as string)).toMatchObject({
+      currency: HOSTED_CHECKOUT_CURRENCY,
+      amount: 2500,
+    });
   });
 });
