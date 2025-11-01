@@ -40,6 +40,14 @@ export class CloverService {
 
       const data = (await resp.json()) as HostedCheckoutApiResponse;
 
+      if (!resp.ok) {
+        const reason =
+          (typeof data.error === 'string' ? data.error : data.error?.message) ||
+          data.message ||
+          'request-failed';
+        return { ok: false, reason };
+      }
+
       const href = data.redirectUrls?.href;
       const checkoutSessionId = data.checkoutSessionId;
 
