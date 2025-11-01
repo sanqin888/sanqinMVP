@@ -30,11 +30,15 @@ describe('CloverService', () => {
   it('returns redirect information when the API responds with success payload', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
-      json: () =>
-        Promise.resolve({
-          redirectUrls: { href: 'https://pay.me/here' },
-          checkoutSessionId: 'session-123',
-        }),
+      status: 200,
+      statusText: 'OK',
+      text: () =>
+        Promise.resolve(
+          JSON.stringify({
+            redirectUrls: { href: 'https://pay.me/here' },
+            checkoutSessionId: 'session-123',
+          }),
+        ),
     } as unknown as Response);
 
     const result = await service.createHostedCheckout({
@@ -75,7 +79,9 @@ describe('CloverService', () => {
   it('returns failure when API payload lacks redirect information', async () => {
     fetchMock.mockResolvedValue({
       ok: false,
-      json: () => Promise.resolve({ message: 'missing redirect' }),
+      status: 400,
+      statusText: 'Bad Request',
+      text: () => Promise.resolve(JSON.stringify({ message: 'missing redirect' })),
     } as unknown as Response);
 
     await expect(
@@ -107,6 +113,32 @@ describe('CloverService', () => {
 
     expect(errorSpy).toHaveBeenCalledWith(
       'createHostedCheckout failed: network-down',
+    );
+  });
+
+  it('falls back to status text when the API returns non-JSON body', async () => {
+    const warnSpy = jest.spyOn<any, any>(service['logger'], 'warn');
+
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 502,
+      statusText: 'Bad Gateway',
+      text: () => Promise.resolve('<html>Bad Gateway</html>'),
+    } as unknown as Response);
+
+    await expect(
+      service.createHostedCheckout({
+        amountCents: 100,
+        currency: 'USD',
+        referenceId: 'order-3',
+        description: 'desc',
+        returnUrl: 'https://return',
+        metadata: {},
+      }),
+    ).resolves.toEqual({ ok: false, reason: 'Bad Gateway' });
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      'createHostedCheckout received non-JSON error response (status 502)',
     );
   });
 });

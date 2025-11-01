@@ -38,7 +38,46 @@ export class CloverService {
         }),
       });
 
-      const data = (await resp.json()) as HostedCheckoutApiResponse;
+      const rawBody = await resp.text();
+      let data: HostedCheckoutApiResponse | undefined;
+      let parseError: string | undefined;
+
+      if (rawBody.length > 0) {
+        try {
+          data = JSON.parse(rawBody) as HostedCheckoutApiResponse;
+        } catch (err) {
+          parseError = err instanceof Error ? err.message : 'invalid-json';
+        }
+      }
+
+      if (!resp.ok) {
+        const reason =
+          (typeof data?.error === 'string' ? data?.error : data?.error?.message) ||
+          data?.message ||
+          resp.statusText ||
+          (parseError ? 'invalid-response' : undefined) ||
+          (resp.status ? `http-${resp.status}` : undefined) ||
+          'request-failed';
+
+        if (parseError && !data) {
+          this.logger.warn(
+            `createHostedCheckout received non-JSON error response (status ${resp.status || 'unknown'})`,
+          );
+        }
+
+        return { ok: false, reason };
+      }
+
+      if (!data) {
+        const reason = 'invalid-response';
+        if (parseError) {
+          this.logger.warn(
+            `createHostedCheckout received non-JSON success response (status ${resp.status || 'unknown'})`,
+          );
+        }
+        this.logger.error(`createHostedCheckout failed: ${reason}`);
+        return { ok: false, reason };
+      }
 
       if (!resp.ok) {
         const reason =
