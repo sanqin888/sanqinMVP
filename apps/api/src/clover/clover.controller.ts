@@ -9,19 +9,19 @@ export class CloverController {
   constructor() {}
 
   @Post('mark-paid')
-  async markPaid(@Body() dto: MarkPaidDto) {
+  markPaid(@Body() dto: MarkPaidDto) {
     const { orderId } = dto;
     return { ok: true as const, markedPaid: true as const, orderId };
   }
 
   @Get('orders/:id')
-  async getOrder(@Param() params: GetOrderParam) {
+  getOrder(@Param() params: GetOrderParam) {
     const { id } = params;
     return { id };
   }
 
   @Get('status')
-  async getStatus(@Query() q: StatusQuery) {
+  getStatus(@Query() q: StatusQuery) {
     const ref = q.ref ?? '';
     return { ref };
   }

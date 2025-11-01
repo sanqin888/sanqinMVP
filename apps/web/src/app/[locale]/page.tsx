@@ -560,7 +560,7 @@ export default function Page() {
       setIsSubmitting(true);
 
       const payload = {
-        amountCents: Math.round(total * 100),
+        amountCents: totalCents,
         currency: "CAD",
         referenceId: orderNumber,
         description: `San Qin online order ${orderNumber}`,
