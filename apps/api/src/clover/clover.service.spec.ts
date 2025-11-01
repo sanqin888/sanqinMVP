@@ -1,85 +1,81 @@
-// apps/api/src/clover/clover.service.spec.ts
 import { Test, TestingModule } from '@nestjs/testing';
-import { CloverService } from './clover.service';
-import { OrdersService } from '../orders/orders.service';
+import { CloverService, HostedCheckoutRequest } from './clover.service';
 
 describe('CloverService', () => {
   let service: CloverService;
-  const advance = jest.fn();
+
+  // 简单 mock 全局 fetch（如你已有更完善的 mock，可保留原逻辑）
+  const originalFetch = global.fetch;
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        CloverService,
-        {
-          provide: OrdersService,
-          useValue: { advance },
-        },
-      ],
+      providers: [CloverService],
     }).compile();
 
     service = module.get<CloverService>(CloverService);
   });
-  beforeEach(() => {
-    advance.mockReset();
+
+  afterEach(() => {
+    // 每次测试还原 fetch
+    global.fetch = originalFetch;
   });
 
-  it('returns failure when orderId is missing', async () => {
-    const res = await service.simulateOnlinePayment({
-      orderId: '',
-      result: 'SUCCESS',
+  it('should return ok when API responds with redirectUrls.href and checkoutSessionId', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      json: async () => ({
+        redirectUrls: { href: 'https://checkout.example/abc' },
+        checkoutSessionId: 'sess_123',
+      }),
     });
-    expect(res.ok).toBe(false);
-    expect(res.markedPaid).toBe(false);
-    expect(advance).not.toHaveBeenCalled();
-  });
 
-  it('returns failure when result is FAILURE', async () => {
-    const res = await service.simulateOnlinePayment({
-      orderId: 'o1',
-      result: 'FAILURE',
-    });
-    expect(res.ok).toBe(false);
-    expect(res.markedPaid).toBe(false);
-    expect(advance).not.toHaveBeenCalled();
-  });
+    const req: HostedCheckoutRequest = {
+      currency: 'CAD',
+      amountCents: 100,
+      referenceId: 'ref-1',
+      returnUrl: 'https://return',
+    };
 
-  it('returns success when result is SUCCESS', async () => {
-    advance.mockResolvedValueOnce({ status: 'paid' } as never);
-    advance.mockResolvedValueOnce({ status: 'making' } as never);
-    const res = await service.simulateOnlinePayment({
-      orderId: 'o1',
-      result: 'SUCCESS',
-    });
+    const res = await service.createHostedCheckout(req);
     expect(res.ok).toBe(true);
-    expect(res.markedPaid).toBe(true);
-    expect(advance).toHaveBeenCalledTimes(2);
+    if (res.ok) {
+      expect(res.href).toBe('https://checkout.example/abc');
+      expect(res.checkoutSessionId).toBe('sess_123');
+    }
   });
 
-  it('returns failure when advancing order fails', async () => {
-    advance.mockRejectedValueOnce(new Error('no order'));
-    const res = await service.simulateOnlinePayment({
-      orderId: 'o-missing',
-      result: 'SUCCESS',
+  it('should return ok:false with reason when API misses fields', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      json: async () => ({ message: 'bad request' }),
     });
+
+    const req: HostedCheckoutRequest = {
+      currency: 'CAD',
+      amountCents: 100,
+      referenceId: 'ref-2',
+      returnUrl: 'https://return',
+    };
+
+    const res = await service.createHostedCheckout(req);
     expect(res.ok).toBe(false);
-    expect(res.markedPaid).toBe(false);
-    expect(res.reason).toContain('no order');
-    expect(advance).toHaveBeenCalledTimes(1);
+    if (!res.ok) {
+      expect(typeof res.reason).toBe('string');
+    }
   });
 
-  it('handles unexpected errors without unsafe calls', () => {
-    // simulate try/catch and assert by message using instanceof Error
-    try {
-      // force a runtime error
-      throw new Error('boom');
-    } catch (err: unknown) {
-      if (err instanceof Error) {
-        expect(err.message).toBe('boom');
-      } else {
-        // not an Error - still assert type without calling it
-        expect(typeof err).not.toBe('function');
-      }
+  it('should handle thrown errors safely', async () => {
+    global.fetch = vi.fn().mockRejectedValue(new Error('network'));
+
+    const req: HostedCheckoutRequest = {
+      currency: 'CAD',
+      amountCents: 100,
+      referenceId: 'ref-3',
+      returnUrl: 'https://return',
+    };
+
+    const res = await service.createHostedCheckout(req);
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.reason).toBe('network');
     }
   });
 });
