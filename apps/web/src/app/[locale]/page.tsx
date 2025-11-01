@@ -11,6 +11,7 @@ const LANGUAGE_NAMES: Record<Locale, string> = { zh: "中文", en: "English" };
 const TAX_RATE = Number.parseFloat(process.env.NEXT_PUBLIC_SALES_TAX_RATE ?? "0.13");
 // 配送费是否计税（按你业务需要；加拿大多数场景是计税）
 const TAX_ON_DELIVERY = (process.env.NEXT_PUBLIC_TAX_ON_DELIVERY ?? "true") === "true";
+const HOSTED_CHECKOUT_CURRENCY = "CAD" as const;
 
 type LocalizedText = Record<Locale, string>;
 
@@ -490,7 +491,7 @@ export default function Page() {
     () =>
       new Intl.NumberFormat(locale === "zh" ? "zh-Hans-CA" : "en-CA", {
         style: "currency",
-        currency: "CAD",
+        currency: HOSTED_CHECKOUT_CURRENCY,
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       }),
@@ -561,7 +562,7 @@ export default function Page() {
 
       const payload = {
         amountCents: totalCents,
-        currency: "CAD",
+        currency: HOSTED_CHECKOUT_CURRENCY,
         referenceId: orderNumber,
         description: `San Qin online order ${orderNumber}`,
         returnUrl: typeof window !== "undefined" ? `${window.location.origin}/order/${orderNumber}` : undefined,
