@@ -18,14 +18,28 @@ export type HostedCheckoutResult =
 @Injectable()
 export class CloverService {
   private readonly logger = new Logger(CloverService.name);
-  private readonly apiBase =
-    process.env.CLOVER_API_BASE ?? 'https://api.clover.com';
-  private readonly apiKey = process.env.CLOVER_API_KEY ?? '';
+
+  private readonly apiBase = (() => {
+    const rawBase =
+      process.env.CLOVER_API_BASE ??
+      process.env.CLOVER_API_BASE_URL ??
+      'https://sandbox.dev.clover.com';
+
+    return rawBase.replace(/\/+$/, '');
+  })();
+
+  private readonly apiKey =
+    process.env.CLOVER_API_KEY ?? process.env.CLOVER_ACCESS_TOKEN ?? '';
 
   async createHostedCheckout(
     req: HostedCheckoutRequest,
   ): Promise<HostedCheckoutResult> {
     try {
+      if (!this.apiKey) {
+        this.logger.error('Clover API key is not configured');
+        return { ok: false, reason: 'missing-api-key' };
+      }
+
       const url = `${this.apiBase}/v1/hosted-checkout`;
 
       const requestedCurrency = req.currency?.toUpperCase();
