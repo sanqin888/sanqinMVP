@@ -12,8 +12,8 @@ describe('CloverService', () => {
     jest.resetModules();
     process.env = {
       ...ORIGINAL_ENV,
-      CLOVER_API_BASE: 'https://unit.test',
-      CLOVER_API_KEY: 'secret-key',
+      CLOVER_API_BASE_URL: 'https://unit.test/base/',
+      CLOVER_ACCESS_TOKEN: 'secret-key',
     };
 
     fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>();
@@ -57,7 +57,7 @@ describe('CloverService', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://unit.test/v1/hosted-checkout',
+      'https://unit.test/base/v1/hosted-checkout',
       expect.objectContaining({
         method: 'POST',
         headers: {
@@ -113,6 +113,28 @@ describe('CloverService', () => {
     expect(errorSpy).toHaveBeenCalledWith(
       'createHostedCheckout failed: network-down',
     );
+  });
+
+  it('returns early when API key is missing', async () => {
+    delete process.env.CLOVER_ACCESS_TOKEN;
+    service = new CloverService();
+
+    const errorSpy = jest.spyOn<any, any>(service['logger'], 'error');
+
+    await expect(
+      service.createHostedCheckout({
+        amountCents: 500,
+        referenceId: 'order-3',
+        description: 'desc',
+        returnUrl: 'https://return',
+        metadata: {},
+      }),
+    ).resolves.toEqual({ ok: false, reason: 'missing-api-key' });
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      'Clover API key is not configured',
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('falls back to status text when the API returns non-JSON body', async () => {
