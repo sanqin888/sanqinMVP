@@ -29,6 +29,7 @@ describe('CloverService', () => {
 
   it('returns redirect information when the API responds with success payload', async () => {
     fetchMock.mockResolvedValue({
+      ok: true,
       json: () =>
         Promise.resolve({
           redirectUrls: { href: 'https://pay.me/here' },
@@ -73,6 +74,7 @@ describe('CloverService', () => {
 
   it('returns failure when API payload lacks redirect information', async () => {
     fetchMock.mockResolvedValue({
+      ok: false,
       json: () => Promise.resolve({ message: 'missing redirect' }),
     } as unknown as Response);
 
