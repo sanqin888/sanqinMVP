@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/require-await */
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 
 type MarkPaidDto = { orderId: string };
