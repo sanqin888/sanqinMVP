@@ -18,10 +18,13 @@ export type HostedCheckoutResult =
 @Injectable()
 export class CloverService {
   private readonly logger = new Logger(CloverService.name);
-  private readonly apiBase = process.env.CLOVER_API_BASE ?? 'https://api.clover.com';
+  private readonly apiBase =
+    process.env.CLOVER_API_BASE ?? 'https://api.clover.com';
   private readonly apiKey = process.env.CLOVER_API_KEY ?? '';
 
-  async createHostedCheckout(req: HostedCheckoutRequest): Promise<HostedCheckoutResult> {
+  async createHostedCheckout(
+    req: HostedCheckoutRequest,
+  ): Promise<HostedCheckoutResult> {
     try {
       const url = `${this.apiBase}/v1/hosted-checkout`;
 
@@ -40,7 +43,7 @@ export class CloverService {
         },
         body: JSON.stringify({
           currency: HOSTED_CHECKOUT_CURRENCY,
-          amount: req.amountCents,         // ✅ 与 DTO 字段保持一致
+          amount: req.amountCents, // ✅ 与 DTO 字段保持一致
           referenceId: req.referenceId,
           description: req.description,
           returnUrl: req.returnUrl,
@@ -62,7 +65,9 @@ export class CloverService {
 
       if (!resp.ok) {
         const reason =
-          (typeof data?.error === 'string' ? data?.error : data?.error?.message) ||
+          (typeof data?.error === 'string'
+            ? data?.error
+            : data?.error?.message) ||
           data?.message ||
           resp.statusText ||
           (parseError ? 'invalid-response' : undefined) ||

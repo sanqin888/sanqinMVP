@@ -1,5 +1,12 @@
 import { Transform } from 'class-transformer';
-import { IsIn, IsInt, IsObject, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsIn,
+  IsInt,
+  IsObject,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 
 export const HOSTED_CHECKOUT_CURRENCY = 'CAD' as const;
 
@@ -9,7 +16,9 @@ export class CreateHostedCheckoutDto {
   readonly amountCents!: number;
 
   @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? value.toUpperCase() : value))
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.toUpperCase() : undefined,
+  )
   @IsString()
   @IsIn([HOSTED_CHECKOUT_CURRENCY])
   readonly currency?: string;

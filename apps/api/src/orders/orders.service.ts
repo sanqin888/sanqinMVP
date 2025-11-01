@@ -60,9 +60,7 @@ export class OrdersService {
       typeof idempotencyKey === 'string' ? idempotencyKey.trim() : undefined;
     const normalizedHeaderKey = normalizeStableId(headerKey);
     if (headerKey && !normalizedHeaderKey) {
-      this.logger.warn(
-        `Ignoring invalid Idempotency-Key header: ${headerKey}`,
-      );
+      this.logger.warn(`Ignoring invalid Idempotency-Key header: ${headerKey}`);
     }
 
     const bodyStableKey = normalizeStableId(dto.clientRequestId);

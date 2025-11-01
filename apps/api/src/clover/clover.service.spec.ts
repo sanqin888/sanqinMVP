@@ -81,7 +81,8 @@ describe('CloverService', () => {
       ok: false,
       status: 400,
       statusText: 'Bad Request',
-      text: () => Promise.resolve(JSON.stringify({ message: 'missing redirect' })),
+      text: () =>
+        Promise.resolve(JSON.stringify({ message: 'missing redirect' })),
     } as unknown as Response);
 
     await expect(
