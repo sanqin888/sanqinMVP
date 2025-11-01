@@ -1,85 +1,110 @@
-// apps/api/src/clover/clover.service.spec.ts
-import { Test, TestingModule } from '@nestjs/testing';
 import { CloverService } from './clover.service';
-import { OrdersService } from '../orders/orders.service';
+
+const ORIGINAL_ENV = process.env;
+const ORIGINAL_FETCH = global.fetch;
 
 describe('CloverService', () => {
   let service: CloverService;
-  const advance = jest.fn();
+  let fetchMock: jest.MockedFunction<typeof fetch>;
 
-  beforeAll(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        CloverService,
-        {
-          provide: OrdersService,
-          useValue: { advance },
-        },
-      ],
-    }).compile();
-
-    service = module.get<CloverService>(CloverService);
-  });
   beforeEach(() => {
-    advance.mockReset();
+    jest.resetModules();
+    process.env = {
+      ...ORIGINAL_ENV,
+      CLOVER_API_BASE: 'https://unit.test',
+      CLOVER_API_KEY: 'secret-key',
+    };
+
+    fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>();
+    global.fetch = fetchMock;
+
+    service = new CloverService();
   });
 
-  it('returns failure when orderId is missing', async () => {
-    const res = await service.simulateOnlinePayment({
-      orderId: '',
-      result: 'SUCCESS',
+  afterEach(() => {
+    process.env = ORIGINAL_ENV;
+    global.fetch = ORIGINAL_FETCH;
+    jest.restoreAllMocks();
+  });
+
+  it('returns redirect information when the API responds with success payload', async () => {
+    fetchMock.mockResolvedValue({
+      json: () =>
+        Promise.resolve({
+          redirectUrls: { href: 'https://pay.me/here' },
+          checkoutSessionId: 'session-123',
+        }),
+    } as unknown as Response);
+
+    const result = await service.createHostedCheckout({
+      amountCents: 1234,
+      currency: 'USD',
+      referenceId: 'order-42',
+      description: 'Test checkout',
+      returnUrl: 'https://return.here',
+      metadata: { foo: 'bar' },
     });
-    expect(res.ok).toBe(false);
-    expect(res.markedPaid).toBe(false);
-    expect(advance).not.toHaveBeenCalled();
-  });
 
-  it('returns failure when result is FAILURE', async () => {
-    const res = await service.simulateOnlinePayment({
-      orderId: 'o1',
-      result: 'FAILURE',
+    expect(result).toEqual({
+      ok: true,
+      href: 'https://pay.me/here',
+      checkoutSessionId: 'session-123',
     });
-    expect(res.ok).toBe(false);
-    expect(res.markedPaid).toBe(false);
-    expect(advance).not.toHaveBeenCalled();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://unit.test/v1/hosted-checkout',
+      expect.objectContaining({
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: 'Bearer secret-key',
+        },
+        body: JSON.stringify({
+          currency: 'USD',
+          amount: 1234,
+          referenceId: 'order-42',
+          description: 'Test checkout',
+          returnUrl: 'https://return.here',
+          metadata: { foo: 'bar' },
+        }),
+      }),
+    );
   });
 
-  it('returns success when result is SUCCESS', async () => {
-    advance.mockResolvedValueOnce({ status: 'paid' } as never);
-    advance.mockResolvedValueOnce({ status: 'making' } as never);
-    const res = await service.simulateOnlinePayment({
-      orderId: 'o1',
-      result: 'SUCCESS',
-    });
-    expect(res.ok).toBe(true);
-    expect(res.markedPaid).toBe(true);
-    expect(advance).toHaveBeenCalledTimes(2);
+  it('returns failure when API payload lacks redirect information', async () => {
+    fetchMock.mockResolvedValue({
+      json: () => Promise.resolve({ message: 'missing redirect' }),
+    } as unknown as Response);
+
+    await expect(
+      service.createHostedCheckout({
+        amountCents: 500,
+        currency: 'USD',
+        referenceId: 'order-1',
+        description: 'desc',
+        returnUrl: 'https://return',
+        metadata: {},
+      }),
+    ).resolves.toEqual({ ok: false, reason: 'missing redirect' });
   });
 
-  it('returns failure when advancing order fails', async () => {
-    advance.mockRejectedValueOnce(new Error('no order'));
-    const res = await service.simulateOnlinePayment({
-      orderId: 'o-missing',
-      result: 'SUCCESS',
-    });
-    expect(res.ok).toBe(false);
-    expect(res.markedPaid).toBe(false);
-    expect(res.reason).toContain('no order');
-    expect(advance).toHaveBeenCalledTimes(1);
-  });
+  it('logs and returns failure when fetch throws', async () => {
+    const errorSpy = jest.spyOn<any, any>(service['logger'], 'error');
+    fetchMock.mockRejectedValue(new Error('network-down'));
 
-  it('handles unexpected errors without unsafe calls', () => {
-    // simulate try/catch and assert by message using instanceof Error
-    try {
-      // force a runtime error
-      throw new Error('boom');
-    } catch (err: unknown) {
-      if (err instanceof Error) {
-        expect(err.message).toBe('boom');
-      } else {
-        // not an Error - still assert type without calling it
-        expect(typeof err).not.toBe('function');
-      }
-    }
+    await expect(
+      service.createHostedCheckout({
+        amountCents: 999,
+        currency: 'USD',
+        referenceId: 'order-2',
+        description: 'desc',
+        returnUrl: 'https://return',
+        metadata: {},
+      }),
+    ).resolves.toEqual({ ok: false, reason: 'network-down' });
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      'createHostedCheckout failed: network-down',
+    );
   });
 });
