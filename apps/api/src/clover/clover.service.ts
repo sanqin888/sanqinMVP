@@ -91,7 +91,7 @@ function errToString(e: unknown): string {
     const j = JSON.stringify(e);
     return j ?? Object.prototype.toString.call(e);
   } catch {
-    return Object.prototype.toString.call(e);
+    return String(Object.prototype.toString.call(e));
   }
 }
 function isHostedCheckoutApiResponse(
