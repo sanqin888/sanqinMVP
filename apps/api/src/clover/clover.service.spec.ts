@@ -131,9 +131,7 @@ describe('CloverService', () => {
       }),
     ).resolves.toEqual({ ok: false, reason: 'missing-api-key' });
 
-    expect(errorSpy).toHaveBeenCalledWith(
-      'Clover API key is not configured',
-    );
+    expect(errorSpy).toHaveBeenCalledWith('Clover API key is not configured');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
