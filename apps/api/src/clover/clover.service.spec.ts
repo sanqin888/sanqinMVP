@@ -9,23 +9,31 @@ interface CheckoutBody {
   currency: string;
   customer: Record<string, unknown>;
   shoppingCart: {
-    lineItems: Array<{ name: string; price: number; unitQty: number; note?: string; taxRates?: unknown[] }>;
+    lineItems: Array<{
+      name: string;
+      price: number;
+      unitQty: number;
+      note?: string;
+      taxRates?: unknown[];
+    }>;
     defaultTaxRates: Array<{ id: string; name: string; rate: number }>;
   };
 }
 function getFirstCall(): [string, RequestInit] {
-  const call = global.fetch && (global.fetch as jest.Mock).mock.calls[0];
+  if (!global.fetch) throw new Error('fetch not mocked');
+  const fetchFn = global.fetch as jest.MockedFunction<typeof fetch>;
+  const call = fetchFn.mock.calls[0];
   const urlRaw = call?.[0];
   const initRaw = call?.[1];
   if (typeof urlRaw !== 'string') throw new Error('fetch url is not string');
-  return [urlRaw, (initRaw ?? {}) as RequestInit];
+  const init = initRaw ?? {};
+  return [urlRaw, init];
 }
 function parseBody(init: RequestInit): unknown {
   const b = init.body;
   if (typeof b === 'string') return JSON.parse(b) as unknown;
   if (b == null) return {} as unknown;
-  // 最保守兜底（CI 下 body 只会是 string）
-  return JSON.parse(String(b)) as unknown;
+  throw new Error('Request body is not a string');
 }
 
 describe('CloverService', () => {
