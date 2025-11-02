@@ -1,12 +1,10 @@
 import { CloverService } from './clover.service';
-import { HOSTED_CHECKOUT_CURRENCY } from './dto/create-hosted-checkout.dto';
 
 const ORIGINAL_ENV = process.env;
 const ORIGINAL_FETCH = global.fetch;
 
 // ==== test-only helpers (typed + no-any) ====
 interface CheckoutBody {
-  currency: string;
   customer: Record<string, unknown>;
   shoppingCart: {
     lineItems: Array<{
@@ -44,8 +42,7 @@ describe('CloverService', () => {
     jest.resetModules();
     process.env = {
       ...ORIGINAL_ENV,
-      // Service 读取统一 apiKey（兼容 ACCESS_TOKEN）
-      CLOVER_ACCESS_TOKEN: 'secret-key',
+      CLOVER_PRIVATE_TOKEN: 'secret-key',
       CLOVER_MERCHANT_ID: 'MID-UNIT',
       CLOVER_TAX_ID: 'TAX-UNIT',
       SALES_TAX_NAME: 'HST',
@@ -107,7 +104,6 @@ describe('CloverService', () => {
     // Body
     const bodyUnknown: unknown = parseBody(init);
     const body = bodyUnknown as CheckoutBody;
-    expect(body.currency).toBe(HOSTED_CHECKOUT_CURRENCY);
     expect(Array.isArray(body.shoppingCart.lineItems)).toBe(true);
     expect(Array.isArray(body.shoppingCart.defaultTaxRates)).toBe(true);
     expect(body.shoppingCart.defaultTaxRates[0]).toEqual(
@@ -153,11 +149,10 @@ describe('CloverService', () => {
     ).resolves.toEqual({ ok: false, reason: 'network-down' });
 
     expect(errorSpy).toHaveBeenCalledWith(
-      'createHostedCheckout failed: network-down',
-    );
+       'createHostedCheckout exception: network-down',    );
   });
 
-  it('returns early when API key is missing', async () => {
+  it('returns early when private token is missing', async () => {
     delete process.env.CLOVER_ACCESS_TOKEN;
     delete process.env.CLOVER_API_KEY;
     delete process.env.CLOVER_PRIVATE_TOKEN;
@@ -173,9 +168,9 @@ describe('CloverService', () => {
         returnUrl: 'https://return',
         metadata: {},
       }),
-    ).resolves.toEqual({ ok: false, reason: 'missing-api-key' });
+    ).resolves.toEqual({ ok: false, reason: 'missing-private-key' });
 
-    expect(errorSpy).toHaveBeenCalledWith('Clover API key is not configured');
+    expect(errorSpy).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -200,11 +195,16 @@ describe('CloverService', () => {
     ).resolves.toEqual({ ok: false, reason: 'Bad Gateway' });
 
     expect(warnSpy).toHaveBeenCalledWith(
-      'createHostedCheckout received non-JSON error response (status 502)',
+      expect.stringContaining(
+        'createHostedCheckout non-JSON response captured:',
+      ),
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('createHostedCheckout failed: status=502'),
     );
   });
 
-  it('overrides non-CAD currency requests and logs a warning', async () => {
+  it('builds the request body when a non-CAD currency is supplied', async () => {
     const warnSpy = jest.spyOn<any, any>(service['logger'], 'warn');
 
     fetchMock.mockResolvedValue({
@@ -229,14 +229,11 @@ describe('CloverService', () => {
       metadata: {},
     });
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      `createHostedCheckout overriding requested currency USD to ${HOSTED_CHECKOUT_CURRENCY}`,
-    );
+    expect(warnSpy).not.toHaveBeenCalled();
 
     const [, init] = getFirstCall();
     const bodyUnknown: unknown = parseBody(init);
     const body = bodyUnknown as CheckoutBody;
-    expect(body.currency).toBe(HOSTED_CHECKOUT_CURRENCY);
     expect(body.shoppingCart.lineItems[0].price).toBe(2500);
   });
 });
