@@ -12,8 +12,17 @@ describe('CloverService', () => {
     jest.resetModules();
     process.env = {
       ...ORIGINAL_ENV,
+      // 当前 Service 不再读取 CLOVER_API_BASE_URL，这里留着不影响
       CLOVER_API_BASE_URL: 'https://unit.test/base/',
+      // API 凭证（当前实现兼容 PRIVATE_TOKEN / API_KEY / ACCESS_TOKEN）
       CLOVER_ACCESS_TOKEN: 'secret-key',
+      // 当前 Service 需要的额外 env
+      CLOVER_MERCHANT_ID: 'MID-UNIT',
+      CLOVER_TAX_ID: 'TAX-UNIT',
+      SALES_TAX_NAME: 'HST',
+      SALES_TAX_RATE: '0.13',      // 13%
+      PRICES_INCLUDE_TAX: 'false', // 测试里传入的是税前价
+      CLOVER_ENV: 'sandbox',
     };
 
     fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>();
@@ -29,6 +38,7 @@ describe('CloverService', () => {
   });
 
   it('returns redirect information when the API responds with success payload', async () => {
+    // 当前 service 读取 data.href / data.checkoutSessionId
     fetchMock.mockResolvedValue({
       ok: true,
       status: 200,
@@ -36,7 +46,7 @@ describe('CloverService', () => {
       text: () =>
         Promise.resolve(
           JSON.stringify({
-            redirectUrls: { href: 'https://pay.me/here' },
+            href: 'https://pay.me/here',
             checkoutSessionId: 'session-123',
           }),
         ),
@@ -56,22 +66,41 @@ describe('CloverService', () => {
       checkoutSessionId: 'session-123',
     });
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://unit.test/base/v1/hosted-checkout',
+    // URL：当前实现使用 invoicing checkout 端点
+    expect(fetchMock).toHaveBeenCalled();
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(typeof url).toBe('string');
+    expect(String(url)).toContain('/invoicingcheckoutservice/v1/checkouts');
+
+    // Headers：注意大小写与 X-Clover-Merchant-Id
+    expect(init).toEqual(
       expect.objectContaining({
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          authorization: 'Bearer secret-key',
-        },
-        body: JSON.stringify({
-          currency: HOSTED_CHECKOUT_CURRENCY,
-          amount: 1234,
-          referenceId: 'order-42',
-          description: 'Test checkout',
-          returnUrl: 'https://return.here',
-          metadata: { foo: 'bar' },
+        headers: expect.objectContaining({
+          Authorization: 'Bearer secret-key',
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          'X-Clover-Merchant-Id': 'MID-UNIT',
         }),
+      }),
+    );
+
+    // Body：当前实现有 currency + shoppingCart（含 lineItems/defaultTaxRates）
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body.currency).toBe(HOSTED_CHECKOUT_CURRENCY);
+    expect(body.shoppingCart).toEqual(
+      expect.objectContaining({
+        lineItems: expect.any(Array),
+        defaultTaxRates: expect.arrayContaining([
+          expect.objectContaining({ id: 'TAX-UNIT', name: 'HST' }),
+        ]),
+      }),
+    );
+    // 第一条行项目的 price 应等于传入的 amountCents（税前）
+    expect(body.shoppingCart.lineItems[0]).toEqual(
+      expect.objectContaining({
+        price: 1234,
+        unitQty: 1,
       }),
     );
   });
@@ -117,6 +146,8 @@ describe('CloverService', () => {
 
   it('returns early when API key is missing', async () => {
     delete process.env.CLOVER_ACCESS_TOKEN;
+    delete process.env.CLOVER_API_KEY;
+    delete process.env.CLOVER_PRIVATE_TOKEN;
     service = new CloverService();
 
     const errorSpy = jest.spyOn<any, any>(service['logger'], 'error');
@@ -170,7 +201,7 @@ describe('CloverService', () => {
       text: () =>
         Promise.resolve(
           JSON.stringify({
-            redirectUrls: { href: 'https://pay.me/override' },
+            href: 'https://pay.me/override',
             checkoutSessionId: 'session-override',
           }),
         ),
@@ -190,10 +221,9 @@ describe('CloverService', () => {
     );
 
     const [, init] = fetchMock.mock.calls[0];
-    expect(init).toBeDefined();
-    expect(JSON.parse((init as RequestInit).body as string)).toMatchObject({
-      currency: HOSTED_CHECKOUT_CURRENCY,
-      amount: 2500,
-    });
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body.currency).toBe(HOSTED_CHECKOUT_CURRENCY);
+    // 金额现在位于 lineItems 里（税前）
+    expect(body.shoppingCart.lineItems[0].price).toBe(2500);
   });
 });
