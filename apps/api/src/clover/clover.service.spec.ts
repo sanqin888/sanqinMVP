@@ -1,8 +1,38 @@
 import { CloverService } from './clover.service';
-import { HOSTED_CHECKOUT_CURRENCY } from './dto/create-hosted-checkout.dto';
 
 const ORIGINAL_ENV = process.env;
 const ORIGINAL_FETCH = global.fetch;
+
+// ==== test-only helpers (typed + no-any) ====
+interface CheckoutBody {
+  customer: Record<string, unknown>;
+  shoppingCart: {
+    lineItems: Array<{
+      name: string;
+      price: number;
+      unitQty: number;
+      note?: string;
+      taxRates?: unknown[];
+    }>;
+    defaultTaxRates: Array<{ id: string; name: string; rate: number }>;
+  };
+}
+function getFirstCall(): [string, RequestInit] {
+  if (!global.fetch) throw new Error('fetch not mocked');
+  const fetchFn = global.fetch as jest.MockedFunction<typeof fetch>;
+  const call = fetchFn.mock.calls[0];
+  const urlRaw = call?.[0];
+  const initRaw = call?.[1];
+  if (typeof urlRaw !== 'string') throw new Error('fetch url is not string');
+  const init = initRaw ?? {};
+  return [urlRaw, init];
+}
+function parseBody(init: RequestInit): unknown {
+  const b = init.body;
+  if (typeof b === 'string') return JSON.parse(b) as unknown;
+  if (b == null) return {} as unknown;
+  throw new Error('Request body is not a string');
+}
 
 describe('CloverService', () => {
   let service: CloverService;
@@ -12,12 +42,17 @@ describe('CloverService', () => {
     jest.resetModules();
     process.env = {
       ...ORIGINAL_ENV,
-      CLOVER_API_BASE: 'https://unit.test',
-      CLOVER_API_KEY: 'secret-key',
+      CLOVER_PRIVATE_TOKEN: 'secret-key',
+      CLOVER_MERCHANT_ID: 'MID-UNIT',
+      CLOVER_TAX_ID: 'TAX-UNIT',
+      SALES_TAX_NAME: 'HST',
+      SALES_TAX_RATE: '0.13',
+      PRICES_INCLUDE_TAX: 'false',
+      CLOVER_ENV: 'sandbox',
     };
 
     fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>();
-    global.fetch = fetchMock;
+    global.fetch = fetchMock as unknown as typeof fetch;
 
     service = new CloverService();
   });
@@ -36,7 +71,7 @@ describe('CloverService', () => {
       text: () =>
         Promise.resolve(
           JSON.stringify({
-            redirectUrls: { href: 'https://pay.me/here' },
+            href: 'https://pay.me/here',
             checkoutSessionId: 'session-123',
           }),
         ),
@@ -56,23 +91,26 @@ describe('CloverService', () => {
       checkoutSessionId: 'session-123',
     });
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://unit.test/v1/hosted-checkout',
-      expect.objectContaining({
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          authorization: 'Bearer secret-key',
-        },
-        body: JSON.stringify({
-          currency: HOSTED_CHECKOUT_CURRENCY,
-          amount: 1234,
-          referenceId: 'order-42',
-          description: 'Test checkout',
-          returnUrl: 'https://return.here',
-          metadata: { foo: 'bar' },
-        }),
-      }),
+    const [url, init] = getFirstCall();
+    expect(url).toContain('/invoicingcheckoutservice/v1/checkouts');
+
+    // Headers（大小写与 X-Clover-Merchant-Id）
+    const headers = (init.headers ?? {}) as Record<string, string>;
+    expect(headers.Authorization).toBe('Bearer secret-key');
+    expect(headers['Content-Type']).toBe('application/json');
+    expect(headers.Accept).toBe('application/json');
+    expect(headers['X-Clover-Merchant-Id']).toBe('MID-UNIT');
+
+    // Body
+    const bodyUnknown: unknown = parseBody(init);
+    const body = bodyUnknown as CheckoutBody;
+    expect(Array.isArray(body.shoppingCart.lineItems)).toBe(true);
+    expect(Array.isArray(body.shoppingCart.defaultTaxRates)).toBe(true);
+    expect(body.shoppingCart.defaultTaxRates[0]).toEqual(
+      expect.objectContaining({ id: 'TAX-UNIT', name: 'HST' }),
+    );
+    expect(body.shoppingCart.lineItems[0]).toEqual(
+      expect.objectContaining({ price: 1234, unitQty: 1 }),
     );
   });
 
@@ -111,8 +149,29 @@ describe('CloverService', () => {
     ).resolves.toEqual({ ok: false, reason: 'network-down' });
 
     expect(errorSpy).toHaveBeenCalledWith(
-      'createHostedCheckout failed: network-down',
-    );
+       'createHostedCheckout exception: network-down',    );
+  });
+
+  it('returns early when private token is missing', async () => {
+    delete process.env.CLOVER_ACCESS_TOKEN;
+    delete process.env.CLOVER_API_KEY;
+    delete process.env.CLOVER_PRIVATE_TOKEN;
+    service = new CloverService();
+
+    const errorSpy = jest.spyOn<any, any>(service['logger'], 'error');
+
+    await expect(
+      service.createHostedCheckout({
+        amountCents: 500,
+        referenceId: 'order-3',
+        description: 'desc',
+        returnUrl: 'https://return',
+        metadata: {},
+      }),
+    ).resolves.toEqual({ ok: false, reason: 'missing-private-key' });
+
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('falls back to status text when the API returns non-JSON body', async () => {
@@ -136,11 +195,16 @@ describe('CloverService', () => {
     ).resolves.toEqual({ ok: false, reason: 'Bad Gateway' });
 
     expect(warnSpy).toHaveBeenCalledWith(
-      'createHostedCheckout received non-JSON error response (status 502)',
+      expect.stringContaining(
+        'createHostedCheckout non-JSON response captured:',
+      ),
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('createHostedCheckout failed: status=502'),
     );
   });
 
-  it('overrides non-CAD currency requests and logs a warning', async () => {
+  it('builds the request body when a non-CAD currency is supplied', async () => {
     const warnSpy = jest.spyOn<any, any>(service['logger'], 'warn');
 
     fetchMock.mockResolvedValue({
@@ -150,7 +214,7 @@ describe('CloverService', () => {
       text: () =>
         Promise.resolve(
           JSON.stringify({
-            redirectUrls: { href: 'https://pay.me/override' },
+            href: 'https://pay.me/override',
             checkoutSessionId: 'session-override',
           }),
         ),
@@ -165,15 +229,11 @@ describe('CloverService', () => {
       metadata: {},
     });
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      `createHostedCheckout overriding requested currency USD to ${HOSTED_CHECKOUT_CURRENCY}`,
-    );
+    expect(warnSpy).not.toHaveBeenCalled();
 
-    const [, init] = fetchMock.mock.calls[0];
-    expect(init).toBeDefined();
-    expect(JSON.parse((init as RequestInit).body as string)).toMatchObject({
-      currency: HOSTED_CHECKOUT_CURRENCY,
-      amount: 2500,
-    });
+    const [, init] = getFirstCall();
+    const bodyUnknown: unknown = parseBody(init);
+    const body = bodyUnknown as CheckoutBody;
+    expect(body.shoppingCart.lineItems[0].price).toBe(2500);
   });
 });
