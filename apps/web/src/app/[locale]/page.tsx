@@ -565,7 +565,10 @@ export default function Page() {
         currency: HOSTED_CHECKOUT_CURRENCY,
         referenceId: orderNumber,
         description: `San Qin online order ${orderNumber}`,
-        returnUrl: typeof window !== "undefined" ? `${window.location.origin}/order/${orderNumber}` : undefined,
+        returnUrl:
+          typeof window !== "undefined"
+            ? `${window.location.origin}/${locale}/thank-you/${orderNumber}`
+            : undefined,
         metadata: {
           locale,
           fulfillment,
