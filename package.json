@@ -15,5 +15,8 @@
     "build": "npm run build -w apps/web && npm run build -w apps/api",
     "lint": "npm run lint -w apps/web && npm run lint -w apps/api",
     "test": "npm test -w apps/api"
+  },
+  "devDependencies": {
+    "http-proxy": "^1.18.1"
   }
 }

@@ -15,6 +15,17 @@ const zh = {
       orderDesc: "选择门店与取餐时间，极速制作。",
     },
   },
+  thankYou: {
+    brand: "SAN QIN 三秦面馆",
+    title: "感谢下单",
+    intro:
+      "支付已完成，感谢您的支持。我们正在确认订单详情，请保持手机畅通以接收短信通知。",
+    numberLabel: "订单编号",
+    note: "请保留编号以便查询或到店取餐时出示。",
+    contact: "如需调整订单，请致电门店或通过短信联系我们。",
+    backCta: "返回菜单",
+    switchLabel: "English",
+  },
 };
 
 const en = {
@@ -31,6 +42,17 @@ const en = {
       orderTitle: "Order now",
       orderDesc: "Choose a store and pickup time. Freshly made fast.",
     },
+  },
+  thankYou: {
+    brand: "SAN QIN NOODLE HOUSE",
+    title: "Thank you!",
+    intro:
+      "Payment confirmed. Thanks for supporting us! We are double-checking the order details — please keep your phone available for text updates.",
+    numberLabel: "Your order number",
+    note: "Keep this number for reference when picking up or reaching out.",
+    contact: "Need to adjust anything? Call the restaurant or send us a text.",
+    backCta: "Back to menu",
+    switchLabel: "中文",
   },
 };
 

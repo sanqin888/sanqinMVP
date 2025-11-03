@@ -149,7 +149,8 @@ describe('CloverService', () => {
     ).resolves.toEqual({ ok: false, reason: 'network-down' });
 
     expect(errorSpy).toHaveBeenCalledWith(
-       'createHostedCheckout exception: network-down',    );
+      'createHostedCheckout exception: network-down',
+    );
   });
 
   it('returns early when private token is missing', async () => {
