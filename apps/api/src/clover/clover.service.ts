@@ -249,27 +249,31 @@ export class CloverService {
       const apiData: HostedCheckoutApiResponse | undefined =
         isHostedCheckoutApiResponse(parsedUnknown) ? parsedUnknown : undefined;
 
-if (!resp.ok) {
-  // 非 JSON：按用例要求打印这句
-  if (parsedUnknown === undefined && rawText) {
-    this.logger.warn(
-      `createHostedCheckout non-JSON response captured: ${rawText.slice(0, 200)}`
-    );
-  } else {
-    // JSON 错误：保持原有 failed: status=...
-    this.logger.warn(
-      `createHostedCheckout failed: status=${resp.status} response captured: ${rawText.slice(0, 200)}`
-    );
-  }
+      if (!resp.ok) {
+        const preview = rawText.slice(0, 200);
 
-  // reason：优先 message，其次 statusText，再次 http-<code>
-  let reason = resp.statusText || `http-${resp.status}`;
-  if (isPlainObject(parsedUnknown)) {
-    const m = (parsedUnknown as Record<string, unknown>).message;
-    if (typeof m === 'string' && m.trim()) reason = m;
-  }
-  return { ok: false, reason };
-}
+        if (parsedUnknown === undefined && rawText) {
+          this.logger.warn(
+            `createHostedCheckout non-JSON response captured: ${preview}`,
+          );
+        }
+
+        this.logger.warn(
+          `createHostedCheckout failed: status=${resp.status} response captured: ${preview}`,
+        );
+
+        // reason prefers API message, falls back to status text then http-<code>
+        const fallbackStatus = resp.statusText?.trim()
+          ? resp.statusText
+          : `http-${resp.status}`;
+        let reason = fallbackStatus;
+        if (isPlainObject(parsedUnknown)) {
+          const m = (parsedUnknown as Record<string, unknown>).message;
+          if (typeof m === 'string' && m.trim()) reason = m;
+        }
+
+        return { ok: false, reason };
+      }
       // 2xx but missing redirect link
       if (!apiData || typeof apiData.href !== 'string' || apiData.href.length === 0) {
         return { ok: false, reason: 'missing redirect' };
