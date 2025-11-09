@@ -14,16 +14,16 @@ export interface InLineItem {
   description?: string;
   referenceId?: string;
   amountCents?: number; // cents
-  priceCents?: number;  // cents (alias)
-  price?: number;       // cents (alias)
-  amount?: number;      // cents (alias)
+  priceCents?: number; // cents (alias)
+  price?: number; // cents (alias)
+  amount?: number; // cents (alias)
   quantity?: number;
   note?: string;
 }
 
 export interface HostedCheckoutRequest {
   customer?: unknown;
-  locale?: string;        // will be narrowed to 'zh' | 'en'
+  locale?: string; // will be narrowed to 'zh' | 'en'
   orderId?: string;
   id?: string;
   referenceId?: string;
@@ -48,11 +48,12 @@ interface HostedCheckoutApiResponse {
 }
 
 // ===== Guards & utils =====
-const isLocale = (x: unknown): x is Locale => x === 'zh' || x === 'en';
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === 'object' && !Array.isArray(v);
 
-const isHostedCheckoutApiResponse = (x: unknown): x is HostedCheckoutApiResponse =>
+const isHostedCheckoutApiResponse = (
+  x: unknown,
+): x is HostedCheckoutApiResponse =>
   isPlainObject(x) && typeof x.href === 'string' && x.href.length > 0;
 
 const pickOrderId = (r: HostedCheckoutRequest): string => {
@@ -61,9 +62,26 @@ const pickOrderId = (r: HostedCheckoutRequest): string => {
   );
   return candidate ?? '';
 };
+const normalizeLocale = (x: unknown): 'zh' | 'en' => {
+  if (typeof x !== 'string') return 'en';
+  const s = x.toLowerCase();
+  if (s.startsWith('zh')) return 'zh';
+  if (s.startsWith('en')) return 'en';
+  return 'en';
+};
+
+const extractLocaleFromUrl = (u: unknown): 'zh' | 'en' | undefined => {
+  if (typeof u !== 'string') return undefined;
+  const m = u.match(/\/(zh|en)(?=\/)/i);
+  return m ? normalizeLocale(m[1]) : undefined;
+};
 
 const errToString = (e: unknown): string =>
-  e instanceof Error ? e.message : typeof e === 'string' ? e : JSON.stringify(e);
+  e instanceof Error
+    ? e.message
+    : typeof e === 'string'
+      ? e
+      : JSON.stringify(e);
 
 // ===== Service =====
 @Injectable()
@@ -101,7 +119,9 @@ export class CloverService {
    * success: {WEB_BASE_URL}/{locale}/thank-you/{orderId}
    * failure: {WEB_BASE_URL}/{locale}/payment-failed/{orderId}
    */
-  async createHostedCheckout(req: HostedCheckoutRequest): Promise<HostedCheckoutResult> {
+  async createHostedCheckout(
+    req: HostedCheckoutRequest,
+  ): Promise<HostedCheckoutResult> {
     try {
       if (!this.privateKey) return { ok: false, reason: 'missing-private-key' };
       if (!this.merchantId) return { ok: false, reason: 'missing-merchant-id' };
@@ -113,32 +133,45 @@ export class CloverService {
 
       // redirect URLs
       const webBase = (process.env.WEB_BASE_URL || '').replace(/\/+$/, '');
-      const locale: Locale = isLocale(req.locale) ? req.locale : 'en';
+
+      // 👇 提前拿到 rq，按优先级归一化 locale：req.locale → metadata.locale → returnUrl 路径
+      const rq = req as Record<string, unknown>;
+      const metaLocale = isPlainObject(rq.metadata)
+        ? rq.metadata.locale
+        : undefined;
+
+      const locale: Locale = normalizeLocale(
+        rq.locale ?? metaLocale ?? extractLocaleFromUrl(rq.returnUrl),
+      );
+
       const orderId = pickOrderId(req);
 
       const successUrl = `${webBase}/${locale}/thank-you/${encodeURIComponent(orderId)}`;
       const failureUrl = `${webBase}/${locale}/payment-failed/${encodeURIComponent(orderId)}`;
 
       // ===== build lineItems with fallback =====
-      const rq = req as Record<string, unknown>;
       const noteFallback = (() => {
         const n = rq.note;
         return typeof n === 'string' && n.trim() ? n : undefined;
       })();
 
       const fallbackName =
-        (typeof rq.description === 'string' && rq.description.trim()
-          ? (rq.description as string).trim()
+        typeof rq.description === 'string' && rq.description.trim()
+          ? rq.description.trim()
           : typeof rq.referenceId === 'string' && rq.referenceId.trim()
-            ? (rq.referenceId as string).trim()
-            : 'Online order');
+            ? rq.referenceId.trim()
+            : 'Online order';
 
       const fallbackAmount =
-        typeof rq.amountCents === 'number' ? (rq.amountCents as number)
-        : typeof rq.priceCents === 'number' ? (rq.priceCents as number)
-        : typeof rq.price === 'number' ? (rq.price as number)
-        : typeof rq.amount === 'number' ? (rq.amount as number)
-        : 0;
+        typeof rq.amountCents === 'number'
+          ? rq.amountCents
+          : typeof rq.priceCents === 'number'
+            ? rq.priceCents
+            : typeof rq.price === 'number'
+              ? rq.price
+              : typeof rq.amount === 'number'
+                ? rq.amount
+                : 0;
 
       const src: Array<Record<string, unknown>> =
         Array.isArray(req.lineItems) && req.lineItems.length > 0
@@ -154,7 +187,7 @@ export class CloverService {
 
       type OutLineItem = {
         name: string;
-        price: number;   // cents
+        price: number; // cents
         unitQty: number;
         note?: string;
         description?: string;
@@ -165,34 +198,37 @@ export class CloverService {
         // name
         const rawName = it?.name;
         const name =
-          typeof rawName === 'string' && rawName.trim() ? rawName.trim() : 'Item';
+          typeof rawName === 'string' && rawName.trim()
+            ? rawName.trim()
+            : 'Item';
 
         // amount in cents: accept several aliases
         let amount = Number.NaN;
-        if (typeof it?.amountCents === 'number') amount = it.amountCents as number;
-        else if (typeof it?.priceCents === 'number') amount = it.priceCents as number;
-        else if (typeof it?.price === 'number') amount = it.price as number;
-        else if (typeof it?.amount === 'number') amount = it.amount as number;
+        if (typeof it?.amountCents === 'number') amount = it.amountCents;
+        else if (typeof it?.priceCents === 'number') amount = it.priceCents;
+        else if (typeof it?.price === 'number') amount = it.price;
+        else if (typeof it?.amount === 'number') amount = it.amount;
 
         if (!Number.isFinite(amount)) return acc;
 
         // quantity
         const qtyRaw = it?.quantity;
-        const unitQty =
-          typeof qtyRaw === 'number' && qtyRaw > 0 ? (qtyRaw as number) : 1;
+        const unitQty = typeof qtyRaw === 'number' && qtyRaw > 0 ? qtyRaw : 1;
 
         // optionals
         const note =
-          typeof it?.note === 'string' && it.note.trim() ? (it.note as string) : noteFallback;
+          typeof it?.note === 'string' && it.note.trim()
+            ? it.note
+            : noteFallback;
 
         const description =
           typeof it?.description === 'string' && it.description.trim()
-            ? (it.description as string)
+            ? it.description
             : undefined;
 
         const referenceId =
           typeof it?.referenceId === 'string' && it.referenceId.trim()
-            ? (it.referenceId as string)
+            ? it.referenceId
             : undefined;
 
         acc.push({
@@ -221,17 +257,15 @@ export class CloverService {
         },
       };
 
-      this.logger.log(
-        `createHostedCheckout -> POST ${url}`,
-      );
+      this.logger.log(`createHostedCheckout -> POST ${url}`);
 
       const resp = await fetch(url, {
         method: 'POST',
         headers: {
           Accept: 'application/json',
           'Content-Type': 'application/json',
-          'X-Clover-Merchant-Id': this.merchantId!,
-          Authorization: `Bearer ${this.privateKey!}`,
+          'X-Clover-Merchant-Id': this.merchantId,
+          Authorization: `Bearer ${this.privateKey}`,
         },
         body: JSON.stringify(body),
       });
@@ -268,19 +302,23 @@ export class CloverService {
           : `http-${resp.status}`;
         let reason = fallbackStatus;
         if (isPlainObject(parsedUnknown)) {
-          const m = (parsedUnknown as Record<string, unknown>).message;
+          const m = parsedUnknown.message;
           if (typeof m === 'string' && m.trim()) reason = m;
         }
 
         return { ok: false, reason };
       }
       // 2xx but missing redirect link
-      if (!apiData || typeof apiData.href !== 'string' || apiData.href.length === 0) {
+      if (
+        !apiData ||
+        typeof apiData.href !== 'string' ||
+        apiData.href.length === 0
+      ) {
         return { ok: false, reason: 'missing redirect' };
       }
 
       // success (no raw in return)
-      const data = apiData as HostedCheckoutApiResponse;
+      const data = apiData;
       return {
         ok: true,
         href: data.href,

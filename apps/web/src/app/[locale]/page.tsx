@@ -561,6 +561,7 @@ export default function Page() {
       setIsSubmitting(true);
 
       const payload = {
+        locale,
         amountCents: totalCents,
         currency: HOSTED_CHECKOUT_CURRENCY,
         referenceId: orderNumber,
@@ -570,7 +571,6 @@ export default function Page() {
             ? `${window.location.origin}/${locale}/thank-you/${orderNumber}`
             : undefined,
         metadata: {
-          locale,
           fulfillment,
           schedule,
           customer,
