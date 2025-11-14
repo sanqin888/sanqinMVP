@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { CartEntry } from "@/app/[locale]/shared";
+import type { CartEntry } from "@/lib/order/shared";
 
 const STORAGE_KEY = "sanqin-cart";
 

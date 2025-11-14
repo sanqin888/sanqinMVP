@@ -2,21 +2,22 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams, useParams } from "next/navigation";
 import {
   HOSTED_CHECKOUT_CURRENCY,
   LANGUAGE_NAMES,
   LOCALES,
-  Locale,
+  type Locale,
   UI_STRINGS,
   addLocaleToPath,
   buildLocalizedMenu,
-} from "./shared";
+} from "@/lib/order/shared";
 import { usePersistentCart } from "@/lib/cart";
 
 export default function LocalOrderPage() {
   const pathname = usePathname() || "/";
-  const locale = (pathname.startsWith("/zh") ? "zh" : "en") as Locale;
+  const params = useParams<{ locale?: string }>();
+  const locale = (params?.locale === "zh" ? "zh" : "en") as Locale;
 
   const router = useRouter();
   const searchParams = useSearchParams();
