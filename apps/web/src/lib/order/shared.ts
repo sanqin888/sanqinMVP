@@ -362,6 +362,12 @@ export function buildLocalizedMenu(locale: Locale): LocalizedCategory[] {
 }
 
 /** ===== 结算页相关类型 ===== */
+export type CartEntry = {
+  itemId: string;
+  quantity: number;
+  notes: string;
+};
+
 export type LocalizedCartItem = {
   itemId: string;
   quantity: number;
