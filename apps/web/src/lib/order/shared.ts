@@ -65,6 +65,8 @@ export const UI_STRINGS: Record<
     paymentHint: string;
     fulfillmentLabel: string;
     fulfillment: FulfillmentStrings;
+    deliveryOptionsLabel: string;
+    deliveryFlatFeeLabel: string;
     scheduleLabel: string;
     scheduleOptions: ScheduleOption[];
     summary: SummaryStrings;
@@ -116,6 +118,8 @@ export const UI_STRINGS: Record<
       delivery: "Delivery",
       pickupNote: "Your order will be ready for pickup at the counter.",
     },
+    deliveryOptionsLabel: "Delivery speed",
+    deliveryFlatFeeLabel: "flat fee",
     scheduleLabel: "Schedule",
     scheduleOptions: [
       { id: "asap", label: "ASAP" },
@@ -191,6 +195,8 @@ export const UI_STRINGS: Record<
       delivery: "外送",
       pickupNote: "订单将在柜台备好，请报订单号取餐。",
     },
+    deliveryOptionsLabel: "配送方式",
+    deliveryFlatFeeLabel: "固定配送费",
     scheduleLabel: "送达/取餐时间",
     scheduleOptions: [
       { id: "asap", label: "尽快" },
@@ -374,6 +380,9 @@ export type LocalizedCartItem = {
   notes: string;
   item: ReturnType<typeof localizeMenuItem>;
 };
+
+export type DeliveryTypeOption = 'STANDARD' | 'PRIORITY';
+export type DeliveryProviderOption = 'DOORDASH_DRIVE' | 'UBER_DIRECT';
 
 export type ConfirmationState = {
   orderNumber: string;

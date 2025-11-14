@@ -5,6 +5,10 @@ import Link from 'next/link';
 import { apiFetch } from '../../../lib/api-client';
 import { isStableId } from '../../../lib/stable-id';
 import { ORDER_STATUS_SEQUENCE, OrderStatus } from '../../../lib/status/order';
+import type {
+  DeliveryProviderOption,
+  DeliveryTypeOption,
+} from '../../../lib/order/shared';
 
 type OrderItem = {
   id: string;
@@ -23,6 +27,12 @@ type OrderDetail = {
   totalCents: number;
   fulfillmentType: string;
   pickupCode: string | null;
+  deliveryType: DeliveryTypeOption | null;
+  deliveryProvider: DeliveryProviderOption | null;
+  deliveryFeeCents: number | null;
+  deliveryEtaMinMinutes: number | null;
+  deliveryEtaMaxMinutes: number | null;
+  externalDeliveryId: string | null;
   createdAt: string;
   items: OrderItem[];
 };
@@ -66,6 +76,13 @@ export default function OrderDetailPage({ params }: PageProps) {
     return ORDER_STATUS_SEQUENCE.indexOf(order.status);
   }, [order]);
 
+  const hasDeliveryInfo = Boolean(
+    order?.deliveryType ||
+      order?.deliveryFeeCents ||
+      order?.externalDeliveryId ||
+      (order?.deliveryEtaMinMinutes && order?.deliveryEtaMaxMinutes),
+  );
+
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
       <div className="flex items-center justify-between">
@@ -108,6 +125,39 @@ export default function OrderDetailPage({ params }: PageProps) {
               </li>
             </ul>
           </div>
+
+          {hasDeliveryInfo && (
+            <div className="space-y-2">
+              <h2 className="text-sm font-semibold text-gray-700">配送信息</h2>
+              <ul className="text-sm text-gray-600">
+                {order.deliveryType && (
+                  <li>
+                    类型：
+                    {DELIVERY_TYPE_LABELS[order.deliveryType]} ({order.deliveryType})
+                  </li>
+                )}
+                {order.deliveryProvider && (
+                  <li>
+                    平台：
+                    {DELIVERY_PROVIDER_LABELS[order.deliveryProvider]} (
+                    {order.deliveryProvider})
+                  </li>
+                )}
+                {typeof order.deliveryFeeCents === 'number' && (
+                  <li>配送费：${(order.deliveryFeeCents / 100).toFixed(2)}</li>
+                )}
+                {typeof order.deliveryEtaMinMinutes === 'number' &&
+                  typeof order.deliveryEtaMaxMinutes === 'number' && (
+                    <li>
+                      ETA：{order.deliveryEtaMinMinutes}–{order.deliveryEtaMaxMinutes} 分钟
+                    </li>
+                  )}
+                {order.externalDeliveryId && (
+                  <li>外部单号：{order.externalDeliveryId}</li>
+                )}
+              </ul>
+            </div>
+          )}
 
           <div className="space-y-2">
             <h2 className="text-sm font-semibold text-gray-700">状态流转</h2>
@@ -159,3 +209,13 @@ export default function OrderDetailPage({ params }: PageProps) {
     </main>
   );
 }
+
+const DELIVERY_TYPE_LABELS: Record<DeliveryTypeOption, string> = {
+  STANDARD: 'Standard',
+  PRIORITY: 'Priority',
+};
+
+const DELIVERY_PROVIDER_LABELS: Record<DeliveryProviderOption, string> = {
+  DOORDASH_DRIVE: 'DoorDash Drive',
+  UBER_DIRECT: 'Uber Direct',
+};

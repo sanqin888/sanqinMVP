@@ -22,7 +22,59 @@ import {
   localizeMenuItem,
   MENU_ITEM_LOOKUP,
   type HostedCheckoutResponse,
+  type DeliveryTypeOption,
 } from "@/lib/order/shared";
+
+type DeliveryOptionDefinition = {
+  provider: "DOORDASH_DRIVE" | "UBER_DIRECT";
+  fee: number;
+  eta: [number, number];
+  labels: Record<Locale, { title: string; description: string }>;
+};
+
+type DeliveryOptionDisplay = {
+  type: DeliveryTypeOption;
+  fee: number;
+  eta: [number, number];
+  provider: DeliveryOptionDefinition["provider"];
+  title: string;
+  description: string;
+};
+
+const DELIVERY_OPTION_DEFINITIONS: Record<DeliveryTypeOption, DeliveryOptionDefinition> = {
+  STANDARD: {
+    provider: "DOORDASH_DRIVE",
+    fee: 5,
+    eta: [45, 60],
+    labels: {
+      en: {
+        title: "Standard delivery",
+        description: "DoorDash Drive • arrives in 45–60 min",
+      },
+      zh: {
+        title: "标准配送",
+        description: "DoorDash Drive · 约 45–60 分钟送达",
+      },
+    },
+  },
+  PRIORITY: {
+    provider: "UBER_DIRECT",
+    fee: 9,
+    eta: [25, 35],
+    labels: {
+      en: {
+        title: "Priority delivery",
+        description: "Uber Direct • arrives in 25–35 min",
+      },
+      zh: {
+        title: "优先闪送",
+        description: "Uber Direct · 约 25–35 分钟送达",
+      },
+    },
+  },
+};
+
+const DELIVERY_TYPES: DeliveryTypeOption[] = ["STANDARD", "PRIORITY"];
 
 export default function CheckoutPage() {
   const pathname = usePathname() || "/";
@@ -35,6 +87,21 @@ export default function CheckoutPage() {
 
   const strings = UI_STRINGS[locale];
   const orderHref = q ? `/${locale}?${q}` : `/${locale}`;
+
+  const deliveryOptions = useMemo<DeliveryOptionDisplay[]>(() => {
+    return DELIVERY_TYPES.map((type) => {
+      const definition = DELIVERY_OPTION_DEFINITIONS[type];
+      const localized = definition.labels[locale];
+      return {
+        type,
+        fee: definition.fee,
+        eta: definition.eta,
+        provider: definition.provider,
+        title: localized.title,
+        description: localized.description,
+      };
+    });
+  }, [locale]);
 
   const { items, updateNotes, updateQuantity } = usePersistentCart();
 
@@ -49,6 +116,7 @@ export default function CheckoutPage() {
   }, [items, locale]);
 
   const [fulfillment, setFulfillment] = useState<"pickup" | "delivery">("pickup");
+  const [deliveryType, setDeliveryType] = useState<DeliveryTypeOption>("STANDARD");
   const [schedule, setSchedule] = useState<ScheduleSlot>("asap");
   const [customer, setCustomer] = useState({
     name: "",
@@ -79,7 +147,9 @@ export default function CheckoutPage() {
   );
 
   const serviceFee: number = 0;
-  const deliveryFee = fulfillment === "delivery" && subtotal > 0 ? 6 : 0;
+  const selectedDeliveryDefinition = DELIVERY_OPTION_DEFINITIONS[deliveryType];
+  const isDeliveryFulfillment = fulfillment === "delivery";
+  const deliveryFee = isDeliveryFulfillment && subtotal > 0 ? selectedDeliveryDefinition.fee : 0;
   const taxableBase = subtotal + (TAX_ON_DELIVERY ? deliveryFee : 0);
   const tax = Math.round(taxableBase * TAX_RATE * 100) / 100;
   const total = subtotal + deliveryFee + tax;
@@ -108,6 +178,14 @@ export default function CheckoutPage() {
     try {
       setIsSubmitting(true);
 
+      const deliveryMetadata = isDeliveryFulfillment
+        ? {
+            deliveryType,
+            deliveryProvider: selectedDeliveryDefinition.provider,
+            deliveryEtaMinutes: selectedDeliveryDefinition.eta,
+          }
+        : null;
+
       const payload = {
         locale,
         amountCents: totalCents,
@@ -127,6 +205,7 @@ export default function CheckoutPage() {
           taxRate: TAX_RATE,
           serviceFee,
           deliveryFee,
+          ...(deliveryMetadata ?? {}),
           items: localizedCartItems.map((cartItem) => ({
             id: cartItem.itemId,
             name: cartItem.item.name,
@@ -326,23 +405,55 @@ export default function CheckoutPage() {
                 </div>
               </div>
 
-              {fulfillment === "delivery" ? (
-                <div className="space-y-3">
-                  <label className="block text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
-                    {strings.scheduleLabel}
-                    <select
-                      value={schedule}
-                      onChange={(event) => setSchedule(event.target.value as ScheduleSlot)}
-                      className="mt-2 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
-                    >
-                      {strings.scheduleOptions.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {option.label}
-                        </option>
+              {isDeliveryFulfillment ? (
+                <>
+                  <div className="space-y-3">
+                    <h3 className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
+                      {strings.deliveryOptionsLabel}
+                    </h3>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {deliveryOptions.map((option) => (
+                        <button
+                          key={option.type}
+                          type="button"
+                          onClick={() => setDeliveryType(option.type)}
+                          className={`text-left rounded-2xl border p-4 transition ${
+                            deliveryType === option.type
+                              ? "border-emerald-500 bg-emerald-50 shadow-sm"
+                              : "border-slate-200 bg-white hover:border-slate-300"
+                          }`}
+                          aria-pressed={deliveryType === option.type}
+                        >
+                          <p className="text-sm font-semibold text-slate-900">{option.title}</p>
+                          <p className="mt-1 text-xs text-slate-600">{option.description}</p>
+                          <div className="mt-3 flex items-baseline justify-between text-sm">
+                            <span className="font-semibold text-slate-900">{formatMoney(option.fee)}</span>
+                            <span className="text-xs uppercase tracking-wide text-slate-500">
+                              {strings.deliveryFlatFeeLabel}
+                            </span>
+                          </div>
+                        </button>
                       ))}
-                    </select>
-                  </label>
-                </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <label className="block text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
+                      {strings.scheduleLabel}
+                      <select
+                        value={schedule}
+                        onChange={(event) => setSchedule(event.target.value as ScheduleSlot)}
+                        className="mt-2 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                      >
+                        {strings.scheduleOptions.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                </>
               ) : (
                 <p className="rounded-2xl bg-slate-100 p-3 text-xs text-slate-600">
                   {strings.fulfillment.pickupNote}

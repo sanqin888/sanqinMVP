@@ -14,6 +14,7 @@ import {
   OrderStatus,
 } from './order-status';
 import { normalizeStableId } from '../common/utils/stable-id';
+import type { DeliveryProvider, DeliveryType } from './types';
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 
@@ -21,6 +22,22 @@ const TAX_RATE = Number(process.env.SALES_TAX_RATE ?? '0.13');
 const REDEEM_DOLLAR_PER_POINT = Number(
   process.env.LOYALTY_REDEEM_DOLLAR_PER_POINT ?? '0.01',
 );
+
+const DELIVERY_RULES: Record<
+  DeliveryType,
+  { provider: DeliveryProvider; feeCents: number; etaRange: [number, number] }
+> = {
+  STANDARD: {
+    provider: 'DOORDASH_DRIVE',
+    feeCents: 500,
+    etaRange: [45, 60],
+  },
+  PRIORITY: {
+    provider: 'UBER_DIRECT',
+    feeCents: 900,
+    etaRange: [25, 35],
+  },
+};
 
 @Injectable()
 export class OrdersService {
@@ -111,6 +128,10 @@ export class OrdersService {
     const totalCents = taxableCents + taxCents;
 
     // 4) 入库
+    const deliveryMeta = dto.deliveryType
+      ? DELIVERY_RULES[dto.deliveryType]
+      : undefined;
+
     const order = await this.prisma.order.create({
       data: {
         userId: dto.userId ?? null,
@@ -121,6 +142,15 @@ export class OrdersService {
         taxCents,
         totalCents,
         pickupCode: (1000 + Math.floor(Math.random() * 9000)).toString(),
+        ...(deliveryMeta
+          ? {
+              deliveryType: dto.deliveryType,
+              deliveryProvider: deliveryMeta.provider,
+              deliveryFeeCents: deliveryMeta.feeCents,
+              deliveryEtaMinMinutes: deliveryMeta.etaRange[0],
+              deliveryEtaMaxMinutes: deliveryMeta.etaRange[1],
+            }
+          : {}),
         items: {
           create: (Array.isArray(dto.items) ? dto.items : []).map(
             (i): Prisma.OrderItemCreateWithoutOrderInput => ({

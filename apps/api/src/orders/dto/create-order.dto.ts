@@ -9,6 +9,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { IsStableId } from '../../common/validators/is-stable-id.validator';
+import { DELIVERY_TYPES, type DeliveryType } from '../types';
 
 class CreateOrderItemDto {
   @IsString() productId!: string;
@@ -33,6 +34,10 @@ export class CreateOrderDto {
 
   @IsIn(['pickup', 'dine_in'])
   fulfillmentType!: 'pickup' | 'dine_in';
+
+  @IsOptional()
+  @IsIn(DELIVERY_TYPES)
+  deliveryType?: DeliveryType;
 
   @IsOptional()
   @IsArray()
