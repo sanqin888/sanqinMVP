@@ -29,6 +29,16 @@ enum Channel {
   ubereats
 }
 
+enum DeliveryType {
+  STANDARD
+  PRIORITY
+}
+
+enum DeliveryProvider {
+  DOORDASH_DRIVE
+  UBER_DIRECT
+}
+
 enum LoyaltyTier {
   BRONZE
   SILVER
@@ -55,6 +65,12 @@ model Order {
   taxCents        Int             @default(0)
   totalCents      Int             @default(0)
   pickupCode      String?
+  deliveryType        DeliveryType?
+  deliveryProvider    DeliveryProvider?
+  deliveryFeeCents    Int?
+  deliveryEtaMinMinutes Int?
+  deliveryEtaMaxMinutes Int?
+  externalDeliveryId  String?
   createdAt       DateTime        @default(now())
 
   items OrderItem[]

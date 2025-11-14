@@ -4,6 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '../../lib/api-client';
 import { ORDER_STATUS_ADVANCE, OrderStatus } from '../../lib/status/order';
+import type {
+  DeliveryProviderOption,
+  DeliveryTypeOption,
+} from '../../lib/order/shared';
 
 type OrderItem = {
   id: string;
@@ -26,6 +30,12 @@ type Order = {
   totalCents: number;
   fulfillmentType: Fulfillment;
   pickupCode: string;
+  deliveryType: DeliveryTypeOption | null;
+  deliveryProvider: DeliveryProviderOption | null;
+  deliveryFeeCents: number | null;
+  deliveryEtaMinMinutes: number | null;
+  deliveryEtaMaxMinutes: number | null;
+  externalDeliveryId: string | null;
   createdAt: string;
   items: OrderItem[];
 };
@@ -59,6 +69,29 @@ function buildPrintContent(order: Order, type: PrintJobType): string {
     lines.push(`小计: $${cents(order.subtotalCents)}`);
     lines.push(`税额: $${cents(order.taxCents)}`);
     lines.push(`合计: $${cents(order.totalCents)}`);
+    if (order.deliveryType) {
+      lines.push(
+        `配送: ${DELIVERY_TYPE_LABELS[order.deliveryType]} · ${
+          order.deliveryProvider
+            ? DELIVERY_PROVIDER_LABELS[order.deliveryProvider]
+            : '未指定'
+        }`,
+      );
+      if (
+        typeof order.deliveryEtaMinMinutes === 'number' &&
+        typeof order.deliveryEtaMaxMinutes === 'number'
+      ) {
+        lines.push(
+          `送达预估: ${order.deliveryEtaMinMinutes}-${order.deliveryEtaMaxMinutes} 分钟`,
+        );
+      }
+      if (typeof order.deliveryFeeCents === 'number') {
+        lines.push(`配送费: $${cents(order.deliveryFeeCents)}`);
+      }
+      if (order.externalDeliveryId) {
+        lines.push(`外送平台单号: ${order.externalDeliveryId}`);
+      }
+    }
     lines.push('谢谢惠顾，欢迎再次光临!');
   } else {
     lines.push('后厨联 · 准备中');
@@ -75,9 +108,36 @@ function buildPrintContent(order: Order, type: PrintJobType): string {
     });
     lines.push('------------------------------');
     lines.push('提醒: 保持制作顺序，注意过敏源标识。');
+    if (order.deliveryType) {
+      lines.push(
+        `配送: ${DELIVERY_TYPE_LABELS[order.deliveryType]} · ${
+          order.deliveryProvider
+            ? DELIVERY_PROVIDER_LABELS[order.deliveryProvider]
+            : '未指定'
+        }`,
+      );
+      if (
+        typeof order.deliveryEtaMinMinutes === 'number' &&
+        typeof order.deliveryEtaMaxMinutes === 'number'
+      ) {
+        lines.push(
+          `预计 ${order.deliveryEtaMinMinutes}-${order.deliveryEtaMaxMinutes} 分钟送达`,
+        );
+      }
+    }
   }
   return lines.join('\n');
 }
+
+const DELIVERY_TYPE_LABELS: Record<DeliveryTypeOption, string> = {
+  STANDARD: 'Standard',
+  PRIORITY: 'Priority',
+};
+
+const DELIVERY_PROVIDER_LABELS: Record<DeliveryProviderOption, string> = {
+  DOORDASH_DRIVE: 'DoorDash Drive',
+  UBER_DIRECT: 'Uber Direct',
+};
 
 export default function TestOrderPage() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -241,6 +301,27 @@ export default function TestOrderPage() {
               <div className="text-sm text-gray-700">
                 项目：{o.items.map((i) => `${i.productId}×${i.qty}`).join('，')}
               </div>
+              {(o.deliveryType ||
+                typeof o.deliveryFeeCents === 'number' ||
+                o.externalDeliveryId) && (
+                <div className="text-xs text-blue-600">
+                  配送：
+                  {o.deliveryType
+                    ? DELIVERY_TYPE_LABELS[o.deliveryType]
+                    : '未指定'}
+                  {o.deliveryProvider
+                    ? ` · ${DELIVERY_PROVIDER_LABELS[o.deliveryProvider]}`
+                    : ''}
+                  {typeof o.deliveryFeeCents === 'number'
+                    ? ` · 费 $${cents(o.deliveryFeeCents)}`
+                    : ''}
+                  {typeof o.deliveryEtaMinMinutes === 'number' &&
+                  typeof o.deliveryEtaMaxMinutes === 'number'
+                    ? ` · ETA ${o.deliveryEtaMinMinutes}-${o.deliveryEtaMaxMinutes} min`
+                    : ''}
+                  {o.externalDeliveryId ? ` · ID ${o.externalDeliveryId}` : ''}
+                </div>
+              )}
               <div className="flex flex-wrap gap-2 text-xs text-gray-500">
                 <span className="break-all">ID: {o.id}</span>
                 <Link
