@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  IsEnum,
   IsIn,
   IsInt,
   IsOptional,
@@ -9,6 +10,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { IsStableId } from '../../common/validators/is-stable-id.validator';
+import { DeliveryType } from '@prisma/client';
 
 class CreateOrderItemDto {
   @IsString() productId!: string;
@@ -33,6 +35,10 @@ export class CreateOrderDto {
 
   @IsIn(['pickup', 'dine_in'])
   fulfillmentType!: 'pickup' | 'dine_in';
+
+  @IsOptional()
+  @IsEnum(DeliveryType)
+  deliveryType?: DeliveryType;
 
   @IsOptional()
   @IsArray()
