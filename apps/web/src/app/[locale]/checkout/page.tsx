@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams, useParams } from "next/navigation";
 import { apiFetch } from "@/lib/api-client";
 import { usePersistentCart } from "@/lib/cart";
 import {
@@ -10,9 +10,9 @@ import {
   HOSTED_CHECKOUT_CURRENCY,
   LANGUAGE_NAMES,
   LOCALES,
-  Locale,
-  LocalizedCartItem,
-  ScheduleSlot,
+  type Locale,
+  type LocalizedCartItem,
+  type ScheduleSlot,
   TAX_ON_DELIVERY,
   TAX_RATE,
   UI_STRINGS,
@@ -21,12 +21,13 @@ import {
   formatWithTotal,
   localizeMenuItem,
   MENU_ITEM_LOOKUP,
-  HostedCheckoutResponse,
-} from "@/app/[locale]/shared";
+  type HostedCheckoutResponse,
+} from "@/lib/order/shared";
 
 export default function CheckoutPage() {
   const pathname = usePathname() || "/";
-  const locale = (pathname.startsWith("/zh") ? "zh" : "en") as Locale;
+  const params = useParams<{ locale?: string }>();
+  const locale = (params?.locale === "zh" ? "zh" : "en") as Locale;
 
   const router = useRouter();
   const searchParams = useSearchParams();
