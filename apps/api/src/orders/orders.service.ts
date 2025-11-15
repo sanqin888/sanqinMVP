@@ -18,7 +18,6 @@ import {
   OrderStatus,
 } from './order-status';
 import { normalizeStableId } from '../common/utils/stable-id';
-import type { DeliveryProvider, DeliveryType } from './types';
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 
@@ -31,13 +30,13 @@ const DELIVERY_RULES: Record<
   DeliveryType,
   { provider: DeliveryProvider; feeCents: number; etaRange: [number, number] }
 > = {
-  STANDARD: {
-    provider: 'DOORDASH_DRIVE',
+  [DeliveryType.STANDARD]: {
+    provider: DeliveryProvider.DOORDASH_DRIVE,
     feeCents: 500,
     etaRange: [45, 60],
   },
-  PRIORITY: {
-    provider: 'UBER_DIRECT',
+  [DeliveryType.PRIORITY]: {
+    provider: DeliveryProvider.UBER_DIRECT,
     feeCents: 900,
     etaRange: [25, 35],
   },

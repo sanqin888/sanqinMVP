@@ -1,10 +1,7 @@
 export type Channel = 'web' | 'in_store' | 'ubereats';
 export type FulfillmentType = 'pickup' | 'dine_in';
-export const DELIVERY_TYPES = ['STANDARD', 'PRIORITY'] as const;
-export type DeliveryType = (typeof DELIVERY_TYPES)[number];
-
-export const DELIVERY_PROVIDERS = ['DOORDASH_DRIVE', 'UBER_DIRECT'] as const;
-export type DeliveryProvider = (typeof DELIVERY_PROVIDERS)[number];
+export type DeliveryType = 'STANDARD' | 'PRIORITY';
+export type DeliveryProvider = 'DOORDASH_DRIVE' | 'UBER_DIRECT';
 
 export interface OrderItem {
   id: string;
