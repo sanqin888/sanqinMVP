@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams, useParams } from "next/navigation";
 import { apiFetch } from "@/lib/api-client";
 import { usePersistentCart } from "@/lib/cart";
+import { calculateDistanceKm, geocodeAddress, STORE_COORDINATES, DELIVERY_RADIUS_KM } from "@/lib/location";
 import {
   ConfirmationState,
   HOSTED_CHECKOUT_CURRENCY,
@@ -40,6 +41,8 @@ type DeliveryOptionDisplay = {
   title: string;
   description: string;
 };
+
+type DistanceMessage = { text: string; tone: "muted" | "info" | "success" | "error" };
 
 const DELIVERY_OPTION_DEFINITIONS: Record<DeliveryTypeOption, DeliveryOptionDefinition> = {
   STANDARD: {
@@ -86,6 +89,7 @@ export default function CheckoutPage() {
   const q = searchParams?.toString();
 
   const strings = UI_STRINGS[locale];
+  const radiusLabel = `${DELIVERY_RADIUS_KM} km`;
   const orderHref = q ? `/${locale}?${q}` : `/${locale}`;
 
   const deliveryOptions = useMemo<DeliveryOptionDisplay[]>(() => {
@@ -127,6 +131,13 @@ export default function CheckoutPage() {
   const [confirmation, setConfirmation] = useState<ConfirmationState | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [addressValidation, setAddressValidation] = useState<{
+    distanceKm: number | null;
+    isChecking: boolean;
+    error: string | null;
+  }>({ distanceKm: null, isChecking: false, error: null });
+
+  const resetAddressValidation = () => setAddressValidation({ distanceKm: null, isChecking: false, error: null });
 
   const currencyFormatter = useMemo(
     () =>
@@ -140,6 +151,11 @@ export default function CheckoutPage() {
   );
 
   const formatMoney = (x: number) => currencyFormatter.format(x).replace(/^CA\$\s?/, "$");
+  const formatDistanceValue = (km: number) => {
+    const rounded = Math.round(km * 10) / 10;
+    if (!Number.isFinite(rounded)) return `${km} km`;
+    return `${Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1)} km`;
+  };
 
   const subtotal = useMemo(
     () => localizedCartItems.reduce((total, cartItem) => total + cartItem.item.price * cartItem.quantity, 0),
@@ -154,17 +170,67 @@ export default function CheckoutPage() {
   const tax = Math.round(taxableBase * TAX_RATE * 100) / 100;
   const total = subtotal + deliveryFee + tax;
 
+  const addressWithinRadius =
+    addressValidation.distanceKm !== null &&
+    addressValidation.distanceKm <= DELIVERY_RADIUS_KM &&
+    !addressValidation.error;
+
+  const deliveryAddressReady =
+    isDeliveryFulfillment && customer.address.trim().length > 5 && addressWithinRadius;
+
   const canPlaceOrder =
     localizedCartItems.length > 0 &&
     customer.name.trim().length > 0 &&
     customer.phone.trim().length >= 6 &&
-    (fulfillment === "pickup" || customer.address.trim().length > 5);
+    (fulfillment === "pickup" || deliveryAddressReady);
 
   const scheduleLabel = strings.scheduleOptions.find((option) => option.id === schedule)?.label ?? "";
 
   const handleCustomerChange = (field: "name" | "phone" | "address" | "notes", value: string) => {
     setCustomer((prev) => ({ ...prev, [field]: value }));
   };
+
+  useEffect(() => {
+    if (!isDeliveryFulfillment) {
+      resetAddressValidation();
+      return;
+    }
+
+    const query = customer.address.trim();
+    if (query.length < 6) {
+      resetAddressValidation();
+      return;
+    }
+
+    let cancelled = false;
+    const controller = new AbortController();
+    setAddressValidation((prev) => ({ ...prev, isChecking: true, error: null }));
+
+    const debounce = setTimeout(() => {
+      geocodeAddress(query, { signal: controller.signal, cityHint: "Toronto, ON" })
+        .then((coordinates) => {
+          if (cancelled) return;
+          if (!coordinates) {
+            setAddressValidation({ distanceKm: null, isChecking: false, error: strings.deliveryDistance.notFound });
+            return;
+          }
+          const distanceKm = calculateDistanceKm(STORE_COORDINATES, coordinates);
+          setAddressValidation({ distanceKm, isChecking: false, error: null });
+        })
+        .catch((error) => {
+          if (cancelled || (error instanceof Error && error.name === "AbortError")) {
+            return;
+          }
+          setAddressValidation({ distanceKm: null, isChecking: false, error: strings.deliveryDistance.failed });
+        });
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+      clearTimeout(debounce);
+    };
+  }, [customer.address, isDeliveryFulfillment, strings.deliveryDistance.failed, strings.deliveryDistance.notFound]);
 
   const handlePlaceOrder = async () => {
     if (!canPlaceOrder || isSubmitting) return;
@@ -183,6 +249,10 @@ export default function CheckoutPage() {
             deliveryType,
             deliveryProvider: selectedDeliveryDefinition.provider,
             deliveryEtaMinutes: selectedDeliveryDefinition.eta,
+            deliveryDistanceKm:
+              addressValidation.distanceKm !== null
+                ? Math.round(addressValidation.distanceKm * 100) / 100
+                : undefined,
           }
         : null;
 
@@ -241,6 +311,37 @@ export default function CheckoutPage() {
   };
 
   const payButtonLabel = isSubmitting ? strings.processing : formatWithTotal(strings.payCta, currencyFormatter.format(total));
+
+  const applyDistanceTemplate = (template: string, distanceLabel?: string) =>
+    template.replace("{distance}", distanceLabel ?? "").replace("{radius}", radiusLabel);
+
+  let addressDistanceMessage: DistanceMessage | null = null;
+  if (isDeliveryFulfillment) {
+    if (customer.address.trim().length === 0) {
+      addressDistanceMessage = {
+        text: applyDistanceTemplate(strings.deliveryDistance.restriction),
+        tone: "muted",
+      };
+    } else if (addressValidation.isChecking) {
+      addressDistanceMessage = { text: strings.deliveryDistance.checking, tone: "info" };
+    } else if (addressValidation.error) {
+      addressDistanceMessage = { text: addressValidation.error, tone: "error" };
+    } else if (addressValidation.distanceKm !== null) {
+      const distanceLabel = formatDistanceValue(addressValidation.distanceKm);
+      const template = addressWithinRadius
+        ? strings.deliveryDistance.withinRange
+        : strings.deliveryDistance.outsideRange;
+      addressDistanceMessage = {
+        text: applyDistanceTemplate(template, distanceLabel),
+        tone: addressWithinRadius ? "success" : "error",
+      };
+    } else {
+      addressDistanceMessage = {
+        text: applyDistanceTemplate(strings.deliveryDistance.restriction),
+        tone: "muted",
+      };
+    }
+  }
 
   return (
     <div className="space-y-10 pb-24">
@@ -485,13 +586,28 @@ export default function CheckoutPage() {
                 {fulfillment === "delivery" ? (
                   <label className="block text-xs font-medium text-slate-600">
                     {strings.contactFields.address}
-                    <textarea
-                      value={customer.address}
-                      onChange={(event) => handleCustomerChange("address", event.target.value)}
-                      placeholder={strings.contactFields.addressPlaceholder}
-                      className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
-                      rows={2}
-                    />
+                    <div className="mt-1 space-y-1">
+                      <textarea
+                        value={customer.address}
+                        onChange={(event) => handleCustomerChange("address", event.target.value)}
+                        placeholder={strings.contactFields.addressPlaceholder}
+                        className="w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                        rows={2}
+                      />
+                      {addressDistanceMessage ? (
+                        <p
+                          className={`text-xs ${
+                            addressDistanceMessage.tone === "success"
+                              ? "text-emerald-600"
+                              : addressDistanceMessage.tone === "error"
+                                ? "text-red-600"
+                                : "text-slate-500"
+                          }`}
+                        >
+                          {addressDistanceMessage.text}
+                        </p>
+                      ) : null}
+                    </div>
                   </label>
                 ) : null}
                 <label className="block text-xs font-medium text-slate-600">
