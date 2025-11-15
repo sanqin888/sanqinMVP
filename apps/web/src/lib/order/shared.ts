@@ -47,6 +47,15 @@ type QuantityStrings = {
   decrease: string;
 };
 
+type DeliveryDistanceStrings = {
+  restriction: string; // {radius}
+  checking: string;
+  withinRange: string; // {distance} {radius}
+  outsideRange: string; // {distance} {radius}
+  notFound: string;
+  failed: string;
+};
+
 export const UI_STRINGS: Record<
   Locale,
   {
@@ -72,6 +81,7 @@ export const UI_STRINGS: Record<
     summary: SummaryStrings;
     contactInfoLabel: string;
     contactFields: ContactFields;
+    deliveryDistance: DeliveryDistanceStrings;
 
     // ↙↙ 本次补充（缺少会导致运行时报错）
     cartEmpty: string;
@@ -143,6 +153,14 @@ export const UI_STRINGS: Record<
       phonePlaceholder: "Mobile number",
       addressPlaceholder: "Street, city, postal code",
       notesPlaceholder: "E.g., less spicy / no cilantro",
+    },
+    deliveryDistance: {
+      restriction: "Delivery available only within {radius} of the restaurant.",
+      checking: "Checking delivery distance...",
+      withinRange: "Delivery distance: {distance} (within the {radius} limit).",
+      outsideRange: "Delivery distance: {distance}, which is outside our {radius} limit.",
+      notFound: "We couldn’t locate that address. Please include street, city, and postal code.",
+      failed: "We couldn’t verify this address right now. Please try again.",
     },
 
     // ✅ 新增
@@ -220,6 +238,14 @@ export const UI_STRINGS: Record<
       phonePlaceholder: "手机号",
       addressPlaceholder: "街道 / 城市 / 邮编",
       notesPlaceholder: "例如：少辣 / 不要香菜",
+    },
+    deliveryDistance: {
+      restriction: "目前仅支持距离门店 {radius} 内的外送。",
+      checking: "正在计算配送距离...",
+      withinRange: "配送距离约 {distance}，在 {radius} 范围内。",
+      outsideRange: "配送距离约 {distance}，超出 {radius} 限制。",
+      notFound: "未能定位该地址，请补充街道、城市与邮编信息。",
+      failed: "暂时无法验证地址，请稍后再试。",
     },
 
     // ✅ 新增
