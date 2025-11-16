@@ -44,6 +44,44 @@ type DeliveryOptionDisplay = {
 
 type DistanceMessage = { text: string; tone: "muted" | "info" | "success" | "error" };
 
+type CustomerInfo = {
+  name: string;
+  phone: string;
+  addressLine1: string;
+  addressLine2: string;
+  city: string;
+  province: string;
+  postalCode: string;
+  notes: string;
+};
+
+const DEFAULT_CITY = "Toronto";
+const DEFAULT_PROVINCE = "ON";
+const DELIVERY_COUNTRY = "Canada";
+const POSTAL_CODE_PATTERN = /^[A-Za-z]\d[A-Za-z]\s?\d[A-Za-z]\d$/;
+
+const formatDeliveryAddress = (customer: CustomerInfo) => {
+  const cityProvince = [customer.city.trim(), customer.province.trim()].filter(Boolean).join(", ");
+  const segments = [
+    customer.addressLine1.trim(),
+    customer.addressLine2.trim(),
+    cityProvince,
+    customer.postalCode.trim(),
+    DELIVERY_COUNTRY,
+  ].filter(Boolean);
+  return segments.join(", ");
+};
+
+const formatPostalCodeInput = (value: string) => {
+  const sanitized = value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (sanitized.length <= 3) {
+    return sanitized;
+  }
+  return `${sanitized.slice(0, 3)} ${sanitized.slice(3, 6)}`.trim();
+};
+
+const isPostalCodeValid = (value: string) => POSTAL_CODE_PATTERN.test(value.trim().toUpperCase());
+
 const DELIVERY_OPTION_DEFINITIONS: Record<DeliveryTypeOption, DeliveryOptionDefinition> = {
   STANDARD: {
     provider: "DOORDASH_DRIVE",
@@ -122,10 +160,14 @@ export default function CheckoutPage() {
   const [fulfillment, setFulfillment] = useState<"pickup" | "delivery">("pickup");
   const [deliveryType, setDeliveryType] = useState<DeliveryTypeOption>("STANDARD");
   const [schedule, setSchedule] = useState<ScheduleSlot>("asap");
-  const [customer, setCustomer] = useState({
+  const [customer, setCustomer] = useState<CustomerInfo>({
     name: "",
     phone: "",
-    address: "",
+    addressLine1: "",
+    addressLine2: "",
+    city: DEFAULT_CITY,
+    province: DEFAULT_PROVINCE,
+    postalCode: "",
     notes: "",
   });
   const [confirmation, setConfirmation] = useState<ConfirmationState | null>(null);
@@ -157,6 +199,9 @@ export default function CheckoutPage() {
     return `${Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1)} km`;
   };
 
+  const applyDistanceTemplate = (template: string, distanceLabel?: string) =>
+    template.replace("{distance}", distanceLabel ?? "").replace("{radius}", radiusLabel);
+
   const subtotal = useMemo(
     () => localizedCartItems.reduce((total, cartItem) => total + cartItem.item.price * cartItem.quantity, 0),
     [localizedCartItems],
@@ -170,13 +215,22 @@ export default function CheckoutPage() {
   const tax = Math.round(taxableBase * TAX_RATE * 100) / 100;
   const total = subtotal + deliveryFee + tax;
 
+  const deliveryAddressText = useMemo(() => formatDeliveryAddress(customer), [customer]);
+
   const addressWithinRadius =
     addressValidation.distanceKm !== null &&
     addressValidation.distanceKm <= DELIVERY_RADIUS_KM &&
     !addressValidation.error;
 
+  const postalCodeIsValid = isPostalCodeValid(customer.postalCode);
+  const hasDeliveryAddressInputs = customer.addressLine1.trim().length > 0 && postalCodeIsValid;
+  const showPostalCodeError = customer.postalCode.trim().length > 0 && !postalCodeIsValid;
   const deliveryAddressReady =
-    isDeliveryFulfillment && customer.address.trim().length > 5 && addressWithinRadius;
+    isDeliveryFulfillment &&
+    customer.addressLine1.trim().length > 0 &&
+    customer.city.trim().length > 0 &&
+    customer.province.trim().length > 0 &&
+    postalCodeIsValid;
 
   const canPlaceOrder =
     localizedCartItems.length > 0 &&
@@ -186,51 +240,57 @@ export default function CheckoutPage() {
 
   const scheduleLabel = strings.scheduleOptions.find((option) => option.id === schedule)?.label ?? "";
 
-  const handleCustomerChange = (field: "name" | "phone" | "address" | "notes", value: string) => {
+  const handleCustomerChange = (field: keyof CustomerInfo, value: string) => {
     setCustomer((prev) => ({ ...prev, [field]: value }));
   };
 
   useEffect(() => {
     if (!isDeliveryFulfillment) {
       resetAddressValidation();
-      return;
     }
+  }, [isDeliveryFulfillment]);
 
-    const query = customer.address.trim();
-    if (query.length < 6) {
-      resetAddressValidation();
-      return;
+  useEffect(() => {
+    if (!isDeliveryFulfillment) return;
+    resetAddressValidation();
+  }, [
+    customer.addressLine1,
+    customer.addressLine2,
+    customer.city,
+    customer.province,
+    customer.postalCode,
+    isDeliveryFulfillment,
+  ]);
+
+  const validateDeliveryDistance = async () => {
+    setAddressValidation({ distanceKm: null, isChecking: true, error: null });
+
+    try {
+      const coordinates = await geocodeAddress(deliveryAddressText, {
+        cityHint: `${customer.city}, ${customer.province}`,
+      });
+
+      if (!coordinates) {
+        setAddressValidation({ distanceKm: null, isChecking: false, error: strings.deliveryDistance.notFound });
+        return { success: false } as const;
+      }
+
+      const distanceKm = calculateDistanceKm(STORE_COORDINATES, coordinates);
+
+      if (distanceKm > DELIVERY_RADIUS_KM) {
+        const distanceLabel = formatDistanceValue(distanceKm);
+        const message = applyDistanceTemplate(strings.deliveryDistance.outsideRange, distanceLabel);
+        setAddressValidation({ distanceKm, isChecking: false, error: message });
+        return { success: false } as const;
+      }
+
+      setAddressValidation({ distanceKm, isChecking: false, error: null });
+      return { success: true, distanceKm } as const;
+    } catch {
+      setAddressValidation({ distanceKm: null, isChecking: false, error: strings.deliveryDistance.failed });
+      return { success: false } as const;
     }
-
-    let cancelled = false;
-    const controller = new AbortController();
-    setAddressValidation((prev) => ({ ...prev, isChecking: true, error: null }));
-
-    const debounce = setTimeout(() => {
-      geocodeAddress(query, { signal: controller.signal, cityHint: "Toronto, ON" })
-        .then((coordinates) => {
-          if (cancelled) return;
-          if (!coordinates) {
-            setAddressValidation({ distanceKm: null, isChecking: false, error: strings.deliveryDistance.notFound });
-            return;
-          }
-          const distanceKm = calculateDistanceKm(STORE_COORDINATES, coordinates);
-          setAddressValidation({ distanceKm, isChecking: false, error: null });
-        })
-        .catch((error) => {
-          if (cancelled || (error instanceof Error && error.name === "AbortError")) {
-            return;
-          }
-          setAddressValidation({ distanceKm: null, isChecking: false, error: strings.deliveryDistance.failed });
-        });
-    }, 500);
-
-    return () => {
-      cancelled = true;
-      controller.abort();
-      clearTimeout(debounce);
-    };
-  }, [customer.address, isDeliveryFulfillment, strings.deliveryDistance.failed, strings.deliveryDistance.notFound]);
+  };
 
   const handlePlaceOrder = async () => {
     if (!canPlaceOrder || isSubmitting) return;
@@ -238,21 +298,32 @@ export default function CheckoutPage() {
     setErrorMessage(null);
     setConfirmation(null);
 
+    setIsSubmitting(true);
+
+    let deliveryDistanceKm: number | null = null;
+
+    if (isDeliveryFulfillment) {
+      const validationResult = await validateDeliveryDistance();
+      if (!validationResult.success) {
+        setIsSubmitting(false);
+        return;
+      }
+      deliveryDistanceKm = validationResult.distanceKm;
+    } else {
+      resetAddressValidation();
+    }
+
     const orderNumber = `SQ${Date.now().toString().slice(-6)}`;
     const totalCents = Math.round(total * 100);
 
     try {
-      setIsSubmitting(true);
-
       const deliveryMetadata = isDeliveryFulfillment
         ? {
             deliveryType,
             deliveryProvider: selectedDeliveryDefinition.provider,
             deliveryEtaMinutes: selectedDeliveryDefinition.eta,
             deliveryDistanceKm:
-              addressValidation.distanceKm !== null
-                ? Math.round(addressValidation.distanceKm * 100) / 100
-                : undefined,
+              deliveryDistanceKm !== null ? Math.round(deliveryDistanceKm * 100) / 100 : undefined,
           }
         : null;
 
@@ -269,7 +340,7 @@ export default function CheckoutPage() {
         metadata: {
           fulfillment,
           schedule,
-          customer,
+          customer: { ...customer, address: deliveryAddressText },
           subtotal,
           tax,
           taxRate: TAX_RATE,
@@ -312,12 +383,9 @@ export default function CheckoutPage() {
 
   const payButtonLabel = isSubmitting ? strings.processing : formatWithTotal(strings.payCta, currencyFormatter.format(total));
 
-  const applyDistanceTemplate = (template: string, distanceLabel?: string) =>
-    template.replace("{distance}", distanceLabel ?? "").replace("{radius}", radiusLabel);
-
   let addressDistanceMessage: DistanceMessage | null = null;
   if (isDeliveryFulfillment) {
-    if (customer.address.trim().length === 0) {
+    if (!hasDeliveryAddressInputs) {
       addressDistanceMessage = {
         text: applyDistanceTemplate(strings.deliveryDistance.restriction),
         tone: "muted",
@@ -584,31 +652,87 @@ export default function CheckoutPage() {
                   />
                 </label>
                 {fulfillment === "delivery" ? (
-                  <label className="block text-xs font-medium text-slate-600">
-                    {strings.contactFields.address}
-                    <div className="mt-1 space-y-1">
-                      <textarea
-                        value={customer.address}
-                        onChange={(event) => handleCustomerChange("address", event.target.value)}
-                        placeholder={strings.contactFields.addressPlaceholder}
-                        className="w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
-                        rows={2}
+                  <div className="space-y-3 rounded-2xl bg-slate-50 p-3">
+                    <label className="block text-xs font-medium text-slate-600">
+                      {strings.contactFields.addressLine1}
+                      <input
+                        value={customer.addressLine1}
+                        onChange={(event) => handleCustomerChange("addressLine1", event.target.value)}
+                        placeholder={strings.contactFields.addressLine1Placeholder}
+                        className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
                       />
-                      {addressDistanceMessage ? (
-                        <p
-                          className={`text-xs ${
-                            addressDistanceMessage.tone === "success"
-                              ? "text-emerald-600"
-                              : addressDistanceMessage.tone === "error"
-                                ? "text-red-600"
-                                : "text-slate-500"
-                          }`}
-                        >
-                          {addressDistanceMessage.text}
-                        </p>
-                      ) : null}
+                    </label>
+                    <label className="block text-xs font-medium text-slate-600">
+                      {strings.contactFields.addressLine2}
+                      <input
+                        value={customer.addressLine2}
+                        onChange={(event) => handleCustomerChange("addressLine2", event.target.value)}
+                        placeholder={strings.contactFields.addressLine2Placeholder}
+                        className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                      />
+                    </label>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <label className="block text-xs font-medium text-slate-600">
+                        {strings.contactFields.city}
+                        <input
+                          value={customer.city}
+                          onChange={(event) => handleCustomerChange("city", event.target.value)}
+                          placeholder={strings.contactFields.cityPlaceholder}
+                          className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                        />
+                      </label>
+                      <label className="block text-xs font-medium text-slate-600">
+                        {strings.contactFields.province}
+                        <input
+                          value={customer.province}
+                          onChange={(event) => handleCustomerChange("province", event.target.value.toUpperCase())}
+                          placeholder={strings.contactFields.provincePlaceholder}
+                          className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                        />
+                      </label>
                     </div>
-                  </label>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <label className="block text-xs font-medium text-slate-600">
+                        {strings.contactFields.postalCode}
+                        <input
+                          value={customer.postalCode}
+                          onChange={(event) => handleCustomerChange("postalCode", formatPostalCodeInput(event.target.value))}
+                          placeholder={strings.contactFields.postalCodePlaceholder}
+                          className={`mt-1 w-full rounded-2xl border bg-white p-2 text-sm text-slate-700 focus:outline-none ${
+                            showPostalCodeError
+                              ? "border-red-400 focus:border-red-500"
+                              : "border-slate-200 focus:border-slate-400"
+                          }`}
+                        />
+                      </label>
+                      <label className="block text-xs font-medium text-slate-600">
+                        {strings.contactFields.country}
+                        <input
+                          value={DELIVERY_COUNTRY}
+                          disabled
+                          className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-100 p-2 text-sm text-slate-500"
+                        />
+                      </label>
+                    </div>
+                    <p className={`text-xs ${showPostalCodeError ? "text-red-600" : "text-slate-500"}`}>
+                      {showPostalCodeError ? strings.contactFields.postalCodeError : strings.contactFields.postalCodeHint}
+                    </p>
+                    {addressDistanceMessage ? (
+                      <p
+                        className={`text-xs ${
+                          addressDistanceMessage.tone === "success"
+                            ? "text-emerald-600"
+                            : addressDistanceMessage.tone === "error"
+                              ? "text-red-600"
+                              : addressDistanceMessage.tone === "info"
+                                ? "text-slate-600"
+                                : "text-slate-500"
+                        }`}
+                      >
+                        {addressDistanceMessage.text}
+                      </p>
+                    ) : null}
+                  </div>
                 ) : null}
                 <label className="block text-xs font-medium text-slate-600">
                   {strings.contactFields.notes}
