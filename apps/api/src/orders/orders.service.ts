@@ -1,4 +1,5 @@
 import {
+  BadGatewayException,
   BadRequestException,
   Injectable,
   Logger,
@@ -7,13 +8,17 @@ import {
 import { DeliveryProvider, DeliveryType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
-import { CreateOrderDto } from './dto/create-order.dto';
+import { CreateOrderDto, DeliveryDestinationDto } from './dto/create-order.dto';
 import {
   ORDER_STATUS_ADVANCE_FLOW,
   ORDER_STATUS_TRANSITIONS,
   OrderStatus,
 } from './order-status';
 import { normalizeStableId } from '../common/utils/stable-id';
+import {
+  UberDirectDropoffDetails,
+  UberDirectService,
+} from '../deliveries/uber-direct.service';
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 
@@ -45,6 +50,7 @@ export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly loyalty: LoyaltyService,
+    private readonly uberDirect: UberDirectService,
   ) {}
 
   /** 计算“本单可用的抵扣额（分）”，受余额 / 用户请求 / 小计 的三重上限约束 */
@@ -72,6 +78,15 @@ export class OrdersService {
     dto: CreateOrderDto,
     idempotencyKey?: string,
   ): Promise<OrderWithItems> {
+    if (
+      dto.deliveryType === DeliveryType.PRIORITY &&
+      !dto.deliveryDestination
+    ) {
+      throw new BadRequestException(
+        'deliveryDestination is required for priority delivery orders',
+      );
+    }
+
     const headerKey =
       typeof idempotencyKey === 'string' ? idempotencyKey.trim() : undefined;
     const normalizedHeaderKey = normalizeStableId(headerKey);
@@ -131,7 +146,7 @@ export class OrdersService {
       ? DELIVERY_RULES[dto.deliveryType]
       : undefined;
 
-    const order = await this.prisma.order.create({
+    let order = await this.prisma.order.create({
       data: {
         userId: dto.userId ?? null,
         ...(stableKey ? { clientRequestId: stableKey } : {}),
@@ -167,6 +182,25 @@ export class OrdersService {
       },
       include: { items: true },
     });
+
+    if (dto.deliveryType === DeliveryType.PRIORITY && dto.deliveryDestination) {
+      const destination = this.normalizeDropoff(dto.deliveryDestination);
+      try {
+        order = await this.dispatchPriorityDelivery(order, destination);
+      } catch (error) {
+        this.logger.error(
+          `Failed to dispatch Uber Direct delivery for order ${order.id}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        await this.safeDeleteOrder(order.id);
+        throw new BadGatewayException(
+          `Failed to dispatch priority delivery to Uber Direct: ${
+            error instanceof Error ? error.message : 'unknown error'
+          }`,
+        );
+      }
+    }
 
     return order;
   }
@@ -244,5 +278,85 @@ export class OrdersService {
       })) as OrderWithItems;
 
     return this.updateStatus(id, next);
+  }
+
+  private normalizeDropoff(
+    destination: DeliveryDestinationDto,
+  ): UberDirectDropoffDetails {
+    const sanitize = (value?: string | null): string | undefined => {
+      if (typeof value !== 'string') return undefined;
+      const trimmed = value.trim();
+      return trimmed.length > 0 ? trimmed : undefined;
+    };
+
+    return {
+      name: sanitize(destination.name) ?? destination.name,
+      phone: sanitize(destination.phone) ?? destination.phone,
+      company: sanitize(destination.company),
+      addressLine1:
+        sanitize(destination.addressLine1) ?? destination.addressLine1,
+      addressLine2: sanitize(destination.addressLine2),
+      city: sanitize(destination.city) ?? destination.city,
+      province: sanitize(destination.province) ?? destination.province,
+      postalCode: sanitize(destination.postalCode) ?? destination.postalCode,
+      country: sanitize(destination.country) ?? 'Canada',
+      instructions: sanitize(destination.instructions),
+      notes: sanitize(destination.notes),
+      latitude: this.sanitizeCoordinate(destination.latitude),
+      longitude: this.sanitizeCoordinate(destination.longitude),
+      tipCents: this.sanitizeTip(destination.tipCents),
+    };
+  }
+
+  private sanitizeCoordinate(value?: number): number | undefined {
+    return typeof value === 'number' && Number.isFinite(value)
+      ? value
+      : undefined;
+  }
+
+  private sanitizeTip(value?: number): number | undefined {
+    if (typeof value !== 'number' || Number.isNaN(value)) return undefined;
+    return Math.max(0, Math.round(value));
+  }
+
+  private async dispatchPriorityDelivery(
+    order: OrderWithItems,
+    destination: UberDirectDropoffDetails,
+  ): Promise<OrderWithItems> {
+    const response = await this.uberDirect.createDelivery({
+      orderId: order.id,
+      pickupCode: order.pickupCode,
+      reference: order.clientRequestId,
+      totalCents: order.totalCents,
+      items: order.items.map((item) => ({
+        name: item.productId,
+        quantity: item.qty,
+        priceCents:
+          typeof item.unitPriceCents === 'number'
+            ? item.unitPriceCents
+            : undefined,
+      })),
+      destination,
+    });
+
+    return this.prisma.order.update({
+      where: { id: order.id },
+      data: { externalDeliveryId: response.deliveryId },
+      include: { items: true },
+    });
+  }
+
+  private async safeDeleteOrder(id: string): Promise<void> {
+    try {
+      await this.prisma.order.delete({ where: { id } });
+    } catch (cleanupError) {
+      this.logger.error(
+        `Failed to roll back order ${id} after delivery failure: ${
+          cleanupError instanceof Error
+            ? cleanupError.message
+            : String(cleanupError)
+        }`,
+      );
+    }
   }
 }
