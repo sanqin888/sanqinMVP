@@ -27,11 +27,22 @@ type SummaryStrings = {
 type ContactFields = {
   name: string;
   phone: string;
-  address: string;
   notes: string;
+  addressLine1: string;
+  addressLine2: string;
+  city: string;
+  province: string;
+  postalCode: string;
+  country: string;
   namePlaceholder: string;
   phonePlaceholder: string;
-  addressPlaceholder: string;
+  addressLine1Placeholder: string;
+  addressLine2Placeholder: string;
+  cityPlaceholder: string;
+  provincePlaceholder: string;
+  postalCodePlaceholder: string;
+  postalCodeHint: string;
+  postalCodeError: string;
   notesPlaceholder: string;
 };
 type FulfillmentStrings = {
@@ -147,11 +158,22 @@ export const UI_STRINGS: Record<
     contactFields: {
       name: "Name",
       phone: "Phone",
-      address: "Address",
       notes: "Notes",
+      addressLine1: "Address line 1",
+      addressLine2: "Address line 2",
+      city: "City",
+      province: "Province",
+      postalCode: "Postal code",
+      country: "Country",
       namePlaceholder: "Your name",
       phonePlaceholder: "Mobile number",
-      addressPlaceholder: "Street, city, postal code",
+      addressLine1Placeholder: "Street number + street",
+      addressLine2Placeholder: "Apt / Unit / Buzz Code (optional)",
+      cityPlaceholder: "Toronto",
+      provincePlaceholder: "ON",
+      postalCodePlaceholder: "M2N 7J5",
+      postalCodeHint: "Format: M2N 7J5",
+      postalCodeError: "Enter a valid postal code in the M2N 7J5 format.",
       notesPlaceholder: "E.g., less spicy / no cilantro",
     },
     deliveryDistance: {
@@ -232,11 +254,22 @@ export const UI_STRINGS: Record<
     contactFields: {
       name: "姓名",
       phone: "电话",
-      address: "地址",
       notes: "备注",
+      addressLine1: "地址行 1",
+      addressLine2: "地址行 2",
+      city: "城市",
+      province: "省份",
+      postalCode: "邮编",
+      country: "国家",
       namePlaceholder: "请输入姓名",
       phonePlaceholder: "手机号",
-      addressPlaceholder: "街道 / 城市 / 邮编",
+      addressLine1Placeholder: "门牌号 + 街道",
+      addressLine2Placeholder: "公寓号 / 门禁码（选填）",
+      cityPlaceholder: "Toronto",
+      provincePlaceholder: "ON",
+      postalCodePlaceholder: "M2N 7J5",
+      postalCodeHint: "格式：M2N 7J5",
+      postalCodeError: "请填写正确的邮编（例如 M2N 7J5）。",
       notesPlaceholder: "例如：少辣 / 不要香菜",
     },
     deliveryDistance: {
