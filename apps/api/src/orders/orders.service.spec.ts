@@ -93,9 +93,9 @@ describe('OrdersService', () => {
       deliveryType: DeliveryType.PRIORITY,
     };
 
-    await expect(
-      service.create(dto as CreateOrderDto),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.create(dto as CreateOrderDto)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
     expect(prisma.order.create).not.toHaveBeenCalled();
   });
 
@@ -139,9 +139,11 @@ describe('OrdersService', () => {
     const order = await service.create(dto, undefined);
 
     expect(uberDirect.createDelivery).toHaveBeenCalledWith(
-      expect.objectContaining({
+      expect.objectContaining<Record<string, unknown>>({
         orderId: 'order-1',
-        destination: expect.objectContaining({ postalCode: 'M3J 0L9' }),
+        destination: expect.objectContaining<Record<string, unknown>>({
+          postalCode: 'M3J 0L9',
+        }),
       }),
     );
     expect(order.externalDeliveryId).toBe('uber-123');
@@ -181,6 +183,8 @@ describe('OrdersService', () => {
     await expect(service.create(dto)).rejects.toBeInstanceOf(
       BadGatewayException,
     );
-    expect(prisma.order.delete).toHaveBeenCalledWith({ where: { id: 'order-err' } });
+    expect(prisma.order.delete).toHaveBeenCalledWith({
+      where: { id: 'order-err' },
+    });
   });
 });

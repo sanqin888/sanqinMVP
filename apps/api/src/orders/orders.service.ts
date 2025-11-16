@@ -78,7 +78,10 @@ export class OrdersService {
     dto: CreateOrderDto,
     idempotencyKey?: string,
   ): Promise<OrderWithItems> {
-    if (dto.deliveryType === DeliveryType.PRIORITY && !dto.deliveryDestination) {
+    if (
+      dto.deliveryType === DeliveryType.PRIORITY &&
+      !dto.deliveryDestination
+    ) {
       throw new BadRequestException(
         'deliveryDestination is required for priority delivery orders',
       );
@@ -290,7 +293,8 @@ export class OrdersService {
       name: sanitize(destination.name) ?? destination.name,
       phone: sanitize(destination.phone) ?? destination.phone,
       company: sanitize(destination.company),
-      addressLine1: sanitize(destination.addressLine1) ?? destination.addressLine1,
+      addressLine1:
+        sanitize(destination.addressLine1) ?? destination.addressLine1,
       addressLine2: sanitize(destination.addressLine2),
       city: sanitize(destination.city) ?? destination.city,
       province: sanitize(destination.province) ?? destination.province,
@@ -327,9 +331,10 @@ export class OrdersService {
       items: order.items.map((item) => ({
         name: item.productId,
         quantity: item.qty,
-        priceCents: typeof item.unitPriceCents === 'number'
-          ? item.unitPriceCents
-          : undefined,
+        priceCents:
+          typeof item.unitPriceCents === 'number'
+            ? item.unitPriceCents
+            : undefined,
       })),
       destination,
     });

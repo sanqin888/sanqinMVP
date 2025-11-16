@@ -2,6 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { isAxiosError } from 'axios';
 
+interface UberDirectOAuthResponse {
+  access_token?: string;
+  expires_in?: number | string;
+}
+
+type UberDirectApiResponse = Record<string, unknown>;
+
 export interface UberDirectDropoffDetails {
   name: string;
   phone: string;
@@ -71,19 +78,24 @@ const parseOptionalNumber = (value: string | undefined): number | undefined => {
   return Number.isFinite(parsed) ? parsed : undefined;
 };
 
-const trimToUndefined = (value: string | undefined | null): string | undefined => {
+const trimToUndefined = (
+  value: string | undefined | null,
+): string | undefined => {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
 };
 
 const compact = (source: Record<string, unknown>): Record<string, unknown> => {
-  return Object.entries(source).reduce<Record<string, unknown>>((acc, [key, value]) => {
-    if (value === undefined || value === null) return acc;
-    if (typeof value === 'string' && value.trim() === '') return acc;
-    acc[key] = value;
-    return acc;
-  }, {});
+  return Object.entries(source).reduce<Record<string, unknown>>(
+    (acc, [key, value]) => {
+      if (value === undefined || value === null) return acc;
+      if (typeof value === 'string' && value.trim() === '') return acc;
+      acc[key] = value;
+      return acc;
+    },
+    {},
+  );
 };
 
 const splitName = (raw: string | undefined) => {
@@ -117,40 +129,72 @@ export class UberDirectService {
   private tokenCache?: TokenCache;
 
   constructor(private readonly http: HttpService) {
-    this.apiBase = (process.env.UBER_DIRECT_API_BASE ?? 'https://api.uber.com').replace(/\/+$/, '');
-    this.customerId = trimToUndefined(process.env.UBER_DIRECT_CUSTOMER_ID) ?? '';
-    this.serverToken = trimToUndefined(process.env.UBER_DIRECT_SERVER_TOKEN) ?? '';
+    this.apiBase = (
+      process.env.UBER_DIRECT_API_BASE ?? 'https://api.uber.com'
+    ).replace(/\/+$/, '');
+    this.customerId =
+      trimToUndefined(process.env.UBER_DIRECT_CUSTOMER_ID) ?? '';
+    this.serverToken =
+      trimToUndefined(process.env.UBER_DIRECT_SERVER_TOKEN) ?? '';
     this.clientId = trimToUndefined(process.env.UBER_DIRECT_CLIENT_ID) ?? '';
-    this.clientSecret = trimToUndefined(process.env.UBER_DIRECT_CLIENT_SECRET) ?? '';
-    this.oauthScope = trimToUndefined(process.env.UBER_DIRECT_OAUTH_SCOPE) ?? 'eats.deliveries';
+    this.clientSecret =
+      trimToUndefined(process.env.UBER_DIRECT_CLIENT_SECRET) ?? '';
+    this.oauthScope =
+      trimToUndefined(process.env.UBER_DIRECT_OAUTH_SCOPE) ?? 'eats.deliveries';
     this.oauthTokenUrl =
-      trimToUndefined(process.env.UBER_DIRECT_OAUTH_URL) ?? 'https://login.uber.com/oauth/v2/token';
+      trimToUndefined(process.env.UBER_DIRECT_OAUTH_URL) ??
+      'https://login.uber.com/oauth/v2/token';
     this.authScheme =
-      trimToUndefined(process.env.UBER_DIRECT_AUTH_SCHEME) ?? (this.serverToken ? 'Token' : 'Bearer');
+      trimToUndefined(process.env.UBER_DIRECT_AUTH_SCHEME) ??
+      (this.serverToken ? 'Token' : 'Bearer');
     this.currency = trimToUndefined(process.env.UBER_DIRECT_CURRENCY) ?? 'CAD';
-    this.requestTimeoutMs = parseNumber(process.env.UBER_DIRECT_TIMEOUT_MS, 20000);
-    this.pickupReadyMinutes = parseNumber(process.env.UBER_DIRECT_PICKUP_READY_MINUTES, 10);
-    this.pickupDeadlineMinutes = parseNumber(process.env.UBER_DIRECT_PICKUP_DEADLINE_MINUTES, 25);
-    this.dropoffReadyMinutes = parseNumber(process.env.UBER_DIRECT_DROPOFF_READY_MINUTES, 30);
-    this.dropoffDeadlineMinutes = parseNumber(process.env.UBER_DIRECT_DROPOFF_DEADLINE_MINUTES, 60);
+    this.requestTimeoutMs = parseNumber(
+      process.env.UBER_DIRECT_TIMEOUT_MS,
+      20000,
+    );
+    this.pickupReadyMinutes = parseNumber(
+      process.env.UBER_DIRECT_PICKUP_READY_MINUTES,
+      10,
+    );
+    this.pickupDeadlineMinutes = parseNumber(
+      process.env.UBER_DIRECT_PICKUP_DEADLINE_MINUTES,
+      25,
+    );
+    this.dropoffReadyMinutes = parseNumber(
+      process.env.UBER_DIRECT_DROPOFF_READY_MINUTES,
+      30,
+    );
+    this.dropoffDeadlineMinutes = parseNumber(
+      process.env.UBER_DIRECT_DROPOFF_DEADLINE_MINUTES,
+      60,
+    );
 
     this.pickup = {
-      businessName: trimToUndefined(process.env.UBER_DIRECT_STORE_BUSINESS_NAME) ?? 'San Qin Cafe',
+      businessName:
+        trimToUndefined(process.env.UBER_DIRECT_STORE_BUSINESS_NAME) ??
+        'San Qin Cafe',
       contactName: trimToUndefined(process.env.UBER_DIRECT_STORE_CONTACT),
       phone: trimToUndefined(process.env.UBER_DIRECT_STORE_PHONE) ?? '',
-      addressLine1: trimToUndefined(process.env.UBER_DIRECT_STORE_ADDRESS_LINE1) ?? '',
-      addressLine2: trimToUndefined(process.env.UBER_DIRECT_STORE_ADDRESS_LINE2),
+      addressLine1:
+        trimToUndefined(process.env.UBER_DIRECT_STORE_ADDRESS_LINE1) ?? '',
+      addressLine2: trimToUndefined(
+        process.env.UBER_DIRECT_STORE_ADDRESS_LINE2,
+      ),
       city: trimToUndefined(process.env.UBER_DIRECT_STORE_CITY) ?? '',
       province: trimToUndefined(process.env.UBER_DIRECT_STORE_PROVINCE) ?? '',
-      postalCode: trimToUndefined(process.env.UBER_DIRECT_STORE_POSTAL_CODE) ?? '',
-      country: trimToUndefined(process.env.UBER_DIRECT_STORE_COUNTRY) ?? 'Canada',
+      postalCode:
+        trimToUndefined(process.env.UBER_DIRECT_STORE_POSTAL_CODE) ?? '',
+      country:
+        trimToUndefined(process.env.UBER_DIRECT_STORE_COUNTRY) ?? 'Canada',
       instructions: trimToUndefined(process.env.UBER_DIRECT_STORE_INSTRUCTIONS),
       latitude: parseOptionalNumber(process.env.UBER_DIRECT_STORE_LATITUDE),
       longitude: parseOptionalNumber(process.env.UBER_DIRECT_STORE_LONGITUDE),
     };
   }
 
-  async createDelivery(options: UberDirectDeliveryOptions): Promise<UberDirectDeliveryResult> {
+  async createDelivery(
+    options: UberDirectDeliveryOptions,
+  ): Promise<UberDirectDeliveryResult> {
     this.ensureConfigured();
 
     const url = `${this.apiBase}/v1/customers/${encodeURIComponent(this.customerId)}/deliveries`;
@@ -161,16 +205,20 @@ export class UberDirectService {
         `Dispatching Uber Direct delivery order=${options.orderId} postal=${options.destination.postalCode}`,
       );
 
-      const { data } = await this.http.axiosRef.post(url, payload, {
-        headers: {
-          Authorization: await this.buildAuthHeader(),
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
+      const response = await this.http.axiosRef.post<UberDirectApiResponse>(
+        url,
+        payload,
+        {
+          headers: {
+            Authorization: await this.buildAuthHeader(),
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          timeout: this.requestTimeoutMs,
         },
-        timeout: this.requestTimeoutMs,
-      });
+      );
 
-      const normalized = this.normalizeResponse(data);
+      const normalized = this.normalizeResponse(response.data);
       this.logger.log(
         `Uber Direct accepted delivery order=${options.orderId} id=${normalized.deliveryId}`,
       );
@@ -187,7 +235,12 @@ export class UberDirectService {
     if (!this.pickup.phone) {
       throw new Error('UBER_DIRECT_STORE_PHONE is required');
     }
-    if (!this.pickup.addressLine1 || !this.pickup.city || !this.pickup.province || !this.pickup.postalCode) {
+    if (
+      !this.pickup.addressLine1 ||
+      !this.pickup.city ||
+      !this.pickup.province ||
+      !this.pickup.postalCode
+    ) {
       throw new Error('UBER_DIRECT_STORE_ADDRESS_* fields are incomplete');
     }
     if (!this.serverToken && (!this.clientId || !this.clientSecret)) {
@@ -218,7 +271,7 @@ export class UberDirectService {
       client_secret: this.clientSecret,
     });
 
-    const { data } = await this.http.axiosRef.post(
+    const { data } = await this.http.axiosRef.post<UberDirectOAuthResponse>(
       this.oauthTokenUrl,
       params.toString(),
       {
@@ -227,7 +280,8 @@ export class UberDirectService {
       },
     );
 
-    const token = typeof data?.access_token === 'string' ? data.access_token : '';
+    const token =
+      typeof data?.access_token === 'string' ? data.access_token : '';
     if (!token) {
       throw new Error('Uber Direct OAuth response missing access_token');
     }
@@ -237,7 +291,9 @@ export class UberDirectService {
     return token;
   }
 
-  private buildPayload(options: UberDirectDeliveryOptions): Record<string, unknown> {
+  private buildPayload(
+    options: UberDirectDeliveryOptions,
+  ): Record<string, unknown> {
     const destination = options.destination;
     const pickupAddress = this.formatAddress([
       this.pickup.addressLine1,
@@ -262,7 +318,9 @@ export class UberDirectService {
       options.orderId;
 
     const manifestItems = this.buildManifestItems(options.items);
-    const pickupNames = splitName(this.pickup.contactName ?? this.pickup.businessName);
+    const pickupNames = splitName(
+      this.pickup.contactName ?? this.pickup.businessName,
+    );
     const dropoffNames = splitName(destination.name);
 
     const payload = compact({
@@ -280,13 +338,17 @@ export class UberDirectService {
       dropoff_address: dropoffAddress,
       dropoff_phone_number: destination.phone,
       dropoff_instructions:
-        trimToUndefined(destination.instructions) ?? trimToUndefined(destination.notes),
+        trimToUndefined(destination.instructions) ??
+        trimToUndefined(destination.notes),
       dropoff_latitude: destination.latitude,
       dropoff_longitude: destination.longitude,
       manifest_items: manifestItems.length > 0 ? manifestItems : undefined,
       manifest_total_value: Number((options.totalCents / 100).toFixed(2)),
       manifest_currency_code: this.currency,
-      tip: typeof destination.tipCents === 'number' ? Math.max(0, destination.tipCents) : undefined,
+      tip:
+        typeof destination.tipCents === 'number'
+          ? Math.max(0, destination.tipCents)
+          : undefined,
       pickup_ready: this.isoFromNow(this.pickupReadyMinutes),
       pickup_deadline: this.isoFromNow(this.pickupDeadlineMinutes),
       dropoff_ready: this.isoFromNow(this.dropoffReadyMinutes),
@@ -317,7 +379,8 @@ export class UberDirectService {
 
     payload.dropoff = compact({
       instructions:
-        trimToUndefined(destination.instructions) ?? trimToUndefined(destination.notes),
+        trimToUndefined(destination.instructions) ??
+        trimToUndefined(destination.notes),
       contact: compact({
         first_name: dropoffNames.first,
         last_name: dropoffNames.last,
@@ -340,12 +403,17 @@ export class UberDirectService {
     return payload;
   }
 
-  private buildManifestItems(items: UberDirectManifestItem[]): Array<Record<string, unknown>> {
+  private buildManifestItems(
+    items: UberDirectManifestItem[],
+  ): Array<Record<string, unknown>> {
     return items
       .map((item) => ({
         name: trimToUndefined(item.name),
         quantity: item.quantity,
-        price: typeof item.priceCents === 'number' ? Math.round(item.priceCents) : undefined,
+        price:
+          typeof item.priceCents === 'number'
+            ? Math.round(item.priceCents)
+            : undefined,
       }))
       .filter((entry) => Boolean(entry.name) && Number(entry.quantity) > 0)
       .map((entry) => compact(entry));
@@ -408,7 +476,8 @@ export class UberDirectService {
   private wrapUberError(error: unknown): Error {
     if (isAxiosError(error)) {
       const status = error.response?.status;
-      const message = this.extractUberMessage(error.response?.data) ?? error.message;
+      const message =
+        this.extractUberMessage(error.response?.data) ?? error.message;
       return new Error(
         `Uber Direct API error${status ? ` (${status})` : ''}: ${message}`,
       );
@@ -421,13 +490,16 @@ export class UberDirectService {
     const record = data as Record<string, unknown>;
     if (typeof record.message === 'string') return record.message;
     if (typeof record.description === 'string') return record.description;
-    const errors = record.errors;
-    if (Array.isArray(errors) && errors.length > 0) {
-      const first = errors[0];
+    const errors: unknown[] | undefined = Array.isArray(record.errors)
+      ? record.errors
+      : undefined;
+    if (errors && errors.length > 0) {
+      const [first] = errors;
       if (first && typeof first === 'object') {
         const err = first as Record<string, unknown>;
         const code = typeof err.code === 'string' ? err.code : undefined;
-        const message = typeof err.message === 'string' ? err.message : undefined;
+        const message =
+          typeof err.message === 'string' ? err.message : undefined;
         if (code && message) return `${code}: ${message}`;
         return message ?? code;
       }
