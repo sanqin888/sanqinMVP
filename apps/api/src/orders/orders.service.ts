@@ -4,11 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  DeliveryProvider,
-  DeliveryType,
-  Prisma,
-} from '@prisma/client';
+import { DeliveryProvider, DeliveryType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { CreateOrderDto } from './dto/create-order.dto';
