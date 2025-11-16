@@ -45,6 +45,46 @@ exercise the Clover POS proof-of-concept endpoints:
 With the variables defined you can call `/clover/merchant` and `/clover/orders`
 to proxy requests to Clover.
 
+### Uber Direct integration
+
+Priority deliveries now call Uber Direct when an order is created with
+`deliveryType: "PRIORITY"`. Configure the service via environment variables:
+
+| Variable | Description |
+| --- | --- |
+| `UBER_DIRECT_CUSTOMER_ID` | **Required.** Your Uber Direct customer identifier. |
+| `UBER_DIRECT_SERVER_TOKEN` | Preferred auth token (or configure `UBER_DIRECT_CLIENT_ID` + `UBER_DIRECT_CLIENT_SECRET` for OAuth). |
+| `UBER_DIRECT_API_BASE` | Optional API base, defaults to `https://api.uber.com`. |
+| `UBER_DIRECT_AUTH_SCHEME` | Optional auth scheme header, defaults to `Token` when using `SERVER_TOKEN` and `Bearer` otherwise. |
+| `UBER_DIRECT_STORE_*` | Required pickup metadata (`BUSINESS_NAME`, `CONTACT`, `PHONE`, `ADDRESS_LINE1`, `CITY`, `PROVINCE`, `POSTAL_CODE`, optional `COUNTRY`, `LATITUDE`, `LONGITUDE`, `INSTRUCTIONS`). |
+| `UBER_DIRECT_CURRENCY` | Currency code for manifests, defaults to `CAD`. |
+| `UBER_DIRECT_PICKUP_READY_MINUTES`, `UBER_DIRECT_PICKUP_DEADLINE_MINUTES`, `UBER_DIRECT_DROPOFF_READY_MINUTES`, `UBER_DIRECT_DROPOFF_DEADLINE_MINUTES` | Optional SLA windows (minutes). |
+
+Once configured you can trigger a live request by POSTing to `/api/v1/orders`:
+
+```bash
+curl -X POST "http://localhost:4000/api/v1/orders" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "channel":"web",
+        "fulfillmentType":"pickup",
+        "items":[{"productId":"demo","qty":1}],
+        "subtotalCents":2500,
+        "deliveryType":"PRIORITY",
+        "deliveryDestination":{
+          "name":"Test Courier",
+          "phone":"+1-555-555-0100",
+          "addressLine1":"123 Main St",
+          "city":"Toronto",
+          "province":"ON",
+          "postalCode":"M3J 0L9"
+        }
+      }'
+```
+
+Successful requests respond with the order payload containing
+`externalDeliveryId`, allowing you to verify the Uber Direct reference ID.
+
 ## Compile and run the project
 
 ```bash

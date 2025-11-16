@@ -4,6 +4,7 @@ import {
   IsEnum,
   IsIn,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   Min,
@@ -19,6 +20,61 @@ class CreateOrderItemDto {
   // 可选：单价、加料
   @IsOptional() unitPrice?: number;
   @IsOptional() options?: Record<string, unknown>;
+}
+
+export class DeliveryDestinationDto {
+  @IsString()
+  name!: string;
+
+  @IsString()
+  phone!: string;
+
+  @IsString()
+  addressLine1!: string;
+
+  @IsOptional()
+  @IsString()
+  addressLine2?: string;
+
+  @IsString()
+  city!: string;
+
+  @IsString()
+  province!: string;
+
+  @IsString()
+  postalCode!: string;
+
+  @IsOptional()
+  @IsString()
+  country?: string;
+
+  @IsOptional()
+  @IsString()
+  company?: string;
+
+  @IsOptional()
+  @IsString()
+  instructions?: string;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  latitude?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  longitude?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  tipCents?: number;
 }
 
 export class CreateOrderDto {
@@ -67,4 +123,9 @@ export class CreateOrderDto {
   @IsOptional() @IsInt() @Min(0) subtotalCents?: number;
   @IsOptional() @IsInt() @Min(0) taxCents?: number;
   @IsOptional() @IsInt() @Min(0) totalCents?: number;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => DeliveryDestinationDto)
+  deliveryDestination?: DeliveryDestinationDto;
 }
