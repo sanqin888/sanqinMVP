@@ -50,16 +50,22 @@ function readInitialCart(): CartEntry[] {
 }
 
 export function usePersistentCart() {
-  const [items, setItems] = useState<CartEntry[]>(() => readInitialCart());
+  const [items, setItems] = useState<CartEntry[]>([]);
+  const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    setItems(readInitialCart());
+    setIsInitialized(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isInitialized || typeof window === "undefined") return;
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
     } catch {
       // ignore write errors (e.g. private mode)
     }
-  }, [items]);
+  }, [isInitialized, items]);
 
   const addItem = useCallback((itemId: string) => {
     setItems((prev) => {

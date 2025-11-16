@@ -1,11 +1,17 @@
+// apps/web/src/lib/location.ts
+
+// 经纬度坐标类型
 export type Coordinates = {
   latitude: number;
   longitude: number;
 };
 
-const FALLBACK_COORDINATES: Coordinates = {
-  latitude: 43.653225,
-  longitude: -79.383186,
+// ==== 门店坐标配置 ====
+
+// 你的门店：43.760288, -79.412167
+const FALLBACK_STORE_COORDINATES: Coordinates = {
+  latitude: 43.760288,
+  longitude: -79.412167,
 };
 
 const parseEnvCoordinate = (value: string | undefined, fallback: number) => {
@@ -14,20 +20,29 @@ const parseEnvCoordinate = (value: string | undefined, fallback: number) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+// 实际使用的门店坐标（优先用环境变量，没配就用上面的默认）
 export const STORE_COORDINATES: Coordinates = {
-  latitude: parseEnvCoordinate(process.env.NEXT_PUBLIC_STORE_LATITUDE, FALLBACK_COORDINATES.latitude),
-  longitude: parseEnvCoordinate(process.env.NEXT_PUBLIC_STORE_LONGITUDE, FALLBACK_COORDINATES.longitude),
+  latitude: parseEnvCoordinate(
+    process.env.NEXT_PUBLIC_STORE_LATITUDE,
+    FALLBACK_STORE_COORDINATES.latitude,
+  ),
+  longitude: parseEnvCoordinate(
+    process.env.NEXT_PUBLIC_STORE_LONGITUDE,
+    FALLBACK_STORE_COORDINATES.longitude,
+  ),
 };
 
+// 允许配送半径（单位：km），你可以改大一点
 export const DELIVERY_RADIUS_KM = 5;
 
+// ==== 距离计算（haversine）====
+
 const EARTH_RADIUS_KM = 6371;
-
-const geocodeCache = new Map<string, Coordinates>();
-const GEOCODE_ENDPOINT = "https://geocode.maps.co/search";
-
 const toRadians = (value: number) => (value * Math.PI) / 180;
 
+/**
+ * 计算两点之间直线距离（km）
+ */
 export function calculateDistanceKm(from: Coordinates, to: Coordinates): number {
   const latDistance = toRadians(to.latitude - from.latitude);
   const lonDistance = toRadians(to.longitude - from.longitude);
@@ -38,10 +53,24 @@ export function calculateDistanceKm(from: Coordinates, to: Coordinates): number 
       Math.cos(toRadians(to.latitude)) *
       Math.sin(lonDistance / 2) *
       Math.sin(lonDistance / 2);
+
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return EARTH_RADIUS_KM * c;
 }
 
+// ==== 地址解析：调用后端 /location/geocode ====
+
+const geocodeCache = new Map<string, Coordinates>();
+
+// 例如 http://localhost:4000/api/v1
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+
+/**
+ * 调用后端 Nest API，根据地址获取坐标
+ * - 成功：返回 { latitude, longitude }
+ * - 找不到地址：返回 null
+ * - 网络 / 服务器错误：抛异常，让上层 .catch 显示“暂时无法验证地址”
+ */
 export async function geocodeAddress(
   rawQuery: string,
   options?: { signal?: AbortSignal; cityHint?: string },
@@ -50,36 +79,75 @@ export async function geocodeAddress(
   if (!trimmed) return null;
 
   const normalized = trimmed.toLowerCase();
-  const hint = options?.cityHint ? options.cityHint.toLowerCase().trim() : undefined;
-  const cacheKey = hint ? `${normalized}::${hint}` : normalized;
+  const cityKey = options?.cityHint?.toLowerCase().trim();
+  const cacheKey = cityKey ? `${normalized}::${cityKey}` : normalized;
+
   const cached = geocodeCache.get(cacheKey);
   if (cached) return cached;
 
-  const query = options?.cityHint ? `${trimmed}, ${options.cityHint}` : trimmed;
-
-  const url = new URL(GEOCODE_ENDPOINT);
-  url.searchParams.set("q", query);
-  url.searchParams.set("limit", "1");
-  url.searchParams.set("format", "json");
-
-  const response = await fetch(url.toString(), {
-    method: "GET",
-    signal: options?.signal,
-    headers: {
-      Accept: "application/json",
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Geocoding failed (${response.status})`);
+  if (!API_BASE_URL) {
+    console.warn(
+      "[geocodeAddress] NEXT_PUBLIC_API_BASE_URL is empty, cannot call backend geocoding API.",
+    );
+    return null;
   }
 
-  const data = (await response.json()) as Array<{ lat: string; lon: string }>;
-  const [topResult] = data;
-  if (!topResult) return null;
+  const query = options?.cityHint ? `${trimmed}, ${options.cityHint}` : trimmed;
 
-  const latitude = Number(topResult.lat);
-  const longitude = Number(topResult.lon);
+  const res = await fetch(`${API_BASE_URL}/location/geocode`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      address: query,
+      cityHint: options?.cityHint ?? null,
+    }),
+    signal: options?.signal,
+  });
+
+  if (!res.ok) {
+    throw new Error(`Geocoding failed (${res.status})`);
+  }
+
+  const raw = await res.json();
+  // 看看真实返回长啥样（你可以之后把这行删掉）
+  console.log("[geocodeAddress] raw response:", raw);
+
+  // 一些全局响应包装可能是：
+  // { code: "SUCCESS", message: "", data: { latitude, longitude } }
+  // 或者直接 { latitude, longitude }
+  type GeocodeApiResponse =
+    | Coordinates
+    | { data?: Coordinates | null }
+    | { details?: Coordinates | null };
+
+  const hasCoordinates = (value: unknown): value is Coordinates =>
+    typeof value === "object" &&
+    value !== null &&
+    "latitude" in value &&
+    "longitude" in value;
+
+  let candidate: GeocodeApiResponse | null = raw as GeocodeApiResponse;
+
+  if (candidate && typeof candidate === "object") {
+    // 如果顶层没有 lat/long，但有 data，就优先用 data
+    if (!hasCoordinates(candidate) && "data" in candidate && candidate.data) {
+      candidate = candidate.data;
+    }
+    // 有些人喜欢用 details 字段，也顺手兼容一下
+    if (!hasCoordinates(candidate) && "details" in candidate && candidate.details) {
+      candidate = candidate.details;
+    }
+  }
+
+  if (!candidate || typeof candidate !== "object" || !hasCoordinates(candidate)) {
+    return null;
+  }
+
+  const latitude = Number(candidate.latitude);
+  const longitude = Number(candidate.longitude);
+
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
     return null;
   }

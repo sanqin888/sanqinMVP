@@ -1,4 +1,5 @@
 import { Module, type DynamicModule } from '@nestjs/common';
+import { LocationModule } from './location/location.module';
 import { ConfigModule, type ConfigModuleOptions } from '@nestjs/config';
 
 import { AppController } from './app.controller';
@@ -32,6 +33,7 @@ const envConfigModule = configModuleFactory.forRoot({
     LoyaltyModule,
     CloverModule,
     CloverWebhooksModule,
+    LocationModule,
   ],
   controllers: [AppController],
   providers: [AppService],
