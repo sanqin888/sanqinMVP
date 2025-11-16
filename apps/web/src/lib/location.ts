@@ -122,27 +122,26 @@ export async function geocodeAddress(
     | { data?: Coordinates | null }
     | { details?: Coordinates | null };
 
-  let candidate: GeocodeApiResponse | null = raw as GeocodeApiResponse;
+  const hasCoordinates = (value: unknown): value is Coordinates =>
+    typeof value === "object" &&
+    value !== null &&
+    "latitude" in value &&
+    "longitude" in value;
 
+  let candidate: GeocodeApiResponse | null = raw as GeocodeApiResponse;
 
   if (candidate && typeof candidate === "object") {
     // 如果顶层没有 lat/long，但有 data，就优先用 data
-    if (
-      (candidate.latitude === undefined || candidate.longitude === undefined) &&
-      candidate.data
-    ) {
+    if (!hasCoordinates(candidate) && "data" in candidate && candidate.data) {
       candidate = candidate.data;
     }
     // 有些人喜欢用 details 字段，也顺手兼容一下
-    if (
-      (candidate.latitude === undefined || candidate.longitude === undefined) &&
-      candidate.details
-    ) {
+    if (!hasCoordinates(candidate) && "details" in candidate && candidate.details) {
       candidate = candidate.details;
     }
   }
 
-  if (!candidate || typeof candidate !== "object") {
+  if (!candidate || typeof candidate !== "object" || !hasCoordinates(candidate)) {
     return null;
   }
 
