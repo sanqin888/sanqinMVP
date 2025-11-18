@@ -6,14 +6,45 @@ import {
   Post,
 } from '@nestjs/common';
 import { CloverService } from './clover.service';
-import { CreateHostedCheckoutDto } from './dto/create-hosted-checkout.dto'; // ✅ 用你已有的 DTO
+import {
+  CreateHostedCheckoutDto,
+  HOSTED_CHECKOUT_CURRENCY,
+} from './dto/create-hosted-checkout.dto'; // ✅ 用你已有的 DTO
+import { CheckoutIntentsService } from './checkout-intents.service';
+import {
+  parseHostedCheckoutMetadata,
+  type HostedCheckoutMetadata,
+} from './hco-metadata';
 
 @Controller('clover')
 export class CloverPayController {
-  constructor(private readonly clover: CloverService) {}
+  constructor(
+    private readonly clover: CloverService,
+    private readonly checkoutIntents: CheckoutIntentsService,
+  ) {}
 
   @Post('pay/online/hosted-checkout')
   async createCheckout(@Body() dto: CreateHostedCheckoutDto) {
+    if (!dto.metadata) {
+      throw new BadRequestException({
+        code: 'CHECKOUT_METADATA_REQUIRED',
+        message: 'metadata is required to create a hosted checkout session',
+      });
+    }
+
+    let metadata: HostedCheckoutMetadata;
+    try {
+      metadata = parseHostedCheckoutMetadata(dto.metadata);
+    } catch (error) {
+      throw new BadRequestException({
+        code: 'INVALID_CHECKOUT_METADATA',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'invalid hosted checkout metadata payload',
+      });
+    }
+
     const result = await this.clover.createHostedCheckout(dto);
 
     if (!result.ok) {
@@ -33,6 +64,22 @@ export class CloverPayController {
         reason: result.reason,
       });
     }
+
+    const currency = dto.currency ?? HOSTED_CHECKOUT_CURRENCY;
+    const trimmedReference = dto.referenceId?.trim();
+    const referenceId =
+      (trimmedReference && trimmedReference.length > 0
+        ? trimmedReference
+        : undefined) ?? result.checkoutSessionId ?? metadata.customer.phone;
+
+    await this.checkoutIntents.recordIntent({
+      referenceId,
+      checkoutSessionId: result.checkoutSessionId,
+      amountCents: dto.amountCents,
+      currency,
+      locale: metadata.locale,
+      metadata,
+    });
 
     return {
       checkoutUrl: result.href,

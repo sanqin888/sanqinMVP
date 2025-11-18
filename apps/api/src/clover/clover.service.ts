@@ -114,6 +114,134 @@ export class CloverService {
       : undefined;
   }
 
+  private normalizeStatus(value: unknown): string | undefined {
+    if (typeof value !== 'string') return undefined;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed.toUpperCase() : undefined;
+  }
+
+  private interpretStatus(value: unknown, depth = 0): boolean | undefined {
+    if (depth > 5) return undefined;
+    const normalized = this.normalizeStatus(value);
+    if (normalized) {
+      if (
+        normalized.includes('SUCCESS') ||
+        normalized.includes('SUCCEEDED') ||
+        normalized.includes('PAID') ||
+        normalized.includes('COMPLETE') ||
+        normalized.includes('SETTLED') ||
+        normalized.includes('APPROVED')
+      ) {
+        return true;
+      }
+      if (
+        normalized.includes('FAIL') ||
+        normalized.includes('DECLIN') ||
+        normalized.includes('ERROR') ||
+        normalized.includes('CANCEL') ||
+        normalized.includes('VOID') ||
+        normalized.includes('REJECT')
+      ) {
+        return false;
+      }
+    }
+
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        const verdict = this.interpretStatus(entry, depth + 1);
+        if (typeof verdict === 'boolean') return verdict;
+      }
+      return undefined;
+    }
+
+    if (value && typeof value === 'object') {
+      const record = value as Record<string, unknown>;
+      const prioritizedKeys = [
+        'state',
+        'status',
+        'result',
+        'paymentState',
+        'paymentStatus',
+        'checkoutState',
+        'checkoutStatus',
+        'lifecycleState',
+      ];
+
+      for (const key of prioritizedKeys) {
+        if (!(key in record)) continue;
+        const verdict = this.interpretStatus(record[key], depth + 1);
+        if (typeof verdict === 'boolean') return verdict;
+      }
+
+      for (const [, nested] of Object.entries(record)) {
+        const verdict = this.interpretStatus(nested, depth + 1);
+        if (typeof verdict === 'boolean') return verdict;
+      }
+    }
+
+    return undefined;
+  }
+
+  private isCheckoutPaid(payload: unknown): boolean {
+    if (!payload || typeof payload !== 'object') return false;
+    const verdict = this.interpretStatus(payload);
+    return verdict === true;
+  }
+
+  async verifyHostedCheckoutPaid(checkoutSessionId: string): Promise<boolean> {
+    if (!checkoutSessionId) {
+      this.logger.warn('verifyHostedCheckoutPaid called without checkoutSessionId');
+      return false;
+    }
+    if (!this.privateKey || !this.merchantId) {
+      this.logger.error('Cannot verify checkout payment: missing Clover credentials');
+      return false;
+    }
+
+    const url = `${this.apiBase}/invoicingcheckoutservice/v1/checkouts/${encodeURIComponent(checkoutSessionId)}`;
+    this.logger.log(`verifyHostedCheckoutPaid -> GET ${url}`);
+
+    try {
+      const resp = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          'X-Clover-Merchant-Id': this.merchantId,
+          Authorization: `Bearer ${this.privateKey}`,
+        },
+      });
+
+      const rawText = await resp.text();
+      let parsed: unknown;
+      try {
+        parsed = rawText ? JSON.parse(rawText) : undefined;
+      } catch {
+        parsed = undefined;
+      }
+
+      if (!resp.ok) {
+        const preview = rawText.slice(0, 200);
+        this.logger.warn(
+          `verifyHostedCheckoutPaid failed: status=${resp.status} response=${preview}`,
+        );
+        return false;
+      }
+
+      const paid = this.isCheckoutPaid(parsed);
+      if (!paid) {
+        this.logger.log(
+          `verifyHostedCheckoutPaid indicates checkout ${checkoutSessionId} is not settled yet`,
+        );
+      }
+      return paid;
+    } catch (error) {
+      this.logger.error(
+        `verifyHostedCheckoutPaid exception for ${checkoutSessionId}: ${errToString(error)}`,
+      );
+      return false;
+    }
+  }
+
   /**
    * Create Hosted Checkout with redirectUrls to your thank-you page.
    * success: {WEB_BASE_URL}/{locale}/thank-you/{orderId}

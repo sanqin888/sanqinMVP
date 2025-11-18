@@ -30,8 +30,24 @@ type StoredOrder = {
   clientRequestId: string | null;
 };
 
+type StoredCheckoutIntent = {
+  id: string;
+  referenceId: string;
+  checkoutSessionId: string | null;
+  amountCents: number;
+  currency: string;
+  locale: string | null;
+  status: string;
+  result: string | null;
+  orderId: string | null;
+  metadataJson: Prisma.JsonValue;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 class InMemoryPrismaService implements Partial<PrismaService> {
   private orders: StoredOrder[] = [];
+  private checkoutIntents: StoredCheckoutIntent[] = [];
 
   readonly order = {
     create: (args: Prisma.OrderCreateArgs) =>
@@ -43,6 +59,19 @@ class InMemoryPrismaService implements Partial<PrismaService> {
     update: (args: Prisma.OrderUpdateArgs) =>
       Promise.resolve(this.updateOrder(args)),
   } as unknown as PrismaService['order'];
+
+  readonly checkoutIntent = {
+    create: (args: Prisma.CheckoutIntentCreateArgs) =>
+      Promise.resolve(this.createCheckoutIntent(args)),
+    upsert: (args: Prisma.CheckoutIntentUpsertArgs) =>
+      Promise.resolve(this.upsertCheckoutIntent(args)),
+    findUnique: (args: Prisma.CheckoutIntentFindUniqueArgs) =>
+      Promise.resolve(this.findCheckoutIntent(args)),
+    findFirst: (args: Prisma.CheckoutIntentFindFirstArgs) =>
+      Promise.resolve(this.findFirstCheckoutIntent(args)),
+    update: (args: Prisma.CheckoutIntentUpdateArgs) =>
+      Promise.resolve(this.updateCheckoutIntent(args)),
+  } as unknown as PrismaService['checkoutIntent'];
 
   async onModuleInit(): Promise<void> {
     // no-op for tests
@@ -58,6 +87,7 @@ class InMemoryPrismaService implements Partial<PrismaService> {
 
   reset(): void {
     this.orders = [];
+    this.checkoutIntents = [];
   }
 
   private createOrder(args: Prisma.OrderCreateArgs) {
@@ -100,6 +130,112 @@ class InMemoryPrismaService implements Partial<PrismaService> {
 
     this.orders.push(order);
     return this.projectOrder(order, args);
+  }
+
+  private createCheckoutIntent(args: Prisma.CheckoutIntentCreateArgs) {
+    const data = args.data as Prisma.CheckoutIntentCreateInput;
+    const intent = this.buildCheckoutIntentRecord(data);
+    this.checkoutIntents.push(intent);
+    return { ...intent };
+  }
+
+  private upsertCheckoutIntent(args: Prisma.CheckoutIntentUpsertArgs) {
+    const key = args.where.checkoutSessionId;
+    const index = this.checkoutIntents.findIndex(
+      (intent) => intent.checkoutSessionId === key,
+    );
+    if (index >= 0) {
+      const updated = this.buildCheckoutIntentRecord(
+        args.update as Prisma.CheckoutIntentUpdateInput,
+        this.checkoutIntents[index],
+      );
+      this.checkoutIntents[index] = updated;
+      return { ...updated };
+    }
+    return this.createCheckoutIntent({ data: args.create });
+  }
+
+  private findCheckoutIntent(args: Prisma.CheckoutIntentFindUniqueArgs) {
+    if (args.where.checkoutSessionId) {
+      const found = this.checkoutIntents.find(
+        (intent) => intent.checkoutSessionId === args.where.checkoutSessionId,
+      );
+      return found ? { ...found } : null;
+    }
+    if (args.where.id) {
+      const found = this.checkoutIntents.find(
+        (intent) => intent.id === args.where.id,
+      );
+      return found ? { ...found } : null;
+    }
+    return null;
+  }
+
+  private findFirstCheckoutIntent(args: Prisma.CheckoutIntentFindFirstArgs) {
+    let intents = [...this.checkoutIntents];
+    const referenceId = args.where?.referenceId;
+    if (typeof referenceId === 'string') {
+      intents = intents.filter((intent) => intent.referenceId === referenceId);
+    }
+    const orderBy = args.orderBy;
+    if (orderBy && 'createdAt' in orderBy) {
+      const direction = orderBy.createdAt === 'desc' ? -1 : 1;
+      intents.sort(
+        (a, b) =>
+          (a.createdAt.getTime() - b.createdAt.getTime()) * direction,
+      );
+    }
+    const first = intents[0];
+    return first ? { ...first } : null;
+  }
+
+  private updateCheckoutIntent(args: Prisma.CheckoutIntentUpdateArgs) {
+    const id = args.where.id;
+    const index = this.checkoutIntents.findIndex((intent) => intent.id === id);
+    if (index < 0) throw new Error('intent not found');
+    const updated = this.buildCheckoutIntentRecord(
+      args.data as Prisma.CheckoutIntentUpdateInput,
+      this.checkoutIntents[index],
+    );
+    this.checkoutIntents[index] = updated;
+    return { ...updated };
+  }
+
+  private buildCheckoutIntentRecord(
+    data: Prisma.CheckoutIntentCreateInput | Prisma.CheckoutIntentUpdateInput,
+    existing?: StoredCheckoutIntent,
+  ): StoredCheckoutIntent {
+    const now = new Date();
+    return {
+      id:
+        (data.id as string | undefined) ?? existing?.id ?? randomUUID(),
+      referenceId:
+        (data.referenceId as string | undefined) ?? existing?.referenceId ?? '',
+      checkoutSessionId:
+        (data.checkoutSessionId as string | null | undefined) ??
+        existing?.checkoutSessionId ??
+        null,
+      amountCents:
+        typeof data.amountCents === 'number'
+          ? data.amountCents
+          : existing?.amountCents ?? 0,
+      currency:
+        (data.currency as string | undefined) ?? existing?.currency ?? '',
+      locale:
+        (data.locale as string | null | undefined) ?? existing?.locale ?? null,
+      status:
+        (data.status as string | undefined) ?? existing?.status ?? 'pending',
+      result:
+        (data.result as string | null | undefined) ?? existing?.result ?? null,
+      orderId:
+        (data.orderId as string | null | undefined) ?? existing?.orderId ?? null,
+      metadataJson:
+        (data.metadataJson as Prisma.JsonValue | undefined) ??
+        existing?.metadataJson ??
+        {},
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    } satisfies StoredCheckoutIntent;
   }
 
   private findMany(args: Prisma.OrderFindManyArgs = {}) {
