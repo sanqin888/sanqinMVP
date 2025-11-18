@@ -237,4 +237,63 @@ describe('CloverService', () => {
     const body = bodyUnknown as CheckoutBody;
     expect(body.shoppingCart.lineItems[0].price).toBe(2500);
   });
+
+  describe('verifyHostedCheckoutPaid', () => {
+    it('returns true when Clover reports a paid state', async () => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: () =>
+          Promise.resolve(
+            JSON.stringify({
+              state: 'PAID',
+              paymentStatus: 'SUCCESS',
+            }),
+          ),
+      } as unknown as Response);
+
+      await expect(service.verifyHostedCheckoutPaid('session-123')).resolves.toBe(true);
+
+      const [url, init] = getFirstCall();
+      expect(url).toContain('/invoicingcheckoutservice/v1/checkouts/session-123');
+      expect(init.method).toBe('GET');
+    });
+
+    it('returns false when Clover responds with pending state', async () => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: () => Promise.resolve(JSON.stringify({ state: 'PENDING' })),
+      } as unknown as Response);
+
+      await expect(service.verifyHostedCheckoutPaid('session-456')).resolves.toBe(false);
+    });
+
+    it('logs and returns false when Clover rejects the request', async () => {
+      const warnSpy = jest.spyOn<any, any>(service['logger'], 'warn');
+      fetchMock.mockResolvedValue({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+        text: () => Promise.resolve('missing'),
+      } as unknown as Response);
+
+      await expect(service.verifyHostedCheckoutPaid('session-missing')).resolves.toBe(false);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('verifyHostedCheckoutPaid failed: status=404'),
+      );
+    });
+
+    it('logs and returns false when fetch throws', async () => {
+      const errorSpy = jest.spyOn<any, any>(service['logger'], 'error');
+      fetchMock.mockRejectedValue(new Error('timeout'));
+
+      await expect(service.verifyHostedCheckoutPaid('session-timeout')).resolves.toBe(false);
+      expect(errorSpy).toHaveBeenCalledWith(
+        'verifyHostedCheckoutPaid exception for session-timeout: timeout',
+      );
+    });
+  });
 });
