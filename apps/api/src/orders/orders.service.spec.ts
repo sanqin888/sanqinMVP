@@ -1,5 +1,4 @@
 import {
-  BadGatewayException,
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
@@ -30,6 +29,8 @@ describe('OrdersService', () => {
   let uberDirect: { createDelivery: jest.Mock };
 
   beforeEach(() => {
+    process.env.UBER_DIRECT_ENABLED = '1';
+    
     prisma = {
       order: {
         findUnique: jest.fn(),
@@ -85,7 +86,7 @@ describe('OrdersService', () => {
     );
   });
 
-  it('requires deliveryDestination for priority orders', async () => {
+  it('creates order even when deliveryDestination is missing for priority orders', async () => {
     const dto: Partial<CreateOrderDto> = {
       channel: 'web',
       fulfillmentType: 'pickup',
@@ -93,10 +94,25 @@ describe('OrdersService', () => {
       deliveryType: DeliveryType.PRIORITY,
     };
 
-    await expect(service.create(dto as CreateOrderDto)).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
-    expect(prisma.order.create).not.toHaveBeenCalled();
+    const storedOrder = {
+      id: 'order-no-dest',
+      subtotalCents: 1000,
+      taxCents: 130,
+      totalCents: 1130,
+      pickupCode: '1234',
+      clientRequestId: null,
+      items: [],
+    };
+    prisma.order.create.mockResolvedValue(storedOrder);
+
+    const order = await service.create(dto as CreateOrderDto);
+
+    // ✅ 仍然建单
+    expect(prisma.order.create).toHaveBeenCalled();
+    expect(order.id).toBe('order-no-dest');
+
+    // ✅ 因为没有 deliveryDestination，不会调 Uber Direct
+    expect(uberDirect.createDelivery).not.toHaveBeenCalled();
   });
 
   it('dispatches Uber Direct for priority orders', async () => {
@@ -149,7 +165,7 @@ describe('OrdersService', () => {
     expect(order.externalDeliveryId).toBe('uber-123');
   });
 
-  it('cleans up persisted order when Uber Direct fails', async () => {
+  it('keeps the order when Uber Direct fails', async () => {
     const storedOrder = {
       id: 'order-err',
       subtotalCents: 1000,
@@ -180,11 +196,19 @@ describe('OrdersService', () => {
       },
     };
 
-    await expect(service.create(dto)).rejects.toBeInstanceOf(
-      BadGatewayException,
+    const order = await service.create(dto);
+
+    // ✅ 订单依然存在
+    expect(order).toEqual(
+      expect.objectContaining({
+        id: 'order-err',
+        totalCents: 1130,
+      }),
     );
-    expect(prisma.order.delete).toHaveBeenCalledWith({
-      where: { id: 'order-err' },
-    });
+
+    // ✅ 不会删除订单
+    expect(prisma.order.delete).not.toHaveBeenCalled();
+
+    // ✅ 说明我们确实尝试调用过 Uber Direct，只是失败了
+    expect(uberDirect.createDelivery).toHaveBeenCalled();
   });
-});
