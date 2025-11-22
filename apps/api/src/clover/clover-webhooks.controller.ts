@@ -148,7 +148,7 @@ export class CloverHcoWebhookController {
 
     let paidLike: boolean | undefined;
     const maybeInterpret = (
-      this.clover as { interpretStatus?: (status: string) => unknown }
+      this.clover as unknown as { interpretStatus?: (status: string) => unknown }
     ).interpretStatus;
 
     if (typeof maybeInterpret === 'function') {
