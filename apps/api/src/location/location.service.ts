@@ -34,13 +34,6 @@ export class LocationService {
     rawAddress: string | undefined,
     cityHint?: string,
   ): Promise<Coordinates | null> {
-    // ✅ 防呆：address 可能是 undefined/null
-    this.logger.log(
-      `Geocoding request: rawAddress=${JSON.stringify(
-        rawAddress,
-      )}, cityHint=${JSON.stringify(cityHint)}`,
-    );
-
     const trimmed = rawAddress?.trim();
     if (!trimmed) {
       this.logger.warn('LocationService.geocode called with empty address');
@@ -92,11 +85,6 @@ export class LocationService {
       this.logger.warn(`Invalid coordinates for query="${query}":`, loc);
       return null;
     }
-
-    this.logger.log(
-      `Geocoding success: query="${query}", lat=${latitude}, lng=${longitude}`,
-    );
-
     return { latitude, longitude };
   }
 }

@@ -190,11 +190,15 @@ export class CloverService {
 
   async verifyHostedCheckoutPaid(checkoutSessionId: string): Promise<boolean> {
     if (!checkoutSessionId) {
-      this.logger.warn('verifyHostedCheckoutPaid called without checkoutSessionId');
+      this.logger.warn(
+        'verifyHostedCheckoutPaid called without checkoutSessionId',
+      );
       return false;
     }
     if (!this.privateKey || !this.merchantId) {
-      this.logger.error('Cannot verify checkout payment: missing Clover credentials');
+      this.logger.error(
+        'Cannot verify checkout payment: missing Clover credentials',
+      );
       return false;
     }
 
@@ -384,8 +388,6 @@ export class CloverService {
           failure: failureUrl,
         },
       };
-
-      this.logger.log(`createHostedCheckout -> POST ${url}`);
 
       const resp = await fetch(url, {
         method: 'POST',

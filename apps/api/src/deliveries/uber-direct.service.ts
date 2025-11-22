@@ -200,11 +200,22 @@ export class UberDirectService {
     const url = `${this.apiBase}/v1/customers/${encodeURIComponent(this.customerId)}/deliveries`;
     const payload = this.buildPayload(options);
 
-    try {
-      this.logger.log(
-        `Dispatching Uber Direct delivery order=${options.orderId} postal=${options.destination.postalCode}`,
-      );
+    // 仅在需要调试时打印 payload，默认不打
+    if (process.env.DEBUG_UBER_DIRECT === '1') {
+      try {
+        this.logger.debug(
+          `[UberDirectService] Creating Uber Direct delivery. order=${options.orderId}, url=${url}, payload=${JSON.stringify(
+            payload,
+          )}`,
+        );
+      } catch {
+        this.logger.debug(
+          `[UberDirectService] Failed to stringify Uber Direct payload for logging`,
+        );
+      }
+    }
 
+    try {
       const response = await this.http.axiosRef.post<UberDirectApiResponse>(
         url,
         payload,
@@ -219,11 +230,18 @@ export class UberDirectService {
       );
 
       const normalized = this.normalizeResponse(response.data);
-      this.logger.log(
-        `Uber Direct accepted delivery order=${options.orderId} id=${normalized.deliveryId}`,
-      );
+
+      // 成功路径不再打 log（如果你想保留，也可以改成 debug）
+      // this.logger.debug(
+      //   `Uber Direct accepted delivery order=${options.orderId} id=${normalized.deliveryId}`,
+      // );
+
       return normalized;
     } catch (error) {
+      // 失败时只打一条 error，具体信息在 wrapUberError 里处理
+      this.logger.error(
+        `[UberDirectService] Failed to create Uber Direct delivery for order=${options.orderId}`,
+      );
       throw this.wrapUberError(error);
     }
   }
@@ -343,7 +361,7 @@ export class UberDirectService {
       dropoff_latitude: destination.latitude,
       dropoff_longitude: destination.longitude,
       manifest_items: manifestItems.length > 0 ? manifestItems : undefined,
-      manifest_total_value: Number((options.totalCents / 100).toFixed(2)),
+      manifest_total_value: Math.max(0, Math.round(options.totalCents)),
       manifest_currency_code: this.currency,
       tip:
         typeof destination.tipCents === 'number'
@@ -353,7 +371,6 @@ export class UberDirectService {
       pickup_deadline: this.isoFromNow(this.pickupDeadlineMinutes),
       dropoff_ready: this.isoFromNow(this.dropoffReadyMinutes),
       dropoff_deadline: this.isoFromNow(this.dropoffDeadlineMinutes),
-      delivery_type: 'priority',
     });
 
     payload.pickup = compact({
@@ -476,13 +493,46 @@ export class UberDirectService {
   private wrapUberError(error: unknown): Error {
     if (isAxiosError(error)) {
       const status = error.response?.status;
-      const message =
-        this.extractUberMessage(error.response?.data) ?? error.message;
+      const baseData: unknown = error.response?.data;
+
+      let bodySnippet = '[no response body]';
+      if (typeof baseData !== 'undefined') {
+        try {
+          bodySnippet = JSON.stringify(baseData);
+        } catch {
+          bodySnippet = '[unserializable response body]';
+        }
+      }
+
+      const uberMessage = this.extractUberMessage(baseData);
+      const message = uberMessage ?? error.message;
+
+      this.logger.error(
+        `[UberDirectService] Uber Direct API error${
+          status ? ` (${status})` : ''
+        }: ${message}; response body=${bodySnippet}`,
+        error.stack,
+      );
+
       return new Error(
         `Uber Direct API error${status ? ` (${status})` : ''}: ${message}`,
       );
     }
-    return error instanceof Error ? error : new Error(String(error));
+
+    if (error instanceof Error) {
+      this.logger.error(
+        `[UberDirectService] Non-Axios error while calling Uber Direct: ${error.message}`,
+        error.stack,
+      );
+      return error;
+    }
+
+    this.logger.error(
+      `[UberDirectService] Unknown error type while calling Uber Direct: ${String(
+        error,
+      )}`,
+    );
+    return new Error(String(error));
   }
 
   private extractUberMessage(data: unknown): string | undefined {

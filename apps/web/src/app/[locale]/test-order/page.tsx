@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { apiFetch } from '../../lib/api-client';
-import { ORDER_STATUS_ADVANCE, OrderStatus } from '../../lib/status/order';
+import { apiFetch } from 'web/src/lib/api-client';
+import { ORDER_STATUS_ADVANCE, OrderStatus } from 'web/src/lib/status/order';
 import type {
   DeliveryProviderOption,
   DeliveryTypeOption,

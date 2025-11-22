@@ -11,7 +11,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { IsStableId } from '../../common/validators/is-stable-id.validator';
-import { DeliveryType } from '@prisma/client';
+import { DeliveryType, FulfillmentType } from '@prisma/client';
 
 class CreateOrderItemDto {
   @IsString() productId!: string;
@@ -89,8 +89,8 @@ export class CreateOrderDto {
   @IsIn(['web', 'in_store', 'ubereats'])
   channel!: 'web' | 'in_store' | 'ubereats';
 
-  @IsIn(['pickup', 'dine_in'])
-  fulfillmentType!: 'pickup' | 'dine_in';
+  @IsEnum(FulfillmentType)
+  fulfillmentType!: FulfillmentType;
 
   @IsOptional()
   @IsEnum(DeliveryType)

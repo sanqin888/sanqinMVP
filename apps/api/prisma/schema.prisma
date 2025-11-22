@@ -21,6 +21,7 @@ enum OrderStatus {
 enum FulfillmentType {
   pickup
   dine_in
+  delivery
 }
 
 enum Channel {
@@ -121,7 +122,7 @@ model LoyaltyLedger {
 
 model CheckoutIntent {
   id                String   @id @default(uuid()) @db.Uuid
-  referenceId       String
+  referenceId       String   @unique
   checkoutSessionId String?  @unique
   amountCents       Int
   currency          String
