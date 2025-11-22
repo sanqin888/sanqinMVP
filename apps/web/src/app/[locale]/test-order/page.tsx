@@ -7,7 +7,7 @@ import { ORDER_STATUS_ADVANCE, OrderStatus } from 'web/src/lib/status/order';
 import type {
   DeliveryProviderOption,
   DeliveryTypeOption,
-} from '../../lib/order/shared';
+} from '@/lib/order/shared';
 
 type OrderItem = {
   id: string;
