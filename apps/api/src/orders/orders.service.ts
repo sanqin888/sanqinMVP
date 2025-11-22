@@ -1,5 +1,4 @@
 import {
-  BadGatewayException,
   BadRequestException,
   Injectable,
   Logger,
@@ -82,8 +81,8 @@ export class OrdersService {
       dto.deliveryType === DeliveryType.PRIORITY &&
       !dto.deliveryDestination
     ) {
-      throw new BadRequestException(
-        'deliveryDestination is required for priority delivery orders',
+      this.logger.warn(
+        `Priority delivery order is missing deliveryDestination; creating order without Uber Direct dispatch. clientRequestId=${dto.clientRequestId ?? 'N/A'}`,
       );
     }
 
@@ -146,7 +145,7 @@ export class OrdersService {
       ? DELIVERY_RULES[dto.deliveryType]
       : undefined;
 
-    let order = await this.prisma.order.create({
+    let order: OrderWithItems = (await this.prisma.order.create({
       data: {
         userId: dto.userId ?? null,
         ...(stableKey ? { clientRequestId: stableKey } : {}),
@@ -181,24 +180,31 @@ export class OrdersService {
         },
       },
       include: { items: true },
-    });
+    })) as OrderWithItems;
 
+    // === 这里是修改后的 Priority 配送逻辑 ===
     if (dto.deliveryType === DeliveryType.PRIORITY && dto.deliveryDestination) {
       const destination = this.normalizeDropoff(dto.deliveryDestination);
-      try {
-        order = await this.dispatchPriorityDelivery(order, destination);
-      } catch (error) {
-        this.logger.error(
-          `Failed to dispatch Uber Direct delivery for order ${order.id}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+
+      // 用开关控制是否真正调 Uber Direct
+      const uberEnabled = process.env.UBER_DIRECT_ENABLED === '1';
+      if (!uberEnabled) {
+        this.logger.warn(
+          `Skipping Uber Direct dispatch for order ${order.id} because UBER_DIRECT_ENABLED is not '1'`,
         );
-        await this.safeDeleteOrder(order.id);
-        throw new BadGatewayException(
-          `Failed to dispatch priority delivery to Uber Direct: ${
-            error instanceof Error ? error.message : 'unknown error'
-          }`,
-        );
+      } else {
+        try {
+          order = await this.dispatchPriorityDelivery(order, destination);
+        } catch (error) {
+          this.logger.error(
+            `Failed to dispatch Uber Direct delivery for order ${order.id}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+          // ⚠️ 不再删除订单、不再抛异常：
+          // 支付已经成功，订单必须保留，后续 webhook 还能把订单推进到 paid 并 markProcessed，
+          // 你可以在后台人工处理这笔配送。
+        }
       }
     }
 

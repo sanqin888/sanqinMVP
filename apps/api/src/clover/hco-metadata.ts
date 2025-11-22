@@ -121,7 +121,13 @@ const parseItems = (value: unknown): HostedCheckoutItem[] => {
       const quantity = Math.max(1, Math.round(toNumber(entry.quantity) ?? 1));
       const notes = toString(entry.notes);
       const name = toString(entry.name);
-      return { id, price, quantity, ...(notes ? { notes } : {}), ...(name ? { name } : {}) };
+      return {
+        id,
+        price,
+        quantity,
+        ...(notes ? { notes } : {}),
+        ...(name ? { name } : {}),
+      };
     })
     .filter((item): item is HostedCheckoutItem => Boolean(item));
 
@@ -188,7 +194,9 @@ const dollarsToCents = (value: number): number => Math.round(value * 100);
 const buildDestination = (
   meta: HostedCheckoutMetadata,
 ): CreateOrderDto['deliveryDestination'] => {
+  // 只有 fulfillment = delivery 才需要地址
   if (meta.fulfillment !== 'delivery') return undefined;
+
   const { customer } = meta;
   const requiredFields = [
     customer.addressLine1,
@@ -196,12 +204,15 @@ const buildDestination = (
     customer.province,
     customer.postalCode,
   ];
-  if (requiredFields.some((field) => !field)) {
-    if (meta.deliveryType === DeliveryType.PRIORITY) {
-      throw new Error('delivery address is required for priority orders');
-    }
+
+  const missingRequired = requiredFields.some((field) => !field);
+
+  // ⚠️ 地址不完整时，直接返回 undefined，不再 throw，
+  // 这样 webhook 仍然能建订单，只是不会调 Uber Direct。
+  if (missingRequired) {
     return undefined;
   }
+
   return {
     name: customer.name,
     phone: customer.phone,
@@ -226,7 +237,8 @@ export function buildOrderDtoFromMetadata(
   const dto: CreateOrderDto = {
     clientRequestId,
     channel: 'web',
-    fulfillmentType: 'pickup',
+    // fulfillmentType 跟着 metadata 走：pickup / delivery
+    fulfillmentType: meta.fulfillment === 'delivery' ? 'delivery' : 'pickup',
     subtotalCents,
     taxCents,
     totalCents: subtotalCents + taxCents,

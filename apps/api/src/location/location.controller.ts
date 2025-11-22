@@ -14,8 +14,6 @@ export class LocationController {
   async geocode(
     @Body() body: GeocodeRequestBody | null | undefined,
   ): Promise<Coordinates | null> {
-    console.log('[LocationController] raw body =', body);
-
     const address = body?.address;
     const cityHint = body?.cityHint;
 

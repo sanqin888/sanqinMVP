@@ -1,26 +1,38 @@
-// apps/web/src/app/[locale]/thank-you/[order]/page.tsx
 import Link from "next/link";
-import type { Locale } from "@/lib/i18n/locales";              // 若没 @ 别名，用相对路径：../../../lib/i18n/locales
-import { getDictionary } from "@/lib/i18n/dictionaries";       // 若没 @ 别名，用相对路径：../../../lib/i18n/dictionaries
+import type { Locale } from "@/lib/i18n/locales";
+import { getDictionary } from "@/lib/i18n/dictionaries";
+import { ClearCartOnMount } from "./ClearCartOnMount";
 
+type PageParams = {
+  locale?: string;
+  order?: string;
+};
+
+// ✅ 注意：params 现在是 Promise
 type PageProps = {
-  params: { locale?: string; order?: string };
+  params: Promise<PageParams>;
 };
 
 const SUPPORTED: Locale[] = ["zh", "en"];
 
 export default async function ThankYouPage({ params }: PageProps) {
-  const locale = (SUPPORTED.includes(params?.locale as Locale)
-    ? (params!.locale as Locale)
+  // ✅ 先 await，再拿 locale / order
+  const { locale: rawLocale, order: orderParam } = await params;
+
+  const locale = (SUPPORTED.includes(rawLocale as Locale)
+    ? (rawLocale as Locale)
     : "en") as Locale;
 
   const dict = await getDictionary(locale);
-  const t = dict.thankYou;                // 取“感谢页”命名空间
-  const order = params?.order ?? "";
+  const t = dict.thankYou;
+  const order = orderParam ?? "";
   const alt = locale === "zh" ? "en" : "zh";
 
   return (
     <main className="mx-auto max-w-3xl p-6 sm:p-10">
+      {/* 支付成功页挂载时清空购物车（localStorage） */}
+      <ClearCartOnMount />
+
       <div className="flex items-center justify-between mb-6">
         <div className="text-sm text-slate-500">{t.brand}</div>
         <Link

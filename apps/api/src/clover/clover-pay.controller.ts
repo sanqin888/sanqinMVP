@@ -70,7 +70,9 @@ export class CloverPayController {
     const referenceId =
       (trimmedReference && trimmedReference.length > 0
         ? trimmedReference
-        : undefined) ?? result.checkoutSessionId ?? metadata.customer.phone;
+        : undefined) ??
+      result.checkoutSessionId ??
+      metadata.customer.phone;
 
     await this.checkoutIntents.recordIntent({
       referenceId,

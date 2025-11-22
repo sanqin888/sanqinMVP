@@ -253,10 +253,14 @@ describe('CloverService', () => {
           ),
       } as unknown as Response);
 
-      await expect(service.verifyHostedCheckoutPaid('session-123')).resolves.toBe(true);
+      await expect(
+        service.verifyHostedCheckoutPaid('session-123'),
+      ).resolves.toBe(true);
 
       const [url, init] = getFirstCall();
-      expect(url).toContain('/invoicingcheckoutservice/v1/checkouts/session-123');
+      expect(url).toContain(
+        '/invoicingcheckoutservice/v1/checkouts/session-123',
+      );
       expect(init.method).toBe('GET');
     });
 
@@ -268,7 +272,9 @@ describe('CloverService', () => {
         text: () => Promise.resolve(JSON.stringify({ state: 'PENDING' })),
       } as unknown as Response);
 
-      await expect(service.verifyHostedCheckoutPaid('session-456')).resolves.toBe(false);
+      await expect(
+        service.verifyHostedCheckoutPaid('session-456'),
+      ).resolves.toBe(false);
     });
 
     it('logs and returns false when Clover rejects the request', async () => {
@@ -280,7 +286,9 @@ describe('CloverService', () => {
         text: () => Promise.resolve('missing'),
       } as unknown as Response);
 
-      await expect(service.verifyHostedCheckoutPaid('session-missing')).resolves.toBe(false);
+      await expect(
+        service.verifyHostedCheckoutPaid('session-missing'),
+      ).resolves.toBe(false);
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining('verifyHostedCheckoutPaid failed: status=404'),
       );
@@ -290,7 +298,9 @@ describe('CloverService', () => {
       const errorSpy = jest.spyOn<any, any>(service['logger'], 'error');
       fetchMock.mockRejectedValue(new Error('timeout'));
 
-      await expect(service.verifyHostedCheckoutPaid('session-timeout')).resolves.toBe(false);
+      await expect(
+        service.verifyHostedCheckoutPaid('session-timeout'),
+      ).resolves.toBe(false);
       expect(errorSpy).toHaveBeenCalledWith(
         'verifyHostedCheckoutPaid exception for session-timeout: timeout',
       );

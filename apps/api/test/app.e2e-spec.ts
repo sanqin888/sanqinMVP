@@ -181,8 +181,7 @@ class InMemoryPrismaService implements Partial<PrismaService> {
     if (orderBy && 'createdAt' in orderBy) {
       const direction = orderBy.createdAt === 'desc' ? -1 : 1;
       intents.sort(
-        (a, b) =>
-          (a.createdAt.getTime() - b.createdAt.getTime()) * direction,
+        (a, b) => (a.createdAt.getTime() - b.createdAt.getTime()) * direction,
       );
     }
     const first = intents[0];
@@ -207,8 +206,7 @@ class InMemoryPrismaService implements Partial<PrismaService> {
   ): StoredCheckoutIntent {
     const now = new Date();
     return {
-      id:
-        (data.id as string | undefined) ?? existing?.id ?? randomUUID(),
+      id: (data.id as string | undefined) ?? existing?.id ?? randomUUID(),
       referenceId:
         (data.referenceId as string | undefined) ?? existing?.referenceId ?? '',
       checkoutSessionId:
@@ -218,7 +216,7 @@ class InMemoryPrismaService implements Partial<PrismaService> {
       amountCents:
         typeof data.amountCents === 'number'
           ? data.amountCents
-          : existing?.amountCents ?? 0,
+          : (existing?.amountCents ?? 0),
       currency:
         (data.currency as string | undefined) ?? existing?.currency ?? '',
       locale:
@@ -228,7 +226,9 @@ class InMemoryPrismaService implements Partial<PrismaService> {
       result:
         (data.result as string | null | undefined) ?? existing?.result ?? null,
       orderId:
-        (data.orderId as string | null | undefined) ?? existing?.orderId ?? null,
+        (data.orderId as string | null | undefined) ??
+        existing?.orderId ??
+        null,
       metadataJson:
         (data.metadataJson as Prisma.JsonValue | undefined) ??
         existing?.metadataJson ??
