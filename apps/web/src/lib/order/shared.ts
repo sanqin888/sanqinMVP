@@ -441,7 +441,7 @@ export type LocalizedCartItem = {
 };
 
 export type DeliveryTypeOption = 'STANDARD' | 'PRIORITY';
-export type DeliveryProviderOption = 'DOORDASH_DRIVE' | 'UBER_DIRECT';
+export type DeliveryProviderOption = 'DOORDASH' | 'UBER';
 
 export type ConfirmationState = {
   orderNumber: string;

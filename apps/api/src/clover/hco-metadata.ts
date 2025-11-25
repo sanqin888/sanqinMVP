@@ -92,10 +92,9 @@ const parseDeliveryProvider = (
   value: unknown,
 ): DeliveryProvider | undefined => {
   const normalized = toString(value)?.toUpperCase();
-  if (normalized === DeliveryProvider.DOORDASH_DRIVE)
-    return DeliveryProvider.DOORDASH_DRIVE;
-  if (normalized === DeliveryProvider.UBER_DIRECT)
-    return DeliveryProvider.UBER_DIRECT;
+  if (normalized === DeliveryProvider.DOORDASH)
+    return DeliveryProvider.DOORDASH;
+  if (normalized === DeliveryProvider.UBER) return DeliveryProvider.UBER;
   return undefined;
 };
 
@@ -233,15 +232,17 @@ export function buildOrderDtoFromMetadata(
 ): CreateOrderDto {
   const subtotalCents = dollarsToCents(meta.subtotal);
   const taxCents = dollarsToCents(meta.tax);
+  const deliveryFeeCents =
+    typeof meta.deliveryFee === 'number' ? dollarsToCents(meta.deliveryFee) : 0;
 
   const dto: CreateOrderDto = {
     clientRequestId,
     channel: 'web',
-    // fulfillmentType 跟着 metadata 走：pickup / delivery
     fulfillmentType: meta.fulfillment === 'delivery' ? 'delivery' : 'pickup',
     subtotalCents,
     taxCents,
     totalCents: subtotalCents + taxCents,
+    ...(deliveryFeeCents > 0 ? { deliveryFeeCents } : {}),
     items: meta.items.map((item) => ({
       productId: item.id,
       qty: item.quantity,

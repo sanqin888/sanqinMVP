@@ -28,6 +28,3 @@ CREATE UNIQUE INDEX "CheckoutIntent_referenceId_key"
 CREATE UNIQUE INDEX "CheckoutIntent_checkoutSessionId_key"
   ON "CheckoutIntent"("checkoutSessionId");
 
--- 确保 Order.clientRequestId 上有唯一索引（如果之前 migration 已经建过，这里 IF NOT EXISTS 会自动跳过）
-CREATE UNIQUE INDEX IF NOT EXISTS "Order_clientRequestId_key"
-  ON "Order"("clientRequestId");
