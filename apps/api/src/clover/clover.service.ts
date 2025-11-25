@@ -255,18 +255,18 @@ export class CloverService {
     req: HostedCheckoutRequest,
   ): Promise<HostedCheckoutResult> {
     try {
-      if (!this.privateKey) return { ok: false, reason: 'missing-private-key' };
-      if (!this.merchantId) return { ok: false, reason: 'missing-merchant-id' };
-      if (!this.taxId || !this.taxRateInt) {
-        return { ok: false, reason: 'missing-tax-config' };
+      if (!this.privateKey) {
+        return { ok: false, reason: 'missing-private-key' };
       }
-
+      if (!this.merchantId) {
+        return { ok: false, reason: 'missing-merchant-id' };
+      }
       const url = `${this.apiBase}/invoicingcheckoutservice/v1/checkouts`;
 
       // redirect URLs
       const webBase = (process.env.WEB_BASE_URL || '').replace(/\/+$/, '');
 
-      // 👇 提前拿到 rq，按优先级归一化 locale：req.locale → metadata.locale → returnUrl 路径
+      // 从 req / metadata / returnUrl 里推导 locale
       const rq = req as Record<string, unknown>;
       const metaLocale = isPlainObject(rq.metadata)
         ? rq.metadata.locale
@@ -278,8 +278,12 @@ export class CloverService {
 
       const orderId = pickOrderId(req);
 
-      const successUrl = `${webBase}/${locale}/thank-you/${encodeURIComponent(orderId)}`;
-      const failureUrl = `${webBase}/${locale}/payment-failed/${encodeURIComponent(orderId)}`;
+      const successUrl = `${webBase}/${locale}/thank-you/${encodeURIComponent(
+        orderId,
+      )}`;
+      const failureUrl = `${webBase}/${locale}/payment-failed/${encodeURIComponent(
+        orderId,
+      )}`;
 
       // ===== build lineItems with fallback =====
       const noteFallback = (() => {
@@ -379,9 +383,6 @@ export class CloverService {
         customer: isPlainObject(req.customer) ? req.customer : {},
         shoppingCart: {
           lineItems,
-          defaultTaxRates: [
-            { id: this.taxId, name: this.taxName, rate: this.taxRateInt },
-          ],
         },
         redirectUrls: {
           success: successUrl,
@@ -438,21 +439,17 @@ export class CloverService {
 
         return { ok: false, reason };
       }
+
       // 2xx but missing redirect link
-      if (
-        !apiData ||
-        typeof apiData.href !== 'string' ||
-        apiData.href.length === 0
-      ) {
+      if (!apiData || !apiData.href || apiData.href.length === 0) {
         return { ok: false, reason: 'missing redirect' };
       }
 
       // success (no raw in return)
-      const data = apiData;
       return {
         ok: true,
-        href: data.href,
-        checkoutSessionId: data.checkoutSessionId,
+        href: apiData.href,
+        checkoutSessionId: apiData.checkoutSessionId,
       };
     } catch (e: unknown) {
       const msg = errToString(e);

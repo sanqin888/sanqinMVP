@@ -41,10 +41,17 @@ export interface UberDirectDeliveryOptions {
   destination: UberDirectDropoffDetails;
 }
 
+/**
+ * Uber Direct API 标准化后的返回结果：
+ * - deliveryId: 必填，唯一标识这单配送
+ * - status / trackingUrl: 可选
+ * - deliveryCostCents: 我们实际要付给 Uber 的配送成本（单位：分），如果能从响应里解析到就带上
+ */
 export interface UberDirectDeliveryResult {
   deliveryId: string;
   status?: string;
   trackingUrl?: string;
+  deliveryCostCents?: number;
 }
 
 interface PickupConfig {
@@ -197,7 +204,9 @@ export class UberDirectService {
   ): Promise<UberDirectDeliveryResult> {
     this.ensureConfigured();
 
-    const url = `${this.apiBase}/v1/customers/${encodeURIComponent(this.customerId)}/deliveries`;
+    const url = `${this.apiBase}/v1/customers/${encodeURIComponent(
+      this.customerId,
+    )}/deliveries`;
     const payload = this.buildPayload(options);
 
     // 仅在需要调试时打印 payload，默认不打
@@ -231,14 +240,8 @@ export class UberDirectService {
 
       const normalized = this.normalizeResponse(response.data);
 
-      // 成功路径不再打 log（如果你想保留，也可以改成 debug）
-      // this.logger.debug(
-      //   `Uber Direct accepted delivery order=${options.orderId} id=${normalized.deliveryId}`,
-      // );
-
       return normalized;
     } catch (error) {
-      // 失败时只打一条 error，具体信息在 wrapUberError 里处理
       this.logger.error(
         `[UberDirectService] Failed to create Uber Direct delivery for order=${options.orderId}`,
       );
@@ -456,13 +459,35 @@ export class UberDirectService {
     if (!deliveryId) {
       throw new Error('Uber Direct response missing delivery id');
     }
+
     const status = this.pickFirstString(body, ['status', 'state']);
     const trackingUrl = this.pickFirstString(body, [
       'tracking_url',
       'tracking_url_v2',
       'tracking_url_web',
     ]);
-    return { deliveryId, status, trackingUrl };
+
+    // ⭐️ 这里从响应里解析“我们付给 Uber 的配送费（单位：分）”
+    // 实际字段名取决于 Uber API 返回，可以按需要再补 key
+    const deliveryCostCents =
+      this.pickFirstNumber(body, [
+        'delivery_fee_cents',
+        'delivery_fee',
+        'fee',
+        'courier_fee',
+        'total_fee_cents',
+        'total_fee',
+      ]) ??
+      (body.quote && typeof body.quote === 'object'
+        ? this.pickFirstNumber(body.quote as Record<string, unknown>, [
+            'delivery_fee_cents',
+            'delivery_fee',
+            'total',
+            'total_cents',
+          ])
+        : undefined);
+
+    return { deliveryId, status, trackingUrl, deliveryCostCents };
   }
 
   private pickFirstString(
@@ -471,8 +496,28 @@ export class UberDirectService {
   ): string | undefined {
     for (const key of keys) {
       const value = source[key];
-      if (typeof value === 'string' && value.trim().length > 0) {
-        return value;
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (trimmed.length > 0) return trimmed;
+      }
+    }
+    return undefined;
+  }
+
+  private pickFirstNumber(
+    source: Record<string, unknown>,
+    keys: string[],
+  ): number | undefined {
+    for (const key of keys) {
+      const value = source[key];
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return Math.round(value);
+      }
+      if (typeof value === 'string') {
+        const parsed = Number(value.trim());
+        if (Number.isFinite(parsed)) {
+          return Math.round(parsed);
+        }
       }
     }
     return undefined;

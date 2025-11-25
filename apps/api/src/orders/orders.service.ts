@@ -26,17 +26,21 @@ const REDEEM_DOLLAR_PER_POINT = Number(
   process.env.LOYALTY_REDEEM_DOLLAR_PER_POINT ?? '0.01',
 );
 
+/**
+ * 固定的“配送类型 → 供应商 + 预计费用 + 预估 ETA”
+ * feeCents 在现在版本更多是“参考值/基准成本”，真实成本通过第三方 API 返回写入 deliveryCostCents。
+ */
 const DELIVERY_RULES: Record<
   DeliveryType,
   { provider: DeliveryProvider; feeCents: number; etaRange: [number, number] }
 > = {
   [DeliveryType.STANDARD]: {
-    provider: DeliveryProvider.DOORDASH_DRIVE,
+    provider: DeliveryProvider.DOORDASH,
     feeCents: 500,
     etaRange: [45, 60],
   },
   [DeliveryType.PRIORITY]: {
-    provider: DeliveryProvider.UBER_DIRECT,
+    provider: DeliveryProvider.UBER,
     feeCents: 900,
     etaRange: [25, 35],
   },
@@ -86,6 +90,7 @@ export class OrdersService {
       );
     }
 
+    // —— Idempotency-Key 归一化
     const headerKey =
       typeof idempotencyKey === 'string' ? idempotencyKey.trim() : undefined;
     const normalizedHeaderKey = normalizeStableId(headerKey);
@@ -135,16 +140,34 @@ export class OrdersService {
       subtotalCents,
     );
 
-    // 3) 税基 = 小计 - 抵扣
-    const taxableCents = Math.max(0, subtotalCents - redeemValueCents);
-    const taxCents = Math.round(taxableCents * TAX_RATE);
-    const totalCents = taxableCents + taxCents;
+    // 是否为配送订单
+    const isDelivery =
+      dto.fulfillmentType === 'delivery' ||
+      dto.deliveryType === DeliveryType.STANDARD ||
+      dto.deliveryType === DeliveryType.PRIORITY;
 
-    // 4) 入库
+    // 顾客支付的配送费（前端传来的分），没有就按 0
+    const deliveryFeeCustomerCents =
+      isDelivery && typeof dto.deliveryFeeCents === 'number'
+        ? dto.deliveryFeeCents
+        : 0;
+
+    // 供应商 / ETA 等元信息（成本价 deliveryCostCents 先不在这里写）
     const deliveryMeta = dto.deliveryType
       ? DELIVERY_RULES[dto.deliveryType]
       : undefined;
 
+    // 3) 税基：菜品小计 - 抵扣 + 配送费（配送费也计税，对齐前端 Checkout）
+    const purchaseBaseCents = Math.max(0, subtotalCents - redeemValueCents);
+    const taxableCents =
+      purchaseBaseCents + (isDelivery ? deliveryFeeCustomerCents : 0);
+
+    const taxCents = Math.round(taxableCents * TAX_RATE);
+
+    // 顾客总价 = (小计 - 抵扣) + 配送费 + 税
+    const totalCents = purchaseBaseCents + deliveryFeeCustomerCents + taxCents;
+
+    // 4) 入库
     let order: OrderWithItems = (await this.prisma.order.create({
       data: {
         userId: dto.userId ?? null,
@@ -159,7 +182,8 @@ export class OrdersService {
           ? {
               deliveryType: dto.deliveryType,
               deliveryProvider: deliveryMeta.provider,
-              deliveryFeeCents: deliveryMeta.feeCents,
+              // 顾客支付的配送费（前端算好的）
+              deliveryFeeCents: deliveryFeeCustomerCents,
               deliveryEtaMinMinutes: deliveryMeta.etaRange[0],
               deliveryEtaMaxMinutes: deliveryMeta.etaRange[1],
             }
@@ -182,11 +206,10 @@ export class OrdersService {
       include: { items: true },
     })) as OrderWithItems;
 
-    // === 这里是修改后的 Priority 配送逻辑 ===
+    // === Priority 配送：调 Uber Direct，下单成功后用真正返回的成本更新 deliveryCostCents ===
     if (dto.deliveryType === DeliveryType.PRIORITY && dto.deliveryDestination) {
       const destination = this.normalizeDropoff(dto.deliveryDestination);
 
-      // 用开关控制是否真正调 Uber Direct
       const uberEnabled = process.env.UBER_DIRECT_ENABLED === '1';
       if (!uberEnabled) {
         this.logger.warn(
@@ -250,11 +273,15 @@ export class OrdersService {
 
     // —— 积分结算（异步，不阻塞响应）
     if (next === 'paid') {
-      // 反推“本单抵扣额（分）”： R = S - (T - tax)
+      // 新公式：T = (S - R) + D + tax
+      // => R = S - (T - tax - D)
+      const deliveryFeeCents = updated.deliveryFeeCents ?? 0;
       const redeemValueCents = Math.max(
         0,
-        updated.subtotalCents - (updated.totalCents - updated.taxCents),
+        updated.subtotalCents -
+          (updated.totalCents - updated.taxCents - deliveryFeeCents),
       );
+
       void this.loyalty.settleOnPaid({
         orderId: updated.id,
         userId: updated.userId ?? undefined,
@@ -345,11 +372,28 @@ export class OrdersService {
       destination,
     });
 
+    // 这里假设 UberDirectService 未来会把真实成本放在 response.deliveryCostCents（单位：分）
+    const updateData: Prisma.OrderUpdateInput = {
+      externalDeliveryId: response.deliveryId,
+    };
+
+    if (
+      typeof (response as { deliveryCostCents?: number }).deliveryCostCents ===
+      'number'
+    ) {
+      updateData.deliveryCostCents = Math.max(
+        0,
+        Math.round(
+          (response as { deliveryCostCents?: number }).deliveryCostCents!,
+        ),
+      );
+    }
+
     return this.prisma.order.update({
       where: { id: order.id },
-      data: { externalDeliveryId: response.deliveryId },
+      data: updateData,
       include: { items: true },
-    });
+    }) as Promise<OrderWithItems>;
   }
 
   private async safeDeleteOrder(id: string): Promise<void> {

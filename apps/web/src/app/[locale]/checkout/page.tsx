@@ -27,7 +27,7 @@ import {
 } from "@/lib/order/shared";
 
 type DeliveryOptionDefinition = {
-  provider: "DOORDASH_DRIVE" | "UBER_DIRECT";
+  provider: "DOORDASH" | "UBER";
   fee: number;
   eta: [number, number];
   labels: Record<Locale, { title: string; description: string }>;
@@ -43,6 +43,19 @@ type DeliveryOptionDisplay = {
 };
 
 type DistanceMessage = { text: string; tone: "muted" | "info" | "success" | "error" };
+
+// 保证 Clover 那边收到的 item.name 是英文
+function resolveEnglishName(itemId: string, localizedName: string): string {
+  const def = MENU_ITEM_LOOKUP.get(itemId);
+  if (!def) return localizedName;
+
+  const enName = def.i18n?.en?.name;
+  if (typeof enName === "string") {
+    const trimmed = enName.trim();
+    if (trimmed.length > 0) return trimmed;
+  }
+  return localizedName;
+}
 
 type CustomerInfo = {
   name: string;
@@ -84,32 +97,36 @@ const isPostalCodeValid = (value: string) => POSTAL_CODE_PATTERN.test(value.trim
 
 const DELIVERY_OPTION_DEFINITIONS: Record<DeliveryTypeOption, DeliveryOptionDefinition> = {
   STANDARD: {
-    provider: "DOORDASH_DRIVE",
-    fee: 5,
+    provider: "DOORDASH",
+    fee: 6,
     eta: [45, 60],
     labels: {
       en: {
         title: "Standard delivery",
-        description: "DoorDash Drive • arrives in 45–60 min",
+        description:
+          "Delivery range ≤ 5 km, fulfilled by DoorDash. ETA 45–60 minutes.",
       },
       zh: {
         title: "标准配送",
-        description: "DoorDash Drive · 约 45–60 分钟送达",
+        description:
+          "配送范围 ≤ 5 km，由 DoorDash 提供配送服务，预计送达时间 45–60 分钟。",
       },
     },
   },
   PRIORITY: {
-    provider: "UBER_DIRECT",
-    fee: 9,
+    provider: "UBER",
+    fee: 6,
     eta: [25, 35],
     labels: {
       en: {
         title: "Priority delivery",
-        description: "Uber Direct • arrives in 25–35 min",
+        description:
+          "No distance limit, fulfilled by Uber. ETA 25–35 minutes.",
       },
       zh: {
         title: "优先闪送",
-        description: "Uber Direct · 约 25–35 分钟送达",
+        description:
+          "不限制配送范围，由 Uber 提供配送服务，预计送达时间 25–35 分钟。",
       },
     },
   },
@@ -129,21 +146,6 @@ export default function CheckoutPage() {
   const strings = UI_STRINGS[locale];
   const radiusLabel = `${DELIVERY_RADIUS_KM} km`;
   const orderHref = q ? `/${locale}?${q}` : `/${locale}`;
-
-  const deliveryOptions = useMemo<DeliveryOptionDisplay[]>(() => {
-    return DELIVERY_TYPES.map((type) => {
-      const definition = DELIVERY_OPTION_DEFINITIONS[type];
-      const localized = definition.labels[locale];
-      return {
-        type,
-        fee: definition.fee,
-        eta: definition.eta,
-        provider: definition.provider,
-        title: localized.title,
-        description: localized.description,
-      };
-    });
-  }, [locale]);
 
   const { items, updateNotes, updateQuantity } = usePersistentCart();
 
@@ -179,6 +181,54 @@ export default function CheckoutPage() {
     error: string | null;
   }>({ distanceKm: null, isChecking: false, error: null });
 
+  // ✅ 先算小计
+  const subtotal = useMemo(
+    () =>
+      localizedCartItems.reduce(
+        (total, cartItem) => total + cartItem.item.price * cartItem.quantity,
+        0,
+      ),
+    [localizedCartItems],
+  );
+
+  // ✅ 服务费目前写死 0
+  const serviceFee: number = 0;
+
+  // 用于计费的“公里数”：不足 1km 按 1km，向上取整
+  const billedDistanceForPriorityKm =
+    fulfillment === "delivery" &&
+    deliveryType === "PRIORITY" &&
+    addressValidation.distanceKm !== null
+      ? Math.max(1, Math.ceil(addressValidation.distanceKm))
+      : fulfillment === "delivery" && deliveryType === "PRIORITY"
+        ? 1 // 还没算出距离时，优先配送按 1km 起步展示
+        : 0;
+
+  // UI 展示用的配送选项（standard 固定 6；priority = 6 + 1/km）
+  const deliveryOptions: DeliveryOptionDisplay[] = DELIVERY_TYPES.map((type) => {
+    const definition = DELIVERY_OPTION_DEFINITIONS[type];
+    const localized = definition.labels[locale];
+
+    let fee = 0;
+    if (fulfillment === "delivery" && subtotal > 0) {
+      if (type === "STANDARD") {
+        fee = 6;
+      } else {
+        // PRIORITY：6 + 1/km
+        fee = 6 + billedDistanceForPriorityKm;
+      }
+    }
+
+    return {
+      type,
+      fee,
+      eta: definition.eta,
+      provider: definition.provider,
+      title: localized.title,
+      description: localized.description,
+    };
+  });
+
   const resetAddressValidation = () => setAddressValidation({ distanceKm: null, isChecking: false, error: null });
 
   const currencyFormatter = useMemo(
@@ -202,15 +252,17 @@ export default function CheckoutPage() {
   const applyDistanceTemplate = (template: string, distanceLabel?: string) =>
     template.replace("{distance}", distanceLabel ?? "").replace("{radius}", radiusLabel);
 
-  const subtotal = useMemo(
-    () => localizedCartItems.reduce((total, cartItem) => total + cartItem.item.price * cartItem.quantity, 0),
-    [localizedCartItems],
-  );
-
-  const serviceFee: number = 0;
   const selectedDeliveryDefinition = DELIVERY_OPTION_DEFINITIONS[deliveryType];
   const isDeliveryFulfillment = fulfillment === "delivery";
-  const deliveryFee = isDeliveryFulfillment && subtotal > 0 ? selectedDeliveryDefinition.fee : 0;
+
+  // 这里和上面的 deliveryOptions 保持同一套规则
+  const deliveryFee =
+    !isDeliveryFulfillment || subtotal <= 0
+      ? 0
+      : deliveryType === "STANDARD"
+        ? 6
+        : 6 + billedDistanceForPriorityKm;
+
   const taxableBase = subtotal + (TAX_ON_DELIVERY ? deliveryFee : 0);
   const tax = Math.round(taxableBase * TAX_RATE * 100) / 100;
   const total = subtotal + deliveryFee + tax;
@@ -271,23 +323,44 @@ export default function CheckoutPage() {
       });
 
       if (!coordinates) {
-        setAddressValidation({ distanceKm: null, isChecking: false, error: strings.deliveryDistance.notFound });
+        setAddressValidation({
+          distanceKm: null,
+          isChecking: false,
+          error: strings.deliveryDistance.notFound,
+        });
         return { success: false } as const;
       }
 
       const distanceKm = calculateDistanceKm(STORE_COORDINATES, coordinates);
 
-      if (distanceKm > DELIVERY_RADIUS_KM) {
+      // ✅ 标准配送：仍然限制在 DELIVERY_RADIUS_KM 以内
+      if (deliveryType === "STANDARD" && distanceKm > DELIVERY_RADIUS_KM) {
         const distanceLabel = formatDistanceValue(distanceKm);
-        const message = applyDistanceTemplate(strings.deliveryDistance.outsideRange, distanceLabel);
-        setAddressValidation({ distanceKm, isChecking: false, error: message });
+        const message = applyDistanceTemplate(
+          strings.deliveryDistance.outsideRange,
+          distanceLabel,
+        );
+        setAddressValidation({
+          distanceKm,
+          isChecking: false,
+          error: message,
+        });
         return { success: false } as const;
       }
 
-      setAddressValidation({ distanceKm, isChecking: false, error: null });
+      // ✅ 优先配送（或者在范围内）：一律视为可配送，只记录距离用于计费
+      setAddressValidation({
+        distanceKm,
+        isChecking: false,
+        error: null,
+      });
       return { success: true, distanceKm } as const;
     } catch {
-      setAddressValidation({ distanceKm: null, isChecking: false, error: strings.deliveryDistance.failed });
+      setAddressValidation({
+        distanceKm: null,
+        isChecking: false,
+        error: strings.deliveryDistance.failed,
+      });
       return { success: false } as const;
     }
   };
@@ -314,7 +387,25 @@ export default function CheckoutPage() {
     }
 
     const orderNumber = `SQ${Date.now().toString().slice(-6)}`;
-    const totalCents = Math.round(total * 100);
+
+    // 下单实际使用的配送费 / 税 / 总价（用真实距离再算一遍，确保和前端展示一致）
+    let deliveryFeeForOrder = 0;
+    if (isDeliveryFulfillment && subtotal > 0) {
+      if (deliveryType === "STANDARD") {
+        deliveryFeeForOrder = 6;
+      } else {
+        const billedKm =
+          deliveryDistanceKm !== null ? Math.max(1, Math.ceil(deliveryDistanceKm)) : 1;
+        deliveryFeeForOrder = 6 + billedKm;
+      }
+    }
+
+    const taxableBaseForOrder =
+      subtotal + (TAX_ON_DELIVERY ? deliveryFeeForOrder : 0);
+    const taxForOrder =
+      Math.round(taxableBaseForOrder * TAX_RATE * 100) / 100;
+    const totalForOrder = subtotal + deliveryFeeForOrder + taxForOrder;
+    const totalCents = Math.round(totalForOrder * 100);
 
     try {
       const deliveryMetadata = isDeliveryFulfillment
@@ -323,7 +414,9 @@ export default function CheckoutPage() {
             deliveryProvider: selectedDeliveryDefinition.provider,
             deliveryEtaMinutes: selectedDeliveryDefinition.eta,
             deliveryDistanceKm:
-              deliveryDistanceKm !== null ? Math.round(deliveryDistanceKm * 100) / 100 : undefined,
+              deliveryDistanceKm !== null
+                ? Math.round(deliveryDistanceKm * 100) / 100
+                : undefined,
           }
         : null;
 
@@ -347,13 +440,13 @@ export default function CheckoutPage() {
           serviceFee,
           deliveryFee,
           ...(deliveryMetadata ?? {}),
-          items: localizedCartItems.map((cartItem) => ({
-            id: cartItem.itemId,
-            name: cartItem.item.name,
-            quantity: cartItem.quantity,
-            notes: cartItem.notes,
-            price: cartItem.item.price,
-          })),
+	  items: localizedCartItems.map((cartItem) => ({
+ 	   id: cartItem.itemId,
+	   name: resolveEnglishName(cartItem.itemId, cartItem.item.name),
+	   quantity: cartItem.quantity,
+	   notes: cartItem.notes,
+ 	   price: cartItem.item.price,
+	  })),
         },
       };
 
@@ -370,12 +463,12 @@ export default function CheckoutPage() {
       if (typeof window !== "undefined") {
         window.location.href = checkoutUrl;
       } else {
-        setConfirmation({ orderNumber, total, fulfillment });
+        setConfirmation({ orderNumber, total: totalForOrder, fulfillment });
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : strings.errors.checkoutFailed;
       setErrorMessage(message);
-      setConfirmation({ orderNumber, total, fulfillment });
+      setConfirmation({ orderNumber, total: totalForOrder, fulfillment });
     } finally {
       setIsSubmitting(false);
     }
@@ -399,14 +492,19 @@ export default function CheckoutPage() {
       const template = addressWithinRadius
         ? strings.deliveryDistance.withinRange
         : strings.deliveryDistance.outsideRange;
+
+      // ✅ DoorDash：在 5km 内是 success，超 5km 是 error（会被挡单）
+      // ✅ Uber Priority：不再标红，只作 info 提示
+      const tone: DistanceMessage["tone"] =
+        deliveryType === "STANDARD"
+          ? addressWithinRadius
+            ? "success"
+            : "error"
+          : "info";
+
       addressDistanceMessage = {
         text: applyDistanceTemplate(template, distanceLabel),
-        tone: addressWithinRadius ? "success" : "error",
-      };
-    } else {
-      addressDistanceMessage = {
-        text: applyDistanceTemplate(strings.deliveryDistance.restriction),
-        tone: "muted",
+        tone,
       };
     }
   }
@@ -545,34 +643,38 @@ export default function CheckoutPage() {
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                <div className="flex items-center justify-between text-xs">
-                  <span>{strings.summary.subtotal}</span>
-                  <span>{currencyFormatter.format(subtotal)}</span>
-                </div>
-                {serviceFee > 0 ? (
-                  <div className="mt-2 flex items-center justify-between text-xs">
-                    <span>{strings.summary.serviceFee}</span>
-                    <span>{currencyFormatter.format(serviceFee)}</span>
-                  </div>
-                ) : null}
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+              <div className="flex items-center justify-between text-xs">
+                <span>{strings.summary.subtotal}</span>
+                <span>{currencyFormatter.format(subtotal)}</span>
+              </div>
+
+              {serviceFee > 0 ? (
                 <div className="mt-2 flex items-center justify-between text-xs">
-                  <span>{strings.summary.tax}</span>
-                  <span>{formatMoney(tax)}</span>
+                  <span>{strings.summary.serviceFee}</span>
+                  <span>{currencyFormatter.format(serviceFee)}</span>
                 </div>
-                {fulfillment === "delivery" ? (
-                  <div className="mt-2 flex items-center justify-between text-xs">
-                    <span>{strings.summary.deliveryFee}</span>
-                    <span>{currencyFormatter.format(deliveryFee)}</span>
-                  </div>
-                ) : null}
-                <div className="mt-3 border-t border-slate-200 pt-3 text-sm font-semibold text-slate-900">
-                  <div className="flex items-center justify-between">
-                    <span>{strings.summary.total}</span>
-                    <span>{currencyFormatter.format(total)}</span>
-                  </div>
+              ) : null}
+
+              {fulfillment === "delivery" ? (
+                <div className="mt-2 flex items-center justify-between text-xs">
+                  <span>{strings.summary.deliveryFee}</span>
+                  <span>{currencyFormatter.format(deliveryFee)}</span>
+                </div>
+              ) : null}
+
+              <div className="mt-2 flex items-center justify-between text-xs">
+                <span>{strings.summary.tax}</span>
+                <span>{formatMoney(tax)}</span>
+              </div>
+
+              <div className="mt-3 border-t border-slate-200 pt-3 text-sm font-semibold text-slate-900">
+                <div className="flex items-center justify-between">
+                  <span>{strings.summary.total}</span>
+                  <span>{currencyFormatter.format(total)}</span>
                 </div>
               </div>
+            </div>
 
               {isDeliveryFulfillment ? (
                 <>
@@ -597,9 +699,15 @@ export default function CheckoutPage() {
                           <p className="mt-1 text-xs text-slate-600">{option.description}</p>
                           <div className="mt-3 flex items-baseline justify-between text-sm">
                             <span className="font-semibold text-slate-900">{formatMoney(option.fee)}</span>
-                            <span className="text-xs uppercase tracking-wide text-slate-500">
-                              {strings.deliveryFlatFeeLabel}
-                            </span>
+<span className="text-xs uppercase tracking-wide text-slate-500">
+  {locale === "zh"
+    ? option.type === "STANDARD"
+      ? "固定配送费"
+      : "起步价$6 + 每公里$1距离计费"
+    : option.type === "STANDARD"
+      ? "Flat fee"
+      : "Base fee $6 + $1 per km"}
+</span>
                           </div>
                         </button>
                       ))}

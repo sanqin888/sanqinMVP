@@ -24,6 +24,3 @@ ADD CONSTRAINT "CheckoutIntent_pkey" PRIMARY KEY ("id");
 CREATE INDEX IF NOT EXISTS "CheckoutIntent_referenceId_createdAt_idx"
   ON "CheckoutIntent"("referenceId", "createdAt");
 
--- CreateIndex
-CREATE UNIQUE INDEX IF NOT EXISTS "Order_clientRequestId_key"
-  ON "Order"("clientRequestId");

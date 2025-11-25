@@ -123,6 +123,7 @@ export class CreateOrderDto {
   @IsOptional() @IsInt() @Min(0) subtotalCents?: number;
   @IsOptional() @IsInt() @Min(0) taxCents?: number;
   @IsOptional() @IsInt() @Min(0) totalCents?: number;
+  @IsOptional() @IsInt() @Min(0) deliveryFeeCents?: number;
 
   @IsOptional()
   @ValidateNested()

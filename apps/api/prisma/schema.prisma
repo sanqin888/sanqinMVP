@@ -1,4 +1,3 @@
-// === Prisma 基础 ===
 generator client {
   provider = "prisma-client-js"
 }
@@ -36,8 +35,8 @@ enum DeliveryType {
 }
 
 enum DeliveryProvider {
-  DOORDASH_DRIVE
-  UBER_DIRECT
+  DOORDASH
+  UBER
 }
 
 enum LoyaltyTier {
@@ -48,10 +47,14 @@ enum LoyaltyTier {
 }
 
 enum LoyaltyEntryType {
-  EARN_ON_PURCHASE // 支付后赚取
-  REDEEM_ON_ORDER // 下单时抵扣
-  REFUND_REVERSE_EARN // 退款时冲回赚取
-  REFUND_RETURN_REDEEM // 退款时退回抵扣
+  EARN_ON_PURCHASE      // 支付后赚取
+  REDEEM_ON_ORDER       // 下单时抵扣
+  REFUND_REVERSE_EARN   // 退款时冲回赚取
+  REFUND_RETURN_REDEEM  // 退款时退回抵扣
+
+  // ⭐ 新增：用于积分=储值统一记账
+  TOPUP_PURCHASED       // 储值/充值时入账的积分（包含本金部分）
+  ADJUSTMENT_MANUAL     // 人工调整（活动奖励、补偿、修正等）
 }
 
 // === Models ===
@@ -66,12 +69,15 @@ model Order {
   taxCents        Int             @default(0)
   totalCents      Int             @default(0)
   pickupCode      String?
-  deliveryType        DeliveryType?
-  deliveryProvider    DeliveryProvider?
-  deliveryFeeCents    Int?
-  deliveryEtaMinMinutes Int?
-  deliveryEtaMaxMinutes Int?
-  externalDeliveryId  String?
+
+  deliveryType           DeliveryType?
+  deliveryProvider       DeliveryProvider?
+  deliveryFeeCents       Int?
+  deliveryCostCents      Int?
+  deliveryEtaMinMinutes  Int?
+  deliveryEtaMaxMinutes  Int?
+  externalDeliveryId     String?
+
   createdAt       DateTime        @default(now())
 
   items OrderItem[]
@@ -98,6 +104,10 @@ model LoyaltyAccount {
   pointsMicro BigInt      @db.BigInt
   tier        LoyaltyTier @default(BRONZE)
   createdAt   DateTime    @default(now())
+
+  // ⭐ 新增：累计实际消费（单位：分）
+  // 包含：订单实际支付的商品金额（不含积分抵扣） + 储值金额（因为你决定不退款）
+  lifetimeSpendCents Int @default(0)
 
   ledger LoyaltyLedger[]
 

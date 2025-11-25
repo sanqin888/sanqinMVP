@@ -31,7 +31,7 @@ export class OrdersController {
    */
   @Post()
   @HttpCode(201)
-  async create(@Body() dto: CreateOrderDto) {
+  create(@Body() dto: CreateOrderDto) {
     return this.ordersService.create(dto);
   }
 
@@ -40,10 +40,10 @@ export class OrdersController {
    * GET /api/v1/orders/recent?limit=10
    */
   @Get('recent')
-  async recent(
+  recent(
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
   ) {
-    return this.ordersService.recent(limit); // 对齐 Service 方法名
+    return this.ordersService.recent(limit);
   }
 
   /**
@@ -51,8 +51,8 @@ export class OrdersController {
    * GET /api/v1/orders/:id
    */
   @Get(':id')
-  async findOne(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    return this.ordersService.getById(id); // 对齐 Service 方法名
+  findOne(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    return this.ordersService.getById(id);
   }
 
   /**
@@ -60,7 +60,7 @@ export class OrdersController {
    * PATCH /api/v1/orders/:id/status
    */
   @Patch(':id/status')
-  async updateStatus(
+  updateStatus(
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body() body: UpdateStatusDto,
   ) {
@@ -74,7 +74,7 @@ export class OrdersController {
    */
   @Post(':id/advance')
   @HttpCode(200)
-  async advance(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+  advance(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
     return this.ordersService.advance(id);
   }
 }

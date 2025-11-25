@@ -14,9 +14,10 @@ interface CheckoutBody {
       note?: string;
       taxRates?: unknown[];
     }>;
-    defaultTaxRates: Array<{ id: string; name: string; rate: number }>;
+    // ❌ 不再关心 defaultTaxRates / 税配置
   };
 }
+
 function getFirstCall(): [string, RequestInit] {
   if (!global.fetch) throw new Error('fetch not mocked');
   const fetchFn = global.fetch as jest.MockedFunction<typeof fetch>;
@@ -27,6 +28,7 @@ function getFirstCall(): [string, RequestInit] {
   const init = initRaw ?? {};
   return [urlRaw, init];
 }
+
 function parseBody(init: RequestInit): unknown {
   const b = init.body;
   if (typeof b === 'string') return JSON.parse(b) as unknown;
@@ -94,21 +96,18 @@ describe('CloverService', () => {
     const [url, init] = getFirstCall();
     expect(url).toContain('/invoicingcheckoutservice/v1/checkouts');
 
-    // Headers（大小写与 X-Clover-Merchant-Id）
+    // Headers
     const headers = (init.headers ?? {}) as Record<string, string>;
     expect(headers.Authorization).toBe('Bearer secret-key');
     expect(headers['Content-Type']).toBe('application/json');
     expect(headers.Accept).toBe('application/json');
     expect(headers['X-Clover-Merchant-Id']).toBe('MID-UNIT');
 
-    // Body
+    // Body（只关心 lineItems 结构和金额）
     const bodyUnknown: unknown = parseBody(init);
     const body = bodyUnknown as CheckoutBody;
+
     expect(Array.isArray(body.shoppingCart.lineItems)).toBe(true);
-    expect(Array.isArray(body.shoppingCart.defaultTaxRates)).toBe(true);
-    expect(body.shoppingCart.defaultTaxRates[0]).toEqual(
-      expect.objectContaining({ id: 'TAX-UNIT', name: 'HST' }),
-    );
     expect(body.shoppingCart.lineItems[0]).toEqual(
       expect.objectContaining({ price: 1234, unitQty: 1 }),
     );

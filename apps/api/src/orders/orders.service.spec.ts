@@ -1,7 +1,4 @@
-import {
-  BadRequestException,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
@@ -30,7 +27,7 @@ describe('OrdersService', () => {
 
   beforeEach(() => {
     process.env.UBER_DIRECT_ENABLED = '1';
-    
+
     prisma = {
       order: {
         findUnique: jest.fn(),
@@ -154,14 +151,25 @@ describe('OrdersService', () => {
 
     const order = await service.create(dto, undefined);
 
-    expect(uberDirect.createDelivery).toHaveBeenCalledWith(
-      expect.objectContaining<Record<string, unknown>>({
-        orderId: 'order-1',
-        destination: expect.objectContaining<Record<string, unknown>>({
-          postalCode: 'M3J 0L9',
-        }),
-      }),
-    );
+    // ✅ 确认调用过 Uber Direct
+    expect(uberDirect.createDelivery).toHaveBeenCalled();
+
+    // ✅ 把 createDelivery 强类型成带参数列表的 jest.Mock，再去读 mock.calls
+    const mockFn = uberDirect.createDelivery as jest.Mock<
+      Promise<unknown>,
+      [
+        {
+          orderId: string;
+          destination: { postalCode: string };
+        },
+      ]
+    >;
+
+    const calls = mockFn.mock.calls;
+    const firstCallArg = calls[0]?.[0];
+
+    expect(firstCallArg.orderId).toBe('order-1');
+    expect(firstCallArg.destination.postalCode).toBe('M3J 0L9');
     expect(order.externalDeliveryId).toBe('uber-123');
   });
 
@@ -212,5 +220,4 @@ describe('OrdersService', () => {
     // ✅ 说明我们确实尝试调用过 Uber Direct，只是失败了
     expect(uberDirect.createDelivery).toHaveBeenCalled();
   });
-}
-)
+});
