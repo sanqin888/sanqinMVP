@@ -261,11 +261,6 @@ export class CloverService {
       if (!this.merchantId) {
         return { ok: false, reason: 'missing-merchant-id' };
       }
-      // ✅ 不再强制要求 Clover 税配置，税完全由我们后端计算
-      // if (!this.taxId || !this.taxRateInt) {
-      //   return { ok: false, reason: 'missing-tax-config' };
-      // }
-
       const url = `${this.apiBase}/invoicingcheckoutservice/v1/checkouts`;
 
       // redirect URLs
@@ -387,7 +382,6 @@ export class CloverService {
       const body = {
         customer: isPlainObject(req.customer) ? req.customer : {},
         shoppingCart: {
-          // ✅ Clover 只看 lineItems 的金额，不再传 defaultTaxRates
           lineItems,
         },
         redirectUrls: {
