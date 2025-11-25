@@ -44,6 +44,19 @@ type DeliveryOptionDisplay = {
 
 type DistanceMessage = { text: string; tone: "muted" | "info" | "success" | "error" };
 
+// 保证 Clover 那边收到的 item.name 是英文
+function resolveEnglishName(itemId: string, localizedName: string): string {
+  const def = MENU_ITEM_LOOKUP.get(itemId);
+  if (!def) return localizedName;
+
+  const enName = def.i18n?.en?.name;
+  if (typeof enName === "string") {
+    const trimmed = enName.trim();
+    if (trimmed.length > 0) return trimmed;
+  }
+  return localizedName;
+}
+
 type CustomerInfo = {
   name: string;
   phone: string;
