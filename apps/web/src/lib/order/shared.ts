@@ -445,7 +445,7 @@ export type DeliveryProviderOption = 'DOORDASH' | 'UBER';
 
 export type ConfirmationState = {
   orderNumber: string;
-  total: number;
+  totalCents: number;
   fulfillment: "pickup" | "delivery";
 };
 

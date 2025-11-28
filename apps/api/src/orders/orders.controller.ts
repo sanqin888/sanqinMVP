@@ -15,6 +15,7 @@ import { IsEnum } from 'class-validator';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { OrderStatus } from './order-status';
+import { OrderSummaryDto } from './dto/order-summary.dto';
 
 class UpdateStatusDto {
   @IsEnum(OrderStatus)
@@ -76,5 +77,13 @@ export class OrdersController {
   @HttpCode(200)
   advance(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
     return this.ordersService.advance(id);
+  }
+  /**
+   * GET /orders/:order/summary
+   * 给前端 thank-you 页面的小结组件用
+   */
+  @Get(':order/summary')
+  getPublicSummary(@Param('order') order: string): Promise<OrderSummaryDto> {
+    return this.ordersService.getPublicOrderSummary(order);
   }
 }

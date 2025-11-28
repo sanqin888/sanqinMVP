@@ -14,10 +14,12 @@ import {
   OrderStatus,
 } from './order-status';
 import { normalizeStableId } from '../common/utils/stable-id';
+import { OrderSummaryDto } from './dto/order-summary.dto';
 import {
   UberDirectDropoffDetails,
   UberDirectService,
 } from '../deliveries/uber-direct.service';
+import { DoorDashDriveService } from '../deliveries/doordash-drive.service';
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 
@@ -25,6 +27,12 @@ const TAX_RATE = Number(process.env.SALES_TAX_RATE ?? '0.13');
 const REDEEM_DOLLAR_PER_POINT = Number(
   process.env.LOYALTY_REDEEM_DOLLAR_PER_POINT ?? '0.01',
 );
+
+// ——— 简单 UUID 判断，用在 thank-you 查询里 ——-
+const UUID_REGEX =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+const isUuid = (value: string | null | undefined): boolean =>
+  typeof value === 'string' && UUID_REGEX.test(value);
 
 /**
  * 固定的“配送类型 → 供应商 + 预计费用 + 预估 ETA”
@@ -54,7 +62,24 @@ export class OrdersService {
     private readonly prisma: PrismaService,
     private readonly loyalty: LoyaltyService,
     private readonly uberDirect: UberDirectService,
+    private readonly doorDashDrive: DoorDashDriveService,
   ) {}
+
+  /** 从稳定 ID（例如 SQ******）里抽取“取餐码”（4 位数字，取末 4 位） */
+  private derivePickupCode(source?: string | null): string | undefined {
+    if (!source) return undefined;
+
+    // 提取里面所有数字
+    const digits = source.replace(/\D/g, '');
+    if (digits.length >= 4) {
+      return digits.slice(-4); // 末 4 位
+    }
+    if (digits.length > 0) {
+      // 不足 4 位就左侧补 0
+      return digits.padStart(4, '0');
+    }
+    return undefined;
+  }
 
   /** 计算“本单可用的抵扣额（分）”，受余额 / 用户请求 / 小计 的三重上限约束 */
   private async calcRedeemCents(
@@ -90,7 +115,7 @@ export class OrdersService {
       );
     }
 
-    // —— Idempotency-Key 归一化
+    // —— Idempotency-Key 归一化（HTTP 头里带的优先）
     const headerKey =
       typeof idempotencyKey === 'string' ? idempotencyKey.trim() : undefined;
     const normalizedHeaderKey = normalizeStableId(headerKey);
@@ -98,7 +123,14 @@ export class OrdersService {
       this.logger.warn(`Ignoring invalid Idempotency-Key header: ${headerKey}`);
     }
 
-    const bodyStableKey = normalizeStableId(dto.clientRequestId);
+    // —— body 里的 clientRequestId：既尝试标准化（uuid/cuid），失败就用原始字符串
+    const bodyKey =
+      typeof dto.clientRequestId === 'string'
+        ? dto.clientRequestId.trim()
+        : undefined;
+    const normalizedBodyKey = normalizeStableId(bodyKey);
+    const bodyStableKey = normalizedBodyKey ?? bodyKey;
+
     const stableKey = normalizedHeaderKey ?? bodyStableKey;
 
     if (stableKey) {
@@ -106,8 +138,19 @@ export class OrdersService {
         where: { clientRequestId: stableKey },
         include: { items: true },
       });
-      if (existing) return existing;
+      if (existing) return existing as OrderWithItems;
     }
+
+    // —— 统一取餐码：优先用 dto.pickupCode，其次用稳定 ID（比如 SQ****** 的后四位），最后随机 4 位数字
+    const explicitPickupCode =
+      typeof dto.pickupCode === 'string' && dto.pickupCode.trim().length > 0
+        ? dto.pickupCode.trim()
+        : undefined;
+
+    const pickupCode =
+      explicitPickupCode ??
+      this.derivePickupCode(stableKey) ??
+      (1000 + Math.floor(Math.random() * 9000)).toString();
 
     // 1) 服务端重算金额（兼容旧版“单位：分”字段）
     const subtotalCentsRaw =
@@ -177,7 +220,7 @@ export class OrdersService {
         subtotalCents,
         taxCents,
         totalCents,
-        pickupCode: (1000 + Math.floor(Math.random() * 9000)).toString(),
+        pickupCode,
         ...(deliveryMeta
           ? {
               deliveryType: dto.deliveryType,
@@ -190,21 +233,81 @@ export class OrdersService {
           : {}),
         items: {
           create: (Array.isArray(dto.items) ? dto.items : []).map(
-            (i): Prisma.OrderItemCreateWithoutOrderInput => ({
-              productId: i.productId,
-              qty: i.qty,
-              ...(typeof i.unitPrice === 'number'
-                ? { unitPriceCents: Math.round(i.unitPrice * 100) }
-                : {}),
-              ...(typeof i.options !== 'undefined'
-                ? { optionsJson: i.options as Prisma.InputJsonValue }
-                : {}),
-            }),
+            (i): Prisma.OrderItemCreateWithoutOrderInput => {
+              const unitPriceCents =
+                typeof i.unitPrice === 'number'
+                  ? Math.round(i.unitPrice * 100)
+                  : undefined;
+
+              // 统一算一个 displayName：优先前端传的，其次英文/中文名，最后 productId
+              const trimmedDisplay =
+                typeof i.displayName === 'string' ? i.displayName.trim() : '';
+              const trimmedEn =
+                typeof i.nameEn === 'string' ? i.nameEn.trim() : '';
+              const trimmedZh =
+                typeof i.nameZh === 'string' ? i.nameZh.trim() : '';
+
+              const displayName =
+                trimmedDisplay || trimmedEn || trimmedZh || i.productId;
+
+              const base: Prisma.OrderItemCreateWithoutOrderInput = {
+                productId: i.productId,
+                qty: i.qty,
+                displayName,
+              };
+
+              if (trimmedEn) {
+                base.nameEn = trimmedEn;
+              }
+              if (trimmedZh) {
+                base.nameZh = trimmedZh;
+              }
+              if (typeof unitPriceCents === 'number') {
+                base.unitPriceCents = unitPriceCents;
+              }
+              if (typeof i.options !== 'undefined') {
+                base.optionsJson = i.options as Prisma.InputJsonValue;
+              }
+
+              return base;
+            },
           ),
         },
       },
       include: { items: true },
     })) as OrderWithItems;
+
+    // === Standard 配送：目前用 DoorDash Drive，下单成功后更新 deliveryCostCents ===
+    if (dto.deliveryType === DeliveryType.STANDARD && dto.deliveryDestination) {
+      const destination = this.normalizeDropoff(dto.deliveryDestination);
+
+      const provider = deliveryMeta?.provider ?? order.deliveryProvider;
+      const doordashEnabled = process.env.DOORDASH_DRIVE_ENABLED === '1';
+
+      if (provider !== DeliveryProvider.DOORDASH) {
+        this.logger.warn(
+          `Standard delivery provider is not DOORDASH for order ${order.id}, skipping DoorDash dispatch`,
+        );
+      } else if (!doordashEnabled) {
+        this.logger.warn(
+          `Skipping DoorDash dispatch for order ${order.id} because DOORDASH_DRIVE_ENABLED is not '1'`,
+        );
+      } else {
+        try {
+          order = await this.dispatchStandardDeliveryWithDoorDash(
+            order,
+            destination,
+          );
+        } catch (error) {
+          this.logger.error(
+            `Failed to dispatch DoorDash delivery for order ${order.id}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+          // ⚠️ 同 Uber：不删除订单，不抛异常，留给后台人工处理
+        }
+      }
+    }
 
     // === Priority 配送：调 Uber Direct，下单成功后用真正返回的成本更新 deliveryCostCents ===
     if (dto.deliveryType === DeliveryType.PRIORITY && dto.deliveryDestination) {
@@ -224,9 +327,7 @@ export class OrdersService {
               error instanceof Error ? error.message : String(error)
             }`,
           );
-          // ⚠️ 不再删除订单、不再抛异常：
-          // 支付已经成功，订单必须保留，后续 webhook 还能把订单推进到 paid 并 markProcessed，
-          // 你可以在后台人工处理这笔配送。
+          // ⚠️ 不再删除订单、不再抛异常
         }
       }
     }
@@ -248,7 +349,110 @@ export class OrdersService {
       include: { items: true },
     });
     if (!order) throw new NotFoundException('order not found');
-    return order;
+    return order as OrderWithItems;
+  }
+
+  /**
+   * thank-you 页订单小结：
+   * - 支持用内部 UUID（order.id）查询
+   * - 也支持用外部稳定号（例如 SQ******）查询
+   * - 若 Order 表找不到，再通过 CheckoutIntent.referenceId / checkoutSessionId → orderId 反查
+   */
+  async getPublicOrderSummary(orderParam: string): Promise<OrderSummaryDto> {
+    const value = (orderParam ?? '').trim();
+    if (!value) {
+      throw new NotFoundException('order not found');
+    }
+
+    const include = { items: true as const };
+    let order: OrderWithItems | null = null;
+
+    // 1) 先尝试直接从 Order 表查
+    if (isUuid(value)) {
+      order = (await this.prisma.order.findUnique({
+        where: { id: value },
+        include,
+      })) as OrderWithItems | null;
+    }
+
+    if (!order) {
+      order = (await this.prisma.order.findFirst({
+        where: { clientRequestId: value },
+        include,
+      })) as OrderWithItems | null;
+    }
+
+    // 2) 如果还没找到，通过 CheckoutIntent (referenceId / checkoutSessionId) 反查 orderId
+    if (!order) {
+      const intent = await this.prisma.checkoutIntent.findFirst({
+        where: {
+          OR: [{ referenceId: value }, { checkoutSessionId: value }],
+          orderId: { not: null },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { orderId: true },
+      });
+
+      if (intent?.orderId) {
+        order = (await this.prisma.order.findUnique({
+          where: { id: intent.orderId },
+          include,
+        })) as OrderWithItems | null;
+      }
+    }
+
+    if (!order) {
+      throw new NotFoundException('order not found');
+    }
+
+    const subtotalCents = order.subtotalCents ?? 0;
+    const taxCents = order.taxCents ?? 0;
+    const deliveryFeeCents = order.deliveryFeeCents ?? 0;
+
+    // T = (S - R) + D + tax => R = S - (T - tax - D)
+    const base = order.totalCents - taxCents - deliveryFeeCents;
+    const discountRaw = subtotalCents - base;
+    const discountCents = discountRaw > 0 ? discountRaw : 0;
+
+    const lineItems = order.items.map((item) => {
+      const unitPriceCents = item.unitPriceCents ?? 0;
+      const quantity = item.qty;
+      const totalPriceCents = unitPriceCents * quantity;
+
+      const fallbackName = item.productId;
+      const trimmedDisplay =
+        typeof item.displayName === 'string' ? item.displayName.trim() : '';
+      const trimmedEn =
+        typeof item.nameEn === 'string' ? item.nameEn.trim() : '';
+      const trimmedZh =
+        typeof item.nameZh === 'string' ? item.nameZh.trim() : '';
+
+      const display = trimmedDisplay || trimmedEn || trimmedZh || fallbackName;
+
+      return {
+        productId: item.productId,
+        name: display,
+        nameEn: item.nameEn ?? null,
+        nameZh: item.nameZh ?? null,
+        quantity,
+        unitPriceCents,
+        totalPriceCents,
+        optionsJson: item.optionsJson ?? undefined,
+      };
+    });
+
+    return {
+      orderId: order.id,
+      clientRequestId: order.clientRequestId,
+      orderNumber: order.clientRequestId ?? order.id,
+      currency: 'CAD',
+      subtotalCents,
+      taxCents,
+      deliveryFeeCents,
+      discountCents,
+      totalCents: order.totalCents,
+      lineItems,
+    };
   }
 
   /** 允许的状态迁移（⚠️ ready 不可退款） */
@@ -265,11 +469,11 @@ export class OrdersService {
       );
     }
 
-    const updated = await this.prisma.order.update({
+    const updated = (await this.prisma.order.update({
       where: { id },
       data: { status: next },
       include: { items: true },
-    });
+    })) as OrderWithItems;
 
     // —— 积分结算（异步，不阻塞响应）
     if (next === 'paid') {
@@ -352,6 +556,60 @@ export class OrdersService {
     return Math.max(0, Math.round(value));
   }
 
+  private async dispatchStandardDeliveryWithDoorDash(
+    order: OrderWithItems,
+    destination: UberDirectDropoffDetails, // 结构兼容，直接复用
+  ): Promise<OrderWithItems> {
+    const response = await this.doorDashDrive.createDelivery({
+      orderId: order.id,
+      pickupCode: order.pickupCode ?? undefined,
+      reference: order.clientRequestId ?? undefined,
+      totalCents: order.totalCents,
+      items: order.items.map((item) => {
+        const fallbackName = item.productId;
+
+        const trimmedDisplay =
+          typeof item.displayName === 'string' ? item.displayName.trim() : '';
+        const trimmedEn =
+          typeof item.nameEn === 'string' ? item.nameEn.trim() : '';
+        const trimmedZh =
+          typeof item.nameZh === 'string' ? item.nameZh.trim() : '';
+
+        const name = trimmedDisplay || trimmedEn || trimmedZh || fallbackName;
+
+        return {
+          name,
+          quantity: item.qty,
+          priceCents:
+            typeof item.unitPriceCents === 'number'
+              ? item.unitPriceCents
+              : undefined,
+        };
+      }),
+      destination,
+    });
+
+    const updateData: Prisma.OrderUpdateInput = {
+      externalDeliveryId: response.deliveryId,
+    };
+
+    if (
+      typeof response.deliveryCostCents === 'number' &&
+      Number.isFinite(response.deliveryCostCents)
+    ) {
+      updateData.deliveryCostCents = Math.max(
+        0,
+        Math.round(response.deliveryCostCents),
+      );
+    }
+
+    return this.prisma.order.update({
+      where: { id: order.id },
+      data: updateData,
+      include: { items: true },
+    }) as Promise<OrderWithItems>;
+  }
+
   private async dispatchPriorityDelivery(
     order: OrderWithItems,
     destination: UberDirectDropoffDetails,
@@ -361,14 +619,27 @@ export class OrdersService {
       pickupCode: order.pickupCode,
       reference: order.clientRequestId,
       totalCents: order.totalCents,
-      items: order.items.map((item) => ({
-        name: item.productId,
-        quantity: item.qty,
-        priceCents:
-          typeof item.unitPriceCents === 'number'
-            ? item.unitPriceCents
-            : undefined,
-      })),
+      items: order.items.map((item) => {
+        const fallbackName = item.productId;
+
+        const trimmedDisplay =
+          typeof item.displayName === 'string' ? item.displayName.trim() : '';
+        const trimmedEn =
+          typeof item.nameEn === 'string' ? item.nameEn.trim() : '';
+        const trimmedZh =
+          typeof item.nameZh === 'string' ? item.nameZh.trim() : '';
+
+        const name = trimmedDisplay || trimmedEn || trimmedZh || fallbackName;
+
+        return {
+          name,
+          quantity: item.qty,
+          priceCents:
+            typeof item.unitPriceCents === 'number'
+              ? item.unitPriceCents
+              : undefined,
+        };
+      }),
       destination,
     });
 

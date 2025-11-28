@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Locale } from "@/lib/i18n/locales";
 import { getDictionary } from "@/lib/i18n/dictionaries";
 import { ClearCartOnMount } from "./ClearCartOnMount";
+import { OrderSummaryClient } from "./OrderSummaryClient";
 
 type PageParams = {
   locale?: string;
@@ -27,6 +28,8 @@ export default async function ThankYouPage({ params }: PageProps) {
   const t = dict.thankYou;
   const order = orderParam ?? "";
   const alt = locale === "zh" ? "en" : "zh";
+  const pickupCode =
+    typeof order === "string" && order.length >= 4 ? order.slice(-4) : "";
 
   return (
     <main className="mx-auto max-w-3xl p-6 sm:p-10">
@@ -54,10 +57,22 @@ export default async function ThankYouPage({ params }: PageProps) {
           <div className="text-2xl sm:text-3xl font-extrabold tracking-wider">
             {order}
           </div>
+          {pickupCode ? (
+            <p className="mt-2 text-sm text-slate-700">
+              {locale === "zh"
+                ? `取餐码：${pickupCode}（订单编号的后四位）`
+                : `Pickup code: ${pickupCode} (last 4 digits of your order number)`}
+            </p>
+          ) : null}
           <p className="mt-3 text-xs text-slate-500">{t.note}</p>
         </div>
 
-        <div className="space-y-3 text-center">
+        {/* ✅ 新增：订单小结（从后端拉菜品/金额清单） */}
+        {order ? (
+          <OrderSummaryClient orderNumber={order} locale={locale} />
+        ) : null}
+
+        <div className="mt-8 space-y-3 text-center">
           <p className="text-sm text-slate-600">{t.contact}</p>
           <Link
             href={`/${locale}`}

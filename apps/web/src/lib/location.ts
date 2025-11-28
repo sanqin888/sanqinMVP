@@ -33,7 +33,7 @@ export const STORE_COORDINATES: Coordinates = {
 };
 
 // 允许配送半径（单位：km），你可以改大一点
-export const DELIVERY_RADIUS_KM = 5;
+export const DELIVERY_RADIUS_KM = 10;
 
 // ==== 距离计算（haversine）====
 

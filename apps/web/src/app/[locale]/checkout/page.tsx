@@ -28,13 +28,14 @@ import {
 
 type DeliveryOptionDefinition = {
   provider: "DOORDASH" | "UBER";
-  fee: number;
+  fee: number; // 仅用于显示说明，不参与实际计费
   eta: [number, number];
   labels: Record<Locale, { title: string; description: string }>;
 };
 
 type DeliveryOptionDisplay = {
   type: DeliveryTypeOption;
+  /** 展示给用户看的配送费（单位：分） */
   fee: number;
   eta: [number, number];
   provider: DeliveryOptionDefinition["provider"];
@@ -72,6 +73,7 @@ const DEFAULT_CITY = "Toronto";
 const DEFAULT_PROVINCE = "ON";
 const DELIVERY_COUNTRY = "Canada";
 const POSTAL_CODE_PATTERN = /^[A-Za-z]\d[A-Za-z]\s?\d[A-Za-z]\d$/;
+const PRIORITY_MAX_RADIUS_KM = DELIVERY_RADIUS_KM;
 
 const formatDeliveryAddress = (customer: CustomerInfo) => {
   const cityProvince = [customer.city.trim(), customer.province.trim()].filter(Boolean).join(", ");
@@ -104,12 +106,12 @@ const DELIVERY_OPTION_DEFINITIONS: Record<DeliveryTypeOption, DeliveryOptionDefi
       en: {
         title: "Standard delivery",
         description:
-          "Delivery range ≤ 5 km, fulfilled by DoorDash. ETA 45–60 minutes.",
+          "Delivery range ≤ 10 km, fulfilled by DoorDash. ETA 45–60 minutes.",
       },
       zh: {
         title: "标准配送",
         description:
-          "配送范围 ≤ 5 km，由 DoorDash 提供配送服务，预计送达时间 45–60 分钟。",
+          "配送范围 ≤ 10 km，由 DoorDash 提供配送服务，预计送达时间 45–60 分钟。",
       },
     },
   },
@@ -119,20 +121,23 @@ const DELIVERY_OPTION_DEFINITIONS: Record<DeliveryTypeOption, DeliveryOptionDefi
     eta: [25, 35],
     labels: {
       en: {
-        title: "Priority delivery",
+        // ⭐ 这里从 Priority delivery 改成 Uber delivery
+        title: "Uber delivery",
         description:
-          "No distance limit, fulfilled by Uber. ETA 25–35 minutes.",
+          // 可以顺便把计费方式写进去
+          "Delivery range ≤ 10 km, fulfilled by Uber. Fee: $6 base + $1 per km. ETA 25–35 minutes.",
       },
       zh: {
-        title: "优先闪送",
+        // ⭐ 这里从 优先闪送 改成 Uber 配送
+        title: "Uber 配送",
         description:
-          "不限制配送范围，由 Uber 提供配送服务，预计送达时间 25–35 分钟。",
+          "配送范围 ≤ 10 km，由 Uber 提供配送服务，配送费：$6 起步 + 每公里 $1，预计送达时间 25–35 分钟。",
       },
     },
   },
 };
 
-const DELIVERY_TYPES: DeliveryTypeOption[] = ["STANDARD", "PRIORITY"];
+const DELIVERY_TYPES: DeliveryTypeOption[] = ["PRIORITY"];
 
 export default function CheckoutPage() {
   const pathname = usePathname() || "/";
@@ -160,7 +165,7 @@ export default function CheckoutPage() {
   }, [items, locale]);
 
   const [fulfillment, setFulfillment] = useState<"pickup" | "delivery">("pickup");
-  const [deliveryType, setDeliveryType] = useState<DeliveryTypeOption>("STANDARD");
+  const [deliveryType, setDeliveryType] = useState<DeliveryTypeOption>("PRIORITY");
   const [schedule, setSchedule] = useState<ScheduleSlot>("asap");
   const [customer, setCustomer] = useState<CustomerInfo>({
     name: "",
@@ -181,18 +186,19 @@ export default function CheckoutPage() {
     error: string | null;
   }>({ distanceKm: null, isChecking: false, error: null });
 
-  // ✅ 先算小计
-  const subtotal = useMemo(
+  // ✅ 小计：按“分”计算，先把单价（CAD）×100 再四舍五入
+  const subtotalCents = useMemo(
     () =>
       localizedCartItems.reduce(
-        (total, cartItem) => total + cartItem.item.price * cartItem.quantity,
+        (total, cartItem) =>
+          total + Math.round(cartItem.item.price * 100) * cartItem.quantity,
         0,
       ),
     [localizedCartItems],
   );
 
-  // ✅ 服务费目前写死 0
-  const serviceFee: number = 0;
+  // ✅ 服务费（目前 0 分）
+  const serviceFeeCents: number = 0;
 
   // 用于计费的“公里数”：不足 1km 按 1km，向上取整
   const billedDistanceForPriorityKm =
@@ -204,24 +210,24 @@ export default function CheckoutPage() {
         ? 1 // 还没算出距离时，优先配送按 1km 起步展示
         : 0;
 
-  // UI 展示用的配送选项（standard 固定 6；priority = 6 + 1/km）
+  // UI 展示用的配送选项（standard 固定 $6；priority = $6 + $1/km）——都转换成“分”
   const deliveryOptions: DeliveryOptionDisplay[] = DELIVERY_TYPES.map((type) => {
     const definition = DELIVERY_OPTION_DEFINITIONS[type];
     const localized = definition.labels[locale];
 
-    let fee = 0;
-    if (fulfillment === "delivery" && subtotal > 0) {
+    let feeCents = 0;
+    if (fulfillment === "delivery" && subtotalCents > 0) {
       if (type === "STANDARD") {
-        fee = 6;
+        feeCents = 600;
       } else {
-        // PRIORITY：6 + 1/km
-        fee = 6 + billedDistanceForPriorityKm;
+        // PRIORITY：$6 + $1/km
+        feeCents = 600 + 100 * billedDistanceForPriorityKm;
       }
     }
 
     return {
       type,
-      fee,
+      fee: feeCents,
       eta: definition.eta,
       provider: definition.provider,
       title: localized.title,
@@ -229,7 +235,8 @@ export default function CheckoutPage() {
     };
   });
 
-  const resetAddressValidation = () => setAddressValidation({ distanceKm: null, isChecking: false, error: null });
+  const resetAddressValidation = () =>
+    setAddressValidation({ distanceKm: null, isChecking: false, error: null });
 
   const currencyFormatter = useMemo(
     () =>
@@ -242,7 +249,10 @@ export default function CheckoutPage() {
     [locale],
   );
 
-  const formatMoney = (x: number) => currencyFormatter.format(x).replace(/^CA\$\s?/, "$");
+  // 统一从“分”格式化成 $xx.xx
+  const formatMoney = (cents: number) =>
+    currencyFormatter.format(cents / 100).replace(/^CA\$\s?/, "$");
+
   const formatDistanceValue = (km: number) => {
     const rounded = Math.round(km * 10) / 10;
     if (!Number.isFinite(rounded)) return `${km} km`;
@@ -255,19 +265,23 @@ export default function CheckoutPage() {
   const selectedDeliveryDefinition = DELIVERY_OPTION_DEFINITIONS[deliveryType];
   const isDeliveryFulfillment = fulfillment === "delivery";
 
-  // 这里和上面的 deliveryOptions 保持同一套规则
-  const deliveryFee =
-    !isDeliveryFulfillment || subtotal <= 0
+  // 这里和上面的 deliveryOptions 保持同一套规则（单位：分）
+  const deliveryFeeCents =
+    !isDeliveryFulfillment || subtotalCents <= 0
       ? 0
       : deliveryType === "STANDARD"
-        ? 6
-        : 6 + billedDistanceForPriorityKm;
+        ? 600
+        : 600 + 100 * billedDistanceForPriorityKm;
 
-  const taxableBase = subtotal + (TAX_ON_DELIVERY ? deliveryFee : 0);
-  const tax = Math.round(taxableBase * TAX_RATE * 100) / 100;
-  const total = subtotal + deliveryFee + tax;
+  const taxableBaseCents =
+    subtotalCents + (TAX_ON_DELIVERY ? deliveryFeeCents : 0);
+  const taxCents = Math.round(taxableBaseCents * TAX_RATE);
+  const totalCents = subtotalCents + deliveryFeeCents + taxCents;
 
-  const deliveryAddressText = useMemo(() => formatDeliveryAddress(customer), [customer]);
+  const deliveryAddressText = useMemo(
+    () => formatDeliveryAddress(customer),
+    [customer],
+  );
 
   const addressWithinRadius =
     addressValidation.distanceKm !== null &&
@@ -275,8 +289,10 @@ export default function CheckoutPage() {
     !addressValidation.error;
 
   const postalCodeIsValid = isPostalCodeValid(customer.postalCode);
-  const hasDeliveryAddressInputs = customer.addressLine1.trim().length > 0 && postalCodeIsValid;
-  const showPostalCodeError = customer.postalCode.trim().length > 0 && !postalCodeIsValid;
+  const hasDeliveryAddressInputs =
+    customer.addressLine1.trim().length > 0 && postalCodeIsValid;
+  const showPostalCodeError =
+    customer.postalCode.trim().length > 0 && !postalCodeIsValid;
   const deliveryAddressReady =
     isDeliveryFulfillment &&
     customer.addressLine1.trim().length > 0 &&
@@ -290,7 +306,8 @@ export default function CheckoutPage() {
     customer.phone.trim().length >= 6 &&
     (fulfillment === "pickup" || deliveryAddressReady);
 
-  const scheduleLabel = strings.scheduleOptions.find((option) => option.id === schedule)?.label ?? "";
+  const scheduleLabel =
+    strings.scheduleOptions.find((option) => option.id === schedule)?.label ?? "";
 
   const handleCustomerChange = (field: keyof CustomerInfo, value: string) => {
     setCustomer((prev) => ({ ...prev, [field]: value }));
@@ -314,7 +331,12 @@ export default function CheckoutPage() {
     isDeliveryFulfillment,
   ]);
 
-  const validateDeliveryDistance = async () => {
+  // 带可选 override 类型的距离校验，解决“优先闪送还是按 5km 算”的问题
+  const validateDeliveryDistance = async (
+    overrideDeliveryType?: DeliveryTypeOption,
+  ) => {
+    const effectiveType = overrideDeliveryType ?? deliveryType;
+
     setAddressValidation({ distanceKm: null, isChecking: true, error: null });
 
     try {
@@ -333,8 +355,8 @@ export default function CheckoutPage() {
 
       const distanceKm = calculateDistanceKm(STORE_COORDINATES, coordinates);
 
-      // ✅ 标准配送：仍然限制在 DELIVERY_RADIUS_KM 以内
-      if (deliveryType === "STANDARD" && distanceKm > DELIVERY_RADIUS_KM) {
+      // ✅ 标准配送：限制在 DELIVERY_RADIUS_KM 以内
+      if (effectiveType === "STANDARD" && distanceKm > DELIVERY_RADIUS_KM) {
         const distanceLabel = formatDistanceValue(distanceKm);
         const message = applyDistanceTemplate(
           strings.deliveryDistance.outsideRange,
@@ -348,7 +370,23 @@ export default function CheckoutPage() {
         return { success: false } as const;
       }
 
-      // ✅ 优先配送（或者在范围内）：一律视为可配送，只记录距离用于计费
+      // ✅ 优先闪送：最大 PRIORITY_MAX_RADIUS_KM
+      if (effectiveType === "PRIORITY" && distanceKm > PRIORITY_MAX_RADIUS_KM) {
+        const distanceLabel = formatDistanceValue(distanceKm);
+        const message =
+          locale === "zh"
+            ? `当前地址距离门店约 ${distanceLabel}，超出优先闪送最大范围（${PRIORITY_MAX_RADIUS_KM} km）。`
+            : `This address is about ${distanceLabel} away from the store, which exceeds the maximum ${PRIORITY_MAX_RADIUS_KM} km range for priority delivery.`;
+
+        setAddressValidation({
+          distanceKm,
+          isChecking: false,
+          error: message,
+        });
+        return { success: false } as const;
+      }
+
+      // ✅ 在可配送范围内：记录距离用于计费
       setAddressValidation({
         distanceKm,
         isChecking: false,
@@ -365,12 +403,20 @@ export default function CheckoutPage() {
     }
   };
 
+  // ⭐ 统一触发：只在外送 + 有地址1 + 合法邮编 时才会真正调用 validateDeliveryDistance
+  const triggerDistanceValidationIfReady = () => {
+    if (!isDeliveryFulfillment) return;
+    if (!hasDeliveryAddressInputs) return; // addressLine1 + valid postal
+    if (addressValidation.isChecking) return;
+
+    void validateDeliveryDistance();
+  };
+
   const handlePlaceOrder = async () => {
     if (!canPlaceOrder || isSubmitting) return;
 
     setErrorMessage(null);
     setConfirmation(null);
-
     setIsSubmitting(true);
 
     let deliveryDistanceKm: number | null = null;
@@ -381,31 +427,32 @@ export default function CheckoutPage() {
         setIsSubmitting(false);
         return;
       }
-      deliveryDistanceKm = validationResult.distanceKm;
+      deliveryDistanceKm = validationResult.distanceKm ?? null;
     } else {
       resetAddressValidation();
     }
 
     const orderNumber = `SQ${Date.now().toString().slice(-6)}`;
 
-    // 下单实际使用的配送费 / 税 / 总价（用真实距离再算一遍，确保和前端展示一致）
-    let deliveryFeeForOrder = 0;
-    if (isDeliveryFulfillment && subtotal > 0) {
+    // 下单实际使用的配送费 / 税 / 总价（全部用“分”计算）
+    let deliveryFeeCentsForOrder = 0;
+    if (isDeliveryFulfillment && subtotalCents > 0) {
       if (deliveryType === "STANDARD") {
-        deliveryFeeForOrder = 6;
+        deliveryFeeCentsForOrder = 600;
       } else {
         const billedKm =
-          deliveryDistanceKm !== null ? Math.max(1, Math.ceil(deliveryDistanceKm)) : 1;
-        deliveryFeeForOrder = 6 + billedKm;
+          deliveryDistanceKm !== null
+            ? Math.max(1, Math.ceil(deliveryDistanceKm))
+            : 1;
+        deliveryFeeCentsForOrder = 600 + 100 * billedKm;
       }
     }
 
-    const taxableBaseForOrder =
-      subtotal + (TAX_ON_DELIVERY ? deliveryFeeForOrder : 0);
-    const taxForOrder =
-      Math.round(taxableBaseForOrder * TAX_RATE * 100) / 100;
-    const totalForOrder = subtotal + deliveryFeeForOrder + taxForOrder;
-    const totalCents = Math.round(totalForOrder * 100);
+    const taxableBaseCentsForOrder =
+      subtotalCents + (TAX_ON_DELIVERY ? deliveryFeeCentsForOrder : 0);
+    const taxCentsForOrder = Math.round(taxableBaseCentsForOrder * TAX_RATE);
+    const totalCentsForOrder =
+      subtotalCents + deliveryFeeCentsForOrder + taxCentsForOrder;
 
     try {
       const deliveryMetadata = isDeliveryFulfillment
@@ -422,7 +469,7 @@ export default function CheckoutPage() {
 
       const payload = {
         locale,
-        amountCents: totalCents,
+        amountCents: totalCentsForOrder,
         currency: HOSTED_CHECKOUT_CURRENCY,
         referenceId: orderNumber,
         description: `San Qin online order ${orderNumber}`,
@@ -431,30 +478,39 @@ export default function CheckoutPage() {
             ? `${window.location.origin}/${locale}/thank-you/${orderNumber}`
             : undefined,
         metadata: {
+          locale,
           fulfillment,
           schedule,
           customer: { ...customer, address: deliveryAddressText },
-          subtotal,
-          tax,
+          // ⭐ 全部用“分”
+          subtotalCents,
+          taxCents: taxCentsForOrder,
+          serviceFeeCents,
+          deliveryFeeCents: deliveryFeeCentsForOrder,
           taxRate: TAX_RATE,
-          serviceFee,
-          deliveryFee,
           ...(deliveryMetadata ?? {}),
-	  items: localizedCartItems.map((cartItem) => ({
- 	   id: cartItem.itemId,
-	   name: resolveEnglishName(cartItem.itemId, cartItem.item.name),
-	   quantity: cartItem.quantity,
-	   notes: cartItem.notes,
- 	   price: cartItem.item.price,
-	  })),
+          items: localizedCartItems.map((cartItem) => ({
+            id: cartItem.itemId,
+            // Clover 那边只用英文名
+            nameEn: resolveEnglishName(cartItem.itemId, cartItem.item.name),
+            nameZh: cartItem.item.name,
+            displayName: cartItem.item.name,
+            quantity: cartItem.quantity,
+            notes: cartItem.notes,
+            // 单价（分）
+            priceCents: Math.round(cartItem.item.price * 100),
+          })),
         },
       };
 
-      const { checkoutUrl } = await apiFetch<HostedCheckoutResponse>("/clover/pay/online/hosted-checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const { checkoutUrl } = await apiFetch<HostedCheckoutResponse>(
+        "/clover/pay/online/hosted-checkout",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
 
       if (!checkoutUrl) {
         throw new Error(strings.errors.missingCheckoutUrl);
@@ -463,49 +519,82 @@ export default function CheckoutPage() {
       if (typeof window !== "undefined") {
         window.location.href = checkoutUrl;
       } else {
-        setConfirmation({ orderNumber, total: totalForOrder, fulfillment });
+        setConfirmation({
+          orderNumber,
+          totalCents: totalCentsForOrder,
+          fulfillment,
+        });
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : strings.errors.checkoutFailed;
+      const message =
+        error instanceof Error
+          ? error.message
+          : strings.errors.checkoutFailed;
       setErrorMessage(message);
-      setConfirmation({ orderNumber, total: totalForOrder, fulfillment });
+      setConfirmation({
+        orderNumber,
+        totalCents: totalCentsForOrder,
+        fulfillment,
+      });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const payButtonLabel = isSubmitting ? strings.processing : formatWithTotal(strings.payCta, currencyFormatter.format(total));
+  const payButtonLabel =
+    isSubmitting
+      ? strings.processing
+      : formatWithTotal(strings.payCta, formatMoney(totalCents));
 
   let addressDistanceMessage: DistanceMessage | null = null;
   if (isDeliveryFulfillment) {
     if (!hasDeliveryAddressInputs) {
-      addressDistanceMessage = {
-        text: applyDistanceTemplate(strings.deliveryDistance.restriction),
-        tone: "muted",
-      };
+      // 只有“标准配送”才显示 5km 限制那句文案
+      if (deliveryType === "STANDARD") {
+        addressDistanceMessage = {
+          text: applyDistanceTemplate(strings.deliveryDistance.restriction),
+          tone: "muted",
+        };
+      } else {
+        addressDistanceMessage = null;
+      }
     } else if (addressValidation.isChecking) {
-      addressDistanceMessage = { text: strings.deliveryDistance.checking, tone: "info" };
+      addressDistanceMessage = {
+        text: strings.deliveryDistance.checking,
+        tone: "info",
+      };
     } else if (addressValidation.error) {
-      addressDistanceMessage = { text: addressValidation.error, tone: "error" };
+      addressDistanceMessage = {
+        text: addressValidation.error,
+        tone: "error",
+      };
     } else if (addressValidation.distanceKm !== null) {
       const distanceLabel = formatDistanceValue(addressValidation.distanceKm);
-      const template = addressWithinRadius
-        ? strings.deliveryDistance.withinRange
-        : strings.deliveryDistance.outsideRange;
 
-      // ✅ DoorDash：在 5km 内是 success，超 5km 是 error（会被挡单）
-      // ✅ Uber Priority：不再标红，只作 info 提示
-      const tone: DistanceMessage["tone"] =
-        deliveryType === "STANDARD"
-          ? addressWithinRadius
-            ? "success"
-            : "error"
-          : "info";
+      if (deliveryType === "STANDARD") {
+        const template = addressWithinRadius
+          ? strings.deliveryDistance.withinRange
+          : strings.deliveryDistance.outsideRange;
 
-      addressDistanceMessage = {
-        text: applyDistanceTemplate(template, distanceLabel),
-        tone,
-      };
+        const tone: DistanceMessage["tone"] = addressWithinRadius
+          ? "success"
+          : "error";
+
+        addressDistanceMessage = {
+          text: applyDistanceTemplate(template, distanceLabel),
+          tone,
+        };
+      } else if (deliveryType === "PRIORITY") {
+        const text =
+          locale === "zh"
+            ? `当前地址距离门店约 ${distanceLabel}，优先闪送配送费会按该距离自动计算。`
+            : `This address is about ${distanceLabel} away from the store. Priority delivery fee will be calculated based on this distance.`;
+
+        addressDistanceMessage = {
+          text,
+          tone: "info",
+        };
+      }
     }
   }
 
@@ -514,8 +603,12 @@ export default function CheckoutPage() {
       <section className="rounded-3xl bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-slate-900">{strings.cartTitle}</h1>
-            <p className="mt-2 max-w-xl text-sm text-slate-600">{strings.paymentHint}</p>
+            <h1 className="text-2xl font-semibold text-slate-900">
+              {strings.cartTitle}
+            </h1>
+            <p className="mt-2 max-w-xl text-sm text-slate-600">
+              {strings.paymentHint}
+            </p>
           </div>
           <div className="flex flex-col items-start gap-3 md:items-end">
             <div className="flex items-center gap-2 text-xs text-slate-500">
@@ -527,14 +620,18 @@ export default function CheckoutPage() {
                     type="button"
                     onClick={() => {
                       try {
-                        document.cookie = `locale=${code}; path=/; max-age=${60 * 60 * 24 * 365}`;
+                        document.cookie = `locale=${code}; path=/; max-age=${
+                          60 * 60 * 24 * 365
+                        }`;
                         localStorage.setItem("preferred-locale", code);
                       } catch {}
                       const nextPath = addLocaleToPath(code, pathname || "/");
                       router.push(q ? `${nextPath}?${q}` : nextPath);
                     }}
                     className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                      locale === code ? "bg-white text-slate-900 shadow" : "text-slate-600 hover:bg-white/70"
+                      locale === code
+                        ? "bg-white text-slate-900 shadow"
+                        : "text-slate-600 hover:bg-white/70"
                     }`}
                     aria-pressed={locale === code}
                   >
@@ -570,12 +667,18 @@ export default function CheckoutPage() {
           <div className="space-y-6">
             <ul className="space-y-4">
               {localizedCartItems.map((cartItem) => (
-                <li key={cartItem.itemId} className="rounded-2xl border border-slate-200 p-4">
+                <li
+                  key={cartItem.itemId}
+                  className="rounded-2xl border border-slate-200 p-4"
+                >
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <p className="text-sm font-semibold text-slate-900">{cartItem.item.name}</p>
+                      <p className="text-sm font-semibold text-slate-900">
+                        {cartItem.item.name}
+                      </p>
                       <p className="mt-1 text-xs text-slate-500">
-                        {currencyFormatter.format(cartItem.item.price)} × {cartItem.quantity}
+                        {currencyFormatter.format(cartItem.item.price)} ×{" "}
+                        {cartItem.quantity}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -587,7 +690,9 @@ export default function CheckoutPage() {
                       >
                         −
                       </button>
-                      <span className="min-w-[1.5rem] text-center text-sm font-medium">{cartItem.quantity}</span>
+                      <span className="min-w-[1.5rem] text-center text-sm font-medium">
+                        {cartItem.quantity}
+                      </span>
                       <button
                         type="button"
                         onClick={() => updateQuantity(cartItem.itemId, 1)}
@@ -602,7 +707,9 @@ export default function CheckoutPage() {
                     {strings.cartNotesLabel}
                     <textarea
                       value={cartItem.notes}
-                      onChange={(event) => updateNotes(cartItem.itemId, event.target.value)}
+                      onChange={(event) =>
+                        updateNotes(cartItem.itemId, event.target.value)
+                      }
                       placeholder={strings.cartNotesPlaceholder}
                       className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
                       rows={2}
@@ -643,39 +750,6 @@ export default function CheckoutPage() {
                 </div>
               </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-              <div className="flex items-center justify-between text-xs">
-                <span>{strings.summary.subtotal}</span>
-                <span>{currencyFormatter.format(subtotal)}</span>
-              </div>
-
-              {serviceFee > 0 ? (
-                <div className="mt-2 flex items-center justify-between text-xs">
-                  <span>{strings.summary.serviceFee}</span>
-                  <span>{currencyFormatter.format(serviceFee)}</span>
-                </div>
-              ) : null}
-
-              {fulfillment === "delivery" ? (
-                <div className="mt-2 flex items-center justify-between text-xs">
-                  <span>{strings.summary.deliveryFee}</span>
-                  <span>{currencyFormatter.format(deliveryFee)}</span>
-                </div>
-              ) : null}
-
-              <div className="mt-2 flex items-center justify-between text-xs">
-                <span>{strings.summary.tax}</span>
-                <span>{formatMoney(tax)}</span>
-              </div>
-
-              <div className="mt-3 border-t border-slate-200 pt-3 text-sm font-semibold text-slate-900">
-                <div className="flex items-center justify-between">
-                  <span>{strings.summary.total}</span>
-                  <span>{currencyFormatter.format(total)}</span>
-                </div>
-              </div>
-            </div>
-
               {isDeliveryFulfillment ? (
                 <>
                   <div className="space-y-3">
@@ -687,7 +761,18 @@ export default function CheckoutPage() {
                         <button
                           key={option.type}
                           type="button"
-                          onClick={() => setDeliveryType(option.type)}
+                          onClick={() => {
+                            setDeliveryType(option.type);
+
+                            // 如果已经有地址+邮编，就用新的配送类型重新校验一次距离
+                            if (
+                              isDeliveryFulfillment &&
+                              hasDeliveryAddressInputs &&
+                              !addressValidation.isChecking
+                            ) {
+                              void validateDeliveryDistance(option.type);
+                            }
+                          }}
                           className={`text-left rounded-2xl border p-4 transition ${
                             deliveryType === option.type
                               ? "border-emerald-500 bg-emerald-50 shadow-sm"
@@ -695,19 +780,25 @@ export default function CheckoutPage() {
                           }`}
                           aria-pressed={deliveryType === option.type}
                         >
-                          <p className="text-sm font-semibold text-slate-900">{option.title}</p>
-                          <p className="mt-1 text-xs text-slate-600">{option.description}</p>
+                          <p className="text-sm font-semibold text-slate-900">
+                            {option.title}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-600">
+                            {option.description}
+                          </p>
                           <div className="mt-3 flex items-baseline justify-between text-sm">
-                            <span className="font-semibold text-slate-900">{formatMoney(option.fee)}</span>
-<span className="text-xs uppercase tracking-wide text-slate-500">
-  {locale === "zh"
-    ? option.type === "STANDARD"
-      ? "固定配送费"
-      : "起步价$6 + 每公里$1距离计费"
-    : option.type === "STANDARD"
-      ? "Flat fee"
-      : "Base fee $6 + $1 per km"}
-</span>
+                            <span className="font-semibold text-slate-900">
+                              {formatMoney(option.fee)}
+                            </span>
+                            <span className="text-xs uppercase tracking-wide text-slate-500">
+                              {locale === "zh"
+                                ? option.type === "STANDARD"
+                                  ? "固定配送费"
+                                  : "起步价$6 + 每公里$1距离计费"
+                                : option.type === "STANDARD"
+                                  ? "Flat fee"
+                                  : "Base fee $6 + $1 per km"}
+                            </span>
                           </div>
                         </button>
                       ))}
@@ -719,7 +810,9 @@ export default function CheckoutPage() {
                       {strings.scheduleLabel}
                       <select
                         value={schedule}
-                        onChange={(event) => setSchedule(event.target.value as ScheduleSlot)}
+                        onChange={(event) =>
+                          setSchedule(event.target.value as ScheduleSlot)
+                        }
                         className="mt-2 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
                       >
                         {strings.scheduleOptions.map((option) => (
@@ -745,7 +838,9 @@ export default function CheckoutPage() {
                   {strings.contactFields.name}
                   <input
                     value={customer.name}
-                    onChange={(event) => handleCustomerChange("name", event.target.value)}
+                    onChange={(event) =>
+                      handleCustomerChange("name", event.target.value)
+                    }
                     placeholder={strings.contactFields.namePlaceholder}
                     className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
                   />
@@ -754,7 +849,9 @@ export default function CheckoutPage() {
                   {strings.contactFields.phone}
                   <input
                     value={customer.phone}
-                    onChange={(event) => handleCustomerChange("phone", event.target.value)}
+                    onChange={(event) =>
+                      handleCustomerChange("phone", event.target.value)
+                    }
                     placeholder={strings.contactFields.phonePlaceholder}
                     className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
                   />
@@ -765,8 +862,15 @@ export default function CheckoutPage() {
                       {strings.contactFields.addressLine1}
                       <input
                         value={customer.addressLine1}
-                        onChange={(event) => handleCustomerChange("addressLine1", event.target.value)}
-                        placeholder={strings.contactFields.addressLine1Placeholder}
+                        onChange={(event) =>
+                          handleCustomerChange(
+                            "addressLine1",
+                            event.target.value,
+                          )
+                        }
+                        placeholder={
+                          strings.contactFields.addressLine1Placeholder
+                        }
                         className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
                       />
                     </label>
@@ -774,8 +878,15 @@ export default function CheckoutPage() {
                       {strings.contactFields.addressLine2}
                       <input
                         value={customer.addressLine2}
-                        onChange={(event) => handleCustomerChange("addressLine2", event.target.value)}
-                        placeholder={strings.contactFields.addressLine2Placeholder}
+                        onChange={(event) =>
+                          handleCustomerChange(
+                            "addressLine2",
+                            event.target.value,
+                          )
+                        }
+                        placeholder={
+                          strings.contactFields.addressLine2Placeholder
+                        }
                         className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
                       />
                     </label>
@@ -784,7 +895,9 @@ export default function CheckoutPage() {
                         {strings.contactFields.city}
                         <input
                           value={customer.city}
-                          onChange={(event) => handleCustomerChange("city", event.target.value)}
+                          onChange={(event) =>
+                            handleCustomerChange("city", event.target.value)
+                          }
                           placeholder={strings.contactFields.cityPlaceholder}
                           className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
                         />
@@ -793,8 +906,15 @@ export default function CheckoutPage() {
                         {strings.contactFields.province}
                         <input
                           value={customer.province}
-                          onChange={(event) => handleCustomerChange("province", event.target.value.toUpperCase())}
-                          placeholder={strings.contactFields.provincePlaceholder}
+                          onChange={(event) =>
+                            handleCustomerChange(
+                              "province",
+                              event.target.value.toUpperCase(),
+                            )
+                          }
+                          placeholder={
+                            strings.contactFields.provincePlaceholder
+                          }
                           className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
                         />
                       </label>
@@ -804,8 +924,16 @@ export default function CheckoutPage() {
                         {strings.contactFields.postalCode}
                         <input
                           value={customer.postalCode}
-                          onChange={(event) => handleCustomerChange("postalCode", formatPostalCodeInput(event.target.value))}
-                          placeholder={strings.contactFields.postalCodePlaceholder}
+                          onChange={(event) =>
+                            handleCustomerChange(
+                              "postalCode",
+                              formatPostalCodeInput(event.target.value),
+                            )
+                          }
+                          onBlur={triggerDistanceValidationIfReady}
+                          placeholder={
+                            strings.contactFields.postalCodePlaceholder
+                          }
                           className={`mt-1 w-full rounded-2xl border bg-white p-2 text-sm text-slate-700 focus:outline-none ${
                             showPostalCodeError
                               ? "border-red-400 focus:border-red-500"
@@ -822,8 +950,19 @@ export default function CheckoutPage() {
                         />
                       </label>
                     </div>
-                    <p className={`text-xs ${showPostalCodeError ? "text-red-600" : "text-slate-500"}`}>
-                      {showPostalCodeError ? strings.contactFields.postalCodeError : strings.contactFields.postalCodeHint}
+                    <p
+                      className={`text-xs ${
+                        showPostalCodeError
+                          ? "text-red-600"
+                          : "text-slate-500"
+                      }`}
+                    >
+                      {showPostalCodeError
+                        ? strings.contactFields.postalCodeError
+                        : deliveryType === "STANDARD"
+                          ? strings.contactFields.postalCodeHint
+                          : ""}{" "}
+                      {/* 优先闪送时不显示“只支持 5km 内外送”这句 */}
                     </p>
                     {addressDistanceMessage ? (
                       <p
@@ -846,7 +985,9 @@ export default function CheckoutPage() {
                   {strings.contactFields.notes}
                   <textarea
                     value={customer.notes}
-                    onChange={(event) => handleCustomerChange("notes", event.target.value)}
+                    onChange={(event) =>
+                      handleCustomerChange("notes", event.target.value)
+                    }
                     placeholder={strings.contactFields.notesPlaceholder}
                     className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
                     rows={2}
@@ -855,10 +996,47 @@ export default function CheckoutPage() {
               </div>
 
               <div className="space-y-2">
-                <p className="text-xs text-slate-500">{strings.paymentHint}</p>
+                <p className="text-xs text-slate-500">
+                  {strings.paymentHint}
+                </p>
                 {errorMessage ? (
-                  <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-xs text-red-600">{errorMessage}</div>
+                  <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-xs text-red-600">
+                    {errorMessage}
+                  </div>
                 ) : null}
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                <div className="flex items-center justify-between text-xs">
+                  <span>{strings.summary.subtotal}</span>
+                  <span>{formatMoney(subtotalCents)}</span>
+                </div>
+
+                {serviceFeeCents > 0 ? (
+                  <div className="mt-2 flex items-center justify-between text-xs">
+                    <span>{strings.summary.serviceFee}</span>
+                    <span>{formatMoney(serviceFeeCents)}</span>
+                  </div>
+                ) : null}
+
+                {fulfillment === "delivery" ? (
+                  <div className="mt-2 flex items-center justify-between text-xs">
+                    <span>{strings.summary.deliveryFee}</span>
+                    <span>{formatMoney(deliveryFeeCents)}</span>
+                  </div>
+                ) : null}
+
+                <div className="mt-2 flex items-center justify-between text-xs">
+                  <span>{strings.summary.tax}</span>
+                  <span>{formatMoney(taxCents)}</span>
+                </div>
+
+                <div className="mt-3 border-t border-slate-200 pt-3 text-sm font-semibold text-slate-900">
+                  <div className="flex items-center justify-between">
+                    <span>{strings.summary.total}</span>
+                    <span>{formatMoney(totalCents)}</span>
+                  </div>
+                </div>
               </div>
 
               <button
@@ -876,9 +1054,11 @@ export default function CheckoutPage() {
                 <p className="font-semibold">{strings.confirmation.title}</p>
                 <p className="mt-1">
                   {formatWithOrder(
-                    confirmation.fulfillment === "delivery" ? strings.confirmation.delivery : strings.confirmation.pickup,
+                    confirmation.fulfillment === "delivery"
+                      ? strings.confirmation.delivery
+                      : strings.confirmation.pickup,
                     confirmation.orderNumber,
-                    currencyFormatter.format(confirmation.total),
+                    formatMoney(confirmation.totalCents),
                     scheduleLabel,
                   )}
                 </p>
@@ -888,7 +1068,7 @@ export default function CheckoutPage() {
                       ? strings.confirmation.deliveryMeta
                       : strings.confirmation.pickupMeta,
                     confirmation.orderNumber,
-                    currencyFormatter.format(confirmation.total),
+                    formatMoney(confirmation.totalCents),
                     scheduleLabel,
                   )}
                 </p>
