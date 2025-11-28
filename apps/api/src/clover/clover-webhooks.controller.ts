@@ -44,6 +44,8 @@ export class CloverHcoWebhookController {
     @Res() res: Response,
     @Headers('clover-signature') signature?: string,
   ) {
+    this.logger.log('=== Clover HCO webhook entered ==='); // 👈 直接加在最前面
+
     // ---- 1. 还原 rawBody ----
     let rawBody: Buffer;
     const body: unknown = req.body;
@@ -146,23 +148,9 @@ export class CloverHcoWebhookController {
     // ---- 6. 根据 Clover 返回的状态判断是否支付成功 ----
     const rawStatus = (event.status || event.result || '').toString();
 
-    let paidLike: boolean | undefined;
-    const maybeInterpret = (
-      this.clover as unknown as {
-        interpretStatus?: (status: string) => unknown;
-      }
-    ).interpretStatus;
-
-    if (typeof maybeInterpret === 'function') {
-      const result = maybeInterpret(rawStatus);
-      if (typeof result === 'boolean') {
-        paidLike = result;
-      }
-    }
-
-    const isSuccess =
-      paidLike === true ||
-      /success|approved|paid|complete|settled/i.test(rawStatus);
+    // 目前 webhook payload 的状态字段是简单字符串，
+    // 直接用字符串匹配即可识别成功状态（APPROVED / SUCCESS / PAID / COMPLETE / SETTLED 等）
+    const isSuccess = /success|approved|paid|complete|settled/i.test(rawStatus);
 
     if (!isSuccess) {
       this.logger.warn(
@@ -195,8 +183,13 @@ export class CloverHcoWebhookController {
 
     // ---- 8. 构造订单 DTO 并创建订单（然后推进状态到 paid） ----
     try {
-      const orderDto = buildOrderDtoFromMetadata(intent.metadata, intent.id);
+      // ✅ 优先用 referenceId（例如 SQ743563），没有才退回到 intent.id
+      const clientRequestId = intent.referenceId || intent.id;
 
+      const orderDto = buildOrderDtoFromMetadata(
+        intent.metadata,
+        clientRequestId,
+      );
       // 1) 先建订单（默认 pending）
       const order = await this.orders.create(orderDto);
 
@@ -227,7 +220,6 @@ export class CloverHcoWebhookController {
       );
       return res.status(500).send('order-create-failed');
     }
-
     return res.send('ok');
   }
 

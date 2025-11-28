@@ -17,6 +17,10 @@ class CreateOrderItemDto {
   @IsString() productId!: string;
   @IsInt() @Min(1) qty!: number;
 
+  @IsOptional() @IsString() displayName?: string;
+  @IsOptional() @IsString() nameEn?: string;
+  @IsOptional() @IsString() nameZh?: string;
+
   // 可选：单价、加料
   @IsOptional() unitPrice?: number;
   @IsOptional() options?: Record<string, unknown>;
@@ -85,6 +89,10 @@ export class CreateOrderDto {
   @IsOptional()
   @IsStableId({ message: 'clientRequestId must be a cuid/uuid when provided' })
   clientRequestId?: string;
+
+  @IsOptional()
+  @IsString()
+  pickupCode?: string;
 
   @IsIn(['web', 'in_store', 'ubereats'])
   channel!: 'web' | 'in_store' | 'ubereats';

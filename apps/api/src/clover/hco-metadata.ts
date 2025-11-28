@@ -3,10 +3,13 @@ import { CreateOrderDto } from '../orders/dto/create-order.dto';
 
 export type HostedCheckoutItem = {
   id: string;
-  name?: string;
+  nameEn?: string;
+  nameZh?: string;
+  displayName?: string;
   quantity: number;
   notes?: string;
-  price: number;
+  priceCents: number; // 单价：分
+  options?: unknown;
 };
 
 export type HostedCheckoutCustomer = {
@@ -27,11 +30,15 @@ export type HostedCheckoutMetadata = {
   schedule?: string;
   customer: HostedCheckoutCustomer;
   items: HostedCheckoutItem[];
-  subtotal: number;
-  tax: number;
-  serviceFee?: number;
-  deliveryFee?: number;
-  taxRate?: number;
+
+  // 全部用“分”
+  subtotalCents: number;
+  taxCents: number;
+  serviceFeeCents?: number;
+  deliveryFeeCents?: number;
+  totalCents?: number;
+
+  taxRate?: number; // 仍然是 0.13 这种小数
   deliveryType?: DeliveryType;
   deliveryProvider?: DeliveryProvider;
   deliveryEtaMinutes?: [number, number];
@@ -58,18 +65,19 @@ const toNumber = (value: unknown): number | undefined => {
   return undefined;
 };
 
-const toMoney = (value: unknown, label: string): number => {
+// ===== cents helpers =====
+const toCents = (value: unknown, label: string): number => {
   const num = toNumber(value);
-  if (typeof num !== 'number') {
-    throw new Error(`${label} is required`);
+  if (typeof num !== 'number' || num < 0) {
+    throw new Error(`${label} (cents) is required and must be ≥ 0`);
   }
-  return Math.round(num * 100) / 100;
+  return Math.round(num);
 };
 
-const toOptionalMoney = (value: unknown): number | undefined => {
+const toOptionalCents = (value: unknown): number | undefined => {
   const num = toNumber(value);
-  if (typeof num !== 'number') return undefined;
-  return Math.round(num * 100) / 100;
+  if (typeof num !== 'number' || num < 0) return undefined;
+  return Math.round(num);
 };
 
 const parseFulfillment = (value: unknown): 'pickup' | 'delivery' => {
@@ -92,9 +100,9 @@ const parseDeliveryProvider = (
   value: unknown,
 ): DeliveryProvider | undefined => {
   const normalized = toString(value)?.toUpperCase();
+  if (normalized === DeliveryProvider.UBER) return DeliveryProvider.UBER;
   if (normalized === DeliveryProvider.DOORDASH)
     return DeliveryProvider.DOORDASH;
-  if (normalized === DeliveryProvider.UBER) return DeliveryProvider.UBER;
   return undefined;
 };
 
@@ -114,19 +122,36 @@ const parseItems = (value: unknown): HostedCheckoutItem[] => {
   const items = value
     .map((entry) => {
       if (!isPlainObject(entry)) return null;
+
       const id = toString(entry.id);
-      const price = toNumber(entry.price);
-      if (!id || typeof price !== 'number') return null;
+      // 前端统一传 priceCents；为了安全，也兼容 price 字段，但一律当作“分”
+      const priceCents =
+        toOptionalCents(entry.priceCents) ?? toOptionalCents(entry.price);
+      if (!id || typeof priceCents !== 'number') return null;
+
       const quantity = Math.max(1, Math.round(toNumber(entry.quantity) ?? 1));
       const notes = toString(entry.notes);
-      const name = toString(entry.name);
-      return {
+
+      const nameEn = toString(entry.nameEn);
+      const nameZh = toString(entry.nameZh);
+      const displayName = toString(entry.displayName);
+
+      const rawOptions = entry.options;
+      const options = isPlainObject(rawOptions) ? rawOptions : undefined;
+
+      const item: HostedCheckoutItem = {
         id,
-        price,
+        priceCents,
         quantity,
-        ...(notes ? { notes } : {}),
-        ...(name ? { name } : {}),
       };
+
+      if (notes) item.notes = notes;
+      if (nameEn) item.nameEn = nameEn;
+      if (nameZh) item.nameZh = nameZh;
+      if (displayName) item.displayName = displayName;
+      if (typeof options !== 'undefined') item.options = options;
+
+      return item;
     })
     .filter((item): item is HostedCheckoutItem => Boolean(item));
 
@@ -170,16 +195,20 @@ export function parseHostedCheckoutMetadata(
   const items = parseItems(input.items);
   const customer = parseCustomer(input.customer);
 
+  const subtotalCents = toCents(input.subtotalCents, 'subtotalCents');
+  const taxCents = toCents(input.taxCents, 'taxCents');
+
   return {
     locale: parseLocale(input.locale),
     fulfillment,
     schedule: toString(input.schedule),
     customer,
     items,
-    subtotal: toMoney(input.subtotal ?? input.subtotalCents, 'subtotal'),
-    tax: toMoney(input.tax ?? input.taxTotal, 'tax'),
-    serviceFee: toOptionalMoney(input.serviceFee),
-    deliveryFee: toOptionalMoney(input.deliveryFee),
+    subtotalCents,
+    taxCents,
+    serviceFeeCents: toOptionalCents(input.serviceFeeCents),
+    deliveryFeeCents: toOptionalCents(input.deliveryFeeCents),
+    totalCents: toOptionalCents(input.totalCents),
     taxRate: toNumber(input.taxRate),
     deliveryType: parseDeliveryType(input.deliveryType),
     deliveryProvider: parseDeliveryProvider(input.deliveryProvider),
@@ -188,7 +217,7 @@ export function parseHostedCheckoutMetadata(
   } satisfies HostedCheckoutMetadata;
 }
 
-const dollarsToCents = (value: number): number => Math.round(value * 100);
+// ===== 把 metadata 转成 CreateOrderDto =====
 
 const buildDestination = (
   meta: HostedCheckoutMetadata,
@@ -206,8 +235,7 @@ const buildDestination = (
 
   const missingRequired = requiredFields.some((field) => !field);
 
-  // ⚠️ 地址不完整时，直接返回 undefined，不再 throw，
-  // 这样 webhook 仍然能建订单，只是不会调 Uber Direct。
+  // 地址不完整时直接返回 undefined，不 throw
   if (missingRequired) {
     return undefined;
   }
@@ -230,10 +258,10 @@ export function buildOrderDtoFromMetadata(
   meta: HostedCheckoutMetadata,
   clientRequestId: string,
 ): CreateOrderDto {
-  const subtotalCents = dollarsToCents(meta.subtotal);
-  const taxCents = dollarsToCents(meta.tax);
-  const deliveryFeeCents =
-    typeof meta.deliveryFee === 'number' ? dollarsToCents(meta.deliveryFee) : 0;
+  const subtotalCents = meta.subtotalCents;
+  const taxCents = meta.taxCents;
+  const deliveryFeeCents = meta.deliveryFeeCents ?? 0;
+  const serviceFeeCents = meta.serviceFeeCents ?? 0;
 
   const dto: CreateOrderDto = {
     clientRequestId,
@@ -241,14 +269,39 @@ export function buildOrderDtoFromMetadata(
     fulfillmentType: meta.fulfillment === 'delivery' ? 'delivery' : 'pickup',
     subtotalCents,
     taxCents,
-    totalCents: subtotalCents + taxCents,
+    totalCents: subtotalCents + taxCents + deliveryFeeCents + serviceFeeCents,
     ...(deliveryFeeCents > 0 ? { deliveryFeeCents } : {}),
-    items: meta.items.map((item) => ({
-      productId: item.id,
-      qty: item.quantity,
-      unitPrice: item.price,
-      ...(item.notes ? { options: { notes: item.notes } } : {}),
-    })),
+    // 旧版 subtotal/taxTotal/total 可以不再使用，但字段仍在 DTO 中以防其它地方引用
+    subtotal: subtotalCents,
+    taxTotal: taxCents,
+    total: subtotalCents + taxCents + deliveryFeeCents + serviceFeeCents,
+    items: meta.items.map((item) => {
+      const options: Record<string, unknown> | undefined = (() => {
+        const result: Record<string, unknown> = {};
+
+        if (isPlainObject(item.options)) {
+          Object.assign(result, item.options);
+        }
+
+        if (item.notes) {
+          result.notes = item.notes;
+        }
+
+        return Object.keys(result).length > 0 ? result : undefined;
+      })();
+
+      return {
+        productId: item.id,
+        qty: item.quantity,
+        unitPrice: item.priceCents, // 这里直接用“分”
+
+        ...(item.displayName ? { displayName: item.displayName } : {}),
+        ...(item.nameEn ? { nameEn: item.nameEn } : {}),
+        ...(item.nameZh ? { nameZh: item.nameZh } : {}),
+
+        ...(options ? { options } : {}),
+      };
+    }),
   };
 
   if (meta.fulfillment === 'delivery') {

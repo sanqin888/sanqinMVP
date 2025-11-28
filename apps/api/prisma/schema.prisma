@@ -89,6 +89,9 @@ model OrderItem {
   id             String @id @default(uuid()) @db.Uuid
   orderId        String @db.Uuid
   productId      String
+  displayName    String?   // 下单时用户看到的名字（跟当前界面 locale 一致）
+  nameEn         String?   // 标准英文名
+  nameZh         String?   // 标准中文名
   qty            Int
   unitPriceCents Int?
   optionsJson    Json?

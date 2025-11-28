@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { use, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api-client';
 import { isStableId } from '@/lib/stable-id';
@@ -37,10 +37,18 @@ type OrderDetail = {
   items: OrderItem[];
 };
 
-type PageProps = { params: { id: string } };
+type PageParams = {
+  id?: string;
+  locale?: string;
+};
+
+type PageProps = {
+  params: Promise<PageParams>;
+};
 
 export default function OrderDetailPage({ params }: PageProps) {
-  const orderId = params?.id ?? '';
+  const { id: orderIdRaw } = use(params);
+  const orderId = orderIdRaw ?? '';
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
