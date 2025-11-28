@@ -44,7 +44,6 @@ export class CloverHcoWebhookController {
     @Res() res: Response,
     @Headers('clover-signature') signature?: string,
   ) {
-    this.logger.log('=== Clover HCO webhook entered ==='); // 👈 直接加在最前面
 
     // ---- 1. 还原 rawBody ----
     let rawBody: Buffer;
