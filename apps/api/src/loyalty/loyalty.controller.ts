@@ -1,4 +1,4 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, BadRequestException } from '@nestjs/common';
 import { LoyaltyService } from './loyalty.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -54,5 +54,34 @@ export class LoyaltyController {
       balanceAfterPoints: Number(r.balanceAfterMicro) / MICRO_PER_POINT,
       note: r.note,
     }));
+  }
+
+  /**
+   * ⚠️ 仅开发环境使用：给指定 userId 人为加减积分
+   * 例：/loyalty/dev/credit?userId=google:123&points=10
+   */
+  @Get('dev/credit')
+  async devCredit(
+    @Query('userId') userId: string,
+    @Query('points') pointsRaw?: string,
+    @Query('note') note?: string,
+  ) {
+    if (!userId) {
+      throw new BadRequestException('userId is required');
+    }
+
+    const points = Number(pointsRaw ?? '0');
+    if (!Number.isFinite(points) || points === 0) {
+      throw new BadRequestException('points must be a non-zero number');
+    }
+
+    await this.loyalty.adjustPointsManual(userId, points, note ?? 'dev credit');
+
+    const acc = await this.loyalty.ensureAccount(userId);
+    return {
+      userId: acc.userId,
+      tier: acc.tier,
+      points: Number(acc.pointsMicro) / MICRO_PER_POINT,
+    };
   }
 }

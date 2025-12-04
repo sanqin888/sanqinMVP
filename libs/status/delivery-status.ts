@@ -1,3 +1,5 @@
+// libs/status/delivery-status.ts
+
 export enum DeliveryStatus {
   pending = 'pending',
   assigning = 'assigning',
@@ -9,7 +11,10 @@ export enum DeliveryStatus {
   failed = 'failed',
 }
 
-export const DELIVERY_STATUS_SEQUENCE: readonly DeliveryStatus[] = [
+// 构造一个 value 类型，前端/后端都可以用
+export type DeliveryStatusValue = `${DeliveryStatus}`;
+
+export const DELIVERY_STATUS_SEQUENCE: readonly DeliveryStatusValue[] = [
   DeliveryStatus.pending,
   DeliveryStatus.assigning,
   DeliveryStatus.assigned,
@@ -21,7 +26,7 @@ export const DELIVERY_STATUS_SEQUENCE: readonly DeliveryStatus[] = [
 ] as const;
 
 export const DELIVERY_STATUS_TRANSITIONS: Readonly<
-  Record<DeliveryStatus, readonly DeliveryStatus[]>
+  Record<DeliveryStatusValue, readonly DeliveryStatusValue[]>
 > = {
   pending: [DeliveryStatus.assigning, DeliveryStatus.cancelled],
   assigning: [DeliveryStatus.assigned, DeliveryStatus.cancelled],

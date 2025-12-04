@@ -1,3 +1,5 @@
+//Users/apple/sanqinMVP/apps/web/src/app/[locale]/thank-you/[order]/page.tsx
+
 import Link from "next/link";
 import type { Locale } from "@/lib/i18n/locales";
 import { getDictionary } from "@/lib/i18n/dictionaries";

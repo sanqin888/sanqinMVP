@@ -1,3 +1,4 @@
+//Users/apple/sanqinMVP/apps/api/prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
@@ -55,9 +56,37 @@ enum LoyaltyEntryType {
   // ⭐ 新增：用于积分=储值统一记账
   TOPUP_PURCHASED       // 储值/充值时入账的积分（包含本金部分）
   ADJUSTMENT_MANUAL     // 人工调整（活动奖励、补偿、修正等）
+  // ⭐ 新增：推荐奖励 & 退款冲销
+  REFERRAL_BONUS          // 推荐人因被推荐人消费获得的积分
+  REFUND_REVERSE_REFERRAL // 退款时冲回推荐奖励
 }
 
 // === Models ===
+
+// ⭐ 新增：用户表
+// id 我们用字符串，直接和 next-auth 的 userId 对齐（例如 "google:xxxxx"）
+// 不强制 UUID，这样不用改你现有的 token 生成逻辑。
+model User {
+  id        String   @id         // 例如: "google:1234567890"
+  email     String?  @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  marketingEmailOptIn   Boolean  @default(false)
+  marketingEmailOptInAt DateTime?
+  // ⭐ 新增：推荐关系，仅在注册时写入一次
+  referredByUserId String?  // = 推荐人的 userId（User.id）
+
+  // ⭐ 新增：生日（月/日），用于生日优惠券，仅能设置一次
+  birthdayMonth    Int?     // 1-12
+  birthdayDay      Int?     // 1-31（代码中再做校验）
+
+  // 目前不加外键关系，继续用 userId 字符串“软关联” Order / LoyaltyAccount，
+  // 方便迁移，不会因为老数据导致外键失败。以后需要可以再加关系字段。
+  @@index([referredByUserId])
+}
+
+// === 订单相关 ===
 model Order {
   id              String          @id @default(uuid()) @db.Uuid
   userId          String?
@@ -77,6 +106,8 @@ model Order {
   deliveryEtaMinMinutes  Int?
   deliveryEtaMaxMinutes  Int?
   externalDeliveryId     String?
+  loyaltyRedeemCents       Int      @default(0)
+  subtotalAfterDiscountCents Int    @default(0)
 
   createdAt       DateTime        @default(now())
 
@@ -101,6 +132,7 @@ model OrderItem {
   @@index([orderId])
 }
 
+// === 会员积分相关 ===
 model LoyaltyAccount {
   id          String      @id @default(uuid()) @db.Uuid
   userId      String      @unique

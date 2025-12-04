@@ -2,8 +2,10 @@
 // 可同时被客户端/服务端安全引入的共享模块（不使用 next/headers、fs 等仅服务端 API）
 
 /** ===== 基础类型 / 常量 ===== */
-export type Locale = "en" | "zh";
-export const LOCALES = ["en", "zh"] as const;
+import type { Locale } from "@/lib/i18n/locales";
+export { LOCALES } from "@/lib/i18n/locales";
+export { addLocaleToPath } from "@/lib/i18n/path";
+
 export const LANGUAGE_NAMES: Record<Locale, string> = {
   en: "English",
   zh: "中文",
@@ -454,17 +456,6 @@ export type HostedCheckoutResponse = {
 };
 
 /** ===== 工具函数 ===== */
-export function addLocaleToPath(next: Locale, path: string) {
-  if (!path.startsWith("/")) path = `/${path}`;
-  const parts = path.split("/");
-  const first = parts[1];
-  if (first === "zh" || first === "en") {
-    parts[1] = next;
-    return parts.join("/");
-  }
-  return `/${next}${path}`;
-}
-
 export function formatWithTotal(tpl: string, totalFormatted: string) {
   return tpl.replaceAll("{total}", totalFormatted);
 }

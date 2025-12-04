@@ -1,16 +1,27 @@
+//Users/apple/sanqinMVP/apps/web/src/app/[locale]/membership/page.tsx
+
 'use client';
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import { useMemo, useState } from 'react';
-
+import { useEffect, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import type { Locale } from '@/lib/order/shared';
+import { useSession, signOut } from 'next-auth/react';
+import type { Session } from 'next-auth';
+
+// ====== 基本类型 ======
 
 type MemberTier = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM';
 
-type OrderStatus = 'pending' | 'paid' | 'delivering' | 'completed' | 'cancelled';
+type OrderStatus =
+  | 'pending'
+  | 'paid'
+  | 'making'
+  | 'ready'
+  | 'completed'
+  | 'refunded';
 
-type DeliveryType = 'pickup' | 'delivery';
+type DeliveryKind = 'pickup' | 'delivery';
 
 type OrderHistory = {
   id: string;
@@ -18,7 +29,7 @@ type OrderHistory = {
   totalCents: number;
   status: OrderStatus;
   items: number;
-  deliveryType: DeliveryType;
+  deliveryType: DeliveryKind;
 };
 
 type Address = {
@@ -40,702 +51,998 @@ type PaymentMethod = {
   nickname?: string;
 };
 
-type PaymentProfile = {
-  id: string;
-  email: string;
-  preferedMethodId: string;
-  lastPaymentAt: string;
-  lastPaymentAmountCents: number;
-  invoiceTitle: string;
-  taxId?: string;
-};
-
 type MemberProfile = {
   id: string;
-  name: string;
-  phone: string;
+  name?: string;
+  email?: string;
   tier: MemberTier;
   points: number;
-  tierProgress: number;
-  nextTier: MemberTier | null;
-  pointsExpireAt: string;
-  addresses: Address[];
-  paymentMethods: PaymentMethod[];
-  paymentProfile: PaymentProfile;
-  orders: OrderHistory[];
+  availableDiscountCents: number;
+  lifetimeSpendCents?: number;
 };
 
-const tierLabels: Record<MemberTier, Record<Locale, string>> = {
-  BRONZE: { zh: '青铜', en: 'Bronze' },
-  SILVER: { zh: '白银', en: 'Silver' },
-  GOLD: { zh: '黄金', en: 'Gold' },
-  PLATINUM: { zh: '铂金', en: 'Platinum' },
+type ApiFulfillmentType = 'pickup' | 'dine_in' | 'delivery';
+type ApiDeliveryType = 'STANDARD' | 'PRIORITY' | null;
+
+type MembershipSummaryOrderDto = {
+  id: string;
+  createdAt: string;
+  totalCents: number;
+  status: OrderStatus;
+  fulfillmentType: ApiFulfillmentType;
+  deliveryType: ApiDeliveryType;
 };
 
-const ORDER_STATUS_META: Record<
-  OrderStatus,
-  { label: Record<Locale, string>; badge: string }
-> = {
-  pending: {
-    label: { zh: '待支付', en: 'Pending payment' },
-    badge: 'bg-amber-100 text-amber-700 border-amber-200',
-  },
-  paid: {
-    label: { zh: '已支付', en: 'Paid' },
-    badge: 'bg-blue-100 text-blue-700 border-blue-200',
-  },
-  delivering: {
-    label: { zh: '配送中', en: 'Delivering' },
-    badge: 'bg-purple-100 text-purple-700 border-purple-200',
-  },
-  completed: {
-    label: { zh: '已完成', en: 'Completed' },
-    badge: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-  },
-  cancelled: {
-    label: { zh: '已取消', en: 'Cancelled' },
-    badge: 'bg-gray-100 text-gray-600 border-gray-200',
-  },
+type MembershipSummaryResponse = {
+  userId: string;
+  displayName: string | null;
+  email: string | null;
+  tier: MemberTier;
+  points: number;
+  lifetimeSpendCents: number;
+  availableDiscountCents: number;
+  marketingEmailOptIn?: boolean;
+  recentOrders: MembershipSummaryOrderDto[];
 };
 
-const deliveryLabels: Record<DeliveryType, Record<Locale, string>> = {
-  pickup: { zh: '自取', en: 'Pickup' },
-  delivery: { zh: '外送', en: 'Delivery' },
+type MembershipSummaryApiEnvelope =
+  | MembershipSummaryResponse
+  | {
+      code?: string;
+      message?: string;
+      details: MembershipSummaryResponse;
+    };
+
+type SessionWithUserId = Session & { userId?: string };
+
+// ====== 积分流水类型 ======
+
+type LoyaltyEntryType =
+  | 'EARN_ON_PURCHASE'
+  | 'REDEEM_ON_ORDER'
+  | 'REFUND_REVERSE_EARN'
+  | 'REFUND_RETURN_REDEEM'
+  | 'TOPUP_PURCHASED'
+  | 'ADJUSTMENT_MANUAL';
+
+type LoyaltyEntry = {
+  id: string;
+  createdAt: string;
+  type: LoyaltyEntryType;
+  deltaPoints: number;
+  balanceAfterPoints: number;
+  note?: string;
+  orderId?: string | null;
 };
 
-const paymentTypeLabels: Record<PaymentMethod['type'], Record<Locale, string>> = {
-  credit: { zh: '信用卡', en: 'Credit card' },
-  debit: { zh: '借记卡', en: 'Debit card' },
-  wallet: { zh: '钱包', en: 'Wallet' },
-};
+function formatCurrency(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
 
-const STRINGS: Record<Locale, {
-  membershipCenter: string;
-  authPageCta: string;
-  accountTitleSuffix: string;
-  switchMember: string;
-  pointsBalance: string;
-  pointsExpiring: string;
-  tierProgress: string;
-  currentTier: string;
-  progressRemaining: (tierName: string, percent: string) => string;
-  highestTier: string;
-  accountInfo: string;
-  memberId: string;
-  phone: string;
-  defaultPayment: string;
-  orderHistoryTitle: string;
-  orderHistorySubtitle: string;
-  searchPlaceholder: string;
-  statusPrefix: string;
-  deliveryPrefix: string;
-  orderTableHeaders: {
-    id: string;
-    createdAt: string;
-    amount: string;
-    deliveryType: string;
-    status: string;
-    items: string;
-  };
-  noOrders: string;
-  addressTitle: string;
-  addressCount: string;
-  addressDefault: string;
-  paymentMethodsTitle: string;
-  paymentMethodsCount: string;
-  paymentMethodDefault: string;
-  paymentInfoTitle: string;
-  paymentInfoSubtitle: string;
-  notificationEmail: string;
-  lastPayment: string;
-  defaultPaymentMethod: string;
-  invoiceTitle: string;
-  taxId: string;
-  itemUnit: string;
-}> = {
-  zh: {
-    membershipCenter: '会员中心',
-    authPageCta: '会员登录 / 注册',
-    accountTitleSuffix: '的账户',
-    switchMember: '切换会员',
-    pointsBalance: '积分余额',
-    pointsExpiring: '积分将于 {date} 到期',
-    tierProgress: '等级进度',
-    currentTier: '当前 {tier}',
-    progressRemaining: (tierName, percent) => `距 ${tierName} 还差 ${percent}%`,
-    highestTier: '已是最高等级',
-    accountInfo: '账户信息',
-    memberId: '会员号',
-    phone: '手机号',
-    defaultPayment: '默认支付',
-    orderHistoryTitle: '历史订单查询',
-    orderHistorySubtitle: '按状态、配送方式或关键词筛选订单',
-    searchPlaceholder: '搜索订单号 / 状态',
-    statusPrefix: '状态：',
-    deliveryPrefix: '配送：',
-    orderTableHeaders: {
-      id: '订单号',
-      createdAt: '创建时间',
-      amount: '金额',
-      deliveryType: '配送方式',
-      status: '状态',
-      items: '商品数',
-    },
-    noOrders: '暂无符合条件的订单',
-    addressTitle: '配送地址',
-    addressCount: '共 {count} 个',
-    addressDefault: '默认',
-    paymentMethodsTitle: '支付方式',
-    paymentMethodsCount: '{count} 个绑定',
-    paymentMethodDefault: '默认',
-    paymentInfoTitle: '支付信息',
-    paymentInfoSubtitle: '账单与开票偏好',
-    notificationEmail: '通知邮箱',
-    lastPayment: '上次支付',
-    defaultPaymentMethod: '默认支付方式',
-    invoiceTitle: '抬头',
-    taxId: '税号',
-    itemUnit: '件',
-  },
-  en: {
-    membershipCenter: 'Membership center',
-    authPageCta: 'Member sign in / join',
-    accountTitleSuffix: ' account',
-    switchMember: 'Switch member',
-    pointsBalance: 'Points balance',
-    pointsExpiring: 'Points expire on {date}',
-    tierProgress: 'Tier progress',
-    currentTier: 'Current {tier}',
-    progressRemaining: (tierName, percent) => `${percent}% to ${tierName}`,
-    highestTier: 'Top tier achieved',
-    accountInfo: 'Account info',
-    memberId: 'Member ID',
-    phone: 'Phone',
-    defaultPayment: 'Default payment',
-    orderHistoryTitle: 'Order history',
-    orderHistorySubtitle: 'Filter by status, delivery type, or keyword',
-    searchPlaceholder: 'Search order # / status',
-    statusPrefix: 'Status: ',
-    deliveryPrefix: 'Delivery: ',
-    orderTableHeaders: {
-      id: 'Order #',
-      createdAt: 'Created at',
-      amount: 'Amount',
-      deliveryType: 'Fulfillment',
-      status: 'Status',
-      items: 'Items',
-    },
-    noOrders: 'No orders match the filters',
-    addressTitle: 'Addresses',
-    addressCount: '{count} saved',
-    addressDefault: 'Default',
-    paymentMethodsTitle: 'Payment methods',
-    paymentMethodsCount: '{count} on file',
-    paymentMethodDefault: 'Default',
-    paymentInfoTitle: 'Payment info',
-    paymentInfoSubtitle: 'Billing & invoicing preferences',
-    notificationEmail: 'Notification email',
-    lastPayment: 'Last payment',
-    defaultPaymentMethod: 'Default method',
-    invoiceTitle: 'Invoice title',
-    taxId: 'Tax ID',
-    itemUnit: 'items',
-  },
-};
+export default function MembershipHomePage() {
+  const router = useRouter();
+  const { locale } = useParams<{ locale: Locale }>();
+  const { data: session, status } = useSession();
 
-const MEMBERS: MemberProfile[] = [
-  {
-    id: 'u-001',
-    name: '张三',
-    phone: '188 **** 0001',
-    tier: 'GOLD',
-    points: 18560,
-    tierProgress: 72,
-    nextTier: 'PLATINUM',
-    pointsExpireAt: '2025-03-31',
-    addresses: [
-      {
-        id: 'addr-1',
-        label: '家',
-        receiver: '张三',
-        phone: '18800000001',
-        detail: '西安市雁塔区锦业路 9 号 XXX 小区 1 号楼 1201',
-        isDefault: true,
-      },
-      {
-        id: 'addr-2',
-        label: '公司',
-        receiver: '张三',
-        phone: '18800000001',
-        detail: '高新区 XXX 科技园 B 座 8 层 前台代收',
-      },
-    ],
-    paymentMethods: [
-      {
-        id: 'pm-visa',
-        brand: 'Visa',
-        last4: '4242',
-        type: 'credit',
-        expires: '12/26',
-        isDefault: true,
-        nickname: '常用支付',
-      },
-      {
-        id: 'pm-apple',
-        brand: 'Apple Pay',
-        last4: '0000',
-        type: 'wallet',
-        expires: '—',
-        nickname: '手机快捷',
-      },
-    ],
-    paymentProfile: {
-      id: 'pp-1',
-      email: 'zhangsan@example.com',
-      preferedMethodId: 'pm-visa',
-      lastPaymentAt: '2024-06-06T10:30:00Z',
-      lastPaymentAmountCents: 2680,
-      invoiceTitle: '陕西三秦餐饮有限公司',
-      taxId: '91610000MA1234567A',
-    },
-    orders: [
-      {
-        id: 'ord-20240608-001',
-        createdAt: '2024-06-08T12:30:00Z',
-        totalCents: 4280,
-        status: 'completed',
-        items: 3,
-        deliveryType: 'delivery',
-      },
-      {
-        id: 'ord-20240605-003',
-        createdAt: '2024-06-05T18:22:00Z',
-        totalCents: 2680,
-        status: 'completed',
-        items: 2,
-        deliveryType: 'delivery',
-      },
-      {
-        id: 'ord-20240530-011',
-        createdAt: '2024-05-30T09:10:00Z',
-        totalCents: 1880,
-        status: 'paid',
-        items: 1,
-        deliveryType: 'pickup',
-      },
-      {
-        id: 'ord-20240520-007',
-        createdAt: '2024-05-20T16:05:00Z',
-        totalCents: 3380,
-        status: 'delivering',
-        items: 2,
-        deliveryType: 'delivery',
-      },
-      {
-        id: 'ord-20240510-004',
-        createdAt: '2024-05-10T11:45:00Z',
-        totalCents: 5200,
-        status: 'cancelled',
-        items: 4,
-        deliveryType: 'delivery',
-      },
-    ],
-  },
-  {
-    id: 'u-002',
-    name: '李四',
-    phone: '139 **** 0002',
-    tier: 'SILVER',
-    points: 8200,
-    tierProgress: 35,
-    nextTier: 'GOLD',
-    pointsExpireAt: '2024-12-31',
-    addresses: [
-      {
-        id: 'addr-3',
-        label: '家',
-        receiver: '李四',
-        phone: '13900000002',
-        detail: '曲江新区 XX 路 188 号 和风府 3 号楼 801',
-        isDefault: true,
-      },
-    ],
-    paymentMethods: [
-      {
-        id: 'pm-master',
-        brand: 'Mastercard',
-        last4: '8888',
-        type: 'credit',
-        expires: '08/25',
-        isDefault: true,
-      },
-    ],
-    paymentProfile: {
-      id: 'pp-2',
-      email: 'lisi@example.com',
-      preferedMethodId: 'pm-master',
-      lastPaymentAt: '2024-05-28T09:15:00Z',
-      lastPaymentAmountCents: 1980,
-      invoiceTitle: '个人消费',
-    },
-    orders: [
-      {
-        id: 'ord-20240601-002',
-        createdAt: '2024-06-01T14:15:00Z',
-        totalCents: 1980,
-        status: 'completed',
-        items: 1,
-        deliveryType: 'delivery',
-      },
-      {
-        id: 'ord-20240515-010',
-        createdAt: '2024-05-15T12:00:00Z',
-        totalCents: 2880,
-        status: 'paid',
-        items: 2,
-        deliveryType: 'pickup',
-      },
-    ],
-  },
-];
+  const [activeTab, setActiveTab] = useState<
+    'overview' | 'orders' | 'points' | 'addresses' | 'payments' | 'profile'
+  >('overview');
 
-const statusColors: Record<OrderStatus, string> = {
-  pending: ORDER_STATUS_META.pending.badge,
-  paid: ORDER_STATUS_META.paid.badge,
-  delivering: ORDER_STATUS_META.delivering.badge,
-  completed: ORDER_STATUS_META.completed.badge,
-  cancelled: ORDER_STATUS_META.cancelled.badge,
-};
+  const [member, setMember] = useState<MemberProfile | null>(null);
+  const [orders, setOrders] = useState<OrderHistory[]>([]);
+  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
 
-export default function MembershipPage() {
-  const params = useParams<{ locale?: string }>();
-  const locale: Locale = params?.locale === 'en' ? 'en' : 'zh';
+  // 营销邮件订阅状态
+  const [marketingOptIn, setMarketingOptIn] = useState<boolean | null>(null);
+  const [marketingSaving, setMarketingSaving] = useState(false);
+  const [marketingError, setMarketingError] = useState<string | null>(null);
 
-  const strings = STRINGS[locale];
-  const notSetLabel = locale === 'zh' ? '未设置' : 'Not set';
-  const statusAllLabel = locale === 'zh' ? '全部' : 'All';
-  const deliveryAllLabel = locale === 'zh' ? '全部' : 'All';
-  const [selectedMemberId, setSelectedMemberId] = useState(MEMBERS[0]?.id ?? '');
-  const [orderKeyword, setOrderKeyword] = useState('');
-  const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all');
-  const [deliveryFilter, setDeliveryFilter] = useState<DeliveryType | 'all'>('all');
+  // 积分流水
+  const [loyaltyEntries, setLoyaltyEntries] = useState<LoyaltyEntry[]>([]);
+  const [loyaltyLoading, setLoyaltyLoading] = useState(false);
+  const [loyaltyError, setLoyaltyError] = useState<string | null>(null);
+  const [loyaltyLoadedOnce, setLoyaltyLoadedOnce] = useState(false);
 
-  const member = useMemo(
-    () => MEMBERS.find((m) => m.id === selectedMemberId) ?? MEMBERS[0],
-    [selectedMemberId],
-  );
+  const isZh = locale === 'zh';
 
-  const filteredOrders = useMemo(() => {
-    if (!member) return [];
-    return member.orders
-      .filter((order) => {
-        if (statusFilter !== 'all' && order.status !== statusFilter) return false;
-        if (deliveryFilter !== 'all' && order.deliveryType !== deliveryFilter) return false;
-        if (!orderKeyword.trim()) return true;
-        const keyword = orderKeyword.trim().toLowerCase();
-        return (
-          order.id.toLowerCase().includes(keyword) ||
-          ORDER_STATUS_META[order.status].label.zh.toLowerCase().includes(keyword) ||
-          ORDER_STATUS_META[order.status].label.en.toLowerCase().includes(keyword) ||
-          deliveryLabels[order.deliveryType].zh.toLowerCase().includes(keyword) ||
-          deliveryLabels[order.deliveryType].en.toLowerCase().includes(keyword)
+  // 未登录时跳回登录页
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.replace(`/${locale}/membership/login`);
+    }
+  }, [status, router, locale]);
+
+  // 拉取会员概要信息（积分 + 最近订单 + 营销订阅）
+  useEffect(() => {
+    if (status !== 'authenticated' || !session?.user) return;
+
+    const sessionWithUserId = session as SessionWithUserId | null;
+    const userId = sessionWithUserId?.userId;
+    if (!userId) return;
+
+    const controller = new AbortController();
+
+    const loadSummary = async () => {
+      try {
+        setSummaryLoading(true);
+        setSummaryError(null);
+
+        const params = new URLSearchParams({
+          userId,
+          name: session.user.name ?? '',
+          email: session.user.email ?? '',
+        });
+
+        // ⭐ 从 localStorage 读取“首次注册填写的推荐人 & 生日”，只用一次
+        if (typeof window !== 'undefined') {
+          try {
+            const rawExtra = window.localStorage.getItem(
+              'sanqin_membership_prefill',
+            );
+            if (rawExtra) {
+              const extra = JSON.parse(rawExtra) as {
+                referrerEmail?: string | null;
+                birthdayMonth?: string | null | number;
+                birthdayDay?: string | null | number;
+              };
+
+              if (extra.referrerEmail) {
+                params.set('referrerEmail', String(extra.referrerEmail));
+              }
+              if (extra.birthdayMonth && extra.birthdayDay) {
+                params.set('birthdayMonth', String(extra.birthdayMonth));
+                params.set('birthdayDay', String(extra.birthdayDay));
+              }
+
+              // 用过一次就清掉，避免以后每次刷新都当作“首次注册”
+              window.localStorage.removeItem('sanqin_membership_prefill');
+            }
+          } catch (e) {
+            console.error(
+              'Failed to read membership prefill from localStorage',
+              e,
+            );
+          }
+        }
+
+        const res = await fetch(
+          `/api/v1/membership/summary?${params.toString()}`,
+          { signal: controller.signal },
         );
-      })
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [member, orderKeyword, statusFilter, deliveryFilter]);
 
-  const currencyFormatter = useMemo(
-    () =>
-      new Intl.NumberFormat(locale === 'zh' ? 'zh-Hans-CN' : 'en-CA', {
-        style: 'currency',
-        currency: 'CNY',
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }),
-    [locale],
-  );
+        if (!res.ok) {
+          throw new Error(`Failed with status ${res.status}`);
+        }
 
-  if (!member) return null;
+        const raw = (await res.json()) as MembershipSummaryApiEnvelope;
+        const data =
+          'details' in raw && raw.details
+            ? raw.details
+            : (raw as MembershipSummaryResponse);
+
+        setMember({
+          id: data.userId,
+          name: data.displayName ?? session.user.name ?? undefined,
+          email: data.email ?? session.user.email ?? undefined,
+          tier: data.tier,
+          points: data.points,
+          availableDiscountCents: data.availableDiscountCents,
+          lifetimeSpendCents: data.lifetimeSpendCents ?? 0,
+        });
+
+        setMarketingOptIn(
+          typeof data.marketingEmailOptIn === 'boolean'
+            ? data.marketingEmailOptIn
+            : false,
+        );
+
+        const recentOrders = data.recentOrders ?? [];
+        setOrders(
+          recentOrders.map((o) => ({
+            id: o.id,
+            createdAt: new Date(o.createdAt).toLocaleString(),
+            totalCents: o.totalCents,
+            status: o.status,
+            items: 0,
+            deliveryType:
+              o.fulfillmentType === 'delivery' ? 'delivery' : 'pickup',
+          })),
+        );
+      } catch (err: unknown) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return;
+        }
+        console.error(err);
+        setSummaryError(
+          isZh
+            ? '加载会员信息失败，请稍后再试'
+            : 'Failed to load membership info. Please try again later.',
+        );
+      } finally {
+        setSummaryLoading(false);
+      }
+    };
+
+    void loadSummary();
+
+    return () => controller.abort();
+  }, [status, session, isZh]);
+
+  // 拉取积分流水：首次切到“积分”tab 且已登录时加载一次
+  useEffect(() => {
+    if (
+      activeTab !== 'points' ||
+      status !== 'authenticated' ||
+      !session?.user ||
+      loyaltyLoadedOnce ||
+      loyaltyLoading
+    ) {
+      return;
+    }
+
+    const sessionWithUserId = session as SessionWithUserId | null;
+    const userId = sessionWithUserId?.userId;
+    if (!userId) return;
+
+    const loadLedger = async () => {
+      try {
+        setLoyaltyLoading(true);
+        setLoyaltyError(null);
+
+        const params = new URLSearchParams({
+          userId,
+          limit: '100',
+        });
+
+        const res = await fetch(
+          `/api/v1/membership/loyalty-ledger?${params.toString()}`,
+        );
+
+        if (!res.ok) {
+          throw new Error(`Failed with status ${res.status}`);
+        }
+
+        const raw = (await res.json()) as unknown;
+
+        let entries: LoyaltyEntry[] = [];
+
+        if (raw && typeof raw === 'object') {
+          const maybe = raw as {
+            entries?: LoyaltyEntry[];
+            details?: { entries?: LoyaltyEntry[] };
+          };
+
+          if (maybe.details && Array.isArray(maybe.details.entries)) {
+            entries = maybe.details.entries;
+          } else if (Array.isArray(maybe.entries)) {
+            entries = maybe.entries;
+          }
+        }
+
+        setLoyaltyEntries(entries);
+        setLoyaltyLoadedOnce(true);
+      } catch (err: unknown) {
+        console.error(err);
+        setLoyaltyError(
+          isZh
+            ? '加载积分流水失败，请稍后再试'
+            : 'Failed to load points history. Please try again later.',
+        );
+      } finally {
+        setLoyaltyLoading(false);
+        setLoyaltyLoadedOnce(true);
+      }
+    };
+
+    void loadLedger();
+  }, [
+    activeTab,
+    status,
+    session,
+    loyaltyLoadedOnce,
+    loyaltyLoading,
+    isZh,
+  ]);
+
+  const isLoading = status === 'loading' || summaryLoading;
+
+  const addresses: Address[] = member
+    ? [
+        {
+          id: 'addr1',
+          label: isZh ? '家' : 'Home',
+          receiver: member.name || (isZh ? '默认收件人' : 'Default receiver'),
+          phone: '',
+          detail: isZh
+            ? 'North York, Toronto, ON'
+            : 'North York, Toronto, ON',
+          isDefault: true,
+        },
+      ]
+    : [];
+
+  const paymentMethods: PaymentMethod[] = [
+    {
+      id: 'pm1',
+      brand: 'VISA',
+      last4: '4242',
+      type: 'credit',
+      expires: '12/27',
+      isDefault: true,
+      nickname: isZh ? '默认卡' : 'Default card',
+    },
+  ];
+
+  const tierDisplay =
+    member &&
+    {
+      BRONZE: isZh ? '青铜会员' : 'Bronze',
+      SILVER: isZh ? '白银会员' : 'Silver',
+      GOLD: isZh ? '黄金会员' : 'Gold',
+      PLATINUM: isZh ? '铂金会员' : 'Platinum',
+    }[member.tier];
+
+  const tierProgress = member
+    ? Math.min(
+        (Number.isFinite(member.points) ? member.points : 0) / 1000,
+        1,
+      ) * 100
+    : 0;
+
+  const tabs: { key: typeof activeTab; label: string }[] = [
+    { key: 'overview', label: isZh ? '总览' : 'Overview' },
+    { key: 'orders', label: isZh ? '订单' : 'Orders' },
+    { key: 'points', label: isZh ? '积分' : 'Points' },
+    { key: 'addresses', label: isZh ? '地址' : 'Addresses' },
+    { key: 'payments', label: isZh ? '支付方式' : 'Payment' },
+    { key: 'profile', label: isZh ? '账户' : 'Account' },
+  ];
+
+  function handleLogout() {
+    void signOut({
+      callbackUrl: `/${locale}`,
+    });
+  }
+
+  async function handleMarketingToggle(next: boolean) {
+    if (!member) return;
+
+    setMarketingSaving(true);
+    setMarketingError(null);
+
+    try {
+      const res = await fetch('/api/v1/membership/marketing-consent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: member.id,
+          marketingEmailOptIn: next,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Failed with status ${res.status}`);
+      }
+
+      setMarketingOptIn(next);
+    } catch (err) {
+      console.error(err);
+      setMarketingError(
+        isZh
+          ? '更新订阅偏好失败，请稍后再试。'
+          : 'Failed to update email preference. Please try again later.',
+      );
+    } finally {
+      setMarketingSaving(false);
+    }
+  }
+
+  // 状态控制渲染
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <p className="text-sm text-slate-500">
+          {summaryError ??
+            (isZh ? '加载会员信息中…' : 'Loading membership info…')}
+        </p>
+      </div>
+    );
+  }
+
+  if (status === 'unauthenticated') {
+    // useEffect 会把人重定向到登录页，这里先不渲染内容
+    return null;
+  }
+
+  if (!member) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <p className="text-sm text-slate-500">
+          {summaryError ??
+            (isZh ? '未能获取会员信息' : 'Unable to load membership info')}
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-sm text-gray-500">{strings.membershipCenter}</p>
-          <h1 className="text-2xl font-semibold">
-            {member.name}
-            {locale === 'zh' ? ` ${strings.accountTitleSuffix}` : strings.accountTitleSuffix}
-          </h1>
-        </div>
-        <div className="flex items-center gap-3">
+    <div className="min-h-screen bg-slate-50">
+      <header className="border-b border-slate-200 bg-white">
+        <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
           <Link
-            href={`/${locale}/membership/auth`}
-            className="inline-flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 transition hover:-translate-y-0.5 hover:border-blue-200 hover:bg-white hover:shadow-sm"
+            href={`/${locale}`}
+            className="text-sm text-slate-600 hover:text-slate-900"
           >
-            <span aria-hidden>🔐</span>
-            {strings.authPageCta}
+            ← {isZh ? '返回首页' : 'Back to home'}
           </Link>
-          <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-600" htmlFor="memberSelect">
-              {strings.switchMember}
-            </label>
-            <select
-              id="memberSelect"
-              value={selectedMemberId}
-              onChange={(e) => setSelectedMemberId(e.target.value)}
-              className="rounded-lg border px-3 py-2 text-sm"
-            >
-              {MEMBERS.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {locale === 'zh' ? `${m.name}（${m.id}）` : `${m.name} (${m.id})`}
-                </option>
-              ))}
-            </select>
+          <div className="text-sm font-medium text-slate-900">
+            {isZh ? '会员中心' : 'Member Center'}
           </div>
+          <button
+            onClick={handleLogout}
+            className="text-xs text-slate-500 hover:text-slate-900"
+          >
+            {isZh ? '退出登录' : 'Log out'}
+          </button>
         </div>
+      </header>
+
+      <main className="mx-auto max-w-4xl px-4 py-6">
+        {/* 顶部会员信息卡片 */}
+        <section className="mb-6 rounded-2xl bg-slate-900 px-5 py-4 text-white">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-300">
+                {isZh ? '当前会员等级' : 'Current tier'}
+              </p>
+              <p className="mt-1 text-xl font-semibold">{tierDisplay}</p>
+              <p className="mt-2 text-xs text-slate-300">
+                {member.email
+                  ? `${isZh ? '登录邮箱：' : 'Email: '}${member.email}`
+                  : isZh
+                    ? '登录邮箱未识别'
+                    : 'Email not available'}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs uppercase tracking-wide text-slate-300">
+                {isZh ? '积分' : 'Points'}
+              </p>
+              <p className="mt-1 text-2xl font-semibold">{member.points}</p>
+              <p className="mt-1 text-xs text-amber-300">
+                {isZh
+                  ? `当前积分最多可抵扣 ${formatCurrency(
+                      member.availableDiscountCents,
+                    )}`
+                  : `Points can redeem up to ${formatCurrency(
+                      member.availableDiscountCents,
+                    )}.`}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <div className="flex items-center justify-between text-[11px] text-slate-300">
+              <span>{isZh ? '升级进度' : 'Progress to next tier'}</span>
+              <span>{tierProgress.toFixed(0)}%</span>
+            </div>
+            <div className="mt-1 h-1.5 w-full rounded-full bg-slate-700">
+              <div
+                className="h-1.5 rounded-full bg-amber-400"
+                style={{ width: `${tierProgress}%` }}
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* Tab 导航 */}
+        <nav className="mb-4 flex gap-2 overflow-x-auto text-sm">
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              className={`whitespace-nowrap rounded-full px-3 py-1 ${
+                activeTab === tab.key
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+
+        {/* 对应内容区域 */}
+        <div className="space-y-4">
+          {activeTab === 'overview' && (
+            <OverviewSection
+              isZh={isZh}
+              user={member}
+              latestOrder={orders[0]}
+              locale={locale}
+            />
+          )}
+
+          {activeTab === 'orders' && (
+            <OrdersSection isZh={isZh} orders={orders} locale={locale} />
+          )}
+
+{activeTab === 'points' && (
+  <PointsSection
+    isZh={isZh}
+    entries={loyaltyEntries}
+    loading={loyaltyLoading}
+    error={loyaltyError}
+    locale={locale}
+    loadedOnce={loyaltyLoadedOnce}
+  />
+)}
+
+          {activeTab === 'addresses' && (
+            <AddressesSection isZh={isZh} addresses={addresses} />
+          )}
+
+          {activeTab === 'payments' && (
+            <PaymentsSection
+              isZh={isZh}
+              paymentMethods={paymentMethods}
+            />
+          )}
+
+          {activeTab === 'profile' && (
+            <ProfileSection
+              isZh={isZh}
+              user={member}
+              marketingOptIn={marketingOptIn}
+              marketingSaving={marketingSaving}
+              marketingError={marketingError}
+              onToggleMarketing={handleMarketingToggle}
+            />
+          )}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+/* ===== 子组件 ===== */
+
+function OverviewSection({
+  isZh,
+  user,
+  latestOrder,
+  locale,
+}: {
+  isZh: boolean;
+  user: MemberProfile;
+  latestOrder?: OrderHistory;
+  locale: Locale;
+}) {
+  return (
+    <section className="grid gap-4 md:grid-cols-2">
+      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+        <h2 className="text-sm font-medium text-slate-900">
+          {isZh ? '最近订单' : 'Latest order'}
+        </h2>
+        {latestOrder ? (
+          <div className="mt-3 space-y-1 text-xs text-slate-600">
+            <p>
+              {isZh ? '订单号：' : 'Order ID: '}
+              <span className="font-mono text-slate-900">
+                {latestOrder.id}
+              </span>
+            </p>
+            <p>
+              {isZh ? '下单时间：' : 'Created at: '}
+              {latestOrder.createdAt}
+            </p>
+            <p>
+              {isZh ? '金额：' : 'Total: '}
+              <span className="font-medium text-slate-900">
+                {formatCurrency(latestOrder.totalCents)}
+              </span>
+            </p>
+            <p>
+              {isZh ? '状态：' : 'Status: '}{' '}
+              {isZh ? '已完成' : 'Completed'}
+            </p>
+            <p className="mt-2">
+              <Link
+                href={`/${locale}/order/${latestOrder.id}`}
+                className="text-[11px] font-medium text-amber-600 hover:underline"
+              >
+                {isZh ? '查看订单详情' : 'View order details'}
+              </Link>
+            </p>
+          </div>
+        ) : (
+          <p className="mt-3 text-xs text-slate-500">
+            {isZh
+              ? '还没有订单，快去下单吧。'
+              : 'No orders yet. Place your first order!'}
+          </p>
+        )}
       </div>
 
-      <section className="grid gap-4 lg:grid-cols-3">
-        <div className="rounded-xl border bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-700">{strings.pointsBalance}</h2>
-            <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">{tierLabels[member.tier][locale]}</span>
-          </div>
-          <p className="mt-4 text-3xl font-semibold text-gray-900">
-            {member.points.toLocaleString(locale === 'zh' ? 'zh-Hans-CN' : 'en-CA')} {locale === 'zh' ? '分' : 'pts'}
+      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+        <h2 className="text-sm font-medium text-slate-900">
+          {isZh ? '账户小结' : 'Account summary'}
+        </h2>
+        <div className="mt-3 space-y-1 text-xs text-slate-600">
+          <p>
+            {isZh ? '昵称：' : 'Name: '}
+            {user.name || (isZh ? '未设置' : 'Not set')}
           </p>
-          <p className="mt-2 text-sm text-gray-500">{strings.pointsExpiring.replace('{date}', member.pointsExpireAt)}</p>
-        </div>
-
-        <div className="rounded-xl border bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-gray-700">{strings.tierProgress}</h2>
-          <div className="mt-3 flex items-center justify-between text-sm text-gray-600">
-            <span>{strings.currentTier.replace('{tier}', tierLabels[member.tier][locale])}</span>
-            <span>{member.tierProgress}%</span>
-          </div>
-          <div className="mt-2 h-2 rounded-full bg-gray-100">
-            <div
-              className="h-2 rounded-full bg-gradient-to-r from-amber-400 to-emerald-500"
-              style={{ width: `${member.tierProgress}%` }}
-            />
-          </div>
-          <p className="mt-3 text-sm text-gray-500">
-            {member.nextTier
-              ? strings.progressRemaining(
-                  tierLabels[member.nextTier][locale],
-                  (100 - member.tierProgress).toFixed(0),
-                )
-              : strings.highestTier}
+          <p>
+            {isZh ? '邮箱：' : 'Email: '}
+            {user.email || (isZh ? '未绑定' : 'Not linked')}
           </p>
-        </div>
-
-        <div className="rounded-xl border bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-gray-700">{strings.accountInfo}</h2>
-          <dl className="mt-3 space-y-2 text-sm text-gray-600">
-            <div className="flex items-center justify-between">
-              <dt className="text-gray-500">{strings.memberId}</dt>
-              <dd className="font-medium">{member.id}</dd>
-            </div>
-            <div className="flex items-center justify-between">
-              <dt className="text-gray-500">{strings.phone}</dt>
-              <dd className="font-medium">{member.phone}</dd>
-            </div>
-            <div className="flex items-center justify-between">
-              <dt className="text-gray-500">{strings.defaultPayment}</dt>
-              <dd className="font-medium">
-                {member.paymentMethods.find((m) => m.id === member.paymentProfile.preferedMethodId)?.brand ?? notSetLabel}
-              </dd>
-            </div>
-          </dl>
-        </div>
-      </section>
-
-      <section className="rounded-xl border bg-white p-4 shadow-sm space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-800">{strings.orderHistoryTitle}</h2>
-            <p className="text-sm text-gray-500">{strings.orderHistorySubtitle}</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <input
-              type="search"
-              placeholder={strings.searchPlaceholder}
-              value={orderKeyword}
-              onChange={(e) => setOrderKeyword(e.target.value)}
-              className="w-48 rounded-lg border px-3 py-2 text-sm"
-            />
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as OrderStatus | 'all')}
-              className="rounded-lg border px-3 py-2 text-sm"
-            >
-              {(['all', 'pending', 'paid', 'delivering', 'completed', 'cancelled'] as const).map((status) => (
-                <option key={status} value={status}>
-                  {strings.statusPrefix}
-                  {status === 'all' ? statusAllLabel : ORDER_STATUS_META[status].label[locale]}
-                </option>
-              ))}
-            </select>
-            <select
-              value={deliveryFilter}
-              onChange={(e) => setDeliveryFilter(e.target.value as DeliveryType | 'all')}
-              className="rounded-lg border px-3 py-2 text-sm"
-            >
-              {(['all', 'pickup', 'delivery'] as const).map((type) => (
-                <option key={type} value={type}>
-                  {strings.deliveryPrefix}
-                  {type === 'all' ? deliveryAllLabel : deliveryLabels[type][locale]}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="overflow-hidden rounded-xl border">
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50 text-gray-600">
-              <tr>
-                <th className="px-4 py-3 text-left font-semibold">{strings.orderTableHeaders.id}</th>
-                <th className="px-4 py-3 text-left font-semibold">{strings.orderTableHeaders.createdAt}</th>
-                <th className="px-4 py-3 text-left font-semibold">{strings.orderTableHeaders.amount}</th>
-                <th className="px-4 py-3 text-left font-semibold">{strings.orderTableHeaders.deliveryType}</th>
-                <th className="px-4 py-3 text-left font-semibold">{strings.orderTableHeaders.status}</th>
-                <th className="px-4 py-3 text-left font-semibold">{strings.orderTableHeaders.items}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {filteredOrders.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-gray-500">
-                    {strings.noOrders}
-                  </td>
-                </tr>
-              ) : (
-                filteredOrders.map((order) => (
-                  <tr key={order.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium text-gray-900">{order.id}</td>
-                    <td className="px-4 py-3 text-gray-600">
-                      {new Date(order.createdAt).toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-CA', {
-                        hour12: locale !== 'zh',
-                      })}
-                    </td>
-                    <td className="px-4 py-3 font-semibold text-gray-900">
-                      {currencyFormatter.format(order.totalCents / 100)}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600">{deliveryLabels[order.deliveryType][locale]}</td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${statusColors[order.status]}`}>
-                        {ORDER_STATUS_META[order.status].label[locale]}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-600">{order.items} {strings.itemUnit}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border bg-white p-4 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-800">{strings.addressTitle}</h2>
-            <span className="text-sm text-gray-500">
-              {strings.addressCount.replace('{count}', member.addresses.length.toString())}
+          <p>
+            {isZh ? '当前积分：' : 'Current points: '}
+            <span className="font-medium text-slate-900">
+              {user.points}
             </span>
-          </div>
-          <div className="space-y-3">
-            {member.addresses.map((addr) => (
-              <div key={addr.id} className="rounded-lg border p-3 hover:border-gray-300">
-                <div className="flex flex-wrap items-center gap-2 text-sm text-gray-700">
-                  <span className="font-semibold">{addr.label}</span>
-                  {addr.isDefault ? (
-                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-                      {strings.addressDefault}
-                    </span>
-                  ) : null}
-                  <span className="text-gray-500">{addr.receiver}</span>
-                  <span className="text-gray-500">{addr.phone}</span>
+          </p>
+          <p>
+            {isZh ? '可抵扣金额：' : 'Available discount: '}
+            <span className="font-medium text-slate-900">
+              {formatCurrency(user.availableDiscountCents)}
+            </span>
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function OrdersSection({
+  isZh,
+  orders,
+  locale,
+}: {
+  isZh: boolean;
+  orders: OrderHistory[];
+  locale: Locale;
+}) {
+  return (
+    <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-medium text-slate-900">
+          {isZh ? '订单记录' : 'Order history'}
+        </h2>
+      </div>
+
+      <div className="mt-3 divide-y divide-slate-100 text-xs text-slate-700">
+        {orders.map((order) => (
+          <Link
+            key={order.id}
+            href={`/${locale}/order/${order.id}`}
+            className="flex items-center justify-between py-3 hover:bg-slate-50 rounded-lg px-2 -mx-2"
+          >
+            <div>
+              <p className="font-mono text-slate-900">{order.id}</p>
+              <p className="mt-1 text-[11px] text-slate-500">
+                {order.createdAt}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="font-medium text-slate-900">
+                {formatCurrency(order.totalCents)}
+              </p>
+              <p className="mt-1 text-[11px] text-slate-500">
+                {isZh
+                  ? order.deliveryType === 'delivery'
+                    ? '外送'
+                    : '自取'
+                  : order.deliveryType === 'delivery'
+                    ? 'Delivery'
+                    : 'Pickup'}
+              </p>
+            </div>
+          </Link>
+        ))}
+
+        {orders.length === 0 && (
+          <p className="py-4 text-xs text-slate-500">
+            {isZh ? '暂无订单记录。' : 'No orders yet.'}
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function PointsSection({
+  isZh,
+  entries,
+  loading,
+  error,
+  locale,
+  loadedOnce,
+}: {
+  isZh: boolean;
+  entries: LoyaltyEntry[];
+  loading: boolean;
+  error: string | null;
+  locale: Locale;
+  loadedOnce: boolean;
+}) {
+  const typeLabel: Record<LoyaltyEntryType, string> = {
+    EARN_ON_PURCHASE: isZh ? '消费赚取' : 'Earn on purchase',
+    REDEEM_ON_ORDER: isZh ? '下单抵扣' : 'Redeem on order',
+    REFUND_REVERSE_EARN: isZh ? '退款扣回' : 'Reverse earn on refund',
+    REFUND_RETURN_REDEEM: isZh ? '退款退回抵扣' : 'Return redeemed on refund',
+    TOPUP_PURCHASED: isZh ? '储值充值' : 'Top-up purchased',
+    ADJUSTMENT_MANUAL: isZh ? '人工调整' : 'Manual adjustment',
+  };
+
+  return (
+    <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+      <h2 className="text-sm font-medium text-slate-900">
+        {isZh ? '积分流水' : 'Points history'}
+      </h2>
+
+      {loading && !loadedOnce && (
+        <p className="mt-3 text-xs text-slate-500">
+          {isZh ? '加载中…' : 'Loading…'}
+        </p>
+      )}
+
+      {loadedOnce && error && (
+        <p className="mt-3 text-xs text-red-500">{error}</p>
+      )}
+
+      {loadedOnce && !error && entries.length === 0 && (
+        <p className="mt-3 text-xs text-slate-500">
+          {isZh ? '暂无积分记录。' : 'No points records yet.'}
+        </p>
+      )}
+
+      {loadedOnce && !error && entries.length > 0 && (
+        <div className="mt-3 divide-y divide-slate-100 text-xs text-slate-700">
+          {entries.map((entry) => (
+            <div key={entry.id} className="py-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium text-slate-900">
+                    {typeLabel[entry.type]}
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    {new Date(entry.createdAt).toLocaleString()}
+                  </p>
+                  {entry.note && (
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      {entry.note}
+                    </p>
+                  )}
+                  {entry.orderId && (
+                    <p className="mt-1 text-[11px]">
+                      <Link
+                        href={`/${locale}/order/${entry.orderId}`}
+                        className="text-amber-600 hover:underline"
+                      >
+                        {isZh ? '关联订单' : 'Related order'}: {entry.orderId}
+                      </Link>
+                    </p>
+                  )}
                 </div>
-                <p className="mt-1 text-sm text-gray-600">{addr.detail}</p>
+                <div className="text-right">
+                  <p
+                    className={`font-semibold ${
+                      entry.deltaPoints >= 0
+                        ? 'text-emerald-600'
+                        : 'text-rose-600'
+                    }`}
+                  >
+                    {entry.deltaPoints >= 0 ? '+' : ''}
+                    {entry.deltaPoints.toFixed(2)} pt
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    {isZh ? '余额：' : 'Balance: '}
+                    {entry.balanceAfterPoints.toFixed(2)} pt
+                  </p>
+                </div>
               </div>
-            ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function AddressesSection({
+  isZh,
+  addresses,
+}: {
+  isZh: boolean;
+  addresses: Address[];
+}) {
+  return (
+    <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-medium text-slate-900">
+          {isZh ? '收货地址' : 'Delivery addresses'}
+        </h2>
+        <button
+          type="button"
+          className="text-xs text-slate-500 hover:text-slate-900"
+        >
+          {isZh ? '新增地址（待开发）' : 'Add address (todo)'}
+        </button>
+      </div>
+
+      <div className="space-y-3 text-xs text-slate-700">
+        {addresses.map((addr) => (
+          <div
+            key={addr.id}
+            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
+          >
+            <div className="flex items-center justify-between">
+              <div className="font-medium text-slate-900">
+                {addr.label}
+              </div>
+              {addr.isDefault && (
+                <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] text-white">
+                  {isZh ? '默认' : 'Default'}
+                </span>
+              )}
+            </div>
+            <p className="mt-1">
+              {addr.receiver} · {addr.phone}
+            </p>
+            <p className="mt-1 text-slate-600">{addr.detail}</p>
           </div>
+        ))}
+
+        {addresses.length === 0 && (
+          <p className="text-xs text-slate-500">
+            {isZh ? '暂无保存地址。' : 'No saved addresses.'}
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function PaymentsSection({
+  isZh,
+  paymentMethods,
+}: {
+  isZh: boolean;
+  paymentMethods: PaymentMethod[];
+}) {
+  return (
+    <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-medium text-slate-900">
+          {isZh ? '支付方式' : 'Payment methods'}
+        </h2>
+        <button
+          type="button"
+          className="text-xs text-slate-500 hover:text-slate-900"
+        >
+          {isZh ? '新增支付方式（待开发）' : 'Add method (todo)'}
+        </button>
+      </div>
+
+      <div className="space-y-3 text-xs text-slate-700">
+        {paymentMethods.map((pm) => (
+          <div
+            key={pm.id}
+            className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
+          >
+            <div>
+              <p className="font-medium text-slate-900">
+                {pm.brand} ···· {pm.last4}
+              </p>
+              <p className="mt-1 text-[11px] text-slate-500">
+                {isZh ? '有效期至 ' : 'Expires '}
+                {pm.expires}
+              </p>
+            </div>
+            <div className="text-right text-[11px] text-slate-500">
+              {pm.isDefault && <p>{isZh ? '默认' : 'Default'}</p>}
+              {pm.nickname && <p>{pm.nickname}</p>}
+            </div>
+          </div>
+        ))}
+
+        {paymentMethods.length === 0 && (
+          <p className="text-xs text-slate-500">
+            {isZh ? '暂无保存支付方式。' : 'No saved payment methods.'}
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ProfileSection({
+  isZh,
+  user,
+  marketingOptIn,
+  marketingSaving,
+  marketingError,
+  onToggleMarketing,
+}: {
+  isZh: boolean;
+  user: MemberProfile;
+  marketingOptIn: boolean | null;
+  marketingSaving: boolean;
+  marketingError: string | null;
+  onToggleMarketing: (next: boolean) => void;
+}) {
+  const effectiveOptIn = !!marketingOptIn;
+
+  return (
+    <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+      <h2 className="text-sm font-medium text-slate-900">
+        {isZh ? '账户信息' : 'Account info'}
+      </h2>
+
+      <div className="mt-3 space-y-3 text-xs text-slate-700">
+        <div>
+          <p className="text-slate-500">{isZh ? '昵称' : 'Name'}</p>
+          <p className="mt-0.5 text-slate-900">
+            {user.name || (isZh ? '未设置' : 'Not set')}
+          </p>
+        </div>
+        <div>
+          <p className="text-slate-500">{isZh ? '邮箱' : 'Email'}</p>
+          <p className="mt-0.5 text-slate-900">
+            {user.email || (isZh ? '未绑定' : 'Not linked')}
+          </p>
+        </div>
+        <div>
+          <p className="text-slate-500">
+            {isZh ? '会员编号（User ID）' : 'Member ID (User ID)'}
+          </p>
+          <p className="mt-0.5 break-all font-mono text-[11px] text-slate-900">
+            {user.id || (isZh ? '未识别' : 'Not available')}
+          </p>
         </div>
 
-        <div className="space-y-4">
-          <div className="rounded-xl border bg-white p-4 shadow-sm space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-800">{strings.paymentMethodsTitle}</h2>
-              <span className="text-sm text-gray-500">
-                {strings.paymentMethodsCount.replace('{count}', member.paymentMethods.length.toString())}
-              </span>
-            </div>
-            <div className="space-y-3">
-              {member.paymentMethods.map((pm) => (
-                <div key={pm.id} className="rounded-lg border p-3 text-sm text-gray-700">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 font-semibold text-gray-900">
-                        <span>{pm.brand}</span>
-                        {pm.nickname ? <span className="text-xs text-gray-500">{pm.nickname}</span> : null}
-                      </div>
-                      <div className="text-gray-600">
-                        {locale === 'zh'
-                          ? `${paymentTypeLabels[pm.type][locale]} · 尾号 ${pm.last4} · 有效期 ${pm.expires}`
-                          : `${paymentTypeLabels[pm.type][locale]} • ending ${pm.last4} • exp ${pm.expires}`}
-                      </div>
-                    </div>
-                    {pm.isDefault ? (
-                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">{strings.paymentMethodDefault}</span>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
-            </div>
+        <div className="mt-4 border-t border-slate-100 pt-3">
+          <p className="text-slate-500">
+            {isZh ? '营销邮件订阅' : 'Marketing emails'}
+          </p>
+          <div className="mt-2 flex items-center justify-between">
+            <p className="text-[11px] text-slate-500">
+              {isZh
+                ? '勾选后，我们会不定期发送新品、优惠活动等邮件给你。'
+                : 'If enabled, we may send you occasional updates about new items and promotions.'}
+            </p>
+            <button
+              type="button"
+              disabled={marketingSaving}
+              onClick={() => onToggleMarketing(!effectiveOptIn)}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${
+                effectiveOptIn ? 'bg-emerald-500' : 'bg-slate-300'
+              } ${marketingSaving ? 'opacity-60' : ''}`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+                  effectiveOptIn ? 'translate-x-4' : 'translate-x-1'
+                }`}
+              />
+            </button>
           </div>
-
-          <div className="rounded-xl border bg-white p-4 shadow-sm space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-800">{strings.paymentInfoTitle}</h2>
-              <span className="text-sm text-gray-500">{strings.paymentInfoSubtitle}</span>
-            </div>
-            <dl className="space-y-2 text-sm text-gray-700">
-              <div className="flex items-center justify-between">
-                <dt className="text-gray-500">{strings.notificationEmail}</dt>
-                <dd className="font-medium">{member.paymentProfile.email}</dd>
-              </div>
-              <div className="flex items-center justify-between">
-                <dt className="text-gray-500">{strings.lastPayment}</dt>
-                <dd className="font-medium">
-                  {currencyFormatter.format(member.paymentProfile.lastPaymentAmountCents / 100)} ·{' '}
-                  {new Date(member.paymentProfile.lastPaymentAt).toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-CA', {
-                    hour12: locale !== 'zh',
-                  })}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between">
-                <dt className="text-gray-500">{strings.defaultPaymentMethod}</dt>
-                <dd className="font-medium">
-                  {member.paymentMethods.find((pm) => pm.id === member.paymentProfile.preferedMethodId)?.brand ?? notSetLabel}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between">
-                <dt className="text-gray-500">{strings.invoiceTitle}</dt>
-                <dd className="font-medium text-right">
-                  <div>{member.paymentProfile.invoiceTitle}</div>
-                  {member.paymentProfile.taxId ? (
-                    <div className="text-xs text-gray-500">
-                      {strings.taxId}：{member.paymentProfile.taxId}
-                    </div>
-                  ) : null}
-                </dd>
-              </div>
-            </dl>
-          </div>
+          {marketingError && (
+            <p className="mt-1 text-[11px] text-rose-500">
+              {marketingError}
+            </p>
+          )}
         </div>
-      </section>
-    </div>
+
+        <p className="mt-3 text-[11px] text-slate-500">
+          {isZh
+            ? '积分可在结算页直接抵扣餐品小计；不定期发送的优惠券会通过邮件发给你，请注意查收。'
+            : 'Points can be applied at checkout to reduce the food subtotal. Additional promo coupons will occasionally be sent via email.'}
+        </p>
+      </div>
+    </section>
   );
 }

@@ -1,3 +1,5 @@
+//Users/apple/sanqinMVP/apps/web/src/app/[locale]/loyalty/page.tsx
+
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';

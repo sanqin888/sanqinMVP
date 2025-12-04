@@ -1,7 +1,9 @@
+// apps/web/src/app/[locale]/checkout/page.tsx
 "use client";
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import type { Session } from "next-auth";
 import { usePathname, useRouter, useSearchParams, useParams } from "next/navigation";
 import { apiFetch } from "@/lib/api-client";
 import { usePersistentCart } from "@/lib/cart";
@@ -25,6 +27,7 @@ import {
   type HostedCheckoutResponse,
   type DeliveryTypeOption,
 } from "@/lib/order/shared";
+import { useSession } from "next-auth/react";
 
 type DeliveryOptionDefinition = {
   provider: "DOORDASH" | "UBER";
@@ -44,6 +47,36 @@ type DeliveryOptionDisplay = {
 };
 
 type DistanceMessage = { text: string; tone: "muted" | "info" | "success" | "error" };
+
+type SessionWithUserId = Session & { userId?: string };
+
+type MemberTier = "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
+
+type MembershipSummaryResponse = {
+  userId: string;
+  displayName: string | null;
+  email: string | null;
+  tier: MemberTier;
+  points: number;
+  lifetimeSpendCents: number;
+  availableDiscountCents: number;
+  recentOrders: unknown[];
+};
+
+type MembershipSummaryEnvelope =
+  | MembershipSummaryResponse
+  | {
+      code?: string;
+      message?: string;
+      details: MembershipSummaryResponse;
+    };
+
+type LoyaltyInfo = {
+  userId: string;
+  tier: MemberTier;
+  points: number;
+  availableDiscountCents: number;
+};
 
 // 保证 Clover 那边收到的 item.name 是英文
 function resolveEnglishName(itemId: string, localizedName: string): string {
@@ -153,6 +186,9 @@ export default function CheckoutPage() {
   const orderHref = q ? `/${locale}?${q}` : `/${locale}`;
 
   const { items, updateNotes, updateQuantity } = usePersistentCart();
+  const { data: session, status: authStatus } = useSession();
+  const [loyaltyLoading, setLoyaltyLoading] = useState(false);
+  const [loyaltyError, setLoyaltyError] = useState<string | null>(null);
 
   const localizedCartItems = useMemo<LocalizedCartItem[]>(() => {
     return items
@@ -185,6 +221,8 @@ export default function CheckoutPage() {
     isChecking: boolean;
     error: string | null;
   }>({ distanceKm: null, isChecking: false, error: null });
+  const [redeemPointsInput, setRedeemPointsInput] = useState<string>("");
+  const [loyaltyInfo, setLoyaltyInfo] = useState<LoyaltyInfo | null>(null);
 
   // ✅ 小计：按“分”计算，先把单价（CAD）×100 再四舍五入
   const subtotalCents = useMemo(
@@ -273,10 +311,79 @@ export default function CheckoutPage() {
         ? 600
         : 600 + 100 * billedDistanceForPriorityKm;
 
+  // === 积分抵扣相关计算 ===
+
+  // 每“点”可以抵扣多少分（1 CAD = 100 分）
+const loyaltyCentsPerPoint = useMemo(() => {
+  if (!loyaltyInfo) return 0;
+  if (loyaltyInfo.points <= 0) return 0;
+  return 100; // 1 pt = $1.00
+}, [loyaltyInfo]);
+
+  // 本单最多可抵扣多少金额（分）
+  const maxRedeemableCentsForOrder = useMemo(() => {
+    if (!loyaltyInfo) return 0;
+    if (subtotalCents <= 0) return 0;
+
+    return Math.min(loyaltyInfo.availableDiscountCents, subtotalCents);
+  }, [loyaltyInfo, subtotalCents]);
+
+  // 本单最多可使用多少积分（允许小数）
+  const maxRedeemablePointsForOrder = useMemo(() => {
+    if (!loyaltyInfo) return 0;
+    if (loyaltyCentsPerPoint <= 0) return 0;
+
+    const raw = maxRedeemableCentsForOrder / loyaltyCentsPerPoint;
+    // 保留 2 位小数，避免出现一长串小数
+    return Math.round(raw * 100) / 100;
+  }, [loyaltyInfo, loyaltyCentsPerPoint, maxRedeemableCentsForOrder]);
+
+  // 用户输入“本单使用多少积分” → 折算成抵扣金额（分）
+  const loyaltyRedeemCents = useMemo(() => {
+    if (!loyaltyInfo) return 0;
+    if (!redeemPointsInput) return 0;
+    if (loyaltyCentsPerPoint <= 0) return 0;
+
+    const normalized = redeemPointsInput.replace(/[^\d.]/g, "");
+    const requestedPoints = Number(normalized);
+    if (!Number.isFinite(requestedPoints) || requestedPoints <= 0) {
+      return 0;
+    }
+
+    // 不允许超过本单/余额的最大可用积分
+    const clampedPoints = Math.min(
+      requestedPoints,
+      maxRedeemablePointsForOrder,
+    );
+
+    // ✅ 用四舍五入 + 很小的偏移，消除 24.48 * 100 = 2447.9999 这种浮点误差
+    const centsFloat = clampedPoints * loyaltyCentsPerPoint;
+    const cents = Math.round(centsFloat + 1e-6);
+
+    // 防止因为浮点误差超过本单可抵扣的最大金额
+    return Math.min(cents, maxRedeemableCentsForOrder);
+  }, [
+    loyaltyInfo,
+    redeemPointsInput,
+    loyaltyCentsPerPoint,
+    maxRedeemablePointsForOrder,
+    maxRedeemableCentsForOrder,
+  ]);
+
+  // 抵扣后的商品小计：用于税和合计的计算
+  const effectiveSubtotalCents = useMemo(
+    () => Math.max(0, subtotalCents - loyaltyRedeemCents),
+    [subtotalCents, loyaltyRedeemCents],
+  );
+
+  // 税基 = 抵扣后小计 +（如配置了的话）配送费
   const taxableBaseCents =
-    subtotalCents + (TAX_ON_DELIVERY ? deliveryFeeCents : 0);
+    effectiveSubtotalCents + (TAX_ON_DELIVERY ? deliveryFeeCents : 0);
+
   const taxCents = Math.round(taxableBaseCents * TAX_RATE);
-  const totalCents = subtotalCents + deliveryFeeCents + taxCents;
+
+  // ✅ 最终总价：抵扣后小计 + 配送费 + 税
+  const totalCents = effectiveSubtotalCents + deliveryFeeCents + taxCents;
 
   const deliveryAddressText = useMemo(
     () => formatDeliveryAddress(customer),
@@ -330,6 +437,75 @@ export default function CheckoutPage() {
     customer.postalCode,
     isDeliveryFulfillment,
   ]);
+
+  useEffect(() => {
+    if (authStatus !== "authenticated" || !session?.user) {
+      setLoyaltyInfo(null);
+      return;
+    }
+
+    const sessionWithUserId = session as SessionWithUserId;
+    const userId = sessionWithUserId.userId;
+    if (!userId) {
+      setLoyaltyInfo(null);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    async function loadLoyalty() {
+      try {
+        setLoyaltyLoading(true);
+        setLoyaltyError(null);
+
+        const params = new URLSearchParams({
+          userId,
+          name: session.user.name ?? "",
+          email: session.user.email ?? "",
+        });
+
+        const res = await fetch(
+          `/api/v1/membership/summary?${params.toString()}`,
+          { signal: controller.signal },
+        );
+
+        if (!res.ok) {
+          throw new Error(`Failed with status ${res.status}`);
+        }
+
+        const raw = (await res.json()) as MembershipSummaryEnvelope;
+        const data =
+          "details" in raw && raw.details
+            ? raw.details
+            : (raw as MembershipSummaryResponse);
+
+        setLoyaltyInfo({
+          userId: data.userId,
+          tier: data.tier,
+          points: data.points,
+          availableDiscountCents: data.availableDiscountCents,
+        });
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
+        console.error(err);
+        setLoyaltyError(
+          locale === "zh"
+            ? "积分信息加载失败，暂时无法使用积分抵扣。"
+            : "Failed to load loyalty info. Points cannot be used right now.",
+        );
+        setLoyaltyInfo(null);
+      } finally {
+        setLoyaltyLoading(false);
+      }
+    }
+
+    void loadLoyalty();
+
+    return () => controller.abort();
+  }, [authStatus, session, locale]);
+
 
   // 带可选 override 类型的距离校验，解决“优先闪送还是按 5km 算”的问题
   const validateDeliveryDistance = async (
@@ -421,6 +597,7 @@ export default function CheckoutPage() {
 
     let deliveryDistanceKm: number | null = null;
 
+    // 先做距离校验
     if (isDeliveryFulfillment) {
       const validationResult = await validateDeliveryDistance();
       if (!validationResult.success) {
@@ -434,7 +611,7 @@ export default function CheckoutPage() {
 
     const orderNumber = `SQ${Date.now().toString().slice(-6)}`;
 
-    // 下单实际使用的配送费 / 税 / 总价（全部用“分”计算）
+    // ==== 重新算一遍本单的费用（全部用“分”） ====
     let deliveryFeeCentsForOrder = 0;
     if (isDeliveryFulfillment && subtotalCents > 0) {
       if (deliveryType === "STANDARD") {
@@ -448,61 +625,100 @@ export default function CheckoutPage() {
       }
     }
 
+    const loyaltyRedeemCentsForOrder = loyaltyRedeemCents;
+
+    const discountedSubtotalForOrder = Math.max(
+      0,
+      subtotalCents - loyaltyRedeemCentsForOrder,
+    );
+
     const taxableBaseCentsForOrder =
-      subtotalCents + (TAX_ON_DELIVERY ? deliveryFeeCentsForOrder : 0);
+      discountedSubtotalForOrder +
+      (TAX_ON_DELIVERY ? deliveryFeeCentsForOrder : 0);
     const taxCentsForOrder = Math.round(taxableBaseCentsForOrder * TAX_RATE);
+
+    // ✅ 最终总价：抵扣后小计 + 配送费 + 税
     const totalCentsForOrder =
-      subtotalCents + deliveryFeeCentsForOrder + taxCentsForOrder;
+      discountedSubtotalForOrder +
+      deliveryFeeCentsForOrder +
+      taxCentsForOrder;
+
+    const deliveryMetadata = isDeliveryFulfillment
+      ? {
+          deliveryType,
+          deliveryProvider: selectedDeliveryDefinition.provider,
+          deliveryEtaMinutes: selectedDeliveryDefinition.eta,
+          deliveryDistanceKm:
+            deliveryDistanceKm !== null
+              ? Math.round(deliveryDistanceKm * 100) / 100
+              : undefined,
+        }
+      : null;
+
+    // 公共 payload（积分 / 地址 / 菜单 等都放在 metadata 里）
+    const payload = {
+      locale,
+      amountCents: totalCentsForOrder,
+      currency: HOSTED_CHECKOUT_CURRENCY,
+      referenceId: orderNumber,
+      description: `San Qin online order ${orderNumber}`,
+      returnUrl:
+        typeof window !== "undefined"
+          ? `${window.location.origin}/${locale}/thank-you/${orderNumber}`
+          : undefined,
+      metadata: {
+        locale,
+        fulfillment,
+        schedule,
+        customer: { ...customer, address: deliveryAddressText },
+
+        // 小计相关
+        subtotalCents, // 原始小计（未扣积分）
+        subtotalAfterDiscountCents: discountedSubtotalForOrder, // 抵扣后的实际小计
+        taxCents: taxCentsForOrder,
+        serviceFeeCents,
+        deliveryFeeCents: deliveryFeeCentsForOrder,
+        taxRate: TAX_RATE,
+
+        // 积分相关
+        loyaltyRedeemCents: loyaltyRedeemCentsForOrder,
+        loyaltyAvailableDiscountCents:
+          loyaltyInfo?.availableDiscountCents ?? 0,
+        loyaltyPointsBalance: loyaltyInfo?.points ?? 0,
+        loyaltyUserId: loyaltyInfo?.userId,
+
+        ...(deliveryMetadata ?? {}),
+
+        items: localizedCartItems.map((cartItem) => ({
+          id: cartItem.itemId,
+          // Clover 那边只用英文名
+          nameEn: resolveEnglishName(cartItem.itemId, cartItem.item.name),
+          nameZh: cartItem.item.name,
+          displayName: cartItem.item.name,
+          quantity: cartItem.quantity,
+          notes: cartItem.notes,
+          // 单价（分）
+          priceCents: Math.round(cartItem.item.price * 100),
+        })),
+      },
+    };
 
     try {
-      const deliveryMetadata = isDeliveryFulfillment
-        ? {
-            deliveryType,
-            deliveryProvider: selectedDeliveryDefinition.provider,
-            deliveryEtaMinutes: selectedDeliveryDefinition.eta,
-            deliveryDistanceKm:
-              deliveryDistanceKm !== null
-                ? Math.round(deliveryDistanceKm * 100) / 100
-                : undefined,
-          }
-        : null;
+      // 1️⃣ 纯积分订单：抵扣后总价为 0 -> 不走 Clover
+      if (totalCentsForOrder <= 0) {
+        await apiFetch("/orders/loyalty-only", {
+          // ⚠ 如果你后端定义的路径不是这个，把 '/orders/loyalty-only' 换成你真实的 API 路径就行
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
 
-      const payload = {
-        locale,
-        amountCents: totalCentsForOrder,
-        currency: HOSTED_CHECKOUT_CURRENCY,
-        referenceId: orderNumber,
-        description: `San Qin online order ${orderNumber}`,
-        returnUrl:
-          typeof window !== "undefined"
-            ? `${window.location.origin}/${locale}/thank-you/${orderNumber}`
-            : undefined,
-        metadata: {
-          locale,
-          fulfillment,
-          schedule,
-          customer: { ...customer, address: deliveryAddressText },
-          // ⭐ 全部用“分”
-          subtotalCents,
-          taxCents: taxCentsForOrder,
-          serviceFeeCents,
-          deliveryFeeCents: deliveryFeeCentsForOrder,
-          taxRate: TAX_RATE,
-          ...(deliveryMetadata ?? {}),
-          items: localizedCartItems.map((cartItem) => ({
-            id: cartItem.itemId,
-            // Clover 那边只用英文名
-            nameEn: resolveEnglishName(cartItem.itemId, cartItem.item.name),
-            nameZh: cartItem.item.name,
-            displayName: cartItem.item.name,
-            quantity: cartItem.quantity,
-            notes: cartItem.notes,
-            // 单价（分）
-            priceCents: Math.round(cartItem.item.price * 100),
-          })),
-        },
-      };
+        // 后端已经建单、扣积分、标记为已支付，前端直接跳 thank-you
+        router.push(`/${locale}/thank-you/${orderNumber}`);
+        return;
+      }
 
+      // 2️⃣ 总价 > 0：正常走 Clover Hosted Checkout
       const { checkoutUrl } = await apiFetch<HostedCheckoutResponse>(
         "/clover/pay/online/hosted-checkout",
         {
@@ -519,6 +735,7 @@ export default function CheckoutPage() {
       if (typeof window !== "undefined") {
         window.location.href = checkoutUrl;
       } else {
+        // 理论上不会走到这里，只是兜底
         setConfirmation({
           orderNumber,
           totalCents: totalCentsForOrder,
@@ -531,11 +748,7 @@ export default function CheckoutPage() {
           ? error.message
           : strings.errors.checkoutFailed;
       setErrorMessage(message);
-      setConfirmation({
-        orderNumber,
-        totalCents: totalCentsForOrder,
-        fulfillment,
-      });
+      // ❌ 注意：失败时不再 setConfirmation，避免“红色报错 + 绿色成功”同时出现
     } finally {
       setIsSubmitting(false);
     }
@@ -1006,12 +1219,102 @@ export default function CheckoutPage() {
                 ) : null}
               </div>
 
+              {loyaltyInfo && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-slate-800">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="font-semibold">
+                        {locale === "zh" ? "积分抵扣" : "Redeem points"}
+                      </p>
+                      <p className="mt-1 text-[11px] text-slate-600">
+  {locale === "zh"
+    ? `当前积分：${loyaltyInfo.points.toFixed(
+        2,
+      )}，本单最多可抵扣 ${formatMoney(
+        maxRedeemableCentsForOrder,
+      )}。`
+    : `You have ${loyaltyInfo.points.toFixed(
+        2,
+      )} pts. You can redeem up to ${formatMoney(
+        maxRedeemableCentsForOrder,
+      )} this order.`}
+                      </p>
+                    </div>
+                    {loyaltyLoading && (
+                      <span className="text-[11px] text-slate-500">
+                        {locale === "zh" ? "加载中…" : "Loading…"}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="mt-2 flex flex-col gap-2 md:flex-row md:items-end">
+                    <label className="flex-1">
+                      <span className="text-[11px] text-slate-600">
+                        {locale === "zh"
+                          ? "本单使用积分数量"
+                          : "Points to use this order"}
+                      </span>
+<input
+  type="number"
+  min={0}
+  step="0.01"
+  value={redeemPointsInput}
+  onChange={(e) => {
+    const raw = e.target.value;
+    const n = Number(raw);
+    if (Number.isNaN(n) || n < 0) {
+      setRedeemPointsInput("");
+      return;
+    }
+
+    const clamped = Math.min(n, maxRedeemablePointsForOrder);
+    setRedeemPointsInput(String(clamped));
+  }}
+  className="mt-1 w-full rounded-2xl border border-slate-300 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+/>
+                    </label>
+<button
+  type="button"
+  className="shrink-0 rounded-2xl border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
+  onClick={() =>
+    setRedeemPointsInput(maxRedeemablePointsForOrder.toFixed(2))
+  }
+>
+  {locale === 'zh' ? '全部使用' : 'Use max'}
+</button>
+
+                    <div className="text-[11px] text-slate-600 md:w-40">
+                      <p className="font-medium">
+                        {locale === "zh" ? "折算抵扣金额" : "Discount value"}
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-emerald-700">
+                        {loyaltyRedeemCents > 0
+                          ? `- ${formatMoney(loyaltyRedeemCents)}`
+                          : formatMoney(0)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {loyaltyError && (
+                    <p className="mt-2 text-[11px] text-red-600">
+                      {loyaltyError}
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+
                 <div className="flex items-center justify-between text-xs">
                   <span>{strings.summary.subtotal}</span>
                   <span>{formatMoney(subtotalCents)}</span>
                 </div>
-
+{loyaltyRedeemCents > 0 && (
+  <div className="mt-1 flex items-center justify-between text-xs">
+    <span>{locale === "zh" ? "积分抵扣" : "Points discount"}</span>
+    <span>-{formatMoney(loyaltyRedeemCents)}</span>
+  </div>
+)}
                 {serviceFeeCents > 0 ? (
                   <div className="mt-2 flex items-center justify-between text-xs">
                     <span>{strings.summary.serviceFee}</span>

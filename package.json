@@ -21,6 +21,7 @@
     "http-proxy": "^1.18.1"
   },
   "dependencies": {
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "next-auth": "^4.24.13"
   }
 }
