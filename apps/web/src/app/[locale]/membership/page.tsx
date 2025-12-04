@@ -8,7 +8,6 @@ import { useParams, useRouter } from 'next/navigation';
 import type { Locale } from '@/lib/order/shared';
 import { useSession, signOut } from 'next-auth/react';
 import type { Session } from 'next-auth';
-import type { Locale } from '@/lib/order/shared';
 
 type MemberTier = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM';
 
