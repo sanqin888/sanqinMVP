@@ -3,6 +3,7 @@
 
 /** ===== 基础类型 / 常量 ===== */
 import type { Locale } from "@/lib/i18n/locales";
+export type { Locale } from "@/lib/i18n/locales";
 export { LOCALES } from "@/lib/i18n/locales";
 export { addLocaleToPath } from "@/lib/i18n/path";
 
