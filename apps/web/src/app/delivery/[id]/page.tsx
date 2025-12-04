@@ -6,10 +6,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { isStableId } from '../../../lib/stable-id';
 import {
-  DeliveryStatus,
-  type DeliveryStatusValue,
   DELIVERY_STATUS_SEQUENCE,
-  DELIVERY_STATUS_TRANSITIONS,
 } from "@status/delivery-status";
 type PageProps = { params: { id: string } };
 
