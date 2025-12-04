@@ -445,7 +445,7 @@ const loyaltyCentsPerPoint = useMemo(() => {
     }
 
     const sessionWithUserId = session as SessionWithUserId;
-    const userId = sessionWithUserId.userId;
+    const userId = sessionWithUserId.userId ?? ""; 
     if (!userId) {
       setLoyaltyInfo(null);
       return;
