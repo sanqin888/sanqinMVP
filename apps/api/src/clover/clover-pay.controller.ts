@@ -9,18 +9,21 @@ import { CloverService } from './clover.service';
 import {
   CreateHostedCheckoutDto,
   HOSTED_CHECKOUT_CURRENCY,
-} from './dto/create-hosted-checkout.dto'; // ✅ 用你已有的 DTO
+} from './dto/create-hosted-checkout.dto';
 import { CheckoutIntentsService } from './checkout-intents.service';
 import {
   parseHostedCheckoutMetadata,
   type HostedCheckoutMetadata,
+  buildOrderDtoFromMetadata,
 } from './hco-metadata';
+import { OrdersService } from '../orders/orders.service';
 
 @Controller('clover')
 export class CloverPayController {
   constructor(
     private readonly clover: CloverService,
     private readonly checkoutIntents: CheckoutIntentsService,
+    private readonly orders: OrdersService,
   ) {}
 
   @Post('pay/online/hosted-checkout')
@@ -45,6 +48,60 @@ export class CloverPayController {
       });
     }
 
+    const currency = dto.currency ?? HOSTED_CHECKOUT_CURRENCY;
+    const trimmedReference = dto.referenceId?.trim();
+    const referenceIdBase =
+      trimmedReference && trimmedReference.length > 0
+        ? trimmedReference
+        : undefined;
+
+    const locale = metadata.locale;
+
+    // ⭐ 0 元订单：不走 Clover，直接用积分支付并创建已支付订单
+    if (typeof dto.amountCents === 'number' && dto.amountCents <= 0) {
+      const referenceId =
+        referenceIdBase ??
+        metadata.customer.phone ??
+        `LOYALTY-${Date.now().toString(36)}`;
+
+      // 先记录 CheckoutIntent（状态 pending）
+      const intent = await this.checkoutIntents.recordIntent({
+        referenceId,
+        checkoutSessionId: null,
+        amountCents: dto.amountCents,
+        currency,
+        locale,
+        metadata,
+      });
+
+      // 用和 webhook 一样的逻辑，从 metadata 生成 CreateOrderDto
+      const orderDto = buildOrderDtoFromMetadata(metadata, referenceId);
+
+      // 创建并立即标记为已支付（内部会计算金额 + 调 loyalty.settleOnPaid）
+      const order = await this.orders.createImmediatePaid(orderDto);
+
+      // 更新 CheckoutIntent 状态为已完成（LOYALTY_ONLY）
+      await this.checkoutIntents.markProcessed({
+        intentId: intent.id,
+        orderId: order.id,
+        status: 'completed',
+        result: 'LOYALTY_ONLY',
+      });
+
+      // thank-you 页参数：优先用稳定号，其次 UUID
+      const routeLocale = locale ?? 'zh';
+      const orderParam = order.clientRequestId ?? order.id;
+      const checkoutUrl = `/${routeLocale}/thank-you/${encodeURIComponent(
+        orderParam,
+      )}`;
+
+      return {
+        checkoutUrl,
+        checkoutId: null,
+      };
+    }
+
+    // ⭐ 金额 > 0 的情况：正常走 Clover Hosted Checkout
     const result = await this.clover.createHostedCheckout(dto);
 
     if (!result.ok) {
@@ -65,21 +122,15 @@ export class CloverPayController {
       });
     }
 
-    const currency = dto.currency ?? HOSTED_CHECKOUT_CURRENCY;
-    const trimmedReference = dto.referenceId?.trim();
     const referenceId =
-      (trimmedReference && trimmedReference.length > 0
-        ? trimmedReference
-        : undefined) ??
-      result.checkoutSessionId ??
-      metadata.customer.phone;
+      referenceIdBase ?? result.checkoutSessionId ?? metadata.customer.phone;
 
     await this.checkoutIntents.recordIntent({
       referenceId,
       checkoutSessionId: result.checkoutSessionId,
       amountCents: dto.amountCents,
       currency,
-      locale: metadata.locale,
+      locale,
       metadata,
     });
 

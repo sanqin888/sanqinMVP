@@ -10,6 +10,7 @@ import {
   DefaultValuePipe,
   ParseIntPipe,
   ParseUUIDPipe,
+  BadRequestException,
 } from '@nestjs/common';
 import { IsEnum } from 'class-validator';
 import { OrdersService } from './orders.service';
@@ -54,6 +55,16 @@ export class OrdersController {
   @Get(':id')
   findOne(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
     return this.ordersService.getById(id);
+  }
+
+  @Post('loyalty-only')
+  async createLoyaltyOnlyOrder(@Body() payload: any) {
+    // 这里先做一个最基本的校验，防止被乱调用
+    if (!payload || typeof payload !== 'object') {
+      throw new BadRequestException('Invalid payload');
+    }
+
+    return this.ordersService.createLoyaltyOnlyOrder(payload);
   }
 
   /**

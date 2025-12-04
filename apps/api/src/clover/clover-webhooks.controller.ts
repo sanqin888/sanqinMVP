@@ -1,3 +1,4 @@
+// apps/api/src/clover/clover-webhooks.controller.ts
 import {
   Controller,
   Post,
@@ -13,7 +14,6 @@ import { CheckoutIntentsService } from './checkout-intents.service';
 import { OrdersService } from '../orders/orders.service';
 import { buildOrderDtoFromMetadata } from './hco-metadata';
 import { CloverService } from './clover.service';
-import { OrderStatus } from '../orders/order-status';
 
 type RawBodyRequest = Request & { rawBody?: Buffer };
 
@@ -44,7 +44,6 @@ export class CloverHcoWebhookController {
     @Res() res: Response,
     @Headers('clover-signature') signature?: string,
   ) {
-
     // ---- 1. 还原 rawBody ----
     let rawBody: Buffer;
     const body: unknown = req.body;
@@ -189,14 +188,12 @@ export class CloverHcoWebhookController {
         intent.metadata,
         clientRequestId,
       );
+
       // 1) 先建订单（默认 pending）
       const order = await this.orders.create(orderDto);
 
-      // 2) 在线支付成功的单，直接把状态推进到 paid（触发 loyalty 结算）
-      const finalized = await this.orders.updateStatus(
-        order.id,
-        OrderStatus.paid,
-      );
+      // 2) 在线支付成功的单，直接把状态推进到 'paid'（触发 loyalty 结算）
+      const finalized = await this.orders.updateStatus(order.id, 'paid');
 
       // 3) 标记 CheckoutIntent 已处理
       await this.checkoutIntents.markProcessed({
@@ -219,6 +216,7 @@ export class CloverHcoWebhookController {
       );
       return res.status(500).send('order-create-failed');
     }
+
     return res.send('ok');
   }
 

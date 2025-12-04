@@ -1,8 +1,12 @@
-export const LOCALES = ["zh", "en"] as const;
-export type Locale = (typeof LOCALES)[number];
+// apps/web/src/lib/i18n/locales.ts
 
-export function isLocale(x: string): x is Locale {
-  return (LOCALES as readonly string[]).includes(x);
+export const LOCALES = ["en", "zh"] as const;
+export type Locale = (typeof LOCALES)[number];
+export function isLocale(value: unknown): value is Locale {
+  return (
+    typeof value === "string" &&
+    (LOCALES as readonly string[]).includes(value)
+  );
 }
 
 export const DEFAULT_LOCALE: Locale = "en";

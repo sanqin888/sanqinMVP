@@ -1,6 +1,9 @@
+//Users/apple/sanqinMVP/apps/web/src/app
+
 import type { Metadata } from "next";
 import { cookies, headers } from "next/headers";
 import "./globals.css";
+import type { Locale } from "@/lib/i18n/locales";
 
 export const metadata: Metadata = {
   title: "San Qin Noodle House",
@@ -9,7 +12,7 @@ export const metadata: Metadata = {
 };
 
 // 服务器端检测语言：优先 Cookie('locale')，否则看 Accept-Language
-async function detectLang(): Promise<"zh" | "en"> {
+async function detectLang(): Promise<Locale> {
   const cookieStore = await cookies();
   const c = cookieStore.get("locale")?.value;
   if (c === "zh" || c === "en") return c;

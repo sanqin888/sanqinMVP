@@ -2,7 +2,6 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsEnum,
-  IsIn,
   IsInt,
   IsNumber,
   IsOptional,
@@ -10,8 +9,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { IsStableId } from '../../common/validators/is-stable-id.validator';
-import { DeliveryType, FulfillmentType } from '@prisma/client';
+import { Channel, DeliveryType, FulfillmentType } from '@prisma/client';
 
 class CreateOrderItemDto {
   @IsString() productId!: string;
@@ -82,20 +80,23 @@ export class DeliveryDestinationDto {
 }
 
 export class CreateOrderDto {
+  // ✅ 允许任意字符串 userId（例如 "google:xxxxx"），只保证是字符串就行
   @IsOptional()
-  @IsStableId({ message: 'userId must be a cuid/uuid when provided' })
+  @IsString()
   userId?: string;
 
+  // ✅ 允许任意字符串 clientRequestId（SQ****** 等）
   @IsOptional()
-  @IsStableId({ message: 'clientRequestId must be a cuid/uuid when provided' })
+  @IsString()
   clientRequestId?: string;
 
   @IsOptional()
   @IsString()
   pickupCode?: string;
 
-  @IsIn(['web', 'in_store', 'ubereats'])
-  channel!: 'web' | 'in_store' | 'ubereats';
+  // ✅ 用 Prisma 的 Channel enum，保证和 schema 统一
+  @IsEnum(Channel)
+  channel!: Channel;
 
   @IsEnum(FulfillmentType)
   fulfillmentType!: FulfillmentType;
@@ -116,18 +117,12 @@ export class CreateOrderDto {
   @Min(0)
   pointsToRedeem?: number;
 
-  /** 兼容旧版前端传的“抵扣金额（分）” */
+  /** （保留给内部特殊场景，例如纯积分订单）抵扣金额（单位：分） */
   @IsOptional()
   @IsInt()
   @Min(0)
   redeemValueCents?: number;
 
-  /** 仍然保留前端传入口径，但金额实际以后端为准 */
-  @IsOptional() @IsInt() @Min(0) subtotal?: number;
-  @IsOptional() @IsInt() @Min(0) taxTotal?: number;
-  @IsOptional() @IsInt() @Min(0) total?: number;
-
-  /** 兼容旧版接口的“单位：分”字段 */
   @IsOptional() @IsInt() @Min(0) subtotalCents?: number;
   @IsOptional() @IsInt() @Min(0) taxCents?: number;
   @IsOptional() @IsInt() @Min(0) totalCents?: number;

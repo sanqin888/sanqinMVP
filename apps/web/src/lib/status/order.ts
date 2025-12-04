@@ -1,3 +1,4 @@
+///Users/apple/sanqinMVP/apps/web/src/lib/status
 export type OrderStatus =
   | 'pending'
   | 'paid'
