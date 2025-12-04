@@ -19,7 +19,7 @@ type OrderStatus =
   | 'completed'
   | 'refunded';
 
-type DeliveryKind = 'pickup' | 'delivery';
+type DeliveryType = 'pickup' | 'delivery';
 
 type OrderHistory = {
   id: string;
