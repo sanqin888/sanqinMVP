@@ -461,8 +461,8 @@ const loyaltyCentsPerPoint = useMemo(() => {
       const params = new URLSearchParams();
 
       params.set("userId", userId);
-      params.set("name", session.user.name ?? "");
-      params.set("email", session.user.email ?? "");
+      params.set("name", session?.user?.name ?? "");
+      params.set("email", session?.user?.email ?? "");
 
         const res = await fetch(
           `/api/v1/membership/summary?${params.toString()}`,
