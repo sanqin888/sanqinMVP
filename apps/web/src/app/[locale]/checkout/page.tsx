@@ -458,7 +458,7 @@ const loyaltyCentsPerPoint = useMemo(() => {
         setLoyaltyLoading(true);
         setLoyaltyError(null);
 
-        const user = session.user;
+        const user = session?.user;
         const params = new URLSearchParams({
           userId,
           name: user?.name ?? '',
