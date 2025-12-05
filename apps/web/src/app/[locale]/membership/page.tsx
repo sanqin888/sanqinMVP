@@ -220,10 +220,11 @@ export default function MembershipHomePage() {
             ? raw.details
             : (raw as MembershipSummaryResponse);
 
+                const user = session?.user;
         setMember({
           id: data.userId,
-          name: data.displayName ?? session.user.name ?? undefined,
-          email: data.email ?? session.user.email ?? undefined,
+          name: data.displayName ?? user?.name ?? undefined,
+          email: data.email ?? user?.email ?? undefined,
           tier: data.tier,
           points: data.points,
           availableDiscountCents: data.availableDiscountCents,
