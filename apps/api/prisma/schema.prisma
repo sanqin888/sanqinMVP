@@ -108,12 +108,35 @@ model Order {
   externalDeliveryId     String?
   loyaltyRedeemCents       Int      @default(0)
   subtotalAfterDiscountCents Int    @default(0)
+  couponId             String?        @db.Uuid
+  couponDiscountCents  Int            @default(0)
+  couponCodeSnapshot   String?
+  couponTitleSnapshot  String?
+  couponMinSpendCents  Int?
+  couponExpiresAt      DateTime?
 
   createdAt       DateTime        @default(now())
 
   items OrderItem[]
 
   @@index([createdAt])
+}
+
+model Coupon {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String
+  code           String
+  title          String
+  discountCents  Int
+  minSpendCents  Int?
+  expiresAt      DateTime?
+  issuedAt       DateTime @default(now())
+  usedAt         DateTime?
+  orderId        String?  @db.Uuid
+  source         String?
+  campaign       String?
+
+  @@index([userId, expiresAt])
 }
 
 model OrderItem {

@@ -593,8 +593,15 @@ const loyaltyCentsPerPoint = useMemo(() => {
           throw new Error(`Failed with status ${res.status}`);
         }
 
-        const data = (await res.json()) as CheckoutCoupon[];
-        setAvailableCoupons(Array.isArray(data) ? data : []);
+        const data = (await res.json()) as (CheckoutCoupon & {
+          status?: string;
+        })[];
+
+        const normalized = Array.isArray(data)
+          ? data.filter((item) => !item.status || item.status === 'active')
+          : [];
+
+        setAvailableCoupons(normalized);
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") {
           return;

@@ -129,6 +129,10 @@ export class CreateOrderDto {
   @IsOptional() @IsInt() @Min(0) deliveryFeeCents?: number;
 
   @IsOptional()
+  @IsString()
+  couponId?: string;
+
+  @IsOptional()
   @ValidateNested()
   @Type(() => DeliveryDestinationDto)
   deliveryDestination?: DeliveryDestinationDto;
