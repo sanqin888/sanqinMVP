@@ -166,10 +166,11 @@ export default function MembershipHomePage() {
         setSummaryLoading(true);
         setSummaryError(null);
 
+        const user = session.user;
         const params = new URLSearchParams({
           userId,
-          name: session.user.name ?? '',
-          email: session.user.email ?? '',
+          name: user?.name ?? '',
+          email: user?.email ?? '',
         });
 
         // ⭐ 从 localStorage 读取“首次注册填写的推荐人 & 生日”，只用一次
