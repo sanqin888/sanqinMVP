@@ -47,9 +47,10 @@ type Coupon = {
   code: string;
   discountCents: number;
   minSpendCents?: number;
-  expiresAt: string;
+  expiresAt?: string;
   status: CouponStatus;
   source?: string;
+  issuedAt?: string;
 };
 
 type MemberProfile = {
@@ -133,6 +134,10 @@ export default function MembershipHomePage() {
   const [orders, setOrders] = useState<OrderHistory[]>([]);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [couponError, setCouponError] = useState<string | null>(null);
 
   // 营销邮件订阅状态
   const [marketingOptIn, setMarketingOptIn] = useState<boolean | null>(null);
@@ -271,6 +276,52 @@ export default function MembershipHomePage() {
     return () => controller.abort();
   }, [status, session, isZh]);
 
+  // 拉取优惠券：会员信息到手后再查询
+  useEffect(() => {
+    if (!member?.id) {
+      setCoupons([]);
+      setCouponLoading(false);
+      setCouponError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const loadCoupons = async () => {
+      try {
+        setCouponLoading(true);
+        setCouponError(null);
+
+        const params = new URLSearchParams([['userId', member.id]]);
+        const res = await fetch(
+          `/api/v1/membership/coupons?${params.toString()}`,
+          { signal: controller.signal },
+        );
+
+        if (!res.ok) {
+          throw new Error(`Failed with status ${res.status}`);
+        }
+
+        const raw = (await res.json()) as Coupon[];
+        setCoupons(Array.isArray(raw) ? raw : []);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        console.error(err);
+        setCoupons([]);
+        setCouponError(
+          isZh
+            ? '优惠券加载失败，请稍后再试。'
+            : 'Failed to load coupons. Please try again later.',
+        );
+      } finally {
+        setCouponLoading(false);
+      }
+    };
+
+    void loadCoupons();
+    return () => controller.abort();
+  }, [member?.id, isZh]);
+
   // 拉取积分流水：首次切到“积分”tab 且已登录时加载一次
   useEffect(() => {
     if (
@@ -363,38 +414,6 @@ export default function MembershipHomePage() {
         },
       ]
     : [];
-
-  const coupons: Coupon[] = [
-    {
-      id: 'c1',
-      title: isZh ? '新客立减' : 'Welcome bonus',
-      code: 'WELCOME10',
-      discountCents: 1000,
-      minSpendCents: 3000,
-      expiresAt: isZh ? '2024/12/31 到期' : 'Expires 2024-12-31',
-      status: 'active',
-      source: isZh ? '注册奖励' : 'Signup bonus',
-    },
-    {
-      id: 'c2',
-      title: isZh ? '生日礼券' : 'Birthday treat',
-      code: 'BDAY15',
-      discountCents: 1500,
-      minSpendCents: 4500,
-      expiresAt: isZh ? '2024/08/31 到期' : 'Expires 2024-08-31',
-      status: 'used',
-      source: isZh ? '生日月自动发放' : 'Issued in birthday month',
-    },
-    {
-      id: 'c3',
-      title: isZh ? '外卖专享券' : 'Delivery special',
-      code: 'DELIVERY5',
-      discountCents: 500,
-      expiresAt: isZh ? '已过期' : 'Expired',
-      status: 'expired',
-      source: isZh ? '外送推广活动' : 'Delivery promo',
-    },
-  ];
 
   const tierDisplay =
     member &&
@@ -610,6 +629,8 @@ export default function MembershipHomePage() {
             <CouponsSection
               isZh={isZh}
               coupons={coupons}
+              loading={couponLoading}
+              error={couponError}
             />
           )}
 
@@ -932,9 +953,13 @@ function AddressesSection({
 function CouponsSection({
   isZh,
   coupons,
+  loading,
+  error,
 }: {
   isZh: boolean;
   coupons: Coupon[];
+  loading: boolean;
+  error: string | null;
 }) {
   const statusLabel: Record<CouponStatus, string> = {
     active: isZh ? '可使用' : 'Available',
@@ -954,51 +979,71 @@ function CouponsSection({
         {isZh ? '优惠卷' : 'Coupons'}
       </h2>
 
+      {loading && (
+        <p className="text-xs text-slate-500">
+          {isZh ? '优惠券加载中…' : 'Loading coupons…'}
+        </p>
+      )}
+
+      {error && (
+        <p className="text-[11px] text-red-600">{error}</p>
+      )}
+
       <div className="space-y-3 text-xs text-slate-700">
-        {coupons.map((coupon) => (
-          <div
-            key={coupon.id}
-            className="rounded-xl border border-dashed border-amber-200 bg-amber-50 px-3 py-2"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold text-slate-900">
-                  {coupon.title}
-                </p>
-                <p className="text-[11px] text-slate-500">{coupon.source}</p>
-              </div>
-              <span
-                className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                  statusColor[coupon.status]
-                }`}
-              >
-                {statusLabel[coupon.status]}
-              </span>
-            </div>
+        {coupons.map((coupon) => {
+          const status = coupon.status ?? 'active';
 
-            <div className="mt-2 flex items-end justify-between">
-              <div>
-                <p className="text-lg font-bold text-amber-700">
-                  {isZh ? '立减 ' : 'Save '}
-                  {formatCurrency(coupon.discountCents)}
-                </p>
-                {coupon.minSpendCents && (
-                  <p className="text-[11px] text-slate-500">
-                    {isZh ? '满 ' : 'Min spend '}
-                    {formatCurrency(coupon.minSpendCents)}
-                    {isZh ? ' 可用' : ' to use'}
+          return (
+            <div
+              key={coupon.id}
+              className="rounded-xl border border-dashed border-amber-200 bg-amber-50 px-3 py-2"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">
+                    {coupon.title}
                   </p>
-                )}
+                  <p className="text-[11px] text-slate-500">{coupon.source}</p>
+                </div>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                    statusColor[status]
+                  }`}
+                >
+                  {statusLabel[status]}
+                </span>
               </div>
-              <div className="text-right text-[11px] font-mono text-slate-500">
-                <p>{coupon.code}</p>
-                <p className="mt-0.5">{coupon.expiresAt}</p>
+
+              <div className="mt-2 flex items-end justify-between">
+                <div>
+                  <p className="text-lg font-bold text-amber-700">
+                    {isZh ? '立减 ' : 'Save '}
+                    {formatCurrency(coupon.discountCents)}
+                  </p>
+                  {coupon.minSpendCents && (
+                    <p className="text-[11px] text-slate-500">
+                      {isZh ? '满 ' : 'Min spend '}
+                      {formatCurrency(coupon.minSpendCents)}
+                      {isZh ? ' 可用' : ' to use'}
+                    </p>
+                  )}
+                </div>
+                <div className="text-right text-[11px] font-mono text-slate-500">
+                  <p>{coupon.code}</p>
+                  <p className="mt-0.5">
+                    {coupon.expiresAt
+                      ? new Date(coupon.expiresAt).toLocaleDateString()
+                      : isZh
+                        ? '无有效期'
+                        : 'No expiry'}
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
-        {coupons.length === 0 && (
+        {coupons.length === 0 && !loading && (
           <p className="text-xs text-slate-500">
             {isZh ? '暂无可用优惠券。' : 'No coupons available right now.'}
           </p>

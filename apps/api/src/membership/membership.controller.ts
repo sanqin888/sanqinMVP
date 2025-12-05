@@ -97,4 +97,13 @@ export class MembershipController {
       user,
     };
   }
+
+  @Get('coupons')
+  async listCoupons(@Query('userId') userId?: string) {
+    if (!userId) {
+      throw new BadRequestException('userId is required');
+    }
+
+    return this.membership.listCoupons({ userId });
+  }
 }
