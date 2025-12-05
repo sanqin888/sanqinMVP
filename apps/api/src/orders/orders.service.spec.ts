@@ -3,6 +3,8 @@ import { OrdersService } from './orders.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { UberDirectService } from '../deliveries/uber-direct.service';
+import { MembershipService } from '../membership/membership.service';
+import { DoorDashDriveService } from '../deliveries/doordash-drive.service';
 import { DeliveryType } from '@prisma/client';
 import { CreateOrderDto } from './dto/create-order.dto';
 
@@ -23,7 +25,12 @@ describe('OrdersService', () => {
     settleOnPaid: jest.Mock;
     rollbackOnRefund: jest.Mock;
   };
+  let membership: {
+    validateCouponForOrder: jest.Mock;
+    markCouponUsedForOrder: jest.Mock;
+  };
   let uberDirect: { createDelivery: jest.Mock };
+  let doorDashDrive: { createDelivery: jest.Mock };
 
   beforeEach(() => {
     process.env.UBER_DIRECT_ENABLED = '1';
@@ -45,14 +52,25 @@ describe('OrdersService', () => {
       rollbackOnRefund: jest.fn(),
     };
 
+    membership = {
+      validateCouponForOrder: jest.fn().mockResolvedValue(null),
+      markCouponUsedForOrder: jest.fn(),
+    };
+
     uberDirect = {
+      createDelivery: jest.fn(),
+    };
+
+    doorDashDrive = {
       createDelivery: jest.fn(),
     };
 
     service = new OrdersService(
       prisma as unknown as PrismaService,
       loyalty as unknown as LoyaltyService,
+      membership as unknown as MembershipService,
       uberDirect as unknown as UberDirectService,
+      doorDashDrive as unknown as DoorDashDriveService,
     );
   });
 

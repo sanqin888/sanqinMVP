@@ -1,5 +1,6 @@
 // apps/api/src/membership/membership.service.ts
 import {
+  BadRequestException,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -19,6 +20,46 @@ export class MembershipService {
     private readonly prisma: PrismaService,
     private readonly loyalty: LoyaltyService,
   ) {}
+
+  private couponStatus(coupon: {
+    expiresAt: Date | null;
+    usedAt: Date | null;
+  }): 'active' | 'used' | 'expired' {
+    if (coupon.usedAt) return 'used';
+    if (coupon.expiresAt && coupon.expiresAt.getTime() < Date.now()) {
+      return 'expired';
+    }
+    return 'active';
+  }
+
+  private serializeCoupon(coupon: {
+    id: string;
+    title: string;
+    code: string;
+    discountCents: number;
+    minSpendCents: number | null;
+    expiresAt: Date | null;
+    usedAt: Date | null;
+    issuedAt: Date;
+    source: string | null;
+  }) {
+    const status = this.couponStatus({
+      expiresAt: coupon.expiresAt,
+      usedAt: coupon.usedAt,
+    });
+
+    return {
+      id: coupon.id,
+      title: coupon.title,
+      code: coupon.code,
+      discountCents: coupon.discountCents,
+      minSpendCents: coupon.minSpendCents ?? undefined,
+      expiresAt: coupon.expiresAt?.toISOString(),
+      issuedAt: coupon.issuedAt.toISOString(),
+      status,
+      source: coupon.source ?? undefined,
+    };
+  }
 
   /**
    * 确保 User 存在，并在需要时补全信息：
@@ -127,6 +168,68 @@ export class MembershipService {
     return user;
   }
 
+  private async ensureWelcomeCoupon(userId: string) {
+    const existing = await this.prisma.coupon.findFirst({
+      where: { userId, campaign: 'WELCOME' },
+      orderBy: { issuedAt: 'desc' },
+    });
+
+    if (existing) return existing;
+
+    const expiresAt = (() => {
+      const d = new Date();
+      d.setMonth(d.getMonth() + 1);
+      return d;
+    })();
+
+    return this.prisma.coupon.create({
+      data: {
+        userId,
+        campaign: 'WELCOME',
+        code: 'WELCOME10',
+        title: 'Welcome bonus',
+        discountCents: 1000,
+        minSpendCents: 3000,
+        expiresAt,
+        source: 'Signup bonus',
+      },
+    });
+  }
+
+  private async ensureBirthdayCoupon(user: {
+    id: string;
+    birthdayMonth: number | null;
+    birthdayDay: number | null;
+  }) {
+    if (!user.birthdayMonth || !user.birthdayDay) return null;
+
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    if (currentMonth !== user.birthdayMonth) return null;
+
+    const campaign = `BIRTHDAY-${now.getFullYear()}`;
+    const existed = await this.prisma.coupon.findFirst({
+      where: { userId: user.id, campaign },
+    });
+    if (existed) return existed;
+
+    // 过期时间：生日当月的最后一天 23:59:59
+    const expiresAt = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59));
+
+    return this.prisma.coupon.create({
+      data: {
+        userId: user.id,
+        campaign,
+        code: 'BDAY15',
+        title: 'Birthday treat',
+        discountCents: 1500,
+        minSpendCents: 4500,
+        expiresAt,
+        source: 'Birthday month reward',
+      },
+    });
+  }
+
   /**
    * 会员概要：
    * - User 信息（含营销订阅）
@@ -193,6 +296,45 @@ export class MembershipService {
   }
 
   /**
+   * 返回用户的所有优惠券列表，会自动补发：
+   * - 欢迎券（仅一次）
+   * - 当月生日券（每年一次，需已填写生日）
+   */
+  async listCoupons(params: { userId: string }) {
+    const { userId } = params;
+    const user = await this.ensureUser({ userId, name: null, email: null });
+
+    await this.ensureWelcomeCoupon(user.id);
+    await this.ensureBirthdayCoupon({
+      id: user.id,
+      birthdayMonth: user.birthdayMonth,
+      birthdayDay: user.birthdayDay,
+    });
+
+    const coupons = await this.prisma.coupon.findMany({
+      where: { userId: user.id },
+      orderBy: [
+        { expiresAt: 'asc' },
+        { issuedAt: 'desc' },
+      ],
+    });
+
+    return coupons.map((coupon) =>
+      this.serializeCoupon({
+        id: coupon.id,
+        title: coupon.title,
+        code: coupon.code,
+        discountCents: coupon.discountCents,
+        minSpendCents: coupon.minSpendCents,
+        expiresAt: coupon.expiresAt,
+        usedAt: coupon.usedAt,
+        issuedAt: coupon.issuedAt,
+        source: coupon.source,
+      }),
+    );
+  }
+
+  /**
    * 获取积分流水（最近 N 条）
    */
   async getLoyaltyLedger(params: { userId: string; limit?: number }) {
@@ -226,6 +368,62 @@ export class MembershipService {
         orderId: entry.orderId,
       })),
     };
+  }
+
+  async validateCouponForOrder(params: {
+    userId?: string;
+    couponId?: string;
+    subtotalCents: number;
+  }) {
+    const { userId, couponId, subtotalCents } = params;
+    if (!couponId) return null;
+    if (!userId) {
+      throw new BadRequestException('userId is required when applying coupon');
+    }
+
+    const coupon = await this.prisma.coupon.findUnique({
+      where: { id: couponId },
+    });
+
+    if (!coupon || coupon.userId !== userId) {
+      throw new BadRequestException('coupon not found for user');
+    }
+
+    const status = this.couponStatus({
+      expiresAt: coupon.expiresAt,
+      usedAt: coupon.usedAt,
+    });
+    if (status !== 'active') {
+      throw new BadRequestException('coupon is not available');
+    }
+
+    if (
+      typeof coupon.minSpendCents === 'number' &&
+      subtotalCents < coupon.minSpendCents
+    ) {
+      throw new BadRequestException('order subtotal does not meet coupon rules');
+    }
+
+    const discountCents = Math.max(
+      0,
+      Math.min(coupon.discountCents, subtotalCents),
+    );
+
+    return {
+      discountCents,
+      coupon,
+    };
+  }
+
+  async markCouponUsedForOrder(params: { couponId?: string | null; orderId: string }) {
+    const { couponId, orderId } = params;
+    if (!couponId) return;
+
+    const now = new Date();
+    await this.prisma.coupon.updateMany({
+      where: { id: couponId, usedAt: null },
+      data: { usedAt: now, orderId },
+    });
   }
 
   /**
