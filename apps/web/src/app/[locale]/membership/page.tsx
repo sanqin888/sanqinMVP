@@ -39,14 +39,17 @@ type Address = {
   isDefault?: boolean;
 };
 
-type PaymentMethod = {
+type CouponStatus = 'active' | 'used' | 'expired';
+
+type Coupon = {
   id: string;
-  brand: string;
-  last4: string;
-  type: 'credit' | 'debit' | 'wallet';
-  expires: string;
-  isDefault?: boolean;
-  nickname?: string;
+  title: string;
+  code: string;
+  discountCents: number;
+  minSpendCents?: number;
+  expiresAt: string;
+  status: CouponStatus;
+  source?: string;
 };
 
 type MemberProfile = {
@@ -123,7 +126,7 @@ export default function MembershipHomePage() {
   const { data: session, status } = useSession();
 
   const [activeTab, setActiveTab] = useState<
-    'overview' | 'orders' | 'points' | 'addresses' | 'payments' | 'profile'
+    'overview' | 'orders' | 'points' | 'addresses' | 'coupons' | 'profile'
   >('overview');
 
   const [member, setMember] = useState<MemberProfile | null>(null);
@@ -361,15 +364,35 @@ export default function MembershipHomePage() {
       ]
     : [];
 
-  const paymentMethods: PaymentMethod[] = [
+  const coupons: Coupon[] = [
     {
-      id: 'pm1',
-      brand: 'VISA',
-      last4: '4242',
-      type: 'credit',
-      expires: '12/27',
-      isDefault: true,
-      nickname: isZh ? '默认卡' : 'Default card',
+      id: 'c1',
+      title: isZh ? '新客立减' : 'Welcome bonus',
+      code: 'WELCOME10',
+      discountCents: 1000,
+      minSpendCents: 3000,
+      expiresAt: isZh ? '2024/12/31 到期' : 'Expires 2024-12-31',
+      status: 'active',
+      source: isZh ? '注册奖励' : 'Signup bonus',
+    },
+    {
+      id: 'c2',
+      title: isZh ? '生日礼券' : 'Birthday treat',
+      code: 'BDAY15',
+      discountCents: 1500,
+      minSpendCents: 4500,
+      expiresAt: isZh ? '2024/08/31 到期' : 'Expires 2024-08-31',
+      status: 'used',
+      source: isZh ? '生日月自动发放' : 'Issued in birthday month',
+    },
+    {
+      id: 'c3',
+      title: isZh ? '外卖专享券' : 'Delivery special',
+      code: 'DELIVERY5',
+      discountCents: 500,
+      expiresAt: isZh ? '已过期' : 'Expired',
+      status: 'expired',
+      source: isZh ? '外送推广活动' : 'Delivery promo',
     },
   ];
 
@@ -394,7 +417,7 @@ export default function MembershipHomePage() {
     { key: 'orders', label: isZh ? '订单' : 'Orders' },
     { key: 'points', label: isZh ? '积分' : 'Points' },
     { key: 'addresses', label: isZh ? '地址' : 'Addresses' },
-    { key: 'payments', label: isZh ? '支付方式' : 'Payment' },
+    { key: 'coupons', label: isZh ? '优惠卷' : 'Coupons' },
     { key: 'profile', label: isZh ? '账户' : 'Account' },
   ];
 
@@ -583,10 +606,10 @@ export default function MembershipHomePage() {
             <AddressesSection isZh={isZh} addresses={addresses} />
           )}
 
-          {activeTab === 'payments' && (
-            <PaymentsSection
+          {activeTab === 'coupons' && (
+            <CouponsSection
               isZh={isZh}
-              paymentMethods={paymentMethods}
+              coupons={coupons}
             />
           )}
 
@@ -906,52 +929,78 @@ function AddressesSection({
   );
 }
 
-function PaymentsSection({
+function CouponsSection({
   isZh,
-  paymentMethods,
+  coupons,
 }: {
   isZh: boolean;
-  paymentMethods: PaymentMethod[];
+  coupons: Coupon[];
 }) {
+  const statusLabel: Record<CouponStatus, string> = {
+    active: isZh ? '可使用' : 'Available',
+    used: isZh ? '已使用' : 'Used',
+    expired: isZh ? '已过期' : 'Expired',
+  };
+
+  const statusColor: Record<CouponStatus, string> = {
+    active: 'bg-emerald-100 text-emerald-800',
+    used: 'bg-slate-100 text-slate-600',
+    expired: 'bg-rose-100 text-rose-700',
+  };
+
   return (
     <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-medium text-slate-900">
-          {isZh ? '支付方式' : 'Payment methods'}
-        </h2>
-        <button
-          type="button"
-          className="text-xs text-slate-500 hover:text-slate-900"
-        >
-          {isZh ? '新增支付方式（待开发）' : 'Add method (todo)'}
-        </button>
-      </div>
+      <h2 className="mb-3 text-sm font-medium text-slate-900">
+        {isZh ? '优惠卷' : 'Coupons'}
+      </h2>
 
       <div className="space-y-3 text-xs text-slate-700">
-        {paymentMethods.map((pm) => (
+        {coupons.map((coupon) => (
           <div
-            key={pm.id}
-            className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
+            key={coupon.id}
+            className="rounded-xl border border-dashed border-amber-200 bg-amber-50 px-3 py-2"
           >
-            <div>
-              <p className="font-medium text-slate-900">
-                {pm.brand} ···· {pm.last4}
-              </p>
-              <p className="mt-1 text-[11px] text-slate-500">
-                {isZh ? '有效期至 ' : 'Expires '}
-                {pm.expires}
-              </p>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">
+                  {coupon.title}
+                </p>
+                <p className="text-[11px] text-slate-500">{coupon.source}</p>
+              </div>
+              <span
+                className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                  statusColor[coupon.status]
+                }`}
+              >
+                {statusLabel[coupon.status]}
+              </span>
             </div>
-            <div className="text-right text-[11px] text-slate-500">
-              {pm.isDefault && <p>{isZh ? '默认' : 'Default'}</p>}
-              {pm.nickname && <p>{pm.nickname}</p>}
+
+            <div className="mt-2 flex items-end justify-between">
+              <div>
+                <p className="text-lg font-bold text-amber-700">
+                  {isZh ? '立减 ' : 'Save '}
+                  {formatCurrency(coupon.discountCents)}
+                </p>
+                {coupon.minSpendCents && (
+                  <p className="text-[11px] text-slate-500">
+                    {isZh ? '满 ' : 'Min spend '}
+                    {formatCurrency(coupon.minSpendCents)}
+                    {isZh ? ' 可用' : ' to use'}
+                  </p>
+                )}
+              </div>
+              <div className="text-right text-[11px] font-mono text-slate-500">
+                <p>{coupon.code}</p>
+                <p className="mt-0.5">{coupon.expiresAt}</p>
+              </div>
             </div>
           </div>
         ))}
 
-        {paymentMethods.length === 0 && (
+        {coupons.length === 0 && (
           <p className="text-xs text-slate-500">
-            {isZh ? '暂无保存支付方式。' : 'No saved payment methods.'}
+            {isZh ? '暂无可用优惠券。' : 'No coupons available right now.'}
           </p>
         )}
       </div>
