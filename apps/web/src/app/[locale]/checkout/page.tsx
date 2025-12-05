@@ -574,6 +574,8 @@ const loyaltyCentsPerPoint = useMemo(() => {
       return;
     }
 
+    const ensuredUserId: string = userId;
+
     const controller = new AbortController();
 
     async function loadCoupons() {
@@ -581,7 +583,7 @@ const loyaltyCentsPerPoint = useMemo(() => {
         setCouponLoading(true);
         setCouponError(null);
 
-        const params = new URLSearchParams([["userId", userId]]);
+        const params = new URLSearchParams([["userId", ensuredUserId]]);
         const res = await fetch(
           `/api/v1/membership/coupons?${params.toString()}`,
           { signal: controller.signal },
