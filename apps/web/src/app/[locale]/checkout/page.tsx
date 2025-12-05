@@ -445,7 +445,7 @@ const loyaltyCentsPerPoint = useMemo(() => {
     }
 
     const sessionWithUserId = session as SessionWithUserId;
-    const userId = sessionWithUserId.userId;
+    const userId = sessionWithUserId?.userId;
     if (!userId) {
       setLoyaltyInfo(null);
       return;
@@ -458,12 +458,12 @@ const loyaltyCentsPerPoint = useMemo(() => {
         setLoyaltyLoading(true);
         setLoyaltyError(null);
 
+        const user = session?.user;
         const params = new URLSearchParams({
-          userId,
-          name: session.user.name ?? "",
-          email: session.user.email ?? "",
+          userId: userId ?? "",
+          name: user?.name ?? '',
+          email: user?.email ?? '',
         });
-
         const res = await fetch(
           `/api/v1/membership/summary?${params.toString()}`,
           { signal: controller.signal },

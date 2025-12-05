@@ -5,8 +5,9 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { isStableId } from '../../../lib/stable-id';
-import { DELIVERY_STATUS_SEQUENCE } from '../../../lib/status/delivery';
-
+import {
+  DELIVERY_STATUS_SEQUENCE,
+} from "@status/delivery-status";
 type PageProps = { params: { id: string } };
 
 export default function DeliveryDetailPage({ params }: PageProps) {

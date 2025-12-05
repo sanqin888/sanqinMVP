@@ -9,8 +9,6 @@ import type { Locale } from '@/lib/order/shared';
 import { useSession, signOut } from 'next-auth/react';
 import type { Session } from 'next-auth';
 
-// ====== 基本类型 ======
-
 type MemberTier = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM';
 
 type OrderStatus =
@@ -21,7 +19,7 @@ type OrderStatus =
   | 'completed'
   | 'refunded';
 
-type DeliveryKind = 'pickup' | 'delivery';
+type DeliveryType = 'pickup' | 'delivery';
 
 type OrderHistory = {
   id: string;
@@ -29,7 +27,7 @@ type OrderHistory = {
   totalCents: number;
   status: OrderStatus;
   items: number;
-  deliveryType: DeliveryKind;
+  deliveryType: DeliveryType;
 };
 
 type Address = {
@@ -168,10 +166,11 @@ export default function MembershipHomePage() {
         setSummaryLoading(true);
         setSummaryError(null);
 
+        const user = session?.user;
         const params = new URLSearchParams({
           userId,
-          name: session.user.name ?? '',
-          email: session.user.email ?? '',
+          name: user?.name ?? '',
+          email: user?.email ?? '',
         });
 
         // ⭐ 从 localStorage 读取“首次注册填写的推荐人 & 生日”，只用一次
@@ -223,8 +222,8 @@ export default function MembershipHomePage() {
 
         setMember({
           id: data.userId,
-          name: data.displayName ?? session.user.name ?? undefined,
-          email: data.email ?? session.user.email ?? undefined,
+          name: data.displayName ?? user?.name ?? undefined,
+          email: data.email ?? user?.email ?? undefined,
           tier: data.tier,
           points: data.points,
           availableDiscountCents: data.availableDiscountCents,
