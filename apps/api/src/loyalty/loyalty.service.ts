@@ -1,22 +1,38 @@
+// apps/api/src/loyalty/loyalty.service.ts
 import { Injectable } from '@nestjs/common';
+import { LoyaltyEntryType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { LoyaltyEntryType } from '@prisma/client';
+
+function parseNumberEnv(
+  envValue: string | undefined,
+  fallback: number,
+): number {
+  const n = Number(envValue);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
 
 const MICRO_PER_POINT = 1_000_000n; // 1 pt = 1e6 micro-pts，避免小数误差
 
-// 可通过环境变量调参：$1 赚取多少“点”、1点可抵扣$多少
-const EARN_PT_PER_DOLLAR = Number(
-  process.env.LOYALTY_EARN_PT_PER_DOLLAR ?? '0.01',
-); // 例如：$1 → 0.01 pt
-const REDEEM_DOLLAR_PER_POINT = Number(
-  process.env.LOYALTY_REDEEM_DOLLAR_PER_POINT ?? '1',
-); // 例如：1 pt → $1
+// 可通过环境变量调参：$1 赚取多少“点”、1 点可抵扣 $ 多少、推荐人奖励比例
+const EARN_PT_PER_DOLLAR = parseNumberEnv(
+  process.env.LOYALTY_EARN_PT_PER_DOLLAR,
+  0.01,
+); // 例如：$1 → 0.01 pt（约等于 1% 返现）
 
-// 等级倍率（你现在的设定）
-const TIER_MULTIPLIER: Record<
-  'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM',
-  number
-> = {
+const REDEEM_DOLLAR_PER_POINT = parseNumberEnv(
+  process.env.LOYALTY_REDEEM_DOLLAR_PER_POINT,
+  1,
+); // 例如：1 pt → $1（积分≈储值）
+
+const REFERRAL_PT_PER_DOLLAR = parseNumberEnv(
+  process.env.LOYALTY_REFERRAL_PT_PER_DOLLAR,
+  0.01,
+); // 例如：$1 实际消费 → 推荐人 0.01 pt
+
+type Tier = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM';
+
+// 等级倍率
+const TIER_MULTIPLIER: Record<Tier, number> = {
   BRONZE: 1,
   SILVER: 2,
   GOLD: 3,
@@ -25,10 +41,18 @@ const TIER_MULTIPLIER: Record<
 
 // 升级门槛（累计实际消费，单位：分）
 const TIER_THRESHOLD_CENTS = {
+  BRONZE: 0,
   SILVER: 1000 * 100, // $1,000
   GOLD: 5000 * 100, // $5,000
   PLATINUM: 30000 * 100, // $30,000
 };
+
+function computeTierFromLifetime(lifetimeSpendCents: number): Tier {
+  if (lifetimeSpendCents >= TIER_THRESHOLD_CENTS.PLATINUM) return 'PLATINUM';
+  if (lifetimeSpendCents >= TIER_THRESHOLD_CENTS.GOLD) return 'GOLD';
+  if (lifetimeSpendCents >= TIER_THRESHOLD_CENTS.SILVER) return 'SILVER';
+  return 'BRONZE';
+}
 
 function toMicroPoints(points: number): bigint {
   // 四舍五入到 micro
@@ -36,7 +60,7 @@ function toMicroPoints(points: number): bigint {
 }
 
 function dollarsFromPointsMicro(micro: bigint): number {
-  // 以“1点=REDEEM_DOLLAR_PER_POINT 美元”换算
+  // 以“1 点 = REDEEM_DOLLAR_PER_POINT 美元”换算
   const pts = Number(micro) / Number(MICRO_PER_POINT);
   return pts * REDEEM_DOLLAR_PER_POINT;
 }
@@ -45,9 +69,45 @@ function dollarsFromPointsMicro(micro: bigint): number {
 export class LoyaltyService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** 确保有账户（无则创建为 BRONZE 0pt，lifetimeSpendCents=0） */
+  /**
+   * 确保有账户（无则创建为 BRONZE 0pt，lifetimeSpendCents=0）——用于事务外场景
+   */
   async ensureAccount(userId: string) {
+    if (!userId) {
+      throw new Error('userId is required');
+    }
+
     return this.prisma.loyaltyAccount.upsert({
+      where: { userId },
+      create: {
+        userId,
+        pointsMicro: BigInt(0),
+        tier: 'BRONZE',
+        lifetimeSpendCents: 0,
+      },
+      update: {},
+      select: {
+        id: true,
+        userId: true,
+        pointsMicro: true,
+        tier: true,
+        lifetimeSpendCents: true,
+      },
+    });
+  }
+
+  /**
+   * 事务内版本：用传入的 tx，避免在事务中再用全局 prisma
+   */
+  private async ensureAccountWithTx(
+    tx: Prisma.TransactionClient,
+    userId: string,
+  ) {
+    if (!userId) {
+      throw new Error('userId is required');
+    }
+
+    return tx.loyaltyAccount.upsert({
       where: { userId },
       create: {
         userId,
@@ -76,50 +136,25 @@ export class LoyaltyService {
   }
 
   /**
-   * 结算：订单已支付 → 扣减抵扣积分 + 发放赚取积分 + 更新累计消费 + 自动升级（幂等）
+   * 结算：订单已支付 → 扣减抵扣积分 + 发放赚取积分 + 更新累计消费 + 自动升级 + 推荐人奖励（幂等）
    *
    * subtotalCents: 订单商品原始小计（税前、未扣积分）
-   * redeemValueCents: 本单用积分抵掉的“现金价值”
+   * redeemValueCents: 本单用积分抵掉的“现金价值”（分）
    */
   async settleOnPaid(params: {
     orderId: string;
     userId?: string;
     subtotalCents: number; // 原小计（税前、未扣积分）
-    redeemValueCents: number; // 本单抵扣掉的“现金价值”
-    taxRate: number; // 例如 0.13
-    tier?: 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM'; // 可选：外部传入，默认为账户当前等级
+    redeemValueCents: number; // 本单抵扣掉的“现金价值”（分）
+    tier?: Tier; // 可选：外部传入，自定义当前等级
   }) {
-    const { orderId, userId, subtotalCents, redeemValueCents } = params;
+    const { orderId, userId, subtotalCents, redeemValueCents, tier } = params;
     if (!userId) return; // 匿名单不处理
 
     await this.prisma.$transaction(async (tx) => {
       // 1) 加锁账户，串行化对同一用户的变更
-      const accRaw =
-        (await tx.loyaltyAccount.findUnique({
-          where: { userId },
-          select: {
-            id: true,
-            pointsMicro: true,
-            tier: true,
-            lifetimeSpendCents: true,
-          },
-        })) ??
-        (await tx.loyaltyAccount.create({
-          data: {
-            userId,
-            pointsMicro: BigInt(0),
-            tier: 'BRONZE',
-            lifetimeSpendCents: 0,
-          },
-          select: {
-            id: true,
-            pointsMicro: true,
-            tier: true,
-            lifetimeSpendCents: true,
-          },
-        }));
+      const accRaw = await this.ensureAccountWithTx(tx, userId);
 
-      // 标准 Postgres 行锁
       await tx.$queryRaw`
         SELECT id
         FROM "LoyaltyAccount"
@@ -130,7 +165,8 @@ export class LoyaltyService {
       let balance = accRaw.pointsMicro;
       let lifetimeSpendCents = accRaw.lifetimeSpendCents ?? 0;
 
-      // 实际消费额（不含积分抵扣）：用于积分发放 + 等级累积
+      // 实际消费额（不含积分抵扣）：用于【自己】积分发放 + 等级累积 + 推荐人奖励
+      // ⚠️ 未来如果有优惠券，也应该从这里减掉，确保“只对实际现金消费给奖励”
       const netSubtotalCents = Math.max(0, subtotalCents - redeemValueCents);
 
       // 2) 先处理“抵扣”——以现金抵扣额推回积分
@@ -167,10 +203,14 @@ export class LoyaltyService {
         }
       }
 
-      // 3) 发放“赚取”积分（基于实际消费 netSubtotalCents）
-      const tier = accRaw.tier as 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM';
+      // 3) 发放“自己消费赚取”的积分（基于实际消费 netSubtotalCents）
+      const accountTier: Tier = tier ?? (accRaw.tier as Tier); // 支持外部传入，自定义等级
+
       const earnedPts =
-        (netSubtotalCents / 100) * EARN_PT_PER_DOLLAR * TIER_MULTIPLIER[tier];
+        (netSubtotalCents / 100) *
+        EARN_PT_PER_DOLLAR *
+        TIER_MULTIPLIER[accountTier];
+
       const earnedMicro = toMicroPoints(earnedPts);
 
       if (earnedMicro > 0n) {
@@ -194,7 +234,7 @@ export class LoyaltyService {
               deltaMicro: earnedMicro,
               balanceAfterMicro: newBal,
               note: `earn on $${(netSubtotalCents / 100).toFixed(2)} @${(
-                EARN_PT_PER_DOLLAR * TIER_MULTIPLIER[tier]
+                EARN_PT_PER_DOLLAR * TIER_MULTIPLIER[accountTier]
               ).toFixed(4)} pt/$`,
             },
           });
@@ -205,17 +245,8 @@ export class LoyaltyService {
       // 4) 累加“累计实际消费”：订单实际消费（不含积分抵扣）
       lifetimeSpendCents += netSubtotalCents;
 
-      // 5) 根据累计消费决定是否升级等级
-      let newTier = tier;
-      if (lifetimeSpendCents >= TIER_THRESHOLD_CENTS.PLATINUM) {
-        newTier = 'PLATINUM';
-      } else if (lifetimeSpendCents >= TIER_THRESHOLD_CENTS.GOLD) {
-        newTier = 'GOLD';
-      } else if (lifetimeSpendCents >= TIER_THRESHOLD_CENTS.SILVER) {
-        newTier = 'SILVER';
-      } else {
-        newTier = 'BRONZE';
-      }
+      // 5) 根据累计消费决定等级（可降级/升级）
+      const newTier = computeTierFromLifetime(lifetimeSpendCents);
 
       // 6) 回写账户余额 + 等级 + 累计消费（幂等安全）
       await tx.loyaltyAccount.update({
@@ -226,19 +257,95 @@ export class LoyaltyService {
           lifetimeSpendCents,
         },
       });
+
+      // 7) 推荐人奖励：根据被推荐人本单 netSubtotalCents 给推荐人发积分（不含税/配送费/积分抵扣）
+      // ⚠️ 只看实际消费额；被推荐人使用积分或优惠券等，不产生推荐奖励
+      if (REFERRAL_PT_PER_DOLLAR > 0 && netSubtotalCents > 0) {
+        const userRow = await tx.user.findUnique({
+          where: { id: userId },
+          select: { referredByUserId: true },
+        });
+
+        const refUserId = userRow?.referredByUserId;
+
+        if (refUserId && refUserId !== userId) {
+          // 幂等：若已经给过这单的推荐奖励，就不重复
+          const existedReferral = await tx.loyaltyLedger.findUnique({
+            where: {
+              orderId_type: {
+                orderId,
+                type: LoyaltyEntryType.REFERRAL_BONUS,
+              },
+            },
+            select: { id: true },
+          });
+
+          if (!existedReferral) {
+            const referralPts =
+              (netSubtotalCents / 100) * REFERRAL_PT_PER_DOLLAR;
+            const referralMicro = toMicroPoints(referralPts);
+
+            if (referralMicro > 0n) {
+              // 确保推荐人有账户
+              const refAcc = await this.ensureAccountWithTx(tx, refUserId);
+
+              await tx.$queryRaw`
+                SELECT id
+                FROM "LoyaltyAccount"
+                WHERE id = ${refAcc.id}::uuid
+                FOR UPDATE
+              `;
+
+              const refNewBal = refAcc.pointsMicro + referralMicro;
+
+              await tx.loyaltyLedger.create({
+                data: {
+                  accountId: refAcc.id,
+                  orderId,
+                  type: LoyaltyEntryType.REFERRAL_BONUS,
+                  deltaMicro: referralMicro,
+                  balanceAfterMicro: refNewBal,
+                  note: `referral bonus on $${(netSubtotalCents / 100).toFixed(
+                    2,
+                  )} from ${userId}`,
+                },
+              });
+
+              // 推荐奖励不影响推荐人的 lifetimeSpendCents / 等级，只改余额
+              await tx.loyaltyAccount.update({
+                where: { id: refAcc.id },
+                data: {
+                  pointsMicro: refNewBal,
+                },
+              });
+            }
+          }
+        }
+      }
     });
   }
 
-  /** 退款：冲回赚取、返还抵扣（幂等） */
+  /**
+   * 退款：冲回【自己】赚取、返还抵扣 + 回退累计消费 & 等级 + 冲回推荐人奖励（幂等）
+   */
   async rollbackOnRefund(orderId: string) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
-      select: { userId: true },
+      select: {
+        userId: true,
+        subtotalCents: true,
+        loyaltyRedeemCents: true,
+      },
     });
     if (!order?.userId) return;
 
+    const netSubtotalCents = Math.max(
+      0,
+      (order.subtotalCents ?? 0) - (order.loyaltyRedeemCents ?? 0),
+    );
+
     await this.prisma.$transaction(async (tx) => {
-      const acc = await this.ensureAccount(order.userId!);
+      const acc = await this.ensureAccountWithTx(tx, order.userId!);
 
       await tx.$queryRaw`
         SELECT id
@@ -248,8 +355,10 @@ export class LoyaltyService {
       `;
 
       let balance = acc.pointsMicro;
+      let lifetimeSpendCents = acc.lifetimeSpendCents ?? 0;
+      let shouldAdjustLifetime = false;
 
-      // 1) 如果有“赚取”，做反向抵扣
+      // 1) 如果有“消费赚取”，做反向抵扣（EARN_ON_PURCHASE -> REFUND_REVERSE_EARN）
       const earn = await tx.loyaltyLedger.findUnique({
         where: {
           orderId_type: {
@@ -282,10 +391,11 @@ export class LoyaltyService {
             },
           });
           balance = newBal;
+          shouldAdjustLifetime = true;
         }
       }
 
-      // 2) 如果有“抵扣”，把抵扣的积分退回
+      // 2) 如果有“抵扣”，把抵扣的积分退回（REDEEM_ON_ORDER -> REFUND_RETURN_REDEEM）
       const redeem = await tx.loyaltyLedger.findUnique({
         where: {
           orderId_type: {
@@ -322,9 +432,81 @@ export class LoyaltyService {
         }
       }
 
+      // 3) 回退累计消费 & 等级（幂等：只有第一次退款会生效）
+      if (shouldAdjustLifetime && netSubtotalCents > 0) {
+        lifetimeSpendCents = Math.max(0, lifetimeSpendCents - netSubtotalCents);
+      }
+      const newTier = computeTierFromLifetime(lifetimeSpendCents);
+
+      // 4) 冲回推荐人奖励（REFERRAL_BONUS -> REFUND_REVERSE_REFERRAL）
+      const referralLedger = await tx.loyaltyLedger.findUnique({
+        where: {
+          orderId_type: {
+            orderId,
+            type: LoyaltyEntryType.REFERRAL_BONUS,
+          },
+        },
+        select: {
+          accountId: true,
+          deltaMicro: true,
+        },
+      });
+
+      if (referralLedger && referralLedger.deltaMicro > 0n) {
+        const existedReferralReverse = await tx.loyaltyLedger.findUnique({
+          where: {
+            orderId_type: {
+              orderId,
+              type: LoyaltyEntryType.REFUND_REVERSE_REFERRAL,
+            },
+          },
+          select: { id: true },
+        });
+
+        if (!existedReferralReverse) {
+          const refAcc = await tx.loyaltyAccount.findUnique({
+            where: { id: referralLedger.accountId },
+            select: { id: true, pointsMicro: true },
+          });
+
+          if (refAcc) {
+            await tx.$queryRaw`
+              SELECT id
+              FROM "LoyaltyAccount"
+              WHERE id = ${refAcc.id}::uuid
+              FOR UPDATE
+            `;
+
+            const refNewBal = refAcc.pointsMicro - referralLedger.deltaMicro;
+
+            await tx.loyaltyLedger.create({
+              data: {
+                accountId: refAcc.id,
+                orderId,
+                type: LoyaltyEntryType.REFUND_REVERSE_REFERRAL,
+                deltaMicro: -referralLedger.deltaMicro,
+                balanceAfterMicro: refNewBal,
+                note: 'reverse referral bonus on refund',
+              },
+            });
+
+            await tx.loyaltyAccount.update({
+              where: { id: refAcc.id },
+              data: {
+                pointsMicro: refNewBal,
+              },
+            });
+          }
+        }
+      }
+
       await tx.loyaltyAccount.update({
         where: { id: acc.id },
-        data: { pointsMicro: balance },
+        data: {
+          pointsMicro: balance,
+          lifetimeSpendCents,
+          tier: newTier,
+        },
       });
     });
   }
@@ -336,7 +518,7 @@ export class LoyaltyService {
   }
 
   /**
-   * 充值：顾客储值 → 增加积分余额 + 累计消费
+   * 充值：顾客储值 → 增加积分余额 + 累计消费（并更新等级）
    * 默认规则：1 CAD 储值 = 1 积分
    * 奖励积分请通过 adjustPointsManual 手动写账（例如送 20 pt）
    */
@@ -348,7 +530,7 @@ export class LoyaltyService {
     if (!userId || amountCents <= 0) return;
 
     await this.prisma.$transaction(async (tx) => {
-      const acc = await this.ensureAccount(userId);
+      const acc = await this.ensureAccountWithTx(tx, userId);
 
       const pts =
         typeof pointsToCredit === 'number' ? pointsToCredit : amountCents / 100; // 默认：$100 → 100 pt
@@ -369,12 +551,15 @@ export class LoyaltyService {
         },
       });
 
+      const newLifetime = (acc.lifetimeSpendCents ?? 0) + amountCents;
+      const newTier = computeTierFromLifetime(newLifetime);
+
       await tx.loyaltyAccount.update({
         where: { id: acc.id },
         data: {
           pointsMicro: newBal,
-          // 你刚才的决定：充值也算累计消费
-          lifetimeSpendCents: { increment: amountCents },
+          lifetimeSpendCents: newLifetime,
+          tier: newTier,
         },
       });
     });
@@ -382,13 +567,20 @@ export class LoyaltyService {
 
   /**
    * 手动调账：例如活动奖励、客服补偿等
-   * deltaPoints 可正可负
+   * deltaPoints 可正可负（不影响 lifetimeSpendCents）
    */
   async adjustPointsManual(userId: string, deltaPoints: number, note?: string) {
     if (!userId || deltaPoints === 0) return;
 
     await this.prisma.$transaction(async (tx) => {
-      const acc = await this.ensureAccount(userId);
+      const acc = await this.ensureAccountWithTx(tx, userId);
+
+      await tx.$queryRaw`
+        SELECT id
+        FROM "LoyaltyAccount"
+        WHERE id = ${acc.id}::uuid
+        FOR UPDATE
+      `;
 
       const deltaMicro = toMicroPoints(deltaPoints);
       const newBal = acc.pointsMicro + deltaMicro;

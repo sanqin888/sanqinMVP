@@ -2,8 +2,11 @@
 // 可同时被客户端/服务端安全引入的共享模块（不使用 next/headers、fs 等仅服务端 API）
 
 /** ===== 基础类型 / 常量 ===== */
-export type Locale = "en" | "zh";
-export const LOCALES = ["en", "zh"] as const;
+import type { Locale } from "@/lib/i18n/locales";
+export type { Locale } from "@/lib/i18n/locales";
+export { LOCALES } from "@/lib/i18n/locales";
+export { addLocaleToPath } from "@/lib/i18n/path";
+
 export const LANGUAGE_NAMES: Record<Locale, string> = {
   en: "English",
   zh: "中文",
@@ -67,6 +70,17 @@ type DeliveryDistanceStrings = {
   failed: string;
 };
 
+type ThankYouStrings = {
+  brand: string;
+  switchLabel: string;
+  title: string;
+  intro: string;
+  numberLabel: string;
+  note: string;
+  contact: string;
+  backCta: string;
+};
+
 export const UI_STRINGS: Record<
   Locale,
   {
@@ -94,7 +108,7 @@ export const UI_STRINGS: Record<
     contactFields: ContactFields;
     deliveryDistance: DeliveryDistanceStrings;
 
-    // ↙↙ 本次补充（缺少会导致运行时报错）
+    // 购物车补充
     cartEmpty: string;
     cartNotesLabel: string;
     cartNotesPlaceholder: string;
@@ -114,6 +128,9 @@ export const UI_STRINGS: Record<
       pickupMeta: string;
       deliveryMeta: string;
     };
+
+    // 支付成功页（thank-you）
+    thankYou: ThankYouStrings;
   }
 > = {
   en: {
@@ -180,12 +197,13 @@ export const UI_STRINGS: Record<
       restriction: "Delivery available only within {radius} of the restaurant.",
       checking: "Checking delivery distance...",
       withinRange: "Delivery distance: {distance} (within the {radius} limit).",
-      outsideRange: "Delivery distance: {distance}, which is outside our {radius} limit.",
-      notFound: "We couldn’t locate that address. Please include street, city, and postal code.",
+      outsideRange:
+        "Delivery distance: {distance}, which is outside our {radius} limit.",
+      notFound:
+        "We couldn’t locate that address. Please include street, city, and postal code.",
       failed: "We couldn’t verify this address right now. Please try again.",
     },
 
-    // ✅ 新增
     cartEmpty: "Your cart is empty.",
     cartNotesLabel: "Item notes",
     cartNotesPlaceholder: "Any special instructions?",
@@ -210,6 +228,17 @@ export const UI_STRINGS: Record<
         "Show your order number {order} at the counter to pick up.",
       deliveryMeta:
         "We’re preparing your order {order}. You’ll receive updates by SMS/phone.",
+    },
+
+    thankYou: {
+      brand: "San Qin · Xi'an Street Food",
+      switchLabel: "中文",
+      title: "Payment successful",
+      intro: "Thank you for your order! We're preparing your food.",
+      numberLabel: "Order number",
+      note: "Please keep this order number for pickup or delivery inquiries.",
+      contact: "If you have any questions, feel free to reach out to us.",
+      backCta: "Back to homepage",
     },
   },
   zh: {
@@ -281,7 +310,6 @@ export const UI_STRINGS: Record<
       failed: "暂时无法验证地址，请稍后再试。",
     },
 
-    // ✅ 新增
     cartEmpty: "购物车为空",
     cartNotesLabel: "菜品备注",
     cartNotesPlaceholder: "口味/忌口等备注",
@@ -302,6 +330,17 @@ export const UI_STRINGS: Record<
       delivery: "订单 {order} 已下单（外送）。合计 {total}。时间：{schedule}。",
       pickupMeta: "到店取餐请出示订单号 {order}。",
       deliveryMeta: "我们正在为您备餐，订单 {order} 更新将以短信/电话通知。",
+    },
+
+    thankYou: {
+      brand: "三秦 · 西安小吃",
+      switchLabel: "English",
+      title: "支付成功",
+      intro: "感谢下单！我们已经开始为你制作餐品。",
+      numberLabel: "订单编号",
+      note: "请保留此订单编号，用于取餐或咨询配送状态。",
+      contact: "如有问题，欢迎随时联系我们。",
+      backCta: "返回首页",
     },
   },
 };
@@ -327,7 +366,10 @@ const MENU_DEFS: MenuItemDefinition[] = [
     tags: ["cold", "vegan"],
     category: "bestsellers",
     i18n: {
-      en: { name: "Liangpi (Cold Skin Noodles)", description: "Chewy cold noodles, sesame & chili dressing." },
+      en: {
+        name: "Liangpi (Cold Skin Noodles)",
+        description: "Chewy cold noodles, sesame & chili dressing.",
+      },
       zh: { name: "凉皮", description: "筋道爽滑，芝麻辣油拌料。" },
     },
   },
@@ -423,7 +465,9 @@ export function buildLocalizedMenu(locale: Locale): LocalizedCategory[] {
     groups[def.category].items.push(localizeMenuItem(def, locale));
   }
 
-  return ["bestsellers", "noodles", "snacks"].map((k) => groups[k as keyof typeof groups]);
+  return ["bestsellers", "noodles", "snacks"].map(
+    (k) => groups[k as keyof typeof groups],
+  );
 }
 
 /** ===== 结算页相关类型 ===== */
@@ -440,8 +484,8 @@ export type LocalizedCartItem = {
   item: ReturnType<typeof localizeMenuItem>;
 };
 
-export type DeliveryTypeOption = 'STANDARD' | 'PRIORITY';
-export type DeliveryProviderOption = 'DOORDASH' | 'UBER';
+export type DeliveryTypeOption = "STANDARD" | "PRIORITY";
+export type DeliveryProviderOption = "DOORDASH" | "UBER";
 
 export type ConfirmationState = {
   orderNumber: string;
@@ -454,17 +498,6 @@ export type HostedCheckoutResponse = {
 };
 
 /** ===== 工具函数 ===== */
-export function addLocaleToPath(next: Locale, path: string) {
-  if (!path.startsWith("/")) path = `/${path}`;
-  const parts = path.split("/");
-  const first = parts[1];
-  if (first === "zh" || first === "en") {
-    parts[1] = next;
-    return parts.join("/");
-  }
-  return `/${next}${path}`;
-}
-
 export function formatWithTotal(tpl: string, totalFormatted: string) {
   return tpl.replaceAll("{total}", totalFormatted);
 }

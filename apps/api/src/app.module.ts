@@ -11,6 +11,7 @@ import { ReportsModule } from './reports/reports.module';
 import { LoyaltyModule } from './loyalty/loyalty.module';
 import { CloverModule } from './clover/clover.module';
 import { CloverWebhooksModule } from './clover/clover-webhooks.module';
+import { MembershipModule } from './membership/membership.module';
 
 const configModuleFactory: {
   forRoot(options: ConfigModuleOptions): DynamicModule;
@@ -29,6 +30,7 @@ const envConfigModule = configModuleFactory.forRoot({
     envConfigModule,
     PrismaModule,
     OrdersModule,
+    MembershipModule,
     ReportsModule,
     LoyaltyModule,
     CloverModule,

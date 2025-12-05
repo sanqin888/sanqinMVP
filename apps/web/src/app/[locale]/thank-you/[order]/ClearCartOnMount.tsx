@@ -1,3 +1,5 @@
+//Users/apple/sanqinMVP/apps/web/src/app/[locale]/thank-you/[order]/ClearCartOnMount.tsx
+
 "use client";
 
 import { useEffect } from "react";

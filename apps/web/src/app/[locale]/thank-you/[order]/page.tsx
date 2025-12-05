@@ -1,6 +1,8 @@
+//Users/apple/sanqinMVP/apps/web/src/app/[locale]/thank-you/[order]/page.tsx
+
 import Link from "next/link";
 import type { Locale } from "@/lib/i18n/locales";
-import { getDictionary } from "@/lib/i18n/dictionaries";
+import { UI_STRINGS } from "@/lib/order/shared";
 import { ClearCartOnMount } from "./ClearCartOnMount";
 import { OrderSummaryClient } from "./OrderSummaryClient";
 
@@ -20,12 +22,12 @@ export default async function ThankYouPage({ params }: PageProps) {
   // ✅ 先 await，再拿 locale / order
   const { locale: rawLocale, order: orderParam } = await params;
 
-  const locale = (SUPPORTED.includes(rawLocale as Locale)
-    ? (rawLocale as Locale)
-    : "en") as Locale;
+const locale = (SUPPORTED.includes(rawLocale as Locale)
+  ? (rawLocale as Locale)
+  : "en") as Locale;
 
-  const dict = await getDictionary(locale);
-  const t = dict.thankYou;
+// 这里直接从 UI_STRINGS 拿 thankYou 文案
+const t = UI_STRINGS[locale].thankYou;
   const order = orderParam ?? "";
   const alt = locale === "zh" ? "en" : "zh";
   const pickupCode =

@@ -1,3 +1,5 @@
+// apps/api/src/orders/orders.service.ts
+
 import {
   BadRequestException,
   Injectable,
@@ -20,12 +22,23 @@ import {
   UberDirectService,
 } from '../deliveries/uber-direct.service';
 import { DoorDashDriveService } from '../deliveries/doordash-drive.service';
+import { parseHostedCheckoutMetadata } from '../clover/hco-metadata';
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 
-const TAX_RATE = Number(process.env.SALES_TAX_RATE ?? '0.13');
-const REDEEM_DOLLAR_PER_POINT = Number(
-  process.env.LOYALTY_REDEEM_DOLLAR_PER_POINT ?? '0.01',
+function parseNumberEnv(
+  envValue: string | undefined,
+  fallback: number,
+): number {
+  const n = Number(envValue);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+const TAX_RATE = parseNumberEnv(process.env.SALES_TAX_RATE, 0.13);
+
+const REDEEM_DOLLAR_PER_POINT = parseNumberEnv(
+  process.env.LOYALTY_REDEEM_DOLLAR_PER_POINT,
+  1,
 );
 
 // ——— 简单 UUID 判断，用在 thank-you 查询里 ——-
@@ -94,9 +107,8 @@ export class OrdersService {
       this.loyalty.maxRedeemableCentsFromBalance(balanceMicro);
 
     // 用户请求的点数 → 折算成“可抵扣金额（分）”
-    const requestedCents = Math.floor(
-      requestedPoints * REDEEM_DOLLAR_PER_POINT * 100,
-    );
+    const rawCents = requestedPoints * REDEEM_DOLLAR_PER_POINT * 100;
+    const requestedCents = Math.round(rawCents + 1e-6);
 
     const byUserInput = Math.min(requestedCents, maxByBalance);
     return Math.max(0, Math.min(byUserInput, subtotalCents ?? byUserInput));
@@ -123,7 +135,7 @@ export class OrdersService {
       this.logger.warn(`Ignoring invalid Idempotency-Key header: ${headerKey}`);
     }
 
-    // —— body 里的 clientRequestId：既尝试标准化（uuid/cuid），失败就用原始字符串
+    // —— body 里的 clientRequestId：标准化（uuid/cuid），失败就用原始字符串
     const bodyKey =
       typeof dto.clientRequestId === 'string'
         ? dto.clientRequestId.trim()
@@ -138,10 +150,12 @@ export class OrdersService {
         where: { clientRequestId: stableKey },
         include: { items: true },
       });
-      if (existing) return existing as OrderWithItems;
+      if (existing) {
+        return existing as OrderWithItems;
+      }
     }
 
-    // —— 统一取餐码：优先用 dto.pickupCode，其次用稳定 ID（比如 SQ****** 的后四位），最后随机 4 位数字
+    // —— 统一取餐码：优先 dto.pickupCode，其次稳定 ID（比如 SQ****** 的后四位），最后随机 4 位数字
     const explicitPickupCode =
       typeof dto.pickupCode === 'string' && dto.pickupCode.trim().length > 0
         ? dto.pickupCode.trim()
@@ -154,12 +168,7 @@ export class OrdersService {
 
     // 1) 服务端重算金额（兼容旧版“单位：分”字段）
     const subtotalCentsRaw =
-      typeof dto.subtotalCents === 'number'
-        ? dto.subtotalCents
-        : typeof dto.subtotal === 'number'
-          ? Math.round(dto.subtotal * 100)
-          : undefined;
-
+      typeof dto.subtotalCents === 'number' ? dto.subtotalCents : undefined;
     if (
       typeof subtotalCentsRaw !== 'number' ||
       Number.isNaN(subtotalCentsRaw)
@@ -168,15 +177,16 @@ export class OrdersService {
     }
     const subtotalCents = subtotalCentsRaw;
 
+    // 统一把“用户请求抵扣多少”转成“点数”
     const requestedPoints =
       typeof dto.pointsToRedeem === 'number'
         ? dto.pointsToRedeem
         : typeof dto.redeemValueCents === 'number' &&
             REDEEM_DOLLAR_PER_POINT > 0
-          ? Math.floor(dto.redeemValueCents / (REDEEM_DOLLAR_PER_POINT * 100))
+          ? dto.redeemValueCents / (REDEEM_DOLLAR_PER_POINT * 100)
           : undefined;
 
-    // 2) 计算本单抵扣
+    // 2) 计算本单实际抵扣金额（分），受余额 / 用户请求 / 小计三重约束
     const redeemValueCents = await this.calcRedeemCents(
       dto.userId,
       requestedPoints,
@@ -210,6 +220,13 @@ export class OrdersService {
     // 顾客总价 = (小计 - 抵扣) + 配送费 + 税
     const totalCents = purchaseBaseCents + deliveryFeeCustomerCents + taxCents;
 
+    // ⭐️ 这里直接把“积分抵扣金额”和“折后小计”写入 DB 字段
+    const loyaltyRedeemCents = redeemValueCents;
+    const subtotalAfterDiscountCents = Math.max(
+      0,
+      subtotalCents - loyaltyRedeemCents,
+    );
+
     // 4) 入库
     let order: OrderWithItems = (await this.prisma.order.create({
       data: {
@@ -221,6 +238,8 @@ export class OrdersService {
         taxCents,
         totalCents,
         pickupCode,
+        loyaltyRedeemCents,
+        subtotalAfterDiscountCents,
         ...(deliveryMeta
           ? {
               deliveryType: dto.deliveryType,
@@ -277,7 +296,7 @@ export class OrdersService {
       include: { items: true },
     })) as OrderWithItems;
 
-    // === Standard 配送：目前用 DoorDash Drive，下单成功后更新 deliveryCostCents ===
+    // === Standard 配送：DoorDash Drive ===
     if (dto.deliveryType === DeliveryType.STANDARD && dto.deliveryDestination) {
       const destination = this.normalizeDropoff(dto.deliveryDestination);
 
@@ -304,12 +323,12 @@ export class OrdersService {
               error instanceof Error ? error.message : String(error)
             }`,
           );
-          // ⚠️ 同 Uber：不删除订单，不抛异常，留给后台人工处理
+          // 不抛异常，留给后台人工处理
         }
       }
     }
 
-    // === Priority 配送：调 Uber Direct，下单成功后用真正返回的成本更新 deliveryCostCents ===
+    // === Priority 配送：Uber Direct ===
     if (dto.deliveryType === DeliveryType.PRIORITY && dto.deliveryDestination) {
       const destination = this.normalizeDropoff(dto.deliveryDestination);
 
@@ -327,12 +346,141 @@ export class OrdersService {
               error instanceof Error ? error.message : String(error)
             }`,
           );
-          // ⚠️ 不再删除订单、不再抛异常
+          // 不抛异常，留给后台人工处理
         }
       }
     }
 
     return order;
+  }
+
+  /**
+   * Checkout 纯积分路线：
+   * 前端传入 Clover 用的 payload（amountCents + metadata），
+   * 在这里把 metadata 用 parseHostedCheckoutMetadata 解析成强类型，
+   * 再转换成 CreateOrderDto，最后复用 createImmediatePaid() 的逻辑。
+   */
+  async createLoyaltyOnlyOrder(payload: unknown): Promise<OrderWithItems> {
+    if (!payload || typeof payload !== 'object') {
+      throw new BadRequestException('invalid payload');
+    }
+
+    const { amountCents, referenceId, metadata } = payload as {
+      amountCents?: unknown;
+      referenceId?: unknown;
+      metadata?: unknown;
+    };
+
+    if (metadata == null) {
+      throw new BadRequestException('metadata is required');
+    }
+
+    if (typeof amountCents !== 'number' || amountCents !== 0) {
+      throw new BadRequestException(
+        'Loyalty-only orders must have amountCents === 0',
+      );
+    }
+
+    // ⭐ 用统一的解析函数，把 metadata 从 unknown → HostedCheckoutMetadata
+    const meta = parseHostedCheckoutMetadata(metadata);
+
+    const loyaltyRedeemCents = meta.loyaltyRedeemCents ?? 0;
+    const loyaltyUserId = meta.loyaltyUserId;
+
+    if (!loyaltyUserId || loyaltyRedeemCents <= 0) {
+      throw new BadRequestException(
+        'loyaltyUserId and positive loyaltyRedeemCents are required',
+      );
+    }
+
+    // 仅在外送时需要 deliveryDestination
+    let deliveryDestination: DeliveryDestinationDto | undefined;
+
+    if (meta.fulfillment === 'delivery') {
+      const { customer } = meta;
+
+      // ⭐ 这里做一层校验 + narrowing，让 TS 确认这些字段一定是 string
+      if (
+        !customer.addressLine1 ||
+        !customer.city ||
+        !customer.province ||
+        !customer.postalCode
+      ) {
+        throw new BadRequestException(
+          'Delivery address is incomplete for loyalty-only delivery order',
+        );
+      }
+
+      deliveryDestination = {
+        name: customer.name,
+        phone: customer.phone,
+        company: undefined,
+        addressLine1: customer.addressLine1, // 这里 TS 已经 narrowed 成 string
+        addressLine2: customer.addressLine2,
+        city: customer.city,
+        province: customer.province,
+        postalCode: customer.postalCode,
+        country: customer.country ?? 'Canada',
+        instructions: customer.notes,
+        notes: undefined,
+        latitude: undefined,
+        longitude: undefined,
+        tipCents: undefined,
+      };
+    }
+
+    const clientRequestId =
+      typeof referenceId === 'string' ? referenceId : undefined;
+
+    // 把解析好的 meta 映射成内部 CreateOrderDto
+    const dto: CreateOrderDto = {
+      userId: loyaltyUserId,
+      clientRequestId,
+      channel: 'web',
+      fulfillmentType: meta.fulfillment,
+      deliveryType: meta.deliveryType,
+      deliveryDestination,
+      subtotalCents: meta.subtotalCents,
+      // 这里仍然传 redeemValueCents，由 create() 里统一用公式重算/封顶
+      redeemValueCents: loyaltyRedeemCents,
+      deliveryFeeCents: meta.deliveryFeeCents,
+      items: meta.items.map((item) => ({
+        productId: item.id,
+        qty: item.quantity,
+        displayName: item.displayName ?? item.nameEn ?? item.nameZh ?? item.id,
+        nameEn: item.nameEn,
+        nameZh: item.nameZh,
+        // 单价从“分”还原成 CAD，create() 再 ×100 存 unitPriceCents
+        unitPrice: item.priceCents / 100,
+      })),
+    };
+
+    // 复用“创建订单 + 直接标记为 paid”的逻辑，
+    // 内部会调用 loyalty.settleOnPaid，积分结算跟正常 paid 一致。
+    const idempotencyKey = clientRequestId;
+    return this.createImmediatePaid(dto, idempotencyKey);
+  }
+
+  /**
+   * 用于“只用积分支付”的场景：
+   * - 先按普通 create() 流程创建订单（状态 pending）
+   * - 然后直接把状态切到 paid，触发 loyalty.settleOnPaid
+   * - 如果幂等重试导致订单已经是 paid，则不会再重复结算
+   */
+  async createImmediatePaid(
+    dto: CreateOrderDto,
+    idempotencyKey?: string,
+  ): Promise<OrderWithItems> {
+    const created = await this.create(dto, idempotencyKey);
+
+    // 幂等重试：如果已经是 paid，就直接返回
+    if (created.status === 'paid') {
+      return created;
+    }
+
+    // 正常从 pending -> paid，内部会调用 loyalty.settleOnPaid
+    const paidOrder = await this.updateStatus(created.id, 'paid');
+    return paidOrder;
   }
 
   async recent(limit = 10): Promise<OrderWithItems[]> {
@@ -343,13 +491,18 @@ export class OrdersService {
     });
   }
 
+  // 订单详情：直接返回包含 DB 里 loyaltyRedeemCents / subtotalAfterDiscountCents 的订单
   async getById(id: string): Promise<OrderWithItems> {
-    const order = await this.prisma.order.findUnique({
+    const order = (await this.prisma.order.findUnique({
       where: { id },
       include: { items: true },
-    });
-    if (!order) throw new NotFoundException('order not found');
-    return order as OrderWithItems;
+    })) as OrderWithItems | null;
+
+    if (!order) {
+      throw new NotFoundException('order not found');
+    }
+
+    return order;
   }
 
   /**
@@ -409,10 +562,7 @@ export class OrdersService {
     const taxCents = order.taxCents ?? 0;
     const deliveryFeeCents = order.deliveryFeeCents ?? 0;
 
-    // T = (S - R) + D + tax => R = S - (T - tax - D)
-    const base = order.totalCents - taxCents - deliveryFeeCents;
-    const discountRaw = subtotalCents - base;
-    const discountCents = discountRaw > 0 ? discountRaw : 0;
+    const discountCents = order.loyaltyRedeemCents ?? 0;
 
     const lineItems = order.items.map((item) => {
       const unitPriceCents = item.unitPriceCents ?? 0;
@@ -473,30 +623,21 @@ export class OrdersService {
       where: { id },
       data: { status: next },
       include: { items: true },
-    })) as OrderWithItems;
+    })) as OrderWithItems & { loyaltyRedeemCents: number };
 
     // —— 积分结算（异步，不阻塞响应）
     if (next === 'paid') {
-      // 新公式：T = (S - R) + D + tax
-      // => R = S - (T - tax - D)
-      const deliveryFeeCents = updated.deliveryFeeCents ?? 0;
-      const redeemValueCents = Math.max(
-        0,
-        updated.subtotalCents -
-          (updated.totalCents - updated.taxCents - deliveryFeeCents),
-      );
+      const redeemValueCents = updated.loyaltyRedeemCents ?? 0;
 
       void this.loyalty.settleOnPaid({
         orderId: updated.id,
         userId: updated.userId ?? undefined,
         subtotalCents: updated.subtotalCents,
         redeemValueCents,
-        taxRate: TAX_RATE,
       });
     } else if (next === 'refunded') {
       void this.loyalty.rollbackOnRefund(updated.id);
     }
-
     return updated;
   }
 

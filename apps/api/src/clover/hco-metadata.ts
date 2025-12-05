@@ -1,3 +1,4 @@
+// apps/api/src/clover/hco-metadata.ts
 import { DeliveryProvider, DeliveryType } from '@prisma/client';
 import { CreateOrderDto } from '../orders/dto/create-order.dto';
 
@@ -43,6 +44,12 @@ export type HostedCheckoutMetadata = {
   deliveryProvider?: DeliveryProvider;
   deliveryEtaMinutes?: [number, number];
   deliveryDistanceKm?: number;
+
+  // ===== 积分相关（可选）=====
+  loyaltyRedeemCents?: number; // 本单用积分抵扣的金额（分）
+  loyaltyAvailableDiscountCents?: number; // 前端计算的“最多可抵扣金额”（分），仅调试使用
+  loyaltyPointsBalance?: number; // 下单前积分余额（点）
+  loyaltyUserId?: string; // 会员 userId，用于把订单绑定到会员
 };
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
@@ -214,6 +221,14 @@ export function parseHostedCheckoutMetadata(
     deliveryProvider: parseDeliveryProvider(input.deliveryProvider),
     deliveryEtaMinutes: parseEtaRange(input.deliveryEtaMinutes),
     deliveryDistanceKm: toNumber(input.deliveryDistanceKm),
+
+    // ===== 新增：积分相关 =====
+    loyaltyRedeemCents: toOptionalCents(input.loyaltyRedeemCents),
+    loyaltyAvailableDiscountCents: toOptionalCents(
+      input.loyaltyAvailableDiscountCents,
+    ),
+    loyaltyPointsBalance: toNumber(input.loyaltyPointsBalance),
+    loyaltyUserId: toString(input.loyaltyUserId),
   } satisfies HostedCheckoutMetadata;
 }
 
@@ -255,26 +270,37 @@ const buildDestination = (
 };
 
 export function buildOrderDtoFromMetadata(
-  meta: HostedCheckoutMetadata,
+  raw: unknown,
   clientRequestId: string,
 ): CreateOrderDto {
+  // 统一从原始 JSON 解析，容错更好
+  const meta = parseHostedCheckoutMetadata(raw);
+
   const subtotalCents = meta.subtotalCents;
   const taxCents = meta.taxCents;
   const deliveryFeeCents = meta.deliveryFeeCents ?? 0;
   const serviceFeeCents = meta.serviceFeeCents ?? 0;
 
+  const redeemValueCents = meta.loyaltyRedeemCents ?? 0;
+
   const dto: CreateOrderDto = {
     clientRequestId,
     channel: 'web',
+
+    // ⭐ 关键：让订单有 userId，这样 paid 时才会结算积分
+    ...(meta.loyaltyUserId ? { userId: meta.loyaltyUserId } : {}),
+
     fulfillmentType: meta.fulfillment === 'delivery' ? 'delivery' : 'pickup',
     subtotalCents,
+
+    // 这些字段现在主要用于兼容 / 调试，实际金额在 OrdersService 里会重新计算
     taxCents,
     totalCents: subtotalCents + taxCents + deliveryFeeCents + serviceFeeCents,
     ...(deliveryFeeCents > 0 ? { deliveryFeeCents } : {}),
-    // 旧版 subtotal/taxTotal/total 可以不再使用，但字段仍在 DTO 中以防其它地方引用
-    subtotal: subtotalCents,
-    taxTotal: taxCents,
-    total: subtotalCents + taxCents + deliveryFeeCents + serviceFeeCents,
+
+    // ⭐ 告诉 OrdersService 本单用了多少积分抵扣（分）
+    ...(redeemValueCents > 0 ? { redeemValueCents } : {}),
+
     items: meta.items.map((item) => {
       const options: Record<string, unknown> | undefined = (() => {
         const result: Record<string, unknown> = {};
@@ -293,7 +319,9 @@ export function buildOrderDtoFromMetadata(
       return {
         productId: item.id,
         qty: item.quantity,
-        unitPrice: item.priceCents, // 这里直接用“分”
+
+        // ⭐ 重要：CreateOrderDto.unitPrice 是“美元”，所以这里用 priceCents / 100
+        unitPrice: item.priceCents / 100,
 
         ...(item.displayName ? { displayName: item.displayName } : {}),
         ...(item.nameEn ? { nameEn: item.nameEn } : {}),

@@ -1,3 +1,4 @@
+///Users/apple/sanqinMVP/apps/web/src/app/[locale]/order/[id]/page.tsx
 'use client';
 
 import { use, useEffect, useMemo, useState } from 'react';
@@ -8,6 +9,7 @@ import { ORDER_STATUS_SEQUENCE, OrderStatus } from '@/lib/status/order';
 import type {
   DeliveryProviderOption,
   DeliveryTypeOption,
+  Locale,
 } from '@/lib/order/shared';
 
 type OrderItem = {
@@ -35,6 +37,8 @@ type OrderDetail = {
   externalDeliveryId: string | null;
   createdAt: string;
   items: OrderItem[];
+  loyaltyRedeemCents: number | null;           
+  subtotalAfterDiscountCents: number | null;   
 };
 
 type PageParams = {
@@ -47,8 +51,9 @@ type PageProps = {
 };
 
 export default function OrderDetailPage({ params }: PageProps) {
-  const { id: orderIdRaw } = use(params);
+  const { id: orderIdRaw, locale: localeRaw } = use(params);
   const orderId = orderIdRaw ?? '';
+  const locale = (localeRaw ?? 'en') as Locale;
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -93,15 +98,18 @@ export default function OrderDetailPage({ params }: PageProps) {
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">订单详情</h1>
-          <p className="text-sm text-gray-500 break-all">ID: {orderId}</p>
-        </div>
-        <Link href="/test-order" className="text-sm text-blue-600 hover:underline">
-          ← 返回测试面板
-        </Link>
-      </div>
+<div className="flex items-center justify-between">
+  <div>
+    <h1 className="text-2xl font-semibold">订单详情</h1>
+    <p className="text-sm text-gray-500 break-all">ID: {orderId}</p>
+  </div>
+  <Link
+    href={`/${locale}/membership`}
+    className="text-sm text-blue-600 hover:underline"
+  >
+    ← 返回会员中心
+  </Link>
+</div>
 
       {loading && <div className="text-gray-500">加载中…</div>}
       {error && <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
@@ -123,16 +131,34 @@ export default function OrderDetailPage({ params }: PageProps) {
             </span>
           </div>
 
-          <div className="space-y-2">
-            <h2 className="text-sm font-semibold text-gray-700">金额</h2>
-            <ul className="text-sm text-gray-600">
-              <li>小计：${(order.subtotalCents / 100).toFixed(2)}</li>
-              <li>税额：${(order.taxCents / 100).toFixed(2)}</li>
-              <li className="font-medium text-gray-900">
-                合计：${(order.totalCents / 100).toFixed(2)}
-              </li>
-            </ul>
-          </div>
+<div className="space-y-2">
+  <h2 className="text-sm font-semibold text-gray-700">金额</h2>
+  <ul className="text-sm text-gray-600">
+    <li>小计：${(order.subtotalCents / 100).toFixed(2)}</li>
+
+    {typeof order.loyaltyRedeemCents === "number" &&
+      order.loyaltyRedeemCents > 0 && (
+        <li>
+          积分抵扣：
+          <span className="text-emerald-700">
+            -${(order.loyaltyRedeemCents / 100).toFixed(2)}
+          </span>
+          {typeof order.subtotalAfterDiscountCents === "number" && (
+            <span className="ml-2 text-xs text-gray-500">
+              （折后小计：$
+              {(order.subtotalAfterDiscountCents / 100).toFixed(2)}
+              ）
+            </span>
+          )}
+        </li>
+      )}
+
+    <li>税额：${(order.taxCents / 100).toFixed(2)}</li>
+    <li className="font-medium text-gray-900">
+      合计：${(order.totalCents / 100).toFixed(2)}
+    </li>
+  </ul>
+</div>
 
           {hasDeliveryInfo && (
             <div className="space-y-2">

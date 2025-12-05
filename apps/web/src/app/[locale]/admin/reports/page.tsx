@@ -1,3 +1,5 @@
+//Users/apple/sanqinMVP/apps/web/src/app/[locale]/admin/reports/page.tsx
+
 'use client';
 
 import { useState } from 'react';

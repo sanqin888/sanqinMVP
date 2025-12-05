@@ -1,3 +1,5 @@
+//Users/apple/sanqinMVP/apps/web/src/app/[locale]/thank-you/[order]/OrderSummaryClient.tsx
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -26,6 +28,8 @@ type OrderSummaryResponse = {
   discountCents: number;
   totalCents: number;
   lineItems: OrderSummaryLineItem[];
+  loyaltyRedeemCents?: number | null;
+  subtotalAfterDiscountCents?: number | null;
 };
 
 type Props = {
@@ -132,6 +136,12 @@ export function OrderSummaryClient({ orderNumber, locale }: Props) {
 
   if (!orderNumber) return null;
 
+  const effectiveDiscountCents =
+    typeof data?.loyaltyRedeemCents === "number" &&
+    data.loyaltyRedeemCents > 0
+      ? data.loyaltyRedeemCents
+      : data?.discountCents ?? 0;
+
   return (
     <section className="mx-auto mt-4 max-w-xl rounded-2xl border border-slate-200 bg-white/70 p-4 text-sm text-slate-700 sm:p-6">
       <h2 className="text-base font-semibold text-slate-900">
@@ -173,11 +183,21 @@ export function OrderSummaryClient({ orderNumber, locale }: Props) {
 
           {/* 金额小结 */}
           <div className="mt-4 space-y-1 border-t border-slate-200 pt-3 text-xs">
+            {/* 小计（未扣积分） */}
             <div className="flex items-center justify-between">
               <span>{labels.subtotal}</span>
               <span>{centsToMoney(data.subtotalCents)}</span>
             </div>
 
+            {/* 积分抵扣 / 优惠：在小计下面、配送费/税前面 */}
+            {effectiveDiscountCents > 0 && (
+              <div className="flex items-center justify-between text-emerald-700">
+                <span>{labels.discount}</span>
+                <span>-{centsToMoney(effectiveDiscountCents)}</span>
+              </div>
+            )}
+
+            {/* 配送费 */}
             {data.deliveryFeeCents > 0 && (
               <div className="flex items-center justify-between">
                 <span>{labels.deliveryFee}</span>
@@ -185,18 +205,13 @@ export function OrderSummaryClient({ orderNumber, locale }: Props) {
               </div>
             )}
 
+            {/* 税 */}
             <div className="flex items-center justify-between">
               <span>{labels.tax}</span>
               <span>{centsToMoney(data.taxCents)}</span>
             </div>
 
-            {data.discountCents > 0 && (
-              <div className="flex items-center justify-between text-emerald-700">
-                <span>{labels.discount}</span>
-                <span>-{centsToMoney(data.discountCents)}</span>
-              </div>
-            )}
-
+            {/* 合计 */}
             <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2 text-sm font-semibold text-slate-900">
               <span>{labels.total}</span>
               <span>{centsToMoney(data.totalCents)}</span>
