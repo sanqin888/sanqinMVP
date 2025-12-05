@@ -569,7 +569,7 @@ const loyaltyCentsPerPoint = useMemo(() => {
 
     const sessionWithUserId = session as SessionWithUserId;
     const userId = sessionWithUserId?.userId;
-    if (!userId) {
+    if (typeof userId !== "string" || !userId) {
       setAvailableCoupons([]);
       return;
     }
