@@ -9,6 +9,7 @@ import {
 import { DeliveryProvider, DeliveryType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
+import { MembershipService } from '../membership/membership.service';
 import { CreateOrderDto, DeliveryDestinationDto } from './dto/create-order.dto';
 import {
   ORDER_STATUS_ADVANCE_FLOW,
@@ -74,6 +75,7 @@ export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly loyalty: LoyaltyService,
+    private readonly membership: MembershipService,
     private readonly uberDirect: UberDirectService,
     private readonly doorDashDrive: DoorDashDriveService,
   ) {}
@@ -177,6 +179,14 @@ export class OrdersService {
     }
     const subtotalCents = subtotalCentsRaw;
 
+    const couponInfo = await this.membership.validateCouponForOrder({
+      userId: dto.userId,
+      couponId: dto.couponId,
+      subtotalCents,
+    });
+    const couponDiscountCents = couponInfo?.discountCents ?? 0;
+    const subtotalAfterCoupon = Math.max(0, subtotalCents - couponDiscountCents);
+
     // 统一把“用户请求抵扣多少”转成“点数”
     const requestedPoints =
       typeof dto.pointsToRedeem === 'number'
@@ -190,7 +200,7 @@ export class OrdersService {
     const redeemValueCents = await this.calcRedeemCents(
       dto.userId,
       requestedPoints,
-      subtotalCents,
+      subtotalAfterCoupon,
     );
 
     // 是否为配送订单
@@ -210,21 +220,24 @@ export class OrdersService {
       ? DELIVERY_RULES[dto.deliveryType]
       : undefined;
 
-    // 3) 税基：菜品小计 - 抵扣 + 配送费（配送费也计税，对齐前端 Checkout）
-    const purchaseBaseCents = Math.max(0, subtotalCents - redeemValueCents);
+    // 3) 税基：菜品小计 - 优惠券 - 积分 + 配送费（配送费也计税，对齐前端 Checkout）
+    const purchaseBaseCents = Math.max(
+      0,
+      subtotalAfterCoupon - redeemValueCents,
+    );
     const taxableCents =
       purchaseBaseCents + (isDelivery ? deliveryFeeCustomerCents : 0);
 
     const taxCents = Math.round(taxableCents * TAX_RATE);
 
-    // 顾客总价 = (小计 - 抵扣) + 配送费 + 税
+    // 顾客总价 = (小计 - 优惠券 - 积分) + 配送费 + 税
     const totalCents = purchaseBaseCents + deliveryFeeCustomerCents + taxCents;
 
-    // ⭐️ 这里直接把“积分抵扣金额”和“折后小计”写入 DB 字段
+    // ⭐️ 这里直接把“优惠券/积分抵扣金额”和“折后小计”写入 DB 字段
     const loyaltyRedeemCents = redeemValueCents;
     const subtotalAfterDiscountCents = Math.max(
       0,
-      subtotalCents - loyaltyRedeemCents,
+      subtotalCents - couponDiscountCents - loyaltyRedeemCents,
     );
 
     // 4) 入库
@@ -238,6 +251,12 @@ export class OrdersService {
         taxCents,
         totalCents,
         pickupCode,
+        couponId: couponInfo?.coupon?.id ?? null,
+        couponDiscountCents,
+        couponCodeSnapshot: couponInfo?.coupon?.code,
+        couponTitleSnapshot: couponInfo?.coupon?.title,
+        couponMinSpendCents: couponInfo?.coupon?.minSpendCents,
+        couponExpiresAt: couponInfo?.coupon?.expiresAt,
         loyaltyRedeemCents,
         subtotalAfterDiscountCents,
         ...(deliveryMeta
@@ -562,7 +581,8 @@ export class OrdersService {
     const taxCents = order.taxCents ?? 0;
     const deliveryFeeCents = order.deliveryFeeCents ?? 0;
 
-    const discountCents = order.loyaltyRedeemCents ?? 0;
+    const discountCents =
+      (order.loyaltyRedeemCents ?? 0) + (order.couponDiscountCents ?? 0);
 
     const lineItems = order.items.map((item) => {
       const unitPriceCents = item.unitPriceCents ?? 0;
@@ -629,10 +649,22 @@ export class OrdersService {
     if (next === 'paid') {
       const redeemValueCents = updated.loyaltyRedeemCents ?? 0;
 
+      const netSubtotalForRewards = Math.max(
+        0,
+        (updated.subtotalCents ?? 0) - (updated.couponDiscountCents ?? 0),
+      );
+
+      if (updated.couponId) {
+        void this.membership.markCouponUsedForOrder({
+          couponId: updated.couponId,
+          orderId: updated.id,
+        });
+      }
+
       void this.loyalty.settleOnPaid({
         orderId: updated.id,
         userId: updated.userId ?? undefined,
-        subtotalCents: updated.subtotalCents,
+        subtotalCents: netSubtotalForRewards,
         redeemValueCents,
       });
     } else if (next === 'refunded') {
