@@ -166,7 +166,7 @@ export default function MembershipHomePage() {
         setSummaryLoading(true);
         setSummaryError(null);
 
-        const user = session.user;
+        const user = session?.user;
         const params = new URLSearchParams({
           userId,
           name: user?.name ?? '',
@@ -220,7 +220,6 @@ export default function MembershipHomePage() {
             ? raw.details
             : (raw as MembershipSummaryResponse);
 
-                const user = session?.user;
         setMember({
           id: data.userId,
           name: data.displayName ?? user?.name ?? undefined,
