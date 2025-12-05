@@ -78,6 +78,15 @@ type LoyaltyInfo = {
   availableDiscountCents: number;
 };
 
+type CheckoutCoupon = {
+  id: string;
+  title: string;
+  code: string;
+  discountCents: number;
+  minSpendCents?: number;
+  expiresAt?: string;
+};
+
 // 保证 Clover 那边收到的 item.name 是英文
 function resolveEnglishName(itemId: string, localizedName: string): string {
   const def = MENU_ITEM_LOOKUP.get(itemId);
@@ -223,6 +232,10 @@ export default function CheckoutPage() {
   }>({ distanceKm: null, isChecking: false, error: null });
   const [redeemPointsInput, setRedeemPointsInput] = useState<string>("");
   const [loyaltyInfo, setLoyaltyInfo] = useState<LoyaltyInfo | null>(null);
+  const [availableCoupons, setAvailableCoupons] = useState<CheckoutCoupon[]>([]);
+  const [appliedCoupon, setAppliedCoupon] = useState<CheckoutCoupon | null>(null);
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [couponError, setCouponError] = useState<string | null>(null);
 
   // ✅ 小计：按“分”计算，先把单价（CAD）×100 再四舍五入
   const subtotalCents = useMemo(
@@ -320,13 +333,25 @@ const loyaltyCentsPerPoint = useMemo(() => {
   return 100; // 1 pt = $1.00
 }, [loyaltyInfo]);
 
+  const couponDiscountCents = useMemo(() => {
+    if (!appliedCoupon) return 0;
+    if (
+      typeof appliedCoupon.minSpendCents === "number" &&
+      subtotalCents < appliedCoupon.minSpendCents
+    ) {
+      return 0;
+    }
+    return Math.min(appliedCoupon.discountCents, subtotalCents);
+  }, [appliedCoupon, subtotalCents]);
+
   // 本单最多可抵扣多少金额（分）
   const maxRedeemableCentsForOrder = useMemo(() => {
     if (!loyaltyInfo) return 0;
     if (subtotalCents <= 0) return 0;
 
-    return Math.min(loyaltyInfo.availableDiscountCents, subtotalCents);
-  }, [loyaltyInfo, subtotalCents]);
+    const subtotalAfterCoupon = Math.max(0, subtotalCents - couponDiscountCents);
+    return Math.min(loyaltyInfo.availableDiscountCents, subtotalAfterCoupon);
+  }, [loyaltyInfo, subtotalCents, couponDiscountCents]);
 
   // 本单最多可使用多少积分（允许小数）
   const maxRedeemablePointsForOrder = useMemo(() => {
@@ -372,8 +397,8 @@ const loyaltyCentsPerPoint = useMemo(() => {
 
   // 抵扣后的商品小计：用于税和合计的计算
   const effectiveSubtotalCents = useMemo(
-    () => Math.max(0, subtotalCents - loyaltyRedeemCents),
-    [subtotalCents, loyaltyRedeemCents],
+    () => Math.max(0, subtotalCents - couponDiscountCents - loyaltyRedeemCents),
+    [subtotalCents, couponDiscountCents, loyaltyRedeemCents],
   );
 
   // 税基 = 抵扣后小计 +（如配置了的话）配送费
@@ -420,6 +445,23 @@ const loyaltyCentsPerPoint = useMemo(() => {
     setCustomer((prev) => ({ ...prev, [field]: value }));
   };
 
+  const isCouponApplicable = (coupon: CheckoutCoupon) =>
+    subtotalCents >= (coupon.minSpendCents ?? 0);
+
+  const handleApplyCoupon = (coupon: CheckoutCoupon) => {
+    if (!isCouponApplicable(coupon)) return;
+
+    setAppliedCoupon(coupon);
+    setAvailableCoupons((prev) => prev.filter((item) => item.id !== coupon.id));
+    setCouponError(null);
+  };
+
+  const handleRemoveCoupon = () => {
+    if (!appliedCoupon) return;
+    setAvailableCoupons((prev) => [appliedCoupon, ...prev]);
+    setAppliedCoupon(null);
+  };
+
   useEffect(() => {
     if (!isDeliveryFulfillment) {
       resetAddressValidation();
@@ -441,6 +483,7 @@ const loyaltyCentsPerPoint = useMemo(() => {
   useEffect(() => {
     if (authStatus !== "authenticated" || !session?.user) {
       setLoyaltyInfo(null);
+      setAvailableCoupons([]);
       return;
     }
 
@@ -448,6 +491,7 @@ const loyaltyCentsPerPoint = useMemo(() => {
     const userId = sessionWithUserId?.userId;
     if (!userId) {
       setLoyaltyInfo(null);
+      setAvailableCoupons([]);
       return;
     }
 
@@ -502,6 +546,61 @@ const loyaltyCentsPerPoint = useMemo(() => {
     }
 
     void loadLoyalty();
+
+    return () => controller.abort();
+  }, [authStatus, session, locale]);
+
+  useEffect(() => {
+    if (authStatus !== "authenticated" || !session?.user) {
+      setAvailableCoupons([]);
+      return;
+    }
+
+    const sessionWithUserId = session as SessionWithUserId;
+    const userId = sessionWithUserId?.userId;
+    if (typeof userId !== "string" || !userId) {
+      setAvailableCoupons([]);
+      return;
+    }
+
+    const ensuredUserId: string = userId;
+
+    const controller = new AbortController();
+
+    async function loadCoupons() {
+      try {
+        setCouponLoading(true);
+        setCouponError(null);
+
+        const params = new URLSearchParams([["userId", ensuredUserId]]);
+        const res = await fetch(
+          `/api/v1/membership/coupons?${params.toString()}`,
+          { signal: controller.signal },
+        );
+
+        if (!res.ok) {
+          throw new Error(`Failed with status ${res.status}`);
+        }
+
+        const data = (await res.json()) as CheckoutCoupon[];
+        setAvailableCoupons(Array.isArray(data) ? data : []);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
+        console.error(err);
+        setCouponError(
+          locale === "zh"
+            ? "可用优惠券加载失败，暂时无法使用优惠券。"
+            : "Failed to load coupons. Coupons cannot be used right now.",
+        );
+        setAvailableCoupons([]);
+      } finally {
+        setCouponLoading(false);
+      }
+    }
+
+    void loadCoupons();
 
     return () => controller.abort();
   }, [authStatus, session, locale]);
@@ -626,10 +725,11 @@ const loyaltyCentsPerPoint = useMemo(() => {
     }
 
     const loyaltyRedeemCentsForOrder = loyaltyRedeemCents;
+    const couponDiscountCentsForOrder = couponDiscountCents;
 
     const discountedSubtotalForOrder = Math.max(
       0,
-      subtotalCents - loyaltyRedeemCentsForOrder,
+      subtotalCents - couponDiscountCentsForOrder - loyaltyRedeemCentsForOrder,
     );
 
     const taxableBaseCentsForOrder =
@@ -686,6 +786,16 @@ const loyaltyCentsPerPoint = useMemo(() => {
           loyaltyInfo?.availableDiscountCents ?? 0,
         loyaltyPointsBalance: loyaltyInfo?.points ?? 0,
         loyaltyUserId: loyaltyInfo?.userId,
+
+        coupon: appliedCoupon
+          ? {
+              id: appliedCoupon.id,
+              code: appliedCoupon.code,
+              title: appliedCoupon.title,
+              discountCents: couponDiscountCentsForOrder,
+              minSpendCents: appliedCoupon.minSpendCents,
+            }
+          : undefined,
 
         ...(deliveryMetadata ?? {}),
 
@@ -1219,6 +1329,137 @@ const loyaltyCentsPerPoint = useMemo(() => {
                 ) : null}
               </div>
 
+              {(availableCoupons.length > 0 || appliedCoupon || couponLoading || couponError) && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-slate-800">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="font-semibold">
+                        {locale === "zh" ? "优惠券" : "Coupons"}
+                      </p>
+                      <p className="mt-1 text-[11px] text-slate-600">
+                        {locale === "zh"
+                          ? "请选择本单可用的优惠券。"
+                          : "Pick a coupon to apply to this order."}
+                      </p>
+                    </div>
+                    {couponLoading && (
+                      <span className="text-[11px] text-slate-500">
+                        {locale === "zh" ? "加载中…" : "Loading…"}
+                      </span>
+                    )}
+                  </div>
+
+                  {appliedCoupon ? (
+                    <div className="mt-2 rounded-xl border border-amber-200 bg-white px-3 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">
+                            {appliedCoupon.title}
+                          </p>
+                          <p className="text-[11px] text-slate-500">
+                            {appliedCoupon.code}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleRemoveCoupon}
+                          className="shrink-0 rounded-full border border-slate-300 px-3 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-100"
+                        >
+                          {locale === "zh" ? "取消使用" : "Remove"}
+                        </button>
+                      </div>
+
+                      <div className="mt-2 flex items-center justify-between text-[11px] text-slate-600">
+                        <span className="font-semibold text-amber-700">
+                          {locale === "zh" ? "立减 " : "Save "}
+                          {formatMoney(couponDiscountCents)}
+                        </span>
+                        {appliedCoupon.minSpendCents ? (
+                          <span
+                            className={
+                              subtotalCents >= (appliedCoupon.minSpendCents ?? 0)
+                                ? "text-emerald-700"
+                                : "text-red-600"
+                            }
+                          >
+                            {locale === "zh"
+                              ? `满 ${formatMoney(appliedCoupon.minSpendCents)} 可用`
+                              : `Min spend ${formatMoney(appliedCoupon.minSpendCents)}.`}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-2 space-y-2">
+                      {availableCoupons.map((coupon) => {
+                        const applicable = isCouponApplicable(coupon);
+                        return (
+                          <div
+                            key={coupon.id}
+                            className="rounded-xl border border-dashed border-amber-200 bg-white px-3 py-2"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div>
+                                <p className="text-sm font-semibold text-slate-900">
+                                  {coupon.title}
+                                </p>
+                                <p className="text-[11px] text-slate-500">
+                                  {coupon.minSpendCents
+                                    ? locale === "zh"
+                                      ? `满 ${formatMoney(coupon.minSpendCents)} 可用`
+                                      : `Min spend ${formatMoney(coupon.minSpendCents)}`
+                                    : locale === "zh"
+                                      ? "无门槛"
+                                      : "No minimum spend"}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                disabled={!applicable}
+                                onClick={() => handleApplyCoupon(coupon)}
+                                className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-medium ${
+                                  applicable
+                                    ? "border border-amber-300 text-amber-700 hover:bg-amber-100"
+                                    : "border border-slate-200 text-slate-400"
+                                }`}
+                              >
+                                {applicable
+                                  ? locale === "zh"
+                                    ? "使用"
+                                    : "Apply"
+                                  : locale === "zh"
+                                    ? "未满足条件"
+                                    : "Not eligible"}
+                              </button>
+                            </div>
+
+                            <div className="mt-1 flex items-center justify-between text-[11px] text-slate-600">
+                              <span className="font-semibold text-amber-700">
+                                {locale === "zh" ? "立减 " : "Save "}
+                                {formatMoney(coupon.discountCents)}
+                              </span>
+                              {coupon.expiresAt ? (
+                                <span className="text-slate-500">{coupon.expiresAt}</span>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {availableCoupons.length === 0 && !couponLoading ? (
+                        <p className="text-[11px] text-slate-600">
+                          {locale === "zh" ? "暂无可用优惠券。" : "No coupons available."}
+                        </p>
+                      ) : null}
+                    </div>
+                  )}
+
+                  {couponError && (
+                    <p className="mt-2 text-[11px] text-red-600">{couponError}</p>
+                  )}
+                </div>
+              )}
+
               {loyaltyInfo && (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-slate-800">
                   <div className="flex items-center justify-between gap-2">
@@ -1309,11 +1550,17 @@ const loyaltyCentsPerPoint = useMemo(() => {
                   <span>{strings.summary.subtotal}</span>
                   <span>{formatMoney(subtotalCents)}</span>
                 </div>
-{loyaltyRedeemCents > 0 && (
-  <div className="mt-1 flex items-center justify-between text-xs">
-    <span>{locale === "zh" ? "积分抵扣" : "Points discount"}</span>
-    <span>-{formatMoney(loyaltyRedeemCents)}</span>
-  </div>
+                {couponDiscountCents > 0 && (
+                  <div className="mt-1 flex items-center justify-between text-xs text-amber-700">
+                    <span>{locale === "zh" ? "优惠券" : "Coupon"}</span>
+                    <span>-{formatMoney(couponDiscountCents)}</span>
+                  </div>
+                )}
+                {loyaltyRedeemCents > 0 && (
+                  <div className="mt-1 flex items-center justify-between text-xs">
+                    <span>{locale === "zh" ? "积分抵扣" : "Points discount"}</span>
+                    <span>-{formatMoney(loyaltyRedeemCents)}</span>
+                  </div>
 )}
                 {serviceFeeCents > 0 ? (
                   <div className="mt-2 flex items-center justify-between text-xs">
