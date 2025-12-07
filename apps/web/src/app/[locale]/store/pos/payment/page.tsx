@@ -616,18 +616,6 @@ export default function StorePosPaymentPage() {
     }
   };
 
-      setSuccessInfo({
-        orderNumber,
-        pickupCode,
-      });
-    } catch (err) {
-      console.error("Failed to place POS order:", err);
-      setError(err instanceof Error ? err.message : t.errorGeneric);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   const handleCloseSuccess = () => {
     setSuccessInfo(null);
     router.push(`/${locale}/store/pos`);
