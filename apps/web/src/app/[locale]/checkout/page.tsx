@@ -709,11 +709,11 @@ export default function CheckoutPage() {
         setLoyaltyError(null);
 
         const user = s?.user ?? null;
-        const params = new URLSearchParams({
-          userId,
-          name: user?.name ?? "",
-          email: user?.email ?? "",
-        });
+        const params = new URLSearchParams();
+
+        params.set("userId", userId ?? "");
+        params.set("name", user?.name ?? "");
+        params.set("email", user?.email ?? "");
 
         // 如果 URL 上带了已验证的手机号，就顺手传给 membership 接口做绑定
         if (verifiedPhone && phoneVerifiedFlag === "1") {
