@@ -185,10 +185,7 @@ export class OrdersService {
       subtotalCents,
     });
     const couponDiscountCents = couponInfo?.discountCents ?? 0;
-    const subtotalAfterCoupon = Math.max(
-      0,
-      subtotalCents - couponDiscountCents,
-    );
+    const subtotalAfterCoupon = Math.max(0, subtotalCents - couponDiscountCents);
 
     // 统一把“用户请求抵扣多少”转成“点数”
     const requestedPoints =

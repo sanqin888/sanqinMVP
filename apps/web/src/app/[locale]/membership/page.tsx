@@ -346,6 +346,52 @@ export default function MembershipHomePage() {
     return () => controller.abort();
   }, [member?.id, isZh]);
 
+  // 拉取优惠券：会员信息到手后再查询
+  useEffect(() => {
+    if (!member?.id) {
+      setCoupons([]);
+      setCouponLoading(false);
+      setCouponError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const loadCoupons = async () => {
+      try {
+        setCouponLoading(true);
+        setCouponError(null);
+
+        const params = new URLSearchParams([['userId', member.id]]);
+        const res = await fetch(
+          `/api/v1/membership/coupons?${params.toString()}`,
+          { signal: controller.signal },
+        );
+
+        if (!res.ok) {
+          throw new Error(`Failed with status ${res.status}`);
+        }
+
+        const raw = (await res.json()) as Coupon[];
+        setCoupons(Array.isArray(raw) ? raw : []);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        console.error(err);
+        setCoupons([]);
+        setCouponError(
+          isZh
+            ? '优惠券加载失败，请稍后再试。'
+            : 'Failed to load coupons. Please try again later.',
+        );
+      } finally {
+        setCouponLoading(false);
+      }
+    };
+
+    void loadCoupons();
+    return () => controller.abort();
+  }, [member?.id, isZh]);
+
   // 拉取积分流水：首次切到“积分”tab 且已登录时加载一次
   useEffect(() => {
     if (

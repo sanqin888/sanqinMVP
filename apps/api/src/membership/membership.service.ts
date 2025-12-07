@@ -515,9 +515,7 @@ export class MembershipService {
       typeof coupon.minSpendCents === 'number' &&
       subtotalCents < coupon.minSpendCents
     ) {
-      throw new BadRequestException(
-        'order subtotal does not meet coupon rules',
-      );
+      throw new BadRequestException('order subtotal does not meet coupon rules');
     }
 
     const discountCents = Math.max(
@@ -531,10 +529,7 @@ export class MembershipService {
     };
   }
 
-  async markCouponUsedForOrder(params: {
-    couponId?: string | null;
-    orderId: string;
-  }) {
+  async markCouponUsedForOrder(params: { couponId?: string | null; orderId: string }) {
     const { couponId, orderId } = params;
     if (!couponId) return;
 
