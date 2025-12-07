@@ -6,25 +6,66 @@ import {
   Get,
   Post,
   Query,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { MembershipService } from './membership.service';
+
+type AuthedRequest = Request & {
+  user?: { id?: string };
+};
 
 @Controller('membership')
 export class MembershipController {
   constructor(private readonly membership: MembershipService) {}
 
+  /**
+   * 统一解析 userId：
+   * 优先级：session(req.user.id) > body.userId > query.userId > header(x-user-id)
+   */
+  private resolveUserId(
+    req: AuthedRequest,
+    opts: { queryUserId?: string; bodyUserId?: string } = {},
+  ): string {
+    const { queryUserId, bodyUserId } = opts;
+
+    const sessionId = req.user?.id;
+
+    const headerRaw = req.headers['x-user-id'];
+    const headerId =
+      typeof headerRaw === 'string'
+        ? headerRaw
+        : Array.isArray(headerRaw)
+          ? headerRaw[0]
+          : undefined;
+
+    const userId =
+      sessionId ??
+      (bodyUserId && bodyUserId.trim()) ??
+      (queryUserId && queryUserId.trim()) ??
+      (headerId && headerId.trim());
+
+    if (!userId) {
+      throw new BadRequestException('userId is required');
+    }
+
+    return userId;
+  }
+
   @Get('summary')
   async summary(
-    @Query('userId') userId?: string,
+    @Req() req: AuthedRequest,
+    @Query('userId') userIdFromQuery?: string,
     @Query('name') name?: string,
     @Query('email') email?: string,
     @Query('referrerEmail') referrerEmail?: string,
     @Query('birthdayMonth') birthdayMonthRaw?: string,
     @Query('birthdayDay') birthdayDayRaw?: string,
+    // ⭐ 新增：手机号 + 验证 token
+    @Query('phone') phoneFromQuery?: string,
+    @Query('pv') phoneVerificationToken?: string,
   ) {
-    if (!userId) {
-      throw new BadRequestException('userId is required');
-    }
+    const userId = this.resolveUserId(req, { queryUserId: userIdFromQuery });
 
     // 把 query 里的生日转成 number，非法就当 undefined
     let birthdayMonth: number | undefined;
@@ -47,18 +88,19 @@ export class MembershipController {
       referrerEmail,
       birthdayMonth,
       birthdayDay,
+      phone: phoneFromQuery,
+      phoneVerificationToken,
     });
   }
 
-  // ✅ 积分流水接口保持不变
+  // ✅ 积分流水
   @Get('loyalty-ledger')
   async loyaltyLedger(
-    @Query('userId') userId?: string,
+    @Req() req: AuthedRequest,
+    @Query('userId') userIdFromQuery?: string,
     @Query('limit') limitRaw?: string,
   ) {
-    if (!userId) {
-      throw new BadRequestException('userId is required');
-    }
+    const userId = this.resolveUserId(req, { queryUserId: userIdFromQuery });
 
     const limit = limitRaw ? Number.parseInt(limitRaw, 10) || 50 : 50;
 
@@ -68,20 +110,18 @@ export class MembershipController {
     });
   }
 
-  // ✅ 营销邮件订阅接口保持不变
+  // ✅ 营销邮件订阅
   @Post('marketing-consent')
   async updateMarketingConsent(
+    @Req() req: AuthedRequest,
     @Body()
     body: {
       userId?: string;
       marketingEmailOptIn?: boolean;
     },
   ) {
-    const { userId, marketingEmailOptIn } = body;
-
-    if (!userId) {
-      throw new BadRequestException('userId is required');
-    }
+    const userId = this.resolveUserId(req, { bodyUserId: body.userId });
+    const { marketingEmailOptIn } = body;
 
     if (typeof marketingEmailOptIn !== 'boolean') {
       throw new BadRequestException('marketingEmailOptIn must be boolean');
@@ -96,5 +136,15 @@ export class MembershipController {
       success: true,
       user,
     };
+  }
+
+  // ✅ 优惠券列表（会自动补发欢迎券 / 生日券）
+  @Get('coupons')
+  async listCoupons(
+    @Req() req: AuthedRequest,
+    @Query('userId') userIdFromQuery?: string,
+  ) {
+    const userId = this.resolveUserId(req, { queryUserId: userIdFromQuery });
+    return this.membership.listCoupons({ userId });
   }
 }

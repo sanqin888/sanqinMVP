@@ -39,6 +39,10 @@ type OrderDetail = {
   items: OrderItem[];
   loyaltyRedeemCents: number | null;           
   subtotalAfterDiscountCents: number | null;   
+  couponId: string | null;
+  couponDiscountCents: number | null;
+  couponCodeSnapshot: string | null;
+  couponTitleSnapshot: string | null;
 };
 
 type PageParams = {
@@ -152,6 +156,20 @@ export default function OrderDetailPage({ params }: PageProps) {
           )}
         </li>
       )}
+  {/* ⭐ 新增：优惠券使用情况 */}
+  {typeof order.couponDiscountCents === 'number' &&
+    order.couponDiscountCents > 0 && (
+      <li>
+        优惠券：
+        <span className="mr-2">
+          {/* 标题 + ID 二选一/叠加展示 */}
+          {order.couponTitleSnapshot ?? '优惠券'}
+        </span>
+        <span className="text-amber-700">
+          -${(order.couponDiscountCents / 100).toFixed(2)}
+        </span>
+      </li>
+    )}
 
     <li>税额：${(order.taxCents / 100).toFixed(2)}</li>
     <li className="font-medium text-gray-900">

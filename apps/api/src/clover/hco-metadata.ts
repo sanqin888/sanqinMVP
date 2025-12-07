@@ -50,6 +50,15 @@ export type HostedCheckoutMetadata = {
   loyaltyAvailableDiscountCents?: number; // 前端计算的“最多可抵扣金额”（分），仅调试使用
   loyaltyPointsBalance?: number; // 下单前积分余额（点）
   loyaltyUserId?: string; // 会员 userId，用于把订单绑定到会员
+
+  coupon?: {
+    id?: string;
+    code?: string;
+    title?: string;
+    discountCents?: number;
+    minSpendCents?: number;
+    expiresAt?: string;
+  };
 };
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
@@ -169,6 +178,24 @@ const parseItems = (value: unknown): HostedCheckoutItem[] => {
   return items;
 };
 
+const parseCoupon = (
+  value: unknown,
+): HostedCheckoutMetadata['coupon'] | undefined => {
+  if (!isPlainObject(value)) return undefined;
+
+  const id = toString(value.id);
+  if (!id) return undefined;
+
+  return {
+    id,
+    code: toString(value.code),
+    title: toString(value.title),
+    discountCents: toOptionalCents(value.discountCents),
+    minSpendCents: toOptionalCents(value.minSpendCents),
+    expiresAt: toString(value.expiresAt),
+  };
+};
+
 const parseCustomer = (value: unknown): HostedCheckoutCustomer => {
   if (!isPlainObject(value)) {
     throw new Error('customer is required');
@@ -229,6 +256,7 @@ export function parseHostedCheckoutMetadata(
     ),
     loyaltyPointsBalance: toNumber(input.loyaltyPointsBalance),
     loyaltyUserId: toString(input.loyaltyUserId),
+    coupon: parseCoupon(input.coupon),
   } satisfies HostedCheckoutMetadata;
 }
 
@@ -331,6 +359,10 @@ export function buildOrderDtoFromMetadata(
       };
     }),
   };
+
+  if (meta.coupon?.id) {
+    dto.couponId = meta.coupon.id;
+  }
 
   if (meta.fulfillment === 'delivery') {
     dto.deliveryType = meta.deliveryType ?? DeliveryType.STANDARD;
