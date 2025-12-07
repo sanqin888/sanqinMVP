@@ -568,7 +568,6 @@ export default function StorePosPaymentPage() {
 
       const body = {
         channel: "in_store",
-        add printer
         fulfillmentType: fulfillment,
         paymentMethod,
         subtotalCents: snapshot.subtotalCents,
@@ -612,18 +611,6 @@ export default function StorePosPaymentPage() {
       setError(
         err instanceof Error ? err.message : t.errorGeneric,
       );
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-      setSuccessInfo({
-        orderNumber,
-        pickupCode,
-      });
-    } catch (err) {
-      console.error("Failed to place POS order:", err);
-      setError(err instanceof Error ? err.message : t.errorGeneric);
     } finally {
       setSubmitting(false);
     }
