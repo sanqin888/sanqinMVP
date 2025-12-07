@@ -60,6 +60,11 @@ enum LoyaltyEntryType {
   REFERRAL_BONUS          // 推荐人因被推荐人消费获得的积分
   REFUND_REVERSE_REFERRAL // 退款时冲回推荐奖励
 }
+enum PhoneVerificationStatus {
+  PENDING   // 已发送，等待用户输入验证码
+  VERIFIED  // 验证通过
+  CONSUMED  // 已经消费 / 失效（可选状态，方便以后扩展）
+}
 
 // === Models ===
 
@@ -69,6 +74,8 @@ enum LoyaltyEntryType {
 model User {
   id        String   @id         // 例如: "google:1234567890"
   email     String?  @unique
+  phone      String?   @unique
+  phoneVerifiedAt DateTime?
   name      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -203,4 +210,25 @@ model CheckoutIntent {
   updatedAt         DateTime @updatedAt
 
   @@index([referenceId, createdAt])
+}
+
+model PhoneVerification {
+  id        String                 @id @default(uuid()) @db.Uuid
+  phone     String                 // 经过 normalize 处理后的手机号（去掉空格等）
+  code      String                 // 6 位数字验证码（MVP 先明文存）
+  status    PhoneVerificationStatus @default(PENDING)
+
+  // 有效期（例如发送后 10 分钟）
+  expiresAt DateTime
+  createdAt DateTime                @default(now())
+  verifiedAt DateTime?
+  consumedAt DateTime?
+  purpose   String   @default("generic")
+  used      Boolean  @default(false)
+
+  // 可选：记录错误尝试次数
+  attempts      Int       @default(0)
+  lastAttemptAt DateTime?
+
+  @@index([phone, purpose, used, createdAt])
 }

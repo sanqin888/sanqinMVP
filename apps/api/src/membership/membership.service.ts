@@ -6,7 +6,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, type User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 
@@ -61,6 +61,96 @@ export class MembershipService {
     };
   }
 
+  /** 和短信验证那边保持一致：去空格和横杠 */
+  private normalizePhone(raw: string | undefined | null): string | null {
+    if (!raw) return null;
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    return trimmed.replace(/\s+/g, '').replace(/-/g, '');
+  }
+
+  /** 如果带了 phone + verificationToken，就尝试把手机号绑定到 User 上 */
+  private async bindPhoneIfNeeded(params: {
+    user: User;
+    rawPhone?: string;
+    verificationToken?: string;
+  }): Promise<User> {
+    const { user, rawPhone, verificationToken } = params;
+
+    const normalizedPhone = this.normalizePhone(rawPhone);
+    if (!normalizedPhone || !verificationToken) return user;
+
+    // ✅ 额外防御：如果 token 形状明显不像 UUID，就直接忽略，避免 Prisma 报 “invalid length”
+    if (!/^[0-9a-fA-F-]{32,36}$/.test(verificationToken)) {
+      return user;
+    }
+
+    // 已经有手机而且和这次一致，就顺手把 token 标记为 CONSUMED 即可
+    if (user.phone && this.normalizePhone(user.phone) === normalizedPhone) {
+      try {
+        await this.prisma.phoneVerification.update({
+          where: { id: verificationToken },
+          data: {
+            status: 'CONSUMED',
+            consumedAt: new Date(),
+          },
+        });
+      } catch {
+        // 忽略错误（比如 token 找不到）
+      }
+      return user;
+    }
+
+    // 查这条验证码记录
+    const pv = await this.prisma.phoneVerification.findUnique({
+      where: { id: verificationToken },
+    });
+
+    if (
+      !pv ||
+      pv.status !== 'VERIFIED' ||
+      this.normalizePhone(pv.phone) !== normalizedPhone
+    ) {
+      // 找不到 / 状态不对 / 手机不匹配，都直接忽略绑定
+      return user;
+    }
+
+    // 避免同一手机号被绑定到多个 User
+    const conflict = await this.prisma.user.findFirst({
+      where: {
+        phone: normalizedPhone,
+        NOT: { id: user.id },
+      },
+      select: { id: true },
+    });
+    if (conflict) {
+      // 已经被别人占用了，这里我们选择“忽略这次绑定”，而不是报错
+      return user;
+    }
+
+    const now = new Date();
+
+    // 真正绑定手机号，并把这条验证码标记为已消费
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          phone: normalizedPhone,
+          phoneVerifiedAt: user.phoneVerifiedAt ?? now,
+        },
+      }),
+      this.prisma.phoneVerification.update({
+        where: { id: pv.id },
+        data: {
+          status: 'CONSUMED',
+          consumedAt: now,
+        },
+      }),
+    ]);
+
+    return updated;
+  }
+
   /**
    * 确保 User 存在，并在需要时补全信息：
    * - id 必填，和 next-auth userId 对齐
@@ -75,9 +165,19 @@ export class MembershipService {
     referrerEmail?: string;
     birthdayMonth?: number;
     birthdayDay?: number;
+    phone?: string;
+    phoneVerificationToken?: string;
   }) {
-    const { userId, name, email, referrerEmail, birthdayMonth, birthdayDay } =
-      params;
+    const {
+      userId,
+      name,
+      email,
+      referrerEmail,
+      birthdayMonth,
+      birthdayDay,
+      phone,
+      phoneVerificationToken,
+    } = params;
 
     if (!userId) {
       throw new Error('userId is required');
@@ -128,40 +228,44 @@ export class MembershipService {
             : {}),
         },
       });
+    } else {
+      // ⭐ 已有用户：只在字段为空时补充 referrer / 生日；name/email 按需更新
+      const updateData: Prisma.UserUpdateInput = {};
 
-      return user;
+      if (typeof name === 'string' && name !== user.name) {
+        updateData.name = name;
+      }
+      if (typeof email === 'string' && email !== user.email) {
+        updateData.email = email;
+      }
+
+      if (!user.referredByUserId && referrerId) {
+        updateData.referredByUserId = referrerId;
+      }
+
+      if (
+        user.birthdayMonth == null &&
+        user.birthdayDay == null &&
+        validBirthday
+      ) {
+        updateData.birthdayMonth = birthdayMonth!;
+        updateData.birthdayDay = birthdayDay!;
+      }
+
+      if (Object.keys(updateData).length > 0) {
+        user = await this.prisma.user.update({
+          where: { id: userId },
+          data: updateData,
+        });
+      }
     }
 
-    // ⭐ 已有用户：只在字段为空时补充 referrer / 生日；name/email 按需更新
-    const updateData: Prisma.UserUpdateInput = {};
-
-    // name / email：延续你之前的行为——如果传入了新的值，就覆盖（不传就不动）
-    if (typeof name === 'string' && name !== user.name) {
-      updateData.name = name;
-    }
-    if (typeof email === 'string' && email !== user.email) {
-      updateData.email = email;
-    }
-
-    // 推荐人：只在当前没有且解析到 referrerId 时写入一次
-    if (!user.referredByUserId && referrerId) {
-      updateData.referredByUserId = referrerId;
-    }
-
-    // 生日：只在当前两项都为空且传入生日合法时写入一次
-    if (
-      user.birthdayMonth == null &&
-      user.birthdayDay == null &&
-      validBirthday
-    ) {
-      updateData.birthdayMonth = birthdayMonth!;
-      updateData.birthdayDay = birthdayDay!;
-    }
-
-    if (Object.keys(updateData).length > 0) {
-      user = await this.prisma.user.update({
-        where: { id: userId },
-        data: updateData,
+    // ⭐ 最后一步：如果这次带了 phone + token，就尝试绑定手机号
+    if (phone || phoneVerificationToken) {
+      user = await this.bindPhoneIfNeeded({
+        user,
+        rawPhone: phone,
+        verificationToken: phoneVerificationToken,
       });
     }
 
@@ -214,7 +318,9 @@ export class MembershipService {
     if (existed) return existed;
 
     // 过期时间：生日当月的最后一天 23:59:59
-    const expiresAt = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59));
+    const expiresAt = new Date(
+      Date.UTC(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59),
+    );
 
     return this.prisma.coupon.create({
       data: {
@@ -247,11 +353,20 @@ export class MembershipService {
     referrerEmail?: string;
     birthdayMonth?: number;
     birthdayDay?: number;
+    phone?: string;
+    phoneVerificationToken?: string;
   }) {
-    const { userId, name, email, referrerEmail, birthdayMonth, birthdayDay } =
-      params;
+    const {
+      userId,
+      name,
+      email,
+      referrerEmail,
+      birthdayMonth,
+      birthdayDay,
+      phone,
+      phoneVerificationToken,
+    } = params;
 
-    // 先确保 user 存在 & 修复 id / email / 推荐人 / 生日
     const user = await this.ensureUser({
       userId,
       name,
@@ -259,15 +374,16 @@ export class MembershipService {
       referrerEmail,
       birthdayMonth,
       birthdayDay,
+      phone,
+      phoneVerificationToken,
     });
 
-    // 确保有 LoyaltyAccount
+    // 后面原逻辑不动
     const account = await this.loyalty.ensureAccount(user.id);
     const availableDiscountCents = this.loyalty.maxRedeemableCentsFromBalance(
       account.pointsMicro,
     );
 
-    // 最近订单
     const orders = await this.prisma.order.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: 'desc' },
@@ -282,8 +398,9 @@ export class MembershipService {
       points: Number(account.pointsMicro) / MICRO_PER_POINT,
       lifetimeSpendCents: account.lifetimeSpendCents ?? 0,
       availableDiscountCents,
-      // ✅ 营销邮件订阅状态
       marketingEmailOptIn: user.marketingEmailOptIn ?? false,
+      phone: user.phone ?? null,
+      phoneVerified: !!user.phoneVerifiedAt,
       recentOrders: orders.map((o) => ({
         id: o.id,
         createdAt: o.createdAt.toISOString(),
@@ -313,10 +430,7 @@ export class MembershipService {
 
     const coupons = await this.prisma.coupon.findMany({
       where: { userId: user.id },
-      orderBy: [
-        { expiresAt: 'asc' },
-        { issuedAt: 'desc' },
-      ],
+      orderBy: [{ expiresAt: 'asc' }, { issuedAt: 'desc' }],
     });
 
     return coupons.map((coupon) =>

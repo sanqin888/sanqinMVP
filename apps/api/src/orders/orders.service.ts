@@ -510,6 +510,44 @@ export class OrdersService {
     });
   }
 
+  /**
+   * 门店看板用：
+   * - 支持按状态 / 渠道过滤
+   * - 默认只看最近 N 分钟内的订单，避免历史数据太多
+   */
+  async board(params: {
+    statusIn?: OrderStatus[];
+    channelIn?: Array<'web' | 'in_store' | 'ubereats'>;
+    limit?: number;
+    sinceMinutes?: number;
+  }): Promise<OrderWithItems[]> {
+    const { statusIn, channelIn, limit = 50, sinceMinutes = 24 * 60 } = params;
+
+    const where: Prisma.OrderWhereInput = {};
+
+    if (statusIn && statusIn.length > 0) {
+      // Prisma 的枚举类型和你本地的 OrderStatus 字面量是一致的
+      where.status = { in: statusIn };
+    }
+
+    if (channelIn && channelIn.length > 0) {
+      where.channel = { in: channelIn };
+    }
+
+    // 只看最近一段时间的订单（默认 24 小时）
+    if (sinceMinutes > 0) {
+      const since = new Date(Date.now() - sinceMinutes * 60 * 1000);
+      where.createdAt = { gte: since };
+    }
+
+    return this.prisma.order.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      include: { items: true },
+    }) as Promise<OrderWithItems[]>;
+  }
+
   // 订单详情：直接返回包含 DB 里 loyaltyRedeemCents / subtotalAfterDiscountCents 的订单
   async getById(id: string): Promise<OrderWithItems> {
     const order = (await this.prisma.order.findUnique({
