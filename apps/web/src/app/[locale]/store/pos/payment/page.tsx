@@ -568,7 +568,6 @@ export default function StorePosPaymentPage() {
 
       const body = {
         channel: "in_store",
-        add printer
         fulfillmentType: fulfillment,
         paymentMethod,
         subtotalCents: snapshot.subtotalCents,
