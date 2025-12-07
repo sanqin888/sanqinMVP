@@ -1,10 +1,9 @@
 //Users/apple/sanqinMVP/apps/web/src/app/[locale]/membership/page.tsx
-
 'use client';
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import type { Locale } from '@/lib/order/shared';
 import { useSession, signOut } from 'next-auth/react';
 import type { Session } from 'next-auth';
@@ -57,6 +56,7 @@ type MemberProfile = {
   id: string;
   name?: string;
   email?: string;
+  phone?: string | null;
   tier: MemberTier;
   points: number;
   availableDiscountCents: number;
@@ -79,6 +79,7 @@ type MembershipSummaryResponse = {
   userId: string;
   displayName: string | null;
   email: string | null;
+  phone?: string | null;
   tier: MemberTier;
   points: number;
   lifetimeSpendCents: number;
@@ -95,7 +96,10 @@ type MembershipSummaryApiEnvelope =
       details: MembershipSummaryResponse;
     };
 
-type SessionWithUserId = Session & { userId?: string };
+type SessionWithUserId = Session & {
+  userId?: string | null;
+  user?: { id?: string | null } | null;
+};
 
 // ====== 积分流水类型 ======
 
@@ -125,6 +129,7 @@ export default function MembershipHomePage() {
   const router = useRouter();
   const { locale } = useParams<{ locale: Locale }>();
   const { data: session, status } = useSession();
+  const searchParams = useSearchParams();
 
   const [activeTab, setActiveTab] = useState<
     'overview' | 'orders' | 'points' | 'addresses' | 'coupons' | 'profile'
@@ -163,8 +168,8 @@ export default function MembershipHomePage() {
   useEffect(() => {
     if (status !== 'authenticated' || !session?.user) return;
 
-    const sessionWithUserId = session as SessionWithUserId | null;
-    const userId = sessionWithUserId?.userId;
+    const s = session as SessionWithUserId | null;
+    const userId = s?.userId ?? s?.user?.id ?? undefined;
     if (!userId) return;
 
     const controller = new AbortController();
@@ -174,14 +179,22 @@ export default function MembershipHomePage() {
         setSummaryLoading(true);
         setSummaryError(null);
 
-        const user = session?.user;
+        const user = s?.user ?? session.user;
         const params = new URLSearchParams({
           userId,
           name: user?.name ?? '',
           email: user?.email ?? '',
         });
 
-        // ⭐ 从 localStorage 读取“首次注册填写的推荐人 & 生日”，只用一次
+        // 👇 如果 Google 登录回调 URL 上带了已验证手机号，则一并传给 membership 做绑定
+        const phoneFromQuery = searchParams?.get('phone') ?? undefined;
+        const phoneVerifiedFlag = searchParams?.get('pv') ?? undefined;
+        if (phoneFromQuery && phoneVerifiedFlag === '1') {
+          params.set('phone', phoneFromQuery);
+          params.set('pv', '1');
+        }
+
+        // 首次注册时 localStorage 里存的推荐人/生日，只用一次
         if (typeof window !== 'undefined') {
           try {
             const rawExtra = window.localStorage.getItem(
@@ -202,7 +215,6 @@ export default function MembershipHomePage() {
                 params.set('birthdayDay', String(extra.birthdayDay));
               }
 
-              // 用过一次就清掉，避免以后每次刷新都当作“首次注册”
               window.localStorage.removeItem('sanqin_membership_prefill');
             }
           } catch (e) {
@@ -232,6 +244,7 @@ export default function MembershipHomePage() {
           id: data.userId,
           name: data.displayName ?? user?.name ?? undefined,
           email: data.email ?? user?.email ?? undefined,
+          phone: data.phone ?? undefined,  // 👈 新增
           tier: data.tier,
           points: data.points,
           availableDiscountCents: data.availableDiscountCents,
@@ -274,7 +287,7 @@ export default function MembershipHomePage() {
     void loadSummary();
 
     return () => controller.abort();
-  }, [status, session, isZh]);
+  }, [status, session, isZh, locale, searchParams]);
 
   // 拉取优惠券：会员信息到手后再查询
   useEffect(() => {
@@ -302,8 +315,19 @@ export default function MembershipHomePage() {
           throw new Error(`Failed with status ${res.status}`);
         }
 
-        const raw = (await res.json()) as Coupon[];
-        setCoupons(Array.isArray(raw) ? raw : []);
+        const raw = (await res.json()) as
+          | Coupon[]
+          | { code?: string; message?: string; details?: Coupon[] };
+
+        let list: Coupon[] = [];
+
+        if (Array.isArray(raw)) {
+          list = raw;
+        } else if (raw && Array.isArray(raw.details)) {
+          list = raw.details;
+        }
+
+        setCoupons(list);
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return;
         console.error(err);
@@ -334,8 +358,8 @@ export default function MembershipHomePage() {
       return;
     }
 
-    const sessionWithUserId = session as SessionWithUserId | null;
-    const userId = sessionWithUserId?.userId;
+    const s = session as SessionWithUserId | null;
+    const userId = s?.userId ?? s?.user?.id ?? undefined;
     if (!userId) return;
 
     const loadLedger = async () => {
@@ -602,24 +626,28 @@ export default function MembershipHomePage() {
               isZh={isZh}
               user={member}
               latestOrder={orders[0]}
-              locale={locale}
+              locale={locale as Locale}
             />
           )}
 
           {activeTab === 'orders' && (
-            <OrdersSection isZh={isZh} orders={orders} locale={locale} />
+            <OrdersSection
+              isZh={isZh}
+              orders={orders}
+              locale={locale as Locale}
+            />
           )}
 
-{activeTab === 'points' && (
-  <PointsSection
-    isZh={isZh}
-    entries={loyaltyEntries}
-    loading={loyaltyLoading}
-    error={loyaltyError}
-    locale={locale}
-    loadedOnce={loyaltyLoadedOnce}
-  />
-)}
+          {activeTab === 'points' && (
+            <PointsSection
+              isZh={isZh}
+              entries={loyaltyEntries}
+              loading={loyaltyLoading}
+              error={loyaltyError}
+              locale={locale as Locale}
+              loadedOnce={loyaltyLoadedOnce}
+            />
+          )}
 
           {activeTab === 'addresses' && (
             <AddressesSection isZh={isZh} addresses={addresses} />
@@ -1014,7 +1042,7 @@ function CouponsSection({
                 </span>
               </div>
 
-              <div className="mt-2 flex items-end justify-between">
+              <div className="mt-2 flex items.end justify-between">
                 <div>
                   <p className="text-lg font-bold text-amber-700">
                     {isZh ? '立减 ' : 'Save '}
@@ -1087,6 +1115,12 @@ function ProfileSection({
           <p className="text-slate-500">{isZh ? '邮箱' : 'Email'}</p>
           <p className="mt-0.5 text-slate-900">
             {user.email || (isZh ? '未绑定' : 'Not linked')}
+          </p>
+        </div>
+        <div>
+          <p className="text-slate-500">{isZh ? '手机号' : 'Phone'}</p>
+          <p className="mt-0.5 text-slate-900">
+            {user.phone || (isZh ? '未绑定' : 'Not linked')}
           </p>
         </div>
         <div>

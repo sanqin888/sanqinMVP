@@ -4,10 +4,20 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { Session } from "next-auth";
-import { usePathname, useRouter, useSearchParams, useParams } from "next/navigation";
+import {
+  usePathname,
+  useRouter,
+  useSearchParams,
+  useParams,
+} from "next/navigation";
 import { apiFetch } from "@/lib/api-client";
 import { usePersistentCart } from "@/lib/cart";
-import { calculateDistanceKm, geocodeAddress, STORE_COORDINATES, DELIVERY_RADIUS_KM } from "@/lib/location";
+import {
+  calculateDistanceKm,
+  geocodeAddress,
+  STORE_COORDINATES,
+  DELIVERY_RADIUS_KM,
+} from "@/lib/location";
 import {
   ConfirmationState,
   HOSTED_CHECKOUT_CURRENCY,
@@ -29,6 +39,9 @@ import {
 } from "@/lib/order/shared";
 import { useSession } from "next-auth/react";
 
+const PHONE_OTP_REQUEST_URL = "/api/v1/auth/phone/request-code";
+const PHONE_OTP_VERIFY_URL = "/api/v1/auth/phone/verify-code";
+
 type DeliveryOptionDefinition = {
   provider: "DOORDASH" | "UBER";
   fee: number; // 仅用于显示说明，不参与实际计费
@@ -46,9 +59,15 @@ type DeliveryOptionDisplay = {
   description: string;
 };
 
-type DistanceMessage = { text: string; tone: "muted" | "info" | "success" | "error" };
+type DistanceMessage = {
+  text: string;
+  tone: "muted" | "info" | "success" | "error";
+};
 
-type SessionWithUserId = Session & { userId?: string };
+type SessionWithUserId = Session & {
+  userId?: string | null;
+  user?: (Session["user"] & { id?: string | null }) | null;
+};
 
 type MemberTier = "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
 
@@ -56,11 +75,13 @@ type MembershipSummaryResponse = {
   userId: string;
   displayName: string | null;
   email: string | null;
+  phone: string | null;
   tier: MemberTier;
   points: number;
   lifetimeSpendCents: number;
   availableDiscountCents: number;
   recentOrders: unknown[];
+  phoneVerified?: boolean;
 };
 
 type MembershipSummaryEnvelope =
@@ -85,7 +106,17 @@ type CheckoutCoupon = {
   discountCents: number;
   minSpendCents?: number;
   expiresAt?: string;
+  // 为了过滤 “active” / “expired”等状态，加个可选字段，避免 TS 报错
+  status?: "active" | "used" | "expired" | string;
 };
+
+type CouponsApiEnvelope =
+  | CheckoutCoupon[]
+  | {
+      code?: string;
+      message?: string;
+      details?: CheckoutCoupon[];
+    };
 
 // 保证 Clover 那边收到的 item.name 是英文
 function resolveEnglishName(itemId: string, localizedName: string): string {
@@ -118,7 +149,9 @@ const POSTAL_CODE_PATTERN = /^[A-Za-z]\d[A-Za-z]\s?\d[A-Za-z]\d$/;
 const PRIORITY_MAX_RADIUS_KM = DELIVERY_RADIUS_KM;
 
 const formatDeliveryAddress = (customer: CustomerInfo) => {
-  const cityProvince = [customer.city.trim(), customer.province.trim()].filter(Boolean).join(", ");
+  const cityProvince = [customer.city.trim(), customer.province.trim()]
+    .filter(Boolean)
+    .join(", ");
   const segments = [
     customer.addressLine1.trim(),
     customer.addressLine2.trim(),
@@ -137,9 +170,13 @@ const formatPostalCodeInput = (value: string) => {
   return `${sanitized.slice(0, 3)} ${sanitized.slice(3, 6)}`.trim();
 };
 
-const isPostalCodeValid = (value: string) => POSTAL_CODE_PATTERN.test(value.trim().toUpperCase());
+const isPostalCodeValid = (value: string) =>
+  POSTAL_CODE_PATTERN.test(value.trim().toUpperCase());
 
-const DELIVERY_OPTION_DEFINITIONS: Record<DeliveryTypeOption, DeliveryOptionDefinition> = {
+const DELIVERY_OPTION_DEFINITIONS: Record<
+  DeliveryTypeOption,
+  DeliveryOptionDefinition
+> = {
   STANDARD: {
     provider: "DOORDASH",
     fee: 6,
@@ -163,14 +200,11 @@ const DELIVERY_OPTION_DEFINITIONS: Record<DeliveryTypeOption, DeliveryOptionDefi
     eta: [25, 35],
     labels: {
       en: {
-        // ⭐ 这里从 Priority delivery 改成 Uber delivery
         title: "Uber delivery",
         description:
-          // 可以顺便把计费方式写进去
           "Delivery range ≤ 10 km, fulfilled by Uber. Fee: $6 base + $1 per km. ETA 25–35 minutes.",
       },
       zh: {
-        // ⭐ 这里从 优先闪送 改成 Uber 配送
         title: "Uber 配送",
         description:
           "配送范围 ≤ 10 km，由 Uber 提供配送服务，配送费：$6 起步 + 每公里 $1，预计送达时间 25–35 分钟。",
@@ -179,6 +213,7 @@ const DELIVERY_OPTION_DEFINITIONS: Record<DeliveryTypeOption, DeliveryOptionDefi
   },
 };
 
+// 目前只开放 PRIORITY（如果将来要开放 STANDARD，改成 ["STANDARD", "PRIORITY"]）
 const DELIVERY_TYPES: DeliveryTypeOption[] = ["PRIORITY"];
 
 export default function CheckoutPage() {
@@ -189,6 +224,8 @@ export default function CheckoutPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const q = searchParams?.toString();
+  const verifiedPhone = searchParams?.get("phone") ?? null; // 已验证手机号（如果有）
+  const phoneVerifiedFlag = searchParams?.get("pv") ?? null; // "1" / "true" 代表已验证
 
   const strings = UI_STRINGS[locale];
   const radiusLabel = `${DELIVERY_RADIUS_KM} km`;
@@ -220,8 +257,11 @@ export default function CheckoutPage() {
       .filter((item): item is LocalizedCartItem => Boolean(item));
   }, [items, locale]);
 
-  const [fulfillment, setFulfillment] = useState<"pickup" | "delivery">("pickup");
-  const [deliveryType, setDeliveryType] = useState<DeliveryTypeOption>("PRIORITY");
+  const [fulfillment, setFulfillment] = useState<"pickup" | "delivery">(
+    "pickup",
+  );
+  const [deliveryType, setDeliveryType] =
+    useState<DeliveryTypeOption>("PRIORITY");
   const [schedule, setSchedule] = useState<ScheduleSlot>("asap");
   const [customer, setCustomer] = useState<CustomerInfo>({
     name: "",
@@ -233,7 +273,26 @@ export default function CheckoutPage() {
     postalCode: "",
     notes: "",
   });
-  const [confirmation, setConfirmation] = useState<ConfirmationState | null>(null);
+
+  // 会员手机号（从 membership 接口加载，用于预填）
+  const [memberPhone, setMemberPhone] = useState<string | null>(null);
+  const [phonePrefilled, setPhonePrefilled] = useState(false); // 只预填一次
+
+  // 手机号验证流程状态
+  const [phoneVerificationStep, setPhoneVerificationStep] = useState<
+    "idle" | "codeSent" | "verified"
+  >("idle");
+  const [phoneVerificationCode, setPhoneVerificationCode] = useState("");
+  const [phoneVerificationLoading, setPhoneVerificationLoading] =
+    useState(false);
+  const [phoneVerificationError, setPhoneVerificationError] = useState<
+    string | null
+  >(null);
+  const [phoneVerified, setPhoneVerified] = useState(false); // ✅ 只有为 true 时才能下单
+
+  const [confirmation, setConfirmation] = useState<ConfirmationState | null>(
+    null,
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [addressValidation, setAddressValidation] = useState<{
@@ -241,10 +300,15 @@ export default function CheckoutPage() {
     isChecking: boolean;
     error: string | null;
   }>({ distanceKm: null, isChecking: false, error: null });
+
   const [redeemPointsInput, setRedeemPointsInput] = useState<string>("");
   const [loyaltyInfo, setLoyaltyInfo] = useState<LoyaltyInfo | null>(null);
-  const [availableCoupons, setAvailableCoupons] = useState<CheckoutCoupon[]>([]);
-  const [appliedCoupon, setAppliedCoupon] = useState<CheckoutCoupon | null>(null);
+  const [availableCoupons, setAvailableCoupons] = useState<CheckoutCoupon[]>(
+    [],
+  );
+  const [appliedCoupon, setAppliedCoupon] = useState<CheckoutCoupon | null>(
+    null,
+  );
   const [couponLoading, setCouponLoading] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
 
@@ -262,40 +326,44 @@ export default function CheckoutPage() {
   // ✅ 服务费（目前 0 分）
   const serviceFeeCents: number = 0;
 
+  const isDeliveryFulfillment = fulfillment === "delivery";
+
   // 用于计费的“公里数”：不足 1km 按 1km，向上取整
   const billedDistanceForPriorityKm =
-    fulfillment === "delivery" &&
+    isDeliveryFulfillment &&
     deliveryType === "PRIORITY" &&
     addressValidation.distanceKm !== null
       ? Math.max(1, Math.ceil(addressValidation.distanceKm))
-      : fulfillment === "delivery" && deliveryType === "PRIORITY"
+      : isDeliveryFulfillment && deliveryType === "PRIORITY"
         ? 1 // 还没算出距离时，优先配送按 1km 起步展示
         : 0;
 
   // UI 展示用的配送选项（standard 固定 $6；priority = $6 + $1/km）——都转换成“分”
-  const deliveryOptions: DeliveryOptionDisplay[] = DELIVERY_TYPES.map((type) => {
-    const definition = DELIVERY_OPTION_DEFINITIONS[type];
-    const localized = definition.labels[locale];
+  const deliveryOptions: DeliveryOptionDisplay[] = DELIVERY_TYPES.map(
+    (type) => {
+      const definition = DELIVERY_OPTION_DEFINITIONS[type];
+      const localized = definition.labels[locale];
 
-    let feeCents = 0;
-    if (fulfillment === "delivery" && subtotalCents > 0) {
-      if (type === "STANDARD") {
-        feeCents = 600;
-      } else {
-        // PRIORITY：$6 + $1/km
-        feeCents = 600 + 100 * billedDistanceForPriorityKm;
+      let feeCents = 0;
+      if (isDeliveryFulfillment && subtotalCents > 0) {
+        if (type === "STANDARD") {
+          feeCents = 600;
+        } else {
+          // PRIORITY：$6 + $1/km
+          feeCents = 600 + 100 * billedDistanceForPriorityKm;
+        }
       }
-    }
 
-    return {
-      type,
-      fee: feeCents,
-      eta: definition.eta,
-      provider: definition.provider,
-      title: localized.title,
-      description: localized.description,
-    };
-  });
+      return {
+        type,
+        fee: feeCents,
+        eta: definition.eta,
+        provider: definition.provider,
+        title: localized.title,
+        description: localized.description,
+      };
+    },
+  );
 
   const resetAddressValidation = () =>
     setAddressValidation({ distanceKm: null, isChecking: false, error: null });
@@ -318,14 +386,18 @@ export default function CheckoutPage() {
   const formatDistanceValue = (km: number) => {
     const rounded = Math.round(km * 10) / 10;
     if (!Number.isFinite(rounded)) return `${km} km`;
-    return `${Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1)} km`;
+    return `${
+      Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1)
+    } km`;
   };
 
   const applyDistanceTemplate = (template: string, distanceLabel?: string) =>
-    template.replace("{distance}", distanceLabel ?? "").replace("{radius}", radiusLabel);
+    template.replace("{distance}", distanceLabel ?? "").replace(
+      "{radius}",
+      radiusLabel,
+    );
 
   const selectedDeliveryDefinition = DELIVERY_OPTION_DEFINITIONS[deliveryType];
-  const isDeliveryFulfillment = fulfillment === "delivery";
 
   // 这里和上面的 deliveryOptions 保持同一套规则（单位：分）
   const deliveryFeeCents =
@@ -338,11 +410,11 @@ export default function CheckoutPage() {
   // === 积分抵扣相关计算 ===
 
   // 每“点”可以抵扣多少分（1 CAD = 100 分）
-const loyaltyCentsPerPoint = useMemo(() => {
-  if (!loyaltyInfo) return 0;
-  if (loyaltyInfo.points <= 0) return 0;
-  return 100; // 1 pt = $1.00
-}, [loyaltyInfo]);
+  const loyaltyCentsPerPoint = useMemo(() => {
+    if (!loyaltyInfo) return 0;
+    if (loyaltyInfo.points <= 0) return 0;
+    return 100; // 1 pt = $1.00
+  }, [loyaltyInfo]);
 
   const couponDiscountCents = useMemo(() => {
     if (!appliedCoupon) return 0;
@@ -370,7 +442,6 @@ const loyaltyCentsPerPoint = useMemo(() => {
     if (loyaltyCentsPerPoint <= 0) return 0;
 
     const raw = maxRedeemableCentsForOrder / loyaltyCentsPerPoint;
-    // 保留 2 位小数，避免出现一长串小数
     return Math.round(raw * 100) / 100;
   }, [loyaltyInfo, loyaltyCentsPerPoint, maxRedeemableCentsForOrder]);
 
@@ -386,17 +457,14 @@ const loyaltyCentsPerPoint = useMemo(() => {
       return 0;
     }
 
-    // 不允许超过本单/余额的最大可用积分
     const clampedPoints = Math.min(
       requestedPoints,
       maxRedeemablePointsForOrder,
     );
 
-    // ✅ 用四舍五入 + 很小的偏移，消除 24.48 * 100 = 2447.9999 这种浮点误差
     const centsFloat = clampedPoints * loyaltyCentsPerPoint;
     const cents = Math.round(centsFloat + 1e-6);
 
-    // 防止因为浮点误差超过本单可抵扣的最大金额
     return Math.min(cents, maxRedeemableCentsForOrder);
   }, [
     loyaltyInfo,
@@ -408,7 +476,8 @@ const loyaltyCentsPerPoint = useMemo(() => {
 
   // 抵扣后的商品小计：用于税和合计的计算
   const effectiveSubtotalCents = useMemo(
-    () => Math.max(0, subtotalCents - couponDiscountCents - loyaltyRedeemCents),
+    () =>
+      Math.max(0, subtotalCents - couponDiscountCents - loyaltyRedeemCents),
     [subtotalCents, couponDiscountCents, loyaltyRedeemCents],
   );
 
@@ -443,17 +512,139 @@ const loyaltyCentsPerPoint = useMemo(() => {
     customer.province.trim().length > 0 &&
     postalCodeIsValid;
 
+  // ⭐ 下单前置条件：有菜 + 姓名 + 手机号长度 + 手机已验证 + （外送时地址完整）
   const canPlaceOrder =
     localizedCartItems.length > 0 &&
     customer.name.trim().length > 0 &&
     customer.phone.trim().length >= 6 &&
+    phoneVerified &&
     (fulfillment === "pickup" || deliveryAddressReady);
 
   const scheduleLabel =
-    strings.scheduleOptions.find((option) => option.id === schedule)?.label ?? "";
+    strings.scheduleOptions.find((option) => option.id === schedule)?.label ??
+    "";
 
   const handleCustomerChange = (field: keyof CustomerInfo, value: string) => {
     setCustomer((prev) => ({ ...prev, [field]: value }));
+
+    // 🔐 手机号变更时，重置验证状态
+    if (field === "phone") {
+      setPhoneVerificationError(null);
+      setPhoneVerificationCode("");
+
+      const trimmed = value.trim();
+      if (!trimmed) {
+        // 清空手机号 → 一定是未验证
+        setPhoneVerified(false);
+        setPhoneVerificationStep("idle");
+        return;
+      }
+
+      if (memberPhone) {
+        // 会员：如果改回与数据库一致的手机号 → 保持已验证；否则要求重新验证
+        const normalizedMember = memberPhone.replace(/\s+/g, "");
+        const normalizedNew = trimmed.replace(/\s+/g, "");
+        if (normalizedNew === normalizedMember) {
+          setPhoneVerified(true);
+          setPhoneVerificationStep("verified");
+        } else {
+          setPhoneVerified(false);
+          setPhoneVerificationStep("idle");
+        }
+      } else {
+        // 非会员：任何修改都需要重新验证
+        setPhoneVerified(false);
+        setPhoneVerificationStep("idle");
+      }
+    }
+  };
+
+  // 发送短信验证码
+  const handleSendPhoneCode = async () => {
+    const rawPhone = customer.phone.trim();
+    if (rawPhone.length < 6) {
+      setPhoneVerificationError(
+        locale === "zh"
+          ? "请输入有效手机号后再获取验证码。"
+          : "Please enter a valid phone number before requesting a code.",
+      );
+      return;
+    }
+
+    setPhoneVerificationLoading(true);
+    setPhoneVerificationError(null);
+
+    try {
+      const res = await fetch(PHONE_OTP_REQUEST_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: rawPhone,
+          purpose: "checkout", // 后端可按用途区分（可选）
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Request failed with status ${res.status}`);
+      }
+
+      setPhoneVerificationStep("codeSent");
+    } catch (err) {
+      console.error(err);
+      setPhoneVerificationError(
+        locale === "zh"
+          ? "验证码发送失败，请稍后重试。"
+          : "Failed to send verification code. Please try again.",
+      );
+    } finally {
+      setPhoneVerificationLoading(false);
+    }
+  };
+
+  // 校验短信验证码
+  const handleVerifyPhoneCode = async () => {
+    const rawPhone = customer.phone.trim();
+    if (!phoneVerificationCode.trim()) {
+      setPhoneVerificationError(
+        locale === "zh"
+          ? "请输入短信验证码。"
+          : "Please enter the verification code.",
+      );
+      return;
+    }
+
+    setPhoneVerificationLoading(true);
+    setPhoneVerificationError(null);
+
+    try {
+      const res = await fetch(PHONE_OTP_VERIFY_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: rawPhone,
+          code: phoneVerificationCode.trim(),
+          purpose: "checkout",
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Verify failed with status ${res.status}`);
+      }
+
+      // ✅ 验证成功：允许下单
+      setPhoneVerified(true);
+      setPhoneVerificationStep("verified");
+    } catch (err) {
+      console.error(err);
+      setPhoneVerificationError(
+        locale === "zh"
+          ? "验证码验证失败，请检查后重试。"
+          : "Verification failed. Please check the code and try again.",
+      );
+      setPhoneVerified(false);
+    } finally {
+      setPhoneVerificationLoading(false);
+    }
   };
 
   const isCouponApplicable = (coupon: CheckoutCoupon) =>
@@ -491,18 +682,22 @@ const loyaltyCentsPerPoint = useMemo(() => {
     isDeliveryFulfillment,
   ]);
 
+  // 加载会员积分 + 会员手机号
   useEffect(() => {
-    if (authStatus !== "authenticated" || !session?.user) {
+    if (authStatus !== "authenticated") {
       setLoyaltyInfo(null);
       setAvailableCoupons([]);
+      setMemberPhone(null);
       return;
     }
 
-    const sessionWithUserId = session as SessionWithUserId;
-    const userId = sessionWithUserId?.userId;
+    const s = session as SessionWithUserId | null;
+    const userId = s?.userId ?? s?.user?.id ?? undefined;
+
     if (!userId) {
       setLoyaltyInfo(null);
       setAvailableCoupons([]);
+      setMemberPhone(null);
       return;
     }
 
@@ -513,12 +708,19 @@ const loyaltyCentsPerPoint = useMemo(() => {
         setLoyaltyLoading(true);
         setLoyaltyError(null);
 
-        const user = session?.user;
+        const user = s?.user ?? null;
         const params = new URLSearchParams({
-          userId: userId ?? "",
-          name: user?.name ?? '',
-          email: user?.email ?? '',
+          userId,
+          name: user?.name ?? "",
+          email: user?.email ?? "",
         });
+
+        // 如果 URL 上带了已验证的手机号，就顺手传给 membership 接口做绑定
+        if (verifiedPhone && phoneVerifiedFlag === "1") {
+          params.set("phone", verifiedPhone);
+          params.set("pv", "1");
+        }
+
         const res = await fetch(
           `/api/v1/membership/summary?${params.toString()}`,
           { signal: controller.signal },
@@ -540,6 +742,8 @@ const loyaltyCentsPerPoint = useMemo(() => {
           points: data.points,
           availableDiscountCents: data.availableDiscountCents,
         });
+
+        setMemberPhone(data.phone ?? null);
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") {
           return;
@@ -551,6 +755,7 @@ const loyaltyCentsPerPoint = useMemo(() => {
             : "Failed to load loyalty info. Points cannot be used right now.",
         );
         setLoyaltyInfo(null);
+        setMemberPhone(null);
       } finally {
         setLoyaltyLoading(false);
       }
@@ -559,8 +764,9 @@ const loyaltyCentsPerPoint = useMemo(() => {
     void loadLoyalty();
 
     return () => controller.abort();
-  }, [authStatus, session, locale]);
+  }, [authStatus, session, locale, verifiedPhone, phoneVerifiedFlag]);
 
+  // 加载优惠券列表
   useEffect(() => {
     if (authStatus !== "authenticated" || !session?.user) {
       setAvailableCoupons([]);
@@ -575,7 +781,6 @@ const loyaltyCentsPerPoint = useMemo(() => {
     }
 
     const ensuredUserId: string = userId;
-
     const controller = new AbortController();
 
     async function loadCoupons() {
@@ -593,13 +798,22 @@ const loyaltyCentsPerPoint = useMemo(() => {
           throw new Error(`Failed with status ${res.status}`);
         }
 
-        const data = (await res.json()) as (CheckoutCoupon & {
-          status?: string;
-        })[];
+        const raw = (await res.json()) as CouponsApiEnvelope;
 
-        const normalized = Array.isArray(data)
-          ? data.filter((item) => !item.status || item.status === 'active')
-          : [];
+        let list: CheckoutCoupon[] = [];
+        if (Array.isArray(raw)) {
+          list = raw;
+        } else if (
+          raw &&
+          typeof raw === "object" &&
+          Array.isArray(raw.details)
+        ) {
+          list = raw.details;
+        }
+
+        const normalized = list.filter(
+          (item) => !item.status || item.status === "active",
+        );
 
         setAvailableCoupons(normalized);
       } catch (err) {
@@ -623,8 +837,36 @@ const loyaltyCentsPerPoint = useMemo(() => {
     return () => controller.abort();
   }, [authStatus, session, locale]);
 
+  // 用会员手机号预填结算电话：只填一次，且用户没自己输入时才填
+  useEffect(() => {
+    if (phonePrefilled) return;
+    if (!memberPhone) return;
 
-  // 带可选 override 类型的距离校验，解决“优先闪送还是按 5km 算”的问题
+    setCustomer((prev) => {
+      if (prev.phone && prev.phone.trim().length > 0) {
+        return prev; // 用户已经输入了，就不覆盖
+      }
+      return { ...prev, phone: memberPhone };
+    });
+
+    setPhonePrefilled(true);
+  }, [memberPhone, phonePrefilled]);
+
+  // ✅ 如果当前手机号与会员账号中的手机号一致，就自动视为“已验证”
+  useEffect(() => {
+    if (!memberPhone) return;
+
+    const normalizedMember = memberPhone.replace(/\s+/g, "");
+    const normalizedCurrent = customer.phone.replace(/\s+/g, "");
+
+    if (normalizedCurrent && normalizedCurrent === normalizedMember) {
+      setPhoneVerified(true);
+      setPhoneVerificationStep("verified");
+      setPhoneVerificationError(null);
+    }
+  }, [memberPhone, customer.phone]);
+
+  // 带可选 override 类型的距离校验
   const validateDeliveryDistance = async (
     overrideDeliveryType?: DeliveryTypeOption,
   ) => {
@@ -648,7 +890,7 @@ const loyaltyCentsPerPoint = useMemo(() => {
 
       const distanceKm = calculateDistanceKm(STORE_COORDINATES, coordinates);
 
-      // ✅ 标准配送：限制在 DELIVERY_RADIUS_KM 以内
+      // 标准配送：限制在 DELIVERY_RADIUS_KM 以内
       if (effectiveType === "STANDARD" && distanceKm > DELIVERY_RADIUS_KM) {
         const distanceLabel = formatDistanceValue(distanceKm);
         const message = applyDistanceTemplate(
@@ -663,7 +905,7 @@ const loyaltyCentsPerPoint = useMemo(() => {
         return { success: false } as const;
       }
 
-      // ✅ 优先闪送：最大 PRIORITY_MAX_RADIUS_KM
+      // 优先闪送：最大 PRIORITY_MAX_RADIUS_KM
       if (effectiveType === "PRIORITY" && distanceKm > PRIORITY_MAX_RADIUS_KM) {
         const distanceLabel = formatDistanceValue(distanceKm);
         const message =
@@ -679,7 +921,7 @@ const loyaltyCentsPerPoint = useMemo(() => {
         return { success: false } as const;
       }
 
-      // ✅ 在可配送范围内：记录距离用于计费
+      // 在可配送范围内：记录距离用于计费
       setAddressValidation({
         distanceKm,
         isChecking: false,
@@ -699,7 +941,7 @@ const loyaltyCentsPerPoint = useMemo(() => {
   // ⭐ 统一触发：只在外送 + 有地址1 + 合法邮编 时才会真正调用 validateDeliveryDistance
   const triggerDistanceValidationIfReady = () => {
     if (!isDeliveryFulfillment) return;
-    if (!hasDeliveryAddressInputs) return; // addressLine1 + valid postal
+    if (!hasDeliveryAddressInputs) return;
     if (addressValidation.isChecking) return;
 
     void validateDeliveryDistance();
@@ -753,13 +995,12 @@ const loyaltyCentsPerPoint = useMemo(() => {
     const taxableBaseCentsForOrder =
       discountedSubtotalForOrder +
       (TAX_ON_DELIVERY ? deliveryFeeCentsForOrder : 0);
-    const taxCentsForOrder = Math.round(taxableBaseCentsForOrder * TAX_RATE);
+    const taxCentsForOrder = Math.round(
+      taxableBaseCentsForOrder * TAX_RATE,
+    );
 
-    // ✅ 最终总价：抵扣后小计 + 配送费 + 税
     const totalCentsForOrder =
-      discountedSubtotalForOrder +
-      deliveryFeeCentsForOrder +
-      taxCentsForOrder;
+      discountedSubtotalForOrder + deliveryFeeCentsForOrder + taxCentsForOrder;
 
     const deliveryMetadata = isDeliveryFulfillment
       ? {
@@ -773,7 +1014,6 @@ const loyaltyCentsPerPoint = useMemo(() => {
         }
       : null;
 
-    // 公共 payload（积分 / 地址 / 菜单 等都放在 metadata 里）
     const payload = {
       locale,
       amountCents: totalCentsForOrder,
@@ -791,8 +1031,8 @@ const loyaltyCentsPerPoint = useMemo(() => {
         customer: { ...customer, address: deliveryAddressText },
 
         // 小计相关
-        subtotalCents, // 原始小计（未扣积分）
-        subtotalAfterDiscountCents: discountedSubtotalForOrder, // 抵扣后的实际小计
+        subtotalCents,
+        subtotalAfterDiscountCents: discountedSubtotalForOrder,
         taxCents: taxCentsForOrder,
         serviceFeeCents,
         deliveryFeeCents: deliveryFeeCentsForOrder,
@@ -819,13 +1059,11 @@ const loyaltyCentsPerPoint = useMemo(() => {
 
         items: localizedCartItems.map((cartItem) => ({
           id: cartItem.itemId,
-          // Clover 那边只用英文名
           nameEn: resolveEnglishName(cartItem.itemId, cartItem.item.name),
           nameZh: cartItem.item.name,
           displayName: cartItem.item.name,
           quantity: cartItem.quantity,
           notes: cartItem.notes,
-          // 单价（分）
           priceCents: Math.round(cartItem.item.price * 100),
         })),
       },
@@ -835,13 +1073,11 @@ const loyaltyCentsPerPoint = useMemo(() => {
       // 1️⃣ 纯积分订单：抵扣后总价为 0 -> 不走 Clover
       if (totalCentsForOrder <= 0) {
         await apiFetch("/orders/loyalty-only", {
-          // ⚠ 如果你后端定义的路径不是这个，把 '/orders/loyalty-only' 换成你真实的 API 路径就行
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
 
-        // 后端已经建单、扣积分、标记为已支付，前端直接跳 thank-you
         router.push(`/${locale}/thank-you/${orderNumber}`);
         return;
       }
@@ -863,7 +1099,6 @@ const loyaltyCentsPerPoint = useMemo(() => {
       if (typeof window !== "undefined") {
         window.location.href = checkoutUrl;
       } else {
-        // 理论上不会走到这里，只是兜底
         setConfirmation({
           orderNumber,
           totalCents: totalCentsForOrder,
@@ -876,7 +1111,6 @@ const loyaltyCentsPerPoint = useMemo(() => {
           ? error.message
           : strings.errors.checkoutFailed;
       setErrorMessage(message);
-      // ❌ 注意：失败时不再 setConfirmation，避免“红色报错 + 绿色成功”同时出现
     } finally {
       setIsSubmitting(false);
     }
@@ -890,7 +1124,6 @@ const loyaltyCentsPerPoint = useMemo(() => {
   let addressDistanceMessage: DistanceMessage | null = null;
   if (isDeliveryFulfillment) {
     if (!hasDeliveryAddressInputs) {
-      // 只有“标准配送”才显示 5km 限制那句文案
       if (deliveryType === "STANDARD") {
         addressDistanceMessage = {
           text: applyDistanceTemplate(strings.deliveryDistance.restriction),
@@ -951,53 +1184,53 @@ const loyaltyCentsPerPoint = useMemo(() => {
               {strings.paymentHint}
             </p>
           </div>
-        <div className="flex flex-col items-start gap-3 md:items-end">
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <span className="font-medium">{strings.languageSwitch}</span>
-            <div className="inline-flex gap-1 rounded-full bg-slate-200 p-1">
-              {LOCALES.map((code) => (
-                <button
-                  key={code}
-                  type="button"
-                  onClick={() => {
-                    try {
-                      document.cookie = `locale=${code}; path=/; max-age=${
-                        60 * 60 * 24 * 365
-                      }`;
-                      localStorage.setItem("preferred-locale", code);
-                    } catch {}
-                    const nextPath = addLocaleToPath(code, pathname || "/");
-                    router.push(q ? `${nextPath}?${q}` : nextPath);
-                  }}
-                  className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                    locale === code
-                      ? "bg-white text-slate-900 shadow"
-                      : "text-slate-600 hover:bg-white/70"
-                  }`}
-                  aria-pressed={locale === code}
-                >
-                  {LANGUAGE_NAMES[code]}
-                </button>
-              ))}
+          <div className="flex flex-col items-start gap-3 md:items-end">
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <span className="font-medium">{strings.languageSwitch}</span>
+              <div className="inline-flex gap-1 rounded-full bg-slate-200 p-1">
+                {LOCALES.map((code) => (
+                  <button
+                    key={code}
+                    type="button"
+                    onClick={() => {
+                      try {
+                        document.cookie = `locale=${code}; path=/; max-age=${
+                          60 * 60 * 24 * 365
+                        }`;
+                        localStorage.setItem("preferred-locale", code);
+                      } catch {}
+                      const nextPath = addLocaleToPath(code, pathname || "/");
+                      router.push(q ? `${nextPath}?${q}` : nextPath);
+                    }}
+                    className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                      locale === code
+                        ? "bg-white text-slate-900 shadow"
+                        : "text-slate-600 hover:bg-white/70"
+                    }`}
+                    aria-pressed={locale === code}
+                  >
+                    {LANGUAGE_NAMES[code]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 会员入口 + 返回菜单 */}
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href={membershipHref}
+                className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-slate-700"
+              >
+                {membershipLabel}
+              </Link>
+              <Link
+                href={orderHref}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
+              >
+                {locale === "zh" ? "返回菜单" : "Back to menu"}
+              </Link>
             </div>
           </div>
-
-          {/* 会员入口 + 返回菜单 */}
-          <div className="flex flex-wrap gap-2">
-            <Link
-              href={membershipHref}
-              className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-slate-700"
-            >
-              {membershipLabel}
-            </Link>
-            <Link
-              href={orderHref}
-              className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
-            >
-              {locale === "zh" ? "返回菜单" : "Back to menu"}
-            </Link>
-          </div>
-        </div>
         </div>
       </section>
 
@@ -1115,7 +1348,6 @@ const loyaltyCentsPerPoint = useMemo(() => {
                           onClick={() => {
                             setDeliveryType(option.type);
 
-                            // 如果已经有地址+邮编，就用新的配送类型重新校验一次距离
                             if (
                               isDeliveryFulfillment &&
                               hasDeliveryAddressInputs &&
@@ -1181,6 +1413,7 @@ const loyaltyCentsPerPoint = useMemo(() => {
                 </p>
               )}
 
+              {/* 联系方式 + 手机号验证 */}
               <div className="space-y-3">
                 <h3 className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
                   {strings.contactInfoLabel}
@@ -1196,17 +1429,89 @@ const loyaltyCentsPerPoint = useMemo(() => {
                     className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
                   />
                 </label>
+
                 <label className="block text-xs font-medium text-slate-600">
                   {strings.contactFields.phone}
-                  <input
-                    value={customer.phone}
-                    onChange={(event) =>
-                      handleCustomerChange("phone", event.target.value)
-                    }
-                    placeholder={strings.contactFields.phonePlaceholder}
-                    className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
-                  />
+                  <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <input
+                      value={customer.phone}
+                      onChange={(event) =>
+                        handleCustomerChange("phone", event.target.value)
+                      }
+                      placeholder={strings.contactFields.phonePlaceholder}
+                      className="w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                    />
+                    <div className="flex items-center gap-2">
+                      {phoneVerified ? (
+                        <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-700">
+                          {locale === "zh" ? "手机号已验证" : "Phone verified"}
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handleSendPhoneCode}
+                          disabled={
+                            phoneVerificationLoading ||
+                            customer.phone.trim().length < 6
+                          }
+                          className="shrink-0 rounded-full border border-slate-300 px-3 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {phoneVerificationLoading
+                            ? locale === "zh"
+                              ? "发送中…"
+                              : "Sending…"
+                            : locale === "zh"
+                              ? "获取验证码"
+                              : "Send code"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {!phoneVerified && phoneVerificationStep === "codeSent" && (
+                    <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <input
+                        value={phoneVerificationCode}
+                        onChange={(e) =>
+                          setPhoneVerificationCode(e.target.value)
+                        }
+                        placeholder={
+                          locale === "zh" ? "请输入短信验证码" : "Enter SMS code"
+                        }
+                        className="w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleVerifyPhoneCode}
+                        disabled={phoneVerificationLoading}
+                        className="shrink-0 rounded-full bg-slate-900 px-3 py-1 text-[11px] font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {phoneVerificationLoading
+                          ? locale === "zh"
+                            ? "验证中…"
+                            : "Verifying…"
+                          : locale === "zh"
+                            ? "验证手机号"
+                            : "Verify phone"}
+                      </button>
+                    </div>
+                  )}
+
+                  {phoneVerificationError && (
+                    <p className="mt-1 text-[11px] text-rose-600">
+                      {phoneVerificationError}
+                    </p>
+                  )}
+
+                  {!phoneVerified && !phoneVerificationError && (
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      {locale === "zh"
+                        ? "为保障订单通知及外送沟通，请先验证手机号后再提交订单。"
+                        : "Please verify your phone number before placing the order so we can contact you if needed."}
+                    </p>
+                  )}
                 </label>
+
                 {fulfillment === "delivery" ? (
                   <div className="space-y-3 rounded-2xl bg-slate-50 p-3">
                     <label className="block text-xs font-medium text-slate-600">
@@ -1332,6 +1637,7 @@ const loyaltyCentsPerPoint = useMemo(() => {
                     ) : null}
                   </div>
                 ) : null}
+
                 <label className="block text-xs font-medium text-slate-600">
                   {strings.contactFields.notes}
                   <textarea
@@ -1357,7 +1663,10 @@ const loyaltyCentsPerPoint = useMemo(() => {
                 ) : null}
               </div>
 
-              {(availableCoupons.length > 0 || appliedCoupon || couponLoading || couponError) && (
+              {(availableCoupons.length > 0 ||
+                appliedCoupon ||
+                couponLoading ||
+                couponError) && (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-slate-800">
                   <div className="flex items-center justify-between gap-2">
                     <div>
@@ -1405,14 +1714,19 @@ const loyaltyCentsPerPoint = useMemo(() => {
                         {appliedCoupon.minSpendCents ? (
                           <span
                             className={
-                              subtotalCents >= (appliedCoupon.minSpendCents ?? 0)
+                              subtotalCents >=
+                              (appliedCoupon.minSpendCents ?? 0)
                                 ? "text-emerald-700"
                                 : "text-red-600"
                             }
                           >
                             {locale === "zh"
-                              ? `满 ${formatMoney(appliedCoupon.minSpendCents)} 可用`
-                              : `Min spend ${formatMoney(appliedCoupon.minSpendCents)}.`}
+                              ? `满 ${formatMoney(
+                                  appliedCoupon.minSpendCents,
+                                )} 可用`
+                              : `Min spend ${formatMoney(
+                                  appliedCoupon.minSpendCents,
+                                )}.`}
                           </span>
                         ) : null}
                       </div>
@@ -1434,8 +1748,12 @@ const loyaltyCentsPerPoint = useMemo(() => {
                                 <p className="text-[11px] text-slate-500">
                                   {coupon.minSpendCents
                                     ? locale === "zh"
-                                      ? `满 ${formatMoney(coupon.minSpendCents)} 可用`
-                                      : `Min spend ${formatMoney(coupon.minSpendCents)}`
+                                      ? `满 ${formatMoney(
+                                          coupon.minSpendCents,
+                                        )} 可用`
+                                      : `Min spend ${formatMoney(
+                                          coupon.minSpendCents,
+                                        )}`
                                     : locale === "zh"
                                       ? "无门槛"
                                       : "No minimum spend"}
@@ -1467,7 +1785,9 @@ const loyaltyCentsPerPoint = useMemo(() => {
                                 {formatMoney(coupon.discountCents)}
                               </span>
                               {coupon.expiresAt ? (
-                                <span className="text-slate-500">{coupon.expiresAt}</span>
+                                <span className="text-slate-500">
+                                  {coupon.expiresAt}
+                                </span>
                               ) : null}
                             </div>
                           </div>
@@ -1476,14 +1796,18 @@ const loyaltyCentsPerPoint = useMemo(() => {
 
                       {availableCoupons.length === 0 && !couponLoading ? (
                         <p className="text-[11px] text-slate-600">
-                          {locale === "zh" ? "暂无可用优惠券。" : "No coupons available."}
+                          {locale === "zh"
+                            ? "暂无可用优惠券。"
+                            : "No coupons available."}
                         </p>
                       ) : null}
                     </div>
                   )}
 
                   {couponError && (
-                    <p className="mt-2 text-[11px] text-red-600">{couponError}</p>
+                    <p className="mt-2 text-[11px] text-red-600">
+                      {couponError}
+                    </p>
                   )}
                 </div>
               )}
@@ -1496,17 +1820,17 @@ const loyaltyCentsPerPoint = useMemo(() => {
                         {locale === "zh" ? "积分抵扣" : "Redeem points"}
                       </p>
                       <p className="mt-1 text-[11px] text-slate-600">
-  {locale === "zh"
-    ? `当前积分：${loyaltyInfo.points.toFixed(
-        2,
-      )}，本单最多可抵扣 ${formatMoney(
-        maxRedeemableCentsForOrder,
-      )}。`
-    : `You have ${loyaltyInfo.points.toFixed(
-        2,
-      )} pts. You can redeem up to ${formatMoney(
-        maxRedeemableCentsForOrder,
-      )} this order.`}
+                        {locale === "zh"
+                          ? `当前积分：${loyaltyInfo.points.toFixed(
+                              2,
+                            )}，本单最多可抵扣 ${formatMoney(
+                              maxRedeemableCentsForOrder,
+                            )}。`
+                          : `You have ${loyaltyInfo.points.toFixed(
+                              2,
+                            )} pts. You can redeem up to ${formatMoney(
+                              maxRedeemableCentsForOrder,
+                            )} this order.`}
                       </p>
                     </div>
                     {loyaltyLoading && (
@@ -1523,34 +1847,39 @@ const loyaltyCentsPerPoint = useMemo(() => {
                           ? "本单使用积分数量"
                           : "Points to use this order"}
                       </span>
-<input
-  type="number"
-  min={0}
-  step="0.01"
-  value={redeemPointsInput}
-  onChange={(e) => {
-    const raw = e.target.value;
-    const n = Number(raw);
-    if (Number.isNaN(n) || n < 0) {
-      setRedeemPointsInput("");
-      return;
-    }
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={redeemPointsInput}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          const n = Number(raw);
+                          if (Number.isNaN(n) || n < 0) {
+                            setRedeemPointsInput("");
+                            return;
+                          }
 
-    const clamped = Math.min(n, maxRedeemablePointsForOrder);
-    setRedeemPointsInput(String(clamped));
-  }}
-  className="mt-1 w-full rounded-2xl border border-slate-300 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
-/>
+                          const clamped = Math.min(
+                            n,
+                            maxRedeemablePointsForOrder,
+                          );
+                          setRedeemPointsInput(String(clamped));
+                        }}
+                        className="mt-1 w-full rounded-2xl border border-slate-300 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                      />
                     </label>
-<button
-  type="button"
-  className="shrink-0 rounded-2xl border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
-  onClick={() =>
-    setRedeemPointsInput(maxRedeemablePointsForOrder.toFixed(2))
-  }
->
-  {locale === 'zh' ? '全部使用' : 'Use max'}
-</button>
+                    <button
+                      type="button"
+                      className="shrink-0 rounded-2xl border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
+                      onClick={() =>
+                        setRedeemPointsInput(
+                          maxRedeemablePointsForOrder.toFixed(2),
+                        )
+                      }
+                    >
+                      {locale === "zh" ? "全部使用" : "Use max"}
+                    </button>
 
                     <div className="text-[11px] text-slate-600 md:w-40">
                       <p className="font-medium">
@@ -1572,24 +1901,29 @@ const loyaltyCentsPerPoint = useMemo(() => {
                 </div>
               )}
 
+              {/* 订单金额小结 */}
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-
                 <div className="flex items-center justify-between text-xs">
                   <span>{strings.summary.subtotal}</span>
                   <span>{formatMoney(subtotalCents)}</span>
                 </div>
+
                 {couponDiscountCents > 0 && (
                   <div className="mt-1 flex items-center justify-between text-xs text-amber-700">
                     <span>{locale === "zh" ? "优惠券" : "Coupon"}</span>
                     <span>-{formatMoney(couponDiscountCents)}</span>
                   </div>
                 )}
+
                 {loyaltyRedeemCents > 0 && (
                   <div className="mt-1 flex items-center justify-between text-xs">
-                    <span>{locale === "zh" ? "积分抵扣" : "Points discount"}</span>
+                    <span>
+                      {locale === "zh" ? "积分抵扣" : "Points discount"}
+                    </span>
                     <span>-{formatMoney(loyaltyRedeemCents)}</span>
                   </div>
-)}
+                )}
+
                 {serviceFeeCents > 0 ? (
                   <div className="mt-2 flex items-center justify-between text-xs">
                     <span>{strings.summary.serviceFee}</span>
@@ -1627,7 +1961,7 @@ const loyaltyCentsPerPoint = useMemo(() => {
               </button>
 
               {/* 信用卡手续费提示（仅提示，不参与金额计算） */}
-              <p className="mt-2 text-[11px] leading-snug text-slate-500 text-center">
+              <p className="mt-2 text-center text-[11px] leading-snug text-slate-500">
                 {locale === "zh"
                   ? "使用信用卡支付时，支付网络可能会额外收取不高于订单金额 2.4% 的信用卡手续费（由 Clover / 发卡行收取，我们不从中获利）。具体金额以刷卡小票或银行账单为准。"
                   : "When paying by credit card, the payment networks may apply a surcharge of up to 2.4% of the order total (charged by Clover / your card issuer; we do not profit from this). Please refer to your receipt or card statement for the exact amount."}

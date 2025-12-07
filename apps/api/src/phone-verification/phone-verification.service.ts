@@ -1,0 +1,141 @@
+// apps/api/src/phone-verification/phone-verification.service.ts
+import { Injectable, Logger } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { PhoneVerificationStatus } from '@prisma/client';
+
+type SendCodeResult = {
+  ok: boolean;
+  error?: string;
+};
+
+export type VerifyCodeResult = {
+  ok: boolean;
+  verificationToken?: string;
+  error?: string;
+};
+
+@Injectable()
+export class PhoneVerificationService {
+  private readonly logger = new Logger(PhoneVerificationService.name);
+
+  constructor(private readonly prisma: PrismaService) {}
+
+  /** 简单标准化手机号：去掉空格和中间的破折号等 */
+  private normalizePhone(raw: string): string {
+    return raw.trim().replace(/\s+/g, '').replace(/-/g, '');
+  }
+
+  /** 生成 6 位数字验证码 */
+  private generateCode(): string {
+    const n = Math.floor(100000 + Math.random() * 900000);
+    return String(n);
+  }
+
+  /** 发送验证码（MVP: 只写入 DB + 日志，不真正发短信） */
+  async sendCode(params: {
+    phone: string;
+    locale?: string;
+  }): Promise<SendCodeResult> {
+    const { phone } = params;
+    const normalized = this.normalizePhone(phone);
+    if (!normalized) {
+      return { ok: false, error: 'phone is empty' };
+    }
+
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 10 * 60 * 1000); // 10 分钟有效
+
+    const code = this.generateCode();
+
+    await this.prisma.phoneVerification.create({
+      data: {
+        phone: normalized,
+        code,
+        status: PhoneVerificationStatus.PENDING,
+        expiresAt,
+      },
+    });
+
+    // ⭐ 这里将来可以接入真正的短信服务商
+    // 目前先打日志（注意生产环境不要把 code 打到日志里，如果介意安全）
+    this.logger.log(
+      `[DEV] Phone verification code ${code} sent to phone=${normalized}`,
+    );
+
+    // 如果你在开发环境想直接把 code 返回给前端方便测试，也可以这样：
+    // if (process.env.NODE_ENV !== 'production') {
+    //   return { ok: true, devCode: code } as any;
+    // }
+
+    return { ok: true };
+  }
+
+  /** 校验验证码，成功时返回 verificationToken（用来给前端存起来） */
+  async verifyCode(params: {
+    phone: string;
+    code: string;
+  }): Promise<VerifyCodeResult> {
+    const { phone, code } = params;
+    const normalized = this.normalizePhone(phone);
+    const codeTrimmed = code.trim();
+
+    if (!normalized || !codeTrimmed) {
+      return { ok: false, error: 'phone or code is empty' };
+    }
+
+    const now = new Date();
+
+    // 找到该手机号最近一次验证码记录
+    const latest = await this.prisma.phoneVerification.findFirst({
+      where: {
+        phone: normalized,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!latest) {
+      return { ok: false, error: 'code_not_found' };
+    }
+
+    // 过期
+    if (latest.expiresAt.getTime() < now.getTime()) {
+      await this.prisma.phoneVerification.update({
+        where: { id: latest.id },
+        data: {
+          status: PhoneVerificationStatus.CONSUMED,
+          consumedAt: now,
+        },
+      });
+      return { ok: false, error: 'code_expired' };
+    }
+
+    // 不匹配
+    if (latest.code !== codeTrimmed) {
+      await this.prisma.phoneVerification.update({
+        where: { id: latest.id },
+        data: {
+          attempts: latest.attempts + 1,
+          lastAttemptAt: now,
+        },
+      });
+      return { ok: false, error: 'code_invalid' };
+    }
+
+    // ✅ 验证成功：标记为 VERIFIED
+    await this.prisma.phoneVerification.update({
+      where: { id: latest.id },
+      data: {
+        status: PhoneVerificationStatus.VERIFIED,
+        verifiedAt: now,
+      },
+    });
+
+    // verificationToken 先直接用这条记录的 id，简单可靠且唯一
+    const verificationToken = latest.id;
+
+    return {
+      ok: true,
+      verificationToken,
+    };
+  }
+}

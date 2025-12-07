@@ -1,3 +1,4 @@
+//Users/apple/sanqinMVP/apps/api/src/orders/orders.controller.ts
 import {
   Body,
   Controller,
@@ -46,6 +47,46 @@ export class OrdersController {
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
   ) {
     return this.ordersService.recent(limit);
+  }
+
+  /**
+   * 门店订单看板：
+   * GET /api/v1/orders/board
+   *
+   * 查询参数：
+   * - status: 逗号分隔的状态列表，例如：pending,paid,making,ready
+   * - channel: 逗号分隔的渠道列表，例如：web,in_store
+   * - limit: 最大返回数量（默认 50）
+   * - sinceMinutes: 只看最近 N 分钟内的订单（默认 24*60）
+   */
+  @Get('board')
+  board(
+    @Query('status') statusRaw?: string,
+    @Query('channel') channelRaw?: string,
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit?: number,
+    @Query('sinceMinutes', new DefaultValuePipe(1440), ParseIntPipe)
+    sinceMinutes?: number,
+  ) {
+    const statusIn = statusRaw
+      ? (statusRaw
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean) as OrderStatus[])
+      : undefined;
+
+    const channelIn = channelRaw
+      ? (channelRaw
+          .split(',')
+          .map((c) => c.trim())
+          .filter(Boolean) as Array<'web' | 'in_store' | 'ubereats'>)
+      : undefined;
+
+    return this.ordersService.board({
+      statusIn,
+      channelIn,
+      limit,
+      sinceMinutes,
+    });
   }
 
   /**
