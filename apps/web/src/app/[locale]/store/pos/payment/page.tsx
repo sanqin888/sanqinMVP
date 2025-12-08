@@ -46,17 +46,18 @@ type PosPrintRequest = {
  * 把当前订单的信息发给本地打印服务
  * 本地服务地址： http://127.0.0.1:19191/print-pos
  */
-async function sendPosPrintRequest(payload: PosPrintRequest) {
+function sendPosPrintRequest(payload: PosPrintRequest) {
   try {
-    await fetch("http://127.0.0.1:19191/print-pos", {
+    // 不用 await，让它在后台自己跑
+    fetch("http://127.0.0.1:19191/print-pos", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+    }).catch((err) => {
+      console.error("Failed to send POS print request:", err);
     });
   } catch (err) {
-    console.error("Failed to send POS print request:", err);
-    // 如果你希望前端提示错误，这里可以抛出：
-    // throw err;
+    console.error("Failed to send POS print request (sync error):", err);
   }
 }
 
@@ -560,6 +561,8 @@ export default function StorePosPaymentPage() {
       const itemsPayload = snapshot.items.map((item) => ({
         productId: item.id,
         qty: item.quantity,
+        // 后端单价通常用“元”还是“分”你之前已经定过了，
+        // 这里我按你 web 那套：API 用“元”，DB 存“分”，所以 /100
         unitPrice: item.unitPriceCents / 100,
         displayName: locale === "zh" ? item.nameZh : item.nameEn,
         nameEn: item.nameEn,
@@ -567,23 +570,40 @@ export default function StorePosPaymentPage() {
       }));
 
       const body = {
-        channel: "in_store",
+        // ✅ channel：必须是 web | in_store | ubereats 之一
+        // POS 场景我们固定用 in_store
+        channel: "in_store" as const,
+
+        // ✅ fulfillmentType：必须是 pickup | dine_in | delivery 之一
+        // 这里直接用 state 里保存的 fulfillment（类型是 "pickup" | "dine_in"）
         fulfillmentType: fulfillment,
-        paymentMethod,
+
+        // 下面这些字段按你的 DTO 来，这几个名字在前面代码里已经统一过
         subtotalCents: snapshot.subtotalCents,
+        taxCents: snapshot.taxCents,
+        totalCents: snapshot.totalCents,
+
+        // 支付方式如果后端暂时没校验，可以先照传，之后再看需要不需要进 DTO
+        paymentMethod,
+
         items: itemsPayload,
+
         clientRequestId: `POS-${Date.now()}`,
       };
 
+      // 👉 调试用：你可以先打开这一行看看真实发出去是什么
+      // console.log("POS create order body:", body);
+
       const order = await apiFetch<CreatePosOrderResponse>("/orders", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
 
       const orderNumber = order.clientRequestId ?? order.id;
       const pickupCode = order.pickupCode ?? null;
 
-      // ✅ 调用本地打印服务：自动打印顾客联 + 后厨联
+      // ✅ 打印：发送给本地打印服务（无弹窗）
       if (typeof window !== "undefined") {
         await sendPosPrintRequest({
           locale,
@@ -594,7 +614,6 @@ export default function StorePosPaymentPage() {
           snapshot,
         });
 
-        // 清掉 localStorage，让本单变成“已处理”
         try {
           window.localStorage.removeItem(POS_DISPLAY_STORAGE_KEY);
         } catch {
@@ -608,9 +627,7 @@ export default function StorePosPaymentPage() {
       });
     } catch (err) {
       console.error("Failed to place POS order:", err);
-      setError(
-        err instanceof Error ? err.message : t.errorGeneric,
-      );
+      setError(err instanceof Error ? err.message : t.errorGeneric);
     } finally {
       setSubmitting(false);
     }
