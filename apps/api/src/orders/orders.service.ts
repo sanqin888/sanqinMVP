@@ -248,17 +248,6 @@ export class OrdersService {
       ? DELIVERY_RULES[dto.deliveryType]
       : undefined;
 
-    // 统一归一化联系人信息（来自 Checkout / Clover metadata）
-    const contactName =
-      typeof dto.contactName === 'string' && dto.contactName.trim().length > 0
-        ? dto.contactName.trim()
-        : undefined;
-
-    const contactPhone =
-      typeof dto.contactPhone === 'string' && dto.contactPhone.trim().length > 0
-        ? dto.contactPhone.trim()
-        : undefined;
-
     // 3) 税基：菜品小计 - 优惠券 - 积分 + 配送费（配送费也计税，对齐前端 Checkout）
     const purchaseBaseCents = Math.max(
       0,
