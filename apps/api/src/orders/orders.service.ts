@@ -3,9 +3,9 @@
 import {
   BadRequestException,
   Injectable,
-  Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { AppLogger } from '../common/app-logger';
 import { DeliveryProvider, DeliveryType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
@@ -70,7 +70,7 @@ const DELIVERY_RULES: Record<
 
 @Injectable()
 export class OrdersService {
-  private readonly logger = new Logger(OrdersService.name);
+  private readonly logger = new AppLogger(OrdersService.name);
 
   constructor(
     private readonly prisma: PrismaService,
@@ -125,7 +125,9 @@ export class OrdersService {
       !dto.deliveryDestination
     ) {
       this.logger.warn(
-        `Priority delivery order is missing deliveryDestination; creating order without Uber Direct dispatch. clientRequestId=${dto.clientRequestId ?? 'N/A'}`,
+        `${this.formatOrderLogContext({
+          clientRequestId: dto.clientRequestId ?? null,
+        })}Priority delivery order is missing deliveryDestination; creating order without Uber Direct dispatch.`,
       );
     }
 
@@ -134,7 +136,11 @@ export class OrdersService {
       typeof idempotencyKey === 'string' ? idempotencyKey.trim() : undefined;
     const normalizedHeaderKey = normalizeStableId(headerKey);
     if (headerKey && !normalizedHeaderKey) {
-      this.logger.warn(`Ignoring invalid Idempotency-Key header: ${headerKey}`);
+      this.logger.warn(
+        `${this.formatOrderLogContext({
+          clientRequestId: dto.clientRequestId ?? null,
+        })}Ignoring invalid Idempotency-Key header: ${headerKey}`,
+      );
     }
 
     // —— body 里的 clientRequestId：标准化（uuid/cuid），失败就用原始字符串
@@ -168,6 +174,25 @@ export class OrdersService {
       this.derivePickupCode(stableKey) ??
       (1000 + Math.floor(Math.random() * 9000)).toString();
 
+    // —— 订单联系人信息（和账号手机号 User.phone 区分开）
+    // 优先用 DTO 上的 contactName / contactPhone（如果你在 CreateOrderDto 里加了这俩字段），
+    // 其次回退到 deliveryDestination.name / phone（外送场景）。
+    const contactName =
+      typeof dto.contactName === 'string' && dto.contactName.trim().length > 0
+        ? dto.contactName.trim()
+        : typeof dto.deliveryDestination?.name === 'string' &&
+            dto.deliveryDestination.name.trim().length > 0
+          ? dto.deliveryDestination.name.trim()
+          : null;
+
+    const contactPhone =
+      typeof dto.contactPhone === 'string' && dto.contactPhone.trim().length > 0
+        ? dto.contactPhone.trim()
+        : typeof dto.deliveryDestination?.phone === 'string' &&
+            dto.deliveryDestination.phone.trim().length > 0
+          ? dto.deliveryDestination.phone.trim()
+          : null;
+
     // 1) 服务端重算金额（兼容旧版“单位：分”字段）
     const subtotalCentsRaw =
       typeof dto.subtotalCents === 'number' ? dto.subtotalCents : undefined;
@@ -185,7 +210,10 @@ export class OrdersService {
       subtotalCents,
     });
     const couponDiscountCents = couponInfo?.discountCents ?? 0;
-    const subtotalAfterCoupon = Math.max(0, subtotalCents - couponDiscountCents);
+    const subtotalAfterCoupon = Math.max(
+      0,
+      subtotalCents - couponDiscountCents,
+    );
 
     // 统一把“用户请求抵扣多少”转成“点数”
     const requestedPoints =
@@ -247,6 +275,8 @@ export class OrdersService {
         ...(stableKey ? { clientRequestId: stableKey } : {}),
         channel: dto.channel,
         fulfillmentType: dto.fulfillmentType,
+        ...(contactName ? { contactName } : {}),
+        ...(contactPhone ? { contactPhone } : {}),
         subtotalCents,
         taxCents,
         totalCents,
@@ -315,6 +345,13 @@ export class OrdersService {
       include: { items: true },
     })) as OrderWithItems;
 
+    this.logger.log(
+      `${this.formatOrderLogContext({
+        orderId: order.id,
+        clientRequestId: order.clientRequestId ?? null,
+      })}Order created successfully.`,
+    );
+
     // === Standard 配送：DoorDash Drive ===
     if (dto.deliveryType === DeliveryType.STANDARD && dto.deliveryDestination) {
       const destination = this.normalizeDropoff(dto.deliveryDestination);
@@ -324,11 +361,17 @@ export class OrdersService {
 
       if (provider !== DeliveryProvider.DOORDASH) {
         this.logger.warn(
-          `Standard delivery provider is not DOORDASH for order ${order.id}, skipping DoorDash dispatch`,
+          `${this.formatOrderLogContext({
+            orderId: order.id,
+            clientRequestId: order.clientRequestId ?? null,
+          })}Standard delivery provider is not DOORDASH, skipping DoorDash dispatch.`,
         );
       } else if (!doordashEnabled) {
         this.logger.warn(
-          `Skipping DoorDash dispatch for order ${order.id} because DOORDASH_DRIVE_ENABLED is not '1'`,
+          `${this.formatOrderLogContext({
+            orderId: order.id,
+            clientRequestId: order.clientRequestId ?? null,
+          })}Skipping DoorDash dispatch because DOORDASH_DRIVE_ENABLED is not '1'.`,
         );
       } else {
         try {
@@ -338,7 +381,10 @@ export class OrdersService {
           );
         } catch (error) {
           this.logger.error(
-            `Failed to dispatch DoorDash delivery for order ${order.id}: ${
+            `${this.formatOrderLogContext({
+              orderId: order.id,
+              clientRequestId: order.clientRequestId ?? null,
+            })}Failed to dispatch DoorDash delivery: ${
               error instanceof Error ? error.message : String(error)
             }`,
           );
@@ -354,14 +400,20 @@ export class OrdersService {
       const uberEnabled = process.env.UBER_DIRECT_ENABLED === '1';
       if (!uberEnabled) {
         this.logger.warn(
-          `Skipping Uber Direct dispatch for order ${order.id} because UBER_DIRECT_ENABLED is not '1'`,
+          `${this.formatOrderLogContext({
+            orderId: order.id,
+            clientRequestId: order.clientRequestId ?? null,
+          })}Skipping Uber Direct dispatch because UBER_DIRECT_ENABLED is not '1'.`,
         );
       } else {
         try {
           order = await this.dispatchPriorityDelivery(order, destination);
         } catch (error) {
           this.logger.error(
-            `Failed to dispatch Uber Direct delivery for order ${order.id}: ${
+            `${this.formatOrderLogContext({
+              orderId: order.id,
+              clientRequestId: order.clientRequestId ?? null,
+            })}Failed to dispatch Uber Direct delivery: ${
               error instanceof Error ? error.message : String(error)
             }`,
           );
@@ -646,6 +698,9 @@ export class OrdersService {
         unitPriceCents,
         totalPriceCents,
         optionsJson: item.optionsJson ?? undefined,
+        loyaltyRedeemCents: order.loyaltyRedeemCents ?? null,
+        couponDiscountCents: order.couponDiscountCents ?? null,
+        subtotalAfterDiscountCents: order.subtotalAfterDiscountCents ?? null,
       };
     });
 
@@ -760,6 +815,26 @@ export class OrdersService {
     return typeof value === 'number' && Number.isFinite(value)
       ? value
       : undefined;
+  }
+
+  /**
+   * 统一给订单相关日志加上 [orderId=...] [clientRequestId=...] 前缀，
+   * requestId 会由 AppLogger 自动加。
+   */
+  private formatOrderLogContext(params?: {
+    orderId?: string | null;
+    clientRequestId?: string | null;
+  }): string {
+    const parts: string[] = [];
+
+    if (params?.orderId) {
+      parts.push(`orderId=${params.orderId}`);
+    }
+    if (params?.clientRequestId) {
+      parts.push(`clientRequestId=${params.clientRequestId}`);
+    }
+
+    return parts.length ? `[${parts.join(' ')}] ` : '';
   }
 
   private sanitizeTip(value?: number): number | undefined {
@@ -883,7 +958,9 @@ export class OrdersService {
       await this.prisma.order.delete({ where: { id } });
     } catch (cleanupError) {
       this.logger.error(
-        `Failed to roll back order ${id} after delivery failure: ${
+        `${this.formatOrderLogContext({
+          orderId: id,
+        })}Failed to roll back order after delivery failure: ${
           cleanupError instanceof Error
             ? cleanupError.message
             : String(cleanupError)

@@ -25,6 +25,7 @@ export default function MemberLoginPage() {
   const [birthdayMonth, setBirthdayMonth] = useState<string>('');
   const [birthdayDay, setBirthdayDay] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+  const [marketingOptIn, setMarketingOptIn] = useState(false);
 
   // —— 新增：手机号 + 验证码相关状态 ——
   const [phone, setPhone] = useState<string>('');
@@ -246,6 +247,7 @@ export default function MemberLoginPage() {
           referrerEmail: referrerEmail.trim() || null,
           birthdayMonth: birthdayMonth ? String(birthdayMonth).trim() : null,
           birthdayDay: birthdayDay ? String(birthdayDay).trim() : null,
+          marketingEmailOptIn: marketingOptIn,
         };
         window.localStorage.setItem(
           'sanqin_membership_prefill',
@@ -422,8 +424,8 @@ export default function MemberLoginPage() {
           />
           <p className="mt-1 text-[11px] text-slate-400">
             {isZh
-              ? '如填写，我们会在你实际消费时给推荐人发放奖励积分。'
-              : 'If provided, the referrer will earn bonus points when you spend.'}
+              ? '如填写，请确认邮箱地址，后面不可添加或更改，我们会给推荐人发放推荐奖励。'
+              : 'If you fill this in, please double-check the email address. It cannot be added or changed later, and any referral rewards will be sent to this person.'}
           </p>
         </div>
 
@@ -465,6 +467,26 @@ export default function MemberLoginPage() {
               ? '只记录一次，后续不可修改。生日当天我们会发放生日优惠券。'
               : 'Can only be set once and cannot be changed later. We may send birthday coupons on that day.'}
           </p>
+        </div>
+
+        {/* 营销邮件勾选 */}
+        <div className="mt-4">
+          <label className="flex items-start gap-2 text-xs text-slate-600">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-900"
+              checked={marketingOptIn}
+              onChange={(e) => {
+                setMarketingOptIn(e.target.checked);
+                setError(null);
+              }}
+            />
+            <span>
+              {isZh
+                ? '我同意接收新品、优惠活动等邮件通知（可随时在会员中心取消订阅）。'
+                : 'I agree to receive occasional emails about new items and promotions (you can unsubscribe anytime in your account settings).'}
+            </span>
+          </label>
         </div>
 
         {error && (

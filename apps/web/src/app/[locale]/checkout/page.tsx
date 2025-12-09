@@ -131,6 +131,7 @@ function resolveEnglishName(itemId: string, localizedName: string): string {
   return localizedName;
 }
 
+// CustomerInfo.phone = 本单的联系电话（可能等于账号手机号，但不会自动反写到 User.phone）
 type CustomerInfo = {
   name: string;
   phone: string;
@@ -276,6 +277,7 @@ export default function CheckoutPage() {
 
   // 会员手机号（从 membership 接口加载，用于预填）
   const [memberPhone, setMemberPhone] = useState<string | null>(null);
+  const [memberPhoneVerified, setMemberPhoneVerified] = useState(false);
   const [phonePrefilled, setPhonePrefilled] = useState(false); // 只预填一次
 
   // 手机号验证流程状态
@@ -540,22 +542,21 @@ export default function CheckoutPage() {
         return;
       }
 
-      if (memberPhone) {
-        // 会员：如果改回与数据库一致的手机号 → 保持已验证；否则要求重新验证
+      // 有会员手机号且该手机号在会员系统中已验证时，
+      // 如果用户输入的手机号 == 会员手机号，则直接视为已验证。
+      if (memberPhone && memberPhoneVerified) {
         const normalizedMember = memberPhone.replace(/\s+/g, "");
         const normalizedNew = trimmed.replace(/\s+/g, "");
         if (normalizedNew === normalizedMember) {
           setPhoneVerified(true);
           setPhoneVerificationStep("verified");
-        } else {
-          setPhoneVerified(false);
-          setPhoneVerificationStep("idle");
+          return;
         }
-      } else {
-        // 非会员：任何修改都需要重新验证
-        setPhoneVerified(false);
-        setPhoneVerificationStep("idle");
       }
+
+      // 其他情况：统一认为还未验证，需要走短信验证码
+      setPhoneVerified(false);
+      setPhoneVerificationStep("idle");
     }
   };
 
@@ -688,6 +689,7 @@ export default function CheckoutPage() {
       setLoyaltyInfo(null);
       setAvailableCoupons([]);
       setMemberPhone(null);
+      setMemberPhoneVerified(false);
       return;
     }
 
@@ -698,6 +700,7 @@ export default function CheckoutPage() {
       setLoyaltyInfo(null);
       setAvailableCoupons([]);
       setMemberPhone(null);
+      setMemberPhoneVerified(false);
       return;
     }
 
@@ -744,6 +747,7 @@ export default function CheckoutPage() {
         });
 
         setMemberPhone(data.phone ?? null);
+        setMemberPhoneVerified(!!data.phoneVerified);
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") {
           return;
@@ -854,17 +858,21 @@ export default function CheckoutPage() {
 
   // ✅ 如果当前手机号与会员账号中的手机号一致，就自动视为“已验证”
   useEffect(() => {
-    if (!memberPhone) return;
+    if (!memberPhone || !memberPhoneVerified) return;
 
     const normalizedMember = memberPhone.replace(/\s+/g, "");
     const normalizedCurrent = customer.phone.replace(/\s+/g, "");
 
-    if (normalizedCurrent && normalizedCurrent === normalizedMember) {
+    if (
+      normalizedCurrent &&
+      normalizedCurrent === normalizedMember &&
+      memberPhoneVerified
+    ) {
       setPhoneVerified(true);
       setPhoneVerificationStep("verified");
       setPhoneVerificationError(null);
     }
-  }, [memberPhone, customer.phone]);
+  }, [memberPhone, memberPhoneVerified, customer.phone]);
 
   // 带可选 override 类型的距离校验
   const validateDeliveryDistance = async (

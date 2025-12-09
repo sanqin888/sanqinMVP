@@ -106,6 +106,9 @@ model Order {
   totalCents      Int             @default(0)
   pickupCode      String?
 
+  contactName     String?
+  contactPhone    String?
+
   deliveryType           DeliveryType?
   deliveryProvider       DeliveryProvider?
   deliveryFeeCents       Int?
@@ -127,6 +130,7 @@ model Order {
   items OrderItem[]
 
   @@index([createdAt])
+  @@index([contactPhone, createdAt])
 }
 
 model Coupon {

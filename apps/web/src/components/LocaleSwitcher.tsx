@@ -1,4 +1,4 @@
-//Users/apple/sanqinMVP/apps/web/src/components
+//Users/apple/sanqinMVP/apps/web/src/components/LocaleSwitcher.tsx
 
 "use client";
 

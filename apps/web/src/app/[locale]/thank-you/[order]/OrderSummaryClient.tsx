@@ -1,4 +1,4 @@
-//Users/apple/sanqinMVP/apps/web/src/app/[locale]/thank-you/[order]/OrderSummaryClient.tsx
+// apps/web/src/app/[locale]/thank-you/[order]/OrderSummaryClient.tsx
 
 "use client";
 
@@ -30,6 +30,7 @@ type OrderSummaryResponse = {
   lineItems: OrderSummaryLineItem[];
   loyaltyRedeemCents?: number | null;
   subtotalAfterDiscountCents?: number | null;
+  couponDiscountCents?: number | null;
 };
 
 type Props = {
@@ -136,12 +137,6 @@ export function OrderSummaryClient({ orderNumber, locale }: Props) {
 
   if (!orderNumber) return null;
 
-  const effectiveDiscountCents =
-    typeof data?.loyaltyRedeemCents === "number" &&
-    data.loyaltyRedeemCents > 0
-      ? data.loyaltyRedeemCents
-      : data?.discountCents ?? 0;
-
   return (
     <section className="mx-auto mt-4 max-w-xl rounded-2xl border border-slate-200 bg-white/70 p-4 text-sm text-slate-700 sm:p-6">
       <h2 className="text-base font-semibold text-slate-900">
@@ -189,13 +184,35 @@ export function OrderSummaryClient({ orderNumber, locale }: Props) {
               <span>{centsToMoney(data.subtotalCents)}</span>
             </div>
 
-            {/* 积分抵扣 / 优惠：在小计下面、配送费/税前面 */}
-            {effectiveDiscountCents > 0 && (
-              <div className="flex items-center justify-between text-emerald-700">
-                <span>{labels.discount}</span>
-                <span>-{centsToMoney(effectiveDiscountCents)}</span>
+            {/* 优惠券折扣 */}
+            {(data.couponDiscountCents ?? 0) > 0 && (
+              <div className="flex items-center justify-between text-amber-700">
+                <span>{locale === "zh" ? "优惠券" : "Coupon"}</span>
+                <span>
+                  -{centsToMoney(data.couponDiscountCents ?? 0)}
+                </span>
               </div>
             )}
+
+            {/* 积分抵扣 */}
+            {(data.loyaltyRedeemCents ?? 0) > 0 && (
+              <div className="flex items-center justify-between text-emerald-700">
+                <span>{locale === "zh" ? "积分抵扣" : "Points redeemed"}</span>
+                <span>
+                  -{centsToMoney(data.loyaltyRedeemCents ?? 0)}
+                </span>
+              </div>
+            )}
+
+            {/* 其他折扣（如果有统一 discountCents 但 coupon/points 都没单独拆开） */}
+            {(data.discountCents ?? 0) > 0 &&
+              (data.couponDiscountCents ?? 0) === 0 &&
+              (data.loyaltyRedeemCents ?? 0) === 0 && (
+                <div className="flex items-center justify-between text-amber-700">
+                  <span>{labels.discount}</span>
+                  <span>-{centsToMoney(data.discountCents)}</span>
+                </div>
+              )}
 
             {/* 配送费 */}
             {data.deliveryFeeCents > 0 && (
