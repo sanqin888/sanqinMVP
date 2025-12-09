@@ -2,7 +2,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import type { Locale } from '@/lib/order/shared';
 import { useSession, signOut } from 'next-auth/react';
@@ -205,6 +205,7 @@ export default function MembershipHomePage() {
                 referrerEmail?: string | null;
                 birthdayMonth?: string | null | number;
                 birthdayDay?: string | null | number;
+                marketingEmailOptIn?: boolean;
               };
 
               if (extra.referrerEmail) {
@@ -346,52 +347,6 @@ export default function MembershipHomePage() {
     return () => controller.abort();
   }, [member?.id, isZh]);
 
-  // 拉取优惠券：会员信息到手后再查询
-  useEffect(() => {
-    if (!member?.id) {
-      setCoupons([]);
-      setCouponLoading(false);
-      setCouponError(null);
-      return;
-    }
-
-    const controller = new AbortController();
-
-    const loadCoupons = async () => {
-      try {
-        setCouponLoading(true);
-        setCouponError(null);
-
-        const params = new URLSearchParams([['userId', member.id]]);
-        const res = await fetch(
-          `/api/v1/membership/coupons?${params.toString()}`,
-          { signal: controller.signal },
-        );
-
-        if (!res.ok) {
-          throw new Error(`Failed with status ${res.status}`);
-        }
-
-        const raw = (await res.json()) as Coupon[];
-        setCoupons(Array.isArray(raw) ? raw : []);
-      } catch (err) {
-        if (err instanceof DOMException && err.name === 'AbortError') return;
-        console.error(err);
-        setCoupons([]);
-        setCouponError(
-          isZh
-            ? '优惠券加载失败，请稍后再试。'
-            : 'Failed to load coupons. Please try again later.',
-        );
-      } finally {
-        setCouponLoading(false);
-      }
-    };
-
-    void loadCoupons();
-    return () => controller.abort();
-  }, [member?.id, isZh]);
-
   // 拉取积分流水：首次切到“积分”tab 且已登录时加载一次
   useEffect(() => {
     if (
@@ -468,6 +423,66 @@ export default function MembershipHomePage() {
     isZh,
   ]);
 
+  const handleMarketingToggle = useCallback(
+    async (next: boolean) => {
+      if (!member) return;
+
+      setMarketingSaving(true);
+      setMarketingError(null);
+
+      try {
+        const res = await fetch('/api/v1/membership/marketing-consent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: member.id,
+            marketingEmailOptIn: next,
+          }),
+        });
+
+        if (!res.ok) {
+          throw new Error(`Failed with status ${res.status}`);
+        }
+
+        setMarketingOptIn(next);
+      } catch (err) {
+        console.error(err);
+        setMarketingError(
+          isZh
+            ? '更新订阅偏好失败，请稍后再试。'
+            : 'Failed to update email preference. Please try again later.',
+        );
+      } finally {
+        setMarketingSaving(false);
+      }
+    },
+    [member, isZh],
+  );
+
+  // ⭐ 新增：如果注册时勾选了“营销邮件”，第一次进入会员中心时自动帮他开关一次
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!member?.id) return;
+    if (marketingOptIn === null) return;      // 还没从后端拿到数据
+    if (marketingSaving) return;             // 正在提交就先不动
+
+    try {
+      const flag = window.localStorage.getItem(
+        'sanqin_marketing_optin_initial',
+      );
+      // 只有在当前还是 false 且 flag=1 时，自动打开一次
+      if (flag === '1' && marketingOptIn === false) {
+        void handleMarketingToggle(true);
+        window.localStorage.removeItem('sanqin_marketing_optin_initial');
+      }
+    } catch (e) {
+      console.error(
+        'Failed to apply initial marketing opt-in from localStorage',
+        e,
+      );
+    }
+  }, [member?.id, marketingOptIn, marketingSaving, handleMarketingToggle]);
+
   const isLoading = status === 'loading' || summaryLoading;
 
   const addresses: Address[] = member
@@ -514,39 +529,6 @@ export default function MembershipHomePage() {
     void signOut({
       callbackUrl: `/${locale}`,
     });
-  }
-
-  async function handleMarketingToggle(next: boolean) {
-    if (!member) return;
-
-    setMarketingSaving(true);
-    setMarketingError(null);
-
-    try {
-      const res = await fetch('/api/v1/membership/marketing-consent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: member.id,
-          marketingEmailOptIn: next,
-        }),
-      });
-
-      if (!res.ok) {
-        throw new Error(`Failed with status ${res.status}`);
-      }
-
-      setMarketingOptIn(next);
-    } catch (err) {
-      console.error(err);
-      setMarketingError(
-        isZh
-          ? '更新订阅偏好失败，请稍后再试。'
-          : 'Failed to update email preference. Please try again later.',
-      );
-    } finally {
-      setMarketingSaving(false);
-    }
   }
 
   // 状态控制渲染
@@ -716,7 +698,8 @@ export default function MembershipHomePage() {
               marketingSaving={marketingSaving}
               marketingError={marketingError}
               onToggleMarketing={handleMarketingToggle}
-            />
+              locale={locale as Locale}
+           />
           )}
         </div>
       </main>
@@ -1088,7 +1071,7 @@ function CouponsSection({
                 </span>
               </div>
 
-              <div className="mt-2 flex items.end justify-between">
+              <div className="mt-2 flex items-end justify-between">
                 <div>
                   <p className="text-lg font-bold text-amber-700">
                     {isZh ? '立减 ' : 'Save '}
@@ -1134,6 +1117,7 @@ function ProfileSection({
   marketingSaving,
   marketingError,
   onToggleMarketing,
+  locale,
 }: {
   isZh: boolean;
   user: MemberProfile;
@@ -1141,6 +1125,7 @@ function ProfileSection({
   marketingSaving: boolean;
   marketingError: string | null;
   onToggleMarketing: (next: boolean) => void;
+  locale: Locale;
 }) {
   const effectiveOptIn = !!marketingOptIn;
 
@@ -1178,6 +1163,7 @@ function ProfileSection({
           </p>
         </div>
 
+        {/* 营销邮件订阅开关 */}
         <div className="mt-4 border-t border-slate-100 pt-3">
           <p className="text-slate-500">
             {isZh ? '营销邮件订阅' : 'Marketing emails'}
@@ -1208,6 +1194,24 @@ function ProfileSection({
               {marketingError}
             </p>
           )}
+        </div>
+
+        {/* 会员规则入口 */}
+        <div className="mt-4 border-t border-slate-100 pt-3">
+          <p className="text-slate-500">
+            {isZh ? '会员规则' : 'Membership rules'}
+          </p>
+          <p className="mt-1 text-[11px] text-slate-500">
+            {isZh
+              ? '查看积分如何累积、抵扣、退款时如何处理等详细说明。'
+              : 'See details on how points are earned, redeemed, and adjusted on refunds.'}
+          </p>
+          <Link
+            href={`/${locale}/membership/rules`}
+            className="mt-2 inline-flex items-center rounded-full bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
+          >
+            {isZh ? '查看会员规则' : 'View membership rules'}
+          </Link>
         </div>
 
         <p className="mt-3 text-[11px] text-slate-500">

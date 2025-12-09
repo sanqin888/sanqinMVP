@@ -190,7 +190,7 @@ export class CloverHcoWebhookController {
       );
 
       // 1) 先建订单（默认 pending）
-      const order = await this.orders.create(orderDto);
+      const order = await this.orders.create(orderDto, clientRequestId);
 
       // 2) 在线支付成功的单，直接把状态推进到 'paid'（触发 loyalty 结算）
       const finalized = await this.orders.updateStatus(order.id, 'paid');

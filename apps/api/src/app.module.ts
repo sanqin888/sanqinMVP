@@ -1,6 +1,7 @@
 //Users/apple/sanqinMVP/apps/api/src/app.module.ts
 
 import { Module, type DynamicModule } from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import { LocationModule } from './location/location.module';
 import { ConfigModule, type ConfigModuleOptions } from '@nestjs/config';
 
@@ -16,6 +17,7 @@ import { CloverWebhooksModule } from './clover/clover-webhooks.module';
 import { MembershipModule } from './membership/membership.module';
 import { PhoneVerificationModule } from './phone-verification/phone-verification.module';
 import { AuthModule } from './auth/auth.module';
+import { RequestIdInterceptor } from './common/request-id.interceptor';
 
 const configModuleFactory: {
   forRoot(options: ConfigModuleOptions): DynamicModule;
@@ -44,6 +46,13 @@ const envConfigModule = configModuleFactory.forRoot({
     PhoneVerificationModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    // ✅ 挂上全局拦截器
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: RequestIdInterceptor,
+    },
+  ],
 })
 export class AppModule {}

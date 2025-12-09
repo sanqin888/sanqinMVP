@@ -1,3 +1,4 @@
+// apps/api/src/clover/clover-pay.controller.ts
 import {
   BadGatewayException,
   BadRequestException,
@@ -5,6 +6,7 @@ import {
   Controller,
   Post,
 } from '@nestjs/common';
+import { AppLogger } from '../common/app-logger';
 import { CloverService } from './clover.service';
 import {
   CreateHostedCheckoutDto,
@@ -20,6 +22,8 @@ import { OrdersService } from '../orders/orders.service';
 
 @Controller('clover')
 export class CloverPayController {
+  private readonly logger = new AppLogger(CloverPayController.name);
+
   constructor(
     private readonly clover: CloverService,
     private readonly checkoutIntents: CheckoutIntentsService,
@@ -28,6 +32,10 @@ export class CloverPayController {
 
   @Post('pay/online/hosted-checkout')
   async createCheckout(@Body() dto: CreateHostedCheckoutDto) {
+    this.logger.log(
+      `Incoming hosted-checkout request: amountCents=${dto.amountCents ?? 'N/A'}`,
+    );
+
     if (!dto.metadata) {
       throw new BadRequestException({
         code: 'CHECKOUT_METADATA_REQUIRED',
@@ -79,6 +87,10 @@ export class CloverPayController {
 
       // 创建并立即标记为已支付（内部会计算金额 + 调 loyalty.settleOnPaid）
       const order = await this.orders.createImmediatePaid(orderDto);
+
+      this.logger.log(
+        `Loyalty-only order created via Clover hosted checkout. orderId=${order.id} clientRequestId=${order.clientRequestId ?? 'null'}`,
+      );
 
       // 更新 CheckoutIntent 状态为已完成（LOYALTY_ONLY）
       await this.checkoutIntents.markProcessed({
@@ -178,7 +190,7 @@ function interpretCheckoutFailure(reason: unknown): FailureInsight {
     type: 'card-declined',
     code: 'CLOVER_CARD_DECLINED',
     message: `${zhMessage} ${enMessage}`,
-    reason,
+    reason: String(reason),
   };
 }
 
