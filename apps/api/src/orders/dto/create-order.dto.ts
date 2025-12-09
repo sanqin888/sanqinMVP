@@ -1,3 +1,4 @@
+//Users/apple/sanqinMVP/apps/api/src/orders/dto/create-order.dto.ts
 import { Type } from 'class-transformer';
 import {
   IsArray,
@@ -93,6 +94,15 @@ export class CreateOrderDto {
   @IsOptional()
   @IsString()
   pickupCode?: string;
+
+  // === 新增：订单级联系方式（账号手机号分离） ===
+  @IsOptional()
+  @IsString()
+  contactName?: string;
+
+  @IsOptional()
+  @IsString()
+  contactPhone?: string;
 
   // ✅ 用 Prisma 的 Channel enum，保证和 schema 统一
   @IsEnum(Channel)

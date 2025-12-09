@@ -315,6 +315,10 @@ export function buildOrderDtoFromMetadata(
     clientRequestId,
     channel: 'web',
 
+    // ⭐ 订单级联系人（pickup / delivery 都有）
+    contactName: meta.customer.name,
+    contactPhone: meta.customer.phone,
+
     // ⭐ 关键：让订单有 userId，这样 paid 时才会结算积分
     ...(meta.loyaltyUserId ? { userId: meta.loyaltyUserId } : {}),
 
