@@ -423,6 +423,42 @@ export default function MembershipHomePage() {
     isZh,
   ]);
 
+  const handleMarketingToggle = useCallback(
+    async (next: boolean) => {
+      if (!member) return;
+
+      setMarketingSaving(true);
+      setMarketingError(null);
+
+      try {
+        const res = await fetch('/api/v1/membership/marketing-consent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: member.id,
+            marketingEmailOptIn: next,
+          }),
+        });
+
+        if (!res.ok) {
+          throw new Error(`Failed with status ${res.status}`);
+        }
+
+        setMarketingOptIn(next);
+      } catch (err) {
+        console.error(err);
+        setMarketingError(
+          isZh
+            ? '更新订阅偏好失败，请稍后再试。'
+            : 'Failed to update email preference. Please try again later.',
+        );
+      } finally {
+        setMarketingSaving(false);
+      }
+    },
+    [member, isZh],
+  );
+
   // ⭐ 新增：如果注册时勾选了“营销邮件”，第一次进入会员中心时自动帮他开关一次
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -494,42 +530,6 @@ export default function MembershipHomePage() {
       callbackUrl: `/${locale}`,
     });
   }
-
-  const handleMarketingToggle = useCallback(
-    async (next: boolean) => {
-      if (!member) return;
-
-      setMarketingSaving(true);
-      setMarketingError(null);
-
-      try {
-        const res = await fetch('/api/v1/membership/marketing-consent', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: member.id,
-            marketingEmailOptIn: next,
-          }),
-        });
-
-        if (!res.ok) {
-          throw new Error(`Failed with status ${res.status}`);
-        }
-
-        setMarketingOptIn(next);
-      } catch (err) {
-        console.error(err);
-        setMarketingError(
-          isZh
-            ? '更新订阅偏好失败，请稍后再试。'
-            : 'Failed to update email preference. Please try again later.',
-        );
-      } finally {
-        setMarketingSaving(false);
-      }
-    },
-    [member, isZh],
-  );
 
   // 状态控制渲染
   if (isLoading) {
