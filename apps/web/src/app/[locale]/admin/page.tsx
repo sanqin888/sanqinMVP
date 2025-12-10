@@ -75,8 +75,18 @@ type BusinessHourDto = {
   isClosed: boolean;
 };
 
-type BusinessHoursResponse = {
+type BusinessConfigDto = {
+  id: number;
+  storeName: string | null;
+  timezone: string;
+  isTemporarilyClosed: boolean;
+  temporaryCloseReason: string | null;
+};
+
+type BusinessConfigResponse = {
+  config: BusinessConfigDto;
   hours: BusinessHourDto[];
+  holidays: Holiday[];
 };
 
 const WEEKDAY_LABELS_ZH = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
@@ -88,12 +98,6 @@ const WEEKDAY_LABELS_EN = [
   "Thursday",
   "Friday",
   "Saturday",
-];
-
-// 先保持节假日部分为本地 demo
-const DEFAULT_HOLIDAYS: Holiday[] = [
-  { id: "h1", date: "2024-12-25", reason: "Christmas" },
-  { id: "h2", date: "2025-01-01", reason: "New Year" },
 ];
 
 function SectionCard({
@@ -129,8 +133,9 @@ export default function AdminDashboard() {
   const { locale } = useParams<{ locale: Locale }>();
   const isZh = locale === "zh";
 
-  // —— 营业时间：从后端读取，只做展示 —— //
+  // —— 营业时间 & 节假日：从 /admin/business/config 读取，只做展示 —— //
   const [hours, setHours] = useState<BusinessHourDto[]>([]);
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [hoursLoading, setHoursLoading] = useState(true);
   const [hoursError, setHoursError] = useState<string | null>(null);
 
@@ -143,14 +148,6 @@ export default function AdminDashboard() {
   const [menu, setMenu] = useState<FullMenuResponse>([]);
   const [menuLoading, setMenuLoading] = useState(true);
   const [menuError, setMenuError] = useState<string | null>(null);
-
-  // —— 原来本地假数据：节假日仍然本地管理 —— //
-  const [holidays, setHolidays] = useState<Holiday[]>(DEFAULT_HOLIDAYS);
-  const [newHoliday, setNewHoliday] = useState<Holiday>({
-    id: "",
-    date: "",
-    reason: "",
-  });
 
   // 统计：活跃 / 下架餐品数量（按分类 isActive + 菜品 isVisible + isAvailable 来算）
   const { totalActiveItems, totalInactiveItems } = useMemo(() => {
@@ -172,26 +169,35 @@ export default function AdminDashboard() {
     return { totalActiveItems: active, totalInactiveItems: inactive };
   }, [menu]);
 
-  // —— 加载后端营业时间 —— //
+  // —— 加载后端营业时间 & 节假日（/admin/business/config） —— //
   useEffect(() => {
     let cancelled = false;
 
-    async function loadHours() {
+    async function loadBusinessConfig() {
       setHoursLoading(true);
       setHoursError(null);
       try {
-        const res = await apiFetch<BusinessHoursResponse>("/admin/business/hours");
+        const res = await apiFetch<BusinessConfigResponse>(
+          "/admin/business/config",
+        );
         if (cancelled) return;
 
-        const sorted = [...res.hours].sort((a, b) => a.weekday - b.weekday);
-        setHours(sorted);
+        const sortedHours = [...res.hours].sort(
+          (a, b) => a.weekday - b.weekday,
+        );
+        setHours(sortedHours);
+
+        const sortedHolidays = (res.holidays ?? []).slice().sort((a, b) =>
+          a.date.localeCompare(b.date),
+        );
+        setHolidays(sortedHolidays);
       } catch (e) {
         console.error(e);
         if (!cancelled) {
           setHoursError(
             isZh
-              ? "加载营业时间失败，请稍后重试。"
-              : "Failed to load business hours. Please try again.",
+              ? "加载营业时间配置失败，请稍后重试。"
+              : "Failed to load business configuration. Please try again.",
           );
         }
       } finally {
@@ -201,7 +207,7 @@ export default function AdminDashboard() {
       }
     }
 
-    void loadHours();
+    void loadBusinessConfig();
 
     return () => {
       cancelled = true;
@@ -265,18 +271,6 @@ export default function AdminDashboard() {
       cancelled = true;
     };
   }, [isZh]);
-
-  // —— 节假日 demo 操作 —— //
-  function toggleHoliday(id: string) {
-    setHolidays((prev) => prev.filter((h) => h.id !== id));
-  }
-
-  function addHoliday() {
-    if (!newHoliday.date || !newHoliday.reason) return;
-    const id = `h${Date.now()}`;
-    setHolidays((prev) => [...prev, { ...newHoliday, id }]);
-    setNewHoliday({ id: "", date: "", reason: "" });
-  }
 
   // —— 菜单类操作：调用后端接口 —— //
 
@@ -456,7 +450,7 @@ export default function AdminDashboard() {
         <div className="rounded-2xl border bg-white/80 p-5 shadow-sm">
           <p className="text-sm text-slate-500">计划休假</p>
           <p className="mt-2 text-3xl font-semibold text-slate-900">
-            {holidays.length}
+            {hoursLoading ? "…" : holidays.length}
           </p>
         </div>
       </div>
@@ -515,7 +509,7 @@ export default function AdminDashboard() {
                   ) : (
                     <span>
                       {minutesToTimeString(h.openMinutes)} -{" "}
-                      {minutesToTimeString(h.closeMinutes)}
+                        {minutesToTimeString(h.closeMinutes)}
                     </span>
                   )}
                 </div>
@@ -525,64 +519,39 @@ export default function AdminDashboard() {
         )}
       </SectionCard>
 
-      {/* —— 节假日与临时休假（仍然本地 demo） —— */}
+      {/* —— 节假日与临时休假：从后端 holidays 只读展示 —— */}
       <SectionCard
         title="节假日与临时休假"
         actions={
-          <div className="flex items-end gap-2">
-            <div className="flex flex-col text-sm">
-              <label className="text-xs text-slate-500">日期</label>
-              <input
-                type="date"
-                className="rounded-md border px-3 py-2 text-sm"
-                value={newHoliday.date}
-                onChange={(e) =>
-                  setNewHoliday((prev) => ({ ...prev, date: e.target.value }))
-                }
-              />
-            </div>
-            <div className="flex flex-col text-sm">
-              <label className="text-xs text-slate-500">原因</label>
-              <input
-                type="text"
-                className="w-56 rounded-md border px-3 py-2 text-sm"
-                placeholder="节日 / 维修 / 员工培训"
-                value={newHoliday.reason}
-                onChange={(e) =>
-                  setNewHoliday((prev) => ({ ...prev, reason: e.target.value }))
-                }
-              />
-            </div>
-            <button
-              onClick={addHoliday}
-              className="rounded-md border bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500"
-              type="button"
-            >
-              添加
-            </button>
-          </div>
+          <Link
+            href={`/${locale}/admin/hours`}
+            className="text-xs font-medium text-emerald-700 hover:text-emerald-600"
+          >
+            {isZh ? "在营业时间页管理节假日" : "Manage holidays on hours page"}
+          </Link>
         }
       >
-        {holidays.length === 0 ? (
-          <p className="text-sm text-slate-500">暂无休假计划。</p>
+        {hoursLoading ? (
+          <p className="text-sm text-slate-500">
+            {isZh ? "节假日加载中…" : "Loading holidays…"}
+          </p>
+        ) : holidays.length === 0 ? (
+          <p className="text-sm text-slate-500">
+            {isZh ? "暂无休假计划。" : "No holidays planned."}
+          </p>
         ) : (
           <div className="divide-y rounded-xl border">
             {holidays.map((holiday) => (
               <div
                 key={holiday.id}
-                className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div>
                   <p className="font-medium text-slate-900">{holiday.date}</p>
-                  <p className="text-sm text-slate-500">{holiday.reason}</p>
+                  {holiday.reason ? (
+                    <p className="text-sm text-slate-500">{holiday.reason}</p>
+                  ) : null}
                 </div>
-                <button
-                  onClick={() => toggleHoliday(holiday.id)}
-                  className="text-sm font-medium text-red-600 hover:text-red-500"
-                  type="button"
-                >
-                  删除
-                </button>
               </div>
             ))}
           </div>
@@ -773,22 +742,7 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          <div className="rounded-xl border p-4">
-            <p className="text-sm font-semibold text-slate-900">库存预警</p>
-            <p className="mt-2 text-sm text-slate-500">
-              预估库存不足时自动提醒或下架指定餐品，防止超卖。
-            </p>
-            <div className="mt-3 space-y-2 text-sm text-slate-600">
-              <div className="flex items-center justify-between rounded-md border bg-slate-50 px-3 py-2">
-                <span>单品阈值</span>
-                <span className="font-semibold text-slate-900">5 份</span>
-              </div>
-              <div className="flex items-center justify-between rounded-md border bg-slate-50 px-3 py-2">
-                <span>通知渠道</span>
-                <span className="font-semibold text-slate-900">邮箱 / 短信</span>
-              </div>
-            </div>
-          </div>
+          {/* 库存预警模块已暂时移除 */}
 
           <div className="rounded-xl border p-4">
             <p className="text-sm font-semibold text-slate-900">运营公告</p>
