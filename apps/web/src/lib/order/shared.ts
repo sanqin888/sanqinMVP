@@ -123,7 +123,7 @@ export const UI_STRINGS: Record<
     };
     confirmation: {
       title: string;
-      pickup: string;   // {order} {total} {schedule}
+      pickup: string; // {order} {total} {schedule}
       delivery: string; // {order} {total} {schedule}
       pickupMeta: string;
       deliveryMeta: string;
@@ -345,12 +345,20 @@ export const UI_STRINGS: Record<
   },
 };
 
-/** ===== 菜单定义 ===== */
+/** ===== 菜单定义（静态元数据：类别、标签、热量等） ===== */
 export type MenuItemDefinition = {
+  // 与数据库 MenuItem.stableId 对齐
   id: string;
+  // 静态默认价格（实际显示可以用 DB 的 basePriceCents 覆盖）
   price: number;
   calories?: number;
   tags?: string[];
+
+  // 图片 & 配料说明（静态默认值，DB 可覆盖）
+  imageUrl?: string;
+  ingredientsEn?: string;
+  ingredientsZh?: string;
+
   i18n: {
     en: { name: string; description: string };
     zh: { name: string; description: string };
@@ -365,6 +373,11 @@ const MENU_DEFS: MenuItemDefinition[] = [
     calories: 520,
     tags: ["cold", "vegan"],
     category: "bestsellers",
+    // 可以填一个默认图片 / 配料，也可以留空，交给 DB
+    // imageUrl: "https://example.com/liangpi.jpg",
+    ingredientsEn:
+      "Wheat starch noodles, chili oil, garlic, sesame paste, gluten, cucumber, vinegar, soy sauce.",
+    ingredientsZh: "凉皮、辣椒油、大蒜、芝麻酱、面筋、黄瓜、香醋、酱油。",
     i18n: {
       en: {
         name: "Liangpi (Cold Skin Noodles)",
@@ -379,8 +392,14 @@ const MENU_DEFS: MenuItemDefinition[] = [
     calories: 430,
     tags: ["pork"],
     category: "bestsellers",
+    ingredientsEn:
+      "Wheat bun, braised pork, chili, cumin, green pepper, onion, soy sauce.",
+    ingredientsZh: "白吉馍、卤肉、辣椒、孜然、青椒、洋葱、酱油。",
     i18n: {
-      en: { name: "Roujiamo", description: "Crispy bun stuffed with braised pork." },
+      en: {
+        name: "Roujiamo",
+        description: "Crispy bun stuffed with braised pork.",
+      },
       zh: { name: "肉夹馍", description: "焦香面饼夹秘卤肉，咸香适口。" },
     },
   },
@@ -390,8 +409,14 @@ const MENU_DEFS: MenuItemDefinition[] = [
     calories: 680,
     tags: ["beef", "hot"],
     category: "noodles",
+    ingredientsEn:
+      "Hand-pulled wheat noodles, beef broth, braised beef, chili oil, scallion, cilantro.",
+    ingredientsZh: "手擀面、牛骨汤、卤牛肉、辣椒油、葱花、香菜。",
     i18n: {
-      en: { name: "Beef Noodle Soup", description: "Rich broth with hand-pulled noodles." },
+      en: {
+        name: "Beef Noodle Soup",
+        description: "Rich broth with hand-pulled noodles.",
+      },
       zh: { name: "红烧牛肉面", description: "手擀面配浓郁红烧汤底。" },
     },
   },
@@ -401,15 +426,48 @@ const MENU_DEFS: MenuItemDefinition[] = [
     calories: 120,
     tags: ["cold", "vegan"],
     category: "snacks",
+    ingredientsEn:
+      "Cucumber, garlic, vinegar, sesame oil, salt, chili oil (optional).",
+    ingredientsZh: "黄瓜、大蒜、香醋、芝麻油、食盐、辣椒油（可选）。",
     i18n: {
-      en: { name: "Smashed Cucumber", description: "Garlic, vinegar, sesame oil." },
+      en: {
+        name: "Smashed Cucumber",
+        description: "Garlic, vinegar, sesame oil.",
+      },
       zh: { name: "蒜拍黄瓜", description: "蒜香爽脆，香醋芝麻油。" },
     },
   },
 ];
 
-export function localizeMenuItem(def: MenuItemDefinition, locale: Locale) {
+/** ===== 本地化后的菜品类型 ===== */
+export type LocalizedMenuItem = {
+  id: string; // 一般用 stableId
+  name: string;
+  description: string;
+  price: number;
+  calories?: number;
+  tags: string[];
+  imageUrl?: string;
+  // 已按当前语言拼好的配料说明
+  ingredients?: string;
+};
+
+/**
+ * 静态配置 -> 本地化菜品
+ * 注意：如果你从 DB 读取菜单，请优先用下面的 buildLocalizedMenuFromDb，
+ * 这里仍然可以作为 fallback/demo。
+ */
+export function localizeMenuItem(
+  def: MenuItemDefinition,
+  locale: Locale,
+): LocalizedMenuItem {
   const t = def.i18n[locale];
+
+  const ingredients =
+    locale === "zh"
+      ? def.ingredientsZh ?? def.ingredientsEn
+      : def.ingredientsEn ?? def.ingredientsZh;
+
   return {
     id: def.id,
     name: t.name,
@@ -417,9 +475,12 @@ export function localizeMenuItem(def: MenuItemDefinition, locale: Locale) {
     price: def.price,
     calories: def.calories,
     tags: def.tags ?? [],
+    imageUrl: def.imageUrl,
+    ingredients: ingredients ?? undefined,
   };
 }
 
+/** 静态配置查表（key = stableId） */
 export const MENU_ITEM_LOOKUP: Map<string, MenuItemDefinition> = new Map(
   MENU_DEFS.map((d) => [d.id, d]),
 );
@@ -428,9 +489,12 @@ export type LocalizedCategory = {
   id: string;
   name: string;
   description: string;
-  items: Array<ReturnType<typeof localizeMenuItem>>;
+  items: LocalizedMenuItem[];
 };
 
+/**
+ * 旧的静态菜单构建逻辑（仍然保留，方便 fallback 或 demo 使用）
+ */
 export function buildLocalizedMenu(locale: Locale): LocalizedCategory[] {
   const catInfo: Record<
     MenuItemDefinition["category"],
@@ -438,11 +502,17 @@ export function buildLocalizedMenu(locale: Locale): LocalizedCategory[] {
   > = {
     bestsellers: {
       name: { en: "Best Sellers", zh: "人气必点" },
-      desc: { en: "Crowd favorites you can’t go wrong with.", zh: "经典不踩雷。" },
+      desc: {
+        en: "Crowd favorites you can’t go wrong with.",
+        zh: "经典不踩雷。",
+      },
     },
     noodles: {
       name: { en: "Noodles", zh: "面食" },
-      desc: { en: "Hand-pulled and hearty bowls.", zh: "手擀面/牛肉面等。" },
+      desc: {
+        en: "Hand-pulled and hearty bowls.",
+        zh: "手擀面/牛肉面等。",
+      },
     },
     snacks: {
       name: { en: "Snacks & Sides", zh: "小食&凉菜" },
@@ -470,9 +540,143 @@ export function buildLocalizedMenu(locale: Locale): LocalizedCategory[] {
   );
 }
 
+/** ===== DB 菜单类型（对齐 /admin/menu/full 的结构） ===== */
+
+// 这些类型用于前台从 API 读取菜单时的类型标注，不直接依赖 Prisma 包。
+
+export type DbMenuOption = {
+  id: string;
+  groupId: string;
+  nameEn: string;
+  nameZh: string | null;
+  priceDeltaCents: number;
+  isAvailable: boolean;
+  tempUnavailableUntil: string | null;
+  sortOrder: number;
+};
+
+export type DbMenuOptionGroup = {
+  id: string;
+  itemId: string;
+  nameEn: string;
+  nameZh: string | null;
+  minSelect: number;
+  maxSelect: number;
+  isRequired: boolean;
+  isActive: boolean;
+  sortOrder: number;
+  options: DbMenuOption[];
+};
+
+export type DbMenuItem = {
+  id: string; // cuid
+  categoryId: string;
+  stableId: string;
+  nameEn: string;
+  nameZh: string | null;
+  descriptionEn: string | null;
+  descriptionZh: string | null;
+
+  basePriceCents: number;
+  isAvailable: boolean;
+  isVisible: boolean;
+  tempUnavailableUntil: string | null;
+  sortOrder: number;
+
+  imageUrl: string | null;
+  ingredientsEn: string | null;
+  ingredientsZh: string | null;
+
+  optionGroups: DbMenuOptionGroup[];
+};
+
+export type DbMenuCategory = {
+  id: string;
+  sortOrder: number;
+  nameEn: string;
+  nameZh: string | null;
+  isActive: boolean;
+  items: DbMenuItem[];
+};
+
+/**
+ * 真正用于前台展示的菜单类型（与 LocalizedCategory 相同）
+ */
+export type PublicMenuCategory = LocalizedCategory;
+
+/**
+ * ⭐ 从「数据库菜单（/admin/menu/full 或 /menu/public 返回的结构）」构建前台本地化菜单。
+ *
+ * - 分类名称用 DB 的 nameEn/nameZh；
+ * - 菜品名称/描述/价格/图片/配料，用 DB 的字段；
+ * - 标签/热量，从静态 MENU_DEFS 里按 stableId 取（可选，没有就忽略）；
+ * - 只展示 isActive && isVisible && isAvailable 的菜品。
+ *
+ * 使用方式（示例）：
+ *
+ * const dbMenu = await apiFetch<DbMenuCategory[]>("/menu/public");
+ * const menu = buildLocalizedMenuFromDb(dbMenu, locale);
+ */
+export function buildLocalizedMenuFromDb(
+  dbMenu: DbMenuCategory[],
+  locale: Locale,
+): PublicMenuCategory[] {
+  const isZh = locale === "zh";
+
+  const activeCategories = dbMenu
+    .filter((c) => c.isActive)
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+
+  return activeCategories.map<PublicMenuCategory>((c) => {
+    const localizedName = isZh && c.nameZh ? c.nameZh : c.nameEn;
+    // 目前 DB 没有分类描述，这里先留空（后续可以在表里加 description 字段）
+    const description = "";
+
+    const items = c.items
+      .filter((i) => i.isVisible && i.isAvailable)
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map<LocalizedMenuItem>((i) => {
+        // 按 stableId 从静态配置中补充 tags / calories
+        const staticDef = MENU_ITEM_LOOKUP.get(i.stableId);
+        const tags = staticDef?.tags ?? [];
+        const calories = staticDef?.calories;
+
+        const name = isZh && i.nameZh ? i.nameZh : i.nameEn;
+        const desc =
+          isZh && i.descriptionZh
+            ? i.descriptionZh
+            : i.descriptionEn ?? "";
+
+        const ingredientsText =
+          isZh && i.ingredientsZh
+            ? i.ingredientsZh
+            : i.ingredientsEn ?? "";
+
+        return {
+          // ⭐ 对外 id 使用 stableId，这样与购物车 / 结算 / POS 对齐
+          id: i.stableId,
+          name,
+          description: desc,
+          price: i.basePriceCents / 100,
+          calories,
+          tags,
+          imageUrl: i.imageUrl ?? undefined,
+          ingredients: ingredientsText || undefined,
+        };
+      });
+
+    return {
+      id: c.id,
+      name: localizedName,
+      description,
+      items,
+    };
+  });
+}
+
 /** ===== 结算页相关类型 ===== */
 export type CartEntry = {
-  itemId: string;
+  itemId: string; // 对应 stableId / LocalizedMenuItem.id
   quantity: number;
   notes: string;
 };
@@ -481,7 +685,7 @@ export type LocalizedCartItem = {
   itemId: string;
   quantity: number;
   notes: string;
-  item: ReturnType<typeof localizeMenuItem>;
+  item: LocalizedMenuItem;
 };
 
 export type DeliveryTypeOption = "STANDARD" | "PRIORITY";

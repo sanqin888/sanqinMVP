@@ -1,13 +1,13 @@
+// apps/web/src/app/[locale]/admin/page.tsx
 "use client";
 
-import { useMemo, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { useParams } from "next/navigation";
+import type { Locale } from "@/lib/order/shared";
+import { apiFetch } from "@/lib/api-client";
 
-export type DaySchedule = {
-  day: string;
-  open: string;
-  close: string;
-  closed: boolean;
-};
+// ========== 基本类型 ========== //
 
 export type Holiday = {
   id: string;
@@ -15,109 +15,96 @@ export type Holiday = {
   reason: string;
 };
 
-export type MenuOption = {
+// 后端 Prisma 对应的菜单类型（简化为前端需要的字段）
+// MenuOption = 具体选项，如 “Mild / Medium / Hot”
+export type MenuOptionChoice = {
   id: string;
-  name: string;
-  choices: string[];
-  active: boolean;
+  nameEn: string;
+  nameZh?: string | null;
+  priceDeltaCents: number;
+  isAvailable: boolean;
+  tempUnavailableUntil: string | null;
+  sortOrder: number;
+};
+
+// MenuOptionGroup = 选项组，如 “Spiciness”
+export type MenuOptionGroup = {
+  id: string;
+  nameEn: string;
+  nameZh?: string | null;
+  minSelect: number;
+  maxSelect: number;
+  isRequired: boolean;
+  isActive: boolean;
+  sortOrder: number;
+  options: MenuOptionChoice[];
 };
 
 export type MenuItem = {
   id: string;
-  name: string;
-  price: number;
-  active: boolean;
-  options: MenuOption[];
+  categoryId: string;
+  stableId: string;
+  nameEn: string;
+  nameZh?: string | null;
+  descriptionEn?: string | null;
+  descriptionZh?: string | null;
+  basePriceCents: number;
+  isAvailable: boolean;
+  isVisible: boolean;
+  tempUnavailableUntil: string | null;
+  sortOrder: number;
+  optionGroups: MenuOptionGroup[];
 };
 
 export type MenuCategory = {
   id: string;
-  name: string;
-  active: boolean;
+  sortOrder: number;
+  nameEn: string;
+  nameZh?: string | null;
+  isActive: boolean;
   items: MenuItem[];
 };
 
-const DEFAULT_HOURS: DaySchedule[] = [
-  { day: "Monday", open: "11:00", close: "21:00", closed: false },
-  { day: "Tuesday", open: "11:00", close: "21:00", closed: false },
-  { day: "Wednesday", open: "11:00", close: "21:00", closed: false },
-  { day: "Thursday", open: "11:00", close: "21:00", closed: false },
-  { day: "Friday", open: "11:00", close: "22:00", closed: false },
-  { day: "Saturday", open: "11:30", close: "22:00", closed: false },
-  { day: "Sunday", open: "11:30", close: "20:00", closed: false },
+type FullMenuResponse = MenuCategory[];
+
+// —— 和 /admin/hours 页保持一致的类型 —— //
+type BusinessHourDto = {
+  weekday: number; // 0=Sunday ... 6=Saturday
+  openMinutes: number | null;
+  closeMinutes: number | null;
+  isClosed: boolean;
+};
+
+type BusinessHoursResponse = {
+  hours: BusinessHourDto[];
+};
+
+const WEEKDAY_LABELS_ZH = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+const WEEKDAY_LABELS_EN = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
 ];
 
+// 先保持节假日部分为本地 demo
 const DEFAULT_HOLIDAYS: Holiday[] = [
   { id: "h1", date: "2024-12-25", reason: "Christmas" },
   { id: "h2", date: "2025-01-01", reason: "New Year" },
 ];
 
-const DEFAULT_MENU: MenuCategory[] = [
-  {
-    id: "c1",
-    name: "Signature Dishes",
-    active: true,
-    items: [
-      {
-        id: "i1",
-        name: "Biang Biang Noodles",
-        price: 13.5,
-        active: true,
-        options: [
-          {
-            id: "o1",
-            name: "Spiciness",
-            choices: ["Mild", "Medium", "Hot"],
-            active: true,
-          },
-          {
-            id: "o2",
-            name: "Add-ons",
-            choices: ["Extra noodle", "Extra beef", "Cilantro"],
-            active: true,
-          },
-        ],
-      },
-      {
-        id: "i2",
-        name: "Cumin Lamb Burger",
-        price: 9.9,
-        active: false,
-        options: [
-          {
-            id: "o3",
-            name: "Combo upgrade",
-            choices: ["Fries", "Pickled veggie", "Milk tea"],
-            active: false,
-          },
-        ],
-      },
-    ],
-  },
-  {
-    id: "c2",
-    name: "Beverages",
-    active: true,
-    items: [
-      {
-        id: "i3",
-        name: "Chinese Tea",
-        price: 4.5,
-        active: true,
-        options: [],
-      },
-      {
-        id: "i4",
-        name: "Soy Milk",
-        price: 3.25,
-        active: true,
-        options: [],
-      },
-    ],
-  },
-];
-
-function SectionCard({ title, children, actions }: { title: string; children: React.ReactNode; actions?: React.ReactNode }) {
+function SectionCard({
+  title,
+  children,
+  actions,
+}: {
+  title: string;
+  children: React.ReactNode;
+  actions?: React.ReactNode;
+}) {
   return (
     <section className="space-y-4 rounded-2xl border bg-white/80 p-6 shadow-sm">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -129,38 +116,157 @@ function SectionCard({ title, children, actions }: { title: string; children: Re
   );
 }
 
+function minutesToTimeString(mins: number | null | undefined): string {
+  if (mins == null || Number.isNaN(mins)) return "";
+  const hh = Math.floor(mins / 60);
+  const mm = mins % 60;
+  const hhStr = hh.toString().padStart(2, "0");
+  const mmStr = mm.toString().padStart(2, "0");
+  return `${hhStr}:${mmStr}`;
+}
+
 export default function AdminDashboard() {
-  const [hours, setHours] = useState<DaySchedule[]>(DEFAULT_HOURS);
+  const { locale } = useParams<{ locale: Locale }>();
+  const isZh = locale === "zh";
+
+  // —— 营业时间：从后端读取，只做展示 —— //
+  const [hours, setHours] = useState<BusinessHourDto[]>([]);
+  const [hoursLoading, setHoursLoading] = useState(true);
+  const [hoursError, setHoursError] = useState<string | null>(null);
+
+  const weekdayLabels = useMemo(
+    () => (isZh ? WEEKDAY_LABELS_ZH : WEEKDAY_LABELS_EN),
+    [isZh],
+  );
+
+  // —— 菜单：从后端读取（/admin/menu/full） —— //
+  const [menu, setMenu] = useState<FullMenuResponse>([]);
+  const [menuLoading, setMenuLoading] = useState(true);
+  const [menuError, setMenuError] = useState<string | null>(null);
+
+  // —— 原来本地假数据：节假日仍然本地管理 —— //
   const [holidays, setHolidays] = useState<Holiday[]>(DEFAULT_HOLIDAYS);
-  const [menu, setMenu] = useState<MenuCategory[]>(DEFAULT_MENU);
-  const [newHoliday, setNewHoliday] = useState<Holiday>({ id: "", date: "", reason: "" });
+  const [newHoliday, setNewHoliday] = useState<Holiday>({
+    id: "",
+    date: "",
+    reason: "",
+  });
 
-  const totalActiveItems = useMemo(
-    () =>
-      menu.reduce(
-        (count, category) =>
-          count +
-          category.items.reduce((acc, item) => acc + (item.active ? 1 : 0), 0),
-        0,
-      ),
-    [menu],
-  );
+  // 统计：活跃 / 下架餐品数量（按分类 isActive + 菜品 isVisible + isAvailable 来算）
+  const { totalActiveItems, totalInactiveItems } = useMemo(() => {
+    let active = 0;
+    let inactive = 0;
 
-  const totalInactiveItems = useMemo(
-    () =>
-      menu.reduce(
-        (count, category) =>
-          count +
-          category.items.reduce((acc, item) => acc + (!item.active ? 1 : 0), 0),
-        0,
-      ),
-    [menu],
-  );
+    for (const category of menu) {
+      for (const item of category.items) {
+        const effectiveActive =
+          category.isActive && item.isVisible && item.isAvailable;
+        if (effectiveActive) {
+          active += 1;
+        } else {
+          inactive += 1;
+        }
+      }
+    }
 
-  function updateHour(day: string, patch: Partial<DaySchedule>) {
-    setHours((prev) => prev.map((h) => (h.day === day ? { ...h, ...patch } : h)));
-  }
+    return { totalActiveItems: active, totalInactiveItems: inactive };
+  }, [menu]);
 
+  // —— 加载后端营业时间 —— //
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadHours() {
+      setHoursLoading(true);
+      setHoursError(null);
+      try {
+        const res = await apiFetch<BusinessHoursResponse>("/admin/business/hours");
+        if (cancelled) return;
+
+        const sorted = [...res.hours].sort((a, b) => a.weekday - b.weekday);
+        setHours(sorted);
+      } catch (e) {
+        console.error(e);
+        if (!cancelled) {
+          setHoursError(
+            isZh
+              ? "加载营业时间失败，请稍后重试。"
+              : "Failed to load business hours. Please try again.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setHoursLoading(false);
+        }
+      }
+    }
+
+    void loadHours();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isZh]);
+
+  // —— 加载后端菜单（/admin/menu/full） —— //
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadMenu() {
+      setMenuLoading(true);
+      setMenuError(null);
+      try {
+        const res = await apiFetch<FullMenuResponse>("/admin/menu/full");
+        if (cancelled) return;
+
+        // 按 sortOrder 排序，保证展示顺序稳定
+        const normalized = res
+          .slice()
+          .sort((a, b) => a.sortOrder - b.sortOrder)
+          .map((category) => ({
+            ...category,
+            items: category.items
+              .slice()
+              .sort((a, b) => a.sortOrder - b.sortOrder)
+              .map((item) => ({
+                ...item,
+                optionGroups: item.optionGroups
+                  .slice()
+                  .sort((a, b) => a.sortOrder - b.sortOrder)
+                  .map((group) => ({
+                    ...group,
+                    options: group.options
+                      .slice()
+                      .sort((a, b) => a.sortOrder - b.sortOrder),
+                  })),
+              })),
+          }));
+
+        setMenu(normalized);
+      } catch (e) {
+        console.error(e);
+        if (!cancelled) {
+          setMenuError(
+            isZh
+              ? "加载菜单失败，请稍后重试。"
+              : "Failed to load menu. Please try again.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setMenuLoading(false);
+        }
+      }
+    }
+
+    void loadMenu();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isZh]);
+
+  // —— 节假日 demo 操作 —— //
   function toggleHoliday(id: string) {
     setHolidays((prev) => prev.filter((h) => h.id !== id));
   }
@@ -172,119 +278,254 @@ export default function AdminDashboard() {
     setNewHoliday({ id: "", date: "", reason: "" });
   }
 
-  function toggleCategory(categoryId: string) {
-    setMenu((prev) =>
-      prev.map((category) =>
-        category.id === categoryId ? { ...category, active: !category.active } : category,
-      ),
-    );
+  // —— 菜单类操作：调用后端接口 —— //
+
+  // 分类 ON / OFF：调用 PUT /admin/menu/categories/:id
+  async function toggleCategory(categoryId: string): Promise<void> {
+    const category = menu.find((c) => c.id === categoryId);
+    if (!category) return;
+
+    const nextIsActive = !category.isActive;
+
+    try {
+      const updated = await apiFetch<{ id: string; isActive: boolean }>(
+        `/admin/menu/categories/${categoryId}`,
+        {
+          method: "PUT",
+          body: {
+            isActive: nextIsActive,
+          },
+        },
+      );
+
+      setMenu((prev) =>
+        prev.map((c) =>
+          c.id === updated.id ? { ...c, isActive: updated.isActive } : c,
+        ),
+      );
+    } catch (error) {
+      console.error(error);
+      // 可以后续接入全局 toast 提示
+    }
   }
 
-  function toggleMenuItem(categoryId: string, itemId: string) {
-    setMenu((prev) =>
-      prev.map((category) => {
-        if (category.id !== categoryId) return category;
-        return {
-          ...category,
-          items: category.items.map((item) =>
-            item.id === itemId ? { ...item, active: !item.active } : item,
-          ),
-        };
-      }),
-    );
+  // 菜品 ON / OFF：调用 POST /admin/menu/items/:id/availability
+  async function toggleMenuItem(
+    categoryId: string,
+    itemId: string,
+  ): Promise<void> {
+    const category = menu.find((c) => c.id === categoryId);
+    const item = category?.items.find((i) => i.id === itemId);
+    if (!item) return;
+
+    const nextMode = item.isAvailable ? "PERMANENT_OFF" : "ON";
+
+    try {
+      const updated = await apiFetch<{
+        id: string;
+        isAvailable: boolean;
+        isVisible: boolean;
+        tempUnavailableUntil: string | null;
+      }>(`/admin/menu/items/${itemId}/availability`, {
+        method: "POST",
+        body: {
+          mode: nextMode,
+        },
+      });
+
+      setMenu((prev) =>
+        prev.map((c) =>
+          c.id !== categoryId
+            ? c
+            : {
+                ...c,
+                items: c.items.map((i) =>
+                  i.id === updated.id
+                    ? {
+                        ...i,
+                        isAvailable: updated.isAvailable,
+                        isVisible: updated.isVisible,
+                        tempUnavailableUntil: updated.tempUnavailableUntil,
+                      }
+                    : i,
+                ),
+              },
+        ),
+      );
+    } catch (error) {
+      console.error(error);
+    }
   }
 
-  function toggleOption(categoryId: string, itemId: string, optionId: string) {
-    setMenu((prev) =>
-      prev.map((category) => {
-        if (category.id !== categoryId) return category;
-        return {
+  // 选项组（Spiciness / Add-ons）整体 ON / OFF：
+  // 对该组下所有 MenuOption 调用 POST /admin/menu/options/:id/availability
+  async function toggleOptionGroup(itemId: string, groupId: string): Promise<void> {
+    // 找到对应的 group
+    let targetGroup: MenuOptionGroup | undefined;
+    for (const category of menu) {
+      const item = category.items.find((i) => i.id === itemId);
+      if (!item) continue;
+      const group = item.optionGroups.find((g) => g.id === groupId);
+      if (group) {
+        targetGroup = group;
+        break;
+      }
+    }
+    if (!targetGroup) return;
+
+    const anyEnabled = targetGroup.options.some((opt) => opt.isAvailable);
+    const nextMode: "ON" | "PERMANENT_OFF" =
+      anyEnabled ? "PERMANENT_OFF" : "ON";
+
+    try {
+      const updatedOptions = await Promise.all(
+        targetGroup.options.map((opt) =>
+          apiFetch<{
+            id: string;
+            isAvailable: boolean;
+            tempUnavailableUntil: string | null;
+          }>(`/admin/menu/options/${opt.id}/availability`, {
+            method: "POST",
+            body: {
+              mode: nextMode,
+            },
+          }),
+        ),
+      );
+
+      setMenu((prev) =>
+        prev.map((category) => ({
           ...category,
           items: category.items.map((item) => {
             if (item.id !== itemId) return item;
             return {
               ...item,
-              options: item.options.map((opt) =>
-                opt.id === optionId ? { ...opt, active: !opt.active } : opt,
-              ),
+              optionGroups: item.optionGroups.map((group) => {
+                if (group.id !== groupId) return group;
+                return {
+                  ...group,
+                  options: group.options.map((opt) => {
+                    const updated = updatedOptions.find((u) => u.id === opt.id);
+                    if (!updated) return opt;
+                    return {
+                      ...opt,
+                      isAvailable: updated.isAvailable,
+                      tempUnavailableUntil: updated.tempUnavailableUntil,
+                    };
+                  }),
+                };
+              }),
             };
           }),
-        };
-      }),
-    );
+        })),
+      );
+    } catch (error) {
+      console.error(error);
+    }
   }
 
   return (
     <div className="space-y-8">
       <div>
-        <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">Admin</p>
-        <h1 className="mt-2 text-3xl font-semibold text-slate-900">运营管理控制台</h1>
+        <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
+          Admin
+        </p>
+        <h1 className="mt-2 text-3xl font-semibold text-slate-900">
+          运营管理控制台
+        </h1>
         <p className="mt-2 max-w-3xl text-sm text-slate-600">
-          管理营业时间、节假日休假、菜单、餐品选项、上下架状态和其他日常运营事项。界面中的操作会实时更新当前视图，后续可以接入 API 与后端同步。
+          管理营业时间、节假日休假、菜单、餐品选项、上下架状态和其他日常运营事项。
+          这里展示的是当前生效配置，详细编辑请进入对应功能页。
         </p>
       </div>
 
+      {/* 顶部三个统计卡片 */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <div className="rounded-2xl border bg-white/80 p-5 shadow-sm">
           <p className="text-sm text-slate-500">活跃餐品</p>
-          <p className="mt-2 text-3xl font-semibold text-emerald-600">{totalActiveItems}</p>
+          <p className="mt-2 text-3xl font-semibold text-emerald-600">
+            {menuLoading ? "…" : totalActiveItems}
+          </p>
         </div>
         <div className="rounded-2xl border bg-white/80 p-5 shadow-sm">
           <p className="text-sm text-slate-500">下架餐品</p>
-          <p className="mt-2 text-3xl font-semibold text-amber-600">{totalInactiveItems}</p>
+          <p className="mt-2 text-3xl font-semibold text-amber-600">
+            {menuLoading ? "…" : totalInactiveItems}
+          </p>
         </div>
         <div className="rounded-2xl border bg-white/80 p-5 shadow-sm">
           <p className="text-sm text-slate-500">计划休假</p>
-          <p className="mt-2 text-3xl font-semibold text-slate-900">{holidays.length}</p>
+          <p className="mt-2 text-3xl font-semibold text-slate-900">
+            {holidays.length}
+          </p>
         </div>
       </div>
 
-      <SectionCard title="营业时间设置">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {hours.map((h) => (
-            <div key={h.day} className="rounded-xl border p-4 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">{h.day}</p>
-                  <p className="text-xs text-slate-500">营业时间 / 休息</p>
+      {/* —— 每周营业时间：从后端读取，只读展示 —— */}
+      <SectionCard
+        title="营业时间设置"
+        actions={
+          <Link
+            href={`/${locale}/admin/hours`}
+            className="text-xs font-medium text-emerald-700 hover:text-emerald-600"
+          >
+            {isZh ? "详细编辑营业时间" : "Edit hours in detail"}
+          </Link>
+        }
+      >
+        {hoursLoading ? (
+          <p className="text-sm text-slate-500">
+            {isZh ? "营业时间加载中…" : "Loading business hours…"}
+          </p>
+        ) : hoursError ? (
+          <p className="text-sm text-red-600">{hoursError}</p>
+        ) : hours.length === 0 ? (
+          <p className="text-sm text-slate-500">
+            {isZh ? "暂无营业时间配置。" : "No business hours configured."}
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {hours.map((h) => (
+              <div key={h.weekday} className="rounded-xl border p-4 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">
+                      {weekdayLabels[h.weekday] ?? h.weekday}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {isZh ? "营业时间 / 休息" : "Open hours / Closed"}
+                    </p>
+                  </div>
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-medium ${
+                      h.isClosed
+                        ? "bg-slate-100 text-slate-600"
+                        : "bg-emerald-50 text-emerald-700"
+                    }`}
+                  >
+                    {h.isClosed ? (isZh ? "休息" : "Closed") : isZh ? "营业" : "Open"}
+                  </span>
                 </div>
-                <button
-                  className={`rounded-full px-3 py-1 text-xs font-medium ${
-                    h.closed
-                      ? "bg-slate-100 text-slate-600"
-                      : "bg-emerald-50 text-emerald-700"
-                  }`}
-                  onClick={() => updateHour(h.day, { closed: !h.closed })}
-                  type="button"
-                >
-                  {h.closed ? "已休息" : "营业"}
-                </button>
+
+                <div className="mt-4 text-sm text-slate-800">
+                  {h.isClosed ? (
+                    <span className="text-xs text-slate-500">
+                      {isZh ? "当天不营业" : "Closed this day"}
+                    </span>
+                  ) : (
+                    <span>
+                      {minutesToTimeString(h.openMinutes)} -{" "}
+                      {minutesToTimeString(h.closeMinutes)}
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className="mt-4 flex items-center gap-3">
-                <label className="text-xs text-slate-500">开始</label>
-                <input
-                  type="time"
-                  value={h.open}
-                  disabled={h.closed}
-                  className="flex-1 rounded-md border px-3 py-2 text-sm"
-                  onChange={(e) => updateHour(h.day, { open: e.target.value })}
-                />
-              </div>
-              <div className="mt-3 flex items-center gap-3">
-                <label className="text-xs text-slate-500">结束</label>
-                <input
-                  type="time"
-                  value={h.close}
-                  disabled={h.closed}
-                  className="flex-1 rounded-md border px-3 py-2 text-sm"
-                  onChange={(e) => updateHour(h.day, { close: e.target.value })}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </SectionCard>
 
+      {/* —— 节假日与临时休假（仍然本地 demo） —— */}
       <SectionCard
         title="节假日与临时休假"
         actions={
@@ -295,7 +536,9 @@ export default function AdminDashboard() {
                 type="date"
                 className="rounded-md border px-3 py-2 text-sm"
                 value={newHoliday.date}
-                onChange={(e) => setNewHoliday((prev) => ({ ...prev, date: e.target.value }))}
+                onChange={(e) =>
+                  setNewHoliday((prev) => ({ ...prev, date: e.target.value }))
+                }
               />
             </div>
             <div className="flex flex-col text-sm">
@@ -305,7 +548,9 @@ export default function AdminDashboard() {
                 className="w-56 rounded-md border px-3 py-2 text-sm"
                 placeholder="节日 / 维修 / 员工培训"
                 value={newHoliday.reason}
-                onChange={(e) => setNewHoliday((prev) => ({ ...prev, reason: e.target.value }))}
+                onChange={(e) =>
+                  setNewHoliday((prev) => ({ ...prev, reason: e.target.value }))
+                }
               />
             </div>
             <button
@@ -344,81 +589,167 @@ export default function AdminDashboard() {
         )}
       </SectionCard>
 
-      <SectionCard title="菜单与上下架管理">
-        <div className="space-y-4">
-          {menu.map((category) => (
-            <div key={category.id} className="rounded-xl border p-4 shadow-sm">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-base font-semibold text-slate-900">{category.name}</p>
-                  <p className="text-xs text-slate-500">
-                    状态：{category.active ? "在售" : "下架"} · {category.items.length} 款餐品
-                  </p>
-                </div>
-                <button
-                  onClick={() => toggleCategory(category.id)}
-                  className={`rounded-full px-3 py-1 text-xs font-medium ${
-                    category.active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"
-                  }`}
-                  type="button"
-                >
-                  {category.active ? "在售" : "下架"}
-                </button>
-              </div>
+      {/* —— 菜单与上下架管理（从后端读取 + 调用 admin-menu 接口） —— */}
+      <SectionCard
+        title="菜单与上下架管理"
+        actions={
+          <Link
+            href={`/${locale}/admin/menu`}
+            className="text-xs font-medium text-emerald-700 hover:text-emerald-600"
+          >
+            {isZh ? "进入完整菜单管理" : "Open full menu management"}
+          </Link>
+        }
+      >
+        {menuLoading ? (
+          <p className="text-sm text-slate-500">
+            {isZh ? "菜单加载中…" : "Loading menu…"}
+          </p>
+        ) : menuError ? (
+          <p className="text-sm text-red-600">{menuError}</p>
+        ) : menu.length === 0 ? (
+          <p className="text-sm text-slate-500">
+            {isZh ? "暂无菜单数据。" : "No menu configured yet."}
+          </p>
+        ) : (
+          <div className="space-y-4">
+            {menu.map((category) => {
+              const categoryName =
+                isZh && category.nameZh ? category.nameZh : category.nameEn;
 
-              <div className="mt-3 space-y-3">
-                {category.items.map((item) => (
-                  <div key={item.id} className="rounded-lg border p-3">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="font-medium text-slate-900">{item.name}</p>
-                        <p className="text-sm text-slate-500">${item.price.toFixed(2)}</p>
-                      </div>
-                      <button
-                        onClick={() => toggleMenuItem(category.id, item.id)}
-                        className={`rounded-full px-3 py-1 text-xs font-medium ${
-                          item.active ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
-                        }`}
-                        type="button"
-                      >
-                        {item.active ? "在售" : "下架"}
-                      </button>
+              return (
+                <div key={category.id} className="rounded-xl border p-4 shadow-sm">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-base font-semibold text-slate-900">
+                        {categoryName}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        状态：{category.isActive ? "在售" : "下架"} ·{" "}
+                        {category.items.length} 款餐品
+                      </p>
                     </div>
+                    <button
+                      onClick={() => {
+                        void toggleCategory(category.id);
+                      }}
+                      className={`rounded-full px-3 py-1 text-xs font-medium ${
+                        category.isActive
+                          ? "bg-emerald-50 text-emerald-700"
+                          : "bg-slate-100 text-slate-600"
+                      }`}
+                      type="button"
+                    >
+                      {category.isActive ? "在售" : "下架"}
+                    </button>
+                  </div>
 
-                    {item.options.length > 0 ? (
-                      <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
-                        {item.options.map((option) => (
-                          <div
-                            key={option.id}
-                            className="flex items-center justify-between rounded-lg border bg-slate-50 px-3 py-2"
-                          >
+                  <div className="mt-3 space-y-3">
+                    {category.items.map((item) => {
+                      const itemName =
+                        isZh && item.nameZh ? item.nameZh : item.nameEn;
+                      const price = item.basePriceCents / 100;
+                      const effectiveActive =
+                        category.isActive && item.isVisible && item.isAvailable;
+
+                      return (
+                        <div key={item.id} className="rounded-lg border p-3">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                             <div>
-                              <p className="text-sm font-medium text-slate-900">{option.name}</p>
-                              <p className="text-xs text-slate-500">{option.choices.join(" / ")}</p>
+                              <p className="font-medium text-slate-900">
+                                {itemName}
+                              </p>
+                              <p className="text-sm text-slate-500">
+                                ${price.toFixed(2)}
+                              </p>
                             </div>
                             <button
-                              onClick={() => toggleOption(category.id, item.id, option.id)}
+                              onClick={() => {
+                                void toggleMenuItem(category.id, item.id);
+                              }}
                               className={`rounded-full px-3 py-1 text-xs font-medium ${
-                                option.active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"
+                                effectiveActive
+                                  ? "bg-emerald-50 text-emerald-700"
+                                  : "bg-amber-50 text-amber-700"
                               }`}
                               type="button"
                             >
-                              {option.active ? "可选" : "停用"}
+                              {effectiveActive ? "在售" : "下架"}
                             </button>
                           </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="mt-2 text-xs text-slate-500">此餐品暂无选项。</p>
-                    )}
+
+                          {item.optionGroups.length > 0 ? (
+                            <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+                              {item.optionGroups.map((group) => {
+                                const groupName =
+                                  isZh && group.nameZh
+                                    ? group.nameZh
+                                    : group.nameEn;
+
+                                const choicesLabel =
+                                  group.options.length > 0
+                                    ? group.options
+                                        .map((opt) =>
+                                          isZh && opt.nameZh
+                                            ? opt.nameZh
+                                            : opt.nameEn,
+                                        )
+                                        .join(" / ")
+                                    : isZh
+                                    ? "暂无子选项"
+                                    : "No choices configured";
+
+                                const anyEnabled = group.options.some(
+                                  (opt) => opt.isAvailable,
+                                );
+
+                                return (
+                                  <div
+                                    key={group.id}
+                                    className="flex items-center justify-between rounded-lg border bg-slate-50 px-3 py-2"
+                                  >
+                                    <div>
+                                      <p className="text-sm font-medium text-slate-900">
+                                        {groupName}
+                                      </p>
+                                      <p className="text-xs text-slate-500">
+                                        {choicesLabel}
+                                      </p>
+                                    </div>
+                                    <button
+                                      onClick={() => {
+                                        void toggleOptionGroup(item.id, group.id);
+                                      }}
+                                      className={`rounded-full px-3 py-1 text-xs font-medium ${
+                                        anyEnabled
+                                          ? "bg-emerald-50 text-emerald-700"
+                                          : "bg-slate-100 text-slate-600"
+                                      }`}
+                                      type="button"
+                                    >
+                                      {anyEnabled ? "可选" : "停用"}
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <p className="mt-2 text-xs text-slate-500">
+                              此餐品暂无选项。
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </SectionCard>
 
+      {/* —— 其他功能 —— */}
       <SectionCard title="门店服务与其他功能">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div className="rounded-xl border p-4">
@@ -427,10 +758,16 @@ export default function AdminDashboard() {
               控制是否接收线上配送与到店自取订单，适用于恶劣天气、门店维护等场景。
             </p>
             <div className="mt-3 flex gap-2">
-              <button className="flex-1 rounded-md border bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700" type="button">
+              <button
+                className="flex-1 rounded-md border bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700"
+                type="button"
+              >
                 开启
               </button>
-              <button className="flex-1 rounded-md border px-3 py-2 text-sm font-medium text-slate-600" type="button">
+              <button
+                className="flex-1 rounded-md border px-3 py-2 text-sm font-medium text-slate-600"
+                type="button"
+              >
                 暂停
               </button>
             </div>
@@ -465,7 +802,10 @@ export default function AdminDashboard() {
                 defaultValue="本周末 18:00 提前打烊，线上订单截止 17:30。"
               />
               <div className="mt-2 flex justify-end">
-                <button className="rounded-md border bg-slate-900 px-4 py-2 text-sm font-semibold text-white" type="button">
+                <button
+                  className="rounded-md border bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+                  type="button"
+                >
                   保存公告
                 </button>
               </div>

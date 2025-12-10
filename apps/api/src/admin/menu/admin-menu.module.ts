@@ -1,0 +1,13 @@
+// apps/api/src/admin/menu/admin-menu.module.ts
+
+import { Module } from '@nestjs/common';
+import { AdminMenuController } from './admin-menu.controller';
+import { AdminMenuService } from './admin-menu.service';
+import { PrismaService } from '../../prisma/prisma.service';
+
+@Module({
+  imports: [],
+  controllers: [AdminMenuController],
+  providers: [AdminMenuService, PrismaService],
+})
+export class AdminMenuModule {}

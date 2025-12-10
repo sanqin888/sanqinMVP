@@ -65,6 +65,19 @@ enum PhoneVerificationStatus {
   VERIFIED  // 验证通过
   CONSUMED  // 已经消费 / 失效（可选状态，方便以后扩展）
 }
+enum UserRole {
+  CUSTOMER
+  ADMIN
+}
+enum Weekday {
+  MON
+  TUE
+  WED
+  THU
+  FRI
+  SAT
+  SUN
+}
 
 // === Models ===
 
@@ -77,6 +90,7 @@ model User {
   phone      String?   @unique
   phoneVerifiedAt DateTime?
   name      String?
+  role      UserRole @default(CUSTOMER)  // 新增：角色
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   marketingEmailOptIn   Boolean  @default(false)
@@ -235,4 +249,105 @@ model PhoneVerification {
   lastAttemptAt DateTime?
 
   @@index([phone, purpose, used, createdAt])
+}
+
+model BusinessConfig {
+  id                 Int      @id @default(1)      // 单门店可固定为 1
+  storeName          String? 
+  timezone           String   @default("America/Toronto")
+  isTemporarilyClosed Boolean @default(false)      // 手动一键“暂停接单”
+  temporaryCloseReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model BusinessHour {
+  id           Int      @id @default(autoincrement())
+  weekday      Int      @unique       // 0=Sunday ... 6=Saturday，保证一天一条
+  openMinutes  Int?                   // 开门时间，可以为 null
+  closeMinutes Int?                   // 打烊时间，可以为 null
+  isClosed     Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+
+model Holiday {
+  id           Int      @id @default(autoincrement())
+  date         DateTime // 只用到日期，可统一当 local midnight 存
+  name         String?
+  isClosed     Boolean  @default(true)
+  openMinutes  Int?
+  closeMinutes Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MenuCategory {
+  id        String      @id @default(cuid())
+  sortOrder Int         @default(0)
+  nameEn    String
+  nameZh    String?
+  isActive  Boolean     @default(true)
+
+  items     MenuItem[]
+}
+
+model MenuItem {
+  id         String       @id @default(cuid())
+  categoryId String
+  category   MenuCategory @relation(fields: [categoryId], references: [id])
+
+  stableId      String  @unique           // 对齐前端 MENU_ITEM_LOOKUP 的 stable id
+  nameEn        String
+  nameZh        String?
+  descriptionEn String?
+  descriptionZh String?
+
+  // 新增：菜单图片 & 配料说明（中英文）
+  imageUrl      String?
+  ingredientsEn String?
+  ingredientsZh String?
+
+  basePriceCents Int
+  isAvailable    Boolean @default(true)  // 上下架
+  isVisible      Boolean @default(true)  // 是否在前台展示（可以与 isAvailable 分开）
+
+  tempUnavailableUntil DateTime?
+
+  sortOrder Int @default(0)
+
+  optionGroups MenuOptionGroup[]
+}
+
+model MenuOptionGroup {
+  id         String        @id @default(cuid())
+  itemId     String
+  item       MenuItem      @relation(fields: [itemId], references: [id])
+
+  nameEn     String
+  nameZh     String?
+  minSelect  Int           @default(0)
+  maxSelect  Int           @default(1)
+  isRequired Boolean       @default(false)
+  isActive   Boolean       @default(true)
+  sortOrder  Int           @default(0)
+
+  options    MenuOption[]
+}
+
+model MenuOption {
+  id               String          @id @default(cuid())
+  groupId          String
+  group            MenuOptionGroup @relation(fields: [groupId], references: [id])
+
+  nameEn           String
+  nameZh           String?
+  priceDeltaCents  Int             @default(0)   // 加价（负数也可以做减价）
+  isAvailable      Boolean         @default(true)
+  tempUnavailableUntil DateTime?
+  sortOrder        Int             @default(0)
 }
