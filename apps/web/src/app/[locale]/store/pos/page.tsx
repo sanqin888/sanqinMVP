@@ -10,6 +10,7 @@ import {
   MENU_ITEM_LOOKUP,
   type MenuItemDefinition,
 } from "@/lib/order/shared";
+import { apiFetch } from "@/lib/api-client";
 
 type PosCartEntry = {
   itemId: string;
@@ -36,6 +37,25 @@ type LocalizedMenuItem = ReturnType<
   typeof buildLocalizedMenu
 >[number]["items"][number];
 
+type StoreStatusRuleSource =
+  | "REGULAR_HOURS"
+  | "HOLIDAY"
+  | "CLOSED_ALL_DAY"
+  | "TEMPORARY_CLOSE";
+
+type StoreStatus = {
+  isOpen: boolean;
+  isTemporarilyClosed: boolean;
+  temporaryCloseReason: string | null;
+  ruleSource: StoreStatusRuleSource;
+  nextOpenAt?: string | null;
+  today?: {
+    date: string;
+    isHoliday: boolean;
+    holidayName: string | null;
+  };
+};
+
 const STRINGS = {
   zh: {
     title: "门店点单 · POS",
@@ -58,6 +78,15 @@ const STRINGS = {
     successBody: "单号与取餐码已显示在看板。",
     close: "关闭",
     errorGeneric: "下单失败，请稍后重试。",
+    // 门店状态相关
+    storeStatusOpen: "营业中",
+    storeStatusClosed: "暂停接单",
+    storeStatusHoliday: "节假日休息",
+    storeStatusTemporaryClosed: "当前门店已暂停接单。",
+    storeStatusClosedBySchedule: "当前不在营业时间内，暂时不支持新建订单。",
+    storeStatusNextOpenPrefix: "下次营业时间：",
+    storeStatusLoading: "正在获取门店状态…",
+    storeStatusError: "门店状态获取失败，请以店内实际情况为准。",
   },
   en: {
     title: "Store POS",
@@ -80,6 +109,18 @@ const STRINGS = {
     successBody: "Order number and pickup code are shown on the board.",
     close: "Close",
     errorGeneric: "Failed to place order. Please try again.",
+    // 门店状态相关
+    storeStatusOpen: "Open for orders",
+    storeStatusClosed: "Paused",
+    storeStatusHoliday: "Closed for holiday",
+    storeStatusTemporaryClosed:
+      "The store is temporarily not accepting new orders.",
+    storeStatusClosedBySchedule:
+      "The store is currently closed and cannot accept new orders.",
+    storeStatusNextOpenPrefix: "Next opening time: ",
+    storeStatusLoading: "Checking store status…",
+    storeStatusError:
+      "Unable to load store status. Please confirm with the store.",
   },
 } as const;
 
@@ -90,9 +131,9 @@ function formatMoney(cents: number): string {
 export default function StorePosPage() {
   const params = useParams<{ locale?: string }>();
   const locale = (params?.locale === "zh" ? "zh" : "en") as Locale;
+  const isZh = locale === "zh";
   const router = useRouter();
   const t = STRINGS[locale];
-  const isZh = locale === "zh";
 
   const menuCategories = useMemo(() => buildLocalizedMenu(locale), [locale]);
 
@@ -103,6 +144,95 @@ export default function StorePosPage() {
     orderNumber: string;
     pickupCode?: string | null;
   } | null>(null);
+
+  // 门店状态
+  const [storeStatus, setStoreStatus] = useState<StoreStatus | null>(null);
+  const [storeStatusLoading, setStoreStatusLoading] = useState(false);
+  const [storeStatusError, setStoreStatusError] = useState<string | null>(null);
+
+  // 加载门店营业状态（web / POS 共用）
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadStatus() {
+      try {
+        setStoreStatusLoading(true);
+        setStoreStatusError(null);
+        const data = await apiFetch<StoreStatus>("/public/store-status");
+        if (cancelled) return;
+        setStoreStatus(data);
+      } catch (error) {
+        console.error("Failed to load store status", error);
+        if (cancelled) return;
+        setStoreStatusError(
+          isZh
+            ? "门店状态加载失败，请以店内实际情况为准。"
+            : "Failed to load store status. Please check the store status manually.",
+        );
+      } finally {
+        if (!cancelled) {
+          setStoreStatusLoading(false);
+        }
+      }
+    }
+
+    void loadStatus();
+
+    // 简单轮询：每 60 秒刷新一次
+    const intervalId = window.setInterval(loadStatus, 60_000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [isZh]);
+
+  const isStoreOpen = storeStatus?.isOpen ?? true;
+
+  let storeStatusDetail: string | null = null;
+  if (storeStatus && !isStoreOpen) {
+    if (
+      storeStatus.ruleSource === "TEMPORARY_CLOSE" &&
+      storeStatus.isTemporarilyClosed
+    ) {
+      if (storeStatus.temporaryCloseReason?.trim()) {
+        storeStatusDetail = isZh
+          ? `当前门店暂停接单：${storeStatus.temporaryCloseReason}`
+          : `The store is temporarily not accepting orders: ${storeStatus.temporaryCloseReason}`;
+      } else {
+        storeStatusDetail = isZh
+          ? t.storeStatusTemporaryClosed
+          : t.storeStatusTemporaryClosed;
+      }
+    } else if (storeStatus.ruleSource === "HOLIDAY") {
+      const holidayName =
+        storeStatus.today?.holidayName || (isZh ? "节假日" : "holiday");
+      storeStatusDetail = isZh
+        ? `${holidayName}休息，今日不接新订单。`
+        : `Closed today for ${holidayName}.`;
+    } else {
+      storeStatusDetail = isZh
+        ? t.storeStatusClosedBySchedule
+        : t.storeStatusClosedBySchedule;
+    }
+
+    if (storeStatus.nextOpenAt) {
+      const formatted = new Date(storeStatus.nextOpenAt).toLocaleString(
+        isZh ? "zh-Hans-CA" : "en-CA",
+        {
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        },
+      );
+      storeStatusDetail +=
+        (storeStatusDetail ? " " : "") +
+        (isZh
+          ? `${t.storeStatusNextOpenPrefix}${formatted}`
+          : `${t.storeStatusNextOpenPrefix}${formatted}`);
+    }
+  }
 
   // 计算带详情的购物车
   const cartWithDetails = useMemo(() => {
@@ -209,8 +339,9 @@ export default function StorePosPage() {
   }, [cartWithDetails, subtotalCents, taxCents, totalCents]);
 
   // 👉 现在：只负责跳转到支付界面（在支付页选择堂食/外带 + 付款方式）
+  // 同时受 storeStatus.isOpen 控制（管理端 / POS 的暂停开关统一生效）
   const handlePlaceOrder = () => {
-    if (!hasItems) return;
+    if (!hasItems || !isStoreOpen) return;
     setIsPlacing(true);
     router.push(`/${locale}/store/pos/payment`);
   };
@@ -221,6 +352,33 @@ export default function StorePosPage() {
         <div>
           <h1 className="text-2xl font-semibold">{t.title}</h1>
           <p className="text-sm text-slate-300">{t.subtitle}</p>
+          {storeStatusDetail && (
+            <p className="mt-1 max-w-xl text-xs text-rose-200">
+              {storeStatusDetail}
+            </p>
+          )}
+          {storeStatusError && (
+            <p className="mt-1 max-w-xl text-[11px] text-amber-300">
+              {t.storeStatusError}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {storeStatusLoading ? (
+            <span className="rounded-full border border-slate-600 bg-slate-800 px-3 py-1 text-xs text-slate-200">
+              {t.storeStatusLoading}
+            </span>
+          ) : (
+            <span
+              className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                isStoreOpen
+                  ? "border-emerald-400/60 bg-emerald-500/10 text-emerald-200"
+                  : "border-rose-400/60 bg-rose-500/10 text-rose-200"
+              }`}
+            >
+              {isStoreOpen ? t.storeStatusOpen : t.storeStatusClosed}
+            </span>
+          )}
         </div>
       </header>
 
@@ -291,7 +449,7 @@ export default function StorePosPage() {
                       {item.description}
                     </p>
 
-                    <div className="flex items-center justify之间 mt-2">
+                    <div className="flex items-center justify-between mt-2">
                       <span className="text-[11px] text-slate-400">
                         {t.tapToAdd}
                       </span>
@@ -408,10 +566,10 @@ export default function StorePosPage() {
             </button>
             <button
               type="button"
-              disabled={!hasItems || isPlacing}
+              disabled={!hasItems || isPlacing || !isStoreOpen}
               onClick={handlePlaceOrder}
               className={`flex-[1.5] h-12 rounded-2xl text-sm font-semibold ${
-                !hasItems || isPlacing
+                !hasItems || isPlacing || !isStoreOpen
                   ? "bg-slate-500 text-slate-200"
                   : "bg-emerald-500 text-slate-900 hover:bg-emerald-400"
               }`}
@@ -447,7 +605,7 @@ export default function StorePosPage() {
             <button
               type="button"
               onClick={() => setLastOrderInfo(null)}
-              className="mt-2 inline-flex items-center justify-center px-4 py-2 rounded-2xl bg-slate-100 text-slate-900 text-sm font-medium hover:bg白"
+              className="mt-2 inline-flex items-center justify-center px-4 py-2 rounded-2xl bg-slate-100 text-slate-900 text-sm font-medium hover:bg-white"
             >
               {t.close}
             </button>

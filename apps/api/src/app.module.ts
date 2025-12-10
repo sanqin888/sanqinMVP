@@ -18,6 +18,10 @@ import { MembershipModule } from './membership/membership.module';
 import { PhoneVerificationModule } from './phone-verification/phone-verification.module';
 import { AuthModule } from './auth/auth.module';
 import { RequestIdInterceptor } from './common/request-id.interceptor';
+import { AdminModule } from './admin/admin.module';
+import { StoreStatusModule } from './store/store-status.module';
+import { BusinessHoursModule } from './admin/business-hours/business-hours.module';
+import { AdminMenuModule } from './admin/menu/admin-menu.module';
 
 const configModuleFactory: {
   forRoot(options: ConfigModuleOptions): DynamicModule;
@@ -44,6 +48,10 @@ const envConfigModule = configModuleFactory.forRoot({
     CloverWebhooksModule,
     LocationModule,
     PhoneVerificationModule,
+    AdminModule,
+    StoreStatusModule,
+    BusinessHoursModule,
+    AdminMenuModule,
   ],
   controllers: [AppController],
   providers: [

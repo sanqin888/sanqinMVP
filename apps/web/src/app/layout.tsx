@@ -1,9 +1,9 @@
-//Users/apple/sanqinMVP/apps/web/src/app
-
+// apps/web/src/app/layout.tsx
 import type { Metadata } from "next";
 import { cookies, headers } from "next/headers";
 import "./globals.css";
 import type { Locale } from "@/lib/i18n/locales";
+import { AuthProvider } from "./providers";
 
 export const metadata: Metadata = {
   title: "San Qin Noodle House",
@@ -22,13 +22,20 @@ async function detectLang(): Promise<Locale> {
   return /(?:^|[,\s])zh(?:-|;|,|\s|$)/i.test(accept) ? "zh" : "en";
 }
 
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const serverLocale = await detectLang();
   const htmlLang = serverLocale === "zh" ? "zh-Hans" : "en";
 
   return (
     <html lang={htmlLang} suppressHydrationWarning>
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        {/* ✅ 在这里包一层 AuthProvider，里面才可以安全 useSession() */}
+        <AuthProvider>{children}</AuthProvider>
+      </body>
     </html>
   );
 }

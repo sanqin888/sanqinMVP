@@ -69,6 +69,25 @@ type SessionWithUserId = Session & {
   user?: (Session["user"] & { id?: string | null }) | null;
 };
 
+type StoreStatusRuleSource =
+  | "REGULAR_HOURS"
+  | "HOLIDAY"
+  | "CLOSED_ALL_DAY"
+  | "TEMPORARY_CLOSE";
+
+type StoreStatus = {
+  isOpen: boolean;
+  isTemporarilyClosed: boolean;
+  temporaryCloseReason: string | null;
+  ruleSource: StoreStatusRuleSource;
+  nextOpenAt?: string | null;
+  today?: {
+    date: string;
+    isHoliday: boolean;
+    holidayName: string | null;
+  };
+};
+
 type MemberTier = "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
 
 type MembershipSummaryResponse = {
@@ -314,6 +333,49 @@ export default function CheckoutPage() {
   const [couponLoading, setCouponLoading] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
 
+  // 门店营业状态（web / POS 共用）
+  const [storeStatus, setStoreStatus] = useState<StoreStatus | null>(null);
+  const [storeStatusLoading, setStoreStatusLoading] = useState(false);
+  const [storeStatusError, setStoreStatusError] = useState<string | null>(null);
+
+  // 加载门店营业状态
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadStoreStatus() {
+      try {
+        setStoreStatusLoading(true);
+        setStoreStatusError(null);
+
+        const data = await apiFetch<StoreStatus>("/public/store-status");
+        if (cancelled) return;
+        setStoreStatus(data);
+      } catch (error) {
+        console.error("Failed to load store status", error);
+        if (cancelled) return;
+        setStoreStatusError(
+          locale === "zh"
+            ? "门店状态获取失败，如继续下单，请以店内实际营业情况为准。"
+            : "Unable to confirm store status. If you continue, please make sure the store is actually open.",
+        );
+      } finally {
+        if (!cancelled) {
+          setStoreStatusLoading(false);
+        }
+      }
+    }
+
+    void loadStoreStatus();
+
+    // 简单轮询：每 60 秒刷新一次
+    const intervalId = window.setInterval(loadStoreStatus, 60_000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [locale]);
+
   // ✅ 小计：按“分”计算，先把单价（CAD）×100 再四舍五入
   const subtotalCents = useMemo(
     () =>
@@ -514,13 +576,69 @@ export default function CheckoutPage() {
     customer.province.trim().length > 0 &&
     postalCodeIsValid;
 
-  // ⭐ 下单前置条件：有菜 + 姓名 + 手机号长度 + 手机已验证 + （外送时地址完整）
+  // 门店是否允许下单（管理后台 / POS 共用）
+  const isStoreOpen = storeStatus?.isOpen ?? true;
+
+  // 关门时给顾客看的详细提示
+  let storeStatusDetail: string | null = null;
+  if (storeStatus && !isStoreOpen) {
+    if (
+      storeStatus.ruleSource === "TEMPORARY_CLOSE" &&
+      storeStatus.isTemporarilyClosed
+    ) {
+      if (storeStatus.temporaryCloseReason?.trim()) {
+        storeStatusDetail =
+          locale === "zh"
+            ? `当前门店暂停接单：${storeStatus.temporaryCloseReason}`
+            : `The store is temporarily not accepting orders: ${storeStatus.temporaryCloseReason}`;
+      } else {
+        storeStatusDetail =
+          locale === "zh"
+            ? "当前门店暂停接单。"
+            : "The store is temporarily not accepting new orders.";
+      }
+    } else if (storeStatus.ruleSource === "HOLIDAY") {
+      const holidayName =
+        storeStatus.today?.holidayName ||
+        (locale === "zh" ? "节假日" : "holiday");
+      storeStatusDetail =
+        locale === "zh"
+          ? `${holidayName}休息，今日不接新订单。`
+          : `Closed today for ${holidayName}.`;
+    } else {
+      storeStatusDetail =
+        locale === "zh"
+          ? "当前不在营业时间内，暂时不支持新建订单。"
+          : "The store is currently closed and cannot accept new orders.";
+    }
+
+    if (storeStatus.nextOpenAt) {
+      const formatted = new Date(storeStatus.nextOpenAt).toLocaleString(
+        locale === "zh" ? "zh-Hans-CA" : "en-CA",
+        {
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        },
+      );
+
+      storeStatusDetail +=
+        (storeStatusDetail ? " " : "") +
+        (locale === "zh"
+          ? `预计下次营业时间：${formatted}`
+          : `Next opening time: ${formatted}`);
+    }
+  }
+
+  // ⭐ 下单前置条件：有菜 + 姓名 + 手机号长度 + 手机已验证 + （外送时地址完整）+ 门店当前允许下单
   const canPlaceOrder =
     localizedCartItems.length > 0 &&
     customer.name.trim().length > 0 &&
     customer.phone.trim().length >= 6 &&
     phoneVerified &&
-    (fulfillment === "pickup" || deliveryAddressReady);
+    (fulfillment === "pickup" || deliveryAddressReady) &&
+    isStoreOpen;
 
   const scheduleLabel =
     strings.scheduleOptions.find((option) => option.id === schedule)?.label ??
@@ -1243,6 +1361,36 @@ export default function CheckoutPage() {
       </section>
 
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg">
+        {(storeStatusLoading || !isStoreOpen || storeStatusError) && (
+          <div className="mb-4 space-y-2">
+            {storeStatusLoading && (
+              <div className="rounded-2xl bg-slate-50 px-4 py-3 text-xs text-slate-600">
+                {locale === "zh"
+                  ? "正在获取门店营业状态…"
+                  : "Checking store opening status…"}
+              </div>
+            )}
+
+            {!storeStatusLoading && storeStatus && !isStoreOpen && (
+              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">
+                <p className="font-semibold">
+                  {locale === "zh"
+                    ? "当前暂不支持在线下单"
+                    : "Online ordering is currently unavailable"}
+                </p>
+                {storeStatusDetail && (
+                  <p className="mt-1">{storeStatusDetail}</p>
+                )}
+              </div>
+            )}
+
+            {storeStatusError && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+                {storeStatusError}
+              </div>
+            )}
+          </div>
+        )}
         {localizedCartItems.length === 0 ? (
           <div className="space-y-4 text-center text-sm text-slate-500">
             <p>{strings.cartEmpty}</p>
