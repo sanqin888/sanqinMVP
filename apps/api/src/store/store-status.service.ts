@@ -1,7 +1,7 @@
 // apps/api/src/store/store-status.service.ts
 
 import { Injectable } from '@nestjs/common';
-import type { BusinessConfig, BusinessHour, Holiday } from '@prisma/client';
+import type { BusinessConfig } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppLogger } from '../common/app-logger';
 

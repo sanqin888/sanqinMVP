@@ -1,7 +1,7 @@
 // apps/api/src/admin/business/admin-business.service.ts
 
 import { Injectable, BadRequestException } from '@nestjs/common';
-import type { BusinessConfig, BusinessHour, Holiday } from '@prisma/client';
+import type { BusinessConfig, BusinessHour } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AppLogger } from '../../common/app-logger';
 
