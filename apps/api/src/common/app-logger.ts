@@ -31,11 +31,11 @@ export class AppLogger extends Logger {
     super.warn(this.prefixMessage(message), ...optionalParams);
   }
 
-  debug(message: any, ...optionalParams: any[]) {
+  debug(message: unknown, ...optionalParams: unknown[]) {
     super.debug?.(this.prefixMessage(message), ...optionalParams);
   }
 
-  verbose(message: any, ...optionalParams: any[]) {
+  verbose(message: unknown, ...optionalParams: unknown[]) {
     super.verbose?.(this.prefixMessage(message), ...optionalParams);
   }
 }
