@@ -201,7 +201,8 @@ export default function AdminMenuPage() {
 
       await apiFetch(`/admin/menu/items/${itemId}`, {
         method: "PUT",
-        json: body,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
       });
 
       setSaving({ itemId: null, error: null });
@@ -237,11 +238,12 @@ export default function AdminMenuPage() {
     try {
       await apiFetch("/admin/menu/categories", {
         method: "POST",
-        json: {
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           nameEn,
           nameZh: nameZh || undefined,
           sortOrder: Number.isNaN(sort) ? 0 : sort,
-        },
+        }),
       });
 
       // 清空表单并刷新菜单
@@ -295,7 +297,8 @@ export default function AdminMenuPage() {
     try {
       await apiFetch("/admin/menu/items", {
         method: "POST",
-        json: {
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           categoryId,
           stableId,
           nameEn,
@@ -307,7 +310,7 @@ export default function AdminMenuPage() {
           imageUrl: imageUrl || undefined,
           ingredientsEn: ingredientsEn || undefined,
           ingredientsZh: ingredientsZh || undefined,
-        },
+        }),
       });
 
       // 清空该分类的新建菜品草稿 & 刷新菜单
