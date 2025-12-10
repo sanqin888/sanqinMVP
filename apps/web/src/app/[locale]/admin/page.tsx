@@ -286,9 +286,10 @@ export default function AdminDashboard() {
         `/admin/menu/categories/${categoryId}`,
         {
           method: "PUT",
-          body: {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
             isActive: nextIsActive,
-          },
+          }),
         },
       );
 
@@ -322,9 +323,10 @@ export default function AdminDashboard() {
         tempUnavailableUntil: string | null;
       }>(`/admin/menu/items/${itemId}/availability`, {
         method: "POST",
-        body: {
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           mode: nextMode,
-        },
+        }),
       });
 
       setMenu((prev) =>
@@ -380,9 +382,10 @@ export default function AdminDashboard() {
             tempUnavailableUntil: string | null;
           }>(`/admin/menu/options/${opt.id}/availability`, {
             method: "POST",
-            body: {
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
               mode: nextMode,
-            },
+            }),
           }),
         ),
       );
