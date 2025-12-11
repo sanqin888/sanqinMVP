@@ -470,7 +470,6 @@ export function localizeMenuItem(
   return {
     id: def.id,
     name: t.name,
-    description: t.description,
     price: def.price,
     calories: def.calories,
     tags: def.tags ?? [],
