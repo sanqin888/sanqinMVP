@@ -1,3 +1,4 @@
+//apps/web/src/app/[locale]/admin/menu/page.tsx
 "use client";
 
 import type { ReactNode } from "react";
@@ -37,8 +38,6 @@ type NewItemDraft = {
   stableId: string;
   nameEn: string;
   nameZh: string;
-  descriptionEn: string;
-  descriptionZh: string;
   price: string; // CAD 文本
   sortOrder: string;
   imageUrl: string;
@@ -51,8 +50,6 @@ function createEmptyNewItemDraft(): NewItemDraft {
     stableId: "",
     nameEn: "",
     nameZh: "",
-    descriptionEn: "",
-    descriptionZh: "",
     price: "",
     sortOrder: "0",
     imageUrl: "",
@@ -188,8 +185,6 @@ export default function AdminMenuPage() {
         categoryId: item.categoryId,
         nameEn: item.nameEn,
         nameZh: item.nameZh ?? undefined,
-        descriptionEn: item.descriptionEn ?? undefined,
-        descriptionZh: item.descriptionZh ?? undefined,
         basePriceCents: item.basePriceCents,
         isAvailable: item.isAvailable,
         isVisible: item.isVisible,
@@ -272,8 +267,6 @@ export default function AdminMenuPage() {
     const stableId = draft.stableId.trim();
     const nameEn = draft.nameEn.trim();
     const nameZh = draft.nameZh.trim();
-    const descriptionEn = draft.descriptionEn.trim();
-    const descriptionZh = draft.descriptionZh.trim();
     const imageUrl = draft.imageUrl.trim();
     const ingredientsEn = draft.ingredientsEn.trim();
     const ingredientsZh = draft.ingredientsZh.trim();
@@ -303,8 +296,6 @@ export default function AdminMenuPage() {
           stableId,
           nameEn,
           nameZh: nameZh || undefined,
-          descriptionEn: descriptionEn || undefined,
-          descriptionZh: descriptionZh || undefined,
           basePriceCents: Math.round(priceNumber * 100),
           sortOrder: Number.isNaN(sortOrderNumber) ? 0 : sortOrderNumber,
           imageUrl: imageUrl || undefined,
@@ -498,10 +489,16 @@ export default function AdminMenuPage() {
                     {cat.items.map((item) => {
                       const localizedName =
                         isZh && item.nameZh ? item.nameZh : item.nameEn;
-                      const localizedDesc =
-                        isZh && item.descriptionZh
-                          ? item.descriptionZh
-                          : item.descriptionEn ?? "";
+
+                      const ingredientsPreview = (() => {
+                        const text =
+                          isZh && item.ingredientsZh
+                            ? item.ingredientsZh
+                            : item.ingredientsEn ?? "";
+                        if (!text) return "";
+                        if (text.length <= 80) return text;
+                        return `${text.slice(0, 80)}…`;
+                      })();
 
                       const priceDisplay = (item.basePriceCents / 100).toFixed(
                         2,
@@ -519,10 +516,17 @@ export default function AdminMenuPage() {
                               <p className="text-sm font-semibold text-slate-900">
                                 {localizedName}
                               </p>
-                              <p className="text-xs text-slate-500">
-                                {localizedDesc ||
-                                  (isZh ? "暂无描述" : "No description")}
-                              </p>
+                              {ingredientsPreview ? (
+                                <p className="mt-1 text-xs text-slate-500">
+                                  {ingredientsPreview}
+                                </p>
+                              ) : (
+                                <p className="mt-1 text-[11px] text-slate-400">
+                                  {isZh
+                                    ? "尚未填写配料说明。"
+                                    : "No ingredients specified yet."}
+                                </p>
+                              )}
                               <p className="mt-1 text-xs text-slate-500">
                                 ID:{" "}
                                 <span className="font-mono">
@@ -618,47 +622,6 @@ export default function AdminMenuPage() {
                                         item.id,
                                         "nameZh",
                                         e.target.value as DbMenuItem["nameZh"],
-                                      )
-                                    }
-                                  />
-                                </div>
-                              </div>
-
-                              <div className="grid gap-3 md:grid-cols-2">
-                                <div className="space-y-1">
-                                  <label className="block text-[11px] font-medium text-slate-500">
-                                    描述（EN）
-                                  </label>
-                                  <textarea
-                                    className="w-full rounded-md border px-2 py-1 text-xs"
-                                    rows={2}
-                                    value={item.descriptionEn ?? ""}
-                                    onChange={(e) =>
-                                      updateItemField(
-                                        cat.id,
-                                        item.id,
-                                        "descriptionEn",
-                                        e.target
-                                          .value as DbMenuItem["descriptionEn"],
-                                      )
-                                    }
-                                  />
-                                </div>
-                                <div className="space-y-1">
-                                  <label className="block text-[11px] font-medium text-slate-500">
-                                    描述（中文）
-                                  </label>
-                                  <textarea
-                                    className="w-full rounded-md border px-2 py-1 text-xs"
-                                    rows={2}
-                                    value={item.descriptionZh ?? ""}
-                                    onChange={(e) =>
-                                      updateItemField(
-                                        cat.id,
-                                        item.id,
-                                        "descriptionZh",
-                                        e.target
-                                          .value as DbMenuItem["descriptionZh"],
                                       )
                                     }
                                   />
@@ -917,43 +880,6 @@ export default function AdminMenuPage() {
                                     updateNewItemField(
                                       cat.id,
                                       "nameZh",
-                                      e.target.value,
-                                    )
-                                  }
-                                />
-                              </div>
-                            </div>
-
-                            <div className="grid gap-3 md:grid-cols-2">
-                              <div className="space-y-1">
-                                <label className="block text-[11px] font-medium text-slate-500">
-                                  描述（EN）
-                                </label>
-                                <textarea
-                                  className="w-full rounded-md border px-2 py-1 text-xs"
-                                  rows={2}
-                                  value={draft.descriptionEn}
-                                  onChange={(e) =>
-                                    updateNewItemField(
-                                      cat.id,
-                                      "descriptionEn",
-                                      e.target.value,
-                                    )
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className="block text-[11px] font-medium text-slate-500">
-                                  描述（中文）
-                                </label>
-                                <textarea
-                                  className="w-full rounded-md border px-2 py-1 text-xs"
-                                  rows={2}
-                                  value={draft.descriptionZh}
-                                  onChange={(e) =>
-                                    updateNewItemField(
-                                      cat.id,
-                                      "descriptionZh",
                                       e.target.value,
                                     )
                                   }

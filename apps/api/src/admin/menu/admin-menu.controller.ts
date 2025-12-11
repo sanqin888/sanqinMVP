@@ -35,7 +35,7 @@ export class AdminMenuController {
     return this.service.updateCategory(id, dto);
   }
 
-  // 新增 / 更新 菜品
+  // 新增 / 更新 菜品（不再有 description 字段）
   @Post('items')
   async createItem(
     @Body()
@@ -44,8 +44,6 @@ export class AdminMenuController {
       stableId: string;
       nameEn: string;
       nameZh?: string;
-      descriptionEn?: string;
-      descriptionZh?: string;
       basePriceCents: number;
       sortOrder?: number;
       imageUrl?: string;
@@ -64,8 +62,6 @@ export class AdminMenuController {
       categoryId: string;
       nameEn: string;
       nameZh?: string;
-      descriptionEn?: string;
-      descriptionZh?: string;
       basePriceCents: number;
       isAvailable: boolean;
       isVisible: boolean;
