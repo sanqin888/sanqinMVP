@@ -57,22 +57,18 @@ export class AdminMenuService {
   /**
    * 新建分类
    */
-  async createCategory(
-    dto?: {
-      nameEn?: string;
-      nameZh?: string;
-      sortOrder?: number;
-    },
-  ): Promise<MenuCategory> {
-    // 防御：避免 dto 为 undefined 时直接访问属性
+  async createCategory(dto?: {
+    nameEn?: string;
+    nameZh?: string;
+    sortOrder?: number;
+  }): Promise<MenuCategory> {
     const nameEn = dto?.nameEn?.trim();
     if (!nameEn) {
       throw new BadRequestException('nameEn is required');
     }
 
     const nameZh = dto?.nameZh?.trim() || null;
-    const sortOrder =
-      typeof dto?.sortOrder === 'number' ? dto.sortOrder : 0;
+    const sortOrder = typeof dto?.sortOrder === 'number' ? dto.sortOrder : 0;
 
     return this.prisma.menuCategory.create({
       data: {
@@ -140,15 +136,13 @@ export class AdminMenuService {
   }
 
   /**
-   * 新建菜品
+   * 新建菜品（不再接收 description）
    */
   async createItem(dto: {
     categoryId: string;
     stableId: string;
     nameEn: string;
     nameZh?: string;
-    descriptionEn?: string;
-    descriptionZh?: string;
     basePriceCents: number;
     sortOrder?: number;
     imageUrl?: string;
@@ -182,8 +176,6 @@ export class AdminMenuService {
         stableId,
         nameEn,
         nameZh: dto.nameZh?.trim() || null,
-        descriptionEn: dto.descriptionEn?.trim() || null,
-        descriptionZh: dto.descriptionZh?.trim() || null,
         imageUrl: dto.imageUrl?.trim() || null,
         ingredientsEn: dto.ingredientsEn?.trim() || null,
         ingredientsZh: dto.ingredientsZh?.trim() || null,
@@ -196,7 +188,7 @@ export class AdminMenuService {
   }
 
   /**
-   * 更新菜品基本信息 / 上下架 / 图片 / 配料
+   * 更新菜品（不再支持 descriptionEn/descriptionZh）
    */
   async updateItem(
     id: string,
@@ -204,8 +196,6 @@ export class AdminMenuService {
       categoryId: string;
       nameEn: string;
       nameZh?: string;
-      descriptionEn?: string;
-      descriptionZh?: string;
       basePriceCents: number;
       isAvailable: boolean;
       isVisible: boolean;
@@ -232,16 +222,6 @@ export class AdminMenuService {
     if (typeof dto.nameZh === 'string') {
       const trimmed = dto.nameZh.trim();
       data.nameZh = trimmed || null;
-    }
-
-    if (typeof dto.descriptionEn === 'string') {
-      const trimmed = dto.descriptionEn.trim();
-      data.descriptionEn = trimmed || null;
-    }
-
-    if (typeof dto.descriptionZh === 'string') {
-      const trimmed = dto.descriptionZh.trim();
-      data.descriptionZh = trimmed || null;
     }
 
     if (typeof dto.imageUrl === 'string') {
@@ -300,9 +280,6 @@ export class AdminMenuService {
 
   /**
    * 菜品上下架（全局生效：web + POS）
-   * - ON: 恢复可售，清空临时下架
-   * - PERMANENT_OFF: 永久下架
-   * - TEMP_TODAY_OFF: 今天剩余时间都当作“临时缺货”（通过 tempUnavailableUntil 控制）
    */
   async setItemAvailability(
     id: string,

@@ -1,3 +1,4 @@
+//apps/web/src/app/[locale]/page.tsx
 "use client";
 
 import Link from "next/link";
@@ -261,7 +262,9 @@ export default function LocalOrderPage() {
 
             {menu.length === 0 ? (
               <p className="text-sm text-slate-500">
-                {locale === "zh" ? "当前暂无可售菜品。" : "No items available at the moment."}
+                {locale === "zh"
+                  ? "当前暂无可售菜品。"
+                  : "No items available at the moment."}
               </p>
             ) : (
               menu.map((category) => (
@@ -296,48 +299,43 @@ export default function LocalOrderPage() {
                           </div>
                         ) : null}
 
-                        <div className="space-y-3">
-                          {/* 标题 + 描述 + 价格 */}
-                          <div className="flex items-start justify-between gap-4">
-                            <div>
-                              <h3 className="text-lg font-semibold text-slate-900">
-                                {item.name}
-                              </h3>
-                              {item.description ? (
-                                <p className="mt-1 text-sm text-slate-600">
-                                  {item.description}
-                                </p>
-                              ) : null}
-                            </div>
-                            <span className="rounded-full bg-slate-900/90 px-3 py-1 text-sm font-semibold text-white">
-                              {currencyFormatter.format(item.price)}
-                            </span>
-                          </div>
+<div className="space-y-3">
+  {/* 标题 + 配料 + 价格 */}
+  <div className="flex items-start justify-between gap-4">
+    <div>
+      <h3 className="text-lg font-semibold text-slate-900">
+        {item.name}
+      </h3>
 
-                          {/* 配料说明（已在 buildLocalizedMenuFromDb 中本地化到 item.ingredients） */}
-                          {item.ingredients ? (
-                            <p className="text-xs leading-relaxed text-slate-500">
-                              {item.ingredients}
-                            </p>
-                          ) : null}
+      {/* ⭐ 配料说明：菜名下面小字显示 */}
+      {item.ingredients ? (
+        <p className="mt-1 text-xs text-slate-500">
+          {item.ingredients}
+        </p>
+      ) : null}
+    </div>
+    <span className="rounded-full bg-slate-900/90 px-3 py-1 text-sm font-semibold text-white">
+      {currencyFormatter.format(item.price)}
+    </span>
+  </div>
 
-                          {/* 标签 / 热量等辅助信息 */}
-                          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                            {item.tags?.map((tag) => (
-                              <span
-                                key={tag}
-                                className="rounded-full bg-slate-100 px-2 py-1 font-medium text-slate-600"
-                              >
-                                #{tag}
-                              </span>
-                            ))}
-                            {item.calories ? (
-                              <span className="rounded-full bg-amber-50 px-2 py-1 font-medium text-amber-600">
-                                {item.calories} kcal
-                              </span>
-                            ) : null}
-                          </div>
-                        </div>
+  {/* 标签 / 热量等辅助信息 */}
+  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+    {item.tags?.map((tag) => (
+      <span
+        key={tag}
+        className="rounded-full bg-slate-100 px-2 py-1 font-medium text-slate-600"
+      >
+        #{tag}
+      </span>
+    ))}
+    {item.calories ? (
+      <span className="rounded-full bg-amber-50 px-2 py-1 font-medium text-amber-600">
+        {item.calories} kcal
+      </span>
+    ) : null}
+  </div>
+</div>
 
                         <div className="mt-5 flex items-center justify-between gap-4">
                           <p className="text-xs text-slate-500">

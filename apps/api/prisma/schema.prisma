@@ -304,9 +304,6 @@ model MenuItem {
   stableId      String  @unique           // 对齐前端 MENU_ITEM_LOOKUP 的 stable id
   nameEn        String
   nameZh        String?
-  descriptionEn String?
-  descriptionZh String?
-
   // 新增：菜单图片 & 配料说明（中英文）
   imageUrl      String?
   ingredientsEn String?
