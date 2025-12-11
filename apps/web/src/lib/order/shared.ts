@@ -443,7 +443,6 @@ const MENU_DEFS: MenuItemDefinition[] = [
 export type LocalizedMenuItem = {
   id: string; // 一般用 stableId
   name: string;
-  description: string;
   price: number;
   calories?: number;
   tags: string[];
@@ -471,7 +470,6 @@ export function localizeMenuItem(
   return {
     id: def.id,
     name: t.name,
-    description: t.description,
     price: def.price,
     calories: def.calories,
     tags: def.tags ?? [],
@@ -574,8 +572,6 @@ export type DbMenuItem = {
   stableId: string;
   nameEn: string;
   nameZh: string | null;
-  descriptionEn: string | null;
-  descriptionZh: string | null;
 
   basePriceCents: number;
   isAvailable: boolean;
@@ -641,28 +637,25 @@ export function buildLocalizedMenuFromDb(
         const tags = staticDef?.tags ?? [];
         const calories = staticDef?.calories;
 
-        const name = isZh && i.nameZh ? i.nameZh : i.nameEn;
-        const desc =
-          isZh && i.descriptionZh
-            ? i.descriptionZh
-            : i.descriptionEn ?? "";
+const name = isZh && i.nameZh ? i.nameZh : i.nameEn;
 
-        const ingredientsText =
-          isZh && i.ingredientsZh
-            ? i.ingredientsZh
-            : i.ingredientsEn ?? "";
+const ingredientsText =
+  isZh && i.ingredientsZh
+    ? i.ingredientsZh
+    : i.ingredientsEn ?? "";
 
-        return {
-          // ⭐ 对外 id 使用 stableId，这样与购物车 / 结算 / POS 对齐
-          id: i.stableId,
-          name,
-          description: desc,
-          price: i.basePriceCents / 100,
-          calories,
-          tags,
-          imageUrl: i.imageUrl ?? undefined,
-          ingredients: ingredientsText || undefined,
-        };
+return {
+  // ⭐ 对外 id 使用 stableId，这样与购物车 / 结算 / POS 对齐
+  id: i.stableId,
+  name,
+  // DB 已不再存描述，如有需要可从静态 MENU_DEFS 中获取；
+  // 前端目前实际展示的是 ingredients。
+  price: i.basePriceCents / 100,
+  calories,
+  tags,
+  imageUrl: i.imageUrl ?? undefined,
+  ingredients: ingredientsText || undefined,
+};
       });
 
     return {

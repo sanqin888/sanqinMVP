@@ -445,10 +445,7 @@ export default function StorePosPage() {
                       </div>
                     </div>
 
-                    <p className="mt-1 text-xs text-slate-300 line-clamp-2">
-                      {item.description}
-                    </p>
-
+                    {/* 原本这里有描述，现在去掉描述行，只保留“点击添加”提示和数量控制 */}
                     <div className="flex items-center justify-between mt-2">
                       <span className="text-[11px] text-slate-400">
                         {t.tapToAdd}
@@ -495,7 +492,7 @@ export default function StorePosPage() {
 
           <div className="flex-1 overflow-auto pr-1">
             {cartWithDetails.length === 0 ? (
-              <div className="mt-8 text-center text-slate-400 text-sm">
+              <div className="mt-8 text中心 text-slate-400 text-sm">
                 {t.emptyCart}
               </div>
             ) : (
@@ -624,7 +621,6 @@ function menuItemFromDef(
   return {
     id: def.id,
     name: t.name,
-    description: t.description,
     price: def.price,
     calories: def.calories,
     tags: def.tags ?? [],
