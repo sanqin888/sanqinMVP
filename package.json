@@ -12,7 +12,7 @@
     "dev": "npm run dev -w apps/web",
     "dev:web": "npm run dev -w apps/web",
     "dev:api": "npm run start:dev -w apps/api || npm run start -w apps/api",
-    "build": "npm run build -w apps/web && npm run build -w apps/api",
+    "build": "NODE_PATH=apps/web/node_modules npm run build -w apps/web && npm run build -w apps/api",
     "lint": "npm run lint -w apps/web && npm run lint -w apps/api",
     "test": "npm test -w apps/api"
   },
