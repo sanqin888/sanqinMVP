@@ -5,9 +5,21 @@ import { AdminBusinessController } from './business/admin-business.controller';
 import { AdminMenuController } from './menu/admin-menu.controller';
 import { AdminBusinessService } from './business/admin-business.service';
 import { AdminMenuService } from './menu/admin-menu.service';
+import { AdminImageUploadController } from './upload/image/admin-image-upload.controller';
+import { AdminImageUploadService } from './upload/image/admin-image-upload.service';
 
 @Module({
-  controllers: [AdminBusinessController, AdminMenuController],
-  providers: [PrismaService, AdminBusinessService, AdminMenuService],
+  controllers: [
+    AdminBusinessController,
+    AdminMenuController,
+    AdminMenuController,
+    AdminImageUploadController,
+  ],
+  providers: [
+    PrismaService,
+    AdminBusinessService,
+    AdminMenuService,
+    AdminImageUploadService,
+  ],
 })
 export class AdminModule {}

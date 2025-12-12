@@ -3,13 +3,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import type { Locale } from "@/lib/order/shared";
-import {
-  TAX_RATE,
-  buildLocalizedMenu,
-  MENU_ITEM_LOOKUP,
-  type MenuItemDefinition,
+import type {
+  Locale,
+  PublicMenuCategory,
+  DbMenuCategory,
 } from "@/lib/order/shared";
+import { TAX_RATE, buildLocalizedMenuFromDb } from "@/lib/order/shared";
 import { apiFetch } from "@/lib/api-client";
 
 type PosCartEntry = {
@@ -32,10 +31,6 @@ type PosDisplaySnapshot = {
   taxCents: number;
   totalCents: number;
 };
-
-type LocalizedMenuItem = ReturnType<
-  typeof buildLocalizedMenu
->[number]["items"][number];
 
 type StoreStatusRuleSource =
   | "REGULAR_HOURS"
@@ -135,7 +130,10 @@ export default function StorePosPage() {
   const router = useRouter();
   const t = STRINGS[locale];
 
-  const menuCategories = useMemo(() => buildLocalizedMenu(locale), [locale]);
+  // ⭐ 菜单：从后端 DB 加载（/admin/menu/full），并本地化
+  const [menuCategories, setMenuCategories] = useState<PublicMenuCategory[]>(
+    [],
+  );
 
   const [activeCategoryId, setActiveCategoryId] = useState<string>("all");
   const [cart, setCart] = useState<PosCartEntry[]>([]);
@@ -149,6 +147,29 @@ export default function StorePosPage() {
   const [storeStatus, setStoreStatus] = useState<StoreStatus | null>(null);
   const [storeStatusLoading, setStoreStatusLoading] = useState(false);
   const [storeStatusError, setStoreStatusError] = useState<string | null>(null);
+
+  // 加载 DB 菜单
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadMenu() {
+      try {
+        const dbMenu = await apiFetch<DbMenuCategory[]>("/admin/menu/full");
+        if (cancelled) return;
+        const localized = buildLocalizedMenuFromDb(dbMenu, locale);
+        setMenuCategories(localized);
+      } catch (error) {
+        console.error("Failed to load POS menu", error);
+        // 这里只打印日志；如需 UI 提示，可以加一条状态文案
+      }
+    }
+
+    void loadMenu();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [locale]);
 
   // 加载门店营业状态（web / POS 共用）
   useEffect(() => {
@@ -234,26 +255,30 @@ export default function StorePosPage() {
     }
   }
 
-  // 计算带详情的购物车
+  // 所有可见的菜品（扁平化，方便做购物车关联）
+  const allMenuItems = useMemo(
+    () => menuCategories.flatMap((cat) => cat.items),
+    [menuCategories],
+  );
+
+  // 计算带详情的购物车：完全基于 DB 菜单
   const cartWithDetails = useMemo(() => {
     return cart
       .map((entry) => {
-        const def = MENU_ITEM_LOOKUP.get(entry.itemId) as
-          | MenuItemDefinition
-          | undefined;
-        if (!def) return null;
-        const localized = menuItemFromDef(def, locale);
-        const unitPriceCents = Math.round(def.price * 100);
+        const item = allMenuItems.find((i) => i.id === entry.itemId);
+        if (!item) return null;
+
+        const unitPriceCents = Math.round(item.price * 100);
+
         return {
           ...entry,
-          def,
-          localized,
+          item,
           unitPriceCents,
           lineTotalCents: unitPriceCents * entry.quantity,
         };
       })
       .filter((x): x is NonNullable<typeof x> => Boolean(x));
-  }, [cart, locale]);
+  }, [cart, allMenuItems]);
 
   const subtotalCents = useMemo(
     () => cartWithDetails.reduce((sum, item) => sum + item.lineTotalCents, 0),
@@ -311,13 +336,14 @@ export default function StorePosPage() {
     if (typeof window === "undefined") return;
 
     const snapshot: PosDisplaySnapshot = {
-      items: cartWithDetails.map((item) => ({
-        id: item.itemId,
-        nameZh: item.def.i18n.zh.name,
-        nameEn: item.def.i18n.en.name,
-        quantity: item.quantity,
-        unitPriceCents: item.unitPriceCents,
-        lineTotalCents: item.lineTotalCents,
+      items: cartWithDetails.map((entry) => ({
+        id: entry.itemId,
+        // 如果没填中文名，用英文名兜底
+        nameZh: entry.item.nameZh ?? entry.item.nameEn,
+        nameEn: entry.item.nameEn,
+        quantity: entry.quantity,
+        unitPriceCents: entry.unitPriceCents,
+        lineTotalCents: entry.lineTotalCents,
       })),
       subtotalCents,
       taxCents,
@@ -445,7 +471,7 @@ export default function StorePosPage() {
                       </div>
                     </div>
 
-                    {/* 原本这里有描述，现在去掉描述行，只保留“点击添加”提示和数量控制 */}
+                    {/* 不再显示描述，只保留“点击添加”提示和数量控制 */}
                     <div className="flex items-center justify-between mt-2">
                       <span className="text-[11px] text-slate-400">
                         {t.tapToAdd}
@@ -492,7 +518,7 @@ export default function StorePosPage() {
 
           <div className="flex-1 overflow-auto pr-1">
             {cartWithDetails.length === 0 ? (
-              <div className="mt-8 text中心 text-slate-400 text-sm">
+              <div className="mt-8 text-center text-slate-400 text-sm">
                 {t.emptyCart}
               </div>
             ) : (
@@ -504,7 +530,7 @@ export default function StorePosPage() {
                   >
                     <div className="flex-1">
                       <div className="text-sm font-medium">
-                        {item.localized.name}
+                        {item.item.name}
                       </div>
                       <div className="text-xs text-slate-400">
                         {t.qtyLabel}: {item.quantity}
@@ -611,18 +637,4 @@ export default function StorePosPage() {
       )}
     </main>
   );
-}
-
-function menuItemFromDef(
-  def: MenuItemDefinition,
-  locale: Locale,
-): LocalizedMenuItem {
-  const t = def.i18n[locale];
-  return {
-    id: def.id,
-    name: t.name,
-    price: def.price,
-    calories: def.calories,
-    tags: def.tags ?? [],
-  };
 }

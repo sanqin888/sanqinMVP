@@ -485,27 +485,31 @@ export default function AdminHoursPage() {
                 </label>
               </div>
 
-              {!h.isClosed && (
-                <div className="flex items-center gap-2 text-xs text-slate-700">
-                  <input
-                    type="time"
-                    value={minutesToTimeString(h.openMinutes)}
-                    onChange={(e) =>
-                      handleTimeChange(index, 'openMinutes', e.target.value)
-                    }
-                    className="rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-800 focus:border-slate-500 focus:outline-none"
-                  />
-                  <span> - </span>
-                  <input
-                    type="time"
-                    value={minutesToTimeString(h.closeMinutes)}
-                    onChange={(e) =>
-                      handleTimeChange(index, 'closeMinutes', e.target.value)
-                    }
-                    className="rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-800 focus:border-slate-500 focus:outline-none"
-                  />
-                </div>
-              )}
+{!h.isClosed && (
+  <div className="flex items-center gap-2 text-xs text-slate-700">
+    <input
+      type="text"
+      inputMode="numeric"
+      defaultValue={minutesToTimeString(h.openMinutes)}
+      placeholder={isZh ? '如 11:00' : 'e.g. 11:00'}
+      onBlur={(e) =>
+        handleTimeChange(index, 'openMinutes', e.target.value)
+      }
+      className="rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-800 focus:border-slate-500 focus:outline-none"
+    />
+    <span> - </span>
+    <input
+      type="text"
+      inputMode="numeric"
+      defaultValue={minutesToTimeString(h.closeMinutes)}
+      placeholder={isZh ? '如 21:00' : 'e.g. 21:00'}
+      onBlur={(e) =>
+        handleTimeChange(index, 'closeMinutes', e.target.value)
+      }
+      className="rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-800 focus:border-slate-500 focus:outline-none"
+    />
+  </div>
+)}
 
               {h.isClosed && (
                 <div className="text-xs text-slate-500">

@@ -25,6 +25,7 @@ import {
   LOCALES,
   type Locale,
   type LocalizedCartItem,
+  type LocalizedMenuItem,
   type ScheduleSlot,
   TAX_ON_DELIVERY,
   TAX_RATE,
@@ -32,10 +33,10 @@ import {
   addLocaleToPath,
   formatWithOrder,
   formatWithTotal,
-  localizeMenuItem,
-  MENU_ITEM_LOOKUP,
   type HostedCheckoutResponse,
   type DeliveryTypeOption,
+  type DbMenuCategory,
+  buildLocalizedMenuFromDb,
 } from "@/lib/order/shared";
 import { useSession } from "next-auth/react";
 
@@ -136,19 +137,6 @@ type CouponsApiEnvelope =
       message?: string;
       details?: CheckoutCoupon[];
     };
-
-// 保证 Clover 那边收到的 item.name 是英文
-function resolveEnglishName(itemId: string, localizedName: string): string {
-  const def = MENU_ITEM_LOOKUP.get(itemId);
-  if (!def) return localizedName;
-
-  const enName = def.i18n?.en?.name;
-  if (typeof enName === "string") {
-    const trimmed = enName.trim();
-    if (trimmed.length > 0) return trimmed;
-  }
-  return localizedName;
-}
 
 // CustomerInfo.phone = 本单的联系电话（可能等于账号手机号，但不会自动反写到 User.phone）
 type CustomerInfo = {
@@ -253,6 +241,12 @@ export default function CheckoutPage() {
 
   const { items, updateNotes, updateQuantity } = usePersistentCart();
   const { data: session, status: authStatus } = useSession();
+  // ====== 菜单（用于把购物车 itemId 映射成 DB 里的菜品信息） ======
+  const [menuLookup, setMenuLookup] = useState<
+    Map<string, LocalizedMenuItem> | null
+  >(null);
+  const [menuLoading, setMenuLoading] = useState(false);
+  const [menuError, setMenuError] = useState<string | null>(null);
 
   const membershipHref = `/${locale}/membership`;
   const membershipLabel =
@@ -268,14 +262,15 @@ export default function CheckoutPage() {
   const [loyaltyError, setLoyaltyError] = useState<string | null>(null);
 
   const localizedCartItems = useMemo<LocalizedCartItem[]>(() => {
+    if (!menuLookup) return [];
     return items
       .map((entry) => {
-        const definition = MENU_ITEM_LOOKUP.get(entry.itemId);
-        if (!definition) return null;
-        return { ...entry, item: localizeMenuItem(definition, locale) };
+        const item = menuLookup.get(entry.itemId);
+        if (!item) return null;
+        return { ...entry, item };
       })
-      .filter((item): item is LocalizedCartItem => Boolean(item));
-  }, [items, locale]);
+      .filter((entry): entry is LocalizedCartItem => Boolean(entry));
+  }, [items, menuLookup]);
 
   const [fulfillment, setFulfillment] = useState<"pickup" | "delivery">(
     "pickup",
@@ -337,6 +332,49 @@ export default function CheckoutPage() {
   const [storeStatus, setStoreStatus] = useState<StoreStatus | null>(null);
   const [storeStatusLoading, setStoreStatusLoading] = useState(false);
   const [storeStatusError, setStoreStatusError] = useState<string | null>(null);
+
+  // ====== 加载菜单（Checkout 也用 DB 菜单，保证价格/名称同步） ======
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadMenuForCheckout() {
+      setMenuLoading(true);
+      setMenuError(null);
+      try {
+        const dbMenu = await apiFetch<DbMenuCategory[]>("/admin/menu/full");
+        if (cancelled) return;
+
+        const categories = buildLocalizedMenuFromDb(dbMenu, locale);
+        const map = new Map<string, LocalizedMenuItem>();
+        for (const category of categories) {
+          for (const item of category.items) {
+            map.set(item.id, item); // id = stableId
+          }
+        }
+        setMenuLookup(map);
+      } catch (error) {
+        console.error("Failed to load menu for checkout", error);
+        if (cancelled) return;
+
+        setMenuLookup(new Map());
+        setMenuError(
+          locale === "zh"
+            ? "菜单从服务器加载失败，如需继续下单，请先与门店确认价格与菜品。"
+            : "Failed to load live menu. If you continue, please double-check prices and items with the store.",
+        );
+      } finally {
+        if (!cancelled) {
+          setMenuLoading(false);
+        }
+      }
+    }
+
+    void loadMenuForCheckout();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [locale]);
 
   // 加载门店营业状态
   useEffect(() => {
@@ -1185,8 +1223,8 @@ export default function CheckoutPage() {
 
         items: localizedCartItems.map((cartItem) => ({
           id: cartItem.itemId,
-          nameEn: resolveEnglishName(cartItem.itemId, cartItem.item.name),
-          nameZh: cartItem.item.name,
+          nameEn: cartItem.item.nameEn ?? cartItem.item.name,
+          nameZh: cartItem.item.nameZh ?? cartItem.item.name,
           displayName: cartItem.item.name,
           quantity: cartItem.quantity,
           notes: cartItem.notes,
@@ -1391,7 +1429,8 @@ export default function CheckoutPage() {
             )}
           </div>
         )}
-        {localizedCartItems.length === 0 ? (
+        {items.length === 0 ? (
+          // 1️⃣ 真正的「购物车为空」：localStorage 里都没有任何记录
           <div className="space-y-4 text-center text-sm text-slate-500">
             <p>{strings.cartEmpty}</p>
             <div>
@@ -1403,8 +1442,40 @@ export default function CheckoutPage() {
               </Link>
             </div>
           </div>
+        ) : !menuLookup || menuLoading ? (
+          // 2️⃣ 有条目，但菜单还没加载好：显示“加载中…”，避免让用户以为购物车真是空的
+          <div className="space-y-4 text-center text-sm text-slate-500">
+            <p>
+              {locale === "zh"
+                ? "正在加载购物车中的菜品详情…"
+                : "Loading cart items…"}
+            </p>
+          </div>
+        ) : localizedCartItems.length === 0 ? (
+          // 3️⃣ 有条目，但在当前菜单里已经找不到（可能是菜品下架/改了 stableId）
+          <div className="space-y-4 text-center text-sm text-slate-500">
+            <p>
+              {locale === "zh"
+                ? "当前购物车中的菜品已下架或菜单发生变化，请返回菜单重新选择。"
+                : "Items in your cart are no longer available. Please go back to the menu and add them again."}
+            </p>
+            <div>
+              <Link
+                href={orderHref}
+                className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
+              >
+                {locale === "zh" ? "返回菜单" : "Back to menu"}
+              </Link>
+            </div>
+          </div>
         ) : (
+          // 4️⃣ 正常情况：菜单和购物车都匹配，展示完整 Checkout
           <div className="space-y-6">
+            {menuError && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] text-amber-700">
+                {menuError}
+              </div>
+            )}
             <ul className="space-y-4">
               {localizedCartItems.map((cartItem) => (
                 <li

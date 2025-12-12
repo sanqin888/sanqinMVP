@@ -333,19 +333,19 @@ export class AdminMenuService {
       data = {
         isAvailable: true,
         tempUnavailableUntil: null,
-      } as Partial<MenuOption>;
+      };
     } else if (mode === 'PERMANENT_OFF') {
       data = {
         isAvailable: false,
         tempUnavailableUntil: null,
-      } as Partial<MenuOption>;
+      };
     } else {
       const endOfDay = new Date(now);
       endOfDay.setHours(23, 59, 59, 999);
       data = {
         isAvailable: true,
-        tempUnavailableUntil: endOfDay as unknown as Date,
-      } as Partial<MenuOption>;
+        tempUnavailableUntil: endOfDay,
+      };
     }
 
     try {
@@ -355,6 +355,306 @@ export class AdminMenuService {
       });
       this.logger.log(`MenuOption availability changed: id=${id} mode=${mode}`);
       return option;
+    } catch {
+      throw new NotFoundException('option not found');
+    }
+  }
+
+  // ===== 下面是：选项组 & 选项 CRUD（使用 DB 字段 minSelect / maxSelect）=====
+
+  /**
+   * 新建选项组（挂在某个菜品下面）
+   * 直接使用 DB 字段：minSelect / maxSelect / isActive
+   */
+  async createOptionGroup(dto: {
+    itemId: string;
+    nameEn: string;
+    nameZh?: string;
+    minSelect?: number | null;
+    maxSelect?: number | null;
+    sortOrder?: number;
+  }): Promise<MenuOptionGroup> {
+    if (!dto.itemId) {
+      throw new BadRequestException('itemId is required');
+    }
+
+    const item = await this.prisma.menuItem.findUnique({
+      where: { id: dto.itemId },
+      select: { id: true },
+    });
+    if (!item) {
+      throw new NotFoundException('item not found');
+    }
+
+    const nameEn = dto.nameEn?.trim();
+    if (!nameEn) {
+      throw new BadRequestException('nameEn is required');
+    }
+
+    const nameZh = dto.nameZh?.trim() || null;
+    const sortOrder =
+      typeof dto.sortOrder === 'number' && Number.isFinite(dto.sortOrder)
+        ? dto.sortOrder
+        : 0;
+
+    let minSelect: number | null = null;
+    if (typeof dto.minSelect === 'number' && Number.isFinite(dto.minSelect)) {
+      minSelect = dto.minSelect;
+    } else if (dto.minSelect === null) {
+      minSelect = null;
+    }
+
+    let maxSelect: number | null = null;
+    if (typeof dto.maxSelect === 'number' && Number.isFinite(dto.maxSelect)) {
+      maxSelect = dto.maxSelect;
+    } else if (dto.maxSelect === null) {
+      maxSelect = null;
+    }
+
+    return this.prisma.menuOptionGroup.create({
+      data: {
+        itemId: dto.itemId,
+        nameEn,
+        nameZh,
+        minSelect,
+        maxSelect,
+        isActive: true,
+        sortOrder,
+      },
+    });
+  }
+
+  /**
+   * 更新选项组
+   */
+  async updateOptionGroup(
+    id: string,
+    dto: Partial<{
+      itemId: string;
+      nameEn: string;
+      nameZh?: string;
+      minSelect: number | null;
+      maxSelect: number | null;
+      sortOrder: number;
+      isActive: boolean;
+    }>,
+  ): Promise<MenuOptionGroup> {
+    const data: Partial<MenuOptionGroup> = {};
+
+    if (typeof dto.itemId === 'string') {
+      data.itemId = dto.itemId;
+    }
+
+    if (typeof dto.nameEn === 'string') {
+      const trimmed = dto.nameEn.trim();
+      if (!trimmed) {
+        throw new BadRequestException('nameEn cannot be empty');
+      }
+      data.nameEn = trimmed;
+    }
+
+    if (typeof dto.nameZh === 'string') {
+      const trimmed = dto.nameZh.trim();
+      data.nameZh = trimmed || null;
+    }
+
+    if (typeof dto.minSelect === 'number' || dto.minSelect === null) {
+      data.minSelect = dto.minSelect;
+    }
+
+    if (typeof dto.maxSelect === 'number' || dto.maxSelect === null) {
+      data.maxSelect = dto.maxSelect;
+    }
+
+    if (typeof dto.sortOrder === 'number') {
+      data.sortOrder = dto.sortOrder;
+    }
+
+    if (typeof dto.isActive === 'boolean') {
+      data.isActive = dto.isActive;
+    }
+
+    if (Object.keys(data).length === 0) {
+      const existing = await this.prisma.menuOptionGroup.findUnique({
+        where: { id },
+      });
+      if (!existing) {
+        throw new NotFoundException('option group not found');
+      }
+      return existing;
+    }
+
+    try {
+      return await this.prisma.menuOptionGroup.update({
+        where: { id },
+        data,
+      });
+    } catch {
+      throw new NotFoundException('option group not found');
+    }
+  }
+
+  /**
+   * 删除选项组（连带删除该组选项）
+   */
+  async deleteOptionGroup(id: string): Promise<void> {
+    try {
+      await this.prisma.$transaction([
+        this.prisma.menuOption.deleteMany({
+          where: { groupId: id },
+        }),
+        this.prisma.menuOptionGroup.delete({
+          where: { id },
+        }),
+      ]);
+      this.logger.log(`MenuOptionGroup deleted: id=${id}`);
+    } catch {
+      throw new NotFoundException('option group not found');
+    }
+  }
+
+  /**
+   * 在某个选项组下新建选项
+   */
+  async createOption(dto: {
+    groupId: string;
+    nameEn: string;
+    nameZh?: string;
+    priceDeltaCents?: number;
+    sortOrder?: number;
+  }): Promise<MenuOption> {
+    if (!dto.groupId) {
+      throw new BadRequestException('groupId is required');
+    }
+
+    const group = await this.prisma.menuOptionGroup.findUnique({
+      where: { id: dto.groupId },
+      select: { id: true },
+    });
+    if (!group) {
+      throw new NotFoundException('option group not found');
+    }
+
+    const nameEn = dto.nameEn?.trim();
+    if (!nameEn) {
+      throw new BadRequestException('nameEn is required');
+    }
+
+    const nameZh = dto.nameZh?.trim() || null;
+
+    let priceDeltaCents = 0;
+    if (
+      typeof dto.priceDeltaCents === 'number' &&
+      Number.isFinite(dto.priceDeltaCents)
+    ) {
+      priceDeltaCents = Math.round(dto.priceDeltaCents);
+    }
+
+    const sortOrder =
+      typeof dto.sortOrder === 'number' && Number.isFinite(dto.sortOrder)
+        ? dto.sortOrder
+        : 0;
+
+    return this.prisma.menuOption.create({
+      data: {
+        groupId: dto.groupId,
+        nameEn,
+        nameZh,
+        priceDeltaCents,
+        sortOrder,
+        isAvailable: true,
+        tempUnavailableUntil: null,
+      },
+    });
+  }
+
+  /**
+   * 更新选项
+   */
+  async updateOption(
+    id: string,
+    dto: Partial<{
+      groupId: string;
+      nameEn: string;
+      nameZh?: string;
+      priceDeltaCents: number;
+      sortOrder: number;
+      isAvailable: boolean;
+      tempUnavailableUntil: Date | null;
+    }>,
+  ): Promise<MenuOption> {
+    const data: Partial<MenuOption> = {};
+
+    if (typeof dto.groupId === 'string') {
+      data.groupId = dto.groupId;
+    }
+
+    if (typeof dto.nameEn === 'string') {
+      const trimmed = dto.nameEn.trim();
+      if (!trimmed) {
+        throw new BadRequestException('nameEn cannot be empty');
+      }
+      data.nameEn = trimmed;
+    }
+
+    if (typeof dto.nameZh === 'string') {
+      const trimmed = dto.nameZh.trim();
+      data.nameZh = trimmed || null;
+    }
+
+    if (
+      typeof dto.priceDeltaCents === 'number' &&
+      Number.isFinite(dto.priceDeltaCents)
+    ) {
+      data.priceDeltaCents = Math.round(dto.priceDeltaCents);
+    }
+
+    if (typeof dto.sortOrder === 'number') {
+      data.sortOrder = dto.sortOrder;
+    }
+
+    if (typeof dto.isAvailable === 'boolean') {
+      data.isAvailable = dto.isAvailable;
+    }
+
+    if (
+      dto.tempUnavailableUntil === null ||
+      dto.tempUnavailableUntil instanceof Date
+    ) {
+      if (dto.tempUnavailableUntil !== undefined) {
+        data.tempUnavailableUntil = dto.tempUnavailableUntil;
+      }
+    }
+
+    if (Object.keys(data).length === 0) {
+      const existing = await this.prisma.menuOption.findUnique({
+        where: { id },
+      });
+      if (!existing) {
+        throw new NotFoundException('option not found');
+      }
+      return existing;
+    }
+
+    try {
+      return await this.prisma.menuOption.update({
+        where: { id },
+        data,
+      });
+    } catch {
+      throw new NotFoundException('option not found');
+    }
+  }
+
+  /**
+   * 删除选项
+   */
+  async deleteOption(id: string): Promise<void> {
+    try {
+      await this.prisma.menuOption.delete({
+        where: { id },
+      });
+      this.logger.log(`MenuOption deleted: id=${id}`);
     } catch {
       throw new NotFoundException('option not found');
     }
