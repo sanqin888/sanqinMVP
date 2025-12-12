@@ -397,18 +397,14 @@ export class AdminMenuService {
         ? dto.sortOrder
         : 0;
 
-    let minSelect: number | null = null;
+    let minSelect: number | undefined;
     if (typeof dto.minSelect === 'number' && Number.isFinite(dto.minSelect)) {
       minSelect = dto.minSelect;
-    } else if (dto.minSelect === null) {
-      minSelect = null;
     }
 
-    let maxSelect: number | null = null;
+    let maxSelect: number | undefined;
     if (typeof dto.maxSelect === 'number' && Number.isFinite(dto.maxSelect)) {
       maxSelect = dto.maxSelect;
-    } else if (dto.maxSelect === null) {
-      maxSelect = null;
     }
 
     return this.prisma.menuOptionGroup.create({
@@ -458,11 +454,11 @@ export class AdminMenuService {
       data.nameZh = trimmed || null;
     }
 
-    if (typeof dto.minSelect === 'number' || dto.minSelect === null) {
+    if (typeof dto.minSelect === 'number' && Number.isFinite(dto.minSelect)) {
       data.minSelect = dto.minSelect;
     }
 
-    if (typeof dto.maxSelect === 'number' || dto.maxSelect === null) {
+    if (typeof dto.maxSelect === 'number' && Number.isFinite(dto.maxSelect)) {
       data.maxSelect = dto.maxSelect;
     }
 
