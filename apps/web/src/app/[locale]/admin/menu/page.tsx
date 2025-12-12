@@ -8,6 +8,7 @@ import {
   type Locale,
   type DbMenuCategory,
   type DbMenuItem,
+  type DbMenuOptionGroup,
 } from "@/lib/order/shared";
 import { apiFetch } from "@/lib/api-client";
 
@@ -71,15 +72,12 @@ export type MenuOptionChoice = {
   isAvailable: boolean;
 };
 
-export type MenuOptionGroup = {
-  id: string;
-  nameEn: string;
-  nameZh: string | null;
-  minSelect: number;           
-  maxSelect: number | null;   
-  sortOrder: number;
-  isActive?: boolean;
-  choices: MenuOptionChoice[];
+export type MenuOptionGroup = Omit<
+  DbMenuOptionGroup,
+  "options" | "maxSelect"
+> & {
+  maxSelect: number | null;
+  options: MenuOptionChoice[];
 };
 
 // DbMenuItem 在 shared 中不一定显式带有 optionGroups，这里做一个扩展类型
@@ -94,6 +92,7 @@ type NewOptionGroupDraft = {
   minSelect: string; // 文本，保存时转数字
   maxSelect: string; // 文本，保存时转数字，空串代表 null（不限）
   sortOrder: string;
+  isRequired: boolean;
 };
 
 // 新建选项草稿（按 group 维度）
@@ -256,6 +255,7 @@ function getNewOptionGroupDraft(itemId: string): NewOptionGroupDraft {
       minSelect: "0",
       maxSelect: "",
       sortOrder: "0",
+      isRequired: false,
     }
   );
 }
@@ -274,6 +274,7 @@ function getNewOptionGroupDraft(itemId: string): NewOptionGroupDraft {
   minSelect: "0",
   maxSelect: "",
           sortOrder: "0",
+          isRequired: false,
         }),
         [field]: value,
       },
@@ -541,6 +542,7 @@ await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
     nameZh: nameZh || undefined,
     minSelect: Number.isNaN(minSelectNumber) ? 0 : minSelectNumber,
     maxSelect: maxSelectNumber,
+    isRequired: draft.isRequired,
     sortOrder: Number.isNaN(sortOrderNumber) ? 0 : sortOrderNumber,
   }),
 });
@@ -577,12 +579,13 @@ await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
       await apiFetch(`/admin/menu/option-groups/${group.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-body: JSON.stringify({
-  nameEn: group.nameEn,
-  nameZh: group.nameZh || undefined,
-  minSelect: group.minSelect,
-  maxSelect: group.maxSelect,
-  sortOrder: group.sortOrder,
+        body: JSON.stringify({
+          nameEn: group.nameEn,
+          nameZh: group.nameZh || undefined,
+          minSelect: group.minSelect,
+          maxSelect: group.maxSelect,
+          isRequired: group.isRequired,
+          sortOrder: group.sortOrder,
         }),
       });
 
@@ -1999,11 +2002,11 @@ body: JSON.stringify({
                                           <input
                                             type="number"
                                             className="w-full rounded-md border px-2 py-1 text-[11px]"
-                                            value={draft.maxOptions}
+                                            value={draft.maxSelect}
                                             onChange={(e) =>
                                               updateNewOptionGroupDraft(
                                                 item.id,
-                                                "maxOptions",
+                                                "maxSelect",
                                                 e.target.value,
                                               )
                                             }
