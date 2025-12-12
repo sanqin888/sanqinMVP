@@ -58,7 +58,7 @@ function convert(value: unknown, seen: WeakSet<object>): unknown {
 export function convertBigIntToString<T>(data: T): T {
   // 这里 convert 返回的是 unknown，强转为 T 会被 eslint 视为可能不安全的返回；
   // 但我们知道它只是把 bigint 变成 string，其余结构保持不变，所以在此关闭该规则。
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+
   return convert(data as unknown, new WeakSet<object>()) as T;
 }
 
@@ -71,6 +71,8 @@ export class BigIntToStringInterceptor implements NestInterceptor {
     _context: ExecutionContext,
     next: CallHandler,
   ): Observable<unknown> {
-    return next.handle().pipe(map((data) => convertBigIntToString(data)));
+    return next
+      .handle()
+      .pipe(map((data: unknown) => convertBigIntToString(data)));
   }
 }
