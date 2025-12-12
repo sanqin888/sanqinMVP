@@ -16,7 +16,6 @@ import {
   type Locale,
   UI_STRINGS,
   addLocaleToPath,
-  buildLocalizedMenu,
   buildLocalizedMenuFromDb,
   type DbMenuCategory,
   type PublicMenuCategory,
@@ -110,13 +109,12 @@ export default function LocalOrderPage() {
         console.error(err);
         if (cancelled) return;
 
-        // 2) 失败时使用静态菜单作为 fallback，避免前台空白
-        const fallback = buildLocalizedMenu(locale);
-        setMenu(fallback);
+        // 不再使用静态菜单，直接提示错误
+        setMenu([]);
         setMenuError(
           locale === "zh"
-            ? "菜单从服务器加载失败，已显示默认菜单。"
-            : "Failed to load menu from server. Showing default menu.",
+            ? "菜单从服务器加载失败，请稍后重试或联系门店。"
+            : "Failed to load menu from server. Please try again later or contact the store.",
         );
       } finally {
         if (!cancelled) {
@@ -299,56 +297,36 @@ export default function LocalOrderPage() {
                           </div>
                         ) : null}
 
-<div className="space-y-3">
-  {/* 标题 + 配料 + 价格 */}
-  <div className="flex items-start justify-between gap-4">
-    <div>
-      <h3 className="text-lg font-semibold text-slate-900">
-        {item.name}
-      </h3>
+                        <div className="space-y-3">
+                          {/* 标题 + 配料 + 价格 */}
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <h3 className="text-lg font-semibold text-slate-900">
+                                {item.name}
+                              </h3>
 
-      {/* ⭐ 配料说明：菜名下面小字显示 */}
-      {item.ingredients ? (
-        <p className="mt-1 text-xs text-slate-500">
-          {item.ingredients}
-        </p>
-      ) : null}
-    </div>
-    <span className="rounded-full bg-slate-900/90 px-3 py-1 text-sm font-semibold text-white">
-      {currencyFormatter.format(item.price)}
-    </span>
-  </div>
-
-  {/* 标签 / 热量等辅助信息 */}
-  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-    {item.tags?.map((tag) => (
-      <span
-        key={tag}
-        className="rounded-full bg-slate-100 px-2 py-1 font-medium text-slate-600"
-      >
-        #{tag}
-      </span>
-    ))}
-    {item.calories ? (
-      <span className="rounded-full bg-amber-50 px-2 py-1 font-medium text-amber-600">
-        {item.calories} kcal
-      </span>
-    ) : null}
-  </div>
-</div>
-
-                        <div className="mt-5 flex items-center justify-between gap-4">
-                          <p className="text-xs text-slate-500">
-                            {strings.limitedDaily}
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => addItem(item.id)}
-                            className="inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
-                          >
-                            {strings.addToCart}
-                          </button>
+                              {/* ⭐ 配料说明：菜名下面小字显示 */}
+                              {item.ingredients ? (
+                                <p className="mt-1 text-xs text-slate-500">
+                                  {item.ingredients}
+                                </p>
+                              ) : null}
+                            </div>
+                            <span className="rounded-full bg-slate-900/90 px-3 py-1 text-sm font-semibold text-white">
+                              {currencyFormatter.format(item.price)}
+                            </span>
+                          </div>
                         </div>
+
+<div className="mt-5 flex items-center justify-end">
+  <button
+    type="button"
+    onClick={() => addItem(item.id)}
+    className="inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
+  >
+    {strings.addToCart}
+  </button>
+</div>
                       </article>
                     ))}
                   </div>

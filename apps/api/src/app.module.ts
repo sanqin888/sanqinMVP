@@ -22,6 +22,7 @@ import { AdminModule } from './admin/admin.module';
 import { StoreStatusModule } from './store/store-status.module';
 import { BusinessHoursModule } from './admin/business-hours/business-hours.module';
 import { AdminMenuModule } from './admin/menu/admin-menu.module';
+import { AdminImageUploadModule } from './admin/upload/image/admin-image-upload.module';
 
 const configModuleFactory: {
   forRoot(options: ConfigModuleOptions): DynamicModule;
@@ -52,6 +53,7 @@ const envConfigModule = configModuleFactory.forRoot({
     StoreStatusModule,
     BusinessHoursModule,
     AdminMenuModule,
+    AdminImageUploadModule,
   ],
   controllers: [AppController],
   providers: [

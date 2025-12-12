@@ -242,7 +242,7 @@ export const UI_STRINGS: Record<
     },
   },
   zh: {
-    tagline: "新鲜 • 迅速 • 手工",
+    tagline: "新鲜 · 迅速 · 手工",
     heroTitle: "线上点餐 · 三秦特色",
     heroDescription:
       "经典凉皮、肉夹馍、手擀面等。现在下单，数分钟即可自取，或选择外送。",
@@ -345,143 +345,24 @@ export const UI_STRINGS: Record<
   },
 };
 
-/** ===== 菜单定义（静态元数据：类别、标签、热量等） ===== */
-export type MenuItemDefinition = {
-  // 与数据库 MenuItem.stableId 对齐
-  id: string;
-  // 静态默认价格（实际显示可以用 DB 的 basePriceCents 覆盖）
-  price: number;
-  calories?: number;
-  tags?: string[];
+/** ===== 菜单类型（完全由 DB 提供） ===== */
 
-  // 图片 & 配料说明（静态默认值，DB 可覆盖）
-  imageUrl?: string;
-  ingredientsEn?: string;
-  ingredientsZh?: string;
-
-  i18n: {
-    en: { name: string; description: string };
-    zh: { name: string; description: string };
-  };
-  category: "bestsellers" | "noodles" | "snacks";
-};
-
-const MENU_DEFS: MenuItemDefinition[] = [
-  {
-    id: "liangpi",
-    price: 11.99,
-    calories: 520,
-    tags: ["cold", "vegan"],
-    category: "bestsellers",
-    // 可以填一个默认图片 / 配料，也可以留空，交给 DB
-    // imageUrl: "https://example.com/liangpi.jpg",
-    ingredientsEn:
-      "Wheat starch noodles, chili oil, garlic, sesame paste, gluten, cucumber, vinegar, soy sauce.",
-    ingredientsZh: "凉皮、辣椒油、大蒜、芝麻酱、面筋、黄瓜、香醋、酱油。",
-    i18n: {
-      en: {
-        name: "Liangpi (Cold Skin Noodles)",
-        description: "Chewy cold noodles, sesame & chili dressing.",
-      },
-      zh: { name: "凉皮", description: "筋道爽滑，芝麻辣油拌料。" },
-    },
-  },
-  {
-    id: "roujiamo",
-    price: 8.99,
-    calories: 430,
-    tags: ["pork"],
-    category: "bestsellers",
-    ingredientsEn:
-      "Wheat bun, braised pork, chili, cumin, green pepper, onion, soy sauce.",
-    ingredientsZh: "白吉馍、卤肉、辣椒、孜然、青椒、洋葱、酱油。",
-    i18n: {
-      en: {
-        name: "Roujiamo",
-        description: "Crispy bun stuffed with braised pork.",
-      },
-      zh: { name: "肉夹馍", description: "焦香面饼夹秘卤肉，咸香适口。" },
-    },
-  },
-  {
-    id: "beef-noodle",
-    price: 13.5,
-    calories: 680,
-    tags: ["beef", "hot"],
-    category: "noodles",
-    ingredientsEn:
-      "Hand-pulled wheat noodles, beef broth, braised beef, chili oil, scallion, cilantro.",
-    ingredientsZh: "手擀面、牛骨汤、卤牛肉、辣椒油、葱花、香菜。",
-    i18n: {
-      en: {
-        name: "Beef Noodle Soup",
-        description: "Rich broth with hand-pulled noodles.",
-      },
-      zh: { name: "红烧牛肉面", description: "手擀面配浓郁红烧汤底。" },
-    },
-  },
-  {
-    id: "cucumber-salad",
-    price: 6.5,
-    calories: 120,
-    tags: ["cold", "vegan"],
-    category: "snacks",
-    ingredientsEn:
-      "Cucumber, garlic, vinegar, sesame oil, salt, chili oil (optional).",
-    ingredientsZh: "黄瓜、大蒜、香醋、芝麻油、食盐、辣椒油（可选）。",
-    i18n: {
-      en: {
-        name: "Smashed Cucumber",
-        description: "Garlic, vinegar, sesame oil.",
-      },
-      zh: { name: "蒜拍黄瓜", description: "蒜香爽脆，香醋芝麻油。" },
-    },
-  },
-];
-
-/** ===== 本地化后的菜品类型 ===== */
+/**
+ * 前台展示的单个菜品：
+ * - id = stableId（与 POS / 订单 / Clover 对齐）
+ * - name = 当前语言显示名
+ * - nameEn/nameZh = Clover / 其它场景可用的固定中英文名
+ */
 export type LocalizedMenuItem = {
-  id: string; // 一般用 stableId
-  name: string;
-  price: number;
-  calories?: number;
-  tags: string[];
+  id: string; // stableId
+  name: string; // localized display name
+  nameEn: string;
+  nameZh?: string;
+  price: number; // 单价（CAD）
   imageUrl?: string;
   // 已按当前语言拼好的配料说明
   ingredients?: string;
 };
-
-/**
- * 静态配置 -> 本地化菜品
- * 注意：如果你从 DB 读取菜单，请优先用下面的 buildLocalizedMenuFromDb，
- * 这里仍然可以作为 fallback/demo。
- */
-export function localizeMenuItem(
-  def: MenuItemDefinition,
-  locale: Locale,
-): LocalizedMenuItem {
-  const t = def.i18n[locale];
-
-  const ingredients =
-    locale === "zh"
-      ? def.ingredientsZh ?? def.ingredientsEn
-      : def.ingredientsEn ?? def.ingredientsZh;
-
-  return {
-    id: def.id,
-    name: t.name,
-    price: def.price,
-    calories: def.calories,
-    tags: def.tags ?? [],
-    imageUrl: def.imageUrl,
-    ingredients: ingredients ?? undefined,
-  };
-}
-
-/** 静态配置查表（key = stableId） */
-export const MENU_ITEM_LOOKUP: Map<string, MenuItemDefinition> = new Map(
-  MENU_DEFS.map((d) => [d.id, d]),
-);
 
 export type LocalizedCategory = {
   id: string;
@@ -489,54 +370,6 @@ export type LocalizedCategory = {
   description: string;
   items: LocalizedMenuItem[];
 };
-
-/**
- * 旧的静态菜单构建逻辑（仍然保留，方便 fallback 或 demo 使用）
- */
-export function buildLocalizedMenu(locale: Locale): LocalizedCategory[] {
-  const catInfo: Record<
-    MenuItemDefinition["category"],
-    { name: Record<Locale, string>; desc: Record<Locale, string> }
-  > = {
-    bestsellers: {
-      name: { en: "Best Sellers", zh: "人气必点" },
-      desc: {
-        en: "Crowd favorites you can’t go wrong with.",
-        zh: "经典不踩雷。",
-      },
-    },
-    noodles: {
-      name: { en: "Noodles", zh: "面食" },
-      desc: {
-        en: "Hand-pulled and hearty bowls.",
-        zh: "手擀面/牛肉面等。",
-      },
-    },
-    snacks: {
-      name: { en: "Snacks & Sides", zh: "小食&凉菜" },
-      desc: { en: "Shareable bites.", zh: "开胃小食，适合分享。" },
-    },
-  };
-
-  const groups: Record<MenuItemDefinition["category"], LocalizedCategory> = {
-    bestsellers: { id: "bestsellers", name: "", description: "", items: [] },
-    noodles: { id: "noodles", name: "", description: "", items: [] },
-    snacks: { id: "snacks", name: "", description: "", items: [] },
-  };
-
-  for (const cat of Object.keys(groups) as Array<MenuItemDefinition["category"]>) {
-    groups[cat].name = catInfo[cat].name[locale];
-    groups[cat].description = catInfo[cat].desc[locale];
-  }
-
-  for (const def of MENU_DEFS) {
-    groups[def.category].items.push(localizeMenuItem(def, locale));
-  }
-
-  return ["bestsellers", "noodles", "snacks"].map(
-    (k) => groups[k as keyof typeof groups],
-  );
-}
 
 /** ===== DB 菜单类型（对齐 /admin/menu/full 的结构） ===== */
 
@@ -604,14 +437,8 @@ export type PublicMenuCategory = LocalizedCategory;
  * ⭐ 从「数据库菜单（/admin/menu/full 或 /menu/public 返回的结构）」构建前台本地化菜单。
  *
  * - 分类名称用 DB 的 nameEn/nameZh；
- * - 菜品名称/描述/价格/图片/配料，用 DB 的字段；
- * - 标签/热量，从静态 MENU_DEFS 里按 stableId 取（可选，没有就忽略）；
+ * - 菜品名称/价格/图片/配料/中英文，全部用 DB；
  * - 只展示 isActive && isVisible && isAvailable 的菜品。
- *
- * 使用方式（示例）：
- *
- * const dbMenu = await apiFetch<DbMenuCategory[]>("/menu/public");
- * const menu = buildLocalizedMenuFromDb(dbMenu, locale);
  */
 export function buildLocalizedMenuFromDb(
   dbMenu: DbMenuCategory[],
@@ -632,30 +459,22 @@ export function buildLocalizedMenuFromDb(
       .filter((i) => i.isVisible && i.isAvailable)
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map<LocalizedMenuItem>((i) => {
-        // 按 stableId 从静态配置中补充 tags / calories
-        const staticDef = MENU_ITEM_LOOKUP.get(i.stableId);
-        const tags = staticDef?.tags ?? [];
-        const calories = staticDef?.calories;
+        const name = isZh && i.nameZh ? i.nameZh : i.nameEn;
 
-const name = isZh && i.nameZh ? i.nameZh : i.nameEn;
+        const ingredientsText =
+          isZh && i.ingredientsZh
+            ? i.ingredientsZh
+            : i.ingredientsEn ?? "";
 
-const ingredientsText =
-  isZh && i.ingredientsZh
-    ? i.ingredientsZh
-    : i.ingredientsEn ?? "";
-
-return {
-  // ⭐ 对外 id 使用 stableId，这样与购物车 / 结算 / POS 对齐
-  id: i.stableId,
-  name,
-  // DB 已不再存描述，如有需要可从静态 MENU_DEFS 中获取；
-  // 前端目前实际展示的是 ingredients。
-  price: i.basePriceCents / 100,
-  calories,
-  tags,
-  imageUrl: i.imageUrl ?? undefined,
-  ingredients: ingredientsText || undefined,
-};
+        return {
+          id: i.stableId, // 与订单 / POS / Clover 对齐
+          name,
+          nameEn: i.nameEn,
+          nameZh: i.nameZh ?? undefined,
+          price: i.basePriceCents / 100,
+          imageUrl: i.imageUrl ?? undefined,
+          ingredients: ingredientsText || undefined,
+        };
       });
 
     return {
