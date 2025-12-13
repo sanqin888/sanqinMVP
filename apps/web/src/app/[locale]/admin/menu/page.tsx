@@ -428,8 +428,8 @@ export default function AdminMenuPage() {
         isVisible: item.isVisible,
         sortOrder: item.sortOrder,
         imageUrl: item.imageUrl ?? undefined,
-        ingredientsEn: (item as any).ingredientsEn ?? undefined,
-        ingredientsZh: (item as any).ingredientsZh ?? undefined,
+        ingredientsEn: item.ingredientsEn ?? undefined,
+        ingredientsZh: item.ingredientsZh ?? undefined,
       };
 
       await apiFetch(`/admin/menu/items/${itemId}`, {
@@ -585,7 +585,6 @@ export default function AdminMenuPage() {
         ? null
         : safeNullableNum(draft.maxSelect);
     const sortOrder = safeNum(draft.sortOrder, tpl.sortOrder ?? 0);
-    const isRequired = !!draft.isRequired;
 
     setBindingItemId(itemId);
     setSaving((prev) => ({ ...prev, error: null }));
@@ -780,9 +779,8 @@ export default function AdminMenuPage() {
         ) : (
           <div className="space-y-4">
             {categories.map((cat) => {
-              const catAny = cat as any;
               const localizedCatName =
-                isZh && catAny.nameZh ? catAny.nameZh : cat.nameEn;
+                isZh && cat.nameZh ? cat.nameZh : cat.nameEn;
 
               return (
                 <div key={cat.id} className="rounded-2xl border p-4 shadow-sm">
@@ -802,16 +800,14 @@ export default function AdminMenuPage() {
                   {/* 分类内菜品列表 */}
                   <div className="mt-4 space-y-3">
                     {cat.items.map((item) => {
-                      const itemAny = item as any;
-
                       const localizedName =
                         isZh && item.nameZh ? item.nameZh : item.nameEn;
 
                       const ingredientsPreview = (() => {
                         const text =
-                          isZh && itemAny.ingredientsZh
-                            ? (itemAny.ingredientsZh as string)
-                            : (itemAny.ingredientsEn as string) ?? "";
+                          isZh && item.ingredientsZh
+                            ? item.ingredientsZh
+                            : item.ingredientsEn ?? "";
                         if (!text) return "";
                         if (text.length <= 80) return text;
                         return `${text.slice(0, 80)}…`;
@@ -1120,13 +1116,13 @@ export default function AdminMenuPage() {
                                         ? "例如：Wheat noodles, chili oil, garlic..."
                                         : "e.g., Wheat noodles, chili oil, garlic..."
                                     }
-                                    value={itemAny.ingredientsEn ?? ""}
+                                    value={item.ingredientsEn ?? ""}
                                     onChange={(e) =>
                                       updateItemField(
                                         cat.id,
                                         item.id,
-                                        "ingredientsEn" as any,
-                                        e.target.value as any,
+                                        "ingredientsEn",
+                                        e.target.value,
                                       )
                                     }
                                   />
@@ -1143,13 +1139,13 @@ export default function AdminMenuPage() {
                                         ? "例如：凉皮、辣椒油、大蒜、芝麻酱..."
                                         : "例如：凉皮、辣椒油、大蒜、芝麻酱..."
                                     }
-                                    value={itemAny.ingredientsZh ?? ""}
+                                    value={item.ingredientsZh ?? ""}
                                     onChange={(e) =>
                                       updateItemField(
                                         cat.id,
                                         item.id,
-                                        "ingredientsZh" as any,
-                                        e.target.value as any,
+                                        "ingredientsZh",
+                                        e.target.value,
                                       )
                                     }
                                   />

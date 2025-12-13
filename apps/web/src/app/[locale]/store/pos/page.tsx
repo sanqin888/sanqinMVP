@@ -337,7 +337,7 @@ export default function StorePosPage() {
 
     const snapshot: PosDisplaySnapshot = {
       items: cartWithDetails.map((entry) => ({
-        id: entry.stableId
+        id: entry.stableId,
         // 如果没填中文名，用英文名兜底
         nameZh: entry.item.nameZh ?? entry.item.nameEn,
         nameEn: entry.item.nameEn,
