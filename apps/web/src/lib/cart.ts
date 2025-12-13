@@ -15,32 +15,35 @@ function sanitizeCart(raw: unknown): CartEntry[] {
     .map((entry) => {
       if (!entry || typeof entry !== "object") return null;
 
-const { stableId, quantity, notes } = entry as Partial<CartEntry> & {
-  stableId?: unknown;
-  quantity?: unknown;
-  notes?: unknown;
-};
+      const { stableId, quantity, notes } = entry as Partial<CartEntry> & {
+        stableId?: unknown;
+        quantity?: unknown;
+        notes?: unknown;
+      };
 
-if (typeof stableId !== "string" || stableId.length === 0) {
-  throw new Error("[cart] missing stableId in cart entry (legacy itemId is not supported anymore)");
-}
+      if (typeof stableId !== "string" || stableId.length === 0) {
+        throw new Error(
+          "[cart] missing stableId in cart entry (legacy itemId is not supported anymore)",
+        );
+      }
 
-const numericQuantity =
-  typeof quantity === "number"
-    ? quantity
-    : typeof quantity === "string"
-    ? Number(quantity)
-    : NaN;
+      const numericQuantity =
+        typeof quantity === "number"
+          ? quantity
+          : typeof quantity === "string"
+            ? Number(quantity)
+            : NaN;
 
-const safeQuantity = Number.isFinite(numericQuantity)
-  ? Math.max(1, Math.floor(numericQuantity))
-  : 1;
+      const safeQuantity = Number.isFinite(numericQuantity)
+        ? Math.max(1, Math.floor(numericQuantity))
+        : 1;
 
-return {
-  stableId,
-  quantity: safeQuantity,
-  notes: typeof notes === "string" ? notes : undefined,
-};
+      return {
+        stableId,
+        quantity: safeQuantity,
+        notes: typeof notes === "string" ? notes : undefined,
+      };
+    })
     .filter((entry): entry is CartEntry => Boolean(entry));
 }
 

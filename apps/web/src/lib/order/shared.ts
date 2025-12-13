@@ -498,14 +498,14 @@ export function buildLocalizedMenuFromDb(
       )
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map<LocalizedMenuItem | null>((i) => {
-          const stableId =
-            typeof (i as any).stableId === "string" && (i as any).stableId
-            ? (i as any).stableId
-            : null;
+        const stableId =
+          typeof i.stableId === "string" && i.stableId ? i.stableId : null;
 
-          if (!stableId) {
-          throw new Error(`[menu] missing stableId for item, dbId=${(i as any).id ?? "unknown"}`);
-          }
+        if (!stableId) {
+          throw new Error(
+            `[menu] missing stableId for item, dbId=${i.id ?? "unknown"}`,
+          );
+        }
 
         const name = isZh && i.nameZh ? i.nameZh : i.nameEn;
 
