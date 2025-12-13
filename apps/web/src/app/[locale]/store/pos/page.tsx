@@ -12,7 +12,7 @@ import { TAX_RATE, buildLocalizedMenuFromDb } from "@/lib/order/shared";
 import { apiFetch } from "@/lib/api-client";
 
 type PosCartEntry = {
-  itemId: string;
+  stableId: string;
   quantity: number;
 };
 
@@ -265,7 +265,7 @@ export default function StorePosPage() {
   const cartWithDetails = useMemo(() => {
     return cart
       .map((entry) => {
-        const item = allMenuItems.find((i) => i.id === entry.itemId);
+        const item = allMenuItems.find((i) => i.stableId === entry.stableId);
         if (!item) return null;
 
         const unitPriceCents = Math.round(item.price * 100);
@@ -299,13 +299,13 @@ export default function StorePosPage() {
 
   const addItem = (itemId: string) => {
     setCart((prev) => {
-      const existing = prev.find((e) => e.itemId === itemId);
+      const existing = prev.find((e) => e.stableId === itemId);
       if (existing) {
         return prev.map((e) =>
-          e.itemId === itemId ? { ...e, quantity: e.quantity + 1 } : e,
+          e.stableId === itemId ? { ...e, quantity: e.quantity + 1 } : e,
         );
       }
-      return [...prev, { itemId, quantity: 1 }];
+      return [...prev, { stableId: itemId, quantity: 1 }];
     });
   };
 
@@ -314,7 +314,7 @@ export default function StorePosPage() {
     setCart((prev) =>
       prev
         .map((e) =>
-          e.itemId === itemId ? { ...e, quantity: e.quantity + delta } : e,
+          e.stableId === itemId ? { ...e, quantity: e.quantity + delta } : e,
         )
         .filter((e) => e.quantity > 0),
     );
@@ -337,7 +337,7 @@ export default function StorePosPage() {
 
     const snapshot: PosDisplaySnapshot = {
       items: cartWithDetails.map((entry) => ({
-        id: entry.itemId,
+        id: entry.stableId
         // 如果没填中文名，用英文名兜底
         nameZh: entry.item.nameZh ?? entry.item.nameEn,
         nameEn: entry.item.nameEn,
@@ -446,18 +446,18 @@ export default function StorePosPage() {
               {visibleItems.map((item) => {
                 const unitPriceCents = Math.round(item.price * 100);
                 const currentQty =
-                  cart.find((e) => e.itemId === item.id)?.quantity ?? 0;
+                  cart.find((e) => e.stableId === item.stableId)?.quantity ?? 0;
 
                 return (
                   <div
-                    key={item.id}
+                    key={item.stableId}
                     role="button"
                     tabIndex={0}
-                    onClick={() => addItem(item.id)}
+                    onClick={() => addItem(item.stableId)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
-                        addItem(item.id);
+                        addItem(item.stableId);
                       }
                     }}
                     className="flex flex-col justify-between rounded-3xl bg-slate-800 hover:bg-slate-700 active:scale-[0.99] transition-transform p-3 text-left"
@@ -482,7 +482,7 @@ export default function StorePosPage() {
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            changeQuantity(item.id, -1);
+                            changeQuantity(item.stableId, -1);
                           }}
                           className="w-8 h-8 rounded-full bg-slate-900 flex items-center justify-center text-lg leading-none"
                         >
@@ -497,7 +497,7 @@ export default function StorePosPage() {
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            changeQuantity(item.id, +1);
+                            changeQuantity(item.stableId, +1);
                           }}
                           className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-lg leading-none"
                         >
@@ -525,7 +525,7 @@ export default function StorePosPage() {
               <ul className="space-y-2">
                 {cartWithDetails.map((item) => (
                   <li
-                    key={item.itemId}
+                    key={item.stableId}
                     className="flex items-center justify-between gap-2 rounded-2xl bg-slate-900/60 px-3 py-2"
                   >
                     <div className="flex-1">
@@ -539,7 +539,7 @@ export default function StorePosPage() {
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => changeQuantity(item.itemId, -1)}
+                        onClick={() => changeQuantity(item.stableId, -1)}
                         className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-lg leading-none"
                       >
                         −
@@ -549,7 +549,7 @@ export default function StorePosPage() {
                       </span>
                       <button
                         type="button"
-                        onClick={() => changeQuantity(item.itemId, 1)}
+                        onClick={() => changeQuantity(item.stableId, 1)}
                         className="w-8 h-8 rounded-full bg-emerald-500 text-slate-900 flex items-center justify-center text-lg leading-none"
                       >
                         +

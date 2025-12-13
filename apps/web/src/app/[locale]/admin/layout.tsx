@@ -1,3 +1,4 @@
+// apps/web/src/app/[locale]/admin/layout.tsx
 'use client';
 
 import Link from 'next/link';
@@ -26,7 +27,6 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (status === 'loading') return;
     if (!isAdmin) {
-      // 不是 admin 的话，统一踢回菜单页
       router.replace(`/${locale}`);
     }
   }, [status, isAdmin, router, locale]);
@@ -36,26 +36,37 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   }
 
   if (!isAdmin) {
-    // 正在重定向时不闪一下内容
     return null;
   }
+
+  // ✅ 选项管理页路由（如不同请改这里）
+  const optionsHref = `/${locale}/admin/menu/options`;
 
   const navItems = [
     { href: `/${locale}/admin`, labelZh: '总览' },
     { href: `/${locale}/admin/hours`, labelZh: '营业时间' },
     { href: `/${locale}/admin/menu`, labelZh: '菜单管理' },
+    // ✅ 新增：选项管理（放在红圈位置的左侧导航里）
+    { href: optionsHref, labelZh: '选项管理' },
   ];
+
+  function isActive(href: string): boolean {
+    // 总览只在完全匹配时高亮，否则 /admin 会把所有子路由都“吃掉”
+    if (href === `/${locale}/admin`) return pathname === href;
+    return pathname.startsWith(href);
+  }
 
   return (
     <div className="min-h-screen flex">
       <aside className="w-60 border-r p-4 flex flex-col gap-2">
         <div className="font-bold text-lg mb-4">Sanqin 后台</div>
+
         {navItems.map((item) => (
           <Link
             key={item.href}
             href={item.href}
             className={`block px-3 py-2 rounded-md ${
-              pathname.startsWith(item.href)
+              isActive(item.href)
                 ? 'bg-gray-200 font-semibold'
                 : 'hover:bg-gray-100'
             }`}
@@ -64,6 +75,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           </Link>
         ))}
       </aside>
+
       <main className="flex-1 p-4">{children}</main>
     </div>
   );

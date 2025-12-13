@@ -1,14 +1,14 @@
 // apps/web/src/app/[locale]/admin/menu/page.tsx
 "use client";
 
+import Link from "next/link";
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
   type Locale,
   type DbMenuCategory,
   type DbMenuItem,
-  type DbMenuOptionGroup,
 } from "@/lib/order/shared";
 import { apiFetch } from "@/lib/api-client";
 
@@ -61,47 +61,86 @@ function createEmptyNewItemDraft(): NewItemDraft {
   };
 }
 
-// ===== 选项组 & 选项的前端类型（与后端保持一致或做轻微映射） ===== //
+// ===== 选项库（全局）模板：用于“绑定到菜品”下拉选择 ===== //
 
-export type MenuOptionChoice = {
+type OptionGroupTemplateLite = {
   id: string;
   nameEn: string;
-  nameZh: string | null;
-  priceDeltaCents: number;
+  nameZh?: string | null;
+  defaultMinSelect: number;
+  defaultMaxSelect: number | null;
   sortOrder: number;
   isAvailable: boolean;
+  tempUnavailableUntil: string | null;
 };
 
-export type MenuOptionGroup = Omit<
-  DbMenuOptionGroup,
-  "options" | "maxSelect"
-> & {
-  maxSelect: number | null;
-  options: MenuOptionChoice[];
+type BoundOptionGroup = {
+  id: string; // 绑定记录 id（或组 id，取决于后端实现）
+  nameEn?: string;
+  nameZh?: string | null;
+
+  // 可能的模板 id 字段（不同后端命名兼容）
+  templateId?: string | null;
+  optionGroupTemplateId?: string | null;
+  templateGroupId?: string | null;
+
+  minSelect?: number;
+  maxSelect?: number | null;
+
+  isEnabled?: boolean;
+  sortOrder?: number;
 };
 
-// DbMenuItem 在 shared 中不一定显式带有 optionGroups，这里做一个扩展类型
-type MenuItemWithOptions = DbMenuItem & {
-  optionGroups?: MenuOptionGroup[];
-};
-
-// 新建选项组草稿（按 item 维度）
-type NewOptionGroupDraft = {
-  nameEn: string;
-  nameZh: string;
-  minSelect: string; // 文本，保存时转数字
-  maxSelect: string; // 文本，保存时转数字，空串代表 null（不限）
+type BindDraft = {
+  templateId: string;
+  minSelect: string;
+  maxSelect: string; // "" => null
   sortOrder: string;
   isRequired: boolean;
 };
 
-// 新建选项草稿（按 group 维度）
-type NewOptionChoiceDraft = {
-  nameEn: string;
-  nameZh: string;
-  priceDelta: string; // CAD 文本，保存时转 cents
-  sortOrder: string;
-};
+function createEmptyBindDraft(): BindDraft {
+  return {
+    templateId: "",
+    minSelect: "",
+    maxSelect: "",
+    sortOrder: "",
+    isRequired: false,
+  };
+}
+
+function safeNum(v: unknown, fallback = 0): number {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function safeNullableNum(v: unknown): number | null {
+  if (v === null || v === undefined) return null;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function pickTemplateId(g: BoundOptionGroup): string | null {
+  return (
+    g.templateId ??
+    g.optionGroupTemplateId ??
+    g.templateGroupId ??
+    null
+  );
+}
+
+function getBoundGroupsFromItem(item: unknown): BoundOptionGroup[] {
+  const it = item as Record<string, unknown>;
+  const candidates = [
+    it["optionGroupBindings"],
+    it["optionGroups"],
+    it["boundOptionGroups"],
+  ];
+  for (const c of candidates) {
+    if (Array.isArray(c)) return c as BoundOptionGroup[];
+  }
+  return [];
+}
 
 export default function AdminMenuPage() {
   const params = useParams<{ locale: Locale }>();
@@ -115,6 +154,7 @@ export default function AdminMenuPage() {
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>(
     {},
   );
+
   const [saving, setSaving] = useState<SavingState>({
     itemId: null,
     error: null,
@@ -126,20 +166,6 @@ export default function AdminMenuPage() {
   >(null);
   const [uploadingImageForDraftCategory, setUploadingImageForDraftCategory] =
     useState<string | null>(null);
-
-  // 选项组 / 选项 保存 / 删除中的 id
-  const [savingOptionGroupId, setSavingOptionGroupId] = useState<string | null>(
-    null,
-  );
-  const [savingOptionChoiceId, setSavingOptionChoiceId] = useState<
-    string | null
-  >(null);
-  const [deletingOptionGroupId, setDeletingOptionGroupId] = useState<
-    string | null
-  >(null);
-  const [deletingOptionChoiceId, setDeletingOptionChoiceId] = useState<
-    string | null
-  >(null);
 
   // —— 新建分类 —— //
   const [newCategoryNameEn, setNewCategoryNameEn] = useState("");
@@ -155,29 +181,29 @@ export default function AdminMenuPage() {
     string | null
   >(null);
 
-  // —— 新建选项组（按 item 维护草稿） —— //
-  const [newOptionGroupDrafts, setNewOptionGroupDrafts] = useState<
-    Record<string, NewOptionGroupDraft>
-  >({});
+  // —— 选项库模板（用于绑定） —— //
+  const [templates, setTemplates] = useState<OptionGroupTemplateLite[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(true);
+  const [templatesError, setTemplatesError] = useState<string | null>(null);
 
-  // —— 新建选项（按 group 维护草稿） —— //
-  const [newOptionChoiceDrafts, setNewOptionChoiceDrafts] = useState<
-    Record<string, NewOptionChoiceDraft>
-  >({});
+  // —— 绑定草稿（按 item） —— //
+  const [bindDrafts, setBindDrafts] = useState<Record<string, BindDraft>>({});
+  const [bindingItemId, setBindingItemId] = useState<string | null>(null);
+  const [unbindingId, setUnbindingId] = useState<string | null>(null);
 
-  const totalItems = categories.reduce(
-    (sum, cat) => sum + cat.items.length,
-    0,
+  const totalItems = useMemo(
+    () => categories.reduce((sum, cat) => sum + cat.items.length, 0),
+    [categories],
   );
 
-  // ===== 工具函数 ===== //
+  // ===== 加载菜单 ===== //
 
-  async function reloadMenu() {
+  async function reloadMenu(): Promise<void> {
     setLoading(true);
     setLoadError(null);
     try {
       const data = await apiFetch<DbMenuCategory[]>("/admin/menu/full");
-      const sorted = data
+      const sorted = (data ?? [])
         .slice()
         .sort((a, b) => a.sortOrder - b.sortOrder)
         .map((cat) => ({
@@ -201,6 +227,34 @@ export default function AdminMenuPage() {
     void reloadMenu();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isZh]);
+
+  // ===== 加载选项库模板（用于绑定下拉） ===== //
+
+  async function loadTemplates(): Promise<void> {
+    setTemplatesLoading(true);
+    setTemplatesError(null);
+    try {
+      const res = await apiFetch<OptionGroupTemplateLite[]>(
+        "/admin/menu/option-group-templates",
+      );
+      const sorted = (res ?? []).slice().sort((a, b) => a.sortOrder - b.sortOrder);
+      setTemplates(sorted);
+    } catch (e) {
+      console.error(e);
+      setTemplatesError(
+        isZh ? "加载选项库失败，请稍后重试。" : "Failed to load option templates.",
+      );
+    } finally {
+      setTemplatesLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadTemplates();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isZh]);
+
+  // ===== 工具函数 ===== //
 
   function updateItemField<K extends keyof DbMenuItem>(
     categoryId: string,
@@ -247,138 +301,39 @@ export default function AdminMenuPage() {
     }));
   }
 
-function getNewOptionGroupDraft(itemId: string): NewOptionGroupDraft {
-  return (
-    newOptionGroupDrafts[itemId] ?? {
-      nameEn: "",
-      nameZh: "",
-      minSelect: "0",
-      maxSelect: "",
-      sortOrder: "0",
-      isRequired: false,
-    }
-  );
-}
+  function getBindDraft(itemId: string): BindDraft {
+    return bindDrafts[itemId] ?? createEmptyBindDraft();
+  }
 
-  function updateNewOptionGroupDraft<K extends keyof NewOptionGroupDraft>(
+  function updateBindDraft<K extends keyof BindDraft>(
     itemId: string,
     field: K,
-    value: NewOptionGroupDraft[K],
+    value: BindDraft[K],
   ) {
-    setNewOptionGroupDrafts((prev) => ({
+    setBindDrafts((prev) => ({
       ...prev,
       [itemId]: {
-        ...(prev[itemId] ?? {
-          nameEn: "",
-          nameZh: "",
-  minSelect: "0",
-  maxSelect: "",
-          sortOrder: "0",
-          isRequired: false,
-        }),
+        ...(prev[itemId] ?? createEmptyBindDraft()),
         [field]: value,
       },
     }));
   }
 
-  function getNewOptionChoiceDraft(groupId: string): NewOptionChoiceDraft {
-    return (
-      newOptionChoiceDrafts[groupId] ?? {
-        nameEn: "",
-        nameZh: "",
-        priceDelta: "",
-        sortOrder: "0",
-      }
-    );
-  }
+  function applyTemplateDefaultsToBindDraft(itemId: string, templateId: string) {
+    const tpl = templates.find((t) => t.id === templateId);
+    if (!tpl) return;
 
-  function updateNewOptionChoiceDraft<K extends keyof NewOptionChoiceDraft>(
-    groupId: string,
-    field: K,
-    value: NewOptionChoiceDraft[K],
-  ) {
-    setNewOptionChoiceDrafts((prev) => ({
-      ...prev,
-      [groupId]: {
-        ...(prev[groupId] ?? {
-          nameEn: "",
-          nameZh: "",
-          priceDelta: "",
-          sortOrder: "0",
-        }),
-        [field]: value,
-      },
-    }));
-  }
-
-  // ===== 选项组 / 选项：本地状态更新 ===== //
-
-  function updateOptionGroupField<
-    K extends keyof MenuOptionGroup,
-    V extends MenuOptionGroup[K],
-  >(categoryId: string, itemId: string, groupId: string, field: K, value: V) {
-    setCategories((prev) =>
-      prev.map((cat) =>
-        cat.id !== categoryId
-          ? cat
-          : {
-              ...cat,
-              items: cat.items.map((it) => {
-                if (it.id !== itemId) return it;
-                const item = it as MenuItemWithOptions;
-                const groups = item.optionGroups ?? [];
-                const nextGroups = groups.map((g) =>
-                  g.id !== groupId ? g : { ...g, [field]: value },
-                );
-                return {
-                  ...(item as DbMenuItem),
-                  optionGroups: nextGroups,
-                };
-              }),
-            },
-      ),
-    );
-  }
-
-  function updateOptionChoiceField<
-    K extends keyof MenuOptionChoice,
-    V extends MenuOptionChoice[K],
-  >(
-    categoryId: string,
-    itemId: string,
-    groupId: string,
-    choiceId: string,
-    field: K,
-    value: V,
-  ) {
-    setCategories((prev) =>
-      prev.map((cat) =>
-        cat.id !== categoryId
-          ? cat
-          : {
-              ...cat,
-              items: cat.items.map((it) => {
-                if (it.id !== itemId) return it;
-                const item = it as MenuItemWithOptions;
-                const groups = item.optionGroups ?? [];
-                const nextGroups = groups.map((g) =>
-                  g.id !== groupId
-                    ? g
-                    : {
-                        ...g,
-                        options: (g.options ?? []).map((c) =>
-                          c.id !== choiceId ? c : { ...c, [field]: value },
-                        ),
-                      },
-                );
-                return {
-                  ...(item as DbMenuItem),
-                  optionGroups: nextGroups,
-                };
-              }),
-            },
-      ),
-    );
+    setBindDrafts((prev) => {
+      const next: BindDraft = {
+        ...(prev[itemId] ?? createEmptyBindDraft()),
+        templateId,
+        minSelect: String(tpl.defaultMinSelect ?? 0),
+        maxSelect: tpl.defaultMaxSelect == null ? "" : String(tpl.defaultMaxSelect),
+        sortOrder: String(tpl.sortOrder ?? 0),
+        isRequired: (tpl.defaultMinSelect ?? 0) > 0,
+      };
+      return { ...prev, [itemId]: next };
+    });
   }
 
   // ===== 图片上传 ===== //
@@ -397,15 +352,12 @@ function getNewOptionGroupDraft(itemId: string): NewOptionGroupDraft {
       const formData = new FormData();
       formData.append("file", file);
 
-      // 注意：apiFetch 需要支持 FormData（不要强行写 Content-Type: application/json）
       const res = await apiFetch<{ url: string }>("/admin/upload/image", {
         method: "POST",
         body: formData,
       });
 
-      if (!res?.url) {
-        throw new Error("No url in upload response");
-      }
+      if (!res?.url) throw new Error("No url in upload response");
 
       updateItemField(
         categoryId,
@@ -441,9 +393,7 @@ function getNewOptionGroupDraft(itemId: string): NewOptionGroupDraft {
         body: formData,
       });
 
-      if (!res?.url) {
-        throw new Error("No url in upload response");
-      }
+      if (!res?.url) throw new Error("No url in upload response");
 
       updateNewItemField(categoryId, "imageUrl", res.url);
     } catch (err) {
@@ -463,10 +413,8 @@ function getNewOptionGroupDraft(itemId: string): NewOptionGroupDraft {
 
   async function handleSaveItem(categoryId: string, itemId: string) {
     const category = categories.find((c) => c.id === categoryId);
-    const itemRaw = category?.items.find((i) => i.id === itemId);
-    if (!itemRaw) return;
-
-    const item = itemRaw as MenuItemWithOptions;
+    const item = category?.items.find((i) => i.id === itemId);
+    if (!item) return;
 
     setSaving({ itemId, error: null });
 
@@ -480,12 +428,9 @@ function getNewOptionGroupDraft(itemId: string): NewOptionGroupDraft {
         isVisible: item.isVisible,
         sortOrder: item.sortOrder,
         imageUrl: item.imageUrl ?? undefined,
-        ingredientsEn: item.ingredientsEn ?? undefined,
-        ingredientsZh: item.ingredientsZh ?? undefined,
+        ingredientsEn: (item as any).ingredientsEn ?? undefined,
+        ingredientsZh: (item as any).ingredientsZh ?? undefined,
       };
-
-      // 如需一次性保存选项组，也可以在这里带上 optionGroups，自行设计后端 DTO
-      // body.optionGroups = item.optionGroups ?? [];
 
       await apiFetch(`/admin/menu/items/${itemId}`, {
         method: "PUT",
@@ -502,270 +447,6 @@ function getNewOptionGroupDraft(itemId: string): NewOptionGroupDraft {
           ? "保存失败，请稍后重试。"
           : "Failed to save item. Please try again.",
       });
-    }
-  }
-
-  // ===== 选项组 / 选项：后端交互 ===== //
-
-  async function handleCreateOptionGroup(categoryId: string, itemId: string) {
-    const draft = getNewOptionGroupDraft(itemId);
-    const nameEn = draft.nameEn.trim();
-    const nameZh = draft.nameZh.trim();
-    const sortOrderNumber = Number(draft.sortOrder || "0");
-const minSelectNumber = Number(draft.minSelect || "0");
-const maxSelectNumber =
-  draft.maxSelect.trim() === ""
-    ? null
-    : Number.isNaN(Number(draft.maxSelect))
-    ? null
-    : Number(draft.maxSelect);
-
-    if (!nameEn) {
-      setSaving((prev) => ({
-        ...prev,
-        error: isZh
-          ? "选项组英文名称不能为空。"
-          : "Option group English name is required.",
-      }));
-      return;
-    }
-
-    setSaving((prev) => ({ ...prev, error: null }));
-    setSavingOptionGroupId("new");
-
-    try {
-await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    nameEn,
-    nameZh: nameZh || undefined,
-    minSelect: Number.isNaN(minSelectNumber) ? 0 : minSelectNumber,
-    maxSelect: maxSelectNumber,
-    isRequired: draft.isRequired,
-    sortOrder: Number.isNaN(sortOrderNumber) ? 0 : sortOrderNumber,
-  }),
-});
-
-      // 清空草稿 & 重新加载
-      setNewOptionGroupDrafts((prev) => {
-        const next = { ...prev };
-        delete next[itemId];
-        return next;
-      });
-      await reloadMenu();
-    } catch (err) {
-      console.error(err);
-      setSaving((prev) => ({
-        ...prev,
-        error: isZh
-          ? "新建选项组失败，请稍后重试。"
-          : "Failed to create option group. Please try again.",
-      }));
-    } finally {
-      setSavingOptionGroupId(null);
-    }
-  }
-
-  async function handleSaveOptionGroup(
-    categoryId: string,
-    itemId: string,
-    group: MenuOptionGroup,
-  ) {
-    setSaving((prev) => ({ ...prev, error: null }));
-    setSavingOptionGroupId(group.id);
-
-    try {
-      await apiFetch(`/admin/menu/option-groups/${group.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nameEn: group.nameEn,
-          nameZh: group.nameZh || undefined,
-          minSelect: group.minSelect,
-          maxSelect: group.maxSelect,
-          isRequired: group.isRequired,
-          sortOrder: group.sortOrder,
-        }),
-      });
-
-      await reloadMenu();
-    } catch (err) {
-      console.error(err);
-      setSaving((prev) => ({
-        ...prev,
-        error: isZh
-          ? "保存选项组失败，请稍后重试。"
-          : "Failed to save option group. Please try again.",
-      }));
-    } finally {
-      setSavingOptionGroupId(null);
-    }
-  }
-
-  async function handleDeleteOptionGroup(
-    categoryId: string,
-    itemId: string,
-    groupId: string,
-  ) {
-    if (
-      !window.confirm(
-        isZh
-          ? "确定要删除这个选项组及其所有选项吗？"
-          : "Delete this option group and all its options?",
-      )
-    ) {
-      return;
-    }
-
-    setDeletingOptionGroupId(groupId);
-    setSaving((prev) => ({ ...prev, error: null }));
-
-    try {
-      await apiFetch(`/admin/menu/option-groups/${groupId}`, {
-        method: "DELETE",
-      });
-
-      await reloadMenu();
-    } catch (err) {
-      console.error(err);
-      setSaving((prev) => ({
-        ...prev,
-        error: isZh
-          ? "删除选项组失败，请稍后重试。"
-          : "Failed to delete option group. Please try again.",
-      }));
-    } finally {
-      setDeletingOptionGroupId(null);
-    }
-  }
-
-  async function handleCreateOptionChoice(
-    categoryId: string,
-    itemId: string,
-    groupId: string,
-  ) {
-    const draft = getNewOptionChoiceDraft(groupId);
-    const nameEn = draft.nameEn.trim();
-    const nameZh = draft.nameZh.trim();
-    const priceDeltaNumber = Number(draft.priceDelta || "0");
-    const sortOrderNumber = Number(draft.sortOrder || "0");
-
-    if (!nameEn) {
-      setSaving((prev) => ({
-        ...prev,
-        error: isZh
-          ? "选项英文名称不能为空。"
-          : "Option English name is required.",
-      }));
-      return;
-    }
-
-    setSaving((prev) => ({ ...prev, error: null }));
-    setSavingOptionChoiceId("new");
-
-    try {
-      await apiFetch(`/admin/menu/option-groups/${groupId}/options`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nameEn,
-          nameZh: nameZh || undefined,
-          priceDeltaCents: Math.round(
-            Number.isNaN(priceDeltaNumber) ? 0 : priceDeltaNumber * 100,
-          ),
-          sortOrder: Number.isNaN(sortOrderNumber) ? 0 : sortOrderNumber,
-        }),
-      });
-
-      setNewOptionChoiceDrafts((prev) => {
-        const next = { ...prev };
-        delete next[groupId];
-        return next;
-      });
-      await reloadMenu();
-    } catch (err) {
-      console.error(err);
-      setSaving((prev) => ({
-        ...prev,
-        error: isZh
-          ? "新建选项失败，请稍后重试。"
-          : "Failed to create option. Please try again.",
-      }));
-    } finally {
-      setSavingOptionChoiceId(null);
-    }
-  }
-
-  async function handleSaveOptionChoice(
-    categoryId: string,
-    itemId: string,
-    groupId: string,
-    choice: MenuOptionChoice,
-  ) {
-    setSaving((prev) => ({ ...prev, error: null }));
-    setSavingOptionChoiceId(choice.id);
-
-    try {
-      await apiFetch(`/admin/menu/options/${choice.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nameEn: choice.nameEn,
-          nameZh: choice.nameZh || undefined,
-          priceDeltaCents: choice.priceDeltaCents,
-          sortOrder: choice.sortOrder,
-          isAvailable: choice.isAvailable,
-        }),
-      });
-
-      await reloadMenu();
-    } catch (err) {
-      console.error(err);
-      setSaving((prev) => ({
-        ...prev,
-        error: isZh
-          ? "保存选项失败，请稍后重试。"
-          : "Failed to save option. Please try again.",
-      }));
-    } finally {
-      setSavingOptionChoiceId(null);
-    }
-  }
-
-  async function handleDeleteOptionChoice(
-    categoryId: string,
-    itemId: string,
-    groupId: string,
-    choiceId: string,
-  ) {
-    if (
-      !window.confirm(
-        isZh ? "确定要删除这个选项吗？" : "Delete this option permanently?",
-      )
-    ) {
-      return;
-    }
-
-    setDeletingOptionChoiceId(choiceId);
-    setSaving((prev) => ({ ...prev, error: null }));
-
-    try {
-      await apiFetch(`/admin/menu/options/${choiceId}`, {
-        method: "DELETE",
-      });
-
-      await reloadMenu();
-    } catch (err) {
-      console.error(err);
-      setSaving((prev) => ({
-        ...prev,
-        error: isZh
-          ? "删除选项失败，请稍后重试。"
-          : "Failed to delete option. Please try again.",
-      }));
-    } finally {
-      setDeletingOptionChoiceId(null);
     }
   }
 
@@ -879,95 +560,207 @@ await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
     }
   }
 
+  // ===== 绑定 / 解绑 选项组（全局模板） =====
+  // 注意：这里使用了“推荐的 REST 路径”，若你的后端路径不同，改这里两个 endpoint 即可：
+  const BIND_ENDPOINT = (itemId: string) =>
+    `/admin/menu/items/${itemId}/option-group-bindings`;
+  const UNBIND_ENDPOINT = (itemId: string, bindingId: string) =>
+    `/admin/menu/items/${itemId}/option-group-bindings/${bindingId}`;
+
+  async function handleBindTemplateToItem(itemId: string) {
+    const draft = getBindDraft(itemId);
+    const templateId = draft.templateId;
+    if (!templateId) return;
+
+    const tpl = templates.find((t) => t.id === templateId);
+    if (!tpl) return;
+
+    let minSelect = safeNum(draft.minSelect, tpl.defaultMinSelect ?? 0);
+
+    // ✅ “必选”不再单独发字段，而是用 minSelect 表达：必选 => minSelect >= 1
+    if (draft.isRequired && minSelect <= 0) minSelect = 1;
+    if (!draft.isRequired && minSelect < 0) minSelect = 0;
+    const maxSelect =
+      draft.maxSelect.trim() === ""
+        ? null
+        : safeNullableNum(draft.maxSelect);
+    const sortOrder = safeNum(draft.sortOrder, tpl.sortOrder ?? 0);
+    const isRequired = !!draft.isRequired;
+
+    setBindingItemId(itemId);
+    setSaving((prev) => ({ ...prev, error: null }));
+
+    try {
+      await apiFetch(BIND_ENDPOINT(itemId), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+        templateGroupId: templateId,
+        minSelect,
+        maxSelect,
+        sortOrder,
+        isEnabled: true, // 先固定为 true；后续如果你要做“按菜品禁用组选项”再加 UI
+        }),
+      });
+
+      setBindDrafts((prev) => {
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
+
+      await reloadMenu();
+    } catch (e) {
+      console.error(e);
+      setSaving((prev) => ({
+        ...prev,
+        error: isZh
+          ? "绑定选项组失败，请稍后重试。"
+          : "Failed to bind option group. Please try again.",
+      }));
+    } finally {
+      setBindingItemId(null);
+    }
+  }
+
+  async function handleUnbindFromItem(itemId: string, bindingId: string) {
+    if (
+      !window.confirm(
+        isZh ? "确定要从该菜品解绑这个选项组吗？" : "Unbind this option group from the item?",
+      )
+    ) {
+      return;
+    }
+
+    setUnbindingId(bindingId);
+    setSaving((prev) => ({ ...prev, error: null }));
+
+    try {
+      await apiFetch(UNBIND_ENDPOINT(itemId, bindingId), { method: "DELETE" });
+      await reloadMenu();
+    } catch (e) {
+      console.error(e);
+      setSaving((prev) => ({
+        ...prev,
+        error: isZh
+          ? "解绑失败，请稍后重试。"
+          : "Failed to unbind. Please try again.",
+      }));
+    } finally {
+      setUnbindingId(null);
+    }
+  }
+
   // ===== 渲染 ===== //
 
   return (
     <div className="space-y-8">
       {/* 顶部说明 */}
-      <div>
-        <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
-          Admin
-        </p>
-        <h1 className="mt-2 text-3xl font-semibold text-slate-900">
-          菜单维护（图片上传 & 配料说明 & 选项组）
-        </h1>
-        <p className="mt-2 max-w-3xl text-sm text-slate-600">
-          这里可以维护线上菜单的数据：分类、菜品名称、价格、上下架状态、展示图片（支持上传）、配料说明（中英文），以及每个菜品的选项组和选项。
-          顾客看到的菜单将直接使用这里的配置。
-        </p>
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
+            Admin
+          </p>
+          <h1 className="mt-2 text-3xl font-semibold text-slate-900">
+            菜单维护（图片上传 & 配料说明）
+          </h1>
+          <p className="mt-2 max-w-3xl text-sm text-slate-600">
+            这里维护分类与菜品基础信息（名称/价格/上下架/图片/配料说明）。选项组与选项请在“选项页”统一维护；本页仅支持将全局选项组绑定/解绑到菜品。
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void reloadMenu()}
+            className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
+          >
+            {isZh ? "刷新菜单" : "Refresh menu"}
+          </button>
+        </div>
       </div>
 
       {/* 概览统计 */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <div className="rounded-2xl border bg-white/80 p-5 shadow-sm">
-          <p className="text-sm text-slate-500">分类数量</p>
+          <p className="text-sm text-slate-500">{isZh ? "分类数量" : "Categories"}</p>
           <p className="mt-2 text-3xl font-semibold text-slate-900">
             {categories.length}
           </p>
         </div>
         <div className="rounded-2xl border bg-white/80 p-5 shadow-sm">
-          <p className="text-sm text-slate-500">菜品总数</p>
+          <p className="text-sm text-slate-500">{isZh ? "菜品总数" : "Items"}</p>
           <p className="mt-2 text-3xl font-semibold text-emerald-600">
             {totalItems}
           </p>
         </div>
         <div className="rounded-2xl border bg-white/80 p-5 shadow-sm">
-          <p className="text-sm text-slate-500">数据状态</p>
+          <p className="text-sm text-slate-500">{isZh ? "数据状态" : "Status"}</p>
           <p className="mt-2 text-sm font-medium text-slate-900">
             {loading
-              ? "加载中…"
+              ? isZh
+                ? "加载中…"
+                : "Loading…"
               : loadError
               ? isZh
                 ? "加载失败（可重试）"
                 : "Load failed"
-              : "正常"}
+              : isZh
+              ? "正常"
+              : "OK"}
           </p>
         </div>
       </div>
 
       {/* 新建分类 */}
-      <SectionCard title="新建分类">
+      <SectionCard title={isZh ? "新建分类" : "Create category"}>
         <div className="grid gap-3 md:grid-cols-3">
           <div className="space-y-1">
             <label className="block text-[11px] font-medium text-slate-500">
-              分类名称（EN）
+              {isZh ? "分类名称（EN）" : "Category name (EN)"}
             </label>
             <input
               type="text"
-              className="w-full rounded-md border px-2 py-1 text-xs"
+              className="h-9 w-full rounded-md border px-3 text-sm"
               value={newCategoryNameEn}
               onChange={(e) => setNewCategoryNameEn(e.target.value)}
             />
           </div>
           <div className="space-y-1">
             <label className="block text-[11px] font-medium text-slate-500">
-              分类名称（中文）
+              {isZh ? "分类名称（中文）" : "Category name (ZH)"}
             </label>
             <input
               type="text"
-              className="w-full rounded-md border px-2 py-1 text-xs"
+              className="h-9 w-full rounded-md border px-3 text-sm"
               value={newCategoryNameZh}
               onChange={(e) => setNewCategoryNameZh(e.target.value)}
             />
           </div>
           <div className="space-y-1">
             <label className="block text-[11px] font-medium text-slate-500">
-              排序（数值越小越靠前）
+              {isZh ? "排序（数值越小越靠前）" : "Sort (smaller = earlier)"}
             </label>
             <div className="flex items-center gap-2">
               <input
                 type="number"
-                className="w-full rounded-md border px-2 py-1 text-xs"
+                className="h-9 w-full rounded-md border px-3 text-sm tabular-nums"
                 value={newCategorySortOrder}
                 onChange={(e) => setNewCategorySortOrder(e.target.value)}
               />
               <button
                 type="button"
                 onClick={() => void handleCreateCategory()}
-                className="whitespace-nowrap rounded-full bg-slate-900 px-4 py-1.5 text-xs font-semibold text-white hover:bg-slate-700"
+                className="h-9 whitespace-nowrap rounded-full bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-700"
                 disabled={creatingCategory}
               >
-                {creatingCategory ? "创建中…" : "创建分类"}
+                {creatingCategory
+                  ? isZh
+                    ? "创建中…"
+                    : "Creating…"
+                  : isZh
+                  ? "创建分类"
+                  : "Create"}
               </button>
             </div>
           </div>
@@ -975,103 +768,59 @@ await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
       </SectionCard>
 
       {/* 菜单列表 */}
-      <SectionCard
-        title="菜单列表"
-        actions={
-          <button
-            type="button"
-            className="text-xs font-medium text-emerald-700 hover:text-emerald-600"
-            onClick={() => void reloadMenu()}
-          >
-            {isZh ? "重新加载菜单" : "Reload menu"}
-          </button>
-        }
-      >
+        <SectionCard title={isZh ? "菜单列表" : "Menu"}>
         {loading ? (
-          <p className="text-sm text-slate-500">
-            {isZh ? "菜单加载中…" : "Loading menu…"}
-          </p>
+          <p className="text-sm text-slate-500">{isZh ? "菜单加载中…" : "Loading menu…"}</p>
         ) : loadError ? (
           <p className="text-sm text-red-600">{loadError}</p>
         ) : categories.length === 0 ? (
           <p className="text-sm text-slate-500">
-            {isZh
-              ? "暂无菜单数据，请先创建一个分类。"
-              : "No menu data yet. Please create a category first."}
+            {isZh ? "暂无菜单数据，请先创建一个分类。" : "No menu yet. Create a category first."}
           </p>
         ) : (
           <div className="space-y-4">
-{categories.map((cat) => {
-  // 扩展一下类型，避免使用 any
-  type CategoryWithOptionalMeta = DbMenuCategory & {
-    nameZh?: string | null;
-    isActive?: boolean | null;
-  };
+            {categories.map((cat) => {
+              const catAny = cat as any;
+              const localizedCatName =
+                isZh && catAny.nameZh ? catAny.nameZh : cat.nameEn;
 
-  const catWithMeta = cat as CategoryWithOptionalMeta;
-
-  const localizedCatName =
-    isZh && catWithMeta.nameZh ? catWithMeta.nameZh : catWithMeta.nameEn;
-
-  const isActiveCategory =
-    typeof catWithMeta.isActive === "boolean" ? catWithMeta.isActive : true;
-
-  return (
-    <div key={catWithMeta.id} className="rounded-2xl border p-4 shadow-sm">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-base font-semibold text-slate-900">
-            {localizedCatName}
-          </p>
-          <p className="text-xs text-slate-500">
-            {isZh ? "排序" : "Sort"}: {catWithMeta.sortOrder} ·{" "}
-            {catWithMeta.items.length}{" "}
-            {isZh
-              ? "个菜品"
-              : catWithMeta.items.length === 1
-              ? "item"
-              : "items"}
-          </p>
-        </div>
-        <span
-          className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
-            isActiveCategory
-              ? "bg-emerald-50 text-emerald-700"
-              : "bg-slate-100 text-slate-600"
-          }`}
-        >
-          {isActiveCategory
-            ? isZh
-              ? "启用"
-              : "Active"
-            : isZh
-            ? "停用"
-            : "Inactive"}
-        </span>
-      </div>
+              return (
+                <div key={cat.id} className="rounded-2xl border p-4 shadow-sm">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-base font-semibold text-slate-900">
+                        {localizedCatName}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {isZh ? "排序" : "Sort"}: {cat.sortOrder} ·{" "}
+                        {cat.items.length}{" "}
+                        {isZh ? "个菜品" : cat.items.length === 1 ? "item" : "items"}
+                      </p>
+                    </div>
+                  </div>
 
                   {/* 分类内菜品列表 */}
                   <div className="mt-4 space-y-3">
-                    {cat.items.map((rawItem) => {
-                      const item = rawItem as MenuItemWithOptions;
+                    {cat.items.map((item) => {
+                      const itemAny = item as any;
+
                       const localizedName =
                         isZh && item.nameZh ? item.nameZh : item.nameEn;
 
                       const ingredientsPreview = (() => {
                         const text =
-                          isZh && item.ingredientsZh
-                            ? item.ingredientsZh
-                            : item.ingredientsEn ?? "";
+                          isZh && itemAny.ingredientsZh
+                            ? (itemAny.ingredientsZh as string)
+                            : (itemAny.ingredientsEn as string) ?? "";
                         if (!text) return "";
                         if (text.length <= 80) return text;
                         return `${text.slice(0, 80)}…`;
                       })();
 
-                      const priceDisplay = (item.basePriceCents / 100).toFixed(
-                        2,
-                      );
+                      const priceDisplay = (item.basePriceCents / 100).toFixed(2);
                       const isExpanded = !!expandedItems[item.id];
-                      const optionGroups = item.optionGroups ?? [];
+
+                      const boundGroups = getBoundGroupsFromItem(item);
 
                       return (
                         <div
@@ -1084,6 +833,7 @@ await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
                               <p className="text-sm font-semibold text-slate-900">
                                 {localizedName}
                               </p>
+
                               {ingredientsPreview ? (
                                 <p className="mt-1 text-xs text-slate-500">
                                   {ingredientsPreview}
@@ -1095,18 +845,12 @@ await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
                                     : "No ingredients specified yet."}
                                 </p>
                               )}
+
                               <p className="mt-1 text-xs text-slate-500">
-                                ID:{" "}
-                                <span className="font-mono">
-                                  {item.stableId}
-                                </span>
+                                ID: <span className="font-mono">{item.stableId}</span>
                               </p>
-                            </div>
-                            <div className="flex flex-col items-end gap-2">
-                              <span className="rounded-full bg-slate-900/90 px-3 py-1 text-xs font-semibold text-white">
-                                ${priceDisplay}
-                              </span>
-                              <div className="flex flex-wrap gap-2">
+
+                              <div className="mt-2 flex flex-wrap gap-2">
                                 <span
                                   className={`rounded-full px-2 py-1 text-[11px] font-medium ${
                                     item.isVisible
@@ -1137,7 +881,18 @@ await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
                                     ? "已下架"
                                     : "Unavailable"}
                                 </span>
+
+                                <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700">
+                                  {isZh ? "已绑定选项组" : "Bound groups"}:{" "}
+                                  {boundGroups.length}
+                                </span>
                               </div>
+                            </div>
+
+                            <div className="flex flex-col items-end gap-2">
+                              <span className="rounded-full bg-slate-900/90 px-3 py-1 text-xs font-semibold text-white">
+                                ${priceDisplay}
+                              </span>
                               <button
                                 type="button"
                                 onClick={() => toggleItemExpanded(item.id)}
@@ -1160,11 +915,11 @@ await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
                               <div className="grid gap-3 md:grid-cols-2">
                                 <div className="space-y-1">
                                   <label className="block text-[11px] font-medium text-slate-500">
-                                    名称（EN）
+                                    {isZh ? "名称（EN）" : "Name (EN)"}
                                   </label>
                                   <input
                                     type="text"
-                                    className="w-full rounded-md border px-2 py-1 text-xs"
+                                    className="h-9 w-full rounded-md border px-3 text-sm"
                                     value={item.nameEn}
                                     onChange={(e) =>
                                       updateItemField(
@@ -1178,11 +933,11 @@ await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
                                 </div>
                                 <div className="space-y-1">
                                   <label className="block text-[11px] font-medium text-slate-500">
-                                    名称（中文）
+                                    {isZh ? "名称（中文）" : "Name (ZH)"}
                                   </label>
                                   <input
                                     type="text"
-                                    className="w-full rounded-md border px-2 py-1 text-xs"
+                                    className="h-9 w-full rounded-md border px-3 text-sm"
                                     value={item.nameZh ?? ""}
                                     onChange={(e) =>
                                       updateItemField(
@@ -1199,13 +954,13 @@ await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
                               <div className="grid gap-3 md:grid-cols-3">
                                 <div className="space-y-1">
                                   <label className="block text-[11px] font-medium text-slate-500">
-                                    价格（CAD）
+                                    {isZh ? "价格（CAD）" : "Price (CAD)"}
                                   </label>
                                   <input
                                     type="number"
                                     min={0}
                                     step="0.01"
-                                    className="w-full rounded-md border px-2 py-1 text-xs"
+                                    className="h-9 w-full rounded-md border px-3 text-sm tabular-nums"
                                     value={priceDisplay}
                                     onChange={(e) => {
                                       const v = Number(e.target.value);
@@ -1220,43 +975,42 @@ await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
                                     }}
                                   />
                                 </div>
+
                                 <div className="space-y-1">
                                   <label className="block text-[11px] font-medium text-slate-500">
-                                    排序（数值越小越靠前）
+                                    {isZh ? "排序（数值越小越靠前）" : "Sort (smaller = earlier)"}
                                   </label>
                                   <input
                                     type="number"
-                                    className="w-full rounded-md border px-2 py-1 text-xs"
+                                    className="h-9 w-full rounded-md border px-3 text-sm tabular-nums"
                                     value={item.sortOrder}
                                     onChange={(e) =>
                                       updateItemField(
                                         cat.id,
                                         item.id,
                                         "sortOrder",
-                                        Number(
-                                          e.target.value,
-                                        ) as DbMenuItem["sortOrder"],
+                                        Number(e.target.value) as DbMenuItem["sortOrder"],
                                       )
                                     }
                                   />
                                 </div>
+
                                 <div className="space-y-1">
                                   <label className="block text-[11px] font-medium text-slate-500">
-                                    展示与可售
+                                    {isZh ? "展示与可售" : "Visibility & availability"}
                                   </label>
-                                  <div className="flex items-center gap-3">
-                                    <label className="inline-flex items-center gap-1">
+                                  <div className="flex h-9 items-center gap-4 rounded-md border px-3">
+                                    <label className="inline-flex items-center gap-2">
                                       <input
                                         type="checkbox"
-                                        className="h-3 w-3 rounded border-slate-300"
+                                        className="h-3.5 w-3.5 rounded border-slate-300"
                                         checked={item.isVisible}
                                         onChange={(e) =>
                                           updateItemField(
                                             cat.id,
                                             item.id,
                                             "isVisible",
-                                            e.target
-                                              .checked as DbMenuItem["isVisible"],
+                                            e.target.checked as DbMenuItem["isVisible"],
                                           )
                                         }
                                       />
@@ -1264,18 +1018,17 @@ await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
                                         {isZh ? "前台展示" : "Visible"}
                                       </span>
                                     </label>
-                                    <label className="inline-flex items-center gap-1">
+                                    <label className="inline-flex items-center gap-2">
                                       <input
                                         type="checkbox"
-                                        className="h-3 w-3 rounded border-slate-300"
+                                        className="h-3.5 w-3.5 rounded border-slate-300"
                                         checked={item.isAvailable}
                                         onChange={(e) =>
                                           updateItemField(
                                             cat.id,
                                             item.id,
                                             "isAvailable",
-                                            e.target
-                                              .checked as DbMenuItem["isAvailable"],
+                                            e.target.checked as DbMenuItem["isAvailable"],
                                           )
                                         }
                                       />
@@ -1290,7 +1043,7 @@ await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
                               {/* 图片上传区域 */}
                               <div className="space-y-1">
                                 <label className="block text-[11px] font-medium text-slate-500">
-                                  菜品图片
+                                  {isZh ? "菜品图片" : "Item image"}
                                 </label>
                                 <div className="flex items-start gap-3">
                                   {item.imageUrl ? (
@@ -1311,21 +1064,20 @@ await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
                                   <div className="flex-1 space-y-2">
                                     <input
                                       type="text"
-                                      className="w-full rounded-md border px-2 py-1 text-[11px] font-mono"
+                                      className="h-9 w-full rounded-md border px-3 text-[11px] font-mono"
                                       value={item.imageUrl ?? ""}
                                       onChange={(e) =>
                                         updateItemField(
                                           cat.id,
                                           item.id,
                                           "imageUrl",
-                                          e.target
-                                            .value as DbMenuItem["imageUrl"],
+                                          e.target.value as DbMenuItem["imageUrl"],
                                         )
                                       }
                                       placeholder={
                                         isZh
-                                          ? "图片上传后会自动填入 URL，如需特殊处理可手动修改。"
-                                          : "After upload, URL will be filled automatically. You may edit if needed."
+                                          ? "上传后会自动填入 URL，如需可手动修改。"
+                                          : "After upload, URL will be filled automatically."
                                       }
                                     />
                                     <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
@@ -1334,14 +1086,9 @@ await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
                                         accept="image/*"
                                         className="text-[11px]"
                                         onChange={(e) => {
-                                          const file =
-                                            e.target.files?.[0] ?? null;
+                                          const file = e.target.files?.[0] ?? null;
                                           if (file) {
-                                            void handleUploadItemImage(
-                                              cat.id,
-                                              item.id,
-                                              file,
-                                            );
+                                            void handleUploadItemImage(cat.id, item.id, file);
                                           }
                                         }}
                                       />
@@ -1349,751 +1096,325 @@ await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
                                         {uploadingImageForItem === item.id
                                           ? isZh
                                             ? "图片上传中…"
-                                            : "Uploading image..."
+                                            : "Uploading…"
                                           : isZh
-                                          ? "支持 jpg/png/webp，建议尺寸不小于 600×600。"
-                                          : "Supports jpg/png/webp. Recommended size ≥ 600×600."}
+                                          ? "支持 jpg/png/webp，建议 ≥ 600×600。"
+                                          : "Supports jpg/png/webp. Recommend ≥ 600×600."}
                                       </span>
                                     </div>
                                   </div>
                                 </div>
                               </div>
 
+                              {/* 配料说明 */}
                               <div className="grid gap-3 md:grid-cols-2">
                                 <div className="space-y-1">
                                   <label className="block text-[11px] font-medium text-slate-500">
-                                    配料说明（EN）
+                                    {isZh ? "配料说明（EN）" : "Ingredients (EN)"}
                                   </label>
                                   <textarea
-                                    className="w-full rounded-md border px-2 py-1 text-xs"
+                                    className="w-full rounded-md border px-3 py-2 text-sm"
                                     rows={3}
                                     placeholder={
                                       isZh
                                         ? "例如：Wheat noodles, chili oil, garlic..."
                                         : "e.g., Wheat noodles, chili oil, garlic..."
                                     }
-                                    value={item.ingredientsEn ?? ""}
+                                    value={itemAny.ingredientsEn ?? ""}
                                     onChange={(e) =>
                                       updateItemField(
                                         cat.id,
                                         item.id,
-                                        "ingredientsEn",
-                                        e.target
-                                          .value as DbMenuItem["ingredientsEn"],
+                                        "ingredientsEn" as any,
+                                        e.target.value as any,
                                       )
                                     }
                                   />
                                 </div>
                                 <div className="space-y-1">
                                   <label className="block text-[11px] font-medium text-slate-500">
-                                    配料说明（中文）
+                                    {isZh ? "配料说明（中文）" : "Ingredients (ZH)"}
                                   </label>
                                   <textarea
-                                    className="w-full rounded-md border px-2 py-1 text-xs"
+                                    className="w-full rounded-md border px-3 py-2 text-sm"
                                     rows={3}
                                     placeholder={
                                       isZh
                                         ? "例如：凉皮、辣椒油、大蒜、芝麻酱..."
                                         : "例如：凉皮、辣椒油、大蒜、芝麻酱..."
                                     }
-                                    value={item.ingredientsZh ?? ""}
+                                    value={itemAny.ingredientsZh ?? ""}
                                     onChange={(e) =>
                                       updateItemField(
                                         cat.id,
                                         item.id,
-                                        "ingredientsZh",
-                                        e.target
-                                          .value as DbMenuItem["ingredientsZh"],
+                                        "ingredientsZh" as any,
+                                        e.target.value as any,
                                       )
                                     }
                                   />
                                 </div>
                               </div>
 
-                              {/* 选项组 & 选项 */}
-                              <div className="mt-3 space-y-2 rounded-lg bg白/70 p-3">
-                                <div className="flex items-center justify-between">
-                                  <p className="text-[11px] font-semibold text-slate-700">
-                                    {isZh
-                                      ? "选项组 & 选项（如 辣度、加料）"
-                                      : "Option groups & options (e.g., spice level, add-ons)"}
-                                  </p>
-                                  <p className="text-[10px] text-slate-400">
-                                    {optionGroups.length}{" "}
-                                    {isZh ? "个选项组" : "groups"}
-                                  </p>
+                              {/* 选项组绑定（只读 + 绑定/解绑 + 跳转） */}
+                              <div className="rounded-lg bg-white/70 p-3">
+                                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                                  <div>
+                                    <p className="text-[11px] font-semibold text-slate-800">
+                                      {isZh ? "选项组绑定（不在此编辑选项）" : "Bound option groups (no inline editing)"}
+                                    </p>
+                                    <p className="mt-1 text-[10px] text-slate-500">
+                                      {isZh
+                                        ? "选项组与选项（价格/上下架/内容）请在选项页统一维护；这里仅绑定到菜品。"
+                                        : "Edit groups/choices (price/availability/content) in the options page. This section only binds/unbinds to the item."}
+                                    </p>
+                                  </div>
+                                  <Link
+                                    href={`/${locale}/admin/menu/options`}
+                                    className="text-xs font-medium text-emerald-700 hover:text-emerald-600"
+                                  >
+                                    {isZh ? "打开选项页" : "Open options page"}
+                                  </Link>
                                 </div>
 
-                                {optionGroups.length === 0 ? (
-                                  <p className="text-[11px] text-slate-400">
+                                {/* 已绑定列表 */}
+                                {boundGroups.length === 0 ? (
+                                  <p className="mt-2 text-[11px] text-slate-400">
                                     {isZh
-                                      ? "当前菜品还没有选项组，可以在下方“新建选项组”中添加。"
-                                      : "No option groups yet. Use “Create option group” below to add."}
+                                      ? "当前菜品尚未绑定任何选项组。"
+                                      : "This item has no bound option groups yet."}
                                   </p>
                                 ) : (
-                                  <div className="space-y-3">
-                                    {optionGroups.map((group) => (
-                                      <div
-                                        key={group.id}
-                                        className="space-y-2 rounded-md border bg-slate-50/80 p-2"
-                                      >
-                                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                          <div>
-                                            <p className="text-[11px] font-semibold text-slate-800">
-                                              {isZh && group.nameZh
-                                                ? group.nameZh
-                                                : group.nameEn}
-                                            </p>
-                                            <p className="text-[10px] text-slate-500">
-                                              {isZh ? "排序" : "Sort"}:{" "}
-                                              {group.sortOrder} ·{" "}
-                                              {group.options?.length ?? 0}{" "}
-                                              {isZh ? "个选项" : "options"}
-                                            </p>
-                                          </div>
-                                          <div className="flex flex-wrap items-center gap-2">
-<span
-  className={`rounded-full px-2 py-0.5 text-[10px] ${
-    group.minSelect > 0
-      ? "bg-emerald-50 text-emerald-700"
-      : "bg-slate-100 text-slate-600"
-  }`}
->
-  {group.minSelect > 0
-    ? isZh
-      ? `至少选择 ${group.minSelect} 项`
-      : `Min ${group.minSelect} choice${group.minSelect > 1 ? "s" : ""}`
-    : isZh
-    ? "可选"
-    : "Optional"}
-</span>
-                                            <button
-                                              type="button"
-                                              onClick={() =>
-                                                void handleDeleteOptionGroup(
-                                                  cat.id,
-                                                  item.id,
-                                                  group.id,
-                                                )
-                                              }
-                                              className="text-[10px] font-medium text-red-600 hover:text-red-500"
-                                              disabled={
-                                                deletingOptionGroupId ===
-                                                group.id
-                                              }
-                                            >
-                                              {deletingOptionGroupId ===
-                                              group.id
-                                                ? isZh
-                                                  ? "删除中…"
-                                                  : "Deleting..."
-                                                : isZh
-                                                ? "删除选项组"
-                                                : "Delete group"}
-                                            </button>
-                                          </div>
-                                        </div>
+                                  <div className="mt-3 space-y-2">
+                                    {boundGroups
+                                      .slice()
+                                      .sort((a, b) => safeNum(a.sortOrder) - safeNum(b.sortOrder))
+                                      .map((g) => {
+                                        const name =
+                                          isZh && g.nameZh ? g.nameZh : g.nameEn ?? "(Unnamed)";
+                                        const tplId = pickTemplateId(g);
 
-                                        {/* 选项组编辑 */}
-<div className="grid gap-2 md:grid-cols-5">
-  <div className="space-y-1">
-    <label className="block text-[10px] font-medium text-slate-500">
-      名称（EN）
-    </label>
-    <input
-      type="text"
-      className="w-full rounded-md border px-2 py-1 text-[11px]"
-      value={group.nameEn}
-      onChange={(e) =>
-        updateOptionGroupField(
-          cat.id,
-          item.id,
-          group.id,
-          "nameEn",
-          e.target.value as MenuOptionGroup["nameEn"],
-        )
-      }
-    />
-  </div>
+                                        const minSel = safeNum(g.minSelect, 0);
+                                        const maxSel = g.maxSelect == null ? null : safeNullableNum(g.maxSelect);
+                                        const sort = safeNum(g.sortOrder, 0);
+                                        const required = minSel > 0;
 
-  <div className="space-y-1">
-    <label className="block text-[10px] font-medium text-slate-500">
-      名称（中文）
-    </label>
-    <input
-      type="text"
-      className="w-full rounded-md border px-2 py-1 text-[11px]"
-      value={group.nameZh ?? ""}
-      onChange={(e) =>
-        updateOptionGroupField(
-          cat.id,
-          item.id,
-          group.id,
-          "nameZh",
-          e.target.value as MenuOptionGroup["nameZh"],
-        )
-      }
-    />
-  </div>
-
-  <div className="space-y-1">
-    <label className="block text-[10px] font-medium text-slate-500">
-      最少选择（minSelect）
-    </label>
-    <input
-      type="number"
-      className="w-full rounded-md border px-2 py-1 text-[11px]"
-      value={group.minSelect}
-      onChange={(e) =>
-        updateOptionGroupField(
-          cat.id,
-          item.id,
-          group.id,
-          "minSelect",
-          Number.isNaN(Number(e.target.value))
-            ? (0 as MenuOptionGroup["minSelect"])
-            : (Number(
-                e.target.value,
-              ) as MenuOptionGroup["minSelect"]),
-        )
-      }
-      placeholder={isZh ? "0 = 可不选" : "0 = optional"}
-    />
-  </div>
-
-  <div className="space-y-1">
-    <label className="block text-[10px] font-medium text-slate-500">
-      最大可选数量（maxSelect）
-    </label>
-    <input
-      type="number"
-      className="w-full rounded-md border px-2 py-1 text-[11px]"
-      value={group.maxSelect ?? ""}
-      onChange={(e) =>
-        updateOptionGroupField(
-          cat.id,
-          item.id,
-          group.id,
-          "maxSelect",
-          e.target.value === ""
-            ? (null as MenuOptionGroup["maxSelect"])
-            : (Number(
-                e.target.value,
-              ) as MenuOptionGroup["maxSelect"]),
-        )
-      }
-      placeholder={isZh ? "空 = 不限制" : "empty = no limit"}
-    />
-  </div>
-
-  <div className="space-y-1">
-    <label className="block text-[10px] font-medium text-slate-500">
-      排序
-    </label>
-    <input
-      type="number"
-      className="w-full rounded-md border px-2 py-1 text-[11px]"
-      value={group.sortOrder}
-      onChange={(e) =>
-        updateOptionGroupField(
-          cat.id,
-          item.id,
-          group.id,
-          "sortOrder",
-          Number(
-            e.target.value,
-          ) as MenuOptionGroup["sortOrder"],
-        )
-      }
-    />
-  </div>
-</div>
-
-<div className="mt-1 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-  <p className="text-[10px] text-slate-500">
-    {isZh
-      ? "说明：最少选择为 0 表示可不选；≥1 表示下单时必须至少选对应数量。最大可选为空表示不限制。"
-      : "Note: min select 0 means optional; ≥1 means the customer must pick at least that many. Empty max means no upper limit."}
-  </p>
-  <button
-    type="button"
-    onClick={() => void handleSaveOptionGroup(cat.id, item.id, group)}
-    className="rounded-full bg-slate-900 px-3 py-1 text-[10px] font-semibold text-white hover:bg-slate-700"
-    disabled={savingOptionGroupId === group.id}
-  >
-    {savingOptionGroupId === group.id
-      ? isZh
-        ? "保存中…"
-        : "Saving..."
-      : isZh
-      ? "保存选项组"
-      : "Save group"}
-  </button>
-</div>
-
-                                        {/* 选项列表 */}
-                                        <div className="mt-2 space-y-2 rounded border border-dashed border-slate-300 bg-white/80 p-2">
-                                          {(group.options?.length ?? 0) === 0 ? (
-                                            <p className="text-[10px] text-slate-400">
-                                              {isZh
-                                                ? "该选项组还没有选项，可以在下方添加。"
-                                                : "No options yet. Add one below."}
-                                            </p>
-                                          ) : (
-                                            <div className="space-y-2">
-                                              {(group.options ?? []).map(
-                                                (choice) => (
-                                                  <div
-                                                    key={choice.id}
-                                                    className="grid gap-2 rounded border bg-slate-50 p-2 md:grid-cols-5"
-                                                  >
-                                                    <div className="space-y-1 md:col-span-2">
-                                                      <label className="block text-[10px] font-medium text-slate-500">
-                                                        名称（EN）
-                                                      </label>
-                                                      <input
-                                                        type="text"
-                                                        className="w-full rounded-md border px-2 py-1 text-[11px]"
-                                                        value={choice.nameEn}
-                                                        onChange={(e) =>
-                                                          updateOptionChoiceField(
-                                                            cat.id,
-                                                            item.id,
-                                                            group.id,
-                                                            choice.id,
-                                                            "nameEn",
-                                                            e.target
-                                                              .value as MenuOptionChoice["nameEn"],
-                                                          )
-                                                        }
-                                                      />
-                                                      <label className="mt-1 block text-[10px] font-medium text-slate-500">
-                                                        名称（中文）
-                                                      </label>
-                                                      <input
-                                                        type="text"
-                                                        className="w-full rounded-md border px-2 py-1 text-[11px]"
-                                                        value={
-                                                          choice.nameZh ?? ""
-                                                        }
-                                                        onChange={(e) =>
-                                                          updateOptionChoiceField(
-                                                            cat.id,
-                                                            item.id,
-                                                            group.id,
-                                                            choice.id,
-                                                            "nameZh",
-                                                            e.target
-                                                              .value as MenuOptionChoice["nameZh"],
-                                                          )
-                                                        }
-                                                      />
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                      <label className="block text-[10px] font-medium text-slate-500">
-                                                        加价（CAD）
-                                                      </label>
-                                                      <input
-                                                        type="number"
-                                                        min={0}
-                                                        step="0.01"
-                                                        className="w-full rounded-md border px-2 py-1 text-[11px]"
-                                                        value={(
-                                                          choice.priceDeltaCents /
-                                                          100
-                                                        ).toFixed(2)}
-                                                        onChange={(e) => {
-                                                          const v = Number(
-                                                            e.target.value,
-                                                          );
-                                                          if (
-                                                            Number.isNaN(v)
-                                                          ) {
-                                                            return;
-                                                          }
-                                                          updateOptionChoiceField(
-                                                            cat.id,
-                                                            item.id,
-                                                            group.id,
-                                                            choice.id,
-                                                            "priceDeltaCents",
-                                                            Math.round(
-                                                              v * 100,
-                                                            ) as MenuOptionChoice["priceDeltaCents"],
-                                                          );
-                                                        }}
-                                                      />
-                                                      <p className="mt-1 text-[10px] text-slate-400">
-                                                        {isZh
-                                                          ? "0 表示不加价"
-                                                          : "0 means no extra charge"}
-                                                      </p>
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                      <label className="block text-[10px] font-medium text-slate-500">
-                                                        排序
-                                                      </label>
-                                                      <input
-                                                        type="number"
-                                                        className="w-full rounded-md border px-2 py-1 text-[11px]"
-                                                        value={choice.sortOrder}
-                                                        onChange={(e) =>
-                                                          updateOptionChoiceField(
-                                                            cat.id,
-                                                            item.id,
-                                                            group.id,
-                                                            choice.id,
-                                                            "sortOrder",
-                                                            Number(
-                                                              e.target.value,
-                                                            ) as MenuOptionChoice["sortOrder"],
-                                                          )
-                                                        }
-                                                      />
-                                                      <label className="mt-1 inline-flex items-center gap-1 text-[10px] text-slate-700">
-                                                        <input
-                                                          type="checkbox"
-                                                          className="h-3 w-3 rounded border-slate-300"
-                                                          checked={
-                                                            choice.isAvailable
-                                                          }
-                                                          onChange={(e) =>
-                                                            updateOptionChoiceField(
-                                                              cat.id,
-                                                              item.id,
-                                                              group.id,
-                                                              choice.id,
-                                                              "isAvailable",
-                                                              e.target
-                                                                .checked as MenuOptionChoice["isAvailable"],
-                                                            )
-                                                          }
-                                                        />
-                                                        {isZh
-                                                          ? "可选"
-                                                          : "Selectable"}
-                                                      </label>
-                                                    </div>
-                                                    <div className="flex flex-col items-end justify-between gap-2">
-                                                      <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                          void handleSaveOptionChoice(
-                                                            cat.id,
-                                                            item.id,
-                                                            group.id,
-                                                            choice,
-                                                          )
-                                                        }
-                                                        className="rounded-full bg-slate-900 px-3 py-1 text-[10px] font-semibold text-white hover:bg-slate-700"
-                                                        disabled={
-                                                          savingOptionChoiceId ===
-                                                          choice.id
-                                                        }
-                                                      >
-                                                        {savingOptionChoiceId ===
-                                                        choice.id
-                                                          ? isZh
-                                                            ? "保存中…"
-                                                            : "Saving..."
-                                                          : isZh
-                                                          ? "保存选项"
-                                                          : "Save option"}
-                                                      </button>
-                                                      <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                          void handleDeleteOptionChoice(
-                                                            cat.id,
-                                                            item.id,
-                                                            group.id,
-                                                            choice.id,
-                                                          )
-                                                        }
-                                                        className="text-[10px] font-medium text-red-600 hover:text-red-500"
-                                                        disabled={
-                                                          deletingOptionChoiceId ===
-                                                          choice.id
-                                                        }
-                                                      >
-                                                        {deletingOptionChoiceId ===
-                                                        choice.id
-                                                          ? isZh
-                                                            ? "删除中…"
-                                                            : "Deleting..."
-                                                          : isZh
-                                                          ? "删除"
-                                                          : "Delete"}
-                                                      </button>
-                                                    </div>
-                                                  </div>
-                                                ),
-                                              )}
+                                        return (
+                                          <div
+                                            key={g.id}
+                                            className="flex flex-col gap-2 rounded-md border bg-slate-50/80 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+                                          >
+                                            <div className="min-w-0">
+                                              <p className="truncate text-[11px] font-semibold text-slate-900">
+                                                {name}
+                                              </p>
+                                              <p className="mt-0.5 text-[10px] text-slate-500">
+                                                {isZh ? "规则" : "Rules"}: min={minSel}, max=
+                                                {maxSel == null ? (isZh ? "不限" : "unlimited") : maxSel},{" "}
+                                                {isZh ? "排序" : "sort"}={sort} ·{" "}
+                                                {required ? (isZh ? "必选" : "Required") : (isZh ? "可选" : "Optional")}
+                                              </p>
                                             </div>
-                                          )}
 
-                                          {/* 新建选项 */}
-                                          <div className="mt-2 rounded border border-dashed border-slate-300 bg-slate-50/80 p-2">
-                                            <p className="mb-1 text-[10px] font-semibold text-slate-700">
-                                              {isZh
-                                                ? "新建选项"
-                                                : "Create new option"}
-                                            </p>
-                                            {(() => {
-                                              const draft =
-                                                getNewOptionChoiceDraft(
-                                                  group.id,
-                                                );
-                                              return (
-                                                <div className="grid gap-2 md:grid-cols-4">
-                                                  <div className="space-y-1 md:col-span-2">
-                                                    <label className="block text-[10px] font-medium text-slate-500">
-                                                      名称（EN）
-                                                    </label>
-                                                    <input
-                                                      type="text"
-                                                      className="w-full rounded-md border px-2 py-1 text-[11px]"
-                                                      value={draft.nameEn}
-                                                      onChange={(e) =>
-                                                        updateNewOptionChoiceDraft(
-                                                          group.id,
-                                                          "nameEn",
-                                                          e.target.value,
-                                                        )
-                                                      }
-                                                    />
-                                                    <label className="mt-1 block text-[10px] font-medium text-slate-500">
-                                                      名称（中文）
-                                                    </label>
-                                                    <input
-                                                      type="text"
-                                                      className="w-full rounded-md border px-2 py-1 text-[11px]"
-                                                      value={draft.nameZh}
-                                                      onChange={(e) =>
-                                                        updateNewOptionChoiceDraft(
-                                                          group.id,
-                                                          "nameZh",
-                                                          e.target.value,
-                                                        )
-                                                      }
-                                                    />
-                                                  </div>
-                                                  <div className="space-y-1">
-                                                    <label className="block text-[10px] font-medium text-slate-500">
-                                                      加价（CAD）
-                                                    </label>
-                                                    <input
-                                                      type="number"
-                                                      min={0}
-                                                      step="0.01"
-                                                      className="w-full rounded-md border px-2 py-1 text-[11px]"
-                                                      value={draft.priceDelta}
-                                                      onChange={(e) =>
-                                                        updateNewOptionChoiceDraft(
-                                                          group.id,
-                                                          "priceDelta",
-                                                          e.target.value,
-                                                        )
-                                                      }
-                                                    />
-                                                  </div>
-                                                  <div className="space-y-1">
-                                                    <label className="block text-[10px] font-medium text-slate-500">
-                                                      排序
-                                                    </label>
-                                                    <input
-                                                      type="number"
-                                                      className="w-full rounded-md border px-2 py-1 text-[11px]"
-                                                      value={draft.sortOrder}
-                                                      onChange={(e) =>
-                                                        updateNewOptionChoiceDraft(
-                                                          group.id,
-                                                          "sortOrder",
-                                                          e.target.value,
-                                                        )
-                                                      }
-                                                    />
-                                                    <div className="mt-1 flex justify-end">
-                                                      <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                          void handleCreateOptionChoice(
-                                                            cat.id,
-                                                            item.id,
-                                                            group.id,
-                                                          )
-                                                        }
-                                                        className="rounded-full bg-slate-900 px-3 py-1 text-[10px] font-semibold text-white hover:bg-slate-700"
-                                                        disabled={
-                                                          savingOptionChoiceId ===
-                                                          "new"
-                                                        }
-                                                      >
-                                                        {savingOptionChoiceId ===
-                                                        "new"
-                                                          ? isZh
-                                                            ? "创建中…"
-                                                            : "Creating..."
-                                                          : isZh
-                                                          ? "添加选项"
-                                                          : "Add option"}
-                                                      </button>
-                                                    </div>
-                                                  </div>
-                                                </div>
-                                              );
-                                            })()}
+                                            <div className="flex flex-wrap items-center gap-2">
+                                              {tplId ? (
+                                                <Link
+                                                  href={`/${locale}/admin/menu/options#group-${tplId}`}
+                                                  className="rounded-full border bg-white px-3 py-1 text-[10px] font-medium text-slate-700 hover:bg-slate-50"
+                                                >
+                                                  {isZh ? "去选项页编辑" : "Edit in options page"}
+                                                </Link>
+                                              ) : (
+                                                <Link
+                                                  href={`/${locale}/admin/menu/options`}
+                                                  className="rounded-full border bg-white px-3 py-1 text-[10px] font-medium text-slate-700 hover:bg-slate-50"
+                                                >
+                                                  {isZh ? "去选项页" : "Go to options"}
+                                                </Link>
+                                              )}
+
+                                              <button
+                                                type="button"
+                                                onClick={() => void handleUnbindFromItem(item.id, g.id)}
+                                                className="rounded-full border bg-white px-3 py-1 text-[10px] font-medium text-red-700 hover:bg-red-50"
+                                                disabled={unbindingId === g.id}
+                                              >
+                                                {unbindingId === g.id
+                                                  ? isZh
+                                                    ? "解绑中…"
+                                                    : "Unbinding…"
+                                                  : isZh
+                                                  ? "解绑"
+                                                  : "Unbind"}
+                                              </button>
+                                            </div>
                                           </div>
-                                        </div>
-                                      </div>
-                                    ))}
+                                        );
+                                      })}
                                   </div>
                                 )}
 
-                                {/* 新建选项组 */}
-                                <div className="mt-3 rounded-md border border-dashed border-slate-300 bg-slate-50/80 p-2">
-                                  <p className="mb-1 text-[10px] font-semibold text-slate-700">
-                                    {isZh ? "新建选项组" : "Create new option group"}
+                                {/* 绑定新选项组 */}
+                                <div className="mt-3 rounded-md border border-dashed border-slate-300 bg-white p-3">
+                                  <p className="text-[11px] font-semibold text-slate-700">
+                                    {isZh ? "绑定一个全局选项组" : "Bind a global option group"}
                                   </p>
-                                  {(() => {
-                                    const draft = getNewOptionGroupDraft(
-                                      item.id,
-                                    );
-                                    return (
-                                      <div className="grid gap-2 md:grid-cols-4">
-                                        <div className="space-y-1">
-                                          <label className="block text-[10px] font-medium text-slate-500">
-                                            名称（EN）
-                                          </label>
-                                          <input
-                                            type="text"
-                                            className="w-full rounded-md border px-2 py-1 text-[11px]"
-                                            value={draft.nameEn}
-                                            onChange={(e) =>
-                                              updateNewOptionGroupDraft(
-                                                item.id,
-                                                "nameEn",
-                                                e.target.value,
-                                              )
+
+                                  {templatesLoading ? (
+                                    <p className="mt-2 text-[11px] text-slate-400">
+                                      {isZh ? "选项库加载中…" : "Loading templates…"}
+                                    </p>
+                                  ) : templatesError ? (
+                                    <p className="mt-2 text-[11px] text-red-600">{templatesError}</p>
+                                  ) : templates.length === 0 ? (
+                                    <p className="mt-2 text-[11px] text-slate-400">
+                                      {isZh
+                                        ? "暂无可用模板，请先去选项页创建选项组。"
+                                        : "No templates yet. Create one in the options page first."}
+                                    </p>
+                                  ) : (
+                                    <div className="mt-2 grid gap-2 md:grid-cols-12">
+                                      <div className="space-y-1 md:col-span-5">
+                                        <label className="block text-[10px] font-medium text-slate-500">
+                                          {isZh ? "选择模板组选项" : "Template group"}
+                                        </label>
+                                        <select
+                                          className="h-9 w-full rounded-md border px-3 text-sm"
+                                          value={getBindDraft(item.id).templateId}
+                                          onChange={(e) => {
+                                            const v = e.target.value;
+                                            if (!v) {
+                                              updateBindDraft(item.id, "templateId", "");
+                                              return;
                                             }
-                                          />
-                                        </div>
-                                        <div className="space-y-1">
-                                          <label className="block text-[10px] font-medium text-slate-500">
-                                            名称（中文）
-                                          </label>
-                                          <input
-                                            type="text"
-                                            className="w-full rounded-md border px-2 py-1 text-[11px]"
-                                            value={draft.nameZh}
-                                            onChange={(e) =>
-                                              updateNewOptionGroupDraft(
-                                                item.id,
-                                                "nameZh",
-                                                e.target.value,
-                                              )
-                                            }
-                                          />
-                                        </div>
-                                        <div className="space-y-1">
-                                          <label className="block text-[10px] font-medium text-slate-500">
-                                            最大可选数量
-                                          </label>
-                                          <input
-                                            type="number"
-                                            className="w-full rounded-md border px-2 py-1 text-[11px]"
-                                            value={draft.maxSelect}
-                                            onChange={(e) =>
-                                              updateNewOptionGroupDraft(
-                                                item.id,
-                                                "maxSelect",
-                                                e.target.value,
-                                              )
-                                            }
-                                            placeholder={
-                                              isZh ? "空=不限制" : "empty = no limit"
-                                            }
-                                          />
-                                        </div>
-                                        <div className="space-y-1">
-                                          <label className="block text-[10px] font-medium text-slate-500">
-                                            排序
-                                          </label>
-                                          <input
-                                            type="number"
-                                            className="w-full rounded-md border px-2 py-1 text-[11px]"
-                                            value={draft.sortOrder}
-                                            onChange={(e) =>
-                                              updateNewOptionGroupDraft(
-                                                item.id,
-                                                "sortOrder",
-                                                e.target.value,
-                                              )
-                                            }
-                                          />
-                                          <div className="mt-1 flex items-center justify-between">
-                                            <label className="inline-flex items-center gap-1 text-[10px] text-slate-700">
-                                              <input
-                                                type="checkbox"
-                                                className="h-3 w-3 rounded border-slate-300"
-                                                checked={draft.isRequired}
-                                                onChange={(e) =>
-                                                  updateNewOptionGroupDraft(
-                                                    item.id,
-                                                    "isRequired",
-                                                    e.target.checked,
-                                                  )
-                                                }
-                                              />
-                                              {isZh ? "必选" : "Required"}
-                                            </label>
-                                            <button
-                                              type="button"
-                                              onClick={() =>
-                                                void handleCreateOptionGroup(
-                                                  cat.id,
-                                                  item.id,
-                                                )
-                                              }
-                                              className="rounded-full bg-slate-900 px-3 py-1 text-[10px] font-semibold text-white hover:bg-slate-700"
-                                              disabled={
-                                                savingOptionGroupId === "new"
-                                              }
-                                            >
-                                              {savingOptionGroupId === "new"
-                                                ? isZh
-                                                  ? "创建中…"
-                                                  : "Creating..."
-                                                : isZh
-                                                ? "添加选项组"
-                                                : "Add group"}
-                                            </button>
-                                          </div>
-                                        </div>
+                                            applyTemplateDefaultsToBindDraft(item.id, v);
+                                          }}
+                                        >
+                                          <option value="">
+                                            {isZh ? "请选择…" : "Select…"}
+                                          </option>
+                                          {templates.map((t) => {
+                                            const label =
+                                              isZh && t.nameZh ? t.nameZh : t.nameEn;
+                                            return (
+                                              <option key={t.id} value={t.id}>
+                                                {label}
+                                              </option>
+                                            );
+                                          })}
+                                        </select>
                                       </div>
-                                    );
-                                  })()}
+
+                                      <div className="space-y-1 md:col-span-2">
+                                        <label className="block text-[10px] font-medium text-slate-500">
+                                          minSelect
+                                        </label>
+                                        <input
+                                          type="number"
+                                          className="h-9 w-full rounded-md border px-3 text-sm tabular-nums"
+                                          value={getBindDraft(item.id).minSelect}
+                                          onChange={(e) =>
+                                            updateBindDraft(item.id, "minSelect", e.target.value)
+                                          }
+                                          placeholder="0"
+                                        />
+                                      </div>
+
+                                      <div className="space-y-1 md:col-span-2">
+                                        <label className="block text-[10px] font-medium text-slate-500">
+                                          maxSelect
+                                        </label>
+                                        <input
+                                          type="number"
+                                          className="h-9 w-full rounded-md border px-3 text-sm tabular-nums"
+                                          value={getBindDraft(item.id).maxSelect}
+                                          onChange={(e) =>
+                                            updateBindDraft(item.id, "maxSelect", e.target.value)
+                                          }
+                                          placeholder={isZh ? "空=不限" : "blank=unlimited"}
+                                        />
+                                      </div>
+
+                                      <div className="space-y-1 md:col-span-1">
+                                        <label className="block text-[10px] font-medium text-slate-500">
+                                          {isZh ? "排序" : "Sort"}
+                                        </label>
+                                        <input
+                                          type="number"
+                                          className="h-9 w-full rounded-md border px-3 text-sm tabular-nums"
+                                          value={getBindDraft(item.id).sortOrder}
+                                          onChange={(e) =>
+                                            updateBindDraft(item.id, "sortOrder", e.target.value)
+                                          }
+                                          placeholder="0"
+                                        />
+                                      </div>
+
+                                      <div className="flex items-end justify-between gap-3 md:col-span-2">
+                                        <label className="mb-2 inline-flex items-center gap-2 text-[10px] text-slate-700">
+                                          <input
+                                            type="checkbox"
+                                            className="h-3.5 w-3.5 rounded border-slate-300"
+                                            checked={getBindDraft(item.id).isRequired}
+onChange={(e) => {
+  const checked = e.target.checked;
+  updateBindDraft(item.id, "isRequired", checked);
+
+  // ✅ 让“必选”立刻体现在 minSelect 上
+  if (checked) {
+    const cur = safeNum(getBindDraft(item.id).minSelect, 0);
+    if (cur <= 0) updateBindDraft(item.id, "minSelect", "1");
+  } else {
+    updateBindDraft(item.id, "minSelect", "0");
+  }
+}}
+
+                                          />
+                                          {isZh ? "必选（min≥1）" : "Required（min≥1）"}
+                                        </label>
+
+                                        <button
+                                          type="button"
+                                          onClick={() => void handleBindTemplateToItem(item.id)}
+                                          className="h-9 flex-1 rounded-md bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-700"
+                                          disabled={bindingItemId === item.id}
+                                        >
+                                          {bindingItemId === item.id
+                                            ? isZh
+                                              ? "绑定中…"
+                                              : "Binding…"
+                                            : isZh
+                                            ? "绑定"
+                                            : "Bind"}
+                                        </button>
+                                      </div>
+
+                                      <p className="md:col-span-12 text-[10px] text-slate-500">
+                                        {isZh
+                                          ? "说明：绑定后，选项的价格/上下架/内容变更会对所有绑定菜品全局生效。"
+                                          : "Note: Once bound, option price/availability/content changes apply globally to all bound items."}
+                                      </p>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
 
                               <div className="mt-2 flex items-center justify-between">
                                 <p className="text-[11px] text-slate-500">
                                   {isZh
-                                    ? "保存后，顾客菜单页会实时使用最新的图片、配料说明以及选项组。"
-                                    : "After saving, the customer menu will use the updated image, ingredients, and options."}
+                                    ? "保存后，顾客菜单页会实时使用最新的图片与配料说明。"
+                                    : "After saving, the customer menu will use the updated image and ingredients."}
                                 </p>
                                 <button
                                   type="button"
-                                  onClick={() =>
-                                    void handleSaveItem(cat.id, item.id)
-                                  }
+                                  onClick={() => void handleSaveItem(cat.id, item.id)}
                                   className="inline-flex items-center rounded-full bg-slate-900 px-4 py-1.5 text-xs font-semibold text-white hover:bg-slate-700"
                                   disabled={saving.itemId !== null}
                                 >
                                   {saving.itemId === item.id
                                     ? isZh
                                       ? "保存中…"
-                                      : "Saving..."
+                                      : "Saving…"
                                     : isZh
                                     ? "保存"
                                     : "Save"}
@@ -2110,6 +1431,7 @@ await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
                       <p className="mb-2 text-xs font-semibold text-slate-700">
                         {isZh ? "新建菜品" : "Create new item"}
                       </p>
+
                       {(() => {
                         const draft = getNewItemDraft(cat.id);
                         return (
@@ -2121,49 +1443,37 @@ await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
                                 </label>
                                 <input
                                   type="text"
-                                  className="w-full rounded-md border px-2 py-1 text-xs"
+                                  className="h-9 w-full rounded-md border px-3 text-sm"
                                   placeholder="例如：liangpi"
                                   value={draft.stableId}
                                   onChange={(e) =>
-                                    updateNewItemField(
-                                      cat.id,
-                                      "stableId",
-                                      e.target.value,
-                                    )
+                                    updateNewItemField(cat.id, "stableId", e.target.value)
                                   }
                                 />
                               </div>
                               <div className="space-y-1">
                                 <label className="block text-[11px] font-medium text-slate-500">
-                                  名称（EN）
+                                  {isZh ? "名称（EN）" : "Name (EN)"}
                                 </label>
                                 <input
                                   type="text"
-                                  className="w-full rounded-md border px-2 py-1 text-xs"
+                                  className="h-9 w-full rounded-md border px-3 text-sm"
                                   value={draft.nameEn}
                                   onChange={(e) =>
-                                    updateNewItemField(
-                                      cat.id,
-                                      "nameEn",
-                                      e.target.value,
-                                    )
+                                    updateNewItemField(cat.id, "nameEn", e.target.value)
                                   }
                                 />
                               </div>
                               <div className="space-y-1">
                                 <label className="block text-[11px] font-medium text-slate-500">
-                                  名称（中文）
+                                  {isZh ? "名称（中文）" : "Name (ZH)"}
                                 </label>
                                 <input
                                   type="text"
-                                  className="w-full rounded-md border px-2 py-1 text-xs"
+                                  className="h-9 w-full rounded-md border px-3 text-sm"
                                   value={draft.nameZh}
                                   onChange={(e) =>
-                                    updateNewItemField(
-                                      cat.id,
-                                      "nameZh",
-                                      e.target.value,
-                                    )
+                                    updateNewItemField(cat.id, "nameZh", e.target.value)
                                   }
                                 />
                               </div>
@@ -2172,55 +1482,43 @@ await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
                             <div className="grid gap-3 md:grid-cols-3">
                               <div className="space-y-1">
                                 <label className="block text-[11px] font-medium text-slate-500">
-                                  价格（CAD）
+                                  {isZh ? "价格（CAD）" : "Price (CAD)"}
                                 </label>
                                 <input
                                   type="number"
                                   min={0}
                                   step="0.01"
-                                  className="w-full rounded-md border px-2 py-1 text-xs"
+                                  className="h-9 w-full rounded-md border px-3 text-sm tabular-nums"
                                   value={draft.price}
                                   onChange={(e) =>
-                                    updateNewItemField(
-                                      cat.id,
-                                      "price",
-                                      e.target.value,
-                                    )
+                                    updateNewItemField(cat.id, "price", e.target.value)
                                   }
                                 />
                               </div>
                               <div className="space-y-1">
                                 <label className="block text-[11px] font-medium text-slate-500">
-                                  排序
+                                  {isZh ? "排序" : "Sort"}
                                 </label>
                                 <input
                                   type="number"
-                                  className="w-full rounded-md border px-2 py-1 text-xs"
+                                  className="h-9 w-full rounded-md border px-3 text-sm tabular-nums"
                                   value={draft.sortOrder}
                                   onChange={(e) =>
-                                    updateNewItemField(
-                                      cat.id,
-                                      "sortOrder",
-                                      e.target.value,
-                                    )
+                                    updateNewItemField(cat.id, "sortOrder", e.target.value)
                                   }
                                 />
                               </div>
                               <div className="space-y-1">
                                 <label className="block text-[11px] font-medium text-slate-500">
-                                  菜品图片
+                                  {isZh ? "菜品图片" : "Image"}
                                 </label>
                                 <div className="space-y-1">
                                   <input
                                     type="text"
-                                    className="w-full rounded-md border px-2 py-1 text-[11px] font-mono"
+                                    className="h-9 w-full rounded-md border px-3 text-[11px] font-mono"
                                     value={draft.imageUrl}
                                     onChange={(e) =>
-                                      updateNewItemField(
-                                        cat.id,
-                                        "imageUrl",
-                                        e.target.value,
-                                      )
+                                      updateNewItemField(cat.id, "imageUrl", e.target.value)
                                     }
                                     placeholder={
                                       isZh
@@ -2234,25 +1532,18 @@ await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
                                       accept="image/*"
                                       className="text-[11px]"
                                       onChange={(e) => {
-                                        const file =
-                                          e.target.files?.[0] ?? null;
-                                        if (file) {
-                                          void handleUploadNewItemImage(
-                                            cat.id,
-                                            file,
-                                          );
-                                        }
+                                        const file = e.target.files?.[0] ?? null;
+                                        if (file) void handleUploadNewItemImage(cat.id, file);
                                       }}
                                     />
                                     <span className="text-[10px] text-slate-400">
-                                      {uploadingImageForDraftCategory ===
-                                      cat.id
+                                      {uploadingImageForDraftCategory === cat.id
                                         ? isZh
                                           ? "图片上传中…"
-                                          : "Uploading image..."
+                                          : "Uploading…"
                                         : isZh
                                         ? "可不填，后续也可在菜品编辑中上传图片。"
-                                        : "Optional – you can also upload after the item is created."}
+                                        : "Optional — you can upload later."}
                                     </span>
                                   </div>
                                 </div>
@@ -2262,35 +1553,27 @@ await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
                             <div className="grid gap-3 md:grid-cols-2">
                               <div className="space-y-1">
                                 <label className="block text-[11px] font-medium text-slate-500">
-                                  配料说明（EN）
+                                  {isZh ? "配料说明（EN）" : "Ingredients (EN)"}
                                 </label>
                                 <textarea
-                                  className="w-full rounded-md border px-2 py-1 text-xs"
+                                  className="w-full rounded-md border px-3 py-2 text-sm"
                                   rows={3}
                                   value={draft.ingredientsEn}
                                   onChange={(e) =>
-                                    updateNewItemField(
-                                      cat.id,
-                                      "ingredientsEn",
-                                      e.target.value,
-                                    )
+                                    updateNewItemField(cat.id, "ingredientsEn", e.target.value)
                                   }
                                 />
                               </div>
                               <div className="space-y-1">
                                 <label className="block text-[11px] font-medium text-slate-500">
-                                  配料说明（中文）
+                                  {isZh ? "配料说明（中文）" : "Ingredients (ZH)"}
                                 </label>
                                 <textarea
-                                  className="w-full rounded-md border px-2 py-1 text-xs"
+                                  className="w-full rounded-md border px-3 py-2 text-sm"
                                   rows={3}
                                   value={draft.ingredientsZh}
                                   onChange={(e) =>
-                                    updateNewItemField(
-                                      cat.id,
-                                      "ingredientsZh",
-                                      e.target.value,
-                                    )
+                                    updateNewItemField(cat.id, "ingredientsZh", e.target.value)
                                   }
                                 />
                               </div>
@@ -2300,7 +1583,7 @@ await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
                               <p className="text-[11px] text-slate-500">
                                 {isZh
                                   ? "提示：stableId 一旦用于前台下单，后续请避免随意更改。"
-                                  : "Note: once an item stableId is used in orders, avoid changing it."}
+                                  : "Note: once used in orders, avoid changing stableId."}
                               </p>
                               <button
                                 type="button"
@@ -2311,7 +1594,7 @@ await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
                                 {creatingItemForCategory === cat.id
                                   ? isZh
                                     ? "创建中…"
-                                    : "Creating..."
+                                    : "Creating…"
                                   : isZh
                                   ? "创建菜品"
                                   : "Create item"}

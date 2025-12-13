@@ -1,4 +1,4 @@
-//apps/web/src/app/[locale]/page.tsx
+// apps/web/src/app/[locale]/page.tsx
 "use client";
 
 import Link from "next/link";
@@ -17,7 +17,7 @@ import {
   UI_STRINGS,
   addLocaleToPath,
   buildLocalizedMenuFromDb,
-  type DbMenuCategory,
+  type DbPublicMenuCategory,
   type PublicMenuCategory,
 } from "@/lib/order/shared";
 import { usePersistentCart } from "@/lib/cart";
@@ -86,7 +86,7 @@ export default function LocalOrderPage() {
 
   const strings = UI_STRINGS[locale];
 
-  // —— 菜单：优先从后端 DB 读取，失败时回退到静态配置 —— //
+  // —— 菜单：从后端 public API 读取 —— //
   const [menu, setMenu] = useState<PublicMenuCategory[]>([]);
   const [menuLoading, setMenuLoading] = useState(true);
   const [menuError, setMenuError] = useState<string | null>(null);
@@ -99,8 +99,10 @@ export default function LocalOrderPage() {
       setMenuError(null);
 
       try {
-        // 1) 尝试从后端读取完整菜单：/api/v1/admin/menu/full
-        const dbMenu = await apiFetch<DbMenuCategory[]>("/admin/menu/full");
+        // ✅ public endpoint：/api/v1/menu/public
+        const dbMenu = await apiFetch<DbPublicMenuCategory[]>("/menu/public", {
+          cache: "no-store",
+        });
         if (cancelled) return;
 
         const localized = buildLocalizedMenuFromDb(dbMenu, locale);
@@ -109,7 +111,6 @@ export default function LocalOrderPage() {
         console.error(err);
         if (cancelled) return;
 
-        // 不再使用静态菜单，直接提示错误
         setMenu([]);
         setMenuError(
           locale === "zh"
@@ -272,22 +273,18 @@ export default function LocalOrderPage() {
                       <h2 className="text-2xl font-semibold text-slate-900">
                         {category.name}
                       </h2>
-                      <p className="mt-1 max-w-2xl text-sm text-slate-600">
-                        {category.description}
-                      </p>
                     </div>
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-2">
                     {category.items.map((item) => (
                       <article
-                        key={item.id}
+                        key={item.stableId}
                         className="group flex h-full flex-col justify-between rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
                       >
                         {/* 菜品图片（可选） */}
                         {item.imageUrl ? (
                           <div className="mb-3 overflow-hidden rounded-2xl bg-slate-100">
-                            {/* 使用 <img> 避免 next/image 额外配置 */}
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={item.imageUrl}
@@ -298,14 +295,13 @@ export default function LocalOrderPage() {
                         ) : null}
 
                         <div className="space-y-3">
-                          {/* 标题 + 配料 + 价格 */}
                           <div className="flex items-start justify-between gap-4">
                             <div>
                               <h3 className="text-lg font-semibold text-slate-900">
                                 {item.name}
                               </h3>
 
-                              {/* ⭐ 配料说明：菜名下面小字显示 */}
+                              {/* 配料说明：菜名下面小字显示 */}
                               {item.ingredients ? (
                                 <p className="mt-1 text-xs text-slate-500">
                                   {item.ingredients}
@@ -318,15 +314,15 @@ export default function LocalOrderPage() {
                           </div>
                         </div>
 
-<div className="mt-5 flex items-center justify-end">
-  <button
-    type="button"
-    onClick={() => addItem(item.id)}
-    className="inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
-  >
-    {strings.addToCart}
-  </button>
-</div>
+                        <div className="mt-5 flex items-center justify-end">
+                          <button
+                            type="button"
+                            onClick={() => addItem(item.stableId)}
+                            className="inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
+                          >
+                            {strings.addToCart}
+                          </button>
+                        </div>
                       </article>
                     ))}
                   </div>

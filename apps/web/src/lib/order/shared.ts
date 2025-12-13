@@ -349,12 +349,12 @@ export const UI_STRINGS: Record<
 
 /**
  * 前台展示的单个菜品：
- * - id = stableId（与 POS / 订单 / Clover 对齐）
+ * - stableId（与 POS / 订单 / Clover 对齐）
  * - name = 当前语言显示名
  * - nameEn/nameZh = Clover / 其它场景可用的固定中英文名
  */
 export type LocalizedMenuItem = {
-  id: string; // stableId
+  stableId: string;
   name: string; // localized display name
   nameEn: string;
   nameZh?: string;
@@ -362,12 +362,12 @@ export type LocalizedMenuItem = {
   imageUrl?: string;
   // 已按当前语言拼好的配料说明
   ingredients?: string;
+  optionGroups?: DbMenuOptionGroup[];
 };
 
 export type LocalizedCategory = {
   id: string;
   name: string;
-  description: string;
   items: LocalizedMenuItem[];
 };
 
@@ -377,25 +377,39 @@ export type LocalizedCategory = {
 
 export type DbMenuOption = {
   id: string;
-  groupId: string;
+
+  // 属于哪个“模板组”
+  templateGroupId: string;
+
   nameEn: string;
   nameZh: string | null;
   priceDeltaCents: number;
+
   isAvailable: boolean;
   tempUnavailableUntil: string | null;
+
   sortOrder: number;
 };
 
+// ✅ 对齐后端新架构：菜品绑定（MenuItemOptionGroup）+ 模板组信息
 export type DbMenuOptionGroup = {
-  id: string;
+  id: string; // 绑定 id（MenuItemOptionGroup.id）
   itemId: string;
+
+  templateGroupId: string;
+
+  // 绑定级规则
+  minSelect: number;
+  maxSelect: number | null;
+  sortOrder: number;
+  isEnabled: boolean;
+
+  // 模板组信息（为前端显示/编辑提供）
   nameEn: string;
   nameZh: string | null;
-  minSelect: number;
-  maxSelect: number;
-  isRequired: boolean;
-  isActive: boolean;
-  sortOrder: number;
+  templateIsAvailable: boolean;
+  templateTempUnavailableUntil: string | null;
+
   options: DbMenuOption[];
 };
 
@@ -427,38 +441,72 @@ export type DbMenuCategory = {
   isActive: boolean;
   items: DbMenuItem[];
 };
+/** ===== Public 菜单类型（对齐 /menu/public 的结构） ===== */
+
+export type DbPublicMenuItem = Omit<DbMenuItem, "id">;
+
+export type DbPublicMenuCategory = Omit<DbMenuCategory, "items"> & {
+  items: DbPublicMenuItem[];
+};
 
 /**
  * 真正用于前台展示的菜单类型（与 LocalizedCategory 相同）
  */
 export type PublicMenuCategory = LocalizedCategory;
 
+/** ===== 可售判定（含 tempUnavailableUntil）===== */
+/**
+ * tempUntil 如果是未来时间 => 视为“暂不可售”
+ * 解析失败 => 当作没设置（不拦截），避免因为脏数据导致全下架
+ */
+function isAvailableNow(isAvailable: boolean, tempUntil: string | null): boolean {
+  if (!isAvailable) return false;
+  if (!tempUntil) return true;
+
+  const t = Date.parse(tempUntil);
+  if (!Number.isFinite(t)) return true;
+
+  return Date.now() >= t;
+}
+
 /**
  * ⭐ 从「数据库菜单（/admin/menu/full 或 /menu/public 返回的结构）」构建前台本地化菜单。
  *
  * - 分类名称用 DB 的 nameEn/nameZh；
  * - 菜品名称/价格/图片/配料/中英文，全部用 DB；
- * - 只展示 isActive && isVisible && isAvailable 的菜品。
+ * - 只展示 isActive && isVisible && isAvailable(含临时下架时间) 的菜品；
+ * - optionGroups / options 同样按“可售(含临时下架)”过滤并按 sortOrder 排序。
  */
 export function buildLocalizedMenuFromDb(
-  dbMenu: DbMenuCategory[],
+  dbMenu: Array<DbMenuCategory | DbPublicMenuCategory>,
   locale: Locale,
 ): PublicMenuCategory[] {
   const isZh = locale === "zh";
 
-  const activeCategories = dbMenu
-    .filter((c) => c.isActive)
+  const activeCategories = (dbMenu ?? [])
+    .filter((c) => c?.isActive)
     .sort((a, b) => a.sortOrder - b.sortOrder);
 
   return activeCategories.map<PublicMenuCategory>((c) => {
     const localizedName = isZh && c.nameZh ? c.nameZh : c.nameEn;
-    // 目前 DB 没有分类描述，这里先留空（后续可以在表里加 description 字段）
-    const description = "";
 
-    const items = c.items
-      .filter((i) => i.isVisible && i.isAvailable)
+    const items = (c.items ?? [])
+      .filter(
+        (i) =>
+          i?.isVisible &&
+          isAvailableNow(i.isAvailable, i.tempUnavailableUntil),
+      )
       .sort((a, b) => a.sortOrder - b.sortOrder)
-      .map<LocalizedMenuItem>((i) => {
+      .map<LocalizedMenuItem | null>((i) => {
+          const stableId =
+            typeof (i as any).stableId === "string" && (i as any).stableId
+            ? (i as any).stableId
+            : null;
+
+          if (!stableId) {
+          throw new Error(`[menu] missing stableId for item, dbId=${(i as any).id ?? "unknown"}`);
+          }
+
         const name = isZh && i.nameZh ? i.nameZh : i.nameEn;
 
         const ingredientsText =
@@ -466,21 +514,40 @@ export function buildLocalizedMenuFromDb(
             ? i.ingredientsZh
             : i.ingredientsEn ?? "";
 
+        const optionGroups = (i.optionGroups ?? [])
+          .filter(
+            (g) =>
+              g?.isEnabled &&
+              isAvailableNow(
+                g.templateIsAvailable,
+                g.templateTempUnavailableUntil,
+              ),
+          )
+          .sort((a, b) => a.sortOrder - b.sortOrder)
+          .map((g) => ({
+            ...g,
+            options: (g.options ?? [])
+              .filter((o) => isAvailableNow(o.isAvailable, o.tempUnavailableUntil))
+              .sort((a, b) => a.sortOrder - b.sortOrder),
+          }));
+
         return {
-          id: i.stableId, // 与订单 / POS / Clover 对齐
+          stableId,
           name,
           nameEn: i.nameEn,
           nameZh: i.nameZh ?? undefined,
           price: i.basePriceCents / 100,
           imageUrl: i.imageUrl ?? undefined,
           ingredients: ingredientsText || undefined,
+          optionGroups,
         };
-      });
+      })
+      .filter((x): x is LocalizedMenuItem => Boolean(x));
+
 
     return {
       id: c.id,
       name: localizedName,
-      description,
       items,
     };
   });
@@ -488,13 +555,13 @@ export function buildLocalizedMenuFromDb(
 
 /** ===== 结算页相关类型 ===== */
 export type CartEntry = {
-  itemId: string; // 对应 stableId / LocalizedMenuItem.id
+  stableId: string; // 对应 LocalizedMenuItem.stableId
   quantity: number;
   notes: string;
 };
 
 export type LocalizedCartItem = {
-  itemId: string;
+  stableId: string;
   quantity: number;
   notes: string;
   item: LocalizedMenuItem;

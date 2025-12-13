@@ -9,5 +9,6 @@ import { PrismaService } from '../../prisma/prisma.service';
   imports: [],
   controllers: [AdminMenuController],
   providers: [AdminMenuService, PrismaService],
+  exports: [AdminMenuService],
 })
 export class AdminMenuModule {}

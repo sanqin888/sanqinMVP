@@ -15,35 +15,32 @@ function sanitizeCart(raw: unknown): CartEntry[] {
     .map((entry) => {
       if (!entry || typeof entry !== "object") return null;
 
-      const { itemId, quantity, notes } = entry as Partial<CartEntry> & {
-        itemId?: unknown;
-        quantity?: unknown;
-        notes?: unknown;
-      };
+const { stableId, quantity, notes } = entry as Partial<CartEntry> & {
+  stableId?: unknown;
+  quantity?: unknown;
+  notes?: unknown;
+};
 
-      if (typeof itemId !== "string" || itemId.length === 0) return null;
+if (typeof stableId !== "string" || stableId.length === 0) {
+  throw new Error("[cart] missing stableId in cart entry (legacy itemId is not supported anymore)");
+}
 
-      let numericQuantity: number;
-      if (typeof quantity === "number") {
-        numericQuantity = quantity;
-      } else if (typeof quantity === "string") {
-        numericQuantity = Number.parseInt(quantity, 10);
-      } else {
-        numericQuantity = 0;
-      }
+const numericQuantity =
+  typeof quantity === "number"
+    ? quantity
+    : typeof quantity === "string"
+    ? Number(quantity)
+    : NaN;
 
-      if (!Number.isFinite(numericQuantity)) {
-        numericQuantity = 0;
-      }
+const safeQuantity = Number.isFinite(numericQuantity)
+  ? Math.max(1, Math.floor(numericQuantity))
+  : 1;
 
-      const safeQuantity = Math.max(1, Math.floor(numericQuantity));
-
-      return {
-        itemId,
-        quantity: safeQuantity,
-        notes: typeof notes === "string" ? notes : "",
-      } satisfies CartEntry;
-    })
+return {
+  stableId,
+  quantity: safeQuantity,
+  notes: typeof notes === "string" ? notes : undefined,
+};
     .filter((entry): entry is CartEntry => Boolean(entry));
 }
 
@@ -92,26 +89,26 @@ export function usePersistentCart() {
     }
   }, [isInitialized, items]);
 
-  const addItem = useCallback((itemId: string) => {
+  const addItem = useCallback((stableId: string) => {
     setItems((prev) => {
-      const existing = prev.find((entry) => entry.itemId === itemId);
+      const existing = prev.find((entry) => entry.stableId === stableId);
       if (existing) {
         return prev.map((entry) =>
-          entry.itemId === itemId
+          entry.stableId === stableId
             ? { ...entry, quantity: entry.quantity + 1 }
             : entry,
         );
       }
-      return [...prev, { itemId, quantity: 1, notes: "" }];
+      return [...prev, { stableId, quantity: 1, notes: "" }];
     });
   }, []);
 
-  const updateQuantity = useCallback((itemId: string, delta: number) => {
+  const updateQuantity = useCallback((stableId: string, delta: number) => {
     if (!delta) return;
     setItems((prev) =>
       prev
         .map((entry) =>
-          entry.itemId === itemId
+          entry.stableId === stableId
             ? { ...entry, quantity: entry.quantity + delta }
             : entry,
         )
@@ -119,10 +116,10 @@ export function usePersistentCart() {
     );
   }, []);
 
-  const updateNotes = useCallback((itemId: string, notes: string) => {
+  const updateNotes = useCallback((stableId: string, notes: string) => {
     setItems((prev) =>
       prev.map((entry) =>
-        entry.itemId === itemId ? { ...entry, notes } : entry,
+        entry.itemId === stableId ? { ...entry, notes } : entry,
       ),
     );
   }, []);
