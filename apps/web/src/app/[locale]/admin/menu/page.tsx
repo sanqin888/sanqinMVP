@@ -601,8 +601,7 @@ function updateItemField<K extends keyof AdminMenuItem>(
         ? null
         : safeNullableNum(draft.maxSelect);
     const sortOrder = safeNum(draft.sortOrder, tpl.sortOrder ?? 0);
-    const isRequired = !!draft.isRequired;
-
+    
     setBindingItemId(itemId);
     setSaving((prev) => ({ ...prev, error: null }));
 
