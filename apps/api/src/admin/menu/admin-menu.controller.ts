@@ -34,7 +34,9 @@ type UpdateOptionGroupTemplateBodyDto = Partial<{
   defaultMaxSelect: number | null;
 }>;
 
-type SetAvailabilityBodyDto = { mode: 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF' };
+type SetAvailabilityBodyDto = {
+  mode: 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF';
+};
 
 type CreateTemplateOptionBodyDto = {
   nameEn: string;
@@ -43,7 +45,11 @@ type CreateTemplateOptionBodyDto = {
   sortOrder?: number;
 };
 
-type CreateCategoryBodyDto = { nameEn: string; nameZh?: string; sortOrder?: number };
+type CreateCategoryBodyDto = {
+  nameEn: string;
+  nameZh?: string;
+  sortOrder?: number;
+};
 
 type UpdateCategoryBodyDto = Partial<{
   nameEn: string;
@@ -150,7 +156,9 @@ export class AdminMenuController {
 
   // ========= 分类 =========
   @Post('categories')
-  async createCategory(@Body() dto: CreateCategoryBodyDto): Promise<MenuCategoryDto> {
+  async createCategory(
+    @Body() dto: CreateCategoryBodyDto,
+  ): Promise<MenuCategoryDto> {
     return this.service.createCategory(dto);
   }
 
@@ -202,7 +210,9 @@ export class AdminMenuController {
   }
 
   @Delete('option-groups/:id')
-  async detachOptionGroup(@Param('id') id: string): Promise<SuccessResponseDto> {
+  async detachOptionGroup(
+    @Param('id') id: string,
+  ): Promise<SuccessResponseDto> {
     await this.service.detachOptionGroup(id);
     return { success: true };
   }
@@ -217,7 +227,9 @@ export class AdminMenuController {
   }
 
   @Delete('options/:id')
-  async deleteTemplateOption(@Param('id') id: string): Promise<SuccessResponseDto> {
+  async deleteTemplateOption(
+    @Param('id') id: string,
+  ): Promise<SuccessResponseDto> {
     await this.service.deleteTemplateOption(id);
     return { success: true };
   }

@@ -194,7 +194,8 @@ function asFiniteInt(v: unknown, fallback: number): number {
 }
 
 function normalizeNameEn(v: unknown, fieldName = 'nameEn'): string {
-  if (typeof v !== 'string') throw new BadRequestException(`${fieldName} is required`);
+  if (typeof v !== 'string')
+    throw new BadRequestException(`${fieldName} is required`);
   const trimmed = v.trim();
   if (!trimmed) throw new BadRequestException(`${fieldName} is required`);
   return trimmed;
@@ -268,7 +269,9 @@ export class AdminMenuService {
             nameEn: link.templateGroup.nameEn,
             nameZh: link.templateGroup.nameZh ?? null,
             isAvailable: link.templateGroup.isAvailable,
-            tempUnavailableUntil: toIsoOrNull(link.templateGroup.tempUnavailableUntil),
+            tempUnavailableUntil: toIsoOrNull(
+              link.templateGroup.tempUnavailableUntil,
+            ),
             options: (link.templateGroup.options ?? []).map((op) => ({
               id: op.id,
               templateGroupId: op.templateGroupId,
@@ -314,7 +317,9 @@ export class AdminMenuService {
     }));
   }
 
-  async createOptionGroupTemplate(dto: CreateOptionGroupTemplateInput): Promise<OptionGroupTemplateDto> {
+  async createOptionGroupTemplate(
+    dto: CreateOptionGroupTemplateInput,
+  ): Promise<OptionGroupTemplateDto> {
     const nameEn = normalizeNameEn(dto.nameEn, 'nameEn');
     const sortOrder = asFiniteInt(dto.sortOrder, 0);
 
@@ -366,9 +371,12 @@ export class AdminMenuService {
   ): Promise<OptionGroupTemplateDto> {
     const data: Prisma.MenuOptionGroupTemplateUpdateInput = {};
 
-    if (dto.nameEn !== undefined) data.nameEn = normalizeNameEn(dto.nameEn, 'nameEn');
-    if (dto.nameZh !== undefined) data.nameZh = normalizeOptionalString(dto.nameZh);
-    if (dto.sortOrder !== undefined) data.sortOrder = asFiniteInt(dto.sortOrder, 0);
+    if (dto.nameEn !== undefined)
+      data.nameEn = normalizeNameEn(dto.nameEn, 'nameEn');
+    if (dto.nameZh !== undefined)
+      data.nameZh = normalizeOptionalString(dto.nameZh);
+    if (dto.sortOrder !== undefined)
+      data.sortOrder = asFiniteInt(dto.sortOrder, 0);
 
     if (dto.defaultMinSelect !== undefined) {
       data.defaultMinSelect = Math.max(0, asFiniteInt(dto.defaultMinSelect, 0));
@@ -431,7 +439,9 @@ export class AdminMenuService {
         include: { options: { orderBy: { sortOrder: 'asc' } } },
       });
 
-      this.logger.log(`MenuOptionGroupTemplate availability changed: id=${id} mode=${mode}`);
+      this.logger.log(
+        `MenuOptionGroupTemplate availability changed: id=${id} mode=${mode}`,
+      );
 
       return {
         id: updated.id,
@@ -458,8 +468,11 @@ export class AdminMenuService {
     }
   }
 
-  async createTemplateOption(dto: CreateTemplateOptionInput): Promise<MenuOptionTemplateChoiceDto> {
-    if (!dto.templateGroupId) throw new BadRequestException('templateGroupId is required');
+  async createTemplateOption(
+    dto: CreateTemplateOptionInput,
+  ): Promise<MenuOptionTemplateChoiceDto> {
+    if (!dto.templateGroupId)
+      throw new BadRequestException('templateGroupId is required');
 
     const group = await this.prisma.menuOptionGroupTemplate.findUnique({
       where: { id: dto.templateGroupId },
@@ -470,7 +483,8 @@ export class AdminMenuService {
     const nameEn = normalizeNameEn(dto.nameEn, 'nameEn');
 
     const priceDeltaCents =
-      typeof dto.priceDeltaCents === 'number' && Number.isFinite(dto.priceDeltaCents)
+      typeof dto.priceDeltaCents === 'number' &&
+      Number.isFinite(dto.priceDeltaCents)
         ? Math.round(dto.priceDeltaCents)
         : 0;
 
@@ -519,16 +533,24 @@ export class AdminMenuService {
     };
   }
 
-  async updateCategory(id: string, dto: UpdateCategoryInput): Promise<MenuCategoryDto> {
+  async updateCategory(
+    id: string,
+    dto: UpdateCategoryInput,
+  ): Promise<MenuCategoryDto> {
     const data: Prisma.MenuCategoryUpdateInput = {};
 
-    if (dto.nameEn !== undefined) data.nameEn = normalizeNameEn(dto.nameEn, 'nameEn');
-    if (dto.nameZh !== undefined) data.nameZh = normalizeOptionalString(dto.nameZh);
-    if (dto.sortOrder !== undefined) data.sortOrder = asFiniteInt(dto.sortOrder, 0);
+    if (dto.nameEn !== undefined)
+      data.nameEn = normalizeNameEn(dto.nameEn, 'nameEn');
+    if (dto.nameZh !== undefined)
+      data.nameZh = normalizeOptionalString(dto.nameZh);
+    if (dto.sortOrder !== undefined)
+      data.sortOrder = asFiniteInt(dto.sortOrder, 0);
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
 
     if (Object.keys(data).length === 0) {
-      const existing = await this.prisma.menuCategory.findUnique({ where: { id } });
+      const existing = await this.prisma.menuCategory.findUnique({
+        where: { id },
+      });
       if (!existing) throw new NotFoundException('category not found');
       return {
         id: existing.id,
@@ -540,7 +562,10 @@ export class AdminMenuService {
     }
 
     try {
-      const updated = await this.prisma.menuCategory.update({ where: { id }, data });
+      const updated = await this.prisma.menuCategory.update({
+        where: { id },
+        data,
+      });
       return {
         id: updated.id,
         nameEn: updated.nameEn,
@@ -555,12 +580,16 @@ export class AdminMenuService {
 
   /** ===== 菜品 ===== */
   async createItem(dto: CreateItemInput): Promise<MenuItemDto> {
-    if (!dto.categoryId) throw new BadRequestException('categoryId is required');
+    if (!dto.categoryId)
+      throw new BadRequestException('categoryId is required');
 
     const stableId = normalizeNameEn(dto.stableId, 'stableId');
     const nameEn = normalizeNameEn(dto.nameEn, 'nameEn');
 
-    if (typeof dto.basePriceCents !== 'number' || !Number.isFinite(dto.basePriceCents)) {
+    if (
+      typeof dto.basePriceCents !== 'number' ||
+      !Number.isFinite(dto.basePriceCents)
+    ) {
       throw new BadRequestException('basePriceCents must be a finite number');
     }
 
@@ -598,74 +627,89 @@ export class AdminMenuService {
     };
   }
 
-async updateItem(id: string, dto: UpdateItemInput): Promise<MenuItemDto> {
-  const data: Prisma.MenuItemUpdateInput = {};
+  async updateItem(id: string, dto: UpdateItemInput): Promise<MenuItemDto> {
+    const data: Prisma.MenuItemUpdateInput = {};
 
-  // ✅ categoryId -> category.connect
-  if (dto.categoryId !== undefined) {
-    data.category = { connect: { id: dto.categoryId } };
-  }
-
-  if (dto.nameEn !== undefined) data.nameEn = normalizeNameEn(dto.nameEn, 'nameEn');
-  if (dto.nameZh !== undefined) data.nameZh = normalizeOptionalString(dto.nameZh);
-  if (dto.imageUrl !== undefined) data.imageUrl = normalizeOptionalString(dto.imageUrl);
-  if (dto.ingredientsEn !== undefined) data.ingredientsEn = normalizeOptionalString(dto.ingredientsEn);
-  if (dto.ingredientsZh !== undefined) data.ingredientsZh = normalizeOptionalString(dto.ingredientsZh);
-
-  if (dto.basePriceCents !== undefined) {
-    if (typeof dto.basePriceCents !== 'number' || !Number.isFinite(dto.basePriceCents)) {
-      throw new BadRequestException('basePriceCents must be a finite number');
+    // ✅ categoryId -> category.connect
+    if (dto.categoryId !== undefined) {
+      data.category = { connect: { id: dto.categoryId } };
     }
-    data.basePriceCents = Math.round(dto.basePriceCents);
+
+    if (dto.nameEn !== undefined)
+      data.nameEn = normalizeNameEn(dto.nameEn, 'nameEn');
+    if (dto.nameZh !== undefined)
+      data.nameZh = normalizeOptionalString(dto.nameZh);
+    if (dto.imageUrl !== undefined)
+      data.imageUrl = normalizeOptionalString(dto.imageUrl);
+    if (dto.ingredientsEn !== undefined)
+      data.ingredientsEn = normalizeOptionalString(dto.ingredientsEn);
+    if (dto.ingredientsZh !== undefined)
+      data.ingredientsZh = normalizeOptionalString(dto.ingredientsZh);
+
+    if (dto.basePriceCents !== undefined) {
+      if (
+        typeof dto.basePriceCents !== 'number' ||
+        !Number.isFinite(dto.basePriceCents)
+      ) {
+        throw new BadRequestException('basePriceCents must be a finite number');
+      }
+      data.basePriceCents = Math.round(dto.basePriceCents);
+    }
+
+    if (dto.isAvailable !== undefined) data.isAvailable = dto.isAvailable;
+    if (dto.isVisible !== undefined) data.isVisible = dto.isVisible;
+    if (dto.sortOrder !== undefined)
+      data.sortOrder = asFiniteInt(dto.sortOrder, 0);
+
+    if (Object.keys(data).length === 0) {
+      const existing = await this.prisma.menuItem.findUnique({ where: { id } });
+      if (!existing) throw new NotFoundException('item not found');
+      return {
+        id: existing.id,
+        categoryId: existing.categoryId,
+        stableId: existing.stableId,
+        nameEn: existing.nameEn,
+        nameZh: existing.nameZh ?? null,
+        basePriceCents: existing.basePriceCents,
+        sortOrder: existing.sortOrder,
+        imageUrl: existing.imageUrl ?? null,
+        ingredientsEn: existing.ingredientsEn ?? null,
+        ingredientsZh: existing.ingredientsZh ?? null,
+        isAvailable: existing.isAvailable,
+        isVisible: existing.isVisible,
+        tempUnavailableUntil: toIsoOrNull(existing.tempUnavailableUntil),
+      };
+    }
+
+    try {
+      const updated = await this.prisma.menuItem.update({
+        where: { id },
+        data,
+      });
+      return {
+        id: updated.id,
+        categoryId: updated.categoryId,
+        stableId: updated.stableId,
+        nameEn: updated.nameEn,
+        nameZh: updated.nameZh ?? null,
+        basePriceCents: updated.basePriceCents,
+        sortOrder: updated.sortOrder,
+        imageUrl: updated.imageUrl ?? null,
+        ingredientsEn: updated.ingredientsEn ?? null,
+        ingredientsZh: updated.ingredientsZh ?? null,
+        isAvailable: updated.isAvailable,
+        isVisible: updated.isVisible,
+        tempUnavailableUntil: toIsoOrNull(updated.tempUnavailableUntil),
+      };
+    } catch {
+      throw new NotFoundException('item not found');
+    }
   }
 
-  if (dto.isAvailable !== undefined) data.isAvailable = dto.isAvailable;
-  if (dto.isVisible !== undefined) data.isVisible = dto.isVisible;
-  if (dto.sortOrder !== undefined) data.sortOrder = asFiniteInt(dto.sortOrder, 0);
-
-  if (Object.keys(data).length === 0) {
-    const existing = await this.prisma.menuItem.findUnique({ where: { id } });
-    if (!existing) throw new NotFoundException('item not found');
-    return {
-      id: existing.id,
-      categoryId: existing.categoryId,
-      stableId: existing.stableId,
-      nameEn: existing.nameEn,
-      nameZh: existing.nameZh ?? null,
-      basePriceCents: existing.basePriceCents,
-      sortOrder: existing.sortOrder,
-      imageUrl: existing.imageUrl ?? null,
-      ingredientsEn: existing.ingredientsEn ?? null,
-      ingredientsZh: existing.ingredientsZh ?? null,
-      isAvailable: existing.isAvailable,
-      isVisible: existing.isVisible,
-      tempUnavailableUntil: toIsoOrNull(existing.tempUnavailableUntil),
-    };
-  }
-
-  try {
-    const updated = await this.prisma.menuItem.update({ where: { id }, data });
-    return {
-      id: updated.id,
-      categoryId: updated.categoryId,
-      stableId: updated.stableId,
-      nameEn: updated.nameEn,
-      nameZh: updated.nameZh ?? null,
-      basePriceCents: updated.basePriceCents,
-      sortOrder: updated.sortOrder,
-      imageUrl: updated.imageUrl ?? null,
-      ingredientsEn: updated.ingredientsEn ?? null,
-      ingredientsZh: updated.ingredientsZh ?? null,
-      isAvailable: updated.isAvailable,
-      isVisible: updated.isVisible,
-      tempUnavailableUntil: toIsoOrNull(updated.tempUnavailableUntil),
-    };
-  } catch {
-    throw new NotFoundException('item not found');
-  }
-}
-
-  async setItemAvailability(id: string, mode: AvailabilityMode): Promise<MenuItemDto> {
+  async setItemAvailability(
+    id: string,
+    mode: AvailabilityMode,
+  ): Promise<MenuItemDto> {
     const now = new Date();
 
     const data: Prisma.MenuItemUpdateInput =
@@ -676,7 +720,10 @@ async updateItem(id: string, dto: UpdateItemInput): Promise<MenuItemDto> {
           : { isAvailable: true, tempUnavailableUntil: endOfTodayLocal(now) };
 
     try {
-      const updated = await this.prisma.menuItem.update({ where: { id }, data });
+      const updated = await this.prisma.menuItem.update({
+        where: { id },
+        data,
+      });
       this.logger.log(`MenuItem availability changed: id=${id} mode=${mode}`);
 
       return {
@@ -700,9 +747,12 @@ async updateItem(id: string, dto: UpdateItemInput): Promise<MenuItemDto> {
   }
 
   /** ===== 菜品绑定（Attach / Update / Detach）===== */
-  async attachOptionGroup(dto: AttachOptionGroupInput): Promise<MenuItemOptionGroupDto> {
+  async attachOptionGroup(
+    dto: AttachOptionGroupInput,
+  ): Promise<MenuItemOptionGroupDto> {
     if (!dto.itemId) throw new BadRequestException('itemId is required');
-    if (!dto.templateGroupId) throw new BadRequestException('templateGroupId is required');
+    if (!dto.templateGroupId)
+      throw new BadRequestException('templateGroupId is required');
 
     const item = await this.prisma.menuItem.findUnique({
       where: { id: dto.itemId },
@@ -753,67 +803,80 @@ async updateItem(id: string, dto: UpdateItemInput): Promise<MenuItemDto> {
         isEnabled: created.isEnabled,
       };
     } catch {
-      throw new BadRequestException('this template group is already attached to the item');
+      throw new BadRequestException(
+        'this template group is already attached to the item',
+      );
     }
   }
 
-async updateAttachedOptionGroup(
-  id: string,
-  dto: UpdateAttachedOptionGroupInput,
-): Promise<MenuItemOptionGroupDto> {
-  const data: Prisma.MenuItemOptionGroupUpdateInput = {};
+  async updateAttachedOptionGroup(
+    id: string,
+    dto: UpdateAttachedOptionGroupInput,
+  ): Promise<MenuItemOptionGroupDto> {
+    const data: Prisma.MenuItemOptionGroupUpdateInput = {};
 
-  // ✅ templateGroupId -> templateGroup.connect
-  if (dto.templateGroupId !== undefined) {
-    data.templateGroup = { connect: { id: dto.templateGroupId } };
-  }
-
-  if (dto.sortOrder !== undefined) data.sortOrder = asFiniteInt(dto.sortOrder, 0);
-  if (dto.isEnabled !== undefined) data.isEnabled = dto.isEnabled;
-
-  if (dto.minSelect === null) data.minSelect = 0;
-  else if (dto.minSelect !== undefined) {
-    if (typeof dto.minSelect !== 'number' || !Number.isFinite(dto.minSelect)) {
-      throw new BadRequestException('minSelect must be a finite number or null');
+    // ✅ templateGroupId -> templateGroup.connect
+    if (dto.templateGroupId !== undefined) {
+      data.templateGroup = { connect: { id: dto.templateGroupId } };
     }
-    data.minSelect = Math.max(0, Math.floor(dto.minSelect));
-  }
 
-  if (dto.maxSelect === null) data.maxSelect = null;
-  else if (dto.maxSelect !== undefined) {
-    if (typeof dto.maxSelect !== 'number' || !Number.isFinite(dto.maxSelect)) {
-      throw new BadRequestException('maxSelect must be a finite number or null');
+    if (dto.sortOrder !== undefined)
+      data.sortOrder = asFiniteInt(dto.sortOrder, 0);
+    if (dto.isEnabled !== undefined) data.isEnabled = dto.isEnabled;
+
+    if (dto.minSelect === null) data.minSelect = 0;
+    else if (dto.minSelect !== undefined) {
+      if (
+        typeof dto.minSelect !== 'number' ||
+        !Number.isFinite(dto.minSelect)
+      ) {
+        throw new BadRequestException(
+          'minSelect must be a finite number or null',
+        );
+      }
+      data.minSelect = Math.max(0, Math.floor(dto.minSelect));
     }
-    data.maxSelect = Math.max(0, Math.floor(dto.maxSelect));
-  }
 
-  try {
-    const updated = await this.prisma.menuItemOptionGroup.update({
-      where: { id },
-      data,
-    });
+    if (dto.maxSelect === null) data.maxSelect = null;
+    else if (dto.maxSelect !== undefined) {
+      if (
+        typeof dto.maxSelect !== 'number' ||
+        !Number.isFinite(dto.maxSelect)
+      ) {
+        throw new BadRequestException(
+          'maxSelect must be a finite number or null',
+        );
+      }
+      data.maxSelect = Math.max(0, Math.floor(dto.maxSelect));
+    }
 
-    return {
-      id: updated.id,
-      itemId: updated.itemId,
-      templateGroupId: updated.templateGroupId,
-      minSelect: updated.minSelect,
-      maxSelect: updated.maxSelect,
-      sortOrder: updated.sortOrder,
-      isEnabled: updated.isEnabled,
-    };
-  } catch {
-    throw new NotFoundException('attached option group not found');
+    try {
+      const updated = await this.prisma.menuItemOptionGroup.update({
+        where: { id },
+        data,
+      });
+
+      return {
+        id: updated.id,
+        itemId: updated.itemId,
+        templateGroupId: updated.templateGroupId,
+        minSelect: updated.minSelect,
+        maxSelect: updated.maxSelect,
+        sortOrder: updated.sortOrder,
+        isEnabled: updated.isEnabled,
+      };
+    } catch {
+      throw new NotFoundException('attached option group not found');
+    }
   }
-}
-async detachOptionGroup(id: string): Promise<void> {
-  try {
-    await this.prisma.menuItemOptionGroup.delete({ where: { id } });
-    this.logger.log(`MenuItemOptionGroup detached: id=${id}`);
-  } catch {
-    throw new NotFoundException('attached option group not found');
+  async detachOptionGroup(id: string): Promise<void> {
+    try {
+      await this.prisma.menuItemOptionGroup.delete({ where: { id } });
+      this.logger.log(`MenuItemOptionGroup detached: id=${id}`);
+    } catch {
+      throw new NotFoundException('attached option group not found');
+    }
   }
-}
   /** ===== 模板选项（全局）===== */
   async updateTemplateOption(
     id: string,
@@ -821,21 +884,31 @@ async detachOptionGroup(id: string): Promise<void> {
   ): Promise<MenuOptionTemplateChoiceDto> {
     const data: Prisma.MenuOptionTemplateChoiceUpdateInput = {};
 
-    if (dto.nameEn !== undefined) data.nameEn = normalizeNameEn(dto.nameEn, 'nameEn');
-    if (dto.nameZh !== undefined) data.nameZh = normalizeOptionalString(dto.nameZh);
+    if (dto.nameEn !== undefined)
+      data.nameEn = normalizeNameEn(dto.nameEn, 'nameEn');
+    if (dto.nameZh !== undefined)
+      data.nameZh = normalizeOptionalString(dto.nameZh);
 
     if (dto.priceDeltaCents !== undefined) {
-      if (typeof dto.priceDeltaCents !== 'number' || !Number.isFinite(dto.priceDeltaCents)) {
-        throw new BadRequestException('priceDeltaCents must be a finite number');
+      if (
+        typeof dto.priceDeltaCents !== 'number' ||
+        !Number.isFinite(dto.priceDeltaCents)
+      ) {
+        throw new BadRequestException(
+          'priceDeltaCents must be a finite number',
+        );
       }
       data.priceDeltaCents = Math.round(dto.priceDeltaCents);
     }
 
-    if (dto.sortOrder !== undefined) data.sortOrder = asFiniteInt(dto.sortOrder, 0);
+    if (dto.sortOrder !== undefined)
+      data.sortOrder = asFiniteInt(dto.sortOrder, 0);
     if (dto.isAvailable !== undefined) data.isAvailable = dto.isAvailable;
 
     if (Object.keys(data).length === 0) {
-      const existing = await this.prisma.menuOptionTemplateChoice.findUnique({ where: { id } });
+      const existing = await this.prisma.menuOptionTemplateChoice.findUnique({
+        where: { id },
+      });
       if (!existing) throw new NotFoundException('option not found');
       return {
         id: existing.id,
@@ -850,7 +923,10 @@ async detachOptionGroup(id: string): Promise<void> {
     }
 
     try {
-      const updated = await this.prisma.menuOptionTemplateChoice.update({ where: { id }, data });
+      const updated = await this.prisma.menuOptionTemplateChoice.update({
+        where: { id },
+        data,
+      });
       return {
         id: updated.id,
         templateGroupId: updated.templateGroupId,
@@ -889,8 +965,13 @@ async detachOptionGroup(id: string): Promise<void> {
           : { isAvailable: true, tempUnavailableUntil: endOfTodayLocal(now) };
 
     try {
-      const updated = await this.prisma.menuOptionTemplateChoice.update({ where: { id }, data });
-      this.logger.log(`MenuOptionTemplateChoice availability changed: id=${id} mode=${mode}`);
+      const updated = await this.prisma.menuOptionTemplateChoice.update({
+        where: { id },
+        data,
+      });
+      this.logger.log(
+        `MenuOptionTemplateChoice availability changed: id=${id} mode=${mode}`,
+      );
 
       return {
         id: updated.id,

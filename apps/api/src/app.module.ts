@@ -56,7 +56,7 @@ const envConfigModule = configModuleFactory.forRoot({
     AdminMenuModule,
     AdminImageUploadModule,
     PublicMenuModule,
-],
+  ],
   controllers: [AppController],
   providers: [
     AppService,

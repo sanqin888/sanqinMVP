@@ -287,97 +287,86 @@ model Holiday {
 }
 
 model MenuCategory {
-  id        String      @id @default(cuid())
-  sortOrder Int         @default(0)
+  id        String     @id @default(uuid())
   nameEn    String
   nameZh    String?
-  isActive  Boolean     @default(true)
+  sortOrder Int        @default(0)
+  isActive  Boolean    @default(true)
 
   items     MenuItem[]
-}
-
-model MenuItem {
-  id         String       @id @default(cuid())
-  categoryId String
-  category   MenuCategory @relation(fields: [categoryId], references: [id])
-
-  stableId      String  @unique
-  nameEn        String
-  nameZh        String?
-  imageUrl      String?
-  ingredientsEn String?
-  ingredientsZh String?
-
-  basePriceCents Int
-  isAvailable    Boolean @default(true)
-  isVisible      Boolean @default(true)
-  tempUnavailableUntil DateTime?
-
-  sortOrder Int @default(0)
-
-  // ✅ 由“内嵌选项组”改为“绑定到选项组库”
-  optionGroups MenuItemOptionGroup[]
-}
-
-// ====== 选项组库（全局模板，可复用） ======
-model MenuOptionGroupTemplate {
-  id        String   @id @default(cuid())
-  nameEn    String
-  nameZh    String?
-
-  // 默认规则（用于新绑定时自动填充，也可在绑定里覆盖）
-  defaultMinSelect Int  @default(0)
-  defaultMaxSelect Int? @default(1)
-
-  // 上下架（永久/今日）
-  isAvailable          Boolean   @default(true)
-  tempUnavailableUntil DateTime?
-
-  sortOrder Int @default(0)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  options   MenuOptionTemplateChoice[]
-  itemLinks MenuItemOptionGroup[]
 
   @@index([sortOrder])
 }
 
-// ====== 选项库（全局模板选项） ======
-model MenuOptionTemplateChoice {
-  id              String  @id @default(cuid())
-  templateGroupId String
-  templateGroup   MenuOptionGroupTemplate @relation(fields: [templateGroupId], references: [id], onDelete: Cascade)
+model MenuItem {
+  id                  String                @id @default(uuid())
+  categoryId           String
+  stableId             String                @unique
+  nameEn              String
+  nameZh              String?
+  basePriceCents       Int
+  sortOrder            Int                   @default(0)
 
-  nameEn          String
-  nameZh          String?
-  priceDeltaCents Int     @default(0)
+  imageUrl             String?
+  ingredientsEn        String?
+  ingredientsZh        String?
 
-  // 上下架（永久/今日）
-  isAvailable          Boolean   @default(true)
+  isAvailable          Boolean               @default(true)
+  isVisible            Boolean               @default(true)
   tempUnavailableUntil DateTime?
 
-  sortOrder Int @default(0)
+  category             MenuCategory          @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  optionGroups         MenuItemOptionGroup[]
+
+  @@index([categoryId, sortOrder])
+}
+
+model MenuOptionGroupTemplate {
+  id                   String                  @id @default(uuid())
+  nameEn               String
+  nameZh               String?
+  sortOrder            Int                     @default(0)
+
+  defaultMinSelect     Int                     @default(0)
+  defaultMaxSelect     Int?                    @default(1)
+
+  isAvailable          Boolean                 @default(true)
+  tempUnavailableUntil DateTime?
+
+  options              MenuOptionTemplateChoice[]
+  itemLinks            MenuItemOptionGroup[]
+
+  @@index([sortOrder])
+}
+
+model MenuOptionTemplateChoice {
+  id                   String                 @id @default(uuid())
+  templateGroupId      String
+  nameEn               String
+  nameZh               String?
+  priceDeltaCents      Int                    @default(0)
+  sortOrder            Int                    @default(0)
+
+  isAvailable          Boolean                @default(true)
+  tempUnavailableUntil DateTime?
+
+  templateGroup        MenuOptionGroupTemplate @relation(fields: [templateGroupId], references: [id], onDelete: Cascade)
 
   @@index([templateGroupId, sortOrder])
 }
 
-// ====== 菜品绑定（菜品引用选项组库 + 覆盖 min/max/sort） ======
 model MenuItemOptionGroup {
-  id              String  @id @default(cuid())
+  id              String                  @id @default(uuid())
   itemId          String
-  item            MenuItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
-
   templateGroupId String
-  templateGroup   MenuOptionGroupTemplate @relation(fields: [templateGroupId], references: [id])
 
-  // 绑定级规则：允许每个菜品对同一组选项设置不同 min/max
-  minSelect Int  @default(0)
-  maxSelect Int? @default(1)
+  minSelect       Int                     @default(0)
+  maxSelect       Int?
+  sortOrder       Int                     @default(0)
+  isEnabled       Boolean                 @default(true)
 
-  sortOrder Int @default(0)
-  isEnabled Boolean @default(true) // 不想删除绑定时，可直接关掉
+  item            MenuItem                @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  templateGroup   MenuOptionGroupTemplate @relation(fields: [templateGroupId], references: [id], onDelete: Cascade)
 
   @@unique([itemId, templateGroupId])
   @@index([itemId, sortOrder])

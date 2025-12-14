@@ -72,7 +72,10 @@ function toIso(value: Date | null | undefined): string | null {
  * tempUntil 如果是未来时间 => 视为“暂不可售”
  * 解析失败 => 当作没设置（不拦截），避免脏数据导致全下架
  */
-function isAvailableNow(isAvailable: boolean, tempUntil: string | null): boolean {
+function isAvailableNow(
+  isAvailable: boolean,
+  tempUntil: string | null,
+): boolean {
   if (!isAvailable) return false;
   if (!tempUntil) return true;
 
@@ -126,18 +129,26 @@ export class PublicMenuService {
             return ok;
           })
           .map((it) => {
-            const optionGroups: PublicMenuOptionGroupDto[] = (it.optionGroups ?? [])
+            const optionGroups: PublicMenuOptionGroupDto[] = (
+              it.optionGroups ?? []
+            )
               .filter((link) => {
                 if (!link.isEnabled) return false;
                 const tg = link.templateGroup;
-                return isAvailableNow(tg.isAvailable, toIso(tg.tempUnavailableUntil));
+                return isAvailableNow(
+                  tg.isAvailable,
+                  toIso(tg.tempUnavailableUntil),
+                );
               })
               .map((link) => {
                 const tg = link.templateGroup;
 
                 const options: PublicMenuOptionDto[] = (tg.options ?? [])
                   .filter((opt) =>
-                    isAvailableNow(opt.isAvailable, toIso(opt.tempUnavailableUntil)),
+                    isAvailableNow(
+                      opt.isAvailable,
+                      toIso(opt.tempUnavailableUntil),
+                    ),
                   )
                   .map((opt) => ({
                     id: opt.id,
