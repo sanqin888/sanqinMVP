@@ -111,6 +111,7 @@ export class AdminMenuController {
     return this.service.createItem(dto);
   }
 
+  // 更新菜品（不再支持 descriptionEn/descriptionZh）
   @Put('items/:id')
   async updateItem(
     @Param('id') id: string,
@@ -211,5 +212,93 @@ export class AdminMenuController {
     @Body() dto: { mode: 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF' },
   ) {
     return this.service.setTemplateOptionAvailability(id, dto.mode);
+  }
+
+  // ========= 选项组 CRUD ========= //
+
+  // 在某个菜品下新建选项组
+  @Post('items/:itemId/option-groups')
+  async createOptionGroup(
+    @Param('itemId') itemId: string,
+    @Body()
+    dto: {
+      nameEn: string;
+      nameZh?: string;
+      isRequired?: boolean;
+      maxChoices?: number | null;
+      sortOrder?: number;
+    },
+  ) {
+    return this.service.createOptionGroup({
+      itemId,
+      ...dto,
+    });
+  }
+
+  @Put('option-groups/:id')
+  async updateOptionGroup(
+    @Param('id') id: string,
+    @Body()
+    dto: Partial<{
+      itemId: string;
+      nameEn: string;
+      nameZh?: string;
+      isRequired: boolean;
+      maxChoices: number | null;
+      sortOrder: number;
+    }>,
+  ) {
+    return this.service.updateOptionGroup(id, dto);
+  }
+
+  @Delete('option-groups/:id')
+  async deleteOptionGroup(@Param('id') id: string) {
+    await this.service.deleteOptionGroup(id);
+    return { success: true };
+  }
+
+  // ========= 选项 CRUD ========= //
+
+  // 在某个选项组下新建选项
+  @Post('option-groups/:groupId/options')
+  async createOption(
+    @Param('groupId') groupId: string,
+    @Body()
+    dto: {
+      nameEn: string;
+      nameZh?: string;
+      priceDeltaCents?: number;
+      sortOrder?: number;
+      // 允许前端传，但当前前端没有传 isAvailable，默认即可
+      isAvailable?: boolean;
+    },
+  ) {
+    return this.service.createOption({
+      groupId,
+      ...dto,
+    });
+  }
+
+  // 更新选项（支持 isAvailable，用于前端“可选”勾选框）
+  @Put('options/:id')
+  async updateOption(
+    @Param('id') id: string,
+    @Body()
+    dto: Partial<{
+      groupId: string;
+      nameEn: string;
+      nameZh?: string;
+      priceDeltaCents: number;
+      sortOrder: number;
+      isAvailable: boolean;
+    }>,
+  ) {
+    return this.service.updateOption(id, dto);
+  }
+
+  @Delete('options/:id')
+  async deleteOption(@Param('id') id: string) {
+    await this.service.deleteOption(id);
+    return { success: true };
   }
 }
