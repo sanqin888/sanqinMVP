@@ -806,7 +806,14 @@ async updateAttachedOptionGroup(
     throw new NotFoundException('attached option group not found');
   }
 }
-
+async detachOptionGroup(id: string): Promise<void> {
+  try {
+    await this.prisma.menuItemOptionGroup.delete({ where: { id } });
+    this.logger.log(`MenuItemOptionGroup detached: id=${id}`);
+  } catch {
+    throw new NotFoundException('attached option group not found');
+  }
+}
   /** ===== 模板选项（全局）===== */
   async updateTemplateOption(
     id: string,
