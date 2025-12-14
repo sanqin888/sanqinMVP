@@ -795,9 +795,7 @@ function updateItemField<K extends keyof AdminMenuItem>(
         ) : (
           <div className="space-y-4">
             {categories.map((cat) => {
-              const catAny = cat as any;
-              const localizedCatName =
-                isZh && catAny.nameZh ? catAny.nameZh : cat.nameEn;
+              const localizedCatName = isZh && cat.nameZh ? cat.nameZh : cat.nameEn;
 
               return (
                 <div key={cat.id} className="rounded-2xl border p-4 shadow-sm">
@@ -817,8 +815,6 @@ function updateItemField<K extends keyof AdminMenuItem>(
                   {/* 分类内菜品列表 */}
                   <div className="mt-4 space-y-3">
                     {cat.items.map((item) => {
-                      const itemAny = item as any;
-
                       const localizedName =
                         isZh && item.nameZh ? item.nameZh : item.nameEn;
 
@@ -1140,8 +1136,8 @@ function updateItemField<K extends keyof AdminMenuItem>(
                                       updateItemField(
                                         cat.id,
                                         item.id,
-                                        "ingredientsEn" as any,
-                                        e.target.value as any,
+                                        "ingredientsEn",
+                                        e.target.value,
                                       )
                                     }
                                   />
@@ -1163,8 +1159,8 @@ function updateItemField<K extends keyof AdminMenuItem>(
                                       updateItemField(
                                         cat.id,
                                         item.id,
-                                        "ingredientsZh" as any,
-                                        e.target.value as any,
+                                        "ingredientsZh",
+                                        e.target.value,
                                       )
                                     }
                                   />
