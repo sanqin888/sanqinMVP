@@ -23,28 +23,14 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+          # 只用根锁文件作为缓存 key（配合 npm cache）
           cache-dependency-path: package-lock.json
 
-      # 用根锁文件一次性安装全部 workspaces 依赖
+      # 关键：用根锁文件一次性安装全部 workspaces 依赖
       - name: Install (root, all workspaces)
         run: npm ci --workspaces --include-workspace-root
 
-      # ✅ 关键：API 在 lint/tsc/build 前先生成 Prisma Client
-      - name: Prisma generate (api)
-        if: matrix.app == 'api'
-        working-directory: apps/api
-        env:
-          # prisma generate 通常不连接 DB，但 schema 里用了 env("DATABASE_URL") 时可能要求此变量存在
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres?schema=public
-        run: npx prisma generate
-
-      # ✅ 可选但建议：API 显式做一次 typecheck（你现在 CI 没有这步）
-      - name: Typecheck (api)
-        if: matrix.app == 'api'
-        working-directory: apps/api
-        run: npx tsc --noEmit -p tsconfig.json
-
-      # 对每个 workspace 分别执行
+      # 下面三步对每个 workspace 分别执行
       - name: Lint (${{ matrix.app }})
         working-directory: apps/${{ matrix.app }}
         run: npm run lint --if-present
