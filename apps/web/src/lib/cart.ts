@@ -122,7 +122,7 @@ export function usePersistentCart() {
   const updateNotes = useCallback((stableId: string, notes: string) => {
     setItems((prev) =>
       prev.map((entry) =>
-        entry.itemId === stableId ? { ...entry, notes } : entry,
+        entry.stableId === stableId ? { ...entry, notes } : entry,
       ),
     );
   }, []);
