@@ -98,6 +98,24 @@ type BindDraft = {
   sortOrder: string;
   isRequired: boolean;
 };
+// ===== Admin 菜单数据（/admin/menu/full 的真实返回） =====
+
+type AdminMenuItem = DbMenuItem & {
+  // 你现在页面里已经在用，但 DbMenuItem 可能没声明
+  ingredientsEn?: string | null;
+  ingredientsZh?: string | null;
+
+  // 后端可能返回这些字段之一（你已有兼容读取）
+  optionGroups?: BoundOptionGroup[];
+  optionGroupBindings?: BoundOptionGroup[];
+  boundOptionGroups?: BoundOptionGroup[];
+};
+
+type AdminMenuCategory = Omit<DbMenuCategory, "items"> & {
+  // 你现在用 catAny.nameZh，说明 DbMenuCategory 可能没声明 nameZh
+  nameZh?: string | null;
+  items: AdminMenuItem[];
+};
 
 function createEmptyBindDraft(): BindDraft {
   return {
@@ -147,7 +165,7 @@ export default function AdminMenuPage() {
   const locale = (params?.locale === "zh" ? "zh" : "en") as Locale;
   const isZh = locale === "zh";
 
-  const [categories, setCategories] = useState<DbMenuCategory[]>([]);
+  const [categories, setCategories] = useState<AdminMenuCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -202,7 +220,7 @@ export default function AdminMenuPage() {
     setLoading(true);
     setLoadError(null);
     try {
-      const data = await apiFetch<DbMenuCategory[]>("/admin/menu/full");
+      const data = await apiFetch<AdminMenuCategory[]>("/admin/menu/full");
       const sorted = (data ?? [])
         .slice()
         .sort((a, b) => a.sortOrder - b.sortOrder)
@@ -256,12 +274,12 @@ export default function AdminMenuPage() {
 
   // ===== 工具函数 ===== //
 
-  function updateItemField<K extends keyof DbMenuItem>(
-    categoryId: string,
-    itemId: string,
-    field: K,
-    value: DbMenuItem[K],
-  ) {
+function updateItemField<K extends keyof AdminMenuItem>(
+  categoryId: string,
+  itemId: string,
+  field: K,
+  value: AdminMenuItem[K],
+) {
     setCategories((prev) =>
       prev.map((cat) =>
         cat.id !== categoryId
@@ -428,8 +446,8 @@ export default function AdminMenuPage() {
         isVisible: item.isVisible,
         sortOrder: item.sortOrder,
         imageUrl: item.imageUrl ?? undefined,
-        ingredientsEn: (item as any).ingredientsEn ?? undefined,
-        ingredientsZh: (item as any).ingredientsZh ?? undefined,
+        ingredientsEn: item.ingredientsEn ?? undefined,
+        ingredientsZh: item.ingredientsZh ?? undefined,
       };
 
       await apiFetch(`/admin/menu/items/${itemId}`, {
@@ -562,10 +580,8 @@ export default function AdminMenuPage() {
 
   // ===== 绑定 / 解绑 选项组（全局模板） =====
   // 注意：这里使用了“推荐的 REST 路径”，若你的后端路径不同，改这里两个 endpoint 即可：
-  const BIND_ENDPOINT = (itemId: string) =>
-    `/admin/menu/items/${itemId}/option-group-bindings`;
-  const UNBIND_ENDPOINT = (itemId: string, bindingId: string) =>
-    `/admin/menu/items/${itemId}/option-group-bindings/${bindingId}`;
+  const BIND_ENDPOINT = (itemId: string) => `/admin/menu/items/${itemId}/option-groups`;
+  const UNBIND_ENDPOINT = (bindingId: string) => `/admin/menu/option-groups/${bindingId}`;
 
   async function handleBindTemplateToItem(itemId: string) {
     const draft = getBindDraft(itemId);
@@ -636,7 +652,7 @@ export default function AdminMenuPage() {
     setSaving((prev) => ({ ...prev, error: null }));
 
     try {
-      await apiFetch(UNBIND_ENDPOINT(itemId, bindingId), { method: "DELETE" });
+      await apiFetch(UNBIND_ENDPOINT(bindingId), { method: "DELETE" });
       await reloadMenu();
     } catch (e) {
       console.error(e);
@@ -809,9 +825,9 @@ export default function AdminMenuPage() {
 
                       const ingredientsPreview = (() => {
                         const text =
-                          isZh && itemAny.ingredientsZh
-                            ? (itemAny.ingredientsZh as string)
-                            : (itemAny.ingredientsEn as string) ?? "";
+                          isZh && item.ingredientsZh
+                            ? (item.ingredientsZh as string)
+                            : (item.ingredientsEn as string) ?? "";
                         if (!text) return "";
                         if (text.length <= 80) return text;
                         return `${text.slice(0, 80)}…`;
@@ -1120,7 +1136,7 @@ export default function AdminMenuPage() {
                                         ? "例如：Wheat noodles, chili oil, garlic..."
                                         : "e.g., Wheat noodles, chili oil, garlic..."
                                     }
-                                    value={itemAny.ingredientsEn ?? ""}
+                                    value={item.ingredientsEn ?? ""}
                                     onChange={(e) =>
                                       updateItemField(
                                         cat.id,
@@ -1143,7 +1159,7 @@ export default function AdminMenuPage() {
                                         ? "例如：凉皮、辣椒油、大蒜、芝麻酱..."
                                         : "例如：凉皮、辣椒油、大蒜、芝麻酱..."
                                     }
-                                    value={itemAny.ingredientsZh ?? ""}
+                                    value={item.ingredientsZh ?? ""}
                                     onChange={(e) =>
                                       updateItemField(
                                         cat.id,
