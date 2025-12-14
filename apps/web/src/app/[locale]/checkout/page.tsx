@@ -35,7 +35,7 @@ import {
   formatWithTotal,
   type HostedCheckoutResponse,
   type DeliveryTypeOption,
-  type DbMenuCategory,
+  type DbPublicMenuCategory,
   buildLocalizedMenuFromDb,
 } from "@/lib/order/shared";
 import { useSession } from "next-auth/react";
@@ -265,7 +265,7 @@ export default function CheckoutPage() {
     if (!menuLookup) return [];
     return items
       .map((entry) => {
-        const item = menuLookup.get(entry.itemId);
+        const item = menuLookup.get(entry.stableId);
         if (!item) return null;
         return { ...entry, item };
       })
@@ -341,14 +341,16 @@ export default function CheckoutPage() {
       setMenuLoading(true);
       setMenuError(null);
       try {
-        const dbMenu = await apiFetch<DbMenuCategory[]>("/admin/menu/full");
+        const dbMenu = await apiFetch<DbPublicMenuCategory[]>("/menu/public", {
+          cache: "no-store",
+        });
         if (cancelled) return;
 
         const categories = buildLocalizedMenuFromDb(dbMenu, locale);
         const map = new Map<string, LocalizedMenuItem>();
         for (const category of categories) {
           for (const item of category.items) {
-            map.set(item.id, item); // id = stableId
+            map.set(item.stableId, item);
           }
         }
         setMenuLookup(map);
@@ -1222,7 +1224,7 @@ export default function CheckoutPage() {
         ...(deliveryMetadata ?? {}),
 
         items: localizedCartItems.map((cartItem) => ({
-          id: cartItem.itemId,
+          id: cartItem.stableId,
           nameEn: cartItem.item.nameEn ?? cartItem.item.name,
           nameZh: cartItem.item.nameZh ?? cartItem.item.name,
           displayName: cartItem.item.name,
@@ -1479,7 +1481,7 @@ export default function CheckoutPage() {
             <ul className="space-y-4">
               {localizedCartItems.map((cartItem) => (
                 <li
-                  key={cartItem.itemId}
+                  key={cartItem.stableId}
                   className="rounded-2xl border border-slate-200 p-4"
                 >
                   <div className="flex items-start justify-between gap-4">
@@ -1495,7 +1497,7 @@ export default function CheckoutPage() {
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => updateQuantity(cartItem.itemId, -1)}
+                        onClick={() => updateQuantity(cartItem.stableId, -1)}
                         className="grid h-8 w-8 place-items-center rounded-full border border-slate-200 text-lg font-semibold text-slate-600 transition hover:bg-slate-100"
                         aria-label={strings.quantity.decrease}
                       >
@@ -1506,7 +1508,7 @@ export default function CheckoutPage() {
                       </span>
                       <button
                         type="button"
-                        onClick={() => updateQuantity(cartItem.itemId, 1)}
+                        onClick={() => updateQuantity(cartItem.stableId, 1)}
                         className="grid h-8 w-8 place-items-center rounded-full border border-slate-200 text-lg font-semibold text-slate-600 transition hover:bg-slate-100"
                         aria-label={strings.quantity.increase}
                       >
@@ -1519,7 +1521,7 @@ export default function CheckoutPage() {
                     <textarea
                       value={cartItem.notes}
                       onChange={(event) =>
-                        updateNotes(cartItem.itemId, event.target.value)
+                        updateNotes(cartItem.stableId, event.target.value)
                       }
                       placeholder={strings.cartNotesPlaceholder}
                       className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
