@@ -9,7 +9,6 @@ import {
   type Locale,
   type DbMenuCategory,
   type DbMenuItem,
-  type DbMenuOptionGroup,
 } from "@/lib/order/shared";
 import { apiFetch } from "@/lib/api-client";
 
@@ -414,10 +413,8 @@ export default function AdminMenuPage() {
 
   async function handleSaveItem(categoryId: string, itemId: string) {
     const category = categories.find((c) => c.id === categoryId);
-    const itemRaw = category?.items.find((i) => i.id === itemId);
-    if (!itemRaw) return;
-
-    const item = itemRaw as MenuItemWithOptions;
+    const item = category?.items.find((i) => i.id === itemId);
+    if (!item) return;
 
     setSaving({ itemId, error: null });
 
@@ -431,12 +428,9 @@ export default function AdminMenuPage() {
         isVisible: item.isVisible,
         sortOrder: item.sortOrder,
         imageUrl: item.imageUrl ?? undefined,
-        ingredientsEn: item.ingredientsEn ?? undefined,
-        ingredientsZh: item.ingredientsZh ?? undefined,
+        ingredientsEn: (item as any).ingredientsEn ?? undefined,
+        ingredientsZh: (item as any).ingredientsZh ?? undefined,
       };
-
-      // 如需一次性保存选项组，也可以在这里带上 optionGroups，自行设计后端 DTO
-      // body.optionGroups = item.optionGroups ?? [];
 
       await apiFetch(`/admin/menu/items/${itemId}`, {
         method: "PUT",
@@ -453,270 +447,6 @@ export default function AdminMenuPage() {
           ? "保存失败，请稍后重试。"
           : "Failed to save item. Please try again.",
       });
-    }
-  }
-
-  // ===== 选项组 / 选项：后端交互 ===== //
-
-  async function handleCreateOptionGroup(categoryId: string, itemId: string) {
-    const draft = getNewOptionGroupDraft(itemId);
-    const nameEn = draft.nameEn.trim();
-    const nameZh = draft.nameZh.trim();
-    const sortOrderNumber = Number(draft.sortOrder || "0");
-const minSelectNumber = Number(draft.minSelect || "0");
-const maxSelectNumber =
-  draft.maxSelect.trim() === ""
-    ? null
-    : Number.isNaN(Number(draft.maxSelect))
-    ? null
-    : Number(draft.maxSelect);
-
-    if (!nameEn) {
-      setSaving((prev) => ({
-        ...prev,
-        error: isZh
-          ? "选项组英文名称不能为空。"
-          : "Option group English name is required.",
-      }));
-      return;
-    }
-
-    setSaving((prev) => ({ ...prev, error: null }));
-    setSavingOptionGroupId("new");
-
-    try {
-await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    nameEn,
-    nameZh: nameZh || undefined,
-    minSelect: Number.isNaN(minSelectNumber) ? 0 : minSelectNumber,
-    maxSelect: maxSelectNumber,
-    isRequired: draft.isRequired,
-    sortOrder: Number.isNaN(sortOrderNumber) ? 0 : sortOrderNumber,
-  }),
-});
-
-      // 清空草稿 & 重新加载
-      setNewOptionGroupDrafts((prev) => {
-        const next = { ...prev };
-        delete next[itemId];
-        return next;
-      });
-      await reloadMenu();
-    } catch (err) {
-      console.error(err);
-      setSaving((prev) => ({
-        ...prev,
-        error: isZh
-          ? "新建选项组失败，请稍后重试。"
-          : "Failed to create option group. Please try again.",
-      }));
-    } finally {
-      setSavingOptionGroupId(null);
-    }
-  }
-
-  async function handleSaveOptionGroup(
-    categoryId: string,
-    itemId: string,
-    group: MenuOptionGroup,
-  ) {
-    setSaving((prev) => ({ ...prev, error: null }));
-    setSavingOptionGroupId(group.id);
-
-    try {
-      await apiFetch(`/admin/menu/option-groups/${group.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nameEn: group.nameEn,
-          nameZh: group.nameZh || undefined,
-          minSelect: group.minSelect,
-          maxSelect: group.maxSelect,
-          isRequired: group.isRequired,
-          sortOrder: group.sortOrder,
-        }),
-      });
-
-      await reloadMenu();
-    } catch (err) {
-      console.error(err);
-      setSaving((prev) => ({
-        ...prev,
-        error: isZh
-          ? "保存选项组失败，请稍后重试。"
-          : "Failed to save option group. Please try again.",
-      }));
-    } finally {
-      setSavingOptionGroupId(null);
-    }
-  }
-
-  async function handleDeleteOptionGroup(
-    categoryId: string,
-    itemId: string,
-    groupId: string,
-  ) {
-    if (
-      !window.confirm(
-        isZh
-          ? "确定要删除这个选项组及其所有选项吗？"
-          : "Delete this option group and all its options?",
-      )
-    ) {
-      return;
-    }
-
-    setDeletingOptionGroupId(groupId);
-    setSaving((prev) => ({ ...prev, error: null }));
-
-    try {
-      await apiFetch(`/admin/menu/option-groups/${groupId}`, {
-        method: "DELETE",
-      });
-
-      await reloadMenu();
-    } catch (err) {
-      console.error(err);
-      setSaving((prev) => ({
-        ...prev,
-        error: isZh
-          ? "删除选项组失败，请稍后重试。"
-          : "Failed to delete option group. Please try again.",
-      }));
-    } finally {
-      setDeletingOptionGroupId(null);
-    }
-  }
-
-  async function handleCreateOptionChoice(
-    categoryId: string,
-    itemId: string,
-    groupId: string,
-  ) {
-    const draft = getNewOptionChoiceDraft(groupId);
-    const nameEn = draft.nameEn.trim();
-    const nameZh = draft.nameZh.trim();
-    const priceDeltaNumber = Number(draft.priceDelta || "0");
-    const sortOrderNumber = Number(draft.sortOrder || "0");
-
-    if (!nameEn) {
-      setSaving((prev) => ({
-        ...prev,
-        error: isZh
-          ? "选项英文名称不能为空。"
-          : "Option English name is required.",
-      }));
-      return;
-    }
-
-    setSaving((prev) => ({ ...prev, error: null }));
-    setSavingOptionChoiceId("new");
-
-    try {
-      await apiFetch(`/admin/menu/option-groups/${groupId}/options`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nameEn,
-          nameZh: nameZh || undefined,
-          priceDeltaCents: Math.round(
-            Number.isNaN(priceDeltaNumber) ? 0 : priceDeltaNumber * 100,
-          ),
-          sortOrder: Number.isNaN(sortOrderNumber) ? 0 : sortOrderNumber,
-        }),
-      });
-
-      setNewOptionChoiceDrafts((prev) => {
-        const next = { ...prev };
-        delete next[groupId];
-        return next;
-      });
-      await reloadMenu();
-    } catch (err) {
-      console.error(err);
-      setSaving((prev) => ({
-        ...prev,
-        error: isZh
-          ? "新建选项失败，请稍后重试。"
-          : "Failed to create option. Please try again.",
-      }));
-    } finally {
-      setSavingOptionChoiceId(null);
-    }
-  }
-
-  async function handleSaveOptionChoice(
-    categoryId: string,
-    itemId: string,
-    groupId: string,
-    choice: MenuOptionChoice,
-  ) {
-    setSaving((prev) => ({ ...prev, error: null }));
-    setSavingOptionChoiceId(choice.id);
-
-    try {
-      await apiFetch(`/admin/menu/options/${choice.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nameEn: choice.nameEn,
-          nameZh: choice.nameZh || undefined,
-          priceDeltaCents: choice.priceDeltaCents,
-          sortOrder: choice.sortOrder,
-          isAvailable: choice.isAvailable,
-        }),
-      });
-
-      await reloadMenu();
-    } catch (err) {
-      console.error(err);
-      setSaving((prev) => ({
-        ...prev,
-        error: isZh
-          ? "保存选项失败，请稍后重试。"
-          : "Failed to save option. Please try again.",
-      }));
-    } finally {
-      setSavingOptionChoiceId(null);
-    }
-  }
-
-  async function handleDeleteOptionChoice(
-    categoryId: string,
-    itemId: string,
-    groupId: string,
-    choiceId: string,
-  ) {
-    if (
-      !window.confirm(
-        isZh ? "确定要删除这个选项吗？" : "Delete this option permanently?",
-      )
-    ) {
-      return;
-    }
-
-    setDeletingOptionChoiceId(choiceId);
-    setSaving((prev) => ({ ...prev, error: null }));
-
-    try {
-      await apiFetch(`/admin/menu/options/${choiceId}`, {
-        method: "DELETE",
-      });
-
-      await reloadMenu();
-    } catch (err) {
-      console.error(err);
-      setSaving((prev) => ({
-        ...prev,
-        error: isZh
-          ? "删除选项失败，请稍后重试。"
-          : "Failed to delete option. Please try again.",
-      }));
-    } finally {
-      setDeletingOptionChoiceId(null);
     }
   }
 
@@ -855,6 +585,7 @@ await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
         ? null
         : safeNullableNum(draft.maxSelect);
     const sortOrder = safeNum(draft.sortOrder, tpl.sortOrder ?? 0);
+    const isRequired = !!draft.isRequired;
 
     setBindingItemId(itemId);
     setSaving((prev) => ({ ...prev, error: null }));
@@ -1049,8 +780,9 @@ await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
         ) : (
           <div className="space-y-4">
             {categories.map((cat) => {
+              const catAny = cat as any;
               const localizedCatName =
-                isZh && cat.nameZh ? cat.nameZh : cat.nameEn;
+                isZh && catAny.nameZh ? catAny.nameZh : cat.nameEn;
 
               return (
                 <div key={cat.id} className="rounded-2xl border p-4 shadow-sm">
@@ -1069,16 +801,17 @@ await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
 
                   {/* 分类内菜品列表 */}
                   <div className="mt-4 space-y-3">
-                    {cat.items.map((rawItem) => {
-                      const item = rawItem as MenuItemWithOptions;
+                    {cat.items.map((item) => {
+                      const itemAny = item as any;
+
                       const localizedName =
                         isZh && item.nameZh ? item.nameZh : item.nameEn;
 
                       const ingredientsPreview = (() => {
                         const text =
-                          isZh && item.ingredientsZh
-                            ? item.ingredientsZh
-                            : item.ingredientsEn ?? "";
+                          isZh && itemAny.ingredientsZh
+                            ? (itemAny.ingredientsZh as string)
+                            : (itemAny.ingredientsEn as string) ?? "";
                         if (!text) return "";
                         if (text.length <= 80) return text;
                         return `${text.slice(0, 80)}…`;
@@ -1086,7 +819,6 @@ await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
 
                       const priceDisplay = (item.basePriceCents / 100).toFixed(2);
                       const isExpanded = !!expandedItems[item.id];
-                      const optionGroups = item.optionGroups ?? [];
 
                       const boundGroups = getBoundGroupsFromItem(item);
 
@@ -1388,13 +1120,13 @@ await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
                                         ? "例如：Wheat noodles, chili oil, garlic..."
                                         : "e.g., Wheat noodles, chili oil, garlic..."
                                     }
-                                    value={item.ingredientsEn ?? ""}
+                                    value={itemAny.ingredientsEn ?? ""}
                                     onChange={(e) =>
                                       updateItemField(
                                         cat.id,
                                         item.id,
-                                        "ingredientsEn",
-                                        e.target.value,
+                                        "ingredientsEn" as any,
+                                        e.target.value as any,
                                       )
                                     }
                                   />
@@ -1411,13 +1143,13 @@ await apiFetch(`/admin/menu/items/${itemId}/option-groups`, {
                                         ? "例如：凉皮、辣椒油、大蒜、芝麻酱..."
                                         : "例如：凉皮、辣椒油、大蒜、芝麻酱..."
                                     }
-                                    value={item.ingredientsZh ?? ""}
+                                    value={itemAny.ingredientsZh ?? ""}
                                     onChange={(e) =>
                                       updateItemField(
                                         cat.id,
                                         item.id,
-                                        "ingredientsZh",
-                                        e.target.value,
+                                        "ingredientsZh" as any,
+                                        e.target.value as any,
                                       )
                                     }
                                   />
@@ -1670,8 +1402,8 @@ onChange={(e) => {
                               <div className="mt-2 flex items-center justify-between">
                                 <p className="text-[11px] text-slate-500">
                                   {isZh
-                                    ? "保存后，顾客菜单页会实时使用最新的图片、配料说明以及选项组。"
-                                    : "After saving, the customer menu will use the updated image, ingredients, and options."}
+                                    ? "保存后，顾客菜单页会实时使用最新的图片与配料说明。"
+                                    : "After saving, the customer menu will use the updated image and ingredients."}
                                 </p>
                                 <button
                                   type="button"
