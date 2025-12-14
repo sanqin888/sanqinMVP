@@ -502,8 +502,9 @@ export function buildLocalizedMenuFromDb(
           typeof i.stableId === "string" && i.stableId ? i.stableId : null;
 
         if (!stableId) {
+          const dbId = "id" in i ? i.id : "unknown";
           throw new Error(
-            `[menu] missing stableId for item, dbId=${i.id ?? "unknown"}`,
+            `[menu] missing stableId for item, dbId=${dbId}`,
           );
         }
 
