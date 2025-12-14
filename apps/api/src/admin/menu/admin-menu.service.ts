@@ -533,26 +533,16 @@ export class AdminMenuService {
     };
   }
 
-  async updateCategory(
-    id: string,
-    dto: UpdateCategoryInput,
-  ): Promise<MenuCategoryDto> {
+async updateCategory(id: string, dto: UpdateCategoryInput): Promise<MenuCategoryDto> {
     const data: Prisma.MenuCategoryUpdateInput = {};
 
-    if (dto.nameEn !== undefined)
-      data.nameEn = normalizeNameEn(dto.nameEn, 'nameEn');
-    if (dto.nameZh !== undefined)
-      data.nameZh = normalizeOptionalString(dto.nameZh);
-    if (dto.sortOrder !== undefined)
-      data.sortOrder = asFiniteInt(dto.sortOrder, 0);
+    if (dto.nameEn !== undefined) data.nameEn = normalizeNameEn(dto.nameEn, 'nameEn');
+    if (dto.nameZh !== undefined) data.nameZh = normalizeOptionalString(dto.nameZh);
+    if (dto.sortOrder !== undefined) data.sortOrder = asFiniteInt(dto.sortOrder, 0);
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
 
-    try {
-      const updated = await this.prisma.menuOptionGroupTemplate.update({
-        where: { id },
-        data,
-        include: { options: { orderBy: { sortOrder: 'asc' } } },
-      });
+    if (Object.keys(data).length === 0) {
+      const existing = await this.prisma.menuCategory.findUnique({ where: { id } });
       if (!existing) throw new NotFoundException('category not found');
       return {
         id: existing.id,
@@ -562,8 +552,20 @@ export class AdminMenuService {
         isActive: existing.isActive,
       };
     }
-  }
 
+    try {
+      const updated = await this.prisma.menuCategory.update({ where: { id }, data });
+      return {
+        id: updated.id,
+        nameEn: updated.nameEn,
+        nameZh: updated.nameZh ?? null,
+        sortOrder: updated.sortOrder,
+        isActive: updated.isActive,
+      };
+    } catch {
+      throw new NotFoundException('category not found');
+    }
+  }
   async setOptionGroupTemplateAvailability(
     id: string,
     mode: AvailabilityMode,
