@@ -547,9 +547,11 @@ export class AdminMenuService {
       data.sortOrder = asFiniteInt(dto.sortOrder, 0);
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
 
-    if (Object.keys(data).length === 0) {
-      const existing = await this.prisma.menuCategory.findUnique({
+    try {
+      const updated = await this.prisma.menuOptionGroupTemplate.update({
         where: { id },
+        data,
+        include: { options: { orderBy: { sortOrder: 'asc' } } },
       });
       if (!existing) throw new NotFoundException('category not found');
       return {
@@ -560,11 +562,26 @@ export class AdminMenuService {
         isActive: existing.isActive,
       };
     }
+  }
+
+  async setOptionGroupTemplateAvailability(
+    id: string,
+    mode: AvailabilityMode,
+  ): Promise<OptionGroupTemplateDto> {
+    const now = new Date();
+
+    const data: Prisma.MenuOptionGroupTemplateUpdateInput =
+      mode === 'ON'
+        ? { isAvailable: true, tempUnavailableUntil: null }
+        : mode === 'PERMANENT_OFF'
+          ? { isAvailable: false, tempUnavailableUntil: null }
+          : { isAvailable: true, tempUnavailableUntil: endOfTodayLocal(now) };
 
     try {
       const updated = await this.prisma.menuCategory.update({
         where: { id },
         data,
+        include: { options: { orderBy: { sortOrder: 'asc' } } },
       });
       return {
         id: updated.id,
@@ -574,7 +591,7 @@ export class AdminMenuService {
         isActive: updated.isActive,
       };
     } catch {
-      throw new NotFoundException('category not found');
+      throw new NotFoundException('option group template not found');
     }
   }
 
@@ -586,17 +603,16 @@ export class AdminMenuService {
     const stableId = normalizeNameEn(dto.stableId, 'stableId');
     const nameEn = normalizeNameEn(dto.nameEn, 'nameEn');
 
-    if (
-      typeof dto.basePriceCents !== 'number' ||
-      !Number.isFinite(dto.basePriceCents)
-    ) {
-      throw new BadRequestException('basePriceCents must be a finite number');
-    }
+    const priceDeltaCents =
+      typeof dto.priceDeltaCents === 'number' && Number.isFinite(dto.priceDeltaCents)
+        ? Math.round(dto.priceDeltaCents)
+        : 0;
+
+    const sortOrder = asFiniteInt(dto.sortOrder, 0);
 
     const created = await this.prisma.menuItem.create({
       data: {
-        categoryId: dto.categoryId,
-        stableId,
+        templateGroupId: dto.templateGroupId,
         nameEn,
         nameZh: normalizeOptionalString(dto.nameZh),
         imageUrl: normalizeOptionalString(dto.imageUrl),
@@ -702,7 +718,7 @@ export class AdminMenuService {
         tempUnavailableUntil: toIsoOrNull(updated.tempUnavailableUntil),
       };
     } catch {
-      throw new NotFoundException('item not found');
+      throw new NotFoundException('category not found');
     }
   }
 
@@ -921,7 +937,9 @@ export class AdminMenuService {
         sortOrder: existing.sortOrder,
       };
     }
+  }
 
+  async deleteTemplateOption(id: string): Promise<void> {
     try {
       const updated = await this.prisma.menuOptionTemplateChoice.update({
         where: { id },
