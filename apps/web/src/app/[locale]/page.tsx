@@ -327,7 +327,7 @@ export default function LocalOrderPage() {
 <div className="mt-5 flex items-center justify-end">
   <button
     type="button"
-    onClick={() => addItem(item.id)}
+    onClick={() => addItem(item.stableId)}
     className="inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
   >
     {strings.addToCart}
