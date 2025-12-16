@@ -140,7 +140,6 @@ function makePosClientRequestId(): string {
   // fallback：Date.now()（必要时可再拼上 Math.random()）
   try {
     if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-      // @ts-expect-error: randomUUID is not in older TS lib targets
       return `POS-${crypto.randomUUID()}`;
     }
   } catch {
