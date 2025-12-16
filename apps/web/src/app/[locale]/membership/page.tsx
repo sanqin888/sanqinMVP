@@ -462,7 +462,7 @@ export default function MembershipHomePage() {
   // ⭐ 新增：如果注册时勾选了“营销邮件”，第一次进入会员中心时自动帮他开关一次
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (!member?.id) return;
+    if (!member?.userId) return;
     if (marketingOptIn === null) return;      // 还没从后端拿到数据
     if (marketingSaving) return;             // 正在提交就先不动
 
@@ -481,7 +481,7 @@ export default function MembershipHomePage() {
         e,
       );
     }
-  }, [member?.id, marketingOptIn, marketingSaving, handleMarketingToggle]);
+  }, [member?.userId, marketingOptIn, marketingSaving, handleMarketingToggle]);
 
   const isLoading = status === 'loading' || summaryLoading;
 
