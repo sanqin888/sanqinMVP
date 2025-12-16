@@ -292,7 +292,7 @@ export default function MembershipHomePage() {
 
   // 拉取优惠券：会员信息到手后再查询
   useEffect(() => {
-    if (!member?.id) {
+    if (!member?.userId) {
       setCoupons([]);
       setCouponLoading(false);
       setCouponError(null);
@@ -345,7 +345,7 @@ export default function MembershipHomePage() {
 
     void loadCoupons();
     return () => controller.abort();
-  }, [member?.id, isZh]);
+  }, [member?.userId, isZh]);
 
   // 拉取积分流水：首次切到“积分”tab 且已登录时加载一次
   useEffect(() => {
@@ -462,7 +462,7 @@ export default function MembershipHomePage() {
   // ⭐ 新增：如果注册时勾选了“营销邮件”，第一次进入会员中心时自动帮他开关一次
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (!member?.id) return;
+    if (!member?.userId) return;
     if (marketingOptIn === null) return;      // 还没从后端拿到数据
     if (marketingSaving) return;             // 正在提交就先不动
 
@@ -481,7 +481,7 @@ export default function MembershipHomePage() {
         e,
       );
     }
-  }, [member?.id, marketingOptIn, marketingSaving, handleMarketingToggle]);
+  }, [member?.userId, marketingOptIn, marketingSaving, handleMarketingToggle]);
 
   const isLoading = status === 'loading' || summaryLoading;
 
@@ -731,7 +731,7 @@ function OverviewSection({
             <p>
               {isZh ? '订单号：' : 'Order ID: '}
               <span className="font-mono text-slate-900">
-                {latestorder.orderNumber}
+                {latestOrder.orderNumber}
               </span>
             </p>
             <p>
@@ -750,7 +750,7 @@ function OverviewSection({
             </p>
             <p className="mt-2">
               <Link
-                href={`/${locale}/order/${latestorder.orderNumber}`}
+                href={`/${locale}/order/${latestOrder.orderNumber}`}
                 className="text-[11px] font-medium text-amber-600 hover:underline"
               >
                 {isZh ? '查看订单详情' : 'View order details'}
