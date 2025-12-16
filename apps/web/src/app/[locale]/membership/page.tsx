@@ -731,7 +731,7 @@ function OverviewSection({
             <p>
               {isZh ? '订单号：' : 'Order ID: '}
               <span className="font-mono text-slate-900">
-                {latestorder.orderNumber}
+                {latestOrder.orderNumber}
               </span>
             </p>
             <p>
@@ -750,7 +750,7 @@ function OverviewSection({
             </p>
             <p className="mt-2">
               <Link
-                href={`/${locale}/order/${latestorder.orderNumber}`}
+                href={`/${locale}/order/${latestOrder.orderNumber}`}
                 className="text-[11px] font-medium text-amber-600 hover:underline"
               >
                 {isZh ? '查看订单详情' : 'View order details'}
