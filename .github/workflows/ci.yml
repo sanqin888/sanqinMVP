@@ -17,17 +17,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ✅ 先装 pnpm（不要写 version，避免与 packageManager 冲突）
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      # ✅ 再装 Node，并启用 pnpm cache（此时 pnpm 已存在）
       - name: Setup Node (pnpm cache)
         uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "pnpm"
           cache-dependency-path: pnpm-lock.yaml
-
-      - name: Enable Corepack (use packageManager pnpm@9.0.0)
-        run: |
-          corepack enable
-          corepack prepare pnpm@9.0.0 --activate
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --prefer-offline
