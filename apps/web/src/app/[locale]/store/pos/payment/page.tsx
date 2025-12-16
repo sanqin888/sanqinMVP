@@ -203,6 +203,12 @@ export default function StorePosPaymentPage() {
     setError(null);
     setSubmitting(true);
 
+    if (!snapshot || snapshot.items.length === 0) {
+      setError(t.noOrder);
+      setSubmitting(false);
+      return;
+    }
+
     try {
       const itemsPayload = snapshot.items.map((item) => ({
         productStableId: item.stableId,
@@ -215,20 +221,18 @@ export default function StorePosPaymentPage() {
         nameZh: item.nameZh,
       }));
 
-const clientRequestId = makePosClientRequestId();
+      const body = {
+        channel: "in_store" as const,
+        fulfillmentType: fulfillment,
+        subtotalCents: snapshot.subtotalCents,
+        taxCents: snapshot.taxCents,
+        totalCents: snapshot.totalCents,
+        paymentMethod,
+        items: itemsPayload,
 
-const body = {
-  channel: "in_store" as const,
-  fulfillmentType: fulfillment,
-  subtotalCents: snapshot.subtotalCents,
-  taxCents: snapshot.taxCents,
-  totalCents: snapshot.totalCents,
-  paymentMethod,
-  items: itemsPayload,
-
-  // ✅ 更可靠的幂等 key / 请求追踪 id
-  clientRequestId,
-};
+        // ✅ 更可靠的幂等 key / 请求追踪 id
+        clientRequestId,
+      };
 
       // 👉 调试用：你可以先打开这一行看看真实发出去是什么
       // console.log("POS create order body:", body);
@@ -242,23 +246,23 @@ const body = {
       const orderNumber = order.clientRequestId ?? clientRequestId;
       const pickupCode = order.pickupCode ?? null;
 
-// ✅ 打印：发送给本地打印服务（无弹窗）
-if (typeof window !== "undefined") {
-  void sendPosPrintRequest({
-    locale,
-    orderNumber,
-    pickupCode,
-    fulfillment,
-    paymentMethod,
-    snapshot,
-  });
+      // ✅ 打印：发送给本地打印服务（无弹窗）
+      if (typeof window !== "undefined") {
+        void sendPosPrintRequest({
+          locale,
+          orderNumber,
+          pickupCode,
+          fulfillment,
+          paymentMethod,
+          snapshot,
+        });
 
-  try {
-    window.localStorage.removeItem(POS_DISPLAY_STORAGE_KEY);
-  } catch {
-    // ignore
-  }
-}
+        try {
+          window.localStorage.removeItem(POS_DISPLAY_STORAGE_KEY);
+        } catch {
+          // ignore
+        }
+      }
 
       setSuccessInfo({
         orderNumber,
@@ -271,7 +275,6 @@ if (typeof window !== "undefined") {
       setSubmitting(false);
     }
   };
-    setPosClientRequestId(null);
 
   const handleCloseSuccess = () => {
     setSuccessInfo(null);
