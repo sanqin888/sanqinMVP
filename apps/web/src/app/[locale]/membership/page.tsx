@@ -292,7 +292,7 @@ export default function MembershipHomePage() {
 
   // 拉取优惠券：会员信息到手后再查询
   useEffect(() => {
-    if (!member?.id) {
+    if (!member?.userId) {
       setCoupons([]);
       setCouponLoading(false);
       setCouponError(null);
@@ -345,7 +345,7 @@ export default function MembershipHomePage() {
 
     void loadCoupons();
     return () => controller.abort();
-  }, [member?.id, isZh]);
+  }, [member?.userId, isZh]);
 
   // 拉取积分流水：首次切到“积分”tab 且已登录时加载一次
   useEffect(() => {
