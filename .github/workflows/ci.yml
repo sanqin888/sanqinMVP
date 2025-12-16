@@ -15,43 +15,29 @@ jobs:
         app: [web, api]
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # 安装 pnpm
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Setup Node
+      - name: Setup Node (pnpm cache)
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'pnpm' # 使用 pnpm 缓存
-
-          run: corepack enable
-          
-          # 明确指定缓存依赖路径，避免指错文件
+          node-version: "20"
+          cache: "pnpm"
           cache-dependency-path: pnpm-lock.yaml
 
-      # 安装依赖 (pnpm 会自动处理 workspace)
-      - name: Install Dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Enable Corepack (use packageManager pnpm@9.0.0)
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.0.0 --activate
 
-      # 生成 Prisma Client (API 需要)
-      # 即使是 matrix 构建 web，最好也生成一下，防止共享库依赖问题，或者在 api 步骤中单独生成
-      - name: Generate Prisma Client
-        if: matrix.app == 'api'
-        working-directory: apps/api
-        run: pnpm prisma generate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
 
       - name: Lint (${{ matrix.app }})
-        working-directory: apps/${{ matrix.app }}
-        run: pnpm run --if-present lint 
+        run: pnpm --filter ${{ matrix.app }} lint
 
       - name: Build (${{ matrix.app }})
-        working-directory: apps/${{ matrix.app }}
-        run: pnpm run --if-present build 
+        run: pnpm --filter ${{ matrix.app }} build
 
-      - name: Test (${{ matrix.app }})
-        working-directory: apps/${{ matrix.app }}
-        run: pnpm --if-present test 
+      - name: Test (api only)
+        if: matrix.app == 'api'
+        run: pnpm --filter api test
