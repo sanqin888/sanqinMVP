@@ -46,12 +46,12 @@ jobs:
 
       - name: Lint (${{ matrix.app }})
         working-directory: apps/${{ matrix.app }}
-        run: pnpm run lint --if-present
+        run: pnpm run --if-present lint 
 
       - name: Build (${{ matrix.app }})
         working-directory: apps/${{ matrix.app }}
-        run: pnpm run build --if-present
+        run: pnpm run --if-present build 
 
       - name: Test (${{ matrix.app }})
         working-directory: apps/${{ matrix.app }}
-        run: pnpm test --if-present
+        run: pnpm --if-present test 
