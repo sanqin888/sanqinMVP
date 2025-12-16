@@ -11,7 +11,7 @@ import type {
 import { TAX_RATE, buildLocalizedMenuFromDb } from "@/lib/order/shared";
 import { apiFetch } from "@/lib/api-client";
 import {
-  writePosDisplaySnapshot,
+  POS_DISPLAY_STORAGE_KEY,
   clearPosDisplaySnapshot,
   type PosDisplaySnapshot,
 } from "@/lib/pos-display";
