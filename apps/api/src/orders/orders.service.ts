@@ -299,41 +299,42 @@ export class OrdersService {
               deliveryEtaMaxMinutes: deliveryMeta.etaRange[1],
             }
           : {}),
-items: {
-  create: (Array.isArray(dto.items) ? dto.items : []).map(
-    (i): Prisma.OrderItemCreateWithoutOrderInput => {
-      const unitPriceCents =
-        typeof i.unitPrice === 'number'
-          ? Math.round(i.unitPrice * 100)
-          : undefined;
+        items: {
+          create: (Array.isArray(dto.items) ? dto.items : []).map(
+            (i): Prisma.OrderItemCreateWithoutOrderInput => {
+              const unitPriceCents =
+                typeof i.unitPrice === 'number'
+                  ? Math.round(i.unitPrice * 100)
+                  : undefined;
 
-      const trimmedDisplay =
-        typeof i.displayName === 'string' ? i.displayName.trim() : '';
-      const trimmedEn =
-        typeof i.nameEn === 'string' ? i.nameEn.trim() : '';
-      const trimmedZh =
-        typeof i.nameZh === 'string' ? i.nameZh.trim() : '';
+              const trimmedDisplay =
+                typeof i.displayName === 'string' ? i.displayName.trim() : '';
+              const trimmedEn =
+                typeof i.nameEn === 'string' ? i.nameEn.trim() : '';
+              const trimmedZh =
+                typeof i.nameZh === 'string' ? i.nameZh.trim() : '';
 
-      const displayName =
-        trimmedDisplay || trimmedEn || trimmedZh || i.productStableId;
+              const displayName =
+                trimmedDisplay || trimmedEn || trimmedZh || i.productStableId;
 
-      const base: Prisma.OrderItemCreateWithoutOrderInput = {
-        productStableId: i.productStableId,
-        qty: i.qty,
-        displayName,
-      };
+              const base: Prisma.OrderItemCreateWithoutOrderInput = {
+                productStableId: i.productStableId,
+                qty: i.qty,
+                displayName,
+              };
 
-      if (trimmedEn) base.nameEn = trimmedEn;
-      if (trimmedZh) base.nameZh = trimmedZh;
-      if (typeof unitPriceCents === 'number') base.unitPriceCents = unitPriceCents;
-      if (typeof i.options !== 'undefined') {
-        base.optionsJson = i.options as Prisma.InputJsonValue;
-      }
+              if (trimmedEn) base.nameEn = trimmedEn;
+              if (trimmedZh) base.nameZh = trimmedZh;
+              if (typeof unitPriceCents === 'number')
+                base.unitPriceCents = unitPriceCents;
+              if (typeof i.options !== 'undefined') {
+                base.optionsJson = i.options as Prisma.InputJsonValue;
+              }
 
-      return base;
-    },
-  ),
-},
+              return base;
+            },
+          ),
+        },
       },
       include: { items: true },
     })) as OrderWithItems;
@@ -511,7 +512,11 @@ items: {
       items: meta.items.map((item) => ({
         productStableId: item.productStableId,
         qty: item.quantity,
-        displayName: item.displayName ?? item.nameEn ?? item.nameZh ?? item.id,
+        displayName:
+          item.displayName ??
+          item.nameEn ??
+          item.nameZh ??
+          item.productStableId,
         nameEn: item.nameEn,
         nameZh: item.nameZh,
         // 单价从“分”还原成 CAD，create() 再 ×100 存 unitPriceCents
@@ -666,57 +671,57 @@ items: {
 
     const loyaltyRedeemCents = order.loyaltyRedeemCents ?? null;
     const couponDiscountCents = order.couponDiscountCents ?? null;
-    const subtotalAfterDiscountCents =
-      order.subtotalAfterDiscountCents ?? null;
+    const subtotalAfterDiscountCents = order.subtotalAfterDiscountCents ?? null;
 
     const discountCents =
       (order.loyaltyRedeemCents ?? 0) + (order.couponDiscountCents ?? 0);
 
-const lineItems = order.items.map((item) => {
-  const unitPriceCents = item.unitPriceCents ?? 0;
-  const quantity = item.qty;
-  const totalPriceCents = unitPriceCents * quantity;
+    const lineItems = order.items.map((item) => {
+      const unitPriceCents = item.unitPriceCents ?? 0;
+      const quantity = item.qty;
+      const totalPriceCents = unitPriceCents * quantity;
 
-  const fallbackName = item.productStableId;
-  const trimmedDisplay =
-    typeof item.displayName === 'string' ? item.displayName.trim() : '';
-  const trimmedEn =
-    typeof item.nameEn === 'string' ? item.nameEn.trim() : '';
-  const trimmedZh =
-    typeof item.nameZh === 'string' ? item.nameZh.trim() : '';
+      const fallbackName = item.productStableId;
+      const trimmedDisplay =
+        typeof item.displayName === 'string' ? item.displayName.trim() : '';
+      const trimmedEn =
+        typeof item.nameEn === 'string' ? item.nameEn.trim() : '';
+      const trimmedZh =
+        typeof item.nameZh === 'string' ? item.nameZh.trim() : '';
 
-  const display = trimmedDisplay || trimmedEn || trimmedZh || fallbackName;
+      const display = trimmedDisplay || trimmedEn || trimmedZh || fallbackName;
 
-  return {
-    productStableId: item.productStableId,
-    name: display,
-    nameEn: item.nameEn ?? null,
-    nameZh: item.nameZh ?? null,
-    quantity,
-    unitPriceCents,
-    totalPriceCents,
-    optionsJson: item.optionsJson ?? undefined,
-  };
-});
+      return {
+        productStableId: item.productStableId,
+        name: display,
+        nameEn: item.nameEn ?? null,
+        nameZh: item.nameZh ?? null,
+        quantity,
+        unitPriceCents,
+        totalPriceCents,
+        optionsJson: item.optionsJson ?? undefined,
+      };
+    });
 
-return {
-  orderId: order.id,
-  clientRequestId: order.clientRequestId,
-  orderNumber: order.clientRequestId ?? order.id,
-  currency: 'CAD',
-  subtotalCents,
-  taxCents,
-  deliveryFeeCents,
-  discountCents,
-  totalCents: order.totalCents,
+    return {
+      orderId: order.id,
+      clientRequestId: order.clientRequestId,
+      orderNumber: order.clientRequestId ?? order.id,
+      currency: 'CAD',
+      subtotalCents,
+      taxCents,
+      deliveryFeeCents,
+      discountCents,
+      totalCents: order.totalCents,
 
-  loyaltyRedeemCents: order.loyaltyRedeemCents ?? null,
-  couponDiscountCents: order.couponDiscountCents ?? null,
-  subtotalAfterDiscountCents: order.subtotalAfterDiscountCents ?? null,
+      loyaltyRedeemCents,
+      couponDiscountCents,
+      subtotalAfterDiscountCents,
 
-  lineItems,
-};
-}
+      lineItems,
+    };
+  }
+
   /** 允许的状态迁移（⚠️ ready 不可退款） */
   async updateStatus(id: string, next: OrderStatus): Promise<OrderWithItems> {
     const current = await this.prisma.order.findUnique({

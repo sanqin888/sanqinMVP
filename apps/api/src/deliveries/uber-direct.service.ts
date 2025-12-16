@@ -1,6 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
-import { isAxiosError } from 'axios';
+type AxiosErrorLike = {
+  isAxiosError?: boolean;
+  response?: {
+    status?: number;
+    data?: unknown;
+  };
+  message?: unknown;
+  stack?: unknown;
+};
 
 interface UberDirectOAuthResponse {
   access_token?: string;
@@ -535,49 +543,66 @@ export class UberDirectService {
       .join(', ');
   }
 
-  private wrapUberError(error: unknown): Error {
-    if (isAxiosError(error)) {
-      const status = error.response?.status;
-      const baseData: unknown = error.response?.data;
+  private toAxiosError(error: unknown): AxiosErrorLike | null {
+    if (
+      error &&
+      typeof error === 'object' &&
+      'isAxiosError' in error &&
+      (error as { isAxiosError?: unknown }).isAxiosError === true
+    ) {
+      return error as AxiosErrorLike;
+    }
+    return null;
+  }
 
-      let bodySnippet = '[no response body]';
-      if (typeof baseData !== 'undefined') {
-        try {
-          bodySnippet = JSON.stringify(baseData);
-        } catch {
-          bodySnippet = '[unserializable response body]';
-        }
+  private wrapUberError(error: unknown): Error {
+    const axiosError = this.toAxiosError(error);
+    if (!axiosError) {
+      if (error instanceof Error) {
+        this.logger.error(
+          `[UberDirectService] Non-Axios error while calling Uber Direct: ${error.message}`,
+          error.stack,
+        );
+        return error;
       }
 
-      const uberMessage = this.extractUberMessage(baseData);
-      const message = uberMessage ?? error.message;
-
       this.logger.error(
-        `[UberDirectService] Uber Direct API error${
-          status ? ` (${status})` : ''
-        }: ${message}; response body=${bodySnippet}`,
-        error.stack,
+        `[UberDirectService] Unknown error type while calling Uber Direct: ${String(
+          error,
+        )}`,
       );
-
-      return new Error(
-        `Uber Direct API error${status ? ` (${status})` : ''}: ${message}`,
-      );
+      return new Error(String(error));
     }
 
-    if (error instanceof Error) {
-      this.logger.error(
-        `[UberDirectService] Non-Axios error while calling Uber Direct: ${error.message}`,
-        error.stack,
-      );
-      return error;
+    const status = axiosError.response?.status;
+    const baseData: unknown = axiosError.response?.data;
+
+    let bodySnippet = '[no response body]';
+    if (typeof baseData !== 'undefined') {
+      try {
+        bodySnippet = JSON.stringify(baseData);
+      } catch {
+        bodySnippet = '[unserializable response body]';
+      }
     }
+
+    const uberMessage = this.extractUberMessage(baseData);
+    const fallbackMessage =
+      typeof axiosError.message === 'string'
+        ? axiosError.message
+        : 'Uber Direct API error';
+    const message = uberMessage ?? fallbackMessage;
 
     this.logger.error(
-      `[UberDirectService] Unknown error type while calling Uber Direct: ${String(
-        error,
-      )}`,
+      `[UberDirectService] Uber Direct API error${
+        status ? ` (${status})` : ''
+      }: ${message}; response body=${bodySnippet}`,
+      axiosError.stack,
     );
-    return new Error(String(error));
+
+    return new Error(
+      `Uber Direct API error${status ? ` (${status})` : ''}: ${message}`,
+    );
   }
 
   private extractUberMessage(data: unknown): string | undefined {

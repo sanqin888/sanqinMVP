@@ -366,8 +366,8 @@ export function buildOrderDtoFromMetadata(
     }),
   };
 
-  if (meta.coupon?.id) {
-    dto.couponId = meta.coupon.id;
+  if (meta.coupon?.couponId) {
+    dto.couponId = meta.coupon.couponId;
   }
 
   if (meta.fulfillment === 'delivery') {
