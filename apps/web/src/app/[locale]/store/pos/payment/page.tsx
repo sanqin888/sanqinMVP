@@ -314,7 +314,7 @@ export default function StorePosPaymentPage() {
               <ul className="space-y-2 max-h-72 overflow-auto pr-1">
                 {snapshot.items.map((item) => (
                   <li
-                    key={item.id}
+                    key={`${item.stableId}-${item.unitPriceCents}-${item.quantity}`}
 className="rounded-2xl bg-slate-900/60 px-3 py-2 flex items-center justify-between gap-2"
                   >
                     <div className="flex-1">
