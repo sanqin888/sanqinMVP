@@ -1159,7 +1159,7 @@ function ProfileSection({
             {isZh ? '会员编号（User ID）' : 'Member ID (User ID)'}
           </p>
           <p className="mt-0.5 break-all font-mono text-[11px] text-slate-900">
-            {user.id || (isZh ? '未识别' : 'Not available')}
+            {user.userId || (isZh ? '未识别' : 'Not available')}
           </p>
         </div>
 
