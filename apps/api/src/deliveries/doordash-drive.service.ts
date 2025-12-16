@@ -1,9 +1,14 @@
 // apps/api/src/deliveries/doordash-drive.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
 import { AxiosError, isAxiosError } from 'axios';
 import * as jwt from 'jsonwebtoken';
 import type { JwtHeader, SignOptions } from 'jsonwebtoken';
+
+/* =========================
+ * Types
+ * ========================= */
 
 interface DoorDashTokenConfig {
   developerId: string;
@@ -43,12 +48,6 @@ export interface DoorDashDeliveryOptions {
   destination: DoorDashDropoffDetails;
 }
 
-/**
- * DoorDash Drive 标准化后的返回结果：
- * - deliveryId: DoorDash 的 delivery id / external_delivery_id
- * - status / trackingUrl: 可选
- * - deliveryCostCents: 我们付给 DoorDash 的配送成本（单位：分），如果能解析到就带上
- */
 export interface DoorDashDeliveryResult {
   deliveryId: string;
   status?: string;
@@ -71,6 +70,10 @@ interface PickupConfig {
   longitude?: number;
 }
 
+/* =========================
+ * Utils
+ * ========================= */
+
 const trimToUndefined = (
   value: string | undefined | null,
 ): string | undefined => {
@@ -91,7 +94,7 @@ const compact = (source: Record<string, unknown>): Record<string, unknown> => {
   );
 };
 
-const splitName = (raw: string | undefined) => {
+const splitName = (raw?: string) => {
   const value = trimToUndefined(raw);
   if (!value) return { first: undefined, last: undefined };
   const parts = value.split(/\s+/);
@@ -99,6 +102,10 @@ const splitName = (raw: string | undefined) => {
   const last = parts.length > 0 ? parts.join(' ') : undefined;
   return { first, last };
 };
+
+/* =========================
+ * Service
+ * ========================= */
 
 @Injectable()
 export class DoorDashDriveService {
@@ -116,10 +123,10 @@ export class DoorDashDriveService {
     this.tokenConfig = {
       developerId: trimToUndefined(process.env.DOORDASH_DEVELOPER_ID) ?? '',
       keyId: trimToUndefined(process.env.DOORDASH_KEY_ID) ?? '',
-      signingSecret: trimToUndefined(process.env.DOORDASH_SIGNING_SECRET) ?? '',
+      signingSecret:
+        trimToUndefined(process.env.DOORDASH_SIGNING_SECRET) ?? '',
     };
 
-    // DoorDash 的取餐地址：优先用 DOORDASH_*，否则回退到 UBER_DIRECT_*
     const businessName =
       trimToUndefined(process.env.DOORDASH_STORE_BUSINESS_NAME) ??
       trimToUndefined(process.env.UBER_DIRECT_STORE_BUSINESS_NAME) ??
@@ -164,26 +171,6 @@ export class DoorDashDriveService {
       trimToUndefined(process.env.UBER_DIRECT_STORE_COUNTRY) ??
       'Canada';
 
-    const instructions =
-      trimToUndefined(process.env.DOORDASH_STORE_INSTRUCTIONS) ??
-      trimToUndefined(process.env.UBER_DIRECT_STORE_INSTRUCTIONS);
-
-    const latitude = (() => {
-      const raw =
-        trimToUndefined(process.env.DOORDASH_STORE_LATITUDE) ??
-        trimToUndefined(process.env.UBER_DIRECT_STORE_LATITUDE);
-      const parsed = raw ? Number(raw) : NaN;
-      return Number.isFinite(parsed) ? parsed : undefined;
-    })();
-
-    const longitude = (() => {
-      const raw =
-        trimToUndefined(process.env.DOORDASH_STORE_LONGITUDE) ??
-        trimToUndefined(process.env.UBER_DIRECT_STORE_LONGITUDE);
-      const parsed = raw ? Number(raw) : NaN;
-      return Number.isFinite(parsed) ? parsed : undefined;
-    })();
-
     this.pickup = {
       businessName,
       contactName,
@@ -194,349 +181,148 @@ export class DoorDashDriveService {
       province,
       postalCode,
       country,
-      instructions,
-      latitude,
-      longitude,
+      instructions: trimToUndefined(
+        process.env.DOORDASH_STORE_INSTRUCTIONS,
+      ),
+      latitude: Number.isFinite(Number(process.env.STORE_LATITUDE))
+        ? Number(process.env.STORE_LATITUDE)
+        : undefined,
+      longitude: Number.isFinite(Number(process.env.STORE_LONGITUDE))
+        ? Number(process.env.STORE_LONGITUDE)
+        : undefined,
     };
   }
 
-  private ensureConfigured(): void {
-    if (!this.tokenConfig.developerId) {
-      throw new Error('DOORDASH_DEVELOPER_ID is not configured');
-    }
-    if (!this.tokenConfig.keyId) {
-      throw new Error('DOORDASH_KEY_ID is not configured');
-    }
-    if (!this.tokenConfig.signingSecret) {
-      throw new Error('DOORDASH_SIGNING_SECRET is not configured');
-    }
-    if (!this.pickup.phone) {
-      throw new Error('DoorDash store phone is required');
-    }
-    if (
-      !this.pickup.addressLine1 ||
-      !this.pickup.city ||
-      !this.pickup.province ||
-      !this.pickup.postalCode
-    ) {
-      throw new Error('DoorDash store address fields are incomplete');
-    }
-  }
+  /* =========================
+   * Auth
+   * ========================= */
 
-  /** 按 DoorDash 文档生成 JWT：HS256 + header.dd-ver = 'DD-JWT-V1' */
-  private buildJwt(): string {
-    const now = Math.floor(Date.now() / 1000);
+  private createAuthToken(): string {
+    const header: JwtHeader = {
+      alg: 'HS256',
+      kid: this.tokenConfig.keyId,
+      typ: 'JWT',
+    };
 
     const payload = {
-      aud: 'doordash',
       iss: this.tokenConfig.developerId,
-      kid: this.tokenConfig.keyId,
-      exp: now + 5 * 60,
-      iat: now,
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + 300,
     };
 
-    // 扩展 JwtHeader，加一个任意 key 的索引签名，这样 'dd-ver' 不会报错
-    const header: JwtHeader & { [key: string]: unknown } = {
-      alg: 'HS256',
-      typ: 'JWT',
-      'dd-ver': 'DD-JWT-V1',
-    };
-
-    const options: SignOptions = {
-      algorithm: 'HS256',
-      header,
-    };
+    const options: SignOptions = { header };
 
     return jwt.sign(payload, this.tokenConfig.signingSecret, options);
   }
 
-  private formatAddress(parts: Array<string | undefined>): string {
-    return parts
-      .map((part) => (typeof part === 'string' ? part.trim() : ''))
-      .filter((part) => part.length > 0)
-      .join(', ');
-  }
+  /* =========================
+   * Public API
+   * ========================= */
 
-  /** 创建配送订单：订单确认后调用 */
   async createDelivery(
     options: DoorDashDeliveryOptions,
   ): Promise<DoorDashDeliveryResult> {
-    this.ensureConfigured();
+    const token = this.createAuthToken();
+    const pickupName = splitName(this.pickup.contactName);
 
-    const url = `${this.apiBase}/drive/v2/deliveries`;
-
-    const destination = options.destination;
-
-    const pickupAddress = this.formatAddress([
-      this.pickup.addressLine1,
-      this.pickup.addressLine2,
-      this.pickup.city,
-      this.pickup.province,
-      this.pickup.postalCode,
-      this.pickup.country,
-    ]);
-
-    const dropoffAddress = this.formatAddress([
-      destination.addressLine1,
-      destination.addressLine2,
-      destination.city,
-      destination.province,
-      destination.postalCode,
-      destination.country ?? 'Canada',
-    ]);
-
-    const reference =
-      trimToUndefined(options.reference) ??
-      trimToUndefined(options.pickupCode ?? undefined) ??
-      options.orderId;
-
-    const itemsPayload = options.items
-      .map((item) =>
-        compact({
-          name: trimToUndefined(item.name),
-          quantity: item.quantity,
-          price:
-            typeof item.priceCents === 'number'
-              ? Math.round(item.priceCents)
-              : undefined,
-        }),
-      )
-      .filter((entry) => Boolean(entry.name) && Number(entry.quantity) > 0);
-
-    const pickupNames = splitName(
-      this.pickup.contactName ?? this.pickup.businessName,
-    );
-    const dropoffNames = splitName(destination.name);
-
-    const body = compact({
+    const payload = compact({
       external_delivery_id: options.orderId,
-      pickup_address: pickupAddress,
       pickup_business_name: this.pickup.businessName,
       pickup_phone_number: this.pickup.phone,
+      pickup_address: this.pickup.addressLine1,
+      pickup_address_2: this.pickup.addressLine2,
+      pickup_city: this.pickup.city,
+      pickup_state: this.pickup.province,
+      pickup_zip_code: this.pickup.postalCode,
+      pickup_country: this.pickup.country,
       pickup_instructions: this.pickup.instructions,
-      pickup_reference_tag: reference,
-
-      dropoff_address: dropoffAddress,
-      dropoff_business_name: trimToUndefined(destination.company),
-      dropoff_phone_number: destination.phone,
-
-      order_value: Math.max(0, Math.round(options.totalCents)),
-      tip:
-        typeof destination.tipCents === 'number'
-          ? Math.max(0, Math.round(destination.tipCents))
-          : 0,
-
-      contactless_dropoff: true,
-      action_if_undeliverable: 'return_to_pickup',
-
-      items: itemsPayload.length > 0 ? itemsPayload : undefined,
-
-      pickup: compact({
-        contact: compact({
-          first_name: pickupNames.first ?? this.pickup.businessName,
-          last_name: pickupNames.last,
-          phone: this.pickup.phone,
-          company_name: this.pickup.businessName,
+      pickup_latitude: this.pickup.latitude,
+      pickup_longitude: this.pickup.longitude,
+      pickup_contact_first_name: pickupName.first,
+      pickup_contact_last_name: pickupName.last,
+      dropoff_contact_given_name: options.destination.name,
+      dropoff_phone_number: options.destination.phone,
+      dropoff_address: options.destination.addressLine1,
+      dropoff_address_2: options.destination.addressLine2,
+      dropoff_city: options.destination.city,
+      dropoff_state: options.destination.province,
+      dropoff_zip_code: options.destination.postalCode,
+      dropoff_country: options.destination.country ?? 'Canada',
+      dropoff_instructions: options.destination.instructions,
+      dropoff_latitude: options.destination.latitude,
+      dropoff_longitude: options.destination.longitude,
+      tip: typeof options.destination.tipCents === 'number'
+        ? options.destination.tipCents / 100
+        : undefined,
+      order_value: options.totalCents / 100,
+      items: options.items.map((item) =>
+        compact({
+          name: item.name,
+          quantity: item.quantity,
+          price: typeof item.priceCents === 'number'
+            ? item.priceCents / 100
+            : undefined,
         }),
-        location: compact({
-          address: pickupAddress,
-          address_line1: this.pickup.addressLine1,
-          address_line2: this.pickup.addressLine2,
-          city: this.pickup.city,
-          state: this.pickup.province,
-          postal_code: this.pickup.postalCode,
-          country: this.pickup.country,
-          latitude: this.pickup.latitude,
-          longitude: this.pickup.longitude,
-        }),
-      }),
-
-      dropoff: compact({
-        contact: compact({
-          first_name: dropoffNames.first,
-          last_name: dropoffNames.last,
-          phone: destination.phone,
-          company_name: trimToUndefined(destination.company),
-        }),
-        location: compact({
-          address: dropoffAddress,
-          address_line1: destination.addressLine1,
-          address_line2: destination.addressLine2,
-          city: destination.city,
-          state: destination.province,
-          postal_code: destination.postalCode,
-          country: destination.country ?? 'Canada',
-          latitude: destination.latitude,
-          longitude: destination.longitude,
-        }),
-        instructions:
-          trimToUndefined(destination.instructions) ??
-          trimToUndefined(destination.notes),
-      }),
+      ),
     });
 
-    // 只在 DEBUG_DOORDASH_DRIVE=1 时打印 payload
-    if (process.env.DEBUG_DOORDASH_DRIVE === '1') {
-      try {
-        this.logger.debug(
-          `[DoorDashDriveService] Creating delivery order=${options.orderId} url=${url} payload=${JSON.stringify(
-            body,
-          )}`,
-        );
-      } catch {
-        this.logger.debug(
-          `[DoorDashDriveService] Failed to stringify DoorDash payload for logging`,
-        );
-      }
-    }
-
     try {
-      const { data } = await this.http.axiosRef.post<Record<string, unknown>>(
-        url,
-        body,
-        {
-          headers: {
-            Authorization: `Bearer ${this.buildJwt()}`,
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
+      const res = await firstValueFrom(
+        this.http.post(
+          `${this.apiBase}/drive/v2/deliveries`,
+          payload,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
           },
-          timeout: 20000,
-        },
+        ),
       );
 
-      return this.normalizeResponse(data);
-    } catch (error) {
+      const data = res.data as Record<string, unknown>;
+
+      return {
+        deliveryId: String(data['external_delivery_id'] ?? ''),
+        status: typeof data['status'] === 'string' ? data['status'] : undefined,
+        trackingUrl:
+          typeof data['tracking_url'] === 'string'
+            ? data['tracking_url']
+            : undefined,
+        deliveryCostCents:
+          typeof data['fee'] === 'number'
+            ? Math.round(data['fee'] * 100)
+            : undefined,
+      };
+    } catch (err: unknown) {
+      this.handleAxiosError('createDelivery', err);
+      throw err;
+    }
+  }
+
+  /* =========================
+   * Error Handling
+   * ========================= */
+
+  private handleAxiosError(context: string, err: unknown): void {
+    if (isAxiosError(err)) {
+      const status = err.response?.status;
+      const data = err.response?.data;
       this.logger.error(
-        `[DoorDashDriveService] Failed to create DoorDash delivery for order=${options.orderId}`,
+        `[${context}] DoorDash API error`,
+        JSON.stringify({ status, data }),
       );
-      throw this.wrapDoorDashError(error);
-    }
-  }
-
-  private normalizeResponse(payload: unknown): DoorDashDeliveryResult {
-    if (!payload || typeof payload !== 'object') {
-      throw new Error('DoorDash response is not an object');
-    }
-    const body = payload as Record<string, unknown>;
-
-    const deliveryId = this.pickFirstString(body, [
-      'delivery_id',
-      'id',
-      'uuid',
-      'external_delivery_id',
-      'tracking_id',
-    ]);
-    if (!deliveryId) {
-      throw new Error('DoorDash response missing delivery id');
+      return;
     }
 
-    const status = this.pickFirstString(body, ['status', 'state']);
-    const trackingUrl = this.pickFirstString(body, [
-      'tracking_url',
-      'tracking_url_web',
-    ]);
-
-    const deliveryCostCents =
-      this.pickFirstNumber(body, [
-        'delivery_fee_cents',
-        'delivery_fee',
-        'fee',
-        'courier_fee',
-        'total_fee_cents',
-        'total_fee',
-      ]) ?? undefined;
-
-    return { deliveryId, status, trackingUrl, deliveryCostCents };
-  }
-
-  private pickFirstString(
-    source: Record<string, unknown>,
-    keys: string[],
-  ): string | undefined {
-    for (const key of keys) {
-      const value = source[key];
-      if (typeof value === 'string') {
-        const trimmed = value.trim();
-        if (trimmed.length > 0) return trimmed;
-      }
-    }
-    return undefined;
-  }
-
-  private pickFirstNumber(
-    source: Record<string, unknown>,
-    keys: string[],
-  ): number | undefined {
-    for (const key of keys) {
-      const value = source[key];
-      if (typeof value === 'number' && Number.isFinite(value)) {
-        return Math.round(value);
-      }
-      if (typeof value === 'string') {
-        const parsed = Number(value.trim());
-        if (Number.isFinite(parsed)) {
-          return Math.round(parsed);
-        }
-      }
-    }
-    return undefined;
-  }
-
-  private wrapDoorDashError(error: unknown): Error {
-    if (isAxiosError(error)) {
-      const axiosError = error as AxiosError;
-      const status = axiosError.response?.status;
-      const baseData: unknown = axiosError.response?.data;
-
-      let bodySnippet = '[no response body]';
-      if (typeof baseData !== 'undefined') {
-        try {
-          bodySnippet = JSON.stringify(baseData);
-        } catch {
-          bodySnippet = '[unserializable response body]';
-        }
-      }
-
-      // 尝试从 response body 里提取 message（类型安全，无 any）
-      let messageFromBody: string | undefined;
-      if (baseData && typeof baseData === 'object' && 'message' in baseData) {
-        const withMessage = baseData as { message?: unknown };
-        if (typeof withMessage.message === 'string') {
-          messageFromBody = withMessage.message;
-        }
-      }
-
-      const fallbackMessage =
-        typeof axiosError.message === 'string'
-          ? axiosError.message
-          : 'DoorDash API error';
-
-      const message = messageFromBody ?? fallbackMessage;
-
-      this.logger.error(
-        `[DoorDashDriveService] DoorDash API error${
-          status ? ` (${status})` : ''
-        }: ${message}; response body=${bodySnippet}`,
-        axiosError.stack,
-      );
-
-      return new Error(
-        `DoorDash API error${status ? ` (${status})` : ''}: ${message}`,
-      );
+    if (err instanceof Error) {
+      this.logger.error(`[${context}] ${err.message}`, err.stack);
+      return;
     }
 
-    if (error instanceof Error) {
-      this.logger.error(
-        `[DoorDashDriveService] Non-Axios error while calling DoorDash: ${error.message}`,
-        error.stack,
-      );
-      return error;
-    }
-
-    const fallback = String(error);
     this.logger.error(
-      `[DoorDashDriveService] Unknown error type while calling DoorDash: ${fallback}`,
+      `[${context}] Unknown error`,
+      JSON.stringify(err),
     );
-    return new Error(fallback);
   }
 }
