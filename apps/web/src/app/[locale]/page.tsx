@@ -267,7 +267,7 @@ export default function LocalOrderPage() {
               </p>
             ) : (
               menu.map((category) => (
-                <div key={category.id} className="space-y-4">
+                <div key={category.stableId} className="space-y-4">
                   <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
                     <div>
                       <h2 className="text-2xl font-semibold text-slate-900">
@@ -323,16 +323,6 @@ export default function LocalOrderPage() {
                             {strings.addToCart}
                           </button>
                         </div>
-
-<div className="mt-5 flex items-center justify-end">
-  <button
-    type="button"
-    onClick={() => addItem(item.stableId)}
-    className="inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
-  >
-    {strings.addToCart}
-  </button>
-</div>
                       </article>
                     ))}
                   </div>

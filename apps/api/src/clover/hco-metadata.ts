@@ -3,7 +3,8 @@ import { DeliveryProvider, DeliveryType } from '@prisma/client';
 import { CreateOrderDto } from '../orders/dto/create-order.dto';
 
 export type HostedCheckoutItem = {
-  id: string;
+  productStableId: string;
+
   nameEn?: string;
   nameZh?: string;
   displayName?: string;
@@ -52,7 +53,7 @@ export type HostedCheckoutMetadata = {
   loyaltyUserId?: string; // 会员 userId，用于把订单绑定到会员
 
   coupon?: {
-    id?: string;
+    couponId?: string;
     code?: string;
     title?: string;
     discountCents?: number;
@@ -139,11 +140,12 @@ const parseItems = (value: unknown): HostedCheckoutItem[] => {
     .map((entry) => {
       if (!isPlainObject(entry)) return null;
 
-      const id = toString(entry.id);
-      // 前端统一传 priceCents；为了安全，也兼容 price 字段，但一律当作“分”
+      const productStableId = toString(entry.productStableId);
+
       const priceCents =
         toOptionalCents(entry.priceCents) ?? toOptionalCents(entry.price);
-      if (!id || typeof priceCents !== 'number') return null;
+
+      if (!productStableId || typeof priceCents !== 'number') return null;
 
       const quantity = Math.max(1, Math.round(toNumber(entry.quantity) ?? 1));
       const notes = toString(entry.notes);
@@ -156,7 +158,7 @@ const parseItems = (value: unknown): HostedCheckoutItem[] => {
       const options = isPlainObject(rawOptions) ? rawOptions : undefined;
 
       const item: HostedCheckoutItem = {
-        id,
+        productStableId,
         priceCents,
         quantity,
       };
@@ -183,11 +185,11 @@ const parseCoupon = (
 ): HostedCheckoutMetadata['coupon'] | undefined => {
   if (!isPlainObject(value)) return undefined;
 
-  const id = toString(value.id);
-  if (!id) return undefined;
+  const couponId = toString(value.couponId);
+  if (!couponId) return undefined;
 
   return {
-    id,
+    couponId,
     code: toString(value.code),
     title: toString(value.title),
     discountCents: toOptionalCents(value.discountCents),
@@ -349,7 +351,7 @@ export function buildOrderDtoFromMetadata(
       })();
 
       return {
-        productId: item.id,
+        productStableId: item.productStableId,
         qty: item.quantity,
 
         // ⭐ 重要：CreateOrderDto.unitPrice 是“美元”，所以这里用 priceCents / 100
@@ -364,8 +366,8 @@ export function buildOrderDtoFromMetadata(
     }),
   };
 
-  if (meta.coupon?.id) {
-    dto.couponId = meta.coupon.id;
+  if (meta.coupon?.couponId) {
+    dto.couponId = meta.coupon.couponId;
   }
 
   if (meta.fulfillment === 'delivery') {

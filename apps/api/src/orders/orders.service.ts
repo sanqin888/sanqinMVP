@@ -307,7 +307,6 @@ export class OrdersService {
                   ? Math.round(i.unitPrice * 100)
                   : undefined;
 
-              // 统一算一个 displayName：优先前端传的，其次英文/中文名，最后 productId
               const trimmedDisplay =
                 typeof i.displayName === 'string' ? i.displayName.trim() : '';
               const trimmedEn =
@@ -316,23 +315,18 @@ export class OrdersService {
                 typeof i.nameZh === 'string' ? i.nameZh.trim() : '';
 
               const displayName =
-                trimmedDisplay || trimmedEn || trimmedZh || i.productId;
+                trimmedDisplay || trimmedEn || trimmedZh || i.productStableId;
 
               const base: Prisma.OrderItemCreateWithoutOrderInput = {
-                productId: i.productId,
+                productStableId: i.productStableId,
                 qty: i.qty,
                 displayName,
               };
 
-              if (trimmedEn) {
-                base.nameEn = trimmedEn;
-              }
-              if (trimmedZh) {
-                base.nameZh = trimmedZh;
-              }
-              if (typeof unitPriceCents === 'number') {
+              if (trimmedEn) base.nameEn = trimmedEn;
+              if (trimmedZh) base.nameZh = trimmedZh;
+              if (typeof unitPriceCents === 'number')
                 base.unitPriceCents = unitPriceCents;
-              }
               if (typeof i.options !== 'undefined') {
                 base.optionsJson = i.options as Prisma.InputJsonValue;
               }
@@ -516,9 +510,13 @@ export class OrdersService {
       redeemValueCents: loyaltyRedeemCents,
       deliveryFeeCents: meta.deliveryFeeCents,
       items: meta.items.map((item) => ({
-        productId: item.id,
+        productStableId: item.productStableId,
         qty: item.quantity,
-        displayName: item.displayName ?? item.nameEn ?? item.nameZh ?? item.id,
+        displayName:
+          item.displayName ??
+          item.nameEn ??
+          item.nameZh ??
+          item.productStableId,
         nameEn: item.nameEn,
         nameZh: item.nameZh,
         // 单价从“分”还原成 CAD，create() 再 ×100 存 unitPriceCents
@@ -671,6 +669,10 @@ export class OrdersService {
     const taxCents = order.taxCents ?? 0;
     const deliveryFeeCents = order.deliveryFeeCents ?? 0;
 
+    const loyaltyRedeemCents = order.loyaltyRedeemCents ?? null;
+    const couponDiscountCents = order.couponDiscountCents ?? null;
+    const subtotalAfterDiscountCents = order.subtotalAfterDiscountCents ?? null;
+
     const discountCents =
       (order.loyaltyRedeemCents ?? 0) + (order.couponDiscountCents ?? 0);
 
@@ -679,7 +681,7 @@ export class OrdersService {
       const quantity = item.qty;
       const totalPriceCents = unitPriceCents * quantity;
 
-      const fallbackName = item.productId;
+      const fallbackName = item.productStableId;
       const trimmedDisplay =
         typeof item.displayName === 'string' ? item.displayName.trim() : '';
       const trimmedEn =
@@ -690,7 +692,7 @@ export class OrdersService {
       const display = trimmedDisplay || trimmedEn || trimmedZh || fallbackName;
 
       return {
-        productId: item.productId,
+        productStableId: item.productStableId,
         name: display,
         nameEn: item.nameEn ?? null,
         nameZh: item.nameZh ?? null,
@@ -698,9 +700,6 @@ export class OrdersService {
         unitPriceCents,
         totalPriceCents,
         optionsJson: item.optionsJson ?? undefined,
-        loyaltyRedeemCents: order.loyaltyRedeemCents ?? null,
-        couponDiscountCents: order.couponDiscountCents ?? null,
-        subtotalAfterDiscountCents: order.subtotalAfterDiscountCents ?? null,
       };
     });
 
@@ -714,6 +713,11 @@ export class OrdersService {
       deliveryFeeCents,
       discountCents,
       totalCents: order.totalCents,
+
+      loyaltyRedeemCents,
+      couponDiscountCents,
+      subtotalAfterDiscountCents,
+
       lineItems,
     };
   }
@@ -852,7 +856,7 @@ export class OrdersService {
       reference: order.clientRequestId ?? undefined,
       totalCents: order.totalCents,
       items: order.items.map((item) => {
-        const fallbackName = item.productId;
+        const fallbackName = item.productStableId;
 
         const trimmedDisplay =
           typeof item.displayName === 'string' ? item.displayName.trim() : '';
@@ -906,7 +910,7 @@ export class OrdersService {
       reference: order.clientRequestId,
       totalCents: order.totalCents,
       items: order.items.map((item) => {
-        const fallbackName = item.productId;
+        const fallbackName = item.productStableId;
 
         const trimmedDisplay =
           typeof item.displayName === 'string' ? item.displayName.trim() : '';

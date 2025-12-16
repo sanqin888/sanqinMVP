@@ -1,3 +1,4 @@
+// apps/api/src/loyalty/loyalty.controller.ts
 import { Controller, Get, Query, BadRequestException } from '@nestjs/common';
 import { LoyaltyService } from './loyalty.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -44,16 +45,48 @@ export class LoyaltyController {
       },
     });
 
-    // 直接返回“点”（避免前端自己换算）
-    return rows.map((r) => ({
-      id: r.id,
-      createdAt: r.createdAt,
-      type: r.type,
-      orderId: r.orderId,
-      deltaPoints: Number(r.deltaMicro) / MICRO_PER_POINT,
-      balanceAfterPoints: Number(r.balanceAfterMicro) / MICRO_PER_POINT,
-      note: r.note,
-    }));
+    // ✅ orderStableId：优先 clientRequestId，其次 order.id
+    const orderIds = Array.from(
+      new Set(
+        rows
+          .map((r) => r.orderId)
+          .filter((v): v is string => typeof v === 'string' && v.length > 0),
+      ),
+    );
+
+    const orderStableById = new Map<string, string>();
+    if (orderIds.length > 0) {
+      const orders = await this.prisma.order.findMany({
+        where: { id: { in: orderIds } },
+        select: { id: true, clientRequestId: true },
+      });
+      for (const o of orders) {
+        orderStableById.set(o.id, o.clientRequestId ?? o.id);
+      }
+    }
+
+    return rows.map((r) => {
+      const orderStableId =
+        r.orderId != null
+          ? (orderStableById.get(r.orderId) ?? r.orderId)
+          : undefined;
+
+      return {
+        // ✅ 对外统一：不暴露裸 id
+        ledgerId: r.id,
+
+        createdAt: r.createdAt.toISOString(),
+        type: r.type,
+
+        // 直接返回“点”（避免前端自己换算）
+        deltaPoints: Number(r.deltaMicro) / MICRO_PER_POINT,
+        balanceAfterPoints: Number(r.balanceAfterMicro) / MICRO_PER_POINT,
+
+        note: r.note ?? undefined,
+
+        ...(orderStableId ? { orderStableId } : {}),
+      };
+    });
   }
 
   /**

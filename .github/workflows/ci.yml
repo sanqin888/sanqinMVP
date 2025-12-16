@@ -15,44 +15,31 @@ jobs:
         app: [web, api]
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node
+      # ✅ 先装 pnpm（不要写 version，避免与 packageManager 冲突）
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      # ✅ 再装 Node，并启用 pnpm cache（此时 pnpm 已存在）
+      - name: Setup Node (pnpm cache)
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: package-lock.json
+          node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: pnpm-lock.yaml
 
-      # 用根锁文件一次性安装全部 workspaces 依赖
-      - name: Install (root, all workspaces)
-        run: npm ci --workspaces --include-workspace-root
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
 
-      # ✅ 关键：API 在 lint/tsc/build 前先生成 Prisma Client
-      - name: Prisma generate (api)
-        if: matrix.app == 'api'
-        working-directory: apps/api
-        env:
-          # prisma generate 通常不连接 DB，但 schema 里用了 env("DATABASE_URL") 时可能要求此变量存在
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres?schema=public
-        run: npx prisma generate
-
-      # ✅ 可选但建议：API 显式做一次 typecheck（你现在 CI 没有这步）
-      - name: Typecheck (api)
-        if: matrix.app == 'api'
-        working-directory: apps/api
-        run: npx tsc --noEmit -p tsconfig.json
-
-      # 对每个 workspace 分别执行
       - name: Lint (${{ matrix.app }})
-        working-directory: apps/${{ matrix.app }}
-        run: npm run lint --if-present
+        run: pnpm --filter ${{ matrix.app }} lint
 
       - name: Build (${{ matrix.app }})
-        working-directory: apps/${{ matrix.app }}
-        run: npm run build --if-present
+        run: pnpm --filter ${{ matrix.app }} build
 
-      - name: Test (${{ matrix.app }})
-        working-directory: apps/${{ matrix.app }}
-        run: npm test --if-present
+      - name: Test (api only)
+        if: matrix.app == 'api'
+        run: pnpm --filter api test

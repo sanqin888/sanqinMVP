@@ -10,26 +10,15 @@ import type {
 } from "@/lib/order/shared";
 import { TAX_RATE, buildLocalizedMenuFromDb } from "@/lib/order/shared";
 import { apiFetch } from "@/lib/api-client";
+import {
+  POS_DISPLAY_STORAGE_KEY,
+  clearPosDisplaySnapshot,
+  type PosDisplaySnapshot,
+} from "@/lib/pos-display";
 
 type PosCartEntry = {
   stableId: string;
   quantity: number;
-};
-
-const POS_DISPLAY_STORAGE_KEY = "sanqin-pos-display-v1";
-
-type PosDisplaySnapshot = {
-  items: {
-    id: string;
-    nameZh: string;
-    nameEn: string;
-    quantity: number;
-    unitPriceCents: number;
-    lineTotalCents: number;
-  }[];
-  subtotalCents: number;
-  taxCents: number;
-  totalCents: number;
 };
 
 type StoreStatusRuleSource =
@@ -293,7 +282,7 @@ export default function StorePosPage() {
     if (activeCategoryId === "all") {
       return menuCategories.flatMap((cat) => cat.items);
     }
-    const cat = menuCategories.find((c) => c.id === activeCategoryId);
+    const cat = menuCategories.find((c) => c.stableId === activeCategoryId);
     return cat ? cat.items : [];
   }, [menuCategories, activeCategoryId]);
 
@@ -320,16 +309,10 @@ export default function StorePosPage() {
     );
   };
 
-  const clearCart = () => {
-    setCart([]);
-    if (typeof window !== "undefined") {
-      try {
-        window.localStorage.removeItem(POS_DISPLAY_STORAGE_KEY);
-      } catch {
-        // ignore
-      }
-    }
-  };
+const clearCart = () => {
+  setCart([]);
+  clearPosDisplaySnapshot();
+};
 
   // ⭐ 同步当前订单到顾客显示屏（localStorage）
   useEffect(() => {
@@ -337,7 +320,7 @@ export default function StorePosPage() {
 
     const snapshot: PosDisplaySnapshot = {
       items: cartWithDetails.map((entry) => ({
-        id: entry.stableId,
+        stableId: entry.stableId,
         // 如果没填中文名，用英文名兜底
         nameZh: entry.item.nameZh ?? entry.item.nameEn,
         nameEn: entry.item.nameEn,
@@ -383,11 +366,11 @@ export default function StorePosPage() {
               {storeStatusDetail}
             </p>
           )}
-          {storeStatusError && (
-            <p className="mt-1 max-w-xl text-[11px] text-amber-300">
-              {t.storeStatusError}
-            </p>
-          )}
+{storeStatusError && (
+  <p className="mt-1 max-w-xl text-[11px] text-amber-300">
+    {storeStatusError}
+  </p>
+)}
         </div>
         <div className="flex items-center gap-2">
           {storeStatusLoading ? (
@@ -426,11 +409,11 @@ export default function StorePosPage() {
             </button>
             {menuCategories.map((cat) => (
               <button
-                key={cat.id}
+                key={cat.stableId}
                 type="button"
-                onClick={() => setActiveCategoryId(cat.id)}
+                onClick={() => setActiveCategoryId(cat.stableId)}
                 className={`px-4 py-2 rounded-2xl text-sm font-medium ${
-                  activeCategoryId === cat.id
+                  activeCategoryId === cat.stableId
                     ? "bg-slate-100 text-slate-900"
                     : "bg-slate-800 text-slate-100"
                 }`}

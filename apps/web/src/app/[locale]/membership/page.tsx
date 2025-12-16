@@ -21,7 +21,7 @@ type OrderStatus =
 type DeliveryType = 'pickup' | 'delivery';
 
 type OrderHistory = {
-  id: string;
+  orderNumber: string;
   createdAt: string;
   totalCents: number;
   status: OrderStatus;
@@ -41,7 +41,7 @@ type Address = {
 type CouponStatus = 'active' | 'used' | 'expired';
 
 type Coupon = {
-  id: string;
+  couponId: string;
   title: string;
   code: string;
   discountCents: number;
@@ -52,8 +52,9 @@ type Coupon = {
   issuedAt?: string;
 };
 
+
 type MemberProfile = {
-  id: string;
+  userId: string;
   name?: string;
   email?: string;
   phone?: string | null;
@@ -67,7 +68,7 @@ type ApiFulfillmentType = 'pickup' | 'dine_in' | 'delivery';
 type ApiDeliveryType = 'STANDARD' | 'PRIORITY' | null;
 
 type MembershipSummaryOrderDto = {
-  id: string;
+  orderNumber: string;
   createdAt: string;
   totalCents: number;
   status: OrderStatus;
@@ -112,13 +113,13 @@ type LoyaltyEntryType =
   | 'ADJUSTMENT_MANUAL';
 
 type LoyaltyEntry = {
-  id: string;
+  ledgerId: string;
   createdAt: string;
   type: LoyaltyEntryType;
   deltaPoints: number;
   balanceAfterPoints: number;
   note?: string;
-  orderId?: string | null;
+  orderNumber?: string | null;
 };
 
 function formatCurrency(cents: number): string {
@@ -242,14 +243,14 @@ export default function MembershipHomePage() {
             : (raw as MembershipSummaryResponse);
 
         setMember({
-          id: data.userId,
-          name: data.displayName ?? user?.name ?? undefined,
-          email: data.email ?? user?.email ?? undefined,
-          phone: data.phone ?? undefined,  // 👈 新增
-          tier: data.tier,
-          points: data.points,
-          availableDiscountCents: data.availableDiscountCents,
-          lifetimeSpendCents: data.lifetimeSpendCents ?? 0,
+            userId: data.userId,
+            name: data.displayName ?? user?.name ?? undefined,
+            email: data.email ?? user?.email ?? undefined,
+            phone: data.phone ?? undefined,
+            tier: data.tier,
+            points: data.points,
+            availableDiscountCents: data.availableDiscountCents,
+            lifetimeSpendCents: data.lifetimeSpendCents ?? 0,
         });
 
         setMarketingOptIn(
@@ -261,13 +262,12 @@ export default function MembershipHomePage() {
         const recentOrders = data.recentOrders ?? [];
         setOrders(
           recentOrders.map((o) => ({
-            id: o.id,
+            orderNumber: o.orderNumber,
             createdAt: new Date(o.createdAt).toLocaleString(),
             totalCents: o.totalCents,
             status: o.status,
             items: 0,
-            deliveryType:
-              o.fulfillmentType === 'delivery' ? 'delivery' : 'pickup',
+            deliveryType: o.fulfillmentType === "delivery" ? "delivery" : "pickup",
           })),
         );
       } catch (err: unknown) {
@@ -292,7 +292,7 @@ export default function MembershipHomePage() {
 
   // 拉取优惠券：会员信息到手后再查询
   useEffect(() => {
-    if (!member?.id) {
+    if (!member?.userId) {
       setCoupons([]);
       setCouponLoading(false);
       setCouponError(null);
@@ -306,7 +306,7 @@ export default function MembershipHomePage() {
         setCouponLoading(true);
         setCouponError(null);
 
-        const params = new URLSearchParams([['userId', member.id]]);
+        const params = new URLSearchParams([['userId', member.userId]]);
         const res = await fetch(
           `/api/v1/membership/coupons?${params.toString()}`,
           { signal: controller.signal },
@@ -345,7 +345,7 @@ export default function MembershipHomePage() {
 
     void loadCoupons();
     return () => controller.abort();
-  }, [member?.id, isZh]);
+  }, [member?.userId, isZh]);
 
   // 拉取积分流水：首次切到“积分”tab 且已登录时加载一次
   useEffect(() => {
@@ -435,7 +435,7 @@ export default function MembershipHomePage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            userId: member.id,
+            userId: member.userId,
             marketingEmailOptIn: next,
           }),
         });
@@ -462,7 +462,7 @@ export default function MembershipHomePage() {
   // ⭐ 新增：如果注册时勾选了“营销邮件”，第一次进入会员中心时自动帮他开关一次
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (!member?.id) return;
+    if (!member?.userId) return;
     if (marketingOptIn === null) return;      // 还没从后端拿到数据
     if (marketingSaving) return;             // 正在提交就先不动
 
@@ -481,7 +481,7 @@ export default function MembershipHomePage() {
         e,
       );
     }
-  }, [member?.id, marketingOptIn, marketingSaving, handleMarketingToggle]);
+  }, [member?.userId, marketingOptIn, marketingSaving, handleMarketingToggle]);
 
   const isLoading = status === 'loading' || summaryLoading;
 
@@ -731,7 +731,7 @@ function OverviewSection({
             <p>
               {isZh ? '订单号：' : 'Order ID: '}
               <span className="font-mono text-slate-900">
-                {latestOrder.id}
+                {latestOrder.orderNumber}
               </span>
             </p>
             <p>
@@ -750,7 +750,7 @@ function OverviewSection({
             </p>
             <p className="mt-2">
               <Link
-                href={`/${locale}/order/${latestOrder.id}`}
+                href={`/${locale}/order/${latestOrder.orderNumber}`}
                 className="text-[11px] font-medium text-amber-600 hover:underline"
               >
                 {isZh ? '查看订单详情' : 'View order details'}
@@ -817,12 +817,12 @@ function OrdersSection({
       <div className="mt-3 divide-y divide-slate-100 text-xs text-slate-700">
         {orders.map((order) => (
           <Link
-            key={order.id}
-            href={`/${locale}/order/${order.id}`}
+            key={order.orderNumber}
+            href={`/${locale}/order/${order.orderNumber}`}
             className="flex items-center justify-between py-3 hover:bg-slate-50 rounded-lg px-2 -mx-2"
           >
             <div>
-              <p className="font-mono text-slate-900">{order.id}</p>
+              <p className="font-mono text-slate-900">{order.orderNumber}</p>
               <p className="mt-1 text-[11px] text-slate-500">
                 {order.createdAt}
               </p>
@@ -903,7 +903,7 @@ function PointsSection({
       {loadedOnce && !error && entries.length > 0 && (
         <div className="mt-3 divide-y divide-slate-100 text-xs text-slate-700">
           {entries.map((entry) => (
-            <div key={entry.id} className="py-2">
+            <div key={entry.ledgerId} className="py-2">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-medium text-slate-900">
@@ -917,13 +917,13 @@ function PointsSection({
                       {entry.note}
                     </p>
                   )}
-                  {entry.orderId && (
+                  {entry.orderNumber && (
                     <p className="mt-1 text-[11px]">
                       <Link
-                        href={`/${locale}/order/${entry.orderId}`}
+                        href={`/${locale}/order/${entry.orderNumber}`}
                         className="text-amber-600 hover:underline"
                       >
-                        {isZh ? '关联订单' : 'Related order'}: {entry.orderId}
+                        {isZh ? '关联订单' : 'Related order'}: {entry.orderNumber}
                       </Link>
                     </p>
                   )}
@@ -1052,7 +1052,7 @@ function CouponsSection({
 
           return (
             <div
-              key={coupon.id}
+              key={coupon.couponId}
               className="rounded-xl border border-dashed border-amber-200 bg-amber-50 px-3 py-2"
             >
               <div className="flex items-center justify-between">
@@ -1159,7 +1159,7 @@ function ProfileSection({
             {isZh ? '会员编号（User ID）' : 'Member ID (User ID)'}
           </p>
           <p className="mt-0.5 break-all font-mono text-[11px] text-slate-900">
-            {user.id || (isZh ? '未识别' : 'Not available')}
+            {user.userId || (isZh ? '未识别' : 'Not available')}
           </p>
         </div>
 
