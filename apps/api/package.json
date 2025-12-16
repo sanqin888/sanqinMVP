@@ -6,20 +6,20 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "build": "npm run prisma:generate && nest build",
+    "build": "pnpm run prisma:generate && nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "start": "npm run prisma:generate && nest start",
-    "start:dev": "npm run prisma:generate && nest start --watch",
-    "start:debug": "npm run prisma:generate && nest start --debug --watch",
-    "start:prod": "npm run prisma:generate && node dist/main",
+    "start": "pnpm run prisma:generate && nest start",
+    "start:dev": "pnpm run prisma:generate && nest start --watch",
+    "start:debug": "pnpm run prisma:generate && nest start --debug --watch",
+    "start:prod": "pnpm run prisma:generate && node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\"",
     "lint:fix": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
+    "prisma:generate": "prisma generate",
+    "pretest": "pnpm run prisma:generate",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
-    "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "prisma:generate": "prisma generate",
-    "postinstall": "prisma generate"
+    "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand"
   },
   "dependencies": {
     "@nestjs/axios": "^4.0.1",
@@ -61,19 +61,13 @@
     "typescript-eslint": "^8.46.0"
   },
   "jest": {
-    "moduleFileExtensions": [
-      "js",
-      "json",
-      "ts"
-    ],
+    "moduleFileExtensions": ["js", "json", "ts"],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
-    "collectCoverageFrom": [
-      "**/*.(t|j)s"
-    ],
+    "collectCoverageFrom": ["**/*.(t|j)s"],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
   }
