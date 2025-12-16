@@ -1,15 +1,7 @@
 // apps/api/src/deliveries/doordash-drive.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
-type AxiosErrorLike = {
-  isAxiosError?: boolean;
-  response?: {
-    status?: number;
-    data?: unknown;
-  };
-  message?: unknown;
-  stack?: unknown;
-};
+import { AxiosError, isAxiosError } from 'axios';
 import * as jwt from 'jsonwebtoken';
 import type { JwtHeader, SignOptions } from 'jsonwebtoken';
 
@@ -490,73 +482,61 @@ export class DoorDashDriveService {
     return undefined;
   }
 
-  private toAxiosError(error: unknown): AxiosErrorLike | null {
-    if (
-      error &&
-      typeof error === 'object' &&
-      'isAxiosError' in error &&
-      (error as { isAxiosError?: unknown }).isAxiosError === true
-    ) {
-      return error as AxiosErrorLike;
-    }
-    return null;
-  }
-
   private wrapDoorDashError(error: unknown): Error {
-    const axiosError = this.toAxiosError(error);
-    if (!axiosError) {
-      if (error instanceof Error) {
-        this.logger.error(
-          `[DoorDashDriveService] Non-Axios error while calling DoorDash: ${error.message}`,
-          error.stack,
-        );
-        return error;
+    if (isAxiosError(error)) {
+      const axiosError = error as AxiosError;
+      const status = axiosError.response?.status;
+      const baseData: unknown = axiosError.response?.data;
+
+      let bodySnippet = '[no response body]';
+      if (typeof baseData !== 'undefined') {
+        try {
+          bodySnippet = JSON.stringify(baseData);
+        } catch {
+          bodySnippet = '[unserializable response body]';
+        }
       }
 
-      const fallback = String(error);
+      // 尝试从 response body 里提取 message（类型安全，无 any）
+      let messageFromBody: string | undefined;
+      if (baseData && typeof baseData === 'object' && 'message' in baseData) {
+        const withMessage = baseData as { message?: unknown };
+        if (typeof withMessage.message === 'string') {
+          messageFromBody = withMessage.message;
+        }
+      }
+
+      const fallbackMessage =
+        typeof axiosError.message === 'string'
+          ? axiosError.message
+          : 'DoorDash API error';
+
+      const message = messageFromBody ?? fallbackMessage;
+
       this.logger.error(
-        `[DoorDashDriveService] Unknown error type while calling DoorDash: ${fallback}`,
+        `[DoorDashDriveService] DoorDash API error${
+          status ? ` (${status})` : ''
+        }: ${message}; response body=${bodySnippet}`,
+        axiosError.stack,
       );
-      return new Error(fallback);
+
+      return new Error(
+        `DoorDash API error${status ? ` (${status})` : ''}: ${message}`,
+      );
     }
 
-    const status = axiosError.response?.status;
-    const baseData: unknown = axiosError.response?.data;
-
-    let bodySnippet = '[no response body]';
-    if (typeof baseData !== 'undefined') {
-      try {
-        bodySnippet = JSON.stringify(baseData);
-      } catch {
-        bodySnippet = '[unserializable response body]';
-      }
+    if (error instanceof Error) {
+      this.logger.error(
+        `[DoorDashDriveService] Non-Axios error while calling DoorDash: ${error.message}`,
+        error.stack,
+      );
+      return error;
     }
 
-    // 尝试从 response body 里提取 message（类型安全，无 any）
-    let messageFromBody: string | undefined;
-    if (baseData && typeof baseData === 'object' && 'message' in baseData) {
-      const withMessage = baseData as { message?: unknown };
-      if (typeof withMessage.message === 'string') {
-        messageFromBody = withMessage.message;
-      }
-    }
-
-    const fallbackMessage =
-      typeof axiosError.message === 'string'
-        ? axiosError.message
-        : 'DoorDash API error';
-
-    const message = messageFromBody ?? fallbackMessage;
-
+    const fallback = String(error);
     this.logger.error(
-      `[DoorDashDriveService] DoorDash API error${
-        status ? ` (${status})` : ''
-      }: ${message}; response body=${bodySnippet}`,
-      axiosError.stack,
+      `[DoorDashDriveService] Unknown error type while calling DoorDash: ${fallback}`,
     );
-
-    return new Error(
-      `DoorDash API error${status ? ` (${status})` : ''}: ${message}`,
-    );
+    return new Error(fallback);
   }
 }
