@@ -2,6 +2,7 @@
 import type { Locale } from "@/lib/order/shared";
 
 export const POS_DISPLAY_STORAGE_KEY = "sanqin-pos-display-v1";
+export const POS_DISPLAY_CHANNEL = "sanqin-pos-display-channel";
 
 export type PosDisplayItem = {
   stableId: string;
