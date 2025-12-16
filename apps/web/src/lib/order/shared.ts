@@ -345,41 +345,35 @@ export const UI_STRINGS: Record<
   },
 };
 
-/** ===== 菜单类型（完全由 DB 提供） ===== */
+/** ===== 菜单类型（完全由 API 提供，字段名均为 stableId 语义） ===== */
 
-/**
- * 前台展示的单个菜品：
- * - stableId（与 POS / 订单 / Clover 对齐）
- * - name = 当前语言显示名
- * - nameEn/nameZh = Clover / 其它场景可用的固定中英文名
- */
 export type LocalizedMenuItem = {
   stableId: string;
   name: string; // localized display name
   nameEn: string;
   nameZh?: string;
-  price: number; // 单价（CAD）
+  price: number; // CAD
   imageUrl?: string;
-  // 已按当前语言拼好的配料说明
   ingredients?: string;
+
+  // 注意：对外只暴露 templateGroupStableId / stableId（以及 admin 才会有 bindingStableId）
   optionGroups?: DbMenuOptionGroup[];
 };
 
 export type LocalizedCategory = {
-  id: string;
+  stableId: string;
   name: string;
   items: LocalizedMenuItem[];
 };
 
-/** ===== DB 菜单类型（对齐 /admin/menu/full 的结构） ===== */
-
-// 这些类型用于前台从 API 读取菜单时的类型标注，不直接依赖 Prisma 包。
+/** ===== API 菜单类型（对齐 /admin/menu/full 与 /menu/public） ===== */
 
 export type DbMenuOption = {
-  id: string;
+  // 选项自身 stableId
+  stableId: string;
 
-  // 属于哪个“模板组”
-  templateGroupId: string;
+  // 所属模板组选项组 stableId
+  templateGroupStableId: string;
 
   nameEn: string;
   nameZh: string | null;
@@ -387,24 +381,24 @@ export type DbMenuOption = {
 
   isAvailable: boolean;
   tempUnavailableUntil: string | null;
-
   sortOrder: number;
 };
 
-// ✅ 对齐后端新架构：菜品绑定（MenuItemOptionGroup）+ 模板组信息
 export type DbMenuOptionGroup = {
-  id: string; // 绑定 id（MenuItemOptionGroup.id）
-  itemId: string;
+  // 模板组选项组 stableId（全局唯一）
+  templateGroupStableId: string;
 
-  templateGroupId: string;
+  /**
+   * admin(/admin/menu/full) 场景：菜品-选项组“绑定记录”的 stableId
+   * public(/menu/public) 场景：没有绑定记录，所以该字段可能不存在
+   */
+  bindingStableId?: string | null;
 
-  // 绑定级规则
   minSelect: number;
   maxSelect: number | null;
   sortOrder: number;
   isEnabled: boolean;
 
-  // 模板组信息（为前端显示/编辑提供）
   nameEn: string;
   nameZh: string | null;
   templateIsAvailable: boolean;
@@ -414,9 +408,9 @@ export type DbMenuOptionGroup = {
 };
 
 export type DbMenuItem = {
-  id: string; // cuid
-  categoryId: string;
   stableId: string;
+  categoryStableId: string;
+
   nameEn: string;
   nameZh: string | null;
 
@@ -434,20 +428,21 @@ export type DbMenuItem = {
 };
 
 export type DbMenuCategory = {
-  id: string;
+  stableId: string;
+
   sortOrder: number;
   nameEn: string;
   nameZh: string | null;
   isActive: boolean;
+
   items: DbMenuItem[];
 };
-/** ===== Public 菜单类型（对齐 /menu/public 的结构） ===== */
 
-export type DbPublicMenuItem = Omit<DbMenuItem, "id">;
-
-export type DbPublicMenuCategory = Omit<DbMenuCategory, "items"> & {
-  items: DbPublicMenuItem[];
-};
+/** ===== Public 菜单类型（与 DbMenu* 一致；对外不使用裸 id） ===== */
+export type DbPublicMenuOption = DbMenuOption;
+export type DbPublicMenuOptionGroup = DbMenuOptionGroup;
+export type DbPublicMenuItem = DbMenuItem;
+export type DbPublicMenuCategory = DbMenuCategory;
 
 /**
  * 真正用于前台展示的菜单类型（与 LocalizedCategory 相同）
@@ -484,7 +479,7 @@ export function buildLocalizedMenuFromDb(
   const isZh = locale === "zh";
 
   const activeCategories = (dbMenu ?? [])
-    .filter((c) => c?.isActive)
+    .filter((c) => c.isActive)
     .sort((a, b) => a.sortOrder - b.sortOrder);
 
   return activeCategories.map<PublicMenuCategory>((c) => {
@@ -493,36 +488,28 @@ export function buildLocalizedMenuFromDb(
     const items = (c.items ?? [])
       .filter(
         (i) =>
-          i?.isVisible &&
-          isAvailableNow(i.isAvailable, i.tempUnavailableUntil),
+          i.isVisible && isAvailableNow(i.isAvailable, i.tempUnavailableUntil),
       )
       .sort((a, b) => a.sortOrder - b.sortOrder)
-      .map<LocalizedMenuItem | null>((i) => {
-        const stableId =
-          typeof i.stableId === "string" && i.stableId ? i.stableId : null;
-
+      .map<LocalizedMenuItem>((i) => {
+        const stableId = i.stableId.trim();
         if (!stableId) {
-          const dbId = "id" in i ? i.id : "unknown";
           throw new Error(
-            `[menu] missing stableId for item, dbId=${dbId}`,
+            `[menu] missing stableId for item "${i.nameEn}" (categoryStableId=${c.stableId})`,
           );
         }
 
         const name = isZh && i.nameZh ? i.nameZh : i.nameEn;
 
         const ingredientsText =
-          isZh && i.ingredientsZh
-            ? i.ingredientsZh
-            : i.ingredientsEn ?? "";
+          (isZh && i.ingredientsZh ? i.ingredientsZh : i.ingredientsEn) ?? "";
+        const ingredients = ingredientsText.trim() ? ingredientsText : undefined;
 
         const optionGroups = (i.optionGroups ?? [])
           .filter(
             (g) =>
-              g?.isEnabled &&
-              isAvailableNow(
-                g.templateIsAvailable,
-                g.templateTempUnavailableUntil,
-              ),
+              g.isEnabled &&
+              isAvailableNow(g.templateIsAvailable, g.templateTempUnavailableUntil),
           )
           .sort((a, b) => a.sortOrder - b.sortOrder)
           .map((g) => ({
@@ -539,15 +526,13 @@ export function buildLocalizedMenuFromDb(
           nameZh: i.nameZh ?? undefined,
           price: i.basePriceCents / 100,
           imageUrl: i.imageUrl ?? undefined,
-          ingredients: ingredientsText || undefined,
+          ingredients,
           optionGroups,
         };
-      })
-      .filter((x): x is LocalizedMenuItem => Boolean(x));
-
+      });
 
     return {
-      id: c.id,
+      stableId: c.stableId,
       name: localizedName,
       items,
     };

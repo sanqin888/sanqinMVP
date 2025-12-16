@@ -1,4 +1,5 @@
 // apps/api/src/membership/membership.service.ts
+// apps/api/src/membership/membership.service.ts
 import {
   BadRequestException,
   Injectable,
@@ -49,7 +50,9 @@ export class MembershipService {
     });
 
     return {
-      id: coupon.id,
+      // ✅ 对外统一：不暴露裸字段名 id
+      couponId: coupon.id,
+
       title: coupon.title,
       code: coupon.code,
       discountCents: coupon.discountCents,
@@ -153,10 +156,10 @@ export class MembershipService {
 
   /**
    * 确保 User 存在，并在需要时补全信息：
-   * - id 必填，和 next-auth userId 对齐
-   * - name / email：可以更新（和你之前的 upsert 行为保持一致/略微保守）
-   * - referredByUserId：只在“当前为空且传入 referrerEmail 有效”时写入一次
-   * - birthdayMonth / birthdayDay：只在“当前为空且传入生日合法”时写入一次
+   * - id 必填，和 next-auth userId 对齐（天然稳定，不 update）
+   * - name / email：可以更新
+   * - referredByUserId：只在“当前为空且 referrerEmail 有效”时写入一次
+   * - birthdayMonth / birthdayDay：只在“当前为空且生日合法”时写入一次
    */
   private async ensureUser(params: {
     userId: string;
@@ -338,13 +341,9 @@ export class MembershipService {
 
   /**
    * 会员概要：
-   * - User 信息（含营销订阅）
+   * - User 信息
    * - LoyaltyAccount（积分、等级、累计消费）
    * - 最近 10 笔订单
-   *
-   * 现在新增可选参数：
-   * - referrerEmail: 推荐人邮箱（只在 User.referredByUserId 为空时写入一次）
-   * - birthdayMonth / birthdayDay: 生日（月/日，只能首次写入）
    */
   async getMemberSummary(params: {
     userId: string;
@@ -378,7 +377,6 @@ export class MembershipService {
       phoneVerificationToken,
     });
 
-    // 后面原逻辑不动
     const account = await this.loyalty.ensureAccount(user.id);
     const availableDiscountCents = this.loyalty.maxRedeemableCentsFromBalance(
       account.pointsMicro,
@@ -388,6 +386,15 @@ export class MembershipService {
       where: { userId: user.id },
       orderBy: { createdAt: 'desc' },
       take: 10,
+      select: {
+        id: true,
+        clientRequestId: true,
+        createdAt: true,
+        totalCents: true,
+        status: true,
+        fulfillmentType: true,
+        deliveryType: true,
+      },
     });
 
     return {
@@ -401,8 +408,10 @@ export class MembershipService {
       marketingEmailOptIn: user.marketingEmailOptIn ?? false,
       phone: user.phone ?? null,
       phoneVerified: !!user.phoneVerifiedAt,
+
+      // ✅ 对外统一：不用裸 id；用稳定标识（优先 clientRequestId）
       recentOrders: orders.map((o) => ({
-        id: o.id,
+        orderStableId: o.clientRequestId ?? o.id,
         createdAt: o.createdAt.toISOString(),
         totalCents: o.totalCents,
         status: o.status,
@@ -454,33 +463,70 @@ export class MembershipService {
   async getLoyaltyLedger(params: { userId: string; limit?: number }) {
     const { userId, limit = 50 } = params;
 
-    // 确保 user 存在（不会改名，只用 id；推荐人/生日不在这里处理）
     const user = await this.ensureUser({
       userId,
       name: null,
       email: null,
     });
 
-    // 确保账号存在
     const account = await this.loyalty.ensureAccount(user.id);
 
     const entries = await this.prisma.loyaltyLedger.findMany({
       where: { accountId: account.id },
       orderBy: { createdAt: 'desc' },
       take: limit,
+      select: {
+        id: true,
+        createdAt: true,
+        type: true,
+        orderId: true,
+        deltaMicro: true,
+        balanceAfterMicro: true,
+        note: true,
+      },
     });
 
+    // ✅ orderStableId：优先 clientRequestId，其次 order.id
+    const orderIds = Array.from(
+      new Set(
+        entries
+          .map((e) => e.orderId)
+          .filter((v): v is string => typeof v === 'string' && v.length > 0),
+      ),
+    );
+
+    const orderStableById = new Map<string, string>();
+    if (orderIds.length > 0) {
+      const rows = await this.prisma.order.findMany({
+        where: { id: { in: orderIds } },
+        select: { id: true, clientRequestId: true },
+      });
+      for (const r of rows) {
+        orderStableById.set(r.id, r.clientRequestId ?? r.id);
+      }
+    }
+
     return {
-      entries: entries.map((entry) => ({
-        id: entry.id,
-        createdAt: entry.createdAt.toISOString(),
-        type: entry.type,
-        // 积分从 micro 转成“点数”，和 summary 里的 points 一致
-        deltaPoints: Number(entry.deltaMicro) / MICRO_PER_POINT,
-        balanceAfterPoints: Number(entry.balanceAfterMicro) / MICRO_PER_POINT,
-        note: entry.note ?? undefined,
-        orderId: entry.orderId,
-      })),
+      entries: entries.map((entry) => {
+        const orderStableId =
+          entry.orderId != null
+            ? (orderStableById.get(entry.orderId) ?? entry.orderId)
+            : undefined;
+
+        return {
+          // ✅ 对外统一：不用裸 id
+          ledgerId: entry.id,
+
+          createdAt: entry.createdAt.toISOString(),
+          type: entry.type,
+          deltaPoints: Number(entry.deltaMicro) / MICRO_PER_POINT,
+          balanceAfterPoints: Number(entry.balanceAfterMicro) / MICRO_PER_POINT,
+          note: entry.note ?? undefined,
+
+          // ✅ 统一稳定标识
+          ...(orderStableId ? { orderStableId } : {}),
+        };
+      }),
     };
   }
 

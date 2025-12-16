@@ -1,3 +1,4 @@
+// apps/api/src/admin/menu/admin-menu.controller.ts
 import {
   Body,
   Controller,
@@ -9,236 +10,185 @@ import {
 } from '@nestjs/common';
 import {
   AdminMenuService,
-  type FullMenuResponseDto,
+  type AdminMenuCategoryDto,
   type OptionGroupTemplateDto,
-  type MenuOptionTemplateChoiceDto,
-  type MenuCategoryDto,
-  type MenuItemDto,
-  type MenuItemOptionGroupDto,
-  type SuccessResponseDto,
 } from './admin-menu.service';
-
-type CreateOptionGroupTemplateBodyDto = {
-  nameEn: string;
-  nameZh?: string;
-  sortOrder?: number;
-  defaultMinSelect?: number;
-  defaultMaxSelect?: number | null;
-};
-
-type UpdateOptionGroupTemplateBodyDto = Partial<{
-  nameEn: string;
-  nameZh?: string;
-  sortOrder: number;
-  defaultMinSelect: number;
-  defaultMaxSelect: number | null;
-}>;
-
-type SetAvailabilityBodyDto = {
-  mode: 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF';
-};
-
-type CreateTemplateOptionBodyDto = {
-  nameEn: string;
-  nameZh?: string;
-  priceDeltaCents?: number;
-  sortOrder?: number;
-};
-
-type CreateCategoryBodyDto = {
-  nameEn: string;
-  nameZh?: string;
-  sortOrder?: number;
-};
-
-type UpdateCategoryBodyDto = Partial<{
-  nameEn: string;
-  nameZh?: string;
-  sortOrder: number;
-  isActive: boolean;
-}>;
-
-type CreateItemBodyDto = {
-  categoryId: string;
-  stableId: string;
-  nameEn: string;
-  nameZh?: string;
-  basePriceCents: number;
-  sortOrder?: number;
-  imageUrl?: string;
-  ingredientsEn?: string;
-  ingredientsZh?: string;
-};
-
-type UpdateItemBodyDto = Partial<{
-  categoryId: string;
-  nameEn: string;
-  nameZh?: string;
-  basePriceCents: number;
-  isAvailable: boolean;
-  isVisible: boolean;
-  sortOrder: number;
-  imageUrl?: string;
-  ingredientsEn?: string;
-  ingredientsZh?: string;
-}>;
-
-type AttachOptionGroupBodyDto = {
-  templateGroupId: string;
-  minSelect?: number | null;
-  maxSelect?: number | null;
-  sortOrder?: number;
-  isEnabled?: boolean;
-};
-
-type UpdateAttachedOptionGroupBodyDto = Partial<{
-  templateGroupId: string;
-  minSelect: number | null;
-  maxSelect: number | null;
-  sortOrder: number;
-  isEnabled: boolean;
-}>;
-
-type UpdateTemplateOptionBodyDto = Partial<{
-  nameEn: string;
-  nameZh?: string;
-  priceDeltaCents: number;
-  sortOrder: number;
-  isAvailable: boolean;
-}>;
 
 @Controller('admin/menu')
 export class AdminMenuController {
   constructor(private readonly service: AdminMenuService) {}
 
-  // ========= 全量菜单（后台用） =========
   @Get('full')
-  async getFullMenu(): Promise<FullMenuResponseDto> {
+  async getFullMenu(): Promise<AdminMenuCategoryDto[]> {
     return this.service.getFullMenu();
   }
 
-  // ========= 选项组库（Template） =========
+  @Post('categories')
+  async createCategory(
+    @Body()
+    body: {
+      nameEn: string;
+      nameZh?: string;
+      sortOrder?: number;
+      isActive?: boolean;
+    },
+  ) {
+    return this.service.createCategory(body);
+  }
+
+  @Post('items')
+  async createItem(
+    @Body()
+    body: {
+      categoryStableId: string;
+
+      // ✅ 允许不传：不传则由 DB/Prisma 默认生成 cuid
+      stableId?: string;
+
+      nameEn: string;
+      nameZh?: string;
+
+      basePriceCents: number;
+      sortOrder?: number;
+
+      imageUrl?: string;
+      ingredientsEn?: string;
+      ingredientsZh?: string;
+
+      isAvailable?: boolean;
+      isVisible?: boolean;
+      tempUnavailableUntil?: string | null;
+    },
+  ) {
+    return this.service.createItem(body);
+  }
+
+  @Put('items/:itemStableId')
+  async updateItem(
+    @Param('itemStableId') itemStableId: string,
+    @Body()
+    body: {
+      // 允许挪分类时使用；不挪则不传
+      categoryStableId?: string;
+
+      nameEn?: string;
+      nameZh?: string | null;
+
+      basePriceCents?: number;
+      sortOrder?: number;
+
+      imageUrl?: string | null;
+      ingredientsEn?: string | null;
+      ingredientsZh?: string | null;
+
+      isAvailable?: boolean;
+      isVisible?: boolean;
+      tempUnavailableUntil?: string | null;
+    },
+  ) {
+    return this.service.updateItem(itemStableId, body);
+  }
+
+  // ========== Option Group Templates ==========
   @Get('option-group-templates')
-  async listOptionGroupTemplates(): Promise<OptionGroupTemplateDto[]> {
+  async listTemplates(): Promise<OptionGroupTemplateDto[]> {
     return this.service.listOptionGroupTemplates();
   }
 
   @Post('option-group-templates')
-  async createOptionGroupTemplate(
-    @Body() dto: CreateOptionGroupTemplateBodyDto,
-  ): Promise<OptionGroupTemplateDto> {
-    return this.service.createOptionGroupTemplate(dto);
+  async createTemplateGroup(
+    @Body()
+    body: {
+      nameEn: string;
+      nameZh?: string;
+      sortOrder?: number;
+      defaultMinSelect?: number;
+      defaultMaxSelect?: number | null;
+    },
+  ) {
+    return this.service.createOptionGroupTemplate(body);
   }
 
-  @Put('option-group-templates/:id')
-  async updateOptionGroupTemplate(
-    @Param('id') id: string,
-    @Body() dto: UpdateOptionGroupTemplateBodyDto,
-  ): Promise<OptionGroupTemplateDto> {
-    return this.service.updateOptionGroupTemplate(id, dto);
+  @Post('option-group-templates/:templateGroupStableId/availability')
+  async setTemplateGroupAvailability(
+    @Param('templateGroupStableId') templateGroupStableId: string,
+    @Body() body: { mode: 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF' },
+  ) {
+    return this.service.setTemplateGroupAvailability(
+      templateGroupStableId,
+      body.mode,
+    );
   }
 
-  @Post('option-group-templates/:id/availability')
-  async setOptionGroupTemplateAvailability(
-    @Param('id') id: string,
-    @Body() dto: SetAvailabilityBodyDto,
-  ): Promise<OptionGroupTemplateDto> {
-    return this.service.setOptionGroupTemplateAvailability(id, dto.mode);
-  }
-
-  @Post('option-group-templates/:templateGroupId/options')
+  @Post('option-group-templates/:templateGroupStableId/options')
   async createTemplateOption(
-    @Param('templateGroupId') templateGroupId: string,
-    @Body() dto: CreateTemplateOptionBodyDto,
-  ): Promise<MenuOptionTemplateChoiceDto> {
-    return this.service.createTemplateOption({ templateGroupId, ...dto });
+    @Param('templateGroupStableId') templateGroupStableId: string,
+    @Body()
+    body: {
+      nameEn: string;
+      nameZh?: string;
+      priceDeltaCents?: number;
+      sortOrder?: number;
+    },
+  ) {
+    return this.service.createTemplateOption(templateGroupStableId, body);
   }
 
-  // ========= 分类 =========
-  @Post('categories')
-  async createCategory(
-    @Body() dto: CreateCategoryBodyDto,
-  ): Promise<MenuCategoryDto> {
-    return this.service.createCategory(dto);
-  }
-
-  @Put('categories/:id')
-  async updateCategory(
-    @Param('id') id: string,
-    @Body() dto: UpdateCategoryBodyDto,
-  ): Promise<MenuCategoryDto> {
-    return this.service.updateCategory(id, dto);
-  }
-
-  // ========= 菜品 =========
-  @Post('items')
-  async createItem(@Body() dto: CreateItemBodyDto): Promise<MenuItemDto> {
-    return this.service.createItem(dto);
-  }
-
-  @Put('items/:id')
-  async updateItem(
-    @Param('id') id: string,
-    @Body() dto: UpdateItemBodyDto,
-  ): Promise<MenuItemDto> {
-    return this.service.updateItem(id, dto);
-  }
-
-  @Post('items/:id/availability')
-  async setItemAvailability(
-    @Param('id') id: string,
-    @Body() dto: SetAvailabilityBodyDto,
-  ): Promise<MenuItemDto> {
-    return this.service.setItemAvailability(id, dto.mode);
-  }
-
-  // ========= 菜品-选项组绑定 =========
-  @Post('items/:itemId/option-groups')
-  async attachOptionGroup(
-    @Param('itemId') itemId: string,
-    @Body() dto: AttachOptionGroupBodyDto,
-  ): Promise<MenuItemOptionGroupDto> {
-    return this.service.attachOptionGroup({ itemId, ...dto });
-  }
-
-  @Put('option-groups/:id')
-  async updateAttachedOptionGroup(
-    @Param('id') id: string,
-    @Body() dto: UpdateAttachedOptionGroupBodyDto,
-  ): Promise<MenuItemOptionGroupDto> {
-    return this.service.updateAttachedOptionGroup(id, dto);
-  }
-
-  @Delete('option-groups/:id')
-  async detachOptionGroup(
-    @Param('id') id: string,
-  ): Promise<SuccessResponseDto> {
-    await this.service.detachOptionGroup(id);
-    return { success: true };
-  }
-
-  // ========= 模板选项 =========
-  @Put('options/:id')
+  @Put('options/:optionStableId')
   async updateTemplateOption(
-    @Param('id') id: string,
-    @Body() dto: UpdateTemplateOptionBodyDto,
-  ): Promise<MenuOptionTemplateChoiceDto> {
-    return this.service.updateTemplateOption(id, dto);
+    @Param('optionStableId') optionStableId: string,
+    @Body()
+    body: {
+      nameEn?: string;
+      nameZh?: string | null;
+      priceDeltaCents?: number;
+      sortOrder?: number;
+    },
+  ) {
+    return this.service.updateTemplateOption(optionStableId, body);
   }
 
-  @Delete('options/:id')
-  async deleteTemplateOption(
-    @Param('id') id: string,
-  ): Promise<SuccessResponseDto> {
-    await this.service.deleteTemplateOption(id);
-    return { success: true };
+  @Post('options/:optionStableId/availability')
+  async setOptionAvailability(
+    @Param('optionStableId') optionStableId: string,
+    @Body() body: { mode: 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF' },
+  ) {
+    return this.service.setTemplateOptionAvailability(
+      optionStableId,
+      body.mode,
+    );
   }
 
-  @Post('options/:id/availability')
-  async setTemplateOptionAvailability(
-    @Param('id') id: string,
-    @Body() dto: SetAvailabilityBodyDto,
-  ): Promise<MenuOptionTemplateChoiceDto> {
-    return this.service.setTemplateOptionAvailability(id, dto.mode);
+  // ✅ 软删除：不再物理删除（保证 stableId 永不复用）
+  @Delete('options/:optionStableId')
+  async deleteOption(@Param('optionStableId') optionStableId: string) {
+    return this.service.deleteTemplateOption(optionStableId);
+  }
+
+  // ========== Bindings (item <-> template group) ==========
+  @Post('items/:itemStableId/option-group-bindings')
+  async bindTemplateGroupToItem(
+    @Param('itemStableId') itemStableId: string,
+    @Body()
+    body: {
+      templateGroupStableId: string;
+      minSelect: number;
+      maxSelect: number | null;
+      sortOrder: number;
+      isEnabled: boolean;
+    },
+  ) {
+    return this.service.bindTemplateGroupToItem(itemStableId, body);
+  }
+
+  @Delete('items/:itemStableId/option-group-bindings/:templateGroupStableId')
+  async unbindTemplateGroupFromItem(
+    @Param('itemStableId') itemStableId: string,
+    @Param('templateGroupStableId') templateGroupStableId: string,
+  ) {
+    return this.service.unbindTemplateGroupFromItem(
+      itemStableId,
+      templateGroupStableId,
+    );
   }
 }

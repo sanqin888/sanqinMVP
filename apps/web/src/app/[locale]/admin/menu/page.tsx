@@ -1,70 +1,19 @@
 // apps/web/src/app/[locale]/admin/menu/page.tsx
-"use client";
+'use client';
 
-import Link from "next/link";
-import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
-import {
-  type Locale,
-  type DbMenuCategory,
-  type DbMenuItem,
-} from "@/lib/order/shared";
-import { apiFetch } from "@/lib/api-client";
+import Link from 'next/link';
+import { useEffect, useMemo, useState } from 'react';
+import { useParams } from 'next/navigation';
+import { apiFetch } from '@/lib/api-client';
+import type { Locale, DbMenuCategory, DbMenuItem } from '@/lib/order/shared';
 
 type SavingState = {
-  itemId: string | null;
+  itemStableId: string | null;
   error: string | null;
 };
 
-type SectionCardProps = {
-  title: string;
-  children: ReactNode;
-  actions?: ReactNode;
-};
-
-function SectionCard({ title, children, actions }: SectionCardProps) {
-  return (
-    <section className="space-y-4 rounded-2xl border bg-white/80 p-6 shadow-sm">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <h2 className="text-xl font-semibold text-slate-900">{title}</h2>
-        {actions}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-// ===== 新建菜品草稿 ===== //
-
-type NewItemDraft = {
-  stableId: string;
-  nameEn: string;
-  nameZh: string;
-  price: string; // CAD 文本
-  sortOrder: string;
-  imageUrl: string;
-  ingredientsEn: string;
-  ingredientsZh: string;
-};
-
-function createEmptyNewItemDraft(): NewItemDraft {
-  return {
-    stableId: "",
-    nameEn: "",
-    nameZh: "",
-    price: "",
-    sortOrder: "0",
-    imageUrl: "",
-    ingredientsEn: "",
-    ingredientsZh: "",
-  };
-}
-
-// ===== 选项库（全局）模板：用于“绑定到菜品”下拉选择 ===== //
-
 type OptionGroupTemplateLite = {
-  id: string;
+  templateGroupStableId: string;
   nameEn: string;
   nameZh?: string | null;
   defaultMinSelect: number;
@@ -74,371 +23,249 @@ type OptionGroupTemplateLite = {
   tempUnavailableUntil: string | null;
 };
 
-type BoundOptionGroup = {
-  id: string; // 绑定记录 id（或组 id，取决于后端实现）
-  nameEn?: string;
-  nameZh?: string | null;
-
-  // 可能的模板 id 字段（不同后端命名兼容）
-  templateId?: string | null;
-  optionGroupTemplateId?: string | null;
-  templateGroupId?: string | null;
-
-  minSelect?: number;
-  maxSelect?: number | null;
-
-  isEnabled?: boolean;
-  sortOrder?: number;
-};
-
 type BindDraft = {
-  templateId: string;
+  templateGroupStableId: string;
   minSelect: string;
   maxSelect: string; // "" => null
   sortOrder: string;
-  isRequired: boolean;
-};
-// ===== Admin 菜单数据（/admin/menu/full 的真实返回） =====
-
-type AdminMenuItem = DbMenuItem & {
-  // 你现在页面里已经在用，但 DbMenuItem 可能没声明
-  ingredientsEn?: string | null;
-  ingredientsZh?: string | null;
-
-  // 后端可能返回这些字段之一（你已有兼容读取）
-  optionGroups?: BoundOptionGroup[];
-  optionGroupBindings?: BoundOptionGroup[];
-  boundOptionGroups?: BoundOptionGroup[];
-};
-
-type AdminMenuCategory = Omit<DbMenuCategory, "items"> & {
-  // 你现在用 catAny.nameZh，说明 DbMenuCategory 可能没声明 nameZh
-  nameZh?: string | null;
-  items: AdminMenuItem[];
+  isRequired: boolean; // UI helper => minSelect>=1
 };
 
 function createEmptyBindDraft(): BindDraft {
   return {
-    templateId: "",
-    minSelect: "",
-    maxSelect: "",
-    sortOrder: "",
+    templateGroupStableId: '',
+    minSelect: '',
+    maxSelect: '',
+    sortOrder: '',
     isRequired: false,
   };
 }
 
-function safeNum(v: unknown, fallback = 0): number {
-  const n = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(n) ? n : fallback;
+type AdminMenuFullResponse = {
+  categories: DbMenuCategory[];
+  templates: OptionGroupTemplateLite[];
+};
+
+type CreateCategoryPayload = {
+  nameEn: string;
+  nameZh?: string | null;
+  sortOrder?: number;
+  isActive?: boolean;
+};
+
+type CreateItemPayload = {
+  categoryStableId: string;
+  nameEn: string;
+  nameZh?: string | null;
+  basePriceCents: number;
+  sortOrder?: number;
+  isAvailable?: boolean;
+  isVisible?: boolean;
+};
+
+const BIND_ENDPOINT = (itemStableId: string) =>
+  `/admin/menu/items/${encodeURIComponent(itemStableId)}/option-group-bindings`;
+
+const UNBIND_ENDPOINT = (itemStableId: string, bindingStableId: string) =>
+  `/admin/menu/items/${encodeURIComponent(itemStableId)}/option-group-bindings/${encodeURIComponent(
+    bindingStableId,
+  )}`;
+
+function toIntOrNull(v: string): number | null {
+  const s = v.trim();
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? Math.trunc(n) : null;
 }
 
-function safeNullableNum(v: unknown): number | null {
-  if (v === null || v === undefined) return null;
-  const n = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-
-function pickTemplateId(g: BoundOptionGroup): string | null {
-  return (
-    g.templateId ??
-    g.optionGroupTemplateId ??
-    g.templateGroupId ??
-    null
-  );
-}
-
-function getBoundGroupsFromItem(item: unknown): BoundOptionGroup[] {
-  const it = item as Record<string, unknown>;
-  const candidates = [
-    it["optionGroupBindings"],
-    it["optionGroups"],
-    it["boundOptionGroups"],
-  ];
-  for (const c of candidates) {
-    if (Array.isArray(c)) return c as BoundOptionGroup[];
-  }
-  return [];
+function toIntOrZero(v: string): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.trunc(n) : 0;
 }
 
 export default function AdminMenuPage() {
-  const params = useParams<{ locale: Locale }>();
-  const locale = (params?.locale === "zh" ? "zh" : "en") as Locale;
-  const isZh = locale === "zh";
+  const { locale } = useParams<{ locale: Locale }>();
+  const isZh = locale === 'zh';
 
-  const [categories, setCategories] = useState<AdminMenuCategory[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>(
-    {},
-  );
-
-  const [saving, setSaving] = useState<SavingState>({
-    itemId: null,
-    error: null,
-  });
-
-  // 图片上传中的 item / draft
-  const [uploadingImageForItem, setUploadingImageForItem] = useState<
-    string | null
-  >(null);
-  const [uploadingImageForDraftCategory, setUploadingImageForDraftCategory] =
-    useState<string | null>(null);
-
-  // —— 新建分类 —— //
-  const [newCategoryNameEn, setNewCategoryNameEn] = useState("");
-  const [newCategoryNameZh, setNewCategoryNameZh] = useState("");
-  const [newCategorySortOrder, setNewCategorySortOrder] = useState("0");
-  const [creatingCategory, setCreatingCategory] = useState(false);
-
-  // —— 新建菜品（按分类维护一份草稿） —— //
-  const [newItemDrafts, setNewItemDrafts] = useState<
-    Record<string, NewItemDraft>
-  >({});
-  const [creatingItemForCategory, setCreatingItemForCategory] = useState<
-    string | null
-  >(null);
-
-  // —— 选项库模板（用于绑定） —— //
+  const [categories, setCategories] = useState<DbMenuCategory[]>([]);
   const [templates, setTemplates] = useState<OptionGroupTemplateLite[]>([]);
-  const [templatesLoading, setTemplatesLoading] = useState(true);
-  const [templatesError, setTemplatesError] = useState<string | null>(null);
 
-  // —— 绑定草稿（按 item） —— //
-  const [bindDrafts, setBindDrafts] = useState<Record<string, BindDraft>>({});
-  const [bindingItemId, setBindingItemId] = useState<string | null>(null);
+  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
+  const [saving, setSaving] = useState<SavingState>({ itemStableId: null, error: null });
+
   const [unbindingId, setUnbindingId] = useState<string | null>(null);
+  const [bindingItemId, setBindingItemId] = useState<string | null>(null);
 
-  const totalItems = useMemo(
-    () => categories.reduce((sum, cat) => sum + cat.items.length, 0),
-    [categories],
-  );
+  const [bindDrafts, setBindDrafts] = useState<Record<string, BindDraft>>({});
 
-  // ===== 加载菜单 ===== //
+  // ----- Create category form -----
+  const [newCatNameEn, setNewCatNameEn] = useState('');
+  const [newCatNameZh, setNewCatNameZh] = useState('');
+  const [newCatSortOrder, setNewCatSortOrder] = useState('0');
+  const [creatingCategory, setCreatingCategory] = useState(false);
+  const [createCategoryError, setCreateCategoryError] = useState<string | null>(null);
 
-  async function reloadMenu(): Promise<void> {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const data = await apiFetch<AdminMenuCategory[]>("/admin/menu/full");
-      const sorted = (data ?? [])
-        .slice()
-        .sort((a, b) => a.sortOrder - b.sortOrder)
-        .map((cat) => ({
-          ...cat,
-          items: cat.items.slice().sort((a, b) => a.sortOrder - b.sortOrder),
-        }));
-      setCategories(sorted);
-    } catch (err) {
-      console.error(err);
-      setLoadError(
-        isZh
-          ? "菜单加载失败，请稍后重试。"
-          : "Failed to load menu. Please try again.",
-      );
-    } finally {
-      setLoading(false);
-    }
+  // ----- Create item form per category -----
+  const [newItemDraft, setNewItemDraft] = useState<
+    Record<
+      string,
+      {
+        nameEn: string;
+        nameZh: string;
+        basePriceCents: string;
+        sortOrder: string;
+      }
+    >
+  >({});
+
+  const templateByStableId = useMemo(() => {
+    const m = new Map<string, OptionGroupTemplateLite>();
+    for (const t of templates) m.set(t.templateGroupStableId, t);
+    return m;
+  }, [templates]);
+
+  function getBindDraft(itemStableId: string): BindDraft {
+    return bindDrafts[itemStableId] ?? createEmptyBindDraft();
   }
 
-  useEffect(() => {
-    void reloadMenu();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isZh]);
-
-  // ===== 加载选项库模板（用于绑定下拉） ===== //
-
-  async function loadTemplates(): Promise<void> {
-    setTemplatesLoading(true);
-    setTemplatesError(null);
-    try {
-      const res = await apiFetch<OptionGroupTemplateLite[]>(
-        "/admin/menu/option-group-templates",
-      );
-      const sorted = (res ?? []).slice().sort((a, b) => a.sortOrder - b.sortOrder);
-      setTemplates(sorted);
-    } catch (e) {
-      console.error(e);
-      setTemplatesError(
-        isZh ? "加载选项库失败，请稍后重试。" : "Failed to load option templates.",
-      );
-    } finally {
-      setTemplatesLoading(false);
-    }
+  function toggleItemExpanded(itemStableId: string) {
+    setExpandedItems((prev) => ({ ...prev, [itemStableId]: !prev[itemStableId] }));
   }
 
-  useEffect(() => {
-    void loadTemplates();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isZh]);
-
-  // ===== 工具函数 ===== //
-
-function updateItemField<K extends keyof AdminMenuItem>(
-  categoryId: string,
-  itemId: string,
-  field: K,
-  value: AdminMenuItem[K],
-) {
+  function updateItemField<K extends keyof DbMenuItem>(
+    categoryStableId: string,
+    itemStableId: string,
+    field: K,
+    value: DbMenuItem[K],
+  ) {
     setCategories((prev) =>
       prev.map((cat) =>
-        cat.id !== categoryId
+        cat.stableId !== categoryStableId
           ? cat
           : {
               ...cat,
               items: cat.items.map((item) =>
-                item.id !== itemId ? item : { ...item, [field]: value },
+                item.stableId !== itemStableId ? item : { ...item, [field]: value },
               ),
             },
       ),
     );
   }
 
-  function toggleItemExpanded(itemId: string) {
-    setExpandedItems((prev) => ({
-      ...prev,
-      [itemId]: !prev[itemId],
-    }));
-  }
-
-  function getNewItemDraft(categoryId: string): NewItemDraft {
-    return newItemDrafts[categoryId] ?? createEmptyNewItemDraft();
-  }
-
-  function updateNewItemField<K extends keyof NewItemDraft>(
-    categoryId: string,
-    field: K,
-    value: NewItemDraft[K],
-  ) {
-    setNewItemDrafts((prev) => ({
-      ...prev,
-      [categoryId]: {
-        ...(prev[categoryId] ?? createEmptyNewItemDraft()),
-        [field]: value,
-      },
-    }));
-  }
-
-  function getBindDraft(itemId: string): BindDraft {
-    return bindDrafts[itemId] ?? createEmptyBindDraft();
-  }
-
-  function updateBindDraft<K extends keyof BindDraft>(
-    itemId: string,
-    field: K,
-    value: BindDraft[K],
-  ) {
-    setBindDrafts((prev) => ({
-      ...prev,
-      [itemId]: {
-        ...(prev[itemId] ?? createEmptyBindDraft()),
-        [field]: value,
-      },
-    }));
-  }
-
-  function applyTemplateDefaultsToBindDraft(itemId: string, templateId: string) {
-    const tpl = templates.find((t) => t.id === templateId);
-    if (!tpl) return;
-
-    setBindDrafts((prev) => {
-      const next: BindDraft = {
-        ...(prev[itemId] ?? createEmptyBindDraft()),
-        templateId,
-        minSelect: String(tpl.defaultMinSelect ?? 0),
-        maxSelect: tpl.defaultMaxSelect == null ? "" : String(tpl.defaultMaxSelect),
-        sortOrder: String(tpl.sortOrder ?? 0),
-        isRequired: (tpl.defaultMinSelect ?? 0) > 0,
-      };
-      return { ...prev, [itemId]: next };
-    });
-  }
-
-  // ===== 图片上传 ===== //
-
-  async function handleUploadItemImage(
-    categoryId: string,
-    itemId: string,
-    file: File,
-  ) {
-    if (!file) return;
-
-    setUploadingImageForItem(itemId);
-    setSaving((prev) => ({ ...prev, error: null }));
-
+  async function load(): Promise<void> {
+    setLoading(true);
+    setLoadError(null);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const res = await apiFetch<{ url: string }>("/admin/upload/image", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!res?.url) throw new Error("No url in upload response");
-
-      updateItemField(
-        categoryId,
-        itemId,
-        "imageUrl",
-        res.url as DbMenuItem["imageUrl"],
-      );
-    } catch (err) {
-      console.error(err);
-      setSaving((prev) => ({
-        ...prev,
-        error: isZh
-          ? "图片上传失败，请稍后重试。"
-          : "Failed to upload image. Please try again.",
-      }));
+      const data = await apiFetch<AdminMenuFullResponse>('/admin/menu/full');
+      setCategories(data.categories ?? []);
+      setTemplates(data.templates ?? []);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : String(e));
     } finally {
-      setUploadingImageForItem(null);
+      setLoading(false);
     }
   }
 
-  async function handleUploadNewItemImage(categoryId: string, file: File) {
-    if (!file) return;
+  useEffect(() => {
+    void load();
+  }, []);
 
-    setUploadingImageForDraftCategory(categoryId);
-    setSaving((prev) => ({ ...prev, error: null }));
+  async function handleCreateCategory(): Promise<void> {
+    setCreateCategoryError(null);
 
+    const nameEn = newCatNameEn.trim();
+    const nameZh = newCatNameZh.trim();
+    if (!nameEn) {
+      setCreateCategoryError(isZh ? '英文名称必填' : 'English name is required.');
+      return;
+    }
+
+    const payload: CreateCategoryPayload = {
+      nameEn,
+      nameZh: nameZh ? nameZh : null,
+      sortOrder: toIntOrZero(newCatSortOrder),
+      isActive: true,
+    };
+
+    setCreatingCategory(true);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const res = await apiFetch<{ url: string }>("/admin/upload/image", {
-        method: "POST",
-        body: formData,
+      await apiFetch('/admin/menu/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       });
 
-      if (!res?.url) throw new Error("No url in upload response");
-
-      updateNewItemField(categoryId, "imageUrl", res.url);
-    } catch (err) {
-      console.error(err);
-      setSaving((prev) => ({
-        ...prev,
-        error: isZh
-          ? "图片上传失败，请稍后重试。"
-          : "Failed to upload image. Please try again.",
-      }));
+      setNewCatNameEn('');
+      setNewCatNameZh('');
+      setNewCatSortOrder('0');
+      await load();
+    } catch (e) {
+      setCreateCategoryError(e instanceof Error ? e.message : String(e));
     } finally {
-      setUploadingImageForDraftCategory(null);
+      setCreatingCategory(false);
     }
   }
 
-  // ===== 保存已有菜品 ===== //
+  function getNewItemDraft(categoryStableId: string) {
+    return (
+      newItemDraft[categoryStableId] ?? {
+        nameEn: '',
+        nameZh: '',
+        basePriceCents: '0',
+        sortOrder: '0',
+      }
+    );
+  }
 
-  async function handleSaveItem(categoryId: string, itemId: string) {
-    const category = categories.find((c) => c.id === categoryId);
-    const item = category?.items.find((i) => i.id === itemId);
-    if (!item) return;
+  async function handleCreateItem(categoryStableId: string): Promise<void> {
+    const draft = getNewItemDraft(categoryStableId);
+    const nameEn = draft.nameEn.trim();
+    const nameZh = draft.nameZh.trim();
+    const basePriceCents = toIntOrZero(draft.basePriceCents);
+    const sortOrder = toIntOrZero(draft.sortOrder);
 
-    setSaving({ itemId, error: null });
+    if (!nameEn) {
+      alert(isZh ? '菜品英文名必填' : 'Item English name is required.');
+      return;
+    }
+
+    const payload: CreateItemPayload = {
+      categoryStableId,
+      nameEn,
+      nameZh: nameZh ? nameZh : null,
+      basePriceCents,
+      sortOrder,
+      isAvailable: true,
+      isVisible: true,
+    };
 
     try {
+      await apiFetch('/admin/menu/items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      setNewItemDraft((prev) => ({ ...prev, [categoryStableId]: getNewItemDraft('') }));
+      await load();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function handleSaveItem(categoryStableId: string, itemStableId: string): Promise<void> {
+    setSaving({ itemStableId, error: null });
+
+    try {
+      const category = categories.find((c) => c.stableId === categoryStableId);
+      const item = category?.items.find((i) => i.stableId === itemStableId);
+      if (!item) throw new Error(isZh ? '找不到菜品' : 'Item not found.');
+
       const body: Record<string, unknown> = {
-        categoryId: item.categoryId,
+        categoryStableId: item.categoryStableId,
         nameEn: item.nameEn,
         nameZh: item.nameZh ?? undefined,
         basePriceCents: item.basePriceCents,
@@ -450,1186 +277,690 @@ function updateItemField<K extends keyof AdminMenuItem>(
         ingredientsZh: item.ingredientsZh ?? undefined,
       };
 
-      await apiFetch(`/admin/menu/items/${itemId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
+      await apiFetch(`/admin/menu/items/${encodeURIComponent(itemStableId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
 
-      setSaving({ itemId: null, error: null });
-    } catch (err) {
-      console.error(err);
+      setSaving({ itemStableId: null, error: null });
+      await load();
+    } catch (e) {
       setSaving({
-        itemId: null,
-        error: isZh
-          ? "保存失败，请稍后重试。"
-          : "Failed to save item. Please try again.",
+        itemStableId: null,
+        error: e instanceof Error ? e.message : String(e),
       });
     }
   }
 
-  // ===== 新建分类 ===== //
-
-  async function handleCreateCategory() {
-    const nameEn = newCategoryNameEn.trim();
-    const nameZh = newCategoryNameZh.trim();
-    const sort = Number(newCategorySortOrder || "0");
-
-    if (!nameEn) {
-      setSaving({
-        itemId: null,
-        error: isZh ? "分类英文名称不能为空。" : "Category name (EN) is required.",
-      });
-      return;
-    }
-
-    setCreatingCategory(true);
-    setSaving({ itemId: null, error: null });
-
-    try {
-      await apiFetch("/admin/menu/categories", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nameEn,
-          nameZh: nameZh || undefined,
-          sortOrder: Number.isNaN(sort) ? 0 : sort,
-        }),
-      });
-
-      setNewCategoryNameEn("");
-      setNewCategoryNameZh("");
-      setNewCategorySortOrder("0");
-      await reloadMenu();
-    } catch (err) {
-      console.error(err);
-      setSaving({
-        itemId: null,
-        error: isZh
-          ? "新建分类失败，请稍后重试。"
-          : "Failed to create category. Please try again.",
-      });
-    } finally {
-      setCreatingCategory(false);
-    }
-  }
-
-  // ===== 新建菜品 ===== //
-
-  async function handleCreateItem(categoryId: string) {
-    const draft = getNewItemDraft(categoryId);
-
-    const stableId = draft.stableId.trim();
-    const nameEn = draft.nameEn.trim();
-    const nameZh = draft.nameZh.trim();
-    const imageUrl = draft.imageUrl.trim();
-    const ingredientsEn = draft.ingredientsEn.trim();
-    const ingredientsZh = draft.ingredientsZh.trim();
-
-    const priceNumber = Number(draft.price);
-    const sortOrderNumber = Number(draft.sortOrder || "0");
-
-    if (!stableId || !nameEn || Number.isNaN(priceNumber)) {
-      setSaving({
-        itemId: null,
-        error: isZh
-          ? "请填写 stableId、英文名称和正确的价格。"
-          : "Please fill stableId, English name and a valid price.",
-      });
-      return;
-    }
-
-    setCreatingItemForCategory(categoryId);
-    setSaving({ itemId: null, error: null });
-
-    try {
-      await apiFetch("/admin/menu/items", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          categoryId,
-          stableId,
-          nameEn,
-          nameZh: nameZh || undefined,
-          basePriceCents: Math.round(priceNumber * 100),
-          sortOrder: Number.isNaN(sortOrderNumber) ? 0 : sortOrderNumber,
-          imageUrl: imageUrl || undefined,
-          ingredientsEn: ingredientsEn || undefined,
-          ingredientsZh: ingredientsZh || undefined,
-        }),
-      });
-
-      setNewItemDrafts((prev) => {
-        const next = { ...prev };
-        delete next[categoryId];
-        return next;
-      });
-      await reloadMenu();
-    } catch (err) {
-      console.error(err);
-      setSaving({
-        itemId: null,
-        error: isZh
-          ? "新建菜品失败，请稍后重试。"
-          : "Failed to create item. Please try again.",
-      });
-    } finally {
-      setCreatingItemForCategory(null);
-    }
-  }
-
-  // ===== 绑定 / 解绑 选项组（全局模板） =====
-  // 注意：这里使用了“推荐的 REST 路径”，若你的后端路径不同，改这里两个 endpoint 即可：
-  const BIND_ENDPOINT = (itemId: string) => `/admin/menu/items/${itemId}/option-groups`;
-  const UNBIND_ENDPOINT = (bindingId: string) => `/admin/menu/option-groups/${bindingId}`;
-
-  async function handleBindTemplateToItem(itemId: string) {
-    const draft = getBindDraft(itemId);
-    const templateId = draft.templateId;
-    if (!templateId) return;
-
-    const tpl = templates.find((t) => t.id === templateId);
+  function applyTemplateDefaultsToBindDraft(itemStableId: string, templateGroupStableId: string) {
+    const tpl = templates.find((t) => t.templateGroupStableId === templateGroupStableId);
     if (!tpl) return;
 
-    let minSelect = safeNum(draft.minSelect, tpl.defaultMinSelect ?? 0);
+    setBindDrafts((prev) => {
+      const next: BindDraft = {
+        ...(prev[itemStableId] ?? createEmptyBindDraft()),
+        templateGroupStableId,
+        minSelect: String(tpl.defaultMinSelect ?? 0),
+        maxSelect: tpl.defaultMaxSelect == null ? '' : String(tpl.defaultMaxSelect),
+        sortOrder: String(tpl.sortOrder ?? 0),
+        isRequired: (tpl.defaultMinSelect ?? 0) > 0,
+      };
+      return { ...prev, [itemStableId]: next };
+    });
+  }
 
-    // ✅ “必选”不再单独发字段，而是用 minSelect 表达：必选 => minSelect >= 1
-    if (draft.isRequired && minSelect <= 0) minSelect = 1;
-    if (!draft.isRequired && minSelect < 0) minSelect = 0;
-    const maxSelect =
-      draft.maxSelect.trim() === ""
-        ? null
-        : safeNullableNum(draft.maxSelect);
-    const sortOrder = safeNum(draft.sortOrder, tpl.sortOrder ?? 0);
-    
-    setBindingItemId(itemId);
-    setSaving((prev) => ({ ...prev, error: null }));
+  async function handleBindTemplateToItem(itemStableId: string): Promise<void> {
+    const draft = getBindDraft(itemStableId);
+    const templateGroupStableId = draft.templateGroupStableId;
 
+    if (!templateGroupStableId) {
+      alert(isZh ? '请选择一个选项组模板' : 'Please select a template group.');
+      return;
+    }
+
+    const minSelectRaw = toIntOrNull(draft.minSelect);
+    const maxSelectRaw = toIntOrNull(draft.maxSelect);
+    const sortOrderRaw = toIntOrNull(draft.sortOrder);
+
+    const minSelect = Math.max(0, minSelectRaw ?? 0);
+    const maxSelect = maxSelectRaw == null ? null : Math.max(0, maxSelectRaw);
+    const sortOrder = Math.max(0, sortOrderRaw ?? 0);
+
+    setBindingItemId(itemStableId);
     try {
-      await apiFetch(BIND_ENDPOINT(itemId), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      await apiFetch(BIND_ENDPOINT(itemStableId), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-        templateGroupId: templateId,
-        minSelect,
-        maxSelect,
-        sortOrder,
-        isEnabled: true, // 先固定为 true；后续如果你要做“按菜品禁用组选项”再加 UI
+          templateGroupStableId,
+          minSelect,
+          maxSelect,
+          sortOrder,
+          isEnabled: true,
         }),
       });
 
-      setBindDrafts((prev) => {
-        const next = { ...prev };
-        delete next[itemId];
-        return next;
-      });
-
-      await reloadMenu();
+      setBindDrafts((prev) => ({ ...prev, [itemStableId]: createEmptyBindDraft() }));
+      await load();
     } catch (e) {
-      console.error(e);
-      setSaving((prev) => ({
-        ...prev,
-        error: isZh
-          ? "绑定选项组失败，请稍后重试。"
-          : "Failed to bind option group. Please try again.",
-      }));
+      alert(e instanceof Error ? e.message : String(e));
     } finally {
       setBindingItemId(null);
     }
   }
 
-  async function handleUnbindFromItem(itemId: string, bindingId: string) {
-    if (
-      !window.confirm(
-        isZh ? "确定要从该菜品解绑这个选项组吗？" : "Unbind this option group from the item?",
-      )
-    ) {
-      return;
-    }
-
-    setUnbindingId(bindingId);
-    setSaving((prev) => ({ ...prev, error: null }));
-
+  async function handleUnbindFromItem(itemStableId: string, bindingStableId: string): Promise<void> {
+    setUnbindingId(bindingStableId);
     try {
-      await apiFetch(UNBIND_ENDPOINT(bindingId), { method: "DELETE" });
-      await reloadMenu();
+      await apiFetch(UNBIND_ENDPOINT(itemStableId, bindingStableId), { method: 'DELETE' });
+      await load();
     } catch (e) {
-      console.error(e);
-      setSaving((prev) => ({
-        ...prev,
-        error: isZh
-          ? "解绑失败，请稍后重试。"
-          : "Failed to unbind. Please try again.",
-      }));
+      alert(e instanceof Error ? e.message : String(e));
     } finally {
       setUnbindingId(null);
     }
   }
 
-  // ===== 渲染 ===== //
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-5xl p-6">
+        <h1 className="text-xl font-semibold">{isZh ? '菜单管理' : 'Menu Admin'}</h1>
+        <p className="mt-4 text-sm text-slate-600">{isZh ? '加载中…' : 'Loading…'}</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-8">
-      {/* 顶部说明 */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+    <div className="mx-auto max-w-5xl p-6 space-y-8">
+      <header className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
-            Admin
-          </p>
-          <h1 className="mt-2 text-3xl font-semibold text-slate-900">
-            菜单维护（图片上传 & 配料说明）
-          </h1>
-          <p className="mt-2 max-w-3xl text-sm text-slate-600">
-            这里维护分类与菜品基础信息（名称/价格/上下架/图片/配料说明）。选项组与选项请在“选项页”统一维护；本页仅支持将全局选项组绑定/解绑到菜品。
+          <h1 className="text-xl font-semibold">{isZh ? '菜单管理' : 'Menu Admin'}</h1>
+          <p className="mt-1 text-sm text-slate-600">
+            {isZh
+              ? '这里维护分类、菜品，以及菜品绑定的选项组模板（全链路 stableId）。'
+              : 'Manage categories, items, and item-to-template bindings (stableId end-to-end).'}
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex gap-2">
+          <Link
+            href={`/${locale}/admin`}
+            className="rounded-md border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50"
+          >
+            {isZh ? '返回后台' : 'Back'}
+          </Link>
           <button
             type="button"
-            onClick={() => void reloadMenu()}
-            className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
+            onClick={() => void load()}
+            className="rounded-md bg-slate-900 px-3 py-2 text-sm text-white hover:bg-slate-800"
           >
-            {isZh ? "刷新菜单" : "Refresh menu"}
+            {isZh ? '刷新' : 'Refresh'}
           </button>
         </div>
-      </div>
+      </header>
 
-      {/* 概览统计 */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <div className="rounded-2xl border bg-white/80 p-5 shadow-sm">
-          <p className="text-sm text-slate-500">{isZh ? "分类数量" : "Categories"}</p>
-          <p className="mt-2 text-3xl font-semibold text-slate-900">
-            {categories.length}
-          </p>
+      {loadError ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {isZh ? '加载失败：' : 'Load failed: '} {loadError}
         </div>
-        <div className="rounded-2xl border bg-white/80 p-5 shadow-sm">
-          <p className="text-sm text-slate-500">{isZh ? "菜品总数" : "Items"}</p>
-          <p className="mt-2 text-3xl font-semibold text-emerald-600">
-            {totalItems}
-          </p>
-        </div>
-        <div className="rounded-2xl border bg-white/80 p-5 shadow-sm">
-          <p className="text-sm text-slate-500">{isZh ? "数据状态" : "Status"}</p>
-          <p className="mt-2 text-sm font-medium text-slate-900">
-            {loading
-              ? isZh
-                ? "加载中…"
-                : "Loading…"
-              : loadError
-              ? isZh
-                ? "加载失败（可重试）"
-                : "Load failed"
-              : isZh
-              ? "正常"
-              : "OK"}
-          </p>
-        </div>
-      </div>
+      ) : null}
 
-      {/* 新建分类 */}
-      <SectionCard title={isZh ? "新建分类" : "Create category"}>
-        <div className="grid gap-3 md:grid-cols-3">
-          <div className="space-y-1">
-            <label className="block text-[11px] font-medium text-slate-500">
-              {isZh ? "分类名称（EN）" : "Category name (EN)"}
-            </label>
+      {/* Create Category */}
+      <section className="rounded-xl border border-slate-200 p-4">
+        <h2 className="text-base font-semibold">{isZh ? '创建分类' : 'Create Category'}</h2>
+
+        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
+          <label className="space-y-1">
+            <div className="text-xs text-slate-600">{isZh ? '英文名' : 'Name (EN)'}</div>
             <input
-              type="text"
-              className="h-9 w-full rounded-md border px-3 text-sm"
-              value={newCategoryNameEn}
-              onChange={(e) => setNewCategoryNameEn(e.target.value)}
+              value={newCatNameEn}
+              onChange={(e) => setNewCatNameEn(e.target.value)}
+              className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+              placeholder={isZh ? '例如: Drinks' : 'e.g. Drinks'}
             />
-          </div>
-          <div className="space-y-1">
-            <label className="block text-[11px] font-medium text-slate-500">
-              {isZh ? "分类名称（中文）" : "Category name (ZH)"}
-            </label>
+          </label>
+
+          <label className="space-y-1">
+            <div className="text-xs text-slate-600">{isZh ? '中文名' : 'Name (ZH)'}</div>
             <input
-              type="text"
-              className="h-9 w-full rounded-md border px-3 text-sm"
-              value={newCategoryNameZh}
-              onChange={(e) => setNewCategoryNameZh(e.target.value)}
+              value={newCatNameZh}
+              onChange={(e) => setNewCatNameZh(e.target.value)}
+              className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+              placeholder={isZh ? '例如: 饮品' : 'e.g. 饮品'}
             />
+          </label>
+
+          <label className="space-y-1">
+            <div className="text-xs text-slate-600">{isZh ? '排序' : 'Sort order'}</div>
+            <input
+              value={newCatSortOrder}
+              onChange={(e) => setNewCatSortOrder(e.target.value)}
+              className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+              inputMode="numeric"
+            />
+          </label>
+
+          <div className="flex items-end gap-2">
+            <button
+              type="button"
+              onClick={() => void handleCreateCategory()}
+              disabled={creatingCategory}
+              className="w-full rounded-md bg-emerald-600 px-3 py-2 text-sm text-white disabled:opacity-50"
+            >
+              {creatingCategory ? (isZh ? '创建中…' : 'Creating…') : isZh ? '创建分类' : 'Create'}
+            </button>
           </div>
-          <div className="space-y-1">
-            <label className="block text-[11px] font-medium text-slate-500">
-              {isZh ? "排序（数值越小越靠前）" : "Sort (smaller = earlier)"}
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                className="h-9 w-full rounded-md border px-3 text-sm tabular-nums"
-                value={newCategorySortOrder}
-                onChange={(e) => setNewCategorySortOrder(e.target.value)}
-              />
-              <button
-                type="button"
-                onClick={() => void handleCreateCategory()}
-                className="h-9 whitespace-nowrap rounded-full bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-700"
-                disabled={creatingCategory}
-              >
-                {creatingCategory
-                  ? isZh
-                    ? "创建中…"
-                    : "Creating…"
-                  : isZh
-                  ? "创建分类"
-                  : "Create"}
-              </button>
+        </div>
+
+        {createCategoryError ? (
+          <div className="mt-3 text-sm text-red-700">{createCategoryError}</div>
+        ) : null}
+      </section>
+
+      {/* Categories + Items */}
+      <section className="space-y-4">
+        {categories.map((cat) => (
+          <div key={cat.stableId} className="rounded-xl border border-slate-200">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-4">
+              <div>
+                <div className="text-base font-semibold">
+                  {isZh ? cat.nameZh ?? cat.nameEn : cat.nameEn}
+                </div>
+                <div className="mt-1 text-xs text-slate-500">
+                  stableId: <span className="font-mono">{cat.stableId}</span> · sort:{' '}
+                  {cat.sortOrder} · {cat.isActive ? (isZh ? '启用' : 'active') : isZh ? '停用' : 'inactive'}
+                </div>
+              </div>
+
+              <div className="text-xs text-slate-500">
+                {isZh ? '分类编辑在 options/分类页做（如你已有该页）' : 'Category edits can live elsewhere if you have it.'}
+              </div>
+            </div>
+
+            {/* Create item in category */}
+            <div className="border-b border-slate-200 p-4">
+              <h3 className="text-sm font-semibold">{isZh ? '创建菜品' : 'Create Item'}</h3>
+              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-6">
+                <label className="space-y-1 md:col-span-2">
+                  <div className="text-xs text-slate-600">{isZh ? '英文名' : 'Name (EN)'}</div>
+                  <input
+                    value={getNewItemDraft(cat.stableId).nameEn}
+                    onChange={(e) =>
+                      setNewItemDraft((prev) => ({
+                        ...prev,
+                        [cat.stableId]: { ...getNewItemDraft(cat.stableId), nameEn: e.target.value },
+                      }))
+                    }
+                    className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                    placeholder={isZh ? '例如: Beef Noodles' : 'e.g. Beef Noodles'}
+                  />
+                </label>
+
+                <label className="space-y-1 md:col-span-2">
+                  <div className="text-xs text-slate-600">{isZh ? '中文名' : 'Name (ZH)'}</div>
+                  <input
+                    value={getNewItemDraft(cat.stableId).nameZh}
+                    onChange={(e) =>
+                      setNewItemDraft((prev) => ({
+                        ...prev,
+                        [cat.stableId]: { ...getNewItemDraft(cat.stableId), nameZh: e.target.value },
+                      }))
+                    }
+                    className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                    placeholder={isZh ? '例如: 牛肉面' : 'e.g. 牛肉面'}
+                  />
+                </label>
+
+                <label className="space-y-1">
+                  <div className="text-xs text-slate-600">{isZh ? '价格(分)' : 'Price (cents)'}</div>
+                  <input
+                    value={getNewItemDraft(cat.stableId).basePriceCents}
+                    onChange={(e) =>
+                      setNewItemDraft((prev) => ({
+                        ...prev,
+                        [cat.stableId]: {
+                          ...getNewItemDraft(cat.stableId),
+                          basePriceCents: e.target.value,
+                        },
+                      }))
+                    }
+                    className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                    inputMode="numeric"
+                  />
+                </label>
+
+                <label className="space-y-1">
+                  <div className="text-xs text-slate-600">{isZh ? '排序' : 'Sort'}</div>
+                  <input
+                    value={getNewItemDraft(cat.stableId).sortOrder}
+                    onChange={(e) =>
+                      setNewItemDraft((prev) => ({
+                        ...prev,
+                        [cat.stableId]: { ...getNewItemDraft(cat.stableId), sortOrder: e.target.value },
+                      }))
+                    }
+                    className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                    inputMode="numeric"
+                  />
+                </label>
+
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    onClick={() => void handleCreateItem(cat.stableId)}
+                    className="w-full rounded-md bg-slate-900 px-3 py-2 text-sm text-white hover:bg-slate-800"
+                  >
+                    {isZh ? '创建' : 'Create'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Items list */}
+            <div className="divide-y divide-slate-200">
+              {cat.items.map((item) => {
+                const expanded = !!expandedItems[item.stableId];
+
+                return (
+                  <div key={item.stableId} className="p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="text-sm font-semibold">
+                          {isZh ? item.nameZh ?? item.nameEn : item.nameEn}
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          stableId: <span className="font-mono">{item.stableId}</span> · categoryStableId:{' '}
+                          <span className="font-mono">{item.categoryStableId}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleItemExpanded(item.stableId)}
+                          className="rounded-md border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50"
+                        >
+                          {expanded ? (isZh ? '收起' : 'Collapse') : isZh ? '编辑' : 'Edit'}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => void handleSaveItem(cat.stableId, item.stableId)}
+                          disabled={saving.itemStableId !== null}
+                          className="rounded-md bg-emerald-600 px-3 py-2 text-sm text-white disabled:opacity-50"
+                        >
+                          {saving.itemStableId === item.stableId
+                            ? isZh
+                              ? '保存中…'
+                              : 'Saving…'
+                            : isZh
+                              ? '保存'
+                              : 'Save'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {expanded ? (
+                      <div className="mt-4 space-y-5">
+                        {/* Basic fields */}
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-6">
+                          <label className="space-y-1 md:col-span-2">
+                            <div className="text-xs text-slate-600">{isZh ? '英文名' : 'Name (EN)'}</div>
+                            <input
+                              value={item.nameEn}
+                              onChange={(e) =>
+                                updateItemField(cat.stableId, item.stableId, 'nameEn', e.target.value)
+                              }
+                              className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                            />
+                          </label>
+
+                          <label className="space-y-1 md:col-span-2">
+                            <div className="text-xs text-slate-600">{isZh ? '中文名' : 'Name (ZH)'}</div>
+                            <input
+                              value={item.nameZh ?? ''}
+                              onChange={(e) =>
+                                updateItemField(
+                                  cat.stableId,
+                                  item.stableId,
+                                  'nameZh',
+                                  e.target.value ? e.target.value : null,
+                                )
+                              }
+                              className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                            />
+                          </label>
+
+                          <label className="space-y-1">
+                            <div className="text-xs text-slate-600">{isZh ? '价格(分)' : 'Price (cents)'}</div>
+                            <input
+                              value={String(item.basePriceCents)}
+                              onChange={(e) =>
+                                updateItemField(cat.stableId, item.stableId, 'basePriceCents', toIntOrZero(e.target.value))
+                              }
+                              className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                              inputMode="numeric"
+                            />
+                          </label>
+
+                          <label className="space-y-1">
+                            <div className="text-xs text-slate-600">{isZh ? '排序' : 'Sort'}</div>
+                            <input
+                              value={String(item.sortOrder)}
+                              onChange={(e) =>
+                                updateItemField(cat.stableId, item.stableId, 'sortOrder', toIntOrZero(e.target.value))
+                              }
+                              className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                              inputMode="numeric"
+                            />
+                          </label>
+
+                          <label className="flex items-center gap-2 md:col-span-3">
+                            <input
+                              type="checkbox"
+                              checked={item.isVisible}
+                              onChange={(e) =>
+                                updateItemField(cat.stableId, item.stableId, 'isVisible', e.target.checked)
+                              }
+                            />
+                            <span className="text-sm">{isZh ? '对顾客可见' : 'Visible to customers'}</span>
+                          </label>
+
+                          <label className="flex items-center gap-2 md:col-span-3">
+                            <input
+                              type="checkbox"
+                              checked={item.isAvailable}
+                              onChange={(e) =>
+                                updateItemField(cat.stableId, item.stableId, 'isAvailable', e.target.checked)
+                              }
+                            />
+                            <span className="text-sm">{isZh ? '可售' : 'Available'}</span>
+                          </label>
+
+                          <label className="space-y-1 md:col-span-3">
+                            <div className="text-xs text-slate-600">{isZh ? '图片URL' : 'Image URL'}</div>
+                            <input
+                              value={item.imageUrl ?? ''}
+                              onChange={(e) =>
+                                updateItemField(
+                                  cat.stableId,
+                                  item.stableId,
+                                  'imageUrl',
+                                  e.target.value ? e.target.value : null,
+                                )
+                              }
+                              className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                              placeholder="https://..."
+                            />
+                          </label>
+
+                          <label className="space-y-1 md:col-span-3">
+                            <div className="text-xs text-slate-600">
+                              {isZh ? '临时不可售截止(ISO)' : 'Temp unavailable until (ISO)'}
+                            </div>
+                            <input
+                              value={item.tempUnavailableUntil ?? ''}
+                              onChange={(e) =>
+                                updateItemField(
+                                  cat.stableId,
+                                  item.stableId,
+                                  'tempUnavailableUntil',
+                                  e.target.value ? e.target.value : null,
+                                )
+                              }
+                              className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                              placeholder="2026-01-01T12:00:00.000Z"
+                            />
+                          </label>
+
+                          <label className="space-y-1 md:col-span-3">
+                            <div className="text-xs text-slate-600">{isZh ? '配料说明(英)' : 'Ingredients (EN)'}</div>
+                            <textarea
+                              value={item.ingredientsEn ?? ''}
+                              onChange={(e) =>
+                                updateItemField(
+                                  cat.stableId,
+                                  item.stableId,
+                                  'ingredientsEn',
+                                  e.target.value ? e.target.value : null,
+                                )
+                              }
+                              className="h-20 w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                            />
+                          </label>
+
+                          <label className="space-y-1 md:col-span-3">
+                            <div className="text-xs text-slate-600">{isZh ? '配料说明(中)' : 'Ingredients (ZH)'}</div>
+                            <textarea
+                              value={item.ingredientsZh ?? ''}
+                              onChange={(e) =>
+                                updateItemField(
+                                  cat.stableId,
+                                  item.stableId,
+                                  'ingredientsZh',
+                                  e.target.value ? e.target.value : null,
+                                )
+                              }
+                              className="h-20 w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                            />
+                          </label>
+                        </div>
+
+                        {/* Option group bindings */}
+                        <div className="rounded-lg border border-slate-200 p-4">
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <h4 className="text-sm font-semibold">{isZh ? '选项组绑定' : 'Option Group Bindings'}</h4>
+                              <p className="mt-1 text-xs text-slate-500">
+                                {isZh
+                                  ? '绑定的是“模板组选项组”(templateGroupStableId)，解绑需要 bindingStableId。'
+                                  : 'Binding uses templateGroupStableId; unbind requires bindingStableId.'}
+                              </p>
+                            </div>
+
+                            <Link
+                              href={`/${locale}/admin/menu/options`}
+                              className="text-sm text-slate-700 underline hover:text-slate-900"
+                            >
+                              {isZh ? '管理选项组模板' : 'Manage templates'}
+                            </Link>
+                          </div>
+
+                          {/* Bound list */}
+                          <div className="mt-3 space-y-2">
+                            {item.optionGroups.length === 0 ? (
+                              <div className="text-sm text-slate-600">
+                                {isZh ? '暂无绑定' : 'No bindings yet.'}
+                              </div>
+                            ) : (
+                              item.optionGroups
+                                .slice()
+                                .sort((a, b) => a.sortOrder - b.sortOrder)
+                                .map((g) => {
+                                  const tplStableId = g.templateGroupStableId;
+                                  const bindingStableId = g.bindingStableId ?? null;
+                                  const tpl = templateByStableId.get(tplStableId);
+
+                                  return (
+                                    <div
+                                      key={bindingStableId ?? tplStableId}
+                                      className="flex items-center justify-between gap-3 rounded-md border border-slate-200 px-3 py-2"
+                                    >
+                                      <div className="min-w-0">
+                                        <div className="truncate text-sm font-medium">
+                                          {isZh
+                                            ? g.nameZh ?? g.nameEn
+                                            : g.nameEn}{' '}
+                                          <span className="ml-2 text-xs text-slate-500">
+                                            ({isZh ? '排序' : 'sort'}: {g.sortOrder} ·{' '}
+                                            {isZh ? 'min' : 'min'}: {g.minSelect} ·{' '}
+                                            {isZh ? 'max' : 'max'}:{' '}
+                                            {g.maxSelect == null ? (isZh ? '不限' : '∞') : g.maxSelect})
+                                          </span>
+                                        </div>
+                                        <div className="mt-1 text-xs text-slate-500">
+                                          templateGroupStableId:{' '}
+                                          <span className="font-mono">{tplStableId}</span>
+                                          {bindingStableId ? (
+                                            <>
+                                              {' '}
+                                              · bindingStableId:{' '}
+                                              <span className="font-mono">{bindingStableId}</span>
+                                            </>
+                                          ) : null}
+                                          {tpl?.isAvailable === false ? (
+                                            <span className="ml-2 text-xs text-amber-700">
+                                              {isZh ? '模板当前不可用' : 'Template unavailable'}
+                                            </span>
+                                          ) : null}
+                                        </div>
+                                      </div>
+
+                                      <div className="flex shrink-0 items-center gap-2">
+                                        <Link
+                                          href={`/${locale}/admin/menu/options#group-${tplStableId}`}
+                                          className="rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50"
+                                        >
+                                          {isZh ? '查看模板' : 'View'}
+                                        </Link>
+
+                                        {bindingStableId ? (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              void handleUnbindFromItem(item.stableId, bindingStableId)
+                                            }
+                                            disabled={unbindingId === bindingStableId}
+                                            className="rounded-md bg-rose-600 px-2 py-1 text-xs text-white disabled:opacity-50"
+                                          >
+                                            {unbindingId === bindingStableId
+                                              ? isZh
+                                                ? '解绑中…'
+                                                : 'Removing…'
+                                              : isZh
+                                                ? '解绑'
+                                                : 'Unbind'}
+                                          </button>
+                                        ) : (
+                                          <span className="text-[10px] text-slate-400">
+                                            {isZh ? '缺少 bindingStableId（无法解绑）' : 'Missing bindingStableId'}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })
+                            )}
+                          </div>
+
+                          {/* Bind new */}
+                          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-12">
+                            <label className="space-y-1 md:col-span-5">
+                              <div className="text-xs text-slate-600">{isZh ? '模板组选项组' : 'Template group'}</div>
+                              <select
+                                value={getBindDraft(item.stableId).templateGroupStableId}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setBindDrafts((prev) => ({
+                                    ...prev,
+                                    [item.stableId]: { ...(prev[item.stableId] ?? createEmptyBindDraft()), templateGroupStableId: v },
+                                  }));
+                                  applyTemplateDefaultsToBindDraft(item.stableId, v);
+                                }}
+                                className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                              >
+                                <option value="">{isZh ? '请选择…' : 'Select…'}</option>
+                                {templates
+                                  .slice()
+                                  .sort((a, b) => a.sortOrder - b.sortOrder)
+                                  .map((t) => (
+                                    <option key={t.templateGroupStableId} value={t.templateGroupStableId}>
+                                      {isZh ? (t.nameZh ?? t.nameEn) : t.nameEn} — {t.templateGroupStableId}
+                                    </option>
+                                  ))}
+                              </select>
+                            </label>
+
+                            <label className="space-y-1 md:col-span-2">
+                              <div className="text-xs text-slate-600">{isZh ? '最少选' : 'Min'}</div>
+                              <input
+                                value={getBindDraft(item.stableId).minSelect}
+                                onChange={(e) =>
+                                  setBindDrafts((prev) => ({
+                                    ...prev,
+                                    [item.stableId]: { ...getBindDraft(item.stableId), minSelect: e.target.value },
+                                  }))
+                                }
+                                className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                                inputMode="numeric"
+                              />
+                            </label>
+
+                            <label className="space-y-1 md:col-span-2">
+                              <div className="text-xs text-slate-600">{isZh ? '最多选' : 'Max'}</div>
+                              <input
+                                value={getBindDraft(item.stableId).maxSelect}
+                                onChange={(e) =>
+                                  setBindDrafts((prev) => ({
+                                    ...prev,
+                                    [item.stableId]: { ...getBindDraft(item.stableId), maxSelect: e.target.value },
+                                  }))
+                                }
+                                className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                                inputMode="numeric"
+                                placeholder={isZh ? '留空=不限' : 'blank = ∞'}
+                              />
+                            </label>
+
+                            <label className="space-y-1 md:col-span-2">
+                              <div className="text-xs text-slate-600">{isZh ? '排序' : 'Sort'}</div>
+                              <input
+                                value={getBindDraft(item.stableId).sortOrder}
+                                onChange={(e) =>
+                                  setBindDrafts((prev) => ({
+                                    ...prev,
+                                    [item.stableId]: { ...getBindDraft(item.stableId), sortOrder: e.target.value },
+                                  }))
+                                }
+                                className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                                inputMode="numeric"
+                              />
+                            </label>
+
+                            <div className="flex items-end md:col-span-1">
+                              <button
+                                type="button"
+                                onClick={() => void handleBindTemplateToItem(item.stableId)}
+                                disabled={bindingItemId === item.stableId}
+                                className="w-full rounded-md bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-50"
+                              >
+                                {bindingItemId === item.stableId
+                                  ? isZh
+                                    ? '绑定中…'
+                                    : 'Binding…'
+                                  : isZh
+                                    ? '绑定'
+                                    : 'Bind'}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {saving.error ? (
+                          <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                            {isZh ? '保存失败：' : 'Save failed: '} {saving.error}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
           </div>
-        </div>
-      </SectionCard>
-
-      {/* 菜单列表 */}
-        <SectionCard title={isZh ? "菜单列表" : "Menu"}>
-        {loading ? (
-          <p className="text-sm text-slate-500">{isZh ? "菜单加载中…" : "Loading menu…"}</p>
-        ) : loadError ? (
-          <p className="text-sm text-red-600">{loadError}</p>
-        ) : categories.length === 0 ? (
-          <p className="text-sm text-slate-500">
-            {isZh ? "暂无菜单数据，请先创建一个分类。" : "No menu yet. Create a category first."}
-          </p>
-        ) : (
-          <div className="space-y-4">
-            {categories.map((cat) => {
-              const catAny = cat as any;
-              const localizedCatName =
-                isZh && catAny.nameZh ? catAny.nameZh : cat.nameEn;
-
-              return (
-                <div key={cat.id} className="rounded-2xl border p-4 shadow-sm">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-base font-semibold text-slate-900">
-                        {localizedCatName}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        {isZh ? "排序" : "Sort"}: {cat.sortOrder} ·{" "}
-                        {cat.items.length}{" "}
-                        {isZh ? "个菜品" : cat.items.length === 1 ? "item" : "items"}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* 分类内菜品列表 */}
-                  <div className="mt-4 space-y-3">
-                    {cat.items.map((item) => {
-                      const itemAny = item as any;
-
-                      const localizedName =
-                        isZh && item.nameZh ? item.nameZh : item.nameEn;
-
-                      const ingredientsPreview = (() => {
-                        const text =
-                          isZh && item.ingredientsZh
-                            ? (item.ingredientsZh as string)
-                            : (item.ingredientsEn as string) ?? "";
-                        if (!text) return "";
-                        if (text.length <= 80) return text;
-                        return `${text.slice(0, 80)}…`;
-                      })();
-
-                      const priceDisplay = (item.basePriceCents / 100).toFixed(2);
-                      const isExpanded = !!expandedItems[item.id];
-
-                      const boundGroups = getBoundGroupsFromItem(item);
-
-                      return (
-                        <div
-                          key={item.id}
-                          className="rounded-xl border bg-slate-50/60 p-3"
-                        >
-                          {/* 顶部简要信息 */}
-                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                              <p className="text-sm font-semibold text-slate-900">
-                                {localizedName}
-                              </p>
-
-                              {ingredientsPreview ? (
-                                <p className="mt-1 text-xs text-slate-500">
-                                  {ingredientsPreview}
-                                </p>
-                              ) : (
-                                <p className="mt-1 text-[11px] text-slate-400">
-                                  {isZh
-                                    ? "尚未填写配料说明。"
-                                    : "No ingredients specified yet."}
-                                </p>
-                              )}
-
-                              <p className="mt-1 text-xs text-slate-500">
-                                ID: <span className="font-mono">{item.stableId}</span>
-                              </p>
-
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                <span
-                                  className={`rounded-full px-2 py-1 text-[11px] font-medium ${
-                                    item.isVisible
-                                      ? "bg-emerald-50 text-emerald-700"
-                                      : "bg-slate-100 text-slate-600"
-                                  }`}
-                                >
-                                  {item.isVisible
-                                    ? isZh
-                                      ? "前台展示"
-                                      : "Visible"
-                                    : isZh
-                                    ? "前台隐藏"
-                                    : "Hidden"}
-                                </span>
-                                <span
-                                  className={`rounded-full px-2 py-1 text-[11px] font-medium ${
-                                    item.isAvailable
-                                      ? "bg-emerald-50 text-emerald-700"
-                                      : "bg-amber-50 text-amber-700"
-                                  }`}
-                                >
-                                  {item.isAvailable
-                                    ? isZh
-                                      ? "可售"
-                                      : "Available"
-                                    : isZh
-                                    ? "已下架"
-                                    : "Unavailable"}
-                                </span>
-
-                                <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700">
-                                  {isZh ? "已绑定选项组" : "Bound groups"}:{" "}
-                                  {boundGroups.length}
-                                </span>
-                              </div>
-                            </div>
-
-                            <div className="flex flex-col items-end gap-2">
-                              <span className="rounded-full bg-slate-900/90 px-3 py-1 text-xs font-semibold text-white">
-                                ${priceDisplay}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => toggleItemExpanded(item.id)}
-                                className="text-xs font-medium text-emerald-700 hover:text-emerald-600"
-                              >
-                                {isExpanded
-                                  ? isZh
-                                    ? "收起编辑"
-                                    : "Hide details"
-                                  : isZh
-                                  ? "展开编辑"
-                                  : "Edit details"}
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* 展开编辑表单（修改已有菜品） */}
-                          {isExpanded && (
-                            <div className="mt-4 space-y-3 border-t pt-4 text-xs text-slate-700">
-                              <div className="grid gap-3 md:grid-cols-2">
-                                <div className="space-y-1">
-                                  <label className="block text-[11px] font-medium text-slate-500">
-                                    {isZh ? "名称（EN）" : "Name (EN)"}
-                                  </label>
-                                  <input
-                                    type="text"
-                                    className="h-9 w-full rounded-md border px-3 text-sm"
-                                    value={item.nameEn}
-                                    onChange={(e) =>
-                                      updateItemField(
-                                        cat.id,
-                                        item.id,
-                                        "nameEn",
-                                        e.target.value as DbMenuItem["nameEn"],
-                                      )
-                                    }
-                                  />
-                                </div>
-                                <div className="space-y-1">
-                                  <label className="block text-[11px] font-medium text-slate-500">
-                                    {isZh ? "名称（中文）" : "Name (ZH)"}
-                                  </label>
-                                  <input
-                                    type="text"
-                                    className="h-9 w-full rounded-md border px-3 text-sm"
-                                    value={item.nameZh ?? ""}
-                                    onChange={(e) =>
-                                      updateItemField(
-                                        cat.id,
-                                        item.id,
-                                        "nameZh",
-                                        e.target.value as DbMenuItem["nameZh"],
-                                      )
-                                    }
-                                  />
-                                </div>
-                              </div>
-
-                              <div className="grid gap-3 md:grid-cols-3">
-                                <div className="space-y-1">
-                                  <label className="block text-[11px] font-medium text-slate-500">
-                                    {isZh ? "价格（CAD）" : "Price (CAD)"}
-                                  </label>
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    step="0.01"
-                                    className="h-9 w-full rounded-md border px-3 text-sm tabular-nums"
-                                    value={priceDisplay}
-                                    onChange={(e) => {
-                                      const v = Number(e.target.value);
-                                      if (Number.isNaN(v)) return;
-                                      const cents = Math.round(v * 100);
-                                      updateItemField(
-                                        cat.id,
-                                        item.id,
-                                        "basePriceCents",
-                                        cents as DbMenuItem["basePriceCents"],
-                                      );
-                                    }}
-                                  />
-                                </div>
-
-                                <div className="space-y-1">
-                                  <label className="block text-[11px] font-medium text-slate-500">
-                                    {isZh ? "排序（数值越小越靠前）" : "Sort (smaller = earlier)"}
-                                  </label>
-                                  <input
-                                    type="number"
-                                    className="h-9 w-full rounded-md border px-3 text-sm tabular-nums"
-                                    value={item.sortOrder}
-                                    onChange={(e) =>
-                                      updateItemField(
-                                        cat.id,
-                                        item.id,
-                                        "sortOrder",
-                                        Number(e.target.value) as DbMenuItem["sortOrder"],
-                                      )
-                                    }
-                                  />
-                                </div>
-
-                                <div className="space-y-1">
-                                  <label className="block text-[11px] font-medium text-slate-500">
-                                    {isZh ? "展示与可售" : "Visibility & availability"}
-                                  </label>
-                                  <div className="flex h-9 items-center gap-4 rounded-md border px-3">
-                                    <label className="inline-flex items-center gap-2">
-                                      <input
-                                        type="checkbox"
-                                        className="h-3.5 w-3.5 rounded border-slate-300"
-                                        checked={item.isVisible}
-                                        onChange={(e) =>
-                                          updateItemField(
-                                            cat.id,
-                                            item.id,
-                                            "isVisible",
-                                            e.target.checked as DbMenuItem["isVisible"],
-                                          )
-                                        }
-                                      />
-                                      <span className="text-[11px] text-slate-700">
-                                        {isZh ? "前台展示" : "Visible"}
-                                      </span>
-                                    </label>
-                                    <label className="inline-flex items-center gap-2">
-                                      <input
-                                        type="checkbox"
-                                        className="h-3.5 w-3.5 rounded border-slate-300"
-                                        checked={item.isAvailable}
-                                        onChange={(e) =>
-                                          updateItemField(
-                                            cat.id,
-                                            item.id,
-                                            "isAvailable",
-                                            e.target.checked as DbMenuItem["isAvailable"],
-                                          )
-                                        }
-                                      />
-                                      <span className="text-[11px] text-slate-700">
-                                        {isZh ? "可售" : "Available"}
-                                      </span>
-                                    </label>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* 图片上传区域 */}
-                              <div className="space-y-1">
-                                <label className="block text-[11px] font-medium text-slate-500">
-                                  {isZh ? "菜品图片" : "Item image"}
-                                </label>
-                                <div className="flex items-start gap-3">
-                                  {item.imageUrl ? (
-                                    <div className="h-16 w-16 overflow-hidden rounded-md border bg-white">
-                                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                                      <img
-                                        src={item.imageUrl}
-                                        alt={localizedName}
-                                        className="h-full w-full object-cover"
-                                      />
-                                    </div>
-                                  ) : (
-                                    <div className="flex h-16 w-16 items-center justify-center rounded-md border border-dashed text-[10px] text-slate-400">
-                                      {isZh ? "暂无图片" : "No image"}
-                                    </div>
-                                  )}
-
-                                  <div className="flex-1 space-y-2">
-                                    <input
-                                      type="text"
-                                      className="h-9 w-full rounded-md border px-3 text-[11px] font-mono"
-                                      value={item.imageUrl ?? ""}
-                                      onChange={(e) =>
-                                        updateItemField(
-                                          cat.id,
-                                          item.id,
-                                          "imageUrl",
-                                          e.target.value as DbMenuItem["imageUrl"],
-                                        )
-                                      }
-                                      placeholder={
-                                        isZh
-                                          ? "上传后会自动填入 URL，如需可手动修改。"
-                                          : "After upload, URL will be filled automatically."
-                                      }
-                                    />
-                                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
-                                      <input
-                                        type="file"
-                                        accept="image/*"
-                                        className="text-[11px]"
-                                        onChange={(e) => {
-                                          const file = e.target.files?.[0] ?? null;
-                                          if (file) {
-                                            void handleUploadItemImage(cat.id, item.id, file);
-                                          }
-                                        }}
-                                      />
-                                      <span className="text-[10px] text-slate-400">
-                                        {uploadingImageForItem === item.id
-                                          ? isZh
-                                            ? "图片上传中…"
-                                            : "Uploading…"
-                                          : isZh
-                                          ? "支持 jpg/png/webp，建议 ≥ 600×600。"
-                                          : "Supports jpg/png/webp. Recommend ≥ 600×600."}
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* 配料说明 */}
-                              <div className="grid gap-3 md:grid-cols-2">
-                                <div className="space-y-1">
-                                  <label className="block text-[11px] font-medium text-slate-500">
-                                    {isZh ? "配料说明（EN）" : "Ingredients (EN)"}
-                                  </label>
-                                  <textarea
-                                    className="w-full rounded-md border px-3 py-2 text-sm"
-                                    rows={3}
-                                    placeholder={
-                                      isZh
-                                        ? "例如：Wheat noodles, chili oil, garlic..."
-                                        : "e.g., Wheat noodles, chili oil, garlic..."
-                                    }
-                                    value={item.ingredientsEn ?? ""}
-                                    onChange={(e) =>
-                                      updateItemField(
-                                        cat.id,
-                                        item.id,
-                                        "ingredientsEn" as any,
-                                        e.target.value as any,
-                                      )
-                                    }
-                                  />
-                                </div>
-                                <div className="space-y-1">
-                                  <label className="block text-[11px] font-medium text-slate-500">
-                                    {isZh ? "配料说明（中文）" : "Ingredients (ZH)"}
-                                  </label>
-                                  <textarea
-                                    className="w-full rounded-md border px-3 py-2 text-sm"
-                                    rows={3}
-                                    placeholder={
-                                      isZh
-                                        ? "例如：凉皮、辣椒油、大蒜、芝麻酱..."
-                                        : "例如：凉皮、辣椒油、大蒜、芝麻酱..."
-                                    }
-                                    value={item.ingredientsZh ?? ""}
-                                    onChange={(e) =>
-                                      updateItemField(
-                                        cat.id,
-                                        item.id,
-                                        "ingredientsZh" as any,
-                                        e.target.value as any,
-                                      )
-                                    }
-                                  />
-                                </div>
-                              </div>
-
-                              {/* 选项组绑定（只读 + 绑定/解绑 + 跳转） */}
-                              <div className="rounded-lg bg-white/70 p-3">
-                                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                                  <div>
-                                    <p className="text-[11px] font-semibold text-slate-800">
-                                      {isZh ? "选项组绑定（不在此编辑选项）" : "Bound option groups (no inline editing)"}
-                                    </p>
-                                    <p className="mt-1 text-[10px] text-slate-500">
-                                      {isZh
-                                        ? "选项组与选项（价格/上下架/内容）请在选项页统一维护；这里仅绑定到菜品。"
-                                        : "Edit groups/choices (price/availability/content) in the options page. This section only binds/unbinds to the item."}
-                                    </p>
-                                  </div>
-                                  <Link
-                                    href={`/${locale}/admin/menu/options`}
-                                    className="text-xs font-medium text-emerald-700 hover:text-emerald-600"
-                                  >
-                                    {isZh ? "打开选项页" : "Open options page"}
-                                  </Link>
-                                </div>
-
-                                {/* 已绑定列表 */}
-                                {boundGroups.length === 0 ? (
-                                  <p className="mt-2 text-[11px] text-slate-400">
-                                    {isZh
-                                      ? "当前菜品尚未绑定任何选项组。"
-                                      : "This item has no bound option groups yet."}
-                                  </p>
-                                ) : (
-                                  <div className="mt-3 space-y-2">
-                                    {boundGroups
-                                      .slice()
-                                      .sort((a, b) => safeNum(a.sortOrder) - safeNum(b.sortOrder))
-                                      .map((g) => {
-                                        const name =
-                                          isZh && g.nameZh ? g.nameZh : g.nameEn ?? "(Unnamed)";
-                                        const tplId = pickTemplateId(g);
-
-                                        const minSel = safeNum(g.minSelect, 0);
-                                        const maxSel = g.maxSelect == null ? null : safeNullableNum(g.maxSelect);
-                                        const sort = safeNum(g.sortOrder, 0);
-                                        const required = minSel > 0;
-
-                                        return (
-                                          <div
-                                            key={g.id}
-                                            className="flex flex-col gap-2 rounded-md border bg-slate-50/80 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
-                                          >
-                                            <div className="min-w-0">
-                                              <p className="truncate text-[11px] font-semibold text-slate-900">
-                                                {name}
-                                              </p>
-                                              <p className="mt-0.5 text-[10px] text-slate-500">
-                                                {isZh ? "规则" : "Rules"}: min={minSel}, max=
-                                                {maxSel == null ? (isZh ? "不限" : "unlimited") : maxSel},{" "}
-                                                {isZh ? "排序" : "sort"}={sort} ·{" "}
-                                                {required ? (isZh ? "必选" : "Required") : (isZh ? "可选" : "Optional")}
-                                              </p>
-                                            </div>
-
-                                            <div className="flex flex-wrap items-center gap-2">
-                                              {tplId ? (
-                                                <Link
-                                                  href={`/${locale}/admin/menu/options#group-${tplId}`}
-                                                  className="rounded-full border bg-white px-3 py-1 text-[10px] font-medium text-slate-700 hover:bg-slate-50"
-                                                >
-                                                  {isZh ? "去选项页编辑" : "Edit in options page"}
-                                                </Link>
-                                              ) : (
-                                                <Link
-                                                  href={`/${locale}/admin/menu/options`}
-                                                  className="rounded-full border bg-white px-3 py-1 text-[10px] font-medium text-slate-700 hover:bg-slate-50"
-                                                >
-                                                  {isZh ? "去选项页" : "Go to options"}
-                                                </Link>
-                                              )}
-
-                                              <button
-                                                type="button"
-                                                onClick={() => void handleUnbindFromItem(item.id, g.id)}
-                                                className="rounded-full border bg-white px-3 py-1 text-[10px] font-medium text-red-700 hover:bg-red-50"
-                                                disabled={unbindingId === g.id}
-                                              >
-                                                {unbindingId === g.id
-                                                  ? isZh
-                                                    ? "解绑中…"
-                                                    : "Unbinding…"
-                                                  : isZh
-                                                  ? "解绑"
-                                                  : "Unbind"}
-                                              </button>
-                                            </div>
-                                          </div>
-                                        );
-                                      })}
-                                  </div>
-                                )}
-
-                                {/* 绑定新选项组 */}
-                                <div className="mt-3 rounded-md border border-dashed border-slate-300 bg-white p-3">
-                                  <p className="text-[11px] font-semibold text-slate-700">
-                                    {isZh ? "绑定一个全局选项组" : "Bind a global option group"}
-                                  </p>
-
-                                  {templatesLoading ? (
-                                    <p className="mt-2 text-[11px] text-slate-400">
-                                      {isZh ? "选项库加载中…" : "Loading templates…"}
-                                    </p>
-                                  ) : templatesError ? (
-                                    <p className="mt-2 text-[11px] text-red-600">{templatesError}</p>
-                                  ) : templates.length === 0 ? (
-                                    <p className="mt-2 text-[11px] text-slate-400">
-                                      {isZh
-                                        ? "暂无可用模板，请先去选项页创建选项组。"
-                                        : "No templates yet. Create one in the options page first."}
-                                    </p>
-                                  ) : (
-                                    <div className="mt-2 grid gap-2 md:grid-cols-12">
-                                      <div className="space-y-1 md:col-span-5">
-                                        <label className="block text-[10px] font-medium text-slate-500">
-                                          {isZh ? "选择模板组选项" : "Template group"}
-                                        </label>
-                                        <select
-                                          className="h-9 w-full rounded-md border px-3 text-sm"
-                                          value={getBindDraft(item.id).templateId}
-                                          onChange={(e) => {
-                                            const v = e.target.value;
-                                            if (!v) {
-                                              updateBindDraft(item.id, "templateId", "");
-                                              return;
-                                            }
-                                            applyTemplateDefaultsToBindDraft(item.id, v);
-                                          }}
-                                        >
-                                          <option value="">
-                                            {isZh ? "请选择…" : "Select…"}
-                                          </option>
-                                          {templates.map((t) => {
-                                            const label =
-                                              isZh && t.nameZh ? t.nameZh : t.nameEn;
-                                            return (
-                                              <option key={t.id} value={t.id}>
-                                                {label}
-                                              </option>
-                                            );
-                                          })}
-                                        </select>
-                                      </div>
-
-                                      <div className="space-y-1 md:col-span-2">
-                                        <label className="block text-[10px] font-medium text-slate-500">
-                                          minSelect
-                                        </label>
-                                        <input
-                                          type="number"
-                                          className="h-9 w-full rounded-md border px-3 text-sm tabular-nums"
-                                          value={getBindDraft(item.id).minSelect}
-                                          onChange={(e) =>
-                                            updateBindDraft(item.id, "minSelect", e.target.value)
-                                          }
-                                          placeholder="0"
-                                        />
-                                      </div>
-
-                                      <div className="space-y-1 md:col-span-2">
-                                        <label className="block text-[10px] font-medium text-slate-500">
-                                          maxSelect
-                                        </label>
-                                        <input
-                                          type="number"
-                                          className="h-9 w-full rounded-md border px-3 text-sm tabular-nums"
-                                          value={getBindDraft(item.id).maxSelect}
-                                          onChange={(e) =>
-                                            updateBindDraft(item.id, "maxSelect", e.target.value)
-                                          }
-                                          placeholder={isZh ? "空=不限" : "blank=unlimited"}
-                                        />
-                                      </div>
-
-                                      <div className="space-y-1 md:col-span-1">
-                                        <label className="block text-[10px] font-medium text-slate-500">
-                                          {isZh ? "排序" : "Sort"}
-                                        </label>
-                                        <input
-                                          type="number"
-                                          className="h-9 w-full rounded-md border px-3 text-sm tabular-nums"
-                                          value={getBindDraft(item.id).sortOrder}
-                                          onChange={(e) =>
-                                            updateBindDraft(item.id, "sortOrder", e.target.value)
-                                          }
-                                          placeholder="0"
-                                        />
-                                      </div>
-
-                                      <div className="flex items-end justify-between gap-3 md:col-span-2">
-                                        <label className="mb-2 inline-flex items-center gap-2 text-[10px] text-slate-700">
-                                          <input
-                                            type="checkbox"
-                                            className="h-3.5 w-3.5 rounded border-slate-300"
-                                            checked={getBindDraft(item.id).isRequired}
-onChange={(e) => {
-  const checked = e.target.checked;
-  updateBindDraft(item.id, "isRequired", checked);
-
-  // ✅ 让“必选”立刻体现在 minSelect 上
-  if (checked) {
-    const cur = safeNum(getBindDraft(item.id).minSelect, 0);
-    if (cur <= 0) updateBindDraft(item.id, "minSelect", "1");
-  } else {
-    updateBindDraft(item.id, "minSelect", "0");
-  }
-}}
-
-                                          />
-                                          {isZh ? "必选（min≥1）" : "Required（min≥1）"}
-                                        </label>
-
-                                        <button
-                                          type="button"
-                                          onClick={() => void handleBindTemplateToItem(item.id)}
-                                          className="h-9 flex-1 rounded-md bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-700"
-                                          disabled={bindingItemId === item.id}
-                                        >
-                                          {bindingItemId === item.id
-                                            ? isZh
-                                              ? "绑定中…"
-                                              : "Binding…"
-                                            : isZh
-                                            ? "绑定"
-                                            : "Bind"}
-                                        </button>
-                                      </div>
-
-                                      <p className="md:col-span-12 text-[10px] text-slate-500">
-                                        {isZh
-                                          ? "说明：绑定后，选项的价格/上下架/内容变更会对所有绑定菜品全局生效。"
-                                          : "Note: Once bound, option price/availability/content changes apply globally to all bound items."}
-                                      </p>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div className="mt-2 flex items-center justify-between">
-                                <p className="text-[11px] text-slate-500">
-                                  {isZh
-                                    ? "保存后，顾客菜单页会实时使用最新的图片与配料说明。"
-                                    : "After saving, the customer menu will use the updated image and ingredients."}
-                                </p>
-                                <button
-                                  type="button"
-                                  onClick={() => void handleSaveItem(cat.id, item.id)}
-                                  className="inline-flex items-center rounded-full bg-slate-900 px-4 py-1.5 text-xs font-semibold text-white hover:bg-slate-700"
-                                  disabled={saving.itemId !== null}
-                                >
-                                  {saving.itemId === item.id
-                                    ? isZh
-                                      ? "保存中…"
-                                      : "Saving…"
-                                    : isZh
-                                    ? "保存"
-                                    : "Save"}
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-
-                    {/* 新建菜品区域 */}
-                    <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/60 p-3">
-                      <p className="mb-2 text-xs font-semibold text-slate-700">
-                        {isZh ? "新建菜品" : "Create new item"}
-                      </p>
-
-                      {(() => {
-                        const draft = getNewItemDraft(cat.id);
-                        return (
-                          <div className="space-y-3 text-xs text-slate-700">
-                            <div className="grid gap-3 md:grid-cols-3">
-                              <div className="space-y-1">
-                                <label className="block text-[11px] font-medium text-slate-500">
-                                  stableId（唯一标识）
-                                </label>
-                                <input
-                                  type="text"
-                                  className="h-9 w-full rounded-md border px-3 text-sm"
-                                  placeholder="例如：liangpi"
-                                  value={draft.stableId}
-                                  onChange={(e) =>
-                                    updateNewItemField(cat.id, "stableId", e.target.value)
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className="block text-[11px] font-medium text-slate-500">
-                                  {isZh ? "名称（EN）" : "Name (EN)"}
-                                </label>
-                                <input
-                                  type="text"
-                                  className="h-9 w-full rounded-md border px-3 text-sm"
-                                  value={draft.nameEn}
-                                  onChange={(e) =>
-                                    updateNewItemField(cat.id, "nameEn", e.target.value)
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className="block text-[11px] font-medium text-slate-500">
-                                  {isZh ? "名称（中文）" : "Name (ZH)"}
-                                </label>
-                                <input
-                                  type="text"
-                                  className="h-9 w-full rounded-md border px-3 text-sm"
-                                  value={draft.nameZh}
-                                  onChange={(e) =>
-                                    updateNewItemField(cat.id, "nameZh", e.target.value)
-                                  }
-                                />
-                              </div>
-                            </div>
-
-                            <div className="grid gap-3 md:grid-cols-3">
-                              <div className="space-y-1">
-                                <label className="block text-[11px] font-medium text-slate-500">
-                                  {isZh ? "价格（CAD）" : "Price (CAD)"}
-                                </label>
-                                <input
-                                  type="number"
-                                  min={0}
-                                  step="0.01"
-                                  className="h-9 w-full rounded-md border px-3 text-sm tabular-nums"
-                                  value={draft.price}
-                                  onChange={(e) =>
-                                    updateNewItemField(cat.id, "price", e.target.value)
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className="block text-[11px] font-medium text-slate-500">
-                                  {isZh ? "排序" : "Sort"}
-                                </label>
-                                <input
-                                  type="number"
-                                  className="h-9 w-full rounded-md border px-3 text-sm tabular-nums"
-                                  value={draft.sortOrder}
-                                  onChange={(e) =>
-                                    updateNewItemField(cat.id, "sortOrder", e.target.value)
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className="block text-[11px] font-medium text-slate-500">
-                                  {isZh ? "菜品图片" : "Image"}
-                                </label>
-                                <div className="space-y-1">
-                                  <input
-                                    type="text"
-                                    className="h-9 w-full rounded-md border px-3 text-[11px] font-mono"
-                                    value={draft.imageUrl}
-                                    onChange={(e) =>
-                                      updateNewItemField(cat.id, "imageUrl", e.target.value)
-                                    }
-                                    placeholder={
-                                      isZh
-                                        ? "上传后自动填入 URL，如需可手动修改。"
-                                        : "After upload, URL will be filled automatically."
-                                    }
-                                  />
-                                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
-                                    <input
-                                      type="file"
-                                      accept="image/*"
-                                      className="text-[11px]"
-                                      onChange={(e) => {
-                                        const file = e.target.files?.[0] ?? null;
-                                        if (file) void handleUploadNewItemImage(cat.id, file);
-                                      }}
-                                    />
-                                    <span className="text-[10px] text-slate-400">
-                                      {uploadingImageForDraftCategory === cat.id
-                                        ? isZh
-                                          ? "图片上传中…"
-                                          : "Uploading…"
-                                        : isZh
-                                        ? "可不填，后续也可在菜品编辑中上传图片。"
-                                        : "Optional — you can upload later."}
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="grid gap-3 md:grid-cols-2">
-                              <div className="space-y-1">
-                                <label className="block text-[11px] font-medium text-slate-500">
-                                  {isZh ? "配料说明（EN）" : "Ingredients (EN)"}
-                                </label>
-                                <textarea
-                                  className="w-full rounded-md border px-3 py-2 text-sm"
-                                  rows={3}
-                                  value={draft.ingredientsEn}
-                                  onChange={(e) =>
-                                    updateNewItemField(cat.id, "ingredientsEn", e.target.value)
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className="block text-[11px] font-medium text-slate-500">
-                                  {isZh ? "配料说明（中文）" : "Ingredients (ZH)"}
-                                </label>
-                                <textarea
-                                  className="w-full rounded-md border px-3 py-2 text-sm"
-                                  rows={3}
-                                  value={draft.ingredientsZh}
-                                  onChange={(e) =>
-                                    updateNewItemField(cat.id, "ingredientsZh", e.target.value)
-                                  }
-                                />
-                              </div>
-                            </div>
-
-                            <div className="mt-2 flex items-center justify-between">
-                              <p className="text-[11px] text-slate-500">
-                                {isZh
-                                  ? "提示：stableId 一旦用于前台下单，后续请避免随意更改。"
-                                  : "Note: once used in orders, avoid changing stableId."}
-                              </p>
-                              <button
-                                type="button"
-                                onClick={() => void handleCreateItem(cat.id)}
-                                className="inline-flex items-center rounded-full bg-slate-900 px-4 py-1.5 text-xs font-semibold text-white hover:bg-slate-700"
-                                disabled={creatingItemForCategory === cat.id}
-                              >
-                                {creatingItemForCategory === cat.id
-                                  ? isZh
-                                    ? "创建中…"
-                                    : "Creating…"
-                                  : isZh
-                                  ? "创建菜品"
-                                  : "Create item"}
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </SectionCard>
-
-      {saving.error ? (
-        <p className="text-xs text-red-600">{saving.error}</p>
-      ) : null}
+        ))}
+      </section>
     </div>
   );
 }

@@ -8,13 +8,14 @@
   "engines": {
     "node": ">=18.18.0"
   },
-  "scripts": {
-    "dev": "npm run dev -w apps/web",
-    "dev:web": "npm run dev -w apps/web",
-    "dev:api": "npm run start:dev -w apps/api || npm run start -w apps/api",
-    "build": "NODE_PATH=apps/web/node_modules npm run build -w apps/web && npm run build -w apps/api",
-    "lint": "npm run lint -w apps/web && npm run lint -w apps/api",
-    "test": "npm test -w apps/api"
+  "packageManager": "pnpm@9.0.0",
+"scripts": {
+    "dev": "pnpm --filter web dev",
+    "dev:web": "pnpm --filter web dev",
+    "dev:api": "pnpm --filter api start:dev",
+    "build": "pnpm --filter web build && pnpm --filter api build",
+    "lint": "pnpm --filter web lint && pnpm --filter api lint",
+    "test": "pnpm --filter api test"
   },
   "devDependencies": {
     "@types/jsonwebtoken": "^9.0.10",

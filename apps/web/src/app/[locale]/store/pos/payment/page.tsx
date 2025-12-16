@@ -5,27 +5,14 @@ import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import type { Locale } from "@/lib/order/shared";
 import { apiFetch } from "@/lib/api-client";
-
-const POS_DISPLAY_STORAGE_KEY = "sanqin-pos-display-v1";
+import {
+  readPosDisplaySnapshot,
+  clearPosDisplaySnapshot,
+  type PosDisplaySnapshot,
+} from "@/lib/pos-display";
 
 type FulfillmentType = "pickup" | "dine_in";
 type PaymentMethod = "cash" | "card" | "wechat_alipay";
-
-type PosDisplayItem = {
-  id: string;
-  nameZh: string;
-  nameEn: string;
-  quantity: number;
-  unitPriceCents: number;
-  lineTotalCents: number;
-};
-
-type PosDisplaySnapshot = {
-  items: PosDisplayItem[];
-  subtotalCents: number;
-  taxCents: number;
-  totalCents: number;
-};
 
 type CreatePosOrderResponse = {
   id: string;
@@ -46,19 +33,19 @@ type PosPrintRequest = {
  * 把当前订单的信息发给本地打印服务
  * 本地服务地址： http://127.0.0.1:19191/print-pos
  */
-function sendPosPrintRequest(payload: PosPrintRequest) {
-  try {
-    // 不用 await，让它在后台自己跑
-    fetch("http://127.0.0.1:19191/print-pos", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    }).catch((err) => {
+function sendPosPrintRequest(payload: PosPrintRequest): Promise<void> {
+  return fetch("http://127.0.0.1:19191/print-pos", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+
+    // ✅ 可选：避免你点“完成/跳转”太快导致请求被浏览器取消
+    keepalive: true,
+  })
+    .then(() => undefined)
+    .catch((err) => {
       console.error("Failed to send POS print request:", err);
     });
-  } catch (err) {
-    console.error("Failed to send POS print request (sync error):", err);
-  }
 }
 
 const STRINGS: Record<
@@ -99,7 +86,7 @@ const STRINGS: Record<
     tax: "税费 (HST)",
     total: "合计",
     fulfillmentLabel: "用餐方式",
-    pickup: "外卖",
+    pickup: "外带",
     dineIn: "堂食",
     paymentLabel: "付款方式",
     payCash: "现金",
@@ -152,6 +139,20 @@ function formatMoney(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+function makePosClientRequestId(): string {
+  // 在现代浏览器里：crypto.randomUUID() 基本不会重复
+  // fallback：Date.now()（必要时可再拼上 Math.random()）
+  try {
+    if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+      // @ts-expect-error: randomUUID is not in older TS lib targets
+      return `POS-${crypto.randomUUID()}`;
+    }
+  } catch {
+    // ignore
+  }
+  return `POS-${Date.now()}`;
+}
+
 export default function StorePosPaymentPage() {
   const router = useRouter();
   const params = useParams<{ locale?: string }>();
@@ -163,6 +164,7 @@ export default function StorePosPaymentPage() {
   const [fulfillment, setFulfillment] = useState<FulfillmentType>("pickup");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [submitting, setSubmitting] = useState(false);
+  const [posClientRequestId, setPosClientRequestId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successInfo, setSuccessInfo] = useState<{
     orderNumber: string;
@@ -197,14 +199,15 @@ export default function StorePosPaymentPage() {
   };
 
   const handleConfirm = async () => {
-    if (!snapshot || !hasItems || submitting) return;
+    const clientRequestId = posClientRequestId ?? makePosClientRequestId();
+    if (!posClientRequestId) setPosClientRequestId(clientRequestId);
 
     setError(null);
     setSubmitting(true);
 
     try {
       const itemsPayload = snapshot.items.map((item) => ({
-        productId: item.id,
+        productStableId: item.stableId,
         qty: item.quantity,
         // 后端单价通常用“元”还是“分”你之前已经定过了，
         // 这里我按你 web 那套：API 用“元”，DB 存“分”，所以 /100
@@ -214,27 +217,20 @@ export default function StorePosPaymentPage() {
         nameZh: item.nameZh,
       }));
 
-      const body = {
-        // ✅ channel：必须是 web | in_store | ubereats 之一
-        // POS 场景我们固定用 in_store
-        channel: "in_store" as const,
+const clientRequestId = makePosClientRequestId();
 
-        // ✅ fulfillmentType：必须是 pickup | dine_in | delivery 之一
-        // 这里直接用 state 里保存的 fulfillment（类型是 "pickup" | "dine_in"）
-        fulfillmentType: fulfillment,
+const body = {
+  channel: "in_store" as const,
+  fulfillmentType: fulfillment,
+  subtotalCents: snapshot.subtotalCents,
+  taxCents: snapshot.taxCents,
+  totalCents: snapshot.totalCents,
+  paymentMethod,
+  items: itemsPayload,
 
-        // 下面这些字段按你的 DTO 来，这几个名字在前面代码里已经统一过
-        subtotalCents: snapshot.subtotalCents,
-        taxCents: snapshot.taxCents,
-        totalCents: snapshot.totalCents,
-
-        // 支付方式如果后端暂时没校验，可以先照传，之后再看需要不需要进 DTO
-        paymentMethod,
-
-        items: itemsPayload,
-
-        clientRequestId: `POS-${Date.now()}`,
-      };
+  // ✅ 更可靠的幂等 key / 请求追踪 id
+  clientRequestId,
+};
 
       // 👉 调试用：你可以先打开这一行看看真实发出去是什么
       // console.log("POS create order body:", body);
@@ -245,26 +241,26 @@ export default function StorePosPaymentPage() {
         body: JSON.stringify(body),
       });
 
-      const orderNumber = order.clientRequestId ?? order.id;
+      const orderNumber = order.clientRequestId ?? clientRequestId;
       const pickupCode = order.pickupCode ?? null;
 
-      // ✅ 打印：发送给本地打印服务（无弹窗）
-      if (typeof window !== "undefined") {
-        await sendPosPrintRequest({
-          locale,
-          orderNumber,
-          pickupCode,
-          fulfillment,
-          paymentMethod,
-          snapshot,
-        });
+// ✅ 打印：发送给本地打印服务（无弹窗）
+if (typeof window !== "undefined") {
+  void sendPosPrintRequest({
+    locale,
+    orderNumber,
+    pickupCode,
+    fulfillment,
+    paymentMethod,
+    snapshot,
+  });
 
-        try {
-          window.localStorage.removeItem(POS_DISPLAY_STORAGE_KEY);
-        } catch {
-          // ignore
-        }
-      }
+  try {
+    window.localStorage.removeItem(POS_DISPLAY_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
 
       setSuccessInfo({
         orderNumber,
@@ -277,6 +273,7 @@ export default function StorePosPaymentPage() {
       setSubmitting(false);
     }
   };
+    setPosClientRequestId(null);
 
   const handleCloseSuccess = () => {
     setSuccessInfo(null);

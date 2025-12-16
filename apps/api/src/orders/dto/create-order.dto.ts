@@ -13,16 +13,32 @@ import {
 import { Channel, DeliveryType, FulfillmentType } from '@prisma/client';
 
 class CreateOrderItemDto {
-  @IsString() productId!: string;
-  @IsInt() @Min(1) qty!: number;
+  // ✅ 对外统一：引用菜品 stableId
+  @IsString()
+  productStableId!: string;
 
-  @IsOptional() @IsString() displayName?: string;
-  @IsOptional() @IsString() nameEn?: string;
-  @IsOptional() @IsString() nameZh?: string;
+  @IsInt()
+  @Min(1)
+  qty!: number;
+
+  @IsOptional()
+  @IsString()
+  displayName?: string;
+
+  @IsOptional()
+  @IsString()
+  nameEn?: string;
+
+  @IsOptional()
+  @IsString()
+  nameZh?: string;
 
   // 可选：单价、加料
-  @IsOptional() unitPrice?: number;
-  @IsOptional() options?: Record<string, unknown>;
+  @IsOptional()
+  unitPrice?: number;
+
+  @IsOptional()
+  options?: Record<string, unknown>;
 }
 
 export class DeliveryDestinationDto {
@@ -81,12 +97,10 @@ export class DeliveryDestinationDto {
 }
 
 export class CreateOrderDto {
-  // ✅ 允许任意字符串 userId（例如 "google:xxxxx"），只保证是字符串就行
   @IsOptional()
   @IsString()
   userId?: string;
 
-  // ✅ 允许任意字符串 clientRequestId（SQ****** 等）
   @IsOptional()
   @IsString()
   clientRequestId?: string;
@@ -95,7 +109,7 @@ export class CreateOrderDto {
   @IsString()
   pickupCode?: string;
 
-  // === 新增：订单级联系方式（账号手机号分离） ===
+  // === 订单级联系方式（账号手机号分离） ===
   @IsOptional()
   @IsString()
   contactName?: string;
@@ -104,7 +118,6 @@ export class CreateOrderDto {
   @IsString()
   contactPhone?: string;
 
-  // ✅ 用 Prisma 的 Channel enum，保证和 schema 统一
   @IsEnum(Channel)
   channel!: Channel;
 
@@ -133,10 +146,25 @@ export class CreateOrderDto {
   @Min(0)
   redeemValueCents?: number;
 
-  @IsOptional() @IsInt() @Min(0) subtotalCents?: number;
-  @IsOptional() @IsInt() @Min(0) taxCents?: number;
-  @IsOptional() @IsInt() @Min(0) totalCents?: number;
-  @IsOptional() @IsInt() @Min(0) deliveryFeeCents?: number;
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  subtotalCents?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  taxCents?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  totalCents?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  deliveryFeeCents?: number;
 
   @IsOptional()
   @IsString()

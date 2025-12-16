@@ -4,21 +4,21 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AppLogger } from '../common/app-logger';
 
 export type PublicMenuOptionDto = {
-  id: string;
-  templateGroupId: string;
+  optionStableId: string;
+  templateGroupStableId: string;
+
   nameEn: string;
   nameZh: string | null;
   priceDeltaCents: number;
+
   isAvailable: boolean;
-  tempUnavailableUntil: string | null; // ✅ ISO string
+  tempUnavailableUntil: string | null;
   sortOrder: number;
 };
 
 export type PublicMenuOptionGroupDto = {
-  id: string; // MenuItemOptionGroup.id
-
-  // ✅ 这里不再输出 itemId（因为 optionGroups 已经嵌套在 item 下了，冗余）
-  templateGroupId: string;
+  // 绑定记录不对外暴露；group 以模板组 stableId 标识（在 item 下唯一）
+  templateGroupStableId: string;
 
   minSelect: number;
   maxSelect: number | null;
@@ -28,16 +28,14 @@ export type PublicMenuOptionGroupDto = {
   nameEn: string;
   nameZh: string | null;
   templateIsAvailable: boolean;
-  templateTempUnavailableUntil: string | null; // ✅ ISO string
+  templateTempUnavailableUntil: string | null;
 
   options: PublicMenuOptionDto[];
 };
 
 export type PublicMenuItemDto = {
-  /** ✅ public id：直接用 stableId（前端/购物车/订单统一用这个） */
-  id: string;
-
-  categoryId: string;
+  stableId: string;
+  categoryStableId: string;
 
   nameEn: string;
   nameZh: string | null;
@@ -45,7 +43,7 @@ export type PublicMenuItemDto = {
   basePriceCents: number;
   isAvailable: boolean;
   isVisible: boolean;
-  tempUnavailableUntil: string | null; // ✅ ISO string
+  tempUnavailableUntil: string | null;
   sortOrder: number;
 
   imageUrl: string | null;
@@ -56,11 +54,13 @@ export type PublicMenuItemDto = {
 };
 
 export type PublicMenuCategoryDto = {
-  id: string;
+  stableId: string;
+
   sortOrder: number;
   nameEn: string;
   nameZh: string | null;
   isActive: boolean;
+
   items: PublicMenuItemDto[];
 };
 
@@ -68,18 +68,14 @@ function toIso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
 }
 
-/**
- * tempUntil 如果是未来时间 => 视为“暂不可售”
- * 解析失败 => 当作没设置（不拦截），避免脏数据导致全下架
- */
 function isAvailableNow(
   isAvailable: boolean,
-  tempUntil: string | null,
+  tempUntilIso: string | null,
 ): boolean {
   if (!isAvailable) return false;
-  if (!tempUntil) return true;
+  if (!tempUntilIso) return true;
 
-  const t = Date.parse(tempUntil);
+  const t = Date.parse(tempUntilIso);
   if (!Number.isFinite(t)) return true;
 
   return Date.now() >= t;
@@ -91,24 +87,36 @@ export class PublicMenuService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  /**
-   * 顾客端公开菜单：
-   * - 过滤分类/菜品/选项组/选项的“永久下架 + 临时下架”
-   * - 全部按 sortOrder 排序（DB 已 orderBy，这里不重复 sort）
-   */
   async getPublicMenu(): Promise<PublicMenuCategoryDto[]> {
     const categories = await this.prisma.menuCategory.findMany({
+      where: {
+        deletedAt: null,
+        isActive: true,
+      },
       orderBy: { sortOrder: 'asc' },
       include: {
         items: {
+          where: {
+            deletedAt: null,
+            isVisible: true,
+          },
           orderBy: { sortOrder: 'asc' },
           include: {
             optionGroups: {
+              where: {
+                isEnabled: true,
+                templateGroup: {
+                  deletedAt: null,
+                },
+              },
               orderBy: { sortOrder: 'asc' },
               include: {
                 templateGroup: {
                   include: {
-                    options: { orderBy: { sortOrder: 'asc' } },
+                    options: {
+                      where: { deletedAt: null },
+                      orderBy: { sortOrder: 'asc' },
+                    },
                   },
                 },
               },
@@ -118,96 +126,106 @@ export class PublicMenuService {
       },
     });
 
-    const result: PublicMenuCategoryDto[] = (categories ?? [])
-      .filter((c) => c.isActive)
-      .map((cat) => {
-        const items: PublicMenuItemDto[] = (cat.items ?? [])
-          .filter((it) => {
-            const ok =
-              it.isVisible &&
-              isAvailableNow(it.isAvailable, toIso(it.tempUnavailableUntil));
-            return ok;
-          })
-          .map((it) => {
-            const optionGroups: PublicMenuOptionGroupDto[] = (
-              it.optionGroups ?? []
-            )
-              .filter((link) => {
-                if (!link.isEnabled) return false;
-                const tg = link.templateGroup;
-                return isAvailableNow(
-                  tg.isAvailable,
-                  toIso(tg.tempUnavailableUntil),
-                );
-              })
-              .map((link) => {
-                const tg = link.templateGroup;
+    const result: PublicMenuCategoryDto[] = (categories ?? []).map((cat) => {
+      const categoryStableId = cat.stableId;
 
-                const options: PublicMenuOptionDto[] = (tg.options ?? [])
-                  .filter((opt) =>
-                    isAvailableNow(
-                      opt.isAvailable,
-                      toIso(opt.tempUnavailableUntil),
-                    ),
-                  )
-                  .map((opt) => ({
-                    id: opt.id,
-                    templateGroupId: opt.templateGroupId,
-                    nameEn: opt.nameEn,
-                    nameZh: opt.nameZh ?? null,
-                    priceDeltaCents: opt.priceDeltaCents,
-                    isAvailable: opt.isAvailable,
-                    tempUnavailableUntil: toIso(opt.tempUnavailableUntil),
-                    sortOrder: opt.sortOrder,
-                  }));
+      const items: PublicMenuItemDto[] = (cat.items ?? [])
+        .filter((it) => {
+          // isVisible 已在 Prisma where 过滤，但保留一层防御式过滤
+          if (!it.isVisible) return false;
+          return isAvailableNow(it.isAvailable, toIso(it.tempUnavailableUntil));
+        })
+        .map((it) => {
+          const optionGroups: PublicMenuOptionGroupDto[] = (
+            it.optionGroups ?? []
+          )
+            .filter((link) => {
+              if (!link.isEnabled) return false;
 
-                return {
-                  id: link.id,
-                  templateGroupId: link.templateGroupId,
-                  minSelect: link.minSelect,
-                  maxSelect: link.maxSelect,
-                  sortOrder: link.sortOrder,
-                  isEnabled: link.isEnabled,
+              const tg = link.templateGroup;
+              // templateGroup.deletedAt 已在 Prisma where 过滤，但保留一层防御式过滤
+              if (!tg || (tg as { deletedAt?: Date | null }).deletedAt)
+                return false;
 
-                  nameEn: tg.nameEn,
-                  nameZh: tg.nameZh ?? null,
-                  templateIsAvailable: tg.isAvailable,
-                  templateTempUnavailableUntil: toIso(tg.tempUnavailableUntil),
+              return isAvailableNow(
+                tg.isAvailable,
+                toIso(tg.tempUnavailableUntil),
+              );
+            })
+            .map((link) => {
+              const tg = link.templateGroup;
+              const templateGroupStableId = tg.stableId;
 
-                  options,
-                };
-              });
+              const options: PublicMenuOptionDto[] = (tg.options ?? [])
+                .filter((opt) => {
+                  // options.deletedAt 已在 Prisma where 过滤，但保留一层防御式过滤
+                  if ((opt as { deletedAt?: Date | null }).deletedAt)
+                    return false;
+                  return isAvailableNow(
+                    opt.isAvailable,
+                    toIso(opt.tempUnavailableUntil),
+                  );
+                })
+                .map((opt) => ({
+                  optionStableId: opt.stableId,
+                  templateGroupStableId,
 
-            return {
-              id: it.stableId, // ✅ public id = stableId
-              categoryId: it.categoryId,
+                  nameEn: opt.nameEn,
+                  nameZh: opt.nameZh ?? null,
+                  priceDeltaCents: opt.priceDeltaCents,
 
-              nameEn: it.nameEn,
-              nameZh: it.nameZh ?? null,
+                  isAvailable: opt.isAvailable,
+                  tempUnavailableUntil: toIso(opt.tempUnavailableUntil),
+                  sortOrder: opt.sortOrder,
+                }));
 
-              basePriceCents: it.basePriceCents,
-              isAvailable: it.isAvailable,
-              isVisible: it.isVisible,
-              tempUnavailableUntil: toIso(it.tempUnavailableUntil),
-              sortOrder: it.sortOrder,
+              return {
+                templateGroupStableId,
 
-              imageUrl: it.imageUrl ?? null,
-              ingredientsEn: it.ingredientsEn ?? null,
-              ingredientsZh: it.ingredientsZh ?? null,
+                minSelect: link.minSelect,
+                maxSelect: link.maxSelect,
+                sortOrder: link.sortOrder,
+                isEnabled: link.isEnabled,
 
-              optionGroups,
-            };
-          });
+                nameEn: tg.nameEn,
+                nameZh: tg.nameZh ?? null,
+                templateIsAvailable: tg.isAvailable,
+                templateTempUnavailableUntil: toIso(tg.tempUnavailableUntil),
 
-        return {
-          id: cat.id,
-          sortOrder: cat.sortOrder,
-          nameEn: cat.nameEn,
-          nameZh: cat.nameZh ?? null,
-          isActive: cat.isActive,
-          items,
-        };
-      });
+                options,
+              };
+            });
+
+          return {
+            stableId: it.stableId,
+            categoryStableId,
+
+            nameEn: it.nameEn,
+            nameZh: it.nameZh ?? null,
+
+            basePriceCents: it.basePriceCents,
+            isAvailable: it.isAvailable,
+            isVisible: it.isVisible,
+            tempUnavailableUntil: toIso(it.tempUnavailableUntil),
+            sortOrder: it.sortOrder,
+
+            imageUrl: it.imageUrl ?? null,
+            ingredientsEn: it.ingredientsEn ?? null,
+            ingredientsZh: it.ingredientsZh ?? null,
+
+            optionGroups,
+          };
+        });
+
+      return {
+        stableId: categoryStableId,
+        sortOrder: cat.sortOrder,
+        nameEn: cat.nameEn,
+        nameZh: cat.nameZh ?? null,
+        isActive: cat.isActive,
+        items,
+      };
+    });
 
     this.logger.log(`Public menu generated: categories=${result.length}`);
     return result;

@@ -1,4 +1,3 @@
-//Users/apple/sanqinMVP/apps/api/prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
@@ -48,27 +47,28 @@ enum LoyaltyTier {
 }
 
 enum LoyaltyEntryType {
-  EARN_ON_PURCHASE      // 支付后赚取
-  REDEEM_ON_ORDER       // 下单时抵扣
-  REFUND_REVERSE_EARN   // 退款时冲回赚取
-  REFUND_RETURN_REDEEM  // 退款时退回抵扣
+  EARN_ON_PURCHASE
+  REDEEM_ON_ORDER
+  REFUND_REVERSE_EARN
+  REFUND_RETURN_REDEEM
 
-  // ⭐ 新增：用于积分=储值统一记账
-  TOPUP_PURCHASED       // 储值/充值时入账的积分（包含本金部分）
-  ADJUSTMENT_MANUAL     // 人工调整（活动奖励、补偿、修正等）
-  // ⭐ 新增：推荐奖励 & 退款冲销
-  REFERRAL_BONUS          // 推荐人因被推荐人消费获得的积分
-  REFUND_REVERSE_REFERRAL // 退款时冲回推荐奖励
+  TOPUP_PURCHASED
+  ADJUSTMENT_MANUAL
+  REFERRAL_BONUS
+  REFUND_REVERSE_REFERRAL
 }
+
 enum PhoneVerificationStatus {
-  PENDING   // 已发送，等待用户输入验证码
-  VERIFIED  // 验证通过
-  CONSUMED  // 已经消费 / 失效（可选状态，方便以后扩展）
+  PENDING
+  VERIFIED
+  CONSUMED
 }
+
 enum UserRole {
   CUSTOMER
   ADMIN
 }
+
 enum Weekday {
   MON
   TUE
@@ -81,33 +81,24 @@ enum Weekday {
 
 // === Models ===
 
-// ⭐ 新增：用户表
-// id 我们用字符串，直接和 next-auth 的 userId 对齐（例如 "google:xxxxx"）
-// 不强制 UUID，这样不用改你现有的 token 生成逻辑。
 model User {
-  id        String   @id         // 例如: "google:1234567890"
+  id        String   @id
   email     String?  @unique
   phone      String?   @unique
   phoneVerifiedAt DateTime?
   name      String?
-  role      UserRole @default(CUSTOMER)  // 新增：角色
+  role      UserRole @default(CUSTOMER)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   marketingEmailOptIn   Boolean  @default(false)
   marketingEmailOptInAt DateTime?
-  // ⭐ 新增：推荐关系，仅在注册时写入一次
-  referredByUserId String?  // = 推荐人的 userId（User.id）
+  referredByUserId String?
+  birthdayMonth    Int?
+  birthdayDay      Int?
 
-  // ⭐ 新增：生日（月/日），用于生日优惠券，仅能设置一次
-  birthdayMonth    Int?     // 1-12
-  birthdayDay      Int?     // 1-31（代码中再做校验）
-
-  // 目前不加外键关系，继续用 userId 字符串“软关联” Order / LoyaltyAccount，
-  // 方便迁移，不会因为老数据导致外键失败。以后需要可以再加关系字段。
   @@index([referredByUserId])
 }
 
-// === 订单相关 ===
 model Order {
   id              String          @id @default(uuid()) @db.Uuid
   userId          String?
@@ -130,14 +121,15 @@ model Order {
   deliveryEtaMinMinutes  Int?
   deliveryEtaMaxMinutes  Int?
   externalDeliveryId     String?
-  loyaltyRedeemCents       Int      @default(0)
-  subtotalAfterDiscountCents Int    @default(0)
-  couponId             String?        @db.Uuid
-  couponDiscountCents  Int            @default(0)
-  couponCodeSnapshot   String?
-  couponTitleSnapshot  String?
-  couponMinSpendCents  Int?
-  couponExpiresAt      DateTime?
+
+  loyaltyRedeemCents         Int      @default(0)
+  subtotalAfterDiscountCents Int      @default(0)
+  couponId                   String?  @db.Uuid
+  couponDiscountCents        Int      @default(0)
+  couponCodeSnapshot         String?
+  couponTitleSnapshot        String?
+  couponMinSpendCents        Int?
+  couponExpiresAt            DateTime?
 
   createdAt       DateTime        @default(now())
 
@@ -165,31 +157,30 @@ model Coupon {
 }
 
 model OrderItem {
-  id             String @id @default(uuid()) @db.Uuid
-  orderId        String @db.Uuid
-  productId      String
-  displayName    String?   // 下单时用户看到的名字（跟当前界面 locale 一致）
-  nameEn         String?   // 标准英文名
-  nameZh         String?   // 标准中文名
-  qty            Int
-  unitPriceCents Int?
-  optionsJson    Json?
+  id                String @id @default(uuid()) @db.Uuid
+  orderId           String @db.Uuid
+
+  // ✅ 对外统一：引用菜品 stableId
+  productStableId   String
+
+  displayName       String?
+  nameEn            String?
+  nameZh            String?
+  qty               Int
+  unitPriceCents    Int?
+  optionsJson       Json?
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId])
 }
 
-// === 会员积分相关 ===
 model LoyaltyAccount {
   id          String      @id @default(uuid()) @db.Uuid
   userId      String      @unique
   pointsMicro BigInt      @db.BigInt
   tier        LoyaltyTier @default(BRONZE)
   createdAt   DateTime    @default(now())
-
-  // ⭐ 新增：累计实际消费（单位：分）
-  // 包含：订单实际支付的商品金额（不含积分抵扣） + 储值金额（因为你决定不退款）
   lifetimeSpendCents Int @default(0)
 
   ledger LoyaltyLedger[]
@@ -231,20 +222,18 @@ model CheckoutIntent {
 }
 
 model PhoneVerification {
-  id        String                 @id @default(uuid()) @db.Uuid
-  phone     String                 // 经过 normalize 处理后的手机号（去掉空格等）
-  code      String                 // 6 位数字验证码（MVP 先明文存）
+  id        String                  @id @default(uuid()) @db.Uuid
+  phone     String
+  code      String
   status    PhoneVerificationStatus @default(PENDING)
 
-  // 有效期（例如发送后 10 分钟）
   expiresAt DateTime
-  createdAt DateTime                @default(now())
+  createdAt DateTime @default(now())
   verifiedAt DateTime?
   consumedAt DateTime?
   purpose   String   @default("generic")
   used      Boolean  @default(false)
 
-  // 可选：记录错误尝试次数
   attempts      Int       @default(0)
   lastAttemptAt DateTime?
 
@@ -252,10 +241,10 @@ model PhoneVerification {
 }
 
 model BusinessConfig {
-  id                 Int      @id @default(1)      // 单门店可固定为 1
-  storeName          String? 
-  timezone           String   @default("America/Toronto")
-  isTemporarilyClosed Boolean @default(false)      // 手动一键“暂停接单”
+  id                   Int      @id @default(1)
+  storeName            String?
+  timezone             String   @default("America/Toronto")
+  isTemporarilyClosed  Boolean  @default(false)
   temporaryCloseReason String?
 
   createdAt DateTime @default(now())
@@ -264,19 +253,18 @@ model BusinessConfig {
 
 model BusinessHour {
   id           Int      @id @default(autoincrement())
-  weekday      Int      @unique       // 0=Sunday ... 6=Saturday，保证一天一条
-  openMinutes  Int?                   // 开门时间，可以为 null
-  closeMinutes Int?                   // 打烊时间，可以为 null
+  weekday      Int      @unique
+  openMinutes  Int?
+  closeMinutes Int?
   isClosed     Boolean  @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-
 model Holiday {
   id           Int      @id @default(autoincrement())
-  date         DateTime // 只用到日期，可统一当 local midnight 存
+  date         DateTime
   name         String?
   isClosed     Boolean  @default(true)
   openMinutes  Int?
@@ -286,73 +274,100 @@ model Holiday {
   updatedAt DateTime @updatedAt
 }
 
+// =========================
+// ===== Menu (stableId) ====
+// =========================
+
 model MenuCategory {
-  id        String     @id @default(uuid())
+  id        String   @id @default(uuid())
+
+  stableId  String   @unique @default(cuid())
+
   nameEn    String
   nameZh    String?
-  sortOrder Int        @default(0)
-  isActive  Boolean    @default(true)
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+
+  // ✅ 软删除：不物理删除，保证 stableId 永久唯一不可复用
+  deletedAt DateTime?
 
   items     MenuItem[]
 
   @@index([sortOrder])
+  @@index([deletedAt])
 }
 
 model MenuItem {
-  id                  String                @id @default(uuid())
+  id                  String   @id @default(uuid())
   categoryId           String
-  stableId             String                @unique
-  nameEn              String
-  nameZh              String?
+
+  // ✅ 不传则自动生成 cuid；传了就用传入值（前提：唯一）
+  stableId             String   @unique @default(cuid())
+
+  nameEn               String
+  nameZh               String?
   basePriceCents       Int
-  sortOrder            Int                   @default(0)
+  sortOrder            Int      @default(0)
 
   imageUrl             String?
   ingredientsEn        String?
   ingredientsZh        String?
 
-  isAvailable          Boolean               @default(true)
-  isVisible            Boolean               @default(true)
+  isAvailable          Boolean  @default(true)
+  isVisible            Boolean  @default(true)
   tempUnavailableUntil DateTime?
+
+  deletedAt            DateTime?
 
   category             MenuCategory          @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   optionGroups         MenuItemOptionGroup[]
 
   @@index([categoryId, sortOrder])
+  @@index([deletedAt])
 }
 
 model MenuOptionGroupTemplate {
-  id                   String                  @id @default(uuid())
+  id                   String   @id @default(uuid())
+  stableId             String   @unique @default(cuid())
+
   nameEn               String
   nameZh               String?
-  sortOrder            Int                     @default(0)
+  sortOrder            Int      @default(0)
 
-  defaultMinSelect     Int                     @default(0)
-  defaultMaxSelect     Int?                    @default(1)
+  defaultMinSelect     Int      @default(0)
+  defaultMaxSelect     Int?     @default(1)
 
-  isAvailable          Boolean                 @default(true)
+  isAvailable          Boolean  @default(true)
   tempUnavailableUntil DateTime?
+
+  deletedAt            DateTime?
 
   options              MenuOptionTemplateChoice[]
   itemLinks            MenuItemOptionGroup[]
 
   @@index([sortOrder])
+  @@index([deletedAt])
 }
 
 model MenuOptionTemplateChoice {
-  id                   String                 @id @default(uuid())
+  id                   String   @id @default(uuid())
+  stableId             String   @unique @default(cuid())
+
   templateGroupId      String
   nameEn               String
   nameZh               String?
-  priceDeltaCents      Int                    @default(0)
-  sortOrder            Int                    @default(0)
+  priceDeltaCents      Int      @default(0)
+  sortOrder            Int      @default(0)
 
-  isAvailable          Boolean                @default(true)
+  isAvailable          Boolean  @default(true)
   tempUnavailableUntil DateTime?
+
+  deletedAt            DateTime?
 
   templateGroup        MenuOptionGroupTemplate @relation(fields: [templateGroupId], references: [id], onDelete: Cascade)
 
   @@index([templateGroupId, sortOrder])
+  @@index([deletedAt])
 }
 
 model MenuItemOptionGroup {
