@@ -10,11 +10,7 @@ import type {
 } from "@/lib/order/shared";
 import { TAX_RATE, buildLocalizedMenuFromDb } from "@/lib/order/shared";
 import { apiFetch } from "@/lib/api-client";
-import {
-  writePosDisplaySnapshot,
-  clearPosDisplaySnapshot,
-  type PosDisplaySnapshot,
-} from "@/lib/pos-display";
+import { type PosDisplaySnapshot } from "@/lib/pos-display";
 
 type PosCartEntry = {
   stableId: string;
