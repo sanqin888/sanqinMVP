@@ -6,8 +6,7 @@ import { useRouter, useParams } from "next/navigation";
 import type { Locale } from "@/lib/order/shared";
 import { apiFetch } from "@/lib/api-client";
 import {
-  readPosDisplaySnapshot,
-  clearPosDisplaySnapshot,
+  POS_DISPLAY_STORAGE_KEY,
   type PosDisplaySnapshot,
 } from "@/lib/pos-display";
 
@@ -144,7 +143,6 @@ function makePosClientRequestId(): string {
   // fallback：Date.now()（必要时可再拼上 Math.random()）
   try {
     if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-      // @ts-expect-error: randomUUID is not in older TS lib targets
       return `POS-${crypto.randomUUID()}`;
     }
   } catch {
