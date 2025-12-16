@@ -6,8 +6,7 @@ import { useRouter, useParams } from "next/navigation";
 import type { Locale } from "@/lib/order/shared";
 import { apiFetch } from "@/lib/api-client";
 import {
-  readPosDisplaySnapshot,
-  clearPosDisplaySnapshot,
+  POS_DISPLAY_STORAGE_KEY,
   type PosDisplaySnapshot,
 } from "@/lib/pos-display";
 
@@ -144,7 +143,6 @@ function makePosClientRequestId(): string {
   // fallback：Date.now()（必要时可再拼上 Math.random()）
   try {
     if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-      // @ts-expect-error: randomUUID is not in older TS lib targets
       return `POS-${crypto.randomUUID()}`;
     }
   } catch {
@@ -205,6 +203,12 @@ export default function StorePosPaymentPage() {
     setError(null);
     setSubmitting(true);
 
+    if (!snapshot || snapshot.items.length === 0) {
+      setError(t.noOrder);
+      setSubmitting(false);
+      return;
+    }
+
     try {
       const itemsPayload = snapshot.items.map((item) => ({
         productStableId: item.stableId,
@@ -217,20 +221,18 @@ export default function StorePosPaymentPage() {
         nameZh: item.nameZh,
       }));
 
-const clientRequestId = makePosClientRequestId();
+      const body = {
+        channel: "in_store" as const,
+        fulfillmentType: fulfillment,
+        subtotalCents: snapshot.subtotalCents,
+        taxCents: snapshot.taxCents,
+        totalCents: snapshot.totalCents,
+        paymentMethod,
+        items: itemsPayload,
 
-const body = {
-  channel: "in_store" as const,
-  fulfillmentType: fulfillment,
-  subtotalCents: snapshot.subtotalCents,
-  taxCents: snapshot.taxCents,
-  totalCents: snapshot.totalCents,
-  paymentMethod,
-  items: itemsPayload,
-
-  // ✅ 更可靠的幂等 key / 请求追踪 id
-  clientRequestId,
-};
+        // ✅ 更可靠的幂等 key / 请求追踪 id
+        clientRequestId,
+      };
 
       // 👉 调试用：你可以先打开这一行看看真实发出去是什么
       // console.log("POS create order body:", body);
@@ -244,23 +246,23 @@ const body = {
       const orderNumber = order.clientRequestId ?? clientRequestId;
       const pickupCode = order.pickupCode ?? null;
 
-// ✅ 打印：发送给本地打印服务（无弹窗）
-if (typeof window !== "undefined") {
-  void sendPosPrintRequest({
-    locale,
-    orderNumber,
-    pickupCode,
-    fulfillment,
-    paymentMethod,
-    snapshot,
-  });
+      // ✅ 打印：发送给本地打印服务（无弹窗）
+      if (typeof window !== "undefined") {
+        void sendPosPrintRequest({
+          locale,
+          orderNumber,
+          pickupCode,
+          fulfillment,
+          paymentMethod,
+          snapshot,
+        });
 
-  try {
-    window.localStorage.removeItem(POS_DISPLAY_STORAGE_KEY);
-  } catch {
-    // ignore
-  }
-}
+        try {
+          window.localStorage.removeItem(POS_DISPLAY_STORAGE_KEY);
+        } catch {
+          // ignore
+        }
+      }
 
       setSuccessInfo({
         orderNumber,
@@ -273,7 +275,6 @@ if (typeof window !== "undefined") {
       setSubmitting(false);
     }
   };
-    setPosClientRequestId(null);
 
   const handleCloseSuccess = () => {
     setSuccessInfo(null);
@@ -313,7 +314,7 @@ if (typeof window !== "undefined") {
               <ul className="space-y-2 max-h-72 overflow-auto pr-1">
                 {snapshot.items.map((item) => (
                   <li
-                    key={item.id}
+                    key={`${item.stableId}-${item.unitPriceCents}-${item.quantity}`}
 className="rounded-2xl bg-slate-900/60 px-3 py-2 flex items-center justify-between gap-2"
                   >
                     <div className="flex-1">
