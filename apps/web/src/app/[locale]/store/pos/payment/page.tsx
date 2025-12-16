@@ -5,7 +5,10 @@ import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import type { Locale } from "@/lib/order/shared";
 import { apiFetch } from "@/lib/api-client";
-import { type PosDisplaySnapshot } from "@/lib/pos-display";
+import {
+  POS_DISPLAY_STORAGE_KEY,
+  type PosDisplaySnapshot,
+} from "@/lib/pos-display";
 
 type FulfillmentType = "pickup" | "dine_in";
 type PaymentMethod = "cash" | "card" | "wechat_alipay";
