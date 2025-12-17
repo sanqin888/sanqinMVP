@@ -596,19 +596,6 @@ export class UberDirectService {
       return new Error(
         `Uber Direct API error${status ? ` (${status})` : ''}: ${message}`,
       );
-      return new Error(String(error));
-    }
-
-    const status = axiosError.response?.status;
-    const baseData: unknown = axiosError.response?.data;
-
-    let bodySnippet = '[no response body]';
-    if (typeof baseData !== 'undefined') {
-      try {
-        bodySnippet = JSON.stringify(baseData);
-      } catch {
-        bodySnippet = '[unserializable response body]';
-      }
     }
 
     const formatted = this.formatUnknownError(error);
