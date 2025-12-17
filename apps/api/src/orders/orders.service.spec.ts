@@ -51,18 +51,22 @@ describe('OrdersService', () => {
         delete: jest.fn(),
       },
       menuItem: {
-        findMany: jest.fn().mockImplementation(({ where }) => {
-          const ids: string[] = where?.id?.in ?? [];
-          if (!ids || ids.length === 0) return Promise.resolve([]);
-          return Promise.resolve([
-            {
-              id: demoProductId,
-              basePriceCents: 1000,
-              nameEn: 'Demo Product',
-              nameZh: null,
+        findMany: jest
+          .fn()
+          .mockImplementation(
+            (args: { where?: { id?: { in?: string[] } } }) => {
+              const ids = args?.where?.id?.in ?? [];
+              if (!ids || ids.length === 0) return Promise.resolve([]);
+              return Promise.resolve([
+                {
+                  id: demoProductId,
+                  basePriceCents: 1000,
+                  nameEn: 'Demo Product',
+                  nameZh: null,
+                },
+              ]);
             },
-          ]);
-        }),
+          ),
       },
       menuOptionTemplateChoice: {
         findMany: jest.fn().mockResolvedValue([]),
