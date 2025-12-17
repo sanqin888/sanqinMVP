@@ -5,16 +5,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
 import type { Locale } from "@/lib/i18n/locales";
+import type { OrderItemOptionsSnapshot } from "@/lib/order/order-item-options";
 
 type OrderSummaryLineItem = {
-  productId: string;
+  productStableId: string;
   name: string;
   nameEn: string | null;
   nameZh: string | null;
   quantity: number;
   unitPriceCents: number;
   totalPriceCents: number;
-  optionsJson?: unknown;
+  optionsJson?: OrderItemOptionsSnapshot | Record<string, unknown> | null;
 };
 
 type OrderSummaryResponse = {
@@ -97,6 +98,38 @@ export function OrderSummaryClient({ orderNumber, locale }: Props) {
   const centsToMoney = (value: number) =>
     currencyFormatter.format(value / 100).replace(/^CA\$\s?/, "$");
 
+  const renderOptions = (options?: OrderSummaryLineItem["optionsJson"]) => {
+    if (!options || !Array.isArray(options) || options.length === 0) return null;
+
+    return (
+      <ul className="mt-1 space-y-0.5 text-[11px] text-slate-500">
+        {options.map((group) => (
+          <li key={group.templateGroupStableId}>
+            <div className="font-medium text-slate-700">
+              {group.nameZh ?? group.nameEn}
+            </div>
+            <ul className="ml-3 list-disc space-y-0.5">
+              {group.choices.map((choice) => (
+                <li
+                  key={choice.stableId}
+                  className="flex items-center justify-between gap-2"
+                >
+                  <span>{choice.nameZh ?? choice.nameEn}</span>
+                  {choice.priceDeltaCents !== 0 && (
+                    <span className="whitespace-nowrap">
+                      {choice.priceDeltaCents > 0 ? "+" : "-"}$
+                      {Math.abs(choice.priceDeltaCents / 100).toFixed(2)}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+    );
+  };
+
   useEffect(() => {
     if (!orderNumber) {
       setLoading(false);
@@ -157,7 +190,13 @@ export function OrderSummaryClient({ orderNumber, locale }: Props) {
             <ul className="mt-2 space-y-2">
               {data.lineItems.map((item) => (
                 <li
-                  key={item.productId + "-" + item.name + "-" + item.quantity}
+                  key={
+                    item.productStableId +
+                    "-" +
+                    item.name +
+                    "-" +
+                    item.quantity
+                  }
                   className="flex items-start justify-between gap-4 text-xs"
                 >
                   <div className="min-w-0">
@@ -167,6 +206,7 @@ export function OrderSummaryClient({ orderNumber, locale }: Props) {
                     <p className="mt-0.5 text-[11px] text-slate-500">
                       × {item.quantity}
                     </p>
+                    {renderOptions(item.optionsJson)}
                   </div>
                   <div className="whitespace-nowrap text-right font-medium text-slate-900">
                     {centsToMoney(item.totalPriceCents)}
