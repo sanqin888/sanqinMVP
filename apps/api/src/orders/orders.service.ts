@@ -6,7 +6,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { AppLogger } from '../common/app-logger';
-import { DeliveryProvider, DeliveryType, Prisma } from '@prisma/client';
+import {
+  DeliveryProvider,
+  DeliveryType,
+  MenuItemOptionGroup,
+  MenuOptionGroupTemplate,
+  MenuOptionTemplateChoice,
+  Prisma,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { MembershipService } from '../membership/membership.service';
@@ -40,6 +47,24 @@ type OrderItemInput = NonNullable<CreateOrderDto['items']>[number] & {
   productStableId?: string;
   qty: number;
   options?: Record<string, unknown>;
+};
+type MenuItemWithOptions = Prisma.MenuItemGetPayload<{
+  include: {
+    optionGroups: {
+      include: {
+        templateGroup: {
+          include: {
+            options: true;
+          };
+        };
+      };
+    };
+  };
+}>;
+type OptionChoiceContext = {
+  choice: MenuOptionTemplateChoice;
+  group: MenuOptionGroupTemplate;
+  link: MenuItemOptionGroup;
 };
 
 // --- 辅助函数：解析数字环境变量 ---
@@ -240,13 +265,8 @@ export class OrdersService {
           }
         });
       }
-      return {
-        ...item,
-        normalizedProductId: normalizedId,
-      };
-    });
+    }
 
-    const productIds = normalizedItems.map((i) => i.normalizedProductId);
     const dbProducts = await this.prisma.menuItem.findMany({
       where: {
         OR: [{ id: { in: productIds } }, { stableId: { in: productIds } }],
@@ -817,6 +837,10 @@ export class OrdersService {
       (safeOrder.couponDiscountCents ?? 0);
 
     const lineItems = safeOrder.items.map((item) => {
+      const optionsSnapshot = item.optionsJson as
+        | OrderItemOptionsSnapshot
+        | null
+        | undefined;
       const unitPriceCents = item.unitPriceCents ?? 0;
       const quantity = item.qty;
       const totalPriceCents = unitPriceCents * quantity;
