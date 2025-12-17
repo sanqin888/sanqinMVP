@@ -58,7 +58,9 @@ type MenuItemWithOptions = Prisma.MenuItemGetPayload<{
 
 type OptionChoiceContext = {
   choice: MenuItemWithOptions['optionGroups'][number]['templateGroup']['options'][number];
-  group: NonNullable<MenuItemWithOptions['optionGroups'][number]['templateGroup']>;
+  group: NonNullable<
+    MenuItemWithOptions['optionGroups'][number]['templateGroup']
+  >;
   link: MenuItemWithOptions['optionGroups'][number];
 };
 
@@ -288,11 +290,10 @@ export class OrdersService {
         )
           continue;
 
-        const choices = (templateGroup.options ?? []).filter(
-          (opt) =>
-            !(opt as { deletedAt?: Date | null }).deletedAt &&
-            opt.isAvailable,
-        );
+        const choices = (templateGroup.options ?? []).filter((opt) => {
+          const deleted = (opt as { deletedAt?: Date | null }).deletedAt;
+          return !deleted && opt.isAvailable;
+        });
 
         choices.forEach((choice) => {
           optionLookup.set(choice.id, { choice, group: templateGroup, link });
@@ -321,7 +322,7 @@ export class OrdersService {
 
       const optionLookup =
         choiceLookupByProductId.get(itemDto.normalizedProductId) ??
-        new Map();
+        new Map<string, OptionChoiceContext>();
       let unitPriceCents = product.basePriceCents;
 
       const selectedOptionIds = Array.from(
@@ -345,7 +346,8 @@ export class OrdersService {
         const templateGroupStableId = context.group.stableId;
 
         const groupSnapshot =
-          optionGroupSnapshots.get(templateGroupStableId) ?? {
+          optionGroupSnapshots.get(templateGroupStableId) ??
+          ({
             templateGroupStableId,
             nameEn: context.group.nameEn,
             nameZh: context.group.nameZh ?? null,
@@ -358,9 +360,9 @@ export class OrdersService {
             sortOrder:
               typeof context.link?.sortOrder === 'number'
                 ? context.link.sortOrder
-                : context.group.sortOrder ?? 0,
+                : (context.group.sortOrder ?? 0),
             choices: [] as OrderItemOptionChoiceSnapshot[],
-          };
+          } satisfies OrderItemOptionGroupSnapshot);
 
         groupSnapshot.choices.push({
           stableId: context.choice.stableId,
@@ -379,9 +381,7 @@ export class OrdersService {
       )
         .map((group) => ({
           ...group,
-          choices: [...group.choices].sort(
-            (a, b) => a.sortOrder - b.sortOrder,
-          ),
+          choices: [...group.choices].sort((a, b) => a.sortOrder - b.sortOrder),
         }))
         .sort((a, b) => a.sortOrder - b.sortOrder);
 

@@ -42,6 +42,16 @@ describe('OrdersService', () => {
     process.env.UBER_DIRECT_ENABLED = '1';
     const demoProductId = 'cprod12345';
 
+    type MenuItemFindManyArgs = {
+      where?: {
+        OR?: Array<{
+          id?: { in?: string[] };
+          stableId?: { in?: string[] };
+        }>;
+        id?: { in?: string[] };
+      };
+    };
+
     prisma = {
       order: {
         findUnique: jest.fn(),
@@ -51,31 +61,26 @@ describe('OrdersService', () => {
         delete: jest.fn(),
       },
       menuItem: {
-        findMany: jest
-          .fn()
-          .mockImplementation(
-            (args: { where?: { id?: { in?: string[] } } }) => {
-              const or = (args as { where?: { OR?: unknown[] } })?.where?.OR;
-              const ids =
-                Array.isArray(or) && or.length > 0
-                  ? or.flatMap((cond: any) => [
-                      ...(cond?.id?.in ?? []),
-                      ...(cond?.stableId?.in ?? []),
-                    ])
-                  : args?.where?.id?.in ?? [];
-              if (!ids || ids.length === 0) return Promise.resolve([]);
-              return Promise.resolve([
-                {
-                  id: demoProductId,
-                  stableId: demoProductId,
-                  basePriceCents: 1000,
-                  nameEn: 'Demo Product',
-                  nameZh: null,
-                  optionGroups: [],
-                },
-              ]);
+        findMany: jest.fn().mockImplementation((args: MenuItemFindManyArgs) => {
+          const idsFromOr =
+            args?.where?.OR?.flatMap((cond) => [
+              ...(cond.id?.in ?? []),
+              ...(cond.stableId?.in ?? []),
+            ]) ?? [];
+          const directIds = args?.where?.id?.in ?? [];
+          const ids = [...idsFromOr, ...directIds];
+          if (ids.length === 0) return Promise.resolve([]);
+          return Promise.resolve([
+            {
+              id: demoProductId,
+              stableId: demoProductId,
+              basePriceCents: 1000,
+              nameEn: 'Demo Product',
+              nameZh: null,
+              optionGroups: [],
             },
-          ),
+          ]);
+        }),
       },
       menuOptionTemplateChoice: {
         findMany: jest.fn().mockResolvedValue([]),

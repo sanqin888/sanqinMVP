@@ -25,4 +25,3 @@ export type OrderItemOptionGroupSnapshot = {
 };
 
 export type OrderItemOptionsSnapshot = OrderItemOptionGroupSnapshot[];
-
