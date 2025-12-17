@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import * as crypto from 'crypto';
 import { AppLogger } from '../common/app-logger';
 import {
   DeliveryProvider,
@@ -198,21 +199,6 @@ export class OrdersService {
     if (digits.length >= 4) return digits.slice(-4);
     if (digits.length > 0) return digits.padStart(4, '0');
     return undefined;
-  }
-
-  private async calcRedeemCents(
-    userId: string | undefined,
-    requestedPoints?: number,
-    subtotalCents?: number,
-  ): Promise<number> {
-    if (!userId || !requestedPoints || requestedPoints <= 0) return 0;
-    const balanceMicro = await this.loyalty.peekBalanceMicro(userId);
-    const maxByBalance =
-      this.loyalty.maxRedeemableCentsFromBalance(balanceMicro);
-    const rawCents = requestedPoints * REDEEM_DOLLAR_PER_POINT * 100;
-    const requestedCents = Math.round(rawCents + 1e-6);
-    const byUserInput = Math.min(requestedCents, maxByBalance);
-    return Math.max(0, Math.min(byUserInput, subtotalCents ?? byUserInput));
   }
 
   private collectOptionIds(options?: Record<string, unknown>): string[] {
@@ -465,19 +451,6 @@ export class OrdersService {
 
     const subtotalCents = calculatedSubtotal;
 
-    // —— Step 2: 优惠券
-    const couponInfo = await this.membership.validateCouponForOrder({
-      userId: dto.userId,
-      couponId: dto.couponId,
-      subtotalCents,
-    });
-    const couponDiscountCents = couponInfo?.discountCents ?? 0;
-    const subtotalAfterCoupon = Math.max(
-      0,
-      subtotalCents - couponDiscountCents,
-    );
-
-    // —— Step 3: 积分抵扣
     const requestedPoints =
       typeof dto.pointsToRedeem === 'number'
         ? dto.pointsToRedeem
@@ -486,13 +459,7 @@ export class OrdersService {
           ? dto.redeemValueCents / (REDEEM_DOLLAR_PER_POINT * 100)
           : undefined;
 
-    const redeemValueCents = await this.calcRedeemCents(
-      dto.userId,
-      requestedPoints,
-      subtotalAfterCoupon,
-    );
-
-    // —— Step 4: 配送费与税费 (动态计算 & 距离复验)
+    // —— Step 2: 配送费与税费 (动态计算 & 距离复验)
     const isDelivery =
       dto.fulfillmentType === 'delivery' ||
       dto.deliveryType === DeliveryType.STANDARD ||
@@ -548,24 +515,7 @@ export class OrdersService {
       }
     }
 
-    // 税基计算：(小计 - 优惠券 - 积分) + 配送费
-    const purchaseBaseCents = Math.max(
-      0,
-      subtotalAfterCoupon - redeemValueCents,
-    );
-    const taxableCents =
-      purchaseBaseCents + (isDelivery ? deliveryFeeCustomerCents : 0);
-    const taxCents = Math.round(taxableCents * TAX_RATE);
-
-    const totalCents = purchaseBaseCents + deliveryFeeCustomerCents + taxCents;
-
-    const loyaltyRedeemCents = redeemValueCents;
-    const subtotalAfterDiscountCents = Math.max(
-      0,
-      subtotalCents - couponDiscountCents - loyaltyRedeemCents,
-    );
-
-    // —— Step 5: 准备入库
+    // —— Step 3: 准备入库
     const pickupCode =
       dto.pickupCode?.trim() ||
       this.derivePickupCode(stableKey) ||
@@ -578,43 +528,100 @@ export class OrdersService {
       dto.deliveryDestination?.phone?.trim() ||
       null;
 
-    // —— Step 6: 创建订单
-    let order: OrderWithItems = (await this.prisma.order.create({
-      data: {
-        userId: dto.userId ?? null,
-        ...(stableKey ? { clientRequestId: stableKey } : {}),
-        channel: dto.channel,
-        fulfillmentType: dto.fulfillmentType,
-        contactName,
-        contactPhone,
-        // 金额字段
-        subtotalCents,
-        taxCents,
-        totalCents,
-        deliveryFeeCents: deliveryFeeCustomerCents, // ⭐ 写入服务端计算的配送费
-        pickupCode,
-        couponId: couponInfo?.coupon?.id ?? null,
-        couponDiscountCents,
-        couponCodeSnapshot: couponInfo?.coupon?.code,
-        couponTitleSnapshot: couponInfo?.coupon?.title,
-        couponMinSpendCents: couponInfo?.coupon?.minSpendCents,
-        couponExpiresAt: couponInfo?.coupon?.expiresAt,
-        loyaltyRedeemCents,
-        subtotalAfterDiscountCents,
-        ...(deliveryMeta
-          ? {
-              deliveryType: dto.deliveryType,
-              deliveryProvider: deliveryMeta.provider, // Provider 还是取自默认规则
-              deliveryEtaMinMinutes: deliveryMeta.etaRange[0],
-              deliveryEtaMaxMinutes: deliveryMeta.etaRange[1],
-            }
-          : {}),
-        items: {
-          create: calculatedItems,
+    const orderId = crypto.randomUUID();
+
+    let order: OrderWithItems = await this.prisma.$transaction(async (tx) => {
+      const couponInfo = await this.membership.validateCouponForOrder(
+        {
+          userId: dto.userId,
+          couponId: dto.couponId,
+          subtotalCents,
         },
-      },
-      include: { items: true },
-    })) as OrderWithItems;
+        { tx },
+      );
+
+      const couponDiscountCents = couponInfo?.discountCents ?? 0;
+      const subtotalAfterCoupon = Math.max(
+        0,
+        subtotalCents - couponDiscountCents,
+      );
+
+      const redeemValueCents = await this.loyalty.reserveRedeemForOrder({
+        tx,
+        userId: dto.userId,
+        orderId,
+        requestedPoints,
+        subtotalAfterCoupon,
+      });
+
+      // 税基计算：(小计 - 优惠券 - 积分) + 配送费
+      const purchaseBaseCents = Math.max(
+        0,
+        subtotalAfterCoupon - redeemValueCents,
+      );
+      const taxableCents =
+        purchaseBaseCents + (isDelivery ? deliveryFeeCustomerCents : 0);
+      const taxCents = Math.round(taxableCents * TAX_RATE);
+
+      const totalCents =
+        purchaseBaseCents + deliveryFeeCustomerCents + taxCents;
+
+      const loyaltyRedeemCents = redeemValueCents;
+      const subtotalAfterDiscountCents = Math.max(
+        0,
+        subtotalCents - couponDiscountCents - loyaltyRedeemCents,
+      );
+
+      const created = (await tx.order.create({
+        data: {
+          id: orderId,
+          userId: dto.userId ?? null,
+          ...(stableKey ? { clientRequestId: stableKey } : {}),
+          channel: dto.channel,
+          fulfillmentType: dto.fulfillmentType,
+          contactName,
+          contactPhone,
+          // 金额字段
+          subtotalCents,
+          taxCents,
+          totalCents,
+          deliveryFeeCents: deliveryFeeCustomerCents, // ⭐ 写入服务端计算的配送费
+          pickupCode,
+          couponId: couponInfo?.coupon?.id ?? null,
+          couponDiscountCents,
+          couponCodeSnapshot: couponInfo?.coupon?.code,
+          couponTitleSnapshot: couponInfo?.coupon?.title,
+          couponMinSpendCents: couponInfo?.coupon?.minSpendCents,
+          couponExpiresAt: couponInfo?.coupon?.expiresAt,
+          loyaltyRedeemCents,
+          subtotalAfterDiscountCents,
+          ...(deliveryMeta
+            ? {
+                deliveryType: dto.deliveryType,
+                deliveryProvider: deliveryMeta.provider, // Provider 还是取自默认规则
+                deliveryEtaMinMinutes: deliveryMeta.etaRange[0],
+                deliveryEtaMaxMinutes: deliveryMeta.etaRange[1],
+              }
+            : {}),
+          items: {
+            create: calculatedItems,
+          },
+        },
+        include: { items: true },
+      })) as OrderWithItems;
+
+      if (couponInfo?.coupon?.id) {
+        await this.membership.reserveCouponForOrder({
+          tx,
+          userId: dto.userId,
+          couponId: couponInfo.coupon.id,
+          subtotalCents,
+          orderId,
+        });
+      }
+
+      return created;
+    });
 
     this.logger.log(
       `${this.formatOrderLogContext({
@@ -911,6 +918,12 @@ export class OrdersService {
         redeemValueCents: updated.loyaltyRedeemCents ?? 0,
       });
     } else if (next === 'refunded') {
+      if (updated.couponId) {
+        void this.membership.releaseCouponForOrder({
+          orderId: updated.id,
+          couponId: updated.couponId,
+        });
+      }
       void this.loyalty.rollbackOnRefund(updated.id);
     }
     return updated;

@@ -11,6 +11,7 @@ import { CreateOrderDto } from './dto/create-order.dto';
 describe('OrdersService', () => {
   let service: OrdersService;
   let prisma: {
+    $transaction: jest.Mock;
     order: {
       findUnique: jest.Mock;
       update: jest.Mock;
@@ -28,11 +29,14 @@ describe('OrdersService', () => {
   let loyalty: {
     peekBalanceMicro: jest.Mock;
     maxRedeemableCentsFromBalance: jest.Mock;
+    reserveRedeemForOrder: jest.Mock;
     settleOnPaid: jest.Mock;
     rollbackOnRefund: jest.Mock;
   };
   let membership: {
     validateCouponForOrder: jest.Mock;
+    reserveCouponForOrder: jest.Mock;
+    releaseCouponForOrder: jest.Mock;
     markCouponUsedForOrder: jest.Mock;
   };
   let uberDirect: { createDelivery: jest.Mock };
@@ -53,6 +57,11 @@ describe('OrdersService', () => {
     };
 
     prisma = {
+      $transaction: jest
+        .fn()
+        .mockImplementation((callback: (tx: unknown) => unknown) =>
+          Promise.resolve(callback(prisma)),
+        ),
       order: {
         findUnique: jest.fn(),
         update: jest.fn(),
@@ -90,12 +99,15 @@ describe('OrdersService', () => {
     loyalty = {
       peekBalanceMicro: jest.fn().mockResolvedValue(0n),
       maxRedeemableCentsFromBalance: jest.fn().mockReturnValue(0),
+      reserveRedeemForOrder: jest.fn().mockResolvedValue(0),
       settleOnPaid: jest.fn(),
       rollbackOnRefund: jest.fn(),
     };
 
     membership = {
       validateCouponForOrder: jest.fn().mockResolvedValue(null),
+      reserveCouponForOrder: jest.fn(),
+      releaseCouponForOrder: jest.fn(),
       markCouponUsedForOrder: jest.fn(),
     };
 
