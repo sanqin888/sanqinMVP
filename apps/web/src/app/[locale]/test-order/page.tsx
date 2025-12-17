@@ -10,14 +10,18 @@ import type {
   DeliveryProviderOption,
   DeliveryTypeOption,
 } from '@/lib/order/shared';
+import type { OrderItemOptionsSnapshot } from '@/lib/order/order-item-options';
 
 type OrderItem = {
   id: string;
   orderId: string;
-  productId: string;
+  productStableId: string;
+  displayName: string | null;
+  nameEn: string | null;
+  nameZh: string | null;
   qty: number;
   unitPriceCents: number | null;
-  optionsJson: Record<string, unknown> | null;
+  optionsJson: OrderItemOptionsSnapshot | Record<string, unknown> | null;
 };
 
 type Channel = 'web' | 'in_store' | 'ubereats';
@@ -52,6 +56,31 @@ type PrintJob = {
   content: string;
 };
 
+const formatItemName = (item: OrderItem) =>
+  item.displayName || item.nameZh || item.nameEn || item.productStableId;
+
+const formatOptionsSummary = (
+  options: OrderItemOptionsSnapshot | Record<string, unknown> | null,
+): string | null => {
+  if (!options) return null;
+  if (Array.isArray(options)) {
+    const parts = options.flatMap((group) =>
+      group.choices.map((choice) => {
+        const delta =
+          choice.priceDeltaCents !== 0
+            ? `(${choice.priceDeltaCents > 0 ? '+' : '-'}$${Math.abs(choice.priceDeltaCents / 100).toFixed(2)})`
+            : '';
+        return `${choice.nameZh ?? choice.nameEn}${delta}`;
+      }),
+    );
+    return parts.length > 0 ? parts.join('; ') : null;
+  }
+  if (Object.keys(options).length > 0) {
+    return JSON.stringify(options);
+  }
+  return null;
+};
+
 function cents(n: number): string {
   return (n / 100).toFixed(2);
 }
@@ -66,7 +95,14 @@ function buildPrintContent(order: Order, type: PrintJobType): string {
     lines.push(`渠道: ${order.channel} · ${order.fulfillmentType}`);
     lines.push(`时间: ${createdAt}`);
     lines.push('------------------------------');
-    order.items.forEach((item) => { lines.push(`${item.productId}  x${item.qty}`); });
+    order.items.forEach((item) => {
+      const name = formatItemName(item);
+      lines.push(`${name}  x${item.qty}`);
+      const options = formatOptionsSummary(item.optionsJson);
+      if (options) {
+        lines.push(`  选项: ${options}`);
+      }
+    });
     lines.push('------------------------------');
     lines.push(`小计: $${cents(order.subtotalCents)}`);
     lines.push(`税额: $${cents(order.taxCents)}`);
@@ -103,9 +139,12 @@ function buildPrintContent(order: Order, type: PrintJobType): string {
     lines.push('------------------------------');
     order.items.forEach((item) => {
       const price = typeof item.unitPriceCents === 'number' ? `@$${cents(item.unitPriceCents)}` : '';
-      lines.push(`${item.productId} x${item.qty} ${price}`.trim());
-      if (item.optionsJson && Object.keys(item.optionsJson).length > 0) {
-        lines.push(`  选项: ${JSON.stringify(item.optionsJson)}`);
+      lines.push(
+        `${formatItemName(item)} x${item.qty} ${price}`.trim(),
+      );
+      const options = formatOptionsSummary(item.optionsJson);
+      if (options) {
+        lines.push(`  选项: ${options}`);
       }
     });
     lines.push('------------------------------');
@@ -301,7 +340,9 @@ export default function TestOrderPage() {
                 {new Date(o.createdAt).toLocaleString()} · {o.channel} · {o.fulfillmentType}
               </div>
               <div className="text-sm text-gray-700">
-                项目：{o.items.map((i) => `${i.productId}×${i.qty}`).join('，')}
+                项目：{o.items
+                  .map((i) => `${formatItemName(i)}×${i.qty}`)
+                  .join('，')}
               </div>
               {(o.deliveryType ||
                 typeof o.deliveryFeeCents === 'number' ||

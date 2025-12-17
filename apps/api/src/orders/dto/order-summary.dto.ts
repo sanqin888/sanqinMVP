@@ -1,4 +1,5 @@
 // apps/api/src/orders/dto/order-summary.dto.ts
+import { OrderItemOptionsSnapshot } from '../order-item-options';
 export type OrderSummaryLineItemDto = {
   // ✅ 对外统一：引用菜品 stableId
   productStableId: string;
@@ -9,7 +10,7 @@ export type OrderSummaryLineItemDto = {
   quantity: number;
   unitPriceCents: number;
   totalPriceCents: number;
-  optionsJson?: unknown;
+  optionsJson?: OrderItemOptionsSnapshot | null;
 };
 
 export type OrderSummaryDto = {
