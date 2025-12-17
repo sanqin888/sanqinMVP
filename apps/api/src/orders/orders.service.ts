@@ -30,6 +30,12 @@ import {
 import { parseHostedCheckoutMetadata } from '../clover/hco-metadata';
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
+type OrderItemInput = NonNullable<CreateOrderDto['items']>[number] & {
+  productId?: string;
+  productStableId?: string;
+  qty: number;
+  options?: Record<string, unknown>;
+};
 
 // --- 辅助函数：解析数字环境变量 ---
 function parseNumberEnv(
@@ -185,16 +191,27 @@ export class OrdersService {
   /**
    * 🛡️ 安全核心：服务端重算商品价格
    */
-  private async calculateLineItems(
-    itemsDto: NonNullable<CreateOrderDto['items']>,
-  ): Promise<{
+  private async calculateLineItems(itemsDto: OrderItemInput[]): Promise<{
     calculatedItems: Prisma.OrderItemCreateWithoutOrderInput[];
     calculatedSubtotal: number;
   }> {
-    const productIds = itemsDto.map((i) => i.productId);
+    const normalizedItems = itemsDto.map((item) => {
+      const normalizedId = normalizeStableId(
+        item.productId ?? item.productStableId,
+      );
+      if (!normalizedId) {
+        throw new BadRequestException('Product id is required');
+      }
+      return {
+        ...item,
+        normalizedProductId: normalizedId,
+      };
+    });
+
+    const productIds = normalizedItems.map((i) => i.normalizedProductId);
     const allChoiceIds: string[] = [];
 
-    for (const item of itemsDto) {
+    for (const item of normalizedItems) {
       if (item.options && typeof item.options === 'object') {
         Object.values(item.options).forEach((val) => {
           if (typeof val === 'string') allChoiceIds.push(val);
@@ -223,11 +240,11 @@ export class OrdersService {
     let calculatedSubtotal = 0;
     const calculatedItems: Prisma.OrderItemCreateWithoutOrderInput[] = [];
 
-    for (const itemDto of itemsDto) {
-      const product = productMap.get(itemDto.productId);
+    for (const itemDto of normalizedItems) {
+      const product = productMap.get(itemDto.normalizedProductId);
       if (!product) {
         throw new BadRequestException(
-          `Product not found or unavailable: ${itemDto.productId}`,
+          `Product not found or unavailable: ${itemDto.normalizedProductId}`,
         );
       }
 
@@ -254,7 +271,7 @@ export class OrdersService {
         product.nameEn || product.nameZh || itemDto.displayName || 'Unknown';
 
       calculatedItems.push({
-        productId: product.id,
+        productStableId: itemDto.normalizedProductId,
         qty: itemDto.qty,
         displayName,
         nameEn: product.nameEn,
@@ -484,12 +501,20 @@ export class OrdersService {
         } else if (isPriority && uberEnabled) {
           order = await this.dispatchPriorityDelivery(order, dropoff);
         }
-      } catch (error) {
-        this.logger.error(
-          `Failed to dispatch delivery: ${
-            error instanceof Error ? error.message : error
-          }`,
-        );
+      } catch (error: unknown) {
+        let message = 'unknown';
+        if (error instanceof Error) {
+          message = error.message;
+        } else if (typeof error === 'string') {
+          message = error;
+        } else {
+          try {
+            message = JSON.stringify(error);
+          } catch {
+            message = '[unserializable error]';
+          }
+        }
+        this.logger.error(`Failed to dispatch delivery: ${message}`);
       }
     }
 
@@ -567,7 +592,7 @@ export class OrdersService {
       deliveryType: meta.deliveryType,
       deliveryDestination,
       items: meta.items.map((item) => ({
-        productId: item.id,
+        productStableId: item.productStableId,
         qty: item.quantity,
       })),
       redeemValueCents: loyaltyRedeemCents,
@@ -675,9 +700,9 @@ export class OrdersService {
       const quantity = item.qty;
       const totalPriceCents = unitPriceCents * quantity;
       const display =
-        item.displayName || item.nameEn || item.nameZh || item.productId;
+        item.displayName || item.nameEn || item.nameZh || item.productStableId;
       return {
-        productId: item.productId,
+        productStableId: item.productStableId,
         name: display,
         nameEn: item.nameEn ?? null,
         nameZh: item.nameZh ?? null,
@@ -687,7 +712,8 @@ export class OrdersService {
         optionsJson: item.optionsJson ?? undefined,
         loyaltyRedeemCents: safeOrder.loyaltyRedeemCents ?? null,
         couponDiscountCents: safeOrder.couponDiscountCents ?? null,
-        subtotalAfterDiscountCents: safeOrder.subtotalAfterDiscountCents ?? null,
+        subtotalAfterDiscountCents:
+          safeOrder.subtotalAfterDiscountCents ?? null,
       };
     });
 
@@ -818,7 +844,7 @@ export class OrdersService {
         reference: order.clientRequestId ?? undefined,
         totalCents: order.totalCents,
         items: order.items.map((item) => ({
-          name: item.displayName || item.productId,
+          name: item.displayName || item.productStableId,
           quantity: item.qty,
           priceCents: item.unitPriceCents ?? undefined,
         })),
@@ -848,7 +874,7 @@ export class OrdersService {
         reference: order.clientRequestId,
         totalCents: order.totalCents,
         items: order.items.map((item) => ({
-          name: item.displayName || item.productId,
+          name: item.displayName || item.productStableId,
           quantity: item.qty,
           priceCents: item.unitPriceCents ?? undefined,
         })),

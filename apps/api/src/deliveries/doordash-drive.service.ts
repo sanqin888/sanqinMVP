@@ -2,7 +2,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
-import { AxiosError, isAxiosError } from 'axios';
 import * as jwt from 'jsonwebtoken';
 import type { JwtHeader, SignOptions } from 'jsonwebtoken';
 
@@ -74,6 +73,16 @@ interface PickupConfig {
  * Utils
  * ========================= */
 
+type AxiosErrorLike = {
+  isAxiosError?: boolean;
+  response?: {
+    status?: number;
+    data?: unknown;
+  };
+  message?: string;
+  stack?: string;
+};
+
 const trimToUndefined = (
   value: string | undefined | null,
 ): string | undefined => {
@@ -103,6 +112,15 @@ const splitName = (raw?: string) => {
   return { first, last };
 };
 
+const isAxiosErrorLike = (error: unknown): error is AxiosErrorLike => {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'isAxiosError' in error &&
+    (error as { isAxiosError?: boolean }).isAxiosError === true
+  );
+};
+
 /* =========================
  * Service
  * ========================= */
@@ -123,8 +141,7 @@ export class DoorDashDriveService {
     this.tokenConfig = {
       developerId: trimToUndefined(process.env.DOORDASH_DEVELOPER_ID) ?? '',
       keyId: trimToUndefined(process.env.DOORDASH_KEY_ID) ?? '',
-      signingSecret:
-        trimToUndefined(process.env.DOORDASH_SIGNING_SECRET) ?? '',
+      signingSecret: trimToUndefined(process.env.DOORDASH_SIGNING_SECRET) ?? '',
     };
 
     const businessName =
@@ -181,9 +198,7 @@ export class DoorDashDriveService {
       province,
       postalCode,
       country,
-      instructions: trimToUndefined(
-        process.env.DOORDASH_STORE_INSTRUCTIONS,
-      ),
+      instructions: trimToUndefined(process.env.DOORDASH_STORE_INSTRUCTIONS),
       latitude: Number.isFinite(Number(process.env.STORE_LATITUDE))
         ? Number(process.env.STORE_LATITUDE)
         : undefined,
@@ -251,39 +266,44 @@ export class DoorDashDriveService {
       dropoff_instructions: options.destination.instructions,
       dropoff_latitude: options.destination.latitude,
       dropoff_longitude: options.destination.longitude,
-      tip: typeof options.destination.tipCents === 'number'
-        ? options.destination.tipCents / 100
-        : undefined,
+      tip:
+        typeof options.destination.tipCents === 'number'
+          ? options.destination.tipCents / 100
+          : undefined,
       order_value: options.totalCents / 100,
       items: options.items.map((item) =>
         compact({
           name: item.name,
           quantity: item.quantity,
-          price: typeof item.priceCents === 'number'
-            ? item.priceCents / 100
-            : undefined,
+          price:
+            typeof item.priceCents === 'number'
+              ? item.priceCents / 100
+              : undefined,
         }),
       ),
     });
 
     try {
       const res = await firstValueFrom(
-        this.http.post(
-          `${this.apiBase}/drive/v2/deliveries`,
-          payload,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
+        this.http.post(`${this.apiBase}/drive/v2/deliveries`, payload, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
           },
-        ),
+        }),
       );
 
       const data = res.data as Record<string, unknown>;
+      const externalId = data['external_delivery_id'];
+      const deliveryId =
+        typeof externalId === 'string'
+          ? externalId
+          : typeof externalId === 'number'
+            ? externalId.toString()
+            : '';
 
       return {
-        deliveryId: String(data['external_delivery_id'] ?? ''),
+        deliveryId,
         status: typeof data['status'] === 'string' ? data['status'] : undefined,
         trackingUrl:
           typeof data['tracking_url'] === 'string'
@@ -305,9 +325,12 @@ export class DoorDashDriveService {
    * ========================= */
 
   private handleAxiosError(context: string, err: unknown): void {
-    if (isAxiosError(err)) {
-      const status = err.response?.status;
-      const data = err.response?.data;
+    if (isAxiosErrorLike(err)) {
+      const status =
+        err.response && typeof err.response.status === 'number'
+          ? err.response.status
+          : undefined;
+      const data: unknown = err.response?.data;
       this.logger.error(
         `[${context}] DoorDash API error`,
         JSON.stringify({ status, data }),
@@ -320,9 +343,6 @@ export class DoorDashDriveService {
       return;
     }
 
-    this.logger.error(
-      `[${context}] Unknown error`,
-      JSON.stringify(err),
-    );
+    this.logger.error(`[${context}] Unknown error`, JSON.stringify({ err }));
   }
 }
