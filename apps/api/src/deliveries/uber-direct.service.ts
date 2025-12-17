@@ -553,9 +553,19 @@ export class UberDirectService {
     );
   }
 
+  private formatUnknownError(value: unknown): string {
+    if (value instanceof Error) return value.message;
+    if (typeof value === 'string') return value;
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return '[unserializable error]';
+    }
+  }
+
   private wrapUberError(error: unknown): Error {
     if (this.isAxiosErrorLike(error)) {
-      const axiosError = error;
+      const axiosError: AxiosErrorLike = error;
       const status =
         axiosError.response && typeof axiosError.response.status === 'number'
           ? axiosError.response.status
@@ -572,12 +582,19 @@ export class UberDirectService {
       }
 
       const uberMessage = this.extractUberMessage(baseData);
-      const message = uberMessage ?? axiosError.message;
+      const message = uberMessage ?? axiosError.message ?? '[no error message]';
+      const stack =
+        typeof axiosError.stack === 'string' ? axiosError.stack : undefined;
 
       this.logger.error(
-        `[UberDirectService] Unknown error type while calling Uber Direct: ${String(
-          error,
-        )}`,
+        `[UberDirectService] Uber Direct API error${
+          status ? ` (${status})` : ''
+        }: ${message}; response body=${bodySnippet}`,
+        stack,
+      );
+
+      return new Error(
+        `Uber Direct API error${status ? ` (${status})` : ''}: ${message}`,
       );
       return new Error(String(error));
     }
@@ -594,23 +611,11 @@ export class UberDirectService {
       }
     }
 
-    const uberMessage = this.extractUberMessage(baseData);
-    const fallbackMessage =
-      typeof axiosError.message === 'string'
-        ? axiosError.message
-        : 'Uber Direct API error';
-    const message = uberMessage ?? fallbackMessage;
-
+    const formatted = this.formatUnknownError(error);
     this.logger.error(
-      `[UberDirectService] Uber Direct API error${
-        status ? ` (${status})` : ''
-      }: ${message}; response body=${bodySnippet}`,
-      axiosError.stack,
+      `[UberDirectService] Unknown error type while calling Uber Direct: ${formatted}`,
     );
-
-    return new Error(
-      `Uber Direct API error${status ? ` (${status})` : ''}: ${message}`,
-    );
+    return new Error(formatted);
   }
 
   private extractUberMessage(data: unknown): string | undefined {

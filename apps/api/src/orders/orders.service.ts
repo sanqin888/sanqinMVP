@@ -42,28 +42,6 @@ type OrderItemInput = NonNullable<CreateOrderDto['items']>[number] & {
   options?: Record<string, unknown>;
 };
 
-type MenuItemWithOptions = Prisma.MenuItemGetPayload<{
-  include: {
-    optionGroups: {
-      include: {
-        templateGroup: {
-          include: {
-            options: true;
-          };
-        };
-      };
-    };
-  };
-}>;
-
-type OptionChoiceContext = {
-  choice: MenuItemWithOptions['optionGroups'][number]['templateGroup']['options'][number];
-  group: NonNullable<
-    MenuItemWithOptions['optionGroups'][number]['templateGroup']
-  >;
-  link: MenuItemWithOptions['optionGroups'][number];
-};
-
 // --- 辅助函数：解析数字环境变量 ---
 function parseNumberEnv(
   envValue: string | undefined,
@@ -249,6 +227,26 @@ export class OrdersService {
     });
 
     const productIds = normalizedItems.map((i) => i.normalizedProductId);
+    const allChoiceIds: string[] = [];
+
+    for (const item of normalizedItems) {
+      if (item.options && typeof item.options === 'object') {
+        Object.values(item.options).forEach((val) => {
+          if (typeof val === 'string') allChoiceIds.push(val);
+          else if (Array.isArray(val)) {
+            val.forEach((v) => {
+              if (typeof v === 'string') allChoiceIds.push(v);
+            });
+          }
+        });
+      }
+      return {
+        ...item,
+        normalizedProductId: normalizedId,
+      };
+    });
+
+    const productIds = normalizedItems.map((i) => i.normalizedProductId);
     const dbProducts = await this.prisma.menuItem.findMany({
       where: {
         OR: [{ id: { in: productIds } }, { stableId: { in: productIds } }],
@@ -392,7 +390,7 @@ export class OrdersService {
         product.nameEn || product.nameZh || itemDto.displayName || 'Unknown';
 
       calculatedItems.push({
-        productStableId: product.stableId,
+        productStableId: itemDto.normalizedProductId,
         qty: itemDto.qty,
         displayName,
         nameEn: product.nameEn,
@@ -824,9 +822,6 @@ export class OrdersService {
       const totalPriceCents = unitPriceCents * quantity;
       const display =
         item.displayName || item.nameEn || item.nameZh || item.productStableId;
-      const optionsSnapshot =
-        (item.optionsJson as OrderItemOptionsSnapshot | null | undefined) ??
-        null;
       return {
         productStableId: item.productStableId,
         name: display,
