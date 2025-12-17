@@ -11,13 +11,17 @@ import type {
   DeliveryTypeOption,
   Locale,
 } from '@/lib/order/shared';
+import type { OrderItemOptionsSnapshot } from '@/lib/order/order-item-options';
 
 type OrderItem = {
   id: string;
-  productId: string;
+  productStableId: string;
+  displayName: string | null;
+  nameEn: string | null;
+  nameZh: string | null;
   qty: number;
   unitPriceCents: number | null;
-  optionsJson: Record<string, unknown> | null;
+  optionsJson: OrderItemOptionsSnapshot | Record<string, unknown> | null;
 };
 
 type OrderDetail = {
@@ -99,6 +103,50 @@ export default function OrderDetailPage({ params }: PageProps) {
       order?.externalDeliveryId ||
       (order?.deliveryEtaMinMinutes && order?.deliveryEtaMaxMinutes),
   );
+
+  const renderOptions = (rawOptions: OrderItem['optionsJson']) => {
+    if (!rawOptions) return null;
+
+    if (!Array.isArray(rawOptions)) {
+      return (
+        <pre className="mt-1 whitespace-pre-wrap break-words text-[11px] text-gray-500">
+          {JSON.stringify(rawOptions, null, 2)}
+        </pre>
+      );
+    }
+
+    if (rawOptions.length === 0) return null;
+
+    return (
+      <div className="mt-2 space-y-1 text-xs text-gray-600">
+        {rawOptions.map((group) => (
+          <div key={group.templateGroupStableId}>
+            <div className="font-medium text-gray-700">
+              {group.nameZh ?? group.nameEn}
+            </div>
+            <ul className="ml-4 mt-1 list-disc space-y-0.5 text-[11px] text-gray-600">
+              {group.choices.map((choice) => (
+                <li
+                  key={choice.stableId}
+                  className="flex items-center justify-between gap-2"
+                >
+                  <span className="break-words">
+                    {choice.nameZh ?? choice.nameEn}
+                  </span>
+                  {choice.priceDeltaCents !== 0 && (
+                    <span className="whitespace-nowrap text-gray-500">
+                      {choice.priceDeltaCents > 0 ? '+' : '-'}$
+                      {Math.abs(choice.priceDeltaCents / 100).toFixed(2)}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
@@ -232,24 +280,48 @@ export default function OrderDetailPage({ params }: PageProps) {
           <div className="space-y-2">
             <h2 className="text-sm font-semibold text-gray-700">项目列表</h2>
             <ul className="space-y-2 text-sm text-gray-700">
-              {order.items.map((item) => (
-                <li key={item.id} className="rounded border px-3 py-2">
-                  <div className="flex items-center justify-between">
-                    <span>{item.productId}</span>
-                    <span>×{item.qty}</span>
-                  </div>
-                  {typeof item.unitPriceCents === 'number' && (
-                    <div className="text-xs text-gray-500">
-                      单价：${(item.unitPriceCents / 100).toFixed(2)}
+              {order.items.map((item) => {
+                const unitPrice =
+                  typeof item.unitPriceCents === 'number'
+                    ? item.unitPriceCents
+                    : null;
+                const lineTotal =
+                  unitPrice !== null ? unitPrice * item.qty : null;
+                const displayName =
+                  item.displayName ||
+                  item.nameZh ||
+                  item.nameEn ||
+                  item.productStableId;
+
+                return (
+                  <li key={item.id} className="rounded border px-3 py-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="font-medium text-gray-900">
+                          {displayName}
+                        </div>
+                        <div className="text-xs text-gray-500 break-all">
+                          {item.productStableId}
+                        </div>
+                      </div>
+                      <div className="text-right text-sm text-gray-700">
+                        <div>×{item.qty}</div>
+                        {unitPrice !== null && (
+                          <div className="text-xs text-gray-500">
+                            单价：${(unitPrice / 100).toFixed(2)}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  )}
-                  {item.optionsJson && Object.keys(item.optionsJson).length > 0 && (
-                    <pre className="mt-1 whitespace-pre-wrap break-words text-[11px] text-gray-500">
-                      {JSON.stringify(item.optionsJson, null, 2)}
-                    </pre>
-                  )}
-                </li>
-              ))}
+                    {lineTotal !== null && (
+                      <div className="mt-1 text-xs text-gray-600">
+                        小计：${(lineTotal / 100).toFixed(2)}
+                      </div>
+                    )}
+                    {renderOptions(item.optionsJson)}
+                  </li>
+                );
+              })}
             </ul>
           </div>
 
