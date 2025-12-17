@@ -111,10 +111,7 @@ export class OrdersService {
         Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     const distanceKm = R * c;
-
-    // ⚠️ 1.4 是“路程系数”，用于将直线距离转换为估算驾驶距离
-    // 如果你希望更严格对齐 Google Maps，这个系数是必要的
-    return distanceKm * 1.4;
+    return distanceKm;
   }
 
   private deg2rad(deg: number): number {
