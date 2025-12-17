@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
-import { AxiosError, isAxiosError } from 'axios';
 
 interface UberDirectOAuthResponse {
   access_token?: string;
@@ -8,6 +7,16 @@ interface UberDirectOAuthResponse {
 }
 
 type UberDirectApiResponse = Record<string, unknown>;
+
+type AxiosErrorLike = {
+  isAxiosError?: boolean;
+  response?: {
+    status?: number;
+    data?: unknown;
+  };
+  message?: string;
+  stack?: string;
+};
 
 export interface UberDirectDropoffDetails {
   name: string;
@@ -241,7 +250,7 @@ export class UberDirectService {
       const normalized = this.normalizeResponse(response.data);
 
       return normalized;
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.error(
         `[UberDirectService] Failed to create Uber Direct delivery for order=${options.orderId}`,
       );
@@ -535,10 +544,22 @@ export class UberDirectService {
       .join(', ');
   }
 
+  private isAxiosErrorLike(error: unknown): error is AxiosErrorLike {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'isAxiosError' in error &&
+      (error as { isAxiosError?: boolean }).isAxiosError === true
+    );
+  }
+
   private wrapUberError(error: unknown): Error {
-    if (isAxiosError(error)) {
-      const axiosError = error as AxiosError;
-      const status = axiosError.response?.status;
+    if (this.isAxiosErrorLike(error)) {
+      const axiosError = error;
+      const status =
+        axiosError.response && typeof axiosError.response.status === 'number'
+          ? axiosError.response.status
+          : undefined;
       const baseData: unknown = axiosError.response?.data;
 
       let bodySnippet = '[no response body]';
@@ -557,7 +578,7 @@ export class UberDirectService {
         `[UberDirectService] Uber Direct API error${
           status ? ` (${status})` : ''
         }: ${message}; response body=${bodySnippet}`,
-        axiosError.stack,
+        error.stack,
       );
 
       return new Error(
