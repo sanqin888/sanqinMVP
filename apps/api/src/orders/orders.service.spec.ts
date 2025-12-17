@@ -55,14 +55,23 @@ describe('OrdersService', () => {
           .fn()
           .mockImplementation(
             (args: { where?: { id?: { in?: string[] } } }) => {
-              const ids = args?.where?.id?.in ?? [];
+              const or = (args as { where?: { OR?: unknown[] } })?.where?.OR;
+              const ids =
+                Array.isArray(or) && or.length > 0
+                  ? or.flatMap((cond: any) => [
+                      ...(cond?.id?.in ?? []),
+                      ...(cond?.stableId?.in ?? []),
+                    ])
+                  : args?.where?.id?.in ?? [];
               if (!ids || ids.length === 0) return Promise.resolve([]);
               return Promise.resolve([
                 {
                   id: demoProductId,
+                  stableId: demoProductId,
                   basePriceCents: 1000,
                   nameEn: 'Demo Product',
                   nameZh: null,
+                  optionGroups: [],
                 },
               ]);
             },

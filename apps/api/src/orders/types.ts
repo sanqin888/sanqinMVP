@@ -3,13 +3,15 @@ export type FulfillmentType = 'pickup' | 'dine_in';
 export type DeliveryType = 'STANDARD' | 'PRIORITY';
 export type DeliveryProvider = 'DOORDASH_DRIVE' | 'UBER_DIRECT';
 
+import { OrderItemOptionsSnapshot } from './order-item-options';
+
 export interface OrderItem {
   id: string;
   orderId: string;
-  productId: string;
+  productStableId: string;
   qty: number;
   unitPriceCents: number | null;
-  optionsJson: Record<string, unknown> | null;
+  optionsJson: OrderItemOptionsSnapshot | null;
 }
 
 export interface Order {
