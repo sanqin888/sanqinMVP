@@ -59,8 +59,8 @@ describe('OrdersService', () => {
     prisma = {
       $transaction: jest
         .fn()
-        .mockImplementation(async (callback: (tx: unknown) => unknown) =>
-          callback(prisma),
+        .mockImplementation((callback: (tx: unknown) => unknown) =>
+          Promise.resolve(callback(prisma)),
         ),
       order: {
         findUnique: jest.fn(),
