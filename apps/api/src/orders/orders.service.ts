@@ -28,8 +28,39 @@ import {
   DoorDashDriveService,
 } from '../deliveries/doordash-drive.service';
 import { parseHostedCheckoutMetadata } from '../clover/hco-metadata';
+import {
+  OrderItemOptionChoiceSnapshot,
+  OrderItemOptionGroupSnapshot,
+  OrderItemOptionsSnapshot,
+} from './order-item-options';
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
+type OrderItemInput = NonNullable<CreateOrderDto['items']>[number] & {
+  productId?: string;
+  productStableId?: string;
+  qty: number;
+  options?: Record<string, unknown>;
+};
+
+type MenuItemWithOptions = Prisma.MenuItemGetPayload<{
+  include: {
+    optionGroups: {
+      include: {
+        templateGroup: {
+          include: {
+            options: true;
+          };
+        };
+      };
+    };
+  };
+}>;
+
+type OptionChoiceContext = {
+  choice: MenuItemWithOptions['optionGroups'][number]['templateGroup']['options'][number];
+  group: NonNullable<MenuItemWithOptions['optionGroups'][number]['templateGroup']>;
+  link: MenuItemWithOptions['optionGroups'][number];
+};
 
 // --- 辅助函数：解析数字环境变量 ---
 function parseNumberEnv(
@@ -179,70 +210,180 @@ export class OrdersService {
     return Math.max(0, Math.min(byUserInput, subtotalCents ?? byUserInput));
   }
 
+  private collectOptionIds(options?: Record<string, unknown>): string[] {
+    if (!options || typeof options !== 'object') return [];
+
+    const ids: string[] = [];
+    Object.values(options).forEach((val) => {
+      if (typeof val === 'string') {
+        ids.push(val);
+      } else if (Array.isArray(val)) {
+        val.forEach((v) => {
+          if (typeof v === 'string') ids.push(v);
+        });
+      }
+    });
+    return ids;
+  }
+
   /**
    * 🛡️ 安全核心：服务端重算商品价格
    */
-  private async calculateLineItems(
-    itemsDto: NonNullable<CreateOrderDto['items']>,
-  ): Promise<{
+  private async calculateLineItems(itemsDto: OrderItemInput[]): Promise<{
     calculatedItems: Prisma.OrderItemCreateWithoutOrderInput[];
     calculatedSubtotal: number;
   }> {
-    const productIds = itemsDto.map((i) => i.productId);
-    const allChoiceIds: string[] = [];
+    const normalizedItems = itemsDto.map((item) => {
+      const normalizedId = normalizeStableId(
+        item.productId ?? item.productStableId,
+      );
+      if (!normalizedId) {
+        throw new BadRequestException('Product id is required');
+      }
+      return {
+        ...item,
+        normalizedProductId: normalizedId,
+      };
+    });
 
-    for (const item of itemsDto) {
-      if (item.options && typeof item.options === 'object') {
-        Object.values(item.options).forEach((val) => {
-          if (typeof val === 'string') allChoiceIds.push(val);
-          else if (Array.isArray(val)) {
-            val.forEach((v) => {
-              if (typeof v === 'string') allChoiceIds.push(v);
-            });
-          }
+    const productIds = normalizedItems.map((i) => i.normalizedProductId);
+    const dbProducts = await this.prisma.menuItem.findMany({
+      where: {
+        OR: [{ id: { in: productIds } }, { stableId: { in: productIds } }],
+      },
+      include: {
+        optionGroups: {
+          where: { isEnabled: true },
+          include: {
+            templateGroup: {
+              include: {
+                options: {
+                  where: { deletedAt: null },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const productMap = new Map<string, MenuItemWithOptions>();
+    const choiceLookupByProductId = new Map<
+      string,
+      Map<string, OptionChoiceContext>
+    >();
+
+    for (const product of dbProducts) {
+      productMap.set(product.id, product);
+      productMap.set(product.stableId, product);
+
+      const optionLookup = new Map<string, OptionChoiceContext>();
+
+      for (const link of product.optionGroups ?? []) {
+        if (!link.isEnabled || !link.templateGroup) continue;
+        const templateGroup = link.templateGroup;
+        if (
+          (templateGroup as { deletedAt?: Date | null }).deletedAt ||
+          !templateGroup.isAvailable
+        )
+          continue;
+
+        const choices = (templateGroup.options ?? []).filter(
+          (opt) =>
+            !(opt as { deletedAt?: Date | null }).deletedAt &&
+            opt.isAvailable,
+        );
+
+        choices.forEach((choice) => {
+          optionLookup.set(choice.id, { choice, group: templateGroup, link });
+          optionLookup.set(choice.stableId, {
+            choice,
+            group: templateGroup,
+            link,
+          });
         });
       }
+
+      choiceLookupByProductId.set(product.id, optionLookup);
+      choiceLookupByProductId.set(product.stableId, optionLookup);
     }
-
-    const dbProducts = await this.prisma.menuItem.findMany({
-      where: { id: { in: productIds } },
-    });
-    const dbChoices =
-      allChoiceIds.length > 0
-        ? await this.prisma.menuOptionTemplateChoice.findMany({
-            where: { id: { in: allChoiceIds } },
-          })
-        : [];
-
-    const productMap = new Map(dbProducts.map((p) => [p.id, p]));
-    const choiceMap = new Map(dbChoices.map((c) => [c.id, c]));
 
     let calculatedSubtotal = 0;
     const calculatedItems: Prisma.OrderItemCreateWithoutOrderInput[] = [];
 
-    for (const itemDto of itemsDto) {
-      const product = productMap.get(itemDto.productId);
+    for (const itemDto of normalizedItems) {
+      const product = productMap.get(itemDto.normalizedProductId);
       if (!product) {
         throw new BadRequestException(
-          `Product not found or unavailable: ${itemDto.productId}`,
+          `Product not found or unavailable: ${itemDto.normalizedProductId}`,
         );
       }
 
+      const optionLookup =
+        choiceLookupByProductId.get(itemDto.normalizedProductId) ??
+        new Map();
       let unitPriceCents = product.basePriceCents;
 
-      if (itemDto.options && typeof itemDto.options === 'object') {
-        Object.values(itemDto.options).forEach((val) => {
-          const ids = Array.isArray(val) ? val : [val];
-          ids.forEach((id) => {
-            if (typeof id === 'string') {
-              const choice = choiceMap.get(id);
-              if (choice) {
-                unitPriceCents += choice.priceDeltaCents;
-              }
-            }
-          });
+      const selectedOptionIds = Array.from(
+        new Set(this.collectOptionIds(itemDto.options)),
+      );
+
+      const optionGroupSnapshots = new Map<
+        string,
+        OrderItemOptionGroupSnapshot
+      >();
+
+      for (const optionId of selectedOptionIds) {
+        const context = optionLookup.get(optionId);
+        if (!context) {
+          throw new BadRequestException(
+            `Option not found or unavailable: ${optionId} for product ${itemDto.normalizedProductId}`,
+          );
+        }
+
+        unitPriceCents += context.choice.priceDeltaCents;
+        const templateGroupStableId = context.group.stableId;
+
+        const groupSnapshot =
+          optionGroupSnapshots.get(templateGroupStableId) ?? {
+            templateGroupStableId,
+            nameEn: context.group.nameEn,
+            nameZh: context.group.nameZh ?? null,
+            minSelect:
+              typeof context.link?.minSelect === 'number'
+                ? context.link.minSelect
+                : context.group.defaultMinSelect,
+            maxSelect:
+              context.link?.maxSelect ?? context.group.defaultMaxSelect ?? null,
+            sortOrder:
+              typeof context.link?.sortOrder === 'number'
+                ? context.link.sortOrder
+                : context.group.sortOrder ?? 0,
+            choices: [] as OrderItemOptionChoiceSnapshot[],
+          };
+
+        groupSnapshot.choices.push({
+          stableId: context.choice.stableId,
+          templateGroupStableId,
+          nameEn: context.choice.nameEn,
+          nameZh: context.choice.nameZh ?? null,
+          priceDeltaCents: context.choice.priceDeltaCents,
+          sortOrder: context.choice.sortOrder ?? 0,
         });
+
+        optionGroupSnapshots.set(templateGroupStableId, groupSnapshot);
       }
+
+      const optionsSnapshot: OrderItemOptionsSnapshot = Array.from(
+        optionGroupSnapshots.values(),
+      )
+        .map((group) => ({
+          ...group,
+          choices: [...group.choices].sort(
+            (a, b) => a.sortOrder - b.sortOrder,
+          ),
+        }))
+        .sort((a, b) => a.sortOrder - b.sortOrder);
 
       const lineTotal = unitPriceCents * itemDto.qty;
       calculatedSubtotal += lineTotal;
@@ -251,13 +392,15 @@ export class OrdersService {
         product.nameEn || product.nameZh || itemDto.displayName || 'Unknown';
 
       calculatedItems.push({
-        productId: product.id,
+        productStableId: product.stableId,
         qty: itemDto.qty,
         displayName,
         nameEn: product.nameEn,
         nameZh: product.nameZh,
         unitPriceCents,
-        optionsJson: itemDto.options as Prisma.InputJsonValue,
+        optionsJson: optionsSnapshot.length
+          ? (optionsSnapshot as Prisma.InputJsonValue)
+          : undefined,
       });
     }
 
@@ -481,12 +624,20 @@ export class OrdersService {
         } else if (isPriority && uberEnabled) {
           order = await this.dispatchPriorityDelivery(order, dropoff);
         }
-      } catch (error) {
-        this.logger.error(
-          `Failed to dispatch delivery: ${
-            error instanceof Error ? error.message : error
-          }`,
-        );
+      } catch (error: unknown) {
+        let message = 'unknown';
+        if (error instanceof Error) {
+          message = error.message;
+        } else if (typeof error === 'string') {
+          message = error;
+        } else {
+          try {
+            message = JSON.stringify(error);
+          } catch {
+            message = '[unserializable error]';
+          }
+        }
+        this.logger.error(`Failed to dispatch delivery: ${message}`);
       }
     }
 
@@ -564,7 +715,7 @@ export class OrdersService {
       deliveryType: meta.deliveryType,
       deliveryDestination,
       items: meta.items.map((item) => ({
-        productId: item.id,
+        productStableId: item.productStableId,
         qty: item.quantity,
       })),
       redeemValueCents: loyaltyRedeemCents,
@@ -672,19 +823,23 @@ export class OrdersService {
       const quantity = item.qty;
       const totalPriceCents = unitPriceCents * quantity;
       const display =
-        item.displayName || item.nameEn || item.nameZh || item.productId;
+        item.displayName || item.nameEn || item.nameZh || item.productStableId;
+      const optionsSnapshot =
+        (item.optionsJson as OrderItemOptionsSnapshot | null | undefined) ??
+        null;
       return {
-        productId: item.productId,
+        productStableId: item.productStableId,
         name: display,
         nameEn: item.nameEn ?? null,
         nameZh: item.nameZh ?? null,
         quantity,
         unitPriceCents,
         totalPriceCents,
-        optionsJson: item.optionsJson ?? undefined,
+        optionsJson: optionsSnapshot ?? undefined,
         loyaltyRedeemCents: safeOrder.loyaltyRedeemCents ?? null,
         couponDiscountCents: safeOrder.couponDiscountCents ?? null,
-        subtotalAfterDiscountCents: safeOrder.subtotalAfterDiscountCents ?? null,
+        subtotalAfterDiscountCents:
+          safeOrder.subtotalAfterDiscountCents ?? null,
       };
     });
 
@@ -815,7 +970,7 @@ export class OrdersService {
         reference: order.clientRequestId ?? undefined,
         totalCents: order.totalCents,
         items: order.items.map((item) => ({
-          name: item.displayName || item.productId,
+          name: item.displayName || item.productStableId,
           quantity: item.qty,
           priceCents: item.unitPriceCents ?? undefined,
         })),
@@ -845,7 +1000,7 @@ export class OrdersService {
         reference: order.clientRequestId,
         totalCents: order.totalCents,
         items: order.items.map((item) => ({
-          name: item.displayName || item.productId,
+          name: item.displayName || item.productStableId,
           quantity: item.qty,
           priceCents: item.unitPriceCents ?? undefined,
         })),

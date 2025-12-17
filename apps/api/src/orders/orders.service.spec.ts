@@ -18,6 +18,12 @@ describe('OrdersService', () => {
       findMany: jest.Mock;
       delete: jest.Mock;
     };
+    menuItem: {
+      findMany: jest.Mock;
+    };
+    menuOptionTemplateChoice: {
+      findMany: jest.Mock;
+    };
   };
   let loyalty: {
     peekBalanceMicro: jest.Mock;
@@ -34,6 +40,7 @@ describe('OrdersService', () => {
 
   beforeEach(() => {
     process.env.UBER_DIRECT_ENABLED = '1';
+    const demoProductId = 'cprod12345';
 
     prisma = {
       order: {
@@ -42,6 +49,36 @@ describe('OrdersService', () => {
         create: jest.fn(),
         findMany: jest.fn(),
         delete: jest.fn(),
+      },
+      menuItem: {
+        findMany: jest
+          .fn()
+          .mockImplementation(
+            (args: { where?: { id?: { in?: string[] } } }) => {
+              const or = (args as { where?: { OR?: unknown[] } })?.where?.OR;
+              const ids =
+                Array.isArray(or) && or.length > 0
+                  ? or.flatMap((cond: any) => [
+                      ...(cond?.id?.in ?? []),
+                      ...(cond?.stableId?.in ?? []),
+                    ])
+                  : args?.where?.id?.in ?? [];
+              if (!ids || ids.length === 0) return Promise.resolve([]);
+              return Promise.resolve([
+                {
+                  id: demoProductId,
+                  stableId: demoProductId,
+                  basePriceCents: 1000,
+                  nameEn: 'Demo Product',
+                  nameZh: null,
+                  optionGroups: [],
+                },
+              ]);
+            },
+          ),
+      },
+      menuOptionTemplateChoice: {
+        findMany: jest.fn().mockResolvedValue([]),
       },
     };
 
@@ -139,7 +176,12 @@ describe('OrdersService', () => {
       pickupCode: '1234',
       clientRequestId: 'req-1',
       items: [
-        { id: 'item-1', productId: 'demo', qty: 1, unitPriceCents: 1000 },
+        {
+          id: 'item-1',
+          productId: 'cprod12345',
+          qty: 1,
+          unitPriceCents: 1000,
+        },
       ],
     };
     prisma.order.create.mockResolvedValue(storedOrder);
@@ -152,7 +194,7 @@ describe('OrdersService', () => {
     const dto: CreateOrderDto = {
       channel: 'web',
       fulfillmentType: 'pickup',
-      items: [{ productId: 'demo', qty: 1 }],
+      items: [{ productId: 'cprod12345', qty: 1 }],
       subtotalCents: 1000,
       taxCents: 0,
       totalCents: 1000,
