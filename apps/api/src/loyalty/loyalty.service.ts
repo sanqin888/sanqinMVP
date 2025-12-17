@@ -1,5 +1,5 @@
 // apps/api/src/loyalty/loyalty.service.ts
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { LoyaltyEntryType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -515,6 +515,96 @@ export class LoyaltyService {
   maxRedeemableCentsFromBalance(micro: bigint): number {
     const dollars = dollarsFromPointsMicro(micro); // 可抵扣美元
     return Math.floor(dollars * 100);
+  }
+
+  private calculateRedeemableCentsFromBalance(
+    balanceMicro: bigint,
+    requestedPoints?: number,
+    subtotalCents?: number,
+  ): number {
+    if (!requestedPoints || requestedPoints <= 0) return 0;
+
+    const maxByBalance = this.maxRedeemableCentsFromBalance(balanceMicro);
+    const rawCents = requestedPoints * REDEEM_DOLLAR_PER_POINT * 100;
+    const requestedCents = Math.round(rawCents + 1e-6);
+    const byUserInput = Math.min(requestedCents, maxByBalance);
+    return Math.max(0, Math.min(byUserInput, subtotalCents ?? byUserInput));
+  }
+
+  private redeemCentsFromMicro(micro: bigint): number {
+    return Math.round(dollarsFromPointsMicro(micro) * 100);
+  }
+
+  async reserveRedeemForOrder(params: {
+    tx: Prisma.TransactionClient;
+    userId?: string;
+    orderId: string;
+    requestedPoints?: number;
+    subtotalAfterCoupon: number;
+  }): Promise<number> {
+    const { tx, userId, orderId, requestedPoints, subtotalAfterCoupon } =
+      params;
+
+    if (!userId || subtotalAfterCoupon <= 0) return 0;
+
+    const account = await this.ensureAccountWithTx(tx, userId);
+
+    await tx.$queryRaw`
+      SELECT id
+      FROM "LoyaltyAccount"
+      WHERE id = ${account.id}::uuid
+      FOR UPDATE
+    `;
+
+    const existed = await tx.loyaltyLedger.findUnique({
+      where: {
+        orderId_type: {
+          orderId,
+          type: LoyaltyEntryType.REDEEM_ON_ORDER,
+        },
+      },
+      select: { deltaMicro: true },
+    });
+
+    if (existed) {
+      return this.redeemCentsFromMicro(-existed.deltaMicro);
+    }
+
+    const redeemValueCents = this.calculateRedeemableCentsFromBalance(
+      account.pointsMicro,
+      requestedPoints,
+      subtotalAfterCoupon,
+    );
+
+    if (redeemValueCents <= 0) return 0;
+
+    const redeemMicro = toMicroPoints(
+      redeemValueCents / 100 / REDEEM_DOLLAR_PER_POINT,
+    );
+
+    if (redeemMicro > account.pointsMicro) {
+      throw new BadRequestException('insufficient loyalty balance');
+    }
+
+    const newBal = account.pointsMicro - redeemMicro;
+
+    await tx.loyaltyLedger.create({
+      data: {
+        accountId: account.id,
+        orderId,
+        type: LoyaltyEntryType.REDEEM_ON_ORDER,
+        deltaMicro: -redeemMicro,
+        balanceAfterMicro: newBal,
+        note: `reserve redeem $${(redeemValueCents / 100).toFixed(2)}`,
+      },
+    });
+
+    await tx.loyaltyAccount.update({
+      where: { id: account.id },
+      data: { pointsMicro: newBal },
+    });
+
+    return redeemValueCents;
   }
 
   /**
