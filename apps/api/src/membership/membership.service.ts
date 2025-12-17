@@ -530,18 +530,22 @@ export class MembershipService {
     };
   }
 
-  async validateCouponForOrder(params: {
-    userId?: string;
-    couponId?: string;
-    subtotalCents: number;
-  }) {
+  async validateCouponForOrder(
+    params: {
+      userId?: string;
+      couponId?: string;
+      subtotalCents: number;
+    },
+    options?: { tx?: Prisma.TransactionClient },
+  ) {
     const { userId, couponId, subtotalCents } = params;
+    const prisma = options?.tx ?? this.prisma;
     if (!couponId) return null;
     if (!userId) {
       throw new BadRequestException('userId is required when applying coupon');
     }
 
-    const coupon = await this.prisma.coupon.findUnique({
+    const coupon = await prisma.coupon.findUnique({
       where: { id: couponId },
     });
 
@@ -577,6 +581,68 @@ export class MembershipService {
     };
   }
 
+  async reserveCouponForOrder(params: {
+    tx: Prisma.TransactionClient;
+    userId?: string;
+    couponId?: string | null;
+    subtotalCents: number;
+    orderId: string;
+  }) {
+    const { tx, userId, couponId, subtotalCents, orderId } = params;
+    if (!couponId) return null;
+
+    const couponInfo = await this.validateCouponForOrder(
+      { userId, couponId, subtotalCents },
+      { tx },
+    );
+
+    if (!couponInfo) return null;
+
+    const { coupon } = couponInfo;
+
+    if (coupon.orderId && coupon.orderId !== orderId) {
+      throw new BadRequestException('coupon is not available');
+    }
+
+    const alreadyReserved =
+      coupon.usedAt !== null && coupon.orderId === orderId;
+
+    const now = new Date();
+
+    if (!alreadyReserved) {
+      const updated = await tx.coupon.updateMany({
+        where: {
+          id: coupon.id,
+          usedAt: null,
+        },
+        data: {
+          usedAt: now,
+          orderId,
+        },
+      });
+
+      if (updated.count === 0) {
+        const latest = await tx.coupon.findUnique({
+          where: { id: coupon.id },
+          select: { usedAt: true, orderId: true },
+        });
+
+        if (!latest || latest.orderId !== orderId || latest.usedAt === null) {
+          throw new BadRequestException('coupon is not available');
+        }
+      }
+    }
+
+    return {
+      ...couponInfo,
+      coupon: {
+        ...coupon,
+        usedAt: coupon.usedAt ?? now,
+        orderId,
+      },
+    };
+  }
+
   async markCouponUsedForOrder(params: {
     couponId?: string | null;
     orderId: string;
@@ -588,6 +654,34 @@ export class MembershipService {
     await this.prisma.coupon.updateMany({
       where: { id: couponId, usedAt: null },
       data: { usedAt: now, orderId },
+    });
+  }
+
+  async releaseCouponForOrder(params: {
+    orderId: string;
+    couponId?: string | null;
+    tx?: Prisma.TransactionClient;
+  }) {
+    const { orderId, couponId, tx } = params;
+    if (!couponId) return;
+
+    const prisma = tx ?? this.prisma;
+
+    const coupon = await prisma.coupon.findUnique({
+      where: { id: couponId },
+      select: { usedAt: true, orderId: true },
+    });
+
+    if (!coupon || coupon.orderId !== orderId || coupon.usedAt === null) {
+      return;
+    }
+
+    await prisma.coupon.update({
+      where: { id: couponId },
+      data: {
+        usedAt: null,
+        orderId: null,
+      },
     });
   }
 

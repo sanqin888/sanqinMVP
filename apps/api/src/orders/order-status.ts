@@ -14,7 +14,7 @@ export const ORDER_STATUS_SEQUENCE: readonly OrderStatus[] = [
 export const ORDER_STATUS_TRANSITIONS: Readonly<
   Record<OrderStatus, readonly OrderStatus[]>
 > = {
-  pending: [OrderStatus.paid],
+  pending: [OrderStatus.paid, OrderStatus.refunded],
   paid: [OrderStatus.making, OrderStatus.refunded],
   making: [OrderStatus.ready, OrderStatus.refunded],
   ready: [OrderStatus.completed],
