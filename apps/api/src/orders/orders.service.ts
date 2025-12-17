@@ -28,6 +28,11 @@ import {
   DoorDashDriveService,
 } from '../deliveries/doordash-drive.service';
 import { parseHostedCheckoutMetadata } from '../clover/hco-metadata';
+import {
+  OrderItemOptionChoiceSnapshot,
+  OrderItemOptionGroupSnapshot,
+  OrderItemOptionsSnapshot,
+} from './order-item-options';
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 type OrderItemInput = NonNullable<CreateOrderDto['items']>[number] & {
@@ -117,10 +122,7 @@ export class OrdersService {
         Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     const distanceKm = R * c;
-
-    // ⚠️ 1.4 是“路程系数”，用于将直线距离转换为估算驾驶距离
-    // 如果你希望更严格对齐 Google Maps，这个系数是必要的
-    return distanceKm * 1.4;
+    return distanceKm;
   }
 
   private deg2rad(deg: number): number {
@@ -188,6 +190,22 @@ export class OrdersService {
     return Math.max(0, Math.min(byUserInput, subtotalCents ?? byUserInput));
   }
 
+  private collectOptionIds(options?: Record<string, unknown>): string[] {
+    if (!options || typeof options !== 'object') return [];
+
+    const ids: string[] = [];
+    Object.values(options).forEach((val) => {
+      if (typeof val === 'string') {
+        ids.push(val);
+      } else if (Array.isArray(val)) {
+        val.forEach((v) => {
+          if (typeof v === 'string') ids.push(v);
+        });
+      }
+    });
+    return ids;
+  }
+
   /**
    * 🛡️ 安全核心：服务端重算商品价格
    */
@@ -222,20 +240,72 @@ export class OrdersService {
           }
         });
       }
-    }
-
-    const dbProducts = await this.prisma.menuItem.findMany({
-      where: { id: { in: productIds } },
+      return {
+        ...item,
+        normalizedProductId: normalizedId,
+      };
     });
-    const dbChoices =
-      allChoiceIds.length > 0
-        ? await this.prisma.menuOptionTemplateChoice.findMany({
-            where: { id: { in: allChoiceIds } },
-          })
-        : [];
 
-    const productMap = new Map(dbProducts.map((p) => [p.id, p]));
-    const choiceMap = new Map(dbChoices.map((c) => [c.id, c]));
+    const productIds = normalizedItems.map((i) => i.normalizedProductId);
+    const dbProducts = await this.prisma.menuItem.findMany({
+      where: {
+        OR: [{ id: { in: productIds } }, { stableId: { in: productIds } }],
+      },
+      include: {
+        optionGroups: {
+          where: { isEnabled: true },
+          include: {
+            templateGroup: {
+              include: {
+                options: {
+                  where: { deletedAt: null },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const productMap = new Map<string, MenuItemWithOptions>();
+    const choiceLookupByProductId = new Map<
+      string,
+      Map<string, OptionChoiceContext>
+    >();
+
+    for (const product of dbProducts) {
+      productMap.set(product.id, product);
+      productMap.set(product.stableId, product);
+
+      const optionLookup = new Map<string, OptionChoiceContext>();
+
+      for (const link of product.optionGroups ?? []) {
+        if (!link.isEnabled || !link.templateGroup) continue;
+        const templateGroup = link.templateGroup;
+        if (
+          (templateGroup as { deletedAt?: Date | null }).deletedAt ||
+          !templateGroup.isAvailable
+        )
+          continue;
+
+        const choices = (templateGroup.options ?? []).filter((opt) => {
+          const deleted = (opt as { deletedAt?: Date | null }).deletedAt;
+          return !deleted && opt.isAvailable;
+        });
+
+        choices.forEach((choice) => {
+          optionLookup.set(choice.id, { choice, group: templateGroup, link });
+          optionLookup.set(choice.stableId, {
+            choice,
+            group: templateGroup,
+            link,
+          });
+        });
+      }
+
+      choiceLookupByProductId.set(product.id, optionLookup);
+      choiceLookupByProductId.set(product.stableId, optionLookup);
+    }
 
     let calculatedSubtotal = 0;
     const calculatedItems: Prisma.OrderItemCreateWithoutOrderInput[] = [];
@@ -248,21 +318,70 @@ export class OrdersService {
         );
       }
 
+      const optionLookup =
+        choiceLookupByProductId.get(itemDto.normalizedProductId) ??
+        new Map<string, OptionChoiceContext>();
       let unitPriceCents = product.basePriceCents;
 
-      if (itemDto.options && typeof itemDto.options === 'object') {
-        Object.values(itemDto.options).forEach((val) => {
-          const ids = Array.isArray(val) ? val : [val];
-          ids.forEach((id) => {
-            if (typeof id === 'string') {
-              const choice = choiceMap.get(id);
-              if (choice) {
-                unitPriceCents += choice.priceDeltaCents;
-              }
-            }
-          });
+      const selectedOptionIds = Array.from(
+        new Set(this.collectOptionIds(itemDto.options)),
+      );
+
+      const optionGroupSnapshots = new Map<
+        string,
+        OrderItemOptionGroupSnapshot
+      >();
+
+      for (const optionId of selectedOptionIds) {
+        const context = optionLookup.get(optionId);
+        if (!context) {
+          throw new BadRequestException(
+            `Option not found or unavailable: ${optionId} for product ${itemDto.normalizedProductId}`,
+          );
+        }
+
+        unitPriceCents += context.choice.priceDeltaCents;
+        const templateGroupStableId = context.group.stableId;
+
+        const groupSnapshot =
+          optionGroupSnapshots.get(templateGroupStableId) ??
+          ({
+            templateGroupStableId,
+            nameEn: context.group.nameEn,
+            nameZh: context.group.nameZh ?? null,
+            minSelect:
+              typeof context.link?.minSelect === 'number'
+                ? context.link.minSelect
+                : context.group.defaultMinSelect,
+            maxSelect:
+              context.link?.maxSelect ?? context.group.defaultMaxSelect ?? null,
+            sortOrder:
+              typeof context.link?.sortOrder === 'number'
+                ? context.link.sortOrder
+                : (context.group.sortOrder ?? 0),
+            choices: [] as OrderItemOptionChoiceSnapshot[],
+          } satisfies OrderItemOptionGroupSnapshot);
+
+        groupSnapshot.choices.push({
+          stableId: context.choice.stableId,
+          templateGroupStableId,
+          nameEn: context.choice.nameEn,
+          nameZh: context.choice.nameZh ?? null,
+          priceDeltaCents: context.choice.priceDeltaCents,
+          sortOrder: context.choice.sortOrder ?? 0,
         });
+
+        optionGroupSnapshots.set(templateGroupStableId, groupSnapshot);
       }
+
+      const optionsSnapshot: OrderItemOptionsSnapshot = Array.from(
+        optionGroupSnapshots.values(),
+      )
+        .map((group) => ({
+          ...group,
+          choices: [...group.choices].sort((a, b) => a.sortOrder - b.sortOrder),
+        }))
+        .sort((a, b) => a.sortOrder - b.sortOrder);
 
       const lineTotal = unitPriceCents * itemDto.qty;
       calculatedSubtotal += lineTotal;
@@ -277,7 +396,9 @@ export class OrdersService {
         nameEn: product.nameEn,
         nameZh: product.nameZh,
         unitPriceCents,
-        optionsJson: itemDto.options as Prisma.InputJsonValue,
+        optionsJson: optionsSnapshot.length
+          ? (optionsSnapshot as Prisma.InputJsonValue)
+          : undefined,
       });
     }
 
@@ -709,7 +830,7 @@ export class OrdersService {
         quantity,
         unitPriceCents,
         totalPriceCents,
-        optionsJson: item.optionsJson ?? undefined,
+        optionsJson: optionsSnapshot ?? undefined,
         loyaltyRedeemCents: safeOrder.loyaltyRedeemCents ?? null,
         couponDiscountCents: safeOrder.couponDiscountCents ?? null,
         subtotalAfterDiscountCents:
