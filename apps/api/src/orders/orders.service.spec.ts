@@ -12,6 +12,10 @@ describe('OrdersService', () => {
   let service: OrdersService;
   let prisma: {
     $transaction: jest.Mock;
+    businessConfig: {
+      findUnique: jest.Mock;
+      create: jest.Mock;
+    };
     order: {
       findUnique: jest.Mock;
       update: jest.Mock;
@@ -62,6 +66,26 @@ describe('OrdersService', () => {
         .mockImplementation((callback: (tx: unknown) => unknown) =>
           Promise.resolve(callback(prisma)),
         ),
+      businessConfig: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 1,
+          timezone: 'America/Toronto',
+          isTemporarilyClosed: false,
+          temporaryCloseReason: null,
+          deliveryBaseFeeCents: 600,
+          priorityPerKmCents: 100,
+          salesTaxRate: 0.13,
+        }),
+        create: jest.fn().mockResolvedValue({
+          id: 1,
+          timezone: 'America/Toronto',
+          isTemporarilyClosed: false,
+          temporaryCloseReason: null,
+          deliveryBaseFeeCents: 600,
+          priorityPerKmCents: 100,
+          salesTaxRate: 0.13,
+        }),
+      },
       order: {
         findUnique: jest.fn(),
         update: jest.fn(),

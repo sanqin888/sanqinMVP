@@ -33,6 +33,9 @@ type BusinessConfigDto = {
   timezone: string;
   isTemporarilyClosed: boolean;
   temporaryCloseReason: string | null;
+  deliveryBaseFeeCents: number;
+  priorityPerKmCents: number;
+  salesTaxRate: number;
   holidays: HolidayDto[];
 };
 
@@ -88,6 +91,30 @@ function timeStringToMinutes(value: string): number | null {
   }
 
   return hh * 60 + mm;
+}
+
+function centsToDollarString(cents: number | null | undefined): string {
+  if (cents == null || Number.isNaN(cents)) return '';
+  return (cents / 100).toFixed(2);
+}
+
+function parseDollarToCents(value: string): number | null {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num < 0) return null;
+  return Math.round(num * 100);
+}
+
+function rateToPercentString(rate: number | null | undefined): string {
+  if (rate == null || Number.isNaN(rate)) return '';
+  return (rate * 100).toFixed(2);
+}
+
+function parsePercentToRate(value: string): number | null {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num < 0) return null;
+  const rate = num / 100;
+  if (rate > 1) return null;
+  return Number(rate.toFixed(4));
 }
 
 /** ===== 页面组件 ===== */
@@ -207,6 +234,28 @@ export default function AdminHoursPage() {
     );
   };
 
+  const handleBaseFeeChange = (value: string) => {
+    const cents = parseDollarToCents(value);
+    if (cents == null) return;
+    setConfig((prev) =>
+      prev ? { ...prev, deliveryBaseFeeCents: cents } : prev,
+    );
+  };
+
+  const handlePerKmChange = (value: string) => {
+    const cents = parseDollarToCents(value);
+    if (cents == null) return;
+    setConfig((prev) =>
+      prev ? { ...prev, priorityPerKmCents: cents } : prev,
+    );
+  };
+
+  const handleTaxRateChange = (value: string) => {
+    const rate = parsePercentToRate(value);
+    if (rate == null) return;
+    setConfig((prev) => (prev ? { ...prev, salesTaxRate: rate } : prev));
+  };
+
   /** ===== 节假日相关 handler ===== */
 
   const handleHolidayFieldChange = (
@@ -320,6 +369,9 @@ export default function AdminHoursPage() {
           isTemporarilyClosed: config.isTemporarilyClosed,
           // 和后端 updateTemporaryClose 保持一致，用 reason
           reason: config.temporaryCloseReason ?? null,
+          deliveryBaseFeeCents: config.deliveryBaseFeeCents,
+          priorityPerKmCents: config.priorityPerKmCents,
+          salesTaxRate: config.salesTaxRate,
         }),
       });
 
@@ -444,6 +496,77 @@ export default function AdminHoursPage() {
               }
               className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
             />
+          </label>
+        </div>
+      </section>
+
+      {/* 配送费与税率配置 */}
+      <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="text-sm font-semibold text-slate-900">
+          {isZh ? '配送计费与税率' : 'Delivery pricing & tax'}
+        </h2>
+        <p className="text-xs text-slate-600">
+          {isZh
+            ? '这里的基础配送费、每公里加价和税率会直接作用于下单计算，无需重新部署即可生效。'
+            : 'Base delivery fee, per-km charge, and tax rate are applied to new orders immediately without redeploying.'}
+        </p>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <label className="flex flex-col text-xs font-medium text-slate-700">
+            <span>
+              {isZh ? '基础配送费（加元）' : 'Base delivery fee (CAD)'}
+            </span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={centsToDollarString(config.deliveryBaseFeeCents)}
+              onChange={(e) => handleBaseFeeChange(e.target.value)}
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+            />
+            <span className="mt-1 text-[11px] font-normal text-slate-500">
+              {isZh ? '对应订单中的配送费起步价。' : 'Starting delivery fee charged to customers.'}
+            </span>
+          </label>
+
+          <label className="flex flex-col text-xs font-medium text-slate-700">
+            <span>
+              {isZh ? '优先配送每公里加价（加元）' : 'Priority per‑km fee (CAD)'}
+            </span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={centsToDollarString(config.priorityPerKmCents)}
+              onChange={(e) => handlePerKmChange(e.target.value)}
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+            />
+            <span className="mt-1 text-[11px] font-normal text-slate-500">
+              {isZh
+                ? '用于优先配送的动态计费（向上取整每公里）。'
+                : 'Applied per charged kilometer for priority deliveries (ceil).'
+              }
+            </span>
+          </label>
+
+          <label className="flex flex-col text-xs font-medium text-slate-700">
+            <span>
+              {isZh ? '销售税率（百分比）' : 'Sales tax rate (%)'}
+            </span>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="0.01"
+              value={rateToPercentString(config.salesTaxRate)}
+              onChange={(e) => handleTaxRateChange(e.target.value)}
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+            />
+            <span className="mt-1 text-[11px] font-normal text-slate-500">
+              {isZh
+                ? '如 13% 税率，输入 13.00。'
+                : 'Enter 13.00 for a 13% tax rate.'}
+            </span>
           </label>
         </div>
       </section>
