@@ -10,6 +10,7 @@ import type {
   AdminMenuCategoryDto,
   AdminMenuFull,
   MenuTemplateFull,
+  OptionChoiceDto,
 } from "@shared/menu";
 
 // ========== 基本类型 ========== //
@@ -504,6 +505,11 @@ export default function AdminDashboard() {
                                   tg?.isAvailable ?? false,
                                   tg?.tempUnavailableUntil ?? null,
                                 );
+                                const templateOptions = Array.isArray(
+                                  (tg as { options?: unknown })?.options,
+                                )
+                                  ? ((tg as { options?: OptionChoiceDto[] }).options ?? [])
+                                  : [];
 
                                 return (
                                   <div
@@ -544,13 +550,13 @@ export default function AdminDashboard() {
                                       </button>
                                     </div>
 
-                                    {tg?.options?.length ? null : (
+                                    {templateOptions.length ? null : (
                                       <p className="mt-2 text-xs text-slate-500">{isZh ? "该组选项暂无子选项。" : "No choices in this group."}</p>
                                     )}
 
-                                    {tg?.options && tg.options.length > 0 ? (
+                                    {templateOptions.length > 0 ? (
                                       <div className="mt-3 divide-y rounded-md border bg-white">
-                                        {tg.options.map((opt) => {
+                                        {templateOptions.map((opt) => {
                                           const optName = isZh && opt.nameZh ? opt.nameZh : opt.nameEn;
                                           const optOn = effectiveAvailable(opt.isAvailable, opt.tempUnavailableUntil);
                                           const optTone = availabilityTone(opt.isAvailable, opt.tempUnavailableUntil);

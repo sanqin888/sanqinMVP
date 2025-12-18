@@ -38,6 +38,10 @@ export type TemplateGroupFullDto = TemplateGroupLiteDto & {
   options: OptionChoiceDto[];
 };
 
+// Aliases for consumers
+export type MenuTemplateLite = TemplateGroupLiteDto;
+export type MenuTemplateFull = TemplateGroupFullDto;
+
 // ===== Menu building blocks =====
 export type MenuOptionGroupBindingDto = {
   templateGroupStableId: string;
@@ -97,6 +101,8 @@ export type AdminMenuFullResponse = {
 export type PublicMenuResponse = {
   categories: PublicMenuCategoryDto[];
 };
+
+export type AdminMenuFull = AdminMenuFullResponse;
 
 // Shared availability helper (front/back use the same logic)
 export function isAvailableNow(
