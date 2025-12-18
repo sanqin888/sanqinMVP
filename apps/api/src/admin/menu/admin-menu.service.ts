@@ -69,6 +69,7 @@ export class AdminMenuService {
                       stableId: true,
                       nameEn: true,
                       nameZh: true,
+                      deletedAt: true,
                       defaultMinSelect: true,
                       defaultMaxSelect: true,
                       isAvailable: true,
