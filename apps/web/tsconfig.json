@@ -23,7 +23,6 @@
       "@/lib/*": ["./src/lib/*"],
       "@/components/*": ["./src/components/*"],
       "@status/*": ["../../libs/status/*"],
-      "@shared/*": ["../../libs/shared/*"]
     }
   },
   "include": [

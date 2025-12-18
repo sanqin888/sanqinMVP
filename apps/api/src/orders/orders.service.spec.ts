@@ -238,7 +238,7 @@ describe('OrdersService', () => {
     const dto: CreateOrderDto = {
       channel: 'web',
       fulfillmentType: 'pickup',
-      items: [{ productId: 'cprod12345', qty: 1 }],
+      items: [{ productStableId: 'cprod12345', qty: 1 }],
       subtotalCents: 1000,
       taxCents: 0,
       totalCents: 1000,

@@ -3,15 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 8080 -H 0.0.0.0 --turbopack",
-    "build": "next build --turbopack",
-    "start": "next start -p 8080 -H 0.0.0.0",
-    "lint": "next lint"
+  "predev": "pnpm --filter @shared/menu build",
+  "dev": "next dev -p 8080 -H 0.0.0.0 --turbopack",
+
+  "prebuild": "pnpm --filter @shared/menu build",
+  "build": "next build --turbopack",
+
+  "start": "next start -p 8080 -H 0.0.0.0",
+  "lint": "next lint"
   },
   "dependencies": {
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "next": "15.5.9"
+    "next": "15.5.9",
+    "@shared/menu": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5",
