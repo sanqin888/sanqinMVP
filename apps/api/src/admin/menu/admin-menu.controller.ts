@@ -8,13 +8,8 @@ import {
   Post,
   Put,
 } from '@nestjs/common';
-import {
-  AdminMenuService,
-} from './admin-menu.service';
-import {
-  AdminMenuFullResponse,
-  TemplateGroupFullDto,
-} from '@shared/menu';
+import { AdminMenuService } from './admin-menu.service';
+import { AdminMenuFullResponse, TemplateGroupFullDto } from '@shared/menu';
 
 @Controller('admin/menu')
 export class AdminMenuController {
