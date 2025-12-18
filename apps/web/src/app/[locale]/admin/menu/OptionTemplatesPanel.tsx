@@ -3,32 +3,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { apiFetch } from '@/lib/api-client';
-
-type TemplateOptionChoice = {
-  stableId: string;
-  nameEn: string;
-  nameZh?: string | null;
-  priceDeltaCents: number;
-  isAvailable: boolean;
-  tempUnavailableUntil: string | null;
-  sortOrder: number;
-};
-
-type OptionGroupTemplate = {
-  stableId: string;
-  nameEn: string;
-  nameZh?: string | null;
-
-  defaultMinSelect: number;
-  defaultMaxSelect: number | null;
-
-  isAvailable: boolean;
-  tempUnavailableUntil: string | null;
-
-  sortOrder: number;
-
-  options: TemplateOptionChoice[];
-};
+import type { OptionChoiceDto, TemplateGroupFullDto } from '@shared/menu';
 
 type AvailabilityMode = 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF';
 
@@ -105,7 +80,7 @@ function Badge({
 }
 
 export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
-  const [templates, setTemplates] = useState<OptionGroupTemplate[]>([]);
+  const [templates, setTemplates] = useState<TemplateGroupFullDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
@@ -161,7 +136,7 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
     setLoading(true);
     setErr(null);
     try {
-      const res = await apiFetch<OptionGroupTemplate[]>(
+      const res = await apiFetch<TemplateGroupFullDto[]>(
         '/admin/menu/option-group-templates',
       );
       setTemplates(res ?? []);
@@ -178,7 +153,7 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isZh]);
 
-  function getGroupStatusTone(g: OptionGroupTemplate): 'good' | 'warn' | 'off' {
+  function getGroupStatusTone(g: TemplateGroupFullDto): 'good' | 'warn' | 'off' {
     if (!g.isAvailable) return 'off';
     if (
       g.tempUnavailableUntil &&
@@ -188,7 +163,7 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
     return 'good';
   }
 
-  function getGroupStatusLabel(g: OptionGroupTemplate): string {
+  function getGroupStatusLabel(g: TemplateGroupFullDto): string {
     if (!g.isAvailable) return isZh ? '永久下架' : 'Off (permanent)';
     if (
       g.tempUnavailableUntil &&
@@ -198,7 +173,7 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
     return isZh ? '上架' : 'On';
   }
 
-  function getOptionStatusTone(o: TemplateOptionChoice): 'good' | 'warn' | 'off' {
+  function getOptionStatusTone(o: OptionChoiceDto): 'good' | 'warn' | 'off' {
     if (!o.isAvailable) return 'off';
     if (
       o.tempUnavailableUntil &&
@@ -208,7 +183,7 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
     return 'good';
   }
 
-  function getOptionStatusLabel(o: TemplateOptionChoice): string {
+  function getOptionStatusLabel(o: OptionChoiceDto): string {
     if (!o.isAvailable) return isZh ? '永久下架' : 'Off (permanent)';
     if (
       o.tempUnavailableUntil &&
@@ -329,11 +304,11 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
     }
   }
 
-  function startEditOption(opt: TemplateOptionChoice): void {
-    setEditingOptionStableId(opt.stableId);
+  function startEditOption(opt: OptionChoiceDto): void {
+    setEditingOptionStableId(opt.optionStableId);
     setOptionEditDraft((prev) => ({
       ...prev,
-      [opt.stableId]: {
+      [opt.optionStableId]: {
         nameEn: opt.nameEn ?? '',
         nameZh: opt.nameZh ?? '',
         priceDeltaCents: String(opt.priceDeltaCents ?? 0),
@@ -511,8 +486,8 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
 
             return (
               <div
-                key={g.stableId}
-                id={`group-${g.stableId}`}
+                key={g.templateGroupStableId}
+                id={`group-${g.templateGroupStableId}`}
                 className="rounded-xl border p-4"
               >
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -539,7 +514,10 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
                       type="button"
                       className="rounded-full border bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
                       onClick={() =>
-                        void setTemplateGroupAvailability(g.stableId, 'ON')
+                        void setTemplateGroupAvailability(
+                          g.templateGroupStableId,
+                          'ON',
+                        )
                       }
                     >
                       {isZh ? '上架' : 'On'}
@@ -548,7 +526,10 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
                       type="button"
                       className="rounded-full border bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
                       onClick={() =>
-                        void setTemplateGroupAvailability(g.stableId, 'TEMP_TODAY_OFF')
+                        void setTemplateGroupAvailability(
+                          g.templateGroupStableId,
+                          'TEMP_TODAY_OFF',
+                        )
                       }
                     >
                       {isZh ? '今日下架' : 'Off today'}
@@ -557,7 +538,10 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
                       type="button"
                       className="rounded-full border bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
                       onClick={() =>
-                        void setTemplateGroupAvailability(g.stableId, 'PERMANENT_OFF')
+                        void setTemplateGroupAvailability(
+                          g.templateGroupStableId,
+                          'PERMANENT_OFF',
+                        )
                       }
                     >
                       {isZh ? '永久下架' : 'Off perm'}
@@ -567,17 +551,17 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
 
                 {/* Add option */}
                 <div className="mt-4 rounded-lg border bg-white p-3">
-                  {newOptionDraft[g.stableId] ? null : (
+                  {newOptionDraft[g.templateGroupStableId] ? null : (
                     <button
                       type="button"
                       className="text-xs font-medium text-emerald-700 hover:text-emerald-600"
-                      onClick={() => ensureDraft(g.stableId)}
+                      onClick={() => ensureDraft(g.templateGroupStableId)}
                     >
                       {isZh ? '添加一个选项' : 'Add a choice'}
                     </button>
                   )}
 
-                  {newOptionDraft[g.stableId] ? (
+                  {newOptionDraft[g.templateGroupStableId] ? (
                     <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-12">
                       <div className="space-y-1 md:col-span-4">
                         <label className="block text-[11px] font-medium text-slate-500">
@@ -586,12 +570,12 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
                         <input
                           className="h-9 w-full rounded-md border px-3 text-sm"
                           placeholder={isZh ? '例如：Mild' : 'e.g. Mild'}
-                          value={newOptionDraft[g.stableId]?.nameEn ?? ''}
+                          value={newOptionDraft[g.templateGroupStableId]?.nameEn ?? ''}
                           onChange={(e) =>
                             setNewOptionDraft((prev) => ({
                               ...prev,
-                              [g.stableId]: {
-                                ...prev[g.stableId],
+                              [g.templateGroupStableId]: {
+                                ...prev[g.templateGroupStableId],
                                 nameEn: e.target.value,
                               },
                             }))
@@ -606,12 +590,12 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
                         <input
                           className="h-9 w-full rounded-md border px-3 text-sm"
                           placeholder={isZh ? '例如：微辣' : 'e.g. 微辣'}
-                          value={newOptionDraft[g.stableId]?.nameZh ?? ''}
+                          value={newOptionDraft[g.templateGroupStableId]?.nameZh ?? ''}
                           onChange={(e) =>
                             setNewOptionDraft((prev) => ({
                               ...prev,
-                              [g.stableId]: {
-                                ...prev[g.stableId],
+                              [g.templateGroupStableId]: {
+                                ...prev[g.templateGroupStableId],
                                 nameZh: e.target.value,
                               },
                             }))
@@ -626,12 +610,12 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
                         <input
                           className="h-9 w-full rounded-md border px-3 text-sm tabular-nums"
                           placeholder={isZh ? '例如：150' : 'e.g. 150'}
-                          value={newOptionDraft[g.stableId]?.priceDeltaCents ?? '0'}
+                          value={newOptionDraft[g.templateGroupStableId]?.priceDeltaCents ?? '0'}
                           onChange={(e) =>
                             setNewOptionDraft((prev) => ({
                               ...prev,
-                              [g.stableId]: {
-                                ...prev[g.stableId],
+                              [g.templateGroupStableId]: {
+                                ...prev[g.templateGroupStableId],
                                 priceDeltaCents: e.target.value,
                               },
                             }))
@@ -645,12 +629,12 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
                         </label>
                         <input
                           className="h-9 w-full rounded-md border px-2 text-sm tabular-nums"
-                          value={newOptionDraft[g.stableId]?.sortOrder ?? '0'}
+                          value={newOptionDraft[g.templateGroupStableId]?.sortOrder ?? '0'}
                           onChange={(e) =>
                             setNewOptionDraft((prev) => ({
                               ...prev,
-                              [g.stableId]: {
-                                ...prev[g.stableId],
+                              [g.templateGroupStableId]: {
+                                ...prev[g.templateGroupStableId],
                                 sortOrder: e.target.value,
                               },
                             }))
@@ -662,7 +646,7 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
                         <button
                           type="button"
                           className="h-9 w-full rounded-md bg-slate-900 px-3 text-sm font-semibold text-white hover:bg-slate-800"
-                          onClick={() => void createOption(g.stableId)}
+                          onClick={() => void createOption(g.templateGroupStableId)}
                         >
                           {isZh ? '创建' : 'Create'}
                         </button>
@@ -682,11 +666,11 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
                       const optName = isZh && opt.nameZh ? opt.nameZh : opt.nameEn;
                       const optTone = getOptionStatusTone(opt);
                       const optLabel = getOptionStatusLabel(opt);
-                      const isEditing = editingOptionStableId === opt.stableId;
-                      const draft = optionEditDraft[opt.stableId];
+                      const isEditing = editingOptionStableId === opt.optionStableId;
+                      const draft = optionEditDraft[opt.optionStableId];
 
                       return (
-                        <div key={opt.stableId} className="rounded-lg border bg-slate-50 p-3">
+                        <div key={opt.optionStableId} className="rounded-lg border bg-slate-50 p-3">
                           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
@@ -705,7 +689,7 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
                               <button
                                 type="button"
                                 className="rounded-full border bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                                onClick={() => void setOptionAvailability(opt.stableId, 'ON')}
+                                onClick={() => void setOptionAvailability(opt.optionStableId, 'ON')}
                               >
                                 {isZh ? '上架' : 'On'}
                               </button>
@@ -713,7 +697,7 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
                                 type="button"
                                 className="rounded-full border bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
                                 onClick={() =>
-                                  void setOptionAvailability(opt.stableId, 'TEMP_TODAY_OFF')
+                                  void setOptionAvailability(opt.optionStableId, 'TEMP_TODAY_OFF')
                                 }
                               >
                                 {isZh ? '今日下架' : 'Off today'}
@@ -722,7 +706,7 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
                                 type="button"
                                 className="rounded-full border bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
                                 onClick={() =>
-                                  void setOptionAvailability(opt.stableId, 'PERMANENT_OFF')
+                                  void setOptionAvailability(opt.optionStableId, 'PERMANENT_OFF')
                                 }
                               >
                                 {isZh ? '永久下架' : 'Off perm'}
@@ -740,7 +724,7 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
                                 <button
                                   type="button"
                                   className="rounded-full border bg-slate-900 px-3 py-1 text-xs font-medium text-white hover:bg-slate-800"
-                                  onClick={() => void saveOption(opt.stableId)}
+                                  onClick={() => void saveOption(opt.optionStableId)}
                                 >
                                   {isZh ? '保存' : 'Save'}
                                 </button>
@@ -749,7 +733,7 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
                               <button
                                 type="button"
                                 className="rounded-full border bg-white px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
-                                onClick={() => void deleteOption(opt.stableId)}
+                                onClick={() => void deleteOption(opt.optionStableId)}
                               >
                                 {isZh ? '删除' : 'Delete'}
                               </button>
@@ -768,8 +752,8 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
                                   onChange={(e) =>
                                     setOptionEditDraft((prev) => ({
                                       ...prev,
-                                      [opt.stableId]: {
-                                        ...prev[opt.stableId],
+                                      [opt.optionStableId]: {
+                                        ...prev[opt.optionStableId],
                                         nameEn: e.target.value,
                                       },
                                     }))
@@ -787,8 +771,8 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
                                   onChange={(e) =>
                                     setOptionEditDraft((prev) => ({
                                       ...prev,
-                                      [opt.stableId]: {
-                                        ...prev[opt.stableId],
+                                      [opt.optionStableId]: {
+                                        ...prev[opt.optionStableId],
                                         nameZh: e.target.value,
                                       },
                                     }))
@@ -806,8 +790,8 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
                                   onChange={(e) =>
                                     setOptionEditDraft((prev) => ({
                                       ...prev,
-                                      [opt.stableId]: {
-                                        ...prev[opt.stableId],
+                                      [opt.optionStableId]: {
+                                        ...prev[opt.optionStableId],
                                         priceDeltaCents: e.target.value,
                                       },
                                     }))
@@ -825,8 +809,8 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
                                   onChange={(e) =>
                                     setOptionEditDraft((prev) => ({
                                       ...prev,
-                                      [opt.stableId]: {
-                                        ...prev[opt.stableId],
+                                      [opt.optionStableId]: {
+                                        ...prev[opt.optionStableId],
                                         sortOrder: e.target.value,
                                       },
                                     }))
