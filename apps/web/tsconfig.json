@@ -22,7 +22,8 @@
       "@/app/*": ["./src/app/*"],
       "@/lib/*": ["./src/lib/*"],
       "@/components/*": ["./src/components/*"],
-      "@status/*": ["../../libs/status/*"]
+      "@status/*": ["../../libs/status/*"],
+      "@shared/*": ["../../libs/shared/*"]
     }
   },
   "include": [

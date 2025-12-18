@@ -17,7 +17,7 @@ import {
   UI_STRINGS,
   addLocaleToPath,
   buildLocalizedMenuFromDb,
-  type DbPublicMenuCategory,
+  type PublicMenuApiResponse,
   type PublicMenuCategory,
 } from "@/lib/order/shared";
 import { usePersistentCart } from "@/lib/cart";
@@ -100,12 +100,15 @@ export default function LocalOrderPage() {
 
       try {
         // ✅ public endpoint：/api/v1/menu/public
-        const dbMenu = await apiFetch<DbPublicMenuCategory[]>("/menu/public", {
+        const dbMenu = await apiFetch<PublicMenuApiResponse>("/menu/public", {
           cache: "no-store",
         });
         if (cancelled) return;
 
-        const localized = buildLocalizedMenuFromDb(dbMenu, locale);
+        const localized = buildLocalizedMenuFromDb(
+          dbMenu.categories ?? [],
+          locale,
+        );
         setMenu(localized);
       } catch (err) {
         console.error(err);

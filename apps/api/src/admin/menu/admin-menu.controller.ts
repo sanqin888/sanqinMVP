@@ -8,18 +8,15 @@ import {
   Post,
   Put,
 } from '@nestjs/common';
-import {
-  AdminMenuService,
-  type AdminMenuCategoryDto,
-  type OptionGroupTemplateDto,
-} from './admin-menu.service';
+import { AdminMenuService } from './admin-menu.service';
+import { AdminMenuFullResponse, TemplateGroupFullDto } from '@shared/menu';
 
 @Controller('admin/menu')
 export class AdminMenuController {
   constructor(private readonly service: AdminMenuService) {}
 
   @Get('full')
-  async getFullMenu(): Promise<AdminMenuCategoryDto[]> {
+  async getFullMenu(): Promise<AdminMenuFullResponse> {
     return this.service.getFullMenu();
   }
 
@@ -91,7 +88,7 @@ export class AdminMenuController {
 
   // ========== Option Group Templates ==========
   @Get('option-group-templates')
-  async listTemplates(): Promise<OptionGroupTemplateDto[]> {
+  async listTemplates(): Promise<TemplateGroupFullDto[]> {
     return this.service.listOptionGroupTemplates();
   }
 
