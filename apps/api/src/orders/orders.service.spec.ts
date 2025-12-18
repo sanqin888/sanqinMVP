@@ -110,6 +110,9 @@ describe('OrdersService', () => {
               basePriceCents: 1000,
               nameEn: 'Demo Product',
               nameZh: null,
+              isAvailable: true,
+              isVisible: true,
+              tempUnavailableUntil: null,
               optionGroups: [],
             },
           ]);

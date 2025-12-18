@@ -6,96 +6,13 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AppLogger } from '../../common/app-logger';
-
-export type AdminMenuOptionDto = {
-  optionStableId: string;
-  templateGroupStableId: string;
-
-  nameEn: string;
-  nameZh: string | null;
-  priceDeltaCents: number;
-
-  isAvailable: boolean;
-  tempUnavailableUntil: string | null;
-  sortOrder: number;
-};
-
-export type AdminMenuOptionGroupDto = {
-  templateGroupStableId: string;
-
-  minSelect: number;
-  maxSelect: number | null;
-  sortOrder: number;
-  isEnabled: boolean;
-
-  nameEn: string;
-  nameZh: string | null;
-  templateIsAvailable: boolean;
-  templateTempUnavailableUntil: string | null;
-
-  options: AdminMenuOptionDto[];
-};
-
-export type AdminMenuItemDto = {
-  stableId: string;
-  categoryStableId: string;
-
-  nameEn: string;
-  nameZh: string | null;
-
-  basePriceCents: number;
-  isAvailable: boolean;
-  isVisible: boolean;
-  tempUnavailableUntil: string | null;
-  sortOrder: number;
-
-  imageUrl: string | null;
-  ingredientsEn: string | null;
-  ingredientsZh: string | null;
-
-  optionGroups: AdminMenuOptionGroupDto[];
-};
-
-export type AdminMenuCategoryDto = {
-  stableId: string;
-
-  sortOrder: number;
-  nameEn: string;
-  nameZh: string | null;
-  isActive: boolean;
-
-  items: AdminMenuItemDto[];
-};
-
-export type TemplateChoiceDto = {
-  optionStableId: string;
-  templateGroupStableId: string;
-
-  nameEn: string;
-  nameZh: string | null;
-  priceDeltaCents: number;
-
-  isAvailable: boolean;
-  tempUnavailableUntil: string | null;
-  sortOrder: number;
-};
-
-export type OptionGroupTemplateDto = {
-  templateGroupStableId: string;
-
-  nameEn: string;
-  nameZh: string | null;
-
-  defaultMinSelect: number;
-  defaultMaxSelect: number | null;
-
-  isAvailable: boolean;
-  tempUnavailableUntil: string | null;
-
-  sortOrder: number;
-
-  options: TemplateChoiceDto[];
-};
+import {
+  AdminMenuCategoryDto,
+  AdminMenuFullResponse,
+  MenuOptionGroupBindingDto,
+  TemplateGroupFullDto,
+  TemplateGroupLiteDto,
+} from '@shared/menu';
 
 type AvailabilityMode = 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF';
 
@@ -130,27 +47,33 @@ export class AdminMenuService {
   constructor(private readonly prisma: PrismaService) {}
 
   // ========= Full menu for admin =========
-  async getFullMenu(): Promise<AdminMenuCategoryDto[]> {
-    const categories = await this.prisma.menuCategory.findMany({
-      where: { deletedAt: null },
-      orderBy: { sortOrder: 'asc' },
-      include: {
-        items: {
-          where: { deletedAt: null },
-          orderBy: { sortOrder: 'asc' },
-          include: {
-            category: { select: { stableId: true } },
-            optionGroups: {
-              where: {
-                templateGroup: { deletedAt: null },
-              },
-              orderBy: { sortOrder: 'asc' },
-              include: {
-                templateGroup: {
-                  include: {
-                    options: {
-                      where: { deletedAt: null },
-                      orderBy: { sortOrder: 'asc' },
+  async getFullMenu(): Promise<AdminMenuFullResponse> {
+    const [categories, templateGroups] = await Promise.all([
+      this.prisma.menuCategory.findMany({
+        where: { deletedAt: null },
+        orderBy: { sortOrder: 'asc' },
+        include: {
+          items: {
+            where: { deletedAt: null },
+            orderBy: { sortOrder: 'asc' },
+            include: {
+              category: { select: { stableId: true } },
+              optionGroups: {
+                where: {
+                  templateGroup: { deletedAt: null },
+                },
+                orderBy: { sortOrder: 'asc' },
+                include: {
+                  templateGroup: {
+                    select: {
+                      stableId: true,
+                      nameEn: true,
+                      nameZh: true,
+                      defaultMinSelect: true,
+                      defaultMaxSelect: true,
+                      isAvailable: true,
+                      tempUnavailableUntil: true,
+                      sortOrder: true,
                     },
                   },
                 },
@@ -158,87 +81,95 @@ export class AdminMenuService {
             },
           },
         },
-      },
-    });
+      }),
+      this.prisma.menuOptionGroupTemplate.findMany({
+        where: { deletedAt: null },
+        orderBy: { sortOrder: 'asc' },
+      }),
+    ]);
 
-    const dto: AdminMenuCategoryDto[] = (categories ?? []).map((cat) => {
-      const categoryStableId = cat.stableId;
+    const templatesLite: TemplateGroupLiteDto[] = (templateGroups ?? []).map(
+      (g) => ({
+        templateGroupStableId: g.stableId,
+        nameEn: g.nameEn,
+        nameZh: g.nameZh ?? null,
+        defaultMinSelect: g.defaultMinSelect,
+        defaultMaxSelect: g.defaultMaxSelect ?? null,
+        isAvailable: g.isAvailable,
+        tempUnavailableUntil: toIso(g.tempUnavailableUntil),
+        sortOrder: g.sortOrder,
+      }),
+    );
 
-      const items: AdminMenuItemDto[] = (cat.items ?? []).map((it) => {
-        const optionGroups: AdminMenuOptionGroupDto[] = (it.optionGroups ?? [])
-          .filter(
-            (link) =>
-              link.templateGroup && link.templateGroup.deletedAt == null,
+    const categoryDtos: AdminMenuCategoryDto[] = (categories ?? []).map(
+      (cat) => {
+        const categoryStableId = cat.stableId;
+
+        const items = (cat.items ?? []).map((it) => {
+          const optionGroups: MenuOptionGroupBindingDto[] = (
+            it.optionGroups ?? []
           )
-          .map((link) => {
-            const tg = link.templateGroup;
-            const templateGroupStableId = tg.stableId;
+            .filter(
+              (link) =>
+                link.templateGroup && link.templateGroup.deletedAt == null,
+            )
+            .map((link) => {
+              const tg = link.templateGroup;
 
-            const options: AdminMenuOptionDto[] = (tg.options ?? [])
-              .filter((opt) => opt.deletedAt == null)
-              .map((opt) => ({
-                optionStableId: opt.stableId,
-                templateGroupStableId,
+              const template: TemplateGroupLiteDto = {
+                templateGroupStableId: tg.stableId,
+                nameEn: tg.nameEn,
+                nameZh: tg.nameZh ?? null,
+                defaultMinSelect: tg.defaultMinSelect,
+                defaultMaxSelect: tg.defaultMaxSelect ?? null,
+                isAvailable: tg.isAvailable,
+                tempUnavailableUntil: toIso(tg.tempUnavailableUntil),
+                sortOrder: tg.sortOrder,
+              };
 
-                nameEn: opt.nameEn,
-                nameZh: opt.nameZh ?? null,
-                priceDeltaCents: opt.priceDeltaCents,
+              return {
+                templateGroupStableId: tg.stableId,
+                bindingStableId: null,
+                minSelect: link.minSelect,
+                maxSelect: link.maxSelect,
+                sortOrder: link.sortOrder,
+                isEnabled: link.isEnabled,
+                template,
+              };
+            });
 
-                isAvailable: opt.isAvailable,
-                tempUnavailableUntil: toIso(opt.tempUnavailableUntil),
-                sortOrder: opt.sortOrder,
-              }));
-
-            return {
-              templateGroupStableId,
-
-              minSelect: link.minSelect,
-              maxSelect: link.maxSelect,
-              sortOrder: link.sortOrder,
-              isEnabled: link.isEnabled,
-
-              nameEn: tg.nameEn,
-              nameZh: tg.nameZh ?? null,
-              templateIsAvailable: tg.isAvailable,
-              templateTempUnavailableUntil: toIso(tg.tempUnavailableUntil),
-
-              options,
-            };
-          });
+          return {
+            stableId: it.stableId,
+            categoryStableId,
+            nameEn: it.nameEn,
+            nameZh: it.nameZh ?? null,
+            basePriceCents: it.basePriceCents,
+            isAvailable: it.isAvailable,
+            isVisible: it.isVisible,
+            tempUnavailableUntil: toIso(it.tempUnavailableUntil),
+            sortOrder: it.sortOrder,
+            imageUrl: it.imageUrl ?? null,
+            ingredientsEn: it.ingredientsEn ?? null,
+            ingredientsZh: it.ingredientsZh ?? null,
+            optionGroups,
+          };
+        });
 
         return {
-          stableId: it.stableId,
-          categoryStableId,
-
-          nameEn: it.nameEn,
-          nameZh: it.nameZh ?? null,
-
-          basePriceCents: it.basePriceCents,
-          isAvailable: it.isAvailable,
-          isVisible: it.isVisible,
-          tempUnavailableUntil: toIso(it.tempUnavailableUntil),
-          sortOrder: it.sortOrder,
-
-          imageUrl: it.imageUrl ?? null,
-          ingredientsEn: it.ingredientsEn ?? null,
-          ingredientsZh: it.ingredientsZh ?? null,
-
-          optionGroups,
+          stableId: categoryStableId,
+          sortOrder: cat.sortOrder,
+          nameEn: cat.nameEn,
+          nameZh: cat.nameZh ?? null,
+          isActive: cat.isActive,
+          items,
         };
-      });
+      },
+    );
 
-      return {
-        stableId: categoryStableId,
-        sortOrder: cat.sortOrder,
-        nameEn: cat.nameEn,
-        nameZh: cat.nameZh ?? null,
-        isActive: cat.isActive,
-        items,
-      };
-    });
-
-    this.logger.log(`Admin full menu generated: categories=${dto.length}`);
-    return dto;
+    this.logger.log(
+      `Admin full menu generated: categories=${categoryDtos.length} templatesLite=${templatesLite.length}`,
+    );
+    return { categories: categoryDtos, templatesLite };
   }
 
   // ========= Category =========
@@ -425,7 +356,7 @@ export class AdminMenuService {
   }
 
   // ========= Templates =========
-  async listOptionGroupTemplates(): Promise<OptionGroupTemplateDto[]> {
+  async listOptionGroupTemplates(): Promise<TemplateGroupFullDto[]> {
     const groups = await this.prisma.menuOptionGroupTemplate.findMany({
       where: { deletedAt: null },
       orderBy: { sortOrder: 'asc' },
