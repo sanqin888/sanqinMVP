@@ -13,7 +13,7 @@
     "dev": "pnpm --filter web dev",
     "dev:web": "pnpm --filter web dev",
     "dev:api": "pnpm --filter api start:dev",
-    "build": "pnpm --filter web run build && pnpm --filter api run build"
+    "build": "pnpm --filter web build && pnpm --filter api build",
     "lint": "pnpm --filter web lint && pnpm --filter api lint",
     "test": "pnpm --filter api test"
   },
