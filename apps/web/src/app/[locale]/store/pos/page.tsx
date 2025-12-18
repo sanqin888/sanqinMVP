@@ -4,9 +4,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import type {
+  AdminMenuFull,
   Locale,
   PublicMenuCategory,
-  DbMenuCategory,
+  MenuTemplateFull,
 } from "@/lib/order/shared";
 import { TAX_RATE, buildLocalizedMenuFromDb } from "@/lib/order/shared";
 import { apiFetch } from "@/lib/api-client";
@@ -143,9 +144,16 @@ export default function StorePosPage() {
 
     async function loadMenu() {
       try {
-        const dbMenu = await apiFetch<DbMenuCategory[]>("/admin/menu/full");
+        const [menuResponse, templateGroups] = await Promise.all([
+          apiFetch<AdminMenuFull>("/admin/menu/full"),
+          apiFetch<MenuTemplateFull[]>("/admin/menu/option-group-templates"),
+        ]);
         if (cancelled) return;
-        const localized = buildLocalizedMenuFromDb(dbMenu, locale);
+        const localized = buildLocalizedMenuFromDb(
+          menuResponse.categories ?? [],
+          locale,
+          templateGroups ?? [],
+        );
         setMenuCategories(localized);
       } catch (error) {
         console.error("Failed to load POS menu", error);

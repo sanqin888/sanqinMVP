@@ -3,6 +3,19 @@
 
 /** ===== 基础类型 / 常量 ===== */
 import type { Locale } from "@/lib/i18n/locales";
+import type {
+  AdminMenuCategoryDto,
+  AdminMenuFullResponse,
+  MenuItemWithBindingsDto,
+  MenuOptionGroupBindingDto,
+  MenuOptionGroupWithOptionsDto,
+  OptionChoiceDto,
+  PublicMenuCategoryDto,
+  PublicMenuResponse,
+  TemplateGroupFullDto,
+  TemplateGroupLiteDto,
+} from "@shared/menu";
+import { isAvailableNow as isAvailableNowShared } from "@shared/menu";
 export type { Locale } from "@/lib/i18n/locales";
 export { LOCALES } from "@/lib/i18n/locales";
 export { addLocaleToPath } from "@/lib/i18n/path";
@@ -351,13 +364,13 @@ export type LocalizedMenuItem = {
   stableId: string;
   name: string; // localized display name
   nameEn: string;
-  nameZh?: string;
+  nameZh?: string | null;
   price: number; // CAD
   imageUrl?: string;
   ingredients?: string;
 
   // 注意：对外只暴露 templateGroupStableId / stableId（以及 admin 才会有 bindingStableId）
-  optionGroups?: DbMenuOptionGroup[];
+  optionGroups?: MenuOptionGroupWithOptionsDto[];
 };
 
 export type LocalizedCategory = {
@@ -367,102 +380,20 @@ export type LocalizedCategory = {
 };
 
 /** ===== API 菜单类型（对齐 /admin/menu/full 与 /menu/public） ===== */
-
-export type DbMenuOption = {
-  // 选项自身 stableId
-  stableId: string;
-
-  // 所属模板组选项组 stableId
-  templateGroupStableId: string;
-
-  nameEn: string;
-  nameZh: string | null;
-  priceDeltaCents: number;
-
-  isAvailable: boolean;
-  tempUnavailableUntil: string | null;
-  sortOrder: number;
-};
-
-export type DbMenuOptionGroup = {
-  // 模板组选项组 stableId（全局唯一）
-  templateGroupStableId: string;
-
-  /**
-   * admin(/admin/menu/full) 场景：菜品-选项组“绑定记录”的 stableId
-   * public(/menu/public) 场景：没有绑定记录，所以该字段可能不存在
-   */
-  bindingStableId?: string | null;
-
-  minSelect: number;
-  maxSelect: number | null;
-  sortOrder: number;
-  isEnabled: boolean;
-
-  nameEn: string;
-  nameZh: string | null;
-  templateIsAvailable: boolean;
-  templateTempUnavailableUntil: string | null;
-
-  options: DbMenuOption[];
-};
-
-export type DbMenuItem = {
-  stableId: string;
-  categoryStableId: string;
-
-  nameEn: string;
-  nameZh: string | null;
-
-  basePriceCents: number;
-  isAvailable: boolean;
-  isVisible: boolean;
-  tempUnavailableUntil: string | null;
-  sortOrder: number;
-
-  imageUrl: string | null;
-  ingredientsEn: string | null;
-  ingredientsZh: string | null;
-
-  optionGroups: DbMenuOptionGroup[];
-};
-
-export type DbMenuCategory = {
-  stableId: string;
-
-  sortOrder: number;
-  nameEn: string;
-  nameZh: string | null;
-  isActive: boolean;
-
-  items: DbMenuItem[];
-};
-
-/** ===== Public 菜单类型（与 DbMenu* 一致；对外不使用裸 id） ===== */
-export type DbPublicMenuOption = DbMenuOption;
-export type DbPublicMenuOptionGroup = DbMenuOptionGroup;
-export type DbPublicMenuItem = DbMenuItem;
-export type DbPublicMenuCategory = DbMenuCategory;
+export type DbMenuOption = OptionChoiceDto;
+export type DbMenuOptionGroup = MenuOptionGroupBindingDto;
+export type DbMenuItem = MenuItemWithBindingsDto;
+export type DbMenuCategory = AdminMenuCategoryDto;
+export type DbPublicMenuCategory = PublicMenuCategoryDto;
+export type AdminMenuFull = AdminMenuFullResponse;
+export type PublicMenuApiResponse = PublicMenuResponse;
+export type MenuTemplateLite = TemplateGroupLiteDto;
+export type MenuTemplateFull = TemplateGroupFullDto;
 
 /**
  * 真正用于前台展示的菜单类型（与 LocalizedCategory 相同）
  */
 export type PublicMenuCategory = LocalizedCategory;
-
-/** ===== 可售判定（含 tempUnavailableUntil）===== */
-/**
- * tempUntil 如果是未来时间 => 视为“暂不可售”
- * 解析失败 => 当作没设置（不拦截），避免因为脏数据导致全下架
- */
-function isAvailableNow(isAvailable: boolean, tempUntil: string | null): boolean {
-  if (!isAvailable) return false;
-  if (!tempUntil) return true;
-
-  const t = Date.parse(tempUntil);
-  if (!Number.isFinite(t)) return true;
-
-  return Date.now() >= t;
-}
 
 /**
  * ⭐ 从「数据库菜单（/admin/menu/full 或 /menu/public 返回的结构）」构建前台本地化菜单。
@@ -475,8 +406,12 @@ function isAvailableNow(isAvailable: boolean, tempUntil: string | null): boolean
 export function buildLocalizedMenuFromDb(
   dbMenu: Array<DbMenuCategory | DbPublicMenuCategory>,
   locale: Locale,
+  templates?: TemplateGroupFullDto[],
 ): PublicMenuCategory[] {
   const isZh = locale === "zh";
+  const templateMap = new Map(
+    (templates ?? []).map((t) => [t.templateGroupStableId, t]),
+  );
 
   const activeCategories = (dbMenu ?? [])
     .filter((c) => c.isActive)
@@ -488,7 +423,11 @@ export function buildLocalizedMenuFromDb(
     const items = (c.items ?? [])
       .filter(
         (i) =>
-          i.isVisible && isAvailableNow(i.isAvailable, i.tempUnavailableUntil),
+          i.isVisible &&
+          isAvailableNowShared({
+            isAvailable: i.isAvailable,
+            tempUnavailableUntil: i.tempUnavailableUntil,
+          }),
       )
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map<LocalizedMenuItem>((i) => {
@@ -509,15 +448,29 @@ export function buildLocalizedMenuFromDb(
           .filter(
             (g) =>
               g.isEnabled &&
-              isAvailableNow(g.templateIsAvailable, g.templateTempUnavailableUntil),
+              isAvailableNowShared({
+                isAvailable: g.template.isAvailable,
+                tempUnavailableUntil: g.template.tempUnavailableUntil,
+              }),
           )
           .sort((a, b) => a.sortOrder - b.sortOrder)
-          .map((g) => ({
-            ...g,
-            options: (g.options ?? [])
-              .filter((o) => isAvailableNow(o.isAvailable, o.tempUnavailableUntil))
-              .sort((a, b) => a.sortOrder - b.sortOrder),
-          }));
+          .map((g) => {
+            const templateOptions =
+              g.options ?? templateMap.get(g.templateGroupStableId)?.options ?? [];
+            const options = templateOptions
+              .filter((o) =>
+                isAvailableNowShared({
+                  isAvailable: o.isAvailable,
+                  tempUnavailableUntil: o.tempUnavailableUntil,
+                }),
+              )
+              .sort((a, b) => a.sortOrder - b.sortOrder);
+
+            return {
+              ...g,
+              options,
+            };
+          });
 
         return {
           stableId,
