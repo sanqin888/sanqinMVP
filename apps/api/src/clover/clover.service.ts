@@ -154,7 +154,7 @@ export class CloverService {
 
     // Clover Checkout 详情里的订单状态：order.state
     const orderStateVerdict = isPlainObject(record.order)
-      ? evaluate((record.order as Record<string, unknown>).state)
+      ? evaluate(record.order.state)
       : undefined;
     if (typeof orderStateVerdict === 'boolean') return orderStateVerdict;
 
