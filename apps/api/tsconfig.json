@@ -12,11 +12,10 @@
     "allowSyntheticDefaultImports": true,
     "target": "ES2023",
     "sourceMap": true,
+
     "outDir": "./dist",
-    "baseUrl": "./",
-    "paths": {
-      "@shared/*": ["../../libs/shared/*"]
-    },
+    "rootDir": "./src",
+
     "incremental": true,
     "skipLibCheck": true,
     "strictNullChecks": true,
@@ -24,5 +23,7 @@
     "noImplicitAny": false,
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false
-  }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "test", "**/*.spec.ts", "**/*.test.ts"]
 }
