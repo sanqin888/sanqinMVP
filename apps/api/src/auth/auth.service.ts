@@ -31,8 +31,38 @@ export class AuthService {
       throw new BadRequestException('invalid phone');
     }
 
-    const code = this.generateCode();
     const now = new Date();
+
+    // 频率限制：同一手机号 + 用途，1 分钟最多一次、1 小时最多 5 次
+    const oneMinuteAgo = new Date(now.getTime() - 60 * 1000);
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+
+    const recent = await this.prisma.phoneVerification.findFirst({
+      where: {
+        phone: normalized,
+        purpose,
+        createdAt: { gt: oneMinuteAgo },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (recent) {
+      throw new BadRequestException('too many requests, please try later');
+    }
+
+    const lastHourCount = await this.prisma.phoneVerification.count({
+      where: {
+        phone: normalized,
+        purpose,
+        createdAt: { gt: oneHourAgo },
+      },
+    });
+
+    if (lastHourCount >= 5) {
+      throw new BadRequestException('too many requests in an hour');
+    }
+
+    const code = this.generateCode();
     const expiresAt = new Date(now.getTime() + 5 * 60 * 1000); // 5 分钟有效
 
     await this.prisma.$transaction(async (tx) => {
