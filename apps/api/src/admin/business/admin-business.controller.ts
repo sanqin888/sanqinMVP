@@ -37,9 +37,12 @@ export class AdminBusinessController {
     body: {
       isTemporarilyClosed?: boolean;
       reason?: string;
+      deliveryBaseFeeCents?: number;
+      priorityPerKmCents?: number;
+      salesTaxRate?: number;
     },
   ): Promise<BusinessConfigResponse> {
-    return this.service.updateTemporaryClose(body);
+    return this.service.updateConfig(body);
   }
 
   /**
@@ -52,9 +55,12 @@ export class AdminBusinessController {
     body: {
       isTemporarilyClosed?: boolean;
       reason?: string;
+      deliveryBaseFeeCents?: number;
+      priorityPerKmCents?: number;
+      salesTaxRate?: number;
     },
   ): Promise<BusinessConfigResponse> {
-    return this.service.updateTemporaryClose(body);
+    return this.service.updateConfig(body);
   }
 
   /**
