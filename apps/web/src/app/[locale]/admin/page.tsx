@@ -88,6 +88,9 @@ type BusinessConfigDto = {
   timezone: string;
   isTemporarilyClosed: boolean;
   temporaryCloseReason: string | null;
+  deliveryBaseFeeCents: number;
+  priorityPerKmCents: number;
+  salesTaxRate: number;
 };
 
 type BusinessConfigResponse = {

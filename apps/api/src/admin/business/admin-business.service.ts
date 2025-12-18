@@ -25,6 +25,9 @@ export type BusinessConfigResponse = {
   timezone: string;
   isTemporarilyClosed: boolean;
   temporaryCloseReason: string | null;
+  deliveryBaseFeeCents: number;
+  priorityPerKmCents: number;
+  salesTaxRate: number;
   hours: DayConfigDto[];
   holidays: (HolidayDto & { id: number })[];
 };
@@ -53,6 +56,9 @@ export class AdminBusinessService {
       timezone: config.timezone,
       isTemporarilyClosed: config.isTemporarilyClosed,
       temporaryCloseReason: config.temporaryCloseReason ?? null,
+      deliveryBaseFeeCents: config.deliveryBaseFeeCents,
+      priorityPerKmCents: config.priorityPerKmCents,
+      salesTaxRate: config.salesTaxRate,
       hours: hours.map((h) => ({
         weekday: h.weekday,
         openMinutes: h.openMinutes ?? 0,
@@ -162,22 +168,33 @@ export class AdminBusinessService {
    * 更新“临时暂停接单”状态。
    * - isTemporarilyClosed = true 时，可选写 reason
    * - isTemporarilyClosed = false 时，自动清空 reason
+   * - 可同时更新配送费/税率
    */
-  async updateTemporaryClose(
-    payload: unknown,
-  ): Promise<BusinessConfigResponse> {
+  async updateConfig(payload: unknown): Promise<BusinessConfigResponse> {
     if (!payload || typeof payload !== 'object') {
       throw new BadRequestException(
         'payload must be an object with isTemporarilyClosed (boolean)',
       );
     }
 
-    const { isTemporarilyClosed, reason } = payload as {
+    const {
+      isTemporarilyClosed,
+      reason,
+      deliveryBaseFeeCents,
+      priorityPerKmCents,
+      salesTaxRate,
+    } = payload as {
       isTemporarilyClosed?: unknown;
       reason?: unknown;
+      deliveryBaseFeeCents?: unknown;
+      priorityPerKmCents?: unknown;
+      salesTaxRate?: unknown;
     };
 
-    if (typeof isTemporarilyClosed !== 'boolean') {
+    if (
+      typeof isTemporarilyClosed !== 'boolean' &&
+      isTemporarilyClosed !== undefined
+    ) {
       throw new BadRequestException(
         'isTemporarilyClosed must be provided as boolean',
       );
@@ -188,22 +205,54 @@ export class AdminBusinessService {
     const trimmedReason =
       typeof reason === 'string' ? reason.trim() : undefined;
 
+    const updates: Partial<BusinessConfig> = {};
+
+    if (typeof isTemporarilyClosed === 'boolean') {
+      updates.isTemporarilyClosed = isTemporarilyClosed;
+      updates.temporaryCloseReason = isTemporarilyClosed
+        ? trimmedReason && trimmedReason.length > 0
+          ? trimmedReason
+          : null
+        : null;
+    } else if (trimmedReason !== undefined && config.isTemporarilyClosed) {
+      // 允许单独更新 reason（仅当当前是暂停状态）
+      updates.temporaryCloseReason =
+        trimmedReason.length > 0 ? trimmedReason : null;
+    }
+
+    if (deliveryBaseFeeCents !== undefined) {
+      updates.deliveryBaseFeeCents = this.normalizeFeeCents(
+        'deliveryBaseFeeCents',
+        deliveryBaseFeeCents,
+      );
+    }
+
+    if (priorityPerKmCents !== undefined) {
+      updates.priorityPerKmCents = this.normalizeFeeCents(
+        'priorityPerKmCents',
+        priorityPerKmCents,
+      );
+    }
+
+    if (salesTaxRate !== undefined) {
+      updates.salesTaxRate = this.normalizeRate('salesTaxRate', salesTaxRate);
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return this.getConfig();
+    }
+
     await this.prisma.businessConfig.update({
       where: { id: config.id },
-      data: {
-        isTemporarilyClosed,
-        temporaryCloseReason: isTemporarilyClosed
-          ? trimmedReason && trimmedReason.length > 0
-            ? trimmedReason
-            : null
-          : null,
-      },
+      data: updates,
     });
 
     this.logger.log(
-      `Temporary close updated: isTemporarilyClosed=${isTemporarilyClosed} reason="${
-        trimmedReason ?? ''
-      }"`,
+      `Business config updated: isTemporarilyClosed=${updates.isTemporarilyClosed ?? config.isTemporarilyClosed} reason="${
+        updates.temporaryCloseReason ?? trimmedReason ?? ''
+      }" baseFee=${updates.deliveryBaseFeeCents ?? config.deliveryBaseFeeCents} perKm=${
+        updates.priorityPerKmCents ?? config.priorityPerKmCents
+      } taxRate=${updates.salesTaxRate ?? config.salesTaxRate}`,
     );
 
     return this.getConfig();
@@ -391,5 +440,32 @@ export class AdminBusinessService {
     }
 
     return minutes;
+  }
+
+  /** 校验配送费（单位：分） */
+  private normalizeFeeCents(label: string, value: unknown): number {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw new BadRequestException(`${label} must be a finite number`);
+    }
+
+    const cents = Math.round(value);
+    if (cents < 0) {
+      throw new BadRequestException(`${label} must be >= 0`);
+    }
+
+    return cents;
+  }
+
+  /** 校验税率（0 ~ 1 之间的小数） */
+  private normalizeRate(label: string, value: unknown): number {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw new BadRequestException(`${label} must be a finite number`);
+    }
+
+    if (value < 0 || value > 1) {
+      throw new BadRequestException(`${label} must be between 0 and 1`);
+    }
+
+    return Number(value.toFixed(4));
   }
 }
