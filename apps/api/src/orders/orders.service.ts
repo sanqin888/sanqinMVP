@@ -78,7 +78,15 @@ function parseNumberEnv(
 }
 
 // --- 环境变量配置 ---
-const TAX_RATE = parseNumberEnv(process.env.SALES_TAX_RATE, 0.13);
+const DEFAULT_TAX_RATE = parseNumberEnv(process.env.SALES_TAX_RATE, 0.13);
+const DEFAULT_DELIVERY_BASE_FEE_CENTS = parseNumberEnv(
+  process.env.DELIVERY_BASE_FEE_CENTS,
+  600,
+);
+const DEFAULT_PRIORITY_PER_KM_CENTS = parseNumberEnv(
+  process.env.PRIORITY_DELIVERY_PER_KM_CENTS,
+  100,
+);
 const REDEEM_DOLLAR_PER_POINT = parseNumberEnv(
   process.env.LOYALTY_REDEEM_DOLLAR_PER_POINT,
   1,
@@ -94,21 +102,10 @@ const UUID_REGEX =
 const isUuid = (value: string | null | undefined): boolean =>
   typeof value === 'string' && UUID_REGEX.test(value);
 
-// 静态兜底规则（当无法计算距离时的备选方案）
-const DELIVERY_RULES_FALLBACK: Record<
-  DeliveryType,
-  { provider: DeliveryProvider; feeCents: number; etaRange: [number, number] }
-> = {
-  [DeliveryType.STANDARD]: {
-    provider: DeliveryProvider.DOORDASH,
-    feeCents: 600, // 标准固定 $6
-    etaRange: [45, 60],
-  },
-  [DeliveryType.PRIORITY]: {
-    provider: DeliveryProvider.UBER,
-    feeCents: 1200, // 兜底给一个中间值（比如 6km 的价格）
-    etaRange: [25, 35],
-  },
+type DeliveryPricingConfig = {
+  deliveryBaseFeeCents: number;
+  priorityPerKmCents: number;
+  salesTaxRate: number;
 };
 
 @Injectable()
@@ -128,6 +125,69 @@ export class OrdersService {
         'STORE_LATITUDE or STORE_LONGITUDE is missing or invalid. Dynamic delivery fee calculation will fail and fallback to fixed rates.',
       );
     }
+  }
+
+  private async getBusinessPricingConfig(): Promise<DeliveryPricingConfig> {
+    const existing =
+      (await this.prisma.businessConfig.findUnique({
+        where: { id: 1 },
+      })) ??
+      (await this.prisma.businessConfig.create({
+        data: {
+          id: 1,
+          storeName: null,
+          timezone: 'America/Toronto',
+          isTemporarilyClosed: false,
+          temporaryCloseReason: null,
+          deliveryBaseFeeCents: DEFAULT_DELIVERY_BASE_FEE_CENTS,
+          priorityPerKmCents: DEFAULT_PRIORITY_PER_KM_CENTS,
+          salesTaxRate: DEFAULT_TAX_RATE,
+        },
+      }));
+
+    const deliveryBaseFeeCents = Number.isFinite(existing.deliveryBaseFeeCents)
+      ? Math.max(0, Math.round(existing.deliveryBaseFeeCents))
+      : DEFAULT_DELIVERY_BASE_FEE_CENTS;
+    const priorityPerKmCents = Number.isFinite(existing.priorityPerKmCents)
+      ? Math.max(0, Math.round(existing.priorityPerKmCents))
+      : DEFAULT_PRIORITY_PER_KM_CENTS;
+    const salesTaxRate =
+      typeof existing.salesTaxRate === 'number' &&
+      Number.isFinite(existing.salesTaxRate) &&
+      existing.salesTaxRate >= 0
+        ? existing.salesTaxRate
+        : DEFAULT_TAX_RATE;
+
+    return {
+      deliveryBaseFeeCents,
+      priorityPerKmCents,
+      salesTaxRate,
+    };
+  }
+
+  private buildDeliveryFallback(
+    pricingConfig: DeliveryPricingConfig,
+  ): Record<
+    DeliveryType,
+    { provider: DeliveryProvider; feeCents: number; etaRange: [number, number] }
+  > {
+    const DEFAULT_PRIORITY_DISTANCE_KM = 6;
+
+    return {
+      [DeliveryType.STANDARD]: {
+        provider: DeliveryProvider.DOORDASH,
+        feeCents: pricingConfig.deliveryBaseFeeCents,
+        etaRange: [45, 60],
+      },
+      [DeliveryType.PRIORITY]: {
+        provider: DeliveryProvider.UBER,
+        feeCents:
+          pricingConfig.deliveryBaseFeeCents +
+          Math.ceil(DEFAULT_PRIORITY_DISTANCE_KM) *
+            pricingConfig.priorityPerKmCents,
+        etaRange: [25, 35],
+      },
+    };
   }
 
   // --- 核心逻辑 1: 距离计算 (Haversine Formula) ---
@@ -159,6 +219,7 @@ export class OrdersService {
   private calculateDynamicDeliveryFee(
     type: DeliveryType,
     distanceKm: number,
+    pricingConfig: DeliveryPricingConfig,
   ): number {
     // 1. 🛑 后端强制复验距离限制 (10km)
     const MAX_RANGE_KM = 10;
@@ -176,12 +237,12 @@ export class OrdersService {
 
     // 2. Standard: 固定 $6 (600 cents)
     if (type === DeliveryType.STANDARD) {
-      return 600;
+      return pricingConfig.deliveryBaseFeeCents;
     }
 
-    // 3. Priority: $6 + $1/km (向上取整)
-    const baseCents = 600;
-    const perKmCents = 100;
+    // 3. Priority: 基础费 + 每公里费 (向上取整)
+    const baseCents = pricingConfig.deliveryBaseFeeCents;
+    const perKmCents = pricingConfig.priorityPerKmCents;
 
     // ⭐ 修改点：向上取整 (Ceil)
     // 0.1km -> 1km, 1.2km -> 2km
@@ -450,6 +511,8 @@ export class OrdersService {
       await this.calculateLineItems(items);
 
     const subtotalCents = calculatedSubtotal;
+    const pricingConfig = await this.getBusinessPricingConfig();
+    const deliveryRulesFallback = this.buildDeliveryFallback(pricingConfig);
 
     const requestedPoints =
       typeof dto.pointsToRedeem === 'number'
@@ -467,7 +530,7 @@ export class OrdersService {
 
     let deliveryFeeCustomerCents = 0;
     const deliveryMeta = dto.deliveryType
-      ? DELIVERY_RULES_FALLBACK[dto.deliveryType]
+      ? deliveryRulesFallback[dto.deliveryType]
       : undefined;
 
     if (isDelivery) {
@@ -494,6 +557,7 @@ export class OrdersService {
         deliveryFeeCustomerCents = this.calculateDynamicDeliveryFee(
           targetType,
           distKm,
+          pricingConfig,
         );
 
         this.logger.log(
@@ -561,7 +625,9 @@ export class OrdersService {
       );
       const taxableCents =
         purchaseBaseCents + (isDelivery ? deliveryFeeCustomerCents : 0);
-      const taxCents = Math.round(taxableCents * TAX_RATE);
+      const taxCents = Math.round(
+        taxableCents * pricingConfig.salesTaxRate,
+      );
 
       const totalCents =
         purchaseBaseCents + deliveryFeeCustomerCents + taxCents;
