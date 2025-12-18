@@ -121,64 +121,46 @@ export class CloverService {
     return trimmed.length > 0 ? trimmed.toUpperCase() : undefined;
   }
 
-  private interpretStatus(value: unknown, depth = 0): boolean | undefined {
-    if (depth > 5) return undefined;
-    const normalized = this.normalizeStatus(value);
-    if (normalized) {
-      if (
-        normalized.includes('SUCCESS') ||
-        normalized.includes('SUCCEEDED') ||
-        normalized.includes('PAID') ||
-        normalized.includes('COMPLETE') ||
-        normalized.includes('SETTLED') ||
-        normalized.includes('APPROVED')
-      ) {
-        return true;
-      }
-      if (
-        normalized.includes('FAIL') ||
-        normalized.includes('DECLIN') ||
-        normalized.includes('ERROR') ||
-        normalized.includes('CANCEL') ||
-        normalized.includes('VOID') ||
-        normalized.includes('REJECT')
-      ) {
-        return false;
-      }
-    }
+  private interpretStatus(value: unknown): boolean | undefined {
+    const evaluate = (v: unknown): boolean | undefined => {
+      const normalized = this.normalizeStatus(v);
+      if (!normalized) return undefined;
 
-    if (Array.isArray(value)) {
-      for (const entry of value) {
-        const verdict = this.interpretStatus(entry, depth + 1);
-        if (typeof verdict === 'boolean') return verdict;
-      }
-      return undefined;
-    }
-
-    if (value && typeof value === 'object') {
-      const record = value as Record<string, unknown>;
-      const prioritizedKeys = [
-        'state',
-        'status',
-        'result',
-        'paymentState',
-        'paymentStatus',
-        'checkoutState',
-        'checkoutStatus',
-        'lifecycleState',
+      const successStates = ['APPROVED', 'PAID', 'COMPLETED'];
+      const failureStates = [
+        'DECLINED',
+        'FAILED',
+        'VOID',
+        'VOIDED',
+        'CANCELLED',
+        'CANCELED',
       ];
 
-      for (const key of prioritizedKeys) {
-        if (!(key in record)) continue;
-        const verdict = this.interpretStatus(record[key], depth + 1);
-        if (typeof verdict === 'boolean') return verdict;
-      }
+      if (successStates.includes(normalized)) return true;
+      if (failureStates.includes(normalized)) return false;
+      return undefined;
+    };
 
-      for (const [, nested] of Object.entries(record)) {
-        const verdict = this.interpretStatus(nested, depth + 1);
-        if (typeof verdict === 'boolean') return verdict;
-      }
-    }
+    const directVerdict = evaluate(value);
+    if (typeof directVerdict === 'boolean') return directVerdict;
+
+    if (!value || typeof value !== 'object') return undefined;
+
+    const record = value as Record<string, unknown>;
+
+    // Clover 官方字段：顶层 status
+    const statusVerdict = evaluate(record.status);
+    if (typeof statusVerdict === 'boolean') return statusVerdict;
+
+    // Clover Checkout 详情里的订单状态：order.state
+    const orderStateVerdict = isPlainObject(record.order)
+      ? evaluate(record.order.state)
+      : undefined;
+    if (typeof orderStateVerdict === 'boolean') return orderStateVerdict;
+
+    // 兼容部分接口的 result 字段（非官方首选）
+    const resultVerdict = evaluate(record.result);
+    if (typeof resultVerdict === 'boolean') return resultVerdict;
 
     return undefined;
   }
