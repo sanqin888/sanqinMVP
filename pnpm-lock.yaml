@@ -139,6 +139,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@shared/menu':
+        specifier: workspace:*
+        version: link:../../libs/shared
       next:
         specifier: 15.5.9
         version: 15.5.9(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
