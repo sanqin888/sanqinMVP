@@ -6,6 +6,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import type { Locale } from "@/lib/order/shared";
 import { apiFetch } from "@/lib/api-client";
+import type {
+  AdminMenuCategoryDto,
+  AdminMenuFull,
+  MenuTemplateFull,
+  OptionChoiceDto,
+} from "@shared/menu";
 
 // ========== 基本类型 ========== //
 
@@ -14,65 +20,6 @@ export type Holiday = {
   date: string;
   reason: string;
 };
-
-export type MenuOptionChoice = {
-  stableId: string;
-  templateGroupStableId: string;
-  nameEn: string;
-  nameZh?: string | null;
-  priceDeltaCents: number;
-  isAvailable: boolean;
-  tempUnavailableUntil: string | null;
-  sortOrder: number;
-};
-
-export type MenuOptionGroup = {
-  itemStableId: string;
-  templateGroupStableId: string;
-
-  minSelect: number;
-  maxSelect: number | null;
-  sortOrder: number;
-  isEnabled: boolean;
-
-  template: {
-    stableId: string;
-    nameEn: string;
-    nameZh?: string | null;
-    isAvailable: boolean;
-    tempUnavailableUntil: string | null;
-    defaultMinSelect: number;
-    defaultMaxSelect: number | null;
-    options: MenuOptionChoice[];
-  };
-};
-
-export type MenuItem = {
-  stableId: string;
-  categoryStableId: string;
-  nameEn: string;
-  nameZh?: string | null;
-  basePriceCents: number;
-  isAvailable: boolean;
-  isVisible: boolean;
-  tempUnavailableUntil: string | null;
-  sortOrder: number;
-  imageUrl?: string | null;
-  ingredientsEn?: string | null;
-  ingredientsZh?: string | null;
-  optionGroups: MenuOptionGroup[];
-};
-
-export type MenuCategory = {
-  stableId: string;
-  sortOrder: number;
-  nameEn: string;
-  nameZh?: string | null;
-  isActive: boolean;
-  items: MenuItem[];
-};
-
-type FullMenuResponse = MenuCategory[];
 
 // —— 和 /admin/hours 页保持一致的类型 —— //
 type BusinessHourDto = {
@@ -183,9 +130,15 @@ export default function AdminDashboard() {
 
   const weekdayLabels = useMemo(() => (isZh ? WEEKDAY_LABELS_ZH : WEEKDAY_LABELS_EN), [isZh]);
 
-  const [menu, setMenu] = useState<FullMenuResponse>([]);
+  const [menu, setMenu] = useState<AdminMenuCategoryDto[]>([]);
+  const [templates, setTemplates] = useState<MenuTemplateFull[]>([]);
   const [menuLoading, setMenuLoading] = useState(true);
   const [menuError, setMenuError] = useState<string | null>(null);
+
+  const templateMap = useMemo(
+    () => new Map(templates.map((t) => [t.templateGroupStableId, t])),
+    [templates],
+  );
 
   const { totalActiveItems, totalInactiveItems } = useMemo(() => {
     let active = 0;
@@ -234,9 +187,19 @@ export default function AdminDashboard() {
     setMenuLoading(true);
     setMenuError(null);
     try {
-      const res = await apiFetch<FullMenuResponse>("/admin/menu/full");
+      const [menuRes, templateRes] = await Promise.all([
+        apiFetch<AdminMenuFull>("/admin/menu/full"),
+        apiFetch<MenuTemplateFull[]>("/admin/menu/option-group-templates"),
+      ]);
 
-      const normalized = res
+      const normalizedTemplates = (templateRes ?? [])
+        .slice()
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((t) => ({
+          ...t,
+          options: (t.options ?? []).slice().sort((a, b) => a.sortOrder - b.sortOrder),
+        }));
+      const normalized = (menuRes.categories ?? [])
         .slice()
         .sort((a, b) => a.sortOrder - b.sortOrder)
         .map((category) => ({
@@ -246,20 +209,12 @@ export default function AdminDashboard() {
             .sort((a, b) => a.sortOrder - b.sortOrder)
             .map((item) => ({
               ...item,
-              optionGroups: item.optionGroups
-                .slice()
-                .sort((a, b) => a.sortOrder - b.sortOrder)
-                .map((group) => ({
-                  ...group,
-                  template: {
-                    ...group.template,
-                    options: group.template.options.slice().sort((a, b) => a.sortOrder - b.sortOrder),
-                  },
-                })),
+              optionGroups: item.optionGroups.slice().sort((a, b) => a.sortOrder - b.sortOrder),
             })),
         }));
 
       setMenu(normalized);
+      setTemplates(normalizedTemplates);
     } catch (e) {
       console.error(e);
       setMenuError(isZh ? "加载菜单失败，请稍后重试。" : "Failed to load menu. Please try again.");
@@ -537,20 +492,40 @@ export default function AdminDashboard() {
                           {item.optionGroups.length > 0 ? (
                             <div className="mt-3 space-y-2">
                               {item.optionGroups.map((group) => {
-                                const tg = group.template;
-                                const groupName = isZh && tg.nameZh ? tg.nameZh : tg.nameEn;
+                                const tg =
+                                  templateMap.get(group.templateGroupStableId) ?? group.template;
+                                const groupName =
+                                  isZh && tg?.nameZh ? tg.nameZh : tg?.nameEn ?? group.templateGroupStableId;
 
-                                const groupOn = effectiveAvailable(tg.isAvailable, tg.tempUnavailableUntil);
-                                const groupTone = availabilityTone(tg.isAvailable, tg.tempUnavailableUntil);
+                                const groupOn = effectiveAvailable(
+                                  tg?.isAvailable ?? false,
+                                  tg?.tempUnavailableUntil ?? null,
+                                );
+                                const groupTone = availabilityTone(
+                                  tg?.isAvailable ?? false,
+                                  tg?.tempUnavailableUntil ?? null,
+                                );
+                                const templateOptions = Array.isArray(
+                                  (tg as { options?: unknown })?.options,
+                                )
+                                  ? ((tg as { options?: OptionChoiceDto[] }).options ?? [])
+                                  : [];
 
                                 return (
-                                  <div key={tg.stableId} className="rounded-lg border bg-slate-50 p-3">
+                                  <div
+                                    key={tg?.templateGroupStableId ?? group.templateGroupStableId}
+                                    className="rounded-lg border bg-slate-50 p-3"
+                                  >
                                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                                       <div className="min-w-0">
                                         <div className="flex items-center gap-2">
                                           <p className="truncate text-sm font-semibold text-slate-900">{groupName}</p>
                                           <TonePill tone={groupTone}>
-                                            {availabilityLabel(isZh, tg.isAvailable, tg.tempUnavailableUntil)}
+                                            {availabilityLabel(
+                                              isZh,
+                                              tg?.isAvailable ?? false,
+                                              tg?.tempUnavailableUntil ?? null,
+                                            )}
                                           </TonePill>
                                         </div>
                                         <p className="mt-1 text-xs text-slate-500">
@@ -560,7 +535,11 @@ export default function AdminDashboard() {
 
                                       <button
                                         type="button"
-                                        onClick={() => void toggleTemplateGroup(tg.stableId, groupOn)}
+                                        onClick={() =>
+                                          tg?.templateGroupStableId
+                                            ? void toggleTemplateGroup(tg.templateGroupStableId, groupOn)
+                                            : undefined
+                                        }
                                         className={`rounded-full px-3 py-1 text-xs font-medium ${
                                           groupOn
                                             ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
@@ -571,18 +550,20 @@ export default function AdminDashboard() {
                                       </button>
                                     </div>
 
-                                    {tg.options.length === 0 ? (
+                                    {templateOptions.length ? null : (
                                       <p className="mt-2 text-xs text-slate-500">{isZh ? "该组选项暂无子选项。" : "No choices in this group."}</p>
-                                    ) : (
+                                    )}
+
+                                    {templateOptions.length > 0 ? (
                                       <div className="mt-3 divide-y rounded-md border bg-white">
-                                        {tg.options.map((opt) => {
+                                        {templateOptions.map((opt) => {
                                           const optName = isZh && opt.nameZh ? opt.nameZh : opt.nameEn;
                                           const optOn = effectiveAvailable(opt.isAvailable, opt.tempUnavailableUntil);
                                           const optTone = availabilityTone(opt.isAvailable, opt.tempUnavailableUntil);
 
                                           return (
                                             <div
-                                              key={opt.stableId}
+                                              key={opt.optionStableId}
                                               className="flex flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
                                             >
                                               <div className="min-w-0">
@@ -599,7 +580,7 @@ export default function AdminDashboard() {
 
                                               <button
                                                 type="button"
-                                                onClick={() => void toggleOption(opt.stableId, optOn)}
+                                                onClick={() => void toggleOption(opt.optionStableId, optOn)}
                                                 className={`rounded-full px-3 py-1 text-xs font-medium ${
                                                   optOn
                                                     ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
@@ -612,7 +593,7 @@ export default function AdminDashboard() {
                                           );
                                         })}
                                       </div>
-                                    )}
+                                    ) : null}
                                   </div>
                                 );
                               })}
