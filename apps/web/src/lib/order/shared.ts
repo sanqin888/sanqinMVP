@@ -218,7 +218,7 @@ export const UI_STRINGS: Record<
       postalCodePlaceholder: "M2N 7J5",
       postalCodeHint: "Format: M2N 7J5",
       postalCodeError: "Enter a valid postal code in the M2N 7J5 format.",
-      notesPlaceholder: "E.g., less spicy / no cilantro",
+      notesPlaceholder: "E.g., Buzz Code",
     },
     deliveryDistance: {
       restriction: "Delivery available only within {radius} of the restaurant.",
@@ -339,7 +339,7 @@ export const UI_STRINGS: Record<
       postalCodePlaceholder: "M2N 7J5",
       postalCodeHint: "格式：M2N 7J5",
       postalCodeError: "请填写正确的邮编（例如 M2N 7J5）。",
-      notesPlaceholder: "例如：少辣 / 不要香菜",
+      notesPlaceholder: "例如：门铃号码",
     },
     deliveryDistance: {
       restriction: "目前仅支持距离门店 {radius} 内的外送。",
