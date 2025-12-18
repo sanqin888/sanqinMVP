@@ -41,6 +41,7 @@ import {
   OrderItemOptionGroupSnapshot,
   OrderItemOptionsSnapshot,
 } from './order-item-options';
+import { isAvailableNow } from '@shared/menu';
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 type OrderItemInput = NonNullable<CreateOrderDto['items']>[number] & {
@@ -67,6 +68,18 @@ type OptionChoiceContext = {
   group: MenuOptionGroupTemplate;
   link: MenuItemOptionGroup;
 };
+
+function availabilityFromDb(
+  isAvailable: boolean,
+  tempUnavailableUntil: Date | null,
+) {
+  return {
+    isAvailable,
+    tempUnavailableUntil: tempUnavailableUntil
+      ? tempUnavailableUntil.toISOString()
+      : null,
+  };
+}
 
 // --- 辅助函数：解析数字环境变量 ---
 function parseNumberEnv(
@@ -351,13 +364,23 @@ export class OrdersService {
         const templateGroup = link.templateGroup;
         if (
           (templateGroup as { deletedAt?: Date | null }).deletedAt ||
-          !templateGroup.isAvailable
+          !isAvailableNow(
+            availabilityFromDb(
+              templateGroup.isAvailable,
+              templateGroup.tempUnavailableUntil,
+            ),
+          )
         )
           continue;
 
         const choices = (templateGroup.options ?? []).filter((opt) => {
           const deleted = (opt as { deletedAt?: Date | null }).deletedAt;
-          return !deleted && opt.isAvailable;
+          return (
+            !deleted &&
+            isAvailableNow(
+              availabilityFromDb(opt.isAvailable, opt.tempUnavailableUntil),
+            )
+          );
         });
 
         choices.forEach((choice) => {
@@ -382,6 +405,15 @@ export class OrdersService {
       if (!product) {
         throw new BadRequestException(
           `Product not found or unavailable: ${itemDto.normalizedProductId}`,
+        );
+      }
+      const productAvailability = availabilityFromDb(
+        product.isAvailable,
+        product.tempUnavailableUntil,
+      );
+      if (!product.isVisible || !isAvailableNow(productAvailability)) {
+        throw new BadRequestException(
+          `Product not available: ${itemDto.normalizedProductId}`,
         );
       }
 

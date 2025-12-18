@@ -5,22 +5,17 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api-client';
-import type { Locale, DbMenuCategory, DbMenuItem } from '@/lib/order/shared';
+import type { Locale } from '@/lib/order/shared';
+import type {
+  AdminMenuCategoryDto,
+  AdminMenuFullResponse,
+  MenuItemWithBindingsDto,
+  MenuTemplateLite,
+} from '@shared/menu';
 
 type SavingState = {
   itemStableId: string | null;
   error: string | null;
-};
-
-type OptionGroupTemplateLite = {
-  templateGroupStableId: string;
-  nameEn: string;
-  nameZh?: string | null;
-  defaultMinSelect: number;
-  defaultMaxSelect: number | null;
-  sortOrder: number;
-  isAvailable: boolean;
-  tempUnavailableUntil: string | null;
 };
 
 type BindDraft = {
@@ -40,11 +35,6 @@ function createEmptyBindDraft(): BindDraft {
     isRequired: false,
   };
 }
-
-type AdminMenuFullResponse = {
-  categories: DbMenuCategory[];
-  templates: OptionGroupTemplateLite[];
-};
 
 type CreateCategoryPayload = {
   nameEn: string;
@@ -66,9 +56,12 @@ type CreateItemPayload = {
 const BIND_ENDPOINT = (itemStableId: string) =>
   `/admin/menu/items/${encodeURIComponent(itemStableId)}/option-group-bindings`;
 
-const UNBIND_ENDPOINT = (itemStableId: string, bindingStableId: string) =>
+const UNBIND_ENDPOINT = (
+  itemStableId: string,
+  templateGroupStableId: string,
+) =>
   `/admin/menu/items/${encodeURIComponent(itemStableId)}/option-group-bindings/${encodeURIComponent(
-    bindingStableId,
+    templateGroupStableId,
   )}`;
 
 function toIntOrNull(v: string): number | null {
@@ -90,8 +83,8 @@ export default function AdminMenuPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [categories, setCategories] = useState<DbMenuCategory[]>([]);
-  const [templates, setTemplates] = useState<OptionGroupTemplateLite[]>([]);
+  const [categories, setCategories] = useState<AdminMenuCategoryDto[]>([]);
+  const [templates, setTemplates] = useState<MenuTemplateLite[]>([]);
 
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState<SavingState>({ itemStableId: null, error: null });
@@ -122,7 +115,7 @@ export default function AdminMenuPage() {
   >({});
 
   const templateByStableId = useMemo(() => {
-    const m = new Map<string, OptionGroupTemplateLite>();
+    const m = new Map<string, MenuTemplateLite>();
     for (const t of templates) m.set(t.templateGroupStableId, t);
     return m;
   }, [templates]);
@@ -135,11 +128,11 @@ export default function AdminMenuPage() {
     setExpandedItems((prev) => ({ ...prev, [itemStableId]: !prev[itemStableId] }));
   }
 
-  function updateItemField<K extends keyof DbMenuItem>(
+  function updateItemField<K extends keyof MenuItemWithBindingsDto>(
     categoryStableId: string,
     itemStableId: string,
     field: K,
-    value: DbMenuItem[K],
+    value: MenuItemWithBindingsDto[K],
   ) {
     setCategories((prev) =>
       prev.map((cat) =>
@@ -161,7 +154,7 @@ export default function AdminMenuPage() {
     try {
       const data = await apiFetch<AdminMenuFullResponse>('/admin/menu/full');
       setCategories(data.categories ?? []);
-      setTemplates(data.templates ?? []);
+      setTemplates(data.templatesLite ?? []);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -350,10 +343,15 @@ export default function AdminMenuPage() {
     }
   }
 
-  async function handleUnbindFromItem(itemStableId: string, bindingStableId: string): Promise<void> {
-    setUnbindingId(bindingStableId);
+  async function handleUnbindFromItem(
+    itemStableId: string,
+    templateGroupStableId: string,
+  ): Promise<void> {
+    setUnbindingId(templateGroupStableId);
     try {
-      await apiFetch(UNBIND_ENDPOINT(itemStableId, bindingStableId), { method: 'DELETE' });
+      await apiFetch(UNBIND_ENDPOINT(itemStableId, templateGroupStableId), {
+        method: 'DELETE',
+      });
       await load();
     } catch (e) {
       alert(e instanceof Error ? e.message : String(e));
@@ -780,7 +778,11 @@ export default function AdminMenuPage() {
                                 .map((g) => {
                                   const tplStableId = g.templateGroupStableId;
                                   const bindingStableId = g.bindingStableId ?? null;
-                                  const tpl = templateByStableId.get(tplStableId);
+                                  const tpl = templateByStableId.get(tplStableId) ?? g.template;
+                                  const groupName = isZh
+                                    ? tpl?.nameZh ?? tpl?.nameEn
+                                    : tpl?.nameEn ?? tplStableId;
+                                  const unbindKey = bindingStableId ?? tplStableId;
 
                                   return (
                                     <div
@@ -789,9 +791,7 @@ export default function AdminMenuPage() {
                                     >
                                       <div className="min-w-0">
                                         <div className="truncate text-sm font-medium">
-                                          {isZh
-                                            ? g.nameZh ?? g.nameEn
-                                            : g.nameEn}{' '}
+                                          {groupName}{' '}
                                           <span className="ml-2 text-xs text-slate-500">
                                             ({isZh ? '排序' : 'sort'}: {g.sortOrder} ·{' '}
                                             {isZh ? 'min' : 'min'}: {g.minSelect} ·{' '}
@@ -825,28 +825,22 @@ export default function AdminMenuPage() {
                                           {isZh ? '查看模板' : 'View'}
                                         </Link>
 
-                                        {bindingStableId ? (
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              void handleUnbindFromItem(item.stableId, bindingStableId)
-                                            }
-                                            disabled={unbindingId === bindingStableId}
-                                            className="rounded-md bg-rose-600 px-2 py-1 text-xs text-white disabled:opacity-50"
-                                          >
-                                            {unbindingId === bindingStableId
-                                              ? isZh
-                                                ? '解绑中…'
-                                                : 'Removing…'
-                                              : isZh
-                                                ? '解绑'
-                                                : 'Unbind'}
-                                          </button>
-                                        ) : (
-                                          <span className="text-[10px] text-slate-400">
-                                            {isZh ? '缺少 bindingStableId（无法解绑）' : 'Missing bindingStableId'}
-                                          </span>
-                                        )}
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            void handleUnbindFromItem(item.stableId, unbindKey)
+                                          }
+                                          disabled={unbindingId === unbindKey}
+                                          className="rounded-md bg-rose-600 px-2 py-1 text-xs text-white disabled:opacity-50"
+                                        >
+                                          {unbindingId === unbindKey
+                                            ? isZh
+                                              ? '解绑中…'
+                                              : 'Removing…'
+                                            : isZh
+                                              ? '解绑'
+                                              : 'Unbind'}
+                                        </button>
                                       </div>
                                     </div>
                                   );
