@@ -277,7 +277,7 @@ export default function CheckoutPage() {
   );
   const [deliveryType, setDeliveryType] =
     useState<DeliveryTypeOption>("PRIORITY");
-  const [schedule, setSchedule] = useState<ScheduleSlot>("asap");
+  const [schedule] = useState<ScheduleSlot>("asap");
   const [customer, setCustomer] = useState<CustomerInfo>({
     name: "",
     phone: "",
@@ -327,6 +327,13 @@ export default function CheckoutPage() {
   );
   const [couponLoading, setCouponLoading] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
+  const [utensilsPreference, setUtensilsPreference] = useState<
+    "yes" | "no"
+  >("no");
+  const [utensilsQuantity, setUtensilsQuantity] = useState<
+    "1" | "2" | "other"
+  >("1");
+  const [utensilsCustomQuantity, setUtensilsCustomQuantity] = useState("");
 
   // 门店营业状态（web / POS 共用）
   const [storeStatus, setStoreStatus] = useState<StoreStatus | null>(null);
@@ -1198,6 +1205,16 @@ export default function CheckoutPage() {
         fulfillment,
         schedule,
         customer: { ...customer, address: deliveryAddressText },
+        utensils:
+          utensilsPreference === "yes"
+            ? {
+                needed: true,
+                quantity:
+                  utensilsQuantity === "other"
+                    ? Number.parseInt(utensilsCustomQuantity, 10) || null
+                    : Number(utensilsQuantity),
+              }
+            : { needed: false, quantity: 0 },
 
         // 小计相关
         subtotalCents,
@@ -1535,6 +1552,84 @@ export default function CheckoutPage() {
               ))}
             </ul>
 
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
+                {strings.utensils.title}
+              </p>
+              <p className="mt-1 text-[11px] text-slate-500">
+                {strings.utensils.description}
+              </p>
+
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUtensilsPreference("no");
+                    setUtensilsQuantity("1");
+                    setUtensilsCustomQuantity("");
+                  }}
+                  className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                    utensilsPreference === "no"
+                      ? "border-slate-900 bg-slate-900 text-white"
+                      : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300"
+                  }`}
+                  aria-pressed={utensilsPreference === "no"}
+                >
+                  {strings.utensils.no}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUtensilsPreference("yes")}
+                  className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                    utensilsPreference === "yes"
+                      ? "border-slate-900 bg-slate-900 text-white"
+                      : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300"
+                  }`}
+                  aria-pressed={utensilsPreference === "yes"}
+                >
+                  {strings.utensils.yes}
+                </button>
+              </div>
+
+              {utensilsPreference === "yes" ? (
+                <div className="mt-3 space-y-2 text-xs text-slate-600">
+                  <label className="block font-medium text-slate-700">
+                    {strings.utensils.quantityLabel}
+                    <select
+                      value={utensilsQuantity}
+                      onChange={(event) =>
+                        setUtensilsQuantity(
+                          event.target.value as typeof utensilsQuantity,
+                        )
+                      }
+                      className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                    >
+                      <option value="1">{strings.utensils.optionOne}</option>
+                      <option value="2">{strings.utensils.optionTwo}</option>
+                      <option value="other">{strings.utensils.optionOther}</option>
+                    </select>
+                  </label>
+
+                  {utensilsQuantity === "other" ? (
+                    <label className="block font-medium text-slate-700">
+                      {strings.utensils.otherLabel}
+                      <input
+                        type="number"
+                        min={1}
+                        inputMode="numeric"
+                        value={utensilsCustomQuantity}
+                        onChange={(event) =>
+                          setUtensilsCustomQuantity(event.target.value)
+                        }
+                        placeholder={strings.utensils.otherPlaceholder}
+                        className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                      />
+                    </label>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+
             <div className="space-y-4">
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
@@ -1618,25 +1713,6 @@ export default function CheckoutPage() {
                         </button>
                       ))}
                     </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <label className="block text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
-                      {strings.scheduleLabel}
-                      <select
-                        value={schedule}
-                        onChange={(event) =>
-                          setSchedule(event.target.value as ScheduleSlot)
-                        }
-                        className="mt-2 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
-                      >
-                        {strings.scheduleOptions.map((option) => (
-                          <option key={option.id} value={option.id}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
                   </div>
                 </>
               ) : (
@@ -1965,11 +2041,13 @@ export default function CheckoutPage() {
                     </div>
                   ) : (
                     <div className="mt-2 space-y-2">
-                      {availableCoupons.map((coupon) => {
+                      {availableCoupons.map((coupon, index) => {
                         const applicable = isCouponApplicable(coupon);
+                        const couponKey =
+                          coupon.id || coupon.code || `${coupon.title}-${index}`;
                         return (
                           <div
-                            key={coupon.id}
+                            key={`${couponKey}-${index}`}
                             className="rounded-xl border border-dashed border-amber-200 bg-white px-3 py-2"
                           >
                             <div className="flex items-center justify-between gap-2">

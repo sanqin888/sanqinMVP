@@ -83,6 +83,19 @@ type DeliveryDistanceStrings = {
   failed: string;
 };
 
+type UtensilStrings = {
+  title: string;
+  description: string;
+  yes: string;
+  no: string;
+  quantityLabel: string;
+  optionOne: string;
+  optionTwo: string;
+  optionOther: string;
+  otherLabel: string;
+  otherPlaceholder: string;
+};
+
 type ThankYouStrings = {
   brand: string;
   switchLabel: string;
@@ -120,6 +133,7 @@ export const UI_STRINGS: Record<
     contactInfoLabel: string;
     contactFields: ContactFields;
     deliveryDistance: DeliveryDistanceStrings;
+    utensils: UtensilStrings;
 
     // 购物车补充
     cartEmpty: string;
@@ -215,6 +229,19 @@ export const UI_STRINGS: Record<
       notFound:
         "We couldn’t locate that address. Please include street, city, and postal code.",
       failed: "We couldn’t verify this address right now. Please try again.",
+    },
+
+    utensils: {
+      title: "Utensils",
+      description: "Do you need disposable utensils with your order?",
+      yes: "Yes",
+      no: "No",
+      quantityLabel: "How many sets?",
+      optionOne: "1 set",
+      optionTwo: "2 sets",
+      optionOther: "Other amount",
+      otherLabel: "Other quantity",
+      otherPlaceholder: "Enter quantity",
     },
 
     cartEmpty: "Your cart is empty.",
@@ -321,6 +348,19 @@ export const UI_STRINGS: Record<
       outsideRange: "配送距离约 {distance}，超出 {radius} 限制。",
       notFound: "未能定位该地址，请补充街道、城市与邮编信息。",
       failed: "暂时无法验证地址，请稍后再试。",
+    },
+
+    utensils: {
+      title: "餐具",
+      description: "需要一次性餐具吗？",
+      yes: "需要",
+      no: "不需要",
+      quantityLabel: "需要几套餐具？",
+      optionOne: "1 份",
+      optionTwo: "2 份",
+      optionOther: "其他数量",
+      otherLabel: "其他份数",
+      otherPlaceholder: "请输入数量",
     },
 
     cartEmpty: "购物车为空",
