@@ -625,9 +625,7 @@ export class OrdersService {
       );
       const taxableCents =
         purchaseBaseCents + (isDelivery ? deliveryFeeCustomerCents : 0);
-      const taxCents = Math.round(
-        taxableCents * pricingConfig.salesTaxRate,
-      );
+      const taxCents = Math.round(taxableCents * pricingConfig.salesTaxRate);
 
       const totalCents =
         purchaseBaseCents + deliveryFeeCustomerCents + taxCents;
