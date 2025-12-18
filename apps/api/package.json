@@ -11,7 +11,7 @@
     "start": "pnpm run prisma:generate && nest start",
     "start:dev": "pnpm run prisma:generate && nest start --watch",
     "start:debug": "pnpm run prisma:generate && nest start --debug --watch",
-    "start:prod": "pnpm run prisma:generate && node dist/main",
+    "start:prod": "pnpm run build && node dist/apps/api/src/main",
     "lint": "prisma generate && eslint \"{src,apps,libs,test}/**/*.ts\"",
     "lint:fix": "prisma generate && eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "prisma:generate": "prisma generate",
