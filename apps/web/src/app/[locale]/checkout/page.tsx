@@ -35,7 +35,7 @@ import {
   formatWithTotal,
   type HostedCheckoutResponse,
   type DeliveryTypeOption,
-  type DbPublicMenuCategory,
+  type PublicMenuApiResponse,
   buildLocalizedMenuFromDb,
 } from "@/lib/order/shared";
 import { useSession } from "next-auth/react";
@@ -341,12 +341,15 @@ export default function CheckoutPage() {
       setMenuLoading(true);
       setMenuError(null);
       try {
-        const dbMenu = await apiFetch<DbPublicMenuCategory[]>("/menu/public", {
+        const dbMenu = await apiFetch<PublicMenuApiResponse>("/menu/public", {
           cache: "no-store",
         });
         if (cancelled) return;
 
-        const categories = buildLocalizedMenuFromDb(dbMenu, locale);
+        const categories = buildLocalizedMenuFromDb(
+          dbMenu.categories ?? [],
+          locale,
+        );
         const map = new Map<string, LocalizedMenuItem>();
         for (const category of categories) {
           for (const item of category.items) {
