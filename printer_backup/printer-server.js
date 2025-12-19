@@ -222,13 +222,27 @@ function buildCustomerReceiptEscPos(params) {
 
   // ==== 金额汇总（数字只打印一次） ====
   const subtotal = snapshot.subtotalCents ?? 0;
+  const discount = snapshot.discountCents ?? 0;
   const tax = snapshot.taxCents ?? 0;
   const total = snapshot.totalCents ?? 0;
+  const loyalty = snapshot.loyalty || {};
 
   chunks.push(encLine(makeLine("-")));
   chunks.push(encLine(`小计 Subtotal: ${money(subtotal)}`));
+  if (discount > 0) {
+    chunks.push(encLine(`折扣 Discount: -${money(discount)}`));
+  }
+  if (typeof loyalty.pointsRedeemed === "number" && loyalty.pointsRedeemed > 0) {
+    chunks.push(encLine(`积分抵扣 Points: -${loyalty.pointsRedeemed.toFixed(2)} pt`));
+  }
   chunks.push(encLine(`税费(HST) Tax: ${money(tax)}`));
   chunks.push(encLine(`合计 Total:   ${money(total)}`));
+  if (typeof loyalty.pointsEarned === "number" && loyalty.pointsEarned > 0) {
+    chunks.push(encLine(`本单新增积分 Earned: +${loyalty.pointsEarned.toFixed(2)} pt`));
+  }
+  if (typeof loyalty.pointsBalanceAfter === "number") {
+    chunks.push(encLine(`结算后积分 Balance: ${loyalty.pointsBalanceAfter.toFixed(2)} pt`));
+  }
   chunks.push(encLine(makeLine("-")));
 
   // ==== 底部：谢谢惠顾 + 顾客联 ====
