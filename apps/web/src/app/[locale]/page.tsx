@@ -17,6 +17,7 @@ import {
   UI_STRINGS,
   addLocaleToPath,
   buildLocalizedMenuFromDb,
+  type LocalizedMenuItem,
   type PublicMenuApiResponse,
   type PublicMenuCategory,
 } from "@/lib/order/shared";
@@ -135,6 +136,103 @@ export default function LocalOrderPage() {
   }, [locale]);
 
   const { addItem, totalQuantity } = usePersistentCart();
+  const [activeItem, setActiveItem] = useState<LocalizedMenuItem | null>(null);
+  const [selectedOptions, setSelectedOptions] = useState<
+    Record<string, string[]>
+  >({});
+
+  const closeOptionsModal = () => {
+    setActiveItem(null);
+    setSelectedOptions({});
+  };
+
+  const handleOptionToggle = (
+    groupStableId: string,
+    optionStableId: string,
+    minSelect: number,
+    maxSelect: number | null,
+  ) => {
+    setSelectedOptions((prev) => {
+      const current = new Set(prev[groupStableId] ?? []);
+
+      if (maxSelect === 1) {
+        if (current.has(optionStableId)) {
+          if (minSelect > 0) {
+            return prev;
+          }
+          const { [groupStableId]: _removed, ...rest } = prev;
+          return rest;
+        }
+        return { ...prev, [groupStableId]: [optionStableId] };
+      }
+
+      if (current.has(optionStableId)) {
+        current.delete(optionStableId);
+      } else {
+        if (typeof maxSelect === "number" && current.size >= maxSelect) {
+          return prev;
+        }
+        current.add(optionStableId);
+      }
+
+      if (current.size === 0) {
+        const { [groupStableId]: _removed, ...rest } = prev;
+        return rest;
+      }
+
+      return { ...prev, [groupStableId]: Array.from(current) };
+    });
+  };
+
+  const requiredGroupsMissing = useMemo(() => {
+    if (!activeItem) return [];
+    return (activeItem.optionGroups ?? []).filter((group) => {
+      const selectedCount = selectedOptions[group.templateGroupStableId]?.length;
+      return group.minSelect > 0 && (selectedCount ?? 0) < group.minSelect;
+    });
+  }, [activeItem, selectedOptions]);
+
+  const selectedOptionsDetails = useMemo(() => {
+    if (!activeItem) return [];
+    const details: Array<{
+      groupName: string;
+      optionName: string;
+      priceDeltaCents: number;
+    }> = [];
+    const optionGroups = activeItem.optionGroups ?? [];
+    optionGroups.forEach((group) => {
+      const groupSelections =
+        selectedOptions[group.templateGroupStableId] ?? [];
+      if (groupSelections.length === 0) return;
+      const groupName =
+        locale === "zh" && group.template.nameZh
+          ? group.template.nameZh
+          : group.template.nameEn;
+      group.options.forEach((option) => {
+        if (!groupSelections.includes(option.optionStableId)) return;
+        const optionName =
+          locale === "zh" && option.nameZh ? option.nameZh : option.nameEn;
+        details.push({
+          groupName,
+          optionName,
+          priceDeltaCents: option.priceDeltaCents,
+        });
+      });
+    });
+    return details;
+  }, [activeItem, locale, selectedOptions]);
+
+  const optionsPriceCents = useMemo(
+    () =>
+      selectedOptionsDetails.reduce(
+        (sum, option) => sum + option.priceDeltaCents,
+        0,
+      ),
+    [selectedOptionsDetails],
+  );
+
+  const canAddToCart =
+    activeItem && requiredGroupsMissing.length === 0 && menuLoading === false;
 
   const currencyFormatter = useMemo(
     () =>
@@ -283,7 +381,11 @@ export default function LocalOrderPage() {
                     {category.items.map((item) => (
                       <article
                         key={item.stableId}
-                        className="group flex h-full flex-col justify-between rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                        className="group flex h-full cursor-pointer flex-col justify-between rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                        onClick={() => {
+                          setActiveItem(item);
+                          setSelectedOptions({});
+                        }}
                       >
                         {/* 菜品图片（可选） */}
                         {item.imageUrl ? (
@@ -320,10 +422,14 @@ export default function LocalOrderPage() {
                         <div className="mt-5 flex items-center justify-end">
                           <button
                             type="button"
-                            onClick={() => addItem(item.stableId)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setActiveItem(item);
+                              setSelectedOptions({});
+                            }}
                             className="inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
                           >
-                            {strings.addToCart}
+                            {strings.chooseOptions}
                           </button>
                         </div>
                       </article>
@@ -335,6 +441,214 @@ export default function LocalOrderPage() {
           </>
         )}
       </section>
+
+      {/* ===== 菜品选项弹窗 ===== */}
+      {activeItem ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-4 md:items-center">
+          <div className="w-full max-w-2xl overflow-hidden rounded-3xl bg-white shadow-xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  {locale === "zh" ? "菜品选项" : "Dish options"}
+                </p>
+                <h3 className="mt-2 text-2xl font-semibold text-slate-900">
+                  {activeItem.name}
+                </h3>
+                {activeItem.ingredients ? (
+                  <p className="mt-2 text-sm text-slate-500">
+                    {activeItem.ingredients}
+                  </p>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={closeOptionsModal}
+                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 transition hover:border-slate-300 hover:bg-slate-50"
+              >
+                {locale === "zh" ? "关闭" : "Close"}
+              </button>
+            </div>
+
+            <div className="max-h-[60vh] space-y-6 overflow-y-auto px-6 py-5">
+              {(activeItem.optionGroups ?? []).length === 0 ? (
+                <p className="text-sm text-slate-500">
+                  {locale === "zh"
+                    ? "该菜品暂无可选项。"
+                    : "No options available for this dish."}
+                </p>
+              ) : (
+                (activeItem.optionGroups ?? []).map((group) => {
+                  const selectedCount =
+                    selectedOptions[group.templateGroupStableId]?.length ?? 0;
+                  const requirementLabel = (() => {
+                    if (group.minSelect > 0 && group.maxSelect === 1) {
+                      return locale === "zh" ? "必选 1 项" : "Required: 1";
+                    }
+                    if (group.minSelect > 0 && group.maxSelect) {
+                      return locale === "zh"
+                        ? `必选 ${group.minSelect}-${group.maxSelect} 项`
+                        : `Required: ${group.minSelect}-${group.maxSelect}`;
+                    }
+                    if (group.minSelect > 0) {
+                      return locale === "zh"
+                        ? `至少选择 ${group.minSelect} 项`
+                        : `Pick at least ${group.minSelect}`;
+                    }
+                    if (group.maxSelect) {
+                      return locale === "zh"
+                        ? `最多选择 ${group.maxSelect} 项`
+                        : `Up to ${group.maxSelect}`;
+                    }
+                    return locale === "zh" ? "可选" : "Optional";
+                  })();
+
+                  return (
+                    <div key={group.templateGroupStableId} className="space-y-3">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <h4 className="text-base font-semibold text-slate-900">
+                            {locale === "zh" && group.template.nameZh
+                              ? group.template.nameZh
+                              : group.template.nameEn}
+                          </h4>
+                          <p className="text-xs text-slate-500">
+                            {requirementLabel}
+                          </p>
+                        </div>
+                        <span
+                          className={`text-xs font-semibold ${
+                            group.minSelect > 0 && selectedCount < group.minSelect
+                              ? "text-rose-500"
+                              : "text-slate-400"
+                          }`}
+                        >
+                          {locale === "zh"
+                            ? `已选 ${selectedCount}`
+                            : `${selectedCount} selected`}
+                        </span>
+                      </div>
+
+                      <div className="grid gap-2 md:grid-cols-2">
+                        {group.options.map((option) => {
+                          const selected =
+                            selectedOptions[group.templateGroupStableId]?.includes(
+                              option.optionStableId,
+                            ) ?? false;
+                          const optionLabel =
+                            locale === "zh" && option.nameZh
+                              ? option.nameZh
+                              : option.nameEn;
+                          const priceDelta =
+                            option.priceDeltaCents > 0
+                              ? `+${currencyFormatter.format(
+                                  option.priceDeltaCents / 100,
+                                )}`
+                              : option.priceDeltaCents < 0
+                                ? `-${currencyFormatter.format(
+                                    Math.abs(option.priceDeltaCents) / 100,
+                                  )}`
+                                : "";
+
+                          return (
+                            <button
+                              key={option.optionStableId}
+                              type="button"
+                              onClick={() =>
+                                handleOptionToggle(
+                                  group.templateGroupStableId,
+                                  option.optionStableId,
+                                  group.minSelect,
+                                  group.maxSelect,
+                                )
+                              }
+                              className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-left text-sm transition ${
+                                selected
+                                  ? "border-slate-900 bg-slate-900 text-white"
+                                  : "border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                              }`}
+                            >
+                              <span className="font-medium">{optionLabel}</span>
+                              {priceDelta ? (
+                                <span
+                                  className={`text-xs font-semibold ${
+                                    selected ? "text-white/80" : "text-slate-400"
+                                  }`}
+                                >
+                                  {priceDelta}
+                                </span>
+                              ) : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="space-y-4 border-t border-slate-100 px-6 py-5">
+              {requiredGroupsMissing.length > 0 ? (
+                <p className="text-xs text-rose-500">
+                  {locale === "zh"
+                    ? "请完成所有必选项后再加入购物车。"
+                    : "Please complete all required selections before adding to cart."}
+                </p>
+              ) : null}
+
+              {selectedOptionsDetails.length > 0 ? (
+                <div className="space-y-2 rounded-2xl bg-slate-50 p-4 text-xs text-slate-500">
+                  {selectedOptionsDetails.map((option) => (
+                    <div
+                      key={`${option.groupName}-${option.optionName}`}
+                      className="flex items-center justify-between"
+                    >
+                      <span>
+                        {option.groupName} · {option.optionName}
+                      </span>
+                      {option.priceDeltaCents !== 0 ? (
+                        <span>
+                          {option.priceDeltaCents > 0 ? "+" : "-"}
+                          {currencyFormatter.format(
+                            Math.abs(option.priceDeltaCents) / 100,
+                          )}
+                        </span>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-sm text-slate-600">
+                  {locale === "zh" ? "当前价格" : "Current price"}:{" "}
+                  <span className="font-semibold text-slate-900">
+                    {currencyFormatter.format(
+                      (activeItem.price * 100 + optionsPriceCents) / 100,
+                    )}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!activeItem || !canAddToCart) return;
+                    addItem(activeItem.stableId, selectedOptions);
+                    closeOptionsModal();
+                  }}
+                  disabled={!canAddToCart}
+                  className={`inline-flex items-center justify-center rounded-full px-6 py-2 text-sm font-semibold transition ${
+                    canAddToCart
+                      ? "bg-slate-900 text-white hover:bg-slate-700"
+                      : "cursor-not-allowed bg-slate-200 text-slate-400"
+                  }`}
+                >
+                  {strings.addToCart}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* 浮动购物车入口 */}
       <Link
