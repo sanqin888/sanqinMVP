@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
 import type {
   AdminMenuFull,
@@ -72,6 +73,7 @@ const STRINGS = {
     storeStatusNextOpenPrefix: "下次营业时间：",
     storeStatusLoading: "正在获取门店状态…",
     storeStatusError: "门店状态获取失败，请以店内实际情况为准。",
+    menuManage: "菜单管理",
   },
   en: {
     title: "Store POS",
@@ -106,6 +108,7 @@ const STRINGS = {
     storeStatusLoading: "Checking store status…",
     storeStatusError:
       "Unable to load store status. Please confirm with the store.",
+    menuManage: "Menu management",
   },
 } as const;
 
@@ -381,6 +384,12 @@ const clearCart = () => {
 )}
         </div>
         <div className="flex items-center gap-2">
+          <Link
+            href={`/${locale}/store/pos/menu`}
+            className="rounded-full border border-slate-600 bg-slate-800 px-3 py-1 text-xs font-medium text-slate-100 hover:border-slate-400 hover:text-white"
+          >
+            {t.menuManage}
+          </Link>
           {storeStatusLoading ? (
             <span className="rounded-full border border-slate-600 bg-slate-800 px-3 py-1 text-xs text-slate-200">
               {t.storeStatusLoading}
