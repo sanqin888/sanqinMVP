@@ -356,6 +356,42 @@ export class AdminMenuService {
     return { ok: true };
   }
 
+  async setItemAvailability(itemStableId: string, mode: AvailabilityMode) {
+    const stableId = itemStableId.trim();
+    if (!stableId) throw new BadRequestException('itemStableId is required');
+
+    const exists = await this.prisma.menuItem.findFirst({
+      where: { stableId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!exists) throw new NotFoundException(`Item not found: ${stableId}`);
+
+    const data =
+      mode === 'ON'
+        ? { isAvailable: true, tempUnavailableUntil: null }
+        : mode === 'PERMANENT_OFF'
+          ? { isAvailable: false, tempUnavailableUntil: null }
+          : { isAvailable: true, tempUnavailableUntil: nextMidnightLocal() };
+
+    const updated = await this.prisma.menuItem.update({
+      where: { stableId },
+      data,
+      select: {
+        stableId: true,
+        isAvailable: true,
+        isVisible: true,
+        tempUnavailableUntil: true,
+      },
+    });
+
+    return {
+      stableId: updated.stableId,
+      isAvailable: updated.isAvailable,
+      isVisible: updated.isVisible,
+      tempUnavailableUntil: toIso(updated.tempUnavailableUntil),
+    };
+  }
+
   // ========= Templates =========
   async listOptionGroupTemplates(): Promise<TemplateGroupFullDto[]> {
     const groups = await this.prisma.menuOptionGroupTemplate.findMany({
