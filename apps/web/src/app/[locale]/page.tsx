@@ -160,8 +160,9 @@ export default function LocalOrderPage() {
           if (minSelect > 0) {
             return prev;
           }
-          const { [groupStableId]: _removed, ...rest } = prev;
-          return rest;
+          const next = { ...prev };
+          delete next[groupStableId];
+          return next;
         }
         return { ...prev, [groupStableId]: [optionStableId] };
       }
@@ -176,8 +177,9 @@ export default function LocalOrderPage() {
       }
 
       if (current.size === 0) {
-        const { [groupStableId]: _removed, ...rest } = prev;
-        return rest;
+        const next = { ...prev };
+        delete next[groupStableId];
+        return next;
       }
 
       return { ...prev, [groupStableId]: Array.from(current) };
