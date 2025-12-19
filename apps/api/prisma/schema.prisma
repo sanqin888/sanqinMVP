@@ -83,6 +83,7 @@ enum Weekday {
 
 model User {
   id        String   @id
+  userStableId String @unique @default(cuid())
   email     String?  @unique
   phone      String?   @unique
   phoneVerifiedAt DateTime?

@@ -20,6 +20,13 @@ export type PosDisplaySnapshot = {
   discountCents?: number;
   taxCents: number;
   totalCents: number;
+  loyalty?: {
+    userStableId?: string | null;
+    pointsBalance?: number;
+    pointsRedeemed?: number;
+    pointsEarned?: number;
+    pointsBalanceAfter?: number;
+  };
 };
 
 export function readPosDisplaySnapshot(): PosDisplaySnapshot | null {

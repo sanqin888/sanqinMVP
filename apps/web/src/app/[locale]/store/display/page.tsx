@@ -101,6 +101,7 @@ export default function StoreDisplayPage() {
   const fallbackDiscountCents = Math.max(0, subtotalCents + taxCents - totalCents);
 
   const discountCents = snapshot?.discountCents ?? fallbackDiscountCents;
+  const loyalty = snapshot?.loyalty;
 
   return (
     <main className="min-h-screen bg-slate-900 text-slate-50 flex flex-col items-center">
@@ -181,6 +182,30 @@ export default function StoreDisplayPage() {
                 <span>合计 Total</span>
                 <span>{formatMoney(totalCents)}</span>
               </div>
+              {loyalty && (
+                <div className="mt-6 space-y-2 text-2xl text-emerald-200">
+                  {typeof loyalty.pointsRedeemed === "number" &&
+                    loyalty.pointsRedeemed > 0 && (
+                      <div className="flex justify-between">
+                        <span>积分抵扣 Points used</span>
+                        <span>-{loyalty.pointsRedeemed.toFixed(2)}</span>
+                      </div>
+                    )}
+                  {typeof loyalty.pointsEarned === "number" &&
+                    loyalty.pointsEarned > 0 && (
+                      <div className="flex justify-between">
+                        <span>本单新增积分 Points earned</span>
+                        <span>+{loyalty.pointsEarned.toFixed(2)}</span>
+                      </div>
+                    )}
+                  {typeof loyalty.pointsBalanceAfter === "number" && (
+                    <div className="flex justify-between text-slate-200">
+                      <span>结算后积分 Balance after</span>
+                      <span>{loyalty.pointsBalanceAfter.toFixed(2)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </>
         )}

@@ -55,6 +55,7 @@ type Coupon = {
 
 type MemberProfile = {
   userId: string;
+  userStableId?: string | null;
   name?: string;
   email?: string;
   phone?: string | null;
@@ -78,6 +79,7 @@ type MembershipSummaryOrderDto = {
 
 type MembershipSummaryResponse = {
   userId: string;
+  userStableId?: string | null;
   displayName: string | null;
   email: string | null;
   phone?: string | null;
@@ -243,14 +245,15 @@ export default function MembershipHomePage() {
             : (raw as MembershipSummaryResponse);
 
         setMember({
-            userId: data.userId,
-            name: data.displayName ?? user?.name ?? undefined,
-            email: data.email ?? user?.email ?? undefined,
-            phone: data.phone ?? undefined,
-            tier: data.tier,
-            points: data.points,
-            availableDiscountCents: data.availableDiscountCents,
-            lifetimeSpendCents: data.lifetimeSpendCents ?? 0,
+          userId: data.userId,
+          userStableId: data.userStableId ?? null,
+          name: data.displayName ?? user?.name ?? undefined,
+          email: data.email ?? user?.email ?? undefined,
+          phone: data.phone ?? undefined,
+          tier: data.tier,
+          points: data.points,
+          availableDiscountCents: data.availableDiscountCents,
+          lifetimeSpendCents: data.lifetimeSpendCents ?? 0,
         });
 
         setMarketingOptIn(
@@ -1156,10 +1159,10 @@ function ProfileSection({
         </div>
         <div>
           <p className="text-slate-500">
-            {isZh ? '会员编号（User ID）' : 'Member ID (User ID)'}
+            {isZh ? '会员编号（Stable ID）' : 'Member ID (Stable ID)'}
           </p>
           <p className="mt-0.5 break-all font-mono text-[11px] text-slate-900">
-            {user.userId || (isZh ? '未识别' : 'Not available')}
+            {user.userStableId || (isZh ? '未识别' : 'Not available')}
           </p>
         </div>
 
