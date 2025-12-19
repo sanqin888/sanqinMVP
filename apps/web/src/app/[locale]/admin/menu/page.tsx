@@ -18,6 +18,11 @@ type SavingState = {
   error: string | null;
 };
 
+type AvailabilityTarget = {
+  stableId: string;
+  label: string;
+};
+
 type BindDraft = {
   templateGroupStableId: string;
   minSelect: string;
@@ -76,6 +81,19 @@ function toIntOrZero(v: string): number {
   return Number.isFinite(n) ? Math.trunc(n) : 0;
 }
 
+function isTempUnavailable(tempUnavailableUntil?: string | null): boolean {
+  if (!tempUnavailableUntil) return false;
+  const parsed = Date.parse(tempUnavailableUntil);
+  if (!Number.isFinite(parsed)) return false;
+  return parsed > Date.now();
+}
+
+function itemStatusLabel(isZh: boolean, isAvailable: boolean, tempUntil: string | null): string {
+  if (!isAvailable) return isZh ? '下架' : 'Off';
+  if (tempUntil && isTempUnavailable(tempUntil)) return isZh ? '今日下架' : 'Off today';
+  return isZh ? '在售' : 'On';
+}
+
 export default function AdminMenuPage() {
   const { locale } = useParams<{ locale: Locale }>();
   const isZh = locale === 'zh';
@@ -93,6 +111,7 @@ export default function AdminMenuPage() {
   const [bindingItemId, setBindingItemId] = useState<string | null>(null);
 
   const [bindDrafts, setBindDrafts] = useState<Record<string, BindDraft>>({});
+  const [availabilityTarget, setAvailabilityTarget] = useState<AvailabilityTarget | null>(null);
 
   // ----- Create category form -----
   const [newCatNameEn, setNewCatNameEn] = useState('');
@@ -284,6 +303,29 @@ export default function AdminMenuPage() {
         error: e instanceof Error ? e.message : String(e),
       });
     }
+  }
+
+  async function setItemAvailability(
+    itemStableId: string,
+    mode: 'ON' | 'TEMP_TODAY_OFF' | 'PERMANENT_OFF',
+  ): Promise<void> {
+    try {
+      await apiFetch(`/admin/menu/items/${encodeURIComponent(itemStableId)}/availability`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      });
+      await load();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function applyAvailabilityChoice(mode: 'TEMP_TODAY_OFF' | 'PERMANENT_OFF') {
+    if (!availabilityTarget) return;
+    const target = availabilityTarget;
+    setAvailabilityTarget(null);
+    await setItemAvailability(target.stableId, mode);
   }
 
   function applyTemplateDefaultsToBindDraft(itemStableId: string, templateGroupStableId: string) {
@@ -580,6 +622,28 @@ export default function AdminMenuPage() {
                           className="rounded-md border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50"
                         >
                           {expanded ? (isZh ? '收起' : 'Collapse') : isZh ? '编辑' : 'Edit'}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const isOn = item.isAvailable && !isTempUnavailable(item.tempUnavailableUntil);
+                            if (isOn) {
+                              setAvailabilityTarget({
+                                stableId: item.stableId,
+                                label: isZh ? item.nameZh ?? item.nameEn : item.nameEn,
+                              });
+                              return;
+                            }
+                            void setItemAvailability(item.stableId, 'ON');
+                          }}
+                          className={`rounded-md px-3 py-2 text-sm ${
+                            item.isAvailable && !isTempUnavailable(item.tempUnavailableUntil)
+                              ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                              : 'border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                          }`}
+                        >
+                          {itemStatusLabel(isZh, item.isAvailable, item.tempUnavailableUntil)}
                         </button>
 
                         <button
@@ -955,6 +1019,44 @@ export default function AdminMenuPage() {
           </div>
         ))}
       </section>
+
+      {availabilityTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-slate-900">
+              {isZh ? '选择下架方式' : 'Select off mode'}
+            </h3>
+            <p className="mt-2 text-sm text-slate-600">
+              {isZh ? '对' : 'For '}
+              <span className="font-semibold text-slate-900">{availabilityTarget.label}</span>
+              {isZh ? '设置下架方式' : ', choose how to turn off availability.'}
+            </p>
+            <div className="mt-4 space-y-2">
+              <button
+                type="button"
+                onClick={() => void applyAvailabilityChoice('TEMP_TODAY_OFF')}
+                className="w-full rounded-full bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-100"
+              >
+                {isZh ? '当日下架' : 'Off today'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void applyAvailabilityChoice('PERMANENT_OFF')}
+                className="w-full rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+              >
+                {isZh ? '永久下架' : 'Off permanently'}
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAvailabilityTarget(null)}
+              className="mt-4 w-full rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-50"
+            >
+              {isZh ? '取消' : 'Cancel'}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
