@@ -20,6 +20,17 @@ type CreatePosOrderResponse = {
   pickupCode?: string | null;
 };
 
+type MemberLookupResponse = {
+  userId: string;
+  userStableId: string;
+  displayName?: string | null;
+  phone?: string | null;
+  tier: "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
+  points: number;
+  availableDiscountCents: number;
+  lifetimeSpendCents: number;
+};
+
 type PosPrintRequest = {
   locale: Locale;
   orderNumber: string;
@@ -80,6 +91,19 @@ const STRINGS: Record<
     discountLabel: string;
     discountButton: string;
     discountNone: string;
+    memberLabel: string;
+    memberPhone: string;
+    memberLookup: string;
+    memberClear: string;
+    memberPoints: string;
+    memberPointsAvailable: string;
+    memberRedeemLabel: string;
+    memberRedeemHint: string;
+    memberFound: string;
+    memberNotFound: string;
+    memberLoading: string;
+    memberEarned: string;
+    memberBalanceAfter: string;
   }
 > = {
   zh: {
@@ -112,6 +136,19 @@ const STRINGS: Record<
     discountLabel: "折扣选项",
     discountButton: "选择折扣",
     discountNone: "不使用折扣",
+    memberLabel: "会员手机号",
+    memberPhone: "输入会员手机号",
+    memberLookup: "确认会员",
+    memberClear: "清除会员",
+    memberPoints: "当前积分",
+    memberPointsAvailable: "可抵扣金额",
+    memberRedeemLabel: "本单使用积分",
+    memberRedeemHint: "输入整数积分",
+    memberFound: "已识别会员",
+    memberNotFound: "未找到会员，请核对手机号",
+    memberLoading: "正在查询会员…",
+    memberEarned: "本单预计新增积分",
+    memberBalanceAfter: "预计结算后积分",
   },
   en: {
     title: "Store POS · Payment",
@@ -144,6 +181,19 @@ const STRINGS: Record<
     discountLabel: "Discount",
     discountButton: "Select discount",
     discountNone: "No discount",
+    memberLabel: "Member phone",
+    memberPhone: "Enter member phone",
+    memberLookup: "Confirm member",
+    memberClear: "Clear member",
+    memberPoints: "Current points",
+    memberPointsAvailable: "Available discount",
+    memberRedeemLabel: "Redeem points",
+    memberRedeemHint: "Enter whole points",
+    memberFound: "Member confirmed",
+    memberNotFound: "Member not found. Please check the phone.",
+    memberLoading: "Looking up member…",
+    memberEarned: "Estimated points earned",
+    memberBalanceAfter: "Estimated balance after",
   },
 };
 
@@ -179,6 +229,15 @@ export default function StorePosPaymentPage() {
   const [submitting, setSubmitting] = useState(false);
   const [posClientRequestId, setPosClientRequestId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [memberPhone, setMemberPhone] = useState("");
+  const [memberInfo, setMemberInfo] = useState<MemberLookupResponse | null>(
+    null,
+  );
+  const [memberLookupLoading, setMemberLookupLoading] = useState(false);
+  const [memberLookupError, setMemberLookupError] = useState<string | null>(
+    null,
+  );
+  const [redeemPointsInput, setRedeemPointsInput] = useState("");
   const [successInfo, setSuccessInfo] = useState<{
     orderNumber: string;
     pickupCode?: string | null;
@@ -218,8 +277,52 @@ export default function StorePosPaymentPage() {
   );
 
   const discountedSubtotalCents = Math.max(0, baseSubtotalCents - discountCents);
-  const taxCents = Math.round(discountedSubtotalCents * TAX_RATE);
-  const totalCents = discountedSubtotalCents + taxCents;
+
+  const maxRedeemableCentsForOrder = useMemo(() => {
+    if (!memberInfo) return 0;
+    if (discountedSubtotalCents <= 0) return 0;
+    return Math.min(
+      memberInfo.availableDiscountCents,
+      discountedSubtotalCents,
+    );
+  }, [discountedSubtotalCents, memberInfo]);
+
+  const maxRedeemablePointsForOrder = useMemo(() => {
+    if (!memberInfo) return 0;
+    return Math.floor(maxRedeemableCentsForOrder / 100);
+  }, [maxRedeemableCentsForOrder, memberInfo]);
+
+  const pointsToRedeem = useMemo(() => {
+    if (!memberInfo) return 0;
+    if (!redeemPointsInput) return 0;
+    const normalized = redeemPointsInput.replace(/[^\d]/g, "");
+    const requested = Number.parseInt(normalized, 10);
+    if (!Number.isFinite(requested) || requested <= 0) return 0;
+    return Math.min(requested, maxRedeemablePointsForOrder);
+  }, [memberInfo, maxRedeemablePointsForOrder, redeemPointsInput]);
+
+  const loyaltyRedeemCents = pointsToRedeem * 100;
+
+  const effectiveSubtotalCents = Math.max(
+    0,
+    discountedSubtotalCents - loyaltyRedeemCents,
+  );
+  const taxCents = Math.round(effectiveSubtotalCents * TAX_RATE);
+  const totalCents = effectiveSubtotalCents + taxCents;
+
+  const pointsEarned = useMemo(() => {
+    if (!memberInfo) return 0;
+    const tierMultiplier = {
+      BRONZE: 1,
+      SILVER: 2,
+      GOLD: 3,
+      PLATINUM: 5,
+    } as const;
+    const earnRate = 0.01;
+    const base = (effectiveSubtotalCents / 100) * earnRate;
+    const earned = base * tierMultiplier[memberInfo.tier];
+    return Math.round(earned * 100) / 100;
+  }, [effectiveSubtotalCents, memberInfo]);
 
   const computedSnapshot = useMemo(() => {
     if (!snapshot) return null;
@@ -229,8 +332,29 @@ export default function StorePosPaymentPage() {
       discountCents,
       taxCents,
       totalCents,
+      loyalty: memberInfo
+        ? {
+            userStableId: memberInfo.userStableId ?? null,
+            pointsBalance: memberInfo.points,
+            pointsRedeemed: pointsToRedeem,
+            pointsEarned,
+            pointsBalanceAfter:
+              Math.round(
+                (memberInfo.points - pointsToRedeem + pointsEarned) * 100,
+              ) / 100,
+          }
+        : undefined,
     } satisfies PosDisplaySnapshot;
-  }, [discountCents, discountedSubtotalCents, snapshot, taxCents, totalCents]);
+  }, [
+    discountCents,
+    discountedSubtotalCents,
+    memberInfo,
+    pointsEarned,
+    pointsToRedeem,
+    snapshot,
+    taxCents,
+    totalCents,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -260,8 +384,41 @@ export default function StorePosPaymentPage() {
   const summaryTaxCents = computedSnapshot?.taxCents ?? 0;
   const summaryTotalCents = computedSnapshot?.totalCents ?? 0;
   const summaryDiscountCents = computedSnapshot?.discountCents ?? 0;
+  const summaryLoyaltyRedeemCents =
+    computedSnapshot?.loyalty?.pointsRedeemed != null
+      ? computedSnapshot.loyalty.pointsRedeemed * 100
+      : 0;
 
   const discountOptions = [0.05, 0.1, 0.15];
+
+  const handleMemberLookup = async () => {
+    if (!memberPhone.trim()) {
+      setMemberLookupError(t.memberNotFound);
+      return;
+    }
+    setMemberLookupLoading(true);
+    setMemberLookupError(null);
+    try {
+      const data = await apiFetch<MemberLookupResponse>(
+        `/membership/lookup-by-phone?phone=${encodeURIComponent(memberPhone)}`,
+      );
+      setMemberInfo(data);
+      setRedeemPointsInput("");
+    } catch (err) {
+      console.error("Failed to lookup member by phone:", err);
+      setMemberInfo(null);
+      setMemberLookupError(t.memberNotFound);
+    } finally {
+      setMemberLookupLoading(false);
+    }
+  };
+
+  const handleMemberClear = () => {
+    setMemberInfo(null);
+    setMemberPhone("");
+    setRedeemPointsInput("");
+    setMemberLookupError(null);
+  };
 
   const handleBack = () => {
     router.push(`/${locale}/store/pos`);
@@ -301,6 +458,9 @@ export default function StorePosPaymentPage() {
         totalCents: computedSnapshot.totalCents,
         paymentMethod,
         items: itemsPayload,
+        userId: memberInfo?.userId ?? undefined,
+        pointsToRedeem: pointsToRedeem > 0 ? pointsToRedeem : undefined,
+        contactPhone: memberInfo?.phone ?? undefined,
 
         // ✅ 更可靠的幂等 key / 请求追踪 id
         clientRequestId,
@@ -340,6 +500,16 @@ export default function StorePosPaymentPage() {
         orderNumber,
         pickupCode,
       });
+
+      if (order.id) {
+        try {
+          await apiFetch(`/orders/${order.id}/advance`, {
+            method: "POST",
+          });
+        } catch (advanceError) {
+          console.warn("Failed to mark POS order as paid:", advanceError);
+        }
+      }
     } catch (err) {
       console.error("Failed to place POS order:", err);
       setError(err instanceof Error ? err.message : t.errorGeneric);
@@ -412,16 +582,22 @@ export default function StorePosPaymentPage() {
                   <span className="text-slate-300">{t.subtotal}</span>
                   <span>{formatMoney(summarySubtotalCents)}</span>
                 </div>
-                {summaryDiscountCents > 0 && (
-                  <div className="flex justify-between text-emerald-200">
-                    <span className="text-slate-300">{t.discount}</span>
-                    <span>-{formatMoney(summaryDiscountCents)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between">
-                  <span className="text-slate-300">{t.tax}</span>
-                  <span>{formatMoney(summaryTaxCents)}</span>
+              {summaryDiscountCents > 0 && (
+                <div className="flex justify-between text-emerald-200">
+                  <span className="text-slate-300">{t.discount}</span>
+                  <span>-{formatMoney(summaryDiscountCents)}</span>
                 </div>
+              )}
+              {summaryLoyaltyRedeemCents > 0 && (
+                <div className="flex justify-between text-emerald-200">
+                  <span className="text-slate-300">{t.memberRedeemLabel}</span>
+                  <span>-{formatMoney(summaryLoyaltyRedeemCents)}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-slate-300">{t.tax}</span>
+                <span>{formatMoney(summaryTaxCents)}</span>
+              </div>
                 <div className="flex justify-between text-base font-semibold">
                   <span>{t.total}</span>
                   <span>{formatMoney(summaryTotalCents)}</span>
@@ -510,6 +686,94 @@ export default function StorePosPaymentPage() {
                 )}
               </div>
             </div>
+
+            <div>
+              <h2 className="text-sm font-semibold mb-2">{t.memberLabel}</h2>
+              <div className="space-y-2">
+                <input
+                  type="tel"
+                  value={memberPhone}
+                  onChange={(event) => setMemberPhone(event.target.value)}
+                  placeholder={t.memberPhone}
+                  className="h-10 w-full rounded-2xl border border-slate-600 bg-slate-900 px-3 text-sm text-slate-100 placeholder:text-slate-500"
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={!memberPhone.trim() || memberLookupLoading}
+                    onClick={handleMemberLookup}
+                    className={`flex-1 h-9 rounded-2xl border text-xs font-medium ${
+                      !memberPhone.trim() || memberLookupLoading
+                        ? "border-slate-700 bg-slate-900 text-slate-500"
+                        : "border-slate-600 bg-slate-900 text-slate-100 hover:border-slate-400"
+                    }`}
+                  >
+                    {memberLookupLoading ? t.memberLoading : t.memberLookup}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleMemberClear}
+                    className="h-9 rounded-2xl border border-slate-600 px-3 text-xs font-medium text-slate-100 hover:border-slate-400"
+                  >
+                    {t.memberClear}
+                  </button>
+                </div>
+                {memberLookupError && (
+                  <p className="text-xs text-rose-200">{memberLookupError}</p>
+                )}
+                {memberInfo && (
+                  <div className="rounded-2xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-xs text-slate-200">
+                    <p className="font-medium text-emerald-200">
+                      {t.memberFound}
+                    </p>
+                    <p className="mt-1">
+                      {t.memberPoints}: {memberInfo.points.toFixed(2)}
+                    </p>
+                    <p>
+                      {t.memberPointsAvailable}:{" "}
+                      {formatMoney(memberInfo.availableDiscountCents)}
+                    </p>
+                    <p className="text-slate-400">
+                      ID: {memberInfo.userStableId}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {memberInfo && (
+              <div>
+                <h2 className="text-sm font-semibold mb-2">
+                  {t.memberRedeemLabel}
+                </h2>
+                <div className="space-y-2">
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={redeemPointsInput}
+                    onChange={(event) => setRedeemPointsInput(event.target.value)}
+                    placeholder={t.memberRedeemHint}
+                    className="h-10 w-full rounded-2xl border border-slate-600 bg-slate-900 px-3 text-sm text-slate-100 placeholder:text-slate-500"
+                  />
+                  <p className="text-xs text-slate-400">
+                    {t.memberRedeemHint} · Max{" "}
+                    {maxRedeemablePointsForOrder}
+                  </p>
+                  <div className="text-xs text-slate-400">
+                    {t.memberEarned}: {pointsEarned.toFixed(2)}
+                  </div>
+                  <div className="text-xs text-slate-400">
+                    {t.memberBalanceAfter}:{" "}
+                    {(
+                      memberInfo.points -
+                      pointsToRedeem +
+                      pointsEarned
+                    ).toFixed(2)}
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div>
               <h2 className="text-sm font-semibold mb-2">

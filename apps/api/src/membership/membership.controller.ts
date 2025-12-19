@@ -93,6 +93,14 @@ export class MembershipController {
     });
   }
 
+  @Get('lookup-by-phone')
+  async lookupByPhone(@Query('phone') phone?: string) {
+    if (!phone) {
+      throw new BadRequestException('phone is required');
+    }
+    return this.membership.getMemberByPhone(phone);
+  }
+
   // ✅ 积分流水
   @Get('loyalty-ledger')
   async loyaltyLedger(

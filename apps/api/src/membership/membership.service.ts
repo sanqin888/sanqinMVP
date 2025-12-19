@@ -7,6 +7,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { createId } from '@paralleldrive/cuid2';
 import { Prisma, type User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
@@ -21,6 +22,33 @@ export class MembershipService {
     private readonly prisma: PrismaService,
     private readonly loyalty: LoyaltyService,
   ) {}
+
+  private async generateUserStableId(): Promise<string> {
+    return createId();
+  }
+
+  private async ensureUserStableId(user: User): Promise<User> {
+    if (user.userStableId) return user;
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const candidate = await this.generateUserStableId();
+      try {
+        return await this.prisma.user.update({
+          where: { id: user.id },
+          data: { userStableId: candidate },
+        });
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+          if (error.code === 'P2002') {
+            continue;
+          }
+        }
+        throw error;
+      }
+    }
+
+    throw new InternalServerErrorException('failed to allocate userStableId');
+  }
 
   private couponStatus(coupon: {
     expiresAt: Date | null;
@@ -272,7 +300,37 @@ export class MembershipService {
       });
     }
 
-    return user;
+    return this.ensureUserStableId(user);
+  }
+
+  async getMemberByPhone(phone: string) {
+    const normalized = this.normalizePhone(phone);
+    if (!normalized) {
+      throw new BadRequestException('phone is required');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { phone: normalized },
+    });
+    if (!user) {
+      throw new NotFoundException('member not found');
+    }
+
+    const safeUser = await this.ensureUserStableId(user);
+    const account = await this.loyalty.ensureAccount(safeUser.id);
+
+    return {
+      userId: safeUser.id,
+      userStableId: safeUser.userStableId,
+      displayName: safeUser.name,
+      phone: safeUser.phone ?? null,
+      tier: account.tier,
+      points: Number(account.pointsMicro) / MICRO_PER_POINT,
+      lifetimeSpendCents: account.lifetimeSpendCents ?? 0,
+      availableDiscountCents: this.loyalty.maxRedeemableCentsFromBalance(
+        account.pointsMicro,
+      ),
+    };
   }
 
   private async ensureWelcomeCoupon(userId: string) {
@@ -399,6 +457,7 @@ export class MembershipService {
 
     return {
       userId: user.id,
+      userStableId: user.userStableId,
       displayName: user.name,
       email: user.email,
       tier: account.tier,
