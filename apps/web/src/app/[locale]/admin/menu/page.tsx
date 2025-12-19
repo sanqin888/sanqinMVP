@@ -758,25 +758,6 @@ export default function AdminMenuPage() {
                           </label>
 
                           <label className="space-y-1 md:col-span-3">
-                            <div className="text-xs text-slate-600">
-                              {isZh ? '临时不可售截止(ISO)' : 'Temp unavailable until (ISO)'}
-                            </div>
-                            <input
-                              value={item.tempUnavailableUntil ?? ''}
-                              onChange={(e) =>
-                                updateItemField(
-                                  cat.stableId,
-                                  item.stableId,
-                                  'tempUnavailableUntil',
-                                  e.target.value ? e.target.value : null,
-                                )
-                              }
-                              className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
-                              placeholder="2026-01-01T12:00:00.000Z"
-                            />
-                          </label>
-
-                          <label className="space-y-1 md:col-span-3">
                             <div className="text-xs text-slate-600">{isZh ? '配料说明(英)' : 'Ingredients (EN)'}</div>
                             <textarea
                               value={item.ingredientsEn ?? ''}
