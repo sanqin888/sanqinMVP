@@ -33,6 +33,14 @@ export class AdminMenuController {
     return this.service.createCategory(body);
   }
 
+  @Put('categories/:categoryStableId')
+  async setCategoryActive(
+    @Param('categoryStableId') categoryStableId: string,
+    @Body() body: { isActive: boolean },
+  ): Promise<{ stableId: string; isActive: boolean }> {
+    return this.service.setCategoryActive(categoryStableId, body.isActive);
+  }
+
   @Post('items')
   async createItem(
     @Body()
