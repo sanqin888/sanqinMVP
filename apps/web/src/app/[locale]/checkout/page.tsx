@@ -65,6 +65,18 @@ type DistanceMessage = {
   tone: "muted" | "info" | "success" | "error";
 };
 
+type SelectedOptionDisplay = {
+  groupName: string;
+  optionName: string;
+  priceDeltaCents: number;
+};
+
+type CartItemWithPricing = LocalizedCartItem & {
+  unitPriceCents: number;
+  lineTotalCents: number;
+  selectedOptions: SelectedOptionDisplay[];
+};
+
 type SessionWithUserId = Session & {
   userId?: string | null;
   user?: (Session["user"] & { id?: string | null }) | null;
@@ -265,12 +277,53 @@ export default function CheckoutPage() {
     if (!menuLookup) return [];
     return items
       .map((entry) => {
-        const item = menuLookup.get(entry.stableId);
+        const item = menuLookup.get(entry.productStableId);
         if (!item) return null;
         return { ...entry, item };
       })
       .filter((entry): entry is LocalizedCartItem => Boolean(entry));
   }, [items, menuLookup]);
+
+  const cartItemsWithPricing = useMemo<CartItemWithPricing[]>(() => {
+    return localizedCartItems.map((cartItem) => {
+      const selectedOptions: SelectedOptionDisplay[] = [];
+      let optionDeltaCents = 0;
+      const optionGroups = cartItem.item.optionGroups ?? [];
+
+      optionGroups.forEach((group) => {
+        const selectedIds =
+          cartItem.options?.[group.templateGroupStableId] ?? [];
+        if (selectedIds.length === 0) return;
+        const groupName =
+          locale === "zh" && group.template.nameZh
+            ? group.template.nameZh
+            : group.template.nameEn;
+
+        group.options.forEach((option) => {
+          if (!selectedIds.includes(option.optionStableId)) return;
+          const optionName =
+            locale === "zh" && option.nameZh ? option.nameZh : option.nameEn;
+          optionDeltaCents += option.priceDeltaCents;
+          selectedOptions.push({
+            groupName,
+            optionName,
+            priceDeltaCents: option.priceDeltaCents,
+          });
+        });
+      });
+
+      const unitPriceCents =
+        Math.round(cartItem.item.price * 100) + optionDeltaCents;
+      const lineTotalCents = unitPriceCents * cartItem.quantity;
+
+      return {
+        ...cartItem,
+        unitPriceCents,
+        lineTotalCents,
+        selectedOptions,
+      };
+    });
+  }, [localizedCartItems, locale]);
 
   const [fulfillment, setFulfillment] = useState<"pickup" | "delivery">(
     "pickup",
@@ -429,12 +482,11 @@ export default function CheckoutPage() {
   // ✅ 小计：按“分”计算，先把单价（CAD）×100 再四舍五入
   const subtotalCents = useMemo(
     () =>
-      localizedCartItems.reduce(
-        (total, cartItem) =>
-          total + Math.round(cartItem.item.price * 100) * cartItem.quantity,
+      cartItemsWithPricing.reduce(
+        (total, cartItem) => total + cartItem.lineTotalCents,
         0,
       ),
-    [localizedCartItems],
+    [cartItemsWithPricing],
   );
 
   // ✅ 服务费（目前 0 分）
@@ -1243,14 +1295,15 @@ export default function CheckoutPage() {
 
         ...(deliveryMetadata ?? {}),
 
-        items: localizedCartItems.map((cartItem) => ({
-          id: cartItem.stableId,
+        items: cartItemsWithPricing.map((cartItem) => ({
+          productStableId: cartItem.productStableId,
           nameEn: cartItem.item.nameEn ?? cartItem.item.name,
           nameZh: cartItem.item.nameZh ?? cartItem.item.name,
           displayName: cartItem.item.name,
           quantity: cartItem.quantity,
           notes: cartItem.notes,
-          priceCents: Math.round(cartItem.item.price * 100),
+          options: cartItem.options,
+          priceCents: cartItem.unitPriceCents,
         })),
       },
     };
@@ -1473,7 +1526,7 @@ export default function CheckoutPage() {
                 : "Loading cart items…"}
             </p>
           </div>
-        ) : localizedCartItems.length === 0 ? (
+        ) : cartItemsWithPricing.length === 0 ? (
           // 3️⃣ 有条目，但在当前菜单里已经找不到（可能是菜品下架/改了 stableId）
           <div className="space-y-4 text-center text-sm text-slate-500">
             <p>
@@ -1499,9 +1552,9 @@ export default function CheckoutPage() {
               </div>
             )}
             <ul className="space-y-4">
-              {localizedCartItems.map((cartItem) => (
+              {cartItemsWithPricing.map((cartItem) => (
                 <li
-                  key={cartItem.stableId}
+                  key={cartItem.cartLineId}
                   className="rounded-2xl border border-slate-200 p-4"
                 >
                   <div className="flex items-start justify-between gap-4">
@@ -1510,14 +1563,38 @@ export default function CheckoutPage() {
                         {cartItem.item.name}
                       </p>
                       <p className="mt-1 text-xs text-slate-500">
-                        {currencyFormatter.format(cartItem.item.price)} ×{" "}
-                        {cartItem.quantity}
+                        {currencyFormatter.format(
+                          cartItem.unitPriceCents / 100,
+                        )}{" "}
+                        × {cartItem.quantity}
                       </p>
+                      {cartItem.selectedOptions.length > 0 ? (
+                        <ul className="mt-2 space-y-1 text-xs text-slate-500">
+                          {cartItem.selectedOptions.map((option, index) => (
+                            <li
+                              key={`${option.groupName}-${option.optionName}-${index}`}
+                              className="flex items-center justify-between"
+                            >
+                              <span>
+                                {option.groupName} · {option.optionName}
+                              </span>
+                              {option.priceDeltaCents !== 0 ? (
+                                <span>
+                                  {option.priceDeltaCents > 0 ? "+" : "-"}
+                                  {currencyFormatter.format(
+                                    Math.abs(option.priceDeltaCents) / 100,
+                                  )}
+                                </span>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
                     </div>
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => updateQuantity(cartItem.stableId, -1)}
+                        onClick={() => updateQuantity(cartItem.cartLineId, -1)}
                         className="grid h-8 w-8 place-items-center rounded-full border border-slate-200 text-lg font-semibold text-slate-600 transition hover:bg-slate-100"
                         aria-label={strings.quantity.decrease}
                       >
@@ -1528,7 +1605,7 @@ export default function CheckoutPage() {
                       </span>
                       <button
                         type="button"
-                        onClick={() => updateQuantity(cartItem.stableId, 1)}
+                        onClick={() => updateQuantity(cartItem.cartLineId, 1)}
                         className="grid h-8 w-8 place-items-center rounded-full border border-slate-200 text-lg font-semibold text-slate-600 transition hover:bg-slate-100"
                         aria-label={strings.quantity.increase}
                       >
@@ -1541,7 +1618,7 @@ export default function CheckoutPage() {
                     <textarea
                       value={cartItem.notes}
                       onChange={(event) =>
-                        updateNotes(cartItem.stableId, event.target.value)
+                        updateNotes(cartItem.cartLineId, event.target.value)
                       }
                       placeholder={strings.cartNotesPlaceholder}
                       className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
