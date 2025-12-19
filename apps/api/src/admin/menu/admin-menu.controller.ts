@@ -86,6 +86,14 @@ export class AdminMenuController {
     return this.service.updateItem(itemStableId, body);
   }
 
+  @Post('items/:itemStableId/availability')
+  async setItemAvailability(
+    @Param('itemStableId') itemStableId: string,
+    @Body() body: { mode: 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF' },
+  ) {
+    return this.service.setItemAvailability(itemStableId, body.mode);
+  }
+
   // ========== Option Group Templates ==========
   @Get('option-group-templates')
   async listTemplates(): Promise<TemplateGroupFullDto[]> {
