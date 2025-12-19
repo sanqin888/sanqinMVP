@@ -4,47 +4,117 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CartEntry } from "@/lib/order/shared";
 
+type CartItemOptions = CartEntry["options"];
+
 const STORAGE_KEY = "sanqin-cart";
 
 /**
  * 把任何乱七八糟的数据，变成一个「干净的 CartEntry[]」
  */
+function normalizeOptions(input?: CartItemOptions): CartItemOptions | undefined {
+  if (!input || typeof input !== "object") return undefined;
+
+  const normalized: Record<string, string[]> = {};
+  Object.entries(input).forEach(([groupId, value]) => {
+    if (!groupId) return;
+    const values = Array.isArray(value)
+      ? value.filter((entry): entry is string => typeof entry === "string")
+      : typeof value === "string"
+        ? [value]
+        : [];
+    const deduped = Array.from(new Set(values.map((v) => v.trim()).filter(Boolean)));
+    if (deduped.length > 0) {
+      normalized[groupId] = deduped.sort();
+    }
+  });
+
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+function buildOptionsSignature(options?: CartItemOptions) {
+  if (!options) return "";
+  const sortedEntries = Object.entries(options)
+    .map(([groupId, values]) => [groupId, [...values].sort()] as const)
+    .sort(([a], [b]) => a.localeCompare(b));
+  return sortedEntries
+    .map(([groupId, values]) => `${groupId}:${values.join(",")}`)
+    .join("|");
+}
+
+function hashString(input: string) {
+  let hash = 5381;
+  for (let i = 0; i < input.length; i += 1) {
+    hash = (hash * 33) ^ input.charCodeAt(i);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function buildCartLineId(productStableId: string, options?: CartItemOptions) {
+  const signature = buildOptionsSignature(options);
+  if (!signature) return productStableId;
+  return `${productStableId}::${hashString(signature)}`;
+}
+
 function sanitizeCart(raw: unknown): CartEntry[] {
   if (!Array.isArray(raw)) return [];
-  return raw
-    .map((entry) => {
-      if (!entry || typeof entry !== "object") return null;
+  return raw.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
 
-      const { stableId, quantity, notes } = entry as Partial<CartEntry> & {
+    const { productStableId, stableId, quantity, notes, options, cartLineId } =
+      entry as Partial<CartEntry> & {
+        productStableId?: unknown;
         stableId?: unknown;
         quantity?: unknown;
         notes?: unknown;
+        options?: unknown;
+        cartLineId?: unknown;
       };
 
-      if (typeof stableId !== "string" || stableId.length === 0) {
-        throw new Error(
-          "[cart] missing stableId in cart entry (legacy itemId is not supported anymore)",
-        );
-      }
+    const resolvedProductStableId =
+      typeof productStableId === "string" && productStableId.length > 0
+        ? productStableId
+        : typeof stableId === "string"
+          ? stableId
+          : "";
 
-      const numericQuantity =
-        typeof quantity === "number"
-          ? quantity
-          : typeof quantity === "string"
-            ? Number(quantity)
-            : NaN;
+    if (resolvedProductStableId.length === 0) {
+      throw new Error(
+        "[cart] missing productStableId in cart entry (legacy itemId is not supported anymore)",
+      );
+    }
 
-      const safeQuantity = Number.isFinite(numericQuantity)
-        ? Math.max(1, Math.floor(numericQuantity))
-        : 1;
+    const numericQuantity =
+      typeof quantity === "number"
+        ? quantity
+        : typeof quantity === "string"
+          ? Number(quantity)
+          : NaN;
 
-      return {
-        stableId,
+    const safeQuantity = Number.isFinite(numericQuantity)
+      ? Math.max(1, Math.floor(numericQuantity))
+      : 1;
+
+    const safeOptions = normalizeOptions(
+      options && typeof options === "object"
+        ? (options as CartItemOptions)
+        : undefined,
+    );
+
+    const safeCartLineId =
+      typeof cartLineId === "string" && cartLineId.length > 0
+        ? cartLineId
+        : buildCartLineId(resolvedProductStableId, safeOptions);
+
+    return [
+      {
+        cartLineId: safeCartLineId,
+        productStableId: resolvedProductStableId,
         quantity: safeQuantity,
-        notes: typeof notes === "string" ? notes : undefined,
-      };
-    })
-    .filter((entry): entry is CartEntry => Boolean(entry));
+        notes: typeof notes === "string" ? notes : "",
+        options: safeOptions,
+      },
+    ];
+  });
 }
 
 /**
@@ -92,26 +162,42 @@ export function usePersistentCart() {
     }
   }, [isInitialized, items]);
 
-  const addItem = useCallback((stableId: string) => {
+  const addItem = useCallback(
+    (productStableId: string, options?: CartItemOptions) => {
+    const normalizedOptions = normalizeOptions(options);
+    const cartLineId = buildCartLineId(productStableId, normalizedOptions);
     setItems((prev) => {
-      const existing = prev.find((entry) => entry.stableId === stableId);
+      const existing = prev.find(
+        (entry) => entry.cartLineId === cartLineId,
+      );
       if (existing) {
         return prev.map((entry) =>
-          entry.stableId === stableId
+          entry.cartLineId === cartLineId
             ? { ...entry, quantity: entry.quantity + 1 }
             : entry,
         );
       }
-      return [...prev, { stableId, quantity: 1, notes: "" }];
+      return [
+        ...prev,
+        {
+          cartLineId,
+          productStableId,
+          quantity: 1,
+          notes: "",
+          options: normalizedOptions,
+        },
+      ];
     });
-  }, []);
+  },
+  [],
+  );
 
-  const updateQuantity = useCallback((stableId: string, delta: number) => {
+  const updateQuantity = useCallback((cartLineId: string, delta: number) => {
     if (!delta) return;
     setItems((prev) =>
       prev
         .map((entry) =>
-          entry.stableId === stableId
+          entry.cartLineId === cartLineId
             ? { ...entry, quantity: entry.quantity + delta }
             : entry,
         )
@@ -119,10 +205,10 @@ export function usePersistentCart() {
     );
   }, []);
 
-  const updateNotes = useCallback((stableId: string, notes: string) => {
+  const updateNotes = useCallback((cartLineId: string, notes: string) => {
     setItems((prev) =>
       prev.map((entry) =>
-        entry.stableId === stableId ? { ...entry, notes } : entry,
+        entry.cartLineId === cartLineId ? { ...entry, notes } : entry,
       ),
     );
   }, []);

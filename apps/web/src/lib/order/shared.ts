@@ -120,6 +120,7 @@ export const UI_STRINGS: Record<
     floatingCartLabel: string;
     limitedDaily: string;
     addToCart: string;
+    chooseOptions: string;
 
     // 结算页
     paymentHint: string;
@@ -175,6 +176,7 @@ export const UI_STRINGS: Record<
     floatingCartLabel: "Cart",
     limitedDaily: "Limited daily supply",
     addToCart: "Add to cart",
+    chooseOptions: "Choose options",
 
     paymentHint: "We accept secure online payment. Taxes shown at checkout.",
     fulfillmentLabel: "Fulfillment",
@@ -296,6 +298,7 @@ export const UI_STRINGS: Record<
     floatingCartLabel: "购物车",
     limitedDaily: "每日限量",
     addToCart: "加入购物车",
+    chooseOptions: "选择选项",
 
     paymentHint: "支持安全在线支付，税费在结算时显示。",
     fulfillmentLabel: "取餐方式",
@@ -534,15 +537,19 @@ export function buildLocalizedMenuFromDb(
 
 /** ===== 结算页相关类型 ===== */
 export type CartEntry = {
-  stableId: string; // 对应 LocalizedMenuItem.stableId
+  cartLineId: string;
+  productStableId: string; // 对应 LocalizedMenuItem.stableId
   quantity: number;
   notes: string;
+  options?: Record<string, string[]>;
 };
 
 export type LocalizedCartItem = {
-  stableId: string;
+  cartLineId: string;
+  productStableId: string;
   quantity: number;
   notes: string;
+  options?: Record<string, string[]>;
   item: LocalizedMenuItem;
 };
 
