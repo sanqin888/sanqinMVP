@@ -137,7 +137,10 @@ export default function StoreDisplayPage() {
               <div className="max-h-[60vh] overflow-auto">
                 {items.map((item) => (
                   <div
-                    key={`${item.stableId}-${item.unitPriceCents}-${item.quantity}`}
+                    key={
+                      item.lineId ??
+                      `${item.stableId}-${item.unitPriceCents}-${item.quantity}`
+                    }
                     className="grid grid-cols-4 px-6 py-4 text-3xl border-b border-slate-800 last:border-b-0"
                   >
                     <div className="pr-4">
