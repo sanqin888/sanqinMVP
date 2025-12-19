@@ -19,11 +19,13 @@ type AvailabilityTarget =
       categoryStableId: string;
       stableId: string;
       label: string;
+      isTempOff: boolean;
     }
   | {
       kind: "group" | "option";
       stableId: string;
       label: string;
+      isTempOff?: boolean;
     };
 
 // ========== 基本类型 ========== //
@@ -113,6 +115,11 @@ function availabilityLabel(isZh: boolean, isAvailable: boolean, tempUntil: strin
   if (!isAvailable) return isZh ? "下架" : "Off";
   if (tempUntil && !effectiveAvailable(true, tempUntil)) return isZh ? "今日下架" : "Off today";
   return isZh ? "上架" : "On";
+}
+
+function isTempUnavailable(tempUntil: string | null): boolean {
+  if (!tempUntil) return false;
+  return !effectiveAvailable(true, tempUntil);
 }
 
 function itemStatusLabel(isZh: boolean, isAvailable: boolean, tempUntil: string | null): string {
@@ -355,7 +362,7 @@ export default function AdminDashboard() {
   }
 
   async function applyAvailabilityChoice(
-    mode: "PERMANENT_OFF" | "TEMP_TODAY_OFF",
+    mode: "ON" | "PERMANENT_OFF" | "TEMP_TODAY_OFF",
   ): Promise<void> {
     if (!availabilityTarget) return;
     const target = availabilityTarget;
@@ -525,6 +532,7 @@ export default function AdminDashboard() {
                                     categoryStableId: category.stableId,
                                     stableId: item.stableId,
                                     label: itemName,
+                                    isTempOff: item.isAvailable && isTempUnavailable(item.tempUnavailableUntil),
                                   });
                                   return;
                                 }
@@ -592,6 +600,7 @@ export default function AdminDashboard() {
                                                   kind: "group",
                                                   stableId: tg.templateGroupStableId,
                                                   label: groupName,
+                                                  isTempOff: false,
                                                 })
                                               : void setTemplateGroupAvailability(tg.templateGroupStableId, "ON")
                                             : undefined
@@ -642,6 +651,7 @@ export default function AdminDashboard() {
                                                         kind: "option",
                                                         stableId: opt.optionStableId,
                                                         label: optName,
+                                                        isTempOff: false,
                                                       })
                                                     : void setOptionAvailability(opt.optionStableId, "ON")
                                                 }
@@ -718,6 +728,15 @@ export default function AdminDashboard() {
               {isZh ? "设置下架方式" : ", choose how to turn off availability."}
             </p>
             <div className="mt-4 space-y-2">
+              {availabilityTarget.kind === "item" && availabilityTarget.isTempOff ? (
+                <button
+                  type="button"
+                  onClick={() => void applyAvailabilityChoice("ON")}
+                  className="w-full rounded-full bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
+                >
+                  {isZh ? "恢复上架" : "Turn on"}
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => void applyAvailabilityChoice("TEMP_TODAY_OFF")}

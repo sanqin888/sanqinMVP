@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
 import type {
   AdminMenuFull,
@@ -18,8 +19,10 @@ import {
 } from "@/lib/pos-display";
 
 type PosCartEntry = {
+  lineId: string;
   stableId: string;
   quantity: number;
+  options?: Record<string, string[]>;
 };
 
 type StoreStatusRuleSource =
@@ -59,10 +62,19 @@ const STRINGS = {
     placing: "下单中…",
     qtyLabel: "份数",
     tapToAdd: "点击添加",
+    chooseOptions: "请选择必选项",
+    addToCart: "加入本单",
+    optionsRequired: "请先选择所有必选项",
+    optionLimit: (min: number, max: number | null) =>
+      max === null || max === min
+        ? `至少选 ${min} 项`
+        : `请选择 ${min}-${max} 项`,
     successTitle: "下单成功",
     successBody: "单号与取餐码已显示在看板。",
     close: "关闭",
     errorGeneric: "下单失败，请稍后重试。",
+    optionDialogTitle: "选择餐品选项",
+    optionDialogSubtitle: "完成所有必选项后可加入本单。",
     // 门店状态相关
     storeStatusOpen: "营业中",
     storeStatusClosed: "暂停接单",
@@ -72,6 +84,7 @@ const STRINGS = {
     storeStatusNextOpenPrefix: "下次营业时间：",
     storeStatusLoading: "正在获取门店状态…",
     storeStatusError: "门店状态获取失败，请以店内实际情况为准。",
+    menuManage: "菜单管理",
   },
   en: {
     title: "Store POS",
@@ -90,10 +103,19 @@ const STRINGS = {
     placing: "Placing…",
     qtyLabel: "Qty",
     tapToAdd: "Tap to add",
+    chooseOptions: "Select required options",
+    addToCart: "Add to order",
+    optionsRequired: "Please complete required options",
+    optionLimit: (min: number, max: number | null) =>
+      max === null || max === min
+        ? `Select at least ${min}`
+        : `Select ${min}-${max}`,
     successTitle: "Order created",
     successBody: "Order number and pickup code are shown on the board.",
     close: "Close",
     errorGeneric: "Failed to place order. Please try again.",
+    optionDialogTitle: "Choose item options",
+    optionDialogSubtitle: "Finish required options before adding to order.",
     // 门店状态相关
     storeStatusOpen: "Open for orders",
     storeStatusClosed: "Paused",
@@ -106,6 +128,7 @@ const STRINGS = {
     storeStatusLoading: "Checking store status…",
     storeStatusError:
       "Unable to load store status. Please confirm with the store.",
+    menuManage: "Menu management",
   },
 } as const;
 
@@ -265,7 +288,20 @@ export default function StorePosPage() {
         const item = allMenuItems.find((i) => i.stableId === entry.stableId);
         if (!item) return null;
 
-        const unitPriceCents = Math.round(item.price * 100);
+        let optionDeltaCents = 0;
+        if (entry.options) {
+          (item.optionGroups ?? []).forEach((group) => {
+            const selected =
+              entry.options?.[group.templateGroupStableId] ?? [];
+            if (selected.length === 0) return;
+            group.options.forEach((option) => {
+              if (selected.includes(option.optionStableId)) {
+                optionDeltaCents += option.priceDeltaCents;
+              }
+            });
+          });
+        }
+        const unitPriceCents = Math.round(item.price * 100) + optionDeltaCents;
 
         return {
           ...entry,
@@ -296,13 +332,20 @@ export default function StorePosPage() {
 
   const addItem = (itemId: string) => {
     setCart((prev) => {
-      const existing = prev.find((e) => e.stableId === itemId);
+      const existing = prev.find((e) => e.stableId === itemId && !e.options);
       if (existing) {
         return prev.map((e) =>
-          e.stableId === itemId ? { ...e, quantity: e.quantity + 1 } : e,
+          e.lineId === existing.lineId ? { ...e, quantity: e.quantity + 1 } : e,
         );
       }
-      return [...prev, { stableId: itemId, quantity: 1 }];
+      return [
+        ...prev,
+        {
+          lineId: `line-${Date.now()}-${Math.random()}`,
+          stableId: itemId,
+          quantity: 1,
+        },
+      ];
     });
   };
 
@@ -311,16 +354,92 @@ export default function StorePosPage() {
     setCart((prev) =>
       prev
         .map((e) =>
-          e.stableId === itemId ? { ...e, quantity: e.quantity + delta } : e,
+          e.stableId === itemId && !e.options
+            ? { ...e, quantity: e.quantity + delta }
+            : e,
         )
         .filter((e) => e.quantity > 0),
     );
   };
 
-const clearCart = () => {
-  setCart([]);
-  clearPosDisplaySnapshot();
-};
+  const clearCart = () => {
+    setCart([]);
+    clearPosDisplaySnapshot();
+  };
+
+  const [activeItem, setActiveItem] = useState<{
+    item: PublicMenuCategory["items"][number];
+    selected: Record<string, string[]>;
+    quantity: number;
+  } | null>(null);
+
+  const closeDialog = () => {
+    setActiveItem(null);
+  };
+
+  const openOptionDialog = (item: PublicMenuCategory["items"][number]) => {
+    setActiveItem({
+      item,
+      selected: {},
+      quantity: 1,
+    });
+  };
+
+  const updateOptionSelection = (
+    groupId: string,
+    optionId: string,
+    maxSelect: number | null,
+  ) => {
+    if (!activeItem) return;
+    setActiveItem((prev) => {
+      if (!prev) return prev;
+      const current = prev.selected[groupId] ?? [];
+      let next: string[];
+      if (current.includes(optionId)) {
+        next = current.filter((id) => id !== optionId);
+      } else {
+        if (maxSelect === 1) {
+          next = [optionId];
+        } else if (typeof maxSelect === "number" && current.length >= maxSelect) {
+          next = [...current.slice(1), optionId];
+        } else {
+          next = [...current, optionId];
+        }
+      }
+      return {
+        ...prev,
+        selected: {
+          ...prev.selected,
+          [groupId]: next,
+        },
+      };
+    });
+  };
+
+  const optionGroups = activeItem?.item.optionGroups ?? [];
+  const requiredGroupsMissing =
+    activeItem?.item.optionGroups?.filter((group) => {
+      if (group.minSelect <= 0) return false;
+      const selectedCount =
+        activeItem.selected[group.templateGroupStableId]?.length ?? 0;
+      return selectedCount < group.minSelect;
+    }) ?? [];
+  const canAddToCart = Boolean(activeItem) && requiredGroupsMissing.length === 0;
+
+  const addActiveItemToCart = () => {
+    if (!activeItem || !canAddToCart) return;
+    const lineId = `line-${Date.now()}-${Math.random()}`;
+    setCart((prev) => [
+      ...prev,
+      {
+        lineId,
+        stableId: activeItem.item.stableId,
+        quantity: activeItem.quantity,
+        options: activeItem.selected,
+      },
+    ]);
+    closeDialog();
+  };
 
   // ⭐ 同步当前订单到顾客显示屏（localStorage）
   useEffect(() => {
@@ -328,6 +447,7 @@ const clearCart = () => {
 
     const snapshot: PosDisplaySnapshot = {
       items: cartWithDetails.map((entry) => ({
+        lineId: entry.lineId,
         stableId: entry.stableId,
         // 如果没填中文名，用英文名兜底
         nameZh: entry.item.nameZh ?? entry.item.nameEn,
@@ -335,6 +455,7 @@ const clearCart = () => {
         quantity: entry.quantity,
         unitPriceCents: entry.unitPriceCents,
         lineTotalCents: entry.lineTotalCents,
+        options: entry.options,
       })),
       subtotalCents,
       taxCents,
@@ -374,13 +495,19 @@ const clearCart = () => {
               {storeStatusDetail}
             </p>
           )}
-{storeStatusError && (
-  <p className="mt-1 max-w-xl text-[11px] text-amber-300">
-    {storeStatusError}
-  </p>
-)}
+          {storeStatusError && (
+            <p className="mt-1 max-w-xl text-[11px] text-amber-300">
+              {storeStatusError}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
+          <Link
+            href={`/${locale}/store/pos/menu`}
+            className="rounded-full border border-slate-600 bg-slate-800 px-3 py-1 text-xs font-medium text-slate-100 hover:border-slate-400 hover:text-white"
+          >
+            {t.menuManage}
+          </Link>
           {storeStatusLoading ? (
             <span className="rounded-full border border-slate-600 bg-slate-800 px-3 py-1 text-xs text-slate-200">
               {t.storeStatusLoading}
@@ -436,19 +563,30 @@ const clearCart = () => {
             <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3 auto-rows-[150px]">
               {visibleItems.map((item) => {
                 const unitPriceCents = Math.round(item.price * 100);
-                const currentQty =
-                  cart.find((e) => e.stableId === item.stableId)?.quantity ?? 0;
+                const currentQty = cart
+                  .filter((entry) => entry.stableId === item.stableId)
+                  .reduce((sum, entry) => sum + entry.quantity, 0);
 
                 return (
                   <div
                     key={item.stableId}
                     role="button"
                     tabIndex={0}
-                    onClick={() => addItem(item.stableId)}
+                    onClick={() => {
+                      if (item.optionGroups && item.optionGroups.length > 0) {
+                        openOptionDialog(item);
+                      } else {
+                        addItem(item.stableId);
+                      }
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
-                        addItem(item.stableId);
+                        if (item.optionGroups && item.optionGroups.length > 0) {
+                          openOptionDialog(item);
+                        } else {
+                          addItem(item.stableId);
+                        }
                       }
                     }}
                     className="flex flex-col justify-between rounded-3xl bg-slate-800 hover:bg-slate-700 active:scale-[0.99] transition-transform p-3 text-left"
@@ -465,7 +603,9 @@ const clearCart = () => {
                     {/* 不再显示描述，只保留“点击添加”提示和数量控制 */}
                     <div className="flex items-center justify-between mt-2">
                       <span className="text-[11px] text-slate-400">
-                        {t.tapToAdd}
+                        {item.optionGroups && item.optionGroups.length > 0
+                          ? t.chooseOptions
+                          : t.tapToAdd}
                       </span>
 
                       <div className="flex items-center gap-2">
@@ -475,6 +615,7 @@ const clearCart = () => {
                             e.stopPropagation();
                             changeQuantity(item.stableId, -1);
                           }}
+                          disabled={item.optionGroups && item.optionGroups.length > 0}
                           className="w-8 h-8 rounded-full bg-slate-900 flex items-center justify-center text-lg leading-none"
                         >
                           −
@@ -490,6 +631,7 @@ const clearCart = () => {
                             e.stopPropagation();
                             changeQuantity(item.stableId, +1);
                           }}
+                          disabled={item.optionGroups && item.optionGroups.length > 0}
                           className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-lg leading-none"
                         >
                           +
@@ -516,13 +658,41 @@ const clearCart = () => {
               <ul className="space-y-2">
                 {cartWithDetails.map((item) => (
                   <li
-                    key={item.stableId}
+                    key={item.lineId}
                     className="flex items-center justify-between gap-2 rounded-2xl bg-slate-900/60 px-3 py-2"
                   >
                     <div className="flex-1">
                       <div className="text-sm font-medium">
                         {item.item.name}
                       </div>
+                      {item.options && Object.keys(item.options).length > 0 && (
+                        <div className="mt-1 space-y-1 text-xs text-slate-400">
+                          {(item.item.optionGroups ?? []).map((group) => {
+                            const selected =
+                              item.options?.[group.templateGroupStableId] ?? [];
+                            if (selected.length === 0) return null;
+                            const groupName =
+                              locale === "zh" && group.template.nameZh
+                                ? group.template.nameZh
+                                : group.template.nameEn;
+                            const optionLabels = group.options
+                              .filter((opt) =>
+                                selected.includes(opt.optionStableId),
+                              )
+                              .map((opt) =>
+                                locale === "zh" && opt.nameZh
+                                  ? opt.nameZh
+                                  : opt.nameEn,
+                              )
+                              .join(", ");
+                            return (
+                              <div key={group.templateGroupStableId}>
+                                {groupName}: {optionLabels}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                       <div className="text-xs text-slate-400">
                         {t.qtyLabel}: {item.quantity}
                       </div>
@@ -530,7 +700,17 @@ const clearCart = () => {
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => changeQuantity(item.stableId, -1)}
+                        onClick={() => {
+                          setCart((prev) =>
+                            prev
+                              .map((entry) =>
+                                entry.lineId === item.lineId
+                                  ? { ...entry, quantity: entry.quantity - 1 }
+                                  : entry,
+                              )
+                              .filter((entry) => entry.quantity > 0),
+                          );
+                        }}
                         className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-lg leading-none"
                       >
                         −
@@ -540,7 +720,15 @@ const clearCart = () => {
                       </span>
                       <button
                         type="button"
-                        onClick={() => changeQuantity(item.stableId, 1)}
+                        onClick={() => {
+                          setCart((prev) =>
+                            prev.map((entry) =>
+                              entry.lineId === item.lineId
+                                ? { ...entry, quantity: entry.quantity + 1 }
+                                : entry,
+                            ),
+                          );
+                        }}
                         className="w-8 h-8 rounded-full bg-emerald-500 text-slate-900 flex items-center justify-center text-lg leading-none"
                       >
                         +
@@ -623,6 +811,162 @@ const clearCart = () => {
             >
               {t.close}
             </button>
+          </div>
+        </div>
+      )}
+
+      {activeItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-2xl rounded-3xl bg-slate-900 border border-slate-700 p-6 text-slate-100">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-semibold">{t.optionDialogTitle}</h3>
+                <p className="text-sm text-slate-300">
+                  {t.optionDialogSubtitle}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeDialog}
+                className="rounded-full border border-slate-600 px-3 py-1 text-xs text-slate-200 hover:border-slate-400"
+              >
+                {t.close}
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-4 max-h-[60vh] overflow-auto pr-1">
+              {optionGroups.map((group) => {
+                const groupName =
+                  locale === "zh" && group.template.nameZh
+                    ? group.template.nameZh
+                    : group.template.nameEn;
+                const selection =
+                  activeItem.selected[group.templateGroupStableId] ?? [];
+                const minSelect = group.minSelect ?? 0;
+                const maxSelect = group.maxSelect ?? null;
+
+                return (
+                  <div
+                    key={group.templateGroupStableId}
+                    className="rounded-2xl border border-slate-700 bg-slate-800/70 p-4"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-base font-semibold">
+                          {groupName}
+                        </div>
+                        <div className="text-xs text-slate-400">
+                          {t.optionLimit(minSelect, maxSelect)}
+                        </div>
+                      </div>
+                      {minSelect > 0 && selection.length < minSelect && (
+                        <span className="rounded-full border border-rose-400/70 bg-rose-500/10 px-2 py-0.5 text-[11px] text-rose-200">
+                          {t.optionsRequired}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {group.options.map((option) => {
+                        const selected = selection.includes(
+                          option.optionStableId,
+                        );
+                        const optionName =
+                          locale === "zh" && option.nameZh
+                            ? option.nameZh
+                            : option.nameEn;
+                        const priceDeltaLabel =
+                          option.priceDeltaCents > 0
+                            ? `+${formatMoney(option.priceDeltaCents)}`
+                            : option.priceDeltaCents < 0
+                              ? `-${formatMoney(Math.abs(option.priceDeltaCents))}`
+                              : "";
+                        return (
+                          <button
+                            key={option.optionStableId}
+                            type="button"
+                            onClick={() =>
+                              updateOptionSelection(
+                                group.templateGroupStableId,
+                                option.optionStableId,
+                                maxSelect,
+                              )
+                            }
+                            className={`rounded-2xl border px-3 py-3 text-left text-sm transition ${
+                              selected
+                                ? "border-emerald-400 bg-emerald-500/10 text-emerald-100"
+                                : "border-slate-600 bg-slate-900 text-slate-200 hover:border-slate-400"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span>{optionName}</span>
+                              {priceDeltaLabel && (
+                                <span className="text-xs text-slate-300">
+                                  {priceDeltaLabel}
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {requiredGroupsMissing.length > 0 && (
+              <div className="mt-4 rounded-2xl border border-rose-400/70 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+                {t.optionsRequired}
+              </div>
+            )}
+
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-slate-300">{t.qtyLabel}</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setActiveItem((prev) =>
+                        prev
+                          ? { ...prev, quantity: Math.max(1, prev.quantity - 1) }
+                          : prev,
+                      )
+                    }
+                    className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-lg leading-none"
+                  >
+                    −
+                  </button>
+                  <span className="min-w-[2ch] text-center text-base font-semibold">
+                    {activeItem.quantity}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setActiveItem((prev) =>
+                        prev ? { ...prev, quantity: prev.quantity + 1 } : prev,
+                      )
+                    }
+                    className="w-8 h-8 rounded-full bg-emerald-500 text-slate-900 flex items-center justify-center text-lg leading-none"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={!canAddToCart}
+                onClick={addActiveItemToCart}
+                className={`h-11 rounded-2xl px-6 text-sm font-semibold ${
+                  canAddToCart
+                    ? "bg-emerald-500 text-slate-900 hover:bg-emerald-400"
+                    : "bg-slate-600 text-slate-300"
+                }`}
+              >
+                {t.addToCart}
+              </button>
+            </div>
           </div>
         </div>
       )}
