@@ -13,6 +13,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 
 const MICRO_PER_POINT = 1_000_000;
+const createStableId = createId as () => string;
 
 @Injectable()
 export class MembershipService {
@@ -23,15 +24,15 @@ export class MembershipService {
     private readonly loyalty: LoyaltyService,
   ) {}
 
-  private async generateUserStableId(): Promise<string> {
-    return createId();
+  private generateUserStableId(): string {
+    return createStableId();
   }
 
   private async ensureUserStableId(user: User): Promise<User> {
     if (user.userStableId) return user;
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      const candidate = await this.generateUserStableId();
+      const candidate = this.generateUserStableId();
       try {
         return await this.prisma.user.update({
           where: { id: user.id },
