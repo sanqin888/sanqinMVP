@@ -4,12 +4,14 @@ export const POS_DISPLAY_STORAGE_KEY = "sanqin-pos-display-v1";
 export const POS_DISPLAY_CHANNEL = "sanqin-pos-display-channel";
 
 export type PosDisplayItem = {
+  lineId?: string;
   stableId: string;
   nameZh: string;
   nameEn: string;
   quantity: number;
   unitPriceCents: number;
   lineTotalCents: number;
+  options?: Record<string, string[]>;
 };
 
 export type PosDisplaySnapshot = {
