@@ -57,12 +57,11 @@ function buildCartLineId(productStableId: string, options?: CartItemOptions) {
 
 function sanitizeCart(raw: unknown): CartEntry[] {
   if (!Array.isArray(raw)) return [];
-  return raw
-    .map((entry) => {
-      if (!entry || typeof entry !== "object") return null;
+  return raw.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
 
-      const { productStableId, stableId, quantity, notes, options, cartLineId } =
-        entry as Partial<CartEntry> & {
+    const { productStableId, stableId, quantity, notes, options, cartLineId } =
+      entry as Partial<CartEntry> & {
         productStableId?: unknown;
         stableId?: unknown;
         quantity?: unknown;
@@ -71,50 +70,51 @@ function sanitizeCart(raw: unknown): CartEntry[] {
         cartLineId?: unknown;
       };
 
-      const resolvedProductStableId =
-        typeof productStableId === "string" && productStableId.length > 0
-          ? productStableId
-          : typeof stableId === "string"
-            ? stableId
-            : "";
+    const resolvedProductStableId =
+      typeof productStableId === "string" && productStableId.length > 0
+        ? productStableId
+        : typeof stableId === "string"
+          ? stableId
+          : "";
 
-      if (resolvedProductStableId.length === 0) {
-        throw new Error(
-          "[cart] missing productStableId in cart entry (legacy itemId is not supported anymore)",
-        );
-      }
-
-      const numericQuantity =
-        typeof quantity === "number"
-          ? quantity
-          : typeof quantity === "string"
-            ? Number(quantity)
-            : NaN;
-
-      const safeQuantity = Number.isFinite(numericQuantity)
-        ? Math.max(1, Math.floor(numericQuantity))
-        : 1;
-
-      const safeOptions = normalizeOptions(
-        options && typeof options === "object"
-          ? (options as CartItemOptions)
-          : undefined,
+    if (resolvedProductStableId.length === 0) {
+      throw new Error(
+        "[cart] missing productStableId in cart entry (legacy itemId is not supported anymore)",
       );
+    }
 
-      const safeCartLineId =
-        typeof cartLineId === "string" && cartLineId.length > 0
-          ? cartLineId
-          : buildCartLineId(resolvedProductStableId, safeOptions);
+    const numericQuantity =
+      typeof quantity === "number"
+        ? quantity
+        : typeof quantity === "string"
+          ? Number(quantity)
+          : NaN;
 
-      return {
+    const safeQuantity = Number.isFinite(numericQuantity)
+      ? Math.max(1, Math.floor(numericQuantity))
+      : 1;
+
+    const safeOptions = normalizeOptions(
+      options && typeof options === "object"
+        ? (options as CartItemOptions)
+        : undefined,
+    );
+
+    const safeCartLineId =
+      typeof cartLineId === "string" && cartLineId.length > 0
+        ? cartLineId
+        : buildCartLineId(resolvedProductStableId, safeOptions);
+
+    return [
+      {
         cartLineId: safeCartLineId,
         productStableId: resolvedProductStableId,
         quantity: safeQuantity,
         notes: typeof notes === "string" ? notes : "",
         options: safeOptions,
-      };
-    })
-    .filter((entry): entry is CartEntry => Boolean(entry));
+      },
+    ];
+  });
 }
 
 /**
