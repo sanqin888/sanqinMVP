@@ -15,7 +15,6 @@ import type {
   TemplateGroupFullDto,
   TemplateGroupLiteDto,
 } from "@shared/menu";
-import { isAvailableNow as isAvailableNowShared } from "@shared/menu";
 export type { Locale } from "@/lib/i18n/locales";
 export { LOCALES } from "@/lib/i18n/locales";
 export { addLocaleToPath } from "@/lib/i18n/path";
@@ -411,6 +410,8 @@ export type LocalizedMenuItem = {
   price: number; // CAD
   imageUrl?: string;
   ingredients?: string;
+  isAvailable: boolean;
+  tempUnavailableUntil?: string | null;
 
   // 注意：对外只暴露 templateGroupStableId / stableId（以及 admin 才会有 bindingStableId）
   optionGroups?: MenuOptionGroupWithOptionsDto[];
@@ -443,8 +444,8 @@ export type PublicMenuCategory = LocalizedCategory;
  *
  * - 分类名称用 DB 的 nameEn/nameZh；
  * - 菜品名称/价格/图片/配料/中英文，全部用 DB；
- * - 只展示 isActive && isVisible && isAvailable(含临时下架时间) 的菜品；
- * - optionGroups / options 同样按“可售(含临时下架)”过滤并按 sortOrder 排序。
+ * - 只展示 isActive && isVisible && isAvailable（永久下架不展示、当日下架保留） 的菜品；
+ * - optionGroups / options 同样按“非永久下架”过滤并按 sortOrder 排序。
  */
 export function buildLocalizedMenuFromDb(
   dbMenu: Array<DbMenuCategory | DbPublicMenuCategory>,
@@ -464,14 +465,7 @@ export function buildLocalizedMenuFromDb(
     const localizedName = isZh && c.nameZh ? c.nameZh : c.nameEn;
 
     const items = (c.items ?? [])
-      .filter(
-        (i) =>
-          i.isVisible &&
-          isAvailableNowShared({
-            isAvailable: i.isAvailable,
-            tempUnavailableUntil: i.tempUnavailableUntil,
-          }),
-      )
+      .filter((i) => i.isVisible && i.isAvailable)
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map<LocalizedMenuItem>((i) => {
         const stableId = i.stableId.trim();
@@ -488,25 +482,13 @@ export function buildLocalizedMenuFromDb(
         const ingredients = ingredientsText.trim() ? ingredientsText : undefined;
 
         const optionGroups = (i.optionGroups ?? [])
-          .filter(
-            (g) =>
-              g.isEnabled &&
-              isAvailableNowShared({
-                isAvailable: g.template.isAvailable,
-                tempUnavailableUntil: g.template.tempUnavailableUntil,
-              }),
-          )
+          .filter((g) => g.isEnabled && g.template.isAvailable)
           .sort((a, b) => a.sortOrder - b.sortOrder)
           .map((g) => {
             const templateOptions =
               g.options ?? templateMap.get(g.templateGroupStableId)?.options ?? [];
             const options = templateOptions
-              .filter((o) =>
-                isAvailableNowShared({
-                  isAvailable: o.isAvailable,
-                  tempUnavailableUntil: o.tempUnavailableUntil,
-                }),
-              )
+              .filter((o) => o.isAvailable)
               .sort((a, b) => a.sortOrder - b.sortOrder);
 
             return {
@@ -523,6 +505,8 @@ export function buildLocalizedMenuFromDb(
           price: i.basePriceCents / 100,
           imageUrl: i.imageUrl ?? undefined,
           ingredients,
+          isAvailable: i.isAvailable,
+          tempUnavailableUntil: i.tempUnavailableUntil ?? null,
           optionGroups,
         };
       });
