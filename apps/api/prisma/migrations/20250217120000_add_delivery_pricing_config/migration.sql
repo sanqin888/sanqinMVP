@@ -1,5 +1,0 @@
--- AlterTable
-ALTER TABLE "BusinessConfig"
-ADD COLUMN     "deliveryBaseFeeCents" INTEGER NOT NULL DEFAULT 600,
-ADD COLUMN     "priorityPerKmCents" INTEGER NOT NULL DEFAULT 100,
-ADD COLUMN     "salesTaxRate" DOUBLE PRECISION NOT NULL DEFAULT 0.13;

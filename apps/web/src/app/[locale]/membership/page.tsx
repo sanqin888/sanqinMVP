@@ -235,10 +235,50 @@ export default function MembershipHomePage() {
         );
 
         if (!res.ok) {
-          throw new Error(`Failed with status ${res.status}`);
+          let errorMessage = '';
+          try {
+            const errorBody = (await res.json()) as { message?: string };
+            if (errorBody?.message) {
+              errorMessage = errorBody.message;
+            }
+          } catch (error) {
+            try {
+              const text = await res.text();
+              if (text) {
+                errorMessage = text;
+              }
+            } catch (readError) {
+              console.warn(
+                'Failed to read membership summary error response',
+                readError,
+              );
+            }
+          }
+
+          console.warn('Membership summary request failed', {
+            status: res.status,
+            message: errorMessage,
+          });
+          setSummaryError(
+            isZh
+              ? '加载会员信息失败，请稍后再试'
+              : 'Failed to load membership info. Please try again later.',
+          );
+          return;
         }
 
-        const raw = (await res.json()) as MembershipSummaryApiEnvelope;
+        let raw: MembershipSummaryApiEnvelope;
+        try {
+          raw = (await res.json()) as MembershipSummaryApiEnvelope;
+        } catch (error) {
+          console.error('Failed to parse membership summary response', error);
+          setSummaryError(
+            isZh
+              ? '加载会员信息失败，请稍后再试'
+              : 'Failed to load membership info. Please try again later.',
+          );
+          return;
+        }
         const data =
           'details' in raw && raw.details
             ? raw.details
