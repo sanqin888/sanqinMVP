@@ -2,11 +2,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppLogger } from '../common/app-logger';
-import {
-  PublicMenuCategoryDto,
-  PublicMenuResponse,
-  isAvailableNow,
-} from '@shared/menu';
+import { PublicMenuCategoryDto, PublicMenuResponse } from '@shared/menu';
 
 function toIso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
@@ -63,10 +59,7 @@ export class PublicMenuService {
       const items = (cat.items ?? [])
         .filter((it) => {
           if (!it.isVisible) return false;
-          return isAvailableNow({
-            isAvailable: it.isAvailable,
-            tempUnavailableUntil: toIso(it.tempUnavailableUntil),
-          });
+          return it.isAvailable;
         })
         .map((it) => {
           const optionGroups = (it.optionGroups ?? [])
@@ -78,10 +71,7 @@ export class PublicMenuService {
               if (!tg || (tg as { deletedAt?: Date | null }).deletedAt)
                 return false;
 
-              return isAvailableNow({
-                isAvailable: tg.isAvailable,
-                tempUnavailableUntil: toIso(tg.tempUnavailableUntil),
-              });
+              return tg.isAvailable;
             })
             .map((link) => {
               const tg = link.templateGroup;
@@ -92,10 +82,7 @@ export class PublicMenuService {
                   // options.deletedAt 已在 Prisma where 过滤，但保留一层防御式过滤
                   if ((opt as { deletedAt?: Date | null }).deletedAt)
                     return false;
-                  return isAvailableNow({
-                    isAvailable: opt.isAvailable,
-                    tempUnavailableUntil: toIso(opt.tempUnavailableUntil),
-                  });
+                  return opt.isAvailable;
                 })
                 .map((opt) => ({
                   optionStableId: opt.stableId,

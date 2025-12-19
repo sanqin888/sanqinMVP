@@ -13,6 +13,19 @@ import type {
   OptionChoiceDto,
 } from "@shared/menu";
 
+type AvailabilityTarget =
+  | {
+      kind: "item";
+      categoryStableId: string;
+      stableId: string;
+      label: string;
+    }
+  | {
+      kind: "group" | "option";
+      stableId: string;
+      label: string;
+    };
+
 // ========== 基本类型 ========== //
 
 export type Holiday = {
@@ -102,6 +115,12 @@ function availabilityLabel(isZh: boolean, isAvailable: boolean, tempUntil: strin
   return isZh ? "上架" : "On";
 }
 
+function itemStatusLabel(isZh: boolean, isAvailable: boolean, tempUntil: string | null): string {
+  if (!isAvailable) return isZh ? "下架" : "Off";
+  if (tempUntil && !effectiveAvailable(true, tempUntil)) return isZh ? "今日下架" : "Off today";
+  return isZh ? "在售" : "On";
+}
+
 function TonePill({
   tone,
   children,
@@ -134,6 +153,7 @@ export default function AdminDashboard() {
   const [templates, setTemplates] = useState<MenuTemplateFull[]>([]);
   const [menuLoading, setMenuLoading] = useState(true);
   const [menuError, setMenuError] = useState<string | null>(null);
+  const [availabilityTarget, setAvailabilityTarget] = useState<AvailabilityTarget | null>(null);
 
   const templateMap = useMemo(
     () => new Map(templates.map((t) => [t.templateGroupStableId, t])),
@@ -261,13 +281,11 @@ export default function AdminDashboard() {
     }
   }
 
-  async function toggleMenuItem(categoryStableId: string, itemStableId: string): Promise<void> {
-    const category = menu.find((c) => c.stableId === categoryStableId);
-    const item = category?.items.find((i) => i.stableId === itemStableId);
-    if (!item) return;
-
-    const nextMode = item.isAvailable ? "PERMANENT_OFF" : "ON";
-
+  async function setMenuItemAvailability(
+    categoryStableId: string,
+    itemStableId: string,
+    mode: "ON" | "PERMANENT_OFF" | "TEMP_TODAY_OFF",
+  ): Promise<void> {
     try {
       const updated = await apiFetch<{
         stableId: string;
@@ -277,7 +295,7 @@ export default function AdminDashboard() {
       }>(`/admin/menu/items/${itemStableId}/availability`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: nextMode }),
+        body: JSON.stringify({ mode }),
       });
 
       setMenu((prev) =>
@@ -304,13 +322,15 @@ export default function AdminDashboard() {
     }
   }
 
-  async function toggleTemplateGroup(templateGroupStableId: string, currentlyOn: boolean): Promise<void> {
-    const nextMode = currentlyOn ? "PERMANENT_OFF" : "ON";
+  async function setTemplateGroupAvailability(
+    templateGroupStableId: string,
+    mode: "ON" | "PERMANENT_OFF" | "TEMP_TODAY_OFF",
+  ): Promise<void> {
     try {
       await apiFetch(`/admin/menu/option-group-templates/${templateGroupStableId}/availability`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: nextMode }),
+        body: JSON.stringify({ mode }),
       });
       await reloadMenu();
     } catch (e) {
@@ -318,18 +338,37 @@ export default function AdminDashboard() {
     }
   }
 
-  async function toggleOption(optionStableId: string, currentlyOn: boolean): Promise<void> {
-    const nextMode = currentlyOn ? "PERMANENT_OFF" : "ON";
+  async function setOptionAvailability(
+    optionStableId: string,
+    mode: "ON" | "PERMANENT_OFF" | "TEMP_TODAY_OFF",
+  ): Promise<void> {
     try {
       await apiFetch(`/admin/menu/options/${optionStableId}/availability`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: nextMode }),
+        body: JSON.stringify({ mode }),
       });
       await reloadMenu();
     } catch (e) {
       console.error(e);
     }
+  }
+
+  async function applyAvailabilityChoice(
+    mode: "PERMANENT_OFF" | "TEMP_TODAY_OFF",
+  ): Promise<void> {
+    if (!availabilityTarget) return;
+    const target = availabilityTarget;
+    setAvailabilityTarget(null);
+    if (target.kind === "item") {
+      await setMenuItemAvailability(target.categoryStableId, target.stableId, mode);
+      return;
+    }
+    if (target.kind === "group") {
+      await setTemplateGroupAvailability(target.stableId, mode);
+      return;
+    }
+    await setOptionAvailability(target.stableId, mode);
   }
 
   return (
@@ -479,13 +518,24 @@ export default function AdminDashboard() {
                             </div>
 
                             <button
-                              onClick={() => void toggleMenuItem(category.stableId, item.stableId)}
+                              onClick={() => {
+                                if (effectiveActive) {
+                                  setAvailabilityTarget({
+                                    kind: "item",
+                                    categoryStableId: category.stableId,
+                                    stableId: item.stableId,
+                                    label: itemName,
+                                  });
+                                  return;
+                                }
+                                void setMenuItemAvailability(category.stableId, item.stableId, "ON");
+                              }}
                               className={`rounded-full px-3 py-1 text-xs font-medium ${
                                 effectiveActive ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
                               }`}
                               type="button"
                             >
-                              {effectiveActive ? "在售" : "下架"}
+                              {itemStatusLabel(isZh, item.isAvailable, item.tempUnavailableUntil)}
                             </button>
                           </div>
 
@@ -537,7 +587,13 @@ export default function AdminDashboard() {
                                         type="button"
                                         onClick={() =>
                                           tg?.templateGroupStableId
-                                            ? void toggleTemplateGroup(tg.templateGroupStableId, groupOn)
+                                            ? groupOn
+                                              ? setAvailabilityTarget({
+                                                  kind: "group",
+                                                  stableId: tg.templateGroupStableId,
+                                                  label: groupName,
+                                                })
+                                              : void setTemplateGroupAvailability(tg.templateGroupStableId, "ON")
                                             : undefined
                                         }
                                         className={`rounded-full px-3 py-1 text-xs font-medium ${
@@ -580,7 +636,15 @@ export default function AdminDashboard() {
 
                                               <button
                                                 type="button"
-                                                onClick={() => void toggleOption(opt.optionStableId, optOn)}
+                                                onClick={() =>
+                                                  optOn
+                                                    ? setAvailabilityTarget({
+                                                        kind: "option",
+                                                        stableId: opt.optionStableId,
+                                                        label: optName,
+                                                      })
+                                                    : void setOptionAvailability(opt.optionStableId, "ON")
+                                                }
                                                 className={`rounded-full px-3 py-1 text-xs font-medium ${
                                                   optOn
                                                     ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
@@ -641,6 +705,44 @@ export default function AdminDashboard() {
           </div>
         </div>
       </SectionCard>
+
+      {availabilityTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-slate-900">
+              {isZh ? "选择下架方式" : "Select off mode"}
+            </h3>
+            <p className="mt-2 text-sm text-slate-600">
+              {isZh ? "对" : "For "}
+              <span className="font-semibold text-slate-900">{availabilityTarget.label}</span>
+              {isZh ? "设置下架方式" : ", choose how to turn off availability."}
+            </p>
+            <div className="mt-4 space-y-2">
+              <button
+                type="button"
+                onClick={() => void applyAvailabilityChoice("TEMP_TODAY_OFF")}
+                className="w-full rounded-full bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-100"
+              >
+                {isZh ? "当日下架" : "Off today"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void applyAvailabilityChoice("PERMANENT_OFF")}
+                className="w-full rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+              >
+                {isZh ? "永久下架" : "Off permanently"}
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAvailabilityTarget(null)}
+              className="mt-4 w-full rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-50"
+            >
+              {isZh ? "取消" : "Cancel"}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
