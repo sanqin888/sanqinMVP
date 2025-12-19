@@ -2,10 +2,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppLogger } from '../common/app-logger';
-import {
-  PublicMenuCategoryDto,
-  PublicMenuResponse,
-} from '@shared/menu';
+import { PublicMenuCategoryDto, PublicMenuResponse } from '@shared/menu';
 
 function toIso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
