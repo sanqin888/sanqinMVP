@@ -46,6 +46,28 @@ export class AdminMenuService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  async setCategoryActive(
+    categoryStableId: string,
+    isActive: boolean,
+  ): Promise<{ stableId: string; isActive: boolean }> {
+    if (typeof isActive !== 'boolean') {
+      throw new BadRequestException('isActive must be boolean');
+    }
+
+    try {
+      const updated = await this.prisma.menuCategory.update({
+        where: { stableId: categoryStableId },
+        data: { isActive },
+        select: { stableId: true, isActive: true },
+      });
+
+      return { stableId: updated.stableId, isActive: updated.isActive };
+    } catch {
+      // Prisma update 找不到会抛错；这里统一转 404
+      throw new NotFoundException('Menu category not found');
+    }
+  }
+
   // ========= Full menu for admin =========
   async getFullMenu(): Promise<AdminMenuFullResponse> {
     const [categories, templateGroups] = await Promise.all([

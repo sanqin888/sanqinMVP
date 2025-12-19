@@ -563,10 +563,6 @@ export default function StorePosPage() {
             <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3 auto-rows-[150px]">
               {visibleItems.map((item) => {
                 const unitPriceCents = Math.round(item.price * 100);
-                const currentQty = cart
-                  .filter((entry) => entry.stableId === item.stableId)
-                  .reduce((sum, entry) => sum + entry.quantity, 0);
-
                 return (
                   <div
                     key={item.stableId}
@@ -607,36 +603,6 @@ export default function StorePosPage() {
                           ? t.chooseOptions
                           : t.tapToAdd}
                       </span>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            changeQuantity(item.stableId, -1);
-                          }}
-                          disabled={item.optionGroups && item.optionGroups.length > 0}
-                          className="w-8 h-8 rounded-full bg-slate-900 flex items-center justify-center text-lg leading-none"
-                        >
-                          −
-                        </button>
-
-                        <span className="min-w-[2ch] text-center text-base font-semibold text-white">
-                          {currentQty ?? 0}
-                        </span>
-
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            changeQuantity(item.stableId, +1);
-                          }}
-                          disabled={item.optionGroups && item.optionGroups.length > 0}
-                          className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-lg leading-none"
-                        >
-                          +
-                        </button>
-                      </div>
                     </div>
                   </div>
                 );

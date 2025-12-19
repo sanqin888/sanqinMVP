@@ -98,9 +98,9 @@ export default function StoreDisplayPage() {
   const subtotalCents = snapshot?.subtotalCents ?? 0;
   const taxCents = snapshot?.taxCents ?? 0;
   const totalCents = snapshot?.totalCents ?? 0;
+  const fallbackDiscountCents = Math.max(0, subtotalCents + taxCents - totalCents);
 
-  // 如果以后有折扣，总价 < 小计 + 税，这里自动算出折扣
-  const discountCents = Math.max(0, subtotalCents + taxCents - totalCents);
+  const discountCents = snapshot?.discountCents ?? fallbackDiscountCents;
 
   return (
     <main className="min-h-screen bg-slate-900 text-slate-50 flex flex-col items-center">

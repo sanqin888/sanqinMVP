@@ -1,11 +1,12 @@
 // apps/web/src/app/[locale]/store/pos/payment/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import type { Locale } from "@/lib/order/shared";
+import { TAX_RATE, type Locale } from "@/lib/order/shared";
 import { apiFetch } from "@/lib/api-client";
 import {
+  POS_DISPLAY_CHANNEL,
   POS_DISPLAY_STORAGE_KEY,
   type PosDisplaySnapshot,
 } from "@/lib/pos-display";
@@ -54,6 +55,7 @@ const STRINGS: Record<
     subtitle: string;
     orderSummary: string;
     subtotal: string;
+    discount: string;
     tax: string;
     total: string;
     fulfillmentLabel: string;
@@ -75,6 +77,9 @@ const STRINGS: Record<
     close: string;
     orderLabel: string;
     pickupCodeLabel: string;
+    discountLabel: string;
+    discountButton: string;
+    discountNone: string;
   }
 > = {
   zh: {
@@ -82,6 +87,7 @@ const STRINGS: Record<
     subtitle: "选择用餐方式和付款方式，然后在收银机上完成支付。",
     orderSummary: "订单信息",
     subtotal: "小计",
+    discount: "折扣",
     tax: "税费 (HST)",
     total: "合计",
     fulfillmentLabel: "用餐方式",
@@ -103,12 +109,16 @@ const STRINGS: Record<
     close: "完成",
     orderLabel: "订单号：",
     pickupCodeLabel: "取餐码：",
+    discountLabel: "折扣选项",
+    discountButton: "选择折扣",
+    discountNone: "不使用折扣",
   },
   en: {
     title: "Store POS · Payment",
     subtitle: "Choose dining and payment method, then take payment on terminal.",
     orderSummary: "Order summary",
     subtotal: "Subtotal",
+    discount: "Discount",
     tax: "Tax (HST)",
     total: "Total",
     fulfillmentLabel: "Dining",
@@ -131,6 +141,9 @@ const STRINGS: Record<
     close: "Done",
     orderLabel: "Order:",
     pickupCodeLabel: "Pickup code:",
+    discountLabel: "Discount",
+    discountButton: "Select discount",
+    discountNone: "No discount",
   },
 };
 
@@ -161,6 +174,8 @@ export default function StorePosPaymentPage() {
   const [loadingSnapshot, setLoadingSnapshot] = useState(true);
   const [fulfillment, setFulfillment] = useState<FulfillmentType>("pickup");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
+  const [discountRate, setDiscountRate] = useState<number>(0);
+  const [showDiscountOptions, setShowDiscountOptions] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [posClientRequestId, setPosClientRequestId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -192,6 +207,62 @@ export default function StorePosPaymentPage() {
   const hasItems =
     !!snapshot && Array.isArray(snapshot.items) && snapshot.items.length > 0;
 
+  const baseSubtotalCents = useMemo(() => {
+    if (!snapshot?.items?.length) return 0;
+    return snapshot.items.reduce((sum, item) => sum + item.lineTotalCents, 0);
+  }, [snapshot]);
+
+  const discountCents = useMemo(
+    () => Math.round(baseSubtotalCents * discountRate),
+    [baseSubtotalCents, discountRate],
+  );
+
+  const discountedSubtotalCents = Math.max(0, baseSubtotalCents - discountCents);
+  const taxCents = Math.round(discountedSubtotalCents * TAX_RATE);
+  const totalCents = discountedSubtotalCents + taxCents;
+
+  const computedSnapshot = useMemo(() => {
+    if (!snapshot) return null;
+    return {
+      ...snapshot,
+      subtotalCents: discountedSubtotalCents,
+      discountCents,
+      taxCents,
+      totalCents,
+    } satisfies PosDisplaySnapshot;
+  }, [discountCents, discountedSubtotalCents, snapshot, taxCents, totalCents]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!computedSnapshot?.items.length) return;
+
+    try {
+      window.localStorage.setItem(
+        POS_DISPLAY_STORAGE_KEY,
+        JSON.stringify(computedSnapshot),
+      );
+    } catch (err) {
+      console.warn("Failed to write POS display snapshot:", err);
+    }
+
+    try {
+      if ("BroadcastChannel" in window) {
+        const channel = new BroadcastChannel(POS_DISPLAY_CHANNEL);
+        channel.postMessage({ type: "snapshot", snapshot: computedSnapshot });
+        channel.close();
+      }
+    } catch {
+      // ignore
+    }
+  }, [computedSnapshot]);
+
+  const summarySubtotalCents = computedSnapshot?.subtotalCents ?? 0;
+  const summaryTaxCents = computedSnapshot?.taxCents ?? 0;
+  const summaryTotalCents = computedSnapshot?.totalCents ?? 0;
+  const summaryDiscountCents = computedSnapshot?.discountCents ?? 0;
+
+  const discountOptions = [0.05, 0.1, 0.15];
+
   const handleBack = () => {
     router.push(`/${locale}/store/pos`);
   };
@@ -203,7 +274,7 @@ export default function StorePosPaymentPage() {
     setError(null);
     setSubmitting(true);
 
-    if (!snapshot || snapshot.items.length === 0) {
+    if (!snapshot || snapshot.items.length === 0 || !computedSnapshot) {
       setError(t.noOrder);
       setSubmitting(false);
       return;
@@ -225,9 +296,9 @@ export default function StorePosPaymentPage() {
       const body = {
         channel: "in_store" as const,
         fulfillmentType: fulfillment,
-        subtotalCents: snapshot.subtotalCents,
-        taxCents: snapshot.taxCents,
-        totalCents: snapshot.totalCents,
+        subtotalCents: computedSnapshot.subtotalCents,
+        taxCents: computedSnapshot.taxCents,
+        totalCents: computedSnapshot.totalCents,
         paymentMethod,
         items: itemsPayload,
 
@@ -255,7 +326,7 @@ export default function StorePosPaymentPage() {
           pickupCode,
           fulfillment,
           paymentMethod,
-          snapshot,
+          snapshot: computedSnapshot,
         });
 
         try {
@@ -339,15 +410,21 @@ export default function StorePosPaymentPage() {
               <div className="mt-4 border-t border-slate-700 pt-3 space-y-1 text-sm">
                 <div className="flex justify-between">
                   <span className="text-slate-300">{t.subtotal}</span>
-                  <span>{formatMoney(snapshot.subtotalCents)}</span>
+                  <span>{formatMoney(summarySubtotalCents)}</span>
                 </div>
+                {summaryDiscountCents > 0 && (
+                  <div className="flex justify-between text-emerald-200">
+                    <span className="text-slate-300">{t.discount}</span>
+                    <span>-{formatMoney(summaryDiscountCents)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-slate-300">{t.tax}</span>
-                  <span>{formatMoney(snapshot.taxCents)}</span>
+                  <span>{formatMoney(summaryTaxCents)}</span>
                 </div>
                 <div className="flex justify-between text-base font-semibold">
                   <span>{t.total}</span>
-                  <span>{formatMoney(snapshot.totalCents)}</span>
+                  <span>{formatMoney(summaryTotalCents)}</span>
                 </div>
               </div>
             </>
@@ -384,6 +461,53 @@ export default function StorePosPaymentPage() {
                 >
                   {t.dineIn}
                 </button>
+              </div>
+            </div>
+
+            <div>
+              <h2 className="text-sm font-semibold mb-2">{t.discountLabel}</h2>
+              <div className="relative">
+                <button
+                  type="button"
+                  disabled={!hasItems}
+                  onClick={() => setShowDiscountOptions((prev) => !prev)}
+                  className={`h-10 w-full rounded-2xl border text-sm font-medium ${
+                    !hasItems
+                      ? "border-slate-600 bg-slate-900 text-slate-500"
+                      : "border-slate-600 bg-slate-900 text-slate-100 hover:border-slate-400"
+                  }`}
+                >
+                  {discountRate > 0
+                    ? `${t.discountButton} (-${Math.round(discountRate * 100)}%)`
+                    : t.discountButton}
+                </button>
+                {showDiscountOptions && (
+                  <div className="absolute z-10 mt-2 w-full rounded-2xl border border-slate-600 bg-slate-900 p-2 shadow-lg">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDiscountRate(0);
+                        setShowDiscountOptions(false);
+                      }}
+                      className="w-full rounded-xl px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800"
+                    >
+                      {t.discountNone}
+                    </button>
+                    {discountOptions.map((rate) => (
+                      <button
+                        key={rate}
+                        type="button"
+                        onClick={() => {
+                          setDiscountRate(rate);
+                          setShowDiscountOptions(false);
+                        }}
+                        className="mt-1 w-full rounded-xl px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800"
+                      >
+                        -{Math.round(rate * 100)}%
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
