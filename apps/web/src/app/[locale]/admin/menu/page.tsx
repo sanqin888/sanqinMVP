@@ -740,7 +740,7 @@ export default function AdminMenuPage() {
                             <span className="text-sm">{isZh ? '可售' : 'Available'}</span>
                           </label>
 
-                          <label className="space-y-1 md:col-span-3">
+                          <label className="space-y-1 md:col-span-6">
                             <div className="text-xs text-slate-600">{isZh ? '图片URL' : 'Image URL'}</div>
                             <input
                               value={item.imageUrl ?? ''}
