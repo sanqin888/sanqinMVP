@@ -65,10 +65,22 @@ const COPY = {
   },
 } as const;
 
+type StatusLabels = {
+  on: string;
+  offToday: string;
+  offPermanent: string;
+};
+
+type ActionLabels = {
+  on: string;
+  offToday: string;
+  offPermanent: string;
+};
+
 function getAvailabilityLabel(
   isAvailable: boolean,
   tempUnavailableUntil: string | null,
-  labels: typeof COPY.en.status,
+  labels: StatusLabels,
 ) {
   if (!isAvailable) return labels.offPermanent;
   if (!isAvailableNow({ isAvailable, tempUnavailableUntil })) return labels.offToday;
@@ -82,7 +94,7 @@ function AvailabilityActions({
 }: {
   onSet: (mode: AvailabilityMode) => void;
   disabled?: boolean;
-  labels: typeof COPY.en.actions;
+  labels: ActionLabels;
 }) {
   return (
     <div className="flex flex-wrap gap-2">
@@ -114,7 +126,7 @@ function AvailabilityActions({
   );
 }
 
-function statusTone(label: string, labels: typeof COPY.en.status): string {
+function statusTone(label: string, labels: StatusLabels): string {
   if (label === labels.on) return 'bg-emerald-500/10 text-emerald-200 border-emerald-400/60';
   if (label === labels.offToday) return 'bg-amber-500/10 text-amber-200 border-amber-400/60';
   return 'bg-slate-700/60 text-slate-200 border-slate-500/60';
