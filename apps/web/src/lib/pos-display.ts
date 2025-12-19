@@ -17,6 +17,7 @@ export type PosDisplayItem = {
 export type PosDisplaySnapshot = {
   items: PosDisplayItem[];
   subtotalCents: number;
+  discountCents?: number;
   taxCents: number;
   totalCents: number;
 };
