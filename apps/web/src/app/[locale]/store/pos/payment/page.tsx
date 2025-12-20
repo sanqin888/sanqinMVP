@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { TAX_RATE, type Locale } from "@/lib/order/shared";
-import { apiFetch } from "@/lib/api-client";
+import { ApiError, apiFetch } from "@/lib/api-client";
 import {
   POS_DISPLAY_CHANNEL,
   POS_DISPLAY_STORAGE_KEY,
@@ -405,9 +405,14 @@ export default function StorePosPaymentPage() {
       setMemberInfo(data);
       setRedeemPointsInput("");
     } catch (err) {
-      console.error("Failed to lookup member by phone:", err);
+      const apiError = err instanceof ApiError ? err : null;
+      if (!apiError || apiError.status !== 404) {
+        console.error("Failed to lookup member by phone:", err);
+      }
       setMemberInfo(null);
-      setMemberLookupError(t.memberNotFound);
+      setMemberLookupError(
+        apiError?.status === 404 ? t.memberNotFound : t.errorGeneric,
+      );
     } finally {
       setMemberLookupLoading(false);
     }

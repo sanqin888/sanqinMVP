@@ -205,11 +205,18 @@ export default function MembershipHomePage() {
             );
             if (rawExtra) {
               const extra = JSON.parse(rawExtra) as {
+                phone?: string | null;
+                phoneVerificationToken?: string | null;
                 referrerEmail?: string | null;
                 birthdayMonth?: string | null | number;
                 birthdayDay?: string | null | number;
                 marketingEmailOptIn?: boolean;
               };
+
+              if (!phoneFromQuery && extra.phone && extra.phoneVerificationToken === '1') {
+                params.set('phone', String(extra.phone));
+                params.set('pv', '1');
+              }
 
               if (extra.referrerEmail) {
                 params.set('referrerEmail', String(extra.referrerEmail));
