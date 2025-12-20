@@ -167,11 +167,6 @@ const COPY = {
       in_store: "POS",
       ubereats: "Delivery",
     },
-    channelLabel: {
-      web: "Online",
-      in_store: "POS",
-      ubereats: "Delivery",
-    },
     cashGuideTitle: "Cash handling",
     cashGuide: {
       retender: ["Refund the original cash payment, then take new payment."],
