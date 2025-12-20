@@ -65,6 +65,11 @@ const COPY = {
       in_store: "POS",
       ubereats: "外卖平台",
     },
+    channelLabel: {
+      web: "线上",
+      in_store: "POS",
+      ubereats: "外卖平台",
+    },
     cashGuideTitle: "现金处理逻辑",
     cashGuide: {
       retender: ["直接退款原现金付款，再用新方式收款。"],
@@ -162,6 +167,11 @@ const COPY = {
     itemSelectHint: "Void/swap requires selecting the items to change.",
     replacementLabel: "Replacement total",
     replacementPlaceholder: "Enter replacement items total (optional)",
+    channelLabel: {
+      web: "Online",
+      in_store: "POS",
+      ubereats: "Delivery",
+    },
     channelLabel: {
       web: "Online",
       in_store: "POS",
@@ -772,6 +782,63 @@ export default function PosOrdersPage() {
       setReason("");
       setSelectedItemIds([]);
       setReplacementInput("");
+    }
+  }, [orders, selectedId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchOrders = async () => {
+      try {
+        setIsLoading(true);
+        setErrorMessage(null);
+        const query =
+          "/orders/board?status=pending,paid,making,ready,completed,refunded&sinceMinutes=1440&limit=200";
+        const data = await apiFetch<BackendOrder[]>(query);
+
+        if (cancelled) return;
+
+        const mapped = data.map((order) => ({
+          id: order.id,
+          displayId: order.orderStableId ?? order.id,
+          type: order.fulfillmentType,
+          status: order.status,
+          amountCents: order.totalCents ?? 0,
+          time: formatOrderTime(order.createdAt, locale),
+          channel: order.channel,
+          paymentMethod: mapPaymentMethod(order),
+        }));
+
+        setOrders(mapped);
+      } catch (error) {
+        if (!cancelled) {
+          console.error("Failed to fetch POS orders:", error);
+          setErrorMessage(
+            locale === "zh"
+              ? "订单加载失败，请稍后再试。"
+              : "Failed to load orders. Please try again.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void fetchOrders();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [locale]);
+
+  useEffect(() => {
+    if (selectedId && !orders.some((order) => order.id === selectedId)) {
+      setSelectedId(null);
+      setSelectedAction(null);
+      setReason("");
+      setDeltaMode("same");
     }
   }, [orders, selectedId]);
 
