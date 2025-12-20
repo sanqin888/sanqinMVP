@@ -521,16 +521,31 @@ export class OrdersService {
     const headerKey =
       typeof idempotencyKey === 'string' ? idempotencyKey.trim() : undefined;
     const normalizedHeaderKey = normalizeStableId(headerKey);
-    const bodyKey =
+    const bodyStableId =
+      typeof dto.orderStableId === 'string'
+        ? dto.orderStableId.trim()
+        : undefined;
+    const normalizedBodyStableId = normalizeStableId(bodyStableId);
+    const legacyRequestId =
       typeof dto.clientRequestId === 'string'
         ? dto.clientRequestId.trim()
         : undefined;
-    const normalizedBodyKey = normalizeStableId(bodyKey);
-    const stableKey = normalizedHeaderKey ?? normalizedBodyKey ?? bodyKey;
+    const normalizedLegacyRequestId = normalizeStableId(legacyRequestId);
+    const stableKey =
+      normalizedHeaderKey ?? normalizedBodyStableId ?? normalizedLegacyRequestId;
+    const legacyKey =
+      legacyRequestId && legacyRequestId.length > 0 ? legacyRequestId : null;
 
-    if (stableKey) {
-      const existing = await this.prisma.order.findUnique({
-        where: { clientRequestId: stableKey },
+    if (stableKey || legacyKey) {
+      const existing = await this.prisma.order.findFirst({
+        where: {
+          OR: [
+            ...(stableKey
+              ? [{ orderStableId: stableKey }, { clientRequestId: stableKey }]
+              : []),
+            ...(legacyKey ? [{ clientRequestId: legacyKey }] : []),
+          ],
+        },
         include: { items: true },
       });
       if (existing) return existing as OrderWithItems;
@@ -672,7 +687,8 @@ export class OrdersService {
         data: {
           id: orderId,
           userId: dto.userId ?? null,
-          ...(stableKey ? { clientRequestId: stableKey } : {}),
+          ...(stableKey ? { orderStableId: stableKey } : {}),
+          ...(legacyRequestId ? { clientRequestId: legacyRequestId } : {}),
           channel: dto.channel,
           fulfillmentType: dto.fulfillmentType,
           contactName,
@@ -722,7 +738,7 @@ export class OrdersService {
     this.logger.log(
       `${this.formatOrderLogContext({
         orderId: order.id,
-        clientRequestId: order.clientRequestId ?? null,
+        orderStableId: order.orderStableId ?? null,
       })}Order created successfully (Server-side price calculated).`,
     );
 
@@ -827,6 +843,10 @@ export class OrdersService {
 
     const dto: CreateOrderDto = {
       userId: loyaltyUserId,
+      orderStableId:
+        typeof safePayload.referenceId === 'string'
+          ? normalizeStableId(safePayload.referenceId) ?? undefined
+          : undefined,
       clientRequestId:
         typeof safePayload.referenceId === 'string'
           ? safePayload.referenceId
@@ -844,7 +864,7 @@ export class OrdersService {
       deliveryFeeCents: meta.deliveryFeeCents,
     };
 
-    return this.createImmediatePaid(dto, dto.clientRequestId);
+    return this.createImmediatePaid(dto, dto.orderStableId ?? dto.clientRequestId);
   }
 
   async createImmediatePaid(
@@ -903,6 +923,12 @@ export class OrdersService {
     if (isUuid(value)) {
       order = (await this.prisma.order.findUnique({
         where: { id: value },
+        include,
+      })) as OrderWithItems | null;
+    }
+    if (!order) {
+      order = (await this.prisma.order.findFirst({
+        where: { orderStableId: value },
         include,
       })) as OrderWithItems | null;
     }
@@ -967,8 +993,8 @@ export class OrdersService {
 
     return {
       orderId: safeOrder.id,
-      clientRequestId: safeOrder.clientRequestId,
-      orderNumber: safeOrder.clientRequestId ?? safeOrder.id,
+      orderStableId: safeOrder.orderStableId,
+      orderNumber: safeOrder.orderStableId ?? safeOrder.id,
       currency: 'CAD',
       subtotalCents,
       taxCents,
@@ -1078,12 +1104,12 @@ export class OrdersService {
 
   private formatOrderLogContext(params?: {
     orderId?: string | null;
-    clientRequestId?: string | null;
+    orderStableId?: string | null;
   }): string {
     const parts: string[] = [];
     if (params?.orderId) parts.push(`orderId=${params.orderId}`);
-    if (params?.clientRequestId)
-      parts.push(`clientRequestId=${params.clientRequestId}`);
+    if (params?.orderStableId)
+      parts.push(`orderStableId=${params.orderStableId}`);
     return parts.length ? `[${parts.join(' ')}] ` : '';
   }
 
@@ -1095,7 +1121,7 @@ export class OrdersService {
       await this.doorDashDrive.createDelivery({
         orderId: order.id,
         pickupCode: order.pickupCode ?? undefined,
-        reference: order.clientRequestId ?? undefined,
+        reference: order.orderStableId ?? undefined,
         totalCents: order.totalCents,
         items: order.items.map((item) => ({
           name: item.displayName || item.productStableId,
@@ -1125,7 +1151,7 @@ export class OrdersService {
       await this.uberDirect.createDelivery({
         orderId: order.id,
         pickupCode: order.pickupCode,
-        reference: order.clientRequestId,
+        reference: order.orderStableId,
         totalCents: order.totalCents,
         items: order.items.map((item) => ({
           name: item.displayName || item.productStableId,

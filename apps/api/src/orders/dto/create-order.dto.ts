@@ -103,6 +103,13 @@ export class CreateOrderDto {
 
   @IsOptional()
   @IsString()
+  orderStableId?: string;
+
+  /**
+   * @deprecated use orderStableId instead
+   */
+  @IsOptional()
+  @IsString()
   clientRequestId?: string;
 
   @IsOptional()

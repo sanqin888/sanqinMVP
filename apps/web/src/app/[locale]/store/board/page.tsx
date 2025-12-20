@@ -19,7 +19,7 @@ type BoardOrderItem = {
 
 type BoardOrder = {
   id: string;
-  clientRequestId?: string | null;
+  orderStableId?: string | null;
   channel: "web" | "in_store" | "ubereats";
   status: "pending" | "paid" | "making" | "ready" | "completed" | "refunded";
   subtotalCents: number;
@@ -253,7 +253,7 @@ export default function StoreBoardPage() {
 
       <section className="p-4 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
         {orders.map((order) => {
-          const orderNumber = order.clientRequestId ?? order.id;
+          const orderNumber = order.orderStableId ?? order.id;
           const isWeb = order.channel === "web";
           const isPending = order.status === "pending";
 
