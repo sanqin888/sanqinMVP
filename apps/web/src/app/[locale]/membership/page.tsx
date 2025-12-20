@@ -191,10 +191,10 @@ export default function MembershipHomePage() {
 
         // 👇 如果 Google 登录回调 URL 上带了已验证手机号，则一并传给 membership 做绑定
         const phoneFromQuery = searchParams?.get('phone') ?? undefined;
-        const phoneVerifiedFlag = searchParams?.get('pv') ?? undefined;
-        if (phoneFromQuery && phoneVerifiedFlag === '1') {
+        const phoneVerificationToken = searchParams?.get('pv') ?? undefined;
+        if (phoneFromQuery && phoneVerificationToken) {
           params.set('phone', phoneFromQuery);
-          params.set('pv', '1');
+          params.set('pv', phoneVerificationToken);
         }
 
         // 首次注册时 localStorage 里存的推荐人/生日，只用一次
