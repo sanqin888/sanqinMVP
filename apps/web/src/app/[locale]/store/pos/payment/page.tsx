@@ -16,7 +16,7 @@ type PaymentMethod = "cash" | "card" | "wechat_alipay";
 
 type CreatePosOrderResponse = {
   id: string;
-  clientRequestId?: string | null;
+  orderStableId?: string | null;
   pickupCode?: string | null;
 };
 
@@ -204,19 +204,6 @@ function formatMoney(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-function makePosClientRequestId(): string {
-  // 在现代浏览器里：crypto.randomUUID() 基本不会重复
-  // fallback：Date.now()（必要时可再拼上 Math.random()）
-  try {
-    if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-      return `POS-${crypto.randomUUID()}`;
-    }
-  } catch {
-    // ignore
-  }
-  return `POS-${Date.now()}`;
-}
-
 export default function StorePosPaymentPage() {
   const router = useRouter();
   const params = useParams<{ locale?: string }>();
@@ -230,7 +217,6 @@ export default function StorePosPaymentPage() {
   const [discountRate, setDiscountRate] = useState<number>(0);
   const [showDiscountOptions, setShowDiscountOptions] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [posClientRequestId, setPosClientRequestId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [memberPhone, setMemberPhone] = useState("");
   const [memberInfo, setMemberInfo] = useState<MemberLookupResponse | null>(
@@ -433,9 +419,6 @@ export default function StorePosPaymentPage() {
   };
 
   const handleConfirm = async () => {
-    const clientRequestId = posClientRequestId ?? makePosClientRequestId();
-    if (!posClientRequestId) setPosClientRequestId(clientRequestId);
-
     setError(null);
     setSubmitting(true);
 
@@ -475,8 +458,6 @@ export default function StorePosPaymentPage() {
         pointsToRedeem: pointsToRedeem > 0 ? pointsToRedeem : undefined,
         contactPhone: memberInfo?.phone ?? undefined,
 
-        // ✅ 更可靠的幂等 key / 请求追踪 id
-        clientRequestId,
       };
 
       // 👉 调试用：你可以先打开这一行看看真实发出去是什么
@@ -488,7 +469,7 @@ export default function StorePosPaymentPage() {
         body: JSON.stringify(body),
       });
 
-      const orderNumber = order.clientRequestId ?? clientRequestId;
+      const orderNumber = order.orderStableId ?? order.id;
       const pickupCode = order.pickupCode ?? null;
 
       // ✅ 打印：发送给本地打印服务（无弹窗）
