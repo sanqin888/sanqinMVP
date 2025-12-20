@@ -14,15 +14,6 @@ const COPY = {
     backToPos: "返回 POS 点单",
     filtersTitle: "筛选条件",
     filtersSubtitle: "支持时间、渠道、状态、支付方式、金额区间等组合筛选。",
-    filterTags: [
-      "今日订单",
-      "外卖",
-      "堂食",
-      "待支付",
-      "已完成",
-      "退款中",
-      "高客单",
-    ],
     tableTitle: "订单列表",
     tableSubtitle: "点击订单可查看可操作功能。",
     orderNumber: "订单号",
@@ -56,16 +47,19 @@ const COPY = {
       retender: "更改支付方式（Re-tender）",
       void_item: "退菜 = 部分退款 / 作废单品（Void Item）",
       swap_item: "换菜 = 退旧 + 加新 + 差额补收/差额退款",
+      full_refund: "全单退款",
     },
+    actionNotice: "请选择需要处理的订单操作。",
+    actionExecute: "执行操作",
+    actionProcessing: "处理中...",
+    actionSuccess: "已提交订单操作。",
     reasonLabel: "操作原因",
     reasonPlaceholder: "请输入原因（必填）",
     reasonPresets: ["顾客取消", "商品售罄", "操作失误", "支付方式调整"],
-    deltaLabel: "金额变化",
-    deltaOptions: {
-      increase: "金额增加",
-      same: "等价更换",
-      decrease: "金额减少",
-    },
+    itemSelectTitle: "选择退/换菜品",
+    itemSelectHint: "退菜/换菜必须勾选对应菜品。",
+    replacementLabel: "新菜品金额",
+    replacementPlaceholder: "输入新菜品总价（可选）",
     channelLabel: {
       web: "线上",
       in_store: "POS",
@@ -76,6 +70,7 @@ const COPY = {
       retender: ["直接退款原现金付款，再用新方式收款。"],
       void_item: ["可做部分退款，并记录原因。"],
       swap_item: ["按差额补收或部分退款。"],
+      full_refund: ["整单退款并作废原订单。"],
     },
     cardGuideTitle: "银行卡处理逻辑",
     cardGuide: {
@@ -93,9 +88,14 @@ const COPY = {
         "delta = 0：只改明细，厨房打印作废联/更改单 + 加菜联。",
         "delta < 0：整单退款再对刷“新金额”，rebillGroupId 串联。",
       ],
+      full_refund: ["整单退款并作废原交易。"],
     },
     summaryTitle: "订单小结",
     summaryOriginal: "原订单金额",
+    summarySubtotal: "小计",
+    summaryDiscount: "优惠/积分抵扣",
+    summaryTax: "税费",
+    summaryDelivery: "配送费",
     summaryRefund: "退款金额",
     summaryAdditionalCharge: "差额补收",
     summaryNewCharge: "新收款",
@@ -111,15 +111,6 @@ const COPY = {
     filtersTitle: "Filters",
     filtersSubtitle:
       "Combine time, channel, status, payment method, and amount range.",
-    filterTags: [
-      "Today",
-      "Delivery",
-      "Dine-in",
-      "Pending",
-      "Completed",
-      "Refunding",
-      "High ticket",
-    ],
     tableTitle: "Orders",
     tableSubtitle: "Select an order to see actions.",
     orderNumber: "Order #",
@@ -153,7 +144,12 @@ const COPY = {
       retender: "Re-tender payment method",
       void_item: "Void item = partial refund / cancel item",
       swap_item: "Swap item = return old + add new + settle difference",
+      full_refund: "Full refund",
     },
+    actionNotice: "Select an action to continue.",
+    actionExecute: "Execute action",
+    actionProcessing: "Processing...",
+    actionSuccess: "Order action submitted.",
     reasonLabel: "Reason",
     reasonPlaceholder: "Enter reason (required)",
     reasonPresets: [
@@ -162,12 +158,10 @@ const COPY = {
       "Operator mistake",
       "Payment adjustment",
     ],
-    deltaLabel: "Amount change",
-    deltaOptions: {
-      increase: "Increase",
-      same: "No change",
-      decrease: "Decrease",
-    },
+    itemSelectTitle: "Select items to void/swap",
+    itemSelectHint: "Void/swap requires selecting the items to change.",
+    replacementLabel: "Replacement total",
+    replacementPlaceholder: "Enter replacement items total (optional)",
     channelLabel: {
       web: "Online",
       in_store: "POS",
@@ -178,6 +172,7 @@ const COPY = {
       retender: ["Refund the original cash payment, then take new payment."],
       void_item: ["Allow partial refunds and record the reason."],
       swap_item: ["Settle the difference with refund or extra charge."],
+      full_refund: ["Refund the entire order and void the receipt."],
     },
     cardGuideTitle: "Card handling",
     cardGuide: {
@@ -195,9 +190,14 @@ const COPY = {
         "delta = 0: update items only, print void/change + add tickets.",
         "delta < 0: void/refund then rebill the new amount (rebillGroupId).",
       ],
+      full_refund: ["Void/refund the full transaction."],
     },
     summaryTitle: "Order summary",
     summaryOriginal: "Original total",
+    summarySubtotal: "Subtotal",
+    summaryDiscount: "Discounts/points",
+    summaryTax: "Tax",
+    summaryDelivery: "Delivery fee",
     summaryRefund: "Refund amount",
     summaryAdditionalCharge: "Additional charge",
     summaryNewCharge: "New charge",
@@ -211,9 +211,58 @@ const COPY = {
 type OrderStatusKey = keyof (typeof COPY)["zh"]["status"];
 type ActionKey = keyof (typeof COPY)["zh"]["actionLabels"];
 type PaymentMethodKey = keyof (typeof COPY)["zh"]["paymentMethod"];
-type DeltaMode = keyof (typeof COPY)["zh"]["deltaOptions"];
 
-const ACTIONS: ActionKey[] = ["retender", "void_item", "swap_item"];
+const ACTIONS: ActionKey[] = [
+  "retender",
+  "void_item",
+  "swap_item",
+  "full_refund",
+];
+
+const QUICK_FILTERS = [
+  {
+    key: "today",
+    label: { zh: "今日订单", en: "Today" },
+    type: "time",
+    value: "today",
+  },
+  {
+    key: "delivery",
+    label: { zh: "外卖", en: "Delivery" },
+    type: "fulfillment",
+    value: "delivery",
+  },
+  {
+    key: "dine_in",
+    label: { zh: "堂食", en: "Dine-in" },
+    type: "fulfillment",
+    value: "dine_in",
+  },
+  {
+    key: "pending",
+    label: { zh: "待支付", en: "Pending" },
+    type: "status",
+    value: "pending",
+  },
+  {
+    key: "completed",
+    label: { zh: "已完成", en: "Completed" },
+    type: "status",
+    value: "completed",
+  },
+  {
+    key: "refunded",
+    label: { zh: "已退款", en: "Refunded" },
+    type: "status",
+    value: "refunded",
+  },
+  {
+    key: "high_ticket",
+    label: { zh: "高客单", en: "High ticket" },
+    type: "amount",
+    value: 8000,
+  },
+] as const;
 
 type BackendOrder = {
   id: string;
@@ -227,8 +276,25 @@ type BackendOrder = {
     | "ready"
     | "completed"
     | "refunded";
+  subtotalCents?: number | null;
+  subtotalAfterDiscountCents?: number | null;
+  couponDiscountCents?: number | null;
+  loyaltyRedeemCents?: number | null;
+  taxCents?: number | null;
+  deliveryFeeCents?: number | null;
   totalCents: number;
   createdAt: string;
+  items: BackendOrderItem[];
+};
+
+type BackendOrderItem = {
+  id: string;
+  productStableId: string;
+  qty: number;
+  displayName?: string | null;
+  nameEn?: string | null;
+  nameZh?: string | null;
+  unitPriceCents?: number | null;
 };
 
 type OrderRecord = {
@@ -237,9 +303,24 @@ type OrderRecord = {
   type: keyof (typeof COPY)["zh"]["orderCard"];
   status: OrderStatusKey;
   amountCents: number;
+  subtotalCents: number;
+  discountCents: number;
+  subtotalAfterDiscountCents: number;
+  taxCents: number;
+  deliveryFeeCents: number;
+  items: OrderItemRecord[];
   time: string;
   channel: BackendOrder["channel"];
   paymentMethod: PaymentMethodKey;
+  createdAt: string;
+};
+
+type OrderItemRecord = {
+  id: string;
+  name: string;
+  qty: number;
+  unitPriceCents: number;
+  totalCents: number;
 };
 
 function statusTone(status: OrderStatusKey): string {
@@ -279,8 +360,35 @@ function mapPaymentMethod(order: BackendOrder): PaymentMethodKey {
   return "card";
 }
 
+function pickItemName(item: BackendOrderItem, locale: Locale): string {
+  const display = item.displayName?.trim() ?? "";
+  const nameEn = item.nameEn?.trim() ?? "";
+  const nameZh = item.nameZh?.trim() ?? "";
+
+  if (locale === "zh") {
+    return nameZh || display || nameEn || item.productStableId;
+  }
+  return nameEn || display || nameZh || item.productStableId;
+}
+
+function parseCurrencyToCents(value: string): number {
+  const cleaned = value.replace(/[^\d.]/g, "");
+  if (!cleaned) return 0;
+  const parsed = Number.parseFloat(cleaned);
+  if (Number.isNaN(parsed)) return 0;
+  return Math.max(0, Math.round(parsed * 100));
+}
+
 type ActionSummary = {
   baseTotal: number;
+  baseSubtotal: number;
+  baseDiscount: number;
+  baseTax: number;
+  baseDelivery: number;
+  newSubtotal: number;
+  newDiscount: number;
+  newTax: number;
+  newDelivery: number;
   refundCents: number;
   additionalChargeCents: number;
   newChargeCents: number;
@@ -293,11 +401,16 @@ type ActionContentProps = {
   order: OrderRecord;
   selectedAction: ActionKey | null;
   onSelectAction: (action: ActionKey) => void;
-  deltaMode: DeltaMode;
-  onDeltaChange: (mode: DeltaMode) => void;
   reason: string;
   onReasonChange: (value: string) => void;
+  selectedItemIds: string[];
+  onToggleItem: (id: string) => void;
+  replacementInput: string;
+  onReplacementChange: (value: string) => void;
   summary: ActionSummary | null;
+  canSubmit: boolean;
+  onSubmit: () => void;
+  isSubmitting: boolean;
 };
 
 function ActionContent({
@@ -305,16 +418,24 @@ function ActionContent({
   order,
   selectedAction,
   onSelectAction,
-  deltaMode,
-  onDeltaChange,
   reason,
   onReasonChange,
+  selectedItemIds,
+  onToggleItem,
+  replacementInput,
+  onReplacementChange,
   summary,
+  canSubmit,
+  onSubmit,
+  isSubmitting,
 }: ActionContentProps) {
   const guide =
     order.paymentMethod === "cash"
       ? copy.cashGuide[selectedAction ?? "retender"]
       : copy.cardGuide[selectedAction ?? "retender"];
+
+  const showItemSelection =
+    selectedAction === "void_item" || selectedAction === "swap_item";
 
   return (
     <div className="space-y-4">
@@ -347,6 +468,11 @@ function ActionContent({
         <>
           <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-3 text-xs text-slate-200">
             <div className="text-[11px] font-semibold uppercase text-slate-400">
+              {copy.actionNotice}
+            </div>
+          </div>
+          <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-3 text-xs text-slate-200">
+            <div className="text-[11px] font-semibold uppercase text-slate-400">
               {order.paymentMethod === "cash"
                 ? copy.cashGuideTitle
                 : copy.cardGuideTitle}
@@ -361,27 +487,57 @@ function ActionContent({
             </ul>
           </div>
 
-          <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-3 text-xs text-slate-200">
-            <div className="text-[11px] font-semibold uppercase text-slate-400">
-              {copy.deltaLabel}
+          {showItemSelection && (
+            <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-3 text-xs text-slate-200">
+              <div className="text-[11px] font-semibold uppercase text-slate-400">
+                {copy.itemSelectTitle}
+              </div>
+              <div className="mt-2 space-y-2">
+                {order.items.map((item) => (
+                  <label
+                    key={item.id}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-slate-700 bg-slate-950/40 px-3 py-2 text-[11px]"
+                  >
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedItemIds.includes(item.id)}
+                        onChange={() => onToggleItem(item.id)}
+                        className="h-3.5 w-3.5 rounded border-slate-500 bg-slate-900 text-emerald-400"
+                      />
+                      <div>
+                        <div className="text-xs text-slate-100">
+                          {item.name}
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          x{item.qty} · {formatMoney(item.unitPriceCents)}
+                        </div>
+                      </div>
+                    </div>
+                    <span className="text-xs font-semibold text-slate-100">
+                      {formatMoney(item.totalCents)}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <div className="mt-2 text-[11px] text-slate-400">
+                {copy.itemSelectHint}
+              </div>
+              {selectedAction === "swap_item" && (
+                <div className="mt-3">
+                  <label className="text-[11px] font-semibold uppercase text-slate-400">
+                    {copy.replacementLabel}
+                  </label>
+                  <input
+                    value={replacementInput}
+                    onChange={(event) => onReplacementChange(event.target.value)}
+                    placeholder={copy.replacementPlaceholder}
+                    className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs text-slate-100 focus:border-emerald-400 focus:outline-none"
+                  />
+                </div>
+              )}
             </div>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {(Object.keys(copy.deltaOptions) as DeltaMode[]).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => onDeltaChange(mode)}
-                  className={`rounded-full border px-3 py-1 text-[11px] ${
-                    deltaMode === mode
-                      ? "border-sky-400/70 bg-sky-500/15 text-sky-50"
-                      : "border-slate-700 bg-slate-800/50 text-slate-200"
-                  }`}
-                >
-                  {copy.deltaOptions[mode]}
-                </button>
-              ))}
-            </div>
-          </div>
+          )}
 
           <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-3 text-xs text-slate-200">
             <label className="text-[11px] font-semibold uppercase text-slate-400">
@@ -419,6 +575,28 @@ function ActionContent({
                     {formatMoney(summary.baseTotal)}
                   </span>
                 </div>
+                <div className="flex items-center justify-between text-slate-300">
+                  <span>{copy.summarySubtotal}</span>
+                  <span>{formatMoney(summary.newSubtotal)}</span>
+                </div>
+                {summary.newDiscount > 0 && (
+                  <div className="flex items-center justify-between text-slate-300">
+                    <span>{copy.summaryDiscount}</span>
+                    <span>-{formatMoney(summary.newDiscount)}</span>
+                  </div>
+                )}
+                {summary.newTax > 0 && (
+                  <div className="flex items-center justify-between text-slate-300">
+                    <span>{copy.summaryTax}</span>
+                    <span>{formatMoney(summary.newTax)}</span>
+                  </div>
+                )}
+                {summary.newDelivery > 0 && (
+                  <div className="flex items-center justify-between text-slate-300">
+                    <span>{copy.summaryDelivery}</span>
+                    <span>{formatMoney(summary.newDelivery)}</span>
+                  </div>
+                )}
                 {summary.refundCents > 0 && (
                   <div className="flex items-center justify-between text-rose-200">
                     <span>{copy.summaryRefund}</span>
@@ -465,6 +643,18 @@ function ActionContent({
               </div>
             ) : null}
           </div>
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={!canSubmit || isSubmitting}
+          className={`w-full rounded-xl px-4 py-2 text-xs font-semibold transition ${
+              !canSubmit || isSubmitting
+                ? "cursor-not-allowed bg-slate-800/60 text-slate-400"
+                : "bg-emerald-500/20 text-emerald-50 hover:bg-emerald-500/30"
+            }`}
+          >
+            {isSubmitting ? copy.actionProcessing : copy.actionExecute}
+          </button>
         </>
       )}
     </div>
@@ -479,10 +669,25 @@ export default function PosOrdersPage() {
   const [orders, setOrders] = useState<OrderRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [filters, setFilters] = useState<{
+    time: "all" | "today";
+    statuses: OrderStatusKey[];
+    channels: BackendOrder["channel"][];
+    fulfillments: OrderRecord["type"][];
+    minTotalCents: number | null;
+  }>({
+    time: "all",
+    statuses: [],
+    channels: [],
+    fulfillments: [],
+    minTotalCents: null,
+  });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedAction, setSelectedAction] = useState<ActionKey | null>(null);
-  const [deltaMode, setDeltaMode] = useState<DeltaMode>("same");
   const [reason, setReason] = useState("");
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+  const [replacementInput, setReplacementInput] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -497,16 +702,44 @@ export default function PosOrdersPage() {
 
         if (cancelled) return;
 
-        const mapped = data.map((order) => ({
-          id: order.id,
-          displayId: order.orderStableId ?? order.id,
-          type: order.fulfillmentType,
-          status: order.status,
-          amountCents: order.totalCents ?? 0,
-          time: formatOrderTime(order.createdAt, locale),
-          channel: order.channel,
-          paymentMethod: mapPaymentMethod(order),
-        }));
+        const mapped = data.map((order) => {
+          const subtotalCents = order.subtotalCents ?? order.totalCents ?? 0;
+          const discountCents =
+            (order.couponDiscountCents ?? 0) + (order.loyaltyRedeemCents ?? 0);
+          const subtotalAfterDiscountCents =
+            order.subtotalAfterDiscountCents ??
+            Math.max(0, subtotalCents - discountCents);
+          const taxCents = order.taxCents ?? 0;
+          const deliveryFeeCents = order.deliveryFeeCents ?? 0;
+          const items = order.items.map((item) => {
+            const unitPriceCents = item.unitPriceCents ?? 0;
+            return {
+              id: item.id,
+              name: pickItemName(item, locale),
+              qty: item.qty,
+              unitPriceCents,
+              totalCents: unitPriceCents * item.qty,
+            };
+          });
+
+          return {
+            id: order.id,
+            displayId: order.orderStableId ?? order.id,
+            type: order.fulfillmentType,
+            status: order.status,
+            amountCents: order.totalCents ?? 0,
+            subtotalCents,
+            discountCents,
+            subtotalAfterDiscountCents,
+            taxCents,
+            deliveryFeeCents,
+            items,
+            time: formatOrderTime(order.createdAt, locale),
+            channel: order.channel,
+            paymentMethod: mapPaymentMethod(order),
+            createdAt: order.createdAt,
+          };
+        });
 
         setOrders(mapped);
       } catch (error) {
@@ -537,7 +770,8 @@ export default function PosOrdersPage() {
       setSelectedId(null);
       setSelectedAction(null);
       setReason("");
-      setDeltaMode("same");
+      setSelectedItemIds([]);
+      setReplacementInput("");
     }
   }, [orders, selectedId]);
 
@@ -546,86 +780,205 @@ export default function PosOrdersPage() {
     [orders, selectedId],
   );
 
+  const filteredOrders = useMemo(() => {
+    return orders.filter((order) => {
+      if (filters.time === "today") {
+        const orderDate = new Date(order.createdAt);
+        const now = new Date();
+        if (
+          orderDate.getFullYear() !== now.getFullYear() ||
+          orderDate.getMonth() !== now.getMonth() ||
+          orderDate.getDate() !== now.getDate()
+        ) {
+          return false;
+        }
+      }
+      if (
+        filters.statuses.length > 0 &&
+        !filters.statuses.includes(order.status)
+      ) {
+        return false;
+      }
+      if (
+        filters.channels.length > 0 &&
+        !filters.channels.includes(order.channel)
+      ) {
+        return false;
+      }
+      if (
+        filters.fulfillments.length > 0 &&
+        !filters.fulfillments.includes(order.type)
+      ) {
+        return false;
+      }
+      if (
+        filters.minTotalCents !== null &&
+        order.amountCents < filters.minTotalCents
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }, [filters, orders]);
+
   const summary = useMemo(() => {
     if (!selectedOrder || !selectedAction) return null;
     const baseTotal = selectedOrder.amountCents;
-    const deltaMagnitude = Math.max(200, Math.round(baseTotal * 0.12));
-    const deltaCents =
-      deltaMode === "increase"
-        ? deltaMagnitude
-        : deltaMode === "decrease"
-          ? -deltaMagnitude
-          : 0;
+    const baseSubtotal = selectedOrder.subtotalCents;
+    const baseDiscount = selectedOrder.discountCents;
+    const baseTax = selectedOrder.taxCents;
+    const baseDelivery = selectedOrder.deliveryFeeCents;
+    const selectedItems = selectedOrder.items.filter((item) =>
+      selectedItemIds.includes(item.id),
+    );
+    const removedCents = selectedItems.reduce(
+      (sum, item) => sum + item.totalCents,
+      0,
+    );
+    const replacementCents = parseCurrencyToCents(replacementInput);
 
-    const paymentMethod = selectedOrder.paymentMethod;
-    const isRetender = selectedAction === "retender";
+    let newSubtotal = baseSubtotal;
+    if (selectedAction === "void_item") {
+      newSubtotal = baseSubtotal - removedCents;
+    } else if (selectedAction === "swap_item") {
+      newSubtotal = baseSubtotal - removedCents + replacementCents;
+    } else if (selectedAction === "full_refund") {
+      newSubtotal = 0;
+    }
+    newSubtotal = Math.max(0, newSubtotal);
 
-    if (paymentMethod === "cash") {
-      if (isRetender) {
-        return {
-          baseTotal,
-          refundCents: baseTotal,
-          newChargeCents: baseTotal + deltaCents,
-          additionalChargeCents: 0,
-          newTotalCents: baseTotal + deltaCents,
-          rebillGroupId: null,
-        };
+    const newDiscount =
+      selectedAction === "full_refund" ? 0 : Math.min(baseDiscount, newSubtotal);
+    const newSubtotalAfterDiscount = Math.max(0, newSubtotal - newDiscount);
+    const baseAfterDiscount = Math.max(
+      0,
+      selectedOrder.subtotalAfterDiscountCents,
+    );
+    const taxRate = baseAfterDiscount > 0 ? baseTax / baseAfterDiscount : 0;
+    const newTax =
+      selectedAction === "full_refund"
+        ? 0
+        : Math.round(newSubtotalAfterDiscount * taxRate);
+    const newDelivery =
+      selectedAction === "full_refund" ? 0 : selectedOrder.deliveryFeeCents;
+    const newTotal = newSubtotalAfterDiscount + newTax + newDelivery;
+
+    let refundCents = 0;
+    let additionalChargeCents = 0;
+    let newChargeCents = 0;
+
+    if (selectedAction === "retender") {
+      refundCents = baseTotal;
+      newChargeCents = newTotal;
+    } else if (selectedAction === "full_refund") {
+      refundCents = baseTotal;
+    } else {
+      const delta = newTotal - baseTotal;
+      if (delta > 0) {
+        additionalChargeCents = delta;
+      } else if (delta < 0) {
+        refundCents = Math.abs(delta);
       }
-
-      const refundCents = deltaCents < 0 ? Math.abs(deltaCents) : 0;
-      const additionalChargeCents = deltaCents > 0 ? deltaCents : 0;
-      return {
-        baseTotal,
-        refundCents,
-        newChargeCents: 0,
-        additionalChargeCents,
-        newTotalCents: baseTotal + deltaCents,
-        rebillGroupId: null,
-      };
-    }
-
-    if (isRetender) {
-      return {
-        baseTotal,
-        refundCents: baseTotal,
-        newChargeCents: baseTotal + deltaCents,
-        additionalChargeCents: 0,
-        newTotalCents: baseTotal + deltaCents,
-        rebillGroupId: "RB-20240918-01",
-      };
-    }
-
-    if (deltaCents > 0) {
-      return {
-        baseTotal,
-        refundCents: 0,
-        newChargeCents: 0,
-        additionalChargeCents: deltaCents,
-        newTotalCents: baseTotal + deltaCents,
-        rebillGroupId: null,
-      };
-    }
-
-    if (deltaCents === 0) {
-      return {
-        baseTotal,
-        refundCents: 0,
-        newChargeCents: 0,
-        additionalChargeCents: 0,
-        newTotalCents: baseTotal,
-        rebillGroupId: null,
-      };
     }
 
     return {
       baseTotal,
-      refundCents: baseTotal,
-      newChargeCents: baseTotal + deltaCents,
-      additionalChargeCents: 0,
-      newTotalCents: baseTotal + deltaCents,
-      rebillGroupId: "RB-20240918-02",
+      baseSubtotal,
+      baseDiscount,
+      baseTax,
+      baseDelivery,
+      newSubtotal,
+      newDiscount,
+      newTax,
+      newDelivery,
+      refundCents,
+      additionalChargeCents,
+      newChargeCents,
+      newTotalCents: newTotal,
+      rebillGroupId: null,
     };
-  }, [deltaMode, selectedAction, selectedOrder]);
+  }, [replacementInput, selectedAction, selectedItemIds, selectedOrder]);
+
+  const toggleArrayValue = <T,>(values: T[], value: T) => {
+    return values.includes(value)
+      ? values.filter((item) => item !== value)
+      : [...values, value];
+  };
+
+  const handleQuickFilterToggle = (key: (typeof QUICK_FILTERS)[number]) => {
+    if (key.type === "time") {
+      setFilters((prev) => ({
+        ...prev,
+        time: prev.time === "today" ? "all" : "today",
+      }));
+      return;
+    }
+
+    if (key.type === "amount") {
+      setFilters((prev) => ({
+        ...prev,
+        minTotalCents:
+          prev.minTotalCents === key.value ? null : Number(key.value),
+      }));
+      return;
+    }
+
+    if (key.type === "status") {
+      setFilters((prev) => ({
+        ...prev,
+        statuses: toggleArrayValue(
+          prev.statuses,
+          key.value as OrderStatusKey,
+        ),
+      }));
+      return;
+    }
+
+    setFilters((prev) => ({
+      ...prev,
+      fulfillments: toggleArrayValue(
+        prev.fulfillments,
+        key.value as OrderRecord["type"],
+      ),
+    }));
+  };
+
+  const handleToggleItem = (id: string) => {
+    setSelectedItemIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
+    );
+  };
+
+  const handleSelectAction = (action: ActionKey) => {
+    setSelectedAction(action);
+    if (action !== "void_item" && action !== "swap_item") {
+      setSelectedItemIds([]);
+      setReplacementInput("");
+    }
+  };
+
+  const showItemSelection =
+    selectedAction === "void_item" || selectedAction === "swap_item";
+
+  const canSubmit =
+    Boolean(selectedAction) &&
+    reason.trim().length > 0 &&
+    (!showItemSelection || selectedItemIds.length > 0);
+
+  const handleSubmit = () => {
+    if (!selectedOrder || !selectedAction) return;
+    if (!canSubmit) return;
+    setIsSubmitting(true);
+    window.setTimeout(() => {
+      setIsSubmitting(false);
+      alert(copy.actionSuccess);
+      setSelectedId(null);
+      setSelectedAction(null);
+      setReason("");
+      setSelectedItemIds([]);
+      setReplacementInput("");
+    }, 500);
+  };
 
   return (
     <main className="min-h-screen bg-slate-900 text-slate-50">
@@ -642,7 +995,7 @@ export default function PosOrdersPage() {
         </Link>
       </header>
 
-      <section className="grid gap-4 px-6 py-4 lg:grid-cols-[1.05fr_1.6fr_1.1fr]">
+      <section className="grid gap-4 px-6 py-4 lg:grid-cols-[1.05fr_1.6fr]">
         <div className="rounded-2xl border border-slate-700 bg-slate-800/60 p-4">
           <div className="flex items-center justify-between">
             <div>
@@ -650,43 +1003,104 @@ export default function PosOrdersPage() {
               <p className="text-xs text-slate-300">{copy.filtersSubtitle}</p>
             </div>
             <span className="rounded-full border border-slate-600 bg-slate-800 px-2.5 py-1 text-[11px] text-slate-200">
-              {orders.length}
+              {filteredOrders.length}/{orders.length}
             </span>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
-            {copy.filterTags.map((tag) => (
-              <span
-                key={tag}
-                className="rounded-full border border-slate-600 bg-slate-900/40 px-3 py-1 text-xs text-slate-200"
-              >
-                {tag}
-              </span>
-            ))}
+            {QUICK_FILTERS.map((filter) => {
+              const active =
+                (filter.type === "time" && filters.time === "today") ||
+                (filter.type === "status" &&
+                  filters.statuses.includes(filter.value as OrderStatusKey)) ||
+                (filter.type === "fulfillment" &&
+                  filters.fulfillments.includes(
+                    filter.value as OrderRecord["type"],
+                  )) ||
+                (filter.type === "amount" &&
+                  filters.minTotalCents === Number(filter.value));
+
+              return (
+                <button
+                  key={filter.key}
+                  type="button"
+                  onClick={() => handleQuickFilterToggle(filter)}
+                  className={`rounded-full border px-3 py-1 text-xs transition ${
+                    active
+                      ? "border-emerald-400/70 bg-emerald-500/15 text-emerald-50"
+                      : "border-slate-600 bg-slate-900/40 text-slate-200"
+                  }`}
+                >
+                  {locale === "zh" ? filter.label.zh : filter.label.en}
+                </button>
+              );
+            })}
           </div>
           <div className="mt-4 grid gap-3 text-xs text-slate-300">
             <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-3">
               <div className="text-[11px] uppercase text-slate-400">Channels</div>
               <div className="mt-2 flex flex-wrap gap-2">
-                {["POS", "Online", "Delivery", "Membership"].map((item) => (
-                  <span
-                    key={item}
-                    className="rounded-full border border-slate-700 bg-slate-800 px-2.5 py-1 text-[11px]"
-                  >
-                    {item}
-                  </span>
-                ))}
+                {(
+                  [
+                    { key: "in_store", label: copy.channelLabel.in_store },
+                    { key: "web", label: copy.channelLabel.web },
+                    { key: "ubereats", label: copy.channelLabel.ubereats },
+                  ] as const
+                ).map((item) => {
+                  const active = filters.channels.includes(item.key);
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() =>
+                        setFilters((prev) => ({
+                          ...prev,
+                          channels: toggleArrayValue(prev.channels, item.key),
+                        }))
+                      }
+                      className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
+                        active
+                          ? "border-emerald-400/70 bg-emerald-500/15 text-emerald-50"
+                          : "border-slate-700 bg-slate-800 text-slate-200"
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
             <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-3">
               <div className="text-[11px] uppercase text-slate-400">Amount</div>
-              <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-300">
-                <span className="rounded-full border border-slate-700 px-2 py-1">
-                  $0
-                </span>
-                <span className="text-slate-500">~</span>
-                <span className="rounded-full border border-slate-700 px-2 py-1">
-                  $200+
-                </span>
+              <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-300">
+                {[
+                  { label: "$0+", value: 0 },
+                  { label: "$50+", value: 5000 },
+                  { label: "$100+", value: 10000 },
+                ].map((option) => {
+                  const active = filters.minTotalCents === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() =>
+                        setFilters((prev) => ({
+                          ...prev,
+                          minTotalCents:
+                            prev.minTotalCents === option.value
+                              ? null
+                              : option.value,
+                        }))
+                      }
+                      className={`rounded-full border px-2 py-1 transition ${
+                        active
+                          ? "border-emerald-400/70 bg-emerald-500/15 text-emerald-50"
+                          : "border-slate-700 text-slate-200"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -708,15 +1122,16 @@ export default function PosOrdersPage() {
                 {errorMessage}
               </div>
             ) : null}
-            {orders.map((order) => (
+            {filteredOrders.map((order) => (
               <button
                 key={order.id}
                 type="button"
                 onClick={() => {
                   setSelectedId(order.id);
                   setSelectedAction("retender");
-                  setDeltaMode("same");
                   setReason("");
+                  setSelectedItemIds([]);
+                  setReplacementInput("");
                 }}
                 className={`flex w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition hover:border-slate-400 hover:bg-slate-800/70 ${
                   order.id === selectedId
@@ -753,7 +1168,7 @@ export default function PosOrdersPage() {
                 </div>
               </button>
             ))}
-            {!isLoading && !errorMessage && orders.length === 0 ? (
+            {!isLoading && !errorMessage && filteredOrders.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-900/40 p-6 text-center text-xs text-slate-400">
                 {locale === "zh" ? "暂无订单数据。" : "No orders found."}
               </div>
@@ -761,30 +1176,6 @@ export default function PosOrdersPage() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-700 bg-slate-800/60 p-4">
-          <div>
-            <h2 className="text-lg font-semibold">{copy.actionsTitle}</h2>
-            <p className="text-xs text-slate-300">{copy.actionsSubtitle}</p>
-          </div>
-          <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-900/50 p-4">
-            {selectedOrder ? (
-              <ActionContent
-                copy={copy}
-                order={selectedOrder}
-                selectedAction={selectedAction}
-                onSelectAction={setSelectedAction}
-                deltaMode={deltaMode}
-                onDeltaChange={setDeltaMode}
-                reason={reason}
-                onReasonChange={setReason}
-                summary={summary}
-              />
-            ) : (
-              <p className="text-sm text-slate-300">{copy.emptySelection}</p>
-            )}
-          </div>
-          <p className="mt-4 text-xs text-slate-400">{copy.footerTip}</p>
-        </div>
       </section>
 
       {selectedOrder && (
@@ -802,8 +1193,9 @@ export default function PosOrdersPage() {
                 onClick={() => {
                   setSelectedId(null);
                   setSelectedAction(null);
-                  setDeltaMode("same");
                   setReason("");
+                  setSelectedItemIds([]);
+                  setReplacementInput("");
                 }}
                 className="rounded-full border border-slate-700 px-2 py-1 text-xs text-slate-300 hover:border-slate-400"
               >
@@ -815,12 +1207,17 @@ export default function PosOrdersPage() {
                 copy={copy}
                 order={selectedOrder}
                 selectedAction={selectedAction}
-                onSelectAction={setSelectedAction}
-                deltaMode={deltaMode}
-                onDeltaChange={setDeltaMode}
+                onSelectAction={handleSelectAction}
                 reason={reason}
                 onReasonChange={setReason}
+                selectedItemIds={selectedItemIds}
+                onToggleItem={handleToggleItem}
+                replacementInput={replacementInput}
+                onReplacementChange={setReplacementInput}
                 summary={summary}
+                canSubmit={canSubmit}
+                onSubmit={handleSubmit}
+                isSubmitting={isSubmitting}
               />
             </div>
             <div className="mt-4 flex flex-wrap gap-2 text-[11px] text-slate-400">
