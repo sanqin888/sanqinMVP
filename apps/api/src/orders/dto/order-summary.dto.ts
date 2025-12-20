@@ -15,7 +15,7 @@ export type OrderSummaryLineItemDto = {
 
 export type OrderSummaryDto = {
   orderId: string;
-  clientRequestId: string | null;
+  orderStableId: string;
   orderNumber: string;
   currency: string;
 

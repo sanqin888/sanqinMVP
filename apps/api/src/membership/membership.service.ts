@@ -448,7 +448,7 @@ export class MembershipService {
       take: 10,
       select: {
         id: true,
-        clientRequestId: true,
+        orderStableId: true,
         createdAt: true,
         totalCents: true,
         status: true,
@@ -470,9 +470,9 @@ export class MembershipService {
       phone: user.phone ?? null,
       phoneVerified: !!user.phoneVerifiedAt,
 
-      // ✅ 对外统一：不用裸 id；用稳定标识（优先 clientRequestId）
+      // ✅ 对外统一：不用裸 id；用稳定标识
       recentOrders: orders.map((o) => ({
-        orderStableId: o.clientRequestId ?? o.id,
+        orderStableId: o.orderStableId,
         createdAt: o.createdAt.toISOString(),
         totalCents: o.totalCents,
         status: o.status,
@@ -547,7 +547,7 @@ export class MembershipService {
       },
     });
 
-    // ✅ orderStableId：优先 clientRequestId，其次 order.id
+    // ✅ orderStableId：优先使用订单稳定号
     const orderIds = Array.from(
       new Set(
         entries
@@ -560,10 +560,10 @@ export class MembershipService {
     if (orderIds.length > 0) {
       const rows = await this.prisma.order.findMany({
         where: { id: { in: orderIds } },
-        select: { id: true, clientRequestId: true },
+        select: { id: true, orderStableId: true },
       });
       for (const r of rows) {
-        orderStableById.set(r.id, r.clientRequestId ?? r.id);
+        orderStableById.set(r.id, r.orderStableId);
       }
     }
 
