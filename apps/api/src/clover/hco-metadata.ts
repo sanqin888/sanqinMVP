@@ -301,7 +301,7 @@ const buildDestination = (
 
 export function buildOrderDtoFromMetadata(
   raw: unknown,
-  clientRequestId: string,
+  orderStableId?: string,
 ): CreateOrderDto {
   // 统一从原始 JSON 解析，容错更好
   const meta = parseHostedCheckoutMetadata(raw);
@@ -314,8 +314,8 @@ export function buildOrderDtoFromMetadata(
   const redeemValueCents = meta.loyaltyRedeemCents ?? 0;
 
   const dto: CreateOrderDto = {
-    clientRequestId,
     channel: 'web',
+    ...(orderStableId ? { orderStableId } : {}),
 
     // ⭐ 订单级联系人（pickup / delivery 都有）
     contactName: meta.customer.name,

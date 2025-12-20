@@ -16,7 +16,7 @@ type PaymentMethod = "cash" | "card" | "wechat_alipay";
 
 type CreatePosOrderResponse = {
   id: string;
-  clientRequestId?: string | null;
+  orderStableId?: string | null;
   pickupCode?: string | null;
 };
 
@@ -104,6 +104,7 @@ const STRINGS: Record<
     memberLoading: string;
     memberEarned: string;
     memberBalanceAfter: string;
+    fulfillmentRequired: string;
   }
 > = {
   zh: {
@@ -149,6 +150,7 @@ const STRINGS: Record<
     memberLoading: "正在查询会员…",
     memberEarned: "本单预计新增积分",
     memberBalanceAfter: "预计结算后积分",
+    fulfillmentRequired: "请选择用餐方式后再继续。",
   },
   en: {
     title: "Store POS · Payment",
@@ -194,24 +196,12 @@ const STRINGS: Record<
     memberLoading: "Looking up member…",
     memberEarned: "Estimated points earned",
     memberBalanceAfter: "Estimated balance after",
+    fulfillmentRequired: "Select a dining option before continuing.",
   },
 };
 
 function formatMoney(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
-}
-
-function makePosClientRequestId(): string {
-  // 在现代浏览器里：crypto.randomUUID() 基本不会重复
-  // fallback：Date.now()（必要时可再拼上 Math.random()）
-  try {
-    if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-      return `POS-${crypto.randomUUID()}`;
-    }
-  } catch {
-    // ignore
-  }
-  return `POS-${Date.now()}`;
 }
 
 export default function StorePosPaymentPage() {
@@ -222,12 +212,11 @@ export default function StorePosPaymentPage() {
 
   const [snapshot, setSnapshot] = useState<PosDisplaySnapshot | null>(null);
   const [loadingSnapshot, setLoadingSnapshot] = useState(true);
-  const [fulfillment, setFulfillment] = useState<FulfillmentType>("pickup");
+  const [fulfillment, setFulfillment] = useState<FulfillmentType | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [discountRate, setDiscountRate] = useState<number>(0);
   const [showDiscountOptions, setShowDiscountOptions] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [posClientRequestId, setPosClientRequestId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [memberPhone, setMemberPhone] = useState("");
   const [memberInfo, setMemberInfo] = useState<MemberLookupResponse | null>(
@@ -430,14 +419,16 @@ export default function StorePosPaymentPage() {
   };
 
   const handleConfirm = async () => {
-    const clientRequestId = posClientRequestId ?? makePosClientRequestId();
-    if (!posClientRequestId) setPosClientRequestId(clientRequestId);
-
     setError(null);
     setSubmitting(true);
 
     if (!snapshot || snapshot.items.length === 0 || !computedSnapshot) {
       setError(t.noOrder);
+      setSubmitting(false);
+      return;
+    }
+    if (!fulfillment) {
+      setError(t.fulfillmentRequired);
       setSubmitting(false);
       return;
     }
@@ -467,8 +458,6 @@ export default function StorePosPaymentPage() {
         pointsToRedeem: pointsToRedeem > 0 ? pointsToRedeem : undefined,
         contactPhone: memberInfo?.phone ?? undefined,
 
-        // ✅ 更可靠的幂等 key / 请求追踪 id
-        clientRequestId,
       };
 
       // 👉 调试用：你可以先打开这一行看看真实发出去是什么
@@ -480,7 +469,7 @@ export default function StorePosPaymentPage() {
         body: JSON.stringify(body),
       });
 
-      const orderNumber = order.clientRequestId ?? clientRequestId;
+      const orderNumber = order.orderStableId ?? order.id;
       const pickupCode = order.pickupCode ?? null;
 
       // ✅ 打印：发送给本地打印服务（无弹窗）
@@ -840,10 +829,10 @@ export default function StorePosPaymentPage() {
             </button>
             <button
               type="button"
-              disabled={!hasItems || submitting || !snapshot}
+              disabled={!hasItems || submitting || !snapshot || !fulfillment}
               onClick={handleConfirm}
               className={`flex-[1.5] h-11 rounded-2xl text-sm font-semibold ${
-                !hasItems || submitting || !snapshot
+                !hasItems || submitting || !snapshot || !fulfillment
                   ? "bg-slate-500 text-slate-200"
                   : "bg-emerald-500 text-slate-900 hover:bg-emerald-400"
               }`}

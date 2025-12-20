@@ -19,6 +19,7 @@ import {
   buildOrderDtoFromMetadata,
 } from './hco-metadata';
 import { OrdersService } from '../orders/orders.service';
+import { normalizeStableId } from '../common/utils/stable-id';
 
 @Controller('clover')
 export class CloverPayController {
@@ -83,13 +84,19 @@ export class CloverPayController {
       });
 
       // 用和 webhook 一样的逻辑，从 metadata 生成 CreateOrderDto
-      const orderDto = buildOrderDtoFromMetadata(metadata, referenceId);
+      const orderDto = buildOrderDtoFromMetadata(
+        metadata,
+        normalizeStableId(referenceId) ?? undefined,
+      );
+      if (referenceId) {
+        orderDto.clientRequestId = referenceId;
+      }
 
       // 创建并立即标记为已支付（内部会计算金额 + 调 loyalty.settleOnPaid）
       const order = await this.orders.createImmediatePaid(orderDto);
 
       this.logger.log(
-        `Loyalty-only order created via Clover hosted checkout. orderId=${order.id} clientRequestId=${order.clientRequestId ?? 'null'}`,
+        `Loyalty-only order created via Clover hosted checkout. orderId=${order.id} orderStableId=${order.orderStableId ?? 'null'}`,
       );
 
       // 更新 CheckoutIntent 状态为已完成（LOYALTY_ONLY）
@@ -102,7 +109,7 @@ export class CloverPayController {
 
       // thank-you 页参数：优先用稳定号，其次 UUID
       const routeLocale = locale ?? 'zh';
-      const orderParam = order.clientRequestId ?? order.id;
+      const orderParam = order.orderStableId ?? order.id;
       const checkoutUrl = `/${routeLocale}/thank-you/${encodeURIComponent(
         orderParam,
       )}`;

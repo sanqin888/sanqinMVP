@@ -14,6 +14,7 @@ import { CheckoutIntentsService } from './checkout-intents.service';
 import { OrdersService } from '../orders/orders.service';
 import { buildOrderDtoFromMetadata } from './hco-metadata';
 import { CloverService } from './clover.service';
+import { normalizeStableId } from '../common/utils/stable-id';
 
 type RawBodyRequest = Request & { rawBody?: Buffer };
 
@@ -182,15 +183,17 @@ export class CloverHcoWebhookController {
     // ---- 8. 构造订单 DTO 并创建订单（然后推进状态到 paid） ----
     try {
       // ✅ 优先用 referenceId（例如 SQ743563），没有才退回到 intent.id
-      const clientRequestId = intent.referenceId || intent.id;
+      const orderStableId = intent.referenceId || intent.id;
+      const normalizedStableId = normalizeStableId(orderStableId) ?? undefined;
 
       const orderDto = buildOrderDtoFromMetadata(
         intent.metadata,
-        clientRequestId,
+        normalizedStableId,
       );
+      orderDto.clientRequestId = orderStableId;
 
       // 1) 先建订单（默认 pending）
-      const order = await this.orders.create(orderDto, clientRequestId);
+      const order = await this.orders.create(orderDto, orderStableId);
 
       // 2) 在线支付成功的单，直接把状态推进到 'paid'（触发 loyalty 结算）
       const finalized = await this.orders.updateStatus(order.id, 'paid');
