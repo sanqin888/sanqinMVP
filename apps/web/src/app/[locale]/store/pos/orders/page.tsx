@@ -373,8 +373,11 @@ function formatOrderTime(value: string, locale: Locale): string {
   });
 }
 
-function parseBackendDate(value: string): Date {
-  const trimmed = value?.trim();
+function parseBackendDate(value: unknown): Date {
+  if (value instanceof Date) return value;
+  if (typeof value === "number") return new Date(value);
+  if (typeof value !== "string") return new Date(NaN);
+  const trimmed = value.trim();
   if (!trimmed) return new Date(NaN);
   const hasTimezone = /[zZ]|[+-]\d{2}:?\d{2}$/.test(trimmed);
   return new Date(hasTimezone ? trimmed : `${trimmed}Z`);
