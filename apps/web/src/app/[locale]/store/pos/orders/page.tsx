@@ -65,11 +65,6 @@ const COPY = {
       in_store: "POS",
       ubereats: "外卖平台",
     },
-    channelLabel: {
-      web: "线上",
-      in_store: "POS",
-      ubereats: "外卖平台",
-    },
     cashGuideTitle: "现金处理逻辑",
     cashGuide: {
       retender: ["直接退款原现金付款，再用新方式收款。"],
