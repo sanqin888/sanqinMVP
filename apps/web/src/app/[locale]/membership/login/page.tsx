@@ -11,6 +11,7 @@ import { apiFetch } from '@/lib/api-client';
 // ✅ 和当前后端保持一致：success 布尔值即可
 type PhoneVerifyResponse = {
   success: boolean;
+  verificationToken?: string;
 };
 
 export default function MemberLoginPage() {
@@ -33,7 +34,6 @@ export default function MemberLoginPage() {
   const [isSendingCode, setIsSendingCode] = useState(false);
   const [isVerifyingCode, setIsVerifyingCode] = useState(false);
   const [phoneVerified, setPhoneVerified] = useState(false);
-  // ⚠️ 现在后端不再返回 verificationToken，我们前端自己用一个简单标记字符串（例如 '1'）
   const [phoneVerificationToken, setPhoneVerificationToken] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number>(0); // 发送验证码后的倒计时（秒）
   const [trustedPhone, setTrustedPhone] = useState<string | null>(null);
@@ -191,9 +191,9 @@ export default function MemberLoginPage() {
         );
         return;
       }
-      // ✅ 校验成功：本地标记为已验证，并给一个简单的“验证凭证”字符串
+      // ✅ 校验成功：本地标记为已验证，并保存后端返回的验证 token
       setPhoneVerified(true);
-      setPhoneVerificationToken('1'); // 现在先用固定字符串，后端只需要知道“已经验证过了”
+      setPhoneVerificationToken(res.verificationToken ?? null);
       setError(null);
       // ✅ 记住这台设备上已经验证过的手机号
       const trimmedPhone = phone.trim();
