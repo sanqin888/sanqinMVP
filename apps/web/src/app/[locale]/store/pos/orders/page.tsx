@@ -1,11 +1,11 @@
 // apps/web/src/app/[locale]/store/pos/orders/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import type { Locale } from "@/lib/order/shared";
-import { apiFetch } from "@/lib/api-client";
+import { advanceOrder, apiFetch, updateOrderStatus } from "@/lib/api-client";
 
 const COPY = {
   zh: {
@@ -43,6 +43,9 @@ const COPY = {
     actionsTitle: "订单操作",
     actionsSubtitle: "选中订单后进行处理。",
     emptySelection: "请选择左侧订单查看功能。",
+    pickupCodeLabel: "取餐码",
+    stableIdLabel: "Stable ID",
+    orderMetaTitle: "订单信息",
     actionLabels: {
       retender: "更改支付方式（Re-tender）",
       void_item: "退菜 = 部分退款 / 作废单品（Void Item）",
@@ -53,6 +56,11 @@ const COPY = {
     actionExecute: "执行操作",
     actionProcessing: "处理中...",
     actionSuccess: "已提交订单操作。",
+    advanceStatus: "推进状态",
+    advanceProcessing: "推进中...",
+    advanceSuccess: "订单状态已推进。",
+    advanceFailed: "推进失败，请稍后重试。",
+    refundFailed: "退款失败，请稍后重试。",
     reasonLabel: "操作原因",
     reasonPlaceholder: "请输入原因（必填）",
     reasonPresets: ["顾客取消", "商品售罄", "操作失误", "支付方式调整"],
@@ -140,6 +148,9 @@ const COPY = {
     actionsTitle: "Order actions",
     actionsSubtitle: "Operate after selecting an order.",
     emptySelection: "Select an order to view actions.",
+    pickupCodeLabel: "Pickup code",
+    stableIdLabel: "Stable ID",
+    orderMetaTitle: "Order info",
     actionLabels: {
       retender: "Re-tender payment method",
       void_item: "Void item = partial refund / cancel item",
@@ -150,6 +161,11 @@ const COPY = {
     actionExecute: "Execute action",
     actionProcessing: "Processing...",
     actionSuccess: "Order action submitted.",
+    advanceStatus: "Advance status",
+    advanceProcessing: "Advancing...",
+    advanceSuccess: "Order status advanced.",
+    advanceFailed: "Failed to advance status. Please retry.",
+    refundFailed: "Refund failed. Please retry.",
     reasonLabel: "Reason",
     reasonPlaceholder: "Enter reason (required)",
     reasonPresets: [
@@ -267,6 +283,7 @@ const QUICK_FILTERS = [
 type BackendOrder = {
   id: string;
   orderStableId?: string | null;
+  pickupCode?: string | null;
   channel: "web" | "in_store" | "ubereats";
   fulfillmentType: "pickup" | "dine_in" | "delivery";
   status:
@@ -299,7 +316,8 @@ type BackendOrderItem = {
 
 type OrderRecord = {
   id: string;
-  displayId: string;
+  stableId: string;
+  pickupCode: string | null;
   type: keyof (typeof COPY)["zh"]["orderCard"];
   status: OrderStatusKey;
   amountCents: number;
@@ -347,12 +365,19 @@ function formatMoney(cents: number): string {
 }
 
 function formatOrderTime(value: string, locale: Locale): string {
-  const date = new Date(value);
+  const date = parseBackendDate(value);
   if (Number.isNaN(date.getTime())) return "--";
   return date.toLocaleTimeString(locale === "zh" ? "zh-CN" : "en-US", {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function parseBackendDate(value: string): Date {
+  const trimmed = value?.trim();
+  if (!trimmed) return new Date(NaN);
+  const hasTimezone = /[zZ]|[+-]\d{2}:?\d{2}$/.test(trimmed);
+  return new Date(hasTimezone ? trimmed : `${trimmed}Z`);
 }
 
 function mapPaymentMethod(order: BackendOrder): PaymentMethodKey {
@@ -440,8 +465,10 @@ function ActionContent({
   return (
     <div className="space-y-4">
       <div>
-        <div className="text-sm font-semibold">{order.displayId}</div>
-        <div className="mt-1 text-[11px] text-slate-300">
+        <div className="text-[11px] font-semibold uppercase text-slate-400">
+          {copy.orderMetaTitle}
+        </div>
+        <div className="mt-1 text-xs text-slate-200">
           {copy.orderCard[order.type]} · {copy.paymentMethod[order.paymentMethod]} ·{" "}
           {copy.status[order.status]}
         </div>
@@ -647,7 +674,7 @@ function ActionContent({
             type="button"
             onClick={onSubmit}
             disabled={!canSubmit || isSubmitting}
-          className={`w-full rounded-xl px-4 py-2 text-xs font-semibold transition ${
+            className={`w-full rounded-xl px-4 py-2 text-xs font-semibold transition ${
               !canSubmit || isSubmitting
                 ? "cursor-not-allowed bg-slate-800/60 text-slate-400"
                 : "bg-emerald-500/20 text-emerald-50 hover:bg-emerald-500/30"
@@ -688,6 +715,50 @@ export default function PosOrdersPage() {
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
   const [replacementInput, setReplacementInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAdvancing, setIsAdvancing] = useState(false);
+
+  const mapOrder = useCallback(
+    (order: BackendOrder): OrderRecord => {
+      const subtotalCents = order.subtotalCents ?? order.totalCents ?? 0;
+      const discountCents =
+        (order.couponDiscountCents ?? 0) + (order.loyaltyRedeemCents ?? 0);
+      const subtotalAfterDiscountCents =
+        order.subtotalAfterDiscountCents ??
+        Math.max(0, subtotalCents - discountCents);
+      const taxCents = order.taxCents ?? 0;
+      const deliveryFeeCents = order.deliveryFeeCents ?? 0;
+      const items = order.items.map((item) => {
+        const unitPriceCents = item.unitPriceCents ?? 0;
+        return {
+          id: item.id,
+          name: pickItemName(item, locale),
+          qty: item.qty,
+          unitPriceCents,
+          totalCents: unitPriceCents * item.qty,
+        };
+      });
+
+      return {
+        id: order.id,
+        stableId: order.orderStableId ?? order.id,
+        pickupCode: order.pickupCode ?? null,
+        type: order.fulfillmentType,
+        status: order.status,
+        amountCents: order.totalCents ?? 0,
+        subtotalCents,
+        discountCents,
+        subtotalAfterDiscountCents,
+        taxCents,
+        deliveryFeeCents,
+        items,
+        time: formatOrderTime(order.createdAt, locale),
+        channel: order.channel,
+        paymentMethod: mapPaymentMethod(order),
+        createdAt: order.createdAt,
+      };
+    },
+    [locale],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -702,44 +773,7 @@ export default function PosOrdersPage() {
 
         if (cancelled) return;
 
-        const mapped = data.map((order) => {
-          const subtotalCents = order.subtotalCents ?? order.totalCents ?? 0;
-          const discountCents =
-            (order.couponDiscountCents ?? 0) + (order.loyaltyRedeemCents ?? 0);
-          const subtotalAfterDiscountCents =
-            order.subtotalAfterDiscountCents ??
-            Math.max(0, subtotalCents - discountCents);
-          const taxCents = order.taxCents ?? 0;
-          const deliveryFeeCents = order.deliveryFeeCents ?? 0;
-          const items = order.items.map((item) => {
-            const unitPriceCents = item.unitPriceCents ?? 0;
-            return {
-              id: item.id,
-              name: pickItemName(item, locale),
-              qty: item.qty,
-              unitPriceCents,
-              totalCents: unitPriceCents * item.qty,
-            };
-          });
-
-          return {
-            id: order.id,
-            displayId: order.orderStableId ?? order.id,
-            type: order.fulfillmentType,
-            status: order.status,
-            amountCents: order.totalCents ?? 0,
-            subtotalCents,
-            discountCents,
-            subtotalAfterDiscountCents,
-            taxCents,
-            deliveryFeeCents,
-            items,
-            time: formatOrderTime(order.createdAt, locale),
-            channel: order.channel,
-            paymentMethod: mapPaymentMethod(order),
-            createdAt: order.createdAt,
-          };
-        });
+        const mapped = data.map((order) => mapOrder(order));
 
         setOrders(mapped);
       } catch (error) {
@@ -763,7 +797,7 @@ export default function PosOrdersPage() {
     return () => {
       cancelled = true;
     };
-  }, [locale]);
+  }, [locale, mapOrder]);
 
   useEffect(() => {
     if (selectedId && !orders.some((order) => order.id === selectedId)) {
@@ -783,7 +817,7 @@ export default function PosOrdersPage() {
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
       if (filters.time === "today") {
-        const orderDate = new Date(order.createdAt);
+        const orderDate = parseBackendDate(order.createdAt);
         const now = new Date();
         if (
           orderDate.getFullYear() !== now.getFullYear() ||
@@ -968,16 +1002,64 @@ export default function PosOrdersPage() {
   const handleSubmit = () => {
     if (!selectedOrder || !selectedAction) return;
     if (!canSubmit) return;
-    setIsSubmitting(true);
-    window.setTimeout(() => {
-      setIsSubmitting(false);
+    const completeAction = () => {
       alert(copy.actionSuccess);
       setSelectedId(null);
       setSelectedAction(null);
       setReason("");
       setSelectedItemIds([]);
       setReplacementInput("");
-    }, 500);
+    };
+    if (selectedAction !== "full_refund") {
+      setIsSubmitting(true);
+      window.setTimeout(() => {
+        setIsSubmitting(false);
+        completeAction();
+      }, 500);
+      return;
+    }
+
+    const submitRefund = async () => {
+      try {
+        setIsSubmitting(true);
+        const updated = await updateOrderStatus<BackendOrder>(
+          selectedOrder.id,
+          "refunded",
+        );
+        const mapped = mapOrder(updated);
+        setOrders((prev) =>
+          prev.map((order) => (order.id === mapped.id ? mapped : order)),
+        );
+        setSelectedId(mapped.id);
+        alert(copy.actionSuccess);
+      } catch (error) {
+        console.error("Failed to refund order:", error);
+        alert(copy.refundFailed);
+      } finally {
+        setIsSubmitting(false);
+      }
+    };
+
+    void submitRefund();
+  };
+
+  const handleAdvanceStatus = async () => {
+    if (!selectedOrder || isAdvancing) return;
+    try {
+      setIsAdvancing(true);
+      const updated = await advanceOrder<BackendOrder>(selectedOrder.id);
+      const mapped = mapOrder(updated);
+      setOrders((prev) =>
+        prev.map((order) => (order.id === mapped.id ? mapped : order)),
+      );
+      setSelectedId(mapped.id);
+      alert(copy.advanceSuccess);
+    } catch (error) {
+      console.error("Failed to advance order status:", error);
+      alert(copy.advanceFailed);
+    } finally {
+      setIsAdvancing(false);
+    }
   };
 
   return (
@@ -995,7 +1077,7 @@ export default function PosOrdersPage() {
         </Link>
       </header>
 
-      <section className="grid gap-4 px-6 py-4 lg:grid-cols-[1.05fr_1.6fr]">
+      <section className="grid gap-4 px-6 py-4 lg:grid-cols-[1.05fr_1.6fr_1.2fr]">
         <div className="rounded-2xl border border-slate-700 bg-slate-800/60 p-4">
           <div className="flex items-center justify-between">
             <div>
@@ -1140,7 +1222,9 @@ export default function PosOrdersPage() {
                 }`}
               >
                 <div>
-                  <div className="text-sm font-semibold">{order.displayId}</div>
+                <div className="text-sm font-semibold">
+                  {order.pickupCode ?? order.stableId}
+                </div>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
                     <span className="rounded-full border border-slate-600 px-2 py-0.5">
                       {copy.orderCard[order.type]}
@@ -1176,33 +1260,58 @@ export default function PosOrdersPage() {
           </div>
         </div>
 
-      </section>
-
-      {selectedOrder && (
-        <div className="fixed inset-0 z-20 flex items-end justify-center bg-slate-900/70 p-6 lg:items-center">
-          <div className="w-full max-w-lg rounded-3xl border border-slate-600 bg-slate-900/95 p-6 shadow-xl">
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="text-lg font-semibold">{copy.actionsTitle}</h3>
-                <p className="text-xs text-slate-300">
-                  {selectedOrder.displayId}
-                </p>
+        <div className="rounded-2xl border border-slate-700 bg-slate-800/60 p-4">
+          <div>
+            <h2 className="text-lg font-semibold">{copy.actionsTitle}</h2>
+            <p className="text-xs text-slate-300">{copy.actionsSubtitle}</p>
+          </div>
+          {selectedOrder ? (
+            <div className="mt-4 space-y-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="text-[11px] font-semibold uppercase text-slate-400">
+                    {copy.pickupCodeLabel}
+                  </div>
+                  <div className="text-2xl font-semibold">
+                    {selectedOrder.pickupCode ?? "--"}
+                  </div>
+                  <div className="mt-1 text-[11px] text-slate-400">
+                    {copy.stableIdLabel}: {selectedOrder.stableId}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAdvanceStatus}
+                  disabled={
+                    isAdvancing ||
+                    selectedOrder.status === "completed" ||
+                    selectedOrder.status === "refunded"
+                  }
+                  className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                    isAdvancing ||
+                    selectedOrder.status === "completed" ||
+                    selectedOrder.status === "refunded"
+                      ? "cursor-not-allowed border-slate-700 bg-slate-800 text-slate-400"
+                      : "border-emerald-400/70 bg-emerald-500/15 text-emerald-50 hover:bg-emerald-500/25"
+                  }`}
+                >
+                  {isAdvancing ? copy.advanceProcessing : copy.advanceStatus}
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedId(null);
-                  setSelectedAction(null);
-                  setReason("");
-                  setSelectedItemIds([]);
-                  setReplacementInput("");
-                }}
-                className="rounded-full border border-slate-700 px-2 py-1 text-xs text-slate-300 hover:border-slate-400"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="mt-4">
+              <div className="flex flex-wrap gap-2 text-[11px] text-slate-400">
+                <span className="rounded-full border border-slate-700 px-2 py-1">
+                  {copy.orderCard[selectedOrder.type]}
+                </span>
+                <span className="rounded-full border border-slate-700 px-2 py-1">
+                  {copy.status[selectedOrder.status]}
+                </span>
+                <span className="rounded-full border border-slate-700 px-2 py-1">
+                  {copy.paymentMethod[selectedOrder.paymentMethod]}
+                </span>
+                <span className="rounded-full border border-slate-700 px-2 py-1">
+                  {formatMoney(selectedOrder.amountCents)}
+                </span>
+              </div>
               <ActionContent
                 copy={copy}
                 order={selectedOrder}
@@ -1220,23 +1329,13 @@ export default function PosOrdersPage() {
                 isSubmitting={isSubmitting}
               />
             </div>
-            <div className="mt-4 flex flex-wrap gap-2 text-[11px] text-slate-400">
-              <span className="rounded-full border border-slate-700 px-2 py-1">
-                {copy.orderCard[selectedOrder.type]}
-              </span>
-              <span className="rounded-full border border-slate-700 px-2 py-1">
-                {copy.status[selectedOrder.status]}
-              </span>
-              <span className="rounded-full border border-slate-700 px-2 py-1">
-                {copy.paymentMethod[selectedOrder.paymentMethod]}
-              </span>
-              <span className="rounded-full border border-slate-700 px-2 py-1">
-                {formatMoney(selectedOrder.amountCents)}
-              </span>
+          ) : (
+            <div className="mt-4 rounded-xl border border-dashed border-slate-700 bg-slate-900/40 p-6 text-center text-xs text-slate-400">
+              {copy.emptySelection}
             </div>
-          </div>
+          )}
         </div>
-      )}
+      </section>
     </main>
   );
 }
