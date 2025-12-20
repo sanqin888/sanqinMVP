@@ -192,6 +192,7 @@ describe('OrdersService', () => {
 
     const storedOrder = {
       id: 'order-no-dest',
+      orderStableId: 'cord-no-dest',
       subtotalCents: 1000,
       taxCents: 130,
       totalCents: 1130,
@@ -214,6 +215,7 @@ describe('OrdersService', () => {
   it('dispatches Uber Direct for priority orders', async () => {
     const storedOrder = {
       id: 'order-1',
+      orderStableId: 'cord-1',
       subtotalCents: 1000,
       taxCents: 130,
       totalCents: 1130,
@@ -280,6 +282,7 @@ describe('OrdersService', () => {
   it('keeps the order when Uber Direct fails', async () => {
     const storedOrder = {
       id: 'order-err',
+      orderStableId: 'cord-err',
       subtotalCents: 1000,
       taxCents: 130,
       totalCents: 1130,

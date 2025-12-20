@@ -102,8 +102,10 @@ model User {
 
 model Order {
   id              String          @id @default(uuid()) @db.Uuid
+  orderStableId   String          @unique @default(cuid())
   userId          String?
   clientRequestId String?         @unique
+  rebillGroupId   String?
   channel         Channel         @default(web)
   fulfillmentType FulfillmentType @default(pickup)
   status          OrderStatus     @default(pending)
@@ -135,9 +137,11 @@ model Order {
   createdAt       DateTime        @default(now())
 
   items OrderItem[]
+  amendments OrderAmendment[]
 
   @@index([createdAt])
   @@index([contactPhone, createdAt])
+  @@index([rebillGroupId])
 }
 
 model Coupon {
@@ -174,6 +178,62 @@ model OrderItem {
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId])
+}
+
+enum OrderAmendmentType {
+  RETENDER
+  VOID_ITEM
+  SWAP_ITEM
+  ADDITIONAL_CHARGE
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  WECHAT_ALIPAY
+}
+
+enum OrderAmendmentItemAction {
+  VOID
+  ADD
+}
+
+model OrderAmendment {
+  id                String               @id @default(uuid()) @db.Uuid
+  amendmentStableId String               @unique @default(cuid())
+  orderId           String               @db.Uuid
+  type              OrderAmendmentType
+  paymentMethod     PaymentMethod?
+  reason            String
+  deltaCents        Int                  @default(0)
+  refundCents       Int                  @default(0)
+  additionalChargeCents Int              @default(0)
+  rebillGroupId     String?
+  summaryJson       Json?
+  createdAt         DateTime             @default(now())
+
+  order   Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  items   OrderAmendmentItem[]
+
+  @@index([orderId, createdAt])
+  @@index([rebillGroupId])
+}
+
+model OrderAmendmentItem {
+  id              String                    @id @default(uuid()) @db.Uuid
+  amendmentId     String                    @db.Uuid
+  action          OrderAmendmentItemAction
+  productStableId String
+  displayName     String?
+  nameEn          String?
+  nameZh          String?
+  qty             Int
+  unitPriceCents  Int?
+  optionsJson     Json?
+
+  amendment OrderAmendment @relation(fields: [amendmentId], references: [id], onDelete: Cascade)
+
+  @@index([amendmentId])
 }
 
 model LoyaltyAccount {

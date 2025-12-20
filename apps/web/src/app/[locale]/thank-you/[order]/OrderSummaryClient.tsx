@@ -20,7 +20,7 @@ type OrderSummaryLineItem = {
 
 type OrderSummaryResponse = {
   orderId: string;
-  clientRequestId: string | null;
+  orderStableId: string;
   orderNumber: string;
   currency: string;
   subtotalCents: number;

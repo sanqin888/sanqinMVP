@@ -45,7 +45,7 @@ export class LoyaltyController {
       },
     });
 
-    // ✅ orderStableId：优先 clientRequestId，其次 order.id
+    // ✅ orderStableId：优先使用订单稳定号
     const orderIds = Array.from(
       new Set(
         rows
@@ -58,10 +58,10 @@ export class LoyaltyController {
     if (orderIds.length > 0) {
       const orders = await this.prisma.order.findMany({
         where: { id: { in: orderIds } },
-        select: { id: true, clientRequestId: true },
+        select: { id: true, orderStableId: true },
       });
       for (const o of orders) {
-        orderStableById.set(o.id, o.clientRequestId ?? o.id);
+        orderStableById.set(o.id, o.orderStableId);
       }
     }
 
