@@ -6,6 +6,18 @@ export type ApiResponseEnvelope<T> = {
   details?: T;
 };
 
+export class ApiError extends Error {
+  status: number;
+  payload?: unknown;
+
+  constructor(message: string, status: number, payload?: unknown) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.payload = payload;
+  }
+}
+
 function isRecord(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === 'object';
 }
@@ -59,12 +71,18 @@ export async function apiFetch<T>(
       const p = payload as ApiResponseEnvelope<unknown>;
       const snippet =
         isRecord(p.details) ? ` :: ${JSON.stringify(p.details).slice(0, 160)}` : '';
-      throw new Error(p.message || `API 错误 ${response.status}${snippet}`);
+      throw new ApiError(
+        p.message || `API 错误 ${response.status}${snippet}`,
+        response.status,
+        payload,
+      );
     }
-    throw new Error(
+    throw new ApiError(
       `API 错误 ${response.status}${
         typeof payload === 'string' ? ` :: ${payload.slice(0, 160)}` : ''
       }`,
+      response.status,
+      payload,
     );
   }
 
