@@ -532,7 +532,9 @@ export class OrdersService {
         : undefined;
     const normalizedLegacyRequestId = normalizeStableId(legacyRequestId);
     const stableKey =
-      normalizedHeaderKey ?? normalizedBodyStableId ?? normalizedLegacyRequestId;
+      normalizedHeaderKey ??
+      normalizedBodyStableId ??
+      normalizedLegacyRequestId;
     const legacyKey =
       legacyRequestId && legacyRequestId.length > 0 ? legacyRequestId : null;
 
@@ -845,7 +847,7 @@ export class OrdersService {
       userId: loyaltyUserId,
       orderStableId:
         typeof safePayload.referenceId === 'string'
-          ? normalizeStableId(safePayload.referenceId) ?? undefined
+          ? (normalizeStableId(safePayload.referenceId) ?? undefined)
           : undefined,
       clientRequestId:
         typeof safePayload.referenceId === 'string'
@@ -864,7 +866,10 @@ export class OrdersService {
       deliveryFeeCents: meta.deliveryFeeCents,
     };
 
-    return this.createImmediatePaid(dto, dto.orderStableId ?? dto.clientRequestId);
+    return this.createImmediatePaid(
+      dto,
+      dto.orderStableId ?? dto.clientRequestId,
+    );
   }
 
   async createImmediatePaid(
