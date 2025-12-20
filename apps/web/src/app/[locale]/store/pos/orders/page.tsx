@@ -775,63 +775,6 @@ export default function PosOrdersPage() {
     }
   }, [orders, selectedId]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const fetchOrders = async () => {
-      try {
-        setIsLoading(true);
-        setErrorMessage(null);
-        const query =
-          "/orders/board?status=pending,paid,making,ready,completed,refunded&sinceMinutes=1440&limit=200";
-        const data = await apiFetch<BackendOrder[]>(query);
-
-        if (cancelled) return;
-
-        const mapped = data.map((order) => ({
-          id: order.id,
-          displayId: order.orderStableId ?? order.id,
-          type: order.fulfillmentType,
-          status: order.status,
-          amountCents: order.totalCents ?? 0,
-          time: formatOrderTime(order.createdAt, locale),
-          channel: order.channel,
-          paymentMethod: mapPaymentMethod(order),
-        }));
-
-        setOrders(mapped);
-      } catch (error) {
-        if (!cancelled) {
-          console.error("Failed to fetch POS orders:", error);
-          setErrorMessage(
-            locale === "zh"
-              ? "订单加载失败，请稍后再试。"
-              : "Failed to load orders. Please try again.",
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    void fetchOrders();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [locale]);
-
-  useEffect(() => {
-    if (selectedId && !orders.some((order) => order.id === selectedId)) {
-      setSelectedId(null);
-      setSelectedAction(null);
-      setReason("");
-      setDeltaMode("same");
-    }
-  }, [orders, selectedId]);
-
   const selectedOrder = useMemo(
     () => orders.find((order) => order.id === selectedId) ?? null,
     [orders, selectedId],
