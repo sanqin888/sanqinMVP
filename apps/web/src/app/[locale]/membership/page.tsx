@@ -213,9 +213,9 @@ export default function MembershipHomePage() {
                 marketingEmailOptIn?: boolean;
               };
 
-              if (!phoneFromQuery && extra.phone && extra.phoneVerificationToken === '1') {
+              if (!phoneFromQuery && extra.phone && extra.phoneVerificationToken) {
                 params.set('phone', String(extra.phone));
-                params.set('pv', '1');
+                params.set('pv', String(extra.phoneVerificationToken));
               }
 
               if (extra.referrerEmail) {
@@ -1200,9 +1200,17 @@ function ProfileSection({
         </div>
         <div>
           <p className="text-slate-500">{isZh ? '手机号' : 'Phone'}</p>
-          <p className="mt-0.5 text-slate-900">
-            {user.phone || (isZh ? '未绑定' : 'Not linked')}
-          </p>
+          <div className="mt-0.5 flex items-center justify-between gap-2">
+            <p className="text-slate-900">
+              {user.phone || (isZh ? '未绑定' : 'Not linked')}
+            </p>
+            <Link
+              href={`/${locale}/membership/login`}
+              className="shrink-0 rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+            >
+              {isZh ? '更换手机号' : 'Change phone'}
+            </Link>
+          </div>
         </div>
         <div>
           <p className="text-slate-500">
