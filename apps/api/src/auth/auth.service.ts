@@ -138,7 +138,11 @@ export class AuthService {
     // 2️⃣ 验证成功：标记为已使用（只能用一次）
     await this.prisma.phoneVerification.update({
       where: { id: record.id },
-      data: { used: true },
+      data: {
+        used: true,
+        status: 'VERIFIED',
+        verifiedAt: now,
+      },
     });
 
     // 3️⃣ 如果是已登录会员，可以顺手把手机号写到 User 表
@@ -146,7 +150,7 @@ export class AuthService {
       await this.attachPhoneToUser({ userId, phone: normalized });
     }
 
-    return { success: true };
+    return { success: true, verificationToken: record.id };
   }
 
   private async attachPhoneToUser(params: { userId: string; phone: string }) {
