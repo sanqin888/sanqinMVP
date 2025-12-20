@@ -2,7 +2,7 @@ ALTER TABLE "Order" ADD COLUMN "orderStableId" TEXT;
 ALTER TABLE "Order" ADD COLUMN "rebillGroupId" TEXT;
 
 UPDATE "Order"
-SET "orderStableId" = 'c' || substring(md5(id), 1, 23)
+SET "orderStableId" = 'c' || substring(md5(id::text), 1, 23)
 WHERE "orderStableId" IS NULL;
 
 ALTER TABLE "Order" ALTER COLUMN "orderStableId" SET NOT NULL;
