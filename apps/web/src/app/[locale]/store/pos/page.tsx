@@ -85,6 +85,7 @@ const STRINGS = {
     storeStatusLoading: "正在获取门店状态…",
     storeStatusError: "门店状态获取失败，请以店内实际情况为准。",
     menuManage: "菜单管理",
+    summary: "当日小结",
   },
   en: {
     title: "Store POS",
@@ -129,6 +130,7 @@ const STRINGS = {
     storeStatusError:
       "Unable to load store status. Please confirm with the store.",
     menuManage: "Menu management",
+    summary: "Daily summary",
   },
 } as const;
 
@@ -502,6 +504,12 @@ export default function StorePosPage() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <Link
+            href={`/${locale}/store/pos/summary`}
+            className="rounded-full border border-slate-600 bg-slate-800 px-3 py-1 text-xs font-medium text-slate-100 hover:border-slate-400 hover:text-white"
+          >
+            {t.summary}
+          </Link>
           <Link
             href={`/${locale}/store/pos/menu`}
             className="rounded-full border border-slate-600 bg-slate-800 px-3 py-1 text-xs font-medium text-slate-100 hover:border-slate-400 hover:text-white"
