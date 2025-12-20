@@ -439,6 +439,7 @@ type ActionContentProps = {
   canSubmit: boolean;
   onSubmit: () => void;
   isSubmitting: boolean;
+  isActionDisabled: (action: ActionKey) => boolean;
 };
 
 function ActionContent({
@@ -456,6 +457,7 @@ function ActionContent({
   canSubmit,
   onSubmit,
   isSubmitting,
+  isActionDisabled,
 }: ActionContentProps) {
   const guide =
     order.paymentMethod === "cash"
@@ -483,10 +485,15 @@ function ActionContent({
             key={actionKey}
             type="button"
             onClick={() => onSelectAction(actionKey)}
-            className={`rounded-full border px-3 py-1 text-xs font-medium ${
+            disabled={isActionDisabled(actionKey)}
+            className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
               selectedAction === actionKey
                 ? "border-emerald-400/70 bg-emerald-500/15 text-emerald-50"
                 : "border-slate-700 bg-slate-900/40 text-slate-200"
+            } ${
+              isActionDisabled(actionKey)
+                ? "cursor-not-allowed border-slate-800 bg-slate-900/60 text-slate-500"
+                : "hover:border-emerald-400/60"
             }`}
           >
             {copy.actionLabels[actionKey]}
@@ -997,10 +1004,24 @@ export default function PosOrdersPage() {
   const showItemSelection =
     selectedAction === "void_item" || selectedAction === "swap_item";
 
+  const isActionDisabled = useCallback(
+    (action: ActionKey) => {
+      if (action === "full_refund") {
+        return (
+          selectedOrder?.status === "completed" ||
+          selectedOrder?.status === "refunded"
+        );
+      }
+      return false;
+    },
+    [selectedOrder?.status],
+  );
+
   const canSubmit =
     Boolean(selectedAction) &&
     reason.trim().length > 0 &&
-    (!showItemSelection || selectedItemIds.length > 0);
+    (!showItemSelection || selectedItemIds.length > 0) &&
+    !isActionDisabled(selectedAction);
 
   const handleSubmit = () => {
     if (!selectedOrder || !selectedAction) return;
@@ -1021,6 +1042,8 @@ export default function PosOrdersPage() {
       }, 500);
       return;
     }
+
+    if (isActionDisabled("full_refund")) return;
 
     const submitRefund = async () => {
       try {
@@ -1330,6 +1353,7 @@ export default function PosOrdersPage() {
                 canSubmit={canSubmit}
                 onSubmit={handleSubmit}
                 isSubmitting={isSubmitting}
+                isActionDisabled={isActionDisabled}
               />
             </div>
           ) : (
