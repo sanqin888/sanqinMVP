@@ -1,10 +1,11 @@
 // apps/web/src/app/[locale]/store/pos/orders/page.tsx
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import type { Locale } from "@/lib/order/shared";
+import { apiFetch } from "@/lib/api-client";
 
 const COPY = {
   zh: {
@@ -31,9 +32,10 @@ const COPY = {
     orderTime: "时间",
     paymentMethodLabel: "支付方式",
     orderCard: {
-      pickup: "堂食",
+      pickup: "自取",
       delivery: "外卖",
-      takeout: "自取",
+      dine_in: "堂食",
+      takeout: "外带",
     },
     paymentMethod: {
       cash: "现金",
@@ -42,8 +44,10 @@ const COPY = {
     status: {
       paid: "已支付",
       pending: "待支付",
+      making: "制作中",
+      ready: "待取餐",
       completed: "已完成",
-      refunding: "退款中",
+      refunded: "已退款",
     },
     actionsTitle: "订单操作",
     actionsSubtitle: "选中订单后进行处理。",
@@ -55,11 +59,17 @@ const COPY = {
     },
     reasonLabel: "操作原因",
     reasonPlaceholder: "请输入原因（必填）",
+    reasonPresets: ["顾客取消", "商品售罄", "操作失误", "支付方式调整"],
     deltaLabel: "金额变化",
     deltaOptions: {
       increase: "金额增加",
       same: "等价更换",
       decrease: "金额减少",
+    },
+    channelLabel: {
+      web: "线上",
+      in_store: "POS",
+      ubereats: "外卖平台",
     },
     cashGuideTitle: "现金处理逻辑",
     cashGuide: {
@@ -119,9 +129,10 @@ const COPY = {
     orderTime: "Time",
     paymentMethodLabel: "Payment",
     orderCard: {
-      pickup: "Dine-in",
+      pickup: "Pickup",
       delivery: "Delivery",
-      takeout: "Pickup",
+      dine_in: "Dine-in",
+      takeout: "Takeout",
     },
     paymentMethod: {
       cash: "Cash",
@@ -130,8 +141,10 @@ const COPY = {
     status: {
       paid: "Paid",
       pending: "Pending",
+      making: "In progress",
+      ready: "Ready",
       completed: "Completed",
-      refunding: "Refunding",
+      refunded: "Refunded",
     },
     actionsTitle: "Order actions",
     actionsSubtitle: "Operate after selecting an order.",
@@ -143,11 +156,22 @@ const COPY = {
     },
     reasonLabel: "Reason",
     reasonPlaceholder: "Enter reason (required)",
+    reasonPresets: [
+      "Customer cancellation",
+      "Item out of stock",
+      "Operator mistake",
+      "Payment adjustment",
+    ],
     deltaLabel: "Amount change",
     deltaOptions: {
       increase: "Increase",
       same: "No change",
       decrease: "Decrease",
+    },
+    channelLabel: {
+      web: "Online",
+      in_store: "POS",
+      ubereats: "Delivery",
     },
     cashGuideTitle: "Cash handling",
     cashGuide: {
@@ -191,63 +215,32 @@ type DeltaMode = keyof (typeof COPY)["zh"]["deltaOptions"];
 
 const ACTIONS: ActionKey[] = ["retender", "void_item", "swap_item"];
 
+type BackendOrder = {
+  id: string;
+  orderStableId?: string | null;
+  channel: "web" | "in_store" | "ubereats";
+  fulfillmentType: "pickup" | "dine_in" | "delivery";
+  status:
+    | "pending"
+    | "paid"
+    | "making"
+    | "ready"
+    | "completed"
+    | "refunded";
+  totalCents: number;
+  createdAt: string;
+};
+
 type OrderRecord = {
   id: string;
+  displayId: string;
   type: keyof (typeof COPY)["zh"]["orderCard"];
   status: OrderStatusKey;
   amountCents: number;
   time: string;
-  channel: string;
+  channel: BackendOrder["channel"];
   paymentMethod: PaymentMethodKey;
 };
-
-const SAMPLE_ORDERS: OrderRecord[] = [
-  {
-    id: "c9xk3l3b1y8k42uv2e00p9d1",
-    type: "pickup",
-    status: "paid",
-    amountCents: 8240,
-    time: "10:32",
-    channel: "POS",
-    paymentMethod: "cash",
-  },
-  {
-    id: "c9xk3l3b1y8k42uv2e00p9d2",
-    type: "delivery",
-    status: "pending",
-    amountCents: 4500,
-    time: "11:05",
-    channel: "Delivery",
-    paymentMethod: "card",
-  },
-  {
-    id: "c9xk3l3b1y8k42uv2e00p9d3",
-    type: "takeout",
-    status: "completed",
-    amountCents: 2960,
-    time: "12:18",
-    channel: "Online",
-    paymentMethod: "card",
-  },
-  {
-    id: "c9xk3l3b1y8k42uv2e00p9d4",
-    type: "pickup",
-    status: "refunding",
-    amountCents: 6420,
-    time: "12:45",
-    channel: "POS",
-    paymentMethod: "cash",
-  },
-  {
-    id: "c9xk3l3b1y8k42uv2e00p9d5",
-    type: "delivery",
-    status: "paid",
-    amountCents: 11890,
-    time: "13:12",
-    channel: "Delivery",
-    paymentMethod: "card",
-  },
-];
 
 function statusTone(status: OrderStatusKey): string {
   switch (status) {
@@ -255,9 +248,13 @@ function statusTone(status: OrderStatusKey): string {
       return "bg-emerald-500/15 text-emerald-100 border-emerald-400/40";
     case "pending":
       return "bg-amber-500/15 text-amber-100 border-amber-400/40";
-    case "completed":
+    case "making":
+      return "bg-indigo-500/15 text-indigo-100 border-indigo-400/40";
+    case "ready":
       return "bg-sky-500/15 text-sky-100 border-sky-400/40";
-    case "refunding":
+    case "completed":
+      return "bg-emerald-500/15 text-emerald-100 border-emerald-400/40";
+    case "refunded":
       return "bg-rose-500/15 text-rose-100 border-rose-400/40";
     default:
       return "bg-slate-700 text-slate-200 border-slate-500";
@@ -266,6 +263,20 @@ function statusTone(status: OrderStatusKey): string {
 
 function formatMoney(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
+}
+
+function formatOrderTime(value: string, locale: Locale): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--";
+  return date.toLocaleTimeString(locale === "zh" ? "zh-CN" : "en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function mapPaymentMethod(order: BackendOrder): PaymentMethodKey {
+  if (order.channel === "in_store") return "cash";
+  return "card";
 }
 
 type ActionSummary = {
@@ -308,7 +319,7 @@ function ActionContent({
   return (
     <div className="space-y-4">
       <div>
-        <div className="text-sm font-semibold">{order.id}</div>
+        <div className="text-sm font-semibold">{order.displayId}</div>
         <div className="mt-1 text-[11px] text-slate-300">
           {copy.orderCard[order.type]} · {copy.paymentMethod[order.paymentMethod]} ·{" "}
           {copy.status[order.status]}
@@ -376,6 +387,18 @@ function ActionContent({
             <label className="text-[11px] font-semibold uppercase text-slate-400">
               {copy.reasonLabel}
             </label>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {copy.reasonPresets.map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => onReasonChange(preset)}
+                  className="rounded-full border border-slate-700 bg-slate-800/60 px-3 py-1 text-[11px] text-slate-200 transition hover:border-emerald-400/60 hover:text-emerald-50"
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
             <textarea
               value={reason}
               onChange={(event) => onReasonChange(event.target.value)}
@@ -453,14 +476,74 @@ export default function PosOrdersPage() {
   const locale = (params?.locale === "zh" ? "zh" : "en") as Locale;
   const copy = COPY[locale];
 
+  const [orders, setOrders] = useState<OrderRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedAction, setSelectedAction] = useState<ActionKey | null>(null);
   const [deltaMode, setDeltaMode] = useState<DeltaMode>("same");
   const [reason, setReason] = useState("");
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchOrders = async () => {
+      try {
+        setIsLoading(true);
+        setErrorMessage(null);
+        const query =
+          "/orders/board?status=pending,paid,making,ready,completed,refunded&sinceMinutes=1440&limit=200";
+        const data = await apiFetch<BackendOrder[]>(query);
+
+        if (cancelled) return;
+
+        const mapped = data.map((order) => ({
+          id: order.id,
+          displayId: order.orderStableId ?? order.id,
+          type: order.fulfillmentType,
+          status: order.status,
+          amountCents: order.totalCents ?? 0,
+          time: formatOrderTime(order.createdAt, locale),
+          channel: order.channel,
+          paymentMethod: mapPaymentMethod(order),
+        }));
+
+        setOrders(mapped);
+      } catch (error) {
+        if (!cancelled) {
+          console.error("Failed to fetch POS orders:", error);
+          setErrorMessage(
+            locale === "zh"
+              ? "订单加载失败，请稍后再试。"
+              : "Failed to load orders. Please try again.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void fetchOrders();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [locale]);
+
+  useEffect(() => {
+    if (selectedId && !orders.some((order) => order.id === selectedId)) {
+      setSelectedId(null);
+      setSelectedAction(null);
+      setReason("");
+      setDeltaMode("same");
+    }
+  }, [orders, selectedId]);
+
   const selectedOrder = useMemo(
-    () => SAMPLE_ORDERS.find((order) => order.id === selectedId) ?? null,
-    [selectedId],
+    () => orders.find((order) => order.id === selectedId) ?? null,
+    [orders, selectedId],
   );
 
   const summary = useMemo(() => {
@@ -567,7 +650,7 @@ export default function PosOrdersPage() {
               <p className="text-xs text-slate-300">{copy.filtersSubtitle}</p>
             </div>
             <span className="rounded-full border border-slate-600 bg-slate-800 px-2.5 py-1 text-[11px] text-slate-200">
-              6/12
+              {orders.length}
             </span>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
@@ -615,7 +698,17 @@ export default function PosOrdersPage() {
             <p className="text-xs text-slate-300">{copy.tableSubtitle}</p>
           </div>
           <div className="space-y-3">
-            {SAMPLE_ORDERS.map((order) => (
+            {isLoading && orders.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-900/40 p-6 text-center text-xs text-slate-400">
+                {locale === "zh" ? "正在加载订单..." : "Loading orders..."}
+              </div>
+            ) : null}
+            {errorMessage ? (
+              <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 p-6 text-center text-xs text-rose-100">
+                {errorMessage}
+              </div>
+            ) : null}
+            {orders.map((order) => (
               <button
                 key={order.id}
                 type="button"
@@ -632,13 +725,13 @@ export default function PosOrdersPage() {
                 }`}
               >
                 <div>
-                  <div className="text-sm font-semibold">{order.id}</div>
+                  <div className="text-sm font-semibold">{order.displayId}</div>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
                     <span className="rounded-full border border-slate-600 px-2 py-0.5">
                       {copy.orderCard[order.type]}
                     </span>
                     <span className="rounded-full border border-slate-700 px-2 py-0.5">
-                      {order.channel}
+                      {copy.channelLabel[order.channel]}
                     </span>
                     <span className="rounded-full border border-slate-700 px-2 py-0.5">
                       {copy.paymentMethod[order.paymentMethod]}
@@ -660,6 +753,11 @@ export default function PosOrdersPage() {
                 </div>
               </button>
             ))}
+            {!isLoading && !errorMessage && orders.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-900/40 p-6 text-center text-xs text-slate-400">
+                {locale === "zh" ? "暂无订单数据。" : "No orders found."}
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -695,7 +793,9 @@ export default function PosOrdersPage() {
             <div className="flex items-start justify-between">
               <div>
                 <h3 className="text-lg font-semibold">{copy.actionsTitle}</h3>
-                <p className="text-xs text-slate-300">{selectedOrder.id}</p>
+                <p className="text-xs text-slate-300">
+                  {selectedOrder.displayId}
+                </p>
               </div>
               <button
                 type="button"
