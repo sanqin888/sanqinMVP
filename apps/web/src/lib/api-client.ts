@@ -117,3 +117,51 @@ export async function advanceOrder<T = unknown>(id: string) {
     method: 'POST',
   });
 }
+export type OrderAmendmentItemAction = 'VOID' | 'ADD';
+
+export type CreateOrderAmendmentItemInput = {
+  action: OrderAmendmentItemAction;
+  productStableId: string;
+  qty: number;
+
+  unitPriceCents?: number | null;
+  displayName?: string | null;
+  nameEn?: string | null;
+  nameZh?: string | null;
+
+  optionsJson?: unknown;
+};
+
+export type CreateOrderAmendmentType =
+  | 'RETENDER'
+  | 'VOID_ITEM'
+  | 'SWAP_ITEM'
+  | 'ADDITIONAL_CHARGE';
+
+export type CreateOrderAmendmentInput = {
+  // ✅ 对齐后端：必须告诉后端这次 amendment 的类型
+  type: CreateOrderAmendmentType;
+
+  reason: string;
+
+  // ✅ 对齐后端：两者都可能出现（尤其 RETENDER：退款 + 新收款）
+  refundGrossCents?: number;
+  additionalChargeCents?: number;
+
+  // ✅ 对齐后端：RETENDER 允许 items 为空；VOID/SWAP 通常有 items
+  items?: CreateOrderAmendmentItemInput[];
+
+  // 你现有的 paymentMethod 联合类型可以继续保留
+  paymentMethod?: 'cash' | 'card' | 'wechat_alipay' | null;
+};
+
+export async function createOrderAmendment<T = unknown>(
+  orderId: string,
+  payload: CreateOrderAmendmentInput,
+) {
+  return apiFetch<T>(`/orders/${encodeURIComponent(orderId)}/amendments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}

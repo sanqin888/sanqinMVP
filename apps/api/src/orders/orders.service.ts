@@ -10,9 +10,13 @@ import { AppLogger } from '../common/app-logger';
 import {
   DeliveryProvider,
   DeliveryType,
+  LoyaltyEntryType,
   MenuItemOptionGroup,
   MenuOptionGroupTemplate,
   MenuOptionTemplateChoice,
+  PaymentMethod,
+  OrderAmendmentType,
+  OrderAmendmentItemAction,
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -289,6 +293,354 @@ export class OrdersService {
       }
     });
     return ids;
+  }
+
+  private centsToRedeemMicro(cents: number): bigint {
+    if (!Number.isFinite(cents) || cents <= 0) return 0n;
+    if (
+      !Number.isFinite(REDEEM_DOLLAR_PER_POINT) ||
+      REDEEM_DOLLAR_PER_POINT <= 0
+    )
+      return 0n;
+
+    // cents -> dollars -> points -> microPoints（四舍五入）
+    const pts = cents / 100 / REDEEM_DOLLAR_PER_POINT;
+    const micro = Math.round(pts * 1_000_000); // 1 pt = 1e6 micro
+    return BigInt(micro);
+  }
+
+  private async ensureLoyaltyAccountWithTx(
+    tx: Prisma.TransactionClient,
+    userId: string,
+  ) {
+    return tx.loyaltyAccount.upsert({
+      where: { userId },
+      create: {
+        userId,
+        pointsMicro: 0n,
+        tier: 'BRONZE',
+        lifetimeSpendCents: 0,
+      },
+      update: {},
+      select: {
+        id: true,
+        userId: true,
+        pointsMicro: true,
+        tier: true,
+        lifetimeSpendCents: true,
+      },
+    });
+  }
+
+  /**
+   * 方案B：在“创建 amendment 的同一个事务”里调用
+   * - 计算：现金可退额度 vs 积分返还额度（考虑历史 amendments 已退）
+   * - 写：OrderAmendment 的 refundCents / redeemReturnCents / redeemReturnMicro / earnAdjustMicro / referralAdjustMicro
+   * - 写：LoyaltyLedger（用 sourceKey 幂等）并更新账户余额
+   *
+   * 注意：refundGrossCents 建议传“你本次退菜对应的应退价值（分）”，不要包含小费。
+   */
+  private async applyLoyaltyAdjustmentsForAmendmentTx(params: {
+    tx: Prisma.TransactionClient;
+    orderId: string;
+    amendmentId: string;
+    amendmentStableId: string;
+    refundGrossCents: number;
+  }): Promise<void> {
+    const { tx, orderId, amendmentId, amendmentStableId } = params;
+    const refundGrossCentsRaw = Number.isFinite(params.refundGrossCents)
+      ? Math.max(0, Math.round(params.refundGrossCents))
+      : 0;
+
+    // 1) 读订单（需要：userId / totalCents / loyaltyRedeemCents / subtotalCents）
+    const order = await tx.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        userId: true,
+        subtotalCents: true,
+        totalCents: true,
+        loyaltyRedeemCents: true,
+      },
+    });
+
+    if (!order?.userId) {
+      // 匿名单：不处理积分；但仍可把 refundCents 写回 amendment（按现金退）
+      await tx.orderAmendment.update({
+        where: { id: amendmentId },
+        data: {
+          refundCents: refundGrossCentsRaw,
+          redeemReturnCents: 0,
+          redeemReturnMicro: 0n,
+          earnAdjustMicro: 0n,
+          referralAdjustMicro: 0n,
+        },
+      });
+      return;
+    }
+
+    const originalCashPaidCents = Math.max(0, order.totalCents ?? 0);
+    const originalRedeemCents = Math.max(0, order.loyaltyRedeemCents ?? 0);
+
+    // 2) 汇总历史已退（现金/积分），避免超退
+    const agg = await tx.orderAmendment.aggregate({
+      where: { orderId },
+      _sum: { refundCents: true, redeemReturnCents: true },
+    });
+
+    const refundedCashAlready = Math.max(0, agg._sum.refundCents ?? 0);
+    const returnedRedeemAlready = Math.max(0, agg._sum.redeemReturnCents ?? 0);
+
+    const remainingCashRefundable = Math.max(
+      0,
+      originalCashPaidCents - refundedCashAlready,
+    );
+    const remainingRedeemRefundable = Math.max(
+      0,
+      originalRedeemCents - returnedRedeemAlready,
+    );
+
+    const maxRefundableCents =
+      remainingCashRefundable + remainingRedeemRefundable;
+
+    const refundGrossCents = Math.min(refundGrossCentsRaw, maxRefundableCents);
+
+    // 3) 规则：先退现金（不超过 remainingCashRefundable），超出部分返还积分（不超过 remainingRedeemRefundable）
+    const redeemReturnCents = Math.min(
+      remainingRedeemRefundable,
+      Math.max(0, refundGrossCents - remainingCashRefundable),
+    );
+    const refundCashCents = Math.max(0, refundGrossCents - redeemReturnCents);
+
+    const sourceKey = `AMEND:${amendmentStableId}`;
+
+    // 4) 锁定用户积分账户
+    const acc = await this.ensureLoyaltyAccountWithTx(tx, order.userId);
+
+    await tx.$queryRaw`
+    SELECT id
+    FROM "LoyaltyAccount"
+    WHERE id = ${acc.id}::uuid
+    FOR UPDATE
+  `;
+
+    let userBalance = acc.pointsMicro;
+
+    // 5) 返还抵扣积分（redeemReturn）
+    const redeemReturnMicro = this.centsToRedeemMicro(redeemReturnCents);
+
+    if (redeemReturnMicro > 0n) {
+      const existed = await tx.loyaltyLedger.findUnique({
+        where: {
+          orderId_type_sourceKey: {
+            orderId,
+            type: LoyaltyEntryType.REFUND_RETURN_REDEEM,
+            sourceKey,
+          },
+        },
+        select: { id: true, deltaMicro: true, balanceAfterMicro: true },
+      });
+
+      if (!existed) {
+        const newBal = userBalance + redeemReturnMicro;
+        await tx.loyaltyLedger.create({
+          data: {
+            accountId: acc.id,
+            orderId,
+            type: LoyaltyEntryType.REFUND_RETURN_REDEEM,
+            sourceKey,
+            deltaMicro: redeemReturnMicro,
+            balanceAfterMicro: newBal,
+            note: `amend return redeem $${(redeemReturnCents / 100).toFixed(2)}`,
+          },
+        });
+        userBalance = newBal;
+      } else {
+        // 若已存在，沿用已写入的 delta/balance（避免重复）
+        userBalance = existed.balanceAfterMicro;
+      }
+    }
+
+    // 6) 回收 earned（按比例，基于 netBase=subtotal-redeem；refund 口径用 refundCashCents）
+    //    这里不把 coupon 纳入 net（与 settleOnPaid 现状一致）
+    let earnAdjustMicroApplied = 0n;
+
+    const netBaseCents = Math.max(
+      0,
+      (order.subtotalCents ?? 0) - (order.loyaltyRedeemCents ?? 0),
+    );
+
+    if (netBaseCents > 0 && refundCashCents > 0) {
+      const earn = await tx.loyaltyLedger.findUnique({
+        where: {
+          orderId_type_sourceKey: {
+            orderId,
+            type: LoyaltyEntryType.EARN_ON_PURCHASE,
+            sourceKey: 'ORDER',
+          },
+        },
+        select: { deltaMicro: true },
+      });
+
+      const earnedTotalMicro = earn?.deltaMicro ?? 0n;
+      if (earnedTotalMicro > 0n) {
+        const refundableBaseCents = Math.min(refundCashCents, netBaseCents);
+
+        // proportional = earnedTotal * refundableBase / netBase
+        const proportionalMicro =
+          (earnedTotalMicro * BigInt(refundableBaseCents)) /
+          BigInt(netBaseCents);
+
+        if (proportionalMicro > 0n) {
+          // 不允许扣成负数：最多扣到 0
+          const willDeduct =
+            proportionalMicro > userBalance ? userBalance : proportionalMicro;
+
+          const existedReverse = await tx.loyaltyLedger.findUnique({
+            where: {
+              orderId_type_sourceKey: {
+                orderId,
+                type: LoyaltyEntryType.REFUND_REVERSE_EARN,
+                sourceKey,
+              },
+            },
+            select: { id: true, deltaMicro: true, balanceAfterMicro: true },
+          });
+
+          if (!existedReverse) {
+            const newBal = userBalance - willDeduct;
+            await tx.loyaltyLedger.create({
+              data: {
+                accountId: acc.id,
+                orderId,
+                type: LoyaltyEntryType.REFUND_REVERSE_EARN,
+                sourceKey,
+                deltaMicro: -willDeduct,
+                balanceAfterMicro: newBal,
+                note: `amend reverse earn on $${(
+                  refundableBaseCents / 100
+                ).toFixed(2)}`,
+              },
+            });
+            userBalance = newBal;
+            earnAdjustMicroApplied = -willDeduct;
+          } else {
+            // 已存在则沿用
+            earnAdjustMicroApplied = existedReverse.deltaMicro ?? 0n;
+            userBalance = existedReverse.balanceAfterMicro;
+          }
+        }
+      }
+    }
+
+    // 7) 回收 referral（若存在，按同一比例；扣推荐人账户）
+    let referralAdjustMicroApplied = 0n;
+
+    if (netBaseCents > 0 && refundCashCents > 0) {
+      const referral = await tx.loyaltyLedger.findUnique({
+        where: {
+          orderId_type_sourceKey: {
+            orderId,
+            type: LoyaltyEntryType.REFERRAL_BONUS,
+            sourceKey: 'ORDER',
+          },
+        },
+        select: { accountId: true, deltaMicro: true },
+      });
+
+      const referralTotalMicro = referral?.deltaMicro ?? 0n;
+
+      if (referral && referralTotalMicro > 0n) {
+        const refundableBaseCents = Math.min(refundCashCents, netBaseCents);
+
+        const proportionalMicro =
+          (referralTotalMicro * BigInt(refundableBaseCents)) /
+          BigInt(netBaseCents);
+
+        if (proportionalMicro > 0n) {
+          const existedReverse = await tx.loyaltyLedger.findUnique({
+            where: {
+              orderId_type_sourceKey: {
+                orderId,
+                type: LoyaltyEntryType.REFUND_REVERSE_REFERRAL,
+                sourceKey,
+              },
+            },
+            select: { id: true, deltaMicro: true },
+          });
+
+          if (!existedReverse) {
+            const refAcc = await tx.loyaltyAccount.findUnique({
+              where: { id: referral.accountId },
+              select: { id: true, pointsMicro: true },
+            });
+
+            if (refAcc) {
+              await tx.$queryRaw`
+              SELECT id
+              FROM "LoyaltyAccount"
+              WHERE id = ${refAcc.id}::uuid
+              FOR UPDATE
+            `;
+
+              // 最多扣到 0
+              const willDeduct =
+                proportionalMicro > refAcc.pointsMicro
+                  ? refAcc.pointsMicro
+                  : proportionalMicro;
+
+              const refNewBal = refAcc.pointsMicro - willDeduct;
+
+              await tx.loyaltyLedger.create({
+                data: {
+                  accountId: refAcc.id,
+                  orderId,
+                  type: LoyaltyEntryType.REFUND_REVERSE_REFERRAL,
+                  sourceKey,
+                  deltaMicro: -willDeduct,
+                  balanceAfterMicro: refNewBal,
+                  note: `amend reverse referral on $${(
+                    refundableBaseCents / 100
+                  ).toFixed(2)}`,
+                },
+              });
+
+              await tx.loyaltyAccount.update({
+                where: { id: refAcc.id },
+                data: { pointsMicro: refNewBal },
+              });
+
+              referralAdjustMicroApplied = -willDeduct;
+            }
+          } else {
+            referralAdjustMicroApplied = existedReverse.deltaMicro ?? 0n;
+          }
+        }
+      }
+    }
+
+    // 8) 回写用户账户余额（本函数只改余额；lifetime/tier 暂不在 amendment 中回退，避免复杂口径）
+    await tx.loyaltyAccount.update({
+      where: { id: acc.id },
+      data: { pointsMicro: userBalance },
+    });
+
+    // 9) 回写 amendment（方案B字段）
+    await tx.orderAmendment.update({
+      where: { id: amendmentId },
+      data: {
+        // 现金退到支付方式的金额（你后续真正去退微信/现金/支付宝时，用这个数）
+        refundCents: refundCashCents,
+
+        // 积分返还（当“应退总额 > 可退现金”时发生）
+        redeemReturnCents,
+        redeemReturnMicro,
+
+        // 这两个是“实际写入 ledger 的 delta”（可能被 clamp 到 0）
+        earnAdjustMicro: earnAdjustMicroApplied,
+        referralAdjustMicro: referralAdjustMicroApplied,
+      },
+    });
   }
 
   /**
@@ -663,6 +1015,7 @@ export class OrdersService {
         tx,
         userId: dto.userId,
         orderId,
+        sourceKey: 'ORDER',
         requestedPoints,
         subtotalAfterCoupon,
       });
@@ -1028,20 +1381,21 @@ export class OrdersService {
     })) as OrderWithItems & { loyaltyRedeemCents: number };
 
     if (next === 'paid') {
-      const netSubtotalForRewards = Math.max(
-        0,
-        (updated.subtotalCents ?? 0) - (updated.couponDiscountCents ?? 0),
-      );
+      // 与 LoyaltyService.settleOnPaid 的当前口径一致：
+      // net = subtotalCents - redeemValueCents（暂不把 coupon 纳入 net）
+      const subtotalForRewards = Math.max(0, updated.subtotalCents ?? 0);
+
       if (updated.couponId) {
         void this.membership.markCouponUsedForOrder({
           couponId: updated.couponId,
           orderId: updated.id,
         });
       }
+
       void this.loyalty.settleOnPaid({
         orderId: updated.id,
         userId: updated.userId ?? undefined,
-        subtotalCents: netSubtotalForRewards,
+        subtotalCents: subtotalForRewards,
         redeemValueCents: updated.loyaltyRedeemCents ?? 0,
       });
     } else if (next === 'refunded') {
@@ -1054,6 +1408,307 @@ export class OrdersService {
       void this.loyalty.rollbackOnRefund(updated.id);
     }
     return updated;
+  }
+
+  // =========================
+  // Amendments (方案 B 的入口)
+  // =========================
+
+  /**
+   * 退菜/改价：创建 OrderAmendment（方案 B）
+   *
+   * refundGrossCents: 本次“应退总额”（按你的规则算：通常是被 void 的菜品金额，是否含税/运费由你定义）
+   *
+   * 关键点：
+   * - cash 退款不能超过“本单实际现金支付总额 - 已现金退款额”
+   * - 超出部分：转成“返还积分”（即补回用户积分）
+   * - 全过程必须在一个 tx 里，保证一致性
+   */
+  async createAmendment(params: {
+    orderId: string;
+    type: OrderAmendmentType;
+    reason: string;
+
+    items?: Array<{
+      action: OrderAmendmentItemAction;
+      productStableId: string;
+      qty: number;
+      unitPriceCents?: number | null;
+      displayName?: string | null;
+      nameEn?: string | null;
+      nameZh?: string | null;
+      optionsJson?: Prisma.InputJsonValue;
+    }>;
+
+    paymentMethod?: PaymentMethod | null;
+
+    refundGrossCents?: number; // “应退总额”（现金退 + 返积分）
+    additionalChargeCents?: number; // “应补收总额”
+  }): Promise<OrderWithItems> {
+    const orderId = params.orderId;
+    const reason = params.reason;
+    const type = params.type;
+    const items = Array.isArray(params.items) ? params.items : [];
+    const paymentMethod: PaymentMethod | null = params.paymentMethod ?? null;
+
+    const toNonNegInt = (v: unknown): number => {
+      return typeof v === 'number' && Number.isFinite(v)
+        ? Math.max(0, Math.round(v))
+        : 0;
+    };
+
+    const refundGrossCentsRaw = toNonNegInt(params.refundGrossCents);
+    const additionalChargeCentsRaw = toNonNegInt(params.additionalChargeCents);
+
+    if (!orderId) throw new BadRequestException('orderId is required');
+    if (!reason?.trim()) throw new BadRequestException('reason is required');
+
+    // ✅ 基础 action 形态校验（避免 type 和 items 明显矛盾）
+    const hasVoid = items.some(
+      (i) => i.action === OrderAmendmentItemAction.VOID,
+    );
+    const hasAdd = items.some((i) => i.action === OrderAmendmentItemAction.ADD);
+
+    // ✅ items 校验：按 type 放宽/收紧
+    if (type === OrderAmendmentType.RETENDER) {
+      // RETENDER：不改明细，只记录现金流（建议强制 items 为空）
+      if (items.length > 0) {
+        throw new BadRequestException('RETENDER does not accept items');
+      }
+      if (refundGrossCentsRaw <= 0 && additionalChargeCentsRaw <= 0) {
+        throw new BadRequestException(
+          'RETENDER requires refundGrossCents > 0 or additionalChargeCents > 0',
+        );
+      }
+    } else {
+      // 非 RETENDER：通常至少有一个 item（VOID/SWAP/ADDITIONAL_CHARGE）
+      // 如果你想允许“纯补收不带 item”，保留下面这个例外
+      if (items.length === 0) {
+        if (
+          type === OrderAmendmentType.ADDITIONAL_CHARGE &&
+          additionalChargeCentsRaw > 0
+        ) {
+          // ok：纯补收不带 item
+        } else {
+          throw new BadRequestException('items is required');
+        }
+      }
+    }
+
+    if (type === OrderAmendmentType.VOID_ITEM && (!hasVoid || hasAdd)) {
+      throw new BadRequestException('VOID_ITEM requires VOID items only');
+    }
+    if (type === OrderAmendmentType.SWAP_ITEM && !(hasVoid && hasAdd)) {
+      throw new BadRequestException(
+        'SWAP_ITEM requires both VOID and ADD items',
+      );
+    }
+    if (type === OrderAmendmentType.ADDITIONAL_CHARGE && hasVoid) {
+      throw new BadRequestException(
+        'ADDITIONAL_CHARGE cannot include VOID items',
+      );
+    }
+
+    const updatedOrder = await this.prisma.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        include: { items: true },
+      });
+      if (!order) throw new NotFoundException('order not found');
+      if (order.status !== 'paid') {
+        throw new BadRequestException('only paid order can be amended');
+      }
+
+      // 1) 创建 amendment（先占位）
+      const amendment = await tx.orderAmendment.create({
+        data: {
+          orderId,
+          type,
+          paymentMethod,
+          reason: reason.trim(),
+
+          deltaCents: 0,
+          refundCents: 0,
+          additionalChargeCents: 0,
+
+          redeemReturnCents: 0,
+          redeemReturnMicro: 0n,
+          earnAdjustMicro: 0n,
+          referralAdjustMicro: 0n,
+        },
+        select: { id: true, amendmentStableId: true, orderId: true },
+      });
+
+      // 2) 写 amendment items（允许为空：RETENDER / 纯补收）
+      if (items.length > 0) {
+        await tx.orderAmendmentItem.createMany({
+          data: items.map((it) => {
+            // ⚠️ TS 可能把 it.action 缩窄成字面量（如 "ADD"），导致与 "VOID" 比较触发 TS2367。
+            // 先提升到 unknown，再做归一化与校验，避免类型缩窄带来的“永远为 false”判断。
+            const rawAction = it.action as unknown;
+            let action: OrderAmendmentItemAction;
+            if (
+              rawAction === OrderAmendmentItemAction.VOID ||
+              rawAction === 'VOID'
+            ) {
+              action = OrderAmendmentItemAction.VOID;
+            } else if (
+              rawAction === OrderAmendmentItemAction.ADD ||
+              rawAction === 'ADD'
+            ) {
+              action = OrderAmendmentItemAction.ADD;
+            } else {
+              throw new BadRequestException(
+                `invalid amendment item action: ${String(rawAction)}`,
+              );
+            }
+
+            if (!Number.isFinite(it.qty) || it.qty <= 0) {
+              throw new BadRequestException('qty must be > 0');
+            }
+
+            const base = {
+              amendmentId: amendment.id,
+              action,
+              productStableId: it.productStableId,
+              displayName: it.displayName ?? null,
+              nameEn: it.nameEn ?? null,
+              nameZh: it.nameZh ?? null,
+              qty: Math.round(it.qty),
+              unitPriceCents:
+                typeof it.unitPriceCents === 'number' &&
+                Number.isFinite(it.unitPriceCents)
+                  ? Math.round(it.unitPriceCents)
+                  : null,
+            };
+
+            return it.optionsJson !== undefined
+              ? {
+                  ...base,
+                  optionsJson: it.optionsJson,
+                }
+              : base;
+          }),
+        });
+      }
+
+      // 3) 方案 B：退款拆分（现金退上限 + 超出返积分） + netSpend（考虑补收）
+      const orderUserId = order.userId;
+
+      const originalCashPaidCents = Math.max(0, order.totalCents ?? 0);
+      const originalRedeemCents = Math.max(0, order.loyaltyRedeemCents ?? 0);
+
+      const agg = await tx.orderAmendment.aggregate({
+        where: { orderId },
+        _sum: { refundCents: true, redeemReturnCents: true },
+      });
+
+      const refundedCashAlready = Math.max(0, agg._sum.refundCents ?? 0);
+      const returnedRedeemAlready = Math.max(
+        0,
+        agg._sum.redeemReturnCents ?? 0,
+      );
+
+      const remainingCashRefundable = Math.max(
+        0,
+        originalCashPaidCents - refundedCashAlready,
+      );
+      const remainingRedeemRefundable = Math.max(
+        0,
+        originalRedeemCents - returnedRedeemAlready,
+      );
+
+      const maxRefundableCents =
+        remainingCashRefundable + remainingRedeemRefundable;
+
+      const boundedRefundGrossCents = Math.min(
+        refundGrossCentsRaw,
+        maxRefundableCents,
+      );
+
+      // 规则：先退现金，超出部分返还积分
+      const redeemReturnCents = Math.min(
+        remainingRedeemRefundable,
+        Math.max(0, boundedRefundGrossCents - remainingCashRefundable),
+      );
+      const refundCashCents = Math.max(
+        0,
+        boundedRefundGrossCents - redeemReturnCents,
+      );
+
+      const baseNetSubtotalCents = Math.max(
+        0,
+        (order.subtotalCents ?? 0) - (order.loyaltyRedeemCents ?? 0),
+      );
+
+      const newNetSubtotalCents = Math.max(
+        0,
+        baseNetSubtotalCents - refundCashCents + additionalChargeCentsRaw,
+      );
+
+      let redeemReturnMicro = 0n;
+      let earnAdjustMicro = 0n;
+      let referralAdjustMicro = 0n;
+
+      // ✅ 避免“净变化为 0 也写 loyalty 流水”
+      const shouldTouchLoyalty =
+        Boolean(orderUserId) &&
+        (redeemReturnCents > 0 || baseNetSubtotalCents !== newNetSubtotalCents);
+
+      if (shouldTouchLoyalty) {
+        const r = await this.loyalty.applyAmendmentAdjustments({
+          tx,
+          orderId,
+          userId: orderUserId!,
+          amendmentStableId: amendment.amendmentStableId,
+          baseNetSubtotalCents,
+          newNetSubtotalCents,
+          redeemReturnCents,
+        });
+
+        redeemReturnMicro = r.redeemReturnMicro;
+        earnAdjustMicro = r.earnAdjustMicro;
+        referralAdjustMicro = r.referralAdjustMicro;
+      }
+
+      // 4) 回写 amendment
+      const deltaCentsSigned = additionalChargeCentsRaw - refundCashCents;
+
+      await tx.orderAmendment.update({
+        where: { id: amendment.id },
+        data: {
+          deltaCents: deltaCentsSigned,
+          refundCents: refundCashCents,
+          additionalChargeCents: additionalChargeCentsRaw,
+
+          redeemReturnCents,
+          redeemReturnMicro,
+          earnAdjustMicro,
+          referralAdjustMicro,
+
+          // 如果 schema 有 summaryJson 就保留；没有就删掉这段
+          summaryJson: {
+            refundGrossCentsInput: refundGrossCentsRaw,
+            refundGrossCentsBounded: boundedRefundGrossCents,
+            refundCashCents,
+            redeemReturnCents,
+            additionalChargeCents: additionalChargeCentsRaw,
+            deltaCentsSigned,
+            baseNetSubtotalCents,
+            newNetSubtotalCents,
+          } as Prisma.InputJsonValue,
+        },
+      });
+
+      // 5) 返回最新 order（注意：这里不会自动改 order.items / totals，
+      // 如果你希望“改单后订单明细可回放”，后续需要把 amendment 应用到 order 或在查询端聚合计算）
+      return (await tx.order.findUnique({
+        where: { id: orderId },
+        include: { items: true },
+      })) as OrderWithItems;
+    });
+
+    return updatedOrder;
   }
 
   async advance(id: string): Promise<OrderWithItems> {

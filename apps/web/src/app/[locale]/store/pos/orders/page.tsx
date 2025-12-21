@@ -11,8 +11,14 @@ import type {
   PublicMenuCategory,
 } from "@/lib/order/shared";
 import { buildLocalizedMenuFromDb } from "@/lib/order/shared";
-import { advanceOrder, apiFetch, updateOrderStatus } from "@/lib/api-client";
+import {
+  advanceOrder,
+  apiFetch,
+  createOrderAmendment,
+  updateOrderStatus,
+} from "@/lib/api-client";
 import type { PosDisplaySnapshot } from "@/lib/pos-display";
+import type { CreateOrderAmendmentInput } from "@/lib/api-client";
 
 const COPY = {
   zh: {
@@ -1167,11 +1173,11 @@ export default function PosOrdersPage() {
     };
   }, [selectedAction, selectedItemIds, selectedOrder, swapSelection]);
 
-  const toggleArrayValue = <T,>(values: T[], value: T) => {
+  function toggleArrayValue<T>(values: T[], value: T): T[] {
     return values.includes(value)
       ? values.filter((item) => item !== value)
       : [...values, value];
-  };
+  }
 
   const handleQuickFilterToggle = (key: (typeof QUICK_FILTERS)[number]) => {
     if (key.type === "time") {
@@ -1210,6 +1216,7 @@ export default function PosOrdersPage() {
           key.value as OrderRecord["type"],
         ),
       }));
+      return;
     }
    };
 
@@ -1318,44 +1325,147 @@ export default function PosOrdersPage() {
     setSwapActiveItem(null);
   };
 
-  const handleSubmit = () => {
-    if (!selectedOrder || !selectedAction) return;
-    if (!canSubmit) return;
-    const baseSubtotal = selectedOrder.subtotalCents;
-    const baseDiscount = selectedOrder.discountCents;
-    const baseAfterDiscount = Math.max(
-      0,
-      selectedOrder.subtotalAfterDiscountCents,
-    );
-    const baseTax = selectedOrder.taxCents;
-    const baseTaxRate = baseAfterDiscount > 0 ? baseTax / baseAfterDiscount : 0;
-    const selectedItems = selectedOrder.items.filter((item) =>
-      selectedItemIds.includes(item.id),
-    );
-    const removedCents = selectedItems.reduce(
-      (sum, item) => sum + item.totalCents,
-      0,
-    );
-    const completeAction = () => {
-      alert(copy.actionSuccess);
-      setSelectedId(null);
-      setSelectedAction(null);
-      setReason("");
-      setSelectedItemIds([]);
-      setSwapSelection(null);
-      setSwapActiveItem(null);
-    };
-    if (selectedAction !== "full_refund") {
+const handleSubmit = () => {
+  if (!selectedOrder || !selectedAction) return;
+  if (!canSubmit) return;
+
+  const selectedItems = selectedOrder.items.filter((item) =>
+    selectedItemIds.includes(item.id),
+  );
+
+  const completeReset = () => {
+    setSelectedId(null);
+    setSelectedAction(null);
+    setReason("");
+    setSelectedItemIds([]);
+    setSwapSelection(null);
+    setSwapActiveItem(null);
+  };
+
+  // === full_refund：按你原逻辑（改订单状态） ===
+  if (selectedAction === "full_refund") {
+    if (isActionDisabled("full_refund")) return;
+
+    void (async () => {
+      try {
+        setIsSubmitting(true);
+        const updated = await updateOrderStatus<BackendOrder>(
+          selectedOrder.id,
+          "refunded",
+        );
+        const mapped = mapOrder(updated);
+        setOrders((prev) => prev.map((o) => (o.id === mapped.id ? mapped : o)));
+        setSelectedId(mapped.id);
+        alert(copy.actionSuccess);
+      } catch (error) {
+        console.error("Failed to refund order:", error);
+        alert(copy.refundFailed);
+      } finally {
+        setIsSubmitting(false);
+      }
+    })();
+
+    return;
+  }
+
+  // === 其他动作：create amendment ===
+  void (async () => {
+    try {
+      setIsSubmitting(true);
+
+      if (!summary) throw new Error("summary is missing");
+
+      // 1) action -> amendment type（关键：显式标注类型，避免变成 string）
+      const amendmentType: CreateOrderAmendmentInput["type"] =
+        selectedAction === "retender"
+          ? "RETENDER"
+          : selectedAction === "void_item"
+            ? "VOID_ITEM"
+            : selectedAction === "swap_item"
+              ? "SWAP_ITEM"
+              : "ADDITIONAL_CHARGE";
+
+      // 2) items
+      const voidItems =
+        selectedAction === "void_item" || selectedAction === "swap_item"
+          ? selectedItems.map((it) => ({
+              action: "VOID" as const,
+              productStableId: it.stableId,
+              qty: it.qty,
+              unitPriceCents: it.unitPriceCents,
+              displayName: it.displayName ?? it.name,
+              nameEn: it.nameEn ?? null,
+              nameZh: it.nameZh ?? null,
+            }))
+          : [];
+
+      const addItems =
+        selectedAction === "swap_item" && swapSelection
+          ? [
+              {
+                action: "ADD" as const,
+                productStableId: swapSelection.item.stableId,
+                qty: swapSelection.quantity,
+                unitPriceCents:
+                  Math.round(swapSelection.item.price * 100) +
+                  calcOptionDeltaCents(
+                    swapSelection.item,
+                    swapSelection.options,
+                  ),
+                displayName: swapSelection.item.name,
+                nameEn: swapSelection.item.nameEn ?? null,
+                nameZh: swapSelection.item.nameZh ?? null,
+                optionsJson: swapSelection.options, // dev: raw
+              },
+            ]
+          : [];
+
+      // ✅ RETENDER：必须 items 为空（按后端校验）
+      const items =
+        selectedAction === "retender" ? [] : [...voidItems, ...addItems];
+
+      // 3) 金额口径（对齐后端字段语义）
+      let refundGrossCents = 0;
+      let additionalChargeCents = 0;
+
+      if (selectedAction === "retender") {
+        refundGrossCents = Math.max(0, Math.round(summary.baseTotal));
+        additionalChargeCents = Math.max(0, Math.round(summary.newChargeCents));
+      } else {
+        refundGrossCents = Math.max(0, Math.round(summary.refundCents));
+        additionalChargeCents = Math.max(
+          0,
+          Math.round(summary.additionalChargeCents),
+        );
+      }
+
+      // 4) payload（关键：用 satisfies 让 TS 校验并保留字面量类型）
+      const payload = {
+        type: amendmentType,
+        reason: reason.trim(),
+        paymentMethod: null,
+        refundGrossCents,
+        additionalChargeCents,
+        items,
+      } satisfies CreateOrderAmendmentInput;
+
+      const updated = await createOrderAmendment<BackendOrder>(
+        selectedOrder.id,
+        payload,
+      );
+
+      const mapped = mapOrder(updated);
+      setOrders((prev) => prev.map((o) => (o.id === mapped.id ? mapped : o)));
+
+      // 6) 打印（保留你原逻辑）
       const printAfterAction = async () => {
-        if (
-          !summary ||
-          (selectedAction !== "void_item" && selectedAction !== "swap_item")
-        ) {
+        if (selectedAction !== "void_item" && selectedAction !== "swap_item") {
           return;
         }
 
         const fulfillment: PosPrintRequest["fulfillment"] =
           selectedOrder.type === "dine_in" ? "dine_in" : "pickup";
+
         const paymentMethod: PosPrintRequest["paymentMethod"] =
           selectedOrder.paymentMethod === "cash"
             ? "cash"
@@ -1378,6 +1488,7 @@ export default function PosOrdersPage() {
           const unitPriceCents =
             Math.round(swapSelection.item.price * 100) +
             calcOptionDeltaCents(swapSelection.item, swapSelection.options);
+
           remainingItems.push({
             stableId: swapSelection.item.stableId,
             nameZh:
@@ -1400,12 +1511,28 @@ export default function PosOrdersPage() {
           totalCents: summary.newTotalCents,
         };
 
+        const baseSubtotal = selectedOrder.subtotalCents;
+        const baseDiscount = selectedOrder.discountCents;
+        const baseAfterDiscount = Math.max(
+          0,
+          selectedOrder.subtotalAfterDiscountCents,
+        );
+        const baseTax = selectedOrder.taxCents;
+        const baseTaxRate =
+          baseAfterDiscount > 0 ? baseTax / baseAfterDiscount : 0;
+
+        const removedCents = selectedItems.reduce(
+          (sum, item) => sum + item.totalCents,
+          0,
+        );
+
         const voidDiscount =
           baseSubtotal > 0
             ? Math.round((baseDiscount * removedCents) / baseSubtotal)
             : 0;
         const voidAfterDiscount = Math.max(0, removedCents - voidDiscount);
         const voidTax = Math.round(voidAfterDiscount * baseTaxRate);
+
         const voidSnapshot: PosDisplaySnapshot = {
           items: selectedItems.map((item) => ({
             stableId: item.stableId,
@@ -1443,40 +1570,18 @@ export default function PosOrdersPage() {
         }
       };
 
-      setIsSubmitting(true);
-      window.setTimeout(() => {
-        setIsSubmitting(false);
-        void printAfterAction();
-        completeAction();
-      }, 500);
-      return;
+      await printAfterAction();
+
+      alert(copy.actionSuccess);
+      completeReset();
+    } catch (error) {
+      console.error("Failed to submit amendment:", error);
+      alert(copy.refundFailed);
+    } finally {
+      setIsSubmitting(false);
     }
-
-    if (isActionDisabled("full_refund")) return;
-
-    const submitRefund = async () => {
-      try {
-        setIsSubmitting(true);
-        const updated = await updateOrderStatus<BackendOrder>(
-          selectedOrder.id,
-          "refunded",
-        );
-        const mapped = mapOrder(updated);
-        setOrders((prev) =>
-          prev.map((order) => (order.id === mapped.id ? mapped : order)),
-        );
-        setSelectedId(mapped.id);
-        alert(copy.actionSuccess);
-      } catch (error) {
-        console.error("Failed to refund order:", error);
-        alert(copy.refundFailed);
-      } finally {
-        setIsSubmitting(false);
-      }
-    };
-
-    void submitRefund();
-  };
+  })();
+};
 
   const handleAdvanceStatus = async () => {
     if (!selectedOrder || isAdvancing) return;
