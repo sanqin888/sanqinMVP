@@ -400,7 +400,6 @@ export default function LocalOrderPage() {
                           setActiveItem(item);
                           setSelectedOptions({});
                         }}
-                        aria-disabled={isTempUnavailable(item.tempUnavailableUntil)}
                       >
                         {/* 菜品图片（可选） */}
                         {item.imageUrl ? (

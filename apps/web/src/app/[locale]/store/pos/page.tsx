@@ -353,19 +353,6 @@ export default function StorePosPage() {
     });
   };
 
-  const changeQuantity = (itemId: string, delta: number) => {
-    if (!delta) return;
-    setCart((prev) =>
-      prev
-        .map((e) =>
-          e.stableId === itemId && !e.options
-            ? { ...e, quantity: e.quantity + delta }
-            : e,
-        )
-        .filter((e) => e.quantity > 0),
-    );
-  };
-
   const clearCart = () => {
     setCart([]);
     clearPosDisplaySnapshot();
