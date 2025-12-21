@@ -47,15 +47,18 @@ enum LoyaltyTier {
 }
 
 enum LoyaltyEntryType {
-  EARN_ON_PURCHASE
   REDEEM_ON_ORDER
+  EARN_ON_PURCHASE
+  REFERRAL_BONUS
   REFUND_REVERSE_EARN
   REFUND_RETURN_REDEEM
-
+  REFUND_REVERSE_REFERRAL
   TOPUP_PURCHASED
   ADJUSTMENT_MANUAL
-  REFERRAL_BONUS
-  REFUND_REVERSE_REFERRAL
+
+  AMEND_RETURN_REDEEM
+  AMEND_EARN_ADJUST
+  AMEND_REFERRAL_ADJUST
 }
 
 enum PhoneVerificationStatus {
@@ -82,20 +85,20 @@ enum Weekday {
 // === Models ===
 
 model User {
-  id        String   @id
-  userStableId String @unique @default(cuid())
-  email     String?  @unique
-  phone      String?   @unique
-  phoneVerifiedAt DateTime?
-  name      String?
-  role      UserRole @default(CUSTOMER)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  marketingEmailOptIn   Boolean  @default(false)
+  id                    String    @id
+  userStableId          String    @unique @default(cuid())
+  email                 String?   @unique
+  phone                 String?   @unique
+  phoneVerifiedAt       DateTime?
+  name                  String?
+  role                  UserRole  @default(CUSTOMER)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  marketingEmailOptIn   Boolean   @default(false)
   marketingEmailOptInAt DateTime?
-  referredByUserId String?
-  birthdayMonth    Int?
-  birthdayDay      Int?
+  referredByUserId      String?
+  birthdayMonth         Int?
+  birthdayDay           Int?
 
   @@index([referredByUserId])
 }
@@ -114,29 +117,29 @@ model Order {
   totalCents      Int             @default(0)
   pickupCode      String?
 
-  contactName     String?
-  contactPhone    String?
+  contactName  String?
+  contactPhone String?
 
-  deliveryType           DeliveryType?
-  deliveryProvider       DeliveryProvider?
-  deliveryFeeCents       Int?
-  deliveryCostCents      Int?
-  deliveryEtaMinMinutes  Int?
-  deliveryEtaMaxMinutes  Int?
-  externalDeliveryId     String?
+  deliveryType          DeliveryType?
+  deliveryProvider      DeliveryProvider?
+  deliveryFeeCents      Int?
+  deliveryCostCents     Int?
+  deliveryEtaMinMinutes Int?
+  deliveryEtaMaxMinutes Int?
+  externalDeliveryId    String?
 
-  loyaltyRedeemCents         Int      @default(0)
-  subtotalAfterDiscountCents Int      @default(0)
-  couponId                   String?  @db.Uuid
-  couponDiscountCents        Int      @default(0)
+  loyaltyRedeemCents         Int       @default(0)
+  subtotalAfterDiscountCents Int       @default(0)
+  couponId                   String?   @db.Uuid
+  couponDiscountCents        Int       @default(0)
   couponCodeSnapshot         String?
   couponTitleSnapshot        String?
   couponMinSpendCents        Int?
   couponExpiresAt            DateTime?
 
-  createdAt       DateTime        @default(now())
+  createdAt DateTime @default(now())
 
-  items OrderItem[]
+  items      OrderItem[]
   amendments OrderAmendment[]
 
   @@index([createdAt])
@@ -145,35 +148,35 @@ model Order {
 }
 
 model Coupon {
-  id             String   @id @default(uuid()) @db.Uuid
-  userId         String
-  code           String
-  title          String
-  discountCents  Int
-  minSpendCents  Int?
-  expiresAt      DateTime?
-  issuedAt       DateTime @default(now())
-  usedAt         DateTime?
-  orderId        String?  @db.Uuid
-  source         String?
-  campaign       String?
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String
+  code          String
+  title         String
+  discountCents Int
+  minSpendCents Int?
+  expiresAt     DateTime?
+  issuedAt      DateTime  @default(now())
+  usedAt        DateTime?
+  orderId       String?   @db.Uuid
+  source        String?
+  campaign      String?
 
   @@index([userId, expiresAt])
 }
 
 model OrderItem {
-  id                String @id @default(uuid()) @db.Uuid
-  orderId           String @db.Uuid
+  id      String @id @default(uuid()) @db.Uuid
+  orderId String @db.Uuid
 
   // ✅ 对外统一：引用菜品 stableId
-  productStableId   String
+  productStableId String
 
-  displayName       String?
-  nameEn            String?
-  nameZh            String?
-  qty               Int
-  unitPriceCents    Int?
-  optionsJson       Json?
+  displayName    String?
+  nameEn         String?
+  nameZh         String?
+  qty            Int
+  unitPriceCents Int?
+  optionsJson    Json?
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
@@ -199,29 +202,38 @@ enum OrderAmendmentItemAction {
 }
 
 model OrderAmendment {
-  id                String               @id @default(uuid()) @db.Uuid
-  amendmentStableId String               @unique @default(cuid())
-  orderId           String               @db.Uuid
-  type              OrderAmendmentType
-  paymentMethod     PaymentMethod?
-  reason            String
-  deltaCents        Int                  @default(0)
-  refundCents       Int                  @default(0)
-  additionalChargeCents Int              @default(0)
-  rebillGroupId     String?
-  summaryJson       Json?
-  createdAt         DateTime             @default(now())
+  id                String @id @default(uuid()) @db.Uuid
+  amendmentStableId String @unique @default(cuid())
 
-  order   Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  items   OrderAmendmentItem[]
+  orderId String @db.Uuid
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
-  @@index([orderId, createdAt])
-  @@index([rebillGroupId])
+  type          OrderAmendmentType
+  paymentMethod PaymentMethod?
+  reason        String
+
+  deltaCents            Int @default(0)
+  refundCents           Int @default(0)
+  additionalChargeCents Int @default(0)
+
+  // ✅ 方案B：积分相关字段
+  redeemReturnCents   Int    @default(0)
+  redeemReturnMicro   BigInt @default(0) @db.BigInt
+  earnAdjustMicro     BigInt @default(0) @db.BigInt
+  referralAdjustMicro BigInt @default(0) @db.BigInt
+
+  rebillGroupId String?
+  summaryJson   Json?
+
+  // ✅ 反向关系：对应 OrderAmendmentItem.amendment
+  items OrderAmendmentItem[]
+
+  @@index([orderId])
 }
 
 model OrderAmendmentItem {
-  id              String                    @id @default(uuid()) @db.Uuid
-  amendmentId     String                    @db.Uuid
+  id              String                   @id @default(uuid()) @db.Uuid
+  amendmentId     String                   @db.Uuid
   action          OrderAmendmentItemAction
   productStableId String
   displayName     String?
@@ -237,12 +249,12 @@ model OrderAmendmentItem {
 }
 
 model LoyaltyAccount {
-  id          String      @id @default(uuid()) @db.Uuid
-  userId      String      @unique
-  pointsMicro BigInt      @db.BigInt
-  tier        LoyaltyTier @default(BRONZE)
-  createdAt   DateTime    @default(now())
-  lifetimeSpendCents Int @default(0)
+  id                 String      @id @default(uuid()) @db.Uuid
+  userId             String      @unique
+  pointsMicro        BigInt      @db.BigInt
+  tier               LoyaltyTier @default(BRONZE)
+  createdAt          DateTime    @default(now())
+  lifetimeSpendCents Int         @default(0)
 
   ledger LoyaltyLedger[]
 
@@ -250,19 +262,24 @@ model LoyaltyAccount {
 }
 
 model LoyaltyLedger {
-  id                String           @id @default(uuid()) @db.Uuid
-  accountId         String           @db.Uuid
-  orderId           String?          @db.Uuid
-  type              LoyaltyEntryType
-  deltaMicro        BigInt           @db.BigInt
-  balanceAfterMicro BigInt           @db.BigInt
+  id        String         @id @default(uuid()) @db.Uuid
+  accountId String         @db.Uuid
+  account   LoyaltyAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  orderId String?          @db.Uuid
+  type    LoyaltyEntryType
+
+  // ✅ 新增：幂等来源（ORDER / FULL_REFUND / AMEND:<amendStableId>）
+  sourceKey String @default("ORDER")
+
+  deltaMicro        BigInt   @db.BigInt
+  balanceAfterMicro BigInt   @db.BigInt
   note              String?
-  createdAt         DateTime         @default(now())
+  createdAt         DateTime @default(now())
 
-  account LoyaltyAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
-
-  @@unique([orderId, type])
+  @@unique([orderId, type, sourceKey])
   @@index([accountId, createdAt])
+  @@index([orderId])
 }
 
 model CheckoutIntent {
@@ -283,17 +300,17 @@ model CheckoutIntent {
 }
 
 model PhoneVerification {
-  id        String                  @id @default(uuid()) @db.Uuid
-  phone     String
-  code      String
-  status    PhoneVerificationStatus @default(PENDING)
+  id     String                  @id @default(uuid()) @db.Uuid
+  phone  String
+  code   String
+  status PhoneVerificationStatus @default(PENDING)
 
-  expiresAt DateTime
-  createdAt DateTime @default(now())
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
   verifiedAt DateTime?
   consumedAt DateTime?
-  purpose   String   @default("generic")
-  used      Boolean  @default(false)
+  purpose    String    @default("generic")
+  used       Boolean   @default(false)
 
   attempts      Int       @default(0)
   lastAttemptAt DateTime?
@@ -302,25 +319,25 @@ model PhoneVerification {
 }
 
 model BusinessConfig {
-  id                   Int      @id @default(1)
+  id                   Int     @id @default(1)
   storeName            String?
-  timezone             String   @default("America/Toronto")
-  isTemporarilyClosed  Boolean  @default(false)
+  timezone             String  @default("America/Toronto")
+  isTemporarilyClosed  Boolean @default(false)
   temporaryCloseReason String?
-  deliveryBaseFeeCents Int      @default(600)
-  priorityPerKmCents   Int      @default(100)
-  salesTaxRate         Float    @default(0.13)
+  deliveryBaseFeeCents Int     @default(600)
+  priorityPerKmCents   Int     @default(100)
+  salesTaxRate         Float   @default(0.13)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model BusinessHour {
-  id           Int      @id @default(autoincrement())
-  weekday      Int      @unique
+  id           Int     @id @default(autoincrement())
+  weekday      Int     @unique
   openMinutes  Int?
   closeMinutes Int?
-  isClosed     Boolean  @default(false)
+  isClosed     Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -343,109 +360,109 @@ model Holiday {
 // =========================
 
 model MenuCategory {
-  id        String   @id @default(uuid())
+  id String @id @default(uuid())
 
-  stableId  String   @unique @default(cuid())
+  stableId String @unique @default(cuid())
 
   nameEn    String
   nameZh    String?
-  sortOrder Int      @default(0)
-  isActive  Boolean  @default(true)
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
 
   // ✅ 软删除：不物理删除，保证 stableId 永久唯一不可复用
   deletedAt DateTime?
 
-  items     MenuItem[]
+  items MenuItem[]
 
   @@index([sortOrder])
   @@index([deletedAt])
 }
 
 model MenuItem {
-  id                  String   @id @default(uuid())
-  categoryId           String
+  id         String @id @default(uuid())
+  categoryId String
 
   // ✅ 不传则自动生成 cuid；传了就用传入值（前提：唯一）
-  stableId             String   @unique @default(cuid())
+  stableId String @unique @default(cuid())
 
-  nameEn               String
-  nameZh               String?
-  basePriceCents       Int
-  sortOrder            Int      @default(0)
+  nameEn         String
+  nameZh         String?
+  basePriceCents Int
+  sortOrder      Int     @default(0)
 
-  imageUrl             String?
-  ingredientsEn        String?
-  ingredientsZh        String?
+  imageUrl      String?
+  ingredientsEn String?
+  ingredientsZh String?
 
-  isAvailable          Boolean  @default(true)
-  isVisible            Boolean  @default(true)
+  isAvailable          Boolean   @default(true)
+  isVisible            Boolean   @default(true)
   tempUnavailableUntil DateTime?
 
-  deletedAt            DateTime?
+  deletedAt DateTime?
 
-  category             MenuCategory          @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  optionGroups         MenuItemOptionGroup[]
+  category     MenuCategory          @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  optionGroups MenuItemOptionGroup[]
 
   @@index([categoryId, sortOrder])
   @@index([deletedAt])
 }
 
 model MenuOptionGroupTemplate {
-  id                   String   @id @default(uuid())
-  stableId             String   @unique @default(cuid())
+  id       String @id @default(uuid())
+  stableId String @unique @default(cuid())
 
-  nameEn               String
-  nameZh               String?
-  sortOrder            Int      @default(0)
+  nameEn    String
+  nameZh    String?
+  sortOrder Int     @default(0)
 
-  defaultMinSelect     Int      @default(0)
-  defaultMaxSelect     Int?     @default(1)
+  defaultMinSelect Int  @default(0)
+  defaultMaxSelect Int? @default(1)
 
-  isAvailable          Boolean  @default(true)
+  isAvailable          Boolean   @default(true)
   tempUnavailableUntil DateTime?
 
-  deletedAt            DateTime?
+  deletedAt DateTime?
 
-  options              MenuOptionTemplateChoice[]
-  itemLinks            MenuItemOptionGroup[]
+  options   MenuOptionTemplateChoice[]
+  itemLinks MenuItemOptionGroup[]
 
   @@index([sortOrder])
   @@index([deletedAt])
 }
 
 model MenuOptionTemplateChoice {
-  id                   String   @id @default(uuid())
-  stableId             String   @unique @default(cuid())
+  id       String @id @default(uuid())
+  stableId String @unique @default(cuid())
 
-  templateGroupId      String
-  nameEn               String
-  nameZh               String?
-  priceDeltaCents      Int      @default(0)
-  sortOrder            Int      @default(0)
+  templateGroupId String
+  nameEn          String
+  nameZh          String?
+  priceDeltaCents Int     @default(0)
+  sortOrder       Int     @default(0)
 
-  isAvailable          Boolean  @default(true)
+  isAvailable          Boolean   @default(true)
   tempUnavailableUntil DateTime?
 
-  deletedAt            DateTime?
+  deletedAt DateTime?
 
-  templateGroup        MenuOptionGroupTemplate @relation(fields: [templateGroupId], references: [id], onDelete: Cascade)
+  templateGroup MenuOptionGroupTemplate @relation(fields: [templateGroupId], references: [id], onDelete: Cascade)
 
   @@index([templateGroupId, sortOrder])
   @@index([deletedAt])
 }
 
 model MenuItemOptionGroup {
-  id              String                  @id @default(uuid())
+  id              String @id @default(uuid())
   itemId          String
   templateGroupId String
 
-  minSelect       Int                     @default(0)
-  maxSelect       Int?
-  sortOrder       Int                     @default(0)
-  isEnabled       Boolean                 @default(true)
+  minSelect Int     @default(0)
+  maxSelect Int?
+  sortOrder Int     @default(0)
+  isEnabled Boolean @default(true)
 
-  item            MenuItem                @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  templateGroup   MenuOptionGroupTemplate @relation(fields: [templateGroupId], references: [id], onDelete: Cascade)
+  item          MenuItem                @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  templateGroup MenuOptionGroupTemplate @relation(fields: [templateGroupId], references: [id], onDelete: Cascade)
 
   @@unique([itemId, templateGroupId])
   @@index([itemId, sortOrder])
