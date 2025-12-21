@@ -927,15 +927,15 @@ export default function PosOrdersPage() {
     );
     const replacementCents = parseCurrencyToCents(replacementInput);
 
-    let newSubtotal = baseSubtotal;
+    let nextSubtotal = baseSubtotal;
     if (selectedAction === "void_item") {
-      newSubtotal = baseSubtotal - removedCents;
+      nextSubtotal = baseSubtotal - removedCents;
     } else if (selectedAction === "swap_item") {
-      newSubtotal = baseSubtotal - removedCents + replacementCents;
+      nextSubtotal = baseSubtotal - removedCents + replacementCents;
     } else if (selectedAction === "full_refund") {
-      newSubtotal = 0;
+      nextSubtotal = 0;
     }
-    newSubtotal = Math.max(0, newSubtotal);
+    const newSubtotal = Math.max(0, nextSubtotal);
 
     const newDiscount =
       selectedAction === "full_refund"
