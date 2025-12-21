@@ -1452,15 +1452,14 @@ const handleSubmit = () => {
         );
       }
 
-      // 4) payload（关键：用 satisfies 让 TS 校验并保留字面量类型）
-      const payload = {
+      const payload: CreateOrderAmendmentInput = {
         type: amendmentType,
         reason: reason.trim(),
         paymentMethod: null,
         refundGrossCents,
         additionalChargeCents,
         items,
-      } satisfies CreateOrderAmendmentInput;
+      };
 
       const updated = await createOrderAmendment<BackendOrder>(
         selectedOrder.id,
