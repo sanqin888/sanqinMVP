@@ -1007,6 +1007,7 @@ export default function PosOrdersPage() {
       }));
       return;
     }
+    newSubtotal = Math.max(0, newSubtotal);
 
     if (key.type === "amount") {
       setFilters((prev) => ({
