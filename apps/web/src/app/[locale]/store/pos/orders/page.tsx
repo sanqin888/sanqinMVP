@@ -1068,7 +1068,7 @@ export default function PosOrdersPage() {
     Boolean(selectedAction) &&
     reason.trim().length > 0 &&
     (!showItemSelection || selectedItemIds.length > 0) &&
-    !isActionDisabled(selectedAction);
+    (selectedAction ? !isActionDisabled(selectedAction) : false);
 
   const handleSubmit = () => {
     if (!selectedOrder || !selectedAction) return;
