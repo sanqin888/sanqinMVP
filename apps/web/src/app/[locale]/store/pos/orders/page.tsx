@@ -1105,9 +1105,9 @@ export default function PosOrdersPage() {
           return;
         }
 
-        const fulfillment =
+        const fulfillment: PosPrintRequest["fulfillment"] =
           selectedOrder.type === "dine_in" ? "dine_in" : "pickup";
-        const paymentMethod =
+        const paymentMethod: PosPrintRequest["paymentMethod"] =
           selectedOrder.paymentMethod === "cash"
             ? "cash"
             : selectedOrder.paymentMethod === "card"
