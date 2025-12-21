@@ -2124,9 +2124,9 @@ const handleSubmit = () => {
                 {copy.swapItemConfirm}
               </button>
             </div>
-          )
+          </div>
         </div>
-      </section>
+      )}
     </main>
   );
 }
