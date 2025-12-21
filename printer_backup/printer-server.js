@@ -357,6 +357,7 @@ app.post("/print-pos", async (req, res) => {
     fulfillment,
     paymentMethod,
     snapshot,
+    targets,
   } = payload || {};
 
   console.log(
@@ -398,10 +399,18 @@ app.post("/print-pos", async (req, res) => {
       snapshot,
     });
 
-    await Promise.all([
-      printEscPosTo(FRONT_PRINTER, customerData),
-      printEscPosTo(KITCHEN_PRINTER, kitchenData),
-    ]);
+    const targetCustomer = targets?.customer ?? true;
+    const targetKitchen = targets?.kitchen ?? true;
+    const tasks = [];
+
+    if (targetCustomer) {
+      tasks.push(printEscPosTo(FRONT_PRINTER, customerData));
+    }
+    if (targetKitchen) {
+      tasks.push(printEscPosTo(KITCHEN_PRINTER, kitchenData));
+    }
+
+    await Promise.all(tasks);
 
     console.log("[/print-pos] 已发送 ESC/POS 数据到打印机");
     res.json({ ok: true });

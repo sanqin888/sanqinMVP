@@ -18,7 +18,7 @@ export const ORDER_STATUS_TRANSITIONS: Readonly<
   paid: [OrderStatus.making, OrderStatus.refunded],
   making: [OrderStatus.ready, OrderStatus.refunded],
   ready: [OrderStatus.completed],
-  completed: [],
+  completed: [OrderStatus.refunded],
   refunded: [],
 } as const;
 
