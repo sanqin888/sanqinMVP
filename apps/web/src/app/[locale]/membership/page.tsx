@@ -248,7 +248,7 @@ export default function MembershipHomePage() {
             if (errorBody?.message) {
               errorMessage = errorBody.message;
             }
-          } catch (error) {
+          } catch {
             try {
               const text = await res.text();
               if (text) {
