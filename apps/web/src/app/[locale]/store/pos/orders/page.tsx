@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import type { Locale } from "@/lib/order/shared";
 import { advanceOrder, apiFetch, updateOrderStatus } from "@/lib/api-client";
+import type { PosDisplaySnapshot } from "@/lib/pos-display";
 
 const COPY = {
   zh: {
@@ -60,6 +61,7 @@ const COPY = {
     advanceProcessing: "推进中...",
     advanceSuccess: "订单状态已推进。",
     advanceFailed: "推进失败，请稍后重试。",
+    advanceTerminal: "终态",
     refundFailed: "退款失败，请稍后重试。",
     reasonLabel: "操作原因",
     reasonPlaceholder: "请输入原因（必填）",
@@ -165,6 +167,7 @@ const COPY = {
     advanceProcessing: "Advancing...",
     advanceSuccess: "Order status advanced.",
     advanceFailed: "Failed to advance status. Please retry.",
+    advanceTerminal: "Terminal",
     refundFailed: "Refund failed. Please retry.",
     reasonLabel: "Reason",
     reasonPlaceholder: "Enter reason (required)",
@@ -234,6 +237,15 @@ const ACTIONS: ActionKey[] = [
   "swap_item",
   "full_refund",
 ];
+
+const NEXT_STATUS: Record<OrderStatusKey, OrderStatusKey | null> = {
+  pending: "paid",
+  paid: "making",
+  making: "ready",
+  ready: "completed",
+  completed: null,
+  refunded: null,
+};
 
 const QUICK_FILTERS = [
   {
@@ -335,10 +347,27 @@ type OrderRecord = {
 
 type OrderItemRecord = {
   id: string;
+  stableId: string;
   name: string;
+  nameEn?: string | null;
+  nameZh?: string | null;
+  displayName?: string | null;
   qty: number;
   unitPriceCents: number;
   totalCents: number;
+};
+
+type PosPrintRequest = {
+  locale: Locale;
+  orderNumber: string;
+  pickupCode?: string | null;
+  fulfillment: "pickup" | "dine_in";
+  paymentMethod: "cash" | "card" | "wechat_alipay";
+  snapshot: PosDisplaySnapshot;
+  targets?: {
+    customer?: boolean;
+    kitchen?: boolean;
+  };
 };
 
 function statusTone(status: OrderStatusKey): string {
@@ -405,6 +434,19 @@ function parseCurrencyToCents(value: string): number {
   const parsed = Number.parseFloat(cleaned);
   if (Number.isNaN(parsed)) return 0;
   return Math.max(0, Math.round(parsed * 100));
+}
+
+function sendPosPrintRequest(payload: PosPrintRequest): Promise<void> {
+  return fetch("http://127.0.0.1:19191/print-pos", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    keepalive: true,
+  })
+    .then(() => undefined)
+    .catch((err) => {
+      console.error("Failed to send POS print request:", err);
+    });
 }
 
 type ActionSummary = {
@@ -741,7 +783,11 @@ export default function PosOrdersPage() {
         const unitPriceCents = item.unitPriceCents ?? 0;
         return {
           id: item.id,
+          stableId: item.productStableId,
           name: pickItemName(item, locale),
+          nameEn: item.nameEn ?? null,
+          nameZh: item.nameZh ?? null,
+          displayName: item.displayName ?? null,
           qty: item.qty,
           unitPriceCents,
           totalCents: unitPriceCents * item.qty,
@@ -892,7 +938,11 @@ export default function PosOrdersPage() {
     newSubtotal = Math.max(0, newSubtotal);
 
     const newDiscount =
-      selectedAction === "full_refund" ? 0 : Math.min(baseDiscount, newSubtotal);
+      selectedAction === "full_refund"
+        ? 0
+        : baseSubtotal > 0
+          ? Math.round((baseDiscount * newSubtotal) / baseSubtotal)
+          : 0;
     const newSubtotalAfterDiscount = Math.max(0, newSubtotal - newDiscount);
     const baseAfterDiscount = Math.max(
       0,
@@ -1007,10 +1057,7 @@ export default function PosOrdersPage() {
   const isActionDisabled = useCallback(
     (action: ActionKey) => {
       if (action === "full_refund") {
-        return (
-          selectedOrder?.status === "completed" ||
-          selectedOrder?.status === "refunded"
-        );
+        return selectedOrder?.status === "refunded";
       }
       return false;
     },
@@ -1026,6 +1073,21 @@ export default function PosOrdersPage() {
   const handleSubmit = () => {
     if (!selectedOrder || !selectedAction) return;
     if (!canSubmit) return;
+    const baseSubtotal = selectedOrder.subtotalCents;
+    const baseDiscount = selectedOrder.discountCents;
+    const baseAfterDiscount = Math.max(
+      0,
+      selectedOrder.subtotalAfterDiscountCents,
+    );
+    const baseTax = selectedOrder.taxCents;
+    const baseTaxRate = baseAfterDiscount > 0 ? baseTax / baseAfterDiscount : 0;
+    const selectedItems = selectedOrder.items.filter((item) =>
+      selectedItemIds.includes(item.id),
+    );
+    const removedCents = selectedItems.reduce(
+      (sum, item) => sum + item.totalCents,
+      0,
+    );
     const completeAction = () => {
       alert(copy.actionSuccess);
       setSelectedId(null);
@@ -1035,9 +1097,103 @@ export default function PosOrdersPage() {
       setReplacementInput("");
     };
     if (selectedAction !== "full_refund") {
+      const printAfterAction = async () => {
+        if (
+          !summary ||
+          (selectedAction !== "void_item" && selectedAction !== "swap_item")
+        ) {
+          return;
+        }
+
+        const fulfillment =
+          selectedOrder.type === "dine_in" ? "dine_in" : "pickup";
+        const paymentMethod =
+          selectedOrder.paymentMethod === "cash"
+            ? "cash"
+            : selectedOrder.paymentMethod === "card"
+              ? "card"
+              : "wechat_alipay";
+
+        const remainingItems = selectedOrder.items
+          .filter((item) => !selectedItemIds.includes(item.id))
+          .map((item) => ({
+            stableId: item.stableId,
+            nameZh: item.nameZh ?? item.displayName ?? item.name,
+            nameEn: item.nameEn ?? item.displayName ?? item.name,
+            quantity: item.qty,
+            unitPriceCents: item.unitPriceCents,
+            lineTotalCents: item.totalCents,
+          }));
+
+        if (selectedAction === "swap_item") {
+          const replacementCents = parseCurrencyToCents(replacementInput);
+          if (replacementCents > 0) {
+            remainingItems.push({
+              stableId: "swap-adjustment",
+              nameZh: "换菜调整",
+              nameEn: "Swap adjustment",
+              quantity: 1,
+              unitPriceCents: replacementCents,
+              lineTotalCents: replacementCents,
+            });
+          }
+        }
+
+        const nextSnapshot: PosDisplaySnapshot = {
+          items: remainingItems,
+          subtotalCents: summary.newSubtotal,
+          discountCents: summary.newDiscount,
+          taxCents: summary.newTax,
+          totalCents: summary.newTotalCents,
+        };
+
+        const voidDiscount =
+          baseSubtotal > 0
+            ? Math.round((baseDiscount * removedCents) / baseSubtotal)
+            : 0;
+        const voidAfterDiscount = Math.max(0, removedCents - voidDiscount);
+        const voidTax = Math.round(voidAfterDiscount * baseTaxRate);
+        const voidSnapshot: PosDisplaySnapshot = {
+          items: selectedItems.map((item) => ({
+            stableId: item.stableId,
+            nameZh: `退菜 ${item.nameZh ?? item.displayName ?? item.name}`,
+            nameEn: `VOID ${item.nameEn ?? item.displayName ?? item.name}`,
+            quantity: item.qty,
+            unitPriceCents: item.unitPriceCents,
+            lineTotalCents: item.totalCents,
+          })),
+          subtotalCents: removedCents,
+          discountCents: voidDiscount,
+          taxCents: voidTax,
+          totalCents: voidAfterDiscount + voidTax,
+        };
+
+        const basePayload = {
+          locale,
+          orderNumber: selectedOrder.stableId,
+          pickupCode: selectedOrder.pickupCode,
+          fulfillment,
+          paymentMethod,
+        };
+
+        await sendPosPrintRequest({
+          ...basePayload,
+          snapshot: nextSnapshot,
+        });
+
+        if (selectedItems.length > 0) {
+          await sendPosPrintRequest({
+            ...basePayload,
+            snapshot: voidSnapshot,
+            targets: { kitchen: true, customer: false },
+          });
+        }
+      };
+
       setIsSubmitting(true);
       window.setTimeout(() => {
         setIsSubmitting(false);
+        void printAfterAction();
         completeAction();
       }, 500);
       return;
@@ -1071,6 +1227,8 @@ export default function PosOrdersPage() {
 
   const handleAdvanceStatus = async () => {
     if (!selectedOrder || isAdvancing) return;
+    const nextStatus = NEXT_STATUS[selectedOrder.status];
+    if (!nextStatus) return;
     try {
       setIsAdvancing(true);
       const updated = await advanceOrder<BackendOrder>(selectedOrder.id);
@@ -1087,6 +1245,13 @@ export default function PosOrdersPage() {
       setIsAdvancing(false);
     }
   };
+
+  const advanceLabel = useMemo(() => {
+    if (!selectedOrder) return copy.advanceStatus;
+    const nextStatus = NEXT_STATUS[selectedOrder.status];
+    if (!nextStatus) return copy.advanceTerminal;
+    return `→ ${copy.status[nextStatus]}`;
+  }, [copy, selectedOrder]);
 
   return (
     <main className="min-h-screen bg-slate-900 text-slate-50">
@@ -1310,18 +1475,16 @@ export default function PosOrdersPage() {
                   onClick={handleAdvanceStatus}
                   disabled={
                     isAdvancing ||
-                    selectedOrder.status === "completed" ||
-                    selectedOrder.status === "refunded"
+                    NEXT_STATUS[selectedOrder.status] === null
                   }
-                  className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                  className={`rounded-md border px-4 py-2 text-sm font-semibold transition ${
                     isAdvancing ||
-                    selectedOrder.status === "completed" ||
-                    selectedOrder.status === "refunded"
-                      ? "cursor-not-allowed border-slate-700 bg-slate-800 text-slate-400"
-                      : "border-emerald-400/70 bg-emerald-500/15 text-emerald-50 hover:bg-emerald-500/25"
+                    NEXT_STATUS[selectedOrder.status] === null
+                      ? "cursor-not-allowed border-slate-700 bg-slate-900/60 text-slate-500"
+                      : "border-slate-500 bg-slate-900/40 text-slate-100 hover:bg-slate-800/60"
                   }`}
                 >
-                  {isAdvancing ? copy.advanceProcessing : copy.advanceStatus}
+                  {isAdvancing ? copy.advanceProcessing : advanceLabel}
                 </button>
               </div>
               <div className="flex flex-wrap gap-2 text-[11px] text-slate-400">
