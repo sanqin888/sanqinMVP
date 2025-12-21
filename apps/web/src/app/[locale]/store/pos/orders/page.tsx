@@ -507,19 +507,6 @@ function sendPosPrintRequest(payload: PosPrintRequest): Promise<void> {
     });
 }
 
-function sendPosPrintRequest(payload: PosPrintRequest): Promise<void> {
-  return fetch("http://127.0.0.1:19191/print-pos", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-    keepalive: true,
-  })
-    .then(() => undefined)
-    .catch((err) => {
-      console.error("Failed to send POS print request:", err);
-    });
-}
-
 type ActionSummary = {
   baseTotal: number;
   baseSubtotal: number;
@@ -2020,9 +2007,9 @@ export default function PosOrdersPage() {
                 {copy.swapItemConfirm}
               </button>
             </div>
-          )}
+          </div>
         </div>
-      </section>
+      )}
     </main>
   );
 }
