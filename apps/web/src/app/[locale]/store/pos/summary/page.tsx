@@ -122,7 +122,7 @@ export default function PosDailySummaryPage() {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [note, setNote] = useState("");
 
-  const orders: OrderRow[] = [];
+  const orders = useMemo<OrderRow[]>(() => [], []);
 
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
