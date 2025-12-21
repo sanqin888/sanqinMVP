@@ -4,7 +4,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import type { Locale } from "@/lib/order/shared";
+import type {
+  AdminMenuFull,
+  Locale,
+  MenuTemplateFull,
+  PublicMenuCategory,
+} from "@/lib/order/shared";
+import { buildLocalizedMenuFromDb } from "@/lib/order/shared";
 import { advanceOrder, apiFetch, updateOrderStatus } from "@/lib/api-client";
 import type { PosDisplaySnapshot } from "@/lib/pos-display";
 
@@ -53,6 +59,23 @@ const COPY = {
       swap_item: "换菜 = 退旧 + 加新 + 差额补收/差额退款",
       full_refund: "全单退款",
     },
+    close: "关闭",
+    swapItemTitle: "选择新菜品",
+    swapItemHint: "请选择需要换上的新菜品（含选项）。",
+    swapItemEmpty: "尚未选择新菜品。",
+    swapItemSelect: "选择新菜品",
+    swapItemChange: "更换菜品",
+    swapItemClear: "清空新菜品",
+    swapItemQty: "数量",
+    swapItemPrice: "小计",
+    swapItemDialogTitle: "选择新菜品",
+    swapItemDialogSubtitle: "完成必选项后加入换菜。",
+    swapItemConfirm: "确定选择",
+    optionsRequired: "请先选择所有必选项",
+    optionLimit: (min: number, max: number | null) =>
+      max === null || max === min
+        ? `至少选 ${min} 项`
+        : `请选择 ${min}-${max} 项`,
     actionNotice: "请选择需要处理的订单操作。",
     actionExecute: "执行操作",
     actionProcessing: "处理中...",
@@ -68,8 +91,6 @@ const COPY = {
     reasonPresets: ["顾客取消", "商品售罄", "操作失误", "支付方式调整"],
     itemSelectTitle: "选择退/换菜品",
     itemSelectHint: "退菜/换菜必须勾选对应菜品。",
-    replacementLabel: "新菜品金额",
-    replacementPlaceholder: "输入新菜品总价（可选）",
     channelLabel: {
       web: "线上",
       in_store: "POS",
@@ -159,6 +180,23 @@ const COPY = {
       swap_item: "Swap item = return old + add new + settle difference",
       full_refund: "Full refund",
     },
+    close: "Close",
+    swapItemTitle: "Select replacement item",
+    swapItemHint: "Choose the new item (with options).",
+    swapItemEmpty: "No replacement item selected.",
+    swapItemSelect: "Choose item",
+    swapItemChange: "Change item",
+    swapItemClear: "Clear selection",
+    swapItemQty: "Qty",
+    swapItemPrice: "Subtotal",
+    swapItemDialogTitle: "Choose replacement item",
+    swapItemDialogSubtitle: "Complete required options before adding.",
+    swapItemConfirm: "Confirm selection",
+    optionsRequired: "Please complete required options",
+    optionLimit: (min: number, max: number | null) =>
+      max === null || max === min
+        ? `Select at least ${min}`
+        : `Select ${min}-${max}`,
     actionNotice: "Select an action to continue.",
     actionExecute: "Execute action",
     actionProcessing: "Processing...",
@@ -179,8 +217,6 @@ const COPY = {
     ],
     itemSelectTitle: "Select items to void/swap",
     itemSelectHint: "Void/swap requires selecting the items to change.",
-    replacementLabel: "Replacement total",
-    replacementPlaceholder: "Enter replacement items total (optional)",
     channelLabel: {
       web: "Online",
       in_store: "POS",
@@ -357,6 +393,12 @@ type OrderItemRecord = {
   totalCents: number;
 };
 
+type SwapSelection = {
+  item: PublicMenuCategory["items"][number];
+  options: Record<string, string[]>;
+  quantity: number;
+};
+
 type PosPrintRequest = {
   locale: Locale;
   orderNumber: string;
@@ -428,12 +470,41 @@ function pickItemName(item: BackendOrderItem, locale: Locale): string {
   return nameEn || display || nameZh || item.productStableId;
 }
 
-function parseCurrencyToCents(value: string): number {
-  const cleaned = value.replace(/[^\d.]/g, "");
-  if (!cleaned) return 0;
-  const parsed = Number.parseFloat(cleaned);
-  if (Number.isNaN(parsed)) return 0;
-  return Math.max(0, Math.round(parsed * 100));
+function calcOptionDeltaCents(
+  item: PublicMenuCategory["items"][number],
+  options: Record<string, string[]>,
+): number {
+  let optionDeltaCents = 0;
+  (item.optionGroups ?? []).forEach((group) => {
+    const selected = options[group.templateGroupStableId] ?? [];
+    group.options.forEach((option) => {
+      if (selected.includes(option.optionStableId)) {
+        optionDeltaCents += option.priceDeltaCents;
+      }
+    });
+  });
+  return optionDeltaCents;
+}
+
+function calcSwapTotalCents(selection: SwapSelection | null): number {
+  if (!selection) return 0;
+  const unitPriceCents =
+    Math.round(selection.item.price * 100) +
+    calcOptionDeltaCents(selection.item, selection.options);
+  return unitPriceCents * selection.quantity;
+}
+
+function sendPosPrintRequest(payload: PosPrintRequest): Promise<void> {
+  return fetch("http://127.0.0.1:19191/print-pos", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    keepalive: true,
+  })
+    .then(() => undefined)
+    .catch((err) => {
+      console.error("Failed to send POS print request:", err);
+    });
 }
 
 function sendPosPrintRequest(payload: PosPrintRequest): Promise<void> {
@@ -475,13 +546,14 @@ type ActionContentProps = {
   onReasonChange: (value: string) => void;
   selectedItemIds: string[];
   onToggleItem: (id: string) => void;
-  replacementInput: string;
-  onReplacementChange: (value: string) => void;
   summary: ActionSummary | null;
   canSubmit: boolean;
   onSubmit: () => void;
   isSubmitting: boolean;
   isActionDisabled: (action: ActionKey) => boolean;
+  swapSelection: SwapSelection | null;
+  onSwapChoose: () => void;
+  onSwapClear: () => void;
 };
 
 function ActionContent({
@@ -493,13 +565,14 @@ function ActionContent({
   onReasonChange,
   selectedItemIds,
   onToggleItem,
-  replacementInput,
-  onReplacementChange,
   summary,
   canSubmit,
   onSubmit,
   isSubmitting,
   isActionDisabled,
+  swapSelection,
+  onSwapChoose,
+  onSwapClear,
 }: ActionContentProps) {
   const guide =
     order.paymentMethod === "cash"
@@ -604,15 +677,90 @@ function ActionContent({
               </div>
               {selectedAction === "swap_item" && (
                 <div className="mt-3">
-                  <label className="text-[11px] font-semibold uppercase text-slate-400">
-                    {copy.replacementLabel}
-                  </label>
-                  <input
-                    value={replacementInput}
-                    onChange={(event) => onReplacementChange(event.target.value)}
-                    placeholder={copy.replacementPlaceholder}
-                    className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs text-slate-100 focus:border-emerald-400 focus:outline-none"
-                  />
+                  <div className="text-[11px] font-semibold uppercase text-slate-400">
+                    {copy.swapItemTitle}
+                  </div>
+                  <div className="mt-2 rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs text-slate-100">
+                    {swapSelection ? (
+                      <div className="space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="text-sm font-semibold">
+                              {swapSelection.item.name}
+                            </div>
+                            {swapSelection.item.optionGroups &&
+                            swapSelection.item.optionGroups.length > 0 ? (
+                              <div className="mt-1 space-y-1 text-[11px] text-slate-400">
+                                {(swapSelection.item.optionGroups ?? []).map(
+                                  (group) => {
+                                    const selected =
+                                      swapSelection.options[
+                                        group.templateGroupStableId
+                                      ] ?? [];
+                                    if (selected.length === 0) return null;
+                                    const groupName =
+                                      group.template.nameZh ??
+                                      group.template.nameEn;
+                                    const optionLabels = group.options
+                                      .filter((opt) =>
+                                        selected.includes(opt.optionStableId),
+                                      )
+                                      .map((opt) => opt.nameZh ?? opt.nameEn)
+                                      .join(", ");
+                                    return (
+                                      <div key={group.templateGroupStableId}>
+                                        {groupName}: {optionLabels}
+                                      </div>
+                                    );
+                                  },
+                                )}
+                              </div>
+                            ) : null}
+                          </div>
+                          <div className="text-right">
+                            <div className="text-[11px] text-slate-400">
+                              {copy.swapItemQty}: {swapSelection.quantity}
+                            </div>
+                            <div className="text-sm font-semibold">
+                              {formatMoney(calcSwapTotalCents(swapSelection))}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={onSwapChoose}
+                            className="rounded-full border border-slate-700 bg-slate-900/60 px-3 py-1 text-[11px] text-slate-200 hover:border-emerald-400/60"
+                          >
+                            {copy.swapItemChange}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={onSwapClear}
+                            className="rounded-full border border-slate-700 bg-slate-900/60 px-3 py-1 text-[11px] text-slate-200 hover:border-emerald-400/60"
+                          >
+                            {copy.swapItemClear}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-slate-400">
+                          {copy.swapItemEmpty}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={onSwapChoose}
+                          className="rounded-full border border-slate-700 bg-slate-900/60 px-3 py-1 text-[11px] text-slate-200 hover:border-emerald-400/60"
+                        >
+                          {copy.swapItemSelect}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-2 text-[11px] text-slate-400">
+                    {copy.swapItemHint}
+                  </div>
                 </div>
               )}
             </div>
@@ -765,9 +913,18 @@ export default function PosOrdersPage() {
   const [selectedAction, setSelectedAction] = useState<ActionKey | null>(null);
   const [reason, setReason] = useState("");
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
-  const [replacementInput, setReplacementInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAdvancing, setIsAdvancing] = useState(false);
+  const [menuCategories, setMenuCategories] = useState<PublicMenuCategory[]>(
+    [],
+  );
+  const [swapSelection, setSwapSelection] = useState<SwapSelection | null>(
+    null,
+  );
+  const [swapActiveItem, setSwapActiveItem] = useState<SwapSelection | null>(
+    null,
+  );
+  const [isSwapPickerOpen, setIsSwapPickerOpen] = useState(false);
 
   const mapOrder = useCallback(
     (order: BackendOrder): OrderRecord => {
@@ -861,9 +1018,38 @@ export default function PosOrdersPage() {
       setSelectedAction(null);
       setReason("");
       setSelectedItemIds([]);
-      setReplacementInput("");
+      setSwapSelection(null);
+      setSwapActiveItem(null);
     }
   }, [orders, selectedId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadMenu() {
+      try {
+        const [menuResponse, templateGroups] = await Promise.all([
+          apiFetch<AdminMenuFull>("/admin/menu/full"),
+          apiFetch<MenuTemplateFull[]>("/admin/menu/option-group-templates"),
+        ]);
+        if (cancelled) return;
+        const localized = buildLocalizedMenuFromDb(
+          menuResponse.categories ?? [],
+          locale,
+          templateGroups ?? [],
+        );
+        setMenuCategories(localized);
+      } catch (error) {
+        console.error("Failed to load POS menu for swap:", error);
+      }
+    }
+
+    void loadMenu();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [locale]);
 
   const selectedOrder = useMemo(
     () => orders.find((order) => order.id === selectedId) ?? null,
@@ -925,7 +1111,8 @@ export default function PosOrdersPage() {
       (sum, item) => sum + item.totalCents,
       0,
     );
-    const replacementCents = parseCurrencyToCents(replacementInput);
+    const replacementCents =
+      selectedAction === "swap_item" ? calcSwapTotalCents(swapSelection) : 0;
 
     let nextSubtotal = baseSubtotal;
     if (selectedAction === "void_item") {
@@ -991,7 +1178,7 @@ export default function PosOrdersPage() {
       newTotalCents: newTotal,
       rebillGroupId: null,
     };
-  }, [replacementInput, selectedAction, selectedItemIds, selectedOrder]);
+  }, [selectedAction, selectedItemIds, selectedOrder, swapSelection]);
 
   const toggleArrayValue = <T,>(values: T[], value: T) => {
     return values.includes(value)
@@ -1049,7 +1236,12 @@ export default function PosOrdersPage() {
     setSelectedAction(action);
     if (action !== "void_item" && action !== "swap_item") {
       setSelectedItemIds([]);
-      setReplacementInput("");
+      setSwapSelection(null);
+      setSwapActiveItem(null);
+    }
+    if (action !== "swap_item") {
+      setSwapSelection(null);
+      setSwapActiveItem(null);
     }
   };
 
@@ -1070,7 +1262,74 @@ export default function PosOrdersPage() {
     Boolean(selectedAction) &&
     reason.trim().length > 0 &&
     (!showItemSelection || selectedItemIds.length > 0) &&
+    (selectedAction !== "swap_item" || Boolean(swapSelection)) &&
     (selectedAction ? !isActionDisabled(selectedAction) : false);
+
+  const openSwapItemDialog = (
+    item: PublicMenuCategory["items"][number],
+  ) => {
+    setSwapActiveItem({
+      item,
+      options: {},
+      quantity: 1,
+    });
+  };
+
+  const selectSwapItem = (item: PublicMenuCategory["items"][number]) => {
+    if (item.optionGroups && item.optionGroups.length > 0) {
+      openSwapItemDialog(item);
+    } else {
+      setSwapSelection({ item, options: {}, quantity: 1 });
+    }
+    setIsSwapPickerOpen(false);
+  };
+
+  const updateSwapOptionSelection = (
+    groupId: string,
+    optionId: string,
+    maxSelect: number | null,
+  ) => {
+    setSwapActiveItem((prev) => {
+      if (!prev) return prev;
+      const current = prev.options[groupId] ?? [];
+      let next: string[];
+      if (current.includes(optionId)) {
+        next = current.filter((id) => id !== optionId);
+      } else {
+        if (maxSelect === 1) {
+          next = [optionId];
+        } else if (typeof maxSelect === "number" && current.length >= maxSelect) {
+          next = [...current.slice(1), optionId];
+        } else {
+          next = [...current, optionId];
+        }
+      }
+      return {
+        ...prev,
+        options: {
+          ...prev.options,
+          [groupId]: next,
+        },
+      };
+    });
+  };
+
+  const swapOptionGroups = swapActiveItem?.item.optionGroups ?? [];
+  const swapRequiredGroupsMissing =
+    swapActiveItem?.item.optionGroups?.filter((group) => {
+      if (group.minSelect <= 0) return false;
+      const selectedCount =
+        swapActiveItem.options[group.templateGroupStableId]?.length ?? 0;
+      return selectedCount < group.minSelect;
+    }) ?? [];
+  const canConfirmSwapSelection =
+    Boolean(swapActiveItem) && swapRequiredGroupsMissing.length === 0;
+
+  const confirmSwapSelection = () => {
+    if (!swapActiveItem || !canConfirmSwapSelection) return;
+    setSwapSelection(swapActiveItem);
+    setSwapActiveItem(null);
+  };
 
   const handleSubmit = () => {
     if (!selectedOrder || !selectedAction) return;
@@ -1096,7 +1355,8 @@ export default function PosOrdersPage() {
       setSelectedAction(null);
       setReason("");
       setSelectedItemIds([]);
-      setReplacementInput("");
+      setSwapSelection(null);
+      setSwapActiveItem(null);
     };
     if (selectedAction !== "full_refund") {
       const printAfterAction = async () => {
@@ -1116,7 +1376,7 @@ export default function PosOrdersPage() {
               ? "card"
               : "wechat_alipay";
 
-        const remainingItems = selectedOrder.items
+        const remainingItems: PosDisplaySnapshot["items"] = selectedOrder.items
           .filter((item) => !selectedItemIds.includes(item.id))
           .map((item) => ({
             stableId: item.stableId,
@@ -1127,18 +1387,22 @@ export default function PosOrdersPage() {
             lineTotalCents: item.totalCents,
           }));
 
-        if (selectedAction === "swap_item") {
-          const replacementCents = parseCurrencyToCents(replacementInput);
-          if (replacementCents > 0) {
-            remainingItems.push({
-              stableId: "swap-adjustment",
-              nameZh: "换菜调整",
-              nameEn: "Swap adjustment",
-              quantity: 1,
-              unitPriceCents: replacementCents,
-              lineTotalCents: replacementCents,
-            });
-          }
+        if (selectedAction === "swap_item" && swapSelection) {
+          const unitPriceCents =
+            Math.round(swapSelection.item.price * 100) +
+            calcOptionDeltaCents(swapSelection.item, swapSelection.options);
+          remainingItems.push({
+            stableId: swapSelection.item.stableId,
+            nameZh:
+              swapSelection.item.nameZh ??
+              swapSelection.item.nameEn ??
+              swapSelection.item.name,
+            nameEn: swapSelection.item.nameEn ?? swapSelection.item.name,
+            quantity: swapSelection.quantity,
+            unitPriceCents,
+            lineTotalCents: unitPriceCents * swapSelection.quantity,
+            options: swapSelection.options,
+          });
         }
 
         const nextSnapshot: PosDisplaySnapshot = {
@@ -1406,7 +1670,8 @@ export default function PosOrdersPage() {
                   setSelectedAction("retender");
                   setReason("");
                   setSelectedItemIds([]);
-                  setReplacementInput("");
+                  setSwapSelection(null);
+                  setSwapActiveItem(null);
                 }}
                 className={`flex w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition hover:border-slate-400 hover:bg-slate-800/70 ${
                   order.id === selectedId
@@ -1512,18 +1777,248 @@ export default function PosOrdersPage() {
                 onReasonChange={setReason}
                 selectedItemIds={selectedItemIds}
                 onToggleItem={handleToggleItem}
-                replacementInput={replacementInput}
-                onReplacementChange={setReplacementInput}
                 summary={summary}
                 canSubmit={canSubmit}
                 onSubmit={handleSubmit}
                 isSubmitting={isSubmitting}
                 isActionDisabled={isActionDisabled}
+                swapSelection={swapSelection}
+                onSwapChoose={() => setIsSwapPickerOpen(true)}
+                onSwapClear={() => setSwapSelection(null)}
               />
             </div>
           ) : (
             <div className="mt-4 rounded-xl border border-dashed border-slate-700 bg-slate-900/40 p-6 text-center text-xs text-slate-400">
               {copy.emptySelection}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {isSwapPickerOpen && (
+        <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-4xl rounded-3xl border border-slate-700 bg-slate-900 p-6 text-slate-100">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-semibold">
+                  {copy.swapItemDialogTitle}
+                </h3>
+                <p className="text-sm text-slate-300">
+                  {copy.swapItemDialogSubtitle}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSwapPickerOpen(false)}
+                className="rounded-full border border-slate-600 px-3 py-1 text-xs text-slate-200 hover:border-slate-400"
+              >
+                {copy.close ?? "Close"}
+              </button>
+            </div>
+
+            <div className="mt-4 max-h-[60vh] overflow-auto pr-1 space-y-4">
+              {menuCategories.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-950/40 p-6 text-center text-sm text-slate-400">
+                  {locale === "zh" ? "暂无菜单数据。" : "No menu data."}
+                </div>
+              ) : (
+                menuCategories.map((category) => (
+                  <div key={category.stableId} className="space-y-3">
+                    <div className="text-sm font-semibold text-slate-200">
+                      {category.name}
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {category.items.map((item) => (
+                        <button
+                          key={item.stableId}
+                          type="button"
+                          onClick={() => selectSwapItem(item)}
+                          className="rounded-2xl border border-slate-700 bg-slate-800/60 px-4 py-3 text-left text-sm text-slate-100 hover:border-emerald-400/60"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="font-semibold">{item.name}</span>
+                            <span className="text-xs text-slate-300">
+                              {formatMoney(Math.round(item.price * 100))}
+                            </span>
+                          </div>
+                          {item.optionGroups && item.optionGroups.length > 0 ? (
+                            <div className="mt-1 text-[11px] text-slate-400">
+                              {locale === "zh"
+                                ? "含可选项"
+                                : "Has options"}
+                            </div>
+                          ) : null}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {swapActiveItem && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-2xl rounded-3xl border border-slate-700 bg-slate-900 p-6 text-slate-100">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-semibold">
+                  {copy.swapItemDialogTitle}
+                </h3>
+                <p className="text-sm text-slate-300">
+                  {copy.swapItemDialogSubtitle}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSwapActiveItem(null)}
+                className="rounded-full border border-slate-600 px-3 py-1 text-xs text-slate-200 hover:border-slate-400"
+              >
+                {copy.close ?? "Close"}
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-4 max-h-[60vh] overflow-auto pr-1">
+              {swapOptionGroups.map((group) => {
+                const groupName =
+                  locale === "zh" && group.template.nameZh
+                    ? group.template.nameZh
+                    : group.template.nameEn;
+                const selection =
+                  swapActiveItem.options[group.templateGroupStableId] ?? [];
+                const minSelect = group.minSelect ?? 0;
+                const maxSelect = group.maxSelect ?? null;
+
+                return (
+                  <div
+                    key={group.templateGroupStableId}
+                    className="rounded-2xl border border-slate-700 bg-slate-800/70 p-4"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-base font-semibold">
+                          {groupName}
+                        </div>
+                        <div className="text-xs text-slate-400">
+                          {copy.optionLimit(minSelect, maxSelect)}
+                        </div>
+                      </div>
+                      {minSelect > 0 && selection.length < minSelect && (
+                        <span className="rounded-full border border-rose-400/70 bg-rose-500/10 px-2 py-0.5 text-[11px] text-rose-200">
+                          {copy.optionsRequired}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {group.options.map((option) => {
+                        const selected = selection.includes(
+                          option.optionStableId,
+                        );
+                        const optionName =
+                          locale === "zh" && option.nameZh
+                            ? option.nameZh
+                            : option.nameEn;
+                        const priceDeltaLabel =
+                          option.priceDeltaCents > 0
+                            ? `+${formatMoney(option.priceDeltaCents)}`
+                            : option.priceDeltaCents < 0
+                              ? `-${formatMoney(Math.abs(option.priceDeltaCents))}`
+                              : "";
+                        return (
+                          <button
+                            key={option.optionStableId}
+                            type="button"
+                            onClick={() =>
+                              updateSwapOptionSelection(
+                                group.templateGroupStableId,
+                                option.optionStableId,
+                                maxSelect,
+                              )
+                            }
+                            className={`rounded-2xl border px-3 py-3 text-left text-sm transition ${
+                              selected
+                                ? "border-emerald-400 bg-emerald-500/10 text-emerald-100"
+                                : "border-slate-600 bg-slate-900 text-slate-200 hover:border-slate-400"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span>{optionName}</span>
+                              {priceDeltaLabel && (
+                                <span className="text-xs text-slate-300">
+                                  {priceDeltaLabel}
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {swapRequiredGroupsMissing.length > 0 && (
+              <div className="mt-4 rounded-2xl border border-rose-400/70 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+                {copy.optionsRequired}
+              </div>
+            )}
+
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-slate-300">
+                  {copy.swapItemQty}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSwapActiveItem((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              quantity: Math.max(1, prev.quantity - 1),
+                            }
+                          : prev,
+                      )
+                    }
+                    className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-lg leading-none"
+                  >
+                    −
+                  </button>
+                  <span className="min-w-[2ch] text-center text-base font-semibold">
+                    {swapActiveItem.quantity}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSwapActiveItem((prev) =>
+                        prev
+                          ? { ...prev, quantity: prev.quantity + 1 }
+                          : prev,
+                      )
+                    }
+                    className="w-8 h-8 rounded-full bg-emerald-500 text-slate-900 flex items-center justify-center text-lg leading-none"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={!canConfirmSwapSelection}
+                onClick={confirmSwapSelection}
+                className={`h-11 rounded-2xl px-6 text-sm font-semibold ${
+                  canConfirmSwapSelection
+                    ? "bg-emerald-500 text-slate-900 hover:bg-emerald-400"
+                    : "bg-slate-700 text-slate-400"
+                }`}
+              >
+                {copy.swapItemConfirm}
+              </button>
             </div>
           )}
         </div>
