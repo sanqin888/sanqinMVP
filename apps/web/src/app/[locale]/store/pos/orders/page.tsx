@@ -1007,7 +1007,6 @@ export default function PosOrdersPage() {
       }));
       return;
     }
-    newSubtotal = Math.max(0, newSubtotal);
 
     if (key.type === "amount") {
       setFilters((prev) => ({
@@ -1029,14 +1028,16 @@ export default function PosOrdersPage() {
       return;
     }
 
-    setFilters((prev) => ({
-      ...prev,
-      fulfillments: toggleArrayValue(
-        prev.fulfillments,
-        key.value as OrderRecord["type"],
-      ),
-    }));
-  };
+    if (key.type === "fulfillment") {
+      setFilters((prev) => ({
+        ...prev,
+        fulfillments: toggleArrayValue(
+          prev.fulfillments,
+          key.value as OrderRecord["type"],
+        ),
+      }));
+    }
+   };
 
   const handleToggleItem = (id: string) => {
     setSelectedItemIds((prev) =>
