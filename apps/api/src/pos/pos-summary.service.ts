@@ -249,6 +249,12 @@ export class PosSummaryService {
 
         const statusBucket = this.computeStatusBucket(o.status);
         const payment = this.computePaymentBucket(o);
+        const channel: PosDailySummaryResponse['orders'][number]['channel'] =
+          o.channel === Channel.web
+            ? 'web'
+            : o.channel === Channel.ubereats
+              ? 'ubereats'
+              : 'in_store';
 
         const netCents =
           this.cents(o.totalCents) -
@@ -260,12 +266,7 @@ export class PosSummaryService {
           orderStableId: o.orderStableId ?? o.id,
           createdAt: o.paidAt.toISOString(),
 
-          channel:
-            o.channel === Channel.web
-              ? 'web'
-              : o.channel === Channel.ubereats
-                ? 'ubereats'
-                : 'in_store',
+          channel,
           fulfillmentType: o.fulfillmentType as
             | 'pickup'
             | 'dine_in'
