@@ -40,14 +40,8 @@ export type PosDailySummaryResponse = {
     channel: 'web' | 'in_store' | 'ubereats';
     fulfillmentType: 'pickup' | 'dine_in' | 'delivery';
 
-    status:
-      | 'pending'
-      | 'paid'
-      | 'making'
-      | 'ready'
-      | 'completed'
-      | 'refunded'
-      | string; // 兼容未来扩展
+    // 常见状态示例：pending/paid/making/ready/completed/refunded
+    status: string; // 兼容未来扩展
     statusBucket: PosStatusBucket;
 
     payment: PosPaymentBucket;
