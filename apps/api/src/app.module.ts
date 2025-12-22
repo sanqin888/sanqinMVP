@@ -24,6 +24,7 @@ import { BusinessHoursModule } from './admin/business-hours/business-hours.modul
 import { AdminMenuModule } from './admin/menu/admin-menu.module';
 import { AdminImageUploadModule } from './admin/upload/image/admin-image-upload.module';
 import { PublicMenuModule } from './menu/public-menu.module';
+import { PosModule } from './pos/pos.module';
 
 const configModuleFactory: {
   forRoot(options: ConfigModuleOptions): DynamicModule;
@@ -43,6 +44,7 @@ const envConfigModule = configModuleFactory.forRoot({
     PrismaModule,
     AuthModule,
     OrdersModule,
+    PosModule,
     MembershipModule,
     ReportsModule,
     LoyaltyModule,

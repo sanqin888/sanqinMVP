@@ -8,6 +8,7 @@ import {
 import * as crypto from 'crypto';
 import { AppLogger } from '../common/app-logger';
 import {
+  Channel,
   DeliveryProvider,
   DeliveryType,
   LoyaltyEntryType,
@@ -142,6 +143,24 @@ export class OrdersService {
         'STORE_LATITUDE or STORE_LONGITUDE is missing or invalid. Dynamic delivery fee calculation will fail and fallback to fixed rates.',
       );
     }
+  }
+  /**
+   * ✅ 统一推断订单 paymentMethod
+   * - POS：建议必传；没传就降级为 CASH 并打 warn（避免静默错账）
+   * - Web/Clover：默认 CARD
+   * - UberEats：平台结算通常可归类为 CARD
+   */
+  private resolvePaymentMethod(dto: CreateOrderDto): PaymentMethod {
+    if (dto.paymentMethod) return dto.paymentMethod;
+
+    if (dto.channel === Channel.web) return PaymentMethod.CARD;
+    if (dto.channel === Channel.ubereats) return PaymentMethod.CARD;
+
+    // Channel.in_store 但没传：兜底现金，同时留日志方便你排查 POS 漏传
+    this.logger.warn(
+      'paymentMethod missing for in_store order; defaulting to CASH. Please send dto.paymentMethod from POS.',
+    );
+    return PaymentMethod.CASH;
   }
 
   private async getBusinessPricingConfig(): Promise<DeliveryPricingConfig> {
@@ -860,6 +879,10 @@ export class OrdersService {
     dto: CreateOrderDto,
     idempotencyKey?: string,
   ): Promise<OrderWithItems> {
+    // ✅ 你的业务前提：只在“已收款/支付成功”后才创建订单记录
+    const paidAt = new Date();
+    const paymentMethod = this.resolvePaymentMethod(dto);
+
     if (
       dto.deliveryType === DeliveryType.PRIORITY &&
       !dto.deliveryDestination
@@ -1041,6 +1064,8 @@ export class OrdersService {
       const created = (await tx.order.create({
         data: {
           id: orderId,
+          paidAt,
+          paymentMethod,
           userId: dto.userId ?? null,
           ...(stableKey ? { orderStableId: stableKey } : {}),
           ...(legacyRequestId ? { clientRequestId: legacyRequestId } : {}),
