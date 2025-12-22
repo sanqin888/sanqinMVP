@@ -9,19 +9,19 @@ export class PosSummaryController {
    * GET /api/v1/pos/summary?timeMin=...&timeMax=...&fulfillmentType=pickup|dine_in|delivery&status=paid|refunded|void&payment=cash|card|online|unknown
    */
   @Get('summary')
-  async getSummary(
+  getSummary(
     @Query('timeMin') timeMin: string,
     @Query('timeMax') timeMax: string,
     @Query('fulfillmentType') fulfillmentType?: string,
     @Query('status') statusBucket?: string,
     @Query('payment') paymentBucket?: string,
   ) {
-    return this.service.getSummary({
+    return this.service.summary({
       timeMin,
       timeMax,
       fulfillmentType,
-      statusBucket,
-      paymentBucket,
+      status: statusBucket,
+      payment: paymentBucket,
     });
   }
 }
