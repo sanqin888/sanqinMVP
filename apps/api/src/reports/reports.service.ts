@@ -1,3 +1,4 @@
+// apps/api/src/reports/reports.service.ts
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -93,8 +94,9 @@ export class ReportsService {
   async daily(dateISO: string): Promise<DailyReport> {
     const { start, end } = this.dayRangeInUTC(dateISO);
 
+    // ✅ 日报用 paidAt 口径（收款时间）
     const agg = await this.prisma.order.aggregate({
-      where: { createdAt: { gte: start, lte: end } },
+      where: { paidAt: { gte: start, lte: end } },
       _sum: { subtotalCents: true, taxCents: true, totalCents: true },
       _count: { _all: true },
     });

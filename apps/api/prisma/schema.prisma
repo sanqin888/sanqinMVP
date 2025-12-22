@@ -138,6 +138,8 @@ model Order {
   couponExpiresAt            DateTime?
 
   createdAt DateTime @default(now())
+  paymentMethod PaymentMethod  
+  paidAt        DateTime       
 
   items      OrderItem[]
   amendments OrderAmendment[]

@@ -1,9 +1,11 @@
+//Users/apple/sanqinMVP/apps/web/src/app/[locale]/store/pos/summary
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import type { Locale } from "@/lib/order/shared";
+import { apiFetch } from "@/lib/api-client";
 
 const COPY = {
   zh: {
@@ -44,6 +46,7 @@ const COPY = {
       markIssue: "标记异常/备注",
     },
     notePlaceholder: "填写备注（可选）",
+    loading: "加载中…",
   },
   en: {
     title: "Daily Summary",
@@ -83,28 +86,151 @@ const COPY = {
       markIssue: "Flag issue / Note",
     },
     notePlaceholder: "Add a note (optional)",
+    loading: "Loading…",
   },
 } as const;
 
 type FilterState = {
-  dateStart: string;
-  dateEnd: string;
-  channel: string;
-  status: string;
-  payment: string;
+  dateStart: string; // YYYY-MM-DD
+  dateEnd: string;   // YYYY-MM-DD
+  channel: string;   // pickup|dine_in|delivery
+  status: string;    // paid|refunded|void
+  payment: string;   // cash|card|online|unknown
 };
 
 type OrderRow = {
-  id: string;
+  id: string; // uuid
   date: string;
-  channel: string;
-  status: string;
-  payment: string;
-  amountCents: number;
+  channel: string; // fulfillmentType
+  status: string;  // statusBucket
+  payment: string; // payment bucket
+  amountCents: number; // net
+  orderStableId: string;
+};
+
+type PosDailySummaryResponse = {
+  timeMin: string;
+  timeMax: string;
+  totals: {
+    orders: number;
+    salesCents: number;
+    taxCents: number;
+    discountCents: number;
+    refundCents: number;
+    netCents: number;
+  };
+  breakdownByPayment: Array<{
+    payment: "cash" | "card" | "online" | "unknown";
+    count: number;
+    amountCents: number;
+  }>;
+  breakdownByFulfillment: Array<{
+    fulfillmentType: "pickup" | "dine_in" | "delivery";
+    count: number;
+    amountCents: number;
+  }>;
+  orders: Array<{
+    id: string;
+    orderStableId: string;
+    createdAt: string;
+
+    channel: "web" | "in_store" | "ubereats";
+    fulfillmentType: "pickup" | "dine_in" | "delivery";
+
+    status: "pending" | "paid" | "making" | "ready" | "completed" | "refunded";
+    statusBucket: "paid" | "refunded" | "void";
+
+    payment: "cash" | "card" | "online" | "unknown";
+
+    totalCents: number;
+    taxCents: number;
+    discountCents: number;
+
+    refundCents: number;
+    additionalChargeCents: number;
+
+    netCents: number;
+  }>;
 };
 
 function formatMoney(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
+}
+
+function errMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === "string") return e;
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return "Failed to load summary";
+  }
+}
+
+function buildUtcRange(dateStart: string, dateEnd: string): { timeMin: string; timeMax: string } {
+  const today = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const localYMD = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+
+  const startYmd = dateStart || localYMD;
+  const endYmd = dateEnd || startYmd;
+
+  // 以浏览器本地时区构造 00:00:00，再转 ISO（UTC）
+  const startLocal = new Date(`${startYmd}T00:00:00`);
+  const endLocal = new Date(`${endYmd}T00:00:00`);
+  endLocal.setDate(endLocal.getDate() + 1);
+
+  return { timeMin: startLocal.toISOString(), timeMax: endLocal.toISOString() };
+}
+
+function downloadCsv(filename: string, csvText: string) {
+  const blob = new Blob([csvText], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function toCsv(rows: OrderRow[]): string {
+  const header = ["orderId", "orderStableId", "time", "fulfillment", "status", "payment", "net"].join(",");
+  const lines = rows.map((r) =>
+    [
+      JSON.stringify(r.id),
+      JSON.stringify(r.orderStableId),
+      JSON.stringify(r.date),
+      JSON.stringify(r.channel),
+      JSON.stringify(r.status),
+      JSON.stringify(r.payment),
+      JSON.stringify((r.amountCents / 100).toFixed(2)),
+    ].join(","),
+  );
+  return [header, ...lines].join("\n");
+}
+
+function labelFulfillment(locale: Locale, v: string) {
+  if (v === "dine_in") return locale === "zh" ? "堂食" : "Dine-in";
+  if (v === "pickup") return locale === "zh" ? "自取" : "Pickup";
+  if (v === "delivery") return locale === "zh" ? "外卖" : "Delivery";
+  return v;
+}
+
+function labelPayment(locale: Locale, v: string) {
+  if (v === "cash") return locale === "zh" ? "现金" : "Cash";
+  if (v === "card") return locale === "zh" ? "信用卡/借记卡" : "Card";
+  if (v === "online") return locale === "zh" ? "在线支付" : "Online";
+  if (v === "unknown") return locale === "zh" ? "其他" : "Other";
+  return v;
+}
+
+function labelStatus(locale: Locale, v: string) {
+  if (v === "paid") return locale === "zh" ? "已支付" : "Paid";
+  if (v === "refunded") return locale === "zh" ? "已退款" : "Refunded";
+  if (v === "void") return locale === "zh" ? "已作废" : "Voided";
+  return v;
 }
 
 export default function PosDailySummaryPage() {
@@ -119,67 +245,113 @@ export default function PosDailySummaryPage() {
     status: "",
     payment: "",
   });
+
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [note, setNote] = useState("");
 
-  const orders = useMemo<OrderRow[]>(() => [], []);
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [data, setData] = useState<PosDailySummaryResponse | null>(null);
 
-  const filteredOrders = useMemo(() => {
-    return orders.filter((order) => {
-      if (filters.channel && order.channel !== filters.channel) return false;
-      if (filters.status && order.status !== filters.status) return false;
-      if (filters.payment && order.payment !== filters.payment) return false;
-      return true;
-    });
-  }, [orders, filters.channel, filters.payment, filters.status]);
+  useEffect(() => {
+    const ac = new AbortController();
 
+    async function run() {
+      setLoading(true);
+      setErrorMsg(null);
+
+      try {
+        const { timeMin, timeMax } = buildUtcRange(filters.dateStart, filters.dateEnd);
+        const qs = new URLSearchParams({
+          timeMin,
+          timeMax,
+          ...(filters.channel ? { fulfillmentType: filters.channel } : {}),
+          ...(filters.status ? { status: filters.status } : {}),
+          ...(filters.payment ? { payment: filters.payment } : {}),
+        });
+
+        const res = await apiFetch<PosDailySummaryResponse>(`/pos/summary?${qs.toString()}`, {
+          signal: ac.signal,
+        });
+
+        setData(res);
+
+        if (selectedOrderId && !res.orders.some((o) => o.id === selectedOrderId)) {
+          setSelectedOrderId(null);
+        }
+} catch (e: unknown) {
+  // AbortError 兼容：unknown 下要先做类型缩窄
+  if (e && typeof e === "object" && "name" in e && (e as { name?: unknown }).name === "AbortError") {
+    return;
+  }
+  setErrorMsg(errMessage(e));
+  setData(null);
+} finally {
+  setLoading(false);
+}
+    }
+
+    run();
+    return () => ac.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.dateStart, filters.dateEnd, filters.channel, filters.status, filters.payment]);
+
+  const orders = useMemo<OrderRow[]>(() => {
+    if (!data) return [];
+    return data.orders.map((o) => ({
+      id: o.id,
+      orderStableId: o.orderStableId,
+      date: new Date(o.createdAt).toLocaleString(),
+      channel: o.fulfillmentType,
+      status: o.statusBucket,
+      payment: o.payment,
+      amountCents: o.netCents,
+    }));
+  }, [data]);
+
+  const filteredOrders = orders;
   const selectedOrder = filteredOrders.find((order) => order.id === selectedOrderId);
 
-  const summaryTotals = {
+  const summaryTotals = data?.totals ?? {
     orders: filteredOrders.length,
-    salesCents: filteredOrders.reduce((sum, order) => sum + order.amountCents, 0),
+    salesCents: 0,
     taxCents: 0,
     discountCents: 0,
     refundCents: 0,
+    netCents: filteredOrders.reduce((s, o) => s + o.amountCents, 0),
   };
-  const netCents =
-    summaryTotals.salesCents - summaryTotals.discountCents - summaryTotals.refundCents;
 
-  const paymentBreakdown = [
-    {
-      label: locale === "zh" ? "现金" : "Cash",
-      count: 0,
-      amountCents: 0,
-    },
-    {
-      label: locale === "zh" ? "信用卡/借记卡" : "Card",
-      count: 0,
-      amountCents: 0,
-    },
-    {
-      label: locale === "zh" ? "在线支付" : "Online",
-      count: 0,
-      amountCents: 0,
-    },
-  ];
+  const paymentBreakdown = useMemo(() => {
+    const base = [
+      { key: "cash", label: labelPayment(locale, "cash"), count: 0, amountCents: 0 },
+      { key: "card", label: labelPayment(locale, "card"), count: 0, amountCents: 0 },
+      { key: "online", label: labelPayment(locale, "online"), count: 0, amountCents: 0 },
+      { key: "unknown", label: labelPayment(locale, "unknown"), count: 0, amountCents: 0 },
+    ];
+    const map = new Map(base.map((x) => [x.key, x]));
+    for (const item of data?.breakdownByPayment ?? []) {
+      const hit = map.get(item.payment) ?? map.get("unknown")!;
+      hit.count += item.count;
+      hit.amountCents += item.amountCents;
+    }
+    return base;
+  }, [data, locale]);
 
-  const channelBreakdown = [
-    {
-      label: locale === "zh" ? "堂食" : "Dine-in",
-      count: 0,
-      amountCents: 0,
-    },
-    {
-      label: locale === "zh" ? "自取" : "Pickup",
-      count: 0,
-      amountCents: 0,
-    },
-    {
-      label: locale === "zh" ? "外卖" : "Delivery",
-      count: 0,
-      amountCents: 0,
-    },
-  ];
+  const channelBreakdown = useMemo(() => {
+    const base = [
+      { key: "dine_in", label: labelFulfillment(locale, "dine_in"), count: 0, amountCents: 0 },
+      { key: "pickup", label: labelFulfillment(locale, "pickup"), count: 0, amountCents: 0 },
+      { key: "delivery", label: labelFulfillment(locale, "delivery"), count: 0, amountCents: 0 },
+    ];
+    const map = new Map(base.map((x) => [x.key, x]));
+    for (const item of data?.breakdownByFulfillment ?? []) {
+      const hit = map.get(item.fulfillmentType);
+      if (!hit) continue;
+      hit.count += item.count;
+      hit.amountCents += item.amountCents;
+    }
+    return base;
+  }, [data, locale]);
 
   return (
     <main className="min-h-screen bg-slate-900 text-slate-50">
@@ -187,6 +359,11 @@ export default function PosDailySummaryPage() {
         <div>
           <h1 className="text-2xl font-semibold">{copy.title}</h1>
           <p className="text-sm text-slate-300">{copy.subtitle}</p>
+          {loading ? (
+            <p className="mt-1 text-xs text-slate-400">{copy.loading}</p>
+          ) : errorMsg ? (
+            <p className="mt-1 text-xs text-rose-300">{errorMsg}</p>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Link
@@ -197,6 +374,10 @@ export default function PosDailySummaryPage() {
           </Link>
           <button
             type="button"
+            onClick={() => {
+              const csv = toCsv(filteredOrders);
+              downloadCsv("pos-daily-summary.csv", csv);
+            }}
             className="rounded-full border border-slate-600 bg-slate-800 px-3 py-1 text-xs font-medium text-slate-100 hover:border-slate-400 hover:text-white"
           >
             {copy.exportCsv}
@@ -211,12 +392,14 @@ export default function PosDailySummaryPage() {
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
+                onClick={() => window.print()}
                 className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200"
               >
                 {copy.printSummary}
               </button>
               <button
                 type="button"
+                onClick={() => window.print()}
                 className="rounded-full border border-slate-500/60 bg-slate-700/50 px-3 py-1 text-xs font-semibold text-slate-200"
               >
                 {copy.printTransactions}
@@ -225,30 +408,12 @@ export default function PosDailySummaryPage() {
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {[
-              {
-                label: copy.summaryCards.orders,
-                value: summaryTotals.orders.toString(),
-              },
-              {
-                label: copy.summaryCards.sales,
-                value: formatMoney(summaryTotals.salesCents),
-              },
-              {
-                label: copy.summaryCards.tax,
-                value: formatMoney(summaryTotals.taxCents),
-              },
-              {
-                label: copy.summaryCards.discount,
-                value: formatMoney(summaryTotals.discountCents),
-              },
-              {
-                label: copy.summaryCards.refund,
-                value: formatMoney(summaryTotals.refundCents),
-              },
-              {
-                label: copy.summaryCards.net,
-                value: formatMoney(netCents),
-              },
+              { label: copy.summaryCards.orders, value: String(summaryTotals.orders) },
+              { label: copy.summaryCards.sales, value: formatMoney(summaryTotals.salesCents) },
+              { label: copy.summaryCards.tax, value: formatMoney(summaryTotals.taxCents) },
+              { label: copy.summaryCards.discount, value: formatMoney(summaryTotals.discountCents) },
+              { label: copy.summaryCards.refund, value: formatMoney(summaryTotals.refundCents) },
+              { label: copy.summaryCards.net, value: formatMoney(summaryTotals.netCents) },
             ].map((item) => (
               <div
                 key={item.label}
@@ -269,7 +434,7 @@ export default function PosDailySummaryPage() {
             <ul className="mt-3 space-y-2 text-sm">
               {paymentBreakdown.map((item) => (
                 <li
-                  key={item.label}
+                  key={item.key}
                   className="flex items-center justify-between rounded-2xl border border-slate-700 bg-slate-900/60 px-3 py-2"
                 >
                   <span className="text-slate-200">{item.label}</span>
@@ -288,7 +453,7 @@ export default function PosDailySummaryPage() {
             <ul className="mt-3 space-y-2 text-sm">
               {channelBreakdown.map((item) => (
                 <li
-                  key={item.label}
+                  key={item.key}
                   className="flex items-center justify-between rounded-2xl border border-slate-700 bg-slate-900/60 px-3 py-2"
                 >
                   <span className="text-slate-200">{item.label}</span>
@@ -308,6 +473,7 @@ export default function PosDailySummaryPage() {
             <h2 className="text-lg font-semibold">{copy.orders}</h2>
             <div className="text-xs text-slate-400">{copy.filters.title}</div>
           </div>
+
           <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
             <label className="flex flex-col gap-1">
               <span className="text-xs text-slate-400">{copy.filters.dateStart}</span>
@@ -320,6 +486,7 @@ export default function PosDailySummaryPage() {
                 className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100"
               />
             </label>
+
             <label className="flex flex-col gap-1">
               <span className="text-xs text-slate-400">{copy.filters.dateEnd}</span>
               <input
@@ -331,6 +498,7 @@ export default function PosDailySummaryPage() {
                 className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100"
               />
             </label>
+
             <label className="flex flex-col gap-1">
               <span className="text-xs text-slate-400">{copy.filters.channel}</span>
               <select
@@ -341,11 +509,12 @@ export default function PosDailySummaryPage() {
                 className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100"
               >
                 <option value="">{copy.filters.all}</option>
-                <option value="dine-in">{locale === "zh" ? "堂食" : "Dine-in"}</option>
+                <option value="dine_in">{locale === "zh" ? "堂食" : "Dine-in"}</option>
                 <option value="pickup">{locale === "zh" ? "自取" : "Pickup"}</option>
                 <option value="delivery">{locale === "zh" ? "外卖" : "Delivery"}</option>
               </select>
             </label>
+
             <label className="flex flex-col gap-1">
               <span className="text-xs text-slate-400">{copy.filters.status}</span>
               <select
@@ -361,6 +530,7 @@ export default function PosDailySummaryPage() {
                 <option value="void">{locale === "zh" ? "已作废" : "Voided"}</option>
               </select>
             </label>
+
             <label className="flex flex-col gap-1">
               <span className="text-xs text-slate-400">{copy.filters.payment}</span>
               <select
@@ -374,6 +544,7 @@ export default function PosDailySummaryPage() {
                 <option value="cash">{locale === "zh" ? "现金" : "Cash"}</option>
                 <option value="card">{locale === "zh" ? "银行卡" : "Card"}</option>
                 <option value="online">{locale === "zh" ? "在线支付" : "Online"}</option>
+                <option value="unknown">{locale === "zh" ? "其他" : "Other"}</option>
               </select>
             </label>
           </div>
@@ -393,10 +564,7 @@ export default function PosDailySummaryPage() {
               <tbody className="divide-y divide-slate-800 bg-slate-900/60">
                 {filteredOrders.length === 0 ? (
                   <tr>
-                    <td
-                      colSpan={6}
-                      className="px-3 py-6 text-center text-sm text-slate-400"
-                    >
+                    <td colSpan={6} className="px-3 py-6 text-center text-sm text-slate-400">
                       {copy.emptyOrders}
                     </td>
                   </tr>
@@ -409,11 +577,19 @@ export default function PosDailySummaryPage() {
                       }`}
                       onClick={() => setSelectedOrderId(order.id)}
                     >
-                      <td className="px-3 py-2 text-slate-300">{order.id}</td>
+                      <td className="px-3 py-2 text-slate-300">
+                        {order.orderStableId.slice(-6)}
+                      </td>
                       <td className="px-3 py-2 text-slate-300">{order.date}</td>
-                      <td className="px-3 py-2 text-slate-300">{order.channel}</td>
-                      <td className="px-3 py-2 text-slate-300">{order.status}</td>
-                      <td className="px-3 py-2 text-slate-300">{order.payment}</td>
+                      <td className="px-3 py-2 text-slate-300">
+                        {labelFulfillment(locale, order.channel)}
+                      </td>
+                      <td className="px-3 py-2 text-slate-300">
+                        {labelStatus(locale, order.status)}
+                      </td>
+                      <td className="px-3 py-2 text-slate-300">
+                        {labelPayment(locale, order.payment)}
+                      </td>
                       <td className="px-3 py-2 text-right text-slate-200">
                         {formatMoney(order.amountCents)}
                       </td>
@@ -426,24 +602,26 @@ export default function PosDailySummaryPage() {
         </div>
 
         <aside className="rounded-3xl border border-slate-700 bg-slate-800/60 p-4">
-          <h3 className="text-sm font-semibold text-slate-200">
-            {copy.selectedOrder}
-          </h3>
+          <h3 className="text-sm font-semibold text-slate-200">{copy.selectedOrder}</h3>
           {selectedOrder ? (
             <div className="mt-3 space-y-3 text-sm">
               <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-3">
                 <div className="text-xs text-slate-400">ID</div>
                 <div className="text-base font-semibold text-slate-100">
-                  {selectedOrder.id}
+                  {selectedOrder.orderStableId}
                 </div>
                 <div className="mt-2 text-xs text-slate-400">
-                  {selectedOrder.date} · {selectedOrder.channel}
+                  {selectedOrder.date} · {labelFulfillment(locale, selectedOrder.channel)}
                 </div>
               </div>
               <div className="grid gap-2">
                 <button
                   type="button"
                   className="rounded-xl border border-slate-600 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-100"
+                  onClick={() => {
+                    // 这里先留空：你有订单详情页路由的话我再给你接 Link
+                    // 常见做法：router.push(`/${locale}/store/pos/orders/${selectedOrder.id}`)
+                  }}
                 >
                   {copy.actions.view}
                 </button>

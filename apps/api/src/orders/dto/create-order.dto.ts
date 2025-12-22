@@ -1,4 +1,4 @@
-//Users/apple/sanqinMVP/apps/api/src/orders/dto/create-order.dto.ts
+// apps/api/src/orders/dto/create-order.dto.ts
 import { Type } from 'class-transformer';
 import {
   IsArray,
@@ -10,7 +10,12 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { Channel, DeliveryType, FulfillmentType } from '@prisma/client';
+import {
+  Channel,
+  DeliveryType,
+  FulfillmentType,
+  PaymentMethod,
+} from '@prisma/client';
 
 class CreateOrderItemDto {
   // ✅ 对外统一：引用菜品 stableId
@@ -130,6 +135,16 @@ export class CreateOrderDto {
 
   @IsEnum(FulfillmentType)
   fulfillmentType!: FulfillmentType;
+
+  /**
+   * ✅ 新增：支付方式（POS 侧必须传；Web 可不传，后端会推断为 CARD）
+   * - CASH
+   * - CARD
+   * - WECHAT_ALIPAY
+   */
+  @IsOptional()
+  @IsEnum(PaymentMethod)
+  paymentMethod?: PaymentMethod;
 
   @IsOptional()
   @IsEnum(DeliveryType)
