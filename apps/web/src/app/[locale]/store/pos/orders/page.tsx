@@ -924,6 +924,25 @@ export default function PosOrdersPage() {
     null,
   );
   const [isSwapPickerOpen, setIsSwapPickerOpen] = useState(false);
+  const [toast, setToast] = useState<{
+    message: string;
+    tone: "success" | "error";
+  } | null>(null);
+
+  const showToast = useCallback(
+    (message: string, tone: "success" | "error" = "success") => {
+      setToast({ message, tone });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => {
+      setToast(null);
+    }, 2000);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   const isFiltersDirty =
     filters.time !== "all" ||
@@ -1373,10 +1392,10 @@ const handleSubmit = () => {
         const mapped = mapOrder(updated);
         setOrders((prev) => prev.map((o) => (o.id === mapped.id ? mapped : o)));
         setSelectedId(mapped.id);
-        alert(copy.actionSuccess);
+        showToast(copy.actionSuccess, "success");
       } catch (error) {
         console.error("Failed to refund order:", error);
-        alert(copy.refundFailed);
+        showToast(copy.refundFailed, "error");
       } finally {
         setIsSubmitting(false);
       }
@@ -1588,11 +1607,11 @@ const handleSubmit = () => {
 
       await printAfterAction();
 
-      alert(copy.actionSuccess);
+      showToast(copy.actionSuccess, "success");
       completeReset();
     } catch (error) {
       console.error("Failed to submit amendment:", error);
-      alert(copy.refundFailed);
+      showToast(copy.refundFailed, "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -1611,10 +1630,10 @@ const handleSubmit = () => {
         prev.map((order) => (order.id === mapped.id ? mapped : order)),
       );
       setSelectedId(mapped.id);
-      alert(copy.advanceSuccess);
+      showToast(copy.advanceSuccess, "success");
     } catch (error) {
       console.error("Failed to advance order status:", error);
-      alert(copy.advanceFailed);
+      showToast(copy.advanceFailed, "error");
     } finally {
       setIsAdvancing(false);
     }
@@ -1629,6 +1648,19 @@ const handleSubmit = () => {
 
   return (
     <main className="min-h-screen bg-slate-900 text-slate-50">
+      {toast && (
+        <div className="fixed inset-x-0 top-6 z-50 flex justify-center px-4">
+          <div
+            className={`rounded-full border px-4 py-2 text-sm font-medium shadow-lg ${
+              toast.tone === "success"
+                ? "border-emerald-400/60 bg-emerald-500/90 text-slate-900"
+                : "border-rose-400/60 bg-rose-500/90 text-white"
+            }`}
+          >
+            {toast.message}
+          </div>
+        </div>
+      )}
       <header className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-700 px-6 py-4">
         <div>
           <h1 className="text-2xl font-semibold">{copy.title}</h1>
