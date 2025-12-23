@@ -1,7 +1,7 @@
 // apps/web/src/app/[locale]/store/pos/payment/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { TAX_RATE, type Locale } from "@/lib/order/shared";
 import { ApiError, apiFetch } from "@/lib/api-client";
@@ -519,10 +519,18 @@ export default function StorePosPaymentPage() {
     }
   };
 
-  const handleCloseSuccess = () => {
+  const handleCloseSuccess = useCallback(() => {
     setSuccessInfo(null);
     router.push(`/${locale}/store/pos`);
-  };
+  }, [locale, router]);
+
+  useEffect(() => {
+    if (!successInfo) return;
+    const timer = window.setTimeout(() => {
+      handleCloseSuccess();
+    }, 2000);
+    return () => window.clearTimeout(timer);
+  }, [handleCloseSuccess, successInfo]);
 
   return (
     <main className="min-h-screen bg-slate-900 text-slate-50">
