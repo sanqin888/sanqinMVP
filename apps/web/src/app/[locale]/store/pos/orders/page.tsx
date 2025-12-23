@@ -459,13 +459,17 @@ function formatMoney(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-function formatOrderTime(value: string, locale: Locale): string {
+function formatOrderTime(value: string, locale: Locale, timeZone?: string): string {
   const date = parseBackendDate(value);
   if (Number.isNaN(date.getTime())) return "--";
-  return date.toLocaleTimeString(locale === "zh" ? "zh-CN" : "en-US", {
+
+  const opts: Intl.DateTimeFormatOptions = {
     hour: "2-digit",
     minute: "2-digit",
-  });
+  };
+  if (timeZone) opts.timeZone = timeZone;
+
+  return date.toLocaleTimeString(locale === "zh" ? "zh-CN" : "en-US", opts);
 }
 
 function parseBackendDate(value: unknown): Date {
@@ -476,6 +480,29 @@ function parseBackendDate(value: unknown): Date {
   if (!trimmed) return new Date(NaN);
   const hasTimezone = /[zZ]|[+-]\d{2}:?\d{2}$/.test(trimmed);
   return new Date(hasTimezone ? trimmed : `${trimmed}Z`);
+}
+
+function ymdInTimeZone(date: Date, timeZone: string): string {
+  // returns YYYY-MM-DD in given IANA time zone
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(date);
+
+    const y = parts.find((p) => p.type === "year")?.value ?? "0000";
+    const m = parts.find((p) => p.type === "month")?.value ?? "01";
+    const d = parts.find((p) => p.type === "day")?.value ?? "01";
+    return `${y}-${m}-${d}`;
+  } catch {
+    // fallback to local date
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
 }
 
 function mapPaymentMethod(order: BackendOrder): PaymentMethodKey {
@@ -900,6 +927,7 @@ function ActionContent({
 }
 
 export default function PosOrdersPage() {
+  type BusinessConfigLite = { timezone: string };
   const params = useParams<{ locale?: string }>();
   const locale = (params?.locale === "zh" ? "zh" : "en") as Locale;
   const copy = COPY[locale];
@@ -936,6 +964,14 @@ export default function PosOrdersPage() {
     [],
   );
 
+  const [storeTimezone, setStoreTimezone] = useState<string>(() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    } catch {
+      return "UTC";
+    }
+  });
+
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => {
@@ -955,52 +991,53 @@ export default function PosOrdersPage() {
     setFilters(createInitialFilters());
   };
 
-  const mapOrder = useCallback(
-    (order: BackendOrder): OrderRecord => {
-      const subtotalCents = order.subtotalCents ?? order.totalCents ?? 0;
-      const discountCents =
-        (order.couponDiscountCents ?? 0) + (order.loyaltyRedeemCents ?? 0);
-      const subtotalAfterDiscountCents =
-        order.subtotalAfterDiscountCents ??
-        Math.max(0, subtotalCents - discountCents);
-      const taxCents = order.taxCents ?? 0;
-      const deliveryFeeCents = order.deliveryFeeCents ?? 0;
-      const items = order.items.map((item) => {
-        const unitPriceCents = item.unitPriceCents ?? 0;
-        return {
-          id: item.id,
-          stableId: item.productStableId,
-          name: pickItemName(item, locale),
-          nameEn: item.nameEn ?? null,
-          nameZh: item.nameZh ?? null,
-          displayName: item.displayName ?? null,
-          qty: item.qty,
-          unitPriceCents,
-          totalCents: unitPriceCents * item.qty,
-        };
-      });
+const mapOrder = useCallback(
+  (order: BackendOrder, timeZone: string): OrderRecord => {
+    const subtotalCents = order.subtotalCents ?? order.totalCents ?? 0;
+    const discountCents =
+      (order.couponDiscountCents ?? 0) + (order.loyaltyRedeemCents ?? 0);
+    const subtotalAfterDiscountCents =
+      order.subtotalAfterDiscountCents ??
+      Math.max(0, subtotalCents - discountCents);
+    const taxCents = order.taxCents ?? 0;
+    const deliveryFeeCents = order.deliveryFeeCents ?? 0;
 
+    const items = order.items.map((item) => {
+      const unitPriceCents = item.unitPriceCents ?? 0;
       return {
-        id: order.id,
-        stableId: order.orderStableId ?? order.id,
-        pickupCode: order.pickupCode ?? null,
-        type: order.fulfillmentType,
-        status: order.status,
-        amountCents: order.totalCents ?? 0,
-        subtotalCents,
-        discountCents,
-        subtotalAfterDiscountCents,
-        taxCents,
-        deliveryFeeCents,
-        items,
-        time: formatOrderTime(order.createdAt, locale),
-        channel: order.channel,
-        paymentMethod: mapPaymentMethod(order),
-        createdAt: order.createdAt,
+        id: item.id,
+        stableId: item.productStableId,
+        name: pickItemName(item, locale),
+        nameEn: item.nameEn ?? null,
+        nameZh: item.nameZh ?? null,
+        displayName: item.displayName ?? null,
+        qty: item.qty,
+        unitPriceCents,
+        totalCents: unitPriceCents * item.qty,
       };
-    },
-    [locale],
-  );
+    });
+
+    return {
+      id: order.id,
+      stableId: order.orderStableId ?? order.id,
+      pickupCode: order.pickupCode ?? null,
+      type: order.fulfillmentType,
+      status: order.status,
+      amountCents: order.totalCents ?? 0,
+      subtotalCents,
+      discountCents,
+      subtotalAfterDiscountCents,
+      taxCents,
+      deliveryFeeCents,
+      items,
+      time: formatOrderTime(order.createdAt, locale, timeZone),
+      channel: order.channel,
+      paymentMethod: mapPaymentMethod(order),
+      createdAt: order.createdAt,
+    };
+  },
+  [locale],
+);
 
   useEffect(() => {
     let cancelled = false;
@@ -1011,13 +1048,21 @@ export default function PosOrdersPage() {
         setErrorMessage(null);
         const query =
           "/orders/board?status=pending,paid,making,ready,completed,refunded&sinceMinutes=1440&limit=200";
-        const data = await apiFetch<BackendOrder[]>(query);
+const [configRes, data] = await Promise.all([
+  apiFetch<BusinessConfigLite>("/admin/business/config").catch(() => null),
+  apiFetch<BackendOrder[]>(query),
+]);
 
-        if (cancelled) return;
+if (cancelled) return;
 
-        const mapped = data.map((order) => mapOrder(order));
+const tz =
+  configRes?.timezone?.trim() ||
+  (Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
 
-        setOrders(mapped);
+setStoreTimezone(tz);
+
+const mapped = data.map((order) => mapOrder(order, tz));
+setOrders(mapped);
       } catch (error) {
         if (!cancelled) {
           console.error("Failed to fetch POS orders:", error);
@@ -1090,13 +1135,12 @@ export default function PosOrdersPage() {
       if (filters.time === "today") {
         const orderDate = parseBackendDate(order.createdAt);
         const now = new Date();
-        if (
-          orderDate.getFullYear() !== now.getFullYear() ||
-          orderDate.getMonth() !== now.getMonth() ||
-          orderDate.getDate() !== now.getDate()
-        ) {
-          return false;
-        }
+
+        const tz = storeTimezone || "UTC";
+        const orderYmd = ymdInTimeZone(orderDate, tz);
+        const nowYmd = ymdInTimeZone(now, tz);
+
+        if (orderYmd !== nowYmd) return false;
       }
       if (
         filters.statuses.length > 0 &&
@@ -1124,7 +1168,7 @@ export default function PosOrdersPage() {
       }
       return true;
     });
-  }, [filters, orders]);
+  }, [filters, orders, storeTimezone]);
 
   const summary = useMemo(() => {
     if (!selectedOrder || !selectedAction) return null;
@@ -1389,7 +1433,7 @@ const handleSubmit = () => {
           selectedOrder.id,
           "refunded",
         );
-        const mapped = mapOrder(updated);
+        const mapped = mapOrder(updated, storeTimezone);
         setOrders((prev) => prev.map((o) => (o.id === mapped.id ? mapped : o)));
         setSelectedId(mapped.id);
         showToast(copy.actionSuccess, "success");
@@ -1489,7 +1533,7 @@ const handleSubmit = () => {
         payload,
       );
 
-      const mapped = mapOrder(updated);
+      const mapped = mapOrder(updated, storeTimezone);
       setOrders((prev) => prev.map((o) => (o.id === mapped.id ? mapped : o)));
 
       // 6) 打印（保留你原逻辑）
@@ -1625,7 +1669,7 @@ const handleSubmit = () => {
     try {
       setIsAdvancing(true);
       const updated = await advanceOrder<BackendOrder>(selectedOrder.id);
-      const mapped = mapOrder(updated);
+      const mapped = mapOrder(updated, storeTimezone);
       setOrders((prev) =>
         prev.map((order) => (order.id === mapped.id ? mapped : order)),
       );

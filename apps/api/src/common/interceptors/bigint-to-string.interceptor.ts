@@ -8,13 +8,12 @@ import {
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 
-/**
- * 内部递归函数：
- * - 把所有 bigint 转成 string
- * - 递归处理数组和普通对象
- * - 用 WeakSet 防止循环引用导致无限递归
- */
 function convert(value: unknown, seen: WeakSet<object>): unknown {
+  // 0) Date -> ISO string
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
   // 1) BigInt -> string
   if (typeof value === 'bigint') {
     return value.toString();
@@ -30,16 +29,21 @@ function convert(value: unknown, seen: WeakSet<object>): unknown {
     return value.map((v) => convert(v, seen));
   }
 
-  // 4) 普通对象：递归处理每个字段
+  // 4) 对象：优先使用 toJSON（和 JSON.stringify 行为一致）
   if (typeof value === 'object') {
     const obj = value as Record<string, unknown>;
 
     // 避免循环引用导致无限递归
     if (seen.has(obj)) {
-      // 对于日志 / 序列化用途，用占位字符串即可
       return '[Circular]';
     }
     seen.add(obj);
+
+    const anyObj = value as any;
+    if (typeof anyObj.toJSON === 'function') {
+      // 某些类型（如 Prisma Decimal / Date）会有 toJSON
+      return convert(anyObj.toJSON(), seen);
+    }
 
     const result: Record<string, unknown> = {};
     for (const [key, val] of Object.entries(obj)) {
@@ -48,7 +52,7 @@ function convert(value: unknown, seen: WeakSet<object>): unknown {
     return result;
   }
 
-  // 5) 其他标量类型（string/number/boolean/symbol 等）直接返回
+  // 5) 其他标量类型
   return value;
 }
 
