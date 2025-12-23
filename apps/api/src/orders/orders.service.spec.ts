@@ -193,6 +193,11 @@ describe('OrdersService', () => {
     const storedOrder = {
       id: 'order-no-dest',
       orderStableId: 'cord-no-dest',
+      status: 'paid',
+      channel: 'web',
+      fulfillmentType: 'pickup',
+      createdAt: new Date('2024-01-01T00:00:00.000Z'),
+      paidAt: new Date('2024-01-01T00:00:00.000Z'),
       subtotalCents: 1000,
       taxCents: 130,
       totalCents: 1130,
@@ -206,7 +211,7 @@ describe('OrdersService', () => {
 
     // ✅ 仍然建单
     expect(prisma.order.create).toHaveBeenCalled();
-    expect(order.id).toBe('order-no-dest');
+    expect(order.orderStableId).toBe('cord-no-dest');
 
     // ✅ 因为没有 deliveryDestination，不会调 Uber Direct
     expect(uberDirect.createDelivery).not.toHaveBeenCalled();
@@ -216,6 +221,11 @@ describe('OrdersService', () => {
     const storedOrder = {
       id: 'order-1',
       orderStableId: 'cord-1',
+      status: 'paid',
+      channel: 'web',
+      fulfillmentType: 'pickup',
+      createdAt: new Date('2024-01-01T00:00:00.000Z'),
+      paidAt: new Date('2024-01-01T00:00:00.000Z'),
       subtotalCents: 1000,
       taxCents: 130,
       totalCents: 1130,
@@ -225,6 +235,8 @@ describe('OrdersService', () => {
         {
           id: 'item-1',
           productId: 'cprod12345',
+          productStableId: 'cprod12345',
+          displayName: 'Demo Product',
           qty: 1,
           unitPriceCents: 1000,
         },
@@ -276,13 +288,22 @@ describe('OrdersService', () => {
 
     expect(firstCallArg.orderId).toBe('order-1');
     expect(firstCallArg.destination.postalCode).toBe('M3J 0L9');
-    expect(order.externalDeliveryId).toBe('uber-123');
+    expect(prisma.order.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ externalDeliveryId: 'uber-123' }),
+      }),
+    );
   });
 
   it('keeps the order when Uber Direct fails', async () => {
     const storedOrder = {
       id: 'order-err',
       orderStableId: 'cord-err',
+      status: 'paid',
+      channel: 'web',
+      fulfillmentType: 'pickup',
+      createdAt: new Date('2024-01-01T00:00:00.000Z'),
+      paidAt: new Date('2024-01-01T00:00:00.000Z'),
       subtotalCents: 1000,
       taxCents: 130,
       totalCents: 1130,
@@ -316,7 +337,7 @@ describe('OrdersService', () => {
     // ✅ 订单依然存在
     expect(order).toEqual(
       expect.objectContaining({
-        id: 'order-err',
+        orderStableId: 'cord-err',
         totalCents: 1130,
       }),
     );
