@@ -210,7 +210,7 @@ export class AdminBusinessService {
     const updates: Partial<BusinessConfig> = {};
 
     if (timezone !== undefined) {
-      updates.timezone = this.normalizeTimezone("timezone", timezone);
+      updates.timezone = this.normalizeTimezone('timezone', timezone);
     }
 
     if (typeof isTemporarilyClosed === 'boolean') {
@@ -360,26 +360,26 @@ export class AdminBusinessService {
 
   // ========= 私有工具函数 =========
 
-private normalizeTimezone(label: string, value: unknown): string {
-  if (typeof value !== "string") {
-    throw new BadRequestException(`${label} must be a string`);
-  }
-  const tz = value.trim();
-  if (!tz) {
-    throw new BadRequestException(`${label} must be a non-empty string`);
-  }
+  private normalizeTimezone(label: string, value: unknown): string {
+    if (typeof value !== 'string') {
+      throw new BadRequestException(`${label} must be a string`);
+    }
+    const tz = value.trim();
+    if (!tz) {
+      throw new BadRequestException(`${label} must be a non-empty string`);
+    }
 
-  // IANA timezone 校验：无效会抛 RangeError
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone: tz }).format(new Date());
-  } catch {
-    throw new BadRequestException(
-      `${label} must be a valid IANA time zone, e.g. "America/Toronto"`,
-    );
-  }
+    // IANA timezone 校验：无效会抛 RangeError
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: tz }).format(new Date());
+    } catch {
+      throw new BadRequestException(
+        `${label} must be a valid IANA time zone, e.g. "America/Toronto"`,
+      );
+    }
 
-  return tz;
-}
+    return tz;
+  }
 
   /** 确保 BusinessConfig 存在（id 固定为 1） */
   private async ensureConfig(): Promise<BusinessConfig> {

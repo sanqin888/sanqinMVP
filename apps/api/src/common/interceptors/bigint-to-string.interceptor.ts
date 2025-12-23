@@ -39,10 +39,10 @@ function convert(value: unknown, seen: WeakSet<object>): unknown {
     }
     seen.add(obj);
 
-    const anyObj = value as any;
-    if (typeof anyObj.toJSON === 'function') {
+    const toJson = (obj as { toJSON?: unknown }).toJSON;
+    if (typeof toJson === 'function') {
       // 某些类型（如 Prisma Decimal / Date）会有 toJSON
-      return convert(anyObj.toJSON(), seen);
+      return convert(toJson.call(obj), seen);
     }
 
     const result: Record<string, unknown> = {};
