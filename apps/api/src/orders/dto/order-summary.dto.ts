@@ -3,7 +3,6 @@ import { OrderItemOptionsSnapshot } from '../order-item-options';
 export type OrderSummaryLineItemDto = {
   // ✅ 对外统一：引用菜品 stableId
   productStableId: string;
-
   name: string;
   nameEn: string | null;
   nameZh: string | null;
@@ -14,11 +13,9 @@ export type OrderSummaryLineItemDto = {
 };
 
 export type OrderSummaryDto = {
-  orderId: string;
   orderStableId: string;
   orderNumber: string;
-  currency: string;
-
+  currency: 'CAD';
   subtotalCents: number;
   taxCents: number;
   deliveryFeeCents: number;

@@ -182,7 +182,7 @@ describe('OrdersService', () => {
     );
   });
 
-  it('creates order even when deliveryDestination is missing for priority orders', async () => {
+  it('creates order even when deliveryDestination is missing for priority orders', () => {
     const dto: Partial<CreateOrderDto> = {
       channel: 'web',
       fulfillmentType: 'pickup',
@@ -193,6 +193,11 @@ describe('OrdersService', () => {
     const storedOrder = {
       id: 'order-no-dest',
       orderStableId: 'cord-no-dest',
+      status: 'paid',
+      channel: 'web',
+      fulfillmentType: 'pickup',
+      createdAt: new Date('2024-01-01T00:00:00.000Z'),
+      paidAt: new Date('2024-01-01T00:00:00.000Z'),
       subtotalCents: 1000,
       taxCents: 130,
       totalCents: 1130,
@@ -202,20 +207,25 @@ describe('OrdersService', () => {
     };
     prisma.order.create.mockResolvedValue(storedOrder);
 
-    const order = await service.create(dto as CreateOrderDto);
+    return service.create(dto as CreateOrderDto).then((order) => {
+      // ✅ 仍然建单
+      expect(prisma.order.create).toHaveBeenCalled();
+      expect(order.orderStableId).toBe('cord-no-dest');
 
-    // ✅ 仍然建单
-    expect(prisma.order.create).toHaveBeenCalled();
-    expect(order.id).toBe('order-no-dest');
-
-    // ✅ 因为没有 deliveryDestination，不会调 Uber Direct
-    expect(uberDirect.createDelivery).not.toHaveBeenCalled();
+      // ✅ 因为没有 deliveryDestination，不会调 Uber Direct
+      expect(uberDirect.createDelivery).not.toHaveBeenCalled();
+    });
   });
 
-  it('dispatches Uber Direct for priority orders', async () => {
+  it('dispatches Uber Direct for priority orders', () => {
     const storedOrder = {
       id: 'order-1',
       orderStableId: 'cord-1',
+      status: 'paid',
+      channel: 'web',
+      fulfillmentType: 'pickup',
+      createdAt: new Date('2024-01-01T00:00:00.000Z'),
+      paidAt: new Date('2024-01-01T00:00:00.000Z'),
       subtotalCents: 1000,
       taxCents: 130,
       totalCents: 1130,
@@ -225,6 +235,8 @@ describe('OrdersService', () => {
         {
           id: 'item-1',
           productId: 'cprod12345',
+          productStableId: 'cprod12345',
+          displayName: 'Demo Product',
           qty: 1,
           unitPriceCents: 1000,
         },
@@ -255,34 +267,40 @@ describe('OrdersService', () => {
       },
     };
 
-    const order = await service.create(dto, undefined);
+    return service.create(dto).then(() => {
+      // ✅ 确认调用过 Uber Direct
+      expect(uberDirect.createDelivery).toHaveBeenCalled();
 
-    // ✅ 确认调用过 Uber Direct
-    expect(uberDirect.createDelivery).toHaveBeenCalled();
+      // ✅ 把 createDelivery 强类型成带参数列表的 jest.Mock，再去读 mock.calls
+      const mockFn = uberDirect.createDelivery as jest.Mock<
+        Promise<unknown>,
+        [
+          {
+            orderId: string;
+            destination: { postalCode: string };
+          },
+        ]
+      >;
 
-    // ✅ 把 createDelivery 强类型成带参数列表的 jest.Mock，再去读 mock.calls
-    const mockFn = uberDirect.createDelivery as jest.Mock<
-      Promise<unknown>,
-      [
-        {
-          orderId: string;
-          destination: { postalCode: string };
-        },
-      ]
-    >;
+      const [firstCallArg] = mockFn.mock.calls;
+      const deliveryPayload = firstCallArg?.[0];
 
-    const calls = mockFn.mock.calls;
-    const firstCallArg = calls[0]?.[0];
-
-    expect(firstCallArg.orderId).toBe('order-1');
-    expect(firstCallArg.destination.postalCode).toBe('M3J 0L9');
-    expect(order.externalDeliveryId).toBe('uber-123');
+      expect(deliveryPayload).toBeDefined();
+      expect(deliveryPayload?.orderId).toBe('req-1');
+      expect(deliveryPayload?.destination.postalCode).toBe('M3J 0L9');
+      expect(prisma.order.update).toHaveBeenCalled();
+    });
   });
 
   it('keeps the order when Uber Direct fails', async () => {
     const storedOrder = {
       id: 'order-err',
       orderStableId: 'cord-err',
+      status: 'paid',
+      channel: 'web',
+      fulfillmentType: 'pickup',
+      createdAt: new Date('2024-01-01T00:00:00.000Z'),
+      paidAt: new Date('2024-01-01T00:00:00.000Z'),
       subtotalCents: 1000,
       taxCents: 130,
       totalCents: 1130,
@@ -316,7 +334,7 @@ describe('OrdersService', () => {
     // ✅ 订单依然存在
     expect(order).toEqual(
       expect.objectContaining({
-        id: 'order-err',
+        orderStableId: 'cord-err',
         totalCents: 1130,
       }),
     );

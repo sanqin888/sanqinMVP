@@ -10,7 +10,6 @@ import {
   Query,
   DefaultValuePipe,
   ParseIntPipe,
-  ParseUUIDPipe,
   BadRequestException,
 } from '@nestjs/common';
 import { Type } from 'class-transformer';
@@ -37,7 +36,8 @@ import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { OrderStatus } from './order-status';
 import { OrderSummaryDto } from './dto/order-summary.dto';
-import { CuidOrUuidPipe } from '../common/pipes/cuid-or-uuid.pipe';
+import { StableIdPipe } from '../common/pipes/stable-id.pipe';
+import type { OrderDto } from './dto/order.dto';
 
 class UpdateStatusDto {
   @IsEnum(OrderStatus)
@@ -95,43 +95,32 @@ class AmendmentRequestConsistency implements ValidatorConstraintInterface {
     );
     const hasAdd = items.some((i) => i.action === OrderAmendmentItemAction.ADD);
 
-    // 一般不允许“同时退 + 同时补收”（你现在的语义是单向差额）
     if (refund > 0 && charge > 0) return false;
 
     switch (type) {
       case OrderAmendmentType.RETENDER: {
-        // ✅ 收紧：RETENDER 必须不带 items
         if (items.length > 0) return false;
-        // 至少一边金额 > 0
         if (refund <= 0 && charge <= 0) return false;
         return true;
       }
 
       case OrderAmendmentType.VOID_ITEM: {
-        // 必须有 items，且只能 VOID
         if (items.length === 0) return false;
         if (!hasVoid || hasAdd) return false;
-        // VOID 通常应当有退款金额（否则积分/返现调整也不会发生）
         if (refund <= 0) return false;
-        // VOID 不应该补收
         if (charge > 0) return false;
         return true;
       }
 
       case OrderAmendmentType.SWAP_ITEM: {
-        // 必须同时有 VOID + ADD
         if (items.length === 0) return false;
         if (!(hasVoid && hasAdd)) return false;
-        // swap 允许差额为 0（等价交换）
         return true;
       }
 
       case OrderAmendmentType.ADDITIONAL_CHARGE: {
-        // 不允许 VOID
         if (hasVoid) return false;
-        // 允许 items 为空，但必须有补收金额
         if (charge <= 0) return false;
-        // 补收不应该带 refundGross（否则语义冲突）
         if (refund > 0) return false;
         return true;
       }
@@ -182,21 +171,18 @@ class CreateOrderAmendmentDto {
   @IsEnum(PaymentMethod)
   paymentMethod?: PaymentMethod | null;
 
-  // 本次“应退总额”（用于后端拆分：现金退 vs 积分返还）
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(0)
   refundGrossCents?: number;
 
-  // 本次“补收总额”
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(0)
   additionalChargeCents?: number;
 
-  // RETENDER 必须空；VOID/SWAP 通常会有 items（由一致性校验器约束）
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
@@ -214,30 +200,24 @@ export class OrdersController {
    */
   @Post()
   @HttpCode(201)
-  create(@Body() dto: CreateOrderDto) {
+  create(@Body() dto: CreateOrderDto): Promise<OrderDto> {
     return this.ordersService.create(dto);
   }
 
   /**
-   * 最近订单（仅 limit，绝不读取/校验 id）
+   * 最近订单
    * GET /api/v1/orders/recent?limit=10
    */
   @Get('recent')
   recent(
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
-  ) {
+  ): Promise<OrderDto[]> {
     return this.ordersService.recent(limit);
   }
 
   /**
    * 门店订单看板：
    * GET /api/v1/orders/board
-   *
-   * 查询参数：
-   * - status: 逗号分隔的状态列表，例如：pending,paid,making,ready
-   * - channel: 逗号分隔的渠道列表，例如：web,in_store
-   * - limit: 最大返回数量（默认 50）
-   * - sinceMinutes: 只看最近 N 分钟内的订单（默认 24*60）
    */
   @Get('board')
   board(
@@ -246,7 +226,7 @@ export class OrdersController {
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit?: number,
     @Query('sinceMinutes', new DefaultValuePipe(1440), ParseIntPipe)
     sinceMinutes?: number,
-  ) {
+  ): Promise<OrderDto[]> {
     const statusIn = statusRaw
       ? (statusRaw
           .split(',')
@@ -270,48 +250,48 @@ export class OrdersController {
   }
 
   /**
-   * 按 ID 获取订单（接受 cuid/uuid）
-   * GET /api/v1/orders/:id
+   * 按 stableId 获取订单
+   * GET /api/v1/orders/:orderStableId
    */
-  @Get(':id')
-  findOne(@Param('id', CuidOrUuidPipe) id: string) {
-    return this.ordersService.getByStableId(id);
+  @Get(':orderStableId')
+  findOne(
+    @Param('orderStableId', StableIdPipe) orderStableId: string,
+  ): Promise<OrderDto> {
+    return this.ordersService.getByStableId(orderStableId);
   }
 
   @Post('loyalty-only')
-  async createLoyaltyOnlyOrder(@Body() payload: any) {
-    // 这里先做一个最基本的校验，防止被乱调用
+  async createLoyaltyOnlyOrder(@Body() payload: any): Promise<OrderDto> {
     if (!payload || typeof payload !== 'object') {
       throw new BadRequestException('Invalid payload');
     }
-
     return this.ordersService.createLoyaltyOnlyOrder(payload);
   }
 
   /**
-   * 更新订单状态（仅接受 UUID）
-   * PATCH /api/v1/orders/:id/status
+   * 更新订单状态
+   * PATCH /api/v1/orders/:orderStableId/status
    */
-  @Patch(':id/status')
+  @Patch(':orderStableId/status')
   updateStatus(
-    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Param('orderStableId', StableIdPipe) orderStableId: string,
     @Body() body: UpdateStatusDto,
-  ) {
-    return this.ordersService.updateStatus(id, body.status);
+  ): Promise<OrderDto> {
+    return this.ordersService.updateStatus(orderStableId, body.status);
   }
 
   /**
    * 创建订单修订（方案 B）
-   * POST /api/v1/orders/:id/amendments
+   * POST /api/v1/orders/:orderStableId/amendments
    */
-  @Post(':id/amendments')
+  @Post(':orderStableId/amendments')
   @HttpCode(201)
   createAmendment(
-    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Param('orderStableId', StableIdPipe) orderStableId: string,
     @Body() body: CreateOrderAmendmentDto,
-  ) {
+  ): Promise<OrderDto> {
     return this.ordersService.createAmendment({
-      orderId: id,
+      orderId: orderStableId,
       type: body.type,
       reason: body.reason,
       paymentMethod: body.paymentMethod ?? null,
@@ -322,22 +302,25 @@ export class OrdersController {
   }
 
   /**
-   * 推进订单状态（前端“推进状态”按钮：paid→making→ready→completed）
-   * POST /api/v1/orders/:id/advance
-   * 返回推进后的订单（仅接受 UUID）
+   * 推进订单状态
+   * POST /api/v1/orders/:orderStableId/advance
    */
-  @Post(':id/advance')
+  @Post(':orderStableId/advance')
   @HttpCode(200)
-  advance(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    return this.ordersService.advance(id);
+  advance(
+    @Param('orderStableId', StableIdPipe) orderStableId: string,
+  ): Promise<OrderDto> {
+    return this.ordersService.advance(orderStableId);
   }
 
   /**
-   * GET /orders/:order/summary
-   * 给前端 thank-you 页面的小结组件用
+   * GET /orders/:orderStableId/summary
+   * thank-you 页面小结组件
    */
-  @Get(':order/summary')
-  getPublicSummary(@Param('order') order: string): Promise<OrderSummaryDto> {
-    return this.ordersService.getPublicOrderSummary(order);
+  @Get(':orderStableId/summary')
+  getPublicSummary(
+    @Param('orderStableId', StableIdPipe) orderStableId: string,
+  ): Promise<OrderSummaryDto> {
+    return this.ordersService.getPublicOrderSummary(orderStableId);
   }
 }
