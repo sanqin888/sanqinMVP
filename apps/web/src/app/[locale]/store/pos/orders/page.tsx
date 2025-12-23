@@ -944,25 +944,14 @@ export default function PosOrdersPage() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  const isFiltersDirty =
+  const filtersDirty =
     filters.time !== "all" ||
     filters.statuses.length > 0 ||
     filters.channels.length > 0 ||
     filters.fulfillments.length > 0 ||
     filters.minTotalCents !== null;
 
-  const handleResetFilters = () => {
-    setFilters(createInitialFilters());
-  };
-
-  const isFiltersDirty =
-    filters.time !== "all" ||
-    filters.statuses.length > 0 ||
-    filters.channels.length > 0 ||
-    filters.fulfillments.length > 0 ||
-    filters.minTotalCents !== null;
-
-  const handleResetFilters = () => {
+  const handleResetOrderFilters = () => {
     setFilters(createInitialFilters());
   };
 
@@ -1693,10 +1682,10 @@ const handleSubmit = () => {
                 <h2 className="text-lg font-semibold">{copy.filtersTitle}</h2>
                 <button
                   type="button"
-                  onClick={handleResetFilters}
-                  disabled={!isFiltersDirty}
+                  onClick={handleResetOrderFilters}
+                  disabled={!filtersDirty}
                   className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition ${
-                    isFiltersDirty
+                    filtersDirty
                       ? "border-slate-600 bg-slate-900/40 text-slate-200 hover:border-slate-400 hover:text-white"
                       : "cursor-not-allowed border-slate-700 bg-slate-900/30 text-slate-500"
                   }`}
