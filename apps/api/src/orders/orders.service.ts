@@ -47,6 +47,64 @@ import {
   OrderItemOptionsSnapshot,
 } from './order-item-options';
 import { isAvailableNow } from '@shared/menu';
+import type { OrderDto, OrderItemDto } from './dto/order.dto';
+
+private toOrderDto(order: OrderWithItems): OrderDto {
+  const orderStableId = order.orderStableId;
+  if (!orderStableId) {
+    // 按你的业务前提 stableId 非空，这里属于数据异常
+    throw new BadRequestException('orderStableId missing');
+  }
+
+  const orderNumber = order.clientRequestId ?? orderStableId;
+
+  const items: OrderItemDto[] = (order.items ?? []).map((it) => ({
+    productStableId: it.productStableId,
+    qty: it.qty,
+    displayName: it.displayName || it.nameEn || it.nameZh || it.productStableId,
+    nameEn: it.nameEn ?? null,
+    nameZh: it.nameZh ?? null,
+    unitPriceCents: it.unitPriceCents ?? 0,
+    optionsJson: it.optionsJson ?? undefined,
+  }));
+
+  return {
+    orderStableId,
+    orderNumber,
+
+    status: order.status as OrderStatus,
+    channel: order.channel,
+    fulfillmentType: order.fulfillmentType,
+
+    paymentMethod: order.paymentMethod ?? null,
+
+    pickupCode: order.pickupCode ?? null,
+
+    contactName: order.contactName ?? null,
+    contactPhone: order.contactPhone ?? null,
+
+    deliveryType: order.deliveryType ?? null,
+    deliveryProvider: order.deliveryProvider ?? null,
+    deliveryEtaMinMinutes: order.deliveryEtaMinMinutes ?? null,
+    deliveryEtaMaxMinutes: order.deliveryEtaMaxMinutes ?? null,
+
+    subtotalCents: order.subtotalCents ?? 0,
+    taxCents: order.taxCents ?? 0,
+    deliveryFeeCents: order.deliveryFeeCents ?? 0,
+    totalCents: order.totalCents ?? 0,
+
+    couponCodeSnapshot: order.couponCodeSnapshot ?? null,
+    couponTitleSnapshot: order.couponTitleSnapshot ?? null,
+    couponDiscountCents: order.couponDiscountCents ?? 0,
+
+    loyaltyRedeemCents: order.loyaltyRedeemCents ?? 0,
+
+    createdAt: order.createdAt.toISOString(),
+    paidAt: order.paidAt ? order.paidAt.toISOString() : null,
+
+    items,
+  };
+}
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 type OrderItemInput = NonNullable<CreateOrderDto['items']>[number] & {
@@ -144,6 +202,103 @@ export class OrdersService {
       );
     }
   }
+
+  /**
+   * ✅ 统一入口：把“外部 orderRef（stableId / legacy clientRequestId / uuid / checkoutIntent ref）”
+   * resolve 成数据库内部 UUID（order.id）
+   *
+   * 说明：
+   * - 对外stableId
+   */
+// ✅ public/controller：只接受 stableId（cuid/cuid2），不再接受 UUID
+private async resolveInternalOrderIdByStableIdOrThrow(
+  orderStableId: string,
+  client: Prisma.TransactionClient | PrismaService = this.prisma,
+): Promise<{ id: string; orderStableId: string; clientRequestId: string | null }> {
+  const value = (orderStableId ?? '').trim();
+  if (!value) throw new NotFoundException('order not found');
+  if (value.includes('-')) throw new BadRequestException('stableId only');
+
+  const found = await client.order.findUnique({
+    where: { orderStableId: value },
+    select: { id: true, orderStableId: true, clientRequestId: true },
+  });
+  if (!found) throw new NotFoundException('order not found');
+  return found;
+}
+
+// ✅ 第三方 webhook/internal：如你确实需要用 DoorDash/Uber 回调的 orderId 来反查
+//    这里不允许 UUID，只允许 clientRequestId 或 orderStableId（二者都不含 '-'）
+private async resolveInternalOrderIdByExternalRefOrThrow(
+  externalRef: string,
+  client: Prisma.TransactionClient | PrismaService = this.prisma,
+): Promise<{ id: string; orderStableId: string; clientRequestId: string | null }> {
+  const value = (externalRef ?? '').trim();
+  if (!value) throw new NotFoundException('order not found');
+  if (value.includes('-')) throw new BadRequestException('stableId only');
+
+  const found = await client.order.findFirst({
+    where: {
+      OR: [{ clientRequestId: value }, { orderStableId: value }],
+    },
+    select: { id: true, orderStableId: true, clientRequestId: true },
+  });
+
+  if (!found) throw new NotFoundException('order not found');
+  return found;
+}
+
+  private async updateStatusByInternalId(
+    id: string,
+    next: OrderStatus,
+  ): Promise<OrderWithItems> {
+    const current = await this.prisma.order.findUnique({
+      where: { id },
+      select: { status: true },
+    });
+    if (!current) throw new NotFoundException('order not found');
+
+    if (!ORDER_STATUS_TRANSITIONS[current.status].includes(next)) {
+      throw new BadRequestException(
+        `illegal transition ${current.status} -> ${next}`,
+      );
+    }
+
+    const updated = (await this.prisma.order.update({
+      where: { id },
+      data: { status: next },
+      include: { items: true },
+    })) as OrderWithItems;
+
+    if (next === 'paid') {
+      const subtotalForRewards = Math.max(0, updated.subtotalCents ?? 0);
+
+      if (updated.couponId) {
+        void this.membership.markCouponUsedForOrder({
+          couponId: updated.couponId,
+          orderId: updated.id,
+        });
+      }
+
+      void this.loyalty.settleOnPaid({
+        orderId: updated.id,
+        userId: updated.userId ?? undefined,
+        subtotalCents: subtotalForRewards,
+        redeemValueCents: updated.loyaltyRedeemCents ?? 0,
+      });
+    } else if (next === 'refunded') {
+      if (updated.couponId) {
+        void this.membership.releaseCouponForOrder({
+          orderId: updated.id,
+          couponId: updated.couponId,
+        });
+      }
+      void this.loyalty.rollbackOnRefund(updated.id);
+    }
+
+    return updated;
+  }
+
   /**
    * ✅ 统一推断订单 paymentMethod
    * - POS：建议必传；没传就降级为 CASH 并打 warn（避免静默错账）
@@ -280,11 +435,7 @@ export class OrdersService {
     const baseCents = pricingConfig.deliveryBaseFeeCents;
     const perKmCents = pricingConfig.priorityPerKmCents;
 
-    // ⭐ 修改点：向上取整 (Ceil)
-    // 0.1km -> 1km, 1.2km -> 2km
     const chargedKm = Math.ceil(distanceKm);
-
-    // 费用 = 基础费 + (计费里程 * 每公里费率)
     const feeCents = baseCents + chargedKm * perKmCents;
 
     return feeCents;
@@ -475,7 +626,6 @@ export class OrdersService {
         });
         userBalance = newBal;
       } else {
-        // 若已存在，沿用已写入的 delta/balance（避免重复）
         userBalance = existed.balanceAfterMicro;
       }
     }
@@ -505,13 +655,11 @@ export class OrdersService {
       if (earnedTotalMicro > 0n) {
         const refundableBaseCents = Math.min(refundCashCents, netBaseCents);
 
-        // proportional = earnedTotal * refundableBase / netBase
         const proportionalMicro =
           (earnedTotalMicro * BigInt(refundableBaseCents)) /
           BigInt(netBaseCents);
 
         if (proportionalMicro > 0n) {
-          // 不允许扣成负数：最多扣到 0
           const willDeduct =
             proportionalMicro > userBalance ? userBalance : proportionalMicro;
 
@@ -544,7 +692,6 @@ export class OrdersService {
             userBalance = newBal;
             earnAdjustMicroApplied = -willDeduct;
           } else {
-            // 已存在则沿用
             earnAdjustMicroApplied = existedReverse.deltaMicro ?? 0n;
             userBalance = existedReverse.balanceAfterMicro;
           }
@@ -602,7 +749,6 @@ export class OrdersService {
               FOR UPDATE
             `;
 
-              // 最多扣到 0
               const willDeduct =
                 proportionalMicro > refAcc.pointsMicro
                   ? refAcc.pointsMicro
@@ -638,7 +784,7 @@ export class OrdersService {
       }
     }
 
-    // 8) 回写用户账户余额（本函数只改余额；lifetime/tier 暂不在 amendment 中回退，避免复杂口径）
+    // 8) 回写用户账户余额
     await tx.loyaltyAccount.update({
       where: { id: acc.id },
       data: { pointsMicro: userBalance },
@@ -648,14 +794,9 @@ export class OrdersService {
     await tx.orderAmendment.update({
       where: { id: amendmentId },
       data: {
-        // 现金退到支付方式的金额（你后续真正去退微信/现金/支付宝时，用这个数）
         refundCents: refundCashCents,
-
-        // 积分返还（当“应退总额 > 可退现金”时发生）
         redeemReturnCents,
         redeemReturnMicro,
-
-        // 这两个是“实际写入 ledger 的 delta”（可能被 clamp 到 0）
         earnAdjustMicro: earnAdjustMicroApplied,
         referralAdjustMicro: referralAdjustMicroApplied,
       },
@@ -929,7 +1070,6 @@ export class OrdersService {
     }
 
     // —— Step 1: 服务端重算商品小计 (Security)
-    // CreateOrderDto['items'] 允许 undefined, 我们转成空数组处理
     const items = dto.items ?? [];
     const { calculatedItems, calculatedSubtotal } =
       await this.calculateLineItems(items);
@@ -1090,7 +1230,7 @@ export class OrdersService {
           ...(deliveryMeta
             ? {
                 deliveryType: dto.deliveryType,
-                deliveryProvider: deliveryMeta.provider, // Provider 还是取自默认规则
+                deliveryProvider: deliveryMeta.provider,
                 deliveryEtaMinMinutes: deliveryMeta.etaRange[0],
                 deliveryEtaMaxMinutes: deliveryMeta.etaRange[1],
               }
@@ -1161,14 +1301,11 @@ export class OrdersService {
     return order;
   }
 
-  // ... (保留原有的 createLoyaltyOnlyOrder, createImmediatePaid, recent, board, getByStableId, getPublicOrderSummary 等辅助方法，逻辑不变)
-
   async createLoyaltyOnlyOrder(payload: unknown): Promise<OrderWithItems> {
     if (!payload || typeof payload !== 'object') {
       throw new BadRequestException('invalid payload');
     }
 
-    // 定义 payload 类型以避免 unsafe access
     interface LoyaltyOrderPayload {
       amountCents?: unknown;
       referenceId?: unknown;
@@ -1210,9 +1347,6 @@ export class OrdersService {
         postalCode: customer.postalCode,
         country: customer.country ?? 'Canada',
         instructions: customer.notes,
-        // 这里没有 latitude/longitude，无法进行动态运费计算，
-        // 但既然是 Clover 回调创建的订单，说明钱已经付了，
-        // 这里只能信任 meta.deliveryFeeCents
         latitude: undefined,
         longitude: undefined,
         tipCents: undefined,
@@ -1240,7 +1374,6 @@ export class OrdersService {
         qty: item.quantity,
       })),
       redeemValueCents: loyaltyRedeemCents,
-      // 对于纯积分订单，信任 Clover 传回来的配送费（因为已经付过了）
       deliveryFeeCents: meta.deliveryFeeCents,
     };
 
@@ -1256,194 +1389,117 @@ export class OrdersService {
   ): Promise<OrderWithItems> {
     const created = await this.create(dto, idempotencyKey);
     if (created.status === 'paid') return created;
-    return this.updateStatus(created.id, 'paid');
+    return this.updateStatusByInternalId(created.id, 'paid');
   }
 
-  async recent(limit = 10): Promise<OrderWithItems[]> {
-    return this.prisma.order.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      include: { items: true },
-    });
+async recent(limit = 10): Promise<OrderDto[]> {
+  const orders = (await this.prisma.order.findMany({
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+    include: { items: true },
+  })) as OrderWithItems[];
+
+  return orders.map((o) => this.toOrderDto(o));
+}
+
+async board(params: {
+  statusIn?: OrderStatus[];
+  channelIn?: Array<'web' | 'in_store' | 'ubereats'>;
+  limit?: number;
+  sinceMinutes?: number;
+}): Promise<OrderDto[]> {
+  const { statusIn, channelIn, limit = 50, sinceMinutes = 24 * 60 } = params;
+  const where: Prisma.OrderWhereInput = {};
+  if (statusIn && statusIn.length > 0) where.status = { in: statusIn };
+  if (channelIn && channelIn.length > 0) where.channel = { in: channelIn };
+  if (sinceMinutes > 0) {
+    const since = new Date(Date.now() - sinceMinutes * 60 * 1000);
+    where.createdAt = { gte: since };
   }
 
-  async board(params: {
-    statusIn?: OrderStatus[];
-    channelIn?: Array<'web' | 'in_store' | 'ubereats'>;
-    limit?: number;
-    sinceMinutes?: number;
-  }): Promise<OrderWithItems[]> {
-    const { statusIn, channelIn, limit = 50, sinceMinutes = 24 * 60 } = params;
-    const where: Prisma.OrderWhereInput = {};
-    if (statusIn && statusIn.length > 0) where.status = { in: statusIn };
-    if (channelIn && channelIn.length > 0) where.channel = { in: channelIn };
-    if (sinceMinutes > 0) {
-      const since = new Date(Date.now() - sinceMinutes * 60 * 1000);
-      where.createdAt = { gte: since };
-    }
-    return this.prisma.order.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      include: { items: true },
-    }) as Promise<OrderWithItems[]>;
-  }
+  const orders = (await this.prisma.order.findMany({
+    where,
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+    include: { items: true },
+  })) as OrderWithItems[];
 
-  async getByStableId(id: string): Promise<OrderWithItems> {
-    const lookup = id.trim();
-    let order: OrderWithItems | null = null;
-    if (isUuid(lookup)) {
-      order = (await this.prisma.order.findUnique({
-        where: { id: lookup },
-        include: { items: true },
-      })) as OrderWithItems | null;
-    }
-    if (!order) {
-      order = (await this.prisma.order.findFirst({
-        where: { orderStableId: lookup },
-        include: { items: true },
-      })) as OrderWithItems | null;
-    }
-    if (!order) throw new NotFoundException('order not found');
-    return order;
-  }
+  return orders.map((o) => this.toOrderDto(o));
+}
 
-  async getPublicOrderSummary(orderParam: string): Promise<OrderSummaryDto> {
-    const value = (orderParam ?? '').trim();
-    if (!value) throw new NotFoundException('order not found');
-    const include = { items: true as const };
-    let order: OrderWithItems | null = null;
-    if (isUuid(value)) {
-      order = (await this.prisma.order.findUnique({
-        where: { id: value },
-        include,
-      })) as OrderWithItems | null;
-    }
-    if (!order) {
-      order = (await this.prisma.order.findFirst({
-        where: { orderStableId: value },
-        include,
-      })) as OrderWithItems | null;
-    }
-    if (!order) {
-      order = (await this.prisma.order.findFirst({
-        where: { clientRequestId: value },
-        include,
-      })) as OrderWithItems | null;
-    }
-    if (!order) {
-      const intent = await this.prisma.checkoutIntent.findFirst({
-        where: {
-          OR: [{ referenceId: value }, { checkoutSessionId: value }],
-          orderId: { not: null },
-        },
-        orderBy: { createdAt: 'desc' },
-        select: { orderId: true },
-      });
-      if (intent?.orderId) {
-        order = (await this.prisma.order.findUnique({
-          where: { id: intent.orderId },
-          include,
-        })) as OrderWithItems | null;
-      }
-    }
-    if (!order) throw new NotFoundException('order not found');
+async getByStableId(orderStableId: string): Promise<OrderDto> {
+  const order = (await this.prisma.order.findUnique({
+    where: { orderStableId: orderStableId.trim() },
+    include: { items: true },
+  })) as OrderWithItems | null;
 
-    const safeOrder = order;
+  if (!order) throw new NotFoundException('order not found');
+  return this.toOrderDto(order);
+}
 
-    const subtotalCents = safeOrder.subtotalCents ?? 0;
-    const taxCents = safeOrder.taxCents ?? 0;
-    const deliveryFeeCents = safeOrder.deliveryFeeCents ?? 0;
-    const discountCents =
-      (safeOrder.loyaltyRedeemCents ?? 0) +
-      (safeOrder.couponDiscountCents ?? 0);
+async getPublicOrderSummary(orderStableId: string): Promise<OrderSummaryDto> {
+  const value = (orderStableId ?? '').trim();
+  if (!value) throw new NotFoundException('order not found');
+  if (value.includes('-')) throw new BadRequestException('stableId only');
 
-    const lineItems = safeOrder.items.map((item) => {
-      const optionsSnapshot = item.optionsJson as
-        | OrderItemOptionsSnapshot
-        | null
-        | undefined;
-      const unitPriceCents = item.unitPriceCents ?? 0;
-      const quantity = item.qty;
-      const totalPriceCents = unitPriceCents * quantity;
-      const display =
-        item.displayName || item.nameEn || item.nameZh || item.productStableId;
-      return {
-        productStableId: item.productStableId,
-        name: display,
-        nameEn: item.nameEn ?? null,
-        nameZh: item.nameZh ?? null,
-        quantity,
-        unitPriceCents,
-        totalPriceCents,
-        optionsJson: optionsSnapshot ?? undefined,
-        loyaltyRedeemCents: safeOrder.loyaltyRedeemCents ?? null,
-        couponDiscountCents: safeOrder.couponDiscountCents ?? null,
-        subtotalAfterDiscountCents:
-          safeOrder.subtotalAfterDiscountCents ?? null,
-      };
-    });
+  const order = (await this.prisma.order.findUnique({
+    where: { orderStableId: value },
+    include: { items: true },
+  })) as OrderWithItems | null;
+
+  if (!order) throw new NotFoundException('order not found');
+
+  const subtotalCents = order.subtotalCents ?? 0;
+  const taxCents = order.taxCents ?? 0;
+  const deliveryFeeCents = order.deliveryFeeCents ?? 0;
+  const discountCents =
+    (order.loyaltyRedeemCents ?? 0) + (order.couponDiscountCents ?? 0);
+
+  const lineItems = order.items.map((item) => {
+    const optionsSnapshot = item.optionsJson as
+      | OrderItemOptionsSnapshot
+      | null
+      | undefined;
+
+    const unitPriceCents = item.unitPriceCents ?? 0;
+    const quantity = item.qty;
+    const totalPriceCents = unitPriceCents * quantity;
+
+    const display =
+      item.displayName || item.nameEn || item.nameZh || item.productStableId;
 
     return {
-      orderId: safeOrder.id,
-      orderStableId: safeOrder.orderStableId,
-      orderNumber: safeOrder.orderStableId ?? safeOrder.id,
-      currency: 'CAD',
-      subtotalCents,
-      taxCents,
-      deliveryFeeCents,
-      discountCents,
-      totalCents: safeOrder.totalCents,
-      lineItems,
+      productStableId: item.productStableId,
+      name: display,
+      nameEn: item.nameEn ?? null,
+      nameZh: item.nameZh ?? null,
+      quantity,
+      unitPriceCents,
+      totalPriceCents,
+      optionsJson: optionsSnapshot ?? undefined,
     };
-  }
+  });
 
-  async updateStatus(id: string, next: OrderStatus): Promise<OrderWithItems> {
-    const current = await this.prisma.order.findUnique({
-      where: { id },
-      select: { status: true },
-    });
-    if (!current) throw new NotFoundException('order not found');
-    if (!ORDER_STATUS_TRANSITIONS[current.status].includes(next)) {
-      throw new BadRequestException(
-        `illegal transition ${current.status} -> ${next}`,
-      );
-    }
-    const updated = (await this.prisma.order.update({
-      where: { id },
-      data: { status: next },
-      include: { items: true },
-    })) as OrderWithItems & { loyaltyRedeemCents: number };
+  const orderNumber = order.clientRequestId ?? order.orderStableId!;
 
-    if (next === 'paid') {
-      // 与 LoyaltyService.settleOnPaid 的当前口径一致：
-      // net = subtotalCents - redeemValueCents（暂不把 coupon 纳入 net）
-      const subtotalForRewards = Math.max(0, updated.subtotalCents ?? 0);
+  return {
+    orderStableId: order.orderStableId!,
+    orderNumber,
+    currency: 'CAD',
+    subtotalCents,
+    taxCents,
+    deliveryFeeCents,
+    discountCents,
+    totalCents: order.totalCents ?? 0,
+    lineItems,
+  };
+}
 
-      if (updated.couponId) {
-        void this.membership.markCouponUsedForOrder({
-          couponId: updated.couponId,
-          orderId: updated.id,
-        });
-      }
-
-      void this.loyalty.settleOnPaid({
-        orderId: updated.id,
-        userId: updated.userId ?? undefined,
-        subtotalCents: subtotalForRewards,
-        redeemValueCents: updated.loyaltyRedeemCents ?? 0,
-      });
-    } else if (next === 'refunded') {
-      if (updated.couponId) {
-        void this.membership.releaseCouponForOrder({
-          orderId: updated.id,
-          couponId: updated.couponId,
-        });
-      }
-      void this.loyalty.rollbackOnRefund(updated.id);
-    }
-    return updated;
-  }
+async updateStatus(orderStableId: string, next: OrderStatus): Promise<OrderDto> {
+  const resolved = await this.resolveInternalOrderIdByStableIdOrThrow(orderStableId);
+  const updated = await this.updateStatusByInternalId(resolved.id, next);
+  return this.toOrderDto(updated);
+}
 
   // =========================
   // Amendments (方案 B 的入口)
@@ -1451,13 +1507,6 @@ export class OrdersService {
 
   /**
    * 退菜/改价：创建 OrderAmendment（方案 B）
-   *
-   * refundGrossCents: 本次“应退总额”（按你的规则算：通常是被 void 的菜品金额，是否含税/运费由你定义）
-   *
-   * 关键点：
-   * - cash 退款不能超过“本单实际现金支付总额 - 已现金退款额”
-   * - 超出部分：转成“返还积分”（即补回用户积分）
-   * - 全过程必须在一个 tx 里，保证一致性
    */
   async createAmendment(params: {
     orderId: string;
@@ -1498,15 +1547,12 @@ export class OrdersService {
     if (!orderId) throw new BadRequestException('orderId is required');
     if (!reason?.trim()) throw new BadRequestException('reason is required');
 
-    // ✅ 基础 action 形态校验（避免 type 和 items 明显矛盾）
     const hasVoid = items.some(
       (i) => i.action === OrderAmendmentItemAction.VOID,
     );
     const hasAdd = items.some((i) => i.action === OrderAmendmentItemAction.ADD);
 
-    // ✅ items 校验：按 type 放宽/收紧
     if (type === OrderAmendmentType.RETENDER) {
-      // RETENDER：不改明细，只记录现金流（建议强制 items 为空）
       if (items.length > 0) {
         throw new BadRequestException('RETENDER does not accept items');
       }
@@ -1516,8 +1562,6 @@ export class OrdersService {
         );
       }
     } else {
-      // 非 RETENDER：通常至少有一个 item（VOID/SWAP/ADDITIONAL_CHARGE）
-      // 如果你想允许“纯补收不带 item”，保留下面这个例外
       if (items.length === 0) {
         if (
           type === OrderAmendmentType.ADDITIONAL_CHARGE &&
@@ -1545,8 +1589,12 @@ export class OrdersService {
     }
 
     const updatedOrder = await this.prisma.$transaction(async (tx) => {
+      // ✅ 外部 orderId 允许 stableId/uuid；这里统一 resolve 成内部 UUID
+      const resolved = await this.resolveInternalOrderIdOrThrow(orderId, tx);
+      const internalOrderId = resolved.id;
+
       const order = await tx.order.findUnique({
-        where: { id: orderId },
+        where: { id: internalOrderId },
         include: { items: true },
       });
       if (!order) throw new NotFoundException('order not found');
@@ -1554,18 +1602,15 @@ export class OrdersService {
         throw new BadRequestException('only paid order can be amended');
       }
 
-      // 1) 创建 amendment（先占位）
       const amendment = await tx.orderAmendment.create({
         data: {
-          orderId,
+          orderId: internalOrderId, // ✅ 外键必须 UUID
           type,
           paymentMethod,
           reason: reason.trim(),
-
           deltaCents: 0,
           refundCents: 0,
           additionalChargeCents: 0,
-
           redeemReturnCents: 0,
           redeemReturnMicro: 0n,
           earnAdjustMicro: 0n,
@@ -1578,8 +1623,6 @@ export class OrdersService {
       if (items.length > 0) {
         await tx.orderAmendmentItem.createMany({
           data: items.map((it) => {
-            // ⚠️ TS 可能把 it.action 缩窄成字面量（如 "ADD"），导致与 "VOID" 比较触发 TS2367。
-            // 先提升到 unknown，再做归一化与校验，避免类型缩窄带来的“永远为 false”判断。
             const rawAction = it.action as unknown;
             let action: OrderAmendmentItemAction;
             if (
@@ -1634,7 +1677,7 @@ export class OrdersService {
       const originalRedeemCents = Math.max(0, order.loyaltyRedeemCents ?? 0);
 
       const agg = await tx.orderAmendment.aggregate({
-        where: { orderId },
+        where: { orderId: internalOrderId },
         _sum: { refundCents: true, redeemReturnCents: true },
       });
 
@@ -1685,7 +1728,6 @@ export class OrdersService {
       let earnAdjustMicro = 0n;
       let referralAdjustMicro = 0n;
 
-      // ✅ 避免“净变化为 0 也写 loyalty 流水”
       const shouldTouchLoyalty =
         Boolean(orderUserId) &&
         (redeemReturnCents > 0 || baseNetSubtotalCents !== newNetSubtotalCents);
@@ -1693,7 +1735,7 @@ export class OrdersService {
       if (shouldTouchLoyalty) {
         const r = await this.loyalty.applyAmendmentAdjustments({
           tx,
-          orderId,
+          orderId: internalOrderId,
           userId: orderUserId!,
           amendmentStableId: amendment.amendmentStableId,
           baseNetSubtotalCents,
@@ -1721,7 +1763,7 @@ export class OrdersService {
           earnAdjustMicro,
           referralAdjustMicro,
 
-          // 如果 schema 有 summaryJson 就保留；没有就删掉这段
+          // 如果 schema 没有 summaryJson 字段：删除这一段
           summaryJson: {
             refundGrossCentsInput: refundGrossCentsRaw,
             refundGrossCentsBounded: boundedRefundGrossCents,
@@ -1735,10 +1777,9 @@ export class OrdersService {
         },
       });
 
-      // 5) 返回最新 order（注意：这里不会自动改 order.items / totals，
-      // 如果你希望“改单后订单明细可回放”，后续需要把 amendment 应用到 order 或在查询端聚合计算）
+      // 5) 返回最新 order
       return (await tx.order.findUnique({
-        where: { id: orderId },
+        where: { id: internalOrderId },
         include: { items: true },
       })) as OrderWithItems;
     });
@@ -1746,20 +1787,30 @@ export class OrdersService {
     return updatedOrder;
   }
 
-  async advance(id: string): Promise<OrderWithItems> {
-    const order = await this.prisma.order.findUnique({
-      where: { id },
-      select: { status: true },
-    });
-    if (!order) throw new NotFoundException('order not found');
-    const next = ORDER_STATUS_ADVANCE_FLOW[order.status];
-    if (!next)
-      return (await this.prisma.order.findUnique({
-        where: { id },
-        include: { items: true },
-      })) as OrderWithItems;
-    return this.updateStatus(id, next);
+  /**
+   * ✅ 对外 advance
+   */
+async advance(orderStableId: string): Promise<OrderDto> {
+  const resolved = await this.resolveInternalOrderIdByStableIdOrThrow(orderStableId);
+
+  const order = await this.prisma.order.findUnique({
+    where: { id: resolved.id },
+    select: { status: true },
+  });
+  if (!order) throw new NotFoundException('order not found');
+
+  const next = ORDER_STATUS_ADVANCE_FLOW[order.status as OrderStatus];
+  if (!next) {
+    const current = (await this.prisma.order.findUnique({
+      where: { id: resolved.id },
+      include: { items: true },
+    })) as OrderWithItems;
+    return this.toOrderDto(current);
   }
+
+  const updated = await this.updateStatusByInternalId(resolved.id, next);
+  return this.toOrderDto(updated);
+}
 
   private normalizeDropoff(
     destination: DeliveryDestinationDto,
@@ -1808,63 +1859,68 @@ export class OrdersService {
     return parts.length ? `[${parts.join(' ')}] ` : '';
   }
 
-  private async dispatchStandardDeliveryWithDoorDash(
-    order: OrderWithItems,
-    destination: UberDirectDropoffDetails,
-  ): Promise<OrderWithItems> {
-    const response: DoorDashDeliveryResult =
-      await this.doorDashDrive.createDelivery({
-        orderId: order.id,
-        pickupCode: order.pickupCode ?? undefined,
-        reference: order.orderStableId ?? undefined,
-        totalCents: order.totalCents,
-        items: order.items.map((item) => ({
-          name: item.displayName || item.productStableId,
-          quantity: item.qty,
-          priceCents: item.unitPriceCents ?? undefined,
-        })),
-        destination,
-      });
-    const updateData: Prisma.OrderUpdateInput = {
-      externalDeliveryId: response.deliveryId,
-    };
-    if (typeof response.deliveryCostCents === 'number') {
-      updateData.deliveryCostCents = Math.round(response.deliveryCostCents);
-    }
-    return this.prisma.order.update({
-      where: { id: order.id },
-      data: updateData,
-      include: { items: true },
-    }) as Promise<OrderWithItems>;
-  }
+private async dispatchStandardDeliveryWithDoorDash(
+  order: OrderWithItems,
+  destination: UberDirectDropoffDetails,
+): Promise<OrderWithItems> {
+  const externalOrderId = order.clientRequestId ?? order.orderStableId ?? '';
 
-  private async dispatchPriorityDelivery(
-    order: OrderWithItems,
-    destination: UberDirectDropoffDetails,
-  ): Promise<OrderWithItems> {
-    const response: UberDirectDeliveryResult =
-      await this.uberDirect.createDelivery({
-        orderId: order.id,
-        pickupCode: order.pickupCode,
-        reference: order.orderStableId,
-        totalCents: order.totalCents,
-        items: order.items.map((item) => ({
-          name: item.displayName || item.productStableId,
-          quantity: item.qty,
-          priceCents: item.unitPriceCents ?? undefined,
-        })),
-        destination,
-      });
-    const updateData: Prisma.OrderUpdateInput = {
-      externalDeliveryId: response.deliveryId,
-    };
-    if (typeof response.deliveryCostCents === 'number') {
-      updateData.deliveryCostCents = Math.round(response.deliveryCostCents);
-    }
-    return this.prisma.order.update({
-      where: { id: order.id },
-      data: updateData,
-      include: { items: true },
-    }) as Promise<OrderWithItems>;
+  const response: DoorDashDeliveryResult =
+    await this.doorDashDrive.createDelivery({
+      orderId: externalOrderId,          // ✅ 外发：clientRequestId（缺省 fallback 稳定）
+      pickupCode: order.pickupCode ?? undefined,
+      reference: externalOrderId,        // ✅ 外发：同一套外部单号
+      totalCents: order.totalCents ?? 0,
+      items: order.items.map((item) => ({
+        name: item.displayName || item.productStableId,
+        quantity: item.qty,
+        priceCents: item.unitPriceCents ?? undefined,
+      })),
+      destination,
+    });
+
+  const updateData: Prisma.OrderUpdateInput = {
+    externalDeliveryId: response.deliveryId,
+  };
+  if (typeof response.deliveryCostCents === 'number') {
+    updateData.deliveryCostCents = Math.round(response.deliveryCostCents);
   }
+  return this.prisma.order.update({
+    where: { id: order.id }, // ✅ 内部写库仍用 UUID
+    data: updateData,
+    include: { items: true },
+  }) as Promise<OrderWithItems>;
+}
+
+private async dispatchPriorityDelivery(
+  order: OrderWithItems,
+  destination: UberDirectDropoffDetails,
+): Promise<OrderWithItems> {
+  const externalOrderId = order.clientRequestId ?? order.orderStableId ?? '';
+
+  const response: UberDirectDeliveryResult =
+    await this.uberDirect.createDelivery({
+      orderId: externalOrderId,          // ✅ 外发：clientRequestId（缺省 fallback 稳定）
+      pickupCode: order.pickupCode ?? undefined,
+      reference: externalOrderId,
+      totalCents: order.totalCents ?? 0,
+      items: order.items.map((item) => ({
+        name: item.displayName || item.productStableId,
+        quantity: item.qty,
+        priceCents: item.unitPriceCents ?? undefined,
+      })),
+      destination,
+    });
+
+  const updateData: Prisma.OrderUpdateInput = {
+    externalDeliveryId: response.deliveryId,
+  };
+  if (typeof response.deliveryCostCents === 'number') {
+    updateData.deliveryCostCents = Math.round(response.deliveryCostCents);
+  }
+  return this.prisma.order.update({
+    where: { id: order.id }, // ✅ 内部写库仍用 UUID
+    data: updateData,
+    include: { items: true },
+  }) as Promise<OrderWithItems>;
 }

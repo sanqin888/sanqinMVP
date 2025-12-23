@@ -17,6 +17,7 @@ import {
   clearPosDisplaySnapshot,
   type PosDisplaySnapshot,
 } from "@/lib/pos-display";
+import { StoreBoardWidget } from "@/components/store/StoreBoardWidget";
 
 type PosCartEntry = {
   lineId: string;
@@ -184,7 +185,6 @@ export default function StorePosPage() {
         setMenuCategories(localized);
       } catch (error) {
         console.error("Failed to load POS menu", error);
-        // 这里只打印日志；如需 UI 提示，可以加一条状态文案
       }
     }
 
@@ -407,7 +407,6 @@ export default function StorePosPage() {
     });
   };
 
-  const optionGroups = activeItem?.item.optionGroups ?? [];
   const requiredGroupsMissing =
     activeItem?.item.optionGroups?.filter((group) => {
       if (group.minSelect <= 0) return false;
@@ -440,7 +439,6 @@ export default function StorePosPage() {
       items: cartWithDetails.map((entry) => ({
         lineId: entry.lineId,
         stableId: entry.stableId,
-        // 如果没填中文名，用英文名兜底
         nameZh: entry.item.nameZh ?? entry.item.nameEn,
         nameEn: entry.item.nameEn,
         quantity: entry.quantity,
@@ -467,8 +465,7 @@ export default function StorePosPage() {
     }
   }, [cartWithDetails, subtotalCents, taxCents, totalCents]);
 
-  // 👉 现在：只负责跳转到支付界面（在支付页选择堂食/外带 + 付款方式）
-  // 同时受 storeStatus.isOpen 控制（管理端 / POS 的暂停开关统一生效）
+  // 👉 现在：只负责跳转到支付界面
   const handlePlaceOrder = () => {
     if (!hasItems || !isStoreOpen) return;
     setIsPlacing(true);
@@ -599,7 +596,6 @@ export default function StorePosPage() {
                       </div>
                     </div>
 
-                    {/* 不再显示描述，只保留“点击添加”提示和数量控制 */}
                     <div className="flex items-center justify-between mt-2">
                       <span className="text-[11px] text-slate-400">
                         {item.optionGroups && item.optionGroups.length > 0
@@ -751,6 +747,9 @@ export default function StorePosPage() {
         </div>
       </section>
 
+      {/* ✅ 右下角浮窗看板（不影响现有 POS 操作） */}
+      <StoreBoardWidget locale={locale} />
+
       {/* 订单完成弹窗（暂时只有以后真正创建订单时才会用到） */}
       {lastOrderInfo && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50">
@@ -796,7 +795,7 @@ export default function StorePosPage() {
               </div>
               <button
                 type="button"
-                onClick={closeDialog}
+                onClick={() => setActiveItem(null)}
                 className="rounded-full border border-slate-600 px-3 py-1 text-xs text-slate-200 hover:border-slate-400"
               >
                 {t.close}
@@ -804,7 +803,7 @@ export default function StorePosPage() {
             </div>
 
             <div className="mt-4 space-y-4 max-h-[60vh] overflow-auto pr-1">
-              {optionGroups.map((group) => {
+              {(activeItem.item.optionGroups ?? []).map((group) => {
                 const groupName =
                   locale === "zh" && group.template.nameZh
                     ? group.template.nameZh
@@ -837,9 +836,7 @@ export default function StorePosPage() {
 
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
                       {group.options.map((option) => {
-                        const selected = selection.includes(
-                          option.optionStableId,
-                        );
+                        const selected = selection.includes(option.optionStableId);
                         const optionName =
                           locale === "zh" && option.nameZh
                             ? option.nameZh
