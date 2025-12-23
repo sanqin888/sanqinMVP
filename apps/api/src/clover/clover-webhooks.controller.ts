@@ -196,7 +196,10 @@ export class CloverHcoWebhookController {
       const order = await this.orders.createInternal(orderDto, orderStableId);
 
       // 2) 在线支付成功的单，直接把状态推进到 'paid'（触发 loyalty 结算）
-      const finalized = await this.orders.updateStatusInternal(order.id, 'paid');
+      const finalized = await this.orders.updateStatusInternal(
+        order.id,
+        'paid',
+      );
 
       // 3) 标记 CheckoutIntent 已处理
       await this.checkoutIntents.markProcessed({
