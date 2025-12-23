@@ -217,7 +217,7 @@ describe('OrdersService', () => {
     expect(uberDirect.createDelivery).not.toHaveBeenCalled();
   });
 
-  it('dispatches Uber Direct for priority orders', async () => {
+  it('dispatches Uber Direct for priority orders', () => {
     const storedOrder = {
       id: 'order-1',
       orderStableId: 'cord-1',
