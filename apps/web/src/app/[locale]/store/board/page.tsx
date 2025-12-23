@@ -60,7 +60,7 @@ function formatChannel(channel: BoardOrder["channel"], locale: Locale): string {
   const isZh = locale === "zh";
   switch (channel) {
     case "web":
-      return isZh ? "线上下单" : "Online";
+      return isZh ? "线上订单" : "Online";
     case "in_store":
       return isZh ? "店内点单" : "In-store";
     case "ubereats":
@@ -102,7 +102,8 @@ const STRINGS = {
     connected: "已连接",
     refreshing: "刷新中…",
     noOrders: "暂无订单。",
-    advance: "推进状态",
+    acceptOrder: "接单",
+    terminal: "终态",
     printFront: "前台小票",
     printKitchen: "后厨小票",
     voiceOne: "有一个新的线上订单。",
@@ -119,13 +120,23 @@ const STRINGS = {
     connected: "Connected",
     refreshing: "Refreshing…",
     noOrders: "No orders yet.",
-    advance: "Next status",
+    acceptOrder: "Accept",
+    terminal: "Terminal",
     printFront: "Front receipt",
     printKitchen: "Kitchen ticket",
     voiceOne: "New online order.",
     voiceMany: (n: number) => `${n} new online orders.`,
   },
 } as const;
+
+const NEXT_STATUS: Record<BoardOrder["status"], BoardOrder["status"] | null> = {
+  pending: "paid",
+  paid: "making",
+  making: "ready",
+  ready: "completed",
+  completed: null,
+  refunded: null,
+};
 
 export default function StoreBoardPage() {
   const params = useParams();
@@ -152,17 +163,23 @@ export default function StoreBoardPage() {
 
         setOrders(data);
 
-        // 新的线上订单（paid），只提醒一次
+        // 新订单：自动打印一次
         const known = knownIdsRef.current;
-        const newWebOrders = data.filter(
-          (o) =>
-            o.channel === "web" &&
-            o.status === "paid" &&
-            !known.has(o.id),
+        const newOrders = data.filter((o) => !known.has(o.id));
+
+        if (newOrders.length > 0) {
+          newOrders.forEach((o) => {
+            known.add(o.id);
+            handlePrintFront(o.id);
+            handlePrintKitchen(o.id);
+          });
+        }
+
+        const newWebOrders = newOrders.filter(
+          (o) => o.channel === "web" && o.status === "paid",
         );
 
         if (newWebOrders.length > 0) {
-          newWebOrders.forEach((o) => known.add(o.id));
           const count = newWebOrders.length;
           const text = count === 1 ? t.voiceOne : t.voiceMany(count);
           speak(text, locale);
@@ -255,7 +272,12 @@ export default function StoreBoardPage() {
         {orders.map((order) => {
           const orderNumber = order.orderStableId ?? order.id;
           const isWeb = order.channel === "web";
-          const isPending = order.status === "pending";
+          const nextStatus = NEXT_STATUS[order.status];
+          const advanceLabel = nextStatus
+            ? order.status === "paid"
+              ? t.acceptOrder
+              : formatStatus(nextStatus, locale)
+            : t.terminal;
 
           return (
             <div
@@ -273,22 +295,24 @@ export default function StoreBoardPage() {
                   <div className="text-xs text-slate-400">
                     {t.orderIdLabel}
                   </div>
-                  <div className="text-lg font-semibold">{orderNumber}</div>
+                  <div className="text-sm font-medium text-slate-200">
+                    {orderNumber}
+                  </div>
                   {order.pickupCode && (
-                    <div className="mt-1 text-sm text-emerald-300">
+                    <div className="mt-2 text-sm text-emerald-300">
                       {t.pickupCodeLabel}：
-                      <span className="font-bold text-xl">
+                      <span className="ml-1 text-3xl font-bold text-emerald-200">
                         {order.pickupCode}
                       </span>
                     </div>
                   )}
+                  <div className="mt-2 text-sm font-medium text-slate-100">
+                    {t.statusLabel}: {formatStatus(order.status, locale)}
+                  </div>
                 </div>
                 <div className="text-right text-sm">
                   <div className="px-2 py-1 rounded-full bg-slate-700/80 text-xs inline-block mb-1">
                     {formatChannel(order.channel, locale)}
-                  </div>
-                  <div className="font-medium">
-                    {t.statusLabel}: {formatStatus(order.status, locale)}
                   </div>
                   <div className="text-slate-400 mt-1">
                     {t.totalLabel}: {formatMoney(order.totalCents)}
@@ -321,13 +345,14 @@ export default function StoreBoardPage() {
                     type="button"
                     onClick={() => handleAdvance(order.id)}
                     className={[
-                      "px-3 py-1.5 rounded-full text-xs font-medium",
-                      isPending
-                        ? "bg-emerald-500 text-slate-900 hover:bg-emerald-400"
-                        : "bg-slate-600 text-slate-100 hover:bg-slate-500",
+                      "rounded-md border px-4 py-2 text-sm font-semibold transition",
+                      nextStatus
+                        ? "border-slate-500 bg-slate-900/40 text-slate-100 hover:bg-slate-800/60"
+                        : "cursor-not-allowed border-slate-700 bg-slate-900/60 text-slate-500",
                     ].join(" ")}
+                    disabled={!nextStatus}
                   >
-                    {t.advance}
+                    {advanceLabel}
                   </button>
                 </div>
                 <div className="flex gap-2">
