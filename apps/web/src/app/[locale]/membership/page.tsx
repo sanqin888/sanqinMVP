@@ -789,7 +789,7 @@ function OverviewSection({
               </span>
             </p>
             <p>
-              {isZh ? '取餐码：' : 'Pickup code: '}
+              {isZh ? '订单编号：' : 'Order Number: '}
               <span className="font-mono text-slate-900">
                 {latestOrder.clientRequestId ?? '--'}
               </span>
@@ -884,7 +884,7 @@ function OrdersSection({
             <div>
               <p className="font-mono text-slate-900">{order.orderNumber}</p>
               <p className="mt-1 text-[11px] text-slate-500">
-                {isZh ? '取餐码：' : 'Pickup code: '}
+                {isZh ? '订单编号：' : 'Order Number: '}
                 <span className="font-mono text-slate-700">
                   {order.clientRequestId ?? '--'}
                 </span>
