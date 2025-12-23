@@ -1161,7 +1161,7 @@ export class OrdersService {
     return order;
   }
 
-  // ... (保留原有的 createLoyaltyOnlyOrder, createImmediatePaid, recent, board, getById, getPublicOrderSummary 等辅助方法，逻辑不变)
+  // ... (保留原有的 createLoyaltyOnlyOrder, createImmediatePaid, recent, board, getByStableId, getPublicOrderSummary 等辅助方法，逻辑不变)
 
   async createLoyaltyOnlyOrder(payload: unknown): Promise<OrderWithItems> {
     if (!payload || typeof payload !== 'object') {
@@ -1289,11 +1289,21 @@ export class OrdersService {
     }) as Promise<OrderWithItems[]>;
   }
 
-  async getById(id: string): Promise<OrderWithItems> {
-    const order = (await this.prisma.order.findUnique({
-      where: { id },
-      include: { items: true },
-    })) as OrderWithItems | null;
+  async getByStableId(id: string): Promise<OrderWithItems> {
+    const lookup = id.trim();
+    let order: OrderWithItems | null = null;
+    if (isUuid(lookup)) {
+      order = (await this.prisma.order.findUnique({
+        where: { id: lookup },
+        include: { items: true },
+      })) as OrderWithItems | null;
+    }
+    if (!order) {
+      order = (await this.prisma.order.findFirst({
+        where: { orderStableId: lookup },
+        include: { items: true },
+      })) as OrderWithItems | null;
+    }
     if (!order) throw new NotFoundException('order not found');
     return order;
   }
