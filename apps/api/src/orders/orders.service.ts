@@ -1065,6 +1065,14 @@ export class OrdersService {
   async create(
     dto: CreateOrderDto,
     idempotencyKey?: string,
+  ): Promise<OrderDto> {
+    const order = await this.createInternal(dto, idempotencyKey);
+    return this.toOrderDto(order);
+  }
+
+  async createInternal(
+    dto: CreateOrderDto,
+    idempotencyKey?: string,
   ): Promise<OrderWithItems> {
     // ✅ 你的业务前提：只在“已收款/支付成功”后才创建订单记录
     const paidAt = new Date();
@@ -1347,7 +1355,7 @@ export class OrdersService {
     return order;
   }
 
-  async createLoyaltyOnlyOrder(payload: unknown): Promise<OrderWithItems> {
+  async createLoyaltyOnlyOrder(payload: unknown): Promise<OrderDto> {
     if (!payload || typeof payload !== 'object') {
       throw new BadRequestException('invalid payload');
     }
@@ -1423,17 +1431,18 @@ export class OrdersService {
       deliveryFeeCents: meta.deliveryFeeCents,
     };
 
-    return this.createImmediatePaid(
+    const order = await this.createImmediatePaid(
       dto,
       dto.orderStableId ?? dto.clientRequestId,
     );
+    return this.toOrderDto(order);
   }
 
   async createImmediatePaid(
     dto: CreateOrderDto,
     idempotencyKey?: string,
   ): Promise<OrderWithItems> {
-    const created = await this.create(dto, idempotencyKey);
+    const created = await this.createInternal(dto, idempotencyKey);
     if (created.status === 'paid') return created;
     return this.updateStatusByInternalId(created.id, 'paid');
   }
@@ -1505,7 +1514,9 @@ export class OrdersService {
       (order.loyaltyRedeemCents ?? 0) + (order.couponDiscountCents ?? 0);
 
     const lineItems = order.items.map((item) => {
-      const optionsSnapshot = item.optionsJson ?? undefined;
+      const optionsSnapshot = Array.isArray(item.optionsJson)
+        ? (item.optionsJson as OrderItemOptionsSnapshot)
+        : null;
 
       const unitPriceCents = item.unitPriceCents ?? 0;
       const quantity = item.qty;
@@ -1551,6 +1562,16 @@ export class OrdersService {
     return this.toOrderDto(updated);
   }
 
+  async updateStatusInternal(
+    orderId: string,
+    next: OrderStatus,
+  ): Promise<OrderWithItems> {
+    if (!this.isUuid(orderId)) {
+      throw new BadRequestException('invalid order id');
+    }
+    return this.updateStatusByInternalId(orderId, next);
+  }
+
   // =========================
   // Amendments (方案 B 的入口)
   // =========================
@@ -1578,7 +1599,7 @@ export class OrdersService {
 
     refundGrossCents?: number; // “应退总额”（现金退 + 返积分）
     additionalChargeCents?: number; // “应补收总额”
-  }): Promise<OrderWithItems> {
+  }): Promise<OrderDto> {
     const orderId = params.orderId;
     const reason = params.reason;
     const type = params.type;
@@ -1834,7 +1855,7 @@ export class OrdersService {
       })) as OrderWithItems;
     });
 
-    return updatedOrder;
+    return this.toOrderDto(updatedOrder);
   }
 
   /**

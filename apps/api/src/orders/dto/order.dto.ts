@@ -3,6 +3,7 @@ import type {
   Channel,
   DeliveryProvider,
   DeliveryType,
+  FulfillmentType,
   PaymentMethod,
 } from '@prisma/client';
 import type { OrderStatus } from '../order-status';
@@ -27,7 +28,7 @@ export type OrderDto = {
 
   status: OrderStatus;
   channel: Channel;
-  fulfillmentType: 'pickup' | 'delivery';
+  fulfillmentType: FulfillmentType;
 
   paymentMethod: PaymentMethod | null;
 
