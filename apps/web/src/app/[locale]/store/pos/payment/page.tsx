@@ -17,6 +17,7 @@ type PaymentMethod = "cash" | "card" | "wechat_alipay";
 type CreatePosOrderResponse = {
   id: string;
   orderStableId?: string | null;
+  clientRequestId?: string | null;
   pickupCode?: string | null;
 };
 
@@ -434,6 +435,7 @@ export default function StorePosPaymentPage() {
     }
 
     try {
+      const clientRequestId = `SQ${Date.now().toString().slice(-6)}`;
       const itemsPayload = snapshot.items.map((item) => ({
         productStableId: item.stableId,
         qty: item.quantity,
@@ -464,6 +466,7 @@ export default function StorePosPaymentPage() {
         userId: memberInfo?.userId ?? undefined,
         pointsToRedeem: pointsToRedeem > 0 ? pointsToRedeem : undefined,
         contactPhone: memberInfo?.phone ?? undefined,
+        clientRequestId,
 
       };
 
@@ -476,7 +479,11 @@ export default function StorePosPaymentPage() {
         body: JSON.stringify(body),
       });
 
-      const orderNumber = order.orderStableId ?? order.id;
+      const orderNumber =
+        order.clientRequestId ??
+        clientRequestId ??
+        order.orderStableId ??
+        order.id;
       const pickupCode = order.pickupCode ?? null;
 
       // ✅ 打印：发送给本地打印服务（无弹窗）
