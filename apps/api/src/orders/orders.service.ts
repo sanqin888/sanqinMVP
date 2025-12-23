@@ -1791,27 +1791,28 @@ async updateStatus(orderStableId: string, next: OrderStatus): Promise<OrderDto> 
   /**
    * ✅ 对外 advance
    */
-async advance(orderStableId: string): Promise<OrderDto> {
-  const resolved = await this.resolveInternalOrderIdByStableIdOrThrow(orderStableId);
+  async advance(orderStableId: string): Promise<OrderDto> {
+    const resolved =
+      await this.resolveInternalOrderIdByStableIdOrThrow(orderStableId);
 
-  const order = await this.prisma.order.findUnique({
-    where: { id: resolved.id },
-    select: { status: true },
-  });
-  if (!order) throw new NotFoundException('order not found');
-
-  const next = ORDER_STATUS_ADVANCE_FLOW[order.status as OrderStatus];
-  if (!next) {
-    const current = (await this.prisma.order.findUnique({
+    const order = await this.prisma.order.findUnique({
       where: { id: resolved.id },
-      include: { items: true },
-    })) as OrderWithItems;
-    return this.toOrderDto(current);
-  }
+      select: { status: true },
+    });
+    if (!order) throw new NotFoundException('order not found');
 
-  const updated = await this.updateStatusByInternalId(resolved.id, next);
-  return this.toOrderDto(updated);
-}
+    const next = ORDER_STATUS_ADVANCE_FLOW[order.status as OrderStatus];
+    if (!next) {
+      const current = (await this.prisma.order.findUnique({
+        where: { id: resolved.id },
+        include: { items: true },
+      })) as OrderWithItems;
+      return this.toOrderDto(current);
+    }
+
+    const updated = await this.updateStatusByInternalId(resolved.id, next);
+    return this.toOrderDto(updated);
+  }
 
   private normalizeDropoff(
     destination: DeliveryDestinationDto,
@@ -1860,68 +1861,69 @@ async advance(orderStableId: string): Promise<OrderDto> {
     return parts.length ? `[${parts.join(' ')}] ` : '';
   }
 
-private async dispatchStandardDeliveryWithDoorDash(
-  order: OrderWithItems,
-  destination: UberDirectDropoffDetails,
-): Promise<OrderWithItems> {
-  const externalOrderId = order.clientRequestId ?? order.orderStableId ?? '';
+  private async dispatchStandardDeliveryWithDoorDash(
+    order: OrderWithItems,
+    destination: UberDirectDropoffDetails,
+  ): Promise<OrderWithItems> {
+    const externalOrderId = order.clientRequestId ?? order.orderStableId ?? '';
 
-  const response: DoorDashDeliveryResult =
-    await this.doorDashDrive.createDelivery({
-      orderId: externalOrderId,          // ✅ 外发：clientRequestId（缺省 fallback 稳定）
-      pickupCode: order.pickupCode ?? undefined,
-      reference: externalOrderId,        // ✅ 外发：同一套外部单号
-      totalCents: order.totalCents ?? 0,
-      items: order.items.map((item) => ({
-        name: item.displayName || item.productStableId,
-        quantity: item.qty,
-        priceCents: item.unitPriceCents ?? undefined,
-      })),
-      destination,
-    });
+    const response: DoorDashDeliveryResult =
+      await this.doorDashDrive.createDelivery({
+        orderId: externalOrderId, // ✅ 外发：clientRequestId（缺省 fallback 稳定）
+        pickupCode: order.pickupCode ?? undefined,
+        reference: externalOrderId, // ✅ 外发：同一套外部单号
+        totalCents: order.totalCents ?? 0,
+        items: order.items.map((item) => ({
+          name: item.displayName || item.productStableId,
+          quantity: item.qty,
+          priceCents: item.unitPriceCents ?? undefined,
+        })),
+        destination,
+      });
 
-  const updateData: Prisma.OrderUpdateInput = {
-    externalDeliveryId: response.deliveryId,
-  };
-  if (typeof response.deliveryCostCents === 'number') {
-    updateData.deliveryCostCents = Math.round(response.deliveryCostCents);
+    const updateData: Prisma.OrderUpdateInput = {
+      externalDeliveryId: response.deliveryId,
+    };
+    if (typeof response.deliveryCostCents === 'number') {
+      updateData.deliveryCostCents = Math.round(response.deliveryCostCents);
+    }
+    return this.prisma.order.update({
+      where: { id: order.id }, // ✅ 内部写库仍用 UUID
+      data: updateData,
+      include: { items: true },
+    }) as Promise<OrderWithItems>;
   }
-  return this.prisma.order.update({
-    where: { id: order.id }, // ✅ 内部写库仍用 UUID
-    data: updateData,
-    include: { items: true },
-  }) as Promise<OrderWithItems>;
-}
 
-private async dispatchPriorityDelivery(
-  order: OrderWithItems,
-  destination: UberDirectDropoffDetails,
-): Promise<OrderWithItems> {
-  const externalOrderId = order.clientRequestId ?? order.orderStableId ?? '';
+  private async dispatchPriorityDelivery(
+    order: OrderWithItems,
+    destination: UberDirectDropoffDetails,
+  ): Promise<OrderWithItems> {
+    const externalOrderId = order.clientRequestId ?? order.orderStableId ?? '';
 
-  const response: UberDirectDeliveryResult =
-    await this.uberDirect.createDelivery({
-      orderId: externalOrderId,          // ✅ 外发：clientRequestId（缺省 fallback 稳定）
-      pickupCode: order.pickupCode ?? undefined,
-      reference: externalOrderId,
-      totalCents: order.totalCents ?? 0,
-      items: order.items.map((item) => ({
-        name: item.displayName || item.productStableId,
-        quantity: item.qty,
-        priceCents: item.unitPriceCents ?? undefined,
-      })),
-      destination,
-    });
+    const response: UberDirectDeliveryResult =
+      await this.uberDirect.createDelivery({
+        orderId: externalOrderId, // ✅ 外发：clientRequestId（缺省 fallback 稳定）
+        pickupCode: order.pickupCode ?? undefined,
+        reference: externalOrderId,
+        totalCents: order.totalCents ?? 0,
+        items: order.items.map((item) => ({
+          name: item.displayName || item.productStableId,
+          quantity: item.qty,
+          priceCents: item.unitPriceCents ?? undefined,
+        })),
+        destination,
+      });
 
-  const updateData: Prisma.OrderUpdateInput = {
-    externalDeliveryId: response.deliveryId,
-  };
-  if (typeof response.deliveryCostCents === 'number') {
-    updateData.deliveryCostCents = Math.round(response.deliveryCostCents);
+    const updateData: Prisma.OrderUpdateInput = {
+      externalDeliveryId: response.deliveryId,
+    };
+    if (typeof response.deliveryCostCents === 'number') {
+      updateData.deliveryCostCents = Math.round(response.deliveryCostCents);
+    }
+    return this.prisma.order.update({
+      where: { id: order.id }, // ✅ 内部写库仍用 UUID
+      data: updateData,
+      include: { items: true },
+    }) as Promise<OrderWithItems>;
   }
-  return this.prisma.order.update({
-    where: { id: order.id }, // ✅ 内部写库仍用 UUID
-    data: updateData,
-    include: { items: true },
-  }) as Promise<OrderWithItems>;
 }
