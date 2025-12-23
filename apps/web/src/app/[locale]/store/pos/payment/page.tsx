@@ -446,13 +446,20 @@ export default function StorePosPaymentPage() {
         options: item.options,
       }));
 
+      const apiPaymentMethod =
+        paymentMethod === "cash"
+          ? "CASH"
+          : paymentMethod === "card"
+            ? "CARD"
+            : "WECHAT_ALIPAY";
+
       const body = {
         channel: "in_store" as const,
         fulfillmentType: fulfillment,
         subtotalCents: computedSnapshot.subtotalCents,
         taxCents: computedSnapshot.taxCents,
         totalCents: computedSnapshot.totalCents,
-        paymentMethod,
+        paymentMethod: apiPaymentMethod,
         items: itemsPayload,
         userId: memberInfo?.userId ?? undefined,
         pointsToRedeem: pointsToRedeem > 0 ? pointsToRedeem : undefined,
