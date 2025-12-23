@@ -49,63 +49,6 @@ import {
 import { isAvailableNow } from '@shared/menu';
 import type { OrderDto, OrderItemDto } from './dto/order.dto';
 
-private toOrderDto(order: OrderWithItems): OrderDto {
-  const orderStableId = order.orderStableId;
-  if (!orderStableId) {
-    // 按你的业务前提 stableId 非空，这里属于数据异常
-    throw new BadRequestException('orderStableId missing');
-  }
-
-  const orderNumber = order.clientRequestId ?? orderStableId;
-
-  const items: OrderItemDto[] = (order.items ?? []).map((it) => ({
-    productStableId: it.productStableId,
-    qty: it.qty,
-    displayName: it.displayName || it.nameEn || it.nameZh || it.productStableId,
-    nameEn: it.nameEn ?? null,
-    nameZh: it.nameZh ?? null,
-    unitPriceCents: it.unitPriceCents ?? 0,
-    optionsJson: it.optionsJson ?? undefined,
-  }));
-
-  return {
-    orderStableId,
-    orderNumber,
-
-    status: order.status as OrderStatus,
-    channel: order.channel,
-    fulfillmentType: order.fulfillmentType,
-
-    paymentMethod: order.paymentMethod ?? null,
-
-    pickupCode: order.pickupCode ?? null,
-
-    contactName: order.contactName ?? null,
-    contactPhone: order.contactPhone ?? null,
-
-    deliveryType: order.deliveryType ?? null,
-    deliveryProvider: order.deliveryProvider ?? null,
-    deliveryEtaMinMinutes: order.deliveryEtaMinMinutes ?? null,
-    deliveryEtaMaxMinutes: order.deliveryEtaMaxMinutes ?? null,
-
-    subtotalCents: order.subtotalCents ?? 0,
-    taxCents: order.taxCents ?? 0,
-    deliveryFeeCents: order.deliveryFeeCents ?? 0,
-    totalCents: order.totalCents ?? 0,
-
-    couponCodeSnapshot: order.couponCodeSnapshot ?? null,
-    couponTitleSnapshot: order.couponTitleSnapshot ?? null,
-    couponDiscountCents: order.couponDiscountCents ?? 0,
-
-    loyaltyRedeemCents: order.loyaltyRedeemCents ?? 0,
-
-    createdAt: order.createdAt.toISOString(),
-    paidAt: order.paidAt ? order.paidAt.toISOString() : null,
-
-    items,
-  };
-}
-
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 type OrderItemInput = NonNullable<CreateOrderDto['items']>[number] & {
   productId?: string;
@@ -172,12 +115,6 @@ const REDEEM_DOLLAR_PER_POINT = parseNumberEnv(
 const STORE_LATITUDE = Number(process.env.STORE_LATITUDE);
 const STORE_LONGITUDE = Number(process.env.STORE_LONGITUDE);
 
-// --- 常量定义 ---
-const UUID_REGEX =
-  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
-const isUuid = (value: string | null | undefined): boolean =>
-  typeof value === 'string' && UUID_REGEX.test(value);
-
 type DeliveryPricingConfig = {
   deliveryBaseFeeCents: number;
   priorityPerKmCents: number;
@@ -203,6 +140,64 @@ export class OrdersService {
     }
   }
 
+  private toOrderDto(order: OrderWithItems): OrderDto {
+    const orderStableId = order.orderStableId;
+    if (!orderStableId) {
+      // 按你的业务前提 stableId 非空，这里属于数据异常
+      throw new BadRequestException('orderStableId missing');
+    }
+
+    const orderNumber = order.clientRequestId ?? orderStableId;
+
+    const items: OrderItemDto[] = (order.items ?? []).map((it) => ({
+      productStableId: it.productStableId,
+      qty: it.qty,
+      displayName:
+        it.displayName || it.nameEn || it.nameZh || it.productStableId,
+      nameEn: it.nameEn ?? null,
+      nameZh: it.nameZh ?? null,
+      unitPriceCents: it.unitPriceCents ?? 0,
+      optionsJson: it.optionsJson ?? undefined,
+    }));
+
+    return {
+      orderStableId,
+      orderNumber,
+
+      status: order.status,
+      channel: order.channel,
+      fulfillmentType: order.fulfillmentType,
+
+      paymentMethod: order.paymentMethod ?? null,
+
+      pickupCode: order.pickupCode ?? null,
+
+      contactName: order.contactName ?? null,
+      contactPhone: order.contactPhone ?? null,
+
+      deliveryType: order.deliveryType ?? null,
+      deliveryProvider: order.deliveryProvider ?? null,
+      deliveryEtaMinMinutes: order.deliveryEtaMinMinutes ?? null,
+      deliveryEtaMaxMinutes: order.deliveryEtaMaxMinutes ?? null,
+
+      subtotalCents: order.subtotalCents ?? 0,
+      taxCents: order.taxCents ?? 0,
+      deliveryFeeCents: order.deliveryFeeCents ?? 0,
+      totalCents: order.totalCents ?? 0,
+
+      couponCodeSnapshot: order.couponCodeSnapshot ?? null,
+      couponTitleSnapshot: order.couponTitleSnapshot ?? null,
+      couponDiscountCents: order.couponDiscountCents ?? 0,
+
+      loyaltyRedeemCents: order.loyaltyRedeemCents ?? 0,
+
+      createdAt: order.createdAt.toISOString(),
+      paidAt: order.paidAt ? order.paidAt.toISOString() : null,
+
+      items,
+    };
+  }
+
   /**
    * ✅ 统一入口：把“外部 orderRef（stableId / legacy clientRequestId / uuid / checkoutIntent ref）”
    * resolve 成数据库内部 UUID（order.id）
@@ -210,43 +205,94 @@ export class OrdersService {
    * 说明：
    * - 对外stableId
    */
-// ✅ public/controller：只接受 stableId（cuid/cuid2），不再接受 UUID
-private async resolveInternalOrderIdByStableIdOrThrow(
-  orderStableId: string,
-  client: Prisma.TransactionClient | PrismaService = this.prisma,
-): Promise<{ id: string; orderStableId: string; clientRequestId: string | null }> {
-  const value = (orderStableId ?? '').trim();
-  if (!value) throw new NotFoundException('order not found');
-  if (value.includes('-')) throw new BadRequestException('stableId only');
+  private isUuid(value: string | null | undefined): boolean {
+    return (
+      typeof value === 'string' &&
+      /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(
+        value,
+      )
+    );
+  }
 
-  const found = await client.order.findUnique({
-    where: { orderStableId: value },
-    select: { id: true, orderStableId: true, clientRequestId: true },
-  });
-  if (!found) throw new NotFoundException('order not found');
-  return found;
-}
+  // ✅ public/controller：只接受 stableId（cuid/cuid2），不再接受 UUID
+  private async resolveInternalOrderIdByStableIdOrThrow(
+    orderStableId: string,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<{
+    id: string;
+    orderStableId: string;
+    clientRequestId: string | null;
+  }> {
+    const value = (orderStableId ?? '').trim();
+    if (!value) throw new NotFoundException('order not found');
+    if (value.includes('-')) throw new BadRequestException('stableId only');
 
-// ✅ 第三方 webhook/internal：如你确实需要用 DoorDash/Uber 回调的 orderId 来反查
-//    这里不允许 UUID，只允许 clientRequestId 或 orderStableId（二者都不含 '-'）
-private async resolveInternalOrderIdByExternalRefOrThrow(
-  externalRef: string,
-  client: Prisma.TransactionClient | PrismaService = this.prisma,
-): Promise<{ id: string; orderStableId: string; clientRequestId: string | null }> {
-  const value = (externalRef ?? '').trim();
-  if (!value) throw new NotFoundException('order not found');
-  if (value.includes('-')) throw new BadRequestException('stableId only');
+    const found = await client.order.findUnique({
+      where: { orderStableId: value },
+      select: { id: true, orderStableId: true, clientRequestId: true },
+    });
+    if (!found) throw new NotFoundException('order not found');
+    return found;
+  }
 
-  const found = await client.order.findFirst({
-    where: {
-      OR: [{ clientRequestId: value }, { orderStableId: value }],
-    },
-    select: { id: true, orderStableId: true, clientRequestId: true },
-  });
+  // ✅ 第三方 webhook/internal：如你确实需要用 DoorDash/Uber 回调的 orderId 来反查
+  //    这里不允许 UUID，只允许 clientRequestId 或 orderStableId（二者都不含 '-'）
+  private async resolveInternalOrderIdByExternalRefOrThrow(
+    externalRef: string,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<{
+    id: string;
+    orderStableId: string;
+    clientRequestId: string | null;
+  }> {
+    const value = (externalRef ?? '').trim();
+    if (!value) throw new NotFoundException('order not found');
+    if (value.includes('-')) throw new BadRequestException('stableId only');
 
-  if (!found) throw new NotFoundException('order not found');
-  return found;
-}
+    const found = await client.order.findFirst({
+      where: {
+        OR: [{ clientRequestId: value }, { orderStableId: value }],
+      },
+      select: { id: true, orderStableId: true, clientRequestId: true },
+    });
+
+    if (!found) throw new NotFoundException('order not found');
+    return found;
+  }
+
+  private async resolveInternalOrderIdOrThrow(
+    orderId: string,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<{
+    id: string;
+    orderStableId: string;
+    clientRequestId: string | null;
+  }> {
+    const value = (orderId ?? '').trim();
+    if (!value) throw new NotFoundException('order not found');
+
+    if (value.includes('-')) {
+      if (!this.isUuid(value)) {
+        throw new BadRequestException('invalid order id');
+      }
+      const found = await client.order.findUnique({
+        where: { id: value },
+        select: { id: true, orderStableId: true, clientRequestId: true },
+      });
+      if (!found) throw new NotFoundException('order not found');
+      return found;
+    }
+
+    const found = await client.order.findFirst({
+      where: {
+        OR: [{ clientRequestId: value }, { orderStableId: value }],
+      },
+      select: { id: true, orderStableId: true, clientRequestId: true },
+    });
+
+    if (!found) throw new NotFoundException('order not found');
+    return found;
+  }
 
   private async updateStatusByInternalId(
     id: string,
@@ -1392,114 +1438,118 @@ private async resolveInternalOrderIdByExternalRefOrThrow(
     return this.updateStatusByInternalId(created.id, 'paid');
   }
 
-async recent(limit = 10): Promise<OrderDto[]> {
-  const orders = (await this.prisma.order.findMany({
-    orderBy: { createdAt: 'desc' },
-    take: limit,
-    include: { items: true },
-  })) as OrderWithItems[];
+  async recent(limit = 10): Promise<OrderDto[]> {
+    const orders = (await this.prisma.order.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      include: { items: true },
+    })) as OrderWithItems[];
 
-  return orders.map((o) => this.toOrderDto(o));
-}
-
-async board(params: {
-  statusIn?: OrderStatus[];
-  channelIn?: Array<'web' | 'in_store' | 'ubereats'>;
-  limit?: number;
-  sinceMinutes?: number;
-}): Promise<OrderDto[]> {
-  const { statusIn, channelIn, limit = 50, sinceMinutes = 24 * 60 } = params;
-  const where: Prisma.OrderWhereInput = {};
-  if (statusIn && statusIn.length > 0) where.status = { in: statusIn };
-  if (channelIn && channelIn.length > 0) where.channel = { in: channelIn };
-  if (sinceMinutes > 0) {
-    const since = new Date(Date.now() - sinceMinutes * 60 * 1000);
-    where.createdAt = { gte: since };
+    return orders.map((o) => this.toOrderDto(o));
   }
 
-  const orders = (await this.prisma.order.findMany({
-    where,
-    orderBy: { createdAt: 'desc' },
-    take: limit,
-    include: { items: true },
-  })) as OrderWithItems[];
+  async board(params: {
+    statusIn?: OrderStatus[];
+    channelIn?: Array<'web' | 'in_store' | 'ubereats'>;
+    limit?: number;
+    sinceMinutes?: number;
+  }): Promise<OrderDto[]> {
+    const { statusIn, channelIn, limit = 50, sinceMinutes = 24 * 60 } = params;
+    const where: Prisma.OrderWhereInput = {};
+    if (statusIn && statusIn.length > 0) where.status = { in: statusIn };
+    if (channelIn && channelIn.length > 0) where.channel = { in: channelIn };
+    if (sinceMinutes > 0) {
+      const since = new Date(Date.now() - sinceMinutes * 60 * 1000);
+      where.createdAt = { gte: since };
+    }
 
-  return orders.map((o) => this.toOrderDto(o));
-}
+    const orders = (await this.prisma.order.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      include: { items: true },
+    })) as OrderWithItems[];
 
-async getByStableId(orderStableId: string): Promise<OrderDto> {
-  const order = (await this.prisma.order.findUnique({
-    where: { orderStableId: orderStableId.trim() },
-    include: { items: true },
-  })) as OrderWithItems | null;
+    return orders.map((o) => this.toOrderDto(o));
+  }
 
-  if (!order) throw new NotFoundException('order not found');
-  return this.toOrderDto(order);
-}
+  async getByStableId(orderStableId: string): Promise<OrderDto> {
+    const order = (await this.prisma.order.findUnique({
+      where: { orderStableId: orderStableId.trim() },
+      include: { items: true },
+    })) as OrderWithItems | null;
 
-async getPublicOrderSummary(orderStableId: string): Promise<OrderSummaryDto> {
-  const value = (orderStableId ?? '').trim();
-  if (!value) throw new NotFoundException('order not found');
-  if (value.includes('-')) throw new BadRequestException('stableId only');
+    if (!order) throw new NotFoundException('order not found');
+    return this.toOrderDto(order);
+  }
 
-  const order = (await this.prisma.order.findUnique({
-    where: { orderStableId: value },
-    include: { items: true },
-  })) as OrderWithItems | null;
+  async getPublicOrderSummary(orderStableId: string): Promise<OrderSummaryDto> {
+    const value = (orderStableId ?? '').trim();
+    if (!value) throw new NotFoundException('order not found');
+    if (value.includes('-')) throw new BadRequestException('stableId only');
 
-  if (!order) throw new NotFoundException('order not found');
+    const order = (await this.prisma.order.findUnique({
+      where: { orderStableId: value },
+      include: { items: true },
+    })) as OrderWithItems | null;
 
-  const subtotalCents = order.subtotalCents ?? 0;
-  const taxCents = order.taxCents ?? 0;
-  const deliveryFeeCents = order.deliveryFeeCents ?? 0;
-  const discountCents =
-    (order.loyaltyRedeemCents ?? 0) + (order.couponDiscountCents ?? 0);
+    if (!order) throw new NotFoundException('order not found');
+    if (!order.orderStableId) {
+      throw new BadRequestException('orderStableId missing');
+    }
 
-  const lineItems = order.items.map((item) => {
-    const optionsSnapshot = item.optionsJson as
-      | OrderItemOptionsSnapshot
-      | null
-      | undefined;
+    const subtotalCents = order.subtotalCents ?? 0;
+    const taxCents = order.taxCents ?? 0;
+    const deliveryFeeCents = order.deliveryFeeCents ?? 0;
+    const discountCents =
+      (order.loyaltyRedeemCents ?? 0) + (order.couponDiscountCents ?? 0);
 
-    const unitPriceCents = item.unitPriceCents ?? 0;
-    const quantity = item.qty;
-    const totalPriceCents = unitPriceCents * quantity;
+    const lineItems = order.items.map((item) => {
+      const optionsSnapshot = item.optionsJson ?? undefined;
 
-    const display =
-      item.displayName || item.nameEn || item.nameZh || item.productStableId;
+      const unitPriceCents = item.unitPriceCents ?? 0;
+      const quantity = item.qty;
+      const totalPriceCents = unitPriceCents * quantity;
+
+      const display =
+        item.displayName || item.nameEn || item.nameZh || item.productStableId;
+
+      return {
+        productStableId: item.productStableId,
+        name: display,
+        nameEn: item.nameEn ?? null,
+        nameZh: item.nameZh ?? null,
+        quantity,
+        unitPriceCents,
+        totalPriceCents,
+        optionsJson: optionsSnapshot,
+      };
+    });
+
+    const orderNumber = order.clientRequestId ?? order.orderStableId;
 
     return {
-      productStableId: item.productStableId,
-      name: display,
-      nameEn: item.nameEn ?? null,
-      nameZh: item.nameZh ?? null,
-      quantity,
-      unitPriceCents,
-      totalPriceCents,
-      optionsJson: optionsSnapshot ?? undefined,
+      orderStableId: order.orderStableId,
+      orderNumber,
+      currency: 'CAD',
+      subtotalCents,
+      taxCents,
+      deliveryFeeCents,
+      discountCents,
+      totalCents: order.totalCents ?? 0,
+      lineItems,
     };
-  });
+  }
 
-  const orderNumber = order.clientRequestId ?? order.orderStableId!;
-
-  return {
-    orderStableId: order.orderStableId!,
-    orderNumber,
-    currency: 'CAD',
-    subtotalCents,
-    taxCents,
-    deliveryFeeCents,
-    discountCents,
-    totalCents: order.totalCents ?? 0,
-    lineItems,
-  };
-}
-
-async updateStatus(orderStableId: string, next: OrderStatus): Promise<OrderDto> {
-  const resolved = await this.resolveInternalOrderIdByStableIdOrThrow(orderStableId);
-  const updated = await this.updateStatusByInternalId(resolved.id, next);
-  return this.toOrderDto(updated);
-}
+  async updateStatus(
+    orderStableId: string,
+    next: OrderStatus,
+  ): Promise<OrderDto> {
+    const resolved =
+      await this.resolveInternalOrderIdByStableIdOrThrow(orderStableId);
+    const updated = await this.updateStatusByInternalId(resolved.id, next);
+    return this.toOrderDto(updated);
+  }
 
   // =========================
   // Amendments (方案 B 的入口)
@@ -1790,27 +1840,28 @@ async updateStatus(orderStableId: string, next: OrderStatus): Promise<OrderDto> 
   /**
    * ✅ 对外 advance
    */
-async advance(orderStableId: string): Promise<OrderDto> {
-  const resolved = await this.resolveInternalOrderIdByStableIdOrThrow(orderStableId);
+  async advance(orderStableId: string): Promise<OrderDto> {
+    const resolved =
+      await this.resolveInternalOrderIdByStableIdOrThrow(orderStableId);
 
-  const order = await this.prisma.order.findUnique({
-    where: { id: resolved.id },
-    select: { status: true },
-  });
-  if (!order) throw new NotFoundException('order not found');
-
-  const next = ORDER_STATUS_ADVANCE_FLOW[order.status as OrderStatus];
-  if (!next) {
-    const current = (await this.prisma.order.findUnique({
+    const order = await this.prisma.order.findUnique({
       where: { id: resolved.id },
-      include: { items: true },
-    })) as OrderWithItems;
-    return this.toOrderDto(current);
-  }
+      select: { status: true },
+    });
+    if (!order) throw new NotFoundException('order not found');
 
-  const updated = await this.updateStatusByInternalId(resolved.id, next);
-  return this.toOrderDto(updated);
-}
+    const next = ORDER_STATUS_ADVANCE_FLOW[order.status];
+    if (!next) {
+      const current = (await this.prisma.order.findUnique({
+        where: { id: resolved.id },
+        include: { items: true },
+      })) as OrderWithItems;
+      return this.toOrderDto(current);
+    }
+
+    const updated = await this.updateStatusByInternalId(resolved.id, next);
+    return this.toOrderDto(updated);
+  }
 
   private normalizeDropoff(
     destination: DeliveryDestinationDto,
@@ -1859,68 +1910,69 @@ async advance(orderStableId: string): Promise<OrderDto> {
     return parts.length ? `[${parts.join(' ')}] ` : '';
   }
 
-private async dispatchStandardDeliveryWithDoorDash(
-  order: OrderWithItems,
-  destination: UberDirectDropoffDetails,
-): Promise<OrderWithItems> {
-  const externalOrderId = order.clientRequestId ?? order.orderStableId ?? '';
+  private async dispatchStandardDeliveryWithDoorDash(
+    order: OrderWithItems,
+    destination: UberDirectDropoffDetails,
+  ): Promise<OrderWithItems> {
+    const externalOrderId = order.clientRequestId ?? order.orderStableId ?? '';
 
-  const response: DoorDashDeliveryResult =
-    await this.doorDashDrive.createDelivery({
-      orderId: externalOrderId,          // ✅ 外发：clientRequestId（缺省 fallback 稳定）
-      pickupCode: order.pickupCode ?? undefined,
-      reference: externalOrderId,        // ✅ 外发：同一套外部单号
-      totalCents: order.totalCents ?? 0,
-      items: order.items.map((item) => ({
-        name: item.displayName || item.productStableId,
-        quantity: item.qty,
-        priceCents: item.unitPriceCents ?? undefined,
-      })),
-      destination,
-    });
+    const response: DoorDashDeliveryResult =
+      await this.doorDashDrive.createDelivery({
+        orderId: externalOrderId, // ✅ 外发：clientRequestId（缺省 fallback 稳定）
+        pickupCode: order.pickupCode ?? undefined,
+        reference: externalOrderId, // ✅ 外发：同一套外部单号
+        totalCents: order.totalCents ?? 0,
+        items: order.items.map((item) => ({
+          name: item.displayName || item.productStableId,
+          quantity: item.qty,
+          priceCents: item.unitPriceCents ?? undefined,
+        })),
+        destination,
+      });
 
-  const updateData: Prisma.OrderUpdateInput = {
-    externalDeliveryId: response.deliveryId,
-  };
-  if (typeof response.deliveryCostCents === 'number') {
-    updateData.deliveryCostCents = Math.round(response.deliveryCostCents);
+    const updateData: Prisma.OrderUpdateInput = {
+      externalDeliveryId: response.deliveryId,
+    };
+    if (typeof response.deliveryCostCents === 'number') {
+      updateData.deliveryCostCents = Math.round(response.deliveryCostCents);
+    }
+    return this.prisma.order.update({
+      where: { id: order.id }, // ✅ 内部写库仍用 UUID
+      data: updateData,
+      include: { items: true },
+    }) as Promise<OrderWithItems>;
   }
-  return this.prisma.order.update({
-    where: { id: order.id }, // ✅ 内部写库仍用 UUID
-    data: updateData,
-    include: { items: true },
-  }) as Promise<OrderWithItems>;
-}
 
-private async dispatchPriorityDelivery(
-  order: OrderWithItems,
-  destination: UberDirectDropoffDetails,
-): Promise<OrderWithItems> {
-  const externalOrderId = order.clientRequestId ?? order.orderStableId ?? '';
+  private async dispatchPriorityDelivery(
+    order: OrderWithItems,
+    destination: UberDirectDropoffDetails,
+  ): Promise<OrderWithItems> {
+    const externalOrderId = order.clientRequestId ?? order.orderStableId ?? '';
 
-  const response: UberDirectDeliveryResult =
-    await this.uberDirect.createDelivery({
-      orderId: externalOrderId,          // ✅ 外发：clientRequestId（缺省 fallback 稳定）
-      pickupCode: order.pickupCode ?? undefined,
-      reference: externalOrderId,
-      totalCents: order.totalCents ?? 0,
-      items: order.items.map((item) => ({
-        name: item.displayName || item.productStableId,
-        quantity: item.qty,
-        priceCents: item.unitPriceCents ?? undefined,
-      })),
-      destination,
-    });
+    const response: UberDirectDeliveryResult =
+      await this.uberDirect.createDelivery({
+        orderId: externalOrderId, // ✅ 外发：clientRequestId（缺省 fallback 稳定）
+        pickupCode: order.pickupCode ?? undefined,
+        reference: externalOrderId,
+        totalCents: order.totalCents ?? 0,
+        items: order.items.map((item) => ({
+          name: item.displayName || item.productStableId,
+          quantity: item.qty,
+          priceCents: item.unitPriceCents ?? undefined,
+        })),
+        destination,
+      });
 
-  const updateData: Prisma.OrderUpdateInput = {
-    externalDeliveryId: response.deliveryId,
-  };
-  if (typeof response.deliveryCostCents === 'number') {
-    updateData.deliveryCostCents = Math.round(response.deliveryCostCents);
+    const updateData: Prisma.OrderUpdateInput = {
+      externalDeliveryId: response.deliveryId,
+    };
+    if (typeof response.deliveryCostCents === 'number') {
+      updateData.deliveryCostCents = Math.round(response.deliveryCostCents);
+    }
+    return this.prisma.order.update({
+      where: { id: order.id }, // ✅ 内部写库仍用 UUID
+      data: updateData,
+      include: { items: true },
+    }) as Promise<OrderWithItems>;
   }
-  return this.prisma.order.update({
-    where: { id: order.id }, // ✅ 内部写库仍用 UUID
-    data: updateData,
-    include: { items: true },
-  }) as Promise<OrderWithItems>;
 }
