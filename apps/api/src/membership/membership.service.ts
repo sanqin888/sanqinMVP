@@ -449,6 +449,7 @@ export class MembershipService {
       select: {
         id: true,
         orderStableId: true,
+        clientRequestId: true,
         pickupCode: true,
         createdAt: true,
         totalCents: true,
@@ -474,6 +475,7 @@ export class MembershipService {
       // ✅ 对外统一：不用裸 id；用稳定标识
       recentOrders: orders.map((o) => ({
         orderStableId: o.orderStableId,
+        clientRequestId: o.clientRequestId,
         pickupCode: o.pickupCode,
         createdAt: o.createdAt.toISOString(),
         totalCents: o.totalCents,

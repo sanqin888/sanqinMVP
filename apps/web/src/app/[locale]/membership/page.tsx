@@ -22,7 +22,7 @@ type DeliveryType = 'pickup' | 'delivery';
 
 type OrderHistory = {
   orderNumber: string;
-  pickupCode: string | null;
+  clientRequestId: string | null;
   createdAt: string;
   totalCents: number;
   status: OrderStatus;
@@ -71,6 +71,7 @@ type ApiDeliveryType = 'STANDARD' | 'PRIORITY' | null;
 
 type MembershipSummaryOrderDto = {
   orderStableId: string;
+  clientRequestId: string | null;
   pickupCode: string | null;
   createdAt: string;
   totalCents: number;
@@ -315,7 +316,7 @@ export default function MembershipHomePage() {
         setOrders(
           recentOrders.map((o) => ({
             orderNumber: o.orderStableId,
-            pickupCode: o.pickupCode ?? null,
+            clientRequestId: o.clientRequestId ?? null,
             createdAt: new Date(o.createdAt).toLocaleString(),
             totalCents: o.totalCents,
             status: o.status,
@@ -790,7 +791,7 @@ function OverviewSection({
             <p>
               {isZh ? '取餐码：' : 'Pickup code: '}
               <span className="font-mono text-slate-900">
-                {latestOrder.pickupCode ?? '--'}
+                {latestOrder.clientRequestId ?? '--'}
               </span>
             </p>
             <p>
@@ -885,7 +886,7 @@ function OrdersSection({
               <p className="mt-1 text-[11px] text-slate-500">
                 {isZh ? '取餐码：' : 'Pickup code: '}
                 <span className="font-mono text-slate-700">
-                  {order.pickupCode ?? '--'}
+                  {order.clientRequestId ?? '--'}
                 </span>
               </p>
               <p className="mt-1 text-[11px] text-slate-500">
