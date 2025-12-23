@@ -182,7 +182,7 @@ describe('OrdersService', () => {
     );
   });
 
-  it('creates order even when deliveryDestination is missing for priority orders', async () => {
+  it('creates order even when deliveryDestination is missing for priority orders', () => {
     const dto: Partial<CreateOrderDto> = {
       channel: 'web',
       fulfillmentType: 'pickup',
@@ -207,14 +207,14 @@ describe('OrdersService', () => {
     };
     prisma.order.create.mockResolvedValue(storedOrder);
 
-    const order = await service.create(dto as CreateOrderDto);
+    return service.create(dto as CreateOrderDto).then((order) => {
+      // ✅ 仍然建单
+      expect(prisma.order.create).toHaveBeenCalled();
+      expect(order.orderStableId).toBe('cord-no-dest');
 
-    // ✅ 仍然建单
-    expect(prisma.order.create).toHaveBeenCalled();
-    expect(order.orderStableId).toBe('cord-no-dest');
-
-    // ✅ 因为没有 deliveryDestination，不会调 Uber Direct
-    expect(uberDirect.createDelivery).not.toHaveBeenCalled();
+      // ✅ 因为没有 deliveryDestination，不会调 Uber Direct
+      expect(uberDirect.createDelivery).not.toHaveBeenCalled();
+    });
   });
 
   it('dispatches Uber Direct for priority orders', () => {
@@ -267,29 +267,29 @@ describe('OrdersService', () => {
       },
     };
 
-    await service.create(dto);
+    return service.create(dto).then(() => {
+      // ✅ 确认调用过 Uber Direct
+      expect(uberDirect.createDelivery).toHaveBeenCalled();
 
-    // ✅ 确认调用过 Uber Direct
-    expect(uberDirect.createDelivery).toHaveBeenCalled();
+      // ✅ 把 createDelivery 强类型成带参数列表的 jest.Mock，再去读 mock.calls
+      const mockFn = uberDirect.createDelivery as jest.Mock<
+        Promise<unknown>,
+        [
+          {
+            orderId: string;
+            destination: { postalCode: string };
+          },
+        ]
+      >;
 
-    // ✅ 把 createDelivery 强类型成带参数列表的 jest.Mock，再去读 mock.calls
-    const mockFn = uberDirect.createDelivery as jest.Mock<
-      Promise<unknown>,
-      [
-        {
-          orderId: string;
-          destination: { postalCode: string };
-        },
-      ]
-    >;
+      const [firstCallArg] = mockFn.mock.calls;
+      const deliveryPayload = firstCallArg?.[0];
 
-    const [firstCallArg] = mockFn.mock.calls;
-    const deliveryPayload = firstCallArg?.[0];
-
-    expect(deliveryPayload).toBeDefined();
-    expect(deliveryPayload?.orderId).toBe('order-1');
-    expect(deliveryPayload?.destination.postalCode).toBe('M3J 0L9');
-    expect(prisma.order.update).toHaveBeenCalled();
+      expect(deliveryPayload).toBeDefined();
+      expect(deliveryPayload?.orderId).toBe('req-1');
+      expect(deliveryPayload?.destination.postalCode).toBe('M3J 0L9');
+      expect(prisma.order.update).toHaveBeenCalled();
+    });
   });
 
   it('keeps the order when Uber Direct fails', async () => {
