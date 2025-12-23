@@ -26,6 +26,7 @@ const COPY = {
     subtitle: "全量查询与复杂筛选，用于门店订单追踪。",
     backToPos: "返回 POS 点单",
     filtersTitle: "筛选条件",
+    filtersReset: "重置",
     filtersSubtitle: "支持时间、渠道、状态、支付方式、金额区间等组合筛选。",
     tableTitle: "订单列表",
     tableSubtitle: "点击订单可查看可操作功能。",
@@ -146,6 +147,7 @@ const COPY = {
     subtitle: "Full query & advanced filters for store order tracking.",
     backToPos: "Back to POS",
     filtersTitle: "Filters",
+    filtersReset: "Reset",
     filtersSubtitle:
       "Combine time, channel, status, payment method, and amount range.",
     tableTitle: "Orders",
@@ -272,6 +274,22 @@ const COPY = {
 type OrderStatusKey = keyof (typeof COPY)["zh"]["status"];
 type ActionKey = keyof (typeof COPY)["zh"]["actionLabels"];
 type PaymentMethodKey = keyof (typeof COPY)["zh"]["paymentMethod"];
+
+type OrderFilters = {
+  time: "all" | "today";
+  statuses: OrderStatusKey[];
+  channels: BackendOrder["channel"][];
+  fulfillments: OrderRecord["type"][];
+  minTotalCents: number | null;
+};
+
+const createInitialFilters = (): OrderFilters => ({
+  time: "all",
+  statuses: [],
+  channels: [],
+  fulfillments: [],
+  minTotalCents: null,
+});
 
 const ACTIONS: ActionKey[] = [
   "retender",
@@ -889,19 +907,7 @@ export default function PosOrdersPage() {
   const [orders, setOrders] = useState<OrderRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [filters, setFilters] = useState<{
-    time: "all" | "today";
-    statuses: OrderStatusKey[];
-    channels: BackendOrder["channel"][];
-    fulfillments: OrderRecord["type"][];
-    minTotalCents: number | null;
-  }>({
-    time: "all",
-    statuses: [],
-    channels: [],
-    fulfillments: [],
-    minTotalCents: null,
-  });
+  const [filters, setFilters] = useState<OrderFilters>(createInitialFilters);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedAction, setSelectedAction] = useState<ActionKey | null>(null);
   const [reason, setReason] = useState("");
@@ -918,6 +924,17 @@ export default function PosOrdersPage() {
     null,
   );
   const [isSwapPickerOpen, setIsSwapPickerOpen] = useState(false);
+
+  const isFiltersDirty =
+    filters.time !== "all" ||
+    filters.statuses.length > 0 ||
+    filters.channels.length > 0 ||
+    filters.fulfillments.length > 0 ||
+    filters.minTotalCents !== null;
+
+  const handleResetFilters = () => {
+    setFilters(createInitialFilters());
+  };
 
   const mapOrder = useCallback(
     (order: BackendOrder): OrderRecord => {
@@ -1629,7 +1646,21 @@ const handleSubmit = () => {
         <div className="rounded-2xl border border-slate-700 bg-slate-800/60 p-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold">{copy.filtersTitle}</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-semibold">{copy.filtersTitle}</h2>
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  disabled={!isFiltersDirty}
+                  className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition ${
+                    isFiltersDirty
+                      ? "border-slate-600 bg-slate-900/40 text-slate-200 hover:border-slate-400 hover:text-white"
+                      : "cursor-not-allowed border-slate-700 bg-slate-900/30 text-slate-500"
+                  }`}
+                >
+                  {copy.filtersReset}
+                </button>
+              </div>
               <p className="text-xs text-slate-300">{copy.filtersSubtitle}</p>
             </div>
             <span className="rounded-full border border-slate-600 bg-slate-800 px-2.5 py-1 text-[11px] text-slate-200">

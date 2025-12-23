@@ -495,29 +495,29 @@ export default function StorePosPage() {
         <div className="flex items-center gap-2">
           <Link
             href={`/${locale}/store/pos/summary`}
-            className="rounded-full border border-slate-600 bg-slate-800 px-3 py-1 text-xs font-medium text-slate-100 hover:border-slate-400 hover:text-white"
+            className="rounded-full border border-slate-600 bg-slate-800 px-6 py-2 text-base font-semibold text-slate-100 hover:border-slate-400 hover:text-white"
           >
             {t.summary}
           </Link>
           <Link
             href={`/${locale}/store/pos/menu`}
-            className="rounded-full border border-slate-600 bg-slate-800 px-3 py-1 text-xs font-medium text-slate-100 hover:border-slate-400 hover:text-white"
+            className="rounded-full border border-slate-600 bg-slate-800 px-6 py-2 text-base font-semibold text-slate-100 hover:border-slate-400 hover:text-white"
           >
             {t.menuManage}
           </Link>
           <Link
             href={`/${locale}/store/pos/orders`}
-            className="rounded-full border border-slate-600 bg-slate-800 px-3 py-1 text-xs font-medium text-slate-100 hover:border-slate-400 hover:text-white"
+            className="rounded-full border border-slate-600 bg-slate-800 px-6 py-2 text-base font-semibold text-slate-100 hover:border-slate-400 hover:text-white"
           >
             {t.orderManage}
           </Link>
           {storeStatusLoading ? (
-            <span className="rounded-full border border-slate-600 bg-slate-800 px-3 py-1 text-xs text-slate-200">
+            <span className="rounded-full border border-slate-600 bg-slate-800 px-6 py-2 text-base font-semibold text-slate-200">
               {t.storeStatusLoading}
             </span>
           ) : (
             <span
-              className={`rounded-full border px-3 py-1 text-xs font-medium ${
+              className={`rounded-full border px-6 py-2 text-base font-semibold ${
                 isStoreOpen
                   ? "border-emerald-400/60 bg-emerald-500/10 text-emerald-200"
                   : "border-rose-400/60 bg-rose-500/10 text-rose-200"
