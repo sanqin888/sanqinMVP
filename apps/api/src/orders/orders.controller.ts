@@ -37,6 +37,7 @@ import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { OrderStatus } from './order-status';
 import { OrderSummaryDto } from './dto/order-summary.dto';
+import { CuidOrUuidPipe } from '../common/pipes/cuid-or-uuid.pipe';
 
 class UpdateStatusDto {
   @IsEnum(OrderStatus)
@@ -269,12 +270,12 @@ export class OrdersController {
   }
 
   /**
-   * 按 ID 获取订单（仅接受 UUID v4）
+   * 按 ID 获取订单（接受 cuid/uuid）
    * GET /api/v1/orders/:id
    */
   @Get(':id')
-  findOne(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    return this.ordersService.getById(id);
+  findOne(@Param('id', CuidOrUuidPipe) id: string) {
+    return this.ordersService.getByStableId(id);
   }
 
   @Post('loyalty-only')

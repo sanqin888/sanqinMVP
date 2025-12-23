@@ -22,6 +22,7 @@ type DeliveryType = 'pickup' | 'delivery';
 
 type OrderHistory = {
   orderNumber: string;
+  pickupCode: string | null;
   createdAt: string;
   totalCents: number;
   status: OrderStatus;
@@ -69,7 +70,8 @@ type ApiFulfillmentType = 'pickup' | 'dine_in' | 'delivery';
 type ApiDeliveryType = 'STANDARD' | 'PRIORITY' | null;
 
 type MembershipSummaryOrderDto = {
-  orderNumber: string;
+  orderStableId: string;
+  pickupCode: string | null;
   createdAt: string;
   totalCents: number;
   status: OrderStatus;
@@ -312,7 +314,8 @@ export default function MembershipHomePage() {
         const recentOrders = data.recentOrders ?? [];
         setOrders(
           recentOrders.map((o) => ({
-            orderNumber: o.orderNumber,
+            orderNumber: o.orderStableId,
+            pickupCode: o.pickupCode ?? null,
             createdAt: new Date(o.createdAt).toLocaleString(),
             totalCents: o.totalCents,
             status: o.status,
@@ -785,6 +788,12 @@ function OverviewSection({
               </span>
             </p>
             <p>
+              {isZh ? '取餐码：' : 'Pickup code: '}
+              <span className="font-mono text-slate-900">
+                {latestOrder.pickupCode ?? '--'}
+              </span>
+            </p>
+            <p>
               {isZh ? '下单时间：' : 'Created at: '}
               {latestOrder.createdAt}
             </p>
@@ -873,6 +882,12 @@ function OrdersSection({
           >
             <div>
               <p className="font-mono text-slate-900">{order.orderNumber}</p>
+              <p className="mt-1 text-[11px] text-slate-500">
+                {isZh ? '取餐码：' : 'Pickup code: '}
+                <span className="font-mono text-slate-700">
+                  {order.pickupCode ?? '--'}
+                </span>
+              </p>
               <p className="mt-1 text-[11px] text-slate-500">
                 {order.createdAt}
               </p>
