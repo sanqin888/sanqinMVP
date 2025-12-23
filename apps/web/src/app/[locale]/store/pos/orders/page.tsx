@@ -275,12 +275,20 @@ type OrderStatusKey = keyof (typeof COPY)["zh"]["status"];
 type ActionKey = keyof (typeof COPY)["zh"]["actionLabels"];
 type PaymentMethodKey = keyof (typeof COPY)["zh"]["paymentMethod"];
 
-const createInitialFilters = () => ({
-  time: "all" as const,
-  statuses: [] as OrderStatusKey[],
-  channels: [] as BackendOrder["channel"][],
-  fulfillments: [] as OrderRecord["type"][],
-  minTotalCents: null as number | null,
+type OrderFilters = {
+  time: "all" | "today";
+  statuses: OrderStatusKey[];
+  channels: BackendOrder["channel"][];
+  fulfillments: OrderRecord["type"][];
+  minTotalCents: number | null;
+};
+
+const createInitialFilters = (): OrderFilters => ({
+  time: "all",
+  statuses: [],
+  channels: [],
+  fulfillments: [],
+  minTotalCents: null,
 });
 
 const ACTIONS: ActionKey[] = [
@@ -899,7 +907,7 @@ export default function PosOrdersPage() {
   const [orders, setOrders] = useState<OrderRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [filters, setFilters] = useState(createInitialFilters);
+  const [filters, setFilters] = useState<OrderFilters>(createInitialFilters);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedAction, setSelectedAction] = useState<ActionKey | null>(null);
   const [reason, setReason] = useState("");
