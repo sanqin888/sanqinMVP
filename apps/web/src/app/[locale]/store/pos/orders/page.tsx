@@ -955,6 +955,17 @@ export default function PosOrdersPage() {
     setFilters(createInitialFilters());
   };
 
+  const isFiltersDirty =
+    filters.time !== "all" ||
+    filters.statuses.length > 0 ||
+    filters.channels.length > 0 ||
+    filters.fulfillments.length > 0 ||
+    filters.minTotalCents !== null;
+
+  const handleResetFilters = () => {
+    setFilters(createInitialFilters());
+  };
+
   const mapOrder = useCallback(
     (order: BackendOrder): OrderRecord => {
       const subtotalCents = order.subtotalCents ?? order.totalCents ?? 0;
