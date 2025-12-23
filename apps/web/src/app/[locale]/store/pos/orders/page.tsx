@@ -57,7 +57,7 @@ const COPY = {
     actionsTitle: "订单操作",
     actionsSubtitle: "选中订单后进行处理。",
     emptySelection: "请选择左侧订单查看功能。",
-    pickupCodeLabel: "取餐码",
+    orderNumberLabel: "订单编号",
     stableIdLabel: "Stable ID",
     orderMetaTitle: "订单信息",
     actionLabels: {
@@ -179,7 +179,7 @@ const COPY = {
     actionsTitle: "Order actions",
     actionsSubtitle: "Operate after selecting an order.",
     emptySelection: "Select an order to view actions.",
-    pickupCodeLabel: "Pickup code",
+    orderNumberLabel: "Order Number",
     stableIdLabel: "Stable ID",
     orderMetaTitle: "Order info",
     actionLabels: {
@@ -355,6 +355,7 @@ const QUICK_FILTERS = [
 type BackendOrder = {
   id: string;
   orderStableId?: string | null;
+  clientRequestId?: string | null;
   pickupCode?: string | null;
   channel: "web" | "in_store" | "ubereats";
   fulfillmentType: "pickup" | "dine_in" | "delivery";
@@ -390,6 +391,7 @@ type OrderRecord = {
   id: string;
   stableId: string;
   pickupCode: string | null;
+  clientRequestId: string | null;
   type: keyof (typeof COPY)["zh"]["orderCard"];
   status: OrderStatusKey;
   amountCents: number;
@@ -1021,6 +1023,7 @@ const mapOrder = useCallback(
       id: order.id,
       stableId: order.orderStableId ?? order.id,
       pickupCode: order.pickupCode ?? null,
+      clientRequestId: order.clientRequestId ?? null,
       type: order.fulfillmentType,
       status: order.status,
       amountCents: order.totalCents ?? 0,
@@ -1629,7 +1632,7 @@ const handleSubmit = () => {
 
         const basePayload = {
           locale,
-          orderNumber: selectedOrder.stableId,
+          orderNumber: selectedOrder.clientRequestId ?? selectedOrder.stableId,
           pickupCode: selectedOrder.pickupCode,
           fulfillment,
           paymentMethod,
@@ -1879,7 +1882,7 @@ const handleSubmit = () => {
               >
                 <div>
                 <div className="text-sm font-semibold">
-                  {order.pickupCode ?? order.stableId}
+                  {order.clientRequestId ?? "--"}
                 </div>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
                     <span className="rounded-full border border-slate-600 px-2 py-0.5">
@@ -1926,10 +1929,10 @@ const handleSubmit = () => {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="text-[11px] font-semibold uppercase text-slate-400">
-                    {copy.pickupCodeLabel}
+                    {copy.orderNumberLabel}
                   </div>
                   <div className="text-2xl font-semibold">
-                    {selectedOrder.pickupCode ?? "--"}
+                    {selectedOrder.clientRequestId ?? "--"}
                   </div>
                   <div className="mt-1 text-[11px] text-slate-400">
                     {copy.stableIdLabel}: {selectedOrder.stableId}

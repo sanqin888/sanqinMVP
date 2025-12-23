@@ -33,6 +33,7 @@ type OrderDetail = {
   totalCents: number;
   fulfillmentType: string;
   pickupCode: string | null;
+  clientRequestId: string | null;
   deliveryType: DeliveryTypeOption | null;
   deliveryProvider: DeliveryProviderOption | null;
   deliveryFeeCents: number | null;
@@ -62,6 +63,7 @@ export default function OrderDetailPage({ params }: PageProps) {
   const { id: orderIdRaw, locale: localeRaw } = use(params);
   const orderId = orderIdRaw ?? '';
   const locale = (localeRaw ?? 'en') as Locale;
+  const isZh = locale === 'zh';
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -172,8 +174,11 @@ export default function OrderDetailPage({ params }: PageProps) {
             <span className="rounded bg-gray-900 px-2 py-1 text-xs font-medium uppercase tracking-wide text-white">
               {order.status}
             </span>
-            {order.pickupCode && (
-              <span className="text-sm text-gray-600">取餐码：{order.pickupCode}</span>
+            {order.clientRequestId && (
+              <span className="text-sm text-gray-600">
+                {isZh ? '订单编号：' : 'Order Number: '}
+                {order.clientRequestId}
+              </span>
             )}
             <span className="text-sm text-gray-600">
               渠道：{order.channel} · {order.fulfillmentType}

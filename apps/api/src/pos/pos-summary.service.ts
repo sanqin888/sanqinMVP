@@ -35,6 +35,7 @@ export type PosDailySummaryResponse = {
   orders: Array<{
     id: string;
     orderStableId: string;
+    clientRequestId: string | null;
     createdAt: string;
 
     channel: 'web' | 'in_store' | 'ubereats';
@@ -68,6 +69,7 @@ type SummaryQuery = {
 type OrderLite = {
   id: string;
   orderStableId: string | null;
+  clientRequestId: string | null;
   paidAt: Date;
   channel: Channel;
   fulfillmentType: FulfillmentType;
@@ -177,6 +179,7 @@ export class PosSummaryService {
       select: {
         id: true,
         orderStableId: true,
+        clientRequestId: true,
         paidAt: true,
         channel: true,
         fulfillmentType: true,
@@ -264,6 +267,7 @@ export class PosSummaryService {
         return {
           id: o.id,
           orderStableId: o.orderStableId ?? o.id,
+          clientRequestId: o.clientRequestId ?? null,
           createdAt: o.paidAt.toISOString(),
 
           channel,

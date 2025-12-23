@@ -105,7 +105,7 @@ type OrderRow = {
   status: string;  // statusBucket
   payment: string; // payment bucket
   amountCents: number; // net
-  orderStableId: string;
+  clientRequestId: string;
 };
 
 type PosDailySummaryResponse = {
@@ -132,6 +132,7 @@ type PosDailySummaryResponse = {
   orders: Array<{
     id: string;
     orderStableId: string;
+    clientRequestId: string | null;
     createdAt: string;
 
     channel: "web" | "in_store" | "ubereats";
@@ -196,11 +197,11 @@ function downloadCsv(filename: string, csvText: string) {
 }
 
 function toCsv(rows: OrderRow[]): string {
-  const header = ["orderId", "orderStableId", "time", "fulfillment", "status", "payment", "net"].join(",");
+  const header = ["orderId", "clientRequestId", "time", "fulfillment", "status", "payment", "net"].join(",");
   const lines = rows.map((r) =>
     [
       JSON.stringify(r.id),
-      JSON.stringify(r.orderStableId),
+      JSON.stringify(r.clientRequestId),
       JSON.stringify(r.date),
       JSON.stringify(r.channel),
       JSON.stringify(r.status),
@@ -300,7 +301,7 @@ export default function PosDailySummaryPage() {
     if (!data) return [];
     return data.orders.map((o) => ({
       id: o.id,
-      orderStableId: o.orderStableId,
+      clientRequestId: o.clientRequestId ?? "--",
       date: new Date(o.createdAt).toLocaleString(),
       channel: o.fulfillmentType,
       status: o.statusBucket,
@@ -578,7 +579,7 @@ export default function PosDailySummaryPage() {
                       onClick={() => setSelectedOrderId(order.id)}
                     >
                       <td className="px-3 py-2 text-slate-300">
-                        {order.orderStableId.slice(-6)}
+                        {order.clientRequestId}
                       </td>
                       <td className="px-3 py-2 text-slate-300">{order.date}</td>
                       <td className="px-3 py-2 text-slate-300">
@@ -606,9 +607,11 @@ export default function PosDailySummaryPage() {
           {selectedOrder ? (
             <div className="mt-3 space-y-3 text-sm">
               <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-3">
-                <div className="text-xs text-slate-400">ID</div>
+                <div className="text-xs text-slate-400">
+                  {locale === "zh" ? "订单编号" : "Order Number"}
+                </div>
                 <div className="text-base font-semibold text-slate-100">
-                  {selectedOrder.orderStableId}
+                  {selectedOrder.clientRequestId}
                 </div>
                 <div className="mt-2 text-xs text-slate-400">
                   {selectedOrder.date} · {labelFulfillment(locale, selectedOrder.channel)}
