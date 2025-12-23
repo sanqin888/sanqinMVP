@@ -266,7 +266,8 @@ describe('OrdersService', () => {
         postalCode: 'M3J 0L9',
       },
     };
-    void dto;
+
+    await service.create(dto);
 
     // ✅ 确认调用过 Uber Direct
     expect(uberDirect.createDelivery).toHaveBeenCalled();
