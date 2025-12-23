@@ -865,9 +865,9 @@ function OrdersSection({
       </div>
 
       <div className="mt-3 divide-y divide-slate-100 text-xs text-slate-700">
-        {orders.map((order) => (
+        {orders.map((order, index) => (
           <Link
-            key={order.orderNumber}
+            key={`${order.orderNumber}-${order.createdAt}-${index}`}
             href={`/${locale}/order/${order.orderNumber}`}
             className="flex items-center justify-between py-3 hover:bg-slate-50 rounded-lg px-2 -mx-2"
           >
