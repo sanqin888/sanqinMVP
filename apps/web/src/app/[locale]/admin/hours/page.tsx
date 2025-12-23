@@ -59,6 +59,16 @@ const WEEKDAY_LABELS_EN = [
   'Saturday',
 ];
 
+const COMMON_TIMEZONES = [
+  "America/Toronto",
+  "America/Vancouver",
+  "America/Edmonton",
+  "America/Winnipeg",
+  "America/Halifax",
+  "America/St_Johns",
+  "UTC",
+] as const;
+
 /** ===== 时间换算工具 ===== */
 
 function minutesToTimeString(mins: number | null | undefined): string {
@@ -199,6 +209,11 @@ export default function AdminHoursPage() {
       next[index] = h;
       return next;
     });
+  };
+
+  const handleTimezoneChange = (value: string) => {
+    const tz = value.trim();
+    setConfig((prev) => (prev ? { ...prev, timezone: tz } : prev));
   };
 
   const handleTimeChange = (
@@ -366,6 +381,7 @@ export default function AdminHoursPage() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          timezone: config.timezone,
           isTemporarilyClosed: config.isTemporarilyClosed,
           // 和后端 updateTemporaryClose 保持一致，用 reason
           reason: config.temporaryCloseReason ?? null,
@@ -499,6 +515,55 @@ export default function AdminHoursPage() {
           </label>
         </div>
       </section>
+
+{/* 门店时区 */}
+<section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+  <h2 className="text-sm font-semibold text-slate-900">
+    {isZh ? "门店时区" : "Store time zone"}
+  </h2>
+  <p className="text-xs text-slate-600">
+    {isZh
+      ? "用于“今日订单”、节假日、营业时间等与日期相关的计算与展示。请使用 IANA 时区名（例如 America/Toronto）。"
+      : "Used for date-based logic (Today orders, holidays, hours). Please use an IANA time zone (e.g. America/Toronto)."}
+  </p>
+
+  <div className="grid gap-2 md:grid-cols-2">
+    <label className="block text-xs font-medium text-slate-700">
+      {isZh ? "IANA 时区名" : "IANA time zone"}
+      <input
+        value={config.timezone ?? ""}
+        onChange={(e) => handleTimezoneChange(e.target.value)}
+        list="tz-list"
+        placeholder="America/Toronto"
+        className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-slate-500 focus:outline-none"
+      />
+      <datalist id="tz-list">
+        {COMMON_TIMEZONES.map((tz) => (
+          <option key={tz} value={tz} />
+        ))}
+      </datalist>
+    </label>
+
+    <div className="text-xs text-slate-600">
+      <div className="font-medium text-slate-700">
+        {isZh ? "当前该时区时间预览" : "Preview (current time in this zone)"}
+      </div>
+      <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800">
+        {(() => {
+          try {
+            return new Intl.DateTimeFormat(isZh ? "zh-CN" : "en-US", {
+              timeZone: config.timezone,
+              dateStyle: "medium",
+              timeStyle: "short",
+            }).format(new Date());
+          } catch {
+            return isZh ? "时区无效（请检查拼写）" : "Invalid time zone (check spelling)";
+          }
+        })()}
+      </div>
+    </div>
+  </div>
+</section>
 
       {/* 配送费与税率配置 */}
       <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">

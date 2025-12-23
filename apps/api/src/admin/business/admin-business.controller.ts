@@ -35,6 +35,7 @@ export class AdminBusinessController {
   async patchConfig(
     @Body()
     body: {
+      timezone?: string;
       isTemporarilyClosed?: boolean;
       reason?: string;
       deliveryBaseFeeCents?: number;
@@ -53,6 +54,7 @@ export class AdminBusinessController {
   async updateTemporaryClose(
     @Body()
     body: {
+      timezone?: string;
       isTemporarilyClosed?: boolean;
       reason?: string;
       deliveryBaseFeeCents?: number;
