@@ -201,7 +201,7 @@ export class CloverHcoWebhookController {
       // 3) 标记 CheckoutIntent 已处理
       await this.checkoutIntents.markProcessed({
         intentId: intent.id,
-        orderId: finalized.id,
+        orderId: order.id,
         status: event.status ?? event.result ?? 'SUCCESS',
         result: event.result ?? 'SUCCESS',
       });

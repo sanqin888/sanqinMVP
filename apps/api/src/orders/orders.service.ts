@@ -49,63 +49,6 @@ import {
 import { isAvailableNow } from '@shared/menu';
 import type { OrderDto, OrderItemDto } from './dto/order.dto';
 
-private toOrderDto(order: OrderWithItems): OrderDto {
-  const orderStableId = order.orderStableId;
-  if (!orderStableId) {
-    // 按你的业务前提 stableId 非空，这里属于数据异常
-    throw new BadRequestException('orderStableId missing');
-  }
-
-  const orderNumber = order.clientRequestId ?? orderStableId;
-
-  const items: OrderItemDto[] = (order.items ?? []).map((it) => ({
-    productStableId: it.productStableId,
-    qty: it.qty,
-    displayName: it.displayName || it.nameEn || it.nameZh || it.productStableId,
-    nameEn: it.nameEn ?? null,
-    nameZh: it.nameZh ?? null,
-    unitPriceCents: it.unitPriceCents ?? 0,
-    optionsJson: it.optionsJson ?? undefined,
-  }));
-
-  return {
-    orderStableId,
-    orderNumber,
-
-    status: order.status as OrderStatus,
-    channel: order.channel,
-    fulfillmentType: order.fulfillmentType,
-
-    paymentMethod: order.paymentMethod ?? null,
-
-    pickupCode: order.pickupCode ?? null,
-
-    contactName: order.contactName ?? null,
-    contactPhone: order.contactPhone ?? null,
-
-    deliveryType: order.deliveryType ?? null,
-    deliveryProvider: order.deliveryProvider ?? null,
-    deliveryEtaMinMinutes: order.deliveryEtaMinMinutes ?? null,
-    deliveryEtaMaxMinutes: order.deliveryEtaMaxMinutes ?? null,
-
-    subtotalCents: order.subtotalCents ?? 0,
-    taxCents: order.taxCents ?? 0,
-    deliveryFeeCents: order.deliveryFeeCents ?? 0,
-    totalCents: order.totalCents ?? 0,
-
-    couponCodeSnapshot: order.couponCodeSnapshot ?? null,
-    couponTitleSnapshot: order.couponTitleSnapshot ?? null,
-    couponDiscountCents: order.couponDiscountCents ?? 0,
-
-    loyaltyRedeemCents: order.loyaltyRedeemCents ?? 0,
-
-    createdAt: order.createdAt.toISOString(),
-    paidAt: order.paidAt ? order.paidAt.toISOString() : null,
-
-    items,
-  };
-}
-
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 type OrderItemInput = NonNullable<CreateOrderDto['items']>[number] & {
   productId?: string;
@@ -201,6 +144,64 @@ export class OrdersService {
         'STORE_LATITUDE or STORE_LONGITUDE is missing or invalid. Dynamic delivery fee calculation will fail and fallback to fixed rates.',
       );
     }
+  }
+
+  private toOrderDto(order: OrderWithItems): OrderDto {
+    const orderStableId = order.orderStableId;
+    if (!orderStableId) {
+      // 按你的业务前提 stableId 非空，这里属于数据异常
+      throw new BadRequestException('orderStableId missing');
+    }
+
+    const orderNumber = order.clientRequestId ?? orderStableId;
+
+    const items: OrderItemDto[] = (order.items ?? []).map((it) => ({
+      productStableId: it.productStableId,
+      qty: it.qty,
+      displayName:
+        it.displayName || it.nameEn || it.nameZh || it.productStableId,
+      nameEn: it.nameEn ?? null,
+      nameZh: it.nameZh ?? null,
+      unitPriceCents: it.unitPriceCents ?? 0,
+      optionsJson: it.optionsJson ?? undefined,
+    }));
+
+    return {
+      orderStableId,
+      orderNumber,
+
+      status: order.status as OrderStatus,
+      channel: order.channel,
+      fulfillmentType: order.fulfillmentType,
+
+      paymentMethod: order.paymentMethod ?? null,
+
+      pickupCode: order.pickupCode ?? null,
+
+      contactName: order.contactName ?? null,
+      contactPhone: order.contactPhone ?? null,
+
+      deliveryType: order.deliveryType ?? null,
+      deliveryProvider: order.deliveryProvider ?? null,
+      deliveryEtaMinMinutes: order.deliveryEtaMinMinutes ?? null,
+      deliveryEtaMaxMinutes: order.deliveryEtaMaxMinutes ?? null,
+
+      subtotalCents: order.subtotalCents ?? 0,
+      taxCents: order.taxCents ?? 0,
+      deliveryFeeCents: order.deliveryFeeCents ?? 0,
+      totalCents: order.totalCents ?? 0,
+
+      couponCodeSnapshot: order.couponCodeSnapshot ?? null,
+      couponTitleSnapshot: order.couponTitleSnapshot ?? null,
+      couponDiscountCents: order.couponDiscountCents ?? 0,
+
+      loyaltyRedeemCents: order.loyaltyRedeemCents ?? 0,
+
+      createdAt: order.createdAt.toISOString(),
+      paidAt: order.paidAt ? order.paidAt.toISOString() : null,
+
+      items,
+    };
   }
 
   /**
