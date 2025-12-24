@@ -116,7 +116,7 @@ export default function OrderDetailPage({ params }: PageProps) {
     return () => {
       cancelled = true;
     };
-  }, [orderId]);
+  }, [isZh, orderId]);
 
   const statusIndex = useMemo(() => {
     if (!order) return -1;

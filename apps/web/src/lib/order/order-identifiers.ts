@@ -9,27 +9,29 @@ export type OrderIdentifiers = {
  * 把各种历史字段统一成：stableId + clientRequestId (+ dbId 可选)
  * 重点：前端后续只使用返回值的 stableId/clientRequestId
  */
-export function normalizeOrderIdentifiers(raw: any): OrderIdentifiers {
+export function normalizeOrderIdentifiers(raw: unknown): OrderIdentifiers {
+  const data =
+    typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
   const stableId =
-    raw?.stableId ??
-    raw?.orderStableId ??
-    raw?.stable_id ??
-    raw?.id; // 仅用于兼容：如果旧接口把 stableId 放在 id
+    data.stableId ??
+    data.orderStableId ??
+    data.stable_id ??
+    data.id; // 仅用于兼容：如果旧接口把 stableId 放在 id
 
   if (typeof stableId !== "string" || !stableId) {
     throw new Error("Order missing stableId");
   }
 
+  const rawClientRequestId =
+    data.clientRequestId ?? data.client_request_id ?? data.orderNumber ?? null;
   const clientRequestId =
-    raw?.clientRequestId ??
-    raw?.client_request_id ??
-    raw?.orderNumber ??
-    null;
+    typeof rawClientRequestId === "string" && rawClientRequestId
+      ? rawClientRequestId
+      : null;
 
-  const dbId =
-    raw?.dbId ??
-    raw?.internalId ??
-    (raw?.id && raw?.stableId ? raw.id : null); // 仅在明确区分时保留
+  const rawDbId =
+    data.dbId ?? data.internalId ?? (data.id && data.stableId ? data.id : null); // 仅在明确区分时保留
+  const dbId = typeof rawDbId === "string" && rawDbId ? rawDbId : null;
 
   return { stableId, clientRequestId, dbId };
 }
