@@ -1151,7 +1151,9 @@ export class OrdersService {
       typeof dto.clientRequestId === 'string'
         ? dto.clientRequestId.trim()
         : undefined;
-    const normalizedLegacyRequestId = normalizeStableId(providedClientRequestId);
+    const normalizedLegacyRequestId = normalizeStableId(
+      providedClientRequestId,
+    );
     const stableKey =
       normalizedHeaderKey ??
       normalizedBodyStableId ??
