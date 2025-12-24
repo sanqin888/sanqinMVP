@@ -14,7 +14,7 @@ class IsStableIdConstraint implements ValidatorConstraintInterface {
   }
 
   defaultMessage(args: ValidationArguments): string {
-    return `${args.property} must be a cuid/uuid`;
+    return `${args.property} must be a cuid`;
   }
 }
 
