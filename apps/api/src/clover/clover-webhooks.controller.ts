@@ -17,7 +17,9 @@ import { CloverService } from './clover.service';
 import { normalizeStableId } from '../common/utils/stable-id';
 
 const CLIENT_REQUEST_ID_RE = /^SQ\d{10}$/;
-const normalizeClientRequestId = (value?: string | null): string | undefined => {
+const normalizeClientRequestId = (
+  value?: string | null,
+): string | undefined => {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim().toUpperCase();
   return CLIENT_REQUEST_ID_RE.test(trimmed) ? trimmed : undefined;
@@ -195,7 +197,10 @@ export class CloverHcoWebhookController {
         ) ?? undefined;
       const clientRequestId = normalizeClientRequestId(intent.referenceId);
 
-      const orderDto = buildOrderDtoFromMetadata(intent.metadata, orderStableId);
+      const orderDto = buildOrderDtoFromMetadata(
+        intent.metadata,
+        orderStableId,
+      );
       if (clientRequestId) {
         orderDto.clientRequestId = clientRequestId;
       }
@@ -204,10 +209,7 @@ export class CloverHcoWebhookController {
         orderStableId ?? normalizeStableId(intent.id) ?? undefined;
 
       // 1) 先建订单（默认 pending）
-      const order = await this.orders.createInternal(
-        orderDto,
-        idempotencyKey,
-      );
+      const order = await this.orders.createInternal(orderDto, idempotencyKey);
 
       // 2) 在线支付成功的单，直接把状态推进到 'paid'（触发 loyalty 结算）
       const finalized = await this.orders.updateStatusInternal(

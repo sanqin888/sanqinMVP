@@ -89,11 +89,12 @@ export class CloverPayController {
     const currency = dto.currency ?? HOSTED_CHECKOUT_CURRENCY;
     const clientRequestId = buildClientRequestId();
     const orderStableId = generateStableId();
-    const returnUrlBase =
-      normalizeReturnUrlBase(dto.returnUrlBase) ??
+    const { returnUrlBase, ...dtoRest } = dto;
+    const normalizedReturnUrlBase =
+      normalizeReturnUrlBase(returnUrlBase) ??
       normalizeReturnUrlBase(dto.returnUrl);
-    const returnUrl = returnUrlBase
-      ? `${returnUrlBase}/${encodeURIComponent(orderStableId)}`
+    const returnUrl = normalizedReturnUrlBase
+      ? `${normalizedReturnUrlBase}/${encodeURIComponent(orderStableId)}`
       : undefined;
     const metadataWithIds = {
       ...metadata,
@@ -157,7 +158,6 @@ export class CloverPayController {
     }
 
     // ⭐ 金额 > 0 的情况：正常走 Clover Hosted Checkout
-    const { returnUrlBase: _returnUrlBase, ...dtoRest } = dto;
     const checkoutRequest = {
       ...dtoRest,
       returnUrl,
