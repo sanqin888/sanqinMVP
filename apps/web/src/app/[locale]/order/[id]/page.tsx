@@ -1,4 +1,4 @@
-///Users/apple/sanqinMVP/apps/web/src/app/[locale]/order/[id]/page.tsx
+//Users/apple/sanqinMVP/apps/web/src/app/[locale]/order/[id]/page.tsx
 'use client';
 
 import { use, useEffect, useMemo, useState } from 'react';
@@ -59,6 +59,26 @@ type PageProps = {
   params: Promise<PageParams>;
 };
 
+function formatOrderStatus(status: OrderStatus, isZh: boolean): string {
+  const zh: Record<OrderStatus, string> = {
+    pending: '待支付',
+    paid: '已支付',
+    making: '制作中',
+    ready: '待取餐',
+    completed: '已完成',
+    refunded: '已退款',
+  };
+  const en: Record<OrderStatus, string> = {
+    pending: 'Pending',
+    paid: 'Paid',
+    making: 'In progress',
+    ready: 'Ready',
+    completed: 'Completed',
+    refunded: 'Refunded',
+  };
+  return isZh ? zh[status] : en[status];
+}
+
 export default function OrderDetailPage({ params }: PageProps) {
   const { id: orderIdRaw, locale: localeRaw } = use(params);
   const orderId = orderIdRaw ?? '';
@@ -72,7 +92,11 @@ export default function OrderDetailPage({ params }: PageProps) {
     let cancelled = false;
     async function load() {
       if (!isStableId(orderId)) {
-        setError('无效的订单 ID，需为 cuid/uuid');
+        setError(
+          isZh
+            ? '无效的订单 ID（需为 cuid）'
+            : 'Invalid order id (must be cuid)',
+        );
         setLoading(false);
         return;
       }
@@ -92,7 +116,7 @@ export default function OrderDetailPage({ params }: PageProps) {
     return () => {
       cancelled = true;
     };
-  }, [orderId]);
+  }, [isZh, orderId]);
 
   const statusIndex = useMemo(() => {
     if (!order) return -1;
@@ -154,7 +178,7 @@ export default function OrderDetailPage({ params }: PageProps) {
     <main className="mx-auto max-w-3xl space-y-6 p-6">
 <div className="flex items-center justify-between">
   <div>
-    <h1 className="text-2xl font-semibold">订单详情</h1>
+    <h1 className="text-2xl font-semibold">{isZh ? '订单详情' : 'Order details'}</h1>
     <p className="text-sm text-gray-500 break-all">ID: {orderId}</p>
   </div>
   <Link
@@ -172,7 +196,7 @@ export default function OrderDetailPage({ params }: PageProps) {
         <section className="space-y-4 rounded-lg border p-4 shadow-sm">
           <div className="flex flex-wrap items-center gap-4">
             <span className="rounded bg-gray-900 px-2 py-1 text-xs font-medium uppercase tracking-wide text-white">
-              {order.status}
+              {formatOrderStatus(order.status, isZh)}
             </span>
             {order.clientRequestId && (
               <span className="text-sm text-gray-600">
@@ -331,7 +355,7 @@ export default function OrderDetailPage({ params }: PageProps) {
           </div>
 
           <div className="text-xs text-gray-500">
-            深链规范：<code className="rounded bg-gray-100 px-1 py-0.5">sanqin://order/{order.id}</code>
+            深链规范：<code className="rounded bg-gray-100 px-1 py-0.5">sanqin://order/{orderId}</code>
           </div>
         </section>
       )}

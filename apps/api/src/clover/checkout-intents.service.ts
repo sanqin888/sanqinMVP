@@ -1,4 +1,4 @@
-///Users/apple/sanqinMVP/apps/api/src/clover
+///Users/apple/sanqinMVP/apps/api/src/clover/checkout-intents.service.ts
 import { Injectable } from '@nestjs/common';
 import { CheckoutIntent, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';

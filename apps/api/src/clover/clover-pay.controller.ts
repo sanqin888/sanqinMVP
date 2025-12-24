@@ -19,7 +19,36 @@ import {
   buildOrderDtoFromMetadata,
 } from './hco-metadata';
 import { OrdersService } from '../orders/orders.service';
-import { normalizeStableId } from '../common/utils/stable-id';
+import { generateStableId } from '../common/utils/stable-id';
+
+const CLIENT_REQUEST_ID_TZ = 'America/Toronto';
+
+const formatTorontoYYMMDD = (): string => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: CLIENT_REQUEST_ID_TZ,
+    year: '2-digit',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const yy = parts.find((p) => p.type === 'year')?.value ?? '00';
+  const mm = parts.find((p) => p.type === 'month')?.value ?? '00';
+  const dd = parts.find((p) => p.type === 'day')?.value ?? '00';
+  return `${yy}${mm}${dd}`;
+};
+
+const buildClientRequestId = (): string => {
+  const rand = Math.floor(Math.random() * 10000)
+    .toString()
+    .padStart(4, '0');
+  return `SQ${formatTorontoYYMMDD()}${rand}`;
+};
+
+const normalizeReturnUrlBase = (value?: string | null): string | undefined => {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
+};
 
 @Controller('clover')
 export class CloverPayController {
@@ -58,20 +87,25 @@ export class CloverPayController {
     }
 
     const currency = dto.currency ?? HOSTED_CHECKOUT_CURRENCY;
-    const trimmedReference = dto.referenceId?.trim();
-    const referenceIdBase =
-      trimmedReference && trimmedReference.length > 0
-        ? trimmedReference
-        : undefined;
+    const clientRequestId = buildClientRequestId();
+    const orderStableId = generateStableId();
+    const { returnUrlBase, ...dtoRest } = dto;
+    const normalizedReturnUrlBase =
+      normalizeReturnUrlBase(returnUrlBase) ??
+      normalizeReturnUrlBase(dto.returnUrl);
+    const returnUrl = normalizedReturnUrlBase
+      ? `${normalizedReturnUrlBase}/${encodeURIComponent(orderStableId)}`
+      : undefined;
+    const metadataWithIds = {
+      ...metadata,
+      orderStableId,
+    } satisfies HostedCheckoutMetadata;
 
     const locale = metadata.locale;
 
     // ⭐ 0 元订单：不走 Clover，直接用积分支付并创建已支付订单
     if (typeof dto.amountCents === 'number' && dto.amountCents <= 0) {
-      const referenceId =
-        referenceIdBase ??
-        metadata.customer.phone ??
-        `LOYALTY-${Date.now().toString(36)}`;
+      const referenceId = clientRequestId;
 
       // 先记录 CheckoutIntent（状态 pending）
       const intent = await this.checkoutIntents.recordIntent({
@@ -80,17 +114,15 @@ export class CloverPayController {
         amountCents: dto.amountCents,
         currency,
         locale,
-        metadata,
+        metadata: metadataWithIds,
       });
 
       // 用和 webhook 一样的逻辑，从 metadata 生成 CreateOrderDto
       const orderDto = buildOrderDtoFromMetadata(
-        metadata,
-        normalizeStableId(referenceId) ?? undefined,
+        metadataWithIds,
+        orderStableId,
       );
-      if (referenceId) {
-        orderDto.clientRequestId = referenceId;
-      }
+      orderDto.clientRequestId = clientRequestId;
 
       // 创建并立即标记为已支付（内部会计算金额 + 调 loyalty.settleOnPaid）
       const order = await this.orders.createImmediatePaid(orderDto);
@@ -109,7 +141,10 @@ export class CloverPayController {
 
       // thank-you 页参数：优先用稳定号，其次 UUID
       const routeLocale = locale ?? 'zh';
-      const orderParam = order.orderStableId ?? order.id;
+      const orderParam = order.orderStableId;
+      if (!orderParam) {
+        throw new BadGatewayException('orderStableId missing');
+      }
       const checkoutUrl = `/${routeLocale}/thank-you/${encodeURIComponent(
         orderParam,
       )}`;
@@ -117,11 +152,22 @@ export class CloverPayController {
       return {
         checkoutUrl,
         checkoutId: null,
+        orderStableId: orderParam,
+        orderNumber: clientRequestId,
       };
     }
 
     // ⭐ 金额 > 0 的情况：正常走 Clover Hosted Checkout
-    const result = await this.clover.createHostedCheckout(dto);
+    const checkoutRequest = {
+      ...dtoRest,
+      returnUrl,
+      referenceId: clientRequestId,
+      description: dto.description ?? `San Qin online order ${clientRequestId}`,
+      orderId: orderStableId,
+      metadata: metadataWithIds,
+    };
+
+    const result = await this.clover.createHostedCheckout(checkoutRequest);
 
     if (!result.ok) {
       const friendly = interpretCheckoutFailure(result.reason);
@@ -141,8 +187,7 @@ export class CloverPayController {
       });
     }
 
-    const referenceId =
-      referenceIdBase ?? result.checkoutSessionId ?? metadata.customer.phone;
+    const referenceId = clientRequestId;
 
     await this.checkoutIntents.recordIntent({
       referenceId,
@@ -150,12 +195,14 @@ export class CloverPayController {
       amountCents: dto.amountCents,
       currency,
       locale,
-      metadata,
+      metadata: metadataWithIds,
     });
 
     return {
       checkoutUrl: result.href,
       checkoutId: result.checkoutSessionId,
+      orderStableId,
+      orderNumber: clientRequestId,
     };
   }
 }

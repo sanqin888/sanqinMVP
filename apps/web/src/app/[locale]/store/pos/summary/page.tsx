@@ -7,6 +7,7 @@ import { useParams } from "next/navigation";
 import type { Locale } from "@/lib/order/shared";
 import { apiFetch } from "@/lib/api-client";
 
+type BusinessConfigLite = { timezone: string };
 const COPY = {
   zh: {
     title: "当日小结",
@@ -168,20 +169,88 @@ function errMessage(e: unknown): string {
   }
 }
 
-function buildUtcRange(dateStart: string, dateEnd: string): { timeMin: string; timeMax: string } {
-  const today = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const localYMD = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+function ymdInTimeZone(date: Date, timeZone: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(date);
+    const y = parts.find((p) => p.type === "year")?.value ?? "0000";
+    const m = parts.find((p) => p.type === "month")?.value ?? "01";
+    const d = parts.find((p) => p.type === "day")?.value ?? "01";
+    return `${y}-${m}-${d}`;
+  } catch {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+}
 
-  const startYmd = dateStart || localYMD;
+function addDaysYmd(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split("-").map((x) => Number(x));
+  const base = new Date(Date.UTC(y, (m ?? 1) - 1, d ?? 1, 0, 0, 0));
+  base.setUTCDate(base.getUTCDate() + days);
+  const yy = base.getUTCFullYear();
+  const mm = String(base.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(base.getUTCDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}
+
+function getTimeZoneOffsetMillis(timeZone: string, date: Date): number {
+  // offset = (same wall-clock interpreted as UTC) - (actual UTC millis)
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
+  const parts = dtf.formatToParts(date);
+  const pick = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value;
+
+  const year = Number(pick("year"));
+  const month = Number(pick("month"));
+  const day = Number(pick("day"));
+  const hour = Number(pick("hour"));
+  const minute = Number(pick("minute"));
+  const second = Number(pick("second"));
+
+  const asUtc = Date.UTC(year, month - 1, day, hour, minute, second);
+  return asUtc - date.getTime();
+}
+
+function zonedMidnightToUtcIso(ymd: string, timeZone: string): string {
+  const [y, m, d] = ymd.split("-").map((x) => Number(x));
+  // 初始猜测：UTC 午夜
+  const guess0 = new Date(Date.UTC(y, m - 1, d, 0, 0, 0));
+  // 迭代两次，覆盖 DST 边界
+  const off0 = getTimeZoneOffsetMillis(timeZone, guess0);
+  const guess1 = new Date(Date.UTC(y, m - 1, d, 0, 0, 0) - off0);
+  const off1 = getTimeZoneOffsetMillis(timeZone, guess1);
+  const exact = new Date(Date.UTC(y, m - 1, d, 0, 0, 0) - off1);
+  return exact.toISOString();
+}
+
+function buildUtcRange(
+  dateStart: string,
+  dateEnd: string,
+  timeZone: string,
+): { timeMin: string; timeMax: string } {
+  const todayYmd = ymdInTimeZone(new Date(), timeZone);
+  const startYmd = dateStart || todayYmd;
   const endYmd = dateEnd || startYmd;
 
-  // 以浏览器本地时区构造 00:00:00，再转 ISO（UTC）
-  const startLocal = new Date(`${startYmd}T00:00:00`);
-  const endLocal = new Date(`${endYmd}T00:00:00`);
-  endLocal.setDate(endLocal.getDate() + 1);
-
-  return { timeMin: startLocal.toISOString(), timeMax: endLocal.toISOString() };
+  const timeMin = zonedMidnightToUtcIso(startYmd, timeZone);
+  // timeMax = endYmd 次日 00:00（门店时区）
+  const timeMax = zonedMidnightToUtcIso(addDaysYmd(endYmd, 1), timeZone);
+  return { timeMin, timeMax };
 }
 
 function downloadCsv(filename: string, csvText: string) {
@@ -254,6 +323,25 @@ export default function PosDailySummaryPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [data, setData] = useState<PosDailySummaryResponse | null>(null);
 
+  const [storeTimezone, setStoreTimezone] = useState<string>(() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    } catch {
+      return "UTC";
+    }
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const cfg = await apiFetch<BusinessConfigLite>("/admin/business/config").catch(() => null);
+      if (cancelled) return;
+      const tz = cfg?.timezone?.trim() || (Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+      setStoreTimezone(tz);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   useEffect(() => {
     const ac = new AbortController();
 
@@ -262,7 +350,7 @@ export default function PosDailySummaryPage() {
       setErrorMsg(null);
 
       try {
-        const { timeMin, timeMax } = buildUtcRange(filters.dateStart, filters.dateEnd);
+        const { timeMin, timeMax } = buildUtcRange(filters.dateStart, filters.dateEnd, storeTimezone || "UTC");
         const qs = new URLSearchParams({
           timeMin,
           timeMax,
@@ -295,20 +383,20 @@ export default function PosDailySummaryPage() {
     run();
     return () => ac.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.dateStart, filters.dateEnd, filters.channel, filters.status, filters.payment]);
+  }, [filters.dateStart, filters.dateEnd, filters.channel, filters.status, filters.payment, storeTimezone]);
 
   const orders = useMemo<OrderRow[]>(() => {
     if (!data) return [];
     return data.orders.map((o) => ({
       id: o.id,
       clientRequestId: o.clientRequestId ?? "--",
-      date: new Date(o.createdAt).toLocaleString(),
+      date: new Date(o.createdAt).toLocaleString(locale === "zh" ? "zh-CN" : "en-US", { timeZone: storeTimezone || "UTC" }),
       channel: o.fulfillmentType,
       status: o.statusBucket,
       payment: o.payment,
       amountCents: o.netCents,
     }));
-  }, [data]);
+  }, [data, locale, storeTimezone]);
 
   const filteredOrders = orders;
   const selectedOrder = filteredOrders.find((order) => order.id === selectedOrderId);

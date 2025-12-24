@@ -30,8 +30,6 @@ const locale = (SUPPORTED.includes(rawLocale as Locale)
 const t = UI_STRINGS[locale].thankYou;
   const order = orderParam ?? "";
   const alt = locale === "zh" ? "en" : "zh";
-  const pickupCode =
-    typeof order === "string" && order.length >= 4 ? order.slice(-4) : "";
 
   return (
     <main className="mx-auto max-w-3xl p-6 sm:p-10">
@@ -54,24 +52,9 @@ const t = UI_STRINGS[locale].thankYou;
         </h1>
         <p className="text-center text-slate-600 mb-8">{t.intro}</p>
 
-        <div className="mx-auto max-w-md rounded-2xl border bg-white p-6 sm:p-8 text-center mb-8">
-          <div className="text-sm text-slate-500 mb-2">{t.numberLabel}</div>
-          <div className="text-2xl sm:text-3xl font-extrabold tracking-wider">
-            {order}
-          </div>
-          {pickupCode ? (
-            <p className="mt-2 text-sm text-slate-700">
-              {locale === "zh"
-                ? `取餐码：${pickupCode}（订单编号的后四位）`
-                : `Pickup code: ${pickupCode} (last 4 digits of your order number)`}
-            </p>
-          ) : null}
-          <p className="mt-3 text-xs text-slate-500">{t.note}</p>
-        </div>
-
         {/* ✅ 新增：订单小结（从后端拉菜品/金额清单） */}
         {order ? (
-          <OrderSummaryClient orderNumber={order} locale={locale} />
+          <OrderSummaryClient orderStableId={order} locale={locale} />
         ) : null}
 
         <div className="mt-8 space-y-3 text-center">
