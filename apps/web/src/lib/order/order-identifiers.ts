@@ -10,7 +10,8 @@ export type OrderIdentifiers = {
  * 重点：前端后续只使用返回值的 stableId/clientRequestId
  */
 export function normalizeOrderIdentifiers(raw: unknown): OrderIdentifiers {
-  const data = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+  const data =
+    typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
   const stableId =
     data.stableId ??
     data.orderStableId ??
@@ -21,16 +22,16 @@ export function normalizeOrderIdentifiers(raw: unknown): OrderIdentifiers {
     throw new Error("Order missing stableId");
   }
 
+  const rawClientRequestId =
+    data.clientRequestId ?? data.client_request_id ?? data.orderNumber ?? null;
   const clientRequestId =
-    data.clientRequestId ??
-    data.client_request_id ??
-    data.orderNumber ??
-    null;
+    typeof rawClientRequestId === "string" && rawClientRequestId
+      ? rawClientRequestId
+      : null;
 
-  const dbId =
-    data.dbId ??
-    data.internalId ??
-    (data.id && data.stableId ? data.id : null); // 仅在明确区分时保留
+  const rawDbId =
+    data.dbId ?? data.internalId ?? (data.id && data.stableId ? data.id : null); // 仅在明确区分时保留
+  const dbId = typeof rawDbId === "string" && rawDbId ? rawDbId : null;
 
   return { stableId, clientRequestId, dbId };
 }

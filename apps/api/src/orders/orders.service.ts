@@ -2009,12 +2009,12 @@ export class OrdersService {
     destination: UberDirectDropoffDetails,
   ): Promise<OrderWithItems> {
     // ✅ 第三方识别：stableId；给人看：SQ 单号
-    const thirdPartyOrderId = order.orderStableId ?? '';
+    const thirdPartyOrderId = order.clientRequestId ?? order.orderStableId ?? '';
     const humanRef = order.clientRequestId ?? order.orderStableId ?? '';
 
     const response: DoorDashDeliveryResult =
       await this.doorDashDrive.createDelivery({
-        orderId: thirdPartyOrderId, // ✅ 外发：stableId（cuid）
+        orderId: thirdPartyOrderId, // ✅ 外发：优先 clientRequestId
         pickupCode: order.pickupCode ?? undefined,
         reference: humanRef, // ✅ 仅用于人类识别（SQYYMMDD####）
         totalCents: order.totalCents ?? 0,
