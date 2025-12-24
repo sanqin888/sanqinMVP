@@ -2044,12 +2044,13 @@ export class OrdersService {
     order: OrderWithItems,
     destination: UberDirectDropoffDetails,
   ): Promise<OrderWithItems> {
-    const thirdPartyOrderId = order.orderStableId ?? '';
+    const thirdPartyOrderId =
+      order.clientRequestId ?? order.orderStableId ?? '';
     const humanRef = order.clientRequestId ?? order.orderStableId ?? '';
 
     const response: UberDirectDeliveryResult =
       await this.uberDirect.createDelivery({
-        orderId: thirdPartyOrderId, // ✅ 外发：stableId（cuid）
+        orderId: thirdPartyOrderId, // ✅ 外发：优先 clientRequestId
         pickupCode: order.pickupCode ?? undefined,
         reference: humanRef,
         totalCents: order.totalCents ?? 0,
