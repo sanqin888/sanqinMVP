@@ -32,7 +32,7 @@ export default function DeliveryDetailPage({ params }: PageProps) {
 
       {!validId && (
         <div className="rounded border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800">
-          无效的配送 ID，需为 cuid/uuid。
+          无效的配送 ID，需为 cuid。
         </div>
       )}
 

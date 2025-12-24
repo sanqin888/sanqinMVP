@@ -23,6 +23,7 @@ type BoardOrder = {
 
   // ✅ stableId 为非空字段：本页去重 / 打印 / 推进状态全用它
   orderStableId: string;
+  orderNumber?: string;
 
   channel: "web" | "in_store" | "ubereats";
   status: "paid" | "making" | "ready" | "completed" | "refunded";
@@ -358,6 +359,7 @@ export default function StoreBoardPage() {
       <section className="p-4 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
         {orders.map((order) => {
           const stableId = order.orderStableId;
+          const displayOrderNumber = order.orderNumber ?? stableId;
           const isWeb = order.channel === "web";
           const nextStatus = NEXT_STATUS[order.status];
           const advanceLabel = nextStatus
@@ -381,7 +383,7 @@ export default function StoreBoardPage() {
                 <div>
                   <div className="text-xs text-slate-400">{t.orderIdLabel}</div>
                   <div className="text-sm font-medium text-slate-200">
-                    {stableId}
+                    {displayOrderNumber}
                   </div>
 
                   {order.pickupCode && (

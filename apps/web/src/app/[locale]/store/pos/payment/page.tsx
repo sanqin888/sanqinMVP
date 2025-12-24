@@ -15,9 +15,8 @@ type FulfillmentType = "pickup" | "dine_in";
 type PaymentMethod = "cash" | "card" | "wechat_alipay";
 
 type CreatePosOrderResponse = {
-  id: string;
-  orderStableId?: string | null;
-  clientRequestId?: string | null;
+  orderStableId: string;
+  orderNumber: string;
   pickupCode?: string | null;
 };
 
@@ -435,7 +434,6 @@ export default function StorePosPaymentPage() {
     }
 
     try {
-      const clientRequestId = `SQ${Date.now().toString().slice(-6)}`;
       const itemsPayload = snapshot.items.map((item) => ({
         productStableId: item.stableId,
         qty: item.quantity,
@@ -466,8 +464,6 @@ export default function StorePosPaymentPage() {
         userId: memberInfo?.userId ?? undefined,
         pointsToRedeem: pointsToRedeem > 0 ? pointsToRedeem : undefined,
         contactPhone: memberInfo?.phone ?? undefined,
-        clientRequestId,
-
       };
 
       // 👉 调试用：你可以先打开这一行看看真实发出去是什么
@@ -479,11 +475,7 @@ export default function StorePosPaymentPage() {
         body: JSON.stringify(body),
       });
 
-      const orderNumber =
-        order.clientRequestId ??
-        clientRequestId ??
-        order.orderStableId ??
-        order.id;
+      const orderNumber = order.orderNumber ?? order.orderStableId;
       const pickupCode = order.pickupCode ?? null;
 
       // ✅ 打印：发送给本地打印服务（无弹窗）
@@ -509,9 +501,9 @@ export default function StorePosPaymentPage() {
         pickupCode,
       });
 
-      if (order.id) {
+      if (order.orderStableId) {
         try {
-          await apiFetch(`/orders/${order.id}/advance`, {
+          await apiFetch(`/orders/${order.orderStableId}/advance`, {
             method: "POST",
           });
         } catch (advanceError) {
