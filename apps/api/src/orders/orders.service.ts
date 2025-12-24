@@ -2009,7 +2009,8 @@ export class OrdersService {
     destination: UberDirectDropoffDetails,
   ): Promise<OrderWithItems> {
     // ✅ 第三方识别：stableId；给人看：SQ 单号
-    const thirdPartyOrderId = order.clientRequestId ?? order.orderStableId ?? '';
+    const thirdPartyOrderId =
+      order.clientRequestId ?? order.orderStableId ?? '';
     const humanRef = order.clientRequestId ?? order.orderStableId ?? '';
 
     const response: DoorDashDeliveryResult =
