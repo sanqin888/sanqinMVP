@@ -124,6 +124,8 @@ type DeliveryPricingConfig = {
 @Injectable()
 export class OrdersService {
   private readonly logger = new AppLogger(OrdersService.name);
+  private readonly ORDER_NUMBER_TZ = 'America/Toronto';
+  private readonly CLIENT_REQUEST_ID_RE = /^SQ\d{10}$/;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -196,6 +198,55 @@ export class OrdersService {
 
       items,
     };
+  }
+  private isClientRequestId(value: unknown): value is string {
+    return typeof value === 'string' && this.CLIENT_REQUEST_ID_RE.test(value);
+  }
+
+  private formatTorontoYYMMDD(date: Date): string {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: this.ORDER_NUMBER_TZ,
+      year: '2-digit',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(date);
+
+    const yy = parts.find((p) => p.type === 'year')?.value ?? '00';
+    const mm = parts.find((p) => p.type === 'month')?.value ?? '00';
+    const dd = parts.find((p) => p.type === 'day')?.value ?? '00';
+    return `${yy}${mm}${dd}`;
+  }
+
+  private buildClientRequestIdCandidate(now: Date): string {
+    const yymmdd = this.formatTorontoYYMMDD(now);
+    const rand = crypto.randomInt(0, 10000).toString().padStart(4, '0');
+    return `SQ${yymmdd}${rand}`;
+  }
+
+  private async allocateClientRequestIdTx(
+    tx: Prisma.TransactionClient,
+  ): Promise<string> {
+    const now = new Date();
+    // 预检查 + 少量重试（并发下仍以 DB unique 为最终兜底）
+    for (let i = 0; i < 10; i++) {
+      const candidate = this.buildClientRequestIdCandidate(now);
+      const exists = await tx.order.findUnique({
+        where: { clientRequestId: candidate },
+        select: { id: true },
+      });
+      if (!exists) return candidate;
+    }
+    throw new BadRequestException('failed to allocate clientRequestId');
+  }
+
+  private isClientRequestIdUniqueViolation(error: unknown): boolean {
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
+    if (error.code !== 'P2002') return false;
+    const meta = error.meta as { target?: unknown } | undefined;
+    const target = meta?.target;
+    if (Array.isArray(target)) return target.includes('clientRequestId');
+    if (typeof target === 'string') return target.includes('clientRequestId');
+    return false;
   }
 
   /**
@@ -1096,17 +1147,17 @@ export class OrdersService {
         ? dto.orderStableId.trim()
         : undefined;
     const normalizedBodyStableId = normalizeStableId(bodyStableId);
-    const legacyRequestId =
-      typeof dto.clientRequestId === 'string'
-        ? dto.clientRequestId.trim()
-        : undefined;
-    const normalizedLegacyRequestId = normalizeStableId(legacyRequestId);
+    const providedClientRequestId =
+      typeof dto.clientRequestId === 'string' ? dto.clientRequestId.trim() : undefined;
+    const normalizedLegacyRequestId = normalizeStableId(providedClientRequestId);
     const stableKey =
       normalizedHeaderKey ??
       normalizedBodyStableId ??
       normalizedLegacyRequestId;
     const legacyKey =
-      legacyRequestId && legacyRequestId.length > 0 ? legacyRequestId : null;
+      providedClientRequestId && providedClientRequestId.length > 0
+        ? providedClientRequestId
+        : null;
 
     if (stableKey || legacyKey) {
       const existing = await this.prisma.order.findFirst({
@@ -1212,7 +1263,13 @@ export class OrdersService {
 
     const orderId = crypto.randomUUID();
 
-    let order: OrderWithItems = await this.prisma.$transaction(async (tx) => {
+    // ✅ clientRequestId 由服务端生成：SQ + YYMMDD + 4位随机；并用 unique 冲突重试兜底
+    for (let attempt = 0; attempt < 10; attempt++) {
+      try {
+        const order: OrderWithItems = await this.prisma.$transaction(async (tx) => {
+          const clientRequestId = this.isClientRequestId(providedClientRequestId)
+            ? providedClientRequestId
+            : await this.allocateClientRequestIdTx(tx);
       const couponInfo = await this.membership.validateCouponForOrder(
         {
           userId: dto.userId,
@@ -1262,7 +1319,7 @@ export class OrdersService {
           paymentMethod,
           userId: dto.userId ?? null,
           ...(stableKey ? { orderStableId: stableKey } : {}),
-          ...(legacyRequestId ? { clientRequestId: legacyRequestId } : {}),
+          clientRequestId,
           channel: dto.channel,
           fulfillmentType: dto.fulfillmentType,
           contactName,
@@ -1309,51 +1366,50 @@ export class OrdersService {
       return created;
     });
 
-    this.logger.log(
-      `${this.formatOrderLogContext({
-        orderId: order.id,
-        orderStableId: order.orderStableId ?? null,
-      })}Order created successfully (Server-side price calculated).`,
-    );
+        this.logger.log(
+          `${this.formatOrderLogContext({
+            orderId: order.id,
+            orderStableId: order.orderStableId ?? null,
+          })}Order created successfully (Server-side price calculated). clientRequestId=${order.clientRequestId ?? 'null'}`,
+        );
 
-    // === 派送逻辑 (DoorDash / Uber) ===
-    const isStandard = dto.deliveryType === DeliveryType.STANDARD;
-    const isPriority = dto.deliveryType === DeliveryType.PRIORITY;
-    const dest = dto.deliveryDestination;
+        // === 派送逻辑 (DoorDash / Uber) ===
+        const isStandard = dto.deliveryType === DeliveryType.STANDARD;
+        const isPriority = dto.deliveryType === DeliveryType.PRIORITY;
+        const dest = dto.deliveryDestination;
 
-    if (dest && (isStandard || isPriority)) {
-      const dropoff = this.normalizeDropoff(dest);
-      const doordashEnabled = process.env.DOORDASH_DRIVE_ENABLED === '1';
-      const uberEnabled = process.env.UBER_DIRECT_ENABLED === '1';
+        if (dest && (isStandard || isPriority)) {
+          const dropoff = this.normalizeDropoff(dest);
+          const doordashEnabled = process.env.DOORDASH_DRIVE_ENABLED === '1';
+          const uberEnabled = process.env.UBER_DIRECT_ENABLED === '1';
 
-      try {
-        if (isStandard && doordashEnabled) {
-          order = await this.dispatchStandardDeliveryWithDoorDash(
-            order,
-            dropoff,
-          );
-        } else if (isPriority && uberEnabled) {
-          order = await this.dispatchPriorityDelivery(order, dropoff);
-        }
-      } catch (error: unknown) {
-        let message = 'unknown';
-        if (error instanceof Error) {
-          message = error.message;
-        } else if (typeof error === 'string') {
-          message = error;
-        } else {
           try {
-            message = JSON.stringify(error);
-          } catch {
-            message = '[unserializable error]';
+            if (isStandard && doordashEnabled) {
+              return await this.dispatchStandardDeliveryWithDoorDash(order, dropoff);
+            } else if (isPriority && uberEnabled) {
+              return await this.dispatchPriorityDelivery(order, dropoff);
+            }
+          } catch (error: unknown) {
+            let message = 'unknown';
+            if (error instanceof Error) message = error.message;
+            else if (typeof error === 'string') message = error;
+            else {
+              try { message = JSON.stringify(error); } catch { message = '[unserializable error]'; }
+            }
+            this.logger.error(`Failed to dispatch delivery: ${message}`);
           }
         }
-        this.logger.error(`Failed to dispatch delivery: ${message}`);
+
+        return order;
+      } catch (e: unknown) {
+        if (this.isClientRequestIdUniqueViolation(e)) {
+          continue; // 冲突重试
+        }
+        throw e;
       }
     }
-
-    return order;
-  }
+    throw new BadRequestException('failed to create order (clientRequestId collisions)');
+   }
 
   async createLoyaltyOnlyOrder(payload: unknown): Promise<OrderDto> {
     if (!payload || typeof payload !== 'object') {
@@ -1414,10 +1470,6 @@ export class OrdersService {
       orderStableId:
         typeof safePayload.referenceId === 'string'
           ? (normalizeStableId(safePayload.referenceId) ?? undefined)
-          : undefined,
-      clientRequestId:
-        typeof safePayload.referenceId === 'string'
-          ? safePayload.referenceId
           : undefined,
       channel: 'web',
       fulfillmentType: meta.fulfillment,
@@ -1935,13 +1987,15 @@ export class OrdersService {
     order: OrderWithItems,
     destination: UberDirectDropoffDetails,
   ): Promise<OrderWithItems> {
-    const externalOrderId = order.clientRequestId ?? order.orderStableId ?? '';
+    // ✅ 第三方识别：stableId；给人看：SQ 单号
+    const thirdPartyOrderId = order.orderStableId ?? '';
+    const humanRef = order.clientRequestId ?? order.orderStableId ?? '';
 
     const response: DoorDashDeliveryResult =
       await this.doorDashDrive.createDelivery({
-        orderId: externalOrderId, // ✅ 外发：clientRequestId（缺省 fallback 稳定）
+        orderId: thirdPartyOrderId, // ✅ 外发：stableId（cuid）
         pickupCode: order.pickupCode ?? undefined,
-        reference: externalOrderId, // ✅ 外发：同一套外部单号
+        reference: humanRef, // ✅ 仅用于人类识别（SQYYMMDD####）
         totalCents: order.totalCents ?? 0,
         items: order.items.map((item) => ({
           name: item.displayName || item.productStableId,
@@ -1968,13 +2022,14 @@ export class OrdersService {
     order: OrderWithItems,
     destination: UberDirectDropoffDetails,
   ): Promise<OrderWithItems> {
-    const externalOrderId = order.clientRequestId ?? order.orderStableId ?? '';
+    const thirdPartyOrderId = order.orderStableId ?? '';
+    const humanRef = order.clientRequestId ?? order.orderStableId ?? '';
 
     const response: UberDirectDeliveryResult =
       await this.uberDirect.createDelivery({
-        orderId: externalOrderId, // ✅ 外发：clientRequestId（缺省 fallback 稳定）
+        orderId: thirdPartyOrderId, // ✅ 外发：stableId（cuid）
         pickupCode: order.pickupCode ?? undefined,
-        reference: externalOrderId,
+        reference: humanRef,
         totalCents: order.totalCents ?? 0,
         items: order.items.map((item) => ({
           name: item.displayName || item.productStableId,

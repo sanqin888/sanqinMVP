@@ -127,6 +127,26 @@ type LoyaltyEntry = {
   orderNumber?: string | null;
 };
 
+function formatOrderStatus(status: OrderStatus, isZh: boolean): string {
+  const zh: Record<OrderStatus, string> = {
+    pending: '待支付',
+    paid: '已支付',
+    making: '制作中',
+    ready: '待取餐',
+    completed: '已完成',
+    refunded: '已退款',
+  };
+  const en: Record<OrderStatus, string> = {
+    pending: 'Pending',
+    paid: 'Paid',
+    making: 'In progress',
+    ready: 'Ready',
+    completed: 'Completed',
+    refunded: 'Refunded',
+  };
+  return isZh ? zh[status] : en[status];
+}
+
 function formatCurrency(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
@@ -806,7 +826,9 @@ function OverviewSection({
             </p>
             <p>
               {isZh ? '状态：' : 'Status: '}{' '}
-              {isZh ? '已完成' : 'Completed'}
+              <span className="font-medium text-slate-900">
+                {formatOrderStatus(latestOrder.status, isZh)}
+              </span>
             </p>
             <p className="mt-2">
               <Link
@@ -896,6 +918,9 @@ function OrdersSection({
             <div className="text-right">
               <p className="font-medium text-slate-900">
                 {formatCurrency(order.totalCents)}
+              </p>
+              <p className="mt-1 text-[11px] text-slate-500">
+                {formatOrderStatus(order.status, isZh)}
               </p>
               <p className="mt-1 text-[11px] text-slate-500">
                 {isZh

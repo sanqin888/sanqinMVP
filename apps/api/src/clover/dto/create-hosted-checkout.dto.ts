@@ -13,7 +13,7 @@ export const HOSTED_CHECKOUT_CURRENCY = 'CAD' as const;
 
 export class CreateHostedCheckoutDto {
   @IsInt()
-  @Min(1)
+  @Min(0)
   readonly amountCents!: number;
 
   @IsOptional()

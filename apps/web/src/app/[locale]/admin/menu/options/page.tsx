@@ -5,6 +5,16 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import type { Locale } from '@/lib/order/shared';
 import { OptionTemplatesPanel } from '../OptionTemplatesPanel';
+import type { Metadata } from "next";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  return { title: locale === "zh" ? "选项管理" : "Admin Options" };
+}
 
 export default function AdminOptionLibraryPage() {
   const { locale } = useParams<{ locale: Locale }>();

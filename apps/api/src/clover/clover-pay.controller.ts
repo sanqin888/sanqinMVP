@@ -88,9 +88,6 @@ export class CloverPayController {
         metadata,
         normalizeStableId(referenceId) ?? undefined,
       );
-      if (referenceId) {
-        orderDto.clientRequestId = referenceId;
-      }
 
       // 创建并立即标记为已支付（内部会计算金额 + 调 loyalty.settleOnPaid）
       const order = await this.orders.createImmediatePaid(orderDto);
@@ -109,7 +106,10 @@ export class CloverPayController {
 
       // thank-you 页参数：优先用稳定号，其次 UUID
       const routeLocale = locale ?? 'zh';
-      const orderParam = order.orderStableId ?? order.id;
+      const orderParam = order.orderStableId;
+      if (!orderParam) {
+        throw new BadGatewayException('orderStableId missing');
+      }
       const checkoutUrl = `/${routeLocale}/thank-you/${encodeURIComponent(
         orderParam,
       )}`;

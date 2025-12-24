@@ -20,9 +20,14 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) return {};
+
   const { alternates } = localeAlternates(locale);
+
   return {
-    title: locale === "zh" ? "三秦 • 首页" : "San Qin • Home",
+    title: {
+      default: locale === "zh" ? "三秦肉夹馍" : "SanQin Traditional Burger",
+      template: locale === "zh" ? "三秦 • %s" : "SanQin • %s",
+    },
     alternates,
   };
 }
@@ -54,40 +59,23 @@ export default async function I18nLayout({
       <footer className="mx-auto mt-8 max-w-5xl border-t px-4 py-6 text-sm text-gray-500">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap gap-x-4 gap-y-2">
-            <Link
-              href={`/${locale}/membership/rules`}
-              className="hover:text-gray-800"
-            >
+            <Link href={`/${locale}/membership/rules`} className="hover:text-gray-800">
               {isZh ? "会员规则" : "Membership rules"}
             </Link>
-            <Link
-              href={`/${locale}/legal/privacy`}
-              className="hover:text-gray-800"
-            >
+            <Link href={`/${locale}/legal/privacy`} className="hover:text-gray-800">
               {isZh ? "隐私政策" : "Privacy"}
             </Link>
-            <Link
-              href={`/${locale}/legal/terms`}
-              className="hover:text-gray-800"
-            >
+            <Link href={`/${locale}/legal/terms`} className="hover:text-gray-800">
               {isZh ? "网站条款" : "Terms"}
             </Link>
-            <Link
-              href={`/${locale}/legal/refund`}
-              className="hover:text-gray-800"
-            >
+            <Link href={`/${locale}/legal/refund`} className="hover:text-gray-800">
               {isZh ? "退款/取消" : "Refunds"}
             </Link>
-            <Link
-              href={`/${locale}/legal/allergen`}
-              className="hover:text-gray-800"
-            >
+            <Link href={`/${locale}/legal/allergen`} className="hover:text-gray-800">
               {isZh ? "过敏原说明" : "Allergen info"}
             </Link>
           </div>
-          <div className="text-xs text-gray-400">
-            © {year} San Qin. All rights reserved.
-          </div>
+          <div className="text-xs text-gray-400">© {year} San Qin. All rights reserved.</div>
         </div>
       </footer>
     </div>
