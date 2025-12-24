@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import type { Locale } from "@/lib/order/shared";
 import { apiFetch } from "@/lib/api-client";
@@ -219,25 +219,25 @@ export default function StoreBoardPage() {
   const query =
     "/orders/board?status=paid,making,ready&sinceMinutes=180&limit=80";
 
-  const handlePrintFront = (orderStableId: string) => {
+  const handlePrintFront = useCallback((orderStableId: string) => {
     const prefix = `/${locale}`;
     window.open(
       `${prefix}/store/print/front/${orderStableId}`,
       "_blank",
       "width=480,height=800",
     );
-  };
+  }, [locale]);
 
-  const handlePrintKitchen = (orderStableId: string) => {
+  const handlePrintKitchen = useCallback((orderStableId: string) => {
     const prefix = `/${locale}`;
     window.open(
       `${prefix}/store/print/kitchen/${orderStableId}`,
       "_blank",
       "width=480,height=800",
     );
-  };
+  }, [locale]);
 
-  const fetchOrdersAndProcess = async () => {
+  const fetchOrdersAndProcess = useCallback(async () => {
     const data = await apiFetch<BoardOrder[]>(query);
 
     setOrders(data);
@@ -250,7 +250,9 @@ export default function StoreBoardPage() {
       for (const o of data) {
         const sid = o.orderStableId;
         processedSet.add(sid);
-        if (!processedMap[sid]) processedMap[sid] = safeParseCreatedAtMs(o.createdAt);
+        if (!processedMap[sid]) {
+          processedMap[sid] = safeParseCreatedAtMs(o.createdAt);
+        }
       }
       writeProcessedMap(processedMap);
       hasBootstrappedRef.current = true;
@@ -284,7 +286,7 @@ export default function StoreBoardPage() {
         speak(text, locale);
       }
     }
-  };
+  }, [handlePrintFront, handlePrintKitchen, locale, query, t.voiceMany, t.voiceOne]);
 
   // 初始化：读取 localStorage，确保刷新后不重复打印
   useEffect(() => {
@@ -322,7 +324,7 @@ export default function StoreBoardPage() {
       window.clearInterval(timer);
     };
     // 仅 locale 变化时重建轮询（打印 URL 依赖 locale）
-  }, [locale]);
+  }, [fetchOrdersAndProcess]);
 
   const handleAdvance = async (orderStableId: string) => {
     try {

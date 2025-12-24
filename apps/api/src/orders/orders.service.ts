@@ -1148,8 +1148,12 @@ export class OrdersService {
         : undefined;
     const normalizedBodyStableId = normalizeStableId(bodyStableId);
     const providedClientRequestId =
-      typeof dto.clientRequestId === 'string' ? dto.clientRequestId.trim() : undefined;
-    const normalizedLegacyRequestId = normalizeStableId(providedClientRequestId);
+      typeof dto.clientRequestId === 'string'
+        ? dto.clientRequestId.trim()
+        : undefined;
+    const normalizedLegacyRequestId = normalizeStableId(
+      providedClientRequestId,
+    );
     const stableKey =
       normalizedHeaderKey ??
       normalizedBodyStableId ??
@@ -1266,105 +1270,112 @@ export class OrdersService {
     // ✅ clientRequestId 由服务端生成：SQ + YYMMDD + 4位随机；并用 unique 冲突重试兜底
     for (let attempt = 0; attempt < 10; attempt++) {
       try {
-        const order: OrderWithItems = await this.prisma.$transaction(async (tx) => {
-          const clientRequestId = this.isClientRequestId(providedClientRequestId)
-            ? providedClientRequestId
-            : await this.allocateClientRequestIdTx(tx);
-      const couponInfo = await this.membership.validateCouponForOrder(
-        {
-          userId: dto.userId,
-          couponId: dto.couponId,
-          subtotalCents,
-        },
-        { tx },
-      );
+        const order: OrderWithItems = await this.prisma.$transaction(
+          async (tx) => {
+            const clientRequestId = this.isClientRequestId(
+              providedClientRequestId,
+            )
+              ? providedClientRequestId
+              : await this.allocateClientRequestIdTx(tx);
 
-      const couponDiscountCents = couponInfo?.discountCents ?? 0;
-      const subtotalAfterCoupon = Math.max(
-        0,
-        subtotalCents - couponDiscountCents,
-      );
+            const couponInfo = await this.membership.validateCouponForOrder(
+              {
+                userId: dto.userId,
+                couponId: dto.couponId,
+                subtotalCents,
+              },
+              { tx },
+            );
 
-      const redeemValueCents = await this.loyalty.reserveRedeemForOrder({
-        tx,
-        userId: dto.userId,
-        orderId,
-        sourceKey: 'ORDER',
-        requestedPoints,
-        subtotalAfterCoupon,
-      });
+            const couponDiscountCents = couponInfo?.discountCents ?? 0;
+            const subtotalAfterCoupon = Math.max(
+              0,
+              subtotalCents - couponDiscountCents,
+            );
 
-      // 税基计算：(小计 - 优惠券 - 积分) + 配送费
-      const purchaseBaseCents = Math.max(
-        0,
-        subtotalAfterCoupon - redeemValueCents,
-      );
-      const taxableCents =
-        purchaseBaseCents + (isDelivery ? deliveryFeeCustomerCents : 0);
-      const taxCents = Math.round(taxableCents * pricingConfig.salesTaxRate);
+            const redeemValueCents = await this.loyalty.reserveRedeemForOrder({
+              tx,
+              userId: dto.userId,
+              orderId,
+              sourceKey: 'ORDER',
+              requestedPoints,
+              subtotalAfterCoupon,
+            });
 
-      const totalCents =
-        purchaseBaseCents + deliveryFeeCustomerCents + taxCents;
+            // 税基计算：(小计 - 优惠券 - 积分) + 配送费
+            const purchaseBaseCents = Math.max(
+              0,
+              subtotalAfterCoupon - redeemValueCents,
+            );
+            const taxableCents =
+              purchaseBaseCents + (isDelivery ? deliveryFeeCustomerCents : 0);
+            const taxCents = Math.round(
+              taxableCents * pricingConfig.salesTaxRate,
+            );
 
-      const loyaltyRedeemCents = redeemValueCents;
-      const subtotalAfterDiscountCents = Math.max(
-        0,
-        subtotalCents - couponDiscountCents - loyaltyRedeemCents,
-      );
+            const totalCents =
+              purchaseBaseCents + deliveryFeeCustomerCents + taxCents;
 
-      const created = (await tx.order.create({
-        data: {
-          id: orderId,
-          paidAt,
-          paymentMethod,
-          userId: dto.userId ?? null,
-          ...(stableKey ? { orderStableId: stableKey } : {}),
-          clientRequestId,
-          channel: dto.channel,
-          fulfillmentType: dto.fulfillmentType,
-          contactName,
-          contactPhone,
-          // 金额字段
-          subtotalCents,
-          taxCents,
-          totalCents,
-          deliveryFeeCents: deliveryFeeCustomerCents, // ⭐ 写入服务端计算的配送费
-          pickupCode,
-          couponId: couponInfo?.coupon?.id ?? null,
-          couponDiscountCents,
-          couponCodeSnapshot: couponInfo?.coupon?.code,
-          couponTitleSnapshot: couponInfo?.coupon?.title,
-          couponMinSpendCents: couponInfo?.coupon?.minSpendCents,
-          couponExpiresAt: couponInfo?.coupon?.expiresAt,
-          loyaltyRedeemCents,
-          subtotalAfterDiscountCents,
-          ...(deliveryMeta
-            ? {
-                deliveryType: dto.deliveryType,
-                deliveryProvider: deliveryMeta.provider,
-                deliveryEtaMinMinutes: deliveryMeta.etaRange[0],
-                deliveryEtaMaxMinutes: deliveryMeta.etaRange[1],
-              }
-            : {}),
-          items: {
-            create: calculatedItems,
+            const loyaltyRedeemCents = redeemValueCents;
+            const subtotalAfterDiscountCents = Math.max(
+              0,
+              subtotalCents - couponDiscountCents - loyaltyRedeemCents,
+            );
+
+            const created = (await tx.order.create({
+              data: {
+                id: orderId,
+                paidAt,
+                paymentMethod,
+                userId: dto.userId ?? null,
+                ...(stableKey ? { orderStableId: stableKey } : {}),
+                clientRequestId,
+                channel: dto.channel,
+                fulfillmentType: dto.fulfillmentType,
+                contactName,
+                contactPhone,
+                // 金额字段
+                subtotalCents,
+                taxCents,
+                totalCents,
+                deliveryFeeCents: deliveryFeeCustomerCents, // ⭐ 写入服务端计算的配送费
+                pickupCode,
+                couponId: couponInfo?.coupon?.id ?? null,
+                couponDiscountCents,
+                couponCodeSnapshot: couponInfo?.coupon?.code,
+                couponTitleSnapshot: couponInfo?.coupon?.title,
+                couponMinSpendCents: couponInfo?.coupon?.minSpendCents,
+                couponExpiresAt: couponInfo?.coupon?.expiresAt,
+                loyaltyRedeemCents,
+                subtotalAfterDiscountCents,
+                ...(deliveryMeta
+                  ? {
+                      deliveryType: dto.deliveryType,
+                      deliveryProvider: deliveryMeta.provider,
+                      deliveryEtaMinMinutes: deliveryMeta.etaRange[0],
+                      deliveryEtaMaxMinutes: deliveryMeta.etaRange[1],
+                    }
+                  : {}),
+                items: {
+                  create: calculatedItems,
+                },
+              },
+              include: { items: true },
+            })) as OrderWithItems;
+
+            if (couponInfo?.coupon?.id) {
+              await this.membership.reserveCouponForOrder({
+                tx,
+                userId: dto.userId,
+                couponId: couponInfo.coupon.id,
+                subtotalCents,
+                orderId,
+              });
+            }
+
+            return created;
           },
-        },
-        include: { items: true },
-      })) as OrderWithItems;
-
-      if (couponInfo?.coupon?.id) {
-        await this.membership.reserveCouponForOrder({
-          tx,
-          userId: dto.userId,
-          couponId: couponInfo.coupon.id,
-          subtotalCents,
-          orderId,
-        });
-      }
-
-      return created;
-    });
+        );
 
         this.logger.log(
           `${this.formatOrderLogContext({
@@ -1385,8 +1396,12 @@ export class OrdersService {
 
           try {
             if (isStandard && doordashEnabled) {
-              return await this.dispatchStandardDeliveryWithDoorDash(order, dropoff);
-            } else if (isPriority && uberEnabled) {
+              return await this.dispatchStandardDeliveryWithDoorDash(
+                order,
+                dropoff,
+              );
+            }
+            if (isPriority && uberEnabled) {
               return await this.dispatchPriorityDelivery(order, dropoff);
             }
           } catch (error: unknown) {
@@ -1394,7 +1409,11 @@ export class OrdersService {
             if (error instanceof Error) message = error.message;
             else if (typeof error === 'string') message = error;
             else {
-              try { message = JSON.stringify(error); } catch { message = '[unserializable error]'; }
+              try {
+                message = JSON.stringify(error);
+              } catch {
+                message = '[unserializable error]';
+              }
             }
             this.logger.error(`Failed to dispatch delivery: ${message}`);
           }
@@ -1408,8 +1427,10 @@ export class OrdersService {
         throw e;
       }
     }
-    throw new BadRequestException('failed to create order (clientRequestId collisions)');
-   }
+    throw new BadRequestException(
+      'failed to create order (clientRequestId collisions)',
+    );
+  }
 
   async createLoyaltyOnlyOrder(payload: unknown): Promise<OrderDto> {
     if (!payload || typeof payload !== 'object') {
@@ -1988,12 +2009,12 @@ export class OrdersService {
     destination: UberDirectDropoffDetails,
   ): Promise<OrderWithItems> {
     // ✅ 第三方识别：stableId；给人看：SQ 单号
-    const thirdPartyOrderId = order.orderStableId ?? '';
+    const thirdPartyOrderId = order.clientRequestId ?? order.orderStableId ?? '';
     const humanRef = order.clientRequestId ?? order.orderStableId ?? '';
 
     const response: DoorDashDeliveryResult =
       await this.doorDashDrive.createDelivery({
-        orderId: thirdPartyOrderId, // ✅ 外发：stableId（cuid）
+        orderId: thirdPartyOrderId, // ✅ 外发：优先 clientRequestId
         pickupCode: order.pickupCode ?? undefined,
         reference: humanRef, // ✅ 仅用于人类识别（SQYYMMDD####）
         totalCents: order.totalCents ?? 0,
