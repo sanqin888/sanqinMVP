@@ -36,7 +36,7 @@ export type Holiday = {
   reason: string;
 };
 
-// —— 和 /admin/hours 页保持一致的类型 —— //
+// —— 和 /admin/setting 页保持一致的类型 —— //
 type BusinessHourDto = {
   weekday: number; // 0=Sunday ... 6=Saturday
   openMinutes: number | null;
@@ -405,10 +405,10 @@ export default function AdminDashboard() {
       </div>
 
       <SectionCard
-        title="营业时间设置"
+        title="门店信息设置"
         actions={
-          <Link href={`/${locale}/admin/hours`} className="text-xs font-medium text-emerald-700 hover:text-emerald-600">
-            {isZh ? "详细编辑营业时间" : "Edit hours in detail"}
+          <Link href={`/${locale}/admin/setting`} className="text-xs font-medium text-emerald-700 hover:text-emerald-600">
+            {isZh ? "详细编辑门店信息" : "Edit store settings in detail"}
           </Link>
         }
       >
@@ -454,8 +454,8 @@ export default function AdminDashboard() {
       <SectionCard
         title="节假日与临时休假"
         actions={
-          <Link href={`/${locale}/admin/hours`} className="text-xs font-medium text-emerald-700 hover:text-emerald-600">
-            {isZh ? "在营业时间页管理节假日" : "Manage holidays on hours page"}
+          <Link href={`/${locale}/admin/setting`} className="text-xs font-medium text-emerald-700 hover:text-emerald-600">
+            {isZh ? "在门店信息设置页管理节假日" : "Manage holidays on the settings page"}
           </Link>
         }
       >
