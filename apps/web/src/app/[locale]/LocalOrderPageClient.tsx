@@ -121,99 +121,12 @@ export default function LocalOrderPageClient({ locale }: { locale: Locale }) {
     };
   }, [locale]);
 
-  const { addItem, totalQuantity } = usePersistentCart();
+  const { totalQuantity } = usePersistentCart();
   const [activeItem, setActiveItem] = useState<LocalizedMenuItem | null>(null);
-  const [selectedOptions, setSelectedOptions] = useState<Record<string, string[]>>(
-    {},
-  );
 
   const closeOptionsModal = () => {
     setActiveItem(null);
-    setSelectedOptions({});
   };
-
-  const handleOptionToggle = (
-    groupStableId: string,
-    optionStableId: string,
-    minSelect: number,
-    maxSelect: number | null,
-  ) => {
-    setSelectedOptions((prev) => {
-      const current = new Set(prev[groupStableId] ?? []);
-
-      if (maxSelect === 1) {
-        if (current.has(optionStableId)) {
-          if (minSelect > 0) return prev;
-          const next = { ...prev };
-          delete next[groupStableId];
-          return next;
-        }
-        return { ...prev, [groupStableId]: [optionStableId] };
-      }
-
-      if (current.has(optionStableId)) {
-        current.delete(optionStableId);
-      } else {
-        if (typeof maxSelect === "number" && current.size >= maxSelect) return prev;
-        current.add(optionStableId);
-      }
-
-      if (current.size === 0) {
-        const next = { ...prev };
-        delete next[groupStableId];
-        return next;
-      }
-
-      return { ...prev, [groupStableId]: Array.from(current) };
-    });
-  };
-
-  const requiredGroupsMissing = useMemo(() => {
-    if (!activeItem) return [];
-    return (activeItem.optionGroups ?? []).filter((group) => {
-      const selectedCount = selectedOptions[group.templateGroupStableId]?.length;
-      return group.minSelect > 0 && (selectedCount ?? 0) < group.minSelect;
-    });
-  }, [activeItem, selectedOptions]);
-
-  const selectedOptionsDetails = useMemo(() => {
-    if (!activeItem) return [];
-    const details: Array<{
-      groupName: string;
-      optionName: string;
-      priceDeltaCents: number;
-    }> = [];
-    const optionGroups = activeItem.optionGroups ?? [];
-
-    optionGroups.forEach((group) => {
-      const groupSelections = selectedOptions[group.templateGroupStableId] ?? [];
-      if (groupSelections.length === 0) return;
-
-      const groupName =
-        locale === "zh" && group.template.nameZh
-          ? group.template.nameZh
-          : group.template.nameEn;
-
-      group.options.forEach((option) => {
-        if (!groupSelections.includes(option.optionStableId)) return;
-        const optionName = locale === "zh" && option.nameZh ? option.nameZh : option.nameEn;
-        details.push({
-          groupName,
-          optionName,
-          priceDeltaCents: option.priceDeltaCents,
-        });
-      });
-    });
-
-    return details;
-  }, [activeItem, locale, selectedOptions]);
-
-  const optionsPriceCents = useMemo(
-    () => selectedOptionsDetails.reduce((sum, option) => sum + option.priceDeltaCents, 0),
-    [selectedOptionsDetails],
-  );
-
-  const canAddToCart = activeItem && requiredGroupsMissing.length === 0 && menuLoading === false;
 
   const currencyFormatter = useMemo(
     () =>
@@ -363,7 +276,6 @@ export default function LocalOrderPageClient({ locale }: { locale: Locale }) {
                         onClick={() => {
                           if (isTempUnavailable(item.tempUnavailableUntil)) return;
                           setActiveItem(item);
-                          setSelectedOptions({});
                         }}
                       >
                         {item.imageUrl ? (
@@ -406,7 +318,6 @@ export default function LocalOrderPageClient({ locale }: { locale: Locale }) {
                               event.stopPropagation();
                               if (isTempUnavailable(item.tempUnavailableUntil)) return;
                               setActiveItem(item);
-                              setSelectedOptions({});
                             }}
                             disabled={isTempUnavailable(item.tempUnavailableUntil)}
                             className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition ${
