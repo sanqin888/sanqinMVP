@@ -42,7 +42,6 @@ import { useSession } from "next-auth/react";
 
 const PHONE_OTP_REQUEST_URL = "/api/v1/auth/phone/request-code";
 const PHONE_OTP_VERIFY_URL = "/api/v1/auth/phone/verify-code";
-
 type DeliveryOptionDefinition = {
   provider: "DOORDASH" | "UBER";
   fee: number; // 仅用于显示说明，不参与实际计费
@@ -75,6 +74,11 @@ type CartItemWithPricing = LocalizedCartItem & {
   unitPriceCents: number;
   lineTotalCents: number;
   selectedOptions: SelectedOptionDisplay[];
+};
+
+type LoyaltyOrderResponse = {
+  orderStableId: string;
+  clientRequestId: string | null;
 };
 
 type SessionWithUserId = Session & {
@@ -1196,8 +1200,6 @@ export default function CheckoutPage() {
       resetAddressValidation();
     }
 
-    const orderNumber = `SQ${Date.now().toString().slice(-6)}`;
-
     // ==== 重新算一遍本单的费用（全部用“分”） ====
     let deliveryFeeCentsForOrder = 0;
     if (isDeliveryFulfillment && subtotalCents > 0) {
@@ -1246,11 +1248,9 @@ export default function CheckoutPage() {
       locale,
       amountCents: totalCentsForOrder,
       currency: HOSTED_CHECKOUT_CURRENCY,
-      referenceId: orderNumber,
-      description: `San Qin online order ${orderNumber}`,
-      returnUrl:
+      returnUrlBase:
         typeof window !== "undefined"
-          ? `${window.location.origin}/${locale}/thank-you/${orderNumber}`
+          ? `${window.location.origin}/${locale}/thank-you`
           : undefined,
       metadata: {
         locale,
@@ -1311,25 +1311,29 @@ export default function CheckoutPage() {
     try {
       // 1️⃣ 纯积分订单：抵扣后总价为 0 -> 不走 Clover
       if (totalCentsForOrder <= 0) {
-        await apiFetch("/orders/loyalty-only", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+        const response = await apiFetch<LoyaltyOrderResponse>(
+          "/orders/loyalty-only",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          },
+        );
 
-        router.push(`/${locale}/thank-you/${orderNumber}`);
+        router.push(`/${locale}/thank-you/${response.orderStableId}`);
         return;
       }
 
       // 2️⃣ 总价 > 0：正常走 Clover Hosted Checkout
-      const { checkoutUrl } = await apiFetch<HostedCheckoutResponse>(
-        "/clover/pay/online/hosted-checkout",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        },
-      );
+      const { checkoutUrl, orderNumber } =
+        await apiFetch<HostedCheckoutResponse>(
+          "/clover/pay/online/hosted-checkout",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          },
+        );
 
       if (!checkoutUrl) {
         throw new Error(strings.errors.missingCheckoutUrl);

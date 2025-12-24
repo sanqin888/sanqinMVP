@@ -1,6 +1,7 @@
 // apps/api/src/clover/hco-metadata.ts
 import { DeliveryProvider, DeliveryType } from '@prisma/client';
 import { CreateOrderDto } from '../orders/dto/create-order.dto';
+import { normalizeStableId } from '../common/utils/stable-id';
 
 export type HostedCheckoutItem = {
   productStableId: string;
@@ -28,6 +29,7 @@ export type HostedCheckoutCustomer = {
 
 export type HostedCheckoutMetadata = {
   locale?: string;
+  orderStableId?: string;
   fulfillment: 'pickup' | 'delivery';
   schedule?: string;
   customer: HostedCheckoutCustomer;
@@ -236,6 +238,7 @@ export function parseHostedCheckoutMetadata(
 
   return {
     locale: parseLocale(input.locale),
+    orderStableId: toString(input.orderStableId),
     fulfillment,
     schedule: toString(input.schedule),
     customer,
@@ -305,6 +308,9 @@ export function buildOrderDtoFromMetadata(
 ): CreateOrderDto {
   // 统一从原始 JSON 解析，容错更好
   const meta = parseHostedCheckoutMetadata(raw);
+  const normalizedStableId = normalizeStableId(
+    orderStableId ?? meta.orderStableId,
+  );
 
   const subtotalCents = meta.subtotalCents;
   const taxCents = meta.taxCents;
@@ -315,7 +321,7 @@ export function buildOrderDtoFromMetadata(
 
   const dto: CreateOrderDto = {
     channel: 'web',
-    ...(orderStableId ? { orderStableId } : {}),
+    ...(normalizedStableId ? { orderStableId: normalizedStableId } : {}),
 
     // ⭐ 订单级联系人（pickup / delivery 都有）
     contactName: meta.customer.name,

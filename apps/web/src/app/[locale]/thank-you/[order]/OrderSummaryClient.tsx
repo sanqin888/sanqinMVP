@@ -35,7 +35,7 @@ type OrderSummaryResponse = {
 };
 
 type Props = {
-  orderNumber: string;
+  orderStableId: string;
   locale: Locale;
 };
 
@@ -77,7 +77,7 @@ const LABELS: Record<
   },
 };
 
-export function OrderSummaryClient({ orderNumber, locale }: Props) {
+export function OrderSummaryClient({ orderStableId, locale }: Props) {
   const [data, setData] = useState<OrderSummaryResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -131,7 +131,7 @@ export function OrderSummaryClient({ orderNumber, locale }: Props) {
   };
 
   useEffect(() => {
-    if (!orderNumber) {
+    if (!orderStableId) {
       setLoading(false);
       return;
     }
@@ -144,7 +144,7 @@ export function OrderSummaryClient({ orderNumber, locale }: Props) {
         setError(null);
 
         const summary = await apiFetch<OrderSummaryResponse>(
-          `/orders/${encodeURIComponent(orderNumber)}/summary`,
+          `/orders/${encodeURIComponent(orderStableId)}/summary`,
         );
 
         if (!cancelled) {
@@ -166,116 +166,141 @@ export function OrderSummaryClient({ orderNumber, locale }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [orderNumber, labels.failed]);
+  }, [orderStableId, labels.failed]);
 
-  if (!orderNumber) return null;
+  if (!orderStableId) return null;
 
   return (
-    <section className="mx-auto mt-4 max-w-xl rounded-2xl border border-slate-200 bg-white/70 p-4 text-sm text-slate-700 sm:p-6">
-      <h2 className="text-base font-semibold text-slate-900">
-        {labels.heading}
-      </h2>
-
-      {loading ? (
-        <p className="mt-3 text-xs text-slate-500">{labels.loading}</p>
-      ) : error ? (
-        <p className="mt-3 text-xs text-red-600">{error}</p>
-      ) : !data ? null : (
-        <>
-          {/* 菜品列表 */}
-          <div className="mt-4 space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-              {labels.itemsTitle}
-            </p>
-            <ul className="mt-2 space-y-2">
-              {data.lineItems.map((item) => (
-                <li
-                  key={
-                    item.productStableId +
-                    "-" +
-                    item.name +
-                    "-" +
-                    item.quantity
-                  }
-                  className="flex items-start justify-between gap-4 text-xs"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate font-medium text-slate-900">
-                      {item.name}
-                    </p>
-                    <p className="mt-0.5 text-[11px] text-slate-500">
-                      × {item.quantity}
-                    </p>
-                    {renderOptions(item.optionsJson)}
-                  </div>
-                  <div className="whitespace-nowrap text-right font-medium text-slate-900">
-                    {centsToMoney(item.totalPriceCents)}
-                  </div>
-                </li>
-              ))}
-            </ul>
+    <>
+      {data ? (
+        <div className="mx-auto mb-8 max-w-md rounded-2xl border bg-white p-6 text-center sm:p-8">
+          <div className="text-sm text-slate-500 mb-2">
+            {locale === "zh" ? "订单编号" : "Order number"}
           </div>
+          <div className="text-2xl sm:text-3xl font-extrabold tracking-wider">
+            {data.orderNumber}
+          </div>
+          {data.orderNumber.length >= 4 ? (
+            <p className="mt-2 text-sm text-slate-700">
+              {locale === "zh"
+                ? `取餐码：${data.orderNumber.slice(-4)}（订单编号的后四位）`
+                : `Pickup code: ${data.orderNumber.slice(-4)} (last 4 digits of your order number)`}
+            </p>
+          ) : null}
+          <p className="mt-3 text-xs text-slate-500">
+            {locale === "zh"
+              ? "请保存此页面，方便取餐或配送查询。"
+              : "Please save this page for pickup or delivery reference."}
+          </p>
+        </div>
+      ) : null}
 
-          {/* 金额小结 */}
-          <div className="mt-4 space-y-1 border-t border-slate-200 pt-3 text-xs">
-            {/* 小计（未扣积分） */}
-            <div className="flex items-center justify-between">
-              <span>{labels.subtotal}</span>
-              <span>{centsToMoney(data.subtotalCents)}</span>
+      <section className="mx-auto mt-4 max-w-xl rounded-2xl border border-slate-200 bg-white/70 p-4 text-sm text-slate-700 sm:p-6">
+        <h2 className="text-base font-semibold text-slate-900">
+          {labels.heading}
+        </h2>
+
+        {loading ? (
+          <p className="mt-3 text-xs text-slate-500">{labels.loading}</p>
+        ) : error ? (
+          <p className="mt-3 text-xs text-red-600">{error}</p>
+        ) : !data ? null : (
+          <>
+            {/* 菜品列表 */}
+            <div className="mt-4 space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                {labels.itemsTitle}
+              </p>
+              <ul className="mt-2 space-y-2">
+                {data.lineItems.map((item) => (
+                  <li
+                    key={
+                      item.productStableId +
+                      "-" +
+                      item.name +
+                      "-" +
+                      item.quantity
+                    }
+                    className="flex items-start justify-between gap-4 text-xs"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-slate-900">
+                        {item.name}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-slate-500">
+                        × {item.quantity}
+                      </p>
+                      {renderOptions(item.optionsJson)}
+                    </div>
+                    <div className="whitespace-nowrap text-right font-medium text-slate-900">
+                      {centsToMoney(item.totalPriceCents)}
+                    </div>
+                  </li>
+                ))}
+              </ul>
             </div>
 
-            {/* 优惠券折扣 */}
-            {(data.couponDiscountCents ?? 0) > 0 && (
-              <div className="flex items-center justify-between text-amber-700">
-                <span>{locale === "zh" ? "优惠券" : "Coupon"}</span>
-                <span>
-                  -{centsToMoney(data.couponDiscountCents ?? 0)}
-                </span>
+            {/* 金额小结 */}
+            <div className="mt-4 space-y-1 border-t border-slate-200 pt-3 text-xs">
+              {/* 小计（未扣积分） */}
+              <div className="flex items-center justify-between">
+                <span>{labels.subtotal}</span>
+                <span>{centsToMoney(data.subtotalCents)}</span>
               </div>
-            )}
 
-            {/* 积分抵扣 */}
-            {(data.loyaltyRedeemCents ?? 0) > 0 && (
-              <div className="flex items-center justify-between text-emerald-700">
-                <span>{locale === "zh" ? "积分抵扣" : "Points redeemed"}</span>
-                <span>
-                  -{centsToMoney(data.loyaltyRedeemCents ?? 0)}
-                </span>
-              </div>
-            )}
-
-            {/* 其他折扣（如果有统一 discountCents 但 coupon/points 都没单独拆开） */}
-            {(data.discountCents ?? 0) > 0 &&
-              (data.couponDiscountCents ?? 0) === 0 &&
-              (data.loyaltyRedeemCents ?? 0) === 0 && (
+              {/* 优惠券折扣 */}
+              {(data.couponDiscountCents ?? 0) > 0 && (
                 <div className="flex items-center justify-between text-amber-700">
-                  <span>{labels.discount}</span>
-                  <span>-{centsToMoney(data.discountCents)}</span>
+                  <span>{locale === "zh" ? "优惠券" : "Coupon"}</span>
+                  <span>
+                    -{centsToMoney(data.couponDiscountCents ?? 0)}
+                  </span>
                 </div>
               )}
 
-            {/* 配送费 */}
-            {data.deliveryFeeCents > 0 && (
+              {/* 积分抵扣 */}
+              {(data.loyaltyRedeemCents ?? 0) > 0 && (
+                <div className="flex items-center justify-between text-emerald-700">
+                  <span>{locale === "zh" ? "积分抵扣" : "Points redeemed"}</span>
+                  <span>
+                    -{centsToMoney(data.loyaltyRedeemCents ?? 0)}
+                  </span>
+                </div>
+              )}
+
+              {/* 其他折扣（如果有统一 discountCents 但 coupon/points 都没单独拆开） */}
+              {(data.discountCents ?? 0) > 0 &&
+                (data.couponDiscountCents ?? 0) === 0 &&
+                (data.loyaltyRedeemCents ?? 0) === 0 && (
+                  <div className="flex items-center justify-between text-amber-700">
+                    <span>{labels.discount}</span>
+                    <span>-{centsToMoney(data.discountCents)}</span>
+                  </div>
+                )}
+
+              {/* 配送费 */}
+              {data.deliveryFeeCents > 0 && (
+                <div className="flex items-center justify-between">
+                  <span>{labels.deliveryFee}</span>
+                  <span>{centsToMoney(data.deliveryFeeCents)}</span>
+                </div>
+              )}
+
+              {/* 税 */}
               <div className="flex items-center justify-between">
-                <span>{labels.deliveryFee}</span>
-                <span>{centsToMoney(data.deliveryFeeCents)}</span>
+                <span>{labels.tax}</span>
+                <span>{centsToMoney(data.taxCents)}</span>
               </div>
-            )}
 
-            {/* 税 */}
-            <div className="flex items-center justify-between">
-              <span>{labels.tax}</span>
-              <span>{centsToMoney(data.taxCents)}</span>
+              {/* 合计 */}
+              <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2 text-sm font-semibold text-slate-900">
+                <span>{labels.total}</span>
+                <span>{centsToMoney(data.totalCents)}</span>
+              </div>
             </div>
-
-            {/* 合计 */}
-            <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2 text-sm font-semibold text-slate-900">
-              <span>{labels.total}</span>
-              <span>{centsToMoney(data.totalCents)}</span>
-            </div>
-          </div>
-        </>
-      )}
-    </section>
+          </>
+        )}
+      </section>
+    </>
   );
 }

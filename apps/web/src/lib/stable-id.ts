@@ -1,8 +1,12 @@
 ///Users/apple/sanqinMVP/apps/web/src/lib
-const UUID_REGEX =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const CUID_REGEX = /^c[0-9a-z]{8,}$/i;
+// cuid v1: 25 chars, starts with 'c'
+const CUID1_REGEX = /^c[0-9a-z]{24}$/i;
+// cuid2: 24 chars base36（Prisma cuid2() 常见形态），不含 '-'
+const CUID2_REGEX = /^[0-9a-z]{24}$/i;
 
 export function isStableId(value: unknown): value is string {
-  return typeof value === 'string' && (UUID_REGEX.test(value) || CUID_REGEX.test(value));
+  return (
+    typeof value === "string" &&
+    (CUID1_REGEX.test(value) || CUID2_REGEX.test(value))
+  );
 }

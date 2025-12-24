@@ -38,6 +38,10 @@ export class CreateHostedCheckoutDto {
 
   @IsOptional()
   @IsString()
+  readonly returnUrlBase?: string;
+
+  @IsOptional()
+  @IsString()
   readonly cancelUrl?: string;
 
   @IsOptional()

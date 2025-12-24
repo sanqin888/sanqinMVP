@@ -27,6 +27,7 @@
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
     "@prisma/client": "^6.17.0",
+    "@paralleldrive/cuid2": "^2.3.1",
     "@shared/menu": "workspace:*",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",

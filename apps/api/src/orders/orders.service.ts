@@ -1488,10 +1488,7 @@ export class OrdersService {
 
     const dto: CreateOrderDto = {
       userId: loyaltyUserId,
-      orderStableId:
-        typeof safePayload.referenceId === 'string'
-          ? (normalizeStableId(safePayload.referenceId) ?? undefined)
-          : undefined,
+      orderStableId: normalizeStableId(meta.orderStableId) ?? undefined,
       channel: 'web',
       fulfillmentType: meta.fulfillment,
       deliveryType: meta.deliveryType,
