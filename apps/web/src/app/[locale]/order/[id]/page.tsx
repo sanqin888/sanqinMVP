@@ -94,8 +94,8 @@ export default function OrderDetailPage({ params }: PageProps) {
       if (!isStableId(orderId)) {
         setError(
           isZh
-            ? '无效的订单 ID（需为 cuid/uuid）'
-            : 'Invalid order id (must be cuid/uuid)',
+            ? '无效的订单 ID（需为 cuid）'
+            : 'Invalid order id (must be cuid)',
         );
         setLoading(false);
         return;

@@ -548,6 +548,8 @@ export type ConfirmationState = {
 
 export type HostedCheckoutResponse = {
   checkoutUrl: string;
+  orderStableId: string;
+  orderNumber: string;
 };
 
 /** ===== 工具函数 ===== */
