@@ -4,7 +4,7 @@ const UUID_REGEX =
   /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 const SQ_ORDERNO_REGEX = /^SQ\d{6}$/i;
 
-// 允许：cuid / cuid2（一般无 '-'，字母数字，长度合理）
+// 允许：cuid v1（一般无 '-'，字母数字，长度合理）
 const STABLE_ID_REGEX = /^[a-z0-9]{8,64}$/i;
 
 @Injectable()
