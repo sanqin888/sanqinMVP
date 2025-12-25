@@ -26,6 +26,9 @@ export type OrderDto = {
   // ✅ 展示用单号：优先 clientRequestId，保底 orderStableId
   orderNumber: string;
 
+  // ✅ 展示/打印用单号（可能为空）
+  clientRequestId: string | null;
+
   status: OrderStatus;
   channel: Channel;
   fulfillmentType: FulfillmentType;

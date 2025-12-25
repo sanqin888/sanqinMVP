@@ -33,7 +33,6 @@ export type PosDailySummaryResponse = {
     amountCents: number; // net
   }>;
   orders: Array<{
-    id: string;
     orderStableId: string;
     clientRequestId: string | null;
     createdAt: string;
@@ -264,9 +263,12 @@ export class PosSummaryService {
           amend.refundCents +
           amend.additionalChargeCents;
 
+        if (!o.orderStableId) {
+          throw new BadRequestException('orderStableId missing');
+        }
+
         return {
-          id: o.id,
-          orderStableId: o.orderStableId ?? o.id,
+          orderStableId: o.orderStableId,
           clientRequestId: o.clientRequestId ?? null,
           createdAt: o.paidAt.toISOString(),
 
