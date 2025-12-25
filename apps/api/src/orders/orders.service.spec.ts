@@ -48,7 +48,7 @@ describe('OrdersService', () => {
 
   beforeEach(() => {
     process.env.UBER_DIRECT_ENABLED = '1';
-    const demoProductId = 'cprod12345';
+    const demoProductId = 'c1234567890abcdefghijklmn';
 
     type MenuItemFindManyArgs = {
       where?: {
@@ -234,8 +234,8 @@ describe('OrdersService', () => {
       items: [
         {
           id: 'item-1',
-          productId: 'cprod12345',
-          productStableId: 'cprod12345',
+          productId: 'c1234567890abcdefghijklmn',
+          productStableId: 'c1234567890abcdefghijklmn',
           displayName: 'Demo Product',
           qty: 1,
           unitPriceCents: 1000,
@@ -252,7 +252,7 @@ describe('OrdersService', () => {
     const dto: CreateOrderDto = {
       channel: 'web',
       fulfillmentType: 'pickup',
-      items: [{ productStableId: 'cprod12345', qty: 1 }],
+      items: [{ productStableId: 'c1234567890abcdefghijklmn', qty: 1 }],
       subtotalCents: 1000,
       taxCents: 0,
       totalCents: 1000,
