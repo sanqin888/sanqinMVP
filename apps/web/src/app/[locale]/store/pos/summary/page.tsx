@@ -265,10 +265,10 @@ function downloadCsv(filename: string, csvText: string) {
 }
 
 function toCsv(rows: OrderRow[]): string {
-  const header = ["orderId", "clientRequestId", "time", "fulfillment", "status", "payment", "net"].join(",");
+  const header = ["orderStableId", "clientRequestId", "time", "fulfillment", "status", "payment", "net"].join(",");
   const lines = rows.map((r) =>
     [
-      JSON.stringify(r.id),
+      JSON.stringify(r.orderStableId),
       JSON.stringify(r.clientRequestId),
       JSON.stringify(r.date),
       JSON.stringify(r.channel),
