@@ -420,7 +420,10 @@ export class AdminBusinessService {
           isClosed: true,
         }));
 
-      await this.prisma.businessHour.createMany({ data });
+      await this.prisma.businessHour.createMany({
+        data,
+        skipDuplicates: true,
+      });
       hours = await this.prisma.businessHour.findMany({
         orderBy: [{ weekday: 'asc' }, { openMinutes: 'asc' }],
       });
