@@ -3,6 +3,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Post,
   Query,
@@ -200,5 +201,102 @@ export class MembershipController {
       queryUserStableId: userStableIdFromQuery ?? legacyUserIdFromQuery,
     });
     return this.membership.listCoupons({ userStableId });
+  }
+
+  @Get('addresses')
+  async listAddresses(
+    @Req() req: AuthedRequest,
+    @Query('userStableId') userStableIdFromQuery?: string,
+    @Query('userId') legacyUserIdFromQuery?: string,
+  ) {
+    const userStableId = this.resolveUserStableId(req, {
+      queryUserStableId: userStableIdFromQuery ?? legacyUserIdFromQuery,
+    });
+    return this.membership.listAddresses({ userStableId });
+  }
+
+  @Post('addresses')
+  async createAddress(
+    @Req() req: AuthedRequest,
+    @Body()
+    body: {
+      userStableId?: string;
+      userId?: string;
+      label?: string;
+      receiver?: string;
+      phone?: string;
+      addressLine1?: string;
+      addressLine2?: string;
+      city?: string;
+      province?: string;
+      postalCode?: string;
+      isDefault?: boolean;
+    },
+  ) {
+    const userStableId = this.resolveUserStableId(req, {
+      bodyUserStableId: body.userStableId ?? body.userId,
+    });
+
+    if (
+      !body.receiver ||
+      !body.addressLine1 ||
+      !body.city ||
+      !body.province ||
+      !body.postalCode
+    ) {
+      throw new BadRequestException('address fields are required');
+    }
+
+    const created = await this.membership.createAddress({
+      userStableId,
+      label: body.label ?? 'Address',
+      receiver: body.receiver,
+      phone: body.phone ?? null,
+      addressLine1: body.addressLine1,
+      addressLine2: body.addressLine2 ?? null,
+      city: body.city,
+      province: body.province,
+      postalCode: body.postalCode,
+      isDefault: body.isDefault ?? false,
+    });
+
+    return {
+      success: true,
+      address: created,
+    };
+  }
+
+  @Post('addresses/default')
+  async setDefaultAddress(
+    @Req() req: AuthedRequest,
+    @Body()
+    body: { userStableId?: string; userId?: string; addressStableId?: string },
+  ) {
+    const userStableId = this.resolveUserStableId(req, {
+      bodyUserStableId: body.userStableId ?? body.userId,
+    });
+    if (!body.addressStableId) {
+      throw new BadRequestException('addressStableId is required');
+    }
+    return this.membership.setDefaultAddress({
+      userStableId,
+      addressStableId: body.addressStableId,
+    });
+  }
+
+  @Delete('addresses')
+  async deleteAddress(
+    @Req() req: AuthedRequest,
+    @Query('userStableId') userStableIdFromQuery?: string,
+    @Query('userId') legacyUserIdFromQuery?: string,
+    @Query('addressStableId') addressStableId?: string,
+  ) {
+    const userStableId = this.resolveUserStableId(req, {
+      queryUserStableId: userStableIdFromQuery ?? legacyUserIdFromQuery,
+    });
+    if (!addressStableId) {
+      throw new BadRequestException('addressStableId is required');
+    }
+    return this.membership.deleteAddress({ userStableId, addressStableId });
   }
 }

@@ -13,8 +13,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 
 const MICRO_PER_POINT = 1_000_000;
-const createStableId = (): string =>
-  `c${randomUUID().replace(/-/g, '').slice(0, 24)}`;
+const createStableId = (prefix: string): string =>
+  `${prefix}${randomUUID().replace(/-/g, '').slice(0, 24)}`;
 
 @Injectable()
 export class MembershipService {
@@ -26,7 +26,11 @@ export class MembershipService {
   ) {}
 
   private generateUserStableId(): string {
-    return createStableId();
+    return createStableId('c');
+  }
+
+  private generateAddressStableId(): string {
+    return createStableId('a');
   }
 
   private async ensureUserStableId(user: User): Promise<User> {
@@ -633,6 +637,197 @@ export class MembershipService {
         };
       }),
     };
+  }
+
+  async listAddresses(params: { userStableId: string }) {
+    const { userStableId } = params;
+    const user = await this.ensureUser({
+      userStableId,
+      name: null,
+      email: null,
+    });
+
+    const addresses = await this.prisma.userAddress.findMany({
+      where: { userId: user.id },
+      orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
+    });
+
+    return addresses.map((addr) => ({
+      addressStableId: addr.addressStableId,
+      label: addr.label,
+      receiver: addr.receiver,
+      phone: addr.phone ?? '',
+      addressLine1: addr.addressLine1,
+      addressLine2: addr.addressLine2 ?? '',
+      city: addr.city,
+      province: addr.province,
+      postalCode: addr.postalCode,
+      isDefault: addr.isDefault,
+    }));
+  }
+
+  async createAddress(params: {
+    userStableId: string;
+    label: string;
+    receiver: string;
+    phone?: string | null;
+    addressLine1: string;
+    addressLine2?: string | null;
+    city: string;
+    province: string;
+    postalCode: string;
+    isDefault?: boolean;
+  }) {
+    const {
+      userStableId,
+      label,
+      receiver,
+      phone,
+      addressLine1,
+      addressLine2,
+      city,
+      province,
+      postalCode,
+      isDefault = false,
+    } = params;
+
+    const user = await this.ensureUser({
+      userStableId,
+      name: null,
+      email: null,
+    });
+
+    const normalized = {
+      label: label.trim() || 'Address',
+      receiver: receiver.trim(),
+      phone: phone?.trim() || null,
+      addressLine1: addressLine1.trim(),
+      addressLine2: addressLine2?.trim() || null,
+      city: city.trim(),
+      province: province.trim(),
+      postalCode: postalCode.trim(),
+    };
+
+    const hasDefault = await this.prisma.userAddress.count({
+      where: { userId: user.id, isDefault: true },
+    });
+
+    const shouldDefault = isDefault || hasDefault === 0;
+
+    const operations: Prisma.PrismaPromise<
+      Prisma.UserAddress | Prisma.BatchPayload
+    >[] = [];
+    if (shouldDefault) {
+      operations.push(
+        this.prisma.userAddress.updateMany({
+          where: { userId: user.id },
+          data: { isDefault: false },
+        }),
+      );
+    }
+    operations.push(
+      this.prisma.userAddress.create({
+        data: {
+          userId: user.id,
+          addressStableId: this.generateAddressStableId(),
+          ...normalized,
+          isDefault: shouldDefault,
+        },
+      }),
+    );
+
+    const results = await this.prisma.$transaction(operations);
+    const createdResult = results[results.length - 1];
+    if (!('addressStableId' in createdResult)) {
+      throw new InternalServerErrorException('failed to create address');
+    }
+    const created = createdResult;
+
+    return {
+      addressStableId: created.addressStableId,
+      label: created.label,
+      receiver: created.receiver,
+      phone: created.phone ?? '',
+      addressLine1: created.addressLine1,
+      addressLine2: created.addressLine2 ?? '',
+      city: created.city,
+      province: created.province,
+      postalCode: created.postalCode,
+      isDefault: created.isDefault,
+    };
+  }
+
+  async deleteAddress(params: {
+    userStableId: string;
+    addressStableId: string;
+  }) {
+    const { userStableId, addressStableId } = params;
+    const user = await this.ensureUser({
+      userStableId,
+      name: null,
+      email: null,
+    });
+
+    const target = await this.prisma.userAddress.findFirst({
+      where: { addressStableId, userId: user.id },
+    });
+    if (!target) {
+      throw new NotFoundException('address not found');
+    }
+
+    await this.prisma.userAddress.delete({
+      where: { id: target.id },
+    });
+
+    if (!target.isDefault) {
+      return { success: true };
+    }
+
+    const nextDefault = await this.prisma.userAddress.findFirst({
+      where: { userId: user.id },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (nextDefault) {
+      await this.prisma.userAddress.update({
+        where: { id: nextDefault.id },
+        data: { isDefault: true },
+      });
+    }
+
+    return { success: true };
+  }
+
+  async setDefaultAddress(params: {
+    userStableId: string;
+    addressStableId: string;
+  }) {
+    const { userStableId, addressStableId } = params;
+    const user = await this.ensureUser({
+      userStableId,
+      name: null,
+      email: null,
+    });
+
+    const target = await this.prisma.userAddress.findFirst({
+      where: { addressStableId, userId: user.id },
+    });
+    if (!target) {
+      throw new NotFoundException('address not found');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.userAddress.updateMany({
+        where: { userId: user.id },
+        data: { isDefault: false },
+      }),
+      this.prisma.userAddress.update({
+        where: { id: target.id },
+        data: { isDefault: true },
+      }),
+    ]);
+
+    return { success: true };
   }
 
   async validateCouponForOrder(
