@@ -55,11 +55,13 @@ type Coupon = {
 
 
 type MemberProfile = {
-  userId: string;
-  userStableId?: string | null;
+  userStableId: string;
   name?: string;
   email?: string;
   phone?: string | null;
+  birthdayMonth?: number | null;
+  birthdayDay?: number | null;
+  referrerEmail?: string | null;
   tier: MemberTier;
   points: number;
   availableDiscountCents: number;
@@ -81,8 +83,7 @@ type MembershipSummaryOrderDto = {
 };
 
 type MembershipSummaryResponse = {
-  userId: string;
-  userStableId?: string | null;
+  userStableId: string;
   displayName: string | null;
   email: string | null;
   phone?: string | null;
@@ -91,6 +92,9 @@ type MembershipSummaryResponse = {
   lifetimeSpendCents: number;
   availableDiscountCents: number;
   marketingEmailOptIn?: boolean;
+  birthdayMonth?: number | null;
+  birthdayDay?: number | null;
+  referrerEmail?: string | null;
   recentOrders: MembershipSummaryOrderDto[];
 };
 
@@ -175,6 +179,14 @@ export default function MembershipHomePage() {
   const [marketingSaving, setMarketingSaving] = useState(false);
   const [marketingError, setMarketingError] = useState<string | null>(null);
 
+  // 账户信息编辑
+  const [profileName, setProfileName] = useState('');
+  const [birthdayMonthInput, setBirthdayMonthInput] = useState('');
+  const [birthdayDayInput, setBirthdayDayInput] = useState('');
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileSaved, setProfileSaved] = useState(false);
+
   // 积分流水
   const [loyaltyEntries, setLoyaltyEntries] = useState<LoyaltyEntry[]>([]);
   const [loyaltyLoading, setLoyaltyLoading] = useState(false);
@@ -195,8 +207,8 @@ export default function MembershipHomePage() {
     if (status !== 'authenticated' || !session?.user) return;
 
     const s = session as SessionWithUserId | null;
-    const userId = s?.userId ?? s?.user?.id ?? undefined;
-    if (!userId) return;
+    const userStableId = s?.userId ?? s?.user?.id ?? undefined;
+    if (!userStableId) return;
 
     const controller = new AbortController();
 
@@ -206,11 +218,10 @@ export default function MembershipHomePage() {
         setSummaryError(null);
 
         const user = s?.user ?? session.user;
-        const params = new URLSearchParams({
-          userId,
-          name: user?.name ?? '',
-          email: user?.email ?? '',
-        });
+        const params = new URLSearchParams({ userStableId });
+        if (user?.email) {
+          params.set('email', user.email);
+        }
 
         // 👇 如果 Google 登录回调 URL 上带了已验证手机号，则一并传给 membership 做绑定
         const phoneFromQuery = searchParams?.get('phone') ?? undefined;
@@ -315,11 +326,13 @@ export default function MembershipHomePage() {
             : (raw as MembershipSummaryResponse);
 
         setMember({
-          userId: data.userId,
-          userStableId: data.userStableId ?? null,
+          userStableId: data.userStableId,
           name: data.displayName ?? user?.name ?? undefined,
           email: data.email ?? user?.email ?? undefined,
           phone: data.phone ?? undefined,
+          birthdayMonth: data.birthdayMonth ?? null,
+          birthdayDay: data.birthdayDay ?? null,
+          referrerEmail: data.referrerEmail ?? null,
           tier: data.tier,
           points: data.points,
           availableDiscountCents: data.availableDiscountCents,
@@ -366,7 +379,7 @@ export default function MembershipHomePage() {
 
   // 拉取优惠券：会员信息到手后再查询
   useEffect(() => {
-    if (!member?.userId) {
+    if (!member?.userStableId) {
       setCoupons([]);
       setCouponLoading(false);
       setCouponError(null);
@@ -380,7 +393,9 @@ export default function MembershipHomePage() {
         setCouponLoading(true);
         setCouponError(null);
 
-        const params = new URLSearchParams([['userId', member.userId]]);
+        const params = new URLSearchParams([
+          ['userStableId', member.userStableId],
+        ]);
         const res = await fetch(
           `/api/v1/membership/coupons?${params.toString()}`,
           { signal: controller.signal },
@@ -419,7 +434,23 @@ export default function MembershipHomePage() {
 
     void loadCoupons();
     return () => controller.abort();
-  }, [member?.userId, isZh]);
+  }, [member?.userStableId, isZh]);
+
+  useEffect(() => {
+    if (!member) return;
+    setProfileName(member.name ?? '');
+    setBirthdayMonthInput(
+      member.birthdayMonth != null ? String(member.birthdayMonth) : '',
+    );
+    setBirthdayDayInput(
+      member.birthdayDay != null ? String(member.birthdayDay) : '',
+    );
+    setProfileSaved(false);
+  }, [member]);
+
+  useEffect(() => {
+    setProfileSaved(false);
+  }, [profileName, birthdayMonthInput, birthdayDayInput]);
 
   // 拉取积分流水：首次切到“积分”tab 且已登录时加载一次
   useEffect(() => {
@@ -434,8 +465,8 @@ export default function MembershipHomePage() {
     }
 
     const s = session as SessionWithUserId | null;
-    const userId = s?.userId ?? s?.user?.id ?? undefined;
-    if (!userId) return;
+    const userStableId = s?.userId ?? s?.user?.id ?? undefined;
+    if (!userStableId) return;
 
     const loadLedger = async () => {
       try {
@@ -443,7 +474,7 @@ export default function MembershipHomePage() {
         setLoyaltyError(null);
 
         const params = new URLSearchParams({
-          userId,
+          userStableId,
           limit: '100',
         });
 
@@ -509,7 +540,7 @@ export default function MembershipHomePage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            userId: member.userId,
+            userStableId: member.userStableId,
             marketingEmailOptIn: next,
           }),
         });
@@ -533,10 +564,109 @@ export default function MembershipHomePage() {
     [member, isZh],
   );
 
+  const handleProfileSave = useCallback(async () => {
+    if (!member) return;
+    setProfileSaving(true);
+    setProfileError(null);
+    setProfileSaved(false);
+
+    const payload: {
+      userStableId: string;
+      name?: string | null;
+      birthdayMonth?: number | null;
+      birthdayDay?: number | null;
+    } = { userStableId: member.userStableId };
+
+    const trimmedName = profileName.trim();
+    if (trimmedName.length > 0) {
+      payload.name = trimmedName;
+    }
+
+    if (member.birthdayMonth == null && member.birthdayDay == null) {
+      if (birthdayMonthInput || birthdayDayInput) {
+        const parsedMonth = Number.parseInt(birthdayMonthInput, 10);
+        const parsedDay = Number.parseInt(birthdayDayInput, 10);
+        if (
+          !Number.isFinite(parsedMonth) ||
+          !Number.isFinite(parsedDay) ||
+          parsedMonth < 1 ||
+          parsedMonth > 12 ||
+          parsedDay < 1 ||
+          parsedDay > 31
+        ) {
+          setProfileSaving(false);
+          setProfileError(
+            isZh
+              ? '生日格式不正确，请填写 1-12 月和 1-31 日。'
+              : 'Invalid birthday. Please enter month 1-12 and day 1-31.',
+          );
+          return;
+        }
+        payload.birthdayMonth = parsedMonth;
+        payload.birthdayDay = parsedDay;
+      }
+    }
+
+    try {
+      const res = await fetch('/api/v1/membership/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Failed with status ${res.status}`);
+      }
+
+      const raw = (await res.json()) as {
+        success?: boolean;
+        user?: {
+          id?: string;
+          name?: string | null;
+          birthdayMonth?: number | null;
+          birthdayDay?: number | null;
+        };
+      };
+
+      const updated = raw?.user;
+
+      if (updated) {
+        setMember((prev) =>
+          prev
+            ? {
+                ...prev,
+                name: updated.name ?? prev.name,
+                birthdayMonth:
+                  updated.birthdayMonth ?? prev.birthdayMonth ?? null,
+                birthdayDay:
+                  updated.birthdayDay ?? prev.birthdayDay ?? null,
+              }
+            : prev,
+        );
+      }
+      setProfileSaved(true);
+    } catch (err) {
+      console.error(err);
+      setProfileError(
+        isZh
+          ? '保存失败，请稍后再试。'
+          : 'Failed to save. Please try again later.',
+      );
+    } finally {
+      setProfileSaving(false);
+    }
+  }, [
+    member,
+    profileName,
+    birthdayMonthInput,
+    birthdayDayInput,
+    isZh,
+  ]);
+
   // ⭐ 新增：如果注册时勾选了“营销邮件”，第一次进入会员中心时自动帮他开关一次
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (!member?.userId) return;
+    if (!member?.userStableId) return;
     if (marketingOptIn === null) return;      // 还没从后端拿到数据
     if (marketingSaving) return;             // 正在提交就先不动
 
@@ -555,7 +685,7 @@ export default function MembershipHomePage() {
         e,
       );
     }
-  }, [member?.userId, marketingOptIn, marketingSaving, handleMarketingToggle]);
+  }, [member?.userStableId, marketingOptIn, marketingSaving, handleMarketingToggle]);
 
   const isLoading = status === 'loading' || summaryLoading;
 
@@ -768,6 +898,16 @@ export default function MembershipHomePage() {
             <ProfileSection
               isZh={isZh}
               user={member}
+              profileName={profileName}
+              birthdayMonthInput={birthdayMonthInput}
+              birthdayDayInput={birthdayDayInput}
+              onProfileNameChange={setProfileName}
+              onBirthdayMonthChange={setBirthdayMonthInput}
+              onBirthdayDayChange={setBirthdayDayInput}
+              profileSaving={profileSaving}
+              profileError={profileError}
+              profileSaved={profileSaved}
+              onSaveProfile={handleProfileSave}
               marketingOptIn={marketingOptIn}
               marketingSaving={marketingSaving}
               marketingError={marketingError}
@@ -1204,6 +1344,16 @@ function CouponsSection({
 function ProfileSection({
   isZh,
   user,
+  profileName,
+  birthdayMonthInput,
+  birthdayDayInput,
+  onProfileNameChange,
+  onBirthdayMonthChange,
+  onBirthdayDayChange,
+  profileSaving,
+  profileError,
+  profileSaved,
+  onSaveProfile,
   marketingOptIn,
   marketingSaving,
   marketingError,
@@ -1212,6 +1362,16 @@ function ProfileSection({
 }: {
   isZh: boolean;
   user: MemberProfile;
+  profileName: string;
+  birthdayMonthInput: string;
+  birthdayDayInput: string;
+  onProfileNameChange: (value: string) => void;
+  onBirthdayMonthChange: (value: string) => void;
+  onBirthdayDayChange: (value: string) => void;
+  profileSaving: boolean;
+  profileError: string | null;
+  profileSaved: boolean;
+  onSaveProfile: () => void;
   marketingOptIn: boolean | null;
   marketingSaving: boolean;
   marketingError: string | null;
@@ -1219,6 +1379,13 @@ function ProfileSection({
   locale: Locale;
 }) {
   const effectiveOptIn = !!marketingOptIn;
+  const hasBirthday =
+    user.birthdayMonth != null && user.birthdayDay != null;
+  const birthdayDisplay = hasBirthday
+    ? isZh
+      ? `${user.birthdayMonth}月${user.birthdayDay}日`
+      : `${user.birthdayMonth}/${user.birthdayDay}`
+    : null;
 
   return (
     <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
@@ -1229,9 +1396,73 @@ function ProfileSection({
       <div className="mt-3 space-y-3 text-xs text-slate-700">
         <div>
           <p className="text-slate-500">{isZh ? '昵称' : 'Name'}</p>
-          <p className="mt-0.5 text-slate-900">
-            {user.name || (isZh ? '未设置' : 'Not set')}
-          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              value={profileName}
+              onChange={(event) => onProfileNameChange(event.target.value)}
+              className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none sm:w-auto sm:min-w-[220px]"
+              placeholder={isZh ? '请输入昵称' : 'Enter your name'}
+            />
+            <button
+              type="button"
+              onClick={onSaveProfile}
+              disabled={profileSaving}
+              className="rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+            >
+              {profileSaving
+                ? isZh
+                  ? '保存中...'
+                  : 'Saving...'
+                : isZh
+                  ? '保存'
+                  : 'Save'}
+            </button>
+            {profileSaved && !profileSaving && (
+              <span className="text-[11px] text-emerald-600">
+                {isZh ? '已保存' : 'Saved'}
+              </span>
+            )}
+          </div>
+        </div>
+        <div>
+          <p className="text-slate-500">{isZh ? '生日' : 'Birthday'}</p>
+          {hasBirthday ? (
+            <p className="mt-0.5 text-slate-900">
+              {birthdayDisplay}
+              <span className="ml-2 text-[11px] text-slate-400">
+                {isZh ? '已设置，无法修改' : 'Locked once set'}
+              </span>
+            </p>
+          ) : (
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                max={12}
+                value={birthdayMonthInput}
+                onChange={(event) =>
+                  onBirthdayMonthChange(event.target.value)
+                }
+                className="w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-900 focus:border-slate-400 focus:outline-none"
+                placeholder={isZh ? '月' : 'MM'}
+              />
+              <input
+                type="number"
+                min={1}
+                max={31}
+                value={birthdayDayInput}
+                onChange={(event) =>
+                  onBirthdayDayChange(event.target.value)
+                }
+                className="w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-900 focus:border-slate-400 focus:outline-none"
+                placeholder={isZh ? '日' : 'DD'}
+              />
+              <span className="text-[11px] text-slate-400">
+                {isZh ? '填写后不可修改' : 'Once saved, cannot change'}
+              </span>
+            </div>
+          )}
         </div>
         <div>
           <p className="text-slate-500">{isZh ? '邮箱' : 'Email'}</p>
@@ -1239,6 +1470,16 @@ function ProfileSection({
             {user.email || (isZh ? '未绑定' : 'Not linked')}
           </p>
         </div>
+        {user.referrerEmail ? (
+          <div>
+            <p className="text-slate-500">
+              {isZh ? '推荐人邮箱' : 'Referrer email'}
+            </p>
+            <p className="mt-0.5 text-slate-900">
+              {user.referrerEmail}
+            </p>
+          </div>
+        ) : null}
         <div>
           <p className="text-slate-500">{isZh ? '手机号' : 'Phone'}</p>
           <div className="mt-0.5 flex items-center justify-between gap-2">
@@ -1294,6 +1535,9 @@ function ProfileSection({
             </p>
           )}
         </div>
+        {profileError && (
+          <p className="text-[11px] text-rose-500">{profileError}</p>
+        )}
 
         {/* 会员规则入口 */}
         <div className="mt-4 border-t border-slate-100 pt-3">

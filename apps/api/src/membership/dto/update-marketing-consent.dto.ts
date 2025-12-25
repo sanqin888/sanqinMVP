@@ -3,7 +3,7 @@ import { IsBoolean, IsString } from 'class-validator';
 
 export class UpdateMarketingConsentDto {
   @IsString()
-  userId!: string;
+  userStableId!: string;
 
   @IsBoolean()
   marketingEmailOptIn!: boolean;
