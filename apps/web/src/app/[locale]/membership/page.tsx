@@ -124,7 +124,7 @@ type LoyaltyEntry = {
   deltaPoints: number;
   balanceAfterPoints: number;
   note?: string;
-  orderNumber?: string | null;
+  orderStableId?: string | null;
 };
 
 function formatOrderStatus(status: OrderStatus, isZh: boolean): string {
@@ -1008,13 +1008,13 @@ function PointsSection({
                       {entry.note}
                     </p>
                   )}
-                  {entry.orderNumber && (
+                  {entry.orderStableId && (
                     <p className="mt-1 text-[11px]">
                       <Link
-                        href={`/${locale}/order/${entry.orderNumber}`}
+                        href={`/${locale}/order/${entry.orderStableId}`}
                         className="text-amber-600 hover:underline"
                       >
-                        {isZh ? '关联订单' : 'Related order'}: {entry.orderNumber}
+                        {isZh ? '关联订单' : 'Related order'}: {entry.orderStableId}
                       </Link>
                     </p>
                   )}
