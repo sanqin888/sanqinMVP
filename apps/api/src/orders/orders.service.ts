@@ -265,7 +265,7 @@ export class OrdersService {
     );
   }
 
-  // ✅ public/controller：只接受 stableId（cuid/cuid2），不再接受 UUID
+  // ✅ public/controller：只接受 stableId（cuid v1），不再接受 UUID
   private async resolveInternalOrderIdByStableIdOrThrow(
     orderStableId: string,
     client: Prisma.TransactionClient | PrismaService = this.prisma,

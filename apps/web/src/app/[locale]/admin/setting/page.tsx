@@ -1,4 +1,4 @@
-// apps/web/src/app/[locale]/admin/hours/page.tsx
+// apps/web/src/app/[locale]/admin/setting/page.tsx
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
@@ -470,7 +470,7 @@ export default function AdminHoursPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-semibold">
-        {isZh ? '营业时间与门店状态' : 'Business hours & store status'}
+        {isZh ? '门店信息设置' : 'Store settings'}
       </h1>
 
       {/* 门店状态（是否暂时关闭） */}
