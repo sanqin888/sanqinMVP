@@ -165,6 +165,7 @@ export class OrdersService {
     return {
       orderStableId,
       orderNumber,
+      clientRequestId: order.clientRequestId ?? null,
 
       status: order.status,
       channel: order.channel,

@@ -358,8 +358,7 @@ const QUICK_FILTERS = [
 ] as const;
 
 type BackendOrder = {
-  id: string;
-  orderStableId?: string | null;
+  orderStableId: string;
   clientRequestId?: string | null;
   pickupCode?: string | null;
   channel: "web" | "in_store" | "ubereats";
@@ -383,7 +382,6 @@ type BackendOrder = {
 };
 
 type BackendOrderItem = {
-  id: string;
   productStableId: string;
   qty: number;
   displayName?: string | null;
@@ -393,7 +391,6 @@ type BackendOrderItem = {
 };
 
 type OrderRecord = {
-  id: string;
   stableId: string;
   pickupCode: string | null;
   clientRequestId: string | null;
@@ -413,7 +410,6 @@ type OrderRecord = {
 };
 
 type OrderItemRecord = {
-  id: string;
   stableId: string;
   name: string;
   nameEn?: string | null;
@@ -692,14 +688,14 @@ function ActionContent({
               <div className="mt-2 space-y-2">
                 {order.items.map((item) => (
                   <label
-                    key={item.id}
+                    key={item.stableId}
                     className="flex items-center justify-between gap-3 rounded-lg border border-slate-700 bg-slate-950/40 px-3 py-2 text-[11px]"
                   >
                     <div className="flex items-center gap-2">
                       <input
                         type="checkbox"
-                        checked={selectedItemIds.includes(item.id)}
-                        onChange={() => onToggleItem(item.id)}
+                        checked={selectedItemIds.includes(item.stableId)}
+                        onChange={() => onToggleItem(item.stableId)}
                         className="h-3.5 w-3.5 rounded border-slate-500 bg-slate-900 text-emerald-400"
                       />
                       <div>
@@ -1012,7 +1008,6 @@ const mapOrder = useCallback(
     const items = order.items.map((item) => {
       const unitPriceCents = item.unitPriceCents ?? 0;
       return {
-        id: item.id,
         stableId: item.productStableId,
         name: pickItemName(item, locale),
         nameEn: item.nameEn ?? null,
@@ -1025,8 +1020,7 @@ const mapOrder = useCallback(
     });
 
     return {
-      id: order.id,
-      stableId: order.orderStableId ?? order.id,
+      stableId: order.orderStableId,
       pickupCode: order.pickupCode ?? null,
       clientRequestId: order.clientRequestId ?? null,
       type: order.fulfillmentType,
@@ -1093,7 +1087,7 @@ const mapOrder = useCallback(
   }, [locale, mapOrder]);
 
   useEffect(() => {
-    if (selectedId && !orders.some((order) => order.id === selectedId)) {
+    if (selectedId && !orders.some((order) => order.stableId === selectedId)) {
       setSelectedId(null);
       setSelectedAction(null);
       setReason("");
@@ -1132,7 +1126,7 @@ const mapOrder = useCallback(
   }, [locale]);
 
   const selectedOrder = useMemo(
-    () => orders.find((order) => order.id === selectedId) ?? null,
+    () => orders.find((order) => order.stableId === selectedId) ?? null,
     [orders, selectedId],
   );
 
@@ -1184,7 +1178,7 @@ const mapOrder = useCallback(
     const baseTax = selectedOrder.taxCents;
     const baseDelivery = selectedOrder.deliveryFeeCents;
     const selectedItems = selectedOrder.items.filter((item) =>
-      selectedItemIds.includes(item.id),
+      selectedItemIds.includes(item.stableId),
     );
     const removedCents = selectedItems.reduce(
       (sum, item) => sum + item.totalCents,
@@ -1416,7 +1410,7 @@ const handleSubmit = () => {
   if (!canSubmit) return;
 
   const selectedItems = selectedOrder.items.filter((item) =>
-    selectedItemIds.includes(item.id),
+    selectedItemIds.includes(item.stableId),
   );
 
   const completeReset = () => {
@@ -1436,12 +1430,16 @@ const handleSubmit = () => {
       try {
         setIsSubmitting(true);
         const updated = await updateOrderStatus<BackendOrder>(
-          selectedOrder.id,
+          selectedOrder.stableId,
           "refunded",
         );
         const mapped = mapOrder(updated, storeTimezone);
-        setOrders((prev) => prev.map((o) => (o.id === mapped.id ? mapped : o)));
-        setSelectedId(mapped.id);
+        setOrders((prev) =>
+          prev.map((order) =>
+            order.stableId === mapped.stableId ? mapped : order,
+          ),
+        );
+        setSelectedId(mapped.stableId);
         showToast(copy.actionSuccess, "success");
       } catch (error) {
         console.error("Failed to refund order:", error);
@@ -1535,12 +1533,16 @@ const handleSubmit = () => {
       };
 
       const updated = await createOrderAmendment<BackendOrder>(
-        selectedOrder.id,
+        selectedOrder.stableId,
         payload,
       );
 
       const mapped = mapOrder(updated, storeTimezone);
-      setOrders((prev) => prev.map((o) => (o.id === mapped.id ? mapped : o)));
+      setOrders((prev) =>
+        prev.map((order) =>
+          order.stableId === mapped.stableId ? mapped : order,
+        ),
+      );
 
       // 6) 打印（保留你原逻辑）
       const printAfterAction = async () => {
@@ -1559,7 +1561,7 @@ const handleSubmit = () => {
               : "wechat_alipay";
 
         const remainingItems: PosDisplaySnapshot["items"] = selectedOrder.items
-          .filter((item) => !selectedItemIds.includes(item.id))
+          .filter((item) => !selectedItemIds.includes(item.stableId))
           .map((item) => ({
             stableId: item.stableId,
             nameZh: item.nameZh ?? item.displayName ?? item.name,
@@ -1674,12 +1676,14 @@ const handleSubmit = () => {
     if (!nextStatus) return;
     try {
       setIsAdvancing(true);
-      const updated = await advanceOrder<BackendOrder>(selectedOrder.id);
-      const mapped = mapOrder(updated, storeTimezone);
-      setOrders((prev) =>
-        prev.map((order) => (order.id === mapped.id ? mapped : order)),
-      );
-      setSelectedId(mapped.id);
+    const updated = await advanceOrder<BackendOrder>(selectedOrder.stableId);
+    const mapped = mapOrder(updated, storeTimezone);
+    setOrders((prev) =>
+      prev.map((order) =>
+        order.stableId === mapped.stableId ? mapped : order,
+      ),
+    );
+    setSelectedId(mapped.stableId);
       showToast(copy.advanceSuccess, "success");
     } catch (error) {
       console.error("Failed to advance order status:", error);
@@ -1903,10 +1907,10 @@ const handleSubmit = () => {
             ) : null}
             {filteredOrders.map((order) => (
               <button
-                key={order.id}
+                key={order.stableId}
                 type="button"
                 onClick={() => {
-                  setSelectedId(order.id);
+                  setSelectedId(order.stableId);
                   setSelectedAction("retender");
                   setReason("");
                   setSelectedItemIds([]);
@@ -1914,7 +1918,7 @@ const handleSubmit = () => {
                   setSwapActiveItem(null);
                 }}
                 className={`flex w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition hover:border-slate-400 hover:bg-slate-800/70 ${
-                  order.id === selectedId
+                  order.stableId === selectedId
                     ? "border-emerald-400/70 bg-emerald-500/10"
                     : "border-slate-700 bg-slate-900/40"
                 }`}

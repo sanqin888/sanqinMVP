@@ -100,7 +100,7 @@ type FilterState = {
 };
 
 type OrderRow = {
-  id: string; // uuid
+  orderStableId: string;
   date: string;
   channel: string; // fulfillmentType
   status: string;  // statusBucket
@@ -131,7 +131,6 @@ type PosDailySummaryResponse = {
     amountCents: number;
   }>;
   orders: Array<{
-    id: string;
     orderStableId: string;
     clientRequestId: string | null;
     createdAt: string;
@@ -365,7 +364,10 @@ export default function PosDailySummaryPage() {
 
         setData(res);
 
-        if (selectedOrderId && !res.orders.some((o) => o.id === selectedOrderId)) {
+        if (
+          selectedOrderId &&
+          !res.orders.some((o) => o.orderStableId === selectedOrderId)
+        ) {
           setSelectedOrderId(null);
         }
 } catch (e: unknown) {
@@ -388,7 +390,7 @@ export default function PosDailySummaryPage() {
   const orders = useMemo<OrderRow[]>(() => {
     if (!data) return [];
     return data.orders.map((o) => ({
-      id: o.id,
+      orderStableId: o.orderStableId,
       clientRequestId: o.clientRequestId ?? "--",
       date: new Date(o.createdAt).toLocaleString(locale === "zh" ? "zh-CN" : "en-US", { timeZone: storeTimezone || "UTC" }),
       channel: o.fulfillmentType,
@@ -399,7 +401,9 @@ export default function PosDailySummaryPage() {
   }, [data, locale, storeTimezone]);
 
   const filteredOrders = orders;
-  const selectedOrder = filteredOrders.find((order) => order.id === selectedOrderId);
+  const selectedOrder = filteredOrders.find(
+    (order) => order.orderStableId === selectedOrderId,
+  );
 
   const summaryTotals = data?.totals ?? {
     orders: filteredOrders.length,
@@ -660,11 +664,13 @@ export default function PosDailySummaryPage() {
                 ) : (
                   filteredOrders.map((order) => (
                     <tr
-                      key={order.id}
+                      key={order.orderStableId}
                       className={`cursor-pointer transition hover:bg-slate-800/70 ${
-                        selectedOrderId === order.id ? "bg-slate-800" : ""
+                        selectedOrderId === order.orderStableId
+                          ? "bg-slate-800"
+                          : ""
                       }`}
-                      onClick={() => setSelectedOrderId(order.id)}
+                      onClick={() => setSelectedOrderId(order.orderStableId)}
                     >
                       <td className="px-3 py-2 text-slate-300">
                         {order.clientRequestId}
@@ -711,7 +717,7 @@ export default function PosDailySummaryPage() {
                   className="rounded-xl border border-slate-600 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-100"
                   onClick={() => {
                     // 这里先留空：你有订单详情页路由的话我再给你接 Link
-                    // 常见做法：router.push(`/${locale}/store/pos/orders/${selectedOrder.id}`)
+                    // 常见做法：router.push(`/${locale}/store/pos/orders/${selectedOrder.orderStableId}`)
                   }}
                 >
                   {copy.actions.view}
