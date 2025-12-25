@@ -1907,7 +1907,7 @@ const handleSubmit = () => {
             ) : null}
             {filteredOrders.map((order) => (
               <button
-                key={order.stableId}
+                key={`${order.stableId}-${order.createdAt}`}
                 type="button"
                 onClick={() => {
                   setSelectedId(order.stableId);
