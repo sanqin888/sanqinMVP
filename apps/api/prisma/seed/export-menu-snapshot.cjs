@@ -7,6 +7,18 @@ const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
 async function main() {
+
+// ===== Business Hours =====
+const businessHours = await prisma.businessHour.findMany({
+  orderBy: { weekday: "asc" },
+  select: {
+    weekday: true,
+    openMinutes: true,
+    closeMinutes: true,
+    isClosed: true,
+  },
+});
+
   // ===== Categories =====
   const categories = await prisma.menuCategory.findMany({
     where: { deletedAt: null },
@@ -97,6 +109,13 @@ async function main() {
   const snapshot = {
     version: 1,
     exportedAt: new Date().toISOString(),
+
+businessHours: businessHours.map((h) => ({
+  weekday: h.weekday,
+  openMinutes: h.openMinutes,
+  closeMinutes: h.closeMinutes,
+  isClosed: h.isClosed,
+})),
 
     categories: categories.map((c) => ({
       stableId: c.stableId,
