@@ -714,34 +714,23 @@ export class MembershipService {
 
     const shouldDefault = isDefault || hasDefault === 0;
 
-    const operations: Prisma.PrismaPromise<
-      Prisma.UserAddress | Prisma.BatchPayload
-    >[] = [];
-    if (shouldDefault) {
-      operations.push(
-        this.prisma.userAddress.updateMany({
+    const created = await this.prisma.$transaction(async (tx) => {
+      if (shouldDefault) {
+        await tx.userAddress.updateMany({
           where: { userId: user.id },
           data: { isDefault: false },
-        }),
-      );
-    }
-    operations.push(
-      this.prisma.userAddress.create({
+        });
+      }
+
+      return tx.userAddress.create({
         data: {
           userId: user.id,
           addressStableId: this.generateAddressStableId(),
           ...normalized,
           isDefault: shouldDefault,
         },
-      }),
-    );
-
-    const results = await this.prisma.$transaction(operations);
-    const createdResult = results[results.length - 1];
-    if (!('addressStableId' in createdResult)) {
-      throw new InternalServerErrorException('failed to create address');
-    }
-    const created = createdResult;
+      });
+    });
 
     return {
       addressStableId: created.addressStableId,
