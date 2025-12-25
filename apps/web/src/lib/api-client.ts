@@ -97,7 +97,9 @@ export async function apiFetch<T>(
 /* ========= 可选：常用 helper，去掉了显式 any ========= */
 
 export async function fetchRecentOrders<T = unknown>(limit = 10) {
-  return apiFetch<T>(`/orders/recent?limit=${encodeURIComponent(String(limit))}`);
+  return apiFetch<T>(
+    `/orders/recent?limit=${encodeURIComponent(String(limit))}`,
+  );
 }
 
 export async function fetchOrderById<T = unknown>(id: string) {
