@@ -259,6 +259,12 @@ export class MembershipService {
       where: { userStableId },
     });
 
+    if (!user && normalizedEmail) {
+      user = await this.prisma.user.findUnique({
+        where: { email: normalizedEmail },
+      });
+    }
+
     if (!user) {
       // ⭐ 首次注册：可以一次性写入推荐人和生日
       user = await this.prisma.user.create({
@@ -283,7 +289,13 @@ export class MembershipService {
         updateData.name = normalizedName;
       }
       if (normalizedEmail && normalizedEmail !== user.email) {
-        updateData.email = normalizedEmail;
+        const existingEmailUser = await this.prisma.user.findUnique({
+          where: { email: normalizedEmail },
+          select: { id: true },
+        });
+        if (!existingEmailUser || existingEmailUser.id === user.id) {
+          updateData.email = normalizedEmail;
+        }
       }
 
       if (!user.referredByUserId && referrerId) {
