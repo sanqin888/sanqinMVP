@@ -20,18 +20,20 @@ export class MembershipController {
   constructor(private readonly membership: MembershipService) {}
 
   /**
-   * 统一解析 userId：
-   * 优先级：session(req.user.id) > body.userId > query.userId > header(x-user-id)
+   * 统一解析 userStableId：
+   * 优先级：session(req.user.id) > body.userStableId > query.userStableId > header(x-user-stable-id)
+   * 兼容：body/query 的 userId 视为 stableId
    */
-  private resolveUserId(
+  private resolveUserStableId(
     req: AuthedRequest,
-    opts: { queryUserId?: string; bodyUserId?: string } = {},
+    opts: { queryUserStableId?: string; bodyUserStableId?: string } = {},
   ): string {
-    const { queryUserId, bodyUserId } = opts;
+    const { queryUserStableId, bodyUserStableId } = opts;
 
     const sessionId = req.user?.id;
 
-    const headerRaw = req.headers['x-user-id'];
+    const headerRaw =
+      req.headers['x-user-stable-id'] ?? req.headers['x-user-id'];
     const headerId =
       typeof headerRaw === 'string'
         ? headerRaw
@@ -39,23 +41,24 @@ export class MembershipController {
           ? headerRaw[0]
           : undefined;
 
-    const userId =
+    const userStableId =
       sessionId ??
-      (bodyUserId && bodyUserId.trim()) ??
-      (queryUserId && queryUserId.trim()) ??
+      (bodyUserStableId && bodyUserStableId.trim()) ??
+      (queryUserStableId && queryUserStableId.trim()) ??
       (headerId && headerId.trim());
 
-    if (!userId) {
-      throw new BadRequestException('userId is required');
+    if (!userStableId) {
+      throw new BadRequestException('userStableId is required');
     }
 
-    return userId;
+    return userStableId;
   }
 
   @Get('summary')
   async summary(
     @Req() req: AuthedRequest,
-    @Query('userId') userIdFromQuery?: string,
+    @Query('userStableId') userStableIdFromQuery?: string,
+    @Query('userId') legacyUserIdFromQuery?: string,
     @Query('name') name?: string,
     @Query('email') email?: string,
     @Query('referrerEmail') referrerEmail?: string,
@@ -65,7 +68,9 @@ export class MembershipController {
     @Query('phone') phoneFromQuery?: string,
     @Query('pv') phoneVerificationToken?: string,
   ) {
-    const userId = this.resolveUserId(req, { queryUserId: userIdFromQuery });
+    const userStableId = this.resolveUserStableId(req, {
+      queryUserStableId: userStableIdFromQuery ?? legacyUserIdFromQuery,
+    });
 
     // 把 query 里的生日转成 number，非法就当 undefined
     let birthdayMonth: number | undefined;
@@ -82,7 +87,7 @@ export class MembershipController {
     }
 
     return this.membership.getMemberSummary({
-      userId,
+      userStableId,
       name: name ?? null,
       email: email ?? null,
       referrerEmail,
@@ -105,15 +110,18 @@ export class MembershipController {
   @Get('loyalty-ledger')
   async loyaltyLedger(
     @Req() req: AuthedRequest,
-    @Query('userId') userIdFromQuery?: string,
+    @Query('userStableId') userStableIdFromQuery?: string,
+    @Query('userId') legacyUserIdFromQuery?: string,
     @Query('limit') limitRaw?: string,
   ) {
-    const userId = this.resolveUserId(req, { queryUserId: userIdFromQuery });
+    const userStableId = this.resolveUserStableId(req, {
+      queryUserStableId: userStableIdFromQuery ?? legacyUserIdFromQuery,
+    });
 
     const limit = limitRaw ? Number.parseInt(limitRaw, 10) || 50 : 50;
 
     return this.membership.getLoyaltyLedger({
-      userId,
+      userStableId,
       limit,
     });
   }
@@ -124,11 +132,14 @@ export class MembershipController {
     @Req() req: AuthedRequest,
     @Body()
     body: {
+      userStableId?: string;
       userId?: string;
       marketingEmailOptIn?: boolean;
     },
   ) {
-    const userId = this.resolveUserId(req, { bodyUserId: body.userId });
+    const userStableId = this.resolveUserStableId(req, {
+      bodyUserStableId: body.userStableId ?? body.userId,
+    });
     const { marketingEmailOptIn } = body;
 
     if (typeof marketingEmailOptIn !== 'boolean') {
@@ -136,8 +147,40 @@ export class MembershipController {
     }
 
     const user = await this.membership.updateMarketingConsent({
-      userId,
+      userStableId,
       marketingEmailOptIn,
+    });
+
+    return {
+      success: true,
+      user,
+    };
+  }
+
+  // ✅ 更新昵称 / 生日
+  @Post('profile')
+  async updateProfile(
+    @Req() req: AuthedRequest,
+    @Body()
+    body: {
+      userStableId?: string;
+      userId?: string;
+      name?: string | null;
+      birthdayMonth?: number | null;
+      birthdayDay?: number | null;
+    },
+  ) {
+    const userStableId = this.resolveUserStableId(req, {
+      bodyUserStableId: body.userStableId ?? body.userId,
+    });
+
+    const user = await this.membership.updateProfile({
+      userStableId,
+      name: body.name ?? null,
+      birthdayMonth:
+        typeof body.birthdayMonth === 'number' ? body.birthdayMonth : null,
+      birthdayDay:
+        typeof body.birthdayDay === 'number' ? body.birthdayDay : null,
     });
 
     return {
@@ -150,9 +193,12 @@ export class MembershipController {
   @Get('coupons')
   async listCoupons(
     @Req() req: AuthedRequest,
-    @Query('userId') userIdFromQuery?: string,
+    @Query('userStableId') userStableIdFromQuery?: string,
+    @Query('userId') legacyUserIdFromQuery?: string,
   ) {
-    const userId = this.resolveUserId(req, { queryUserId: userIdFromQuery });
-    return this.membership.listCoupons({ userId });
+    const userStableId = this.resolveUserStableId(req, {
+      queryUserStableId: userStableIdFromQuery ?? legacyUserIdFromQuery,
+    });
+    return this.membership.listCoupons({ userStableId });
   }
 }

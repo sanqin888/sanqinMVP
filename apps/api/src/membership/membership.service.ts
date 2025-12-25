@@ -186,13 +186,13 @@ export class MembershipService {
 
   /**
    * 确保 User 存在，并在需要时补全信息：
-   * - id 必填，和 next-auth userId 对齐（天然稳定，不 update）
+   * - userStableId 必填，供前后端识别
    * - name / email：可以更新
    * - referredByUserId：只在“当前为空且 referrerEmail 有效”时写入一次
    * - birthdayMonth / birthdayDay：只在“当前为空且生日合法”时写入一次
    */
   private async ensureUser(params: {
-    userId: string;
+    userStableId: string;
     name?: string | null;
     email?: string | null;
     referrerEmail?: string;
@@ -202,29 +202,43 @@ export class MembershipService {
     phoneVerificationToken?: string;
   }) {
     const {
-      userId,
+      userStableId,
       name,
       email,
-      referrerEmail,
+      referrerEmail: referrerEmailParam,
       birthdayMonth,
       birthdayDay,
       phone,
       phoneVerificationToken,
     } = params;
 
-    if (!userId) {
-      throw new Error('userId is required');
+    if (!userStableId) {
+      throw new Error('userStableId is required');
     }
 
+    const normalizedName =
+      typeof name === 'string' && name.trim().length > 0 ? name.trim() : null;
+    const normalizedEmail =
+      typeof email === 'string' && email.trim().length > 0
+        ? email.trim()
+        : null;
+    const emailPrefix =
+      normalizedEmail && normalizedEmail.includes('@')
+        ? normalizedEmail.split('@')[0].trim()
+        : null;
+    const initialName = emailPrefix || normalizedName;
+
     // —— 解析推荐人（通过邮箱查 User），不能是自己
+    const referrerEmail =
+      typeof referrerEmailParam === 'string' ? referrerEmailParam.trim() : '';
     let referrerId: string | undefined;
-    if (referrerEmail && referrerEmail.trim()) {
+    if (referrerEmail) {
       const ref = await this.prisma.user.findUnique({
-        where: { email: referrerEmail.trim() },
-        select: { id: true },
+        where: { email: referrerEmail },
+        select: { id: true, userStableId: true },
       });
 
-      if (ref && ref.id !== userId) {
+      if (ref && ref.userStableId !== userStableId) {
         referrerId = ref.id;
       }
     }
@@ -242,16 +256,16 @@ export class MembershipService {
 
     // 先查是否已有该 User
     let user = await this.prisma.user.findUnique({
-      where: { id: userId },
+      where: { userStableId },
     });
 
     if (!user) {
       // ⭐ 首次注册：可以一次性写入推荐人和生日
       user = await this.prisma.user.create({
         data: {
-          id: userId,
-          email: email ?? null,
-          name: name ?? null,
+          userStableId,
+          email: normalizedEmail,
+          name: initialName,
           ...(referrerId ? { referredByUserId: referrerId } : {}),
           ...(validBirthday
             ? {
@@ -265,11 +279,11 @@ export class MembershipService {
       // ⭐ 已有用户：只在字段为空时补充 referrer / 生日；name/email 按需更新
       const updateData: Prisma.UserUpdateInput = {};
 
-      if (typeof name === 'string' && name !== user.name) {
-        updateData.name = name;
+      if (!user.name && normalizedName) {
+        updateData.name = normalizedName;
       }
-      if (typeof email === 'string' && email !== user.email) {
-        updateData.email = email;
+      if (normalizedEmail && normalizedEmail !== user.email) {
+        updateData.email = normalizedEmail;
       }
 
       if (!user.referredByUserId && referrerId) {
@@ -287,7 +301,7 @@ export class MembershipService {
 
       if (Object.keys(updateData).length > 0) {
         user = await this.prisma.user.update({
-          where: { id: userId },
+          where: { userStableId },
           data: updateData,
         });
       }
@@ -322,7 +336,6 @@ export class MembershipService {
     const account = await this.loyalty.ensureAccount(safeUser.id);
 
     return {
-      userId: safeUser.id,
       userStableId: safeUser.userStableId,
       displayName: safeUser.name,
       phone: safeUser.phone ?? null,
@@ -406,7 +419,7 @@ export class MembershipService {
    * - 最近 10 笔订单
    */
   async getMemberSummary(params: {
-    userId: string;
+    userStableId: string;
     name?: string | null;
     email?: string | null;
     referrerEmail?: string;
@@ -416,10 +429,10 @@ export class MembershipService {
     phoneVerificationToken?: string;
   }) {
     const {
-      userId,
+      userStableId,
       name,
       email,
-      referrerEmail,
+      referrerEmail: referrerEmailParam,
       birthdayMonth,
       birthdayDay,
       phone,
@@ -427,15 +440,24 @@ export class MembershipService {
     } = params;
 
     const user = await this.ensureUser({
-      userId,
+      userStableId,
       name,
       email,
-      referrerEmail,
+      referrerEmail: referrerEmailParam,
       birthdayMonth,
       birthdayDay,
       phone,
       phoneVerificationToken,
     });
+
+    let referrerEmail: string | null = null;
+    if (user.referredByUserId) {
+      const referrer = await this.prisma.user.findUnique({
+        where: { id: user.referredByUserId },
+        select: { email: true },
+      });
+      referrerEmail = referrer?.email ?? null;
+    }
 
     const account = await this.loyalty.ensureAccount(user.id);
     const availableDiscountCents = this.loyalty.maxRedeemableCentsFromBalance(
@@ -460,7 +482,6 @@ export class MembershipService {
     });
 
     return {
-      userId: user.id,
       userStableId: user.userStableId,
       displayName: user.name,
       email: user.email,
@@ -471,6 +492,9 @@ export class MembershipService {
       marketingEmailOptIn: user.marketingEmailOptIn ?? false,
       phone: user.phone ?? null,
       phoneVerified: !!user.phoneVerifiedAt,
+      birthdayMonth: user.birthdayMonth ?? null,
+      birthdayDay: user.birthdayDay ?? null,
+      referrerEmail,
 
       // ✅ 对外统一：不用裸 id；用稳定标识
       recentOrders: orders.map((o) => ({
@@ -491,9 +515,13 @@ export class MembershipService {
    * - 欢迎券（仅一次）
    * - 当月生日券（每年一次，需已填写生日）
    */
-  async listCoupons(params: { userId: string }) {
-    const { userId } = params;
-    const user = await this.ensureUser({ userId, name: null, email: null });
+  async listCoupons(params: { userStableId: string }) {
+    const { userStableId } = params;
+    const user = await this.ensureUser({
+      userStableId,
+      name: null,
+      email: null,
+    });
 
     await this.ensureWelcomeCoupon(user.id);
     await this.ensureBirthdayCoupon({
@@ -525,11 +553,11 @@ export class MembershipService {
   /**
    * 获取积分流水（最近 N 条）
    */
-  async getLoyaltyLedger(params: { userId: string; limit?: number }) {
-    const { userId, limit = 50 } = params;
+  async getLoyaltyLedger(params: { userStableId: string; limit?: number }) {
+    const { userStableId, limit = 50 } = params;
 
     const user = await this.ensureUser({
-      userId,
+      userStableId,
       name: null,
       email: null,
     });
@@ -754,21 +782,21 @@ export class MembershipService {
    * 更新营销邮件订阅偏好
    */
   async updateMarketingConsent(params: {
-    userId: string;
+    userStableId: string;
     marketingEmailOptIn: boolean;
   }) {
-    const { userId, marketingEmailOptIn } = params;
+    const { userStableId, marketingEmailOptIn } = params;
     const now = new Date();
 
     try {
       const user = await this.prisma.user.update({
-        where: { id: userId },
+        where: { userStableId },
         data: {
           marketingEmailOptIn,
           marketingEmailOptInAt: marketingEmailOptIn ? now : null,
         },
         select: {
-          id: true,
+          userStableId: true,
           email: true,
           marketingEmailOptIn: true,
           marketingEmailOptInAt: true,
@@ -785,7 +813,7 @@ export class MembershipService {
       }
 
       this.logger.error(
-        `Failed to update marketing consent for user=${userId}`,
+        `Failed to update marketing consent for userStableId=${userStableId}`,
         (err as Error).stack,
       );
 
@@ -793,5 +821,73 @@ export class MembershipService {
         'Failed to update marketing consent',
       );
     }
+  }
+
+  async updateProfile(params: {
+    userStableId: string;
+    name?: string | null;
+    birthdayMonth?: number | null;
+    birthdayDay?: number | null;
+  }) {
+    const { userStableId, name, birthdayMonth, birthdayDay } = params;
+
+    const user = await this.prisma.user.findUnique({
+      where: { userStableId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('user not found');
+    }
+
+    const updateData: Prisma.UserUpdateInput = {};
+    const trimmedName =
+      typeof name === 'string' && name.trim().length > 0 ? name.trim() : null;
+
+    if (trimmedName && trimmedName !== user.name) {
+      updateData.name = trimmedName;
+    }
+
+    const wantsBirthdayUpdate = birthdayMonth != null || birthdayDay != null;
+
+    if (wantsBirthdayUpdate) {
+      const validBirthday =
+        typeof birthdayMonth === 'number' &&
+        typeof birthdayDay === 'number' &&
+        Number.isInteger(birthdayMonth) &&
+        Number.isInteger(birthdayDay) &&
+        birthdayMonth >= 1 &&
+        birthdayMonth <= 12 &&
+        birthdayDay >= 1 &&
+        birthdayDay <= 31;
+
+      if (!validBirthday) {
+        throw new BadRequestException('invalid birthday');
+      }
+
+      if (user.birthdayMonth == null && user.birthdayDay == null) {
+        updateData.birthdayMonth = birthdayMonth;
+        updateData.birthdayDay = birthdayDay;
+      }
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return {
+        name: user.name,
+        birthdayMonth: user.birthdayMonth,
+        birthdayDay: user.birthdayDay,
+      };
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { userStableId },
+      data: updateData,
+      select: {
+        name: true,
+        birthdayMonth: true,
+        birthdayDay: true,
+      },
+    });
+
+    return updated;
   }
 }

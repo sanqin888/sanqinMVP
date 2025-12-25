@@ -2,11 +2,45 @@
 
 import NextAuth, { type NextAuthOptions } from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
+import { createHash } from 'crypto';
 import type { JWT } from 'next-auth/jwt';
 import type { Session } from 'next-auth';
 
 type JWTWithUserId = JWT & { userId?: string };
 type SessionWithUserId = Session & { userId?: string };
+
+const UUID_NAMESPACE = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
+
+function uuidToBytes(uuid: string): Buffer {
+  const hex = uuid.replace(/-/g, '');
+  if (hex.length !== 32) {
+    throw new Error('Invalid UUID format');
+  }
+  return Buffer.from(hex, 'hex');
+}
+
+function bytesToUuid(bytes: Buffer): string {
+  const hex = bytes.toString('hex');
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    hex.slice(12, 16),
+    hex.slice(16, 20),
+    hex.slice(20),
+  ].join('-');
+}
+
+function uuidv5(name: string, namespace = UUID_NAMESPACE): string {
+  const nsBytes = uuidToBytes(namespace);
+  const hash = createHash('sha1')
+    .update(nsBytes)
+    .update(name)
+    .digest();
+  const bytes = Buffer.from(hash.subarray(0, 16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  return bytesToUuid(bytes);
+}
 
 const authOptions: NextAuthOptions = {
   providers: [
@@ -35,24 +69,21 @@ const authOptions: NextAuthOptions = {
           sub?: string;
         };
 
-        // ✅ 1) 优先用邮箱的 @ 前部分
+        // ✅ 1) 优先用邮箱做稳定 UUID
         const email = googleProfile.email ?? token.email;
         if (email) {
-          const [localPart] = email.split('@');
-          if (localPart && localPart.trim().length > 0) {
-            jwtToken.userId = `google:${localPart.trim().toLowerCase()}`;
-          }
+          jwtToken.userId = uuidv5(`google:${email.trim().toLowerCase()}`);
         }
 
         // 2) 兜底：如果没拿到 email，再退回用 sub
         if (!jwtToken.userId && googleProfile.sub) {
-          jwtToken.userId = `google:${googleProfile.sub}`;
+          jwtToken.userId = uuidv5(`google-sub:${googleProfile.sub}`);
         }
       }
 
       // 再兜一层底：万一上面都失败，但 token.sub 还在
       if (!jwtToken.userId && token.sub) {
-        jwtToken.userId = `google:${token.sub}`;
+        jwtToken.userId = uuidv5(`google-sub:${token.sub}`);
       }
 
       return jwtToken;
