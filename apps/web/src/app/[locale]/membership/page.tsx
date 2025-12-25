@@ -7,6 +7,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import type { Locale } from '@/lib/order/shared';
 import { useSession, signOut } from 'next-auth/react';
 import type { Session } from 'next-auth';
+import { apiFetch } from '@/lib/api-client';
 
 type MemberTier = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM';
 
@@ -30,15 +31,6 @@ type OrderHistory = {
   deliveryType: DeliveryType;
 };
 
-type Address = {
-  id: string;
-  label: string;
-  receiver: string;
-  phone: string;
-  detail: string;
-  isDefault?: boolean;
-};
-
 type CouponStatus = 'active' | 'used' | 'expired';
 
 type Coupon = {
@@ -52,7 +44,6 @@ type Coupon = {
   source?: string;
   issuedAt?: string;
 };
-
 
 type MemberProfile = {
   userStableId: string;
@@ -131,6 +122,30 @@ type LoyaltyEntry = {
   orderStableId?: string | null;
 };
 
+type MemberAddress = {
+  addressStableId: string;
+  label: string;
+  receiver: string;
+  phone?: string;
+  addressLine1: string;
+  addressLine2?: string;
+  city: string;
+  province: string;
+  postalCode: string;
+  isDefault?: boolean;
+};
+
+const formatMemberAddress = (address: MemberAddress): string => {
+  const cityProvince = [address.city, address.province].filter(Boolean).join(', ');
+  const segments = [
+    address.addressLine1,
+    address.addressLine2,
+    cityProvince,
+    address.postalCode,
+  ].filter(Boolean);
+  return segments.join(', ');
+};
+
 function formatOrderStatus(status: OrderStatus, isZh: boolean): string {
   const zh: Record<OrderStatus, string> = {
     pending: '待支付',
@@ -192,6 +207,10 @@ export default function MembershipHomePage() {
   const [loyaltyLoading, setLoyaltyLoading] = useState(false);
   const [loyaltyError, setLoyaltyError] = useState<string | null>(null);
   const [loyaltyLoadedOnce, setLoyaltyLoadedOnce] = useState(false);
+
+  const [addresses, setAddresses] = useState<MemberAddress[]>([]);
+  const [addressesLoading, setAddressesLoading] = useState(false);
+  const [addressesError, setAddressesError] = useState<string | null>(null);
 
   const isZh = locale === 'zh';
 
@@ -689,20 +708,110 @@ export default function MembershipHomePage() {
 
   const isLoading = status === 'loading' || summaryLoading;
 
-  const addresses: Address[] = member
-    ? [
-        {
-          id: 'addr1',
-          label: isZh ? '家' : 'Home',
-          receiver: member.name || (isZh ? '默认收件人' : 'Default receiver'),
-          phone: '',
-          detail: isZh
-            ? 'North York, Toronto, ON'
-            : 'North York, Toronto, ON',
-          isDefault: true,
-        },
-      ]
-    : [];
+  const loadAddresses = useCallback(async () => {
+    if (!member?.userStableId) return;
+
+    try {
+      setAddressesLoading(true);
+      setAddressesError(null);
+      const params = new URLSearchParams({
+        userStableId: member.userStableId,
+      });
+      const list = await apiFetch<MemberAddress[]>(
+        `/membership/addresses?${params.toString()}`,
+      );
+      setAddresses(list ?? []);
+    } catch (error) {
+      console.error('Failed to load addresses', error);
+      setAddressesError(
+        isZh ? '地址加载失败，请稍后再试。' : 'Failed to load addresses.',
+      );
+      setAddresses([]);
+    } finally {
+      setAddressesLoading(false);
+    }
+  }, [isZh, member?.userStableId]);
+
+  useEffect(() => {
+    void loadAddresses();
+  }, [loadAddresses]);
+
+  const handleAddAddress = useCallback(
+    async (address: MemberAddress, setDefault: boolean) => {
+      if (!member?.userStableId) return;
+      try {
+        await apiFetch<{ success: boolean }>('/membership/addresses', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userStableId: member.userStableId,
+            label: address.label,
+            receiver: address.receiver,
+            phone: address.phone ?? '',
+            addressLine1: address.addressLine1,
+            addressLine2: address.addressLine2 ?? '',
+            city: address.city,
+            province: address.province,
+            postalCode: address.postalCode,
+            isDefault: setDefault,
+          }),
+        });
+        await loadAddresses();
+      } catch (error) {
+        console.error('Failed to add address', error);
+        setAddressesError(
+          isZh ? '地址保存失败，请稍后再试。' : 'Failed to save address.',
+        );
+      }
+    },
+    [isZh, loadAddresses, member?.userStableId],
+  );
+
+  const handleDeleteAddress = useCallback(
+    async (addressStableId: string) => {
+      if (!member?.userStableId) return;
+      try {
+        const params = new URLSearchParams({
+          userStableId: member.userStableId,
+          addressStableId,
+        });
+        await apiFetch<{ success: boolean }>(
+          `/membership/addresses?${params.toString()}`,
+          { method: 'DELETE' },
+        );
+        await loadAddresses();
+      } catch (error) {
+        console.error('Failed to delete address', error);
+        setAddressesError(
+          isZh ? '地址删除失败，请稍后再试。' : 'Failed to delete address.',
+        );
+      }
+    },
+    [isZh, loadAddresses, member?.userStableId],
+  );
+
+  const handleSetDefault = useCallback(
+    async (addressStableId: string) => {
+      if (!member?.userStableId) return;
+      try {
+        await apiFetch<{ success: boolean }>('/membership/addresses/default', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userStableId: member.userStableId,
+            addressStableId,
+          }),
+        });
+        await loadAddresses();
+      } catch (error) {
+        console.error('Failed to set default address', error);
+        setAddressesError(
+          isZh ? '默认地址设置失败，请稍后再试。' : 'Failed to set default address.',
+        );
+      }
+    },
+    [isZh, loadAddresses, member?.userStableId],
+  );
 
   const tierDisplay =
     member &&
@@ -882,7 +991,15 @@ export default function MembershipHomePage() {
           )}
 
           {activeTab === 'addresses' && (
-            <AddressesSection isZh={isZh} addresses={addresses} />
+            <AddressesSection
+              isZh={isZh}
+              addresses={addresses}
+              loading={addressesLoading}
+              error={addressesError}
+              onAddAddress={handleAddAddress}
+              onDeleteAddress={handleDeleteAddress}
+              onSetDefault={handleSetDefault}
+            />
           )}
 
           {activeTab === 'coupons' && (
@@ -1187,44 +1304,211 @@ function PointsSection({
 function AddressesSection({
   isZh,
   addresses,
+  loading,
+  error,
+  onAddAddress,
+  onDeleteAddress,
+  onSetDefault,
 }: {
   isZh: boolean;
-  addresses: Address[];
+  addresses: MemberAddress[];
+  loading: boolean;
+  error: string | null;
+  onAddAddress: (address: MemberAddress, setDefault: boolean) => void;
+  onDeleteAddress: (addressStableId: string) => void;
+  onSetDefault: (addressStableId: string) => void;
 }) {
+  const [label, setLabel] = useState('');
+  const [receiver, setReceiver] = useState('');
+  const [phone, setPhone] = useState('');
+  const [addressLine1, setAddressLine1] = useState('');
+  const [addressLine2, setAddressLine2] = useState('');
+  const [city, setCity] = useState('');
+  const [province, setProvince] = useState('');
+  const [postalCode, setPostalCode] = useState('');
+  const [setAsDefault, setSetAsDefault] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const resetForm = () => {
+    setLabel('');
+    setReceiver('');
+    setPhone('');
+    setAddressLine1('');
+    setAddressLine2('');
+    setCity('');
+    setProvince('');
+    setPostalCode('');
+    setSetAsDefault(false);
+    setFormError(null);
+  };
+
+  const handleAdd = () => {
+    const trimmedReceiver = receiver.trim();
+    const trimmedLine1 = addressLine1.trim();
+    const trimmedCity = city.trim();
+    const trimmedProvince = province.trim();
+    const trimmedPostal = postalCode.trim();
+
+    if (
+      !trimmedReceiver ||
+      !trimmedLine1 ||
+      !trimmedCity ||
+      !trimmedProvince ||
+      !trimmedPostal
+    ) {
+      setFormError(
+        isZh ? '请填写完整地址与联系人信息。' : 'Please complete the address details.',
+      );
+      return;
+    }
+
+    const fallbackLabel = isZh ? '地址' : 'Address';
+    const address: MemberAddress = {
+      addressStableId: '',
+      label: label.trim() || fallbackLabel,
+      receiver: trimmedReceiver,
+      phone: phone.trim(),
+      addressLine1: trimmedLine1,
+      addressLine2: addressLine2.trim(),
+      city: trimmedCity,
+      province: trimmedProvince,
+      postalCode: trimmedPostal,
+      isDefault: setAsDefault,
+    };
+
+    onAddAddress(address, setAsDefault);
+    resetForm();
+  };
+
   return (
     <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-medium text-slate-900">
           {isZh ? '收货地址' : 'Delivery addresses'}
         </h2>
+      </div>
+
+      {loading && (
+        <p className="mb-3 text-xs text-slate-500">
+          {isZh ? '地址加载中…' : 'Loading addresses…'}
+        </p>
+      )}
+      {error && <p className="mb-3 text-xs text-rose-600">{error}</p>}
+
+      <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+        <p className="mb-2 text-[11px] font-medium text-slate-500">
+          {isZh ? '新增地址' : 'Add a new address'}
+        </p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <input
+            className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
+            placeholder={isZh ? '地址标签（例如：家）' : 'Label (e.g. Home)'}
+            value={label}
+            onChange={(event) => setLabel(event.target.value)}
+          />
+          <input
+            className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
+            placeholder={isZh ? '收件人姓名' : 'Receiver name'}
+            value={receiver}
+            onChange={(event) => setReceiver(event.target.value)}
+          />
+          <input
+            className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
+            placeholder={isZh ? '联系电话' : 'Phone number'}
+            value={phone}
+            onChange={(event) => setPhone(event.target.value)}
+          />
+          <input
+            className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
+            placeholder={isZh ? '地址行 1' : 'Address line 1'}
+            value={addressLine1}
+            onChange={(event) => setAddressLine1(event.target.value)}
+          />
+          <input
+            className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
+            placeholder={isZh ? '地址行 2（可选）' : 'Address line 2 (optional)'}
+            value={addressLine2}
+            onChange={(event) => setAddressLine2(event.target.value)}
+          />
+          <input
+            className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
+            placeholder={isZh ? '城市' : 'City'}
+            value={city}
+            onChange={(event) => setCity(event.target.value)}
+          />
+          <input
+            className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
+            placeholder={isZh ? '省份/州' : 'Province/State'}
+            value={province}
+            onChange={(event) => setProvince(event.target.value)}
+          />
+          <input
+            className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
+            placeholder={isZh ? '邮编' : 'Postal code'}
+            value={postalCode}
+            onChange={(event) => setPostalCode(event.target.value)}
+          />
+        </div>
+        <label className="mt-3 flex items-center gap-2 text-[11px] text-slate-600">
+          <input
+            type="checkbox"
+            checked={setAsDefault}
+            onChange={(event) => setSetAsDefault(event.target.checked)}
+          />
+          {isZh ? '设为默认地址' : 'Set as default'}
+        </label>
+        {formError && <p className="mt-2 text-[11px] text-rose-600">{formError}</p>}
         <button
           type="button"
-          className="text-xs text-slate-500 hover:text-slate-900"
+          className="mt-3 inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-[11px] font-medium text-white hover:bg-slate-800"
+          onClick={handleAdd}
         >
-          {isZh ? '新增地址（待开发）' : 'Add address (todo)'}
+          {isZh ? '保存地址' : 'Save address'}
         </button>
       </div>
 
       <div className="space-y-3 text-xs text-slate-700">
         {addresses.map((addr) => (
           <div
-            key={addr.id}
+            key={addr.addressStableId}
             className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
           >
             <div className="flex items-center justify-between">
               <div className="font-medium text-slate-900">
                 {addr.label}
               </div>
-              {addr.isDefault && (
-                <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] text-white">
-                  {isZh ? '默认' : 'Default'}
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {addr.isDefault && (
+                  <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] text-white">
+                    {isZh ? '默认' : 'Default'}
+                  </span>
+                )}
+                {!addr.isDefault && (
+                  <button
+                    type="button"
+                    className="text-[10px] text-slate-500 hover:text-slate-900"
+                    onClick={() => onSetDefault(addr.addressStableId)}
+                  >
+                    {isZh ? '设为默认' : 'Set default'}
+                  </button>
+                )}
+              </div>
             </div>
             <p className="mt-1">
               {addr.receiver} · {addr.phone}
             </p>
-            <p className="mt-1 text-slate-600">{addr.detail}</p>
+            <p className="mt-1 text-slate-600">
+              {formatMemberAddress(addr)}
+            </p>
+            <div className="mt-2 flex items-center gap-3 text-[10px] text-slate-500">
+              <button
+                type="button"
+                className="hover:text-rose-600"
+                onClick={() => onDeleteAddress(addr.addressStableId)}
+              >
+                {isZh ? '删除' : 'Delete'}
+              </button>
+            </div>
           </div>
         ))}
 

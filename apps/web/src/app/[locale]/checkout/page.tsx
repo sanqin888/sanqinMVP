@@ -39,6 +39,18 @@ import {
   buildLocalizedMenuFromDb,
 } from "@/lib/order/shared";
 import { useSession } from "next-auth/react";
+type MemberAddress = {
+  addressStableId: string;
+  label: string;
+  receiver: string;
+  phone?: string;
+  addressLine1: string;
+  addressLine2?: string;
+  city: string;
+  province: string;
+  postalCode: string;
+  isDefault?: boolean;
+};
 
 const PHONE_OTP_REQUEST_URL = "/api/v1/auth/phone/request-code";
 const PHONE_OTP_VERIFY_URL = "/api/v1/auth/phone/verify-code";
@@ -108,7 +120,8 @@ type StoreStatus = {
 type MemberTier = "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
 
 type MembershipSummaryResponse = {
-  userId: string;
+  userId?: string;
+  userStableId?: string;
   displayName: string | null;
   email: string | null;
   phone: string | null;
@@ -254,6 +267,7 @@ export default function CheckoutPage() {
   const strings = UI_STRINGS[locale];
   const radiusLabel = `${DELIVERY_RADIUS_KM} km`;
   const orderHref = q ? `/${locale}?${q}` : `/${locale}`;
+  const checkoutHref = q ? `/${locale}/checkout?${q}` : `/${locale}/checkout`;
 
   const { items, updateNotes, updateQuantity } = usePersistentCart();
   const { data: session, status: authStatus } = useSession();
@@ -264,7 +278,12 @@ export default function CheckoutPage() {
   const [menuLoading, setMenuLoading] = useState(false);
   const [menuError, setMenuError] = useState<string | null>(null);
 
-  const membershipHref = `/${locale}/membership`;
+  const membershipHref =
+    authStatus === "authenticated"
+      ? `/${locale}/membership`
+      : `/${locale}/membership/login?redirect=${encodeURIComponent(
+          checkoutHref,
+        )}`;
   const membershipLabel =
     authStatus === "authenticated"
       ? locale === "zh"
@@ -350,6 +369,11 @@ export default function CheckoutPage() {
   const [memberPhone, setMemberPhone] = useState<string | null>(null);
   const [memberPhoneVerified, setMemberPhoneVerified] = useState(false);
   const [phonePrefilled, setPhonePrefilled] = useState(false); // 只预填一次
+  const [memberName, setMemberName] = useState<string | null>(null);
+  const [namePrefilled, setNamePrefilled] = useState(false);
+  const [addressPrefilled, setAddressPrefilled] = useState(false);
+  const [memberDefaultAddress, setMemberDefaultAddress] =
+    useState<MemberAddress | null>(null);
 
   // 手机号验证流程状态
   const [phoneVerificationStep, setPhoneVerificationStep] = useState<
@@ -914,6 +938,11 @@ export default function CheckoutPage() {
       setAvailableCoupons([]);
       setMemberPhone(null);
       setMemberPhoneVerified(false);
+      setMemberName(null);
+      setPhonePrefilled(false);
+      setNamePrefilled(false);
+      setAddressPrefilled(false);
+      setMemberDefaultAddress(null);
       return;
     }
 
@@ -963,15 +992,21 @@ export default function CheckoutPage() {
             ? raw.details
             : (raw as MembershipSummaryResponse);
 
-        setLoyaltyInfo({
-          userId: data.userId,
-          tier: data.tier,
-          points: data.points,
-          availableDiscountCents: data.availableDiscountCents,
-        });
+        const stableId = data.userStableId ?? data.userId ?? "";
+        if (stableId) {
+          setLoyaltyInfo({
+            userId: stableId,
+            tier: data.tier,
+            points: data.points,
+            availableDiscountCents: data.availableDiscountCents,
+          });
+        } else {
+          setLoyaltyInfo(null);
+        }
 
         setMemberPhone(data.phone ?? null);
         setMemberPhoneVerified(!!data.phoneVerified);
+        setMemberName(data.displayName ?? null);
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") {
           return;
@@ -993,6 +1028,42 @@ export default function CheckoutPage() {
 
     return () => controller.abort();
   }, [authStatus, session, locale, verifiedPhone, phoneVerifiedFlag]);
+
+  useEffect(() => {
+    if (authStatus !== "authenticated") return;
+    const s = session as SessionWithUserId | null;
+    const userId = s?.userId ?? s?.user?.id ?? undefined;
+    if (!userId) return;
+
+    const controller = new AbortController();
+
+    const loadAddresses = async () => {
+      try {
+        const params = new URLSearchParams({ userStableId: userId });
+        const res = await fetch(
+          `/api/v1/membership/addresses?${params.toString()}`,
+          { signal: controller.signal },
+        );
+        if (!res.ok) {
+          throw new Error(`Failed with status ${res.status}`);
+        }
+        const list = (await res.json()) as MemberAddress[];
+        const defaultAddress =
+          list.find((addr) => addr.isDefault) ?? list[0] ?? null;
+        setMemberDefaultAddress(defaultAddress);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+        console.error("Failed to load member addresses", error);
+        setMemberDefaultAddress(null);
+      }
+    };
+
+    void loadAddresses();
+
+    return () => controller.abort();
+  }, [authStatus, session]);
 
   // 加载优惠券列表
   useEffect(() => {
@@ -1079,6 +1150,42 @@ export default function CheckoutPage() {
 
     setPhonePrefilled(true);
   }, [memberPhone, phonePrefilled]);
+
+  useEffect(() => {
+    if (namePrefilled) return;
+    if (!memberName) return;
+
+    setCustomer((prev) => {
+      if (prev.name && prev.name.trim().length > 0) {
+        return prev;
+      }
+      return { ...prev, name: memberName };
+    });
+
+    setNamePrefilled(true);
+  }, [memberName, namePrefilled]);
+
+  useEffect(() => {
+    if (addressPrefilled) return;
+    if (!memberDefaultAddress) return;
+
+    setCustomer((prev) => {
+      if (prev.addressLine1.trim().length > 0) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        addressLine1: memberDefaultAddress.addressLine1,
+        addressLine2: memberDefaultAddress.addressLine2 ?? "",
+        city: memberDefaultAddress.city || prev.city,
+        province: memberDefaultAddress.province || prev.province,
+        postalCode: memberDefaultAddress.postalCode,
+      };
+    });
+
+    setAddressPrefilled(true);
+  }, [addressPrefilled, memberDefaultAddress]);
 
   // ✅ 如果当前手机号与会员账号中的手机号一致，就自动视为“已验证”
   useEffect(() => {
