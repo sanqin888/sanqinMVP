@@ -1,11 +1,13 @@
 // apps/api/src/admin/business/admin-business.controller.ts
 
-import { Body, Controller, Get, Patch, Put } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Put, UseGuards } from '@nestjs/common';
 import {
   AdminBusinessService,
   type BusinessConfigResponse,
 } from './admin-business.service';
+import { AdminAuthGuard } from '../../auth/admin-auth.guard';
 
+@UseGuards(AdminAuthGuard)
 @Controller('admin/business')
 export class AdminBusinessController {
   constructor(private readonly service: AdminBusinessService) {}
