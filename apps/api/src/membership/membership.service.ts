@@ -230,9 +230,7 @@ export class MembershipService {
 
     // —— 解析推荐人（通过邮箱查 User），不能是自己
     const referrerEmail =
-      typeof referrerEmailParam === 'string'
-        ? referrerEmailParam.trim()
-        : '';
+      typeof referrerEmailParam === 'string' ? referrerEmailParam.trim() : '';
     let referrerId: string | undefined;
     if (referrerEmail) {
       const ref = await this.prisma.user.findUnique({
