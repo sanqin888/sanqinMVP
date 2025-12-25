@@ -229,10 +229,14 @@ export class MembershipService {
     const initialName = emailPrefix || normalizedName;
 
     // —— 解析推荐人（通过邮箱查 User），不能是自己
+    const referrerEmail =
+      typeof referrerEmailParam === 'string'
+        ? referrerEmailParam.trim()
+        : '';
     let referrerId: string | undefined;
-    if (referrerEmail && referrerEmail.trim()) {
+    if (referrerEmail) {
       const ref = await this.prisma.user.findUnique({
-        where: { email: referrerEmail.trim() },
+        where: { email: referrerEmail },
         select: { id: true, userStableId: true },
       });
 
@@ -430,7 +434,7 @@ export class MembershipService {
       userStableId,
       name,
       email,
-      referrerEmail,
+      referrerEmail: referrerEmailParam,
       birthdayMonth,
       birthdayDay,
       phone,
