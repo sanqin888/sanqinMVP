@@ -7,6 +7,7 @@ import { AdminBusinessService } from './business/admin-business.service';
 import { AdminMenuService } from './menu/admin-menu.service';
 import { AdminImageUploadController } from './upload/image/admin-image-upload.controller';
 import { AdminImageUploadService } from './upload/image/admin-image-upload.service';
+import { AdminAuthGuard } from '../auth/admin-auth.guard';
 
 @Module({
   controllers: [
@@ -20,6 +21,7 @@ import { AdminImageUploadService } from './upload/image/admin-image-upload.servi
     AdminBusinessService,
     AdminMenuService,
     AdminImageUploadService,
+    AdminAuthGuard,
   ],
 })
 export class AdminModule {}
