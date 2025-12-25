@@ -15,6 +15,7 @@ import {
   advanceOrder,
   apiFetch,
   createOrderAmendment,
+  fetchRecentOrders,
   updateOrderStatus,
 } from "@/lib/api-client";
 import type { PosDisplaySnapshot } from "@/lib/pos-display";
@@ -56,6 +57,8 @@ const COPY = {
     },
     actionsTitle: "订单操作",
     actionsSubtitle: "选中订单后进行处理。",
+    orderDetailAction: "订单详情",
+    printReceiptAction: "打印收据",
     emptySelection: "请选择左侧订单查看功能。",
     orderNumberLabel: "订单编号",
     stableIdLabel: "Stable ID",
@@ -178,6 +181,8 @@ const COPY = {
     },
     actionsTitle: "Order actions",
     actionsSubtitle: "Operate after selecting an order.",
+    orderDetailAction: "Order details",
+    printReceiptAction: "Print receipt",
     emptySelection: "Select an order to view actions.",
     orderNumberLabel: "Order Number",
     stableIdLabel: "Stable ID",
@@ -1049,23 +1054,21 @@ const mapOrder = useCallback(
       try {
         setIsLoading(true);
         setErrorMessage(null);
-        const query =
-          "/orders/board?status=pending,paid,making,ready,completed,refunded&sinceMinutes=1440&limit=200";
-const [configRes, data] = await Promise.all([
-  apiFetch<BusinessConfigLite>("/admin/business/config").catch(() => null),
-  apiFetch<BackendOrder[]>(query),
-]);
+        const [configRes, data] = await Promise.all([
+          apiFetch<BusinessConfigLite>("/admin/business/config").catch(() => null),
+          fetchRecentOrders<BackendOrder[]>(10),
+        ]);
 
-if (cancelled) return;
+        if (cancelled) return;
 
-const tz =
-  configRes?.timezone?.trim() ||
-  (Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+        const tz =
+          configRes?.timezone?.trim() ||
+          (Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
 
-setStoreTimezone(tz);
+        setStoreTimezone(tz);
 
-const mapped = data.map((order) => mapOrder(order, tz));
-setOrders(mapped);
+        const mapped = data.map((order) => mapOrder(order, tz));
+        setOrders(mapped);
       } catch (error) {
         if (!cancelled) {
           console.error("Failed to fetch POS orders:", error);
@@ -1686,6 +1689,42 @@ const handleSubmit = () => {
     }
   };
 
+  const handlePrintReceipt = useCallback(async () => {
+    if (!selectedOrder) return;
+    const fulfillment: PosPrintRequest["fulfillment"] =
+      selectedOrder.type === "dine_in" ? "dine_in" : "pickup";
+    const paymentMethod: PosPrintRequest["paymentMethod"] =
+      selectedOrder.paymentMethod === "cash"
+        ? "cash"
+        : selectedOrder.paymentMethod === "card"
+          ? "card"
+          : "wechat_alipay";
+    const snapshot: PosDisplaySnapshot = {
+      items: selectedOrder.items.map((item) => ({
+        stableId: item.stableId,
+        nameZh: item.nameZh ?? item.displayName ?? item.name,
+        nameEn: item.nameEn ?? item.displayName ?? item.name,
+        quantity: item.qty,
+        unitPriceCents: item.unitPriceCents,
+        lineTotalCents: item.totalCents,
+      })),
+      subtotalCents: selectedOrder.subtotalCents,
+      discountCents: selectedOrder.discountCents,
+      taxCents: selectedOrder.taxCents,
+      totalCents: selectedOrder.amountCents,
+    };
+
+    await sendPosPrintRequest({
+      locale,
+      orderNumber: selectedOrder.clientRequestId ?? selectedOrder.stableId,
+      pickupCode: selectedOrder.pickupCode,
+      fulfillment,
+      paymentMethod,
+      snapshot,
+      targets: { customer: true, kitchen: false },
+    });
+  }, [locale, selectedOrder]);
+
   const advanceLabel = useMemo(() => {
     if (!selectedOrder) return copy.advanceStatus;
     const nextStatus = NEXT_STATUS[selectedOrder.status];
@@ -1938,22 +1977,37 @@ const handleSubmit = () => {
                     {copy.stableIdLabel}: {selectedOrder.stableId}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleAdvanceStatus}
-                  disabled={
-                    isAdvancing ||
-                    NEXT_STATUS[selectedOrder.status] === null
-                  }
-                  className={`rounded-md border px-4 py-2 text-sm font-semibold transition ${
-                    isAdvancing ||
-                    NEXT_STATUS[selectedOrder.status] === null
-                      ? "cursor-not-allowed border-slate-700 bg-slate-900/60 text-slate-500"
-                      : "border-slate-500 bg-slate-900/40 text-slate-100 hover:bg-slate-800/60"
-                  }`}
-                >
-                  {isAdvancing ? copy.advanceProcessing : advanceLabel}
-                </button>
+                <div className="flex flex-col items-end gap-2">
+                  <Link
+                    href={`/${locale}/order/${selectedOrder.stableId}`}
+                    className="rounded-md border border-slate-500 bg-slate-900/40 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-slate-800/60"
+                  >
+                    {copy.orderDetailAction}
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={handlePrintReceipt}
+                    className="rounded-md border border-slate-500 bg-slate-900/40 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-slate-800/60"
+                  >
+                    {copy.printReceiptAction}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAdvanceStatus}
+                    disabled={
+                      isAdvancing ||
+                      NEXT_STATUS[selectedOrder.status] === null
+                    }
+                    className={`rounded-md border px-4 py-2 text-sm font-semibold transition ${
+                      isAdvancing ||
+                      NEXT_STATUS[selectedOrder.status] === null
+                        ? "cursor-not-allowed border-slate-700 bg-slate-900/60 text-slate-500"
+                        : "border-slate-500 bg-slate-900/40 text-slate-100 hover:bg-slate-800/60"
+                    }`}
+                  >
+                    {isAdvancing ? copy.advanceProcessing : advanceLabel}
+                  </button>
+                </div>
               </div>
               <div className="flex flex-wrap gap-2 text-[11px] text-slate-400">
                 <span className="rounded-full border border-slate-700 px-2 py-1">
