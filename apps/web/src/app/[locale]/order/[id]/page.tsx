@@ -309,7 +309,7 @@ export default function OrderDetailPage({ params }: PageProps) {
           <div className="space-y-2">
             <h2 className="text-sm font-semibold text-gray-700">项目列表</h2>
             <ul className="space-y-2 text-sm text-gray-700">
-              {order.items.map((item) => {
+              {order.items.map((item, idx) => {
                 const unitPrice =
                   typeof item.unitPriceCents === 'number'
                     ? item.unitPriceCents
@@ -322,8 +322,10 @@ export default function OrderDetailPage({ params }: PageProps) {
                   item.nameEn ||
                   item.productStableId;
 
+                const itemKey = `${item.id ?? item.productStableId ?? displayName ?? 'item'}-${idx}`;
+
                 return (
-                  <li key={item.id} className="rounded border px-3 py-2">
+                  <li key={itemKey} className="rounded border px-3 py-2">
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <div className="font-medium text-gray-900">
