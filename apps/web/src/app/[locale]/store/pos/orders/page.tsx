@@ -20,6 +20,7 @@ import {
 } from "@/lib/api-client";
 import type { PosDisplaySnapshot } from "@/lib/pos-display";
 import type { CreateOrderAmendmentInput } from "@/lib/api-client";
+import { ymdInTimeZone } from "@/lib/time/tz";
 
 const COPY = {
   zh: {
@@ -483,29 +484,6 @@ function parseBackendDate(value: unknown): Date {
   if (!trimmed) return new Date(NaN);
   const hasTimezone = /[zZ]|[+-]\d{2}:?\d{2}$/.test(trimmed);
   return new Date(hasTimezone ? trimmed : `${trimmed}Z`);
-}
-
-function ymdInTimeZone(date: Date, timeZone: string): string {
-  // returns YYYY-MM-DD in given IANA time zone
-  try {
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).formatToParts(date);
-
-    const y = parts.find((p) => p.type === "year")?.value ?? "0000";
-    const m = parts.find((p) => p.type === "month")?.value ?? "01";
-    const d = parts.find((p) => p.type === "day")?.value ?? "01";
-    return `${y}-${m}-${d}`;
-  } catch {
-    // fallback to local date
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, "0");
-    const d = String(date.getDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
-  }
 }
 
 function mapPaymentMethod(order: BackendOrder): PaymentMethodKey {
