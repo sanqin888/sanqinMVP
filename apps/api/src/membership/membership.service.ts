@@ -217,9 +217,7 @@ export class MembershipService {
     }
 
     const normalizedName =
-      typeof name === 'string' && name.trim().length > 0
-        ? name.trim()
-        : null;
+      typeof name === 'string' && name.trim().length > 0 ? name.trim() : null;
     const normalizedEmail =
       typeof email === 'string' && email.trim().length > 0
         ? email.trim()
@@ -450,14 +448,14 @@ export class MembershipService {
       phoneVerificationToken,
     });
 
-    const referrerEmail = user.referredByUserId
-      ? (
-          await this.prisma.user.findUnique({
-            where: { id: user.referredByUserId },
-            select: { email: true },
-          })
-        )?.email ?? null
-      : null;
+    let referrerEmail: string | null = null;
+    if (user.referredByUserId) {
+      const referrer = await this.prisma.user.findUnique({
+        where: { id: user.referredByUserId },
+        select: { email: true },
+      });
+      referrerEmail = referrer?.email ?? null;
+    }
 
     const account = await this.loyalty.ensureAccount(user.id);
     const availableDiscountCents = this.loyalty.maxRedeemableCentsFromBalance(
@@ -841,16 +839,13 @@ export class MembershipService {
 
     const updateData: Prisma.UserUpdateInput = {};
     const trimmedName =
-      typeof name === 'string' && name.trim().length > 0
-        ? name.trim()
-        : null;
+      typeof name === 'string' && name.trim().length > 0 ? name.trim() : null;
 
     if (trimmedName && trimmedName !== user.name) {
       updateData.name = trimmedName;
     }
 
-    const wantsBirthdayUpdate =
-      birthdayMonth != null || birthdayDay != null;
+    const wantsBirthdayUpdate = birthdayMonth != null || birthdayDay != null;
 
     if (wantsBirthdayUpdate) {
       const validBirthday =
