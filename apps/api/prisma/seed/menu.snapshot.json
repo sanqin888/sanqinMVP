@@ -1,0 +1,134 @@
+{
+  "version": 1,
+  "exportedAt": "2025-12-25T18:54:27.972Z",
+  "categories": [
+    {
+      "stableId": "cmjhs7oqj0000y69c7my2ckrb",
+      "nameEn": "Signature Dishes",
+      "nameZh": "招牌特色",
+      "sortOrder": 1,
+      "isActive": true,
+      "deletedAt": null
+    }
+  ],
+  "items": [
+    {
+      "stableId": "cmjhs8n6t0002y69c8bm77ygb",
+      "categoryStableId": "cmjhs7oqj0000y69c7my2ckrb",
+      "nameEn": "Liangpi（Cool Noodle）",
+      "nameZh": "三秦凉皮",
+      "basePriceCents": 699,
+      "sortOrder": 1,
+      "imageUrl": null,
+      "ingredientsEn": null,
+      "ingredientsZh": null,
+      "isAvailable": true,
+      "isVisible": true,
+      "tempUnavailableUntil": null,
+      "deletedAt": null
+    },
+    {
+      "stableId": "cmjhs940k0004y69c1c91zet5",
+      "categoryStableId": "cmjhs7oqj0000y69c7my2ckrb",
+      "nameEn": "Rougamo",
+      "nameZh": "三秦肉夹馍",
+      "basePriceCents": 699,
+      "sortOrder": 1,
+      "imageUrl": null,
+      "ingredientsEn": null,
+      "ingredientsZh": null,
+      "isAvailable": true,
+      "isVisible": true,
+      "tempUnavailableUntil": null,
+      "deletedAt": null
+    }
+  ],
+  "templateGroups": [
+    {
+      "stableId": "cmjhsaz9t0005y69chix5nzqt",
+      "nameEn": "Cool Noodle Options",
+      "nameZh": "凉皮选项",
+      "sortOrder": 1,
+      "defaultMinSelect": 1,
+      "defaultMaxSelect": 1,
+      "isAvailable": true,
+      "tempUnavailableUntil": null,
+      "deletedAt": null
+    },
+    {
+      "stableId": "cmjhscbqq000ay69czjqjvznt",
+      "nameEn": "Meat Options",
+      "nameZh": "肉选项",
+      "sortOrder": 1,
+      "defaultMinSelect": 1,
+      "defaultMaxSelect": 1,
+      "isAvailable": true,
+      "tempUnavailableUntil": null,
+      "deletedAt": null
+    }
+  ],
+  "options": [
+    {
+      "stableId": "cmjhsbei60007y69c5af6y70w",
+      "templateGroupStableId": "cmjhsaz9t0005y69chix5nzqt",
+      "nameEn": "Flour Noodle",
+      "nameZh": "面皮",
+      "priceDeltaCents": 0,
+      "sortOrder": 1,
+      "isAvailable": true,
+      "tempUnavailableUntil": null,
+      "deletedAt": null
+    },
+    {
+      "stableId": "cmjhsbruu0009y69c443era0e",
+      "templateGroupStableId": "cmjhsaz9t0005y69chix5nzqt",
+      "nameEn": "Rice Noodle",
+      "nameZh": "米皮",
+      "priceDeltaCents": 0,
+      "sortOrder": 1,
+      "isAvailable": true,
+      "tempUnavailableUntil": null,
+      "deletedAt": null
+    },
+    {
+      "stableId": "cmjhscsb1000cy69cqculq1xt",
+      "templateGroupStableId": "cmjhscbqq000ay69czjqjvznt",
+      "nameEn": "Pork",
+      "nameZh": "猪肉",
+      "priceDeltaCents": 0,
+      "sortOrder": 1,
+      "isAvailable": true,
+      "tempUnavailableUntil": null,
+      "deletedAt": null
+    },
+    {
+      "stableId": "cmjhsd1c1000ey69c8b7ech45",
+      "templateGroupStableId": "cmjhscbqq000ay69czjqjvznt",
+      "nameEn": "Beef",
+      "nameZh": "牛肉",
+      "priceDeltaCents": 150,
+      "sortOrder": 1,
+      "isAvailable": true,
+      "tempUnavailableUntil": null,
+      "deletedAt": null
+    }
+  ],
+  "itemOptionGroups": [
+    {
+      "itemStableId": "cmjhs8n6t0002y69c8bm77ygb",
+      "templateGroupStableId": "cmjhsaz9t0005y69chix5nzqt",
+      "minSelect": 1,
+      "maxSelect": 1,
+      "sortOrder": 1,
+      "isEnabled": true
+    },
+    {
+      "itemStableId": "cmjhs940k0004y69c1c91zet5",
+      "templateGroupStableId": "cmjhscbqq000ay69czjqjvznt",
+      "minSelect": 1,
+      "maxSelect": 1,
+      "sortOrder": 1,
+      "isEnabled": true
+    }
+  ]
+}
