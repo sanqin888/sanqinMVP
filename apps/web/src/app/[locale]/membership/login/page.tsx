@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter, useParams, useSearchParams } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useSession } from '@/lib/auth-session';
 import type { Locale } from '@/lib/order/shared';
@@ -11,21 +11,14 @@ import { apiFetch } from '@/lib/api-client';
 // ✅ 和当前后端保持一致：success 布尔值即可
 type PhoneVerifyResponse = {
   success: boolean;
-  verificationToken?: string;
 };
 
 export default function MemberLoginPage() {
   const router = useRouter();
   const { locale } = useParams<{ locale: Locale }>();
-  const searchParams = useSearchParams();
   const { status } = useSession();
 
   const isZh = locale === 'zh';
-  const redirectParam = searchParams?.get('redirect');
-  const redirectPath =
-    redirectParam && redirectParam.startsWith('/')
-      ? redirectParam
-      : `/${locale}/membership`;
 
   // —— 原有字段 ——
   const [referrerEmail, setReferrerEmail] = useState<string>('');
@@ -40,6 +33,7 @@ export default function MemberLoginPage() {
   const [isSendingCode, setIsSendingCode] = useState(false);
   const [isVerifyingCode, setIsVerifyingCode] = useState(false);
   const [phoneVerified, setPhoneVerified] = useState(false);
+  // ⚠️ 现在后端不再返回 verificationToken，我们前端自己用一个简单标记字符串（例如 '1'）
   const [phoneVerificationToken, setPhoneVerificationToken] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number>(0); // 发送验证码后的倒计时（秒）
   const [trustedPhone, setTrustedPhone] = useState<string | null>(null);
@@ -47,9 +41,9 @@ export default function MemberLoginPage() {
   // 登录后直接跳会员中心
   useEffect(() => {
     if (status === 'authenticated') {
-      router.replace(redirectPath);
+      router.replace(`/${locale}/membership`);
     }
-  }, [status, router, redirectPath]);
+  }, [status, router, locale]);
 
   // 设备级：如果这台设备之前已经验证过一个手机号，自动预填并视为已验证
   useEffect(() => {
@@ -197,9 +191,9 @@ export default function MemberLoginPage() {
         );
         return;
       }
-      // ✅ 校验成功：本地标记为已验证，并保存后端返回的验证 token
+      // ✅ 校验成功：本地标记为已验证，并给一个简单的“验证凭证”字符串
       setPhoneVerified(true);
-      setPhoneVerificationToken(res.verificationToken ?? null);
+      setPhoneVerificationToken('1'); // 现在先用固定字符串，后端只需要知道“已经验证过了”
       setError(null);
       // ✅ 记住这台设备上已经验证过的手机号
       const trimmedPhone = phone.trim();
@@ -229,8 +223,8 @@ export default function MemberLoginPage() {
     }
   }
 
-  // 完成登录：必须先通过手机验证
-  function handleMemberLogin() {
+  // 点击 Google 登录：必须先通过手机验证
+  function handleGoogleLogin() {
     // 先校验推荐人邮箱 / 生日等
     if (!validateInputs()) return;
 
@@ -238,8 +232,8 @@ export default function MemberLoginPage() {
     if (!phoneVerified) {
       setError(
         isZh
-          ? '请先完成手机号验证，再继续登录。'
-          : 'Please verify your phone number before continuing.',
+          ? '请先完成手机号验证，再继续使用 Google 登录。'
+          : 'Please verify your phone number before continuing with Google.',
       );
       return;
     }
@@ -264,7 +258,25 @@ export default function MemberLoginPage() {
       }
     }
 
-    router.replace(redirectPath);
+    // 把必要信息也塞到 callbackUrl 的 query（方便后端 / 会员中心用）
+    const params = new URLSearchParams();
+    params.set('phone', phone.trim());
+    if (phoneVerificationToken) {
+      params.set('pv', phoneVerificationToken);
+    }
+
+    const emailTrimmed = referrerEmail.trim();
+    if (emailTrimmed) params.set('referrerEmail', emailTrimmed);
+    if (birthdayMonth.trim()) params.set('birthdayMonth', birthdayMonth.trim());
+    if (birthdayDay.trim()) params.set('birthdayDay', birthdayDay.trim());
+
+    const base = `/${locale}/membership`;
+    const callbackUrl =
+      params.toString().length > 0 ? `${base}?${params.toString()}` : base;
+
+    void signIn('google', {
+      callbackUrl,
+    });
   }
 
   return (
@@ -286,7 +298,7 @@ export default function MemberLoginPage() {
 
       <main className="mx-auto flex max-w-md flex-col px-4 py-10">
         <h1 className="mb-6 text-2xl font-semibold text-slate-900">
-          {isZh ? '先验证手机号，再完成登录' : 'Verify your phone, then sign in'}
+          {isZh ? '先验证手机号，再使用 Google 登录' : 'Verify your phone, then sign in with Google'}
         </h1>
         <p className="mb-6 text-sm text-slate-600">
           {isZh
@@ -386,8 +398,8 @@ export default function MemberLoginPage() {
           {phoneVerified && (
             <p className="mt-1 text-[11px] text-emerald-600">
               {isZh
-                ? '手机号已通过验证，可以继续登录。'
-                : 'Phone number verified. You can now continue.'}
+                ? '手机号已通过验证，可以继续使用 Google 登录。'
+                : 'Phone number verified. You can now continue with Google.'}
             </p>
           )}
         </div>
@@ -484,14 +496,14 @@ export default function MemberLoginPage() {
         <div className="mt-6 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
           <button
             type="button"
-            onClick={handleMemberLogin}
+            onClick={handleGoogleLogin}
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-60"
             disabled={!phoneVerified}
           >
             <span className="rounded bg-white px-1.5 py-0.5 text-xs font-bold text-slate-900">
               G
             </span>
-            <span>{isZh ? '完成登录' : 'Continue'}</span>
+            <span>{isZh ? '使用 Google 登录' : 'Continue with Google'}</span>
           </button>
 
           <p className="mt-4 text-xs text-slate-500">
