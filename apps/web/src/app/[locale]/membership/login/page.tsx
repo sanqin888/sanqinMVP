@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { signIn, useSession } from 'next-auth/react';
 import type { Locale } from '@/lib/order/shared';
@@ -17,9 +17,15 @@ type PhoneVerifyResponse = {
 export default function MemberLoginPage() {
   const router = useRouter();
   const { locale } = useParams<{ locale: Locale }>();
+  const searchParams = useSearchParams();
   const { status } = useSession();
 
   const isZh = locale === 'zh';
+  const redirectParam = searchParams?.get('redirect');
+  const redirectPath =
+    redirectParam && redirectParam.startsWith('/')
+      ? redirectParam
+      : `/${locale}/membership`;
 
   // —— 原有字段 ——
   const [referrerEmail, setReferrerEmail] = useState<string>('');
@@ -41,9 +47,9 @@ export default function MemberLoginPage() {
   // 登录后直接跳会员中心
   useEffect(() => {
     if (status === 'authenticated') {
-      router.replace(`/${locale}/membership`);
+      router.replace(redirectPath);
     }
-  }, [status, router, locale]);
+  }, [status, router, redirectPath]);
 
   // 设备级：如果这台设备之前已经验证过一个手机号，自动预填并视为已验证
   useEffect(() => {
@@ -259,20 +265,21 @@ export default function MemberLoginPage() {
     }
 
     // 把必要信息也塞到 callbackUrl 的 query（方便后端 / 会员中心用）
-    const params = new URLSearchParams();
-    params.set('phone', phone.trim());
-    if (phoneVerificationToken) {
-      params.set('pv', phoneVerificationToken);
-    }
+    const callbackUrl = (() => {
+      const url = new URL(redirectPath, window.location.origin);
+      const params = new URLSearchParams(url.search);
+      params.set('phone', phone.trim());
+      if (phoneVerificationToken) {
+        params.set('pv', phoneVerificationToken);
+      }
 
-    const emailTrimmed = referrerEmail.trim();
-    if (emailTrimmed) params.set('referrerEmail', emailTrimmed);
-    if (birthdayMonth.trim()) params.set('birthdayMonth', birthdayMonth.trim());
-    if (birthdayDay.trim()) params.set('birthdayDay', birthdayDay.trim());
-
-    const base = `/${locale}/membership`;
-    const callbackUrl =
-      params.toString().length > 0 ? `${base}?${params.toString()}` : base;
+      const emailTrimmed = referrerEmail.trim();
+      if (emailTrimmed) params.set('referrerEmail', emailTrimmed);
+      if (birthdayMonth.trim()) params.set('birthdayMonth', birthdayMonth.trim());
+      if (birthdayDay.trim()) params.set('birthdayDay', birthdayDay.trim());
+      url.search = params.toString();
+      return `${url.pathname}${url.search}`;
+    })();
 
     void signIn('google', {
       callbackUrl,
