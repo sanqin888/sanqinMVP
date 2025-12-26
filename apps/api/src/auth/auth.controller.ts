@@ -97,7 +97,12 @@ export class AuthController {
 
   @UseGuards(SessionAuthGuard)
   @Get('me')
-  async me(@Req() req: Request & { user?: { userStableId: string; email?: string | null; role?: string } }) {
+  me(
+    @Req()
+    req: Request & {
+      user?: { userStableId: string; email?: string | null; role?: string };
+    },
+  ) {
     const user = req.user;
     if (!user) return null;
     return {
@@ -108,10 +113,7 @@ export class AuthController {
   }
 
   @Post('logout')
-  async logout(
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const cookieHeader = req.headers.cookie ?? '';
     const sessionId = cookieHeader
       .split(';')
