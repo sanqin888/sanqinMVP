@@ -7,21 +7,27 @@ import { AdminBusinessService } from './business/admin-business.service';
 import { AdminMenuService } from './menu/admin-menu.service';
 import { AdminImageUploadController } from './upload/image/admin-image-upload.controller';
 import { AdminImageUploadService } from './upload/image/admin-image-upload.service';
-import { AdminAuthGuard } from '../auth/admin-auth.guard';
+import { SessionAuthGuard } from '../auth/session-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { AdminUsersController } from './users/admin-users.controller';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
+  imports: [AuthModule],
   controllers: [
     AdminBusinessController,
     AdminMenuController,
     AdminMenuController,
     AdminImageUploadController,
+    AdminUsersController,
   ],
   providers: [
     PrismaService,
     AdminBusinessService,
     AdminMenuService,
     AdminImageUploadService,
-    AdminAuthGuard,
+    SessionAuthGuard,
+    RolesGuard,
   ],
 })
 export class AdminModule {}

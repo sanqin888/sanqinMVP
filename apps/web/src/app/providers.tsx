@@ -1,7 +1,7 @@
 // apps/web/src/app/providers.tsx
 "use client";
 
-import { SessionProvider } from "next-auth/react";
+import { SessionProvider } from "@/lib/auth-session";
 import type { ReactNode } from "react";
 
 type AuthProviderProps = {

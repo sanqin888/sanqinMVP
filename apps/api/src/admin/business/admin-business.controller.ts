@@ -5,9 +5,12 @@ import {
   AdminBusinessService,
   type BusinessConfigResponse,
 } from './admin-business.service';
-import { AdminAuthGuard } from '../../auth/admin-auth.guard';
+import { SessionAuthGuard } from '../../auth/session-auth.guard';
+import { Roles } from '../../auth/roles.decorator';
+import { RolesGuard } from '../../auth/roles.guard';
 
-@UseGuards(AdminAuthGuard)
+@UseGuards(SessionAuthGuard, RolesGuard)
+@Roles('ADMIN')
 @Controller('admin/business')
 export class AdminBusinessController {
   constructor(private readonly service: AdminBusinessService) {}

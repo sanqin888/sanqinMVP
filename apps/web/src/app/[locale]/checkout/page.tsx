@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import type { Session } from "next-auth";
+import type { Session } from "@/lib/auth-session";
 import {
   usePathname,
   useRouter,
@@ -38,7 +38,7 @@ import {
   type PublicMenuApiResponse,
   buildLocalizedMenuFromDb,
 } from "@/lib/order/shared";
-import { useSession } from "next-auth/react";
+import { useSession } from "@/lib/auth-session";
 type MemberAddress = {
   addressStableId: string;
   label: string;

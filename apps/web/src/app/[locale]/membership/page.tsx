@@ -5,8 +5,8 @@ import Link from 'next/link';
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import type { Locale } from '@/lib/order/shared';
-import { useSession, signOut } from 'next-auth/react';
-import type { Session } from 'next-auth';
+import { signOut, useSession } from '@/lib/auth-session';
+import type { Session } from '@/lib/auth-session';
 import { apiFetch } from '@/lib/api-client';
 
 type MemberTier = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM';
