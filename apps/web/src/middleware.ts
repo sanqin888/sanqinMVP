@@ -43,7 +43,7 @@ export async function middleware(req: NextRequest) {
     const locale = (pathname.split("/")[1] as Locale) || "en";
     if (pathname.startsWith(`/${locale}/admin`)) {
       const token = await getToken({
-        req: req as Parameters<typeof getToken>[0]["req"],
+        req: req as unknown as Parameters<typeof getToken>[0]["req"],
         secret: process.env.NEXTAUTH_SECRET,
       });
       const email = typeof token?.email === "string" ? token.email : undefined;
