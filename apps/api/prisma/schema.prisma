@@ -70,7 +70,13 @@ enum PhoneVerificationStatus {
 
 enum UserRole {
   CUSTOMER
+  STAFF
   ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
 }
 
 enum Weekday {
@@ -93,6 +99,9 @@ model User {
   phoneVerifiedAt       DateTime?
   name                  String?
   role                  UserRole  @default(CUSTOMER)
+  status                UserStatus @default(ACTIVE)
+  passwordHash          String?
+  passwordSalt          String?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
   marketingEmailOptIn   Boolean   @default(false)
@@ -101,8 +110,40 @@ model User {
   birthdayMonth         Int?
   birthdayDay           Int?
   addresses             UserAddress[]
+  sessions              UserSession[]
+  invitesSent           UserInvite[] @relation("InvitesSent")
 
   @@index([referredByUserId])
+}
+
+model UserSession {
+  id           String   @id @default(uuid()) @db.Uuid
+  sessionId    String   @unique
+  userId       String   @db.Uuid
+  expiresAt    DateTime
+  deviceInfo   String?
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model UserInvite {
+  id               String   @id @default(uuid()) @db.Uuid
+  inviteStableId   String   @unique @default(cuid())
+  email            String
+  role             UserRole
+  tokenHash        String   @unique
+  expiresAt        DateTime
+  usedAt           DateTime?
+  invitedByUserId  String   @db.Uuid
+  createdAt        DateTime @default(now())
+
+  invitedBy User @relation("InvitesSent", fields: [invitedByUserId], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([invitedByUserId])
 }
 
 model UserAddress {

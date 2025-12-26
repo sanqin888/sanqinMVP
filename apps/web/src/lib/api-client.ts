@@ -51,6 +51,7 @@ export async function apiFetch<T>(
   const response = await fetch(url, {
     cache: 'no-store',
     ...init,
+    credentials: 'include',
     headers,
   });
 
@@ -66,6 +67,16 @@ export async function apiFetch<T>(
   }
 
   // 失败分支：优先从信封里拿 message，否则回退到状态码/文本
+  if (response.status === 401 || response.status === 403) {
+    if (typeof window !== 'undefined') {
+      const pathname = window.location.pathname;
+      if (pathname.includes('/admin')) {
+        const locale = pathname.split('/')[1];
+        const safeLocale = locale === 'zh' || locale === 'en' ? locale : 'en';
+        window.location.href = `/${safeLocale}/admin/login`;
+      }
+    }
+  }
   if (!response.ok) {
     if (isEnvelopeLike(payload)) {
       const p = payload as ApiResponseEnvelope<unknown>;

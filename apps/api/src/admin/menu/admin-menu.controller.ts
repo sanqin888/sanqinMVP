@@ -11,9 +11,12 @@ import {
 } from '@nestjs/common';
 import { AdminMenuService } from './admin-menu.service';
 import { AdminMenuFullResponse, TemplateGroupFullDto } from '@shared/menu';
-import { AdminAuthGuard } from '../../auth/admin-auth.guard';
+import { SessionAuthGuard } from '../../auth/session-auth.guard';
+import { Roles } from '../../auth/roles.decorator';
+import { RolesGuard } from '../../auth/roles.guard';
 
-@UseGuards(AdminAuthGuard)
+@UseGuards(SessionAuthGuard, RolesGuard)
+@Roles('ADMIN')
 @Controller('admin/menu')
 export class AdminMenuController {
   constructor(private readonly service: AdminMenuService) {}
