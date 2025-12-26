@@ -61,18 +61,14 @@ export class LoyaltyController {
 
     const amountCentsRaw = body.amountCents;
     const amountCents =
-      typeof amountCentsRaw === 'number'
-        ? Math.round(amountCentsRaw)
-        : NaN;
+      typeof amountCentsRaw === 'number' ? Math.round(amountCentsRaw) : NaN;
 
     if (!Number.isFinite(amountCents) || amountCents <= 0) {
       throw new BadRequestException('amountCents must be a positive number');
     }
 
     const pointsToCredit =
-      typeof body.pointsToCredit === 'number'
-        ? body.pointsToCredit
-        : undefined;
+      typeof body.pointsToCredit === 'number' ? body.pointsToCredit : undefined;
 
     await this.loyalty.applyTopup(userId, amountCents, pointsToCredit);
 
