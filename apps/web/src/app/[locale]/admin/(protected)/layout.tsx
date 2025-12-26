@@ -11,8 +11,8 @@ type AdminSessionResponse = {
   role?: string;
 };
 
-function getBaseUrl(): string | null {
-  const headerStore = headers();
+async function getBaseUrl(): Promise<string | null> {
+  const headerStore = await headers();
   const host =
     headerStore.get('x-forwarded-host') ?? headerStore.get('host');
   if (!host) return null;
@@ -21,7 +21,7 @@ function getBaseUrl(): string | null {
 }
 
 async function fetchAdminSession(): Promise<AdminSessionResponse | null> {
-  const baseUrl = getBaseUrl();
+  const baseUrl = await getBaseUrl();
   if (!baseUrl) return null;
   const cookieHeader = cookies()
     .getAll()
