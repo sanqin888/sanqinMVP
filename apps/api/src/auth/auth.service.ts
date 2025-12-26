@@ -41,19 +41,23 @@ export class AuthService {
     return scryptSync(password, salt, 64).toString('hex');
   }
 
-  private verifyPassword(password: string, salt: string, hash: string): boolean {
+  private verifyPassword(
+    password: string,
+    salt: string,
+    hash: string,
+  ): boolean {
     const computed = this.hashPassword(password, salt);
-    return timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(computed, 'hex'));
+    return timingSafeEqual(
+      Buffer.from(hash, 'hex'),
+      Buffer.from(computed, 'hex'),
+    );
   }
 
   private hashToken(token: string): string {
     return createHash('sha256').update(token).digest('hex');
   }
 
-  async createSession(params: {
-    userId: string;
-    deviceInfo?: string;
-  }) {
+  async createSession(params: { userId: string; deviceInfo?: string }) {
     const sessionId = randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + this.getSessionTtlMs());
 
@@ -201,7 +205,11 @@ export class AuthService {
     return { success: true };
   }
 
-  async verifyLoginOtp(params: { phone: string; code: string; deviceInfo?: string }) {
+  async verifyLoginOtp(params: {
+    phone: string;
+    code: string;
+    deviceInfo?: string;
+  }) {
     const normalized = this.normalizePhone(params.phone);
     if (!normalized || !params.code) {
       throw new BadRequestException('phone and code are required');
