@@ -1,4 +1,4 @@
-// apps/web/src/app/[locale]/admin/layout.tsx
+// apps/web/src/app/[locale]/admin/(protected)/layout.tsx
 import { redirect } from 'next/navigation';
 import { cookies, headers } from 'next/headers';
 import type { ReactNode } from 'react';
@@ -11,6 +11,12 @@ type AdminSessionResponse = {
   role?: string;
 };
 
+type ApiEnvelope<T> = {
+  code: string;
+  message?: string;
+  details?: T;
+};
+
 async function getBaseUrl(): Promise<string | null> {
   const headerStore = await headers();
   const host =
@@ -20,9 +26,23 @@ async function getBaseUrl(): Promise<string | null> {
   return `${proto}://${host}`;
 }
 
+function unwrapEnvelope<T>(payload: unknown): T | null {
+  if (!payload || typeof payload !== 'object') return null;
+
+  // 信封结构：{ code, message, details }
+  if ('code' in payload) {
+    const env = payload as ApiEnvelope<T>;
+    return (env.details ?? null) as T | null;
+  }
+
+  // 非信封结构：直接返回对象
+  return payload as T;
+}
+
 async function fetchAdminSession(): Promise<AdminSessionResponse | null> {
   const baseUrl = await getBaseUrl();
   if (!baseUrl) return null;
+
   const cookieStore = await cookies();
   const cookieHeader = cookieStore
     .getAll()
@@ -35,7 +55,9 @@ async function fetchAdminSession(): Promise<AdminSessionResponse | null> {
   });
 
   if (!res.ok) return null;
-  return (await res.json()) as AdminSessionResponse;
+
+  const payload = (await res.json().catch(() => null)) as unknown;
+  return unwrapEnvelope<AdminSessionResponse>(payload);
 }
 
 export default async function AdminLayout({
@@ -47,8 +69,10 @@ export default async function AdminLayout({
 }) {
   const { locale } = await params;
   const safeLocale: Locale = locale === 'zh' || locale === 'en' ? locale : 'en';
+
   const session = await fetchAdminSession();
   const role = session?.role;
+
   if (role !== 'ADMIN' && role !== 'STAFF') {
     redirect(`/${safeLocale}/admin/login`);
   }

@@ -2,8 +2,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter, useParams, useSearchParams } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
+import { signIn } from 'next-auth/react';
 import { useSession } from '@/lib/auth-session';
 import type { Locale } from '@/lib/order/shared';
 import { apiFetch } from '@/lib/api-client';
@@ -11,21 +12,14 @@ import { apiFetch } from '@/lib/api-client';
 // ✅ 和当前后端保持一致：success 布尔值即可
 type PhoneVerifyResponse = {
   success: boolean;
-  verificationToken?: string;
 };
 
 export default function MemberLoginPage() {
   const router = useRouter();
   const { locale } = useParams<{ locale: Locale }>();
-  const searchParams = useSearchParams();
   const { status } = useSession();
 
   const isZh = locale === 'zh';
-  const redirectParam = searchParams?.get('redirect');
-  const redirectPath =
-    redirectParam && redirectParam.startsWith('/')
-      ? redirectParam
-      : `/${locale}/membership`;
 
   // —— 原有字段 ——
   const [referrerEmail, setReferrerEmail] = useState<string>('');
@@ -40,6 +34,7 @@ export default function MemberLoginPage() {
   const [isSendingCode, setIsSendingCode] = useState(false);
   const [isVerifyingCode, setIsVerifyingCode] = useState(false);
   const [phoneVerified, setPhoneVerified] = useState(false);
+  // ⚠️ 现在后端不再返回 verificationToken，我们前端自己用一个简单标记字符串（例如 '1'）
   const [phoneVerificationToken, setPhoneVerificationToken] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number>(0); // 发送验证码后的倒计时（秒）
   const [trustedPhone, setTrustedPhone] = useState<string | null>(null);
@@ -47,9 +42,9 @@ export default function MemberLoginPage() {
   // 登录后直接跳会员中心
   useEffect(() => {
     if (status === 'authenticated') {
-      router.replace(redirectPath);
+      router.replace(`/${locale}/membership`);
     }
-  }, [status, router, redirectPath]);
+  }, [status, router, locale]);
 
   // 设备级：如果这台设备之前已经验证过一个手机号，自动预填并视为已验证
   useEffect(() => {
@@ -197,9 +192,9 @@ export default function MemberLoginPage() {
         );
         return;
       }
-      // ✅ 校验成功：本地标记为已验证，并保存后端返回的验证 token
+      // ✅ 校验成功：本地标记为已验证，并给一个简单的“验证凭证”字符串
       setPhoneVerified(true);
-      setPhoneVerificationToken(res.verificationToken ?? null);
+      setPhoneVerificationToken('1'); // 现在先用固定字符串，后端只需要知道“已经验证过了”
       setError(null);
       // ✅ 记住这台设备上已经验证过的手机号
       const trimmedPhone = phone.trim();
@@ -264,7 +259,25 @@ export default function MemberLoginPage() {
       }
     }
 
-    router.replace(redirectPath);
+    // 把必要信息也塞到 callbackUrl 的 query（方便后端 / 会员中心用）
+    const params = new URLSearchParams();
+    params.set('phone', phone.trim());
+    if (phoneVerificationToken) {
+      params.set('pv', phoneVerificationToken);
+    }
+
+    const emailTrimmed = referrerEmail.trim();
+    if (emailTrimmed) params.set('referrerEmail', emailTrimmed);
+    if (birthdayMonth.trim()) params.set('birthdayMonth', birthdayMonth.trim());
+    if (birthdayDay.trim()) params.set('birthdayDay', birthdayDay.trim());
+
+    const base = `/${locale}/membership`;
+    const callbackUrl =
+      params.toString().length > 0 ? `${base}?${params.toString()}` : base;
+
+    void signIn('google', {
+      callbackUrl,
+    });
   }
 
   return (

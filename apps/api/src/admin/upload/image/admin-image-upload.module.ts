@@ -3,8 +3,10 @@
 import { Module } from '@nestjs/common';
 import { AdminImageUploadController } from './admin-image-upload.controller';
 import { AdminImageUploadService } from './admin-image-upload.service';
+import { AuthModule } from '../../../auth/auth.module';
 
 @Module({
+  imports: [AuthModule],
   controllers: [AdminImageUploadController],
   providers: [AdminImageUploadService],
   exports: [AdminImageUploadService],
