@@ -287,7 +287,7 @@ export default function StoreBoardPage() {
         speak(text, locale);
       }
     }
-  }, [handlePrintFront, handlePrintKitchen, locale, query, t, t.voiceMany, t.voiceOne]);
+  }, [handlePrintFront, handlePrintKitchen, locale, query, t]);
 
   // 初始化：读取 localStorage，确保刷新后不重复打印
   useEffect(() => {

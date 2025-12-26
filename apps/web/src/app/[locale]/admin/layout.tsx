@@ -12,9 +12,9 @@ export default async function AdminLayout({
   params,
 }: {
   children: ReactNode;
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }) {
-  const { locale } = params;
+  const { locale } = await params;
   const safeLocale: Locale = locale === 'zh' || locale === 'en' ? locale : 'en';
   const session = await getServerSession(authOptions);
   const email =
