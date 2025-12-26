@@ -284,10 +284,14 @@ export default function PosDailySummaryPage() {
     (async () => {
       const cfg = await apiFetch<BusinessConfigLite>("/admin/business/config").catch(() => null);
       if (cancelled) return;
-      const tz = cfg?.timezone?.trim() || (Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+      const tz =
+        cfg?.timezone?.trim() ||
+        (Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
       setStoreTimezone(tz);
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -298,7 +302,11 @@ export default function PosDailySummaryPage() {
       setErrorMsg(null);
 
       try {
-        const { timeMin, timeMax } = buildUtcRange(filters.dateStart, filters.dateEnd, storeTimezone || "UTC");
+        const { timeMin, timeMax } = buildUtcRange(
+          filters.dateStart,
+          filters.dateEnd,
+          storeTimezone || "UTC",
+        );
         const qs = new URLSearchParams({
           timeMin,
           timeMax,
@@ -307,26 +315,33 @@ export default function PosDailySummaryPage() {
           ...(filters.payment ? { payment: filters.payment } : {}),
         });
 
-        const res = await apiFetch<PosDailySummaryResponse>(`/pos/summary?${qs.toString()}`, {
-          signal: ac.signal,
-        });
+        const res = await apiFetch<PosDailySummaryResponse>(
+          `/pos/summary?${qs.toString()}`,
+          {
+            signal: ac.signal,
+          },
+        );
 
         setData(res);
-} catch (e: unknown) {
-  // AbortError 兼容：unknown 下要先做类型缩窄
-  if (e && typeof e === "object" && "name" in e && (e as { name?: unknown }).name === "AbortError") {
-    return;
-  }
-  setErrorMsg(errMessage(e));
-  setData(null);
-} finally {
-  setLoading(false);
-}
+      } catch (e: unknown) {
+        // AbortError 兼容：unknown 下要先做类型缩窄
+        if (
+          e &&
+          typeof e === "object" &&
+          "name" in e &&
+          (e as { name?: unknown }).name === "AbortError"
+        ) {
+          return;
+        }
+        setErrorMsg(errMessage(e));
+        setData(null);
+      } finally {
+        setLoading(false);
+      }
     }
 
     run();
     return () => ac.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.dateStart, filters.dateEnd, filters.channel, filters.status, filters.payment, storeTimezone]);
 
   const orders = useMemo<OrderRow[]>(() => {
