@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import type { Session } from "@/lib/auth-session";
+import type { Session, SessionUser } from "@/lib/auth-session";
 import {
   usePathname,
   useRouter,
@@ -95,7 +95,7 @@ type LoyaltyOrderResponse = {
 
 type SessionWithUserId = Session & {
   userId?: string | null;
-  user?: (Session["user"] & { id?: string | null }) | null;
+  user?: (SessionUser & { id?: string | null }) | null;
 };
 
 type StoreStatusRuleSource =
