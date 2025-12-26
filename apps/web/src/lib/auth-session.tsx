@@ -16,6 +16,7 @@ export type SessionUser = {
   email?: string | null;
   role?: string | null;
   id?: string;
+  name?: string | null;
 };
 
 export type Session = {
