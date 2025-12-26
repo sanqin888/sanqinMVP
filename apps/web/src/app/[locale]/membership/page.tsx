@@ -839,9 +839,7 @@ export default function MembershipHomePage() {
   ];
 
   function handleLogout() {
-    void signOut({
-      callbackUrl: `/${locale}`,
-    });
+    void signOut().then(() => router.push(`/${locale}`));
   }
 
   // 状态控制渲染
