@@ -224,8 +224,8 @@ export default function MemberLoginPage() {
     }
   }
 
-  // 点击 Google 登录：必须先通过手机验证
-  function handleGoogleLogin() {
+  // 完成登录：必须先通过手机验证
+  function handleMemberLogin() {
     // 先校验推荐人邮箱 / 生日等
     if (!validateInputs()) return;
 
@@ -233,8 +233,8 @@ export default function MemberLoginPage() {
     if (!phoneVerified) {
       setError(
         isZh
-          ? '请先完成手机号验证，再继续使用 Google 登录。'
-          : 'Please verify your phone number before continuing with Google.',
+          ? '请先完成手机号验证，再继续登录。'
+          : 'Please verify your phone number before continuing.',
       );
       return;
     }
@@ -299,7 +299,7 @@ export default function MemberLoginPage() {
 
       <main className="mx-auto flex max-w-md flex-col px-4 py-10">
         <h1 className="mb-6 text-2xl font-semibold text-slate-900">
-          {isZh ? '先验证手机号，再使用 Google 登录' : 'Verify your phone, then sign in with Google'}
+          {isZh ? '先验证手机号，再完成登录' : 'Verify your phone, then sign in'}
         </h1>
         <p className="mb-6 text-sm text-slate-600">
           {isZh
@@ -399,8 +399,8 @@ export default function MemberLoginPage() {
           {phoneVerified && (
             <p className="mt-1 text-[11px] text-emerald-600">
               {isZh
-                ? '手机号已通过验证，可以继续使用 Google 登录。'
-                : 'Phone number verified. You can now continue with Google.'}
+                ? '手机号已通过验证，可以继续登录。'
+                : 'Phone number verified. You can now continue.'}
             </p>
           )}
         </div>
@@ -497,14 +497,14 @@ export default function MemberLoginPage() {
         <div className="mt-6 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
           <button
             type="button"
-            onClick={handleGoogleLogin}
+            onClick={handleMemberLogin}
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-60"
             disabled={!phoneVerified}
           >
             <span className="rounded bg-white px-1.5 py-0.5 text-xs font-bold text-slate-900">
               G
             </span>
-            <span>{isZh ? '使用 Google 登录' : 'Continue with Google'}</span>
+            <span>{isZh ? '完成登录' : 'Continue'}</span>
           </button>
 
           <p className="mt-4 text-xs text-slate-500">
