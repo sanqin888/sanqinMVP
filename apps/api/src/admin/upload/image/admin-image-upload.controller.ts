@@ -5,16 +5,19 @@ import {
   Controller,
   Post,
   UploadedFile,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AdminImageUploadService } from './admin-image-upload.service';
+import { AdminAuthGuard } from '../../../auth/admin-auth.guard';
 
 type UploadedFileType = {
   originalname: string;
   buffer: Buffer;
 };
 
+@UseGuards(AdminAuthGuard)
 @Controller('admin/upload')
 export class AdminImageUploadController {
   constructor(private readonly service: AdminImageUploadService) {}
