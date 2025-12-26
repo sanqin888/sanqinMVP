@@ -1,5 +1,4 @@
-//Users/apple/sanqinMVP/apps/web/src/app/api/auth/[...nextauth]
-
+// apps/web/src/app/api/auth/[...nextauth]/route.ts
 import NextAuth from 'next-auth';
 import { authOptions } from '@/lib/auth';
 

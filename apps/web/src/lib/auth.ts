@@ -5,9 +5,9 @@ import GoogleProvider from 'next-auth/providers/google';
 import { createHash } from 'crypto';
 import type { JWT } from 'next-auth/jwt';
 import type { Session } from 'next-auth';
-import { isAdminEmail, normalizeEmail } from './admin-access';
 
-type UserRole = 'ADMIN' | 'USER';
+export type UserRole = 'ADMIN' | 'STAFF' | 'CUSTOMER';
+
 type JWTWithUserId = JWT & { userId?: string; role?: UserRole };
 type SessionWithUserId = Session & {
   userId?: string;
@@ -55,7 +55,6 @@ export const authOptions: NextAuthOptions = {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? '',
       authorization: {
         params: {
-          // 为了测试方便，每次都弹出账号选择
           prompt: 'select_account',
         },
       },
@@ -68,45 +67,41 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, account, profile }) {
       const jwtToken: JWTWithUserId = token as JWTWithUserId;
 
-      // 目前只有 Google，一个 provider 就够了
       if (account?.provider === 'google' && profile) {
         const googleProfile = profile as {
           email?: string | null;
           sub?: string;
         };
 
-        // ✅ 1) 优先用邮箱做稳定 UUID
-        const email = normalizeEmail(googleProfile.email ?? token.email);
+        const email = (googleProfile.email ?? token.email ?? '')
+          .trim()
+          .toLowerCase();
         if (email) {
           jwtToken.userId = uuidv5(`google:${email}`);
           jwtToken.email = email;
         }
 
-        // 2) 兜底：如果没拿到 email，再退回用 sub
         if (!jwtToken.userId && googleProfile.sub) {
           jwtToken.userId = uuidv5(`google-sub:${googleProfile.sub}`);
         }
       }
 
-      // 再兜一层底：万一上面都失败，但 token.sub 还在
       if (!jwtToken.userId && token.sub) {
         jwtToken.userId = uuidv5(`google-sub:${token.sub}`);
       }
 
-      const tokenEmail = normalizeEmail(jwtToken.email ?? token.email);
-      if (tokenEmail) {
-        jwtToken.email = tokenEmail;
+      if (jwtToken.email) {
+        jwtToken.email = jwtToken.email.trim().toLowerCase();
       }
 
-      jwtToken.role = isAdminEmail(jwtToken.email) ? 'ADMIN' : 'USER';
+      jwtToken.role = 'CUSTOMER';
 
       return jwtToken;
     },
 
     async session({ session, token }) {
       const jwtToken: JWTWithUserId = token as JWTWithUserId;
-      const sessionWithUserId: SessionWithUserId =
-        session as SessionWithUserId;
+      const sessionWithUserId: SessionWithUserId = session as SessionWithUserId;
 
       if (jwtToken.userId) {
         sessionWithUserId.userId = jwtToken.userId;

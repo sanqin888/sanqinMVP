@@ -145,8 +145,8 @@ export default function MemberLoginPage() {
     try {
       setIsSendingCode(true);
 
-      // ✅ 使用现在后端已经在用的接口：/auth/phone/request-code
-      await apiFetch<PhoneVerifyResponse>('/auth/phone/request-code', {
+      // ✅ 使用后端短信验证
+      await apiFetch<PhoneVerifyResponse>('/auth/phone/send-code', {
         method: 'POST',
         body: JSON.stringify({ phone: phone.trim(), locale }),
         headers: {
@@ -179,7 +179,7 @@ export default function MemberLoginPage() {
     try {
       setIsVerifyingCode(true);
 
-      // ✅ 使用统一的 verify 接口：/auth/phone/verify-code
+      // ✅ 使用短信验证码校验
       const res = await apiFetch<PhoneVerifyResponse>('/auth/phone/verify-code', {
         method: 'POST',
         body: JSON.stringify({ phone: phone.trim(), code: codeTrimmed }),
@@ -189,7 +189,7 @@ export default function MemberLoginPage() {
       });
 
       // apiFetch 遇到非 2xx 会直接 throw，所以这里一般 success=true
-      if (!res.success) {
+      if (!res.ok) {
         setPhoneVerified(false);
         setPhoneVerificationToken(null);
         setError(

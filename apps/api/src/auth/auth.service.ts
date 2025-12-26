@@ -1,6 +1,14 @@
 // apps/api/src/auth/auth.service.ts
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { randomBytes, scryptSync, timingSafeEqual, createHash } from 'crypto';
+import type { UserRole } from '@prisma/client';
 
 @Injectable()
 export class AuthService {
@@ -9,38 +17,141 @@ export class AuthService {
   constructor(private readonly prisma: PrismaService) {}
 
   private normalizePhone(phone: string): string {
-    // 简单清洗：去掉空格和连字符
     return phone.replace(/[\s-]+/g, '');
   }
 
+  private normalizeEmail(email: string): string {
+    return email.trim().toLowerCase();
+  }
+
   private generateCode(): string {
-    // 6 位数字验证码
     return String(Math.floor(100000 + Math.random() * 900000));
   }
 
-  /**
-   * 申请发送手机验证码
-   * - 同一 (phone, purpose) 下旧验证码全部作废
-   * - 新插入一条可用验证码
-   */
-  async requestPhoneCode(params: { phone: string; purpose?: string }) {
-    const { phone, purpose = 'checkout' } = params;
-    const normalized = this.normalizePhone(phone);
+  private getSessionTtlMs(): number {
+    const raw = process.env.SESSION_TTL_SECONDS;
+    const seconds = raw ? Number(raw) : 60 * 60 * 24 * 7;
+    if (!Number.isFinite(seconds) || seconds <= 0) {
+      throw new BadRequestException('Invalid SESSION_TTL_SECONDS');
+    }
+    return seconds * 1000;
+  }
 
+  private hashPassword(password: string, salt: string): string {
+    return scryptSync(password, salt, 64).toString('hex');
+  }
+
+  private verifyPassword(password: string, salt: string, hash: string): boolean {
+    const computed = this.hashPassword(password, salt);
+    return timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(computed, 'hex'));
+  }
+
+  private hashToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
+  async createSession(params: {
+    userId: string;
+    deviceInfo?: string;
+  }) {
+    const sessionId = randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + this.getSessionTtlMs());
+
+    await this.prisma.userSession.create({
+      data: {
+        sessionId,
+        userId: params.userId,
+        expiresAt,
+        deviceInfo: params.deviceInfo,
+      },
+    });
+
+    return { sessionId, expiresAt };
+  }
+
+  async revokeSession(sessionId: string) {
+    await this.prisma.userSession.deleteMany({
+      where: { sessionId },
+    });
+  }
+
+  async getSessionUser(sessionId: string) {
+    const session = await this.prisma.userSession.findUnique({
+      where: { sessionId },
+      include: { user: true },
+    });
+
+    if (!session) return null;
+    if (session.expiresAt <= new Date()) {
+      await this.prisma.userSession.delete({ where: { id: session.id } });
+      return null;
+    }
+
+    if (session.user.status === 'DISABLED') {
+      throw new ForbiddenException('User disabled');
+    }
+
+    return session.user;
+  }
+
+  async loginWithPassword(params: {
+    email: string;
+    password: string;
+    deviceInfo?: string;
+  }) {
+    const email = this.normalizeEmail(params.email);
+    if (!email || !params.password) {
+      throw new BadRequestException('email and password are required');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (user.role !== 'ADMIN' && user.role !== 'STAFF') {
+      throw new ForbiddenException('Insufficient role');
+    }
+
+    if (user.status === 'DISABLED') {
+      throw new ForbiddenException('User disabled');
+    }
+
+    if (!user.passwordHash || !user.passwordSalt) {
+      throw new UnauthorizedException('Password login not enabled');
+    }
+
+    const ok = this.verifyPassword(
+      params.password,
+      user.passwordSalt,
+      user.passwordHash,
+    );
+    if (!ok) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const session = await this.createSession({
+      userId: user.id,
+      deviceInfo: params.deviceInfo,
+    });
+
+    return { user, session };
+  }
+
+  async requestLoginOtp(params: { phone: string }) {
+    const normalized = this.normalizePhone(params.phone);
     if (!normalized || normalized.length < 6) {
       throw new BadRequestException('invalid phone');
     }
 
     const now = new Date();
-
-    // 频率限制：同一手机号 + 用途，1 分钟最多一次、1 小时最多 5 次
     const oneMinuteAgo = new Date(now.getTime() - 60 * 1000);
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
 
     const recent = await this.prisma.phoneVerification.findFirst({
       where: {
         phone: normalized,
-        purpose,
+        purpose: 'membership-login',
         createdAt: { gt: oneMinuteAgo },
       },
       orderBy: { createdAt: 'desc' },
@@ -53,7 +164,7 @@ export class AuthService {
     const lastHourCount = await this.prisma.phoneVerification.count({
       where: {
         phone: normalized,
-        purpose,
+        purpose: 'membership-login',
         createdAt: { gt: oneHourAgo },
       },
     });
@@ -63,79 +174,54 @@ export class AuthService {
     }
 
     const code = this.generateCode();
-    const expiresAt = new Date(now.getTime() + 5 * 60 * 1000); // 5 分钟有效
+    const expiresAt = new Date(now.getTime() + 5 * 60 * 1000);
 
     await this.prisma.$transaction(async (tx) => {
-      // 1️⃣ 先把同一 (phone, purpose) 下所有未使用的旧验证码标记为 used=true
       await tx.phoneVerification.updateMany({
         where: {
           phone: normalized,
-          purpose,
+          purpose: 'membership-login',
           used: false,
         },
-        data: {
-          used: true,
-        },
+        data: { used: true },
       });
 
-      // 2️⃣ 再插入一条新的验证码记录
       await tx.phoneVerification.create({
         data: {
           phone: normalized,
           code,
-          purpose,
+          purpose: 'membership-login',
           used: false,
           expiresAt,
         },
       });
     });
 
-    // 目前用 log 的方式“发送”，方便本地调试
-    this.logger.log(
-      `Phone OTP for ${normalized} (purpose=${purpose}): ${code}`,
-    );
-
+    this.logger.log(`Login OTP for ${normalized}: ${code}`);
     return { success: true };
   }
 
-  /**
-   * 校验验证码：
-   * - 只看「未使用 + 未过期」的最新一条
-   * - 验证码正确 => 标记 used=true（只能用一次）
-   * - 如果带 userId，则顺便把手机号绑定到 User 上
-   */
-  async verifyPhoneCode(params: {
-    phone: string;
-    code: string;
-    purpose?: string;
-    userId?: string;
-  }) {
-    const { phone, code, purpose = 'checkout', userId } = params;
-    const normalized = this.normalizePhone(phone);
-
-    if (!normalized || !code) {
+  async verifyLoginOtp(params: { phone: string; code: string; deviceInfo?: string }) {
+    const normalized = this.normalizePhone(params.phone);
+    if (!normalized || !params.code) {
       throw new BadRequestException('phone and code are required');
     }
 
     const now = new Date();
-
-    // 1️⃣ 找未使用 + 未过期的最新一条记录
     const record = await this.prisma.phoneVerification.findFirst({
       where: {
         phone: normalized,
-        purpose,
+        purpose: 'membership-login',
         used: false,
         expiresAt: { gt: now },
       },
       orderBy: { createdAt: 'desc' },
     });
 
-    if (!record || record.code !== code) {
-      // 统一提示，避免暴露太多信息
+    if (!record || record.code !== params.code) {
       throw new BadRequestException('verification code is invalid or expired');
     }
 
-    // 2️⃣ 验证成功：标记为已使用（只能用一次）
     await this.prisma.phoneVerification.update({
       where: { id: record.id },
       data: {
@@ -145,18 +231,123 @@ export class AuthService {
       },
     });
 
-    // 3️⃣ 如果是已登录会员，可以顺手把手机号写到 User 表
-    if (userId) {
-      await this.attachPhoneToUser({ userId, phone: normalized });
+    let user = await this.prisma.user.findFirst({
+      where: { phone: normalized },
+    });
+
+    if (!user) {
+      user = await this.prisma.user.create({
+        data: {
+          phone: normalized,
+          phoneVerifiedAt: now,
+          role: 'CUSTOMER',
+        },
+      });
+    } else if (!user.phoneVerifiedAt) {
+      user = await this.prisma.user.update({
+        where: { id: user.id },
+        data: { phoneVerifiedAt: now },
+      });
     }
 
-    return { success: true, verificationToken: record.id };
+    const session = await this.createSession({
+      userId: user.id,
+      deviceInfo: params.deviceInfo,
+    });
+
+    return { user, session, verificationToken: record.id };
   }
 
-  private async attachPhoneToUser(params: { userId: string; phone: string }) {
+  async createInvite(params: {
+    inviterId: string;
+    email: string;
+    role: UserRole;
+    expiresInHours?: number;
+  }) {
+    const email = this.normalizeEmail(params.email);
+    if (!email) {
+      throw new BadRequestException('email is required');
+    }
+
+    if (params.role !== 'ADMIN' && params.role !== 'STAFF') {
+      throw new BadRequestException('invalid role');
+    }
+
+    const token = randomBytes(32).toString('hex');
+    const tokenHash = this.hashToken(token);
+    const expiresAt = new Date(
+      Date.now() + (params.expiresInHours ?? 72) * 60 * 60 * 1000,
+    );
+
+    await this.prisma.userInvite.create({
+      data: {
+        email,
+        role: params.role,
+        tokenHash,
+        expiresAt,
+        invitedByUserId: params.inviterId,
+      },
+    });
+
+    const webBase = (process.env.WEB_BASE_URL ?? '').replace(/\/$/, '');
+    const inviteLink = webBase
+      ? `${webBase}/admin/accept-invite?token=${token}`
+      : token;
+
+    return { inviteLink };
+  }
+
+  async acceptInvite(params: {
+    token: string;
+    password: string;
+    name?: string;
+  }) {
+    if (!params.token || !params.password) {
+      throw new BadRequestException('token and password are required');
+    }
+
+    const tokenHash = this.hashToken(params.token);
+    const invite = await this.prisma.userInvite.findUnique({
+      where: { tokenHash },
+    });
+
+    if (!invite || invite.usedAt || invite.expiresAt <= new Date()) {
+      throw new BadRequestException('invite is invalid or expired');
+    }
+
+    const salt = randomBytes(16).toString('hex');
+    const passwordHash = this.hashPassword(params.password, salt);
+
+    const user = await this.prisma.user.upsert({
+      where: { email: invite.email },
+      update: {
+        role: invite.role,
+        status: 'ACTIVE',
+        passwordHash,
+        passwordSalt: salt,
+        name: params.name ?? undefined,
+      },
+      create: {
+        email: invite.email,
+        role: invite.role,
+        status: 'ACTIVE',
+        passwordHash,
+        passwordSalt: salt,
+        name: params.name ?? undefined,
+      },
+    });
+
+    await this.prisma.userInvite.update({
+      where: { id: invite.id },
+      data: { usedAt: new Date() },
+    });
+
+    return { user };
+  }
+
+  async attachPhoneToUser(params: { userId: string; phone: string }) {
     const { userId, phone } = params;
 
-    // 确保同一手机号不会被两个用户共用
     const existing = await this.prisma.user.findFirst({
       where: {
         phone,

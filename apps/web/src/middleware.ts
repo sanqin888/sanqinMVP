@@ -1,8 +1,7 @@
 //Users/apple/sanqinMVP/apps/web/src/middleware.ts
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { getToken } from "next-auth/jwt";
-import { isAdminEmail } from "@/lib/admin-access";
+const SESSION_COOKIE_NAME = "session_id";
 
 const LOCALES = ["zh", "en"] as const;
 type Locale = (typeof LOCALES)[number];
@@ -42,16 +41,18 @@ export async function middleware(req: NextRequest) {
   if (startsWithLocale(pathname)) {
     const locale = (pathname.split("/")[1] as Locale) || "en";
     if (pathname.startsWith(`/${locale}/admin`)) {
-      const token = await getToken({
-        req: req as unknown as Parameters<typeof getToken>[0]["req"],
-        secret: process.env.NEXTAUTH_SECRET,
-      });
-      const email = typeof token?.email === "string" ? token.email : undefined;
-      const role = typeof token?.role === "string" ? token.role : undefined;
-      const isAdmin = role === "ADMIN" && isAdminEmail(email);
-      if (!isAdmin) {
+      if (
+        pathname.startsWith(`/${locale}/admin/login`) ||
+        pathname.startsWith(`/${locale}/admin/accept-invite`)
+      ) {
+        const res = NextResponse.next();
+        ensureCookie(res, locale);
+        return res;
+      }
+      const sessionId = req.cookies.get(SESSION_COOKIE_NAME)?.value;
+      if (!sessionId) {
         const url = req.nextUrl.clone();
-        url.pathname = `/${locale}`;
+        url.pathname = `/${locale}/admin/login`;
         url.search = "";
         const res = NextResponse.redirect(url);
         ensureCookie(res, locale);

@@ -10,14 +10,17 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AdminImageUploadService } from './admin-image-upload.service';
-import { AdminAuthGuard } from '../../../auth/admin-auth.guard';
+import { SessionAuthGuard } from '../../../auth/session-auth.guard';
+import { Roles } from '../../../auth/roles.decorator';
+import { RolesGuard } from '../../../auth/roles.guard';
 
 type UploadedFileType = {
   originalname: string;
   buffer: Buffer;
 };
 
-@UseGuards(AdminAuthGuard)
+@UseGuards(SessionAuthGuard, RolesGuard)
+@Roles('ADMIN')
 @Controller('admin/upload')
 export class AdminImageUploadController {
   constructor(private readonly service: AdminImageUploadService) {}

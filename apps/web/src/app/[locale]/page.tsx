@@ -23,15 +23,7 @@ import {
 } from "@/lib/order/shared";
 import { usePersistentCart } from "@/lib/cart";
 import { apiFetch } from "@/lib/api-client";
-
-// 从 /api/auth/session 拿到的大致结构
-type SessionLike = {
-  user?: {
-    name?: string | null;
-    email?: string | null;
-  } | null;
-  userId?: string;
-};
+import { useSession } from "next-auth/react";
 
 export default function LocalOrderPage() {
   const pathname = usePathname() || "/";
@@ -42,48 +34,9 @@ export default function LocalOrderPage() {
   const searchParams = useSearchParams();
   const q = searchParams?.toString();
 
-  const [isMemberLoggedIn, setIsMemberLoggedIn] = useState(false);
-  const [memberName, setMemberName] = useState<string | null>(null);
-
-  // —— 会员登录状态：使用 next-auth 的 /api/auth/session —— //
-  useEffect(() => {
-    let cancelled = false;
-
-    async function fetchSession() {
-      try {
-        const res = await fetch("/api/auth/session");
-        if (!res.ok) {
-          if (!cancelled) {
-            setIsMemberLoggedIn(false);
-            setMemberName(null);
-          }
-          return;
-        }
-
-        const data = (await res.json()) as SessionLike | null;
-        if (cancelled) return;
-
-        if (data?.userId) {
-          setIsMemberLoggedIn(true);
-          setMemberName(data.user?.name ?? null);
-        } else {
-          setIsMemberLoggedIn(false);
-          setMemberName(null);
-        }
-      } catch {
-        if (!cancelled) {
-          setIsMemberLoggedIn(false);
-          setMemberName(null);
-        }
-      }
-    }
-
-    void fetchSession();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { data: session } = useSession();
+  const isMemberLoggedIn = Boolean(session?.user?.userStableId);
+  const memberName = session?.user?.email ?? null;
 
   const strings = UI_STRINGS[locale];
 

@@ -1,78 +1,129 @@
 // apps/api/src/auth/auth.controller.ts
 import {
-  BadRequestException,
   Body,
   Controller,
-  Logger,
+  Get,
   Post,
   Req,
+  Res,
+  UseGuards,
 } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
-import { SendCodeDto } from '../phone-verification/dto/send-code.dto';
-import { VerifyCodeDto } from '../phone-verification/dto/verify-code.dto';
-import type { Request } from 'express';
-
-interface RequestWithUser extends Request {
-  user?: { id?: string | null; userId?: string | null } | null;
-}
+import { SessionAuthGuard, SESSION_COOKIE_NAME } from './session-auth.guard';
 
 @Controller('auth')
 export class AuthController {
-  private readonly logger = new Logger(AuthController.name);
-
   constructor(private readonly authService: AuthService) {}
 
-  /**
-   * 申请发送验证码
-   * POST /api/v1/auth/phone/request-code
-   */
-  @Post('phone/request-code')
-  async requestCode(@Body() dto: SendCodeDto & { purpose?: string }) {
-    const { phone, locale, purpose } = dto;
-
-    if (!phone) {
-      throw new BadRequestException('phone is required');
-    }
-
-    const result = await this.authService.requestPhoneCode({
-      phone,
-      // 不传就默认 checkout，将来想按用途区分可以自己传
-      purpose: purpose ?? 'checkout',
+  @Post('login')
+  async login(
+    @Body() body: { email?: string; password?: string },
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const deviceInfo = req.headers['user-agent'];
+    const result = await this.authService.loginWithPassword({
+      email: body?.email ?? '',
+      password: body?.password ?? '',
+      deviceInfo: typeof deviceInfo === 'string' ? deviceInfo : undefined,
     });
 
-    this.logger.log(
-      `requestCode: phone=${phone}, locale=${locale ?? 'n/a'}, purpose=${
-        purpose ?? 'checkout'
-      }`,
-    );
+    res.cookie(SESSION_COOKIE_NAME, result.session.sessionId, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: result.session.expiresAt.getTime() - Date.now(),
+      path: '/',
+    });
 
-    return result;
+    return {
+      userStableId: result.user.userStableId,
+      email: result.user.email,
+      role: result.user.role,
+      expiresAt: result.session.expiresAt,
+    };
   }
 
-  /**
-   * 校验验证码 +（可选）绑定会员手机号
-   * POST /api/v1/auth/phone/verify-code
-   */
-  @Post('phone/verify-code')
-  async verifyCode(
-    @Req() req: RequestWithUser,
-    @Body() dto: VerifyCodeDto & { purpose?: string; userId?: string },
-  ) {
-    const { phone, code, purpose, userId: userIdFromBody } = dto;
+  @Post('login/otp/request')
+  async requestOtp(@Body() body: { phone?: string }) {
+    return this.authService.requestLoginOtp({ phone: body?.phone ?? '' });
+  }
 
-    if (!phone || !code) {
-      throw new BadRequestException('phone and code are required');
+  @Post('login/otp/verify')
+  async verifyOtp(
+    @Body() body: { phone?: string; code?: string },
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const deviceInfo = req.headers['user-agent'];
+    const result = await this.authService.verifyLoginOtp({
+      phone: body?.phone ?? '',
+      code: body?.code ?? '',
+      deviceInfo: typeof deviceInfo === 'string' ? deviceInfo : undefined,
+    });
+
+    res.cookie(SESSION_COOKIE_NAME, result.session.sessionId, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: result.session.expiresAt.getTime() - Date.now(),
+      path: '/',
+    });
+
+    return {
+      success: true,
+      userStableId: result.user.userStableId,
+      role: result.user.role,
+      verificationToken: result.verificationToken,
+    };
+  }
+
+  @Post('accept-invite')
+  async acceptInvite(
+    @Body() body: { token?: string; password?: string; name?: string },
+  ) {
+    const result = await this.authService.acceptInvite({
+      token: body?.token ?? '',
+      password: body?.password ?? '',
+      name: body?.name,
+    });
+    return {
+      userStableId: result.user.userStableId,
+      email: result.user.email,
+      role: result.user.role,
+    };
+  }
+
+  @UseGuards(SessionAuthGuard)
+  @Get('me')
+  async me(@Req() req: Request & { user?: { userStableId: string; email?: string | null; role?: string } }) {
+    const user = req.user;
+    if (!user) return null;
+    return {
+      userStableId: user.userStableId,
+      email: user.email,
+      role: user.role,
+    };
+  }
+
+  @Post('logout')
+  async logout(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const cookieHeader = req.headers.cookie ?? '';
+    const sessionId = cookieHeader
+      .split(';')
+      .map((part) => part.trim())
+      .find((part) => part.startsWith(`${SESSION_COOKIE_NAME}=`))
+      ?.split('=')[1];
+
+    if (sessionId) {
+      await this.authService.revokeSession(sessionId);
     }
 
-    // 如果请求是带登录态的（以后你给这个接口加 AuthGuard），也可以从 req.user 取
-    const userIdFromReq = req.user?.id ?? req.user?.userId ?? undefined;
-    const userId = userIdFromBody ?? userIdFromReq ?? undefined;
-
-    return this.authService.verifyPhoneCode({
-      phone,
-      code,
-      purpose,
-      userId, // ✅ 有 userId 时，就会在 AuthService 里 attachPhoneToUser
-    });
+    res.clearCookie(SESSION_COOKIE_NAME, { path: '/' });
+    return { success: true };
   }
 }
