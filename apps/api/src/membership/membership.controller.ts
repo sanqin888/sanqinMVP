@@ -11,9 +11,10 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { MembershipService } from './membership.service';
+import { isStableId } from '../common/utils/stable-id';
 
 type AuthedRequest = Request & {
-  user?: { id?: string };
+  user?: { id?: string; userStableId?: string };
 };
 
 @Controller('membership')
@@ -22,7 +23,7 @@ export class MembershipController {
 
   /**
    * 统一解析 userStableId：
-   * 优先级：session(req.user.id) > body.userStableId > query.userStableId > header(x-user-stable-id)
+   * 优先级：session(req.user.userStableId) > body.userStableId > query.userStableId > header(x-user-stable-id)
    * 兼容：body/query 的 userId 视为 stableId
    */
   private resolveUserStableId(
@@ -31,7 +32,7 @@ export class MembershipController {
   ): string {
     const { queryUserStableId, bodyUserStableId } = opts;
 
-    const sessionId = req.user?.id;
+    const sessionStableId = req.user?.userStableId;
 
     const headerRaw =
       req.headers['x-user-stable-id'] ?? req.headers['x-user-id'];
@@ -43,13 +44,17 @@ export class MembershipController {
           : undefined;
 
     const userStableId =
-      sessionId ??
+      sessionStableId ??
       (bodyUserStableId && bodyUserStableId.trim()) ??
       (queryUserStableId && queryUserStableId.trim()) ??
       (headerId && headerId.trim());
 
     if (!userStableId) {
       throw new BadRequestException('userStableId is required');
+    }
+
+    if (!isStableId(userStableId)) {
+      throw new BadRequestException('userStableId must be cuid');
     }
 
     return userStableId;

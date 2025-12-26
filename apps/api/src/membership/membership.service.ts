@@ -7,14 +7,16 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { randomUUID } from 'crypto';
 import { Prisma, type User } from '@prisma/client';
+import { generateStableId } from '../common/utils/stable-id';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 
 const MICRO_PER_POINT = 1_000_000;
-const createStableId = (prefix: string): string =>
-  `${prefix}${randomUUID().replace(/-/g, '').slice(0, 24)}`;
+const createStableId = (prefix: string): string => {
+  const base = generateStableId();
+  return `${prefix}${base.slice(1)}`;
+};
 
 @Injectable()
 export class MembershipService {
