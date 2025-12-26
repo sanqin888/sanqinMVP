@@ -23,7 +23,8 @@ async function getBaseUrl(): Promise<string | null> {
 async function fetchAdminSession(): Promise<AdminSessionResponse | null> {
   const baseUrl = await getBaseUrl();
   if (!baseUrl) return null;
-  const cookieHeader = cookies()
+  const cookieStore = await cookies();
+  const cookieHeader = cookieStore
     .getAll()
     .map(({ name, value }) => `${name}=${value}`)
     .join('; ');
