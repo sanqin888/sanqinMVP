@@ -1,6 +1,8 @@
 //Users/apple/sanqinMVP/apps/web/src/middleware.ts
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { getToken } from "next-auth/jwt";
+import { isAdminEmail } from "@/lib/admin-access";
 
 const LOCALES = ["zh", "en"] as const;
 type Locale = (typeof LOCALES)[number];
@@ -23,7 +25,7 @@ function ensureCookie(res: NextResponse, locale: Locale) {
   });
 }
 
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
   // 跳过静态资源与 API
   if (
@@ -39,6 +41,24 @@ export function middleware(req: NextRequest) {
   // 已有前缀：同步 Cookie 并放行
   if (startsWithLocale(pathname)) {
     const locale = (pathname.split("/")[1] as Locale) || "en";
+    if (pathname.startsWith(`/${locale}/admin`)) {
+      const token = await getToken({
+        req: req as Parameters<typeof getToken>[0]["req"],
+        secret: process.env.NEXTAUTH_SECRET,
+      });
+      const email = typeof token?.email === "string" ? token.email : undefined;
+      const role = typeof token?.role === "string" ? token.role : undefined;
+      const isAdmin = role === "ADMIN" && isAdminEmail(email);
+      if (!isAdmin) {
+        const url = req.nextUrl.clone();
+        url.pathname = `/${locale}`;
+        url.search = "";
+        const res = NextResponse.redirect(url);
+        ensureCookie(res, locale);
+        return res;
+      }
+    }
+
     const res = NextResponse.next();
     ensureCookie(res, locale);
     return res;
