@@ -12,9 +12,10 @@ export default async function AdminLayout({
   params,
 }: {
   children: ReactNode;
-  params: Promise<{ locale: Locale }>;
+  params: { locale: string };
 }) {
-  const { locale } = await params;
+  const { locale } = params;
+  const safeLocale: Locale = locale === 'zh' || locale === 'en' ? locale : 'en';
   const session = await getServerSession(authOptions);
   const email =
     typeof session?.user?.email === 'string' ? session.user.email : undefined;
@@ -26,8 +27,8 @@ export default async function AdminLayout({
   const isAdmin = role === 'ADMIN' && isAdminEmail(email);
 
   if (!isAdmin) {
-    redirect(`/${locale}`);
+    redirect(`/${safeLocale}`);
   }
 
-  return <AdminLayoutClient locale={locale}>{children}</AdminLayoutClient>;
+  return <AdminLayoutClient locale={safeLocale}>{children}</AdminLayoutClient>;
 }

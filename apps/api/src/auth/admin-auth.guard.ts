@@ -67,8 +67,7 @@ export class AdminAuthGuard implements CanActivate {
           ? headers.cookie[0]
           : undefined;
 
-    const token =
-      getBearerToken(authHeader) ?? getSessionToken(cookieHeader);
+    const token = getBearerToken(authHeader) ?? getSessionToken(cookieHeader);
     if (!token) {
       throw new UnauthorizedException('Missing auth token');
     }
@@ -83,10 +82,8 @@ export class AdminAuthGuard implements CanActivate {
       throw new UnauthorizedException('Invalid session token');
     }
 
-    const email =
-      typeof decoded.email === 'string' ? decoded.email : undefined;
-    const role =
-      typeof decoded.role === 'string' ? decoded.role : undefined;
+    const email = typeof decoded.email === 'string' ? decoded.email : undefined;
+    const role = typeof decoded.role === 'string' ? decoded.role : undefined;
 
     const isAdmin = role === 'ADMIN' && isAdminEmail(email);
     if (!isAdmin) {
