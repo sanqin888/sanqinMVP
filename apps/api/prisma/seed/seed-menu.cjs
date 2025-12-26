@@ -14,6 +14,26 @@ function readSnapshot() {
 async function main() {
   const s = readSnapshot();
 
+// 0) Business Hours (weekday is unique)
+if (Array.isArray(s.businessHours)) {
+  for (const h of s.businessHours) {
+    await prisma.businessHour.upsert({
+      where: { weekday: h.weekday }, // ✅ schema 里 weekday @unique
+      create: {
+        weekday: h.weekday,
+        openMinutes: h.openMinutes ?? null,
+        closeMinutes: h.closeMinutes ?? null,
+        isClosed: !!h.isClosed,
+      },
+      update: {
+        openMinutes: h.openMinutes ?? null,
+        closeMinutes: h.closeMinutes ?? null,
+        isClosed: !!h.isClosed,
+      },
+    });
+  }
+}
+
   // 1) Categories
   for (const c of s.categories) {
     await prisma.menuCategory.upsert({

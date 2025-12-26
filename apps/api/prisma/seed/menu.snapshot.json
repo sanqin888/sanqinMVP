@@ -1,6 +1,50 @@
 {
   "version": 1,
-  "exportedAt": "2025-12-25T18:54:27.972Z",
+  "exportedAt": "2025-12-25T22:05:42.984Z",
+  "businessHours": [
+    {
+      "weekday": 0,
+      "openMinutes": 660,
+      "closeMinutes": 1230,
+      "isClosed": false
+    },
+    {
+      "weekday": 1,
+      "openMinutes": null,
+      "closeMinutes": null,
+      "isClosed": true
+    },
+    {
+      "weekday": 2,
+      "openMinutes": 660,
+      "closeMinutes": 1230,
+      "isClosed": false
+    },
+    {
+      "weekday": 3,
+      "openMinutes": 660,
+      "closeMinutes": 1230,
+      "isClosed": false
+    },
+    {
+      "weekday": 4,
+      "openMinutes": 660,
+      "closeMinutes": 1230,
+      "isClosed": false
+    },
+    {
+      "weekday": 5,
+      "openMinutes": 660,
+      "closeMinutes": 1230,
+      "isClosed": false
+    },
+    {
+      "weekday": 6,
+      "openMinutes": 660,
+      "closeMinutes": 1230,
+      "isClosed": false
+    }
+  ],
   "categories": [
     {
       "stableId": "cmjhs7oqj0000y69c7my2ckrb",
@@ -69,28 +113,6 @@
   ],
   "options": [
     {
-      "stableId": "cmjhsbei60007y69c5af6y70w",
-      "templateGroupStableId": "cmjhsaz9t0005y69chix5nzqt",
-      "nameEn": "Flour Noodle",
-      "nameZh": "面皮",
-      "priceDeltaCents": 0,
-      "sortOrder": 1,
-      "isAvailable": true,
-      "tempUnavailableUntil": null,
-      "deletedAt": null
-    },
-    {
-      "stableId": "cmjhsbruu0009y69c443era0e",
-      "templateGroupStableId": "cmjhsaz9t0005y69chix5nzqt",
-      "nameEn": "Rice Noodle",
-      "nameZh": "米皮",
-      "priceDeltaCents": 0,
-      "sortOrder": 1,
-      "isAvailable": true,
-      "tempUnavailableUntil": null,
-      "deletedAt": null
-    },
-    {
       "stableId": "cmjhscsb1000cy69cqculq1xt",
       "templateGroupStableId": "cmjhscbqq000ay69czjqjvznt",
       "nameEn": "Pork",
@@ -107,6 +129,28 @@
       "nameEn": "Beef",
       "nameZh": "牛肉",
       "priceDeltaCents": 150,
+      "sortOrder": 1,
+      "isAvailable": true,
+      "tempUnavailableUntil": null,
+      "deletedAt": null
+    },
+    {
+      "stableId": "cmjhsbei60007y69c5af6y70w",
+      "templateGroupStableId": "cmjhsaz9t0005y69chix5nzqt",
+      "nameEn": "Flour Noodle",
+      "nameZh": "面皮",
+      "priceDeltaCents": 0,
+      "sortOrder": 1,
+      "isAvailable": true,
+      "tempUnavailableUntil": null,
+      "deletedAt": null
+    },
+    {
+      "stableId": "cmjhsbruu0009y69c443era0e",
+      "templateGroupStableId": "cmjhsaz9t0005y69chix5nzqt",
+      "nameEn": "Rice Noodle",
+      "nameZh": "米皮",
+      "priceDeltaCents": 0,
       "sortOrder": 1,
       "isAvailable": true,
       "tempUnavailableUntil": null,
