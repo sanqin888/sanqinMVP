@@ -7,10 +7,13 @@ import {
   Param,
   Post,
   Put,
+  UseGuards,
 } from '@nestjs/common';
 import { AdminMenuService } from './admin-menu.service';
 import { AdminMenuFullResponse, TemplateGroupFullDto } from '@shared/menu';
+import { AdminAuthGuard } from '../../auth/admin-auth.guard';
 
+@UseGuards(AdminAuthGuard)
 @Controller('admin/menu')
 export class AdminMenuController {
   constructor(private readonly service: AdminMenuService) {}
