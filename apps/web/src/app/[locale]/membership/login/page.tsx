@@ -8,9 +8,9 @@ import { useSession } from '@/lib/auth-session';
 import type { Locale } from '@/lib/order/shared';
 import { apiFetch } from '@/lib/api-client';
 
-// ✅ 和当前后端保持一致：success 布尔值即可
+// ✅ 和后端 /auth/phone/verify-code 保持一致
 type PhoneVerifyResponse = {
-  success: boolean;
+  ok: boolean;
   verificationToken?: string;
 };
 
@@ -145,14 +145,26 @@ export default function MemberLoginPage() {
     try {
       setIsSendingCode(true);
 
-      // ✅ 统一登录验证码入口
-      await apiFetch<PhoneVerifyResponse>('/auth/login/otp/request', {
-        method: 'POST',
-        body: JSON.stringify({ phone: phone.trim(), locale }),
-        headers: {
-          'Content-Type': 'application/json',
+      // ✅ 会员手机号验证：发送验证码
+      const res = await apiFetch<{ ok: boolean; error?: string }>(
+        '/auth/phone/send-code',
+        {
+          method: 'POST',
+          body: JSON.stringify({ phone: phone.trim(), locale }),
+          headers: {
+            'Content-Type': 'application/json',
+          },
         },
-      });
+      );
+
+      if (!res.ok) {
+        setError(
+          isZh
+            ? '验证码发送失败，请稍后再试'
+            : 'Failed to send verification code. Please try again.',
+        );
+        return;
+      }
 
       setCountdown(60); // 60 秒内不能重复发送
     } catch (err) {
@@ -179,8 +191,8 @@ export default function MemberLoginPage() {
     try {
       setIsVerifyingCode(true);
 
-      // ✅ 使用统一登录验证码校验
-      const res = await apiFetch<PhoneVerifyResponse>('/auth/login/otp/verify', {
+      // ✅ 会员手机号验证：校验验证码
+      const res = await apiFetch<PhoneVerifyResponse>('/auth/phone/verify-code', {
         method: 'POST',
         body: JSON.stringify({ phone: phone.trim(), code: codeTrimmed }),
         headers: {
@@ -188,8 +200,7 @@ export default function MemberLoginPage() {
         },
       });
 
-      // apiFetch 遇到非 2xx 会直接 throw，所以这里一般 success=true
-      if (!res.success) {
+      if (!res.ok) {
         setPhoneVerified(false);
         setPhoneVerificationToken(null);
         setError(
@@ -244,12 +255,15 @@ export default function MemberLoginPage() {
       return;
     }
 
+    const trimmedPhone = phone.trim();
+    const pvToken = phoneVerificationToken ?? undefined;
+
     // ⭐ 把可选信息 + 手机号 + 验证凭证存本地，用于会员中心页面“首次注册补充资料”
     if (typeof window !== 'undefined') {
       try {
         const payload = {
-          phone: phone.trim(),
-          phoneVerificationToken, // 现在就是 '1'
+          phone: trimmedPhone,
+          phoneVerificationToken: pvToken ?? null,
           referrerEmail: referrerEmail.trim() || null,
           birthdayMonth: birthdayMonth ? String(birthdayMonth).trim() : null,
           birthdayDay: birthdayDay ? String(birthdayDay).trim() : null,
@@ -264,7 +278,15 @@ export default function MemberLoginPage() {
       }
     }
 
-    router.replace(redirectPath);
+    if (typeof window === 'undefined') return;
+
+    const authUrl = new URL('/api/v1/auth/google', window.location.origin);
+    authUrl.searchParams.set('redirect', redirectPath);
+    if (trimmedPhone && pvToken) {
+      authUrl.searchParams.set('phone', trimmedPhone);
+      authUrl.searchParams.set('pv', pvToken);
+    }
+    window.location.href = authUrl.toString();
   }
 
   return (
@@ -286,12 +308,12 @@ export default function MemberLoginPage() {
 
       <main className="mx-auto flex max-w-md flex-col px-4 py-10">
         <h1 className="mb-6 text-2xl font-semibold text-slate-900">
-          {isZh ? '先验证手机号，再完成登录' : 'Verify your phone, then sign in'}
+          {isZh ? '手机号验证后使用 Google 登录' : 'Verify phone, then sign in with Google'}
         </h1>
         <p className="mb-6 text-sm text-slate-600">
           {isZh
-            ? '手机号仅用于账号安全和发送优惠短信，不会公开展示。首次注册时需要完成验证。'
-            : 'Your phone number is used for account security and SMS offers only. Verification is required when you first sign up.'}
+            ? '手机号仅用于账号安全和发送优惠短信，不会公开展示。验证后会跳转到 Google 授权。'
+            : 'Your phone number is used for account security and SMS offers only. After verification, you will be redirected to Google.'}
         </p>
 
         {/* 手机号 */}
@@ -491,7 +513,7 @@ export default function MemberLoginPage() {
             <span className="rounded bg-white px-1.5 py-0.5 text-xs font-bold text-slate-900">
               G
             </span>
-            <span>{isZh ? '完成登录' : 'Continue'}</span>
+            <span>{isZh ? '使用 Google 登录' : 'Continue with Google'}</span>
           </button>
 
           <p className="mt-4 text-xs text-slate-500">
