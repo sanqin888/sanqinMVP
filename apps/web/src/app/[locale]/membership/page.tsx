@@ -6,7 +6,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import type { Locale } from '@/lib/order/shared';
 import { signOut, useSession } from '@/lib/auth-session';
-import type { Session } from '@/lib/auth-session';
+import type { Session, SessionUser } from '@/lib/auth-session';
 import { apiFetch } from '@/lib/api-client';
 
 type MemberTier = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM';
@@ -99,7 +99,7 @@ type MembershipSummaryApiEnvelope =
 
 type SessionWithUserId = Session & {
   userId?: string | null;
-  user?: { id?: string | null } | null;
+  user?: (SessionUser & { id?: string | null }) | null;
 };
 
 // ====== 积分流水类型 ======
