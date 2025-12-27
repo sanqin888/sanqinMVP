@@ -23,43 +23,46 @@ export class AuthController {
     private readonly oauthState: OauthStateService,
   ) {}
 
-@Get('oauth/google/start')
-@UseGuards(GoogleStartGuard)
-startGoogleOauth() {
-  // Guard 会直接 redirect 到 Google
-}
+  @Get('oauth/google/start')
+  @UseGuards(GoogleStartGuard)
+  startGoogleOauth() {
+    // Guard 会直接 redirect 到 Google
+  }
 
-@Get('oauth/google/callback')
-@UseGuards(AuthGuard('google'))
-async googleCallback(
-  @Req() req: Request,
-  @Res() res: Response,
-) {
-  const deviceInfo = req.headers['user-agent'];
-  const stateRaw = String((req.query as any)?.state ?? '');
-  const { cb, phone, pv } = this.oauthState.verify(stateRaw);
+  @Get('oauth/google/callback')
+  @UseGuards(AuthGuard('google'))
+  async googleCallback(@Req() req: Request, @Res() res: Response) {
+    const deviceInfo = req.headers['user-agent'];
+    const stateParam = req.query?.state;
+    const stateRaw =
+      typeof stateParam === 'string'
+        ? stateParam
+        : Array.isArray(stateParam)
+          ? stateParam[0] ?? ''
+          : '';
+    const { cb, phone, pv } = this.oauthState.verify(stateRaw);
 
-  const g = req.user as GoogleProfile;
+    const g = req.user as GoogleProfile;
 
-  const result = await this.authService.loginWithGoogleOauth({
-    googleSub: g.sub,
-    email: g.email,
-    name: g.name,
-    phone,
-    pv,
-    deviceInfo: typeof deviceInfo === 'string' ? deviceInfo : undefined,
-  });
+    const result = await this.authService.loginWithGoogleOauth({
+      googleSub: g.sub,
+      email: g.email,
+      name: g.name,
+      phone,
+      pv,
+      deviceInfo: typeof deviceInfo === 'string' ? deviceInfo : undefined,
+    });
 
-  res.cookie(SESSION_COOKIE_NAME, result.session.sessionId, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: result.session.expiresAt.getTime() - Date.now(),
-    path: '/',
-  });
+    res.cookie(SESSION_COOKIE_NAME, result.session.sessionId, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: result.session.expiresAt.getTime() - Date.now(),
+      path: '/',
+    });
 
-  return res.redirect(302, cb || '/');
-}
+    return res.redirect(302, cb || '/');
+  }
 
   @Post('login')
   async login(

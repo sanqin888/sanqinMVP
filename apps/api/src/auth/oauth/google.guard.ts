@@ -1,5 +1,10 @@
-import { BadRequestException, ExecutionContext, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ExecutionContext,
+  Injectable,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import type { Request } from 'express';
 import { OauthStateService } from './oauth-state.service';
 
 @Injectable()
@@ -9,11 +14,15 @@ export class GoogleStartGuard extends AuthGuard('google') {
   }
 
   getAuthenticateOptions(context: ExecutionContext) {
-    const req = context.switchToHttp().getRequest() as any;
+    const req = context.switchToHttp().getRequest<Request>();
+    const query = req.query ?? {};
 
-    const callbackUrl = String(req.query?.callbackUrl ?? '/');
-    const phone = String(req.query?.phone ?? '').trim();
-    const pv = String(req.query?.pv ?? '').trim();
+    const callbackParam = query['callbackUrl'];
+    const phoneParam = query['phone'];
+    const pvParam = query['pv'];
+    const callbackUrl = typeof callbackParam === 'string' ? callbackParam : '/';
+    const phone = typeof phoneParam === 'string' ? phoneParam.trim() : '';
+    const pv = typeof pvParam === 'string' ? pvParam.trim() : '';
 
     if (!phone || !pv) {
       throw new BadRequestException('phone and pv are required');
