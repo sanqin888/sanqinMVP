@@ -193,7 +193,8 @@ export default function MemberLoginPage() {
       }
       // ✅ 校验成功：本地标记为已验证，并给一个简单的“验证凭证”字符串
       setPhoneVerified(true);
-      setPhoneVerificationToken('1');
+      const token = res.verificationToken ?? null;
+      setPhoneVerificationToken(token);
       setError(null);
       // ✅ 记住这台设备上已经验证过的手机号
       const trimmedPhone = phone.trim();
