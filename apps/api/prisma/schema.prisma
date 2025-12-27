@@ -112,6 +112,7 @@ model User {
   addresses             UserAddress[]
   sessions              UserSession[]
   invitesSent           UserInvite[] @relation("InvitesSent")
+  googleSub String? @unique
 
   @@index([referredByUserId])
 }
