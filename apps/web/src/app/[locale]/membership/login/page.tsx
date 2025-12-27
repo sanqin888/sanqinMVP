@@ -11,7 +11,6 @@ import { apiFetch } from '@/lib/api-client';
 // ✅ 和当前后端保持一致：success 布尔值即可
 type PhoneVerifyResponse = {
   success: boolean;
-  verificationToken?: string;
 };
 
 export default function MemberLoginPage() {
@@ -194,8 +193,7 @@ export default function MemberLoginPage() {
       }
       // ✅ 校验成功：本地标记为已验证，并给一个简单的“验证凭证”字符串
       setPhoneVerified(true);
-      const token = res.verificationToken ?? null;
-      setPhoneVerificationToken(token);
+      setPhoneVerificationToken('1');
       setError(null);
       // ✅ 记住这台设备上已经验证过的手机号
       const trimmedPhone = phone.trim();
