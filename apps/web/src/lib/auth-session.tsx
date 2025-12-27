@@ -118,7 +118,36 @@ export async function signOut(): Promise<void> {
   });
 }
 
-// 你当前的 admin/login 是自写 fetch('/api/v1/auth/login')，所以这里保留空实现即可
-export async function signIn(): Promise<void> {
-  return undefined;
+type SignInOptions = { callbackUrl?: string };
+
+export function signIn(provider: 'google', opts?: SignInOptions): void {
+  if (typeof window === 'undefined') return;
+  if (provider !== 'google') throw new Error('Unsupported provider');
+
+  const callbackUrl = opts?.callbackUrl ?? '/';
+
+  // 从 membership/login 写入的 prefill 里取 phone + pv(OTP verificationToken)
+  let phone: string | undefined;
+  let pv: string | undefined;
+  try {
+    const raw = window.localStorage.getItem('sanqin_membership_prefill');
+    if (raw) {
+      const p = JSON.parse(raw) as {
+        phone?: string;
+        phoneVerificationToken?: string;
+      };
+      phone = p.phone?.trim() || undefined;
+      pv = p.phoneVerificationToken?.trim() || undefined;
+    }
+  } catch {
+    // ignore
+  }
+
+  const qs = new URLSearchParams();
+  qs.set('callbackUrl', callbackUrl);
+  if (phone) qs.set('phone', phone);
+  if (pv) qs.set('pv', pv);
+
+  // 走你现有 /api 代理到 UPSTREAM/api
+  window.location.assign(`/api/v1/auth/oauth/google/start?${qs.toString()}`);
 }

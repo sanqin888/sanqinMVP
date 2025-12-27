@@ -98,6 +98,110 @@ export class AuthService {
     return session.user;
   }
 
+async loginWithGoogleOauth(params: {
+  googleSub: string;
+  email: string | null;
+  name: string | null;
+  phone: string;
+  pv: string; // phoneVerification id
+  deviceInfo?: string;
+}) {
+  const googleSub = params.googleSub;
+  const email = params.email ? this.normalizeEmail(params.email) : null;
+  const phone = this.normalizePhone(params.phone);
+
+  if (!googleSub || !phone || !params.pv) {
+    throw new BadRequestException('invalid oauth params');
+  }
+
+  const now = new Date();
+
+  // 1) 校验 pv 是否为有效的“membership-login”验证码验证记录
+  const record = await this.prisma.phoneVerification.findUnique({
+    where: { id: params.pv },
+  });
+
+  if (
+    !record ||
+    record.phone !== phone ||
+    record.purpose !== 'membership-login' ||
+    record.status !== 'VERIFIED' ||
+    !record.verifiedAt
+  ) {
+    throw new BadRequestException('phone verification is invalid');
+  }
+
+  // 10 分钟内有效（你可调整）
+  if (now.getTime() - record.verifiedAt.getTime() > 10 * 60 * 1000) {
+    throw new BadRequestException('phone verification expired');
+  }
+
+  // 2) 选定要登录/绑定的 user（优先 phone，其次 googleSub，其次 email）
+  const user = await this.prisma.$transaction(async (tx) => {
+    const byPhone = await tx.user.findFirst({ where: { phone } });
+    const byGoogle = await tx.user.findFirst({ where: { googleSub } });
+    const byEmail = email ? await tx.user.findUnique({ where: { email } }) : null;
+
+    // 防止错误合并：googleSub 已绑定到别的用户，而 pv 指向另一个 phone 用户
+    if (byPhone && byGoogle && byPhone.id !== byGoogle.id) {
+      throw new BadRequestException('account conflict');
+    }
+
+    let base = byPhone ?? byGoogle ?? null;
+
+    // 如果只靠 email 找到的是 ADMIN/STAFF，这里建议禁止走 membership oauth（更安全）
+    if (!base && byEmail) {
+      if (byEmail.role === 'ADMIN' || byEmail.role === 'STAFF') {
+        throw new ForbiddenException('staff email is not allowed for membership oauth');
+      }
+      base = byEmail;
+    }
+
+    if (!base) {
+      base = await tx.user.create({
+        data: {
+          role: 'CUSTOMER',
+          status: 'ACTIVE',
+          phone,
+          phoneVerifiedAt: now,
+          email: email ?? undefined,
+          name: params.name ?? undefined,
+          googleSub,
+        },
+      });
+      return base;
+    }
+
+    // 更新绑定信息（不轻易覆盖已有 email/name）
+    const nextEmail = base.email ? undefined : (email ?? undefined);
+    const nextName = base.name ? undefined : (params.name ?? undefined);
+
+    const updated = await tx.user.update({
+      where: { id: base.id },
+      data: {
+        googleSub: base.googleSub ?? googleSub,
+        email: nextEmail,
+        name: nextName,
+        phoneVerifiedAt: base.phoneVerifiedAt ?? now,
+      },
+    });
+
+    // 确保 phone 写到这个用户上（如果 base 不是 byPhone 的情况）
+    if (updated.phone !== phone) {
+      await this.attachPhoneToUser({ userId: updated.id, phone });
+    }
+
+    return updated;
+  });
+
+  const session = await this.createSession({
+    userId: user.id,
+    deviceInfo: params.deviceInfo,
+  });
+
+  return { user, session };
+}
+
   async loginWithPassword(params: {
     email: string;
     password: string;
