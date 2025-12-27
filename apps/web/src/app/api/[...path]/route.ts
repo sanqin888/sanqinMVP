@@ -73,27 +73,28 @@ async function proxy(req: NextRequest, ctx: ParamsPromise) {
   }
   clearTimeout(timeout);
 
-const resHeaders = new Headers();
+  const resHeaders = new Headers();
 
-// ✅ 1) set-cookie 需要 append（可能多条）
-const anyHeaders = res.headers as any;
-const setCookies: string[] =
-  typeof anyHeaders.getSetCookie === 'function' ? anyHeaders.getSetCookie() : [];
-for (const c of setCookies) resHeaders.append('set-cookie', c);
+  // ✅ 1) set-cookie 需要 append（可能多条）
+  const anyHeaders = res.headers as any;
+  const setCookies: string[] =
+    typeof anyHeaders.getSetCookie === 'function' ? anyHeaders.getSetCookie() : [];
+  for (const c of setCookies) resHeaders.append('set-cookie', c);
 
-// ✅ 2) 其他 header 正常透传（跳过 set-cookie，避免覆盖）
-res.headers.forEach((v, k) => {
-  const key = k.toLowerCase();
-  if (HOP_BY_HOP.has(key)) return;
-  if (key === 'set-cookie') return;
-  resHeaders.set(k, v);
-});
+  // ✅ 2) 其他 header 正常透传（跳过 set-cookie，避免覆盖）
+  res.headers.forEach((v, k) => {
+    const key = k.toLowerCase();
+    if (HOP_BY_HOP.has(key)) return;
+    if (key === 'set-cookie') return;
+    resHeaders.set(k, v);
+  });
 
-return new NextResponse(res.body, {
-  status: res.status,
-  statusText: res.statusText,
-  headers: resHeaders,
-});
+  return new NextResponse(res.body, {
+    status: res.status,
+    statusText: res.statusText,
+    headers: resHeaders,
+  });
+}
 
 // 兼容所有方法
 export async function GET(req: NextRequest, ctx: ParamsPromise) { return proxy(req, ctx); }
