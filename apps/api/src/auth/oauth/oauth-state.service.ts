@@ -1,11 +1,15 @@
-//apps/api/src/auth/oauth/oauth-state.service.ts
+// apps/api/src/auth/oauth/oauth-state.service.ts
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'crypto';
 
 type Payload = { cb: string; phone: string; pv: string; iat: number };
 
 function b64url(buf: Buffer) {
-  return buf.toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+  return buf
+    .toString('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
 }
 
 function toB64Json(obj: unknown) {

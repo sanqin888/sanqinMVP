@@ -1,7 +1,7 @@
-//apps/api/src/auth/oauth/google.strategy.ts
+// apps/api/src/auth/oauth/google.strategy.ts
 import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
-import { Strategy, Profile } from 'passport-google-oauth20';
+import { Profile, Strategy } from 'passport-google-oauth20';
 
 export type GoogleProfile = {
   sub: string;
@@ -20,9 +20,15 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     });
   }
 
-  async validate(_at: string, _rt: string, profile: Profile): Promise<GoogleProfile> {
+  validate(
+    _at: string,
+    _rt: string,
+    profile: Profile,
+  ): GoogleProfile {
     const email =
-      profile.emails && profile.emails.length > 0 ? profile.emails[0].value : null;
+      profile.emails && profile.emails.length > 0
+        ? profile.emails[0].value
+        : null;
     return {
       sub: profile.id,
       email,

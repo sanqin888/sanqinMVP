@@ -13,12 +13,12 @@ import { PrismaService } from '../prisma/prisma.service';
 @Module({
   imports: [PrismaModule, PassportModule],
   providers: [
-    AuthService, 
+    AuthService,
     PrismaService,
     SessionAuthGuard,
     OauthStateService,
     GoogleStrategy,
-    GoogleStartGuard
+    GoogleStartGuard,
   ],
   controllers: [AuthController],
   exports: [AuthService, SessionAuthGuard],
