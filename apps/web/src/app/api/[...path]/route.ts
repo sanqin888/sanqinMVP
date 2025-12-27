@@ -76,9 +76,13 @@ async function proxy(req: NextRequest, ctx: ParamsPromise) {
   const resHeaders = new Headers();
 
   // ✅ 1) set-cookie 需要 append（可能多条）
-  const anyHeaders = res.headers as any;
+  const headersWithCookies = res.headers as Headers & {
+    getSetCookie?: () => string[];
+  };
   const setCookies: string[] =
-    typeof anyHeaders.getSetCookie === 'function' ? anyHeaders.getSetCookie() : [];
+    typeof headersWithCookies.getSetCookie === 'function'
+      ? headersWithCookies.getSetCookie()
+      : [];
   for (const c of setCookies) resHeaders.append('set-cookie', c);
 
   // ✅ 2) 其他 header 正常透传（跳过 set-cookie，避免覆盖）

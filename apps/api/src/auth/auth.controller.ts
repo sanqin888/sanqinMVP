@@ -38,7 +38,7 @@ export class AuthController {
       typeof stateParam === 'string'
         ? stateParam
         : Array.isArray(stateParam)
-          ? stateParam[0] ?? ''
+          ? (stateParam[0] ?? '')
           : '';
     const { cb, phone, pv } = this.oauthState.verify(stateRaw);
 
