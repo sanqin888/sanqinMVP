@@ -11,7 +11,6 @@ import { apiFetch } from '@/lib/api-client';
 // ✅ 和当前后端保持一致：success 布尔值即可
 type PhoneVerifyResponse = {
   success: boolean;
-  verificationToken?: string;
 };
 
 export default function MemberLoginPage() {
