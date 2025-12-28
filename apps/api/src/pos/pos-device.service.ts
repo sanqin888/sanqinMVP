@@ -1,11 +1,16 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
+import type { Prisma } from '@prisma/client';
 
-type PosDeviceMetaInput = Record<string, unknown>;
+type PosDeviceMetaInput = Prisma.InputJsonValue;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
+}
+
+function toJsonObject(value: Record<string, unknown>): Prisma.JsonObject {
+  return JSON.parse(JSON.stringify(value)) as Prisma.JsonObject;
 }
 
 @Injectable()
@@ -27,10 +32,10 @@ export class PosDeviceService {
 
   private buildMeta(input: unknown, userAgent?: string): PosDeviceMetaInput {
     const meta = isRecord(input) ? { ...input } : {};
-    if (userAgent && !meta.userAgent) {
+    if (userAgent && !('userAgent' in meta)) {
       meta.userAgent = userAgent;
     }
-    return meta;
+    return toJsonObject(meta);
   }
 
   async claimDevice(params: {

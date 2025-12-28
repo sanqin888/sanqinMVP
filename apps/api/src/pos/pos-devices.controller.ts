@@ -24,8 +24,7 @@ export class PosDevicesController {
       userAgent: typeof userAgent === 'string' ? userAgent : undefined,
     });
 
-    const maxAge =
-      POS_DEVICE_COOKIE_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+    const maxAge = POS_DEVICE_COOKIE_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
 
     res.cookie(POS_DEVICE_ID_COOKIE, result.device.deviceStableId, {
       httpOnly: true,

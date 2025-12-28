@@ -35,7 +35,10 @@ export class AuthService {
   private verifyDeviceKey(value: string, hash: string): boolean {
     const computed = this.hashDeviceKey(value);
     if (computed.length !== hash.length) return false;
-    return timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(computed, 'hex'));
+    return timingSafeEqual(
+      Buffer.from(hash, 'hex'),
+      Buffer.from(computed, 'hex'),
+    );
   }
 
   private getSessionTtlMs(): number {
