@@ -4,14 +4,14 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-import { signIn } from 'next-auth/react';
-import { useSession } from '@/lib/auth-session';
+import { useSession, signIn } from '@/lib/auth-session';
 import type { Locale } from '@/lib/order/shared';
 import { apiFetch } from '@/lib/api-client';
 
 // ✅ 和当前后端保持一致：success 布尔值即可
 type PhoneVerifyResponse = {
   success: boolean;
+  verificationToken?: string;
 };
 
 export default function MemberLoginPage() {
@@ -192,9 +192,10 @@ export default function MemberLoginPage() {
         );
         return;
       }
-      // ✅ 校验成功：本地标记为已验证，并给一个简单的“验证凭证”字符串
+// ✅ 后端会返回 verificationToken（phoneVerification.id），用于后续 OAuth 绑定校验
       setPhoneVerified(true);
-      setPhoneVerificationToken('1'); // 现在先用固定字符串，后端只需要知道“已经验证过了”
+      const token = res.verificationToken ?? null;
+      setPhoneVerificationToken(token);
       setError(null);
       // ✅ 记住这台设备上已经验证过的手机号
       const trimmedPhone = phone.trim();
@@ -244,7 +245,7 @@ export default function MemberLoginPage() {
       try {
         const payload = {
           phone: phone.trim(),
-          phoneVerificationToken, // 现在就是 '1'
+          phoneVerificationToken,
           referrerEmail: referrerEmail.trim() || null,
           birthdayMonth: birthdayMonth ? String(birthdayMonth).trim() : null,
           birthdayDay: birthdayDay ? String(birthdayDay).trim() : null,

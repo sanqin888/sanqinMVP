@@ -7,14 +7,85 @@ const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
 function readSnapshot() {
-  const p = path.join(process.cwd(), "prisma", "seed", "menu.snapshot.json");
+  const p = path.resolve(__dirname, "menu.snapshot.json");
   return JSON.parse(fs.readFileSync(p, "utf-8"));
 }
 
 async function main() {
   const s = readSnapshot();
 
-// 0) Business Hours (weekday is unique)
+// 0) Admin Users
+async function upsertAdminUser(u) {
+  const dataBase = {
+    role: "ADMIN",
+    status: u.status ?? "ACTIVE",
+    userStableId: u.userStableId,
+    email: u.email ?? null,
+    phone: u.phone ?? null,
+    phoneVerifiedAt: u.phoneVerifiedAt ?? null,
+    name: u.name ?? null,
+    marketingEmailOptIn: !!u.marketingEmailOptIn,
+    marketingEmailOptInAt: u.marketingEmailOptInAt ?? null,
+    referredByUserId: u.referredByUserId ?? null,
+    birthdayMonth: u.birthdayMonth ?? null,
+    birthdayDay: u.birthdayDay ?? null,
+    googleSub: u.googleSub ?? null,
+  };
+
+  function withPasswordIfTargetEmpty(target) {
+    const targetHasPwd = !!target.passwordHash || !!target.passwordSalt;
+    const snapshotHasPwd = !!u.passwordHash || !!u.passwordSalt;
+
+    // ✅ 默认策略：目标已有密码 -> 不覆盖；目标无密码且 snapshot 有 -> 写入
+    if (!targetHasPwd && snapshotHasPwd) {
+      return {
+        ...dataBase,
+        passwordHash: u.passwordHash ?? null,
+        passwordSalt: u.passwordSalt ?? null,
+      };
+    }
+    return dataBase;
+  }
+
+  // 依次定位已存在的目标用户（避免 unique 冲突）
+  const candidates = [];
+
+  if (u.id) candidates.push(prisma.user.findUnique({ where: { id: u.id } }));
+  if (u.email) candidates.push(prisma.user.findUnique({ where: { email: u.email } }));
+  if (u.phone) candidates.push(prisma.user.findUnique({ where: { phone: u.phone } }));
+  if (u.userStableId) candidates.push(prisma.user.findUnique({ where: { userStableId: u.userStableId } }));
+  if (u.googleSub) candidates.push(prisma.user.findUnique({ where: { googleSub: u.googleSub } }));
+
+  const results = await Promise.allSettled(candidates);
+  const found = results
+    .filter((r) => r.status === "fulfilled")
+    .map((r) => r.value)
+    .find((v) => v);
+
+  if (found) {
+    const data = withPasswordIfTargetEmpty(found);
+    return prisma.user.update({ where: { id: found.id }, data });
+  }
+
+  // 不存在则 create：✅ 可以直接带密码
+  return prisma.user.create({
+    data: {
+      id: u.id, // 你希望稳定复用同一个 uuid
+      ...dataBase,
+      passwordHash: u.passwordHash ?? null,
+      passwordSalt: u.passwordSalt ?? null,
+    },
+  });
+}
+if (Array.isArray(s.adminUsers) && s.adminUsers.length > 0) {
+  for (const u of s.adminUsers) {
+    await upsertAdminUser(u);
+  }
+} else {
+  console.log("No adminUsers in snapshot.");
+}
+
+// 1) Business Hours (weekday is unique)
 if (Array.isArray(s.businessHours)) {
   for (const h of s.businessHours) {
     await prisma.businessHour.upsert({
@@ -34,7 +105,7 @@ if (Array.isArray(s.businessHours)) {
   }
 }
 
-  // 1) Categories
+  // 2) Categories
   for (const c of s.categories) {
     await prisma.menuCategory.upsert({
       where: { stableId: c.stableId },
@@ -56,7 +127,7 @@ if (Array.isArray(s.businessHours)) {
     });
   }
 
-  // 2) Option Group Templates
+  // 3) Option Group Templates
   for (const g of s.templateGroups) {
     await prisma.menuOptionGroupTemplate.upsert({
       where: { stableId: g.stableId },
@@ -84,7 +155,7 @@ if (Array.isArray(s.businessHours)) {
     });
   }
 
-  // 3) Options (MenuOptionTemplateChoice)
+  // 4) Options (MenuOptionTemplateChoice)
   for (const o of s.options) {
     if (!o.templateGroupStableId) continue;
 
@@ -114,7 +185,7 @@ if (Array.isArray(s.businessHours)) {
     });
   }
 
-  // 4) Items
+  // 5) Items
   for (const i of s.items) {
     if (!i.categoryStableId) continue;
 
@@ -152,7 +223,7 @@ if (Array.isArray(s.businessHours)) {
     });
   }
 
-  // 5) Join table MenuItemOptionGroup
+  // 6) Join table MenuItemOptionGroup
   // 因为 @@unique([itemId, templateGroupId]) 用的是内部 id，所以要先建映射表
   const itemRows = await prisma.menuItem.findMany({
     where: { deletedAt: null },

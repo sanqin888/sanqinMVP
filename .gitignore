@@ -31,3 +31,7 @@ apps/web/nest/
 # stray npm artifacts
 /api@*
 /eslint
+
+# DB seed
+apps/api/prisma/seed/menu.snapshot.json
+apps/api/prisma/seed/*.snapshot.json
