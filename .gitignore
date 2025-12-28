@@ -33,4 +33,5 @@ apps/web/nest/
 /eslint
 
 # DB seed
-apps/api/prisma/seed/seed-menu.cjs
+apps/api/prisma/seed/menu.snapshot.json
+apps/api/prisma/seed/*.snapshot.json
