@@ -1,6 +1,42 @@
 {
   "version": 1,
-  "exportedAt": "2025-12-25T22:05:42.984Z",
+  "exportedAt": "2025-12-27T23:20:40.204Z",
+  "adminUsers": [
+    {
+      "id": "c9ac3e2f-d9b2-4c39-8469-dc0347dc2700",
+      "userStableId": "cmjnbxpg300000g3b90480kef",
+      "email": "joe8822song@gmail.com",
+      "phone": "4315888341",
+      "phoneVerifiedAt": "2025-12-26T20:34:04.923Z",
+      "name": "Joe",
+      "role": "ADMIN",
+      "status": "ACTIVE",
+      "passwordHash": "cec3c54e7e8fff1f5c37ee68670537c533db6895f853917194bdc1c959a929d8a7c104c253bbc38647f1a6598eb53d727d056c461555b4ba3f7f342e4738ea05",
+      "passwordSalt": "f13d0af567b0cc616cf2e3b797d0146e",
+      "marketingEmailOptIn": false,
+      "marketingEmailOptInAt": null,
+      "referredByUserId": null,
+      "birthdayMonth": null,
+      "birthdayDay": null
+    },
+    {
+      "id": "c7831032-db66-4ab6-90b3-5cb4e7d2b466",
+      "userStableId": "cmjnfj4kc00010g3blakhlsjt",
+      "email": "sanqin888@gmail.com",
+      "phone": "4378086888",
+      "phoneVerifiedAt": "2025-12-26T22:14:43.151Z",
+      "name": "SanQ",
+      "role": "ADMIN",
+      "status": "ACTIVE",
+      "passwordHash": "ac4d4ec338fa957ca4e6cf44e49bd39f4b10d8bad42273895e6ad3903c17059b99e4827b7d334c76ea17964cf41ef6c8f029896469173e078109a10e7ddce578",
+      "passwordSalt": "2c490afc4063c6367b1884cf3543e02b",
+      "marketingEmailOptIn": false,
+      "marketingEmailOptInAt": null,
+      "referredByUserId": "c9ac3e2f-d9b2-4c39-8469-dc0347dc2700",
+      "birthdayMonth": null,
+      "birthdayDay": null
+    }
+  ],
   "businessHours": [
     {
       "weekday": 0,

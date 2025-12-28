@@ -1,11 +1,10 @@
 // apps/api/src/loyalty/loyalty.controller.ts
 import {
+  BadRequestException,
   Body,
   Controller,
-  Get,
+  Headers,
   Post,
-  Query,
-  BadRequestException,
 } from '@nestjs/common';
 import { LoyaltyService } from './loyalty.service';
 
@@ -13,56 +12,40 @@ import { LoyaltyService } from './loyalty.service';
 export class LoyaltyController {
   constructor(private readonly loyalty: LoyaltyService) {}
 
-  /**
-   * ⚠️ 仅开发环境使用：给指定 userId 人为加减积分
-   * 例：/loyalty/dev/credit?userId=google:123&points=10
-   */
-  @Get('dev/credit')
-  async devCredit(
-    @Query('userId') userId: string,
-    @Query('points') pointsRaw?: string,
-    @Query('note') note?: string,
-  ) {
-    if (!userId) {
-      throw new BadRequestException('userId is required');
+  private readIdempotencyKey(headerValue: unknown, bodyValue: unknown): string {
+    const h = typeof headerValue === 'string' ? headerValue.trim() : '';
+    const b = typeof bodyValue === 'string' ? bodyValue.trim() : '';
+    const ik = h || b;
+
+    if (!ik) throw new BadRequestException('idempotencyKey is required');
+    if (ik.length > 128) {
+      throw new BadRequestException('idempotencyKey is too long');
     }
-
-    const points = Number(pointsRaw ?? '0');
-    if (!Number.isFinite(points) || points === 0) {
-      throw new BadRequestException('points must be a non-zero number');
-    }
-
-    await this.loyalty.adjustPointsManual(userId, points, note ?? 'dev credit');
-
-    const acc = await this.loyalty.ensureAccount(userId);
-    return {
-      userId: acc.userId,
-      tier: acc.tier,
-      points: Number(acc.pointsMicro) / 1_000_000,
-    };
+    return ik;
   }
 
   /**
-   * 顾客储值：增加积分 + 累计消费 + 自动升级
+   * POS 充值：充值积分 +（可选）人工奖励积分 + 累计消费 + 自动升级 + 推荐人奖励
    */
   @Post('topup')
   async topup(
+    @Headers('idempotency-key') idempotencyKeyHeader: string | undefined,
     @Body()
     body: {
-      userId?: string;
+      userStableId?: string;
       amountCents?: number;
-      pointsToCredit?: number;
+      pointsToCredit?: number; // 可选：覆盖默认 1 CAD = 1 pt
+      bonusPoints?: number; // 可选：人工额外奖励
+      idempotencyKey?: string; // 允许 body 传（curl 更方便）
     },
   ) {
-    const userId = typeof body.userId === 'string' ? body.userId.trim() : '';
-    if (!userId) {
-      throw new BadRequestException('userId is required');
-    }
+    const userStableId =
+      typeof body.userStableId === 'string' ? body.userStableId.trim() : '';
+    if (!userStableId)
+      throw new BadRequestException('userStableId is required');
 
-    const amountCentsRaw = body.amountCents;
     const amountCents =
-      typeof amountCentsRaw === 'number' ? Math.round(amountCentsRaw) : NaN;
-
+      typeof body.amountCents === 'number' ? Math.round(body.amountCents) : NaN;
     if (!Number.isFinite(amountCents) || amountCents <= 0) {
       throw new BadRequestException('amountCents must be a positive number');
     }
@@ -70,14 +53,64 @@ export class LoyaltyController {
     const pointsToCredit =
       typeof body.pointsToCredit === 'number' ? body.pointsToCredit : undefined;
 
-    await this.loyalty.applyTopup(userId, amountCents, pointsToCredit);
+    const bonusPoints =
+      typeof body.bonusPoints === 'number' ? body.bonusPoints : undefined;
 
-    const acc = await this.loyalty.ensureAccount(userId);
-    return {
-      userId: acc.userId,
-      tier: acc.tier,
-      points: Number(acc.pointsMicro) / 1_000_000,
-      lifetimeSpendCents: acc.lifetimeSpendCents ?? 0,
-    };
+    const idempotencyKey = this.readIdempotencyKey(
+      idempotencyKeyHeader,
+      body.idempotencyKey,
+    );
+
+    const result = await this.loyalty.applyTopup({
+      userStableId,
+      amountCents,
+      pointsToCredit,
+      bonusPoints,
+      idempotencyKey,
+    });
+
+    return { userStableId, ...result };
+  }
+
+  /**
+   * POS 手动调账：独立的加/减积分（幂等）
+   */
+  @Post('adjust-manual')
+  async adjustManual(
+    @Headers('idempotency-key') idempotencyKeyHeader: string | undefined,
+    @Body()
+    body: {
+      userStableId?: string;
+      deltaPoints?: number; // 可正可负
+      note?: string;
+      idempotencyKey?: string;
+    },
+  ) {
+    const userStableId =
+      typeof body.userStableId === 'string' ? body.userStableId.trim() : '';
+    if (!userStableId)
+      throw new BadRequestException('userStableId is required');
+
+    const deltaPoints =
+      typeof body.deltaPoints === 'number' ? body.deltaPoints : NaN;
+    if (!Number.isFinite(deltaPoints) || deltaPoints === 0) {
+      throw new BadRequestException('deltaPoints must be a non-zero number');
+    }
+
+    const note = typeof body.note === 'string' ? body.note.trim() : undefined;
+
+    const idempotencyKey = this.readIdempotencyKey(
+      idempotencyKeyHeader,
+      body.idempotencyKey,
+    );
+
+    const result = await this.loyalty.adjustPointsManual({
+      userStableId,
+      deltaPoints,
+      note,
+      idempotencyKey,
+    });
+
+    return { userStableId, ...result };
   }
 }

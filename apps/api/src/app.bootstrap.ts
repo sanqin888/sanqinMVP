@@ -1,7 +1,7 @@
+// apps/api/src/app.bootstrap.ts
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ApiExceptionFilter } from './common/filters/api-exception.filter';
 import { ApiResponseInterceptor } from './common/interceptors/api-response.interceptor';
-import { BigIntToStringInterceptor } from './common/interceptors/bigint-to-string.interceptor';
 
 const API_PREFIX = 'api/v1';
 
@@ -16,10 +16,8 @@ export function configureApp(app: INestApplication): void {
     }),
   );
 
-  app.useGlobalInterceptors(
-    new BigIntToStringInterceptor(),
-    new ApiResponseInterceptor(),
-  );
+  // ✅ 只保留一个：统一信封 + 统一序列化
+  app.useGlobalInterceptors(new ApiResponseInterceptor());
 
   app.useGlobalFilters(new ApiExceptionFilter());
 }

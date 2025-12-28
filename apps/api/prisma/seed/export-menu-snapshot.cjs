@@ -8,6 +8,29 @@ const prisma = new PrismaClient();
 
 async function main() {
 
+// ===== Admin Users (role = ADMIN) =====
+const adminUsers = await prisma.user.findMany({
+  where: { role: "ADMIN" },
+  orderBy: { createdAt: "asc" },
+  select: {
+    id: true,
+    userStableId: true,
+    email: true,
+    phone: true,
+    phoneVerifiedAt: true,
+    name: true,
+    role: true,
+    status: true, 
+    passwordHash: true,     
+    passwordSalt: true,     
+    marketingEmailOptIn: true,
+    marketingEmailOptInAt: true,
+    referredByUserId: true,
+    birthdayMonth: true,
+    birthdayDay: true,
+  },
+});
+
 // ===== Business Hours =====
 const businessHours = await prisma.businessHour.findMany({
   orderBy: { weekday: "asc" },
@@ -109,6 +132,24 @@ const businessHours = await prisma.businessHour.findMany({
   const snapshot = {
     version: 1,
     exportedAt: new Date().toISOString(),
+
+adminUsers: adminUsers.map((u) => ({
+  id: u.id,
+  userStableId: u.userStableId,
+  email: u.email,
+  phone: u.phone,
+  phoneVerifiedAt: u.phoneVerifiedAt,
+  name: u.name,
+  role: u.role, 
+  status: u.status,
+  passwordHash: u.passwordHash,
+  passwordSalt: u.passwordSalt,
+  marketingEmailOptIn: u.marketingEmailOptIn,
+  marketingEmailOptInAt: u.marketingEmailOptInAt,
+  referredByUserId: u.referredByUserId,
+  birthdayMonth: u.birthdayMonth,
+  birthdayDay: u.birthdayDay,
+})),
 
 businessHours: businessHours.map((h) => ({
   weekday: h.weekday,
