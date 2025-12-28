@@ -1,3 +1,4 @@
+//apps/api/src/pos/pos-devices.controller.ts
 import { Body, Controller, Post, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { PosDeviceService } from './pos-device.service';

@@ -1,3 +1,4 @@
+//apps/api/src/pospos-device.service.ts
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
@@ -50,7 +51,7 @@ export class PosDeviceService {
 
     const enrollmentHash = this.hashDeviceKey(enrollmentCode);
     const device = await this.prisma.posDevice.findFirst({
-      where: { status: 'ACTIVE', deviceKeyHash: enrollmentHash },
+      where: { status: 'ACTIVE', enrollmentKeyHash: enrollmentHash },
     });
 
     if (!device) {

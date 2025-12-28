@@ -19,8 +19,9 @@ import { PrismaService } from '../prisma/prisma.service';
     OauthStateService,
     GoogleStrategy,
     GoogleStartGuard,
+    RolesGuard,
   ],
   controllers: [AuthController],
-  exports: [AuthService, SessionAuthGuard],
+  exports: [AuthService, SessionAuthGuard, RolesGuard],
 })
 export class AuthModule {}

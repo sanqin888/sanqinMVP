@@ -19,7 +19,7 @@ export class AdminUsersController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('invite')
-  @Roles('ADMIN', 'STAFF')
+  @Roles('ADMIN')
   async inviteStaff(
     @Req() req: { user?: { id: string } },
     @Body() body: { email?: string; role?: UserRole; expiresInHours?: number },

@@ -5,10 +5,9 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
 import type {
-  AdminMenuFull,
   Locale,
   PublicMenuCategory,
-  MenuTemplateFull,
+  PublicMenuApiResponse,
 } from "@/lib/order/shared";
 import { TAX_RATE, buildLocalizedMenuFromDb } from "@/lib/order/shared";
 import { apiFetch } from "@/lib/api-client";
@@ -148,7 +147,7 @@ export default function StorePosPage() {
   const router = useRouter();
   const t = STRINGS[locale];
 
-  // ⭐ 菜单：从后端 DB 加载（/admin/menu/full），并本地化
+  // ⭐ 菜单：从后端 DB 加载
   const [menuCategories, setMenuCategories] = useState<PublicMenuCategory[]>(
     [],
   );
@@ -172,16 +171,11 @@ export default function StorePosPage() {
 
     async function loadMenu() {
       try {
-        const [menuResponse, templateGroups] = await Promise.all([
-          apiFetch<AdminMenuFull>("/admin/menu/full"),
-          apiFetch<MenuTemplateFull[]>("/admin/menu/option-group-templates"),
-        ]);
+           const dbMenu = await apiFetch<PublicMenuApiResponse>("/menu/public", {
+             cache: "no-store",
+          });
         if (cancelled) return;
-        const localized = buildLocalizedMenuFromDb(
-          menuResponse.categories ?? [],
-          locale,
-          templateGroups ?? [],
-        );
+        const localized = buildLocalizedMenuFromDb(dbMenu.categories ?? [], locale);
         setMenuCategories(localized);
       } catch (error) {
         console.error("Failed to load POS menu", error);

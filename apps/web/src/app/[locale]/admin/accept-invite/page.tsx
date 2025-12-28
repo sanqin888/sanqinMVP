@@ -41,7 +41,7 @@ export default function AcceptInvitePage() {
         throw new Error(message);
       }
 
-      router.push(`/${locale}/admin/login`);
+      router.push(`/${locale}/store/pos/login`);
     } catch (err) {
       const message = err instanceof Error ? err.message : "邀请处理失败";
       setError(message);

@@ -1,3 +1,4 @@
+//apps/api/src/pos/pos-device.guard.ts
 import {
   CanActivate,
   ExecutionContext,

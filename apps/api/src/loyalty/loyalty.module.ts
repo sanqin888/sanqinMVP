@@ -1,3 +1,4 @@
+//apps/api/src/loyalty/loyalty.module.ts
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { LoyaltyService } from './loyalty.service';

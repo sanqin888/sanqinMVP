@@ -3,7 +3,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Locale } from "@/lib/order/shared";
-import { apiFetch } from "@/lib/api-client";
+import { apiFetch, advanceOrder } from "@/lib/api-client";
+import { parseBackendDateMs } from "@/lib/time/tz";
 
 type BoardOrderItem = {
   id: string;
@@ -135,7 +136,7 @@ const PRINTED_TTL_MS = 12 * 60 * 60 * 1000; // 12h
 type ProcessedMap = Record<string, number>; // stableId -> timestamp(ms)
 
 function safeParseCreatedAtMs(createdAt: string): number {
-  const ms = Date.parse(createdAt);
+  const ms = parseBackendDateMs(createdAt);
   return Number.isFinite(ms) ? ms : Date.now();
 }
 
@@ -182,7 +183,7 @@ export function StoreBoardWidget(props: { locale: Locale }) {
   const isZh = locale === "zh";
 
   const query = useMemo(
-    () => "/orders/board?status=paid,making,ready&sinceMinutes=180&limit=80",
+    () => "/pos/orders/board?status=paid,making,ready&sinceMinutes=180&limit=80",
     [],
   );
 
@@ -297,7 +298,7 @@ export function StoreBoardWidget(props: { locale: Locale }) {
   const handleAdvance = useCallback(
     async (orderStableId: string) => {
       try {
-        await apiFetch(`/orders/${orderStableId}/advance`, { method: "POST" });
+        await advanceOrder(orderStableId);
         await fetchOrdersAndProcess();
       } catch (error) {
         console.error("Failed to advance order:", error);

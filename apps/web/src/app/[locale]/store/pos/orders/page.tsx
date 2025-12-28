@@ -20,7 +20,7 @@ import {
 } from "@/lib/api-client";
 import type { PosDisplaySnapshot } from "@/lib/pos-display";
 import type { CreateOrderAmendmentInput } from "@/lib/api-client";
-import { ymdInTimeZone } from "@/lib/time/tz";
+import { parseBackendDate, ymdInTimeZone } from "@/lib/time/tz";
 
 const COPY = {
   zh: {
@@ -361,6 +361,7 @@ const QUICK_FILTERS = [
 type BackendOrder = {
   orderStableId: string;
   clientRequestId?: string | null;
+  orderNumber?: string | null;
   pickupCode?: string | null;
   channel: "web" | "in_store" | "ubereats";
   fulfillmentType: "pickup" | "dine_in" | "delivery";
@@ -476,15 +477,6 @@ function formatOrderTime(value: string, locale: Locale, timeZone?: string): stri
   return date.toLocaleTimeString(locale === "zh" ? "zh-CN" : "en-US", opts);
 }
 
-function parseBackendDate(value: unknown): Date {
-  if (value instanceof Date) return value;
-  if (typeof value === "number") return new Date(value);
-  if (typeof value !== "string") return new Date(NaN);
-  const trimmed = value.trim();
-  if (!trimmed) return new Date(NaN);
-  const hasTimezone = /[zZ]|[+-]\d{2}:?\d{2}$/.test(trimmed);
-  return new Date(hasTimezone ? trimmed : `${trimmed}Z`);
-}
 
 function mapPaymentMethod(order: BackendOrder): PaymentMethodKey {
   if (order.channel === "in_store") return "cash";
@@ -982,6 +974,11 @@ const mapOrder = useCallback(
       Math.max(0, subtotalCents - discountCents);
     const taxCents = order.taxCents ?? 0;
     const deliveryFeeCents = order.deliveryFeeCents ?? 0;
+    const displayNumber =
+      order.clientRequestId?.trim() ||
+      order.orderNumber?.trim() ||
+      order.pickupCode?.trim() ||
+      order.orderStableId;
 
     const items = order.items.map((item) => {
       const unitPriceCents = item.unitPriceCents ?? 0;
@@ -1000,7 +997,7 @@ const mapOrder = useCallback(
     return {
       stableId: order.orderStableId,
       pickupCode: order.pickupCode ?? null,
-      clientRequestId: order.clientRequestId ?? null,
+      clientRequestId: displayNumber,
       type: order.fulfillmentType,
       status: order.status,
       amountCents: order.totalCents ?? 0,

@@ -1,3 +1,4 @@
+//apps/api/src/pos/pos-summary.controller.ts
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { PosSummaryService } from './pos-summary.service';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
@@ -5,7 +6,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { PosDeviceGuard } from './pos-device.guard';
 
-@Controller('pos')
+@Controller('pos/summary')
 @UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
 @Roles('ADMIN', 'STAFF')
 export class PosSummaryController {

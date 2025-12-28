@@ -23,10 +23,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 }
 
 function isEnvelopeLike(v: unknown): v is ApiResponseEnvelope<unknown> {
-  return (
-    isRecord(v) &&
-    typeof (v as Record<string, unknown>).code === 'string'
-  );
+  return isRecord(v) && typeof (v as Record<string, unknown>).code === 'string';
 }
 
 /**
@@ -42,8 +39,8 @@ export async function apiFetch<T>(
   const url = path.startsWith('/api/')
     ? path
     : path.startsWith('/')
-    ? `/api/v1${path}`
-    : `/api/v1/${path}`;
+      ? `/api/v1${path}`
+      : `/api/v1/${path}`;
 
   const headers = new Headers(init.headers);
   if (!headers.has('Accept')) headers.set('Accept', 'application/json');
@@ -66,28 +63,34 @@ export async function apiFetch<T>(
     payload = { code: response.ok ? 'OK' : 'ERROR', message: text };
   }
 
-  // 失败分支：优先从信封里拿 message，否则回退到状态码/文本
+  // 401/403：按当前路径分流到 admin / pos 登录
   if (response.status === 401 || response.status === 403) {
     if (typeof window !== 'undefined') {
       const pathname = window.location.pathname;
+      const locale = pathname.split('/')[1];
+      const safeLocale = locale === 'zh' || locale === 'en' ? locale : 'en';
+
       if (pathname.includes('/admin')) {
-        const locale = pathname.split('/')[1];
-        const safeLocale = locale === 'zh' || locale === 'en' ? locale : 'en';
         window.location.href = `/${safeLocale}/admin/login`;
+      } else if (pathname.includes('/store/pos')) {
+        window.location.href = `/${safeLocale}/store/pos/login`;
       }
     }
   }
+
   if (!response.ok) {
     if (isEnvelopeLike(payload)) {
       const p = payload as ApiResponseEnvelope<unknown>;
-      const snippet =
-        isRecord(p.details) ? ` :: ${JSON.stringify(p.details).slice(0, 160)}` : '';
+      const snippet = isRecord(p.details)
+        ? ` :: ${JSON.stringify(p.details).slice(0, 160)}`
+        : '';
       throw new ApiError(
         p.message || `API 错误 ${response.status}${snippet}`,
         response.status,
         payload,
       );
     }
+
     throw new ApiError(
       `API 错误 ${response.status}${
         typeof payload === 'string' ? ` :: ${payload.slice(0, 160)}` : ''
@@ -102,34 +105,70 @@ export async function apiFetch<T>(
     const p = payload as ApiResponseEnvelope<unknown>;
     return (p.details as T) ?? (undefined as unknown as T);
   }
+
   return payload as T;
 }
 
-/* ========= 可选：常用 helper，去掉了显式 any ========= */
+/**
+ * =========================
+ * POS 订单 API（迁移到 /pos/orders/*）
+ * =========================
+ * 注意：
+ * - 这些 helper 只给 POS 端调用（/store/pos/** 页面）。
+ * - 会员/顾客端订单详情仍然走 /orders/:id（不要改成 /pos/orders）。
+ */
 
+const enc = (v: string) => encodeURIComponent(v);
+
+// POS: 最近订单
 export async function fetchRecentOrders<T = unknown>(limit = 10) {
   return apiFetch<T>(
-    `/orders/recent?limit=${encodeURIComponent(String(limit))}`,
+    `/pos/orders/recent?limit=${encodeURIComponent(String(limit))}`,
   );
 }
 
+// POS: 订单详情（按你的迁移口径：这里的 id 应该是订单 stableId）
 export async function fetchOrderById<T = unknown>(id: string) {
-  return apiFetch<T>(`/orders/${encodeURIComponent(id)}`);
+  return apiFetch<T>(`/pos/orders/${enc(id)}`);
 }
 
+// POS: 更新订单状态
 export async function updateOrderStatus<T = unknown>(id: string, status: string) {
-  return apiFetch<T>(`/orders/${encodeURIComponent(id)}/status`, {
+  return apiFetch<T>(`/pos/orders/${enc(id)}/status`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status }),
   });
 }
 
+// POS: 推进状态（如 making -> ready -> completed）
 export async function advanceOrder<T = unknown>(id: string) {
-  return apiFetch<T>(`/orders/${encodeURIComponent(id)}/advance`, {
+  return apiFetch<T>(`/pos/orders/${enc(id)}/advance`, {
     method: 'POST',
   });
 }
+
+// POS: 看板/队列（如果你前端有用到）
+export async function fetchOrderBoard<T = unknown>(params: {
+  status?: string; // comma-separated
+  channel?: string; // comma-separated
+  limit?: number;
+  sinceMinutes?: number;
+}) {
+  const qs = new URLSearchParams();
+  if (params.status) qs.set('status', params.status);
+  if (params.channel) qs.set('channel', params.channel);
+  if (typeof params.limit === 'number') qs.set('limit', String(params.limit));
+  if (typeof params.sinceMinutes === 'number') {
+    qs.set('sinceMinutes', String(params.sinceMinutes));
+  }
+
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  return apiFetch<T>(`/pos/orders/board${suffix}`);
+}
+
+/* ========= Amendments ========= */
+
 export type OrderAmendmentItemAction = 'VOID' | 'ADD';
 
 export type CreateOrderAmendmentItemInput = {
@@ -151,28 +190,26 @@ export type CreateOrderAmendmentType =
   | 'SWAP_ITEM'
   | 'ADDITIONAL_CHARGE';
 
-export type CreateOrderAmendmentInput = {
-  // ✅ 对齐后端：必须告诉后端这次 amendment 的类型
-  type: CreateOrderAmendmentType;
+// ✅ 直接对齐后端枚举（无需映射）
+export type PaymentMethod = 'CASH' | 'CARD' | 'WECHAT_ALIPAY';
 
+export type CreateOrderAmendmentInput = {
+  type: CreateOrderAmendmentType;
   reason: string;
 
-  // ✅ 对齐后端：两者都可能出现（尤其 RETENDER：退款 + 新收款）
   refundGrossCents?: number;
   additionalChargeCents?: number;
 
-  // ✅ 对齐后端：RETENDER 允许 items 为空；VOID/SWAP 通常有 items
   items?: CreateOrderAmendmentItemInput[];
 
-  // 你现有的 paymentMethod 联合类型可以继续保留
-  paymentMethod?: 'cash' | 'card' | 'wechat_alipay' | null;
+  paymentMethod?: PaymentMethod | null;
 };
 
 export async function createOrderAmendment<T = unknown>(
   orderId: string,
   payload: CreateOrderAmendmentInput,
 ) {
-  return apiFetch<T>(`/orders/${encodeURIComponent(orderId)}/amendments`, {
+  return apiFetch<T>(`/pos/orders/${enc(orderId)}/amendments`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
