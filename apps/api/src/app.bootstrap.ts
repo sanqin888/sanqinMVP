@@ -2,7 +2,13 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ApiExceptionFilter } from './common/filters/api-exception.filter';
 import { ApiResponseInterceptor } from './common/interceptors/api-response.interceptor';
-import cookieParser from 'cookie-parser';
+import type { RequestHandler } from 'express';
+
+type CookieParserFactory = (
+  secret?: string | string[],
+  options?: { decode?(val: string): string },
+) => RequestHandler;
+const cookieParser = require('cookie-parser') as CookieParserFactory;
 
 const API_PREFIX = 'api/v1';
 
