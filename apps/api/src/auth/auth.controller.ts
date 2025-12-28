@@ -11,6 +11,10 @@ import {
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { SessionAuthGuard, SESSION_COOKIE_NAME } from './session-auth.guard';
+import {
+  POS_DEVICE_ID_COOKIE,
+  POS_DEVICE_KEY_COOKIE,
+} from '../pos/pos-device.constants';
 
 @Controller('auth')
 export class AuthController {
@@ -18,14 +22,25 @@ export class AuthController {
 
   @Post('login')
   async login(
-    @Body() body: { email?: string; password?: string },
+    @Body()
+    body: {
+      email?: string;
+      password?: string;
+      purpose?: 'pos' | 'admin';
+    },
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
     const deviceInfo = req.headers['user-agent'];
+    const deviceStableId = req.cookies?.[POS_DEVICE_ID_COOKIE];
+    const deviceKey = req.cookies?.[POS_DEVICE_KEY_COOKIE];
     const result = await this.authService.loginWithPassword({
       email: body?.email ?? '',
       password: body?.password ?? '',
+      purpose: body?.purpose,
+      posDeviceStableId:
+        typeof deviceStableId === 'string' ? deviceStableId : undefined,
+      posDeviceKey: typeof deviceKey === 'string' ? deviceKey : undefined,
       deviceInfo: typeof deviceInfo === 'string' ? deviceInfo : undefined,
     });
 

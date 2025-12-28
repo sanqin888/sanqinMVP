@@ -28,6 +28,16 @@ export class AuthService {
     return String(Math.floor(100000 + Math.random() * 900000));
   }
 
+  private hashDeviceKey(value: string): string {
+    return createHash('sha256').update(value).digest('hex');
+  }
+
+  private verifyDeviceKey(value: string, hash: string): boolean {
+    const computed = this.hashDeviceKey(value);
+    if (computed.length !== hash.length) return false;
+    return timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(computed, 'hex'));
+  }
+
   private getSessionTtlMs(): number {
     const raw = process.env.SESSION_TTL_SECONDS;
     const seconds = raw ? Number(raw) : 60 * 60 * 24 * 7;
@@ -102,6 +112,9 @@ export class AuthService {
     email: string;
     password: string;
     deviceInfo?: string;
+    purpose?: 'pos' | 'admin';
+    posDeviceStableId?: string;
+    posDeviceKey?: string;
   }) {
     const email = this.normalizeEmail(params.email);
     if (!email || !params.password) {
@@ -115,6 +128,31 @@ export class AuthService {
 
     if (user.role !== 'ADMIN' && user.role !== 'STAFF') {
       throw new ForbiddenException('Insufficient role');
+    }
+
+    if (params.purpose === 'pos') {
+      const deviceStableId = params.posDeviceStableId?.trim();
+      const deviceKey = params.posDeviceKey?.trim();
+      if (!deviceStableId || !deviceKey) {
+        throw new ForbiddenException('Missing POS device credentials');
+      }
+
+      const device = await this.prisma.posDevice.findUnique({
+        where: { deviceStableId },
+      });
+
+      if (!device || device.status !== 'ACTIVE') {
+        throw new ForbiddenException('POS device not authorized');
+      }
+
+      if (!this.verifyDeviceKey(deviceKey, device.deviceKeyHash)) {
+        throw new ForbiddenException('POS device not authorized');
+      }
+
+      await this.prisma.posDevice.update({
+        where: { id: device.id },
+        data: { lastSeenAt: new Date() },
+      });
     }
 
     if (user.status === 'DISABLED') {

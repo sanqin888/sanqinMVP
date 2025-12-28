@@ -79,6 +79,11 @@ enum UserStatus {
   DISABLED
 }
 
+enum PosDeviceStatus {
+  ACTIVE
+  DISABLED
+}
+
 enum Weekday {
   MON
   TUE
@@ -127,6 +132,20 @@ model UserSession {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+model PosDevice {
+  id             String          @id @default(uuid()) @db.Uuid
+  deviceStableId String          @unique @default(cuid())
+  storeId        String          @db.Uuid
+  name           String?
+  status         PosDeviceStatus @default(ACTIVE)
+  deviceKeyHash  String
+  meta           Json?
+  enrolledAt     DateTime        @default(now())
+  lastSeenAt     DateTime?
+
+  @@index([storeId])
 }
 
 model UserInvite {
