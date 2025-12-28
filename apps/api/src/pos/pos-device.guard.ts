@@ -17,8 +17,9 @@ export class PosDeviceGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<Request>();
-    const deviceStableId = req.cookies?.[POS_DEVICE_ID_COOKIE];
-    const deviceKey = req.cookies?.[POS_DEVICE_KEY_COOKIE];
+    const cookies = req.cookies as Partial<Record<string, string>> | undefined;
+    const deviceStableId = cookies?.[POS_DEVICE_ID_COOKIE];
+    const deviceKey = cookies?.[POS_DEVICE_KEY_COOKIE];
 
     if (typeof deviceStableId !== 'string' || typeof deviceKey !== 'string') {
       throw new UnauthorizedException('Missing POS device credentials');
