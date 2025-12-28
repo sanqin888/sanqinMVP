@@ -11,6 +11,10 @@ import {
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { SessionAuthGuard, SESSION_COOKIE_NAME } from './session-auth.guard';
+import {
+  POS_DEVICE_ID_COOKIE,
+  POS_DEVICE_KEY_COOKIE,
+} from '../pos/pos-device.constants';
 import { AuthGuard } from '@nestjs/passport';
 import { GoogleStartGuard } from './oauth/google.guard';
 import { OauthStateService } from './oauth/oauth-state.service';
@@ -66,14 +70,26 @@ export class AuthController {
 
   @Post('login')
   async login(
-    @Body() body: { email?: string; password?: string },
+    @Body()
+    body: {
+      email?: string;
+      password?: string;
+      purpose?: 'pos' | 'admin';
+    },
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
     const deviceInfo = req.headers['user-agent'];
+    const cookies = req.cookies as Partial<Record<string, string>> | undefined;
+    const deviceStableId = cookies?.[POS_DEVICE_ID_COOKIE];
+    const deviceKey = cookies?.[POS_DEVICE_KEY_COOKIE];
     const result = await this.authService.loginWithPassword({
       email: body?.email ?? '',
       password: body?.password ?? '',
+      purpose: body?.purpose,
+      posDeviceStableId:
+        typeof deviceStableId === 'string' ? deviceStableId : undefined,
+      posDeviceKey: typeof deviceKey === 'string' ? deviceKey : undefined,
       deviceInfo: typeof deviceInfo === 'string' ? deviceInfo : undefined,
     });
 

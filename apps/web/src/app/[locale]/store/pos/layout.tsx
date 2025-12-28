@@ -71,7 +71,7 @@ export default async function PosLayout({
   const role = session?.role;
 
   if (role !== 'ADMIN' && role !== 'STAFF') {
-    redirect(`/${safeLocale}/admin/login`);
+    redirect(`/${safeLocale}/store/pos/login`);
   }
 
   return children;
