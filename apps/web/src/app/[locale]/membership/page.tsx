@@ -822,12 +822,31 @@ export default function MembershipHomePage() {
       PLATINUM: isZh ? '铂金会员' : 'Platinum',
     }[member.tier];
 
-  const tierProgress = member
-    ? Math.min(
-        (Number.isFinite(member.points) ? member.points : 0) / 1000,
-        1,
-      ) * 100
-    : 0;
+const THRESHOLD = {
+  BRONZE: 0,
+  SILVER: 1000 * 100,
+  GOLD: 10000 * 100,
+  PLATINUM: 30000 * 100,
+} as const;
+
+function nextTier(t: MemberTier): MemberTier | null {
+  if (t === 'BRONZE') return 'SILVER';
+  if (t === 'SILVER') return 'GOLD';
+  if (t === 'GOLD') return 'PLATINUM';
+  return null;
+}
+
+const tierProgress = (() => {
+  if (!member) return 0;
+  const cur = member.lifetimeSpendCents ?? 0;
+  const t = member.tier;
+  const nt = nextTier(t);
+  if (!nt) return 100; // PLATINUM 顶级
+  const base = THRESHOLD[t];
+  const next = THRESHOLD[nt];
+  if (next <= base) return 100;
+  return Math.max(0, Math.min(((cur - base) / (next - base)) * 100, 100));
+})();
 
   const tabs: { key: typeof activeTab; label: string }[] = [
     { key: 'overview', label: isZh ? '总览' : 'Overview' },

@@ -1,4 +1,4 @@
-//Users/apple/sanqinMVP/apps/api/src/common/interceptors
+// apps/api/src/common/interceptors/api-response.interceptor.ts
 import {
   CallHandler,
   ExecutionContext,
@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
+import { convertBigIntToString } from './bigint-to-string.interceptor';
 
 type ApiEnvelope = {
   code: string;
@@ -20,13 +21,16 @@ export class ApiResponseInterceptor implements NestInterceptor {
     if (context.getType() !== 'http') return next.handle();
 
     return next.handle().pipe(
-      map(
-        (data): ApiEnvelope => ({
+      map((data): ApiEnvelope => {
+        const normalized = convertBigIntToString(
+          typeof data === 'undefined' ? null : data,
+        );
+        return {
           code: 'OK',
           message: 'success',
-          details: typeof data === 'undefined' ? null : data,
-        }),
-      ),
+          details: normalized,
+        };
+      }),
     );
   }
 }

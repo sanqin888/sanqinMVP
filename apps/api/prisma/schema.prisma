@@ -333,7 +333,7 @@ model LoyaltyLedger {
   id        String         @id @default(uuid()) @db.Uuid
   accountId String         @db.Uuid
   account   LoyaltyAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
-
+  idempotencyKey  String?  @unique
   orderId String?          @db.Uuid
   type    LoyaltyEntryType
 

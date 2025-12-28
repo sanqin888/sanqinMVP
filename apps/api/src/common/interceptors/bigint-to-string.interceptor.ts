@@ -72,11 +72,10 @@ export function convertBigIntToString<T>(data: T): T {
 @Injectable()
 export class BigIntToStringInterceptor implements NestInterceptor {
   intercept(
-    _context: ExecutionContext,
+    context: ExecutionContext,
     next: CallHandler,
   ): Observable<unknown> {
-    return next
-      .handle()
-      .pipe(map((data: unknown) => convertBigIntToString(data)));
+    if (context.getType() !== 'http') return next.handle();
+    return next.handle().pipe(map((data: unknown) => convertBigIntToString(data)));
   }
 }
