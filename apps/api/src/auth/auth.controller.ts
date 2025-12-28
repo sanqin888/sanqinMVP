@@ -80,8 +80,9 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const deviceInfo = req.headers['user-agent'];
-    const deviceStableId = req.cookies?.[POS_DEVICE_ID_COOKIE];
-    const deviceKey = req.cookies?.[POS_DEVICE_KEY_COOKIE];
+    const cookies = req.cookies as Partial<Record<string, string>> | undefined;
+    const deviceStableId = cookies?.[POS_DEVICE_ID_COOKIE];
+    const deviceKey = cookies?.[POS_DEVICE_KEY_COOKIE];
     const result = await this.authService.loginWithPassword({
       email: body?.email ?? '',
       password: body?.password ?? '',
