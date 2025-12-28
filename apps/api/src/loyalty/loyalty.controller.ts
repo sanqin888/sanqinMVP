@@ -12,14 +12,9 @@ import { LoyaltyService } from './loyalty.service';
 export class LoyaltyController {
   constructor(private readonly loyalty: LoyaltyService) {}
 
-  private readIdempotencyKey(
-    headerValue: unknown,
-    bodyValue: unknown,
-  ): string {
-    const h =
-      typeof headerValue === 'string' ? headerValue.trim() : '';
-    const b =
-      typeof bodyValue === 'string' ? bodyValue.trim() : '';
+  private readIdempotencyKey(headerValue: unknown, bodyValue: unknown): string {
+    const h = typeof headerValue === 'string' ? headerValue.trim() : '';
+    const b = typeof bodyValue === 'string' ? bodyValue.trim() : '';
     const ik = h || b;
 
     if (!ik) throw new BadRequestException('idempotencyKey is required');
@@ -40,13 +35,14 @@ export class LoyaltyController {
       userStableId?: string;
       amountCents?: number;
       pointsToCredit?: number; // 可选：覆盖默认 1 CAD = 1 pt
-      bonusPoints?: number;    // 可选：人工额外奖励
+      bonusPoints?: number; // 可选：人工额外奖励
       idempotencyKey?: string; // 允许 body 传（curl 更方便）
     },
   ) {
     const userStableId =
       typeof body.userStableId === 'string' ? body.userStableId.trim() : '';
-    if (!userStableId) throw new BadRequestException('userStableId is required');
+    if (!userStableId)
+      throw new BadRequestException('userStableId is required');
 
     const amountCents =
       typeof body.amountCents === 'number' ? Math.round(body.amountCents) : NaN;
@@ -85,14 +81,15 @@ export class LoyaltyController {
     @Body()
     body: {
       userStableId?: string;
-      deltaPoints?: number;    // 可正可负
+      deltaPoints?: number; // 可正可负
       note?: string;
       idempotencyKey?: string;
     },
   ) {
     const userStableId =
       typeof body.userStableId === 'string' ? body.userStableId.trim() : '';
-    if (!userStableId) throw new BadRequestException('userStableId is required');
+    if (!userStableId)
+      throw new BadRequestException('userStableId is required');
 
     const deltaPoints =
       typeof body.deltaPoints === 'number' ? body.deltaPoints : NaN;

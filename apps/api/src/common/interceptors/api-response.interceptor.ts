@@ -21,7 +21,7 @@ export class ApiResponseInterceptor implements NestInterceptor {
     if (context.getType() !== 'http') return next.handle();
 
     return next.handle().pipe(
-      map((data): ApiEnvelope => {
+      map((data: unknown): ApiEnvelope => {
         const normalized = convertBigIntToString(
           typeof data === 'undefined' ? null : data,
         );
