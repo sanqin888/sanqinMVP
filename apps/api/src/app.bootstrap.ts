@@ -2,7 +2,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ApiExceptionFilter } from './common/filters/api-exception.filter';
 import { ApiResponseInterceptor } from './common/interceptors/api-response.interceptor';
-import cookieParser from 'cookie-parser';
+import { cookieParser } from './common/middleware/cookie-parser';
 
 const API_PREFIX = 'api/v1';
 
