@@ -2,9 +2,6 @@
   "extends": ["plugin:@typescript-eslint/recommended"],
   "parserOptions": { "project": ["./tsconfig.json"], "tsconfigRootDir": "." },
   "ignorePatterns": ["dist/**"],
-  "rules": {
-    "@typescript-eslint/no-require-imports": "off"
-  },
   "overrides": [
     {
       "files": ["**/*.spec.ts", "**/*.e2e-spec.ts"],
