@@ -28,7 +28,8 @@ const parseCookies = (
       const [rawKey, ...rawValue] = part.split('=');
       if (!rawKey) return acc;
       const key = decode(rawKey.trim());
-      const value = rawValue.length > 0 ? decode(rawValue.join('=').trim()) : '';
+      const value =
+        rawValue.length > 0 ? decode(rawValue.join('=').trim()) : '';
       acc[key] = value;
       return acc;
     }, {});
