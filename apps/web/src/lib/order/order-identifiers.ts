@@ -2,11 +2,10 @@
 export type OrderIdentifiers = {
   stableId: string;              // 外部主键
   clientRequestId: string | null; // UI 主展示
-  dbId?: string | null;          // 可选，仅调试/内部
 };
 
 /**
- * 把各种历史字段统一成：stableId + clientRequestId (+ dbId 可选)
+ * 把各种历史字段统一成：stableId + clientRequestId
  * 重点：前端后续只使用返回值的 stableId/clientRequestId
  */
 export function normalizeOrderIdentifiers(raw: unknown): OrderIdentifiers {
@@ -16,7 +15,8 @@ export function normalizeOrderIdentifiers(raw: unknown): OrderIdentifiers {
     data.stableId ??
     data.orderStableId ??
     data.stable_id ??
-    data.id; // 仅用于兼容：如果旧接口把 stableId 放在 id
+    data.id ??
+    "";
 
   if (typeof stableId !== "string" || !stableId) {
     throw new Error("Order missing stableId");
@@ -29,9 +29,5 @@ export function normalizeOrderIdentifiers(raw: unknown): OrderIdentifiers {
       ? rawClientRequestId
       : null;
 
-  const rawDbId =
-    data.dbId ?? data.internalId ?? (data.id && data.stableId ? data.id : null); // 仅在明确区分时保留
-  const dbId = typeof rawDbId === "string" && rawDbId ? rawDbId : null;
-
-  return { stableId, clientRequestId, dbId };
+  return { stableId, clientRequestId };
 }

@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { TAX_RATE, type Locale } from "@/lib/order/shared";
-import { ApiError, apiFetch } from "@/lib/api-client";
+import { ApiError, apiFetch, advanceOrder } from "@/lib/api-client";
 import {
   POS_DISPLAY_CHANNEL,
   POS_DISPLAY_STORAGE_KEY,
@@ -469,7 +469,7 @@ export default function StorePosPaymentPage() {
       // 👉 调试用：你可以先打开这一行看看真实发出去是什么
       // console.log("POS create order body:", body);
 
-      const order = await apiFetch<CreatePosOrderResponse>("/orders", {
+      const order = await apiFetch<CreatePosOrderResponse>("/pos/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -503,9 +503,7 @@ export default function StorePosPaymentPage() {
 
       if (order.orderStableId) {
         try {
-          await apiFetch(`/orders/${order.orderStableId}/advance`, {
-            method: "POST",
-          });
+            await advanceOrder(order.orderStableId);
         } catch (advanceError) {
           console.warn("Failed to mark POS order as paid:", advanceError);
         }

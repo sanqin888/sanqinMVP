@@ -141,11 +141,13 @@ model PosDevice {
   storeId        String          @db.Uuid
   name           String?
   status         PosDeviceStatus @default(ACTIVE)
+  enrollmentKeyHash String
   deviceKeyHash  String
   meta           Json?
   enrolledAt     DateTime        @default(now())
   lastSeenAt     DateTime?
 
+  @@unique([enrollmentKeyHash])
   @@index([storeId])
 }
 

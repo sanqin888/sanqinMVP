@@ -14,9 +14,10 @@ import { AdminMenuFullResponse, TemplateGroupFullDto } from '@shared/menu';
 import { SessionAuthGuard } from '../../auth/session-auth.guard';
 import { Roles } from '../../auth/roles.decorator';
 import { RolesGuard } from '../../auth/roles.guard';
+import { PosDeviceGuard } from '../../pos/pos-device.guard';
 
-@UseGuards(SessionAuthGuard, RolesGuard)
-@Roles('ADMIN')
+@UseGuards(SessionAuthGuard, PosDeviceGuard, RolesGuard)
+@Roles('ADMIN', 'STAFF')
 @Controller('admin/menu')
 export class AdminMenuController {
   constructor(private readonly service: AdminMenuService) {}

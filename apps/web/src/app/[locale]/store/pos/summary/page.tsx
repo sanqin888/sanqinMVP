@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import type { Locale } from "@/lib/order/shared";
 import { apiFetch } from "@/lib/api-client";
-import { ymdInTimeZone } from "@/lib/time/tz";
+import { parseBackendDate, ymdInTimeZone } from "@/lib/time/tz";
 
 type BusinessConfigLite = { timezone: string };
 const COPY = {
@@ -349,7 +349,13 @@ export default function PosDailySummaryPage() {
     return data.orders.map((o) => ({
       orderStableId: o.orderStableId,
       clientRequestId: o.clientRequestId ?? "--",
-      date: new Date(o.createdAt).toLocaleString(locale === "zh" ? "zh-CN" : "en-US", { timeZone: storeTimezone || "UTC" }),
+      date: (() => {
+        const d = parseBackendDate(o.createdAt);
+        if (Number.isNaN(d.getTime())) return "--";
+        return d.toLocaleString(locale === "zh" ? "zh-CN" : "en-US", {
+          timeZone: storeTimezone || "UTC",
+        });
+      })(),
       channel: o.fulfillmentType,
       status: o.statusBucket,
       payment: o.payment,

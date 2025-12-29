@@ -2,6 +2,8 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 const SESSION_COOKIE_NAME = "session_id";
+const POS_DEVICE_ID_COOKIE = "posDeviceId";
+const POS_DEVICE_KEY_COOKIE = "posDeviceKey";
 
 const LOCALES = ["zh", "en"] as const;
 type Locale = (typeof LOCALES)[number];
@@ -40,6 +42,38 @@ export async function middleware(req: NextRequest) {
   // 已有前缀：同步 Cookie 并放行
   if (startsWithLocale(pathname)) {
     const locale = (pathname.split("/")[1] as Locale) || "en";
+    // ===== POS protect =====
+    if (pathname.startsWith(`/${locale}/store/pos`)) {
+      // 放行登录页
+      if (pathname.startsWith(`/${locale}/store/pos/login`)) {
+        const res = NextResponse.next();
+        ensureCookie(res, locale);
+        return res;
+      }
+
+      // 需要 session
+      const sessionId = req.cookies.get(SESSION_COOKIE_NAME)?.value;
+      if (!sessionId) {
+        const url = req.nextUrl.clone();
+        url.pathname = `/${locale}/store/pos/login`;
+        url.search = "";
+        const res = NextResponse.redirect(url);
+        ensureCookie(res, locale);
+        return res;
+      }
+
+      // （可选更严格）也要求设备 cookie 已存在，否则直接去 login 让它先绑定设备
+      const did = req.cookies.get(POS_DEVICE_ID_COOKIE)?.value;
+      const dkey = req.cookies.get(POS_DEVICE_KEY_COOKIE)?.value;
+      if (!did || !dkey) {
+        const url = req.nextUrl.clone();
+        url.pathname = `/${locale}/store/pos/login`;
+        url.search = "needDevice=1";
+        const res = NextResponse.redirect(url);
+        ensureCookie(res, locale);
+        return res;
+      }
+    }
     if (pathname.startsWith(`/${locale}/admin`)) {
       if (
         pathname.startsWith(`/${locale}/admin/login`) ||

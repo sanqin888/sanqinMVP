@@ -1,4 +1,5 @@
-import { Module } from '@nestjs/common';
+// apps/api/src/orders/orders.module.ts
+import { Module, forwardRef } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
@@ -7,7 +8,12 @@ import { DeliveriesModule } from '../deliveries/deliveries.module';
 import { MembershipModule } from '../membership/membership.module';
 
 @Module({
-  imports: [PrismaModule, LoyaltyModule, DeliveriesModule, MembershipModule], // 🔑 引入提供所需服务的模块
+  imports: [
+    PrismaModule,
+    forwardRef(() => LoyaltyModule),
+    forwardRef(() => DeliveriesModule),
+    forwardRef(() => MembershipModule),
+  ],
   controllers: [OrdersController],
   providers: [OrdersService],
   exports: [OrdersService],

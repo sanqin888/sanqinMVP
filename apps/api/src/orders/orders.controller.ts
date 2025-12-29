@@ -201,6 +201,9 @@ export class OrdersController {
   @Post()
   @HttpCode(201)
   create(@Body() dto: CreateOrderDto): Promise<OrderDto> {
+    if (dto.channel !== 'web') {
+      throw new BadRequestException('Public create only allows channel=web');
+    }
     return this.ordersService.create(dto);
   }
 

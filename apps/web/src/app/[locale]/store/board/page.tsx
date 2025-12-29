@@ -5,7 +5,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import type { Locale } from "@/lib/order/shared";
-import { apiFetch } from "@/lib/api-client";
+import { apiFetch, advanceOrder } from "@/lib/api-client";
+import { parseBackendDateMs } from "@/lib/time/tz";
 
 type BoardOrderItem = {
   id: string;
@@ -200,7 +201,7 @@ function writeProcessedMap(map: ProcessedMap) {
 }
 
 function safeParseCreatedAtMs(createdAt: string): number {
-  const ms = Date.parse(createdAt);
+  const ms = parseBackendDateMs(createdAt);
   return Number.isFinite(ms) ? ms : Date.now();
 }
 
@@ -218,7 +219,7 @@ export default function StoreBoardPage() {
   const hasBootstrappedRef = useRef(false);
 
   const query =
-    "/orders/board?status=paid,making,ready&sinceMinutes=180&limit=80";
+    "/pos/orders/board?status=paid,making,ready&sinceMinutes=180&limit=80";
 
   const handlePrintFront = useCallback((orderStableId: string) => {
     const prefix = `/${locale}`;
@@ -329,7 +330,7 @@ export default function StoreBoardPage() {
 
   const handleAdvance = async (orderStableId: string) => {
     try {
-      await apiFetch(`/orders/${orderStableId}/advance`, { method: "POST" });
+      await advanceOrder(orderStableId);
       await fetchOrdersAndProcess();
     } catch (error) {
       console.error("Failed to advance order:", error);

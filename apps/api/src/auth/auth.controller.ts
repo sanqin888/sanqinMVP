@@ -75,14 +75,28 @@ export class AuthController {
       email?: string;
       password?: string;
       purpose?: 'pos' | 'admin';
+      posDeviceStableId?: string;
+      posDeviceKey?: string;
     },
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
     const deviceInfo = req.headers['user-agent'];
     const cookies = req.cookies as Partial<Record<string, string>> | undefined;
-    const deviceStableId = cookies?.[POS_DEVICE_ID_COOKIE];
-    const deviceKey = cookies?.[POS_DEVICE_KEY_COOKIE];
+    const deviceStableId =
+      (typeof body?.posDeviceStableId === 'string'
+        ? body.posDeviceStableId
+        : undefined) ??
+      (typeof cookies?.[POS_DEVICE_ID_COOKIE] === 'string'
+        ? cookies[POS_DEVICE_ID_COOKIE]
+        : undefined);
+    const deviceKey =
+      (typeof body?.posDeviceKey === 'string'
+        ? body.posDeviceKey
+        : undefined) ??
+      (typeof cookies?.[POS_DEVICE_KEY_COOKIE] === 'string'
+        ? cookies[POS_DEVICE_KEY_COOKIE]
+        : undefined);
     const result = await this.authService.loginWithPassword({
       email: body?.email ?? '',
       password: body?.password ?? '',
@@ -100,6 +114,24 @@ export class AuthController {
       maxAge: result.session.expiresAt.getTime() - Date.now(),
       path: '/',
     });
+    // ✅ 仅当 purpose=pos 且设备已通过后端校验后，才下发设备 cookie（用于后续每次请求的 PosDeviceGuard）
+    if (body?.purpose === 'pos' && deviceStableId && deviceKey) {
+      const maxAge = result.session.expiresAt.getTime() - Date.now();
+      res.cookie(POS_DEVICE_ID_COOKIE, deviceStableId, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge,
+        path: '/',
+      });
+      res.cookie(POS_DEVICE_KEY_COOKIE, deviceKey, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge,
+        path: '/',
+      });
+    }
 
     return {
       userStableId: result.user.userStableId,
@@ -188,7 +220,8 @@ export class AuthController {
     if (sessionId) {
       await this.authService.revokeSession(sessionId);
     }
-
+    res.clearCookie(POS_DEVICE_ID_COOKIE, { path: '/' });
+    res.clearCookie(POS_DEVICE_KEY_COOKIE, { path: '/' });
     res.clearCookie(SESSION_COOKIE_NAME, { path: '/' });
     return { success: true };
   }
