@@ -9,6 +9,7 @@ import { OauthStateService } from './oauth/oauth-state.service';
 import { GoogleStrategy } from './oauth/google.strategy';
 import { GoogleStartGuard } from './oauth/google.guard';
 import { PrismaService } from '../prisma/prisma.service';
+import { RolesGuard } from './roles.guard';
 
 @Module({
   imports: [PrismaModule, PassportModule],
