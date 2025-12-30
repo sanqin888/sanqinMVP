@@ -96,15 +96,14 @@ async function upsertAdminUser(u) {
   };
 
   function withPasswordIfTargetEmpty(target) {
-    const targetHasPwd = !!target.passwordHash || !!target.passwordSalt;
-    const snapshotHasPwd = !!u.passwordHash || !!u.passwordSalt;
+    const targetHasPwd = !!target.passwordHash;
+    const snapshotHasPwd = !!u.passwordHash;
 
     // ✅ 默认策略：目标已有密码 -> 不覆盖；目标无密码且 snapshot 有 -> 写入
     if (!targetHasPwd && snapshotHasPwd) {
       return {
         ...dataBase,
         passwordHash: u.passwordHash ?? null,
-        passwordSalt: u.passwordSalt ?? null,
       };
     }
     return dataBase;
@@ -136,7 +135,6 @@ async function upsertAdminUser(u) {
       id: u.id, // 你希望稳定复用同一个 uuid
       ...dataBase,
       passwordHash: u.passwordHash ?? null,
-      passwordSalt: u.passwordSalt ?? null,
     },
   });
 }
