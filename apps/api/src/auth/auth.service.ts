@@ -7,8 +7,9 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { randomBytes, scryptSync, timingSafeEqual, createHash } from 'crypto';
+import { randomBytes, timingSafeEqual, createHash } from 'crypto';
 import type { UserRole } from '@prisma/client';
+import argon2, { argon2id } from 'argon2';
 
 @Injectable()
 export class AuthService {
@@ -50,20 +51,12 @@ export class AuthService {
     return seconds * 1000;
   }
 
-  private hashPassword(password: string, salt: string): string {
-    return scryptSync(password, salt, 64).toString('hex');
+  private hashPassword(password: string): Promise<string> {
+    return argon2.hash(password, { type: argon2id });
   }
 
-  private verifyPassword(
-    password: string,
-    salt: string,
-    hash: string,
-  ): boolean {
-    const computed = this.hashPassword(password, salt);
-    return timingSafeEqual(
-      Buffer.from(hash, 'hex'),
-      Buffer.from(computed, 'hex'),
-    );
+  private verifyPassword(password: string, hash: string): Promise<boolean> {
+    return argon2.verify(hash, password);
   }
 
   private hashToken(token: string): string {
@@ -270,15 +263,11 @@ export class AuthService {
       throw new ForbiddenException('User disabled');
     }
 
-    if (!user.passwordHash || !user.passwordSalt) {
+    if (!user.passwordHash) {
       throw new UnauthorizedException('Password login not enabled');
     }
 
-    const ok = this.verifyPassword(
-      params.password,
-      user.passwordSalt,
-      user.passwordHash,
-    );
+    const ok = await this.verifyPassword(params.password, user.passwordHash);
     if (!ok) {
       throw new UnauthorizedException('Invalid credentials');
     }
@@ -592,8 +581,7 @@ export class AuthService {
       throw new BadRequestException('email already registered');
     }
 
-    const salt = randomBytes(16).toString('hex');
-    const passwordHash = this.hashPassword(params.password, salt);
+    const passwordHash = await this.hashPassword(params.password);
 
     const user = await this.prisma.user.upsert({
       where: { email: invite.email },
@@ -601,7 +589,6 @@ export class AuthService {
         role: invite.role,
         status: 'ACTIVE',
         passwordHash,
-        passwordSalt: salt,
         name: params.name ?? undefined,
       },
       create: {
@@ -609,7 +596,6 @@ export class AuthService {
         role: invite.role,
         status: 'ACTIVE',
         passwordHash,
-        passwordSalt: salt,
         name: params.name ?? undefined,
       },
     });

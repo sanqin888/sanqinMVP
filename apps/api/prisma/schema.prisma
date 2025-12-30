@@ -106,7 +106,6 @@ model User {
   role                  UserRole  @default(CUSTOMER)
   status                UserStatus @default(ACTIVE)
   passwordHash          String?
-  passwordSalt          String?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
   marketingEmailOptIn   Boolean   @default(false)
