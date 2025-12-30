@@ -1,4 +1,4 @@
-//Users/apple/sanqinMVP/apps/web/src/app/[locale]/admin/reports/page.tsx
+//apps/web/src/app/[locale]/admin/(protected)/reports/page.tsx
 
 'use client';
 

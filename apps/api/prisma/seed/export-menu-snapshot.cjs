@@ -42,6 +42,23 @@ const businessHours = await prisma.businessHour.findMany({
   },
 });
 
+// ===== POS Devices =====
+const posDevices = await prisma.posDevice.findMany({
+  orderBy: { enrolledAt: "asc" },
+  select: {
+    id: true,
+    deviceStableId: true,
+    storeId: true,
+    name: true,
+    status: true,
+    enrollmentKeyHash: true,
+    deviceKeyHash: true,
+    meta: true,
+    enrolledAt: true,
+    lastSeenAt: true,
+  },
+});
+
   // ===== Categories =====
   const categories = await prisma.menuCategory.findMany({
     where: { deletedAt: null },
@@ -156,6 +173,19 @@ businessHours: businessHours.map((h) => ({
   openMinutes: h.openMinutes,
   closeMinutes: h.closeMinutes,
   isClosed: h.isClosed,
+})),
+
+posDevices: posDevices.map((d) => ({
+  id: d.id,
+  deviceStableId: d.deviceStableId,
+  storeId: d.storeId,
+  name: d.name,
+  status: d.status,
+  enrollmentKeyHash: d.enrollmentKeyHash,
+  deviceKeyHash: d.deviceKeyHash,
+  meta: d.meta,
+  enrolledAt: d.enrolledAt,
+  lastSeenAt: d.lastSeenAt,
 })),
 
     categories: categories.map((c) => ({
