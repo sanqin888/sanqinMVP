@@ -1,4 +1,4 @@
-// apps/web/src/app/[locale]/admin/menu/OptionTemplatesPanel.tsx
+//apps/web/src/app/[locale]/admin/(protected)/menu/OptionTemplatesPanel.tsx
 'use client';
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
