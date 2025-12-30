@@ -159,6 +159,9 @@ model UserInvite {
   tokenHash        String   @unique
   expiresAt        DateTime
   usedAt           DateTime?
+  revokedAt        DateTime?
+  sentCount        Int      @default(0)
+  lastSentAt       DateTime?
   invitedByUserId  String   @db.Uuid
   createdAt        DateTime @default(now())
 

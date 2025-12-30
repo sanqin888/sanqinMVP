@@ -26,6 +26,7 @@ export default function AdminLayoutClient({
     { href: `/${locale}/admin/menu`, labelZh: '菜单管理' },
     // ✅ 新增：选项管理（放在红圈位置的左侧导航里）
     { href: optionsHref, labelZh: '选项管理' },
+    { href: `/${locale}/admin/staff`, labelZh: '员工管理' },
   ];
 
   function isActive(href: string): boolean {
