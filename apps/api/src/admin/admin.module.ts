@@ -9,7 +9,6 @@ import { AdminImageUploadController } from './upload/image/admin-image-upload.co
 import { AdminImageUploadService } from './upload/image/admin-image-upload.service';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
-import { AdminUsersController } from './users/admin-users.controller';
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
@@ -19,7 +18,6 @@ import { AuthModule } from '../auth/auth.module';
     AdminMenuController,
     AdminMenuController,
     AdminImageUploadController,
-    AdminUsersController,
   ],
   providers: [
     PrismaService,
