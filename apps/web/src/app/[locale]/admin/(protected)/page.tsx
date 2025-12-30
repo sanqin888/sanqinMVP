@@ -1,4 +1,4 @@
-// apps/web/src/app/[locale]/admin/page.tsx
+//apps/web/src/app/[locale]/admin/(protected)/page.tsx
 "use client";
 
 import Link from "next/link";
@@ -59,6 +59,32 @@ type BusinessConfigResponse = {
   config: BusinessConfigDto;
   hours: BusinessHourDto[];
   holidays: Holiday[];
+};
+
+type StaffSummaryUser = {
+  userStableId: string;
+  status?: "ACTIVE" | "DISABLED";
+  role?: "ADMIN" | "STAFF";
+};
+
+type StaffSummaryInvite = {
+  inviteStableId: string;
+  status?: "PENDING" | "ACCEPTED" | "EXPIRED" | "REVOKED";
+};
+
+type StaffSummaryResponse = {
+  staff?: StaffSummaryUser[];
+  users?: StaffSummaryUser[];
+};
+
+type StaffInviteSummaryResponse = {
+  invites?: StaffSummaryInvite[];
+};
+
+type AdminSessionResponse = {
+  userStableId?: string;
+  email?: string;
+  role?: string;
 };
 
 const WEEKDAY_LABELS_ZH = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
@@ -162,6 +188,13 @@ export default function AdminDashboard() {
   const [menuError, setMenuError] = useState<string | null>(null);
   const [availabilityTarget, setAvailabilityTarget] = useState<AvailabilityTarget | null>(null);
 
+  const [staffCount, setStaffCount] = useState<number | null>(null);
+  const [pendingInvitesCount, setPendingInvitesCount] = useState<number | null>(null);
+  const [staffSummaryLoading, setStaffSummaryLoading] = useState(true);
+  const [staffSummaryError, setStaffSummaryError] = useState<string | null>(null);
+  const [sessionRole, setSessionRole] = useState<string | null>(null);
+  const [sessionLoading, setSessionLoading] = useState(true);
+
   const templateMap = useMemo(
     () => new Map(templates.map((t) => [t.templateGroupStableId, t])),
     [templates],
@@ -209,6 +242,72 @@ export default function AdminDashboard() {
       cancelled = true;
     };
   }, [isZh]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSession() {
+      try {
+        const res = await apiFetch<AdminSessionResponse>("/auth/me");
+        if (!cancelled) setSessionRole(res.role ?? null);
+      } catch (e) {
+        console.error(e);
+        if (!cancelled) setSessionRole(null);
+      } finally {
+        if (!cancelled) setSessionLoading(false);
+      }
+    }
+
+    void loadSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadStaffSummary() {
+      if (sessionLoading) return;
+      if (sessionRole !== "ADMIN") {
+        setStaffSummaryLoading(false);
+        setStaffSummaryError(isZh ? "仅管理员可查看员工统计。" : "Only admins can view staff summary.");
+        return;
+      }
+      setStaffSummaryLoading(true);
+      setStaffSummaryError(null);
+      try {
+        const [staffRes, inviteRes] = await Promise.all([
+          apiFetch<StaffSummaryResponse | StaffSummaryUser[]>("/admin/staff"),
+          apiFetch<StaffInviteSummaryResponse>("/admin/staff/invites"),
+        ]);
+
+        if (cancelled) return;
+
+        const staffList = Array.isArray(staffRes)
+          ? staffRes
+          : staffRes.staff ?? staffRes.users ?? [];
+        const inviteList = inviteRes.invites ?? [];
+
+        setStaffCount(staffList.length);
+        setPendingInvitesCount(inviteList.filter((invite) => invite.status === "PENDING").length);
+      } catch (e) {
+        console.error(e);
+        if (!cancelled) {
+          setStaffSummaryError(isZh ? "加载员工信息失败。" : "Failed to load staff summary.");
+        }
+      } finally {
+        if (!cancelled) setStaffSummaryLoading(false);
+      }
+    }
+
+    void loadStaffSummary();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isZh, sessionLoading, sessionRole]);
 
   async function reloadMenu(): Promise<void> {
     setMenuLoading(true);
@@ -682,6 +781,32 @@ export default function AdminDashboard() {
                 </div>
               );
             })}
+          </div>
+        )}
+      </SectionCard>
+
+      <SectionCard
+        title={isZh ? "员工管理" : "Staff management"}
+        actions={
+          <Link href={`/${locale}/admin/staff`} className="text-xs font-medium text-emerald-700 hover:text-emerald-600">
+            {isZh ? "进入员工管理" : "Manage staff"}
+          </Link>
+        }
+      >
+        {staffSummaryLoading ? (
+          <p className="text-sm text-slate-500">{isZh ? "员工信息加载中…" : "Loading staff summary…"}</p>
+        ) : staffSummaryError ? (
+          <p className="text-sm text-red-600">{staffSummaryError}</p>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="rounded-xl border bg-white/80 p-4 shadow-sm">
+              <p className="text-sm text-slate-500">{isZh ? "员工数" : "Total staff"}</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-900">{staffCount ?? 0}</p>
+            </div>
+            <div className="rounded-xl border bg-white/80 p-4 shadow-sm">
+              <p className="text-sm text-slate-500">{isZh ? "待接受邀请" : "Pending invites"}</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-900">{pendingInvitesCount ?? 0}</p>
+            </div>
           </div>
         )}
       </SectionCard>

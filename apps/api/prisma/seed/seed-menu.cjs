@@ -14,6 +14,69 @@ function readSnapshot() {
 async function main() {
   const s = readSnapshot();
 
+// 0.x) POS Devices
+const isUuid = (v) =>
+  typeof v === "string" &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+
+async function upsertPosDevice(d) {
+  const baseUpdate = {
+    storeId: d.storeId,
+    name: d.name ?? null,
+    status: d.status ?? "ACTIVE",
+    meta: typeof d.meta === "undefined" ? null : d.meta,
+    lastSeenAt: d.lastSeenAt ?? null,
+    // enrolledAt：一般不建议在 update 时回写历史时间；保留数据库现值更安全
+  };
+
+  // 1) 优先按 deviceStableId（unique）
+  const byStable = await prisma.posDevice.findUnique({
+    where: { deviceStableId: d.deviceStableId },
+  });
+  if (byStable) {
+    return prisma.posDevice.update({
+      where: { deviceStableId: d.deviceStableId },
+      data: baseUpdate,
+    });
+  }
+
+  // 2) 再按 enrollmentKeyHash（unique）
+  const byEnrollHash = await prisma.posDevice.findUnique({
+    where: { enrollmentKeyHash: d.enrollmentKeyHash },
+  });
+  if (byEnrollHash) {
+    // 这里可以把 deviceStableId 对齐回 snapshot，保持一致（可选但推荐）
+    return prisma.posDevice.update({
+      where: { enrollmentKeyHash: d.enrollmentKeyHash },
+      data: { ...baseUpdate, deviceStableId: d.deviceStableId },
+    });
+  }
+
+  // 3) 都不存在则 create（此时必须带上 hash，保证设备仍能被识别/校验）
+  return prisma.posDevice.create({
+    data: {
+      ...(isUuid(d.id) ? { id: d.id } : {}),
+      deviceStableId: d.deviceStableId,
+      storeId: d.storeId,
+      name: d.name ?? null,
+      status: d.status ?? "ACTIVE",
+      enrollmentKeyHash: d.enrollmentKeyHash,
+      deviceKeyHash: d.deviceKeyHash,
+      meta: typeof d.meta === "undefined" ? null : d.meta,
+      enrolledAt: d.enrolledAt ? new Date(d.enrolledAt) : undefined,
+      lastSeenAt: d.lastSeenAt ? new Date(d.lastSeenAt) : null,
+    },
+  });
+}
+
+if (Array.isArray(s.posDevices) && s.posDevices.length > 0) {
+  for (const d of s.posDevices) {
+    await upsertPosDevice(d);
+  }
+} else {
+  console.log("No posDevices in snapshot.");
+}
+
 // 0) Admin Users
 async function upsertAdminUser(u) {
   const dataBase = {

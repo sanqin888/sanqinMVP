@@ -1,4 +1,4 @@
-// apps/web/src/app/[locale]/admin/menu/page.tsx
+//apps/web/src/app/[locale]/admin/(protected)/menu/page.tsx
 'use client';
 
 import Link from 'next/link';
