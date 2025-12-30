@@ -415,7 +415,7 @@ export class AuthService {
     return { user, session, verificationToken: record.id };
   }
 
-  async createInvite(params: {
+  async createStaffInvite(params: {
     inviterId: string;
     email: string;
     role: UserRole;
@@ -430,28 +430,131 @@ export class AuthService {
       throw new BadRequestException('invalid role');
     }
 
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email },
+      select: { id: true },
+    });
+    if (existingUser) {
+      throw new BadRequestException('email already registered');
+    }
+
+    const existingInvite = await this.prisma.userInvite.findFirst({
+      where: { email },
+      orderBy: { createdAt: 'desc' },
+      include: { invitedBy: { select: { userStableId: true } } },
+    });
+
+    const now = new Date();
+    if (existingInvite) {
+      if (existingInvite.usedAt) {
+        throw new BadRequestException('invite already accepted');
+      }
+
+      if (!existingInvite.revokedAt && existingInvite.expiresAt > now) {
+        return existingInvite;
+      }
+
+      const token = randomBytes(32).toString('hex');
+      const tokenHash = this.hashToken(token);
+      const expiresAt = new Date(
+        now.getTime() + (params.expiresInHours ?? 168) * 60 * 60 * 1000,
+      );
+      const sentCount = (existingInvite.sentCount ?? 0) + 1;
+
+      return this.prisma.userInvite.update({
+        where: { id: existingInvite.id },
+        data: {
+          tokenHash,
+          expiresAt,
+          invitedByUserId: params.inviterId,
+          revokedAt: null,
+          lastSentAt: now,
+          sentCount,
+        },
+        include: { invitedBy: { select: { userStableId: true } } },
+      });
+    }
+
     const token = randomBytes(32).toString('hex');
     const tokenHash = this.hashToken(token);
     const expiresAt = new Date(
-      Date.now() + (params.expiresInHours ?? 72) * 60 * 60 * 1000,
+      now.getTime() + (params.expiresInHours ?? 168) * 60 * 60 * 1000,
     );
 
-    await this.prisma.userInvite.create({
+    return this.prisma.userInvite.create({
       data: {
         email,
         role: params.role,
         tokenHash,
         expiresAt,
         invitedByUserId: params.inviterId,
+        sentCount: 1,
+        lastSentAt: now,
       },
+      include: { invitedBy: { select: { userStableId: true } } },
     });
+  }
 
-    const webBase = (process.env.WEB_BASE_URL ?? '').replace(/\/$/, '');
-    const inviteLink = webBase
-      ? `${webBase}/admin/accept-invite?token=${token}`
-      : token;
+  async resendStaffInvite(inviteStableId: string) {
+    const invite = await this.prisma.userInvite.findUnique({
+      where: { inviteStableId },
+      include: { invitedBy: { select: { userStableId: true } } },
+    });
+    if (!invite) {
+      throw new BadRequestException('invite not found');
+    }
+    if (invite.usedAt) {
+      throw new BadRequestException('invite already accepted');
+    }
+    if (invite.revokedAt) {
+      throw new BadRequestException('invite revoked');
+    }
 
-    return { inviteLink };
+    const now = new Date();
+    if (invite.lastSentAt && now.getTime() - invite.lastSentAt.getTime() < 60 * 1000) {
+      throw new BadRequestException('invite resend too soon');
+    }
+    if (
+      invite.sentCount >= 5 &&
+      now.getTime() - (invite.lastSentAt?.getTime() ?? invite.createdAt.getTime()) <
+        24 * 60 * 60 * 1000
+    ) {
+      throw new BadRequestException('invite resend limit reached');
+    }
+
+    const token = randomBytes(32).toString('hex');
+    const tokenHash = this.hashToken(token);
+    const expiresAt = new Date(now.getTime() + 168 * 60 * 60 * 1000);
+
+    return this.prisma.userInvite.update({
+      where: { id: invite.id },
+      data: {
+        tokenHash,
+        expiresAt,
+        lastSentAt: now,
+        sentCount: (invite.sentCount ?? 0) + 1,
+      },
+      include: { invitedBy: { select: { userStableId: true } } },
+    });
+  }
+
+  async revokeStaffInvite(inviteStableId: string) {
+    const invite = await this.prisma.userInvite.findUnique({
+      where: { inviteStableId },
+      include: { invitedBy: { select: { userStableId: true } } },
+    });
+    if (!invite) {
+      throw new BadRequestException('invite not found');
+    }
+    if (invite.usedAt) {
+      throw new BadRequestException('invite already accepted');
+    }
+
+    return this.prisma.userInvite.update({
+      where: { id: invite.id },
+      data: { revokedAt: new Date() },
+      include: { invitedBy: { select: { userStableId: true } } },
+    });
   }
 
   async acceptInvite(params: {
@@ -468,8 +571,21 @@ export class AuthService {
       where: { tokenHash },
     });
 
-    if (!invite || invite.usedAt || invite.expiresAt <= new Date()) {
+    if (
+      !invite ||
+      invite.usedAt ||
+      invite.revokedAt ||
+      invite.expiresAt <= new Date()
+    ) {
       throw new BadRequestException('invite is invalid or expired');
+    }
+
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email: invite.email },
+      select: { id: true },
+    });
+    if (existingUser) {
+      throw new BadRequestException('email already registered');
     }
 
     const salt = randomBytes(16).toString('hex');
