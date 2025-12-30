@@ -511,12 +511,16 @@ export class AuthService {
     }
 
     const now = new Date();
-    if (invite.lastSentAt && now.getTime() - invite.lastSentAt.getTime() < 60 * 1000) {
+    if (
+      invite.lastSentAt &&
+      now.getTime() - invite.lastSentAt.getTime() < 60 * 1000
+    ) {
       throw new BadRequestException('invite resend too soon');
     }
     if (
       invite.sentCount >= 5 &&
-      now.getTime() - (invite.lastSentAt?.getTime() ?? invite.createdAt.getTime()) <
+      now.getTime() -
+        (invite.lastSentAt?.getTime() ?? invite.createdAt.getTime()) <
         24 * 60 * 60 * 1000
     ) {
       throw new BadRequestException('invite resend limit reached');
