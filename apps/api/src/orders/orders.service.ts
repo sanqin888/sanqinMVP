@@ -155,9 +155,10 @@ export class OrdersService {
     const orderNumber = order.clientRequestId ?? orderStableId;
     const deliverySubsidyCentsRaw = order.deliverySubsidyCents;
     const deliverySubsidyCents =
-      typeof deliverySubsidyCentsRaw === 'number' && Number.isFinite(deliverySubsidyCentsRaw)
-       ? Math.max(0, Math.round(deliverySubsidyCentsRaw))
-       : Math.max(0, deliveryCostCents - deliveryFeeCents);
+      typeof deliverySubsidyCentsRaw === 'number' &&
+      Number.isFinite(deliverySubsidyCentsRaw)
+        ? Math.max(0, Math.round(deliverySubsidyCentsRaw))
+        : Math.max(0, deliveryCostCents - deliveryFeeCents);
 
     const items: OrderItemDto[] = (order.items ?? []).map((it) => ({
       productStableId: it.productStableId,
