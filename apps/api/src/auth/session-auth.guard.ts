@@ -9,6 +9,8 @@ import { AuthService } from './auth.service';
 
 export const SESSION_COOKIE_NAME = 'session_id';
 
+type Session = Awaited<ReturnType<AuthService['getSession']>>;
+
 function parseCookies(cookieHeader?: string): Record<string, string> {
   if (!cookieHeader) return {};
   return cookieHeader.split(';').reduce<Record<string, string>>((acc, part) => {
@@ -28,6 +30,7 @@ export class SessionAuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<{
       headers?: Record<string, string | string[] | undefined>;
       user?: unknown;
+      session?: Session;
     }>();
     const headers = request.headers ?? {};
     const cookieHeader =
