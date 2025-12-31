@@ -188,7 +188,6 @@ export class AuthService {
 
     return { token, expiresAt };
   }
-  }
 
   async loginWithGoogleOauth(params: {
     googleSub: string;

@@ -210,7 +210,7 @@ export class AuthController {
       throw new ForbiddenException('Missing session');
     }
 
-    return this.authService.requestTwoFactorSms({
+    return await this.authService.requestTwoFactorSms({
       sessionId,
       ip: req.ip,
       userAgent:
@@ -276,7 +276,7 @@ export class AuthController {
       throw new ForbiddenException('Missing session');
     }
 
-    return this.authService.requestPhoneEnrollOtp({
+    return await this.authService.requestPhoneEnrollOtp({
       sessionId,
       phone: body?.phone ?? '',
     });
@@ -298,7 +298,7 @@ export class AuthController {
       throw new ForbiddenException('Missing session');
     }
 
-    return this.authService.verifyPhoneEnrollOtp({
+    return await this.authService.verifyPhoneEnrollOtp({
       sessionId,
       phone: body?.phone ?? '',
       code: body?.code ?? '',
@@ -318,7 +318,7 @@ export class AuthController {
       throw new ForbiddenException('Missing session');
     }
 
-    return this.authService.enableTwoFactor({ sessionId });
+    return await this.authService.enableTwoFactor({ sessionId });
   }
 
   @UseGuards(SessionAuthGuard, MfaGuard)
@@ -334,12 +334,12 @@ export class AuthController {
       throw new ForbiddenException('Missing session');
     }
 
-    return this.authService.disableTwoFactor({ sessionId });
+    return await this.authService.disableTwoFactor({ sessionId });
   }
 
   @Post('password/reset/request')
   async requestPasswordReset(@Body() body: { email?: string }) {
-    return this.authService.requestPasswordReset({
+    return await this.authService.requestPasswordReset({
       email: body?.email ?? '',
     });
   }
@@ -348,7 +348,7 @@ export class AuthController {
   async confirmPasswordReset(
     @Body() body: { token?: string; newPassword?: string },
   ) {
-    return this.authService.confirmPasswordReset({
+    return await this.authService.confirmPasswordReset({
       token: body?.token ?? '',
       newPassword: body?.newPassword ?? '',
     });

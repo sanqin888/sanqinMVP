@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import type { Locale } from '@/lib/order/shared';
 import { signOut, useSession } from '@/lib/auth-session';
 import type { Session, SessionUser } from '@/lib/auth-session';
@@ -179,6 +179,7 @@ function formatCurrency(cents: number): string {
 export default function MembershipHomePage() {
   const router = useRouter();
   const { locale } = useParams<{ locale: Locale }>();
+  const searchParams = useSearchParams();
   const { data: session, status } = useSession();
 
   const [activeTab, setActiveTab] = useState<
