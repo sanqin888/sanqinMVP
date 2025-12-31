@@ -24,6 +24,7 @@ export class CheckoutIntentsService {
     locale?: string;
     metadata: HostedCheckoutMetadata;
   }): Promise<CheckoutIntentWithMetadata> {
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
     const data = {
       referenceId: params.referenceId,
       checkoutSessionId: params.checkoutSessionId ?? null,
@@ -33,6 +34,8 @@ export class CheckoutIntentsService {
       status: 'pending' as const,
       result: null as string | null,
       orderId: null as string | null,
+      processedAt: null as Date | null,
+      expiresAt,
       metadataJson: params.metadata as Prisma.InputJsonValue,
     } satisfies Prisma.CheckoutIntentCreateInput;
 
@@ -88,6 +91,72 @@ export class CheckoutIntentsService {
         orderId: params.orderId,
         status: params.status ?? 'completed',
         result: params.result ?? 'SUCCESS',
+        processedAt: new Date(),
+      },
+    });
+  }
+
+  async claimProcessing(intentId: string): Promise<boolean> {
+    const claimed = await this.prisma.checkoutIntent.updateMany({
+      where: {
+        id: intentId,
+        status: 'pending',
+        orderId: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
+      },
+      data: {
+        status: 'processing',
+      },
+    });
+
+    return claimed.count > 0;
+  }
+
+  async markCompleted(params: {
+    intentId: string;
+    orderId: string;
+    result?: string;
+  }): Promise<void> {
+    await this.prisma.checkoutIntent.updateMany({
+      where: {
+        id: params.intentId,
+        status: 'processing',
+      },
+      data: {
+        orderId: params.orderId,
+        status: 'completed',
+        result: params.result ?? 'SUCCESS',
+        processedAt: new Date(),
+      },
+    });
+  }
+
+  async markFailed(params: { intentId: string; result?: string }): Promise<void> {
+    await this.prisma.checkoutIntent.updateMany({
+      where: {
+        id: params.intentId,
+        status: { in: ['pending', 'processing'] },
+        orderId: null,
+      },
+      data: {
+        status: 'failed',
+        result: params.result ?? 'FAILED',
+        processedAt: new Date(),
+      },
+    });
+  }
+
+  async markExpired(intentId: string): Promise<void> {
+    await this.prisma.checkoutIntent.updateMany({
+      where: {
+        id: intentId,
+        status: 'pending',
+        orderId: null,
+      },
+      data: {
+        status: 'expired',
+        result: 'EXPIRED',
+        processedAt: new Date(),
       },
     });
   }

@@ -388,10 +388,12 @@ model CheckoutIntent {
   locale            String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+  expiresAt         DateTime?
   metadataJson      Json
   orderId           String?  @db.Uuid
   result            String?
   status            String   @default("pending")
+  processedAt       DateTime?
   id                String   @id @default(uuid()) @db.Uuid
 
   @@index([referenceId, createdAt])
