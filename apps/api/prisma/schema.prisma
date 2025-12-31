@@ -79,6 +79,11 @@ enum UserStatus {
   DISABLED
 }
 
+enum TwoFactorMethod {
+  OFF
+  SMS
+}
+
 enum PosDeviceStatus {
   ACTIVE
   DISABLED
@@ -100,12 +105,16 @@ model User {
   id                    String    @id @default(uuid()) @db.Uuid
   userStableId          String    @unique @default(cuid())
   email                 String?   @unique
+  emailVerifiedAt       DateTime?
   phone                 String?   @unique
   phoneVerifiedAt       DateTime?
   name                  String?
   role                  UserRole  @default(CUSTOMER)
   status                UserStatus @default(ACTIVE)
   passwordHash          String?
+  passwordChangedAt     DateTime?
+  twoFactorEnabledAt    DateTime?
+  twoFactorMethod       TwoFactorMethod @default(OFF)
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
   marketingEmailOptIn   Boolean   @default(false)
@@ -115,6 +124,9 @@ model User {
   birthdayDay           Int?
   addresses             UserAddress[]
   sessions              UserSession[]
+  trustedDevices        TrustedDevice[]
+  passwordResetTokens   PasswordResetToken[]
+  twoFactorChallenges   TwoFactorChallenge[]
   invitesSent           UserInvite[] @relation("InvitesSent")
   googleSub String? @unique
 
@@ -127,11 +139,57 @@ model UserSession {
   userId       String   @db.Uuid
   expiresAt    DateTime
   deviceInfo   String?
+  mfaVerifiedAt DateTime?
   createdAt    DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+model TwoFactorChallenge {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  purpose      String
+  codeHash     String
+  expiresAt    DateTime
+  attempts     Int      @default(0)
+  maxAttempts  Int      @default(5)
+  consumedAt   DateTime?
+  ip           String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose, expiresAt])
+}
+
+model TrustedDevice {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  tokenHash   String   @unique
+  label       String?
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime?
+  expiresAt   DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
 }
 
 model PosDevice {

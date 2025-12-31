@@ -261,8 +261,6 @@ export default function CheckoutPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const q = searchParams?.toString();
-  const verifiedPhone = searchParams?.get("phone") ?? null; // 已验证手机号（如果有）
-  const phoneVerifiedFlag = searchParams?.get("pv") ?? null; // "1" / "true" 代表已验证
 
   const strings = UI_STRINGS[locale];
   const radiusLabel = `${DELIVERY_RADIUS_KM} km`;
@@ -947,9 +945,7 @@ export default function CheckoutPage() {
     }
 
     const s = session as SessionWithUserId | null;
-    const userId = s?.userId ?? s?.user?.id ?? undefined;
-
-    if (!userId) {
+    if (!s?.user?.mfaVerifiedAt) {
       setLoyaltyInfo(null);
       setAvailableCoupons([]);
       setMemberPhone(null);
@@ -963,24 +959,9 @@ export default function CheckoutPage() {
       try {
         setLoyaltyLoading(true);
         setLoyaltyError(null);
-
-        const user = s?.user ?? null;
-        const params = new URLSearchParams();
-
-        params.set("userId", userId ?? "");
-        params.set("name", user?.name ?? "");
-        params.set("email", user?.email ?? "");
-
-        // 如果 URL 上带了已验证的手机号，就顺手传给 membership 接口做绑定
-        if (verifiedPhone && phoneVerifiedFlag === "1") {
-          params.set("phone", verifiedPhone);
-          params.set("pv", "1");
-        }
-
-        const res = await fetch(
-          `/api/v1/membership/summary?${params.toString()}`,
-          { signal: controller.signal },
-        );
+        const res = await fetch('/api/v1/membership/summary', {
+          signal: controller.signal,
+        });
 
         if (!res.ok) {
           throw new Error(`Failed with status ${res.status}`);
@@ -1027,7 +1008,7 @@ export default function CheckoutPage() {
     void loadLoyalty();
 
     return () => controller.abort();
-  }, [authStatus, session, locale, verifiedPhone, phoneVerifiedFlag]);
+  }, [authStatus, session, locale]);
 
   useEffect(() => {
     if (authStatus !== "authenticated") return;

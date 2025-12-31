@@ -509,6 +509,8 @@ export class MembershipService {
       marketingEmailOptIn: user.marketingEmailOptIn ?? false,
       phone: user.phone ?? null,
       phoneVerified: !!user.phoneVerifiedAt,
+      twoFactorEnabledAt: user.twoFactorEnabledAt,
+      twoFactorMethod: user.twoFactorMethod,
       birthdayMonth: user.birthdayMonth ?? null,
       birthdayDay: user.birthdayDay ?? null,
       referrerEmail,
