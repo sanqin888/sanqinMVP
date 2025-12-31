@@ -42,12 +42,13 @@ export class SessionAuthGuard implements CanActivate {
       throw new UnauthorizedException('Missing session');
     }
 
-    const user = await this.authService.getSessionUser(sessionId);
-    if (!user) {
+    const session = await this.authService.getSession(sessionId);
+    if (!session) {
       throw new UnauthorizedException('Invalid session');
     }
 
-    request.user = user;
+    request.user = session.user;
+    request.session = session;
     return true;
   }
 }

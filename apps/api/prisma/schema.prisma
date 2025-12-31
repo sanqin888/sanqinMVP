@@ -7,12 +7,116 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// === Enums ===
+enum OrderStatus {
+  pending
+  paid
+  making
+  ready
+  completed
+  refunded
+}
+
+enum FulfillmentType {
+  pickup
+  dine_in
+  delivery
+}
+
+enum Channel {
+  web
+  in_store
+  ubereats
+}
+
+enum DeliveryType {
+  STANDARD
+  PRIORITY
+}
+
+enum DeliveryProvider {
+  DOORDASH
+  UBER
+}
+
+enum LoyaltyTier {
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+}
+
+enum LoyaltyEntryType {
+  REDEEM_ON_ORDER
+  EARN_ON_PURCHASE
+  REFERRAL_BONUS
+  REFUND_REVERSE_EARN
+  REFUND_RETURN_REDEEM
+  REFUND_REVERSE_REFERRAL
+  TOPUP_PURCHASED
+  ADJUSTMENT_MANUAL
+
+  AMEND_RETURN_REDEEM
+  AMEND_EARN_ADJUST
+  AMEND_REFERRAL_ADJUST
+}
+
+enum PhoneVerificationStatus {
+  PENDING
+  VERIFIED
+  CONSUMED
+}
+
+enum UserRole {
+  CUSTOMER
+  STAFF
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum TwoFactorMethod {
+  OFF
+  SMS
+}
+
+enum PosDeviceStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum Weekday {
+  MON
+  TUE
+  WED
+  THU
+  FRI
+  SAT
+  SUN
+}
+
+// === Models ===
+
 model User {
-  email                 String?       @unique
+  id                    String    @id @default(uuid()) @db.Uuid
+  userStableId          String    @unique @default(cuid())
+  email                 String?   @unique
+  emailVerifiedAt       DateTime?
+  phone                 String?   @unique
+  phoneVerifiedAt       DateTime?
   name                  String?
-  createdAt             DateTime      @default(now())
-  updatedAt             DateTime      @updatedAt
-  marketingEmailOptIn   Boolean       @default(false)
+  role                  UserRole  @default(CUSTOMER)
+  status                UserStatus @default(ACTIVE)
+  passwordHash          String?
+  passwordChangedAt     DateTime?
+  twoFactorEnabledAt    DateTime?
+  twoFactorMethod       TwoFactorMethod @default(OFF)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  marketingEmailOptIn   Boolean   @default(false)
   marketingEmailOptInAt DateTime?
   birthdayDay           Int?
   birthdayMonth         Int?
@@ -28,20 +132,72 @@ model User {
   addresses             UserAddress[]
   invitesSent           UserInvite[]  @relation("InvitesSent")
   sessions              UserSession[]
+  trustedDevices        TrustedDevice[]
+  passwordResetTokens   PasswordResetToken[]
+  twoFactorChallenges   TwoFactorChallenge[]
+  invitesSent           UserInvite[] @relation("InvitesSent")
+  googleSub String? @unique
 
   @@index([referredByUserId])
 }
 
 model UserSession {
-  id         String   @id @default(uuid()) @db.Uuid
-  sessionId  String   @unique
-  userId     String   @db.Uuid
-  expiresAt  DateTime
-  deviceInfo String?
-  createdAt  DateTime @default(now())
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           String   @id @default(uuid()) @db.Uuid
+  sessionId    String   @unique
+  userId       String   @db.Uuid
+  expiresAt    DateTime
+  deviceInfo   String?
+  mfaVerifiedAt DateTime?
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+model TwoFactorChallenge {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  purpose      String
+  codeHash     String
+  expiresAt    DateTime
+  attempts     Int      @default(0)
+  maxAttempts  Int      @default(5)
+  consumedAt   DateTime?
+  ip           String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose, expiresAt])
+}
+
+model TrustedDevice {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  tokenHash   String   @unique
+  label       String?
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime?
+  expiresAt   DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
 }
 
 model PosDevice {

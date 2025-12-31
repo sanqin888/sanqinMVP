@@ -7,8 +7,8 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { randomBytes, timingSafeEqual, createHash } from 'crypto';
-import type { UserRole } from '@prisma/client';
+import { randomBytes, timingSafeEqual, createHash, createHmac } from 'crypto';
+import type { TwoFactorMethod, UserRole } from '@prisma/client';
 import argon2, { argon2id } from 'argon2';
 
 @Injectable()
@@ -63,7 +63,28 @@ export class AuthService {
     return createHash('sha256').update(token).digest('hex');
   }
 
-  async createSession(params: { userId: string; deviceInfo?: string }) {
+  private hashOtp(code: string): string {
+    const secret =
+      process.env.OTP_SECRET ??
+      process.env.OAUTH_STATE_SECRET ??
+      'dev-secret';
+    return createHmac('sha256', secret).update(code).digest('hex');
+  }
+
+  private isTwoFactorEnabled(params: {
+    twoFactorEnabledAt: Date | null;
+    twoFactorMethod: TwoFactorMethod;
+  }): boolean {
+    return (
+      !!params.twoFactorEnabledAt && params.twoFactorMethod === 'SMS'
+    );
+  }
+
+  async createSession(params: {
+    userId: string;
+    deviceInfo?: string;
+    mfaVerifiedAt?: Date | null;
+  }) {
     const sessionId = randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + this.getSessionTtlMs());
 
@@ -73,6 +94,7 @@ export class AuthService {
         userId: params.userId,
         expiresAt,
         deviceInfo: params.deviceInfo,
+        mfaVerifiedAt: params.mfaVerifiedAt ?? null,
       },
     });
 
@@ -85,7 +107,7 @@ export class AuthService {
     });
   }
 
-  async getSessionUser(sessionId: string) {
+  async getSession(sessionId: string) {
     const session = await this.prisma.userSession.findUnique({
       where: { sessionId },
       include: { user: true },
@@ -101,80 +123,107 @@ export class AuthService {
       throw new ForbiddenException('User disabled');
     }
 
-    return session.user;
+    return session;
+  }
+
+  async getSessionUser(sessionId: string) {
+    const session = await this.getSession(sessionId);
+    return session?.user ?? null;
+  }
+
+  async verifySessionMfa(params: { sessionId: string }) {
+    const session = await this.getSession(params.sessionId);
+    if (!session) {
+      throw new UnauthorizedException('Invalid session');
+    }
+    if (session.mfaVerifiedAt) return session;
+    const updated = await this.prisma.userSession.update({
+      where: { id: session.id },
+      data: { mfaVerifiedAt: new Date() },
+      include: { user: true },
+    });
+    return updated;
+  }
+
+  private async findTrustedDevice(params: {
+    userId: string;
+    token: string;
+  }) {
+    const tokenHash = this.hashToken(params.token);
+    const now = new Date();
+    const device = await this.prisma.trustedDevice.findFirst({
+      where: {
+        userId: params.userId,
+        tokenHash,
+        expiresAt: { gt: now },
+      },
+    });
+    if (!device) return null;
+    await this.prisma.trustedDevice.update({
+      where: { id: device.id },
+      data: { lastSeenAt: now },
+    });
+    return device;
+  }
+
+  private async issueTrustedDevice(params: {
+    userId: string;
+    label?: string;
+    expiresInDays?: number;
+  }) {
+    const token = randomBytes(32).toString('hex');
+    const tokenHash = this.hashToken(token);
+    const expiresAt = new Date(
+      Date.now() + (params.expiresInDays ?? 30) * 24 * 60 * 60 * 1000,
+    );
+
+    await this.prisma.trustedDevice.create({
+      data: {
+        userId: params.userId,
+        tokenHash,
+        label: params.label,
+        expiresAt,
+      },
+    });
+
+    return { token, expiresAt };
+  }
   }
 
   async loginWithGoogleOauth(params: {
     googleSub: string;
     email: string | null;
     name: string | null;
-    phone: string;
-    pv: string; // phoneVerification id
     deviceInfo?: string;
+    trustedDeviceToken?: string;
   }) {
     const googleSub = params.googleSub;
     const email = params.email ? this.normalizeEmail(params.email) : null;
-    const phone = this.normalizePhone(params.phone);
 
-    if (!googleSub || !phone || !params.pv) {
+    if (!googleSub || !email) {
       throw new BadRequestException('invalid oauth params');
     }
 
     const now = new Date();
 
-    // 1) 校验 pv 是否为有效的“membership-login”验证码验证记录
-    const record = await this.prisma.phoneVerification.findUnique({
-      where: { id: params.pv },
-    });
-
-    if (
-      !record ||
-      record.phone !== phone ||
-      record.purpose !== 'membership-login' ||
-      record.status !== 'VERIFIED' ||
-      !record.verifiedAt
-    ) {
-      throw new BadRequestException('phone verification is invalid');
-    }
-
-    // 10 分钟内有效（你可调整）
-    if (now.getTime() - record.verifiedAt.getTime() > 10 * 60 * 1000) {
-      throw new BadRequestException('phone verification expired');
-    }
-
-    // 2) 选定要登录/绑定的 user（优先 phone，其次 googleSub，其次 email）
+    // 2) 选定要登录/绑定的 user（优先 googleSub，其次 email）
     const user = await this.prisma.$transaction(async (tx) => {
-      const byPhone = await tx.user.findFirst({ where: { phone } });
       const byGoogle = await tx.user.findFirst({ where: { googleSub } });
-      const byEmail = email
-        ? await tx.user.findUnique({ where: { email } })
-        : null;
+      const byEmail = await tx.user.findUnique({ where: { email } });
 
-      // 防止错误合并：googleSub 已绑定到别的用户，而 pv 指向另一个 phone 用户
-      if (byPhone && byGoogle && byPhone.id !== byGoogle.id) {
+      if (byGoogle && byEmail && byGoogle.id !== byEmail.id) {
         throw new BadRequestException('account conflict');
       }
 
-      let base = byPhone ?? byGoogle ?? null;
-
-      // 如果只靠 email 找到的是 ADMIN/STAFF，这里建议禁止走 membership oauth（更安全）
-      if (!base && byEmail) {
-        if (byEmail.role === 'ADMIN' || byEmail.role === 'STAFF') {
-          throw new ForbiddenException(
-            'staff email is not allowed for membership oauth',
-          );
-        }
-        base = byEmail;
-      }
+      let base = byGoogle ?? byEmail ?? null;
 
       if (!base) {
         base = await tx.user.create({
           data: {
             role: 'CUSTOMER',
             status: 'ACTIVE',
-            phone,
-            phoneVerifiedAt: now,
-            email: email ?? undefined,
+            email,
+            emailVerifiedAt: now,
             name: params.name ?? undefined,
             googleSub,
           },
@@ -183,7 +232,8 @@ export class AuthService {
       }
 
       // 更新绑定信息（不轻易覆盖已有 email/name）
-      const nextEmail = base.email ? undefined : (email ?? undefined);
+      const nextEmail = base.email ? undefined : email;
+      const nextEmailVerified = base.emailVerifiedAt ? undefined : now;
       const nextName = base.name ? undefined : (params.name ?? undefined);
 
       const updated = await tx.user.update({
@@ -191,25 +241,37 @@ export class AuthService {
         data: {
           googleSub: base.googleSub ?? googleSub,
           email: nextEmail,
+          emailVerifiedAt: nextEmailVerified,
           name: nextName,
-          phoneVerifiedAt: base.phoneVerifiedAt ?? now,
         },
       });
-
-      // 确保 phone 写到这个用户上（如果 base 不是 byPhone 的情况）
-      if (updated.phone !== phone) {
-        await this.attachPhoneToUser({ userId: updated.id, phone });
-      }
 
       return updated;
     });
 
+    if (user.status === 'DISABLED') {
+      throw new ForbiddenException('User disabled');
+    }
+
+    const isTrusted =
+      params.trustedDeviceToken &&
+      (await this.findTrustedDevice({
+        userId: user.id,
+        token: params.trustedDeviceToken,
+      }));
+    const requiresTwoFactor =
+      this.isTwoFactorEnabled({
+        twoFactorEnabledAt: user.twoFactorEnabledAt,
+        twoFactorMethod: user.twoFactorMethod,
+      }) && !isTrusted;
+
     const session = await this.createSession({
       userId: user.id,
       deviceInfo: params.deviceInfo,
+      mfaVerifiedAt: requiresTwoFactor ? null : now,
     });
 
-    return { user, session };
+    return { user, session, requiresTwoFactor };
   }
 
   async loginWithPassword(params: {
@@ -219,6 +281,7 @@ export class AuthService {
     purpose?: 'pos' | 'admin';
     posDeviceStableId?: string;
     posDeviceKey?: string;
+    trustedDeviceToken?: string;
   }) {
     const email = this.normalizeEmail(params.email);
     if (!email || !params.password) {
@@ -272,12 +335,473 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    const now = new Date();
+    const isTrusted =
+      params.trustedDeviceToken &&
+      (await this.findTrustedDevice({
+        userId: user.id,
+        token: params.trustedDeviceToken,
+      }));
+    const requiresTwoFactor =
+      this.isTwoFactorEnabled({
+        twoFactorEnabledAt: user.twoFactorEnabledAt,
+        twoFactorMethod: user.twoFactorMethod,
+      }) && !isTrusted;
+
     const session = await this.createSession({
       userId: user.id,
       deviceInfo: params.deviceInfo,
+      mfaVerifiedAt: requiresTwoFactor ? null : now,
     });
 
-    return { user, session };
+    return { user, session, requiresTwoFactor };
+  }
+
+  async loginWithMemberPassword(params: {
+    email: string;
+    password: string;
+    deviceInfo?: string;
+    trustedDeviceToken?: string;
+  }) {
+    const email = this.normalizeEmail(params.email);
+    if (!email || !params.password) {
+      throw new BadRequestException('email and password are required');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (user.status === 'DISABLED') {
+      throw new ForbiddenException('User disabled');
+    }
+
+    if (!user.passwordHash) {
+      throw new UnauthorizedException('Password login not enabled');
+    }
+
+    if (!user.emailVerifiedAt) {
+      throw new ForbiddenException('Email not verified');
+    }
+
+    const ok = await this.verifyPassword(params.password, user.passwordHash);
+    if (!ok) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const now = new Date();
+    const isTrusted =
+      params.trustedDeviceToken &&
+      (await this.findTrustedDevice({
+        userId: user.id,
+        token: params.trustedDeviceToken,
+      }));
+    const requiresTwoFactor =
+      this.isTwoFactorEnabled({
+        twoFactorEnabledAt: user.twoFactorEnabledAt,
+        twoFactorMethod: user.twoFactorMethod,
+      }) && !isTrusted;
+
+    const session = await this.createSession({
+      userId: user.id,
+      deviceInfo: params.deviceInfo,
+      mfaVerifiedAt: requiresTwoFactor ? null : now,
+    });
+
+    return { user, session, requiresTwoFactor };
+  }
+
+  async requestTwoFactorSms(params: {
+    sessionId: string;
+    ip?: string;
+    userAgent?: string;
+  }) {
+    const session = await this.getSession(params.sessionId);
+    if (!session) {
+      throw new UnauthorizedException('Invalid session');
+    }
+    if (session.mfaVerifiedAt) {
+      throw new BadRequestException('mfa already verified');
+    }
+
+    const user = session.user;
+    if (
+      !this.isTwoFactorEnabled({
+        twoFactorEnabledAt: user.twoFactorEnabledAt,
+        twoFactorMethod: user.twoFactorMethod,
+      })
+    ) {
+      throw new BadRequestException('mfa not enabled');
+    }
+
+    if (!user.phone || !user.phoneVerifiedAt) {
+      throw new BadRequestException('phone not verified');
+    }
+
+    const now = new Date();
+    const oneMinuteAgo = new Date(now.getTime() - 60 * 1000);
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+
+    const recent = await this.prisma.twoFactorChallenge.findFirst({
+      where: {
+        userId: user.id,
+        purpose: 'LOGIN_2FA',
+        createdAt: { gt: oneMinuteAgo },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (recent) {
+      throw new BadRequestException('too many requests, please try later');
+    }
+
+    const lastHourCount = await this.prisma.twoFactorChallenge.count({
+      where: {
+        userId: user.id,
+        purpose: 'LOGIN_2FA',
+        createdAt: { gt: oneHourAgo },
+      },
+    });
+    if (lastHourCount >= 5) {
+      throw new BadRequestException('too many requests in an hour');
+    }
+
+    const code = this.generateCode();
+    const expiresAt = new Date(now.getTime() + 5 * 60 * 1000);
+    const codeHash = this.hashOtp(code);
+
+    await this.prisma.twoFactorChallenge.create({
+      data: {
+        userId: user.id,
+        purpose: 'LOGIN_2FA',
+        codeHash,
+        expiresAt,
+        attempts: 0,
+        maxAttempts: 5,
+        ip: params.ip,
+        userAgent: params.userAgent,
+      },
+    });
+
+    this.logger.log(`2FA OTP for ${user.phone}: ${code}`);
+    return { success: true, expiresAt };
+  }
+
+  async verifyTwoFactorSms(params: {
+    sessionId: string;
+    code: string;
+    rememberDevice?: boolean;
+    deviceLabel?: string;
+  }) {
+    const session = await this.getSession(params.sessionId);
+    if (!session) {
+      throw new UnauthorizedException('Invalid session');
+    }
+    if (session.mfaVerifiedAt) {
+      return { success: true, alreadyVerified: true };
+    }
+
+    const user = session.user;
+    const now = new Date();
+    const challenge = await this.prisma.twoFactorChallenge.findFirst({
+      where: {
+        userId: user.id,
+        purpose: 'LOGIN_2FA',
+        consumedAt: null,
+        expiresAt: { gt: now },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!challenge) {
+      throw new BadRequestException('verification code is invalid or expired');
+    }
+
+    const codeHash = this.hashOtp(params.code);
+    if (codeHash !== challenge.codeHash) {
+      const nextAttempts = challenge.attempts + 1;
+      await this.prisma.twoFactorChallenge.update({
+        where: { id: challenge.id },
+        data: {
+          attempts: nextAttempts,
+          consumedAt: nextAttempts >= challenge.maxAttempts ? now : null,
+        },
+      });
+      throw new BadRequestException('verification code is invalid or expired');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.twoFactorChallenge.update({
+        where: { id: challenge.id },
+        data: { consumedAt: now },
+      }),
+      this.prisma.userSession.update({
+        where: { id: session.id },
+        data: { mfaVerifiedAt: now },
+      }),
+    ]);
+
+    let trustedDevice: { token: string; expiresAt: Date } | null = null;
+    if (params.rememberDevice) {
+      trustedDevice = await this.issueTrustedDevice({
+        userId: user.id,
+        label: params.deviceLabel,
+      });
+    }
+
+    return {
+      success: true,
+      trustedDevice,
+    };
+  }
+
+  async requestPasswordReset(params: { email: string }) {
+    const email = this.normalizeEmail(params.email);
+    if (!email) {
+      return { success: true };
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user || !user.passwordHash || user.status === 'DISABLED') {
+      return { success: true };
+    }
+
+    const token = randomBytes(32).toString('hex');
+    const tokenHash = this.hashToken(token);
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+
+    await this.prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash,
+        expiresAt,
+      },
+    });
+
+    this.logger.log(
+      `[DEV] Password reset token for ${email}: ${token}`,
+    );
+
+    return { success: true };
+  }
+
+  async requestPhoneEnrollOtp(params: {
+    sessionId: string;
+    phone: string;
+  }) {
+    const session = await this.getSession(params.sessionId);
+    if (!session) {
+      throw new UnauthorizedException('Invalid session');
+    }
+
+    const normalized = this.normalizePhone(params.phone);
+    if (!normalized || normalized.length < 6) {
+      throw new BadRequestException('invalid phone');
+    }
+
+    const now = new Date();
+    const oneMinuteAgo = new Date(now.getTime() - 60 * 1000);
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+
+    const recent = await this.prisma.phoneVerification.findFirst({
+      where: {
+        phone: normalized,
+        purpose: 'PHONE_ENROLL',
+        createdAt: { gt: oneMinuteAgo },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (recent) {
+      throw new BadRequestException('too many requests, please try later');
+    }
+
+    const lastHourCount = await this.prisma.phoneVerification.count({
+      where: {
+        phone: normalized,
+        purpose: 'PHONE_ENROLL',
+        createdAt: { gt: oneHourAgo },
+      },
+    });
+
+    if (lastHourCount >= 5) {
+      throw new BadRequestException('too many requests in an hour');
+    }
+
+    const code = this.generateCode();
+    const expiresAt = new Date(now.getTime() + 5 * 60 * 1000);
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.phoneVerification.updateMany({
+        where: {
+          phone: normalized,
+          purpose: 'PHONE_ENROLL',
+          used: false,
+        },
+        data: { used: true },
+      });
+
+      await tx.phoneVerification.create({
+        data: {
+          phone: normalized,
+          code,
+          purpose: 'PHONE_ENROLL',
+          used: false,
+          expiresAt,
+        },
+      });
+    });
+
+    this.logger.log(`Phone enroll OTP for ${normalized}: ${code}`);
+    return { success: true };
+  }
+
+  async verifyPhoneEnrollOtp(params: {
+    sessionId: string;
+    phone: string;
+    code: string;
+  }) {
+    const session = await this.getSession(params.sessionId);
+    if (!session) {
+      throw new UnauthorizedException('Invalid session');
+    }
+
+    const normalized = this.normalizePhone(params.phone);
+    if (!normalized || !params.code) {
+      throw new BadRequestException('phone and code are required');
+    }
+
+    const now = new Date();
+    const record = await this.prisma.phoneVerification.findFirst({
+      where: {
+        phone: normalized,
+        purpose: 'PHONE_ENROLL',
+        used: false,
+        expiresAt: { gt: now },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!record || record.code !== params.code) {
+      throw new BadRequestException('verification code is invalid or expired');
+    }
+
+    const conflict = await this.prisma.user.findFirst({
+      where: {
+        phone: normalized,
+        NOT: { id: session.userId },
+      },
+      select: { id: true },
+    });
+    if (conflict) {
+      throw new BadRequestException('phone already in use');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.phoneVerification.update({
+        where: { id: record.id },
+        data: {
+          used: true,
+          status: 'VERIFIED',
+          verifiedAt: now,
+        },
+      }),
+      this.prisma.user.update({
+        where: { id: session.userId },
+        data: {
+          phone: normalized,
+          phoneVerifiedAt: now,
+        },
+      }),
+    ]);
+
+    return { success: true };
+  }
+
+  async enableTwoFactor(params: { sessionId: string }) {
+    const session = await this.getSession(params.sessionId);
+    if (!session) {
+      throw new UnauthorizedException('Invalid session');
+    }
+
+    if (!session.user.phone || !session.user.phoneVerifiedAt) {
+      throw new BadRequestException('phone not verified');
+    }
+
+    const now = new Date();
+    await this.prisma.user.update({
+      where: { id: session.userId },
+      data: {
+        twoFactorEnabledAt: now,
+        twoFactorMethod: 'SMS',
+      },
+    });
+
+    return { success: true };
+  }
+
+  async disableTwoFactor(params: { sessionId: string }) {
+    const session = await this.getSession(params.sessionId);
+    if (!session) {
+      throw new UnauthorizedException('Invalid session');
+    }
+
+    await this.prisma.user.update({
+      where: { id: session.userId },
+      data: {
+        twoFactorEnabledAt: null,
+        twoFactorMethod: 'OFF',
+      },
+    });
+
+    await this.prisma.trustedDevice.deleteMany({
+      where: { userId: session.userId },
+    });
+
+    return { success: true };
+  }
+
+  async confirmPasswordReset(params: { token: string; newPassword: string }) {
+    if (!params.token || !params.newPassword) {
+      throw new BadRequestException('token and newPassword are required');
+    }
+
+    const tokenHash = this.hashToken(params.token);
+    const now = new Date();
+    const record = await this.prisma.passwordResetToken.findFirst({
+      where: {
+        tokenHash,
+        usedAt: null,
+        expiresAt: { gt: now },
+      },
+    });
+    if (!record) {
+      throw new BadRequestException('reset token is invalid or expired');
+    }
+
+    const passwordHash = await this.hashPassword(params.newPassword);
+
+    await this.prisma.$transaction([
+      this.prisma.passwordResetToken.update({
+        where: { id: record.id },
+        data: { usedAt: now },
+      }),
+      this.prisma.user.update({
+        where: { id: record.userId },
+        data: {
+          passwordHash,
+          passwordChangedAt: now,
+        },
+      }),
+      this.prisma.userSession.deleteMany({
+        where: { userId: record.userId },
+      }),
+      this.prisma.trustedDevice.deleteMany({
+        where: { userId: record.userId },
+      }),
+    ]);
+
+    return { success: true };
   }
 
   async requestLoginOtp(params: { phone: string }) {
@@ -582,6 +1106,7 @@ export class AuthService {
     }
 
     const passwordHash = await this.hashPassword(params.password);
+    const now = new Date();
 
     const user = await this.prisma.user.upsert({
       where: { email: invite.email },
@@ -589,6 +1114,8 @@ export class AuthService {
         role: invite.role,
         status: 'ACTIVE',
         passwordHash,
+        passwordChangedAt: now,
+        emailVerifiedAt: now,
         name: params.name ?? undefined,
       },
       create: {
@@ -596,13 +1123,15 @@ export class AuthService {
         role: invite.role,
         status: 'ACTIVE',
         passwordHash,
+        passwordChangedAt: now,
+        emailVerifiedAt: now,
         name: params.name ?? undefined,
       },
     });
 
     await this.prisma.userInvite.update({
       where: { id: invite.id },
-      data: { usedAt: new Date() },
+      data: { usedAt: now },
     });
 
     return { user };
