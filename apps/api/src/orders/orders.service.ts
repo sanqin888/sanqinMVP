@@ -144,12 +144,21 @@ export class OrdersService {
 
   private toOrderDto(order: OrderWithItems): OrderDto {
     const orderStableId = order.orderStableId;
+    const deliveryFeeCents = order.deliveryFeeCents ?? 0;
+    const deliveryCostCents = order.deliveryCostCents ?? 0;
+
     if (!orderStableId) {
       // 按你的业务前提 stableId 非空，这里属于数据异常
       throw new BadRequestException('orderStableId missing');
     }
 
     const orderNumber = order.clientRequestId ?? orderStableId;
+    const deliverySubsidyCentsRaw = order.deliverySubsidyCents;
+    const deliverySubsidyCents =
+      typeof deliverySubsidyCentsRaw === 'number' &&
+      Number.isFinite(deliverySubsidyCentsRaw)
+        ? Math.max(0, Math.round(deliverySubsidyCentsRaw))
+        : Math.max(0, deliveryCostCents - deliveryFeeCents);
 
     const items: OrderItemDto[] = (order.items ?? []).map((it) => ({
       productStableId: it.productStableId,
@@ -186,6 +195,8 @@ export class OrdersService {
       subtotalCents: order.subtotalCents ?? 0,
       taxCents: order.taxCents ?? 0,
       deliveryFeeCents: order.deliveryFeeCents ?? 0,
+      deliveryCostCents,
+      deliverySubsidyCents,
       totalCents: order.totalCents ?? 0,
 
       couponCodeSnapshot: order.couponCodeSnapshot ?? null,
@@ -1340,6 +1351,8 @@ export class OrdersService {
                 taxCents,
                 totalCents,
                 deliveryFeeCents: deliveryFeeCustomerCents, // ⭐ 写入服务端计算的配送费
+                deliveryCostCents: 0,
+                deliverySubsidyCents: 0,
                 pickupCode,
                 couponId: couponInfo?.coupon?.id ?? null,
                 couponDiscountCents,
@@ -2028,8 +2041,13 @@ export class OrdersService {
     const updateData: Prisma.OrderUpdateInput = {
       externalDeliveryId: response.deliveryId,
     };
+
     if (typeof response.deliveryCostCents === 'number') {
-      updateData.deliveryCostCents = Math.round(response.deliveryCostCents);
+      const cost = Math.max(0, Math.round(response.deliveryCostCents));
+      updateData.deliveryCostCents = cost;
+
+      const fee = Math.max(0, order.deliveryFeeCents ?? 0);
+      updateData.deliverySubsidyCents = Math.max(0, cost - fee);
     }
     return this.prisma.order.update({
       where: { id: order.id }, // ✅ 内部写库仍用 UUID
@@ -2063,8 +2081,13 @@ export class OrdersService {
     const updateData: Prisma.OrderUpdateInput = {
       externalDeliveryId: response.deliveryId,
     };
+
     if (typeof response.deliveryCostCents === 'number') {
-      updateData.deliveryCostCents = Math.round(response.deliveryCostCents);
+      const cost = Math.max(0, Math.round(response.deliveryCostCents));
+      updateData.deliveryCostCents = cost;
+
+      const fee = Math.max(0, order.deliveryFeeCents ?? 0);
+      updateData.deliverySubsidyCents = Math.max(0, cost - fee);
     }
     return this.prisma.order.update({
       where: { id: order.id }, // ✅ 内部写库仍用 UUID
