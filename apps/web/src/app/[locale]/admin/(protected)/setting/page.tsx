@@ -20,13 +20,15 @@ type BusinessHoursResponse = {
 };
 
 // 后端 BusinessConfigResponse 中我们只用到这些字段
-type HolidayDto = {
-  id: number;
+type HolidayApiDto = {
   date: string; // 'YYYY-MM-DD'
   name?: string;
   isClosed: boolean;
   openMinutes: number | null;
   closeMinutes: number | null;
+};
+type HolidayUiDto = HolidayApiDto & {
+  clientKey: string;
 };
 
 type BusinessConfigDto = {
@@ -36,14 +38,14 @@ type BusinessConfigDto = {
   deliveryBaseFeeCents: number;
   priorityPerKmCents: number;
   salesTaxRate: number;
-  holidays: HolidayDto[];
+  holidays: HolidayApiDto[];
 };
 
 type SaveHoursPayload = {
   hours: {
     weekday: number;
-    openMinutes: number;
-    closeMinutes: number;
+    openMinutes: number | null;
+    closeMinutes: number | null;
     isClosed: boolean;
   }[];
 };
@@ -89,16 +91,12 @@ function timeStringToMinutes(value: string): number | null {
   const hh = Number(match[1]);
   const mm = Number(match[2]);
 
-  if (
-    !Number.isFinite(hh) ||
-    !Number.isFinite(mm) ||
-    hh < 0 ||
-    hh > 23 ||
-    mm < 0 ||
-    mm > 59
-  ) {
-    return null;
-  }
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+
+  // ✅ 允许 24:00 -> 1440（后端 normalizeMinutes 允许 1440）
+  if (hh === 24 && mm === 0) return 24 * 60;
+
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
 
   return hh * 60 + mm;
 }
@@ -127,6 +125,15 @@ function parsePercentToRate(value: string): number | null {
   return Number(rate.toFixed(4));
 }
 
+
+function toHolidayUi(list: HolidayApiDto[]): HolidayUiDto[] {
+  return (list ?? []).map((h, idx) => ({
+    ...h,
+    // 保证唯一；即使重复日期也不会冲突
+    clientKey: `${h.date || 'empty'}:${idx}`,
+  }));
+}
+
 /** ===== 页面组件 ===== */
 
 export default function AdminHoursPage() {
@@ -135,7 +142,7 @@ export default function AdminHoursPage() {
 
   const [config, setConfig] = useState<BusinessConfigDto | null>(null);
   const [hours, setHours] = useState<BusinessHourDto[]>([]);
-  const [holidays, setHolidays] = useState<HolidayDto[]>([]);
+  const [holidays, setHolidays] = useState<HolidayUiDto[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -171,13 +178,16 @@ export default function AdminHoursPage() {
         );
         setHours(sortedHours);
 
-        const sortedHolidays = (configRes.holidays ?? []).slice().sort((a, b) => {
-          // 'YYYY-MM-DD' 字符串比较即可
-          if (a.date < b.date) return -1;
-          if (a.date > b.date) return 1;
-          return a.id - b.id;
-        });
-        setHolidays(sortedHolidays);
+const uiHolidays = toHolidayUi(configRes.holidays ?? []).slice().sort((a, b) => {
+  // 空日期放到最后（新增未填日期更合理）
+  if (!a.date && b.date) return 1;
+  if (a.date && !b.date) return -1;
+
+  if (a.date < b.date) return -1;
+  if (a.date > b.date) return 1;
+  return a.clientKey.localeCompare(b.clientKey);
+});
+setHolidays(uiHolidays);
       } catch (e) {
         if (cancelled) return;
         console.error(e);
@@ -202,38 +212,36 @@ export default function AdminHoursPage() {
 
   /** ===== 每周营业时间相关 handler ===== */
 
-  const handleToggleClosed = (index: number, checked: boolean) => {
-    setHours((prev) => {
-      const next = [...prev];
-      const h = { ...next[index], isClosed: checked };
-      next[index] = h;
-      return next;
-    });
-  };
+const handleToggleClosed = (index: number, checked: boolean) => {
+  setHours((prev) => {
+    const next = [...prev];
+    const cur = next[index];
+    if (!cur) return prev;
 
-  const handleTimezoneChange = (value: string) => {
-    const tz = value.trim();
-    setConfig((prev) => (prev ? { ...prev, timezone: tz } : prev));
-  };
+    const h: BusinessHourDto = { ...cur, isClosed: checked };
 
-  const handleTimeChange = (
-    index: number,
-    field: 'openMinutes' | 'closeMinutes',
-    value: string,
-  ) => {
-    const mins = timeStringToMinutes(value);
-    if (mins == null) {
-      // 输入不合法就不更新，避免把数据写坏
-      return;
+    if (checked) {
+      // 休息日：清空时间更语义化（后端会忽略）
+      h.openMinutes = null;
+      h.closeMinutes = null;
+    } else {
+      // ✅ 切回营业：给一个默认时间，避免 0-0 导致后端 open>=close 报错
+      const defaultOpen = 11 * 60;
+      const defaultClose = 21 * 60;
+
+      const open = typeof h.openMinutes === 'number' ? h.openMinutes : null;
+      const close = typeof h.closeMinutes === 'number' ? h.closeMinutes : null;
+
+      if (open == null) h.openMinutes = defaultOpen;
+      if (close == null || (h.openMinutes != null && close <= h.openMinutes)) {
+        h.closeMinutes = defaultClose;
+      }
     }
 
-    setHours((prev) => {
-      const next = [...prev];
-      const h = { ...next[index], [field]: mins } as BusinessHourDto;
-      next[index] = h;
-      return next;
-    });
-  };
+    next[index] = h;
+    return next;
+  });
+};
 
   /** ===== 门店状态（临时暂停接单） handler ===== */
 
@@ -330,20 +338,22 @@ export default function AdminHoursPage() {
     });
   };
 
-  const handleAddHoliday = () => {
-    setHolidays((prev) => [
-      ...prev,
-      {
-        // 前端临时 id，用时间戳避免 React key 冲突；真正保存时后端会生成新的 id
-        id: Date.now(),
-        date: '',
-        name: '',
-        isClosed: true,
-        openMinutes: null,
-        closeMinutes: null,
-      },
-    ]);
-  };
+const handleAddHoliday = () => {
+  const clientKey =
+    globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
+
+  setHolidays((prev) => [
+    ...prev,
+    {
+      clientKey,
+      date: '',
+      name: '',
+      isClosed: true,
+      openMinutes: null,
+      closeMinutes: null,
+    },
+  ]);
+};
 
   const handleDeleteHoliday = (index: number) => {
     setHolidays((prev) => prev.filter((_, i) => i !== index));
@@ -354,27 +364,68 @@ export default function AdminHoursPage() {
   const handleSave = async () => {
     if (!config) return;
 
+// ===== 保存前校验：避免后端直接 400 =====
+
+// 1) hours：营业日必须有合法 open/close 且 open < close
+const badHourIndex = hours.findIndex(
+  (h) =>
+    !h.isClosed &&
+    (h.openMinutes == null ||
+      h.closeMinutes == null ||
+      h.openMinutes >= h.closeMinutes),
+);
+if (badHourIndex >= 0) {
+  setError(
+    isZh
+      ? `每周营业时间第 ${badHourIndex + 1} 行时间不合法（开门必须早于打烊）。`
+      : `Invalid weekly hours at row ${badHourIndex + 1} (open must be earlier than close).`,
+  );
+  return;
+}
+
+// 2) holidays：date 不能为空；特殊营业日必须 open/close 且 open < close
+const badHolidayIndex = holidays.findIndex((h) => {
+  const dateOk = typeof h.date === 'string' && h.date.trim().length > 0;
+  if (!dateOk) return true;
+
+  if (!h.isClosed) {
+    return (
+      h.openMinutes == null ||
+      h.closeMinutes == null ||
+      h.openMinutes >= h.closeMinutes
+    );
+  }
+  return false;
+});
+if (badHolidayIndex >= 0) {
+  setError(
+    isZh
+      ? `节假日第 ${badHolidayIndex + 1} 行未填写日期或时间不合法。`
+      : `Invalid holidays at row ${badHolidayIndex + 1}: missing date or invalid hours.`,
+  );
+  return;
+}
+
     setSaving(true);
     setError(null);
     setSuccess(null);
 
     try {
       // 1. 保存每周营业时间（/admin/business/hours）
-      const hoursPayload: SaveHoursPayload = {
-        hours: hours.map((h) => ({
-          weekday: h.weekday,
-          // 对于 isClosed 的天，这里的分钟数只是占位，后端会根据 isClosed 决定是否使用
-          openMinutes: h.openMinutes ?? 0,
-          closeMinutes: h.closeMinutes ?? 0,
-          isClosed: h.isClosed,
-        })),
-      };
+const hoursPayload: SaveHoursPayload = {
+  hours: hours.map((h) => ({
+    weekday: h.weekday,
+    openMinutes: h.isClosed ? null : (h.openMinutes ?? 0),
+    closeMinutes: h.isClosed ? null : (h.closeMinutes ?? 0),
+    isClosed: h.isClosed,
+  })),
+};
 
-      await apiFetch('/admin/business/hours', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(hoursPayload),
-      });
+await apiFetch('/admin/business/hours', {
+  method: 'PUT',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(hoursPayload),
+});
 
       // 2. 保存门店临时关闭状态（/admin/business/config）
       await apiFetch<BusinessConfigDto>('/admin/business/config', {
@@ -392,47 +443,48 @@ export default function AdminHoursPage() {
       });
 
       // 3. 保存节假日（/admin/business/holidays，覆盖式）
-      const holidaysPayload = {
-        holidays: holidays.map((h) => {
-          const base: {
-            date: string;
-            name?: string;
-            isClosed: boolean;
-            openMinutes?: number | null;
-            closeMinutes?: number | null;
-          } = {
-            date: h.date,
-            name: h.name,
-            isClosed: h.isClosed,
-          };
+const holidaysPayload = {
+  holidays: holidays.map((h) => {
+    // ✅ 明确剥离 clientKey，避免未来误带字段
+    const { clientKey: _ignore, ...rest } = h;
 
-          if (!h.isClosed) {
-            base.openMinutes = h.openMinutes ?? 0;
-            base.closeMinutes = h.closeMinutes ?? 0;
-          }
+    const name =
+      typeof rest.name === 'string' && rest.name.trim().length > 0
+        ? rest.name.trim()
+        : undefined;
 
-          return base;
-        }),
-      };
+    return {
+      date: rest.date,
+      ...(name ? { name } : {}),
+      isClosed: rest.isClosed,
+      // ✅ 闭店日也带字段（null）；避免后端校验“缺字段”
+      openMinutes: rest.isClosed ? null : (rest.openMinutes ?? 0),
+      closeMinutes: rest.isClosed ? null : (rest.closeMinutes ?? 0),
+    };
+  }),
+};
 
-      const updatedConfig = await apiFetch<BusinessConfigDto>(
-        '/admin/business/holidays',
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(holidaysPayload),
-        },
-      );
+const updatedConfig = await apiFetch<BusinessConfigDto>(
+  '/admin/business/holidays',
+  {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(holidaysPayload),
+  },
+);
 
       // 用后端返回的最新 holidays 覆盖本地
-      setConfig(updatedConfig);
-      setHolidays(
-        (updatedConfig.holidays ?? []).slice().sort((a, b) => {
-          if (a.date < b.date) return -1;
-          if (a.date > b.date) return 1;
-          return a.id - b.id;
-        }),
-      );
+setConfig(updatedConfig);
+setHolidays(
+  toHolidayUi(updatedConfig.holidays ?? []).slice().sort((a, b) => {
+    if (!a.date && b.date) return 1;
+    if (a.date && !b.date) return -1;
+
+    if (a.date < b.date) return -1;
+    if (a.date > b.date) return 1;
+    return a.clientKey.localeCompare(b.clientKey);
+  }),
+);
 
       setSuccess(isZh ? '保存成功。' : 'Saved successfully.');
     } catch (e) {
@@ -739,7 +791,7 @@ export default function AdminHoursPage() {
           <div className="space-y-2">
             {holidays.map((h, index) => (
               <div
-                key={h.id}
+                key={h.clientKey}
                 className="flex flex-col gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3 md:flex-row md:items-center"
               >
                 {/* 日期 + 名称 */}

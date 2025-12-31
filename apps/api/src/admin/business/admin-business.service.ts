@@ -13,7 +13,6 @@ export type DayConfigDto = {
 };
 
 export type HolidayDto = {
-  id?: number;
   date: string; // 'YYYY-MM-DD'
   name?: string;
   isClosed: boolean;
@@ -29,7 +28,7 @@ export type BusinessConfigResponse = {
   priorityPerKmCents: number;
   salesTaxRate: number;
   hours: DayConfigDto[];
-  holidays: (HolidayDto & { id: number })[];
+  holidays: HolidayDto[];
 };
 
 @Injectable()
@@ -66,7 +65,6 @@ export class AdminBusinessService {
         isClosed: h.isClosed,
       })),
       holidays: holidays.map((h) => ({
-        id: h.id,
         date: this.dateToIsoDate(h.date),
         name: h.name ?? undefined,
         isClosed: h.isClosed,
