@@ -18,6 +18,8 @@ export type SessionUser = {
   id?: string;
   name?: string | null;
   mfaVerifiedAt?: string | null;
+  requiresTwoFactor?: boolean;
+  twoFactorEnabled?: boolean;
 };
 
 export type Session =

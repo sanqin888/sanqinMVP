@@ -375,17 +375,31 @@ export class AuthController {
   me(
     @Req()
     req: Request & {
-      user?: { userStableId: string; email?: string | null; role?: string };
+      user?: {
+        userStableId: string;
+        email?: string | null;
+        role?: string;
+        twoFactorEnabledAt?: Date | null;
+        twoFactorMethod?: any;
+      };
       session?: { mfaVerifiedAt?: Date | null };
     },
   ) {
     const user = req.user;
     if (!user) return null;
+
+    const twoFactorEnabled =
+      !!user.twoFactorEnabledAt && user.twoFactorMethod === 'SMS';
+    const mfaVerifiedAt = req.session?.mfaVerifiedAt ?? null;
+    const requiresTwoFactor = twoFactorEnabled && !mfaVerifiedAt;
+
     return {
       userStableId: user.userStableId,
       email: user.email,
       role: user.role,
-      mfaVerifiedAt: req.session?.mfaVerifiedAt ?? null,
+      mfaVerifiedAt,
+      twoFactorEnabled,
+      requiresTwoFactor,
     };
   }
 
