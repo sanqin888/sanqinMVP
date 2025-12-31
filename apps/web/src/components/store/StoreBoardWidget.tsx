@@ -7,8 +7,7 @@ import { apiFetch, advanceOrder } from "@/lib/api-client";
 import { parseBackendDateMs } from "@/lib/time/tz";
 
 type BoardOrderItem = {
-  id: string;
-  productId: string;
+  productStableId: string
   qty: number;
   displayName?: string | null;
   nameEn?: string | null;
@@ -42,8 +41,8 @@ function pickItemName(item: BoardOrderItem, locale: Locale): string {
   const trimmedDisplay = item.displayName?.trim() ?? "";
   const trimmedEn = item.nameEn?.trim() ?? "";
   const trimmedZh = item.nameZh?.trim() ?? "";
-  if (locale === "zh") return trimmedZh || trimmedDisplay || trimmedEn || item.productId;
-  return trimmedEn || trimmedDisplay || trimmedZh || item.productId;
+  if (locale === "zh") return trimmedZh || trimmedDisplay || trimmedEn || item.productStableId;
+  return trimmedEn || trimmedDisplay || trimmedZh || item.productStableId;
 }
 
 function formatStatus(status: BoardOrder["status"], locale: Locale): string {
@@ -448,20 +447,20 @@ export function StoreBoardWidget(props: { locale: Locale }) {
 
                   <div className="border-t border-slate-800 my-2" />
 
-                  <ul className="space-y-1 text-sm max-h-28 overflow-auto pr-1">
-                    {order.items.map((item) => (
-                      <li key={item.id} className="flex justify-between gap-2">
-                        <span className="truncate">
-                          x{item.qty} · {pickItemName(item, locale)}
-                        </span>
-                        {typeof item.unitPriceCents === "number" && (
-                          <span className="text-slate-400 whitespace-nowrap">
-                            {formatMoney(item.unitPriceCents * item.qty)}
-                          </span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
+<ul className="space-y-1 text-sm max-h-28 overflow-auto pr-1">
+  {order.items.map((item, idx) => (
+    <li key={`${sid}:${idx}`} className="flex justify-between gap-2">
+      <span className="truncate">
+        x{item.qty} · {pickItemName(item, locale)}
+      </span>
+      {typeof item.unitPriceCents === "number" && (
+        <span className="text-slate-400 whitespace-nowrap">
+          {formatMoney(item.unitPriceCents * item.qty)}
+        </span>
+      )}
+    </li>
+  ))}
+</ul>
 
                   <div className="mt-3 flex items-center justify-between gap-2">
                     <button

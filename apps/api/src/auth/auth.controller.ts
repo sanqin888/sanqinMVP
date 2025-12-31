@@ -2,6 +2,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Post,
   Req,
@@ -15,6 +16,8 @@ import {
   POS_DEVICE_ID_COOKIE,
   POS_DEVICE_KEY_COOKIE,
 } from '../pos/pos-device.constants';
+import { TRUSTED_DEVICE_COOKIE } from './trusted-device.constants';
+import { MfaGuard } from './mfa.guard';
 import { AuthGuard } from '@nestjs/passport';
 import { GoogleStartGuard } from './oauth/google.guard';
 import { OauthStateService } from './oauth/oauth-state.service';
@@ -44,7 +47,12 @@ export class AuthController {
         : Array.isArray(stateParam) && typeof stateParam[0] === 'string'
           ? stateParam[0]
           : '';
-    const { cb, phone, pv } = this.oauthState.verify(stateRaw);
+    const { cb } = this.oauthState.verify(stateRaw);
+    const cookies = req.cookies as Partial<Record<string, string>> | undefined;
+    const trustedDeviceToken =
+      typeof cookies?.[TRUSTED_DEVICE_COOKIE] === 'string'
+        ? cookies[TRUSTED_DEVICE_COOKIE]
+        : undefined;
 
     const g = req.user as GoogleProfile;
 
@@ -52,9 +60,8 @@ export class AuthController {
       googleSub: g.sub,
       email: g.email,
       name: g.name,
-      phone,
-      pv,
       deviceInfo: typeof deviceInfo === 'string' ? deviceInfo : undefined,
+      trustedDeviceToken,
     });
 
     res.cookie(SESSION_COOKIE_NAME, result.session.sessionId, {
@@ -65,7 +72,13 @@ export class AuthController {
       path: '/',
     });
 
-    return res.redirect(302, cb || '/');
+    const next = cb || '/';
+    if (result.requiresTwoFactor) {
+      const params = new URLSearchParams({ next });
+      return res.redirect(302, `/membership/2fa?${params.toString()}`);
+    }
+
+    return res.redirect(302, next);
   }
 
   @Post('login')
@@ -97,6 +110,10 @@ export class AuthController {
       (typeof cookies?.[POS_DEVICE_KEY_COOKIE] === 'string'
         ? cookies[POS_DEVICE_KEY_COOKIE]
         : undefined);
+    const trustedDeviceToken =
+      typeof cookies?.[TRUSTED_DEVICE_COOKIE] === 'string'
+        ? cookies[TRUSTED_DEVICE_COOKIE]
+        : undefined;
     const result = await this.authService.loginWithPassword({
       email: body?.email ?? '',
       password: body?.password ?? '',
@@ -105,6 +122,7 @@ export class AuthController {
         typeof deviceStableId === 'string' ? deviceStableId : undefined,
       posDeviceKey: typeof deviceKey === 'string' ? deviceKey : undefined,
       deviceInfo: typeof deviceInfo === 'string' ? deviceInfo : undefined,
+      trustedDeviceToken,
     });
 
     res.cookie(SESSION_COOKIE_NAME, result.session.sessionId, {
@@ -138,25 +156,27 @@ export class AuthController {
       email: result.user.email,
       role: result.user.role,
       expiresAt: result.session.expiresAt,
+      requiresTwoFactor: result.requiresTwoFactor,
     };
   }
 
-  @Post('login/otp/request')
-  async requestOtp(@Body() body: { phone?: string }) {
-    return this.authService.requestLoginOtp({ phone: body?.phone ?? '' });
-  }
-
-  @Post('login/otp/verify')
-  async verifyOtp(
-    @Body() body: { phone?: string; code?: string },
+  @Post('login/password')
+  async loginMemberPassword(
+    @Body() body: { email?: string; password?: string },
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
     const deviceInfo = req.headers['user-agent'];
-    const result = await this.authService.verifyLoginOtp({
-      phone: body?.phone ?? '',
-      code: body?.code ?? '',
+    const cookies = req.cookies as Partial<Record<string, string>> | undefined;
+    const trustedDeviceToken =
+      typeof cookies?.[TRUSTED_DEVICE_COOKIE] === 'string'
+        ? cookies[TRUSTED_DEVICE_COOKIE]
+        : undefined;
+    const result = await this.authService.loginWithMemberPassword({
+      email: body?.email ?? '',
+      password: body?.password ?? '',
       deviceInfo: typeof deviceInfo === 'string' ? deviceInfo : undefined,
+      trustedDeviceToken,
     });
 
     res.cookie(SESSION_COOKIE_NAME, result.session.sessionId, {
@@ -170,9 +190,168 @@ export class AuthController {
     return {
       success: true,
       userStableId: result.user.userStableId,
+      email: result.user.email,
       role: result.user.role,
-      verificationToken: result.verificationToken,
+      expiresAt: result.session.expiresAt,
+      requiresTwoFactor: result.requiresTwoFactor,
     };
+  }
+
+  @UseGuards(SessionAuthGuard)
+  @Post('2fa/sms/request')
+  async requestTwoFactorSms(@Req() req: Request) {
+    const cookieHeader = req.headers.cookie ?? '';
+    const sessionId = cookieHeader
+      .split(';')
+      .map((part) => part.trim())
+      .find((part) => part.startsWith(`${SESSION_COOKIE_NAME}=`))
+      ?.split('=')[1];
+    if (!sessionId) {
+      throw new ForbiddenException('Missing session');
+    }
+
+    return await this.authService.requestTwoFactorSms({
+      sessionId,
+      ip: req.ip,
+      userAgent:
+        typeof req.headers['user-agent'] === 'string'
+          ? req.headers['user-agent']
+          : undefined,
+    });
+  }
+
+  @UseGuards(SessionAuthGuard)
+  @Post('2fa/sms/verify')
+  async verifyTwoFactorSms(
+    @Body()
+    body: { code?: string; rememberDevice?: boolean; deviceLabel?: string },
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const cookieHeader = req.headers.cookie ?? '';
+    const sessionId = cookieHeader
+      .split(';')
+      .map((part) => part.trim())
+      .find((part) => part.startsWith(`${SESSION_COOKIE_NAME}=`))
+      ?.split('=')[1];
+    if (!sessionId) {
+      throw new ForbiddenException('Missing session');
+    }
+
+    const result = await this.authService.verifyTwoFactorSms({
+      sessionId,
+      code: body?.code ?? '',
+      rememberDevice: !!body?.rememberDevice,
+      deviceLabel:
+        typeof body?.deviceLabel === 'string' ? body.deviceLabel : undefined,
+    });
+
+    if (result.trustedDevice) {
+      const maxAge = result.trustedDevice.expiresAt.getTime() - Date.now();
+      res.cookie(TRUSTED_DEVICE_COOKIE, result.trustedDevice.token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge,
+        path: '/',
+      });
+    }
+
+    return { success: true };
+  }
+
+  @UseGuards(SessionAuthGuard)
+  @Post('phone/enroll/request')
+  async requestPhoneEnroll(
+    @Body() body: { phone?: string },
+    @Req() req: Request,
+  ) {
+    const cookieHeader = req.headers.cookie ?? '';
+    const sessionId = cookieHeader
+      .split(';')
+      .map((part) => part.trim())
+      .find((part) => part.startsWith(`${SESSION_COOKIE_NAME}=`))
+      ?.split('=')[1];
+    if (!sessionId) {
+      throw new ForbiddenException('Missing session');
+    }
+
+    return await this.authService.requestPhoneEnrollOtp({
+      sessionId,
+      phone: body?.phone ?? '',
+    });
+  }
+
+  @UseGuards(SessionAuthGuard)
+  @Post('phone/enroll/verify')
+  async verifyPhoneEnroll(
+    @Body() body: { phone?: string; code?: string },
+    @Req() req: Request,
+  ) {
+    const cookieHeader = req.headers.cookie ?? '';
+    const sessionId = cookieHeader
+      .split(';')
+      .map((part) => part.trim())
+      .find((part) => part.startsWith(`${SESSION_COOKIE_NAME}=`))
+      ?.split('=')[1];
+    if (!sessionId) {
+      throw new ForbiddenException('Missing session');
+    }
+
+    return await this.authService.verifyPhoneEnrollOtp({
+      sessionId,
+      phone: body?.phone ?? '',
+      code: body?.code ?? '',
+    });
+  }
+
+  @UseGuards(SessionAuthGuard)
+  @Post('2fa/enable')
+  async enableTwoFactor(@Req() req: Request) {
+    const cookieHeader = req.headers.cookie ?? '';
+    const sessionId = cookieHeader
+      .split(';')
+      .map((part) => part.trim())
+      .find((part) => part.startsWith(`${SESSION_COOKIE_NAME}=`))
+      ?.split('=')[1];
+    if (!sessionId) {
+      throw new ForbiddenException('Missing session');
+    }
+
+    return await this.authService.enableTwoFactor({ sessionId });
+  }
+
+  @UseGuards(SessionAuthGuard, MfaGuard)
+  @Post('2fa/disable')
+  async disableTwoFactor(@Req() req: Request) {
+    const cookieHeader = req.headers.cookie ?? '';
+    const sessionId = cookieHeader
+      .split(';')
+      .map((part) => part.trim())
+      .find((part) => part.startsWith(`${SESSION_COOKIE_NAME}=`))
+      ?.split('=')[1];
+    if (!sessionId) {
+      throw new ForbiddenException('Missing session');
+    }
+
+    return await this.authService.disableTwoFactor({ sessionId });
+  }
+
+  @Post('password/reset/request')
+  async requestPasswordReset(@Body() body: { email?: string }) {
+    return await this.authService.requestPasswordReset({
+      email: body?.email ?? '',
+    });
+  }
+
+  @Post('password/reset/confirm')
+  async confirmPasswordReset(
+    @Body() body: { token?: string; newPassword?: string },
+  ) {
+    return await this.authService.confirmPasswordReset({
+      token: body?.token ?? '',
+      newPassword: body?.newPassword ?? '',
+    });
   }
 
   @Post('accept-invite')
@@ -197,6 +376,7 @@ export class AuthController {
     @Req()
     req: Request & {
       user?: { userStableId: string; email?: string | null; role?: string };
+      session?: { mfaVerifiedAt?: Date | null };
     },
   ) {
     const user = req.user;
@@ -205,6 +385,7 @@ export class AuthController {
       userStableId: user.userStableId,
       email: user.email,
       role: user.role,
+      mfaVerifiedAt: req.session?.mfaVerifiedAt ?? null,
     };
   }
 
@@ -223,6 +404,7 @@ export class AuthController {
     res.clearCookie(POS_DEVICE_ID_COOKIE, { path: '/' });
     res.clearCookie(POS_DEVICE_KEY_COOKIE, { path: '/' });
     res.clearCookie(SESSION_COOKIE_NAME, { path: '/' });
+    res.clearCookie(TRUSTED_DEVICE_COOKIE, { path: '/' });
     return { success: true };
   }
 }

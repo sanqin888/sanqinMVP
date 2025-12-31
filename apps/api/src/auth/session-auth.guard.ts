@@ -9,6 +9,8 @@ import { AuthService } from './auth.service';
 
 export const SESSION_COOKIE_NAME = 'session_id';
 
+type Session = Awaited<ReturnType<AuthService['getSession']>>;
+
 function parseCookies(cookieHeader?: string): Record<string, string> {
   if (!cookieHeader) return {};
   return cookieHeader.split(';').reduce<Record<string, string>>((acc, part) => {
@@ -28,6 +30,7 @@ export class SessionAuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<{
       headers?: Record<string, string | string[] | undefined>;
       user?: unknown;
+      session?: Session;
     }>();
     const headers = request.headers ?? {};
     const cookieHeader =
@@ -42,12 +45,13 @@ export class SessionAuthGuard implements CanActivate {
       throw new UnauthorizedException('Missing session');
     }
 
-    const user = await this.authService.getSessionUser(sessionId);
-    if (!user) {
+    const session = await this.authService.getSession(sessionId);
+    if (!session) {
       throw new UnauthorizedException('Invalid session');
     }
 
-    request.user = user;
+    request.user = session.user;
+    request.session = session;
     return true;
   }
 }

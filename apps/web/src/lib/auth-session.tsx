@@ -17,6 +17,7 @@ export type SessionUser = {
   role?: string | null;
   id?: string;
   name?: string | null;
+  mfaVerifiedAt?: string | null;
 };
 
 export type Session =
@@ -125,28 +126,8 @@ export function signIn(provider: 'google', opts?: SignInOptions): void {
   if (provider !== 'google') throw new Error('Unsupported provider');
 
   const callbackUrl = opts?.callbackUrl ?? '/';
-
-  // 从 membership/login 写入的 prefill 里取 phone + pv(OTP verificationToken)
-  let phone: string | undefined;
-  let pv: string | undefined;
-  try {
-    const raw = window.localStorage.getItem('sanqin_membership_prefill');
-    if (raw) {
-      const p = JSON.parse(raw) as {
-        phone?: string;
-        phoneVerificationToken?: string;
-      };
-      phone = p.phone?.trim() || undefined;
-      pv = p.phoneVerificationToken?.trim() || undefined;
-    }
-  } catch {
-    // ignore
-  }
-
   const qs = new URLSearchParams();
   qs.set('callbackUrl', callbackUrl);
-  if (phone) qs.set('phone', phone);
-  if (pv) qs.set('pv', pv);
 
   // 走你现有 /api 代理到 UPSTREAM/api
   window.location.assign(`/api/v1/auth/oauth/google/start?${qs.toString()}`);

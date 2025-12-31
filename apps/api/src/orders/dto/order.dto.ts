@@ -48,6 +48,8 @@ export type OrderDto = {
   subtotalCents: number;
   taxCents: number;
   deliveryFeeCents: number;
+  deliveryCostCents: number | null; // 白标实际成本（没有就 null/0，按你偏好）
+  deliverySubsidyCents: number | null; //补贴金额
   totalCents: number;
 
   couponCodeSnapshot: string | null;

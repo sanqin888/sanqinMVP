@@ -8,75 +8,35 @@ import {
   Post,
   Query,
   Req,
+  UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { MembershipService } from './membership.service';
-import { isStableId } from '../common/utils/stable-id';
+import { SessionAuthGuard } from '../auth/session-auth.guard';
+import { MfaGuard } from '../auth/mfa.guard';
 
 type AuthedRequest = Request & {
   user?: { id?: string; userStableId?: string };
 };
 
+@UseGuards(SessionAuthGuard, MfaGuard)
 @Controller('membership')
 export class MembershipController {
   constructor(private readonly membership: MembershipService) {}
 
-  /**
-   * 统一解析 userStableId：
-   * 优先级：session(req.user.userStableId) > body.userStableId > query.userStableId > header(x-user-stable-id)
-   * 兼容：body/query 的 userId 视为 stableId
-   */
-  private resolveUserStableId(
-    req: AuthedRequest,
-    opts: { queryUserStableId?: string; bodyUserStableId?: string } = {},
-  ): string {
-    const { queryUserStableId, bodyUserStableId } = opts;
-
-    const sessionStableId = req.user?.userStableId;
-
-    const headerRaw =
-      req.headers['x-user-stable-id'] ?? req.headers['x-user-id'];
-    const headerId =
-      typeof headerRaw === 'string'
-        ? headerRaw
-        : Array.isArray(headerRaw)
-          ? headerRaw[0]
-          : undefined;
-
-    const userStableId =
-      sessionStableId ??
-      (bodyUserStableId && bodyUserStableId.trim()) ??
-      (queryUserStableId && queryUserStableId.trim()) ??
-      (headerId && headerId.trim());
-
-    if (!userStableId) {
-      throw new BadRequestException('userStableId is required');
-    }
-
-    if (!isStableId(userStableId)) {
-      throw new BadRequestException('userStableId must be cuid');
-    }
-
-    return userStableId;
-  }
-
   @Get('summary')
   async summary(
     @Req() req: AuthedRequest,
-    @Query('userStableId') userStableIdFromQuery?: string,
-    @Query('userId') legacyUserIdFromQuery?: string,
     @Query('name') name?: string,
     @Query('email') email?: string,
     @Query('referrerEmail') referrerEmail?: string,
     @Query('birthdayMonth') birthdayMonthRaw?: string,
     @Query('birthdayDay') birthdayDayRaw?: string,
-    // ⭐ 新增：手机号 + 验证 token
-    @Query('phone') phoneFromQuery?: string,
-    @Query('pv') phoneVerificationToken?: string,
   ) {
-    const userStableId = this.resolveUserStableId(req, {
-      queryUserStableId: userStableIdFromQuery ?? legacyUserIdFromQuery,
-    });
+    const userStableId = req.user?.userStableId;
+    if (!userStableId) {
+      throw new BadRequestException('userStableId is required');
+    }
 
     // 把 query 里的生日转成 number，非法就当 undefined
     let birthdayMonth: number | undefined;
@@ -99,8 +59,6 @@ export class MembershipController {
       referrerEmail,
       birthdayMonth,
       birthdayDay,
-      phone: phoneFromQuery,
-      phoneVerificationToken,
     });
   }
 
@@ -116,13 +74,12 @@ export class MembershipController {
   @Get('loyalty-ledger')
   async loyaltyLedger(
     @Req() req: AuthedRequest,
-    @Query('userStableId') userStableIdFromQuery?: string,
-    @Query('userId') legacyUserIdFromQuery?: string,
     @Query('limit') limitRaw?: string,
   ) {
-    const userStableId = this.resolveUserStableId(req, {
-      queryUserStableId: userStableIdFromQuery ?? legacyUserIdFromQuery,
-    });
+    const userStableId = req.user?.userStableId;
+    if (!userStableId) {
+      throw new BadRequestException('userStableId is required');
+    }
 
     const limit = limitRaw ? Number.parseInt(limitRaw, 10) || 50 : 50;
 
@@ -138,14 +95,13 @@ export class MembershipController {
     @Req() req: AuthedRequest,
     @Body()
     body: {
-      userStableId?: string;
-      userId?: string;
       marketingEmailOptIn?: boolean;
     },
   ) {
-    const userStableId = this.resolveUserStableId(req, {
-      bodyUserStableId: body.userStableId ?? body.userId,
-    });
+    const userStableId = req.user?.userStableId;
+    if (!userStableId) {
+      throw new BadRequestException('userStableId is required');
+    }
     const { marketingEmailOptIn } = body;
 
     if (typeof marketingEmailOptIn !== 'boolean') {
@@ -169,16 +125,15 @@ export class MembershipController {
     @Req() req: AuthedRequest,
     @Body()
     body: {
-      userStableId?: string;
-      userId?: string;
       name?: string | null;
       birthdayMonth?: number | null;
       birthdayDay?: number | null;
     },
   ) {
-    const userStableId = this.resolveUserStableId(req, {
-      bodyUserStableId: body.userStableId ?? body.userId,
-    });
+    const userStableId = req.user?.userStableId;
+    if (!userStableId) {
+      throw new BadRequestException('userStableId is required');
+    }
 
     const user = await this.membership.updateProfile({
       userStableId,
@@ -197,26 +152,20 @@ export class MembershipController {
 
   // ✅ 优惠券列表（会自动补发欢迎券 / 生日券）
   @Get('coupons')
-  async listCoupons(
-    @Req() req: AuthedRequest,
-    @Query('userStableId') userStableIdFromQuery?: string,
-    @Query('userId') legacyUserIdFromQuery?: string,
-  ) {
-    const userStableId = this.resolveUserStableId(req, {
-      queryUserStableId: userStableIdFromQuery ?? legacyUserIdFromQuery,
-    });
+  async listCoupons(@Req() req: AuthedRequest) {
+    const userStableId = req.user?.userStableId;
+    if (!userStableId) {
+      throw new BadRequestException('userStableId is required');
+    }
     return this.membership.listCoupons({ userStableId });
   }
 
   @Get('addresses')
-  async listAddresses(
-    @Req() req: AuthedRequest,
-    @Query('userStableId') userStableIdFromQuery?: string,
-    @Query('userId') legacyUserIdFromQuery?: string,
-  ) {
-    const userStableId = this.resolveUserStableId(req, {
-      queryUserStableId: userStableIdFromQuery ?? legacyUserIdFromQuery,
-    });
+  async listAddresses(@Req() req: AuthedRequest) {
+    const userStableId = req.user?.userStableId;
+    if (!userStableId) {
+      throw new BadRequestException('userStableId is required');
+    }
     return this.membership.listAddresses({ userStableId });
   }
 
@@ -225,8 +174,6 @@ export class MembershipController {
     @Req() req: AuthedRequest,
     @Body()
     body: {
-      userStableId?: string;
-      userId?: string;
       label?: string;
       receiver?: string;
       phone?: string;
@@ -238,9 +185,10 @@ export class MembershipController {
       isDefault?: boolean;
     },
   ) {
-    const userStableId = this.resolveUserStableId(req, {
-      bodyUserStableId: body.userStableId ?? body.userId,
-    });
+    const userStableId = req.user?.userStableId;
+    if (!userStableId) {
+      throw new BadRequestException('userStableId is required');
+    }
 
     if (
       !body.receiver ||
@@ -275,11 +223,12 @@ export class MembershipController {
   async setDefaultAddress(
     @Req() req: AuthedRequest,
     @Body()
-    body: { userStableId?: string; userId?: string; addressStableId?: string },
+    body: { addressStableId?: string },
   ) {
-    const userStableId = this.resolveUserStableId(req, {
-      bodyUserStableId: body.userStableId ?? body.userId,
-    });
+    const userStableId = req.user?.userStableId;
+    if (!userStableId) {
+      throw new BadRequestException('userStableId is required');
+    }
     if (!body.addressStableId) {
       throw new BadRequestException('addressStableId is required');
     }
@@ -292,13 +241,12 @@ export class MembershipController {
   @Delete('addresses')
   async deleteAddress(
     @Req() req: AuthedRequest,
-    @Query('userStableId') userStableIdFromQuery?: string,
-    @Query('userId') legacyUserIdFromQuery?: string,
     @Query('addressStableId') addressStableId?: string,
   ) {
-    const userStableId = this.resolveUserStableId(req, {
-      queryUserStableId: userStableIdFromQuery ?? legacyUserIdFromQuery,
-    });
+    const userStableId = req.user?.userStableId;
+    if (!userStableId) {
+      throw new BadRequestException('userStableId is required');
+    }
     if (!addressStableId) {
       throw new BadRequestException('addressStableId is required');
     }

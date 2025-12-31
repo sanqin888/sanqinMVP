@@ -50,6 +50,9 @@ type MemberProfile = {
   name?: string;
   email?: string;
   phone?: string | null;
+  phoneVerified?: boolean;
+  twoFactorEnabledAt?: string | null;
+  twoFactorMethod?: 'OFF' | 'SMS';
   birthdayMonth?: number | null;
   birthdayDay?: number | null;
   referrerEmail?: string | null;
@@ -78,6 +81,9 @@ type MembershipSummaryResponse = {
   displayName: string | null;
   email: string | null;
   phone?: string | null;
+  phoneVerified?: boolean;
+  twoFactorEnabledAt?: string | null;
+  twoFactorMethod?: 'OFF' | 'SMS';
   tier: MemberTier;
   points: number;
   lifetimeSpendCents: number;
@@ -173,8 +179,8 @@ function formatCurrency(cents: number): string {
 export default function MembershipHomePage() {
   const router = useRouter();
   const { locale } = useParams<{ locale: Locale }>();
-  const { data: session, status } = useSession();
   const searchParams = useSearchParams();
+  const { data: session, status } = useSession();
 
   const [activeTab, setActiveTab] = useState<
     'overview' | 'orders' | 'points' | 'addresses' | 'coupons' | 'profile'
@@ -201,6 +207,26 @@ export default function MembershipHomePage() {
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileSaved, setProfileSaved] = useState(false);
+  const [birthdaySaving, setBirthdaySaving] = useState(false);
+  const [birthdayError, setBirthdayError] = useState<string | null>(null);
+  const [birthdaySaved, setBirthdaySaved] = useState(false);
+  const [phoneEnrollInput, setPhoneEnrollInput] = useState('');
+  const [phoneEnrollCode, setPhoneEnrollCode] = useState('');
+  const [phoneEnrollSending, setPhoneEnrollSending] = useState(false);
+  const [phoneEnrollVerifying, setPhoneEnrollVerifying] = useState(false);
+  const [phoneEnrollError, setPhoneEnrollError] = useState<string | null>(null);
+  const [twoFactorSaving, setTwoFactorSaving] = useState(false);
+  const [twoFactorError, setTwoFactorError] = useState<string | null>(null);
+
+  const handlePhoneEnrollInputChange = useCallback((value: string) => {
+    setPhoneEnrollInput(value);
+    setPhoneEnrollError(null);
+  }, []);
+
+  const handlePhoneEnrollCodeChange = useCallback((value: string) => {
+    setPhoneEnrollCode(value);
+    setPhoneEnrollError(null);
+  }, []);
 
   // 积分流水
   const [loyaltyEntries, setLoyaltyEntries] = useState<LoyaltyEntry[]>([]);
@@ -221,13 +247,15 @@ export default function MembershipHomePage() {
     }
   }, [status, router, locale]);
 
+  useEffect(() => {
+    if (status === 'authenticated' && !session?.user?.mfaVerifiedAt) {
+      router.replace(`/${locale}/membership/2fa`);
+    }
+  }, [status, session?.user?.mfaVerifiedAt, router, locale]);
+
   // 拉取会员概要信息（积分 + 最近订单 + 营销订阅）
   useEffect(() => {
     if (status !== 'authenticated' || !session?.user) return;
-
-    const s = session as SessionWithUserId | null;
-    const userStableId = s?.userId ?? s?.user?.id ?? undefined;
-    if (!userStableId) return;
 
     const controller = new AbortController();
 
@@ -235,64 +263,9 @@ export default function MembershipHomePage() {
       try {
         setSummaryLoading(true);
         setSummaryError(null);
-
-        const user = s?.user ?? session.user;
-        const params = new URLSearchParams({ userStableId });
-        if (user?.email) {
-          params.set('email', user.email);
-        }
-
-        // 👇 如果 Google 登录回调 URL 上带了已验证手机号，则一并传给 membership 做绑定
-        const phoneFromQuery = searchParams?.get('phone') ?? undefined;
-        const phoneVerificationToken = searchParams?.get('pv') ?? undefined;
-        if (phoneFromQuery && phoneVerificationToken) {
-          params.set('phone', phoneFromQuery);
-          params.set('pv', phoneVerificationToken);
-        }
-
-        // 首次注册时 localStorage 里存的推荐人/生日，只用一次
-        if (typeof window !== 'undefined') {
-          try {
-            const rawExtra = window.localStorage.getItem(
-              'sanqin_membership_prefill',
-            );
-            if (rawExtra) {
-              const extra = JSON.parse(rawExtra) as {
-                phone?: string | null;
-                phoneVerificationToken?: string | null;
-                referrerEmail?: string | null;
-                birthdayMonth?: string | null | number;
-                birthdayDay?: string | null | number;
-                marketingEmailOptIn?: boolean;
-              };
-
-              if (!phoneFromQuery && extra.phone && extra.phoneVerificationToken) {
-                params.set('phone', String(extra.phone));
-                params.set('pv', String(extra.phoneVerificationToken));
-              }
-
-              if (extra.referrerEmail) {
-                params.set('referrerEmail', String(extra.referrerEmail));
-              }
-              if (extra.birthdayMonth && extra.birthdayDay) {
-                params.set('birthdayMonth', String(extra.birthdayMonth));
-                params.set('birthdayDay', String(extra.birthdayDay));
-              }
-
-              window.localStorage.removeItem('sanqin_membership_prefill');
-            }
-          } catch (e) {
-            console.error(
-              'Failed to read membership prefill from localStorage',
-              e,
-            );
-          }
-        }
-
-        const res = await fetch(
-          `/api/v1/membership/summary?${params.toString()}`,
-          { signal: controller.signal },
-        );
+        const res = await fetch('/api/v1/membership/summary', {
+          signal: controller.signal,
+        });
 
         if (!res.ok) {
           let errorMessage = '';
@@ -346,9 +319,12 @@ export default function MembershipHomePage() {
 
         setMember({
           userStableId: data.userStableId,
-          name: data.displayName ?? user?.name ?? undefined,
-          email: data.email ?? user?.email ?? undefined,
+          name: data.displayName ?? session.user?.name ?? undefined,
+          email: data.email ?? session.user?.email ?? undefined,
           phone: data.phone ?? undefined,
+          phoneVerified: data.phoneVerified ?? false,
+          twoFactorEnabledAt: data.twoFactorEnabledAt ?? null,
+          twoFactorMethod: data.twoFactorMethod ?? 'OFF',
           birthdayMonth: data.birthdayMonth ?? null,
           birthdayDay: data.birthdayDay ?? null,
           referrerEmail: data.referrerEmail ?? null,
@@ -469,7 +445,19 @@ export default function MembershipHomePage() {
 
   useEffect(() => {
     setProfileSaved(false);
-  }, [profileName, birthdayMonthInput, birthdayDayInput]);
+  }, [profileName]);
+
+  useEffect(() => {
+    setBirthdaySaved(false);
+  }, [birthdayMonthInput, birthdayDayInput]);
+
+  useEffect(() => {
+    if (member?.phoneVerified) {
+      setPhoneEnrollInput(member.phone ?? '');
+      setPhoneEnrollCode('');
+      setPhoneEnrollError(null);
+    }
+  }, [member?.phoneVerified, member?.phone]);
 
   // 拉取积分流水：首次切到“积分”tab 且已登录时加载一次
   useEffect(() => {
@@ -601,31 +589,6 @@ export default function MembershipHomePage() {
       payload.name = trimmedName;
     }
 
-    if (member.birthdayMonth == null && member.birthdayDay == null) {
-      if (birthdayMonthInput || birthdayDayInput) {
-        const parsedMonth = Number.parseInt(birthdayMonthInput, 10);
-        const parsedDay = Number.parseInt(birthdayDayInput, 10);
-        if (
-          !Number.isFinite(parsedMonth) ||
-          !Number.isFinite(parsedDay) ||
-          parsedMonth < 1 ||
-          parsedMonth > 12 ||
-          parsedDay < 1 ||
-          parsedDay > 31
-        ) {
-          setProfileSaving(false);
-          setProfileError(
-            isZh
-              ? '生日格式不正确，请填写 1-12 月和 1-31 日。'
-              : 'Invalid birthday. Please enter month 1-12 and day 1-31.',
-          );
-          return;
-        }
-        payload.birthdayMonth = parsedMonth;
-        payload.birthdayDay = parsedDay;
-      }
-    }
-
     try {
       const res = await fetch('/api/v1/membership/profile', {
         method: 'POST',
@@ -655,10 +618,8 @@ export default function MembershipHomePage() {
             ? {
                 ...prev,
                 name: updated.name ?? prev.name,
-                birthdayMonth:
-                  updated.birthdayMonth ?? prev.birthdayMonth ?? null,
-                birthdayDay:
-                  updated.birthdayDay ?? prev.birthdayDay ?? null,
+                birthdayMonth: prev.birthdayMonth ?? null,
+                birthdayDay: prev.birthdayDay ?? null,
               }
             : prev,
         );
@@ -677,10 +638,188 @@ export default function MembershipHomePage() {
   }, [
     member,
     profileName,
-    birthdayMonthInput,
-    birthdayDayInput,
     isZh,
   ]);
+
+  const handleBirthdaySave = useCallback(async () => {
+    if (!member) return;
+    if (member.birthdayMonth != null || member.birthdayDay != null) return;
+
+    setBirthdaySaving(true);
+    setBirthdayError(null);
+    setBirthdaySaved(false);
+
+    const parsedMonth = Number.parseInt(birthdayMonthInput, 10);
+    const parsedDay = Number.parseInt(birthdayDayInput, 10);
+    if (
+      !Number.isFinite(parsedMonth) ||
+      !Number.isFinite(parsedDay) ||
+      parsedMonth < 1 ||
+      parsedMonth > 12 ||
+      parsedDay < 1 ||
+      parsedDay > 31
+    ) {
+      setBirthdaySaving(false);
+      setBirthdayError(
+        isZh
+          ? '生日格式不正确，请填写 1-12 月和 1-31 日。'
+          : 'Invalid birthday. Please enter month 1-12 and day 1-31.',
+      );
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/v1/membership/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          birthdayMonth: parsedMonth,
+          birthdayDay: parsedDay,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Failed with status ${res.status}`);
+      }
+
+      const raw = (await res.json()) as {
+        success?: boolean;
+        user?: {
+          birthdayMonth?: number | null;
+          birthdayDay?: number | null;
+        };
+      };
+
+      const updated = raw?.user;
+
+      if (updated) {
+        setMember((prev) =>
+          prev
+            ? {
+                ...prev,
+                birthdayMonth:
+                  updated.birthdayMonth ?? prev.birthdayMonth ?? null,
+                birthdayDay:
+                  updated.birthdayDay ?? prev.birthdayDay ?? null,
+              }
+            : prev,
+        );
+      }
+      setBirthdaySaved(true);
+    } catch (err) {
+      console.error(err);
+      setBirthdayError(
+        isZh
+          ? '生日保存失败，请稍后再试。'
+          : 'Failed to save birthday. Please try again later.',
+      );
+    } finally {
+      setBirthdaySaving(false);
+    }
+  }, [member, birthdayMonthInput, birthdayDayInput, isZh]);
+
+  const handleRequestPhoneEnroll = useCallback(async () => {
+    const trimmed = phoneEnrollInput.trim();
+    if (!trimmed) {
+      setPhoneEnrollError(
+        isZh ? '请输入手机号。' : 'Please enter your phone number.',
+      );
+      return;
+    }
+
+    try {
+      setPhoneEnrollSending(true);
+      setPhoneEnrollError(null);
+      await apiFetch('/auth/phone/enroll/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: trimmed }),
+      });
+    } catch (err) {
+      console.error(err);
+      setPhoneEnrollError(
+        isZh
+          ? '验证码发送失败，请稍后再试。'
+          : 'Failed to send code. Please try again.',
+      );
+    } finally {
+      setPhoneEnrollSending(false);
+    }
+  }, [phoneEnrollInput, isZh]);
+
+  const handleVerifyPhoneEnroll = useCallback(async () => {
+    const trimmed = phoneEnrollInput.trim();
+    if (!trimmed || !phoneEnrollCode.trim()) {
+      setPhoneEnrollError(
+        isZh ? '请输入手机号和验证码。' : 'Enter phone and code.',
+      );
+      return;
+    }
+
+    try {
+      setPhoneEnrollVerifying(true);
+      setPhoneEnrollError(null);
+      await apiFetch('/auth/phone/enroll/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: trimmed,
+          code: phoneEnrollCode.trim(),
+        }),
+      });
+
+      setMember((prev) =>
+        prev
+          ? {
+              ...prev,
+              phone: trimmed,
+              phoneVerified: true,
+            }
+          : prev,
+      );
+      setPhoneEnrollCode('');
+    } catch (err) {
+      console.error(err);
+      setPhoneEnrollError(
+        isZh
+          ? '验证码无效或已过期。'
+          : 'The code is invalid or expired.',
+      );
+    } finally {
+      setPhoneEnrollVerifying(false);
+    }
+  }, [phoneEnrollInput, phoneEnrollCode, isZh]);
+
+  const handleToggleTwoFactor = useCallback(
+    async (enable: boolean) => {
+      if (!member) return;
+      try {
+        setTwoFactorSaving(true);
+        setTwoFactorError(null);
+        const endpoint = enable ? '/auth/2fa/enable' : '/auth/2fa/disable';
+        await apiFetch(endpoint, { method: 'POST' });
+        setMember((prev) =>
+          prev
+            ? {
+                ...prev,
+                twoFactorEnabledAt: enable ? new Date().toISOString() : null,
+                twoFactorMethod: enable ? 'SMS' : 'OFF',
+              }
+            : prev,
+        );
+      } catch (err) {
+        console.error(err);
+        setTwoFactorError(
+          isZh
+            ? '操作失败，请稍后再试。'
+            : 'Failed to update 2FA setting. Please try again.',
+        );
+      } finally {
+        setTwoFactorSaving(false);
+      }
+    },
+    [member, isZh],
+  );
 
   // ⭐ 新增：如果注册时勾选了“营销邮件”，第一次进入会员中心时自动帮他开关一次
   useEffect(() => {
@@ -1042,6 +1181,22 @@ const tierProgress = (() => {
               profileError={profileError}
               profileSaved={profileSaved}
               onSaveProfile={handleProfileSave}
+              birthdaySaving={birthdaySaving}
+              birthdayError={birthdayError}
+              birthdaySaved={birthdaySaved}
+              onSaveBirthday={handleBirthdaySave}
+              phoneEnrollInput={phoneEnrollInput}
+              phoneEnrollCode={phoneEnrollCode}
+              phoneEnrollSending={phoneEnrollSending}
+              phoneEnrollVerifying={phoneEnrollVerifying}
+              phoneEnrollError={phoneEnrollError}
+              onPhoneEnrollInputChange={handlePhoneEnrollInputChange}
+              onPhoneEnrollCodeChange={handlePhoneEnrollCodeChange}
+              onRequestPhoneEnroll={handleRequestPhoneEnroll}
+              onVerifyPhoneEnroll={handleVerifyPhoneEnroll}
+              twoFactorSaving={twoFactorSaving}
+              twoFactorError={twoFactorError}
+              onToggleTwoFactor={handleToggleTwoFactor}
               marketingOptIn={marketingOptIn}
               marketingSaving={marketingSaving}
               marketingError={marketingError}
@@ -1655,6 +1810,22 @@ function ProfileSection({
   profileError,
   profileSaved,
   onSaveProfile,
+  birthdaySaving,
+  birthdayError,
+  birthdaySaved,
+  onSaveBirthday,
+  phoneEnrollInput,
+  phoneEnrollCode,
+  phoneEnrollSending,
+  phoneEnrollVerifying,
+  phoneEnrollError,
+  onPhoneEnrollInputChange,
+  onPhoneEnrollCodeChange,
+  onRequestPhoneEnroll,
+  onVerifyPhoneEnroll,
+  twoFactorSaving,
+  twoFactorError,
+  onToggleTwoFactor,
   marketingOptIn,
   marketingSaving,
   marketingError,
@@ -1673,6 +1844,22 @@ function ProfileSection({
   profileError: string | null;
   profileSaved: boolean;
   onSaveProfile: () => void;
+  birthdaySaving: boolean;
+  birthdayError: string | null;
+  birthdaySaved: boolean;
+  onSaveBirthday: () => void;
+  phoneEnrollInput: string;
+  phoneEnrollCode: string;
+  phoneEnrollSending: boolean;
+  phoneEnrollVerifying: boolean;
+  phoneEnrollError: string | null;
+  onPhoneEnrollInputChange: (value: string) => void;
+  onPhoneEnrollCodeChange: (value: string) => void;
+  onRequestPhoneEnroll: () => void;
+  onVerifyPhoneEnroll: () => void;
+  twoFactorSaving: boolean;
+  twoFactorError: string | null;
+  onToggleTwoFactor: (enable: boolean) => void;
   marketingOptIn: boolean | null;
   marketingSaving: boolean;
   marketingError: string | null;
@@ -1682,6 +1869,8 @@ function ProfileSection({
   const effectiveOptIn = !!marketingOptIn;
   const hasBirthday =
     user.birthdayMonth != null && user.birthdayDay != null;
+  const twoFactorEnabled =
+    !!user.twoFactorEnabledAt && user.twoFactorMethod === 'SMS';
   const birthdayDisplay = hasBirthday
     ? isZh
       ? `${user.birthdayMonth}月${user.birthdayDay}日`
@@ -1759,10 +1948,29 @@ function ProfileSection({
                 className="w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-900 focus:border-slate-400 focus:outline-none"
                 placeholder={isZh ? '日' : 'DD'}
               />
+              <button
+                type="button"
+                onClick={onSaveBirthday}
+                disabled={birthdaySaving}
+                className="rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+              >
+                {birthdaySaving
+                  ? isZh
+                    ? '保存中...'
+                    : 'Saving...'
+                  : isZh
+                    ? '保存生日'
+                    : 'Save birthday'}
+              </button>
               <span className="text-[11px] text-slate-400">
                 {isZh ? '填写后不可修改' : 'Once saved, cannot change'}
               </span>
             </div>
+          )}
+          {birthdaySaved && !birthdaySaving && (
+            <span className="mt-1 block text-[11px] text-emerald-600">
+              {isZh ? '生日已保存' : 'Birthday saved'}
+            </span>
           )}
         </div>
         <div>
@@ -1782,17 +1990,122 @@ function ProfileSection({
           </div>
         ) : null}
         <div>
-          <p className="text-slate-500">{isZh ? '手机号' : 'Phone'}</p>
-          <div className="mt-0.5 flex items-center justify-between gap-2">
-            <p className="text-slate-900">
-              {user.phone || (isZh ? '未绑定' : 'Not linked')}
+          <p className="text-slate-500">{isZh ? '安全设置' : 'Security'}</p>
+          <div className="mt-2 rounded-xl border border-slate-100 bg-slate-50 p-3">
+            <p className="text-[11px] font-medium text-slate-700">
+              {isZh ? '手机号绑定' : 'Phone verification'}
             </p>
-            <Link
-              href={`/${locale}/membership/login`}
-              className="shrink-0 rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
-            >
-              {isZh ? '更换手机号' : 'Change phone'}
-            </Link>
+            {user.phoneVerified ? (
+              <p className="mt-1 text-xs text-slate-900">
+                {user.phone}{' '}
+                <span className="ml-2 text-[11px] text-emerald-600">
+                  {isZh ? '已验证' : 'Verified'}
+                </span>
+              </p>
+            ) : (
+              <div className="mt-2 space-y-2">
+                <input
+                  type="tel"
+                  value={phoneEnrollInput}
+                  onChange={(event) =>
+                    onPhoneEnrollInputChange(event.target.value)
+                  }
+                  placeholder={
+                    isZh ? '请输入手机号' : 'Enter your phone number'
+                  }
+                  className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-slate-400 focus:outline-none"
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="text"
+                    value={phoneEnrollCode}
+                    onChange={(event) =>
+                      onPhoneEnrollCodeChange(event.target.value)
+                    }
+                    placeholder={isZh ? '验证码' : 'Code'}
+                    className="w-24 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-slate-400 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={onRequestPhoneEnroll}
+                    disabled={phoneEnrollSending}
+                    className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {phoneEnrollSending
+                      ? isZh
+                        ? '发送中...'
+                        : 'Sending...'
+                      : isZh
+                        ? '发送验证码'
+                        : 'Send code'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onVerifyPhoneEnroll}
+                    disabled={phoneEnrollVerifying}
+                    className="rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                  >
+                    {phoneEnrollVerifying
+                      ? isZh
+                        ? '验证中...'
+                        : 'Verifying...'
+                      : isZh
+                        ? '完成绑定'
+                        : 'Verify'}
+                  </button>
+                </div>
+                {phoneEnrollError && (
+                  <p className="text-[11px] text-rose-500">
+                    {phoneEnrollError}
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="mt-4 border-t border-slate-200 pt-3">
+              <p className="text-[11px] font-medium text-slate-700">
+                {isZh ? '短信二次验证 (2FA)' : 'SMS two-factor (2FA)'}
+              </p>
+              <p className="mt-1 text-[11px] text-slate-500">
+                {isZh
+                  ? '登录或敏感操作时需要短信验证码。'
+                  : 'Require SMS codes for sign-ins and sensitive actions.'}
+              </p>
+              <button
+                type="button"
+                onClick={() => onToggleTwoFactor(!twoFactorEnabled)}
+                disabled={twoFactorSaving || (!user.phoneVerified && !twoFactorEnabled)}
+                className={`mt-2 inline-flex items-center rounded-full px-3 py-1 text-[11px] font-medium ${
+                  twoFactorEnabled
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : 'bg-slate-200 text-slate-700'
+                } ${twoFactorSaving ? 'opacity-60' : ''}`}
+              >
+                {twoFactorSaving
+                  ? isZh
+                    ? '更新中...'
+                    : 'Updating...'
+                  : twoFactorEnabled
+                    ? isZh
+                      ? '关闭 2FA'
+                      : 'Disable 2FA'
+                    : isZh
+                      ? '开启 2FA'
+                      : 'Enable 2FA'}
+              </button>
+              {!user.phoneVerified && !twoFactorEnabled && (
+                <p className="mt-1 text-[11px] text-slate-500">
+                  {isZh
+                    ? '请先完成手机号验证。'
+                    : 'Verify your phone first.'}
+                </p>
+              )}
+              {twoFactorError && (
+                <p className="mt-1 text-[11px] text-rose-500">
+                  {twoFactorError}
+                </p>
+              )}
+            </div>
           </div>
         </div>
         <div>
@@ -1838,6 +2151,9 @@ function ProfileSection({
         </div>
         {profileError && (
           <p className="text-[11px] text-rose-500">{profileError}</p>
+        )}
+        {birthdayError && (
+          <p className="text-[11px] text-rose-500">{birthdayError}</p>
         )}
 
         {/* 会员规则入口 */}

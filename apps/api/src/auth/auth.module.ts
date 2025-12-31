@@ -10,6 +10,7 @@ import { GoogleStrategy } from './oauth/google.strategy';
 import { GoogleStartGuard } from './oauth/google.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import { RolesGuard } from './roles.guard';
+import { MfaGuard } from './mfa.guard';
 
 @Module({
   imports: [PrismaModule, PassportModule],
@@ -17,12 +18,13 @@ import { RolesGuard } from './roles.guard';
     AuthService,
     PrismaService,
     SessionAuthGuard,
+    MfaGuard,
     OauthStateService,
     GoogleStrategy,
     GoogleStartGuard,
     RolesGuard,
   ],
   controllers: [AuthController],
-  exports: [AuthService, SessionAuthGuard, RolesGuard],
+  exports: [AuthService, SessionAuthGuard, MfaGuard, RolesGuard],
 })
 export class AuthModule {}
