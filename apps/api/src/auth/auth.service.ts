@@ -65,9 +65,7 @@ export class AuthService {
 
   private hashOtp(code: string): string {
     const secret =
-      process.env.OTP_SECRET ??
-      process.env.OAUTH_STATE_SECRET ??
-      'dev-secret';
+      process.env.OTP_SECRET ?? process.env.OAUTH_STATE_SECRET ?? 'dev-secret';
     return createHmac('sha256', secret).update(code).digest('hex');
   }
 
@@ -75,9 +73,7 @@ export class AuthService {
     twoFactorEnabledAt: Date | null;
     twoFactorMethod: TwoFactorMethod;
   }): boolean {
-    return (
-      !!params.twoFactorEnabledAt && params.twoFactorMethod === 'SMS'
-    );
+    return !!params.twoFactorEnabledAt && params.twoFactorMethod === 'SMS';
   }
 
   async createSession(params: {
@@ -145,10 +141,7 @@ export class AuthService {
     return updated;
   }
 
-  private async findTrustedDevice(params: {
-    userId: string;
-    token: string;
-  }) {
+  private async findTrustedDevice(params: { userId: string; token: string }) {
     const tokenHash = this.hashToken(params.token);
     const now = new Date();
     const device = await this.prisma.trustedDevice.findFirst({
@@ -577,17 +570,12 @@ export class AuthService {
       },
     });
 
-    this.logger.log(
-      `[DEV] Password reset token for ${email}: ${token}`,
-    );
+    this.logger.log(`[DEV] Password reset token for ${email}: ${token}`);
 
     return { success: true };
   }
 
-  async requestPhoneEnrollOtp(params: {
-    sessionId: string;
-    phone: string;
-  }) {
+  async requestPhoneEnrollOtp(params: { sessionId: string; phone: string }) {
     const session = await this.getSession(params.sessionId);
     if (!session) {
       throw new UnauthorizedException('Invalid session');
