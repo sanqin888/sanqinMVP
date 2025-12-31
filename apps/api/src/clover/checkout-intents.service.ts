@@ -131,7 +131,10 @@ export class CheckoutIntentsService {
     });
   }
 
-  async markFailed(params: { intentId: string; result?: string }): Promise<void> {
+  async markFailed(params: {
+    intentId: string;
+    result?: string;
+  }): Promise<void> {
     await this.prisma.checkoutIntent.updateMany({
       where: {
         id: params.intentId,

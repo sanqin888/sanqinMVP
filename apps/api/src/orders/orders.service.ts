@@ -256,9 +256,13 @@ export class OrdersService {
     if (error.code !== 'P2002') return null;
     const meta = error.meta as { target?: unknown } | undefined;
     const target = meta?.target;
-    if (Array.isArray(target)) return target;
-    if (typeof target === 'string') return [target];
-    return null;
+    if (Array.isArray(target)) {
+      const filtered = target.filter(
+        (item): item is string => typeof item === 'string',
+      );
+      return filtered.length > 0 ? filtered : null;
+    }
+    return typeof target === 'string' ? [target] : null;
   }
 
   private isClientRequestIdUniqueViolation(error: unknown): boolean {
@@ -1455,7 +1459,10 @@ export class OrdersService {
             where: {
               OR: [
                 ...(stableKey
-                  ? [{ orderStableId: stableKey }, { clientRequestId: stableKey }]
+                  ? [
+                      { orderStableId: stableKey },
+                      { clientRequestId: stableKey },
+                    ]
                   : []),
                 ...(legacyKey ? [{ clientRequestId: legacyKey }] : []),
               ],
