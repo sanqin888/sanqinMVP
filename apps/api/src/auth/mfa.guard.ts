@@ -7,7 +7,7 @@ import {
 
 @Injectable()
 export class MfaGuard implements CanActivate {
-  async canActivate(context: ExecutionContext): Promise<boolean> {
+  canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<{
       session?: { mfaVerifiedAt?: Date | null };
     }>();

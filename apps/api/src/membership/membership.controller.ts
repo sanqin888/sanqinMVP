@@ -152,9 +152,7 @@ export class MembershipController {
 
   // ✅ 优惠券列表（会自动补发欢迎券 / 生日券）
   @Get('coupons')
-  async listCoupons(
-    @Req() req: AuthedRequest,
-  ) {
+  async listCoupons(@Req() req: AuthedRequest) {
     const userStableId = req.user?.userStableId;
     if (!userStableId) {
       throw new BadRequestException('userStableId is required');
@@ -163,9 +161,7 @@ export class MembershipController {
   }
 
   @Get('addresses')
-  async listAddresses(
-    @Req() req: AuthedRequest,
-  ) {
+  async listAddresses(@Req() req: AuthedRequest) {
     const userStableId = req.user?.userStableId;
     if (!userStableId) {
       throw new BadRequestException('userStableId is required');
