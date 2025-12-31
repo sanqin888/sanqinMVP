@@ -251,14 +251,23 @@ export class OrdersService {
     throw new BadRequestException('failed to allocate clientRequestId');
   }
 
-  private isClientRequestIdUniqueViolation(error: unknown): boolean {
-    if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
-    if (error.code !== 'P2002') return false;
+  private getUniqueViolationTargets(error: unknown): string[] | null {
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return null;
+    if (error.code !== 'P2002') return null;
     const meta = error.meta as { target?: unknown } | undefined;
     const target = meta?.target;
-    if (Array.isArray(target)) return target.includes('clientRequestId');
-    if (typeof target === 'string') return target.includes('clientRequestId');
-    return false;
+    if (Array.isArray(target)) {
+      const filtered = target.filter(
+        (item): item is string => typeof item === 'string',
+      );
+      return filtered.length > 0 ? filtered : null;
+    }
+    return typeof target === 'string' ? [target] : null;
+  }
+
+  private isClientRequestIdUniqueViolation(error: unknown): boolean {
+    const targets = this.getUniqueViolationTargets(error);
+    return targets ? targets.includes('clientRequestId') : false;
   }
 
   /**
@@ -1337,6 +1346,7 @@ export class OrdersService {
             const created = (await tx.order.create({
               data: {
                 id: orderId,
+                status: 'paid',
                 paidAt,
                 paymentMethod,
                 userId: dto.userId ?? null,
@@ -1435,6 +1445,32 @@ export class OrdersService {
 
         return order;
       } catch (e: unknown) {
+        const uniqueTargets = this.getUniqueViolationTargets(e);
+        if (
+          uniqueTargets &&
+          uniqueTargets.some(
+            (target) =>
+              target.includes('orderStableId') ||
+              target.includes('clientRequestId'),
+          ) &&
+          (stableKey || legacyKey)
+        ) {
+          const existing = await this.prisma.order.findFirst({
+            where: {
+              OR: [
+                ...(stableKey
+                  ? [
+                      { orderStableId: stableKey },
+                      { clientRequestId: stableKey },
+                    ]
+                  : []),
+                ...(legacyKey ? [{ clientRequestId: legacyKey }] : []),
+              ],
+            },
+            include: { items: true },
+          });
+          if (existing) return existing as OrderWithItems;
+        }
         if (this.isClientRequestIdUniqueViolation(e)) {
           continue; // 冲突重试
         }
@@ -2019,7 +2055,7 @@ export class OrdersService {
     order: OrderWithItems,
     destination: UberDirectDropoffDetails,
   ): Promise<OrderWithItems> {
-    // ✅ 第三方识别：stableId；给人看：SQ 单号
+    // ✅ 第三方识别：优先 clientRequestId；给人看：SQ 单号
     const thirdPartyOrderId =
       order.clientRequestId ?? order.orderStableId ?? '';
     const humanRef = order.clientRequestId ?? order.orderStableId ?? '';

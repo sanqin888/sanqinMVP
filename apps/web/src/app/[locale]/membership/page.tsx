@@ -22,8 +22,8 @@ type OrderStatus =
 type DeliveryType = 'pickup' | 'delivery';
 
 type OrderHistory = {
+  orderStableId: string;
   orderNumber: string;
-  clientRequestId: string | null;
   createdAt: string;
   totalCents: number;
   status: OrderStatus;
@@ -343,8 +343,8 @@ export default function MembershipHomePage() {
         const recentOrders = data.recentOrders ?? [];
         setOrders(
           recentOrders.map((o) => ({
-            orderNumber: o.orderStableId,
-            clientRequestId: o.clientRequestId ?? null,
+            orderStableId: o.orderStableId,
+            orderNumber: o.clientRequestId ?? o.orderStableId,
             createdAt: new Date(o.createdAt).toLocaleString(),
             totalCents: o.totalCents,
             status: o.status,
@@ -1238,12 +1238,6 @@ function OverviewSection({
               </span>
             </p>
             <p>
-              {isZh ? '订单编号：' : 'Order Number: '}
-              <span className="font-mono text-slate-900">
-                {latestOrder.clientRequestId ?? '--'}
-              </span>
-            </p>
-            <p>
               {isZh ? '下单时间：' : 'Created at: '}
               {latestOrder.createdAt}
             </p>
@@ -1261,7 +1255,7 @@ function OverviewSection({
             </p>
             <p className="mt-2">
               <Link
-                href={`/${locale}/order/${latestOrder.orderNumber}`}
+                href={`/${locale}/order/${latestOrder.orderStableId}`}
                 className="text-[11px] font-medium text-amber-600 hover:underline"
               >
                 {isZh ? '查看订单详情' : 'View order details'}
@@ -1328,18 +1322,12 @@ function OrdersSection({
       <div className="mt-3 divide-y divide-slate-100 text-xs text-slate-700">
         {orders.map((order, index) => (
           <Link
-            key={`${order.orderNumber}-${order.createdAt}-${index}`}
-            href={`/${locale}/order/${order.orderNumber}`}
+            key={`${order.orderStableId}-${order.createdAt}-${index}`}
+            href={`/${locale}/order/${order.orderStableId}`}
             className="flex items-center justify-between py-3 hover:bg-slate-50 rounded-lg px-2 -mx-2"
           >
             <div>
               <p className="font-mono text-slate-900">{order.orderNumber}</p>
-              <p className="mt-1 text-[11px] text-slate-500">
-                {isZh ? '订单编号：' : 'Order Number: '}
-                <span className="font-mono text-slate-700">
-                  {order.clientRequestId ?? '--'}
-                </span>
-              </p>
               <p className="mt-1 text-[11px] text-slate-500">
                 {order.createdAt}
               </p>

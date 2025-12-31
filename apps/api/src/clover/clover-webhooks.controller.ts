@@ -146,11 +146,39 @@ export class CloverHcoWebhookController {
       return res.status(200).send('intent-not-found');
     }
 
-    if (intent.orderId) {
+    if (
+      intent.orderId ||
+      intent.status === 'completed' ||
+      intent.status === 'failed' ||
+      intent.status === 'expired'
+    ) {
       this.logger.log(
         `CheckoutIntent ${intent.id} already processed as order ${intent.orderId}, ignoring duplicate webhook`,
       );
       return res.status(200).send('already-processed');
+    }
+
+    if (intent.status === 'processing') {
+      this.logger.log(
+        `CheckoutIntent ${intent.id} is already processing, ignoring duplicate webhook`,
+      );
+      return res.status(200).send('already-claimed');
+    }
+
+    if (intent.expiresAt && intent.expiresAt < new Date()) {
+      await this.checkoutIntents.markExpired(intent.id);
+      this.logger.warn(
+        `CheckoutIntent ${intent.id} expired before webhook processing`,
+      );
+      return res.status(200).send('expired');
+    }
+
+    const claimed = await this.checkoutIntents.claimProcessing(intent.id);
+    if (!claimed) {
+      this.logger.log(
+        `CheckoutIntent ${intent.id} already claimed by another worker`,
+      );
+      return res.status(200).send('already-claimed');
     }
 
     // ---- 6. 根据 Clover 返回的状态判断是否支付成功 ----
@@ -164,7 +192,10 @@ export class CloverHcoWebhookController {
       this.logger.warn(
         `CheckoutIntent ${intent.id} webhook status not successful (status=${rawStatus}), not creating order`,
       );
-      // 保持 intent 为 pending，方便后续人工排查
+      await this.checkoutIntents.markFailed({
+        intentId: intent.id,
+        result: rawStatus || 'FAILED',
+      });
       return res.status(200).send('not-success-status');
     }
 
@@ -185,11 +216,15 @@ export class CloverHcoWebhookController {
         this.logger.warn(
           `verifyHostedCheckoutPaid returned false for checkoutSessionId=${intent.checkoutSessionId}`,
         );
+        await this.checkoutIntents.markFailed({
+          intentId: intent.id,
+          result: 'VERIFICATION_FAILED',
+        });
         return res.status(200).send('verification-failed');
       }
     }
 
-    // ---- 8. 构造订单 DTO 并创建订单（然后推进状态到 paid） ----
+    // ---- 8. 构造订单 DTO 并创建订单 ----
     try {
       const orderStableId =
         normalizeStableId(
@@ -208,25 +243,18 @@ export class CloverHcoWebhookController {
       const idempotencyKey =
         orderStableId ?? normalizeStableId(intent.id) ?? undefined;
 
-      // 1) 先建订单（默认 pending）
+      // 1) 先建订单（已支付）
       const order = await this.orders.createInternal(orderDto, idempotencyKey);
 
-      // 2) 在线支付成功的单，直接把状态推进到 'paid'（触发 loyalty 结算）
-      const finalized = await this.orders.updateStatusInternal(
-        order.id,
-        'paid',
-      );
-
-      // 3) 标记 CheckoutIntent 已处理
-      await this.checkoutIntents.markProcessed({
+      // 2) 标记 CheckoutIntent 已处理
+      await this.checkoutIntents.markCompleted({
         intentId: intent.id,
         orderId: order.id,
-        status: event.status ?? event.result ?? 'SUCCESS',
-        result: event.result ?? 'SUCCESS',
+        result: event.result ?? event.status ?? 'SUCCESS',
       });
 
       this.logger.log(
-        `Created order ${finalized.id} with status=${finalized.status} from Clover checkout ${
+        `Created order ${order.id} with status=${order.status} from Clover checkout ${
           intent.checkoutSessionId ?? intent.referenceId
         }`,
       );

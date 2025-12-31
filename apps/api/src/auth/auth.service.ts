@@ -907,9 +907,15 @@ export class AuthService {
       });
     }
 
+    const requiresTwoFactor = this.isTwoFactorEnabled({
+      twoFactorEnabledAt: user.twoFactorEnabledAt,
+      twoFactorMethod: user.twoFactorMethod,
+    });
+
     const session = await this.createSession({
       userId: user.id,
       deviceInfo: params.deviceInfo,
+      mfaVerifiedAt: requiresTwoFactor ? null : now,
     });
 
     return { user, session, verificationToken: record.id };
