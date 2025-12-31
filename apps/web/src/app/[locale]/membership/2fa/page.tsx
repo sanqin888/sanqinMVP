@@ -54,7 +54,6 @@ export default function MembershipTwoFactorPage() {
   }, [countdown]);
 
   async function handleRequestCode() {
-async function handleRequestCode() {
   try {
     setSending(true);
     setError(null);
