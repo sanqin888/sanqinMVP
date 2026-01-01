@@ -282,6 +282,7 @@ model Order {
 
 model Coupon {
   id            String    @id @default(uuid()) @db.Uuid
+  couponStableId String   @unique @default(cuid())
   userId        String
   code          String
   title         String

@@ -52,10 +52,10 @@ export type HostedCheckoutMetadata = {
   loyaltyRedeemCents?: number; // 本单用积分抵扣的金额（分）
   loyaltyAvailableDiscountCents?: number; // 前端计算的“最多可抵扣金额”（分），仅调试使用
   loyaltyPointsBalance?: number; // 下单前积分余额（点）
-  loyaltyUserId?: string; // 会员 userId，用于把订单绑定到会员
+  loyaltyUserStableId?: string; // ✅ 会员 stableId（对外只用 stableId）
 
   coupon?: {
-    couponId?: string;
+    couponStableId?: string;
     code?: string;
     title?: string;
     discountCents?: number;
@@ -142,7 +142,9 @@ const parseItems = (value: unknown): HostedCheckoutItem[] => {
     .map((entry) => {
       if (!isPlainObject(entry)) return null;
 
-      const productStableId = toString(entry.productStableId);
+      const productStableId = normalizeStableId(
+        toString(entry.productStableId),
+      );
 
       const priceCents =
         toOptionalCents(entry.priceCents) ?? toOptionalCents(entry.price);
@@ -187,11 +189,13 @@ const parseCoupon = (
 ): HostedCheckoutMetadata['coupon'] | undefined => {
   if (!isPlainObject(value)) return undefined;
 
-  const couponId = toString(value.couponId);
-  if (!couponId) return undefined;
+  const couponStableId = normalizeStableId(
+    toString((value as any).couponStableId ?? (value as any).couponId),
+  );
+  if (!couponStableId) return undefined;
 
   return {
-    couponId,
+    couponStableId,
     code: toString(value.code),
     title: toString(value.title),
     discountCents: toOptionalCents(value.discountCents),
@@ -260,7 +264,9 @@ export function parseHostedCheckoutMetadata(
       input.loyaltyAvailableDiscountCents,
     ),
     loyaltyPointsBalance: toNumber(input.loyaltyPointsBalance),
-    loyaltyUserId: toString(input.loyaltyUserId),
+    loyaltyUserStableId:
+      normalizeStableId(toString((input as any).loyaltyUserStableId)) ??
+      undefined,
     coupon: parseCoupon(input.coupon),
   } satisfies HostedCheckoutMetadata;
 }
@@ -327,8 +333,10 @@ export function buildOrderDtoFromMetadata(
     contactName: meta.customer.name,
     contactPhone: meta.customer.phone,
 
-    // ⭐ 关键：让订单有 userId，这样 paid 时才会结算积分
-    ...(meta.loyaltyUserId ? { userId: meta.loyaltyUserId } : {}),
+    // ⭐ 关键：让订单有 userStableId，这样 paid 时才会结算积分
+    ...(meta.loyaltyUserStableId
+      ? { userStableId: meta.loyaltyUserStableId }
+      : {}),
 
     fulfillmentType: meta.fulfillment === 'delivery' ? 'delivery' : 'pickup',
     subtotalCents,
@@ -372,8 +380,8 @@ export function buildOrderDtoFromMetadata(
     }),
   };
 
-  if (meta.coupon?.couponId) {
-    dto.couponId = meta.coupon.couponId;
+  if (meta.coupon?.couponStableId) {
+    dto.couponStableId = meta.coupon.couponStableId;
   }
 
   if (meta.fulfillment === 'delivery') {
