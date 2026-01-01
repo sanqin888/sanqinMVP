@@ -1,3 +1,4 @@
+//Users/apple/sanqinMVP/apps/web/src/app/[locale]/membership/2fa/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -5,7 +6,7 @@ import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import type { Locale } from '@/lib/order/shared';
 import { useSession } from '@/lib/auth-session';
-import { apiFetch } from '@/lib/api-client';
+import { apiFetch, ApiError } from '@/lib/api-client';
 
 export default function MembershipTwoFactorPage() {
   const { locale } = useParams<{ locale: Locale }>();
@@ -30,10 +31,19 @@ export default function MembershipTwoFactorPage() {
   }, [status, router, locale]);
 
   useEffect(() => {
-    if (status === 'authenticated' && session?.user?.mfaVerifiedAt) {
+    if (status !== 'authenticated') return;
+
+    // ✅ 如果后端告知这个 session 不需要 2FA，就别停留在 2FA 页
+    const requiresTwoFactor = session?.user?.requiresTwoFactor;
+    if (requiresTwoFactor === false) {
+      router.replace(next);
+      return;
+    }
+
+    if (session?.user?.mfaVerifiedAt) {
       router.replace(next);
     }
-  }, [status, session?.user?.mfaVerifiedAt, router, next]);
+  }, [status, session?.user, router, next]);
 
   useEffect(() => {
     if (countdown <= 0) return;
@@ -51,10 +61,15 @@ export default function MembershipTwoFactorPage() {
       setCountdown(60);
     } catch (err) {
       console.error(err);
+
+      // ✅ 后端明确说没开 2FA：说明不该走 2FA challenge，直接走 next
+      if (err instanceof ApiError && String(err.message).includes('mfa not enabled')) {
+        router.replace(next);
+        return;
+      }
+
       setError(
-        isZh
-          ? '验证码发送失败，请稍后再试。'
-          : 'Failed to send code. Please try again.',
+        isZh ? '验证码发送失败，请稍后再试。' : 'Failed to send code. Please try again.',
       );
     } finally {
       setSending(false);

@@ -23,7 +23,7 @@ import {
 } from "@/lib/order/shared";
 import { usePersistentCart } from "@/lib/cart";
 import { apiFetch } from "@/lib/api-client";
-import { useSession } from "@/lib/auth-session";
+import { signOut, useSession } from "@/lib/auth-session";
 
 export default function LocalOrderPage() {
   const pathname = usePathname() || "/";
@@ -221,6 +221,12 @@ export default function LocalOrderPage() {
     }
   })();
 
+  const logoutLabel = locale === "zh" ? "退出登录" : "Log out";
+
+  const handleLogout = () => {
+    void signOut().then(() => router.push(`/${locale}`));
+  };
+
   const isTempUnavailable = (tempUnavailableUntil?: string | null) => {
     if (!tempUnavailableUntil) return false;
     const parsed = Date.parse(tempUnavailableUntil);
@@ -299,6 +305,15 @@ export default function LocalOrderPage() {
               >
                 {membershipLabel}
               </Link>
+              {isMemberLoggedIn ? (
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
+                >
+                  {logoutLabel}
+                </button>
+              ) : null}
               <Link
                 href={checkoutHref}
                 className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
