@@ -19,7 +19,10 @@ export const normalizeExternalOrderRef = (value: string): string => {
   }
 
   if (UUID_RE.test(trimmed) || UUID_PLAIN_RE.test(trimmed)) {
-    const hash = createHash('sha256').update(trimmed).digest('hex').slice(0, 16);
+    const hash = createHash('sha256')
+      .update(trimmed)
+      .digest('hex')
+      .slice(0, 16);
     return `uuid-${hash}`;
   }
 
