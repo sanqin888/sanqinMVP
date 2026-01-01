@@ -191,7 +191,7 @@ const parseCoupon = (
 
   const couponValue = value as Record<string, unknown>;
   const couponStableId = normalizeStableId(
-    toString(couponValue.couponStableId ?? couponValue.couponId),
+    toString(value.couponStableId ?? value.couponId),
   );
   if (!couponStableId) return undefined;
 
@@ -233,7 +233,7 @@ export function parseHostedCheckoutMetadata(
   if (!isPlainObject(input)) {
     throw new Error('metadata must be an object');
   }
-  const metadata = input as Record<string, unknown>;
+  const metadata = input;
 
   const fulfillment = parseFulfillment(metadata.fulfillment);
   const items = parseItems(metadata.items);
@@ -267,8 +267,7 @@ export function parseHostedCheckoutMetadata(
     ),
     loyaltyPointsBalance: toNumber(metadata.loyaltyPointsBalance),
     loyaltyUserStableId:
-      normalizeStableId(toString(metadata.loyaltyUserStableId)) ??
-      undefined,
+      normalizeStableId(toString(metadata.loyaltyUserStableId)) ?? undefined,
     coupon: parseCoupon(metadata.coupon),
   } satisfies HostedCheckoutMetadata;
 }
