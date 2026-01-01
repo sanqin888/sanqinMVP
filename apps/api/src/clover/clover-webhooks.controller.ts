@@ -15,8 +15,8 @@ import { OrdersService } from '../orders/orders.service';
 import { buildOrderDtoFromMetadata } from './hco-metadata';
 import { CloverService } from './clover.service';
 import { normalizeStableId } from '../common/utils/stable-id';
+import { CLIENT_REQUEST_ID_RE } from '../common/utils/client-request-id';
 
-const CLIENT_REQUEST_ID_RE = /^SQ\d{10}$/;
 const normalizeClientRequestId = (
   value?: string | null,
 ): string | undefined => {
