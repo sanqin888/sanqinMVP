@@ -189,6 +189,7 @@ const parseCoupon = (
 ): HostedCheckoutMetadata['coupon'] | undefined => {
   if (!isPlainObject(value)) return undefined;
 
+  const couponValue = value as Record<string, unknown>;
   const couponStableId = normalizeStableId(
     toString(value.couponStableId ?? value.couponId),
   );
