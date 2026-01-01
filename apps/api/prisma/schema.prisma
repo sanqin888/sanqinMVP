@@ -239,17 +239,17 @@ model UserAddress {
 }
 
 model Order {
-  createdAt                  DateTime          @default(now())
-  subtotalCents              Int               @default(0)
-  taxCents                   Int               @default(0)
-  totalCents                 Int               @default(0)
-  pickupCode                 String?
-  status                     OrderStatus       @default(pending)
   id                         String            @id @default(uuid()) @db.Uuid
   channel                    Channel           @default(web)
   fulfillmentType            FulfillmentType   @default(pickup)
   userId                     String?
   clientRequestId            String?           @unique
+  status                     OrderStatus       @default(pending)
+  createdAt                  DateTime          @default(now())
+  subtotalCents              Int               @default(0)
+  taxCents                   Int               @default(0)
+  totalCents                 Int               @default(0)
+  pickupCode                 String?
   deliveryType               DeliveryType?
   deliveryProvider           DeliveryProvider?
   deliveryEtaMinMinutes      Int?
