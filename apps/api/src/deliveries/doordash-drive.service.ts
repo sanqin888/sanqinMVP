@@ -4,7 +4,7 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import * as jwt from 'jsonwebtoken';
 import type { JwtHeader, SignOptions } from 'jsonwebtoken';
-import { normalizeExternalOrderRef } from './external-id';
+import { normalizeExternalOrderRef } from '../common/utils/external-id';
 
 /* =========================
  * Types
