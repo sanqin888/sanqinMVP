@@ -595,9 +595,10 @@ export class UberDirectService {
       const baseData: unknown = axiosError.response?.data;
 
       let bodySnippet = '[no response body]';
-      if (typeof baseData !== 'undefined') {
+      const summary = this.extractErrorSummary(baseData);
+      if (summary) {
         try {
-          bodySnippet = JSON.stringify(baseData);
+          bodySnippet = JSON.stringify(summary);
         } catch {
           bodySnippet = '[unserializable response body]';
         }
@@ -625,6 +626,46 @@ export class UberDirectService {
       `[UberDirectService] Unknown error type while calling Uber Direct: ${formatted}`,
     );
     return new Error(formatted);
+  }
+
+  private extractErrorSummary(
+    data: unknown,
+  ): Record<string, string> | undefined {
+    if (!data || typeof data !== 'object') return undefined;
+    const record = data as Record<string, unknown>;
+    const summary: Record<string, string> = {};
+    const code =
+      typeof record.code === 'string'
+        ? record.code
+        : typeof record.error_code === 'string'
+          ? record.error_code
+          : undefined;
+    const message =
+      typeof record.message === 'string'
+        ? record.message
+        : typeof record.error === 'string'
+          ? record.error
+          : undefined;
+    const type = typeof record.type === 'string' ? record.type : undefined;
+
+    if (code) summary.code = code;
+    if (message) summary.message = message;
+    if (type) summary.type = type;
+
+    const errors = Array.isArray(record.errors) ? record.errors : undefined;
+    if (errors && errors.length > 0) {
+      const first = errors[0];
+      if (first && typeof first === 'object') {
+        const err = first as Record<string, unknown>;
+        const errCode = typeof err.code === 'string' ? err.code : undefined;
+        const errMessage =
+          typeof err.message === 'string' ? err.message : undefined;
+        if (errCode) summary.error_code = errCode;
+        if (errMessage) summary.error_message = errMessage;
+      }
+    }
+
+    return Object.keys(summary).length > 0 ? summary : undefined;
   }
 
   private extractUberMessage(data: unknown): string | undefined {
