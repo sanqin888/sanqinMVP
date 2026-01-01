@@ -370,6 +370,7 @@ model LoyaltyLedger {
   note              String?
   createdAt         DateTime         @default(now())
   id                String           @id @default(uuid()) @db.Uuid
+  ledgerStableId    String           @unique @default(cuid())
   accountId         String           @db.Uuid
   orderId           String?          @db.Uuid
   sourceKey         String           @default("ORDER")
@@ -413,6 +414,7 @@ model PhoneVerification {
   lastAttemptAt DateTime?
   purpose       String                  @default("generic")
   used          Boolean                 @default(false)
+  token         String?                 @unique
 
   @@index([phone, purpose, used, createdAt])
 }
