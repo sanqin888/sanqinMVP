@@ -2077,13 +2077,13 @@ export class OrdersService {
     destination: UberDirectDropoffDetails,
   ): Promise<OrderWithItems> {
     // ✅ 第三方识别：优先 clientRequestId；给人看：SQ 单号
-    const thirdPartyOrderId =
+    const thirdPartyOrderRef =
       order.clientRequestId ?? order.orderStableId ?? '';
     const humanRef = order.clientRequestId ?? order.orderStableId ?? '';
 
     const response: DoorDashDeliveryResult =
       await this.doorDashDrive.createDelivery({
-        orderId: thirdPartyOrderId, // ✅ 外发：优先 clientRequestId
+        orderRef: thirdPartyOrderRef, // ✅ 外发：优先 clientRequestId
         pickupCode: order.pickupCode ?? undefined,
         reference: humanRef, // ✅ 仅用于人类识别（SQYYMMDD####）
         totalCents: order.totalCents ?? 0,
@@ -2117,13 +2117,13 @@ export class OrdersService {
     order: OrderWithItems,
     destination: UberDirectDropoffDetails,
   ): Promise<OrderWithItems> {
-    const thirdPartyOrderId =
+    const thirdPartyOrderRef =
       order.clientRequestId ?? order.orderStableId ?? '';
     const humanRef = order.clientRequestId ?? order.orderStableId ?? '';
 
     const response: UberDirectDeliveryResult =
       await this.uberDirect.createDelivery({
-        orderId: thirdPartyOrderId, // ✅ 外发：优先 clientRequestId
+        orderRef: thirdPartyOrderRef, // ✅ 外发：优先 clientRequestId
         pickupCode: order.pickupCode ?? undefined,
         reference: humanRef,
         totalCents: order.totalCents ?? 0,

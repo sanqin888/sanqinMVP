@@ -245,7 +245,10 @@ describe('OrdersService', () => {
       ],
     };
     prisma.order.create.mockResolvedValue(storedOrder);
-    uberDirect.createDelivery.mockResolvedValue({ deliveryId: 'uber-123' });
+    uberDirect.createDelivery.mockResolvedValue({
+      deliveryId: 'uber-123',
+      externalDeliveryId: 'req-1',
+    });
     prisma.order.update.mockResolvedValue({
       ...storedOrder,
       externalDeliveryId: 'uber-123',
@@ -278,7 +281,7 @@ describe('OrdersService', () => {
         Promise<unknown>,
         [
           {
-            orderId: string;
+            orderRef: string;
             destination: { postalCode: string };
           },
         ]
@@ -288,7 +291,7 @@ describe('OrdersService', () => {
       const deliveryPayload = firstCallArg?.[0];
 
       expect(deliveryPayload).toBeDefined();
-      expect(deliveryPayload?.orderId).toBe('req-1');
+      expect(deliveryPayload?.orderRef).toBe('req-1');
       expect(deliveryPayload?.destination.postalCode).toBe('M3J 0L9');
       expect(prisma.order.update).toHaveBeenCalled();
     });
