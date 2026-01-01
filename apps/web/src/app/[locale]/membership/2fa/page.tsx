@@ -34,7 +34,7 @@ export default function MembershipTwoFactorPage() {
     if (status !== 'authenticated') return;
 
     // ✅ 如果后端告知这个 session 不需要 2FA，就别停留在 2FA 页
-    const requiresTwoFactor = (session?.user as any)?.requiresTwoFactor;
+    const requiresTwoFactor = session?.user?.requiresTwoFactor;
     if (requiresTwoFactor === false) {
       router.replace(next);
       return;
@@ -54,28 +54,27 @@ export default function MembershipTwoFactorPage() {
   }, [countdown]);
 
   async function handleRequestCode() {
-async function handleRequestCode() {
-  try {
-    setSending(true);
-    setError(null);
-    await apiFetch('/auth/2fa/sms/request', { method: 'POST' });
-    setCountdown(60);
-  } catch (err) {
-    console.error(err);
+    try {
+      setSending(true);
+      setError(null);
+      await apiFetch('/auth/2fa/sms/request', { method: 'POST' });
+      setCountdown(60);
+    } catch (err) {
+      console.error(err);
 
-    // ✅ 后端明确说没开 2FA：说明不该走 2FA challenge，直接走 next
-    if (err instanceof ApiError && String(err.message).includes('mfa not enabled')) {
-      router.replace(next);
-      return;
+      // ✅ 后端明确说没开 2FA：说明不该走 2FA challenge，直接走 next
+      if (err instanceof ApiError && String(err.message).includes('mfa not enabled')) {
+        router.replace(next);
+        return;
+      }
+
+      setError(
+        isZh ? '验证码发送失败，请稍后再试。' : 'Failed to send code. Please try again.',
+      );
+    } finally {
+      setSending(false);
     }
-
-    setError(
-      isZh ? '验证码发送失败，请稍后再试。' : 'Failed to send code. Please try again.',
-    );
-  } finally {
-    setSending(false);
   }
-}
 
   async function handleVerifyCode() {
     if (!code.trim()) {

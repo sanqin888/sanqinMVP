@@ -199,13 +199,10 @@ export class AuthController {
 
   @UseGuards(SessionAuthGuard)
   @Post('2fa/sms/request')
-  async requestTwoFactorSms(@Req() req: Request) {
-    const cookieHeader = req.headers.cookie ?? '';
-    const sessionId = cookieHeader
-      .split(';')
-      .map((part) => part.trim())
-      .find((part) => part.startsWith(`${SESSION_COOKIE_NAME}=`))
-      ?.split('=')[1];
+  async requestTwoFactorSms(
+    @Req() req: Request & { session?: { sessionId?: string } },
+  ) {
+    const sessionId = req.session?.sessionId;
     if (!sessionId) {
       throw new ForbiddenException('Missing session');
     }
@@ -225,15 +222,10 @@ export class AuthController {
   async verifyTwoFactorSms(
     @Body()
     body: { code?: string; rememberDevice?: boolean; deviceLabel?: string },
-    @Req() req: Request,
+    @Req() req: Request & { session?: { sessionId?: string } },
     @Res({ passthrough: true }) res: Response,
   ) {
-    const cookieHeader = req.headers.cookie ?? '';
-    const sessionId = cookieHeader
-      .split(';')
-      .map((part) => part.trim())
-      .find((part) => part.startsWith(`${SESSION_COOKIE_NAME}=`))
-      ?.split('=')[1];
+    const sessionId = req.session?.sessionId;
     if (!sessionId) {
       throw new ForbiddenException('Missing session');
     }
@@ -264,14 +256,9 @@ export class AuthController {
   @Post('phone/enroll/request')
   async requestPhoneEnroll(
     @Body() body: { phone?: string },
-    @Req() req: Request,
+    @Req() req: Request & { session?: { sessionId?: string } },
   ) {
-    const cookieHeader = req.headers.cookie ?? '';
-    const sessionId = cookieHeader
-      .split(';')
-      .map((part) => part.trim())
-      .find((part) => part.startsWith(`${SESSION_COOKIE_NAME}=`))
-      ?.split('=')[1];
+    const sessionId = req.session?.sessionId;
     if (!sessionId) {
       throw new ForbiddenException('Missing session');
     }
@@ -286,14 +273,9 @@ export class AuthController {
   @Post('phone/enroll/verify')
   async verifyPhoneEnroll(
     @Body() body: { phone?: string; code?: string },
-    @Req() req: Request,
+    @Req() req: Request & { session?: { sessionId?: string } },
   ) {
-    const cookieHeader = req.headers.cookie ?? '';
-    const sessionId = cookieHeader
-      .split(';')
-      .map((part) => part.trim())
-      .find((part) => part.startsWith(`${SESSION_COOKIE_NAME}=`))
-      ?.split('=')[1];
+    const sessionId = req.session?.sessionId;
     if (!sessionId) {
       throw new ForbiddenException('Missing session');
     }
@@ -307,13 +289,10 @@ export class AuthController {
 
   @UseGuards(SessionAuthGuard)
   @Post('2fa/enable')
-  async enableTwoFactor(@Req() req: Request) {
-    const cookieHeader = req.headers.cookie ?? '';
-    const sessionId = cookieHeader
-      .split(';')
-      .map((part) => part.trim())
-      .find((part) => part.startsWith(`${SESSION_COOKIE_NAME}=`))
-      ?.split('=')[1];
+  async enableTwoFactor(
+    @Req() req: Request & { session?: { sessionId?: string } },
+  ) {
+    const sessionId = req.session?.sessionId;
     if (!sessionId) {
       throw new ForbiddenException('Missing session');
     }
@@ -323,13 +302,10 @@ export class AuthController {
 
   @UseGuards(SessionAuthGuard, MfaGuard)
   @Post('2fa/disable')
-  async disableTwoFactor(@Req() req: Request) {
-    const cookieHeader = req.headers.cookie ?? '';
-    const sessionId = cookieHeader
-      .split(';')
-      .map((part) => part.trim())
-      .find((part) => part.startsWith(`${SESSION_COOKIE_NAME}=`))
-      ?.split('=')[1];
+  async disableTwoFactor(
+    @Req() req: Request & { session?: { sessionId?: string } },
+  ) {
+    const sessionId = req.session?.sessionId;
     if (!sessionId) {
       throw new ForbiddenException('Missing session');
     }
