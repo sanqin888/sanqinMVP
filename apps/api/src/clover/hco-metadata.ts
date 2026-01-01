@@ -190,7 +190,7 @@ const parseCoupon = (
   if (!isPlainObject(value)) return undefined;
 
   const couponStableId = normalizeStableId(
-    toString((value as any).couponStableId ?? (value as any).couponId),
+    toString(value.couponStableId ?? value.couponId),
   );
   if (!couponStableId) return undefined;
 
@@ -265,8 +265,7 @@ export function parseHostedCheckoutMetadata(
     ),
     loyaltyPointsBalance: toNumber(input.loyaltyPointsBalance),
     loyaltyUserStableId:
-      normalizeStableId(toString((input as any).loyaltyUserStableId)) ??
-      undefined,
+      normalizeStableId(toString(input.loyaltyUserStableId)) ?? undefined,
     coupon: parseCoupon(input.coupon),
   } satisfies HostedCheckoutMetadata;
 }
