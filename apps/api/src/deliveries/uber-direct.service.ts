@@ -1,7 +1,7 @@
 //apps/api/src/deliveries/uber-direct.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
-import { normalizeExternalOrderRef } from './external-id';
+import { normalizeExternalOrderRef } from '../common/utils/external-id';
 
 interface UberDirectOAuthResponse {
   access_token?: string;
