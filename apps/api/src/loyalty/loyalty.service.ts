@@ -1,6 +1,7 @@
 // apps/api/src/loyalty/loyalty.service.ts
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { LoyaltyEntryType, Prisma } from '@prisma/client';
+import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 
 function parseNumberEnv(
@@ -18,6 +19,7 @@ const LEDGER_SOURCE_FULL_REFUND = 'FULL_REFUND';
 const ledgerSourceAmend = (amendStableId: string) => `AMEND:${amendStableId}`;
 const LEDGER_SOURCE_TOPUP = 'TOPUP';
 const LEDGER_SOURCE_MANUAL = 'MANUAL';
+const IDEMPOTENCY_KEY_MAX_LENGTH = 128;
 
 // 可通过环境变量调参：$1 赚取多少“点”、1 点可抵扣 $ 多少、推荐人奖励比例
 const EARN_PT_PER_DOLLAR = parseNumberEnv(
@@ -69,6 +71,20 @@ function dollarsFromPointsMicro(micro: bigint): number {
   // 以“1 点 = REDEEM_DOLLAR_PER_POINT 美元”换算
   const pts = Number(micro) / Number(MICRO_PER_POINT);
   return pts * REDEEM_DOLLAR_PER_POINT;
+}
+
+function buildIdempotencyChildKey(base: string, suffix: string): string {
+  const candidate = `${base}:${suffix}`;
+  if (candidate.length <= IDEMPOTENCY_KEY_MAX_LENGTH) return candidate;
+
+  const hash = createHash('sha256')
+    .update(candidate)
+    .digest('hex')
+    .slice(0, 12);
+  const maxBaseLength =
+    IDEMPOTENCY_KEY_MAX_LENGTH - suffix.length - hash.length - 2;
+  const baseSlice = base.slice(0, Math.max(1, maxBaseLength));
+  return `${baseSlice}:${suffix}-${hash}`;
 }
 
 @Injectable()
@@ -705,9 +721,9 @@ export class LoyaltyService {
     tierAfter: Tier;
     lifetimeSpendCentsBefore: number;
     lifetimeSpendCentsAfter: number;
-    ledgerEntryId: string;
-    bonusLedgerEntryId?: string;
-    referralLedgerEntryId?: string;
+    receiptId: string;
+    bonusReceiptId?: string;
+    referralReceiptId?: string;
   }> {
     const {
       userStableId,
@@ -724,7 +740,7 @@ export class LoyaltyService {
 
     const ik = typeof idempotencyKey === 'string' ? idempotencyKey.trim() : '';
     if (!ik) throw new BadRequestException('idempotencyKey is required');
-    if (ik.length > 128)
+    if (ik.length > IDEMPOTENCY_KEY_MAX_LENGTH)
       throw new BadRequestException('idempotencyKey is too long');
 
     const bonus = typeof bonusPoints === 'number' ? bonusPoints : 0;
@@ -751,8 +767,8 @@ export class LoyaltyService {
       });
 
       // 读取 bonus/referral（若存在）
-      const bonusKey = `${ik}:BONUS`;
-      const refKey = `${ik}:REF`;
+      const bonusKey = buildIdempotencyChildKey(ik, 'BONUS');
+      const refKey = buildIdempotencyChildKey(ik, 'REF');
 
       const [existedBonus, existedRef] = await Promise.all([
         tx.loyaltyLedger.findUnique({
@@ -837,9 +853,9 @@ export class LoyaltyService {
           tierAfter,
           lifetimeSpendCentsBefore,
           lifetimeSpendCentsAfter,
-          ledgerEntryId: existedTopup.id,
-          bonusLedgerEntryId: existedBonus?.id,
-          referralLedgerEntryId: existedRef?.id,
+          receiptId: ik,
+          bonusReceiptId: existedBonus ? bonusKey : undefined,
+          referralReceiptId: existedRef ? refKey : undefined,
         };
       }
 
@@ -869,7 +885,7 @@ export class LoyaltyService {
       // 先加充值，再加 bonus（bonus 不影响 lifetime）
       let balance = acc.pointsMicro + topupMicro;
 
-      const topupLedger = await tx.loyaltyLedger.create({
+      await tx.loyaltyLedger.create({
         data: {
           accountId: acc.id,
           orderId: null,
@@ -954,7 +970,7 @@ export class LoyaltyService {
                 type: LoyaltyEntryType.REFERRAL_BONUS,
                 deltaMicro: refMicro,
                 balanceAfterMicro: refNewBal,
-                note: `referral bonus on topup $${(cents / 100).toFixed(2)} from ${userId}`,
+                note: `referral bonus on topup $${(cents / 100).toFixed(2)} from ${userStableId}`,
                 idempotencyKey: refKey,
               },
               select: { id: true },
@@ -981,9 +997,9 @@ export class LoyaltyService {
         tierAfter,
         lifetimeSpendCentsBefore,
         lifetimeSpendCentsAfter,
-        ledgerEntryId: topupLedger.id,
-        bonusLedgerEntryId: bonusLedgerId,
-        referralLedgerEntryId: referralLedgerId,
+        receiptId: ik,
+        bonusReceiptId: bonusLedgerId ? bonusKey : undefined,
+        referralReceiptId: referralLedgerId ? refKey : undefined,
       };
     });
   }
@@ -1265,7 +1281,7 @@ export class LoyaltyService {
     deltaPoints: number;
     pointsBalanceBefore: number;
     pointsBalanceAfter: number;
-    ledgerEntryId: string;
+    receiptId: string;
   }> {
     const { userStableId, deltaPoints, idempotencyKey, note } = params;
 
@@ -1276,7 +1292,7 @@ export class LoyaltyService {
 
     const ik = typeof idempotencyKey === 'string' ? idempotencyKey.trim() : '';
     if (!ik) throw new BadRequestException('idempotencyKey is required');
-    if (ik.length > 128)
+    if (ik.length > IDEMPOTENCY_KEY_MAX_LENGTH)
       throw new BadRequestException('idempotencyKey is too long');
 
     const cleanNote = typeof note === 'string' ? note.trim() : undefined;
@@ -1321,7 +1337,7 @@ export class LoyaltyService {
           deltaPoints: delta,
           pointsBalanceBefore: before,
           pointsBalanceAfter: after,
-          ledgerEntryId: existed.id,
+          receiptId: ik,
         };
       }
 
@@ -1336,7 +1352,7 @@ export class LoyaltyService {
       const deltaMicro = toMicroPoints(dp);
       const newBal = acc.pointsMicro + deltaMicro;
 
-      const ledger = await tx.loyaltyLedger.create({
+      await tx.loyaltyLedger.create({
         data: {
           accountId: acc.id,
           orderId: null,
@@ -1359,7 +1375,7 @@ export class LoyaltyService {
         deltaPoints: dp,
         pointsBalanceBefore: Number(acc.pointsMicro) / 1_000_000,
         pointsBalanceAfter: Number(newBal) / 1_000_000,
-        ledgerEntryId: ledger.id,
+        receiptId: ik,
       };
     });
   }

@@ -1,6 +1,7 @@
 //apps/api/src/deliveries/uber-direct.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
+import { normalizeExternalOrderRef } from '../common/utils/external-id';
 
 interface UberDirectOAuthResponse {
   access_token?: string;
@@ -43,7 +44,7 @@ export interface UberDirectManifestItem {
 }
 
 export interface UberDirectDeliveryOptions {
-  orderId: string;
+  orderRef: string;
   pickupCode?: string | null;
   reference?: string | null;
   totalCents: number;
@@ -59,6 +60,7 @@ export interface UberDirectDeliveryOptions {
  */
 export interface UberDirectDeliveryResult {
   deliveryId: string;
+  externalDeliveryId: string;
   status?: string;
   trackingUrl?: string;
   deliveryCostCents?: number;
@@ -217,13 +219,14 @@ export class UberDirectService {
     const url = `${this.apiBase}/v1/customers/${encodeURIComponent(
       this.customerId,
     )}/deliveries`;
-    const payload = this.buildPayload(options);
+    const externalOrderRef = normalizeExternalOrderRef(options.orderRef);
+    const payload = this.buildPayload(options, externalOrderRef);
 
     // 仅在需要调试时打印 payload，默认不打
     if (process.env.DEBUG_UBER_DIRECT === '1') {
       try {
         this.logger.debug(
-          `[UberDirectService] Creating Uber Direct delivery. order=${options.orderId}, url=${url}, payload=${JSON.stringify(
+          `[UberDirectService] Creating Uber Direct delivery. orderRef=${options.orderRef}, url=${url}, payload=${JSON.stringify(
             payload,
           )}`,
         );
@@ -248,12 +251,15 @@ export class UberDirectService {
         },
       );
 
-      const normalized = this.normalizeResponse(response.data);
+      const normalized = this.normalizeResponse(
+        response.data,
+        externalOrderRef,
+      );
 
       return normalized;
     } catch (error: unknown) {
       this.logger.error(
-        `[UberDirectService] Failed to create Uber Direct delivery for order=${options.orderId}`,
+        `[UberDirectService] Failed to create Uber Direct delivery for orderRef=${options.orderRef}`,
       );
       throw this.wrapUberError(error);
     }
@@ -324,6 +330,7 @@ export class UberDirectService {
 
   private buildPayload(
     options: UberDirectDeliveryOptions,
+    externalOrderRef: string,
   ): Record<string, unknown> {
     const destination = options.destination;
     const pickupAddress = this.formatAddress([
@@ -346,7 +353,7 @@ export class UberDirectService {
     const reference =
       trimToUndefined(options.reference) ??
       trimToUndefined(options.pickupCode ?? undefined) ??
-      options.orderId;
+      externalOrderRef;
 
     const manifestItems = this.buildManifestItems(options.items);
     const pickupNames = splitName(
@@ -355,7 +362,7 @@ export class UberDirectService {
     const dropoffNames = splitName(destination.name);
 
     const payload = compact({
-      external_delivery_id: options.orderId,
+      external_delivery_id: externalOrderRef,
       manifest_reference: reference,
       pickup_name: this.pickup.contactName ?? this.pickup.businessName,
       pickup_business_name: this.pickup.businessName,
@@ -449,7 +456,10 @@ export class UberDirectService {
       .map((entry) => compact(entry));
   }
 
-  private normalizeResponse(payload: unknown): UberDirectDeliveryResult {
+  private normalizeResponse(
+    payload: unknown,
+    externalOrderRef: string,
+  ): UberDirectDeliveryResult {
     if (!payload || typeof payload !== 'object') {
       throw new Error('Uber Direct response is not an object');
     }
@@ -464,11 +474,16 @@ export class UberDirectService {
       'id',
       'uuid',
       'tracking_id',
-      'external_delivery_id',
     ]);
     if (!deliveryId) {
       throw new Error('Uber Direct response missing delivery id');
     }
+
+    const externalDeliveryId =
+      this.pickFirstString(body, [
+        'external_delivery_id',
+        'external_order_id',
+      ]) ?? externalOrderRef;
 
     const status = this.pickFirstString(body, ['status', 'state']);
     const trackingUrl = this.pickFirstString(body, [
@@ -497,7 +512,13 @@ export class UberDirectService {
           ])
         : undefined);
 
-    return { deliveryId, status, trackingUrl, deliveryCostCents };
+    return {
+      deliveryId,
+      externalDeliveryId,
+      status,
+      trackingUrl,
+      deliveryCostCents,
+    };
   }
 
   private pickFirstString(

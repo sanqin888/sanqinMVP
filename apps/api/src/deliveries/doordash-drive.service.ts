@@ -4,6 +4,7 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import * as jwt from 'jsonwebtoken';
 import type { JwtHeader, SignOptions } from 'jsonwebtoken';
+import { normalizeExternalOrderRef } from '../common/utils/external-id';
 
 /* =========================
  * Types
@@ -39,7 +40,7 @@ export interface DoorDashManifestItem {
 }
 
 export interface DoorDashDeliveryOptions {
-  orderId: string;
+  orderRef: string;
   pickupCode?: string | null;
   reference?: string | null;
   totalCents: number;
@@ -49,6 +50,7 @@ export interface DoorDashDeliveryOptions {
 
 export interface DoorDashDeliveryResult {
   deliveryId: string;
+  externalDeliveryId: string;
   status?: string;
   trackingUrl?: string;
   deliveryCostCents?: number;
@@ -239,9 +241,10 @@ export class DoorDashDriveService {
   ): Promise<DoorDashDeliveryResult> {
     const token = this.createAuthToken();
     const pickupName = splitName(this.pickup.contactName);
+    const externalOrderRef = normalizeExternalOrderRef(options.orderRef);
 
     const payload = compact({
-      external_delivery_id: options.orderId,
+      external_delivery_id: externalOrderRef,
       pickup_business_name: this.pickup.businessName,
       pickup_phone_number: this.pickup.phone,
       pickup_address: this.pickup.addressLine1,
@@ -294,16 +297,15 @@ export class DoorDashDriveService {
       );
 
       const data = res.data as Record<string, unknown>;
-      const externalId = data['external_delivery_id'];
       const deliveryId =
-        typeof externalId === 'string'
-          ? externalId
-          : typeof externalId === 'number'
-            ? externalId.toString()
-            : '';
+        this.pickFirstString(data, ['delivery_id', 'id', 'deliveryId']) ?? '';
+      const externalDeliveryId =
+        this.pickFirstString(data, ['external_delivery_id']) ??
+        externalOrderRef;
 
       return {
-        deliveryId,
+        deliveryId: deliveryId || externalDeliveryId,
+        externalDeliveryId,
         status: typeof data['status'] === 'string' ? data['status'] : undefined,
         trackingUrl:
           typeof data['tracking_url'] === 'string'
@@ -344,5 +346,19 @@ export class DoorDashDriveService {
     }
 
     this.logger.error(`[${context}] Unknown error`, JSON.stringify({ err }));
+  }
+
+  private pickFirstString(
+    source: Record<string, unknown>,
+    keys: string[],
+  ): string | undefined {
+    for (const key of keys) {
+      const value = source[key];
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (trimmed.length > 0) return trimmed;
+      }
+    }
+    return undefined;
   }
 }

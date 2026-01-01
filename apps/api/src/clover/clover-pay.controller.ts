@@ -20,28 +20,7 @@ import {
 } from './hco-metadata';
 import { OrdersService } from '../orders/orders.service';
 import { generateStableId } from '../common/utils/stable-id';
-
-const CLIENT_REQUEST_ID_TZ = 'America/Toronto';
-
-const formatTorontoYYMMDD = (): string => {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: CLIENT_REQUEST_ID_TZ,
-    year: '2-digit',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(new Date());
-  const yy = parts.find((p) => p.type === 'year')?.value ?? '00';
-  const mm = parts.find((p) => p.type === 'month')?.value ?? '00';
-  const dd = parts.find((p) => p.type === 'day')?.value ?? '00';
-  return `${yy}${mm}${dd}`;
-};
-
-const buildClientRequestId = (): string => {
-  const rand = Math.floor(Math.random() * 10000)
-    .toString()
-    .padStart(4, '0');
-  return `SQ${formatTorontoYYMMDD()}${rand}`;
-};
+import { buildClientRequestId } from '../common/utils/client-request-id';
 
 const normalizeReturnUrlBase = (value?: string | null): string | undefined => {
   if (typeof value !== 'string') return undefined;
