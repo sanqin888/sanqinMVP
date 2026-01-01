@@ -310,7 +310,7 @@ describe('OrdersService', () => {
       taxCents: 130,
       totalCents: 1130,
       pickupCode: '9999',
-      clientRequestId: null,
+      clientRequestId: 'SQD2401010001',
       items: [],
     };
     prisma.order.create.mockResolvedValue(storedOrder);

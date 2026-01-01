@@ -42,6 +42,10 @@ import {
 } from '../deliveries/doordash-drive.service';
 import { parseHostedCheckoutMetadata } from '../clover/hco-metadata';
 import {
+  buildClientRequestId,
+  CLIENT_REQUEST_ID_RE,
+} from '../common/utils/client-request-id';
+import {
   OrderItemOptionChoiceSnapshot,
   OrderItemOptionGroupSnapshot,
   OrderItemOptionsSnapshot,
@@ -124,8 +128,7 @@ type DeliveryPricingConfig = {
 @Injectable()
 export class OrdersService {
   private readonly logger = new AppLogger(OrdersService.name);
-  private readonly ORDER_NUMBER_TZ = 'America/Toronto';
-  private readonly CLIENT_REQUEST_ID_RE = /^SQ\d{10}$/;
+  private readonly CLIENT_REQUEST_ID_RE = CLIENT_REQUEST_ID_RE;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -215,24 +218,8 @@ export class OrdersService {
     return typeof value === 'string' && this.CLIENT_REQUEST_ID_RE.test(value);
   }
 
-  private formatTorontoYYMMDD(date: Date): string {
-    const parts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: this.ORDER_NUMBER_TZ,
-      year: '2-digit',
-      month: '2-digit',
-      day: '2-digit',
-    }).formatToParts(date);
-
-    const yy = parts.find((p) => p.type === 'year')?.value ?? '00';
-    const mm = parts.find((p) => p.type === 'month')?.value ?? '00';
-    const dd = parts.find((p) => p.type === 'day')?.value ?? '00';
-    return `${yy}${mm}${dd}`;
-  }
-
   private buildClientRequestIdCandidate(now: Date): string {
-    const yymmdd = this.formatTorontoYYMMDD(now);
-    const rand = crypto.randomInt(0, 10000).toString().padStart(4, '0');
-    return `SQ${yymmdd}${rand}`;
+    return buildClientRequestId(now);
   }
 
   private async allocateClientRequestIdTx(
@@ -2077,8 +2064,10 @@ export class OrdersService {
     destination: UberDirectDropoffDetails,
   ): Promise<OrderWithItems> {
     // ✅ 第三方识别：优先 clientRequestId；给人看：SQ 单号
-    const thirdPartyOrderRef =
-      order.clientRequestId ?? order.orderStableId ?? '';
+    const thirdPartyOrderRef = order.clientRequestId;
+    if (!thirdPartyOrderRef) {
+      throw new BadRequestException('clientRequestId required for delivery');
+    }
     const humanRef = order.clientRequestId ?? order.orderStableId ?? '';
 
     const response: DoorDashDeliveryResult =
@@ -2117,8 +2106,10 @@ export class OrdersService {
     order: OrderWithItems,
     destination: UberDirectDropoffDetails,
   ): Promise<OrderWithItems> {
-    const thirdPartyOrderRef =
-      order.clientRequestId ?? order.orderStableId ?? '';
+    const thirdPartyOrderRef = order.clientRequestId;
+    if (!thirdPartyOrderRef) {
+      throw new BadRequestException('clientRequestId required for delivery');
+    }
     const humanRef = order.clientRequestId ?? order.orderStableId ?? '';
 
     const response: UberDirectDeliveryResult =
