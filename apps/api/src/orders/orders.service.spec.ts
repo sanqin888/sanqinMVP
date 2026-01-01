@@ -34,6 +34,7 @@ describe('OrdersService', () => {
     peekBalanceMicro: jest.Mock;
     maxRedeemableCentsFromBalance: jest.Mock;
     reserveRedeemForOrder: jest.Mock;
+    resolveUserIdByStableId: jest.Mock;
     settleOnPaid: jest.Mock;
     rollbackOnRefund: jest.Mock;
   };
@@ -127,6 +128,7 @@ describe('OrdersService', () => {
       peekBalanceMicro: jest.fn().mockResolvedValue(0n),
       maxRedeemableCentsFromBalance: jest.fn().mockReturnValue(0),
       reserveRedeemForOrder: jest.fn().mockResolvedValue(0),
+      resolveUserIdByStableId: jest.fn(),
       settleOnPaid: jest.fn(),
       rollbackOnRefund: jest.fn(),
     };

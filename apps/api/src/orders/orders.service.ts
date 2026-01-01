@@ -1184,6 +1184,27 @@ export class OrdersService {
         ? providedClientRequestId
         : null;
 
+    const rawUserStableId =
+      typeof dto.userStableId === 'string' ? dto.userStableId.trim() : '';
+    const normalizedUserStableId = rawUserStableId
+      ? normalizeStableId(rawUserStableId)
+      : null;
+    if (rawUserStableId && !normalizedUserStableId) {
+      throw new BadRequestException('userStableId must be a cuid');
+    }
+    const userId = normalizedUserStableId
+      ? await this.loyalty.resolveUserIdByStableId(normalizedUserStableId)
+      : undefined;
+
+    const rawCouponStableId =
+      typeof dto.couponStableId === 'string' ? dto.couponStableId.trim() : '';
+    const normalizedCouponStableId = rawCouponStableId
+      ? normalizeStableId(rawCouponStableId)
+      : null;
+    if (rawCouponStableId && !normalizedCouponStableId) {
+      throw new BadRequestException('couponStableId must be a cuid');
+    }
+
     if (stableKey || legacyKey) {
       const existing = await this.prisma.order.findFirst({
         where: {
@@ -1301,8 +1322,8 @@ export class OrdersService {
 
             const couponInfo = await this.membership.validateCouponForOrder(
               {
-                userId: dto.userId,
-                couponId: dto.couponId,
+                userId,
+                couponStableId: normalizedCouponStableId ?? undefined,
                 subtotalCents,
               },
               { tx },
@@ -1316,7 +1337,7 @@ export class OrdersService {
 
             const redeemValueCents = await this.loyalty.reserveRedeemForOrder({
               tx,
-              userId: dto.userId,
+              userId,
               orderId,
               sourceKey: 'ORDER',
               requestedPoints,
@@ -1349,7 +1370,7 @@ export class OrdersService {
                 status: 'paid',
                 paidAt,
                 paymentMethod,
-                userId: dto.userId ?? null,
+                userId: userId ?? null,
                 ...(stableKey ? { orderStableId: stableKey } : {}),
                 clientRequestId,
                 channel: dto.channel,
@@ -1390,7 +1411,7 @@ export class OrdersService {
             if (couponInfo?.coupon?.id) {
               await this.membership.reserveCouponForOrder({
                 tx,
-                userId: dto.userId,
+                userId,
                 couponId: couponInfo.coupon.id,
                 subtotalCents,
                 orderId,
@@ -1499,11 +1520,11 @@ export class OrdersService {
 
     const meta = parseHostedCheckoutMetadata(metadata);
     const loyaltyRedeemCents = meta.loyaltyRedeemCents ?? 0;
-    const loyaltyUserId = meta.loyaltyUserId;
+    const loyaltyUserStableId = meta.loyaltyUserStableId;
 
-    if (!loyaltyUserId || loyaltyRedeemCents <= 0) {
+    if (!loyaltyUserStableId || loyaltyRedeemCents <= 0) {
       throw new BadRequestException(
-        'loyaltyUserId and positive loyaltyRedeemCents required',
+        'loyaltyUserStableId and positive loyaltyRedeemCents required',
       );
     }
 
@@ -1537,7 +1558,7 @@ export class OrdersService {
     }
 
     const dto: CreateOrderDto = {
-      userId: loyaltyUserId,
+      userStableId: loyaltyUserStableId,
       orderStableId: normalizeStableId(meta.orderStableId) ?? undefined,
       channel: 'web',
       fulfillmentType: meta.fulfillment,

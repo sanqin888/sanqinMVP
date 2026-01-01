@@ -241,7 +241,10 @@ export class CloverHcoWebhookController {
       }
 
       const idempotencyKey =
-        orderStableId ?? normalizeStableId(intent.id) ?? undefined;
+        orderStableId ??
+        intent.checkoutSessionId ??
+        intent.referenceId ??
+        intent.id;
 
       // 1) 先建订单（已支付）
       const order = await this.orders.createInternal(orderDto, idempotencyKey);

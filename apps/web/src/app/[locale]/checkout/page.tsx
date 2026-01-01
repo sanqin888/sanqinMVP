@@ -142,14 +142,14 @@ type MembershipSummaryEnvelope =
     };
 
 type LoyaltyInfo = {
-  userId: string;
+  userStableId: string;
   tier: MemberTier;
   points: number;
   availableDiscountCents: number;
 };
 
 type CheckoutCoupon = {
-  id: string;
+  couponStableId: string;
   title: string;
   code: string;
   discountCents: number;
@@ -901,7 +901,9 @@ export default function CheckoutPage() {
     if (!isCouponApplicable(coupon)) return;
 
     setAppliedCoupon(coupon);
-    setAvailableCoupons((prev) => prev.filter((item) => item.id !== coupon.id));
+    setAvailableCoupons((prev) =>
+      prev.filter((item) => item.couponStableId !== coupon.couponStableId),
+    );
     setCouponError(null);
   };
 
@@ -976,7 +978,7 @@ export default function CheckoutPage() {
         const stableId = data.userStableId ?? data.userId ?? "";
         if (stableId) {
           setLoyaltyInfo({
-            userId: stableId,
+            userStableId: stableId,
             tier: data.tier,
             points: data.points,
             availableDiscountCents: data.availableDiscountCents,
@@ -1054,13 +1056,13 @@ export default function CheckoutPage() {
     }
 
     const sessionWithUserId = session as SessionWithUserId;
-    const userId = sessionWithUserId?.userId;
-    if (typeof userId !== "string" || !userId) {
+    const userStableId = sessionWithUserId?.userId;
+    if (typeof userStableId !== "string" || !userStableId) {
       setAvailableCoupons([]);
       return;
     }
 
-    const ensuredUserId: string = userId;
+    const ensuredUserStableId: string = userStableId;
     const controller = new AbortController();
 
     async function loadCoupons() {
@@ -1068,7 +1070,9 @@ export default function CheckoutPage() {
         setCouponLoading(true);
         setCouponError(null);
 
-        const params = new URLSearchParams([["userId", ensuredUserId]]);
+        const params = new URLSearchParams([
+          ["userStableId", ensuredUserStableId],
+        ]);
         const res = await fetch(
           `/api/v1/membership/coupons?${params.toString()}`,
           { signal: controller.signal },
@@ -1369,11 +1373,11 @@ export default function CheckoutPage() {
         loyaltyAvailableDiscountCents:
           loyaltyInfo?.availableDiscountCents ?? 0,
         loyaltyPointsBalance: loyaltyInfo?.points ?? 0,
-        loyaltyUserId: loyaltyInfo?.userId,
+        loyaltyUserStableId: loyaltyInfo?.userStableId,
 
         coupon: appliedCoupon
           ? {
-              id: appliedCoupon.id,
+              couponStableId: appliedCoupon.couponStableId,
               code: appliedCoupon.code,
               title: appliedCoupon.title,
               discountCents: couponDiscountCentsForOrder,
@@ -2213,7 +2217,9 @@ export default function CheckoutPage() {
                       {availableCoupons.map((coupon, index) => {
                         const applicable = isCouponApplicable(coupon);
                         const couponKey =
-                          coupon.id || coupon.code || `${coupon.title}-${index}`;
+                          coupon.couponStableId ||
+                          coupon.code ||
+                          `${coupon.title}-${index}`;
                         return (
                           <div
                             key={`${couponKey}-${index}`}
