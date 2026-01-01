@@ -1,4 +1,4 @@
-//apps/api/prisma/seed/export-menu-snapshot.cjs
+// apps/api/prisma/seed/export-menu-snapshot.cjs
 /* eslint-disable no-console */
 const fs = require("node:fs");
 const path = require("node:path");
@@ -7,56 +7,75 @@ const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
 async function main() {
+  // ===== Admin Users (role = ADMIN) =====
+  // ⚠️ dev snapshot：会包含 passwordHash、deviceKeyHash、enrollmentKeyHash 等敏感字段，确保该文件产物在 .gitignore 内
+  const adminUsers = await prisma.user.findMany({
+    where: { role: "ADMIN" },
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      userStableId: true,
 
-// ===== Admin Users (role = ADMIN) =====
-const adminUsers = await prisma.user.findMany({
-  where: { role: "ADMIN" },
-  orderBy: { createdAt: "asc" },
-  select: {
-    id: true,
-    userStableId: true,
-    email: true,
-    phone: true,
-    phoneVerifiedAt: true,
-    name: true,
-    role: true,
-    status: true, 
-    passwordHash: true,     
-    marketingEmailOptIn: true,
-    marketingEmailOptInAt: true,
-    referredByUserId: true,
-    birthdayMonth: true,
-    birthdayDay: true,
-  },
-});
+      email: true,
+      emailVerifiedAt: true,
 
-// ===== Business Hours =====
-const businessHours = await prisma.businessHour.findMany({
-  orderBy: { weekday: "asc" },
-  select: {
-    weekday: true,
-    openMinutes: true,
-    closeMinutes: true,
-    isClosed: true,
-  },
-});
+      phone: true,
+      phoneVerifiedAt: true,
 
-// ===== POS Devices =====
-const posDevices = await prisma.posDevice.findMany({
-  orderBy: { enrolledAt: "asc" },
-  select: {
-    id: true,
-    deviceStableId: true,
-    storeId: true,
-    name: true,
-    status: true,
-    enrollmentKeyHash: true,
-    deviceKeyHash: true,
-    meta: true,
-    enrolledAt: true,
-    lastSeenAt: true,
-  },
-});
+      name: true,
+      role: true,
+      status: true,
+
+      passwordHash: true,
+      passwordChangedAt: true,
+
+      twoFactorEnabledAt: true,
+      twoFactorMethod: true,
+
+      marketingEmailOptIn: true,
+      marketingEmailOptInAt: true,
+
+      birthdayMonth: true,
+      birthdayDay: true,
+
+      referredByUserId: true,
+      googleSub: true,
+
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+
+  // ===== Business Hours =====
+  const businessHours = await prisma.businessHour.findMany({
+    orderBy: { weekday: "asc" },
+    select: {
+      weekday: true,
+      openMinutes: true,
+      closeMinutes: true,
+      isClosed: true,
+      // createdAt/updatedAt 不导出也能 seed（有默认值）；如你后续想完整复刻可再加
+    },
+  });
+
+  // ===== POS Devices =====
+  const posDevices = await prisma.posDevice.findMany({
+    orderBy: { enrolledAt: "asc" },
+    select: {
+      id: true,
+      deviceStableId: true,
+      storeId: true,
+      name: true,
+      status: true,
+
+      enrollmentKeyHash: true,
+      deviceKeyHash: true,
+
+      meta: true,
+      enrolledAt: true,
+      lastSeenAt: true,
+    },
+  });
 
   // ===== Categories =====
   const categories = await prisma.menuCategory.findMany({
@@ -128,7 +147,7 @@ const posDevices = await prisma.posDevice.findMany({
   });
 
   // ===== Item ↔ OptionGroup Links =====
-  // 注意：你的 join 表没有 deletedAt，用 item/templateGroup 的 deletedAt 来过滤无效连接
+  // join 表本身无 deletedAt，因此用两侧 deletedAt 过滤
   const itemOptionGroups = await prisma.menuItemOptionGroup.findMany({
     where: {
       item: { deletedAt: null },
@@ -149,42 +168,58 @@ const posDevices = await prisma.posDevice.findMany({
     version: 1,
     exportedAt: new Date().toISOString(),
 
-adminUsers: adminUsers.map((u) => ({
-  id: u.id,
-  userStableId: u.userStableId,
-  email: u.email,
-  phone: u.phone,
-  phoneVerifiedAt: u.phoneVerifiedAt,
-  name: u.name,
-  role: u.role, 
-  status: u.status,
-  passwordHash: u.passwordHash,
-  marketingEmailOptIn: u.marketingEmailOptIn,
-  marketingEmailOptInAt: u.marketingEmailOptInAt,
-  referredByUserId: u.referredByUserId,
-  birthdayMonth: u.birthdayMonth,
-  birthdayDay: u.birthdayDay,
-})),
+    adminUsers: adminUsers.map((u) => ({
+      id: u.id,
+      userStableId: u.userStableId,
 
-businessHours: businessHours.map((h) => ({
-  weekday: h.weekday,
-  openMinutes: h.openMinutes,
-  closeMinutes: h.closeMinutes,
-  isClosed: h.isClosed,
-})),
+      email: u.email,
+      emailVerifiedAt: u.emailVerifiedAt,
 
-posDevices: posDevices.map((d) => ({
-  id: d.id,
-  deviceStableId: d.deviceStableId,
-  storeId: d.storeId,
-  name: d.name,
-  status: d.status,
-  enrollmentKeyHash: d.enrollmentKeyHash,
-  deviceKeyHash: d.deviceKeyHash,
-  meta: d.meta,
-  enrolledAt: d.enrolledAt,
-  lastSeenAt: d.lastSeenAt,
-})),
+      phone: u.phone,
+      phoneVerifiedAt: u.phoneVerifiedAt,
+
+      name: u.name,
+      role: u.role,
+      status: u.status,
+
+      passwordHash: u.passwordHash,
+      passwordChangedAt: u.passwordChangedAt,
+
+      twoFactorEnabledAt: u.twoFactorEnabledAt,
+      twoFactorMethod: u.twoFactorMethod,
+
+      marketingEmailOptIn: u.marketingEmailOptIn,
+      marketingEmailOptInAt: u.marketingEmailOptInAt,
+
+      referredByUserId: u.referredByUserId,
+      birthdayMonth: u.birthdayMonth,
+      birthdayDay: u.birthdayDay,
+
+      googleSub: u.googleSub,
+
+      createdAt: u.createdAt,
+      updatedAt: u.updatedAt,
+    })),
+
+    businessHours: businessHours.map((h) => ({
+      weekday: h.weekday,
+      openMinutes: h.openMinutes,
+      closeMinutes: h.closeMinutes,
+      isClosed: h.isClosed,
+    })),
+
+    posDevices: posDevices.map((d) => ({
+      id: d.id,
+      deviceStableId: d.deviceStableId,
+      storeId: d.storeId,
+      name: d.name,
+      status: d.status,
+      enrollmentKeyHash: d.enrollmentKeyHash,
+      deviceKeyHash: d.deviceKeyHash,
+      meta: d.meta,
+      enrolledAt: d.enrolledAt,
+      lastSeenAt: d.lastSeenAt,
+    })),
 
     categories: categories.map((c) => ({
       stableId: c.stableId,
@@ -247,6 +282,7 @@ posDevices: posDevices.map((d) => ({
 
   const outDir = path.join(process.cwd(), "prisma", "seed");
   fs.mkdirSync(outDir, { recursive: true });
+
   const outPath = path.join(outDir, "menu.snapshot.json");
   fs.writeFileSync(outPath, JSON.stringify(snapshot, null, 2), "utf-8");
   console.log(`Wrote snapshot: ${outPath}`);
