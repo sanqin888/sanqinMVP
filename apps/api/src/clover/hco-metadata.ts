@@ -189,6 +189,7 @@ const parseCoupon = (
 ): HostedCheckoutMetadata['coupon'] | undefined => {
   if (!isPlainObject(value)) return undefined;
 
+  const couponValue = value as Record<string, unknown>;
   const couponStableId = normalizeStableId(
     toString(value.couponStableId ?? value.couponId),
   );
@@ -232,38 +233,39 @@ export function parseHostedCheckoutMetadata(
   if (!isPlainObject(input)) {
     throw new Error('metadata must be an object');
   }
+  const metadata = input;
 
-  const fulfillment = parseFulfillment(input.fulfillment);
-  const items = parseItems(input.items);
-  const customer = parseCustomer(input.customer);
+  const fulfillment = parseFulfillment(metadata.fulfillment);
+  const items = parseItems(metadata.items);
+  const customer = parseCustomer(metadata.customer);
 
-  const subtotalCents = toCents(input.subtotalCents, 'subtotalCents');
-  const taxCents = toCents(input.taxCents, 'taxCents');
+  const subtotalCents = toCents(metadata.subtotalCents, 'subtotalCents');
+  const taxCents = toCents(metadata.taxCents, 'taxCents');
 
   return {
-    locale: parseLocale(input.locale),
-    orderStableId: toString(input.orderStableId),
+    locale: parseLocale(metadata.locale),
+    orderStableId: toString(metadata.orderStableId),
     fulfillment,
-    schedule: toString(input.schedule),
+    schedule: toString(metadata.schedule),
     customer,
     items,
     subtotalCents,
     taxCents,
-    serviceFeeCents: toOptionalCents(input.serviceFeeCents),
-    deliveryFeeCents: toOptionalCents(input.deliveryFeeCents),
-    totalCents: toOptionalCents(input.totalCents),
-    taxRate: toNumber(input.taxRate),
-    deliveryType: parseDeliveryType(input.deliveryType),
-    deliveryProvider: parseDeliveryProvider(input.deliveryProvider),
-    deliveryEtaMinutes: parseEtaRange(input.deliveryEtaMinutes),
-    deliveryDistanceKm: toNumber(input.deliveryDistanceKm),
+    serviceFeeCents: toOptionalCents(metadata.serviceFeeCents),
+    deliveryFeeCents: toOptionalCents(metadata.deliveryFeeCents),
+    totalCents: toOptionalCents(metadata.totalCents),
+    taxRate: toNumber(metadata.taxRate),
+    deliveryType: parseDeliveryType(metadata.deliveryType),
+    deliveryProvider: parseDeliveryProvider(metadata.deliveryProvider),
+    deliveryEtaMinutes: parseEtaRange(metadata.deliveryEtaMinutes),
+    deliveryDistanceKm: toNumber(metadata.deliveryDistanceKm),
 
     // ===== 新增：积分相关 =====
-    loyaltyRedeemCents: toOptionalCents(input.loyaltyRedeemCents),
+    loyaltyRedeemCents: toOptionalCents(metadata.loyaltyRedeemCents),
     loyaltyAvailableDiscountCents: toOptionalCents(
-      input.loyaltyAvailableDiscountCents,
+      metadata.loyaltyAvailableDiscountCents,
     ),
-    loyaltyPointsBalance: toNumber(input.loyaltyPointsBalance),
+    loyaltyPointsBalance: toNumber(metadata.loyaltyPointsBalance),
     loyaltyUserStableId:
       normalizeStableId(toString(input.loyaltyUserStableId)) ?? undefined,
     coupon: parseCoupon(input.coupon),
