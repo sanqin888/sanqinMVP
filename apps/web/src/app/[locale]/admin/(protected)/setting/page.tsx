@@ -243,6 +243,23 @@ const handleToggleClosed = (index: number, checked: boolean) => {
   });
 };
 
+const handleTimeChange = (
+  index: number,
+  field: 'openMinutes' | 'closeMinutes',
+  value: string,
+) => {
+  const mins = timeStringToMinutes(value);
+  if (mins == null) return;
+
+  setHours((prev) => {
+    const next = [...prev];
+    const h = { ...next[index] };
+    h[field] = mins;
+    next[index] = h;
+    return next;
+  });
+};
+
   /** ===== 门店状态（临时暂停接单） handler ===== */
 
   const handleConfigToggleClosed = (checked: boolean) => {
