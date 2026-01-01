@@ -1,3 +1,4 @@
+//Users/apple/sanqinMVP/apps/api/src/orders/types.ts
 export type Channel = 'web' | 'in_store' | 'ubereats';
 export type FulfillmentType = 'pickup' | 'dine_in';
 export type DeliveryType = 'STANDARD' | 'PRIORITY';
