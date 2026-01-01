@@ -5,9 +5,9 @@ import {
   type BusinessHoursResponse,
   type UpdateBusinessHoursDto,
 } from './dto/business-hours.dto';
-import { SessionAuthGuard } from '../auth/session-auth.guard';
-import { Roles } from '../auth/roles.decorator';
-import { RolesGuard } from '../auth/roles.guard';
+import { SessionAuthGuard } from '../../auth/session-auth.guard';
+import { Roles } from '../../auth/roles.decorator';
+import { RolesGuard } from '../../auth/roles.guard';
 
 @UseGuards(SessionAuthGuard, RolesGuard)
 @Roles('ADMIN')

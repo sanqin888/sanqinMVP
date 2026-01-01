@@ -279,6 +279,10 @@ const handleToggleClosed = (index: number, checked: boolean) => {
     setConfig((prev) => (prev ? { ...prev, salesTaxRate: rate } : prev));
   };
 
+  const handleTimezoneChange = (value: string) => {
+    setConfig((prev) => (prev ? { ...prev, timezone: value } : prev));
+  };
+
   /** ===== 节假日相关 handler ===== */
 
   const handleHolidayFieldChange = (
@@ -446,7 +450,8 @@ await apiFetch('/admin/business/hours', {
 const holidaysPayload = {
   holidays: holidays.map((h) => {
     // ✅ 明确剥离 clientKey，避免未来误带字段
-    const { clientKey: _ignore, ...rest } = h;
+    const { clientKey, ...rest } = h;
+    void clientKey;
 
     const name =
       typeof rest.name === 'string' && rest.name.trim().length > 0
