@@ -294,7 +294,7 @@ export class OrdersController {
     @Body() body: CreateOrderAmendmentDto,
   ): Promise<OrderDto> {
     return this.ordersService.createAmendment({
-      orderId: orderStableId,
+      orderStableId,
       type: body.type,
       reason: body.reason,
       paymentMethod: body.paymentMethod ?? null,
