@@ -52,10 +52,10 @@ export type HostedCheckoutMetadata = {
   loyaltyRedeemCents?: number; // 本单用积分抵扣的金额（分）
   loyaltyAvailableDiscountCents?: number; // 前端计算的“最多可抵扣金额”（分），仅调试使用
   loyaltyPointsBalance?: number; // 下单前积分余额（点）
-  loyaltyUserId?: string; // 会员 userId，用于把订单绑定到会员
+  loyaltyUserStableId?: string; // ✅ 会员 stableId（对外只用 stableId）
 
   coupon?: {
-    couponId?: string;
+    couponStableId?: string;
     code?: string;
     title?: string;
     discountCents?: number;
@@ -142,7 +142,9 @@ const parseItems = (value: unknown): HostedCheckoutItem[] => {
     .map((entry) => {
       if (!isPlainObject(entry)) return null;
 
-      const productStableId = toString(entry.productStableId);
+      const productStableId = normalizeStableId(
+        toString(entry.productStableId),
+      );
 
       const priceCents =
         toOptionalCents(entry.priceCents) ?? toOptionalCents(entry.price);
@@ -187,11 +189,13 @@ const parseCoupon = (
 ): HostedCheckoutMetadata['coupon'] | undefined => {
   if (!isPlainObject(value)) return undefined;
 
-  const couponId = toString(value.couponId);
-  if (!couponId) return undefined;
+  const couponStableId = normalizeStableId(
+    toString(value.couponStableId ?? value.couponId),
+  );
+  if (!couponStableId) return undefined;
 
   return {
-    couponId,
+    couponStableId,
     code: toString(value.code),
     title: toString(value.title),
     discountCents: toOptionalCents(value.discountCents),
@@ -228,39 +232,41 @@ export function parseHostedCheckoutMetadata(
   if (!isPlainObject(input)) {
     throw new Error('metadata must be an object');
   }
+  const metadata = input;
 
-  const fulfillment = parseFulfillment(input.fulfillment);
-  const items = parseItems(input.items);
-  const customer = parseCustomer(input.customer);
+  const fulfillment = parseFulfillment(metadata.fulfillment);
+  const items = parseItems(metadata.items);
+  const customer = parseCustomer(metadata.customer);
 
-  const subtotalCents = toCents(input.subtotalCents, 'subtotalCents');
-  const taxCents = toCents(input.taxCents, 'taxCents');
+  const subtotalCents = toCents(metadata.subtotalCents, 'subtotalCents');
+  const taxCents = toCents(metadata.taxCents, 'taxCents');
 
   return {
-    locale: parseLocale(input.locale),
-    orderStableId: toString(input.orderStableId),
+    locale: parseLocale(metadata.locale),
+    orderStableId: toString(metadata.orderStableId),
     fulfillment,
-    schedule: toString(input.schedule),
+    schedule: toString(metadata.schedule),
     customer,
     items,
     subtotalCents,
     taxCents,
-    serviceFeeCents: toOptionalCents(input.serviceFeeCents),
-    deliveryFeeCents: toOptionalCents(input.deliveryFeeCents),
-    totalCents: toOptionalCents(input.totalCents),
-    taxRate: toNumber(input.taxRate),
-    deliveryType: parseDeliveryType(input.deliveryType),
-    deliveryProvider: parseDeliveryProvider(input.deliveryProvider),
-    deliveryEtaMinutes: parseEtaRange(input.deliveryEtaMinutes),
-    deliveryDistanceKm: toNumber(input.deliveryDistanceKm),
+    serviceFeeCents: toOptionalCents(metadata.serviceFeeCents),
+    deliveryFeeCents: toOptionalCents(metadata.deliveryFeeCents),
+    totalCents: toOptionalCents(metadata.totalCents),
+    taxRate: toNumber(metadata.taxRate),
+    deliveryType: parseDeliveryType(metadata.deliveryType),
+    deliveryProvider: parseDeliveryProvider(metadata.deliveryProvider),
+    deliveryEtaMinutes: parseEtaRange(metadata.deliveryEtaMinutes),
+    deliveryDistanceKm: toNumber(metadata.deliveryDistanceKm),
 
     // ===== 新增：积分相关 =====
-    loyaltyRedeemCents: toOptionalCents(input.loyaltyRedeemCents),
+    loyaltyRedeemCents: toOptionalCents(metadata.loyaltyRedeemCents),
     loyaltyAvailableDiscountCents: toOptionalCents(
-      input.loyaltyAvailableDiscountCents,
+      metadata.loyaltyAvailableDiscountCents,
     ),
-    loyaltyPointsBalance: toNumber(input.loyaltyPointsBalance),
-    loyaltyUserId: toString(input.loyaltyUserId),
+    loyaltyPointsBalance: toNumber(metadata.loyaltyPointsBalance),
+    loyaltyUserStableId:
+      normalizeStableId(toString(input.loyaltyUserStableId)) ?? undefined,
     coupon: parseCoupon(input.coupon),
   } satisfies HostedCheckoutMetadata;
 }
@@ -327,8 +333,10 @@ export function buildOrderDtoFromMetadata(
     contactName: meta.customer.name,
     contactPhone: meta.customer.phone,
 
-    // ⭐ 关键：让订单有 userId，这样 paid 时才会结算积分
-    ...(meta.loyaltyUserId ? { userId: meta.loyaltyUserId } : {}),
+    // ⭐ 关键：让订单有 userStableId，这样 paid 时才会结算积分
+    ...(meta.loyaltyUserStableId
+      ? { userStableId: meta.loyaltyUserStableId }
+      : {}),
 
     fulfillmentType: meta.fulfillment === 'delivery' ? 'delivery' : 'pickup',
     subtotalCents,
@@ -372,8 +380,8 @@ export function buildOrderDtoFromMetadata(
     }),
   };
 
-  if (meta.coupon?.couponId) {
-    dto.couponId = meta.coupon.couponId;
+  if (meta.coupon?.couponStableId) {
+    dto.couponStableId = meta.coupon.couponStableId;
   }
 
   if (meta.fulfillment === 'delivery') {

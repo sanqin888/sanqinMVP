@@ -44,7 +44,7 @@ type OrderDetail = {
   items: OrderItem[];
   loyaltyRedeemCents: number | null;           
   subtotalAfterDiscountCents: number | null;   
-  couponId: string | null;
+  couponStableId: string | null;
   couponDiscountCents: number | null;
   couponCodeSnapshot: string | null;
   couponTitleSnapshot: string | null;
