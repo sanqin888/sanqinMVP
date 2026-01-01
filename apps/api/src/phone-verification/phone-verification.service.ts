@@ -1,5 +1,6 @@
 // apps/api/src/phone-verification/phone-verification.service.ts
 import { Injectable, Logger } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { PhoneVerificationStatus } from '@prisma/client';
 
@@ -29,6 +30,11 @@ export class PhoneVerificationService {
   private generateCode(): string {
     const n = Math.floor(100000 + Math.random() * 900000);
     return String(n);
+  }
+
+  /** 生成验证 token（给前端存起来） */
+  private generateVerificationToken(): string {
+    return randomBytes(32).toString('hex');
   }
 
   /** 发送验证码（MVP: 只写入 DB + 日志，不真正发短信） */
@@ -122,16 +128,16 @@ export class PhoneVerificationService {
     }
 
     // ✅ 验证成功：标记为 VERIFIED
+    const verificationToken = this.generateVerificationToken();
+
     await this.prisma.phoneVerification.update({
       where: { id: latest.id },
       data: {
         status: PhoneVerificationStatus.VERIFIED,
         verifiedAt: now,
+        token: verificationToken,
       },
     });
-
-    // verificationToken 先直接用这条记录的 id，简单可靠且唯一
-    const verificationToken = latest.id;
 
     return {
       ok: true,

@@ -119,30 +119,21 @@ export class MembershipService {
     const normalizedPhone = this.normalizePhone(rawPhone);
     if (!normalizedPhone || !verificationToken) return user;
 
-    // ✅ 额外防御：如果 token 形状明显不像 UUID，就直接忽略，避免 Prisma 报 “invalid length”
-    if (!/^[0-9a-fA-F-]{32,36}$/.test(verificationToken)) {
-      return user;
-    }
-
     // 已经有手机而且和这次一致，就顺手把 token 标记为 CONSUMED 即可
     if (user.phone && this.normalizePhone(user.phone) === normalizedPhone) {
-      try {
-        await this.prisma.phoneVerification.update({
-          where: { id: verificationToken },
-          data: {
-            status: 'CONSUMED',
-            consumedAt: new Date(),
-          },
-        });
-      } catch {
-        // 忽略错误（比如 token 找不到）
-      }
+      await this.prisma.phoneVerification.updateMany({
+        where: { token: verificationToken },
+        data: {
+          status: 'CONSUMED',
+          consumedAt: new Date(),
+        },
+      });
       return user;
     }
 
     // 查这条验证码记录
     const pv = await this.prisma.phoneVerification.findUnique({
-      where: { id: verificationToken },
+      where: { token: verificationToken },
     });
 
     if (
@@ -590,7 +581,7 @@ export class MembershipService {
       orderBy: { createdAt: 'desc' },
       take: limit,
       select: {
-        id: true,
+        ledgerStableId: true,
         createdAt: true,
         type: true,
         orderId: true,
@@ -624,12 +615,12 @@ export class MembershipService {
       entries: entries.map((entry) => {
         const orderStableId =
           entry.orderId != null
-            ? (orderStableById.get(entry.orderId) ?? entry.orderId)
+            ? orderStableById.get(entry.orderId)
             : undefined;
 
         return {
           // ✅ 对外统一：不用裸 id
-          ledgerId: entry.id,
+          ledgerStableId: entry.ledgerStableId,
 
           createdAt: entry.createdAt.toISOString(),
           type: entry.type,
@@ -827,22 +818,58 @@ export class MembershipService {
   async validateCouponForOrder(
     params: {
       userId?: string;
-      couponId?: string;
       couponStableId?: string;
       subtotalCents: number;
     },
     options?: { tx?: Prisma.TransactionClient },
   ) {
-    const { userId, couponId, couponStableId, subtotalCents } = params;
+    const { userId, couponStableId, subtotalCents } = params;
+    if (!couponStableId) return null;
+    return this.validateCouponForOrderWithWhere(
+      {
+        userId,
+        subtotalCents,
+        where: { couponStableId },
+      },
+      options,
+    );
+  }
+
+  private async validateCouponForOrderById(
+    params: {
+      userId?: string;
+      couponId?: string;
+      subtotalCents: number;
+    },
+    options?: { tx?: Prisma.TransactionClient },
+  ) {
+    const { userId, couponId, subtotalCents } = params;
+    if (!couponId) return null;
+    return this.validateCouponForOrderWithWhere(
+      {
+        userId,
+        subtotalCents,
+        where: { id: couponId },
+      },
+      options,
+    );
+  }
+
+  private async validateCouponForOrderWithWhere(
+    params: {
+      userId?: string;
+      subtotalCents: number;
+      where: Prisma.CouponWhereUniqueInput;
+    },
+    options?: { tx?: Prisma.TransactionClient },
+  ) {
+    const { userId, subtotalCents, where } = params;
     const prisma = options?.tx ?? this.prisma;
-    if (!couponStableId && !couponId) return null;
     if (!userId) {
       throw new BadRequestException('userId is required when applying coupon');
     }
 
-    const coupon = await prisma.coupon.findUnique({
-      where: couponStableId ? { couponStableId } : { id: couponId },
-    });
+    const coupon = await prisma.coupon.findUnique({ where });
 
     if (!coupon || coupon.userId !== userId) {
       throw new BadRequestException('coupon not found for user');
@@ -886,7 +913,7 @@ export class MembershipService {
     const { tx, userId, couponId, subtotalCents, orderId } = params;
     if (!couponId) return null;
 
-    const couponInfo = await this.validateCouponForOrder(
+    const couponInfo = await this.validateCouponForOrderById(
       { userId, couponId, subtotalCents },
       { tx },
     );
