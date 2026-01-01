@@ -267,8 +267,8 @@ export function parseHostedCheckoutMetadata(
     ),
     loyaltyPointsBalance: toNumber(metadata.loyaltyPointsBalance),
     loyaltyUserStableId:
-      normalizeStableId(toString(metadata.loyaltyUserStableId)) ?? undefined,
-    coupon: parseCoupon(metadata.coupon),
+      normalizeStableId(toString(input.loyaltyUserStableId)) ?? undefined,
+    coupon: parseCoupon(input.coupon),
   } satisfies HostedCheckoutMetadata;
 }
 
