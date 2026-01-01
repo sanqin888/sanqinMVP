@@ -70,6 +70,7 @@ export class MembershipService {
 
   private serializeCoupon(coupon: {
     id: string;
+    couponStableId: string;
     title: string;
     code: string;
     discountCents: number;
@@ -85,8 +86,8 @@ export class MembershipService {
     });
 
     return {
-      // ✅ 对外统一：不暴露裸字段名 id
-      couponId: coupon.id,
+      // ✅ 对外统一：对外只用 stableId
+      couponStableId: coupon.couponStableId,
 
       title: coupon.title,
       code: coupon.code,
@@ -557,6 +558,7 @@ export class MembershipService {
     return coupons.map((coupon) =>
       this.serializeCoupon({
         id: coupon.id,
+        couponStableId: coupon.couponStableId,
         title: coupon.title,
         code: coupon.code,
         discountCents: coupon.discountCents,
@@ -826,19 +828,20 @@ export class MembershipService {
     params: {
       userId?: string;
       couponId?: string;
+      couponStableId?: string;
       subtotalCents: number;
     },
     options?: { tx?: Prisma.TransactionClient },
   ) {
-    const { userId, couponId, subtotalCents } = params;
+    const { userId, couponId, couponStableId, subtotalCents } = params;
     const prisma = options?.tx ?? this.prisma;
-    if (!couponId) return null;
+    if (!couponStableId && !couponId) return null;
     if (!userId) {
       throw new BadRequestException('userId is required when applying coupon');
     }
 
     const coupon = await prisma.coupon.findUnique({
-      where: { id: couponId },
+      where: couponStableId ? { couponStableId } : { id: couponId },
     });
 
     if (!coupon || coupon.userId !== userId) {

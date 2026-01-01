@@ -104,7 +104,7 @@ export class DeliveryDestinationDto {
 export class CreateOrderDto {
   @IsOptional()
   @IsString()
-  userId?: string;
+  userStableId?: string;
 
   @IsOptional()
   @IsString()
@@ -190,7 +190,7 @@ export class CreateOrderDto {
 
   @IsOptional()
   @IsString()
-  couponId?: string;
+  couponStableId?: string;
 
   @IsOptional()
   @ValidateNested()

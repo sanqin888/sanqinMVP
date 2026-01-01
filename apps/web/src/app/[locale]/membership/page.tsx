@@ -34,7 +34,7 @@ type OrderHistory = {
 type CouponStatus = 'active' | 'used' | 'expired';
 
 type Coupon = {
-  couponId: string;
+  couponStableId: string;
   title: string;
   code: string;
   discountCents: number;
@@ -1727,7 +1727,7 @@ function CouponsSection({
 
           return (
             <div
-              key={coupon.couponId}
+              key={coupon.couponStableId}
               className="rounded-xl border border-dashed border-amber-200 bg-amber-50 px-3 py-2"
             >
               <div className="flex items-center justify-between">
