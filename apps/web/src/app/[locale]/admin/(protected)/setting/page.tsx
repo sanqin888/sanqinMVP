@@ -243,6 +243,23 @@ const handleToggleClosed = (index: number, checked: boolean) => {
   });
 };
 
+const handleTimeChange = (
+  index: number,
+  field: 'openMinutes' | 'closeMinutes',
+  value: string,
+) => {
+  const mins = timeStringToMinutes(value);
+  if (mins == null) return;
+
+  setHours((prev) => {
+    const next = [...prev];
+    const h = { ...next[index] };
+    h[field] = mins;
+    next[index] = h;
+    return next;
+  });
+};
+
   /** ===== 门店状态（临时暂停接单） handler ===== */
 
   const handleConfigToggleClosed = (checked: boolean) => {
@@ -277,6 +294,10 @@ const handleToggleClosed = (index: number, checked: boolean) => {
     const rate = parsePercentToRate(value);
     if (rate == null) return;
     setConfig((prev) => (prev ? { ...prev, salesTaxRate: rate } : prev));
+  };
+
+  const handleTimezoneChange = (value: string) => {
+    setConfig((prev) => (prev ? { ...prev, timezone: value } : prev));
   };
 
   /** ===== 节假日相关 handler ===== */
@@ -446,7 +467,8 @@ await apiFetch('/admin/business/hours', {
 const holidaysPayload = {
   holidays: holidays.map((h) => {
     // ✅ 明确剥离 clientKey，避免未来误带字段
-    const { clientKey: _ignore, ...rest } = h;
+    const { clientKey, ...rest } = h;
+    void clientKey;
 
     const name =
       typeof rest.name === 'string' && rest.name.trim().length > 0
