@@ -1352,7 +1352,7 @@ export class LoyaltyService {
       const deltaMicro = toMicroPoints(dp);
       const newBal = acc.pointsMicro + deltaMicro;
 
-      const ledger = await tx.loyaltyLedger.create({
+      await tx.loyaltyLedger.create({
         data: {
           accountId: acc.id,
           orderId: null,

@@ -251,7 +251,10 @@ export class UberDirectService {
         },
       );
 
-      const normalized = this.normalizeResponse(response.data, externalOrderRef);
+      const normalized = this.normalizeResponse(
+        response.data,
+        externalOrderRef,
+      );
 
       return normalized;
     } catch (error: unknown) {

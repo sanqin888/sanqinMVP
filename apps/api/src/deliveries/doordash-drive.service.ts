@@ -300,7 +300,8 @@ export class DoorDashDriveService {
       const deliveryId =
         this.pickFirstString(data, ['delivery_id', 'id', 'deliveryId']) ?? '';
       const externalDeliveryId =
-        this.pickFirstString(data, ['external_delivery_id']) ?? externalOrderRef;
+        this.pickFirstString(data, ['external_delivery_id']) ??
+        externalOrderRef;
 
       return {
         deliveryId: deliveryId || externalDeliveryId,

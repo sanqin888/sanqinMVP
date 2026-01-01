@@ -25,10 +25,7 @@ export const normalizeExternalOrderRef = (value: string): string => {
     return collapsed;
   }
 
-  const hash = createHash('sha256')
-    .update(collapsed)
-    .digest('hex')
-    .slice(0, 8);
+  const hash = createHash('sha256').update(collapsed).digest('hex').slice(0, 8);
   const keepLength = Math.max(1, MAX_EXTERNAL_ID_LENGTH - hash.length - 1);
   return `${collapsed.slice(0, keepLength)}-${hash}`;
 };
