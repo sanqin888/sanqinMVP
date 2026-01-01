@@ -387,7 +387,7 @@ export class DoorDashDriveService {
     if (message) summary.message = message;
     if (type) summary.type = type;
 
-    const errors = Array.isArray(record.errors) ? record.errors : undefined;
+    const errors = this.toUnknownArray(record.errors);
     if (errors && errors.length > 0) {
       const first = errors[0];
       if (first && typeof first === 'object') {
@@ -401,6 +401,10 @@ export class DoorDashDriveService {
     }
 
     return Object.keys(summary).length > 0 ? summary : undefined;
+  }
+
+  private toUnknownArray(value: unknown): unknown[] | undefined {
+    return Array.isArray(value) ? (value as unknown[]) : undefined;
   }
 
   private pickFirstString(
