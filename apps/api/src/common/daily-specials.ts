@@ -74,7 +74,7 @@ export function resolveEffectivePriceCents(
     case SpecialPricingMode.DISCOUNT_PERCENT: {
       if (typeof special.discountPercent === 'number') {
         const percent = special.discountPercent;
-        effective = Math.round(basePriceCents * (100 - percent) / 100);
+        effective = Math.round((basePriceCents * (100 - percent)) / 100);
       }
       break;
     }

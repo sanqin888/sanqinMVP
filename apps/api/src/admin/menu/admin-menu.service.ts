@@ -200,8 +200,7 @@ export class AdminMenuService {
             activeSpecial: activeSpecial
               ? {
                   stableId: activeSpecial.stableId,
-                  effectivePriceCents:
-                    effectivePriceCents ?? it.basePriceCents,
+                  effectivePriceCents: effectivePriceCents ?? it.basePriceCents,
                   pricingMode: activeSpecial.pricingMode,
                   disallowCoupons: activeSpecial.disallowCoupons,
                 }
@@ -812,7 +811,9 @@ export class AdminMenuService {
     return { ok: true };
   }
 
-  async getDailySpecials(weekday?: number): Promise<{ specials: DailySpecialDto[] }> {
+  async getDailySpecials(
+    weekday?: number,
+  ): Promise<{ specials: DailySpecialDto[] }> {
     if (weekday !== undefined && (weekday < 1 || weekday > 5)) {
       throw new BadRequestException('weekday must be between 1 and 5');
     }
@@ -934,9 +935,7 @@ export class AdminMenuService {
         startMinutes: parseMinutes(raw.startMinutes),
         endMinutes: parseMinutes(raw.endMinutes),
         disallowCoupons:
-          typeof raw.disallowCoupons === 'boolean'
-            ? raw.disallowCoupons
-            : true,
+          typeof raw.disallowCoupons === 'boolean' ? raw.disallowCoupons : true,
         isEnabled: typeof raw.isEnabled === 'boolean' ? raw.isEnabled : true,
         sortOrder:
           typeof raw.sortOrder === 'number' ? Math.trunc(raw.sortOrder) : 0,
