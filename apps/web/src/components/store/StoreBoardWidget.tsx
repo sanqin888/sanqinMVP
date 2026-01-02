@@ -15,6 +15,32 @@ type BoardOrderItem = {
   unitPriceCents?: number | null;
 };
 
+type PrintPosPayload = {
+  locale: Locale;
+  orderNumber: string;
+  pickupCode: string | null;
+  fulfillment: "pickup" | "dine_in" | "delivery";
+  paymentMethod: "cash" | "card" | "wechat_alipay";
+  snapshot: {
+    items: Array<{
+      productStableId: string;
+      nameZh: string | null;
+      nameEn: string | null;
+      displayName: string | null;
+      quantity: number;
+      lineTotalCents: number;
+      options: unknown | null;
+    }>;
+    subtotalCents: number;
+    taxCents: number;
+    totalCents: number;
+    discountCents: number;
+    deliveryFeeCents: number;
+    deliveryCostCents: number;
+    deliverySubsidyCents: number;
+  };
+};
+
 type BoardOrder = {
   orderStableId: string; // ✅ 非空
 
@@ -220,28 +246,44 @@ export function StoreBoardWidget(props: { locale: Locale }) {
     hadPersistedRef.current = Object.keys(map).length > 0;
   }, []);
 
-  const handlePrintFront = useCallback(
-    (orderStableId: string) => {
-      const prefix = `/${locale}`;
-      window.open(
-        `${prefix}/store/print/front/${orderStableId}`,
-        "_blank",
-        "width=480,height=800",
-      );
+  const printerBaseUrl =
+    process.env.NEXT_PUBLIC_POS_PRINTER_BASE_URL ?? "http://127.0.0.1:19191";
+
+  const sendPrintPayload = useCallback(
+    async (
+      orderStableId: string,
+      targets: { customer?: boolean; kitchen?: boolean },
+    ) => {
+      try {
+        const payload = await apiFetch<PrintPosPayload>(
+          `/pos/orders/${encodeURIComponent(orderStableId)}/print-payload?locale=${encodeURIComponent(
+            locale,
+          )}`,
+        );
+
+        await fetch(`${printerBaseUrl}/print-pos`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...payload, targets }),
+          keepalive: true,
+        });
+      } catch (error) {
+        console.error("Failed to print POS receipt:", error);
+      }
     },
-    [locale],
+    [locale, printerBaseUrl],
+  );
+
+  const handlePrintFront = useCallback(
+    (orderStableId: string) =>
+      sendPrintPayload(orderStableId, { customer: true, kitchen: false }),
+    [sendPrintPayload],
   );
 
   const handlePrintKitchen = useCallback(
-    (orderStableId: string) => {
-      const prefix = `/${locale}`;
-      window.open(
-        `${prefix}/store/print/kitchen/${orderStableId}`,
-        "_blank",
-        "width=480,height=800",
-      );
-    },
-    [locale],
+    (orderStableId: string) =>
+      sendPrintPayload(orderStableId, { customer: false, kitchen: true }),
+    [sendPrintPayload],
   );
 
   const fetchOrdersAndProcess = useCallback(async () => {
@@ -276,10 +318,6 @@ export function StoreBoardWidget(props: { locale: Locale }) {
       const sid = o.orderStableId;
       processedSet.add(sid);
       processedMap[sid] = safeParseCreatedAtMs(o.createdAt);
-
-      // 自动打印：前台 + 后厨各一次
-      handlePrintFront(sid);
-      handlePrintKitchen(sid);
     }
     writeProcessedMap(processedMap);
 
@@ -296,15 +334,24 @@ export function StoreBoardWidget(props: { locale: Locale }) {
 
   const handleAdvance = useCallback(
     async (orderStableId: string) => {
+      const order = orders.find((item) => item.orderStableId === orderStableId);
+      const shouldPrintOnAccept =
+        order?.channel === "web" && order.status === "paid";
       try {
         await advanceOrder(orderStableId);
+        if (shouldPrintOnAccept) {
+          await sendPrintPayload(orderStableId, {
+            customer: true,
+            kitchen: true,
+          });
+        }
         await fetchOrdersAndProcess();
       } catch (error) {
         console.error("Failed to advance order:", error);
         alert(isZh ? "推进订单状态失败，请稍后重试。" : "Failed to update order status.");
       }
     },
-    [fetchOrdersAndProcess, isZh],
+    [fetchOrdersAndProcess, isZh, orders, sendPrintPayload],
   );
 
   // 轮询（✅ exhaustive-deps 通过）

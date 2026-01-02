@@ -30,32 +30,46 @@ type MemberLookupResponse = {
   lifetimeSpendCents: number;
 };
 
-type PosPrintRequest = {
+type PrintPosPayload = {
   locale: Locale;
   orderNumber: string;
-  pickupCode?: string | null;
-  fulfillment: FulfillmentType;
+  pickupCode: string | null;
+  fulfillment: FulfillmentType | "delivery";
   paymentMethod: PaymentMethod;
-  snapshot: PosDisplaySnapshot;
+  snapshot: PosDisplaySnapshot & {
+    deliveryFeeCents: number;
+    deliveryCostCents: number;
+    deliverySubsidyCents: number;
+    discountCents: number;
+  };
 };
 
-/**
- * 把当前订单的信息发给本地打印服务
- * 本地服务地址： http://127.0.0.1:19191/print-pos
- */
-function sendPosPrintRequest(payload: PosPrintRequest): Promise<void> {
-  return fetch("http://127.0.0.1:19191/print-pos", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+const PRINTER_BASE_URL =
+  process.env.NEXT_PUBLIC_POS_PRINTER_BASE_URL ?? "http://127.0.0.1:19191";
 
-    // ✅ 可选：避免你点“完成/跳转”太快导致请求被浏览器取消
-    keepalive: true,
-  })
-    .then(() => undefined)
-    .catch((err) => {
-      console.error("Failed to send POS print request:", err);
+async function sendPosPrintPayload(
+  orderStableId: string,
+  locale: Locale,
+): Promise<void> {
+  try {
+    const payload = await apiFetch<PrintPosPayload>(
+      `/pos/orders/${encodeURIComponent(orderStableId)}/print-payload?locale=${encodeURIComponent(
+        locale,
+      )}`,
+    );
+
+    await fetch(`${PRINTER_BASE_URL}/print-pos`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...payload,
+        targets: { customer: true, kitchen: true },
+      }),
+      keepalive: true,
     });
+  } catch (err) {
+    console.error("Failed to send POS print request:", err);
+  }
 }
 
 const STRINGS: Record<
@@ -474,19 +488,9 @@ export default function StorePosPaymentPage() {
         body: JSON.stringify(body),
       });
 
-      const orderNumber = order.orderNumber ?? order.orderStableId;
-      const pickupCode = order.pickupCode ?? null;
-
       // ✅ 打印：发送给本地打印服务（无弹窗）
-      if (typeof window !== "undefined") {
-        void sendPosPrintRequest({
-          locale,
-          orderNumber,
-          pickupCode,
-          fulfillment,
-          paymentMethod,
-          snapshot: computedSnapshot,
-        });
+      if (typeof window !== "undefined" && order.orderStableId) {
+        void sendPosPrintPayload(order.orderStableId, locale);
 
         try {
           window.localStorage.removeItem(POS_DISPLAY_STORAGE_KEY);
@@ -496,8 +500,8 @@ export default function StorePosPaymentPage() {
       }
 
       setSuccessInfo({
-        orderNumber,
-        pickupCode,
+        orderNumber: order.orderNumber ?? order.orderStableId,
+        pickupCode: order.pickupCode ?? null,
       });
 
       if (order.orderStableId) {
