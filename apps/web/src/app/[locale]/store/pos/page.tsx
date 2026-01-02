@@ -17,6 +17,7 @@ import {
   type PosDisplaySnapshot,
 } from "@/lib/pos-display";
 import { StoreBoardWidget } from "@/components/store/StoreBoardWidget";
+import { formatStoreTime } from "@/lib/time/tz";
 
 type PosCartEntry = {
   lineId: string;
@@ -36,6 +37,7 @@ type StoreStatus = {
   isTemporarilyClosed: boolean;
   temporaryCloseReason: string | null;
   ruleSource: StoreStatusRuleSource;
+  timezone: string;
   nextOpenAt?: string | null;
   today?: {
     date: string;
@@ -256,14 +258,10 @@ export default function StorePosPage() {
     }
 
     if (storeStatus.nextOpenAt) {
-      const formatted = new Date(storeStatus.nextOpenAt).toLocaleString(
-        isZh ? "zh-Hans-CA" : "en-CA",
-        {
-          month: "short",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        },
+      const formatted = formatStoreTime(
+        storeStatus.nextOpenAt,
+        storeStatus.timezone,
+        isZh ? "zh" : "en",
       );
       storeStatusDetail +=
         (storeStatusDetail ? " " : "") +
