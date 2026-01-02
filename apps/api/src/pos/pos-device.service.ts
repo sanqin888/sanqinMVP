@@ -62,12 +62,25 @@ export class PosDeviceService {
     const deviceKeyHash = this.hashDeviceKey(deviceKey);
     const meta = this.buildMeta(params.meta, params.userAgent);
 
+    const newEnrollmentKeyHash = this.hashDeviceKey(
+      randomBytes(16).toString('hex'),
+    );
+
     const updated = await this.prisma.posDevice.update({
       where: { id: device.id },
       data: {
         deviceKeyHash,
         meta,
         lastSeenAt: new Date(),
+        enrollmentKeyHash: newEnrollmentKeyHash,
+      },
+      select: {
+        deviceStableId: true,
+        name: true,
+        status: true,
+        meta: true,
+        enrolledAt: true,
+        lastSeenAt: true,
       },
     });
 
@@ -77,6 +90,13 @@ export class PosDeviceService {
   async verifyDevice(params: { deviceStableId: string; deviceKey: string }) {
     const device = await this.prisma.posDevice.findUnique({
       where: { deviceStableId: params.deviceStableId },
+      select: {
+        id: true,
+        deviceKeyHash: true,
+        status: true,
+        deviceStableId: true,
+        meta: true,
+      },
     });
 
     if (!device || device.status !== 'ACTIVE') {

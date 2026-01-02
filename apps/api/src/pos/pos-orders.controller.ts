@@ -115,7 +115,7 @@ export class PosOrdersController {
   ): Promise<OrderDto> {
     // 这里直接复用你现有 service 的 createAmendment
     return this.orders.createAmendment({
-      orderId: orderStableId,
+      orderStableId,
       type: body.type,
       reason: body.reason,
       paymentMethod: body.paymentMethod ?? null,
