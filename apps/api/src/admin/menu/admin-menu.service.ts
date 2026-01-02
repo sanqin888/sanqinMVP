@@ -7,12 +7,19 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { AppLogger } from '../../common/app-logger';
 import {
+  DailySpecialDto,
   AdminMenuCategoryDto,
   AdminMenuFullResponse,
   MenuOptionGroupBindingDto,
   TemplateGroupFullDto,
   TemplateGroupLiteDto,
 } from '@shared/menu';
+import {
+  isDailySpecialActiveNow,
+  resolveEffectivePriceCents,
+  resolveStoreNow,
+} from '../../common/daily-specials';
+import { SpecialPricingMode } from '@prisma/client';
 
 type AvailabilityMode = 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF';
 
@@ -70,6 +77,18 @@ export class AdminMenuService {
 
   // ========= Full menu for admin =========
   async getFullMenu(): Promise<AdminMenuFullResponse> {
+    const businessConfig = await this.ensureBusinessConfig();
+    const now = resolveStoreNow(businessConfig.timezone);
+    const weekday = now.weekday;
+    const rawDailySpecials = await this.prisma.menuDailySpecial.findMany({
+      where: {
+        weekday,
+        isEnabled: true,
+        deletedAt: null,
+      },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    });
+
     const [categories, templateGroups] = await Promise.all([
       this.prisma.menuCategory.findMany({
         where: { deletedAt: null },
@@ -129,6 +148,16 @@ export class AdminMenuService {
         const categoryStableId = cat.stableId;
 
         const items = (cat.items ?? []).map((it) => {
+          const activeSpecial =
+            rawDailySpecials.find(
+              (special) =>
+                special.itemStableId === it.stableId &&
+                isDailySpecialActiveNow(special, now),
+            ) ?? null;
+          const effectivePriceCents = activeSpecial
+            ? resolveEffectivePriceCents(it.basePriceCents, activeSpecial)
+            : undefined;
+
           const optionGroups: MenuOptionGroupBindingDto[] = (
             it.optionGroups ?? []
           )
@@ -167,6 +196,16 @@ export class AdminMenuService {
             nameEn: it.nameEn,
             nameZh: it.nameZh ?? null,
             basePriceCents: it.basePriceCents,
+            effectivePriceCents,
+            activeSpecial: activeSpecial
+              ? {
+                  stableId: activeSpecial.stableId,
+                  effectivePriceCents:
+                    effectivePriceCents ?? it.basePriceCents,
+                  pricingMode: activeSpecial.pricingMode,
+                  disallowCoupons: activeSpecial.disallowCoupons,
+                }
+              : null,
             isAvailable: it.isAvailable,
             isVisible: it.isVisible,
             tempUnavailableUntil: toIso(it.tempUnavailableUntil),
@@ -192,7 +231,45 @@ export class AdminMenuService {
     this.logger.log(
       `Admin full menu generated: categories=${categoryDtos.length} templatesLite=${templatesLite.length}`,
     );
-    return { categories: categoryDtos, templatesLite };
+    const itemBasePriceMap = new Map(
+      categoryDtos.flatMap((cat) =>
+        (cat.items ?? []).map((item) => [item.stableId, item.basePriceCents]),
+      ),
+    );
+    const dailySpecials: DailySpecialDto[] = [];
+
+    for (const special of rawDailySpecials) {
+      if (!isDailySpecialActiveNow(special, now)) continue;
+      const basePriceCents = itemBasePriceMap.get(special.itemStableId);
+      if (basePriceCents === undefined) continue;
+      const effectivePriceCents = resolveEffectivePriceCents(
+        basePriceCents,
+        special,
+      );
+
+      dailySpecials.push({
+        stableId: special.stableId,
+        weekday: special.weekday,
+        itemStableId: special.itemStableId,
+        pricingMode: special.pricingMode,
+        overridePriceCents: special.overridePriceCents ?? null,
+        discountDeltaCents: special.discountDeltaCents ?? null,
+        discountPercent: special.discountPercent ?? null,
+        startDate: toIso(special.startDate),
+        endDate: toIso(special.endDate),
+        startMinutes: special.startMinutes ?? null,
+        endMinutes: special.endMinutes ?? null,
+        disallowCoupons: special.disallowCoupons,
+        isEnabled: special.isEnabled,
+        sortOrder: special.sortOrder,
+        basePriceCents,
+        effectivePriceCents,
+      });
+    }
+
+    dailySpecials.sort((a, b) => a.sortOrder - b.sortOrder);
+
+    return { categories: categoryDtos, templatesLite, dailySpecials };
   }
 
   // ========= Category =========
@@ -733,5 +810,312 @@ export class AdminMenuService {
     });
 
     return { ok: true };
+  }
+
+  async getDailySpecials(weekday?: number): Promise<{ specials: DailySpecialDto[] }> {
+    if (weekday !== undefined && (weekday < 1 || weekday > 5)) {
+      throw new BadRequestException('weekday must be between 1 and 5');
+    }
+
+    const specials = await this.prisma.menuDailySpecial.findMany({
+      where: {
+        deletedAt: null,
+        ...(weekday ? { weekday } : { weekday: { in: [1, 2, 3, 4, 5] } }),
+      },
+      include: {
+        item: {
+          select: {
+            basePriceCents: true,
+          },
+        },
+      },
+      orderBy: [{ weekday: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
+    });
+
+    const results: DailySpecialDto[] = specials.map((special) => {
+      const basePriceCents = special.item?.basePriceCents ?? 0;
+      const effectivePriceCents = resolveEffectivePriceCents(
+        basePriceCents,
+        special,
+      );
+
+      return {
+        stableId: special.stableId,
+        weekday: special.weekday,
+        itemStableId: special.itemStableId,
+        pricingMode: special.pricingMode,
+        overridePriceCents: special.overridePriceCents ?? null,
+        discountDeltaCents: special.discountDeltaCents ?? null,
+        discountPercent: special.discountPercent ?? null,
+        startDate: toIso(special.startDate),
+        endDate: toIso(special.endDate),
+        startMinutes: special.startMinutes ?? null,
+        endMinutes: special.endMinutes ?? null,
+        disallowCoupons: special.disallowCoupons,
+        isEnabled: special.isEnabled,
+        sortOrder: special.sortOrder,
+        basePriceCents,
+        effectivePriceCents,
+      };
+    });
+
+    return { specials: results };
+  }
+
+  async upsertDailySpecials(payload: {
+    specials: Array<{
+      stableId?: string | null;
+      weekday: number;
+      itemStableId: string;
+      pricingMode: SpecialPricingMode;
+      overridePriceCents?: number | null;
+      discountDeltaCents?: number | null;
+      discountPercent?: number | null;
+      startDate?: string | null;
+      endDate?: string | null;
+      startMinutes?: number | null;
+      endMinutes?: number | null;
+      disallowCoupons?: boolean;
+      isEnabled?: boolean;
+      sortOrder?: number;
+    }>;
+  }): Promise<{ specials: DailySpecialDto[] }> {
+    if (!payload || !Array.isArray(payload.specials)) {
+      throw new BadRequestException('specials must be an array');
+    }
+
+    const normalized = payload.specials.map((raw) => {
+      const weekday = Number(raw.weekday);
+      if (!Number.isInteger(weekday) || weekday < 1 || weekday > 5) {
+        throw new BadRequestException('weekday must be between 1 and 5');
+      }
+      const itemStableId = raw.itemStableId?.trim();
+      if (!itemStableId) {
+        throw new BadRequestException('itemStableId is required');
+      }
+      if (!Object.values(SpecialPricingMode).includes(raw.pricingMode)) {
+        throw new BadRequestException('pricingMode is invalid');
+      }
+
+      const parseMinutes = (value: number | null | undefined) => {
+        if (value === null || value === undefined) return null;
+        if (!Number.isFinite(value)) {
+          throw new BadRequestException('minutes must be a number');
+        }
+        const minutes = Math.trunc(value);
+        if (minutes < 0 || minutes > 24 * 60 - 1) {
+          throw new BadRequestException('minutes must be between 0 and 1439');
+        }
+        return minutes;
+      };
+
+      const startDate = raw.startDate ? parseIsoOrNull(raw.startDate) : null;
+      const endDate = raw.endDate ? parseIsoOrNull(raw.endDate) : null;
+
+      return {
+        stableId: raw.stableId?.trim() || null,
+        weekday,
+        itemStableId,
+        pricingMode: raw.pricingMode,
+        overridePriceCents:
+          typeof raw.overridePriceCents === 'number'
+            ? Math.trunc(raw.overridePriceCents)
+            : null,
+        discountDeltaCents:
+          typeof raw.discountDeltaCents === 'number'
+            ? Math.trunc(raw.discountDeltaCents)
+            : null,
+        discountPercent:
+          typeof raw.discountPercent === 'number'
+            ? Math.trunc(raw.discountPercent)
+            : null,
+        startDate,
+        endDate,
+        startMinutes: parseMinutes(raw.startMinutes),
+        endMinutes: parseMinutes(raw.endMinutes),
+        disallowCoupons:
+          typeof raw.disallowCoupons === 'boolean'
+            ? raw.disallowCoupons
+            : true,
+        isEnabled: typeof raw.isEnabled === 'boolean' ? raw.isEnabled : true,
+        sortOrder:
+          typeof raw.sortOrder === 'number' ? Math.trunc(raw.sortOrder) : 0,
+      };
+    });
+
+    const duplicates = new Set<string>();
+    const uniqueKeySet = new Set<string>();
+    for (const special of normalized) {
+      const key = `${special.weekday}:${special.itemStableId}`;
+      if (uniqueKeySet.has(key)) {
+        duplicates.add(key);
+      }
+      uniqueKeySet.add(key);
+    }
+    if (duplicates.size > 0) {
+      throw new BadRequestException(
+        'duplicate daily specials found for the same weekday and item',
+      );
+    }
+
+    const itemStableIds = normalized.map((special) => special.itemStableId);
+    const items = await this.prisma.menuItem.findMany({
+      where: { stableId: { in: itemStableIds }, deletedAt: null },
+      select: { stableId: true, basePriceCents: true },
+    });
+    const itemPriceMap = new Map(
+      items.map((item) => [item.stableId, item.basePriceCents]),
+    );
+
+    for (const special of normalized) {
+      const basePriceCents = itemPriceMap.get(special.itemStableId);
+      if (basePriceCents === undefined) {
+        throw new BadRequestException(
+          `Menu item not found: ${special.itemStableId}`,
+        );
+      }
+
+      if (special.pricingMode === SpecialPricingMode.OVERRIDE_PRICE) {
+        if (typeof special.overridePriceCents !== 'number') {
+          throw new BadRequestException(
+            'overridePriceCents is required for OVERRIDE_PRICE',
+          );
+        }
+        if (special.overridePriceCents < 0) {
+          throw new BadRequestException(
+            'overridePriceCents must be non-negative',
+          );
+        }
+      }
+      if (special.pricingMode === SpecialPricingMode.DISCOUNT_DELTA) {
+        if (typeof special.discountDeltaCents !== 'number') {
+          throw new BadRequestException(
+            'discountDeltaCents is required for DISCOUNT_DELTA',
+          );
+        }
+        if (special.discountDeltaCents < 0) {
+          throw new BadRequestException(
+            'discountDeltaCents must be non-negative',
+          );
+        }
+      }
+      if (special.pricingMode === SpecialPricingMode.DISCOUNT_PERCENT) {
+        if (
+          typeof special.discountPercent !== 'number' ||
+          special.discountPercent < 1 ||
+          special.discountPercent > 100
+        ) {
+          throw new BadRequestException(
+            'discountPercent must be between 1 and 100',
+          );
+        }
+      }
+
+      const effectivePriceCents = resolveEffectivePriceCents(
+        basePriceCents,
+        special,
+      );
+      if (effectivePriceCents > basePriceCents) {
+        throw new BadRequestException(
+          'daily special price cannot exceed base price',
+        );
+      }
+    }
+
+    const weekdays = Array.from(
+      new Set(normalized.map((special) => special.weekday)),
+    );
+
+    await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.menuDailySpecial.findMany({
+        where: {
+          weekday: { in: weekdays },
+          deletedAt: null,
+        },
+      });
+      const existingByStableId = new Map(
+        existing.map((special) => [special.stableId, special]),
+      );
+      const incomingStableIds = new Set(
+        normalized
+          .map((special) => special.stableId)
+          .filter((stableId): stableId is string => Boolean(stableId)),
+      );
+
+      const toSoftDelete = existing.filter(
+        (special) => !incomingStableIds.has(special.stableId),
+      );
+
+      if (toSoftDelete.length > 0) {
+        await tx.menuDailySpecial.updateMany({
+          where: { stableId: { in: toSoftDelete.map((s) => s.stableId) } },
+          data: { deletedAt: new Date() },
+        });
+      }
+
+      for (const special of normalized) {
+        if (special.stableId && existingByStableId.has(special.stableId)) {
+          await tx.menuDailySpecial.update({
+            where: { stableId: special.stableId },
+            data: {
+              weekday: special.weekday,
+              itemStableId: special.itemStableId,
+              pricingMode: special.pricingMode,
+              overridePriceCents: special.overridePriceCents,
+              discountDeltaCents: special.discountDeltaCents,
+              discountPercent: special.discountPercent,
+              startDate: special.startDate,
+              endDate: special.endDate,
+              startMinutes: special.startMinutes,
+              endMinutes: special.endMinutes,
+              disallowCoupons: special.disallowCoupons,
+              isEnabled: special.isEnabled,
+              sortOrder: special.sortOrder,
+              deletedAt: null,
+            },
+          });
+        } else {
+          await tx.menuDailySpecial.create({
+            data: {
+              ...(special.stableId ? { stableId: special.stableId } : {}),
+              weekday: special.weekday,
+              itemStableId: special.itemStableId,
+              pricingMode: special.pricingMode,
+              overridePriceCents: special.overridePriceCents,
+              discountDeltaCents: special.discountDeltaCents,
+              discountPercent: special.discountPercent,
+              startDate: special.startDate,
+              endDate: special.endDate,
+              startMinutes: special.startMinutes,
+              endMinutes: special.endMinutes,
+              disallowCoupons: special.disallowCoupons,
+              isEnabled: special.isEnabled,
+              sortOrder: special.sortOrder,
+              deletedAt: null,
+            },
+          });
+        }
+      }
+    });
+
+    return this.getDailySpecials();
+  }
+
+  private async ensureBusinessConfig() {
+    return (
+      (await this.prisma.businessConfig.findUnique({ where: { id: 1 } })) ??
+      (await this.prisma.businessConfig.create({
+        data: {
+          id: 1,
+          storeName: null,
+          timezone: 'America/Toronto',
+          isTemporarilyClosed: false,
+          temporaryCloseReason: null,
+          deliveryBaseFeeCents: 600,
+          priorityPerKmCents: 100,
+          salesTaxRate: 0.13,
+        },
+      }))
+    );
   }
 }

@@ -58,6 +58,7 @@ type CreateItemPayload = {
   isVisible?: boolean;
 };
 
+
 const BIND_ENDPOINT = (itemStableId: string) =>
   `/admin/menu/items/${encodeURIComponent(itemStableId)}/option-group-bindings`;
 
@@ -93,6 +94,7 @@ function itemStatusLabel(isZh: boolean, isAvailable: boolean, tempUntil: string 
   if (tempUntil && isTempUnavailable(tempUntil)) return isZh ? '今日下架' : 'Off today';
   return isZh ? '在售' : 'On';
 }
+
 
 export default function AdminMenuPage() {
   const { locale } = useParams<{ locale: Locale }>();
@@ -138,6 +140,7 @@ export default function AdminMenuPage() {
     for (const t of templates) m.set(t.templateGroupStableId, t);
     return m;
   }, [templates]);
+
 
   function getBindDraft(itemStableId: string): BindDraft {
     return bindDrafts[itemStableId] ?? createEmptyBindDraft();
@@ -267,6 +270,7 @@ export default function AdminMenuPage() {
       alert(e instanceof Error ? e.message : String(e));
     }
   }
+
 
   async function handleSaveItem(categoryStableId: string, itemStableId: string): Promise<void> {
     setSaving({ itemStableId, error: null });
