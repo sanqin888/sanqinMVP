@@ -52,6 +52,7 @@ import {
 } from './order-item-options';
 import { isAvailableNow } from '@shared/menu';
 import type { OrderDto, OrderItemDto } from './dto/order.dto';
+import type { PrintPosPayloadDto } from '../pos/dto/print-pos-payload.dto';
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 type OrderItemInput = NonNullable<CreateOrderDto['items']>[number] & {
@@ -1618,6 +1619,71 @@ export class OrdersService {
 
     if (!order) throw new NotFoundException('order not found');
     return this.toOrderDto(order);
+  }
+
+  async getPrintPayloadByStableId(
+    orderStableId: string,
+    locale?: string,
+  ): Promise<PrintPosPayloadDto> {
+    const order = (await this.prisma.order.findUnique({
+      where: { orderStableId: orderStableId.trim() },
+      include: { items: true },
+    })) as OrderWithItems | null;
+
+    if (!order) throw new NotFoundException('order not found');
+
+    const orderNumber = order.clientRequestId ?? order.orderStableId;
+    const deliveryFeeCents = order.deliveryFeeCents ?? 0;
+    const deliveryCostCents = order.deliveryCostCents ?? 0;
+    const deliverySubsidyCentsRaw = order.deliverySubsidyCents;
+    const deliverySubsidyCents =
+      typeof deliverySubsidyCentsRaw === 'number' &&
+      Number.isFinite(deliverySubsidyCentsRaw)
+        ? Math.max(0, Math.round(deliverySubsidyCentsRaw))
+        : Math.max(0, deliveryCostCents - deliveryFeeCents);
+
+    const items = order.items.map((item) => {
+      const options = Array.isArray(item.optionsJson)
+        ? (item.optionsJson as OrderItemOptionsSnapshot)
+        : null;
+      const unitPriceCents = item.unitPriceCents ?? 0;
+
+      return {
+        productStableId: item.productStableId,
+        nameZh: item.nameZh ?? null,
+        nameEn: item.nameEn ?? null,
+        displayName: item.displayName ?? null,
+        quantity: item.qty,
+        lineTotalCents: unitPriceCents * item.qty,
+        options,
+      };
+    });
+
+    const discountCents =
+      (order.couponDiscountCents ?? 0) + (order.loyaltyRedeemCents ?? 0);
+
+    return {
+      locale: locale ?? 'zh',
+      orderNumber,
+      pickupCode: order.pickupCode ?? null,
+      fulfillment: order.fulfillmentType,
+      paymentMethod:
+        order.paymentMethod?.toLowerCase() === 'wechat_alipay'
+          ? 'wechat_alipay'
+          : order.paymentMethod?.toLowerCase() === 'cash'
+            ? 'cash'
+            : 'card',
+      snapshot: {
+        items,
+        subtotalCents: order.subtotalCents ?? 0,
+        taxCents: order.taxCents ?? 0,
+        totalCents: order.totalCents ?? 0,
+        discountCents,
+        deliveryFeeCents,
+        deliveryCostCents,
+        deliverySubsidyCents,
+      },
+    };
   }
 
   async getPublicOrderSummary(orderStableId: string): Promise<OrderSummaryDto> {
