@@ -90,6 +90,12 @@ enum Weekday {
   SUN
 }
 
+enum SpecialPricingMode {
+  OVERRIDE_PRICE
+  DISCOUNT_DELTA
+  DISCOUNT_PERCENT
+}
+
 // === Models ===
 
 model User {
@@ -301,6 +307,10 @@ model Coupon {
 model OrderItem {
   qty             Int
   unitPriceCents  Int?
+  baseUnitPriceCents Int?
+  optionsUnitPriceCents Int?
+  isDailySpecialApplied Boolean @default(false)
+  dailySpecialStableId String?
   optionsJson     Json?
   id              String  @id @default(uuid()) @db.Uuid
   orderId         String  @db.Uuid
@@ -487,6 +497,31 @@ model MenuItem {
 
   @@index([categoryId, sortOrder])
   @@index([deletedAt])
+}
+
+model MenuDailySpecial {
+  id                 Int      @id @default(autoincrement())
+  stableId           String   @unique @default(cuid())
+  weekday            Int
+  itemStableId       String
+  item               MenuItem @relation(fields: [itemStableId], references: [stableId])
+  pricingMode        SpecialPricingMode
+  overridePriceCents Int?
+  discountDeltaCents Int?
+  discountPercent    Int?
+  startDate          DateTime?
+  endDate            DateTime?
+  startMinutes       Int?
+  endMinutes         Int?
+  disallowCoupons    Boolean  @default(true)
+  isEnabled          Boolean  @default(true)
+  sortOrder          Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  deletedAt          DateTime?
+
+  @@index([weekday, isEnabled, deletedAt])
+  @@index([itemStableId])
 }
 
 model MenuOptionGroupTemplate {

@@ -29,6 +29,9 @@ describe('OrdersService', () => {
     menuOptionTemplateChoice: {
       findMany: jest.Mock;
     };
+    menuDailySpecial: {
+      findMany: jest.Mock;
+    };
   };
   let loyalty: {
     peekBalanceMicro: jest.Mock;
@@ -120,6 +123,9 @@ describe('OrdersService', () => {
         }),
       },
       menuOptionTemplateChoice: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      menuDailySpecial: {
         findMany: jest.fn().mockResolvedValue([]),
       },
     };
