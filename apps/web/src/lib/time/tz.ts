@@ -1,4 +1,7 @@
 //apps/web/src/lib/time/tz.ts
+import { DateTime } from "luxon";
+
+type StoreTimeLocale = "zh" | "en";
 export function ymdInTimeZone(date: Date, timeZone: string): string {
   try {
     const parts = new Intl.DateTimeFormat("en-CA", {
@@ -35,4 +38,20 @@ export function parseBackendDateMs(value: unknown): number {
   const d = parseBackendDate(value);
   const ms = d.getTime();
   return Number.isFinite(ms) ? ms : Date.now();
+}
+
+export function formatStoreTime(
+  isoWithOffset: string,
+  timeZone: string,
+  locale: StoreTimeLocale,
+): string {
+  const base = DateTime.fromISO(isoWithOffset, { setZone: true });
+  const zoned = timeZone ? base.setZone(timeZone) : base;
+
+  if (!zoned.isValid) {
+    return isoWithOffset;
+  }
+
+  const format = locale === "zh" ? "LLL d HH:mm" : "LLL d, HH:mm";
+  return zoned.setLocale(locale).toFormat(format);
 }
