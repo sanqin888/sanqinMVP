@@ -21,7 +21,6 @@ type CreatePosOrderResponse = {
 };
 
 type MemberLookupResponse = {
-  userId: string;
   userStableId: string;
   displayName?: string | null;
   phone?: string | null;
@@ -461,7 +460,7 @@ export default function StorePosPaymentPage() {
         totalCents: computedSnapshot.totalCents,
         paymentMethod: apiPaymentMethod,
         items: itemsPayload,
-        userId: memberInfo?.userId ?? undefined,
+        userStableId: memberInfo?.userStableId ?? undefined,
         pointsToRedeem: pointsToRedeem > 0 ? pointsToRedeem : undefined,
         contactPhone: memberInfo?.phone ?? undefined,
       };

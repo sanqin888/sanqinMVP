@@ -322,7 +322,7 @@ export default function OrderDetailPage({ params }: PageProps) {
                   item.nameEn ||
                   item.productStableId;
 
-                const itemKey = `${item.id ?? item.productStableId ?? displayName ?? 'item'}-${idx}`;
+                const itemKey = `${item.productStableId ?? displayName ?? 'item'}-${idx}`;
 
                 return (
                   <li key={itemKey} className="rounded border px-3 py-2">

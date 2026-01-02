@@ -3,7 +3,6 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import type { Session, SessionUser } from "@/lib/auth-session";
 import {
   usePathname,
   useRouter,
@@ -94,11 +93,6 @@ type LoyaltyOrderResponse = {
   clientRequestId: string | null;
 };
 
-type SessionWithUserId = Session & {
-  userId?: string | null;
-  user?: (SessionUser & { id?: string | null }) | null;
-};
-
 type StoreStatusRuleSource =
   | "REGULAR_HOURS"
   | "HOLIDAY"
@@ -122,7 +116,6 @@ type StoreStatus = {
 type MemberTier = "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
 
 type MembershipSummaryResponse = {
-  userId?: string;
   userStableId?: string;
   displayName: string | null;
   email: string | null;
@@ -944,8 +937,7 @@ export default function CheckoutPage() {
       return;
     }
 
-    const s = session as SessionWithUserId | null;
-    if (!s?.user?.mfaVerifiedAt) {
+    if (!session?.user?.mfaVerifiedAt) {
       setLoyaltyInfo(null);
       setAvailableCoupons([]);
       setMemberPhone(null);
@@ -973,7 +965,7 @@ export default function CheckoutPage() {
             ? raw.details
             : (raw as MembershipSummaryResponse);
 
-        const stableId = data.userStableId ?? data.userId ?? "";
+        const stableId = data.userStableId ?? "";
         if (stableId) {
           setLoyaltyInfo({
             userStableId: stableId,
@@ -1012,15 +1004,14 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     if (authStatus !== "authenticated") return;
-    const s = session as SessionWithUserId | null;
-    const userId = s?.userId ?? s?.user?.id ?? undefined;
-    if (!userId) return;
+    const userStableId = session?.user?.userStableId;
+    if (!userStableId) return;
 
     const controller = new AbortController();
 
     const loadAddresses = async () => {
       try {
-        const params = new URLSearchParams({ userStableId: userId });
+        const params = new URLSearchParams({ userStableId });
         const res = await fetch(
           `/api/v1/membership/addresses?${params.toString()}`,
           { signal: controller.signal },
@@ -1053,8 +1044,7 @@ export default function CheckoutPage() {
       return;
     }
 
-    const sessionWithUserId = session as SessionWithUserId;
-    const userStableId = sessionWithUserId?.userId;
+    const userStableId = session?.user?.userStableId;
     if (typeof userStableId !== "string" || !userStableId) {
       setAvailableCoupons([]);
       return;
