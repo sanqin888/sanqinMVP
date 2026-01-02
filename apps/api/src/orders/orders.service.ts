@@ -1245,12 +1245,6 @@ export class OrdersService {
     if (rawCouponStableId && !normalizedCouponStableId) {
       throw new BadRequestException('couponStableId must be a cuid');
     }
-    if (normalizedCouponStableId && couponEligibleSubtotalCents <= 0) {
-      throw new BadRequestException(
-        'coupon is not available for daily special items',
-      );
-    }
-
     if (stableKey || legacyKey) {
       const existing = await this.prisma.order.findFirst({
         where: {
@@ -1270,6 +1264,11 @@ export class OrdersService {
     const items = dto.items ?? [];
     const { calculatedItems, calculatedSubtotal, couponEligibleSubtotalCents } =
       await this.calculateLineItems(items);
+    if (normalizedCouponStableId && couponEligibleSubtotalCents <= 0) {
+      throw new BadRequestException(
+        'coupon is not available for daily special items',
+      );
+    }
 
     const subtotalCents = calculatedSubtotal;
     const pricingConfig = await this.getBusinessPricingConfig();
