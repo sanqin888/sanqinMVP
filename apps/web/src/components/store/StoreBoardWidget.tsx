@@ -218,11 +218,15 @@ export function StoreBoardWidget(props: { locale: Locale }) {
 
   // ✅ 增强1：新 web 订单到达时，高亮闪烁（并自动展开）
   const [flash, setFlash] = useState(false);
+  const [pop, setPop] = useState(false);
+  const [highlightedOrders, setHighlightedOrders] = useState<Record<string, boolean>>({});
 
   const processedRef = useRef<ProcessedMap>({});
   const processedSetRef = useRef<Set<string>>(new Set());
   const hasBootstrappedRef = useRef(false);
   const hadPersistedRef = useRef(false);
+  const inactivityTimerRef = useRef<number | null>(null);
+  const highlightTimersRef = useRef<Record<string, number>>({});
 
   // ✅ 增强2：待接单数（只统计 web + paid）
   const webPaidCount = useMemo(
@@ -237,6 +241,46 @@ export function StoreBoardWidget(props: { locale: Locale }) {
     const timer = window.setTimeout(() => setFlash(false), 1400);
     return () => window.clearTimeout(timer);
   }, [flash]);
+
+  useEffect(() => {
+    if (!pop) return;
+    const timer = window.setTimeout(() => setPop(false), 600);
+    return () => window.clearTimeout(timer);
+  }, [pop]);
+
+  const scheduleAutoCollapse = useCallback(() => {
+    if (inactivityTimerRef.current) {
+      window.clearTimeout(inactivityTimerRef.current);
+    }
+    inactivityTimerRef.current = window.setTimeout(() => {
+      setOpen(false);
+    }, 30000);
+  }, []);
+
+  const markNewOrders = useCallback((orderIds: string[]) => {
+    if (orderIds.length === 0) return;
+    setHighlightedOrders((prev) => {
+      const next = { ...prev };
+      for (const id of orderIds) {
+        next[id] = true;
+      }
+      return next;
+    });
+
+    for (const id of orderIds) {
+      if (highlightTimersRef.current[id]) {
+        window.clearTimeout(highlightTimersRef.current[id]);
+      }
+      highlightTimersRef.current[id] = window.setTimeout(() => {
+        setHighlightedOrders((prev) => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+        delete highlightTimersRef.current[id];
+      }, 6000);
+    }
+  }, []);
 
   // 初始化：读取 localStorage 去重集合（刷新不重复打印）
   useEffect(() => {
@@ -314,6 +358,8 @@ export function StoreBoardWidget(props: { locale: Locale }) {
     const newOrders = data.filter((o) => !processedSet.has(o.orderStableId));
     if (newOrders.length === 0) return;
 
+    markNewOrders(newOrders.map((o) => o.orderStableId));
+
     for (const o of newOrders) {
       const sid = o.orderStableId;
       processedSet.add(sid);
@@ -326,11 +372,13 @@ export function StoreBoardWidget(props: { locale: Locale }) {
       // ✅ 增强1：自动弹开 + 闪一下
       setOpen(true);
       setFlash(true);
+      setPop(true);
+      scheduleAutoCollapse();
 
       const n = newWebPaid.length;
       speak(n === 1 ? t.voiceOne : t.voiceMany(n), locale);
     }
-  }, [query, handlePrintFront, handlePrintKitchen, t, locale]);
+  }, [query, handlePrintFront, handlePrintKitchen, t, locale, markNewOrders, scheduleAutoCollapse]);
 
   const handleAdvance = useCallback(
     async (orderStableId: string) => {
@@ -381,12 +429,42 @@ export function StoreBoardWidget(props: { locale: Locale }) {
     };
   }, [fetchOrdersAndProcess]);
 
+  useEffect(() => {
+    if (!open) {
+      if (inactivityTimerRef.current) {
+        window.clearTimeout(inactivityTimerRef.current);
+      }
+      return;
+    }
+    scheduleAutoCollapse();
+  }, [open, scheduleAutoCollapse]);
+
+  useEffect(() => {
+    return () => {
+      if (inactivityTimerRef.current) {
+        window.clearTimeout(inactivityTimerRef.current);
+      }
+      for (const timer of Object.values(highlightTimersRef.current)) {
+        window.clearTimeout(timer);
+      }
+      highlightTimersRef.current = {};
+    };
+  }, []);
+
+  const handleUserActivity = useCallback(() => {
+    if (!open) return;
+    scheduleAutoCollapse();
+  }, [open, scheduleAutoCollapse]);
+
   return (
     <div className="fixed bottom-4 right-4 z-30 pointer-events-none">
       {!open && (
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            setOpen(true);
+            scheduleAutoCollapse();
+          }}
           className={[
             "pointer-events-auto rounded-full border text-slate-100 px-4 py-2 shadow-lg transition",
             "bg-slate-900/90 border-slate-700 hover:bg-slate-800/90",
@@ -409,9 +487,14 @@ export function StoreBoardWidget(props: { locale: Locale }) {
         <div
           className={[
             "pointer-events-auto w-[420px] max-w-[calc(100vw-2rem)] h-[640px] max-h-[calc(100vh-2rem)]",
-            "rounded-2xl border bg-slate-900/95 shadow-2xl overflow-hidden",
+            "rounded-2xl border bg-slate-900/95 shadow-2xl overflow-hidden transition-transform duration-300",
             flash ? "border-amber-400/70 ring-2 ring-amber-400/40" : "border-slate-700",
+            pop ? "scale-[1.03]" : "scale-100",
           ].join(" ")}
+          onMouseMove={handleUserActivity}
+          onWheel={handleUserActivity}
+          onKeyDown={handleUserActivity}
+          onTouchStart={handleUserActivity}
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
             <div>
@@ -462,6 +545,7 @@ export function StoreBoardWidget(props: { locale: Locale }) {
                   className={[
                     "rounded-2xl border p-3 bg-slate-950/30",
                     isWeb ? "border-amber-400/70" : "border-slate-800",
+                    highlightedOrders[sid] ? "animate-pulse ring-2 ring-amber-400/40" : "",
                   ].join(" ")}
                 >
                   <div className="flex items-start justify-between gap-3">
