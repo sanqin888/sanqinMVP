@@ -74,7 +74,7 @@ async function fetchSession(): Promise<Session> {
   if (!data) return null;
 
   if (typeof data.userStableId !== 'string' || !data.userStableId) return null;
-  const { id: _ignoredId, ...safeUser } = data;
+  const safeUser: SessionUser = { ...data };
   return {
     user: safeUser,
   };
