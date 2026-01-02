@@ -28,6 +28,17 @@ const LINE_WIDTH = 32;
 
 // ========== 通用工具函数 ==========
 
+// 打印时间：YYYYMMDD HH：MM：SS（注意这里用的是全角冒号：：）
+function formatPrintTime(d = new Date()) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const HH = String(d.getHours()).padStart(2, "0");
+  const MM = String(d.getMinutes()).padStart(2, "0");
+  const SS = String(d.getSeconds()).padStart(2, "0");
+  return `${yyyy}${mm}${dd} ${HH}：${MM}：${SS}`;
+}
+
 // 金额格式化（分 -> $x.xx）
 function money(cents) {
   return `$${((cents || 0) / 100).toFixed(2)}`;
@@ -137,8 +148,11 @@ function buildCustomerReceiptEscPos(params) {
   const { orderNumber, pickupCode, fulfillment, paymentMethod, snapshot } =
     params;
 
-  const dineZh = fulfillment === "pickup" ? "外带" : "堂食";
-  const dineEn = fulfillment === "pickup" ? "TAKE-OUT" : "DINE-IN";
+const f = String(fulfillment || "").toLowerCase();
+const isDelivery = f === "delivery";
+
+const dineZh = isDelivery ? "配送" : f === "pickup" ? "外带" : "堂食";
+const dineEn = isDelivery ? "DELIVERY" : f === "pickup" ? "TAKE-OUT" : "DINE-IN";
 
   const payZh =
     paymentMethod === "cash"
@@ -157,6 +171,10 @@ function buildCustomerReceiptEscPos(params) {
 
   // 初始化打印机
   chunks.push(cmd(ESC, 0x40)); // ESC @
+
+  // ✅ 行距调紧（减少整体留白）
+  // n 越小越紧；一般 18~24 比较合适（默认通常更大）
+  chunks.push(cmd(ESC, 0x33, 20)); // ESC 3 n
 
   // ==== 取餐码（如果有的话） ====
   if (pickupCode) {
@@ -200,23 +218,59 @@ function buildCustomerReceiptEscPos(params) {
   chunks.push(encLine(`Payment:  ${payEn}`));
   chunks.push(encLine(makeLine("-")));
 
-  // ==== 菜品列表 ====
+  // ==== 菜品列表（字体调大：名称/选项放大，价格行保持对齐） ====
   if (Array.isArray(snapshot.items)) {
     snapshot.items.forEach((item) => {
       const nameZh = item.nameZh || "";
       const nameEn = item.nameEn || "";
 
+      // ✅ 菜名：加粗 + 双倍高度（0x01 = 高度x2，宽度不变）
+      chunks.push(cmd(ESC, 0x45, 0x01)); // bold on
+      chunks.push(cmd(GS, 0x21, 0x01));  // double-height only
+
       if (nameZh) chunks.push(encLine(nameZh));
       if (nameEn) chunks.push(encLine(nameEn));
 
+      // 恢复正常字号（后面价格行要对齐）
+      chunks.push(cmd(GS, 0x21, 0x00));
+      chunks.push(cmd(ESC, 0x45, 0x00)); // bold off
+
+      // 数量 + 行小计（保持普通字号，便于对齐）
       const qtyPart = `x${item.quantity}`;
       const pricePart = money(item.lineTotalCents ?? 0);
 
-      const qtyPadded = padRight(qtyPart, 8); // 左边数量占 8 列
+      const qtyPadded = padRight(qtyPart, 8);
       const pricePadded = padLeft(pricePart, LINE_WIDTH - 8);
-
       chunks.push(encLine(qtyPadded + pricePadded));
-      chunks.push(encLine("")); // 菜品之间空一行
+
+      // ✅ 选项（可选）：支持 item.options 为数组 或 optionsText 为字符串
+      const optionLines = (() => {
+        if (Array.isArray(item.options)) {
+          return item.options
+            .map((x) => (typeof x === "string" ? x.trim() : ""))
+            .filter(Boolean);
+        }
+        if (typeof item.optionsText === "string" && item.optionsText.trim()) {
+          return item.optionsText
+            .split("\n")
+            .map((s) => s.trim())
+            .filter(Boolean);
+        }
+        return [];
+      })();
+
+      if (optionLines.length > 0) {
+        // 选项也放大一点：双倍高度，不加粗
+        chunks.push(cmd(GS, 0x21, 0x01));
+        optionLines.forEach((opt) => {
+          // 缩进 + 标记
+          chunks.push(encLine(`  - ${opt}`));
+        });
+        chunks.push(cmd(GS, 0x21, 0x00));
+      }
+
+      // ✅ 每个菜之间只留一行（减少留白）
+      chunks.push(encLine(""));
     });
   }
 
@@ -227,6 +281,20 @@ function buildCustomerReceiptEscPos(params) {
   const total = snapshot.totalCents ?? 0;
   const loyalty = snapshot.loyalty || {};
 
+const deliveryFee = snapshot.deliveryFeeCents ?? 0;
+
+// 允许 cost/subsidy 为 null（比如派单回填尚未完成）
+const deliveryCost =
+  typeof snapshot.deliveryCostCents === "number" ? snapshot.deliveryCostCents : null;
+
+// subsidy：优先用后端落库值；没有就按 cost-fee 推导
+const deliverySubsidy =
+  typeof snapshot.deliverySubsidyCents === "number"
+    ? snapshot.deliverySubsidyCents
+    : typeof deliveryCost === "number"
+      ? Math.max(0, deliveryCost - deliveryFee)
+      : null;
+
   chunks.push(encLine(makeLine("-")));
   chunks.push(encLine(`小计 Subtotal: ${money(subtotal)}`));
   if (discount > 0) {
@@ -235,8 +303,20 @@ function buildCustomerReceiptEscPos(params) {
   if (typeof loyalty.pointsRedeemed === "number" && loyalty.pointsRedeemed > 0) {
     chunks.push(encLine(`积分抵扣 Points: -${loyalty.pointsRedeemed.toFixed(2)} pt`));
   }
-  chunks.push(encLine(`税费(HST) Tax: ${money(tax)}`));
-  chunks.push(encLine(`合计 Total:   ${money(total)}`));
+if (isDelivery || deliveryFee > 0 || deliveryCost !== null) {
+  chunks.push(encLine(`配送费(顾客) Delivery Fee: ${money(deliveryFee)}`));
+
+  if (deliveryCost === null) {
+    chunks.push(encLine(`平台运费成本 Delivery Cost: (pending)`));
+    chunks.push(encLine(`本单补贴 Subsidy: (pending)`));
+  } else {
+    chunks.push(encLine(`平台运费成本 Delivery Cost: ${money(deliveryCost)}`));
+    chunks.push(encLine(`本单补贴 Subsidy: ${money(deliverySubsidy ?? 0)}`));
+  }
+}
+
+chunks.push(encLine(`税费(HST) Tax: ${money(tax)}`));
+chunks.push(encLine(`合计 Total:   ${money(total)}`));
   if (typeof loyalty.pointsEarned === "number" && loyalty.pointsEarned > 0) {
     chunks.push(encLine(`本单新增积分 Earned: +${loyalty.pointsEarned.toFixed(2)} pt`));
   }
@@ -250,7 +330,8 @@ function buildCustomerReceiptEscPos(params) {
   chunks.push(encLine("谢谢惠顾"));
   chunks.push(encLine("Thank you!"));
   chunks.push(encLine("顾客联 CUSTOMER COPY"));
-  chunks.push(encLine(""));
+  // ✅ 打印时间
+  chunks.push(encLine(`打印时间 Print: ${formatPrintTime()}`));
   chunks.push(encLine(""));
   chunks.push(cmd(ESC, 0x61, 0x00)); // 左对齐
 
@@ -313,10 +394,9 @@ function buildKitchenReceiptEscPos(params) {
   // ==== 底部说明 + 后厨联标记 ====
   chunks.push(encLine(makeLine("-")));
   chunks.push(cmd(ESC, 0x61, 0x01)); // 居中
-  chunks.push(encLine("由 POS 自动打印"));
-  chunks.push(encLine("Auto printed from POS"));
   chunks.push(encLine("后厨联 KITCHEN COPY"));
-  chunks.push(encLine(""));
+  // ✅ 打印时间
+  chunks.push(encLine(`打印时间 Print: ${formatPrintTime()}`));
   chunks.push(encLine(""));
   chunks.push(cmd(ESC, 0x61, 0x00)); // 左对齐
 
