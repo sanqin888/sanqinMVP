@@ -15,7 +15,6 @@ export function normalizeOrderIdentifiers(raw: unknown): OrderIdentifiers {
     data.stableId ??
     data.orderStableId ??
     data.stable_id ??
-    data.id ??
     "";
 
   if (typeof stableId !== "string" || !stableId) {

@@ -4,10 +4,10 @@ export function normalizeStableId(v: unknown): string {
 }
 
 export function pickOrderStableId(order: unknown): string {
-  // 兼容你项目里可能出现的字段名：orderStableId / stableId / id（旧代码）
+  // 兼容你项目里可能出现的字段名：orderStableId / stableId
   const data =
     typeof order === "object" && order !== null ? (order as Record<string, unknown>) : {};
-  return normalizeStableId(data.orderStableId ?? data.stableId ?? data.id);
+  return normalizeStableId(data.orderStableId ?? data.stableId);
 }
 
 export function pickOrderDisplayId(order: unknown): string {
