@@ -10,7 +10,10 @@ declare module 'luxon' {
 
   export class DateTime {
     static now(): DateTime;
-    static fromJSDate(date: Date, options?: DateTimeFromJsDateOptions): DateTime;
+    static fromJSDate(
+      date: Date,
+      options?: DateTimeFromJsDateOptions,
+    ): DateTime;
 
     setZone(zone: string): DateTime;
     toFormat(format: string): string;
