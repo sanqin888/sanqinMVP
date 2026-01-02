@@ -15,7 +15,6 @@ export type SessionUser = {
   userStableId?: string;
   email?: string | null;
   role?: string | null;
-  id?: string;
   name?: string | null;
   mfaVerifiedAt?: string | null;
   requiresTwoFactor?: boolean;
@@ -25,7 +24,6 @@ export type SessionUser = {
 export type Session =
   | {
       user?: SessionUser | null;
-      userId?: string;
     }
   | null;
 
@@ -75,13 +73,10 @@ async function fetchSession(): Promise<Session> {
 
   if (!data) return null;
 
-  const userId = data.userStableId ?? data.id;
+  if (typeof data.userStableId !== 'string' || !data.userStableId) return null;
+  const safeUser: SessionUser = { ...data };
   return {
-    user: {
-      ...data,
-      id: userId,
-    },
-    userId,
+    user: safeUser,
   };
 }
 
