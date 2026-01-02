@@ -23,6 +23,7 @@ import { CreateOrderDto } from '../orders/dto/create-order.dto';
 import { OrderStatus } from '../orders/order-status';
 import { OrderAmendmentType, PaymentMethod } from '@prisma/client';
 import type { OrderDto } from '../orders/dto/order.dto';
+import type { PrintPosPayloadDto } from './dto/print-pos-payload.dto';
 
 @Controller('pos/orders')
 @UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
@@ -81,6 +82,14 @@ export class PosOrdersController {
     @Param('orderStableId', StableIdPipe) orderStableId: string,
   ): Promise<OrderDto> {
     return this.orders.getByStableId(orderStableId);
+  }
+
+  @Get(':orderStableId/print-payload')
+  getPrintPayload(
+    @Param('orderStableId', StableIdPipe) orderStableId: string,
+    @Query('locale') locale?: string,
+  ): Promise<PrintPosPayloadDto> {
+    return this.orders.getPrintPayloadByStableId(orderStableId, locale);
   }
 
   @Patch(':orderStableId/status')
