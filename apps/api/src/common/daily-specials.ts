@@ -25,10 +25,10 @@ export function isDailySpecialActiveNow(
   if (special.isEnabled === false) return false;
 
   const startDate = special.startDate
-    ? DateTime.fromJSDate(special.startDate).setZone(now.zone.name)
+    ? DateTime.fromJSDate(special.startDate).setZone(now.zoneName)
     : null;
   const endDate = special.endDate
-    ? DateTime.fromJSDate(special.endDate).setZone(now.zone.name)
+    ? DateTime.fromJSDate(special.endDate).setZone(now.zoneName)
     : null;
 
   if (startDate && now < startDate) return false;
