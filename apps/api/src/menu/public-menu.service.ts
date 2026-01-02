@@ -88,7 +88,10 @@ export class PublicMenuService {
       },
     });
 
-    const specialsByItemStableId = new Map<string, typeof rawDailySpecials[number]>();
+    const specialsByItemStableId = new Map<
+      string,
+      (typeof rawDailySpecials)[number]
+    >();
     rawDailySpecials.forEach((special) => {
       if (!isDailySpecialActiveNow(special, now)) return;
       if (!specialsByItemStableId.has(special.itemStableId)) {
@@ -173,8 +176,7 @@ export class PublicMenuService {
             activeSpecial: activeSpecial
               ? {
                   stableId: activeSpecial.stableId,
-                  effectivePriceCents:
-                    effectivePriceCents ?? it.basePriceCents,
+                  effectivePriceCents: effectivePriceCents ?? it.basePriceCents,
                   pricingMode: activeSpecial.pricingMode,
                   disallowCoupons: activeSpecial.disallowCoupons,
                 }

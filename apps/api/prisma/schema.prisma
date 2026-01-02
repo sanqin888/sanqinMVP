@@ -494,6 +494,7 @@ model MenuItem {
   deletedAt            DateTime?
   category             MenuCategory          @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   optionGroups         MenuItemOptionGroup[]
+  dailySpecials        MenuDailySpecial[]    @relation("MenuItemDailySpecials")
 
   @@index([categoryId, sortOrder])
   @@index([deletedAt])
@@ -504,7 +505,7 @@ model MenuDailySpecial {
   stableId           String   @unique @default(cuid())
   weekday            Int
   itemStableId       String
-  item               MenuItem @relation(fields: [itemStableId], references: [stableId])
+  item               MenuItem @relation("MenuItemDailySpecials", fields: [itemStableId], references: [stableId])
   pricingMode        SpecialPricingMode
   overridePriceCents Int?
   discountDeltaCents Int?
