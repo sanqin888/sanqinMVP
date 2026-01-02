@@ -187,7 +187,11 @@ export class StoreStatusService {
     // Luxon 默认会带 offset，但这里显式写清楚，避免未来改动踩坑
     const iso = dt.toISO({ includeOffset: true, suppressMilliseconds: false });
     // toISO 可能返回 null（极端 invalid），兜底：
-    return iso ?? dt.toUTC().toISO({ includeOffset: true }) ?? new Date().toISOString();
+    return (
+      iso ??
+      dt.toUTC().toISO({ includeOffset: true }) ??
+      new Date().toISOString()
+    );
   }
 
   private async ensureConfig(): Promise<BusinessConfig> {
