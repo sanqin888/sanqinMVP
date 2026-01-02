@@ -556,25 +556,26 @@ export function buildLocalizedDailySpecials(
   );
   const isZh = locale === "zh";
 
-  return (specials ?? [])
-    .map((special) => {
-      const item = itemMap.get(special.itemStableId);
-      if (!item) return null;
-      const name = isZh && item.nameZh ? item.nameZh : item.nameEn;
-      return {
-        stableId: special.stableId,
-        itemStableId: special.itemStableId,
-        name,
-        nameEn: item.nameEn,
-        nameZh: item.nameZh ?? undefined,
-        basePriceCents: special.basePriceCents,
-        effectivePriceCents: special.effectivePriceCents,
-        disallowCoupons: special.disallowCoupons,
-        sortOrder: special.sortOrder,
-      };
-    })
-    .filter((special): special is LocalizedDailySpecial => Boolean(special))
-    .sort((a, b) => a.sortOrder - b.sortOrder);
+  const localizedSpecials: LocalizedDailySpecial[] = [];
+
+  for (const special of specials ?? []) {
+    const item = itemMap.get(special.itemStableId);
+    if (!item) continue;
+    const name = isZh && item.nameZh ? item.nameZh : item.nameEn;
+    localizedSpecials.push({
+      stableId: special.stableId,
+      itemStableId: special.itemStableId,
+      name,
+      nameEn: item.nameEn,
+      nameZh: item.nameZh ?? undefined,
+      basePriceCents: special.basePriceCents,
+      effectivePriceCents: special.effectivePriceCents,
+      disallowCoupons: special.disallowCoupons,
+      sortOrder: special.sortOrder,
+    });
+  }
+
+  return localizedSpecials.sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
 /** ===== 结算页相关类型 ===== */
