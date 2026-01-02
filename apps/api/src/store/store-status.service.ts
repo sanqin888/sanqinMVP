@@ -4,32 +4,28 @@ import { Injectable } from '@nestjs/common';
 import type { BusinessConfig } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppLogger } from '../common/app-logger';
+import { DateTime } from 'luxon';
 
 export type StoreStatus = {
-  // 是否按“营业时间/节假日”判断为营业（不考虑临时暂停）
   isOpenBySchedule: boolean;
 
-  // 是否被“临时暂停接单”关闭
   isTemporarilyClosed: boolean;
   temporaryCloseReason: string | null;
 
-  // 真实对外状态：只要临时暂停 = true，就算关
   isOpen: boolean;
 
-  // 用于前端文案显示状态来源
   ruleSource:
     | 'REGULAR_HOURS'
     | 'HOLIDAY'
     | 'CLOSED_ALL_DAY'
     | 'TEMPORARY_CLOSE';
 
-  // 方便前端展示当前时间/日期
-  now: string; // ISO 字符串（按门店时区计算）
-  timezone: string; // 来自 BusinessConfig.timezone
+  now: string; // ISO（带 offset，按门店时区）
+  timezone: string;
 
   today: {
-    date: string; // YYYY-MM-DD
-    weekday: number; // 0=Sunday ... 6=Saturday
+    date: string; // YYYY-MM-DD（按门店时区）
+    weekday: number; // 0=Sunday ... 6=Saturday（按门店时区）
     isHoliday: boolean;
     holidayName: string | null;
     isClosed: boolean;
@@ -37,16 +33,15 @@ export type StoreStatus = {
     closeMinutes: number | null;
   };
 
-  // （简单版）如果今天还没到营业时间，给出今天的开门时间；否则 undefined
-  nextOpenAt?: string;
+  nextOpenAt?: string; // ISO（带 offset，按门店时区）
 };
 
 type StoreClock = {
-  now: Date;
-  nowIso: string;
-  todayStr: string; // YYYY-MM-DD
-  weekday: number; // 0=Sunday ... 6=Saturday
-  minutesSinceMidnight: number; // 0-1439
+  nowIso: string; // 带 offset
+  todayStr: string; // YYYY-MM-DD（按门店时区）
+  weekday: number; // 0-6（按门店时区）
+  minutesSinceMidnight: number; // 0-1439（按门店时区）
+  nowZ: DateTime; // 门店时区 DateTime
 };
 
 @Injectable()
@@ -57,22 +52,24 @@ export class StoreStatusService {
 
   async getCurrentStatus(): Promise<StoreStatus> {
     const config = await this.ensureConfig();
+    const tz = config.timezone || 'America/Toronto';
 
-    // ⭐ 使用 BusinessConfig.timezone 计算门店当前时间（24 小时制）
-    const { now, nowIso, todayStr, weekday, minutesSinceMidnight } =
-      this.getStoreClock(config.timezone || 'America/Toronto');
+    const { nowIso, todayStr, weekday, minutesSinceMidnight, nowZ } =
+      this.getStoreClock(tz);
 
-    // 找今天的 Holiday（按日期字符串匹配）
+    // Holiday：按“门店时区的 YYYY-MM-DD”来匹配
     const holidays = await this.prisma.holiday.findMany();
-    const todayHoliday = holidays.find(
-      (h) => this.dateToIsoDate(h.date) === todayStr,
-    );
+    const todayHoliday = holidays.find((h) => {
+      const hDateStr = DateTime.fromJSDate(h.date, { zone: 'utc' })
+        .setZone(tz)
+        .toFormat('yyyy-LL-dd');
+      return hDateStr === todayStr;
+    });
     const todayHolidayName = todayHoliday?.name ?? null;
 
-    // 找对应 weekday 的营业时间（我们约定每周只配一段）
-    const todayHours = await this.prisma.businessHour.findFirst({
+    // BusinessHour：weekday 是 unique，直接 findUnique
+    const todayHours = await this.prisma.businessHour.findUnique({
       where: { weekday },
-      orderBy: { openMinutes: 'asc' },
     });
 
     let ruleSource: StoreStatus['ruleSource'] = 'REGULAR_HOURS';
@@ -81,23 +78,21 @@ export class StoreStatusService {
     let closeMinutes: number | null = null;
 
     if (todayHoliday) {
-      // 节假日优先
       ruleSource = 'HOLIDAY';
       isClosed = todayHoliday.isClosed;
       openMinutes = todayHoliday.openMinutes ?? null;
       closeMinutes = todayHoliday.closeMinutes ?? null;
     } else if (!todayHours) {
-      // 没配今天的营业时间 → 视为休息
       ruleSource = 'CLOSED_ALL_DAY';
       isClosed = true;
     } else {
       ruleSource = todayHours.isClosed ? 'CLOSED_ALL_DAY' : 'REGULAR_HOURS';
       isClosed = todayHours.isClosed;
-      openMinutes = todayHours.openMinutes;
-      closeMinutes = todayHours.closeMinutes;
+      openMinutes = todayHours.openMinutes ?? null;
+      closeMinutes = todayHours.closeMinutes ?? null;
     }
 
-    // ===== 按排班判断“是否在营业时间内” =====
+    // ===== 按排班判断是否营业 =====
     let isOpenBySchedule = false;
 
     if (
@@ -106,31 +101,25 @@ export class StoreStatusService {
       closeMinutes != null &&
       closeMinutes > openMinutes
     ) {
-      // 这里全部按 24 小时制的“从凌晨开始的分钟数”
       isOpenBySchedule =
         minutesSinceMidnight >= openMinutes &&
         minutesSinceMidnight < closeMinutes;
     }
 
-    // 临时暂停接单覆盖一切渠道（web + POS）
-    const isTemporarilyClosed = config.isTemporarilyClosed;
+    const isTemporarilyClosed = !!config.isTemporarilyClosed;
     const isOpen = isOpenBySchedule && !isTemporarilyClosed;
 
-    // 一旦临时暂停 → ruleSource 直接标记为 TEMPORARY_CLOSE，方便前端区分文案
     if (isTemporarilyClosed) {
       ruleSource = 'TEMPORARY_CLOSE';
     }
 
     let nextOpenAt: string | undefined;
 
-    // （简单版）如果今天是营业日 & 现在还没到开门时间 → 给出今天的开门时间
+    // 简单版：仅处理“今天未到开门时间”的 nextOpenAt（仍按门店时区输出带 offset）
     if (!isOpen && !isClosed && openMinutes != null) {
       if (minutesSinceMidnight < openMinutes) {
-        const openDateTime = new Date(now);
-        const hours = Math.floor(openMinutes / 60);
-        const minutes = openMinutes % 60;
-        openDateTime.setHours(hours, minutes, 0, 0);
-        nextOpenAt = openDateTime.toISOString();
+        const openZ = nowZ.startOf('day').plus({ minutes: openMinutes });
+        nextOpenAt = this.toIsoWithOffset(openZ);
       }
     }
 
@@ -141,7 +130,7 @@ export class StoreStatusService {
       isOpen,
       ruleSource,
       now: nowIso,
-      timezone: config.timezone,
+      timezone: tz,
       today: {
         date: todayStr,
         weekday,
@@ -155,96 +144,56 @@ export class StoreStatusService {
     };
   }
 
-  // ====== 内部小工具 ======
+  // ====== 内部工具 ======
 
-  /** 根据门店时区算“现在几点 / 今天星期几 / 今天是几号 / 已经过了多少分钟” */
   private getStoreClock(timezone: string): StoreClock {
     const tz = timezone || 'America/Toronto';
-    const now = new Date();
 
-    try {
-      const formatter = new Intl.DateTimeFormat('en-CA', {
-        timeZone: tz,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-        weekday: 'long',
-      });
-
-      const parts = formatter.formatToParts(now);
-      const get = (type: string) =>
-        parts.find((p) => p.type === type)?.value ?? '0';
-
-      const year = Number(get('year'));
-      const month = Number(get('month'));
-      const day = Number(get('day'));
-      const hour = Number(get('hour'));
-      const minute = Number(get('minute'));
-      const weekdayLabel = get('weekday');
-
-      const todayStr = [
-        year.toString().padStart(4, '0'),
-        month.toString().padStart(2, '0'),
-        day.toString().padStart(2, '0'),
-      ].join('-');
-
-      const minutesSinceMidnight = hour * 60 + minute;
-
-      // 把英文 weekday 映射成 0-6
-      const weekdayMap: Record<string, number> = {
-        Sunday: 0,
-        Monday: 1,
-        Tuesday: 2,
-        Wednesday: 3,
-        Thursday: 4,
-        Friday: 5,
-        Saturday: 6,
-      };
-      const weekday =
-        weekdayMap[weekdayLabel] ?? new Date(`${todayStr}T00:00:00`).getDay();
-
-      // 构造一个“门店本地时间”的 Date 对象（秒/毫秒用服务器当前，影响不大）
-      const storeNow = new Date(
-        year,
-        month - 1,
-        day,
-        hour,
-        minute,
-        now.getSeconds(),
-        now.getMilliseconds(),
-      );
-      const nowIso = storeNow.toISOString();
-
-      return { now: storeNow, nowIso, todayStr, weekday, minutesSinceMidnight };
-    } catch (err) {
+    const nowZ = DateTime.now().setZone(tz);
+    if (!nowZ.isValid) {
       this.logger.warn(
-        `Failed to compute store clock with timezone=${tz}, fallback to server local time. Error: ${String(
-          err,
+        `Invalid timezone=${tz} for Luxon. Fallback to UTC. reason=${String(
+          nowZ.invalidReason,
         )}`,
       );
-
-      // 回退方案：直接用服务器本地时间
-      const fallbackNow = new Date();
-      const fallbackIso = fallbackNow.toISOString();
-      const fallbackTodayStr = fallbackIso.slice(0, 10); // YYYY-MM-DD
-      const fallbackWeekday = fallbackNow.getDay();
-      const fallbackMinutes =
-        fallbackNow.getHours() * 60 + fallbackNow.getMinutes();
-
+      const fallback = DateTime.now().toUTC();
       return {
-        now: fallbackNow,
-        nowIso: fallbackIso,
-        todayStr: fallbackTodayStr,
-        weekday: fallbackWeekday,
-        minutesSinceMidnight: fallbackMinutes,
+        nowIso: this.toIsoWithOffset(fallback),
+        todayStr: fallback.toFormat('yyyy-LL-dd'),
+        weekday: fallback.weekday % 7, // Sunday(7)->0
+        minutesSinceMidnight: fallback.hour * 60 + fallback.minute,
+        nowZ: fallback,
       };
     }
+
+    const todayStr = nowZ.toFormat('yyyy-LL-dd');
+
+    // Luxon weekday: Monday=1 ... Sunday=7  -> 0=Sunday ... 6=Saturday
+    const weekday = nowZ.weekday % 7;
+
+    const minutesSinceMidnight = nowZ.hour * 60 + nowZ.minute;
+
+    return {
+      nowIso: this.toIsoWithOffset(nowZ),
+      todayStr,
+      weekday,
+      minutesSinceMidnight,
+      nowZ,
+    };
   }
 
-  /** 确保 BusinessConfig 至少有一条记录（id=1） */
+  private toIsoWithOffset(dt: DateTime): string {
+    // includeOffset: true 确保带 -05:00 / -04:00
+    // Luxon 默认会带 offset，但这里显式写清楚，避免未来改动踩坑
+    const iso = dt.toISO({ includeOffset: true, suppressMilliseconds: false });
+    // toISO 可能返回 null（极端 invalid），兜底：
+    return (
+      iso ??
+      dt.toUTC().toISO({ includeOffset: true }) ??
+      new Date().toISOString()
+    );
+  }
+
   private async ensureConfig(): Promise<BusinessConfig> {
     const existing = await this.prisma.businessConfig.findUnique({
       where: { id: 1 },
@@ -265,10 +214,5 @@ export class StoreStatusService {
         temporaryCloseReason: null,
       },
     });
-  }
-
-  /** 把 Date 存的节假日统一转成 YYYY-MM-DD 字符串 */
-  private dateToIsoDate(date: Date): string {
-    return date.toISOString().slice(0, 10);
   }
 }

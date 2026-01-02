@@ -1708,7 +1708,7 @@ export class OrdersService {
    * 退菜/改价：创建 OrderAmendment（方案 B）
    */
   async createAmendment(params: {
-    orderId: string;
+    orderStableId: string;
     type: OrderAmendmentType;
     reason: string;
 
@@ -1728,7 +1728,7 @@ export class OrdersService {
     refundGrossCents?: number; // “应退总额”（现金退 + 返积分）
     additionalChargeCents?: number; // “应补收总额”
   }): Promise<OrderDto> {
-    const orderId = params.orderId;
+    const orderStableId = params.orderStableId;
     const reason = params.reason;
     const type = params.type;
     const items = Array.isArray(params.items) ? params.items : [];
@@ -1743,7 +1743,9 @@ export class OrdersService {
     const refundGrossCentsRaw = toNonNegInt(params.refundGrossCents);
     const additionalChargeCentsRaw = toNonNegInt(params.additionalChargeCents);
 
-    if (!orderId) throw new BadRequestException('orderId is required');
+    if (!orderStableId) {
+      throw new BadRequestException('orderStableId is required');
+    }
     if (!reason?.trim()) throw new BadRequestException('reason is required');
 
     const hasVoid = items.some(
@@ -1789,7 +1791,10 @@ export class OrdersService {
 
     const updatedOrder = await this.prisma.$transaction(async (tx) => {
       // ✅ 外部 orderId 允许 stableId/uuid；这里统一 resolve 成内部 UUID
-      const resolved = await this.resolveInternalOrderIdOrThrow(orderId, tx);
+      const resolved = await this.resolveInternalOrderIdByStableIdOrThrow(
+        orderStableId,
+        tx,
+      );
       const internalOrderId = resolved.id;
 
       const order = await tx.order.findUnique({

@@ -39,6 +39,7 @@ import {
   buildLocalizedMenuFromDb,
 } from "@/lib/order/shared";
 import { useSession } from "@/lib/auth-session";
+import { formatStoreTime } from "@/lib/time/tz";
 type MemberAddress = {
   addressStableId: string;
   label: string;
@@ -109,6 +110,7 @@ type StoreStatus = {
   isTemporarilyClosed: boolean;
   temporaryCloseReason: string | null;
   ruleSource: StoreStatusRuleSource;
+  timezone: string;
   nextOpenAt?: string | null;
   today?: {
     date: string;
@@ -741,14 +743,10 @@ export default function CheckoutPage() {
     }
 
     if (storeStatus.nextOpenAt) {
-      const formatted = new Date(storeStatus.nextOpenAt).toLocaleString(
-        locale === "zh" ? "zh-Hans-CA" : "en-CA",
-        {
-          month: "short",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        },
+      const formatted = formatStoreTime(
+        storeStatus.nextOpenAt,
+        storeStatus.timezone,
+        locale,
       );
 
       storeStatusDetail +=

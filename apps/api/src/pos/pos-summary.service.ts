@@ -77,7 +77,7 @@ type OrderLite = {
   taxCents: number;
   loyaltyRedeemCents: number | null;
   couponDiscountCents: number | null;
-  paymentMethod: PaymentMethod;
+  paymentMethod: PaymentMethod | null;
 };
 
 @Injectable()
