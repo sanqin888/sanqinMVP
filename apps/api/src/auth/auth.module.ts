@@ -1,5 +1,5 @@
 // apps/api/src/auth/auth.module.ts
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { PassportModule } from '@nestjs/passport';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthService } from './auth.service';
@@ -12,6 +12,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RolesGuard } from './roles.guard';
 import { MfaGuard } from './mfa.guard';
 
+@Global()
 @Module({
   imports: [PrismaModule, PassportModule],
   providers: [
