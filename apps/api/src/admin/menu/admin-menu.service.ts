@@ -426,7 +426,6 @@ export class AdminMenuService {
             : Math.max(0, Math.round(body.basePriceCents)),
         sortOrder:
           body.sortOrder === undefined ? undefined : Math.floor(body.sortOrder),
-
         imageUrl:
           body.imageUrl === undefined
             ? undefined
