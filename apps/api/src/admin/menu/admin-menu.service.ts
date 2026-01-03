@@ -1099,20 +1099,22 @@ export class AdminMenuService {
   }
 
   private async ensureBusinessConfig() {
-    return (
-      (await this.prisma.businessConfig.findUnique({ where: { id: 1 } })) ??
-      (await this.prisma.businessConfig.create({
-        data: {
-          id: 1,
-          storeName: null,
-          timezone: 'America/Toronto',
-          isTemporarilyClosed: false,
-          temporaryCloseReason: null,
-          deliveryBaseFeeCents: 600,
-          priorityPerKmCents: 100,
-          salesTaxRate: 0.13,
-        },
-      }))
-    );
+    const existing = await this.prisma.businessConfig.findUnique({
+      where: { id: 1 },
+    });
+
+    if (existing) return existing;
+
+    return this.prisma.businessConfig.create({
+      data: {
+        id: 1,
+        storeName: null,
+        timezone: 'America/Toronto',
+        isTemporarilyClosed: false,
+        temporaryCloseReason: null,
+        deliveryBaseFeeCents: 600,
+        priorityPerKmCents: 100,
+        salesTaxRate: 0.13,
+      },
+    });
   }
-}
