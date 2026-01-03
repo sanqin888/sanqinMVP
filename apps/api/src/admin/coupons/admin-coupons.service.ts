@@ -37,10 +37,7 @@ function parseDateInput(value?: string | null): Date | null {
   return parsed;
 }
 
-function ensureObject(
-  value: unknown,
-  label: string,
-): Prisma.InputJsonValue {
+function ensureObject(value: unknown, label: string): Prisma.InputJsonValue {
   if (!value || typeof value !== 'object') {
     throw new BadRequestException(`${label} must be an object`);
   }
