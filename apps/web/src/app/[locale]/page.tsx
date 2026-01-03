@@ -17,9 +17,11 @@ import {
   UI_STRINGS,
   addLocaleToPath,
   buildLocalizedDailySpecials,
+  buildLocalizedEntitlementItems,
   buildLocalizedMenuFromDb,
   type LocalizedDailySpecial,
   type LocalizedMenuItem,
+  type MenuEntitlementsResponse,
   type PublicMenuApiResponse,
   type PublicMenuCategory,
 } from "@/lib/order/shared";
@@ -49,6 +51,12 @@ export default function LocalOrderPage() {
   const [dailySpecials, setDailySpecials] = useState<
     LocalizedDailySpecial[]
   >([]);
+  const [cartNotice, setCartNotice] = useState<string | null>(null);
+  const [entitlements, setEntitlements] =
+    useState<MenuEntitlementsResponse | null>(null);
+  const [entitlementsError, setEntitlementsError] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -101,19 +109,109 @@ export default function LocalOrderPage() {
     };
   }, [locale]);
 
-  const { addItem, totalQuantity } = usePersistentCart();
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadEntitlements() {
+      if (!isMemberLoggedIn) {
+        setEntitlements(null);
+        setEntitlementsError(null);
+        return;
+      }
+
+      try {
+        const data = await apiFetch<MenuEntitlementsResponse>(
+          "/promotions/entitlements",
+          {
+            cache: "no-store",
+          },
+        );
+        if (cancelled) return;
+        setEntitlements(data);
+        setEntitlementsError(null);
+      } catch (err) {
+        console.error(err);
+        if (cancelled) return;
+        setEntitlements(null);
+        setEntitlementsError(
+          locale === "zh"
+            ? "专享套餐加载失败，请稍后重试。"
+            : "Failed to load member exclusives. Please try again later.",
+        );
+      }
+    }
+
+    void loadEntitlements();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isMemberLoggedIn, locale]);
+
+  const { addItem, totalQuantity, items: cartItems, removeItemsByStableId } =
+    usePersistentCart();
   const [activeItem, setActiveItem] = useState<LocalizedMenuItem | null>(null);
   const [selectedOptions, setSelectedOptions] = useState<
     Record<string, string[]>
   >({});
+  const entitlementItems = useMemo(
+    () =>
+      buildLocalizedEntitlementItems(
+        entitlements?.unlockedItems ?? [],
+        locale,
+      ),
+    [entitlements, locale],
+  );
+
+  const entitlementItemSet = useMemo(
+    () => new Set(entitlements?.unlockedItemStableIds ?? []),
+    [entitlements],
+  );
+
+  const mergedMenu = useMemo(() => {
+    if (entitlementItems.length === 0) return menu;
+    return [
+      {
+        stableId: "exclusive-combos",
+        name: locale === "zh" ? "专享套餐" : "Exclusive combos",
+        items: entitlementItems,
+      },
+      ...menu,
+    ];
+  }, [entitlementItems, locale, menu]);
+
+  useEffect(() => {
+    if (cartItems.length === 0) return;
+    const allowedStableIds = new Set(
+      menu.flatMap((category) =>
+        category.items.map((item) => item.stableId),
+      ),
+    );
+    entitlementItems.forEach((item) => allowedStableIds.add(item.stableId));
+
+    const invalidItems = cartItems.filter(
+      (item) => !allowedStableIds.has(item.productStableId),
+    );
+    if (invalidItems.length === 0) return;
+
+    removeItemsByStableId(
+      invalidItems.map((item) => item.productStableId),
+    );
+    setCartNotice(
+      locale === "zh"
+        ? "部分需持券套餐已从购物车移除。"
+        : "Some coupon-only items were removed from your cart.",
+    );
+  }, [cartItems, entitlementItems, menu, locale, removeItemsByStableId]);
+
   const menuItemMap = useMemo(
     () =>
       new Map(
-        menu.flatMap((category) =>
+        mergedMenu.flatMap((category) =>
           category.items.map((item) => [item.stableId, item]),
         ),
       ),
-    [menu],
+    [mergedMenu],
   );
 
   const closeOptionsModal = () => {
@@ -358,8 +456,14 @@ export default function LocalOrderPage() {
             {menuError ? (
               <p className="text-xs text-amber-600">{menuError}</p>
             ) : null}
+            {entitlementsError ? (
+              <p className="text-xs text-amber-600">{entitlementsError}</p>
+            ) : null}
+            {cartNotice ? (
+              <p className="text-xs text-amber-600">{cartNotice}</p>
+            ) : null}
 
-            {menu.length === 0 ? (
+            {mergedMenu.length === 0 ? (
               <p className="text-sm text-slate-500">
                 {locale === "zh"
                   ? "当前暂无可售菜品。"
@@ -441,7 +545,7 @@ export default function LocalOrderPage() {
                   </div>
                 ) : null}
 
-                {menu.map((category) => (
+                {mergedMenu.map((category) => (
                   <div key={category.stableId} className="space-y-4">
                     <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
                       <div>
@@ -454,6 +558,9 @@ export default function LocalOrderPage() {
                     <div className="grid gap-4 md:grid-cols-2">
                       {category.items.map((item) => {
                         const isDailySpecial = Boolean(item.activeSpecial);
+                        const isEntitlement = entitlementItemSet.has(
+                          item.stableId,
+                        );
                         return (
                           <article
                             key={item.stableId}
@@ -488,6 +595,13 @@ export default function LocalOrderPage() {
                                     {isDailySpecial ? (
                                       <span className="rounded-full bg-amber-500/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white">
                                         {locale === "zh" ? "特价" : "Special"}
+                                      </span>
+                                    ) : null}
+                                    {isEntitlement ? (
+                                      <span className="rounded-full bg-emerald-500/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white">
+                                        {locale === "zh"
+                                          ? "需持券"
+                                          : "Coupon required"}
                                       </span>
                                     ) : null}
                                     <h3 className="text-lg font-semibold text-slate-900">

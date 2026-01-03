@@ -108,7 +108,7 @@ export class AdminMenuController {
       ingredientsZh?: string;
 
       isAvailable?: boolean;
-      isVisible?: boolean;
+      visibility?: 'PUBLIC' | 'HIDDEN';
       tempUnavailableUntil?: string | null;
     },
   ) {
@@ -134,7 +134,7 @@ export class AdminMenuController {
       ingredientsZh?: string | null;
 
       isAvailable?: boolean;
-      isVisible?: boolean;
+      visibility?: 'PUBLIC' | 'HIDDEN';
       tempUnavailableUntil?: string | null;
     },
   ) {

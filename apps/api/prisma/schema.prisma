@@ -96,6 +96,24 @@ enum SpecialPricingMode {
   DISCOUNT_PERCENT
 }
 
+enum MenuItemVisibility {
+  PUBLIC
+  HIDDEN
+}
+
+enum CouponStackingPolicy {
+  EXCLUSIVE
+  STACKABLE
+}
+
+enum UserCouponStatus {
+  AVAILABLE
+  RESERVED
+  REDEEMED
+  EXPIRED
+  REVOKED
+}
+
 // === Models ===
 
 model User {
@@ -126,6 +144,7 @@ model User {
   trustedDevices        TrustedDevice[]
   passwordResetTokens   PasswordResetToken[]
   twoFactorChallenges   TwoFactorChallenge[]
+  userCoupons           UserCoupon[]
 
   @@index([referredByUserId])
 }
@@ -289,7 +308,7 @@ model Order {
 model Coupon {
   id            String    @id @default(uuid()) @db.Uuid
   couponStableId String @unique @default(cuid())
-  userId        String
+  userId        String?   @db.Uuid
   code          String
   title         String
   discountCents Int
@@ -300,8 +319,33 @@ model Coupon {
   orderId       String?   @db.Uuid
   source        String?
   campaign      String?
+  unlockedItemStableIds String[] @default([])
+  isActive      Boolean   @default(true)
+  startsAt      DateTime?
+  endsAt        DateTime?
+  stackingPolicy CouponStackingPolicy @default(EXCLUSIVE)
+  userCoupons   UserCoupon[]
 
   @@index([userId, expiresAt])
+}
+
+model UserCoupon {
+  id             String            @id @default(uuid()) @db.Uuid
+  userStableId   String
+  couponStableId String
+  status         UserCouponStatus  @default(AVAILABLE)
+  expiresAt      DateTime?
+  reservedAt     DateTime?
+  redeemedAt     DateTime?
+  orderStableId  String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  user           User              @relation(fields: [userStableId], references: [userStableId], onDelete: Cascade)
+  coupon         Coupon            @relation(fields: [couponStableId], references: [couponStableId], onDelete: Cascade)
+
+  @@unique([userStableId, couponStableId])
+  @@index([userStableId, status, expiresAt])
+  @@index([couponStableId])
 }
 
 model OrderItem {
@@ -485,7 +529,7 @@ model MenuItem {
   nameZh               String?
   basePriceCents       Int
   isAvailable          Boolean               @default(true)
-  isVisible            Boolean               @default(true)
+  visibility           MenuItemVisibility    @default(PUBLIC)
   tempUnavailableUntil DateTime?
   sortOrder            Int                   @default(0)
   imageUrl             String?

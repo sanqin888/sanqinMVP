@@ -206,7 +206,7 @@ export class AdminMenuService {
                 }
               : null,
             isAvailable: it.isAvailable,
-            isVisible: it.isVisible,
+            visibility: it.visibility,
             tempUnavailableUntil: toIso(it.tempUnavailableUntil),
             sortOrder: it.sortOrder,
             imageUrl: it.imageUrl ?? null,
@@ -313,7 +313,7 @@ export class AdminMenuService {
     ingredientsZh?: string;
 
     isAvailable?: boolean;
-    isVisible?: boolean;
+    visibility?: 'PUBLIC' | 'HIDDEN';
     tempUnavailableUntil?: string | null;
   }) {
     const categoryStableId = (body.categoryStableId ?? '').trim();
@@ -357,7 +357,7 @@ export class AdminMenuService {
 
         isAvailable:
           typeof body.isAvailable === 'boolean' ? body.isAvailable : true,
-        isVisible: typeof body.isVisible === 'boolean' ? body.isVisible : true,
+        visibility: body.visibility ?? 'PUBLIC',
         tempUnavailableUntil: parseIsoOrNull(body.tempUnavailableUntil),
 
         deletedAt: null,
@@ -384,7 +384,7 @@ export class AdminMenuService {
       ingredientsZh?: string | null;
 
       isAvailable?: boolean;
-      isVisible?: boolean;
+      visibility?: 'PUBLIC' | 'HIDDEN';
       tempUnavailableUntil?: string | null;
     },
   ) {
@@ -443,7 +443,8 @@ export class AdminMenuService {
 
         isAvailable:
           body.isAvailable === undefined ? undefined : body.isAvailable,
-        isVisible: body.isVisible === undefined ? undefined : body.isVisible,
+        visibility:
+          body.visibility === undefined ? undefined : body.visibility,
         tempUnavailableUntil:
           body.tempUnavailableUntil === undefined
             ? undefined
@@ -477,7 +478,7 @@ export class AdminMenuService {
       select: {
         stableId: true,
         isAvailable: true,
-        isVisible: true,
+        visibility: true,
         tempUnavailableUntil: true,
       },
     });
@@ -485,7 +486,7 @@ export class AdminMenuService {
     return {
       stableId: updated.stableId,
       isAvailable: updated.isAvailable,
-      isVisible: updated.isVisible,
+      visibility: updated.visibility,
       tempUnavailableUntil: toIso(updated.tempUnavailableUntil),
     };
   }
