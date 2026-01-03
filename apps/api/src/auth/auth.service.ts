@@ -1,4 +1,4 @@
-  // apps/api/src/auth/auth.service.ts
+// apps/api/src/auth/auth.service.ts
 import {
   BadRequestException,
   ForbiddenException,
