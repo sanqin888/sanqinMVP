@@ -10,6 +10,7 @@ import {
   Post,
   Req,
   UseGuards,
+  Query,
 } from '@nestjs/common';
 import { SessionAuthGuard } from '../../auth/session-auth.guard';
 import { Roles } from '../../auth/roles.decorator';
@@ -17,6 +18,7 @@ import { RolesGuard } from '../../auth/roles.guard';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthService } from '../../auth/auth.service';
 import type { UserRole, UserStatus } from '@prisma/client';
+import type { Request } from 'express';
 
 type StaffUserDto = {
   userStableId: string;
@@ -51,6 +53,27 @@ export class AdminStaffController {
     private readonly prisma: PrismaService,
     private readonly authService: AuthService,
   ) {}
+
+  private normalizeLocale(v: unknown): 'en' | 'zh' {
+    return v === 'zh' ? 'zh' : 'en';
+  }
+
+  private getPublicOrigin(req: Request): string {
+    const env = process.env.PUBLIC_WEB_BASE_URL;
+    if (env) return env.replace(/\/$/, '');
+
+    const xfProto = req.headers['x-forwarded-proto'];
+    const xfHost = req.headers['x-forwarded-host'];
+
+    const proto =
+      (typeof xfProto === 'string' ? xfProto.split(',')[0] : undefined) ??
+      req.protocol;
+    const host =
+      (typeof xfHost === 'string' ? xfHost.split(',')[0] : undefined) ??
+      req.get('host');
+
+    return `${proto}://${host}`;
+  }
 
   private getInviteStatus(invite: {
     usedAt: Date | null;
@@ -208,26 +231,49 @@ export class AdminStaffController {
 
   @Post('invites')
   async createInvite(
-    @Req() req: { user?: { id: string } },
-    @Body() body: { email?: string; role?: UserRole },
-  ): Promise<StaffInviteDto> {
+    @Req() req: Request & { user?: { id: string } },
+    @Body() body: { email?: string; role?: UserRole; locale?: 'en' | 'zh' },
+  ): Promise<StaffInviteDto & { inviteUrl?: string }> {
     if (!req.user?.id) {
       throw new BadRequestException('Missing inviter');
     }
 
-    const invite = await this.authService.createStaffInvite({
+    const { invite, token } = await this.authService.createStaffInvite({
       inviterId: req.user.id,
       email: body.email ?? '',
       role: body.role ?? 'STAFF',
     });
 
-    return this.toInviteDto(invite);
+    const dto = this.toInviteDto(invite);
+
+    // ✅ 仅 dev / 非生产：返回 inviteUrl（包含 token）
+    if (process.env.NODE_ENV !== 'production') {
+      const locale = this.normalizeLocale(body.locale);
+      const origin = this.getPublicOrigin(req);
+      const inviteUrl = `${origin}/${locale}/admin/accept-invite?token=${encodeURIComponent(token)}`;
+      return { ...dto, inviteUrl };
+    }
+
+    return dto;
   }
 
   @Post('invites/:inviteStableId/resend')
-  async resendInvite(@Param('inviteStableId') inviteStableId: string) {
-    const invite = await this.authService.resendStaffInvite(inviteStableId);
-    return this.toInviteDto(invite);
+  async resendInvite(
+    @Req() req: Request,
+    @Param('inviteStableId') inviteStableId: string,
+    @Query('locale') localeRaw?: string,
+  ): Promise<StaffInviteDto & { inviteUrl?: string }> {
+    const { invite, token } = await this.authService.resendStaffInvite(inviteStableId);
+    const dto = this.toInviteDto(invite);
+
+    if (process.env.NODE_ENV !== 'production') {
+      const locale = this.normalizeLocale(localeRaw);
+      const origin = this.getPublicOrigin(req);
+      const inviteUrl = `${origin}/${locale}/admin/accept-invite?token=${encodeURIComponent(token)}`;
+      return { ...dto, inviteUrl };
+    }
+
+    return dto;
   }
 
   @Post('invites/:inviteStableId/revoke')
