@@ -8,6 +8,7 @@ import {
 import * as crypto from 'crypto';
 import { AppLogger } from '../common/app-logger';
 import {
+  BusinessConfig,
   Channel,
   DeliveryProvider,
   DeliveryType,
@@ -51,6 +52,11 @@ import {
   OrderItemOptionsSnapshot,
 } from './order-item-options';
 import { isAvailableNow } from '@shared/menu';
+import {
+  isDailySpecialActiveNow,
+  resolveEffectivePriceCents,
+  resolveStoreNow,
+} from '../common/daily-specials';
 import type { OrderDto, OrderItemDto } from './dto/order.dto';
 import type { PrintPosPayloadDto } from '../pos/dto/print-pos-payload.dto';
 
@@ -424,11 +430,9 @@ export class OrdersService {
     return PaymentMethod.CASH;
   }
 
-  private async getBusinessPricingConfig(): Promise<DeliveryPricingConfig> {
-    const existing =
-      (await this.prisma.businessConfig.findUnique({
-        where: { id: 1 },
-      })) ??
+  private async ensureBusinessConfig(): Promise<BusinessConfig> {
+    return (
+      (await this.prisma.businessConfig.findUnique({ where: { id: 1 } })) ??
       (await this.prisma.businessConfig.create({
         data: {
           id: 1,
@@ -440,7 +444,12 @@ export class OrdersService {
           priorityPerKmCents: DEFAULT_PRIORITY_PER_KM_CENTS,
           salesTaxRate: DEFAULT_TAX_RATE,
         },
-      }));
+      }))
+    );
+  }
+
+  private async getBusinessPricingConfig(): Promise<DeliveryPricingConfig> {
+    const existing = await this.ensureBusinessConfig();
 
     const deliveryBaseFeeCents = Number.isFinite(existing.deliveryBaseFeeCents)
       ? Math.max(0, Math.round(existing.deliveryBaseFeeCents))
@@ -915,6 +924,7 @@ export class OrdersService {
   private async calculateLineItems(itemsDto: OrderItemInput[]): Promise<{
     calculatedItems: Prisma.OrderItemCreateWithoutOrderInput[];
     calculatedSubtotal: number;
+    couponEligibleSubtotalCents: number;
   }> {
     const normalizedItems = itemsDto.map((item) => {
       const normalizedId = normalizeStableId(
@@ -1015,7 +1025,37 @@ export class OrdersService {
       choiceLookupByProductId.set(product.stableId, optionLookup);
     }
 
+    const businessConfig = await this.ensureBusinessConfig();
+    const now = resolveStoreNow(businessConfig.timezone);
+    const weekday = now.weekday;
+    const productStableIds = dbProducts.map((product) => product.stableId);
+
+    const rawDailySpecials =
+      productStableIds.length === 0
+        ? []
+        : await this.prisma.menuDailySpecial.findMany({
+            where: {
+              weekday,
+              isEnabled: true,
+              deletedAt: null,
+              itemStableId: { in: productStableIds },
+            },
+            orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+          });
+
+    const activeSpecialsByItemStableId = new Map<
+      string,
+      (typeof rawDailySpecials)[number]
+    >();
+    rawDailySpecials.forEach((special) => {
+      if (!isDailySpecialActiveNow(special, now)) return;
+      if (!activeSpecialsByItemStableId.has(special.itemStableId)) {
+        activeSpecialsByItemStableId.set(special.itemStableId, special);
+      }
+    });
+
     let calculatedSubtotal = 0;
+    let couponEligibleSubtotalCents = 0;
     const calculatedItems: Prisma.OrderItemCreateWithoutOrderInput[] = [];
 
     for (const itemDto of normalizedItems) {
@@ -1038,7 +1078,12 @@ export class OrdersService {
       const optionLookup =
         choiceLookupByProductId.get(itemDto.normalizedProductId) ??
         new Map<string, OptionChoiceContext>();
-      let unitPriceCents = product.basePriceCents;
+      const activeSpecial =
+        activeSpecialsByItemStableId.get(product.stableId) ?? null;
+      const baseUnitPriceCents = activeSpecial
+        ? resolveEffectivePriceCents(product.basePriceCents, activeSpecial)
+        : product.basePriceCents;
+      let optionsUnitPriceCents = 0;
 
       const selectedOptionIds = Array.from(
         new Set(this.collectOptionIds(itemDto.options)),
@@ -1057,7 +1102,7 @@ export class OrdersService {
           );
         }
 
-        unitPriceCents += context.choice.priceDeltaCents;
+        optionsUnitPriceCents += context.choice.priceDeltaCents;
         const templateGroupStableId = context.group.stableId;
 
         const groupSnapshot =
@@ -1100,8 +1145,12 @@ export class OrdersService {
         }))
         .sort((a, b) => a.sortOrder - b.sortOrder);
 
+      const unitPriceCents = baseUnitPriceCents + optionsUnitPriceCents;
       const lineTotal = unitPriceCents * itemDto.qty;
       calculatedSubtotal += lineTotal;
+      if (!activeSpecial?.disallowCoupons) {
+        couponEligibleSubtotalCents += lineTotal;
+      }
 
       const displayName =
         product.nameEn || product.nameZh || itemDto.displayName || 'Unknown';
@@ -1113,13 +1162,17 @@ export class OrdersService {
         nameEn: product.nameEn,
         nameZh: product.nameZh,
         unitPriceCents,
+        baseUnitPriceCents,
+        optionsUnitPriceCents,
+        isDailySpecialApplied: Boolean(activeSpecial),
+        dailySpecialStableId: activeSpecial?.stableId ?? null,
         optionsJson: optionsSnapshot.length
           ? (optionsSnapshot as Prisma.InputJsonValue)
           : undefined,
       });
     }
 
-    return { calculatedItems, calculatedSubtotal };
+    return { calculatedItems, calculatedSubtotal, couponEligibleSubtotalCents };
   }
 
   async create(
@@ -1192,7 +1245,6 @@ export class OrdersService {
     if (rawCouponStableId && !normalizedCouponStableId) {
       throw new BadRequestException('couponStableId must be a cuid');
     }
-
     if (stableKey || legacyKey) {
       const existing = await this.prisma.order.findFirst({
         where: {
@@ -1210,8 +1262,13 @@ export class OrdersService {
 
     // —— Step 1: 服务端重算商品小计 (Security)
     const items = dto.items ?? [];
-    const { calculatedItems, calculatedSubtotal } =
+    const { calculatedItems, calculatedSubtotal, couponEligibleSubtotalCents } =
       await this.calculateLineItems(items);
+    if (normalizedCouponStableId && couponEligibleSubtotalCents <= 0) {
+      throw new BadRequestException(
+        'coupon is not available for daily special items',
+      );
+    }
 
     const subtotalCents = calculatedSubtotal;
     const pricingConfig = await this.getBusinessPricingConfig();
@@ -1312,7 +1369,7 @@ export class OrdersService {
               {
                 userId,
                 couponStableId: normalizedCouponStableId ?? undefined,
-                subtotalCents,
+                subtotalCents: couponEligibleSubtotalCents,
               },
               { tx },
             );
@@ -1401,7 +1458,7 @@ export class OrdersService {
                 tx,
                 userId,
                 couponId: couponInfo.coupon.id,
-                subtotalCents,
+                subtotalCents: couponEligibleSubtotalCents,
                 orderId,
               });
             }

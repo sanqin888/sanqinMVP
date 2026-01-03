@@ -7,10 +7,15 @@ import {
   Param,
   Post,
   Put,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { AdminMenuService } from './admin-menu.service';
-import { AdminMenuFullResponse, TemplateGroupFullDto } from '@shared/menu';
+import {
+  AdminMenuFullResponse,
+  DailySpecialDto,
+  TemplateGroupFullDto,
+} from '@shared/menu';
 import { SessionAuthGuard } from '../../auth/session-auth.guard';
 import { Roles } from '../../auth/roles.decorator';
 import { RolesGuard } from '../../auth/roles.guard';
@@ -25,6 +30,41 @@ export class AdminMenuController {
   @Get('full')
   async getFullMenu(): Promise<AdminMenuFullResponse> {
     return this.service.getFullMenu();
+  }
+
+  @Get('daily-specials')
+  async getDailySpecials(
+    @Query('weekday') weekday?: string,
+  ): Promise<{ specials: DailySpecialDto[] }> {
+    const parsedWeekday = weekday ? Number(weekday) : undefined;
+    return this.service.getDailySpecials(
+      Number.isFinite(parsedWeekday) ? parsedWeekday : undefined,
+    );
+  }
+
+  @Put('daily-specials/bulk')
+  async upsertDailySpecials(
+    @Body()
+    body: {
+      specials: Array<{
+        stableId?: string | null;
+        weekday: number;
+        itemStableId: string;
+        pricingMode: 'OVERRIDE_PRICE' | 'DISCOUNT_DELTA' | 'DISCOUNT_PERCENT';
+        overridePriceCents?: number | null;
+        discountDeltaCents?: number | null;
+        discountPercent?: number | null;
+        startDate?: string | null;
+        endDate?: string | null;
+        startMinutes?: number | null;
+        endMinutes?: number | null;
+        disallowCoupons?: boolean;
+        isEnabled?: boolean;
+        sortOrder?: number;
+      }>;
+    },
+  ): Promise<{ specials: DailySpecialDto[] }> {
+    return this.service.upsertDailySpecials(body);
   }
 
   @Post('categories')
