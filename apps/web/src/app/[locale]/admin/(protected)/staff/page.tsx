@@ -302,6 +302,7 @@ export default function AdminStaffPage() {
     } finally {
       setInviteActionTarget(null);
     }
+  }
 
   async function handleRevoke(invite: StaffInvite): Promise<void> {
     if (!isAdmin) return;
