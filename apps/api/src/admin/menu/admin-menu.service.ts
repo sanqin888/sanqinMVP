@@ -420,7 +420,6 @@ export class AdminMenuService {
         nameEn: body.nameEn === undefined ? undefined : body.nameEn.trim(),
         nameZh:
           body.nameZh === undefined ? undefined : body.nameZh?.trim() || null,
-
         basePriceCents:
           body.basePriceCents === undefined
             ? undefined
