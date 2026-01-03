@@ -1,5 +1,12 @@
 // apps/api/src/promotions/promotions.controller.ts
-import { BadRequestException, Controller, Get, Header, Req, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Header,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { PromotionsService } from './promotions.service';
@@ -16,7 +23,9 @@ export class PromotionsController {
 
   @Get('entitlements')
   @Header('Cache-Control', 'no-store')
-  async getEntitlements(@Req() req: AuthedRequest): Promise<MenuEntitlementsResponse> {
+  async getEntitlements(
+    @Req() req: AuthedRequest,
+  ): Promise<MenuEntitlementsResponse> {
     const userStableId = req.user?.userStableId;
     if (!userStableId) {
       throw new BadRequestException('userStableId is required');
