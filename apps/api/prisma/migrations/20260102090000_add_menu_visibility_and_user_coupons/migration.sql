@@ -11,7 +11,11 @@ CREATE TYPE "UserCouponStatus" AS ENUM ('AVAILABLE', 'RESERVED', 'REDEEMED', 'EX
 ALTER TABLE "MenuItem" ADD COLUMN "visibility" "MenuItemVisibility" NOT NULL DEFAULT 'PUBLIC';
 
 UPDATE "MenuItem"
-SET "visibility" = CASE WHEN "isVisible" IS TRUE THEN 'PUBLIC' ELSE 'HIDDEN' END;
+SET "visibility" =
+  CASE
+    WHEN "isVisible" IS TRUE THEN 'PUBLIC'::"MenuItemVisibility"
+    ELSE 'HIDDEN'::"MenuItemVisibility"
+  END;
 
 ALTER TABLE "MenuItem" DROP COLUMN "isVisible";
 
