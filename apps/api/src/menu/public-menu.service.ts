@@ -60,7 +60,7 @@ export class PublicMenuService {
         items: {
           where: {
             deletedAt: null,
-            isVisible: true,
+            visibility: 'PUBLIC',
           },
           orderBy: { sortOrder: 'asc' },
           include: {
@@ -104,7 +104,6 @@ export class PublicMenuService {
 
       const items = (cat.items ?? [])
         .filter((it) => {
-          if (!it.isVisible) return false;
           return it.isAvailable;
         })
         .map((it) => {
@@ -182,7 +181,7 @@ export class PublicMenuService {
                 }
               : null,
             isAvailable: it.isAvailable,
-            isVisible: it.isVisible,
+            visibility: it.visibility,
             tempUnavailableUntil: toIso(it.tempUnavailableUntil),
             sortOrder: it.sortOrder,
             imageUrl: it.imageUrl ?? null,

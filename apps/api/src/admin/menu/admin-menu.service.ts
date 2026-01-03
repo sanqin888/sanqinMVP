@@ -206,7 +206,7 @@ export class AdminMenuService {
                 }
               : null,
             isAvailable: it.isAvailable,
-            isVisible: it.isVisible,
+            visibility: it.visibility,
             tempUnavailableUntil: toIso(it.tempUnavailableUntil),
             sortOrder: it.sortOrder,
             imageUrl: it.imageUrl ?? null,
@@ -266,7 +266,11 @@ export class AdminMenuService {
       });
     }
 
-    dailySpecials.sort((a, b) => a.sortOrder - b.sortOrder);
+    dailySpecials.sort(
+      (a, b) =>
+        (a as { sortOrder: number }).sortOrder -
+        (b as { sortOrder: number }).sortOrder,
+    );
 
     return { categories: categoryDtos, templatesLite, dailySpecials };
   }
@@ -313,7 +317,7 @@ export class AdminMenuService {
     ingredientsZh?: string;
 
     isAvailable?: boolean;
-    isVisible?: boolean;
+    visibility?: 'PUBLIC' | 'HIDDEN';
     tempUnavailableUntil?: string | null;
   }) {
     const categoryStableId = (body.categoryStableId ?? '').trim();
@@ -357,7 +361,7 @@ export class AdminMenuService {
 
         isAvailable:
           typeof body.isAvailable === 'boolean' ? body.isAvailable : true,
-        isVisible: typeof body.isVisible === 'boolean' ? body.isVisible : true,
+        visibility: body.visibility ?? 'PUBLIC',
         tempUnavailableUntil: parseIsoOrNull(body.tempUnavailableUntil),
 
         deletedAt: null,
@@ -384,7 +388,7 @@ export class AdminMenuService {
       ingredientsZh?: string | null;
 
       isAvailable?: boolean;
-      isVisible?: boolean;
+      visibility?: 'PUBLIC' | 'HIDDEN';
       tempUnavailableUntil?: string | null;
     },
   ) {
@@ -420,14 +424,12 @@ export class AdminMenuService {
         nameEn: body.nameEn === undefined ? undefined : body.nameEn.trim(),
         nameZh:
           body.nameZh === undefined ? undefined : body.nameZh?.trim() || null,
-
         basePriceCents:
           body.basePriceCents === undefined
             ? undefined
             : Math.max(0, Math.round(body.basePriceCents)),
         sortOrder:
           body.sortOrder === undefined ? undefined : Math.floor(body.sortOrder),
-
         imageUrl:
           body.imageUrl === undefined
             ? undefined
@@ -440,10 +442,9 @@ export class AdminMenuService {
           body.ingredientsZh === undefined
             ? undefined
             : body.ingredientsZh?.trim() || null,
-
         isAvailable:
           body.isAvailable === undefined ? undefined : body.isAvailable,
-        isVisible: body.isVisible === undefined ? undefined : body.isVisible,
+        visibility: body.visibility === undefined ? undefined : body.visibility,
         tempUnavailableUntil:
           body.tempUnavailableUntil === undefined
             ? undefined
@@ -477,7 +478,7 @@ export class AdminMenuService {
       select: {
         stableId: true,
         isAvailable: true,
-        isVisible: true,
+        visibility: true,
         tempUnavailableUntil: true,
       },
     });
@@ -485,7 +486,7 @@ export class AdminMenuService {
     return {
       stableId: updated.stableId,
       isAvailable: updated.isAvailable,
-      isVisible: updated.isVisible,
+      visibility: updated.visibility,
       tempUnavailableUntil: toIso(updated.tempUnavailableUntil),
     };
   }
@@ -1101,20 +1102,23 @@ export class AdminMenuService {
   }
 
   private async ensureBusinessConfig() {
-    return (
-      (await this.prisma.businessConfig.findUnique({ where: { id: 1 } })) ??
-      (await this.prisma.businessConfig.create({
-        data: {
-          id: 1,
-          storeName: null,
-          timezone: 'America/Toronto',
-          isTemporarilyClosed: false,
-          temporaryCloseReason: null,
-          deliveryBaseFeeCents: 600,
-          priorityPerKmCents: 100,
-          salesTaxRate: 0.13,
-        },
-      }))
-    );
+    const existing = await this.prisma.businessConfig.findUnique({
+      where: { id: 1 },
+    });
+
+    if (existing) return existing;
+
+    return this.prisma.businessConfig.create({
+      data: {
+        id: 1,
+        storeName: null,
+        timezone: 'America/Toronto',
+        isTemporarilyClosed: false,
+        temporaryCloseReason: null,
+        deliveryBaseFeeCents: 600,
+        priorityPerKmCents: 100,
+        salesTaxRate: 0.13,
+      },
+    });
   }
 }

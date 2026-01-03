@@ -217,6 +217,14 @@ export function usePersistentCart() {
     setItems([]);
   }, []);
 
+  const removeItemsByStableId = useCallback((stableIds: string[]) => {
+    if (stableIds.length === 0) return;
+    const removeSet = new Set(stableIds);
+    setItems((prev) =>
+      prev.filter((entry) => !removeSet.has(entry.productStableId)),
+    );
+  }, []);
+
   const totalQuantity = useMemo(
     () => items.reduce((sum, entry) => sum + entry.quantity, 0),
     [items],
@@ -228,6 +236,7 @@ export function usePersistentCart() {
     updateQuantity,
     updateNotes,
     clearCart,
+    removeItemsByStableId,
     totalQuantity,
   };
 }

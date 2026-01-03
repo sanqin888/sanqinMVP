@@ -346,7 +346,12 @@ async function main() {
           ingredientsEn: typeof i.ingredientsEn === "undefined" ? null : i.ingredientsEn,
           ingredientsZh: typeof i.ingredientsZh === "undefined" ? null : i.ingredientsZh,
           isAvailable: typeof i.isAvailable === "boolean" ? i.isAvailable : true,
-          isVisible: typeof i.isVisible === "boolean" ? i.isVisible : true,
+          visibility:
+            typeof i.isVisible === "boolean"
+              ? i.isVisible
+                ? "PUBLIC"
+                : "HIDDEN"
+              : i.visibility ?? "PUBLIC",
           tempUnavailableUntil: toDateOrNull(i.tempUnavailableUntil),
           deletedAt: null,
         },
@@ -360,7 +365,12 @@ async function main() {
           ingredientsEn: typeof i.ingredientsEn === "undefined" ? null : i.ingredientsEn,
           ingredientsZh: typeof i.ingredientsZh === "undefined" ? null : i.ingredientsZh,
           isAvailable: typeof i.isAvailable === "boolean" ? i.isAvailable : true,
-          isVisible: typeof i.isVisible === "boolean" ? i.isVisible : true,
+          visibility:
+            typeof i.isVisible === "boolean"
+              ? i.isVisible
+                ? "PUBLIC"
+                : "HIDDEN"
+              : i.visibility ?? "PUBLIC",
           tempUnavailableUntil: toDateOrNull(i.tempUnavailableUntil),
           deletedAt: null,
         },

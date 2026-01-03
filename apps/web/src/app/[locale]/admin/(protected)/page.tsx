@@ -206,7 +206,8 @@ export default function AdminDashboard() {
 
     for (const category of menu) {
       for (const item of category.items) {
-        const effectiveActive = category.isActive && item.isVisible && item.isAvailable;
+        const effectiveActive =
+          category.isActive && item.visibility === "PUBLIC" && item.isAvailable;
         if (effectiveActive) active += 1;
         else inactive += 1;
       }
@@ -396,7 +397,7 @@ export default function AdminDashboard() {
       const updated = await apiFetch<{
         stableId: string;
         isAvailable: boolean;
-        isVisible: boolean;
+        visibility: "PUBLIC" | "HIDDEN";
         tempUnavailableUntil: string | null;
       }>(`/admin/menu/items/${itemStableId}/availability`, {
         method: "POST",
@@ -415,7 +416,7 @@ export default function AdminDashboard() {
                     ? {
                         ...i,
                         isAvailable: updated.isAvailable,
-                        isVisible: updated.isVisible,
+                        visibility: updated.visibility,
                         tempUnavailableUntil: updated.tempUnavailableUntil,
                       }
                     : i,
@@ -631,7 +632,10 @@ export default function AdminDashboard() {
                     {category.items.map((item) => {
                       const itemName = isZh && item.nameZh ? item.nameZh : item.nameEn;
                       const price = item.basePriceCents / 100;
-                      const effectiveActive = category.isActive && item.isVisible && item.isAvailable;
+                      const effectiveActive =
+                        category.isActive &&
+                        item.visibility === "PUBLIC" &&
+                        item.isAvailable;
 
                       return (
                         <div key={item.stableId} className="rounded-lg border p-3">

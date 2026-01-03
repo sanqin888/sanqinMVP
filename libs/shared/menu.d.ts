@@ -7,6 +7,7 @@ export type Availability = {
     tempUnavailableUntil: string | null;
 };
 export type SpecialPricingMode = 'OVERRIDE_PRICE' | 'DISCOUNT_DELTA' | 'DISCOUNT_PERCENT';
+export type MenuItemVisibility = 'PUBLIC' | 'HIDDEN';
 export type ActiveSpecialDto = {
     stableId: string;
     effectivePriceCents: number;
@@ -71,7 +72,7 @@ export type MenuItemDtoBase = LocalizedName & Availability & {
     basePriceCents: number;
     effectivePriceCents?: number;
     activeSpecial?: ActiveSpecialDto | null;
-    isVisible: boolean;
+    visibility: MenuItemVisibility;
     sortOrder: number;
     imageUrl: string | null;
     ingredientsEn: string | null;
@@ -102,6 +103,27 @@ export type AdminMenuFullResponse = {
 export type PublicMenuResponse = {
     categories: PublicMenuCategoryDto[];
     dailySpecials: DailySpecialDto[];
+};
+export type MenuEntitlementItemDto = LocalizedName & Availability & {
+    stableId: string;
+    basePriceCents: number;
+    imageUrl: string | null;
+    ingredientsEn: string | null;
+    ingredientsZh: string | null;
+    optionGroups: MenuOptionGroupWithOptionsDto[];
+    couponStableId: string;
+    userCouponId: string;
+};
+export type MenuEntitlementDto = {
+    userCouponId: string;
+    couponStableId: string;
+    unlockedItemStableIds: string[];
+    stackingPolicy: 'EXCLUSIVE' | 'STACKABLE';
+};
+export type MenuEntitlementsResponse = {
+    unlockedItemStableIds: string[];
+    unlockedItems: MenuEntitlementItemDto[];
+    entitlements: MenuEntitlementDto[];
 };
 export type AdminMenuFull = AdminMenuFullResponse;
 export declare function isAvailableNow(availability: Availability, now?: number): boolean;

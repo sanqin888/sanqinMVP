@@ -62,6 +62,8 @@ export type HostedCheckoutMetadata = {
     minSpendCents?: number;
     expiresAt?: string;
   };
+
+  selectedUserCouponId?: string;
 };
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
@@ -268,6 +270,7 @@ export function parseHostedCheckoutMetadata(
     loyaltyUserStableId:
       normalizeStableId(toString(input.loyaltyUserStableId)) ?? undefined,
     coupon: parseCoupon(input.coupon),
+    selectedUserCouponId: toString(metadata.selectedUserCouponId),
   } satisfies HostedCheckoutMetadata;
 }
 
@@ -382,6 +385,9 @@ export function buildOrderDtoFromMetadata(
 
   if (meta.coupon?.couponStableId) {
     dto.couponStableId = meta.coupon.couponStableId;
+  }
+  if (meta.selectedUserCouponId) {
+    dto.selectedUserCouponId = meta.selectedUserCouponId;
   }
 
   if (meta.fulfillment === 'delivery') {

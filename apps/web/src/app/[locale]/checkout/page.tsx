@@ -36,6 +36,8 @@ import {
   type DeliveryTypeOption,
   type PublicMenuApiResponse,
   buildLocalizedMenuFromDb,
+  buildLocalizedEntitlementItems,
+  type MenuEntitlementsResponse,
 } from "@/lib/order/shared";
 import { useSession } from "@/lib/auth-session";
 import { formatStoreTime } from "@/lib/time/tz";
@@ -266,14 +268,21 @@ export default function CheckoutPage() {
   const orderHref = q ? `/${locale}?${q}` : `/${locale}`;
   const checkoutHref = q ? `/${locale}/checkout?${q}` : `/${locale}/checkout`;
 
-  const { items, updateNotes, updateQuantity } = usePersistentCart();
+  const { items, updateNotes, updateQuantity, removeItemsByStableId } =
+    usePersistentCart();
   const { data: session, status: authStatus } = useSession();
   // ====== 菜单（用于把购物车 itemId 映射成 DB 里的菜品信息） ======
-  const [menuLookup, setMenuLookup] = useState<
+  const [publicMenuLookup, setPublicMenuLookup] = useState<
     Map<string, LocalizedMenuItem> | null
   >(null);
   const [menuLoading, setMenuLoading] = useState(false);
   const [menuError, setMenuError] = useState<string | null>(null);
+  const [cartNotice, setCartNotice] = useState<string | null>(null);
+  const [entitlements, setEntitlements] =
+    useState<MenuEntitlementsResponse | null>(null);
+  const [entitlementsError, setEntitlementsError] = useState<string | null>(
+    null,
+  );
 
   const membershipHref =
     authStatus === "authenticated"
@@ -292,6 +301,53 @@ export default function CheckoutPage() {
 
   const [loyaltyLoading, setLoyaltyLoading] = useState(false);
   const [loyaltyError, setLoyaltyError] = useState<string | null>(null);
+
+  const entitlementItems = useMemo(
+    () =>
+      buildLocalizedEntitlementItems(
+        entitlements?.unlockedItems ?? [],
+        locale,
+      ),
+    [entitlements, locale],
+  );
+
+  const entitlementItemCouponMap = useMemo(() => {
+    const map = new Map<
+      string,
+      { userCouponId: string; couponStableId: string }
+    >();
+    for (const item of entitlements?.unlockedItems ?? []) {
+      if (!map.has(item.stableId)) {
+        map.set(item.stableId, {
+          userCouponId: item.userCouponId,
+          couponStableId: item.couponStableId,
+        });
+      }
+    }
+    return map;
+  }, [entitlements]);
+
+  const menuLookup = useMemo(() => {
+    const merged = new Map<string, LocalizedMenuItem>();
+    if (publicMenuLookup) {
+      publicMenuLookup.forEach((value, key) => merged.set(key, value));
+    }
+    entitlementItems.forEach((item) => merged.set(item.stableId, item));
+    return merged.size ? merged : null;
+  }, [entitlementItems, publicMenuLookup]);
+
+  useEffect(() => {
+    if (!menuLookup || items.length === 0) return;
+    const allowed = new Set(menuLookup.keys());
+    const invalid = items.filter((item) => !allowed.has(item.productStableId));
+    if (invalid.length === 0) return;
+    removeItemsByStableId(invalid.map((item) => item.productStableId));
+    setCartNotice(
+      locale === "zh"
+        ? "部分需持券套餐已从购物车移除。"
+        : "Some coupon-only items were removed from your cart.",
+    );
+  }, [items, locale, menuLookup, removeItemsByStableId]);
 
   const localizedCartItems = useMemo<LocalizedCartItem[]>(() => {
     if (!menuLookup) return [];
@@ -351,6 +407,31 @@ export default function CheckoutPage() {
     });
   }, [localizedCartItems, locale]);
 
+  const requiredEntitlementItemStableIds = useMemo(() => {
+    const required = new Set<string>();
+    for (const cartItem of cartItemsWithPricing) {
+      if (entitlementItemCouponMap.has(cartItem.productStableId)) {
+        required.add(cartItem.productStableId);
+      }
+    }
+    return required;
+  }, [cartItemsWithPricing, entitlementItemCouponMap]);
+
+  const selectedEntitlement = useMemo(() => {
+    if (!entitlements || requiredEntitlementItemStableIds.size === 0) {
+      return null;
+    }
+    const requiredIds = Array.from(requiredEntitlementItemStableIds);
+    return (
+      entitlements.entitlements.find((entitlement) =>
+        requiredIds.every((id) => entitlement.unlockedItemStableIds.includes(id)),
+      ) ?? null
+    );
+  }, [entitlements, requiredEntitlementItemStableIds]);
+
+  const selectedUserCouponId = selectedEntitlement?.userCouponId ?? null;
+
+
   const [fulfillment, setFulfillment] = useState<"pickup" | "delivery">(
     "pickup",
   );
@@ -409,6 +490,20 @@ export default function CheckoutPage() {
   const [appliedCoupon, setAppliedCoupon] = useState<CheckoutCoupon | null>(
     null,
   );
+  const entitlementBlockingMessage = useMemo(() => {
+    if (requiredEntitlementItemStableIds.size === 0) return null;
+    if (!selectedEntitlement) {
+      return locale === "zh"
+        ? "该订单包含需持券套餐，请先确认优惠券可用。"
+        : "This order contains coupon-only items. Please ensure an eligible coupon is available.";
+    }
+    if (selectedEntitlement.stackingPolicy === "EXCLUSIVE" && appliedCoupon) {
+      return locale === "zh"
+        ? "需持券套餐不可与其他优惠券叠加，请移除折扣券。"
+        : "Coupon-only items cannot be combined with other discounts. Please remove the discount coupon.";
+    }
+    return null;
+  }, [appliedCoupon, locale, requiredEntitlementItemStableIds, selectedEntitlement]);
   const [couponLoading, setCouponLoading] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
   const [utensilsPreference, setUtensilsPreference] = useState<
@@ -447,12 +542,12 @@ export default function CheckoutPage() {
             map.set(item.stableId, item);
           }
         }
-        setMenuLookup(map);
+        setPublicMenuLookup(map);
       } catch (error) {
         console.error("Failed to load menu for checkout", error);
         if (cancelled) return;
 
-        setMenuLookup(new Map());
+        setPublicMenuLookup(new Map());
         setMenuError(
           locale === "zh"
             ? "菜单从服务器加载失败，如需继续下单，请先与门店确认价格与菜品。"
@@ -471,6 +566,44 @@ export default function CheckoutPage() {
       cancelled = true;
     };
   }, [locale]);
+
+  const isMemberLoggedIn = Boolean(session?.user?.userStableId);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadEntitlements() {
+      if (!isMemberLoggedIn) {
+        setEntitlements(null);
+        setEntitlementsError(null);
+        return;
+      }
+      try {
+        const data = await apiFetch<MenuEntitlementsResponse>(
+          "/promotions/entitlements",
+          { cache: "no-store" },
+        );
+        if (cancelled) return;
+        setEntitlements(data);
+        setEntitlementsError(null);
+      } catch (error) {
+        console.error("Failed to load entitlements", error);
+        if (cancelled) return;
+        setEntitlements(null);
+        setEntitlementsError(
+          locale === "zh"
+            ? "专享套餐加载失败，请稍后重试。"
+            : "Failed to load member exclusives. Please try again later.",
+        );
+      }
+    }
+
+    void loadEntitlements();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isMemberLoggedIn, locale]);
 
   // 加载门店营业状态
   useEffect(() => {
@@ -782,7 +915,8 @@ export default function CheckoutPage() {
     customer.phone.trim().length >= 6 &&
     phoneVerified &&
     (fulfillment === "pickup" || deliveryAddressReady) &&
-    isStoreOpen;
+    isStoreOpen &&
+    !entitlementBlockingMessage;
 
   const scheduleLabel =
     strings.scheduleOptions.find((option) => option.id === schedule)?.label ??
@@ -1398,6 +1532,7 @@ export default function CheckoutPage() {
               minSpendCents: appliedCoupon.minSpendCents,
             }
           : undefined,
+        selectedUserCouponId: selectedUserCouponId ?? undefined,
 
         ...(deliveryMetadata ?? {}),
 
@@ -1610,6 +1745,30 @@ export default function CheckoutPage() {
             {storeStatusError && (
               <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
                 {storeStatusError}
+              </div>
+            )}
+          </div>
+        )}
+        {(menuError || entitlementsError || cartNotice || entitlementBlockingMessage) && (
+          <div className="mb-4 space-y-2">
+            {menuError && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+                {menuError}
+              </div>
+            )}
+            {entitlementsError && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+                {entitlementsError}
+              </div>
+            )}
+            {cartNotice && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+                {cartNotice}
+              </div>
+            )}
+            {entitlementBlockingMessage && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+                {entitlementBlockingMessage}
               </div>
             )}
           </div>

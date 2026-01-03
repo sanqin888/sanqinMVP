@@ -115,7 +115,7 @@ describe('OrdersService', () => {
               nameEn: 'Demo Product',
               nameZh: null,
               isAvailable: true,
-              isVisible: true,
+              visibility: 'PUBLIC',
               tempUnavailableUntil: null,
               optionGroups: [],
             },
