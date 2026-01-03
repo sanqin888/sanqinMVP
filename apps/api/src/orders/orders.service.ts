@@ -1385,14 +1385,12 @@ export class OrdersService {
             const hiddenItemStableIds = hiddenItems.map(
               (item) => item.stableId,
             );
-            let userCouponToRedeem:
-              | {
-                  id: string;
-                  couponStableId: string;
-                  stackingPolicy: 'EXCLUSIVE' | 'STACKABLE';
-                  unlockedItemStableIds: string[];
-                }
-              | null = null;
+            let userCouponToRedeem: {
+              id: string;
+              couponStableId: string;
+              stackingPolicy: 'EXCLUSIVE' | 'STACKABLE';
+              unlockedItemStableIds: string[];
+            } | null = null;
 
             if (hiddenItemStableIds.length > 0) {
               if (!normalizedUserStableId) {

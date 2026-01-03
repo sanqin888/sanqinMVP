@@ -439,7 +439,6 @@ export class AdminMenuService {
           body.ingredientsZh === undefined
             ? undefined
             : body.ingredientsZh?.trim() || null,
-
         isAvailable:
           body.isAvailable === undefined ? undefined : body.isAvailable,
         visibility:
