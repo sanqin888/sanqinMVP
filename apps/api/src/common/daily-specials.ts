@@ -30,12 +30,12 @@ export function isDailySpecialActiveNow(
       ? (now as unknown as { zoneName: string }).zoneName
       : 'UTC';
 
-   const startDate = special.startDate
+  const startDate = special.startDate
     ? DateTime.fromJSDate(special.startDate).setZone(zoneName)
-     : null;
-   const endDate = special.endDate
+    : null;
+  const endDate = special.endDate
     ? DateTime.fromJSDate(special.endDate).setZone(zoneName)
-     : null;
+    : null;
   if (startDate && now < startDate) return false;
   if (endDate && now > endDate) return false;
   const minutes = now.hour * 60 + now.minute;
