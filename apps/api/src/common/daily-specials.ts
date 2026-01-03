@@ -24,30 +24,20 @@ export function isDailySpecialActiveNow(
 ): boolean {
   if (special.isEnabled === false) return false;
 
-  // 显式收敛为 string，避免 eslint 把 now.zoneName 判成 error typed 后传参触发 no-unsafe-argument
-  const zoneName =
-    typeof (now as unknown as { zoneName?: unknown }).zoneName === 'string'
-      ? (now as unknown as { zoneName: string }).zoneName
-      : 'UTC';
-
-   const startDate = special.startDate
-    ? DateTime.fromJSDate(special.startDate).setZone(zoneName)
-     : null;
-   const endDate = special.endDate
-    ? DateTime.fromJSDate(special.endDate).setZone(zoneName)
-     : null;
-
+  const startDate = special.startDate
+    ? DateTime.fromJSDate(special.startDate).setZone(now.zoneName)
+    : null;
+  const endDate = special.endDate
+    ? DateTime.fromJSDate(special.endDate).setZone(now.zoneName)
+    : null;
   if (startDate && now < startDate) return false;
   if (endDate && now > endDate) return false;
-
   const minutes = now.hour * 60 + now.minute;
   const startMinutes =
     typeof special.startMinutes === 'number' ? special.startMinutes : null;
   const endMinutes =
     typeof special.endMinutes === 'number' ? special.endMinutes : null;
-
   if (startMinutes === null && endMinutes === null) return true;
-
   if (startMinutes !== null && endMinutes !== null) {
     if (endMinutes < startMinutes) return false;
     return minutes >= startMinutes && minutes <= endMinutes;

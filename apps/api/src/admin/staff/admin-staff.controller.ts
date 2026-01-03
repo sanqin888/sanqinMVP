@@ -263,9 +263,8 @@ export class AdminStaffController {
     @Param('inviteStableId') inviteStableId: string,
     @Query('locale') localeRaw?: string,
   ): Promise<StaffInviteDto & { inviteUrl?: string }> {
-    const { invite, token } = await this.authService.resendStaffInvite(
-      inviteStableId,
-    );
+    const { invite, token } =
+      await this.authService.resendStaffInvite(inviteStableId);
     const dto = this.toInviteDto(invite);
 
     if (process.env.NODE_ENV !== 'production') {
