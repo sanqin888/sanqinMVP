@@ -420,14 +420,12 @@ export class AdminMenuService {
         nameEn: body.nameEn === undefined ? undefined : body.nameEn.trim(),
         nameZh:
           body.nameZh === undefined ? undefined : body.nameZh?.trim() || null,
-
         basePriceCents:
           body.basePriceCents === undefined
             ? undefined
             : Math.max(0, Math.round(body.basePriceCents)),
         sortOrder:
           body.sortOrder === undefined ? undefined : Math.floor(body.sortOrder),
-
         imageUrl:
           body.imageUrl === undefined
             ? undefined
@@ -440,7 +438,6 @@ export class AdminMenuService {
           body.ingredientsZh === undefined
             ? undefined
             : body.ingredientsZh?.trim() || null,
-
         isAvailable:
           body.isAvailable === undefined ? undefined : body.isAvailable,
         visibility:
