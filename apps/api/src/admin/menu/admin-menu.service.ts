@@ -22,7 +22,6 @@ import {
 import { SpecialPricingMode } from '@prisma/client';
 
 type AvailabilityMode = 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF';
-type StoreNow = { weekday: number } & Record<string, unknown>;
 
 function toIso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
@@ -79,7 +78,7 @@ export class AdminMenuService {
   // ========= Full menu for admin =========
   async getFullMenu(): Promise<AdminMenuFullResponse> {
     const businessConfig = await this.ensureBusinessConfig();
-    const now = resolveStoreNow(businessConfig.timezone) as StoreNow;
+    const now = resolveStoreNow(businessConfig.timezone);
     const weekday = now.weekday;
     const rawDailySpecials = await this.prisma.menuDailySpecial.findMany({
       where: {
