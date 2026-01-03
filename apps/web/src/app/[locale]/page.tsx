@@ -16,7 +16,9 @@ import {
   type Locale,
   UI_STRINGS,
   addLocaleToPath,
+  buildLocalizedDailySpecials,
   buildLocalizedMenuFromDb,
+  type LocalizedDailySpecial,
   type LocalizedMenuItem,
   type PublicMenuApiResponse,
   type PublicMenuCategory,
@@ -44,6 +46,9 @@ export default function LocalOrderPage() {
   const [menu, setMenu] = useState<PublicMenuCategory[]>([]);
   const [menuLoading, setMenuLoading] = useState(true);
   const [menuError, setMenuError] = useState<string | null>(null);
+  const [dailySpecials, setDailySpecials] = useState<
+    LocalizedDailySpecial[]
+  >([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -64,11 +69,19 @@ export default function LocalOrderPage() {
           locale,
         );
         setMenu(localized);
+        setDailySpecials(
+          buildLocalizedDailySpecials(
+            dbMenu.dailySpecials ?? [],
+            localized,
+            locale,
+          ),
+        );
       } catch (err) {
         console.error(err);
         if (cancelled) return;
 
         setMenu([]);
+        setDailySpecials([]);
         setMenuError(
           locale === "zh"
             ? "菜单从服务器加载失败，请稍后重试或联系门店。"
@@ -93,6 +106,15 @@ export default function LocalOrderPage() {
   const [selectedOptions, setSelectedOptions] = useState<
     Record<string, string[]>
   >({});
+  const menuItemMap = useMemo(
+    () =>
+      new Map(
+        menu.flatMap((category) =>
+          category.items.map((item) => [item.stableId, item]),
+        ),
+      ),
+    [menu],
+  );
 
   const closeOptionsModal = () => {
     setActiveItem(null);
@@ -344,98 +366,203 @@ export default function LocalOrderPage() {
                   : "No items available at the moment."}
               </p>
             ) : (
-              menu.map((category) => (
-                <div key={category.stableId} className="space-y-4">
-                  <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-                    <div>
-                      <h2 className="text-2xl font-semibold text-slate-900">
-                        {category.name}
-                      </h2>
+              <>
+                {dailySpecials.length > 0 ? (
+                  <div className="space-y-4">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                      <div>
+                        <h2 className="text-2xl font-semibold text-slate-900">
+                          {locale === "zh" ? "每日特价" : "Daily specials"}
+                        </h2>
+                        <p className="text-xs text-slate-500">
+                          {locale === "zh"
+                            ? "特价仅限主菜，选项加价另计"
+                            : "Special price applies to the main dish only. Options are extra."}
+                        </p>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {category.items.map((item) => (
-                      <article
-                        key={item.stableId}
-                        className={`group flex h-full flex-col justify-between rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition ${
-                          isTempUnavailable(item.tempUnavailableUntil)
-                            ? "cursor-not-allowed opacity-70"
-                            : "cursor-pointer hover:-translate-y-0.5 hover:shadow-md"
-                        }`}
-                        onClick={() => {
-                          if (isTempUnavailable(item.tempUnavailableUntil)) return;
-                          setActiveItem(item);
-                          setSelectedOptions({});
-                        }}
-                      >
-                        {/* 菜品图片（可选） */}
-                        {item.imageUrl ? (
-                          <div className="mb-3 overflow-hidden rounded-2xl bg-slate-100">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={item.imageUrl}
-                              alt={item.name}
-                              className="h-40 w-full object-cover transition duration-300 group-hover:scale-105"
-                            />
-                          </div>
-                        ) : null}
-
-                        <div className="space-y-3">
-                          <div className="flex items-start justify-between gap-4">
-                            <div>
-                              <h3 className="text-lg font-semibold text-slate-900">
-                                {item.name}
-                              </h3>
-
-                              {/* 配料说明：菜名下面小字显示 */}
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {dailySpecials.map((special) => {
+                        const item = menuItemMap.get(special.itemStableId);
+                        if (!item) return null;
+                        return (
+                          <article
+                            key={special.stableId}
+                            className={`group flex h-full flex-col justify-between rounded-3xl border border-amber-200 bg-amber-50/40 p-5 shadow-sm transition ${
+                              isTempUnavailable(item.tempUnavailableUntil)
+                                ? "cursor-not-allowed opacity-70"
+                                : "cursor-pointer hover:-translate-y-0.5 hover:shadow-md"
+                            }`}
+                            onClick={() => {
+                              if (isTempUnavailable(item.tempUnavailableUntil)) return;
+                              setActiveItem(item);
+                              setSelectedOptions({});
+                            }}
+                          >
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <span className="rounded-full bg-amber-500/90 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-white">
+                                  {locale === "zh" ? "特价" : "Special"}
+                                </span>
+                                <h3 className="text-lg font-semibold text-slate-900">
+                                  {special.name}
+                                </h3>
+                              </div>
                               {item.ingredients ? (
-                                <p className="mt-1 text-xs text-slate-500">
+                                <p className="text-xs text-slate-500">
                                   {item.ingredients}
                                 </p>
                               ) : null}
                             </div>
-                            <div className="flex flex-col items-end gap-2">
-                              <span className="rounded-full bg-slate-900/90 px-3 py-1 text-sm font-semibold text-white">
-                                {currencyFormatter.format(item.price)}
-                              </span>
+                            <div className="mt-4 flex items-center justify-between">
+                              <div className="flex items-baseline gap-2">
+                                <span className="text-lg font-semibold text-slate-900">
+                                  {currencyFormatter.format(
+                                    special.effectivePriceCents / 100,
+                                  )}
+                                </span>
+                                <span className="text-xs text-slate-400 line-through">
+                                  {currencyFormatter.format(
+                                    special.basePriceCents / 100,
+                                  )}
+                                </span>
+                              </div>
                               {isTempUnavailable(item.tempUnavailableUntil) ? (
                                 <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">
                                   {locale === "zh" ? "当日售罄" : "Sold out today"}
                                 </span>
                               ) : null}
                             </div>
-                          </div>
-                        </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
 
-                        <div className="mt-5 flex items-center justify-end">
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              if (isTempUnavailable(item.tempUnavailableUntil)) return;
+                {menu.map((category) => (
+                  <div key={category.stableId} className="space-y-4">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                      <div>
+                        <h2 className="text-2xl font-semibold text-slate-900">
+                          {category.name}
+                        </h2>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {category.items.map((item) => {
+                        const isDailySpecial = Boolean(item.activeSpecial);
+                        return (
+                          <article
+                            key={item.stableId}
+                            className={`group flex h-full flex-col justify-between rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition ${
+                              isTempUnavailable(item.tempUnavailableUntil)
+                                ? "cursor-not-allowed opacity-70"
+                                : "cursor-pointer hover:-translate-y-0.5 hover:shadow-md"
+                            }`}
+                            onClick={() => {
+                              if (isTempUnavailable(item.tempUnavailableUntil))
+                                return;
                               setActiveItem(item);
                               setSelectedOptions({});
                             }}
-                            disabled={isTempUnavailable(item.tempUnavailableUntil)}
-                            className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition ${
-                              isTempUnavailable(item.tempUnavailableUntil)
-                                ? "cursor-not-allowed bg-slate-200 text-slate-400"
-                                : "bg-slate-900 text-white hover:bg-slate-700"
-                            }`}
                           >
-                            {isTempUnavailable(item.tempUnavailableUntil)
-                              ? locale === "zh"
-                                ? "当日售罄"
-                                : "Sold out today"
-                              : strings.chooseOptions}
-                          </button>
-                        </div>
-                      </article>
-                    ))}
+                            {/* 菜品图片（可选） */}
+                            {item.imageUrl ? (
+                              <div className="mb-3 overflow-hidden rounded-2xl bg-slate-100">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={item.imageUrl}
+                                  alt={item.name}
+                                  className="h-40 w-full object-cover transition duration-300 group-hover:scale-105"
+                                />
+                              </div>
+                            ) : null}
+
+                            <div className="space-y-3">
+                              <div className="flex items-start justify-between gap-4">
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    {isDailySpecial ? (
+                                      <span className="rounded-full bg-amber-500/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white">
+                                        {locale === "zh" ? "特价" : "Special"}
+                                      </span>
+                                    ) : null}
+                                    <h3 className="text-lg font-semibold text-slate-900">
+                                      {item.name}
+                                    </h3>
+                                  </div>
+
+                                  {/* 配料说明：菜名下面小字显示 */}
+                                  {item.ingredients ? (
+                                    <p className="mt-1 text-xs text-slate-500">
+                                      {item.ingredients}
+                                    </p>
+                                  ) : null}
+                                </div>
+                                <div className="flex flex-col items-end gap-2">
+                                  <span className="rounded-full bg-slate-900/90 px-3 py-1 text-sm font-semibold text-white">
+                                    {currencyFormatter.format(item.price)}
+                                  </span>
+                                  {isDailySpecial &&
+                                  item.basePriceCents >
+                                    item.effectivePriceCents ? (
+                                    <span className="text-xs text-slate-400 line-through">
+                                      {currencyFormatter.format(
+                                        item.basePriceCents / 100,
+                                      )}
+                                    </span>
+                                  ) : null}
+                                  {isTempUnavailable(
+                                    item.tempUnavailableUntil,
+                                  ) ? (
+                                    <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">
+                                      {locale === "zh"
+                                        ? "当日售罄"
+                                        : "Sold out today"}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="mt-5 flex items-center justify-end">
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  if (
+                                    isTempUnavailable(item.tempUnavailableUntil)
+                                  )
+                                    return;
+                                  setActiveItem(item);
+                                  setSelectedOptions({});
+                                }}
+                                disabled={isTempUnavailable(
+                                  item.tempUnavailableUntil,
+                                )}
+                                className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition ${
+                                  isTempUnavailable(item.tempUnavailableUntil)
+                                    ? "cursor-not-allowed bg-slate-200 text-slate-400"
+                                    : "bg-slate-900 text-white hover:bg-slate-700"
+                                }`}
+                              >
+                                {isTempUnavailable(item.tempUnavailableUntil)
+                                  ? locale === "zh"
+                                    ? "当日售罄"
+                                    : "Sold out today"
+                                  : strings.chooseOptions}
+                              </button>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              ))
+                ))}
+              </>
             )}
           </>
         )}

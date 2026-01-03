@@ -178,7 +178,22 @@ export default function StorePosPage() {
           });
         if (cancelled) return;
         const localized = buildLocalizedMenuFromDb(dbMenu.categories ?? [], locale);
-        setMenuCategories(localized);
+        const dailySpecialItems = localized
+          .flatMap((category) => category.items)
+          .filter((item) => item.activeSpecial);
+        const dailySpecialCategory =
+          dailySpecialItems.length > 0
+            ? {
+                stableId: "daily-specials",
+                name: isZh ? "每日特价" : "Daily specials",
+                items: dailySpecialItems,
+              }
+            : null;
+        setMenuCategories(
+          dailySpecialCategory
+            ? [dailySpecialCategory, ...localized]
+            : localized,
+        );
       } catch (error) {
         console.error("Failed to load POS menu", error);
       }
@@ -189,7 +204,7 @@ export default function StorePosPage() {
     return () => {
       cancelled = true;
     };
-  }, [locale]);
+  }, [isZh, locale]);
 
   // 加载门店营业状态（web / POS 共用）
   useEffect(() => {
@@ -555,6 +570,7 @@ export default function StorePosPage() {
             <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3 auto-rows-[150px]">
               {visibleItems.map((item) => {
                 const unitPriceCents = Math.round(item.price * 100);
+                const isDailySpecial = Boolean(item.activeSpecial);
                 return (
                   <div
                     key={item.stableId}
@@ -580,8 +596,15 @@ export default function StorePosPage() {
                     className="flex flex-col justify-between rounded-3xl bg-slate-800 hover:bg-slate-700 active:scale-[0.99] transition-transform p-3 text-left"
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <div className="font-semibold text-lg leading-snug">
-                        {item.name}
+                      <div className="space-y-1">
+                        {isDailySpecial ? (
+                          <span className="inline-flex rounded-full bg-amber-500/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                            {isZh ? "特价" : "Daily special"}
+                          </span>
+                        ) : null}
+                        <div className="font-semibold text-lg leading-snug">
+                          {item.name}
+                        </div>
                       </div>
                       <div className="text-base font-bold">
                         {formatMoney(unitPriceCents)}

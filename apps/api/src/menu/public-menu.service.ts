@@ -2,7 +2,16 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppLogger } from '../common/app-logger';
-import { PublicMenuCategoryDto, PublicMenuResponse } from '@shared/menu';
+import {
+  DailySpecialDto,
+  PublicMenuCategoryDto,
+  PublicMenuResponse,
+} from '@shared/menu';
+import {
+  isDailySpecialActiveNow,
+  resolveEffectivePriceCents,
+  resolveStoreNow,
+} from '../common/daily-specials';
 
 function toIso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
@@ -15,6 +24,32 @@ export class PublicMenuService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getPublicMenu(): Promise<PublicMenuResponse> {
+    const businessConfig =
+      (await this.prisma.businessConfig.findUnique({ where: { id: 1 } })) ??
+      (await this.prisma.businessConfig.create({
+        data: {
+          id: 1,
+          storeName: null,
+          timezone: 'America/Toronto',
+          isTemporarilyClosed: false,
+          temporaryCloseReason: null,
+          deliveryBaseFeeCents: 600,
+          priorityPerKmCents: 100,
+          salesTaxRate: 0.13,
+        },
+      }));
+    const now = resolveStoreNow(businessConfig.timezone);
+    const weekday = now.weekday;
+
+    const rawDailySpecials = await this.prisma.menuDailySpecial.findMany({
+      where: {
+        weekday,
+        isEnabled: true,
+        deletedAt: null,
+      },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    });
+
     const categories = await this.prisma.menuCategory.findMany({
       where: {
         deletedAt: null,
@@ -53,6 +88,17 @@ export class PublicMenuService {
       },
     });
 
+    const specialsByItemStableId = new Map<
+      string,
+      (typeof rawDailySpecials)[number]
+    >();
+    rawDailySpecials.forEach((special) => {
+      if (!isDailySpecialActiveNow(special, now)) return;
+      if (!specialsByItemStableId.has(special.itemStableId)) {
+        specialsByItemStableId.set(special.itemStableId, special);
+      }
+    });
+
     const result: PublicMenuCategoryDto[] = (categories ?? []).map((cat) => {
       const categoryStableId = cat.stableId;
 
@@ -62,6 +108,11 @@ export class PublicMenuService {
           return it.isAvailable;
         })
         .map((it) => {
+          const activeSpecial = specialsByItemStableId.get(it.stableId) ?? null;
+          const effectivePriceCents = activeSpecial
+            ? resolveEffectivePriceCents(it.basePriceCents, activeSpecial)
+            : undefined;
+
           const optionGroups = (it.optionGroups ?? [])
             .filter((link) => {
               if (!link.isEnabled) return false;
@@ -121,6 +172,15 @@ export class PublicMenuService {
             nameEn: it.nameEn,
             nameZh: it.nameZh ?? null,
             basePriceCents: it.basePriceCents,
+            effectivePriceCents,
+            activeSpecial: activeSpecial
+              ? {
+                  stableId: activeSpecial.stableId,
+                  effectivePriceCents: effectivePriceCents ?? it.basePriceCents,
+                  pricingMode: activeSpecial.pricingMode,
+                  disallowCoupons: activeSpecial.disallowCoupons,
+                }
+              : null,
             isAvailable: it.isAvailable,
             isVisible: it.isVisible,
             tempUnavailableUntil: toIso(it.tempUnavailableUntil),
@@ -142,7 +202,45 @@ export class PublicMenuService {
       };
     });
 
+    const itemBasePriceMap = new Map(
+      result.flatMap((cat) =>
+        (cat.items ?? []).map((item) => [item.stableId, item.basePriceCents]),
+      ),
+    );
+
+    const dailySpecials: DailySpecialDto[] = [];
+    for (const special of rawDailySpecials) {
+      if (!isDailySpecialActiveNow(special, now)) continue;
+      const basePriceCents = itemBasePriceMap.get(special.itemStableId);
+      if (basePriceCents === undefined) continue;
+      const effectivePriceCents = resolveEffectivePriceCents(
+        basePriceCents,
+        special,
+      );
+
+      dailySpecials.push({
+        stableId: special.stableId,
+        weekday: special.weekday,
+        itemStableId: special.itemStableId,
+        pricingMode: special.pricingMode,
+        overridePriceCents: special.overridePriceCents ?? null,
+        discountDeltaCents: special.discountDeltaCents ?? null,
+        discountPercent: special.discountPercent ?? null,
+        startDate: toIso(special.startDate),
+        endDate: toIso(special.endDate),
+        startMinutes: special.startMinutes ?? null,
+        endMinutes: special.endMinutes ?? null,
+        disallowCoupons: special.disallowCoupons,
+        isEnabled: special.isEnabled,
+        sortOrder: special.sortOrder,
+        basePriceCents,
+        effectivePriceCents,
+      });
+    }
+
+    dailySpecials.sort((a, b) => a.sortOrder - b.sortOrder);
+
     this.logger.log(`Public menu generated: categories=${result.length}`);
-    return { categories: result };
+    return { categories: result, dailySpecials };
   }
 }

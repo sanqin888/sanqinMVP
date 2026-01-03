@@ -84,8 +84,12 @@ type SelectedOptionDisplay = {
 
 type CartItemWithPricing = LocalizedCartItem & {
   unitPriceCents: number;
+  baseUnitPriceCents: number;
+  optionsUnitPriceCents: number;
   lineTotalCents: number;
   selectedOptions: SelectedOptionDisplay[];
+  isDailySpecial: boolean;
+  disallowCoupons: boolean;
 };
 
 type LoyaltyOrderResponse = {
@@ -328,15 +332,21 @@ export default function CheckoutPage() {
         });
       });
 
-      const unitPriceCents =
-        Math.round(cartItem.item.price * 100) + optionDeltaCents;
+      const baseUnitPriceCents = cartItem.item.effectivePriceCents;
+      const optionsUnitPriceCents = optionDeltaCents;
+      const unitPriceCents = baseUnitPriceCents + optionsUnitPriceCents;
       const lineTotalCents = unitPriceCents * cartItem.quantity;
+      const isDailySpecial = Boolean(cartItem.item.activeSpecial);
 
       return {
         ...cartItem,
         unitPriceCents,
+        baseUnitPriceCents,
+        optionsUnitPriceCents,
         lineTotalCents,
         selectedOptions,
+        isDailySpecial,
+        disallowCoupons: cartItem.item.activeSpecial?.disallowCoupons ?? false,
       };
     });
   }, [localizedCartItems, locale]);
@@ -509,6 +519,18 @@ export default function CheckoutPage() {
       ),
     [cartItemsWithPricing],
   );
+  const couponEligibleSubtotalCents = useMemo(
+    () =>
+      cartItemsWithPricing.reduce(
+        (total, cartItem) =>
+          cartItem.disallowCoupons ? total : total + cartItem.lineTotalCents,
+        0,
+      ),
+    [cartItemsWithPricing],
+  );
+  const hasCouponExcludedItems = cartItemsWithPricing.some(
+    (cartItem) => cartItem.disallowCoupons,
+  );
 
   // ✅ 服务费（目前 0 分）
   const serviceFeeCents: number = 0;
@@ -607,12 +629,15 @@ export default function CheckoutPage() {
     if (!appliedCoupon) return 0;
     if (
       typeof appliedCoupon.minSpendCents === "number" &&
-      subtotalCents < appliedCoupon.minSpendCents
+      couponEligibleSubtotalCents < appliedCoupon.minSpendCents
     ) {
       return 0;
     }
-    return Math.min(appliedCoupon.discountCents, subtotalCents);
-  }, [appliedCoupon, subtotalCents]);
+    return Math.min(
+      appliedCoupon.discountCents,
+      couponEligibleSubtotalCents,
+    );
+  }, [appliedCoupon, couponEligibleSubtotalCents]);
 
   // 本单最多可抵扣多少金额（分）
   const maxRedeemableCentsForOrder = useMemo(() => {
@@ -886,7 +911,8 @@ export default function CheckoutPage() {
   };
 
   const isCouponApplicable = (coupon: CheckoutCoupon) =>
-    subtotalCents >= (coupon.minSpendCents ?? 0);
+    couponEligibleSubtotalCents > 0 &&
+    couponEligibleSubtotalCents >= (coupon.minSpendCents ?? 0);
 
   const handleApplyCoupon = (coupon: CheckoutCoupon) => {
     if (!isCouponApplicable(coupon)) return;
@@ -1643,15 +1669,49 @@ export default function CheckoutPage() {
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <p className="text-sm font-semibold text-slate-900">
-                        {cartItem.item.name}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {cartItem.isDailySpecial ? (
+                          <span className="rounded-full bg-amber-500/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                            {locale === "zh" ? "特价" : "Daily special"}
+                          </span>
+                        ) : null}
+                        <p className="text-sm font-semibold text-slate-900">
+                          {cartItem.item.name}
+                        </p>
+                      </div>
                       <p className="mt-1 text-xs text-slate-500">
                         {currencyFormatter.format(
                           cartItem.unitPriceCents / 100,
                         )}{" "}
                         × {cartItem.quantity}
                       </p>
+                      <div className="mt-1 space-y-1 text-[11px] text-slate-500">
+                        <div className="flex items-center gap-2">
+                          <span>
+                            {locale === "zh" ? "主菜" : "Main dish"}:{" "}
+                            {currencyFormatter.format(
+                              cartItem.baseUnitPriceCents / 100,
+                            )}
+                          </span>
+                          {cartItem.isDailySpecial &&
+                          cartItem.item.basePriceCents >
+                            cartItem.baseUnitPriceCents ? (
+                            <span className="text-slate-400 line-through">
+                              {currencyFormatter.format(
+                                cartItem.item.basePriceCents / 100,
+                              )}
+                            </span>
+                          ) : null}
+                        </div>
+                        {cartItem.optionsUnitPriceCents > 0 ? (
+                          <div>
+                            {locale === "zh" ? "选项加价" : "Options"}: +{" "}
+                            {currencyFormatter.format(
+                              cartItem.optionsUnitPriceCents / 100,
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
                       {cartItem.selectedOptions.length > 0 ? (
                         <ul className="mt-2 space-y-1 text-xs text-slate-500">
                           {cartItem.selectedOptions.map((option, index) => (
@@ -2147,6 +2207,17 @@ export default function CheckoutPage() {
                           ? "请选择本单可用的优惠券。"
                           : "Pick a coupon to apply to this order."}
                       </p>
+                      {hasCouponExcludedItems ? (
+                        <p className="mt-1 text-[11px] text-amber-700">
+                          {couponEligibleSubtotalCents > 0
+                            ? locale === "zh"
+                              ? "特价商品不参与优惠券"
+                              : "Daily specials are excluded from coupons."
+                            : locale === "zh"
+                              ? "特价商品不参与优惠券，本单无法使用优惠券"
+                              : "Daily specials are excluded from coupons. Coupons are unavailable for this order."}
+                        </p>
+                      ) : null}
                     </div>
                     {couponLoading && (
                       <span className="text-[11px] text-slate-500">
@@ -2183,7 +2254,7 @@ export default function CheckoutPage() {
                         {appliedCoupon.minSpendCents ? (
                           <span
                             className={
-                              subtotalCents >=
+                              couponEligibleSubtotalCents >=
                               (appliedCoupon.minSpendCents ?? 0)
                                 ? "text-emerald-700"
                                 : "text-red-600"

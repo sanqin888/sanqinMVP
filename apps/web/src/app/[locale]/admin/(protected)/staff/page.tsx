@@ -27,6 +27,7 @@ type StaffInvite = {
   sentCount?: number | null;
   lastSentAt?: string | null;
   invitedByUserStableId?: string | null;
+  inviteUrl?: string | null; // ✅ dev only
 };
 
 type StaffResponse = {
@@ -99,6 +100,8 @@ export default function AdminStaffPage() {
   const [inviteSubmitting, setInviteSubmitting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
+  const [devInviteUrl, setDevInviteUrl] = useState<string | null>(null);
+  const [devInviteEmail, setDevInviteEmail] = useState<string | null>(null);
 
   const isAdmin = session?.role === "ADMIN";
 
@@ -203,6 +206,14 @@ export default function AdminStaffPage() {
     setInvites(inviteRes.invites ?? []);
   }
 
+  async function copyText(value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch {
+      window.prompt(isZh ? "复制此链接：" : "Copy this link:", value);
+    }
+  }
+
   function staffStatusLabel(status: StaffUser["status"]): string {
     if (status === "ACTIVE") return isZh ? "启用" : "Active";
     return isZh ? "禁用" : "Disabled";
@@ -278,10 +289,16 @@ export default function AdminStaffPage() {
 
     setInviteActionTarget(invite.inviteStableId);
     try {
-      await apiFetch(`/admin/staff/invites/${encodeURIComponent(invite.inviteStableId)}/resend`, {
-        method: "POST",
-      });
+      const payload = await apiFetch<StaffInvite>(
+        `/admin/staff/invites/${encodeURIComponent(invite.inviteStableId)}/resend?locale=${encodeURIComponent(locale)}`,
+        { method: "POST" },
+      );
       await refreshInvites();
+
+      if (typeof payload.inviteUrl === "string") {
+        setDevInviteUrl(payload.inviteUrl);
+        setDevInviteEmail(invite.email);
+      }
     } finally {
       setInviteActionTarget(null);
     }
@@ -323,11 +340,15 @@ export default function AdminStaffPage() {
       const payload = await apiFetch<StaffInvite>(`/admin/staff/invites`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: normalizedEmail, role: inviteRole }),
+        body: JSON.stringify({ email: normalizedEmail, role: inviteRole, locale }),
       });
 
-      setInviteSuccess(isZh ? "邀请已发送。" : "Invite sent.");
+      setInviteSuccess(isZh ? "邀请已创建。" : "Invite created.");
       setInviteEmail("");
+
+      setDevInviteUrl(typeof payload.inviteUrl === "string" ? payload.inviteUrl : null);
+      setDevInviteEmail(payload.email ?? normalizedEmail);
+
       setInvites((prev) => {
         const next = prev.filter((item) => item.inviteStableId !== payload.inviteStableId);
         return [payload, ...next];
@@ -499,6 +520,42 @@ export default function AdminStaffPage() {
                 {isZh ? "待接受、已过期或已撤销的邀请记录。" : "Pending, expired, or revoked invites."}
               </p>
             </div>
+
+{devInviteUrl ? (
+  <div className="rounded-xl border bg-slate-50 p-4 text-sm">
+    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+      <div className="min-w-0">
+        <p className="font-medium text-slate-900">
+          {isZh ? "邀请链接（开发环境）" : "Invite link (dev)"}
+        </p>
+        <p className="text-slate-600">
+          {devInviteEmail ? (isZh ? `发送给：${devInviteEmail}` : `To: ${devInviteEmail}`) : null}
+        </p>
+        <p className="mt-2 break-all text-xs text-slate-500">{devInviteUrl}</p>
+      </div>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => void copyText(devInviteUrl)}
+          className="rounded-md bg-slate-900 px-4 py-2 text-xs font-semibold text-white"
+        >
+          {isZh ? "复制链接" : "Copy link"}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setDevInviteUrl(null);
+            setDevInviteEmail(null);
+          }}
+          className="rounded-md bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-700"
+        >
+          {isZh ? "关闭" : "Close"}
+        </button>
+      </div>
+    </div>
+  </div>
+) : null}
+
             <div className="flex flex-wrap gap-2 text-sm">
               <input
                 value={inviteSearch}
@@ -587,6 +644,41 @@ export default function AdminStaffPage() {
               {isZh ? "邮箱邀请新员工注册，有效期 7 天。" : "Invite a new staff member by email (7 days validity)."}
             </p>
           </div>
+
+{devInviteUrl ? (
+  <div className="rounded-xl border bg-slate-50 p-4 text-sm">
+    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+      <div className="min-w-0">
+        <p className="font-medium text-slate-900">
+          {isZh ? "邀请链接（开发环境）" : "Invite link (dev)"}
+        </p>
+        <p className="text-slate-600">
+          {devInviteEmail ? (isZh ? `发送给：${devInviteEmail}` : `To: ${devInviteEmail}`) : null}
+        </p>
+        <p className="mt-2 break-all text-xs text-slate-500">{devInviteUrl}</p>
+      </div>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => void copyText(devInviteUrl)}
+          className="rounded-md bg-slate-900 px-4 py-2 text-xs font-semibold text-white"
+        >
+          {isZh ? "复制链接" : "Copy link"}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setDevInviteUrl(null);
+            setDevInviteEmail(null);
+          }}
+          className="rounded-md bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-700"
+        >
+          {isZh ? "关闭" : "Close"}
+        </button>
+      </div>
+    </div>
+  </div>
+) : null}
 
           <form className="space-y-4" onSubmit={handleSubmitInvite}>
             <div>

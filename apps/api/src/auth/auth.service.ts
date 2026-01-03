@@ -921,6 +921,8 @@ export class AuthService {
     return { user, session, verificationToken: record.id };
   }
 
+  // apps/api/src/auth/auth.service.ts
+
   async createStaffInvite(params: {
     inviterId: string;
     email: string;
@@ -951,43 +953,57 @@ export class AuthService {
     });
 
     const now = new Date();
-    if (existingInvite) {
-      if (existingInvite.usedAt) {
-        throw new BadRequestException('invite already accepted');
-      }
 
-      if (!existingInvite.revokedAt && existingInvite.expiresAt > now) {
-        return existingInvite;
-      }
-
-      const token = randomBytes(32).toString('hex');
-      const tokenHash = this.hashToken(token);
-      const expiresAt = new Date(
-        now.getTime() + (params.expiresInHours ?? 168) * 60 * 60 * 1000,
-      );
-      const sentCount = (existingInvite.sentCount ?? 0) + 1;
-
-      return this.prisma.userInvite.update({
-        where: { id: existingInvite.id },
-        data: {
-          tokenHash,
-          expiresAt,
-          invitedByUserId: params.inviterId,
-          revokedAt: null,
-          lastSentAt: now,
-          sentCount,
-        },
-        include: { invitedBy: { select: { userStableId: true } } },
-      });
-    }
-
+    // 统一：每次“发送邀请”都生成新 token（更贴近真实发邮件行为）
     const token = randomBytes(32).toString('hex');
     const tokenHash = this.hashToken(token);
     const expiresAt = new Date(
       now.getTime() + (params.expiresInHours ?? 168) * 60 * 60 * 1000,
     );
 
-    return this.prisma.userInvite.create({
+    if (existingInvite) {
+      if (existingInvite.usedAt) {
+        throw new BadRequestException('invite already accepted');
+      }
+      if (existingInvite.revokedAt) {
+        // revoked 的 invite 可以“重新发送”，这里不做过多限制
+      } else {
+        // 未撤销时做限流（和 resend 保持一致）
+        if (
+          existingInvite.lastSentAt &&
+          now.getTime() - existingInvite.lastSentAt.getTime() < 60 * 1000
+        ) {
+          throw new BadRequestException('invite resend too soon');
+        }
+        if (
+          (existingInvite.sentCount ?? 0) >= 5 &&
+          now.getTime() -
+            (existingInvite.lastSentAt?.getTime() ??
+              existingInvite.createdAt.getTime()) <
+            24 * 60 * 60 * 1000
+        ) {
+          throw new BadRequestException('invite resend limit reached');
+        }
+      }
+
+      const invite = await this.prisma.userInvite.update({
+        where: { id: existingInvite.id },
+        data: {
+          role: params.role,
+          tokenHash,
+          expiresAt,
+          invitedByUserId: params.inviterId,
+          revokedAt: null,
+          lastSentAt: now,
+          sentCount: (existingInvite.sentCount ?? 0) + 1,
+        },
+        include: { invitedBy: { select: { userStableId: true } } },
+      });
+
+      return { invite, token };
+    }
+
+    const invite = await this.prisma.userInvite.create({
       data: {
         email,
         role: params.role,
@@ -999,6 +1015,8 @@ export class AuthService {
       },
       include: { invitedBy: { select: { userStableId: true } } },
     });
+
+    return { invite, token };
   }
 
   async resendStaffInvite(inviteStableId: string) {
@@ -1024,7 +1042,7 @@ export class AuthService {
       throw new BadRequestException('invite resend too soon');
     }
     if (
-      invite.sentCount >= 5 &&
+      (invite.sentCount ?? 0) >= 5 &&
       now.getTime() -
         (invite.lastSentAt?.getTime() ?? invite.createdAt.getTime()) <
         24 * 60 * 60 * 1000
@@ -1036,7 +1054,7 @@ export class AuthService {
     const tokenHash = this.hashToken(token);
     const expiresAt = new Date(now.getTime() + 168 * 60 * 60 * 1000);
 
-    return this.prisma.userInvite.update({
+    const updated = await this.prisma.userInvite.update({
       where: { id: invite.id },
       data: {
         tokenHash,
@@ -1046,6 +1064,8 @@ export class AuthService {
       },
       include: { invitedBy: { select: { userStableId: true } } },
     });
+
+    return { invite: updated, token };
   }
 
   async revokeStaffInvite(inviteStableId: string) {

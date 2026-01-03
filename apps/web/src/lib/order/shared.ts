@@ -4,8 +4,10 @@
 /** ===== 基础类型 / 常量 ===== */
 import type { Locale } from "@/lib/i18n/locales";
 import type {
+  ActiveSpecialDto,
   AdminMenuCategoryDto,
   AdminMenuFullResponse,
+  DailySpecialDto,
   MenuItemWithBindingsDto,
   MenuOptionGroupBindingDto,
   MenuOptionGroupWithOptionsDto,
@@ -408,6 +410,9 @@ export type LocalizedMenuItem = {
   nameEn: string;
   nameZh?: string | null;
   price: number; // CAD
+  basePriceCents: number;
+  effectivePriceCents: number;
+  activeSpecial?: ActiveSpecialDto | null;
   imageUrl?: string;
   ingredients?: string;
   isAvailable: boolean;
@@ -433,6 +438,19 @@ export type AdminMenuFull = AdminMenuFullResponse;
 export type PublicMenuApiResponse = PublicMenuResponse;
 export type MenuTemplateLite = TemplateGroupLiteDto;
 export type MenuTemplateFull = TemplateGroupFullDto;
+export type DailySpecial = DailySpecialDto;
+
+export type LocalizedDailySpecial = {
+  stableId: string;
+  itemStableId: string;
+  name: string;
+  nameEn: string;
+  nameZh?: string | null;
+  basePriceCents: number;
+  effectivePriceCents: number;
+  disallowCoupons: boolean;
+  sortOrder: number;
+};
 
 /**
  * 真正用于前台展示的菜单类型（与 LocalizedCategory 相同）
@@ -502,7 +520,16 @@ export function buildLocalizedMenuFromDb(
           name,
           nameEn: i.nameEn,
           nameZh: i.nameZh ?? undefined,
-          price: i.basePriceCents / 100,
+          price:
+            (typeof i.effectivePriceCents === "number"
+              ? i.effectivePriceCents
+              : i.basePriceCents) / 100,
+          basePriceCents: i.basePriceCents,
+          effectivePriceCents:
+            typeof i.effectivePriceCents === "number"
+              ? i.effectivePriceCents
+              : i.basePriceCents,
+          activeSpecial: i.activeSpecial ?? undefined,
           imageUrl: i.imageUrl ?? undefined,
           ingredients,
           isAvailable: i.isAvailable,
@@ -517,6 +544,38 @@ export function buildLocalizedMenuFromDb(
       items,
     };
   });
+}
+
+export function buildLocalizedDailySpecials(
+  specials: DailySpecialDto[],
+  categories: PublicMenuCategory[],
+  locale: Locale,
+): LocalizedDailySpecial[] {
+  const itemMap = new Map(
+    categories.flatMap((cat) => cat.items.map((item) => [item.stableId, item])),
+  );
+  const isZh = locale === "zh";
+
+  const localizedSpecials: LocalizedDailySpecial[] = [];
+
+  for (const special of specials ?? []) {
+    const item = itemMap.get(special.itemStableId);
+    if (!item) continue;
+    const name = isZh && item.nameZh ? item.nameZh : item.nameEn;
+    localizedSpecials.push({
+      stableId: special.stableId,
+      itemStableId: special.itemStableId,
+      name,
+      nameEn: item.nameEn,
+      nameZh: item.nameZh ?? undefined,
+      basePriceCents: special.basePriceCents,
+      effectivePriceCents: special.effectivePriceCents,
+      disallowCoupons: special.disallowCoupons,
+      sortOrder: special.sortOrder,
+    });
+  }
+
+  return localizedSpecials.sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
 /** ===== 结算页相关类型 ===== */

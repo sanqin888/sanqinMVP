@@ -6,6 +6,31 @@ export type Availability = {
     isAvailable: boolean;
     tempUnavailableUntil: string | null;
 };
+export type SpecialPricingMode = 'OVERRIDE_PRICE' | 'DISCOUNT_DELTA' | 'DISCOUNT_PERCENT';
+export type ActiveSpecialDto = {
+    stableId: string;
+    effectivePriceCents: number;
+    pricingMode: SpecialPricingMode;
+    disallowCoupons: boolean;
+};
+export type DailySpecialDto = {
+    stableId: string;
+    weekday: number;
+    itemStableId: string;
+    pricingMode: SpecialPricingMode;
+    overridePriceCents: number | null;
+    discountDeltaCents: number | null;
+    discountPercent: number | null;
+    startDate: string | null;
+    endDate: string | null;
+    startMinutes: number | null;
+    endMinutes: number | null;
+    disallowCoupons: boolean;
+    isEnabled: boolean;
+    sortOrder: number;
+    basePriceCents: number;
+    effectivePriceCents: number;
+};
 export type Money = {
     basePriceCents?: number;
     priceDeltaCents?: number;
@@ -44,6 +69,8 @@ export type MenuItemDtoBase = LocalizedName & Availability & {
     stableId: string;
     categoryStableId: string;
     basePriceCents: number;
+    effectivePriceCents?: number;
+    activeSpecial?: ActiveSpecialDto | null;
     isVisible: boolean;
     sortOrder: number;
     imageUrl: string | null;
@@ -70,9 +97,11 @@ export type PublicMenuCategoryDto = MenuCategoryBaseDto & {
 export type AdminMenuFullResponse = {
     categories: AdminMenuCategoryDto[];
     templatesLite: TemplateGroupLiteDto[];
+    dailySpecials: DailySpecialDto[];
 };
 export type PublicMenuResponse = {
     categories: PublicMenuCategoryDto[];
+    dailySpecials: DailySpecialDto[];
 };
 export type AdminMenuFull = AdminMenuFullResponse;
 export declare function isAvailableNow(availability: Availability, now?: number): boolean;

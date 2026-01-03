@@ -378,7 +378,7 @@ export function StoreBoardWidget(props: { locale: Locale }) {
       const n = newWebPaid.length;
       speak(n === 1 ? t.voiceOne : t.voiceMany(n), locale);
     }
-  }, [query, handlePrintFront, handlePrintKitchen, t, locale, markNewOrders, scheduleAutoCollapse]);
+  }, [query, t, locale, markNewOrders, scheduleAutoCollapse]);
 
   const handleAdvance = useCallback(
     async (orderStableId: string) => {

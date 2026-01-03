@@ -576,6 +576,24 @@ export default function AdminDashboard() {
         )}
       </SectionCard>
 
+      <SectionCard
+        title={isZh ? "每日特价" : "Daily specials"}
+        actions={
+          <Link
+            href={`/${locale}/admin/daily-specials`}
+            className="text-xs font-medium text-amber-700 hover:text-amber-600"
+          >
+            {isZh ? "进入每日特价设置" : "Manage daily specials"}
+          </Link>
+        }
+      >
+        <p className="text-sm text-slate-600">
+          {isZh
+            ? "配置周一到周五的特价菜。特价只作用于主菜，选项加价不参与。"
+            : "Configure Monday–Friday specials. Specials apply to the main dish only; options remain full price."}
+        </p>
+      </SectionCard>
+
       <SectionCard title="菜单与上下架管理">
         {menuLoading ? (
           <p className="text-sm text-slate-500">{isZh ? "菜单加载中…" : "Loading menu…"}</p>
