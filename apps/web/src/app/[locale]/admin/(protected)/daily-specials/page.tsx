@@ -284,7 +284,7 @@ export default function DailySpecialsPage() {
           </h1>
           <p className="mt-2 text-sm text-slate-600">
             {isZh
-              ? "配置周一到周五的特价菜。特价只作用于主菜，选项加价不参与。"
+              ? "配置周一到周日的特价菜。特价只作用于主菜，选项加价不参与。"
               : "Configure Monday–Friday specials. Specials apply to the main dish only; options remain full price."}
           </p>
         </div>
