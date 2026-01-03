@@ -24,6 +24,7 @@ export default function AdminLayoutClient({
     { href: `/${locale}/admin`, labelZh: '总览' },
     { href: `/${locale}/admin/setting`, labelZh: '门店信息设置' },
     { href: `/${locale}/admin/menu`, labelZh: '菜单管理' },
+    { href: `/${locale}/admin/coupons`, labelZh: '优惠券管理' },
     // ✅ 新增：选项管理（放在红圈位置的左侧导航里）
     { href: optionsHref, labelZh: '选项管理' },
     { href: `/${locale}/admin/staff`, labelZh: '员工管理' },

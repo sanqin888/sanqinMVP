@@ -114,6 +114,25 @@ enum UserCouponStatus {
   REVOKED
 }
 
+enum CouponTemplateStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+enum CouponProgramStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+enum CouponProgramTriggerType {
+  SIGNUP_COMPLETED
+  REFERRAL_QUALIFIED
+}
+
 // === Models ===
 
 model User {
@@ -327,6 +346,33 @@ model Coupon {
   userCoupons   UserCoupon[]
 
   @@index([userId, expiresAt])
+}
+
+model CouponTemplate {
+  id             String               @id @default(uuid()) @db.Uuid
+  couponStableId String               @unique @default(cuid())
+  name           String
+  status         CouponTemplateStatus @default(DRAFT)
+  validFrom      DateTime?
+  validTo        DateTime?
+  useRule        Json
+  issueRule      Json?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+}
+
+model CouponProgram {
+  id              String                   @id @default(uuid()) @db.Uuid
+  programStableId String                   @unique @default(cuid())
+  name            String
+  status          CouponProgramStatus      @default(DRAFT)
+  triggerType     CouponProgramTriggerType
+  validFrom       DateTime?
+  validTo         DateTime?
+  eligibility     Json?
+  items           Json
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
 }
 
 model UserCoupon {

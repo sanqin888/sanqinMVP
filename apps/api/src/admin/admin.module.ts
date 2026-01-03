@@ -10,9 +10,10 @@ import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { AdminStaffController } from './staff/admin-staff.controller';
 import { AuthModule } from '../auth/auth.module';
+import { AdminCouponsModule } from './coupons/admin-coupons.module';
 
 @Module({
-  imports: [AuthModule, AdminMenuModule],
+  imports: [AuthModule, AdminMenuModule, AdminCouponsModule],
   controllers: [
     AdminBusinessController,
     AdminImageUploadController,
