@@ -120,7 +120,9 @@ export class PromotionsService {
           if (!link.isEnabled) return false;
 
           const tg = link.templateGroup;
-          if (!tg || (tg as { deletedAt?: Date | null }).deletedAt) return false;
+          if (!tg || (tg as { deletedAt?: Date | null }).deletedAt) {
+            return false;
+          }
 
           return tg.isAvailable;
         })
