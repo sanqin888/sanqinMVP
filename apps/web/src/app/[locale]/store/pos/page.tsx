@@ -204,7 +204,7 @@ export default function StorePosPage() {
     return () => {
       cancelled = true;
     };
-  }, [locale]);
+  }, [isZh, locale]);
 
   // 加载门店营业状态（web / POS 共用）
   useEffect(() => {
