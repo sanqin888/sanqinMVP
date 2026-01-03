@@ -55,7 +55,7 @@ type CreateItemPayload = {
   basePriceCents: number;
   sortOrder?: number;
   isAvailable?: boolean;
-  isVisible?: boolean;
+  visibility?: "PUBLIC" | "HIDDEN";
 };
 
 
@@ -254,7 +254,7 @@ export default function AdminMenuPage() {
       basePriceCents,
       sortOrder,
       isAvailable: true,
-      isVisible: true,
+      visibility: "PUBLIC",
     };
 
     try {
@@ -286,7 +286,7 @@ export default function AdminMenuPage() {
         nameZh: item.nameZh ?? undefined,
         basePriceCents: item.basePriceCents,
         isAvailable: item.isAvailable,
-        isVisible: item.isVisible,
+        visibility: item.visibility,
         sortOrder: item.sortOrder,
         imageUrl: item.imageUrl ?? undefined,
         ingredientsEn: item.ingredientsEn ?? undefined,
@@ -725,12 +725,17 @@ export default function AdminMenuPage() {
                           <label className="flex items-center gap-2 md:col-span-3">
                             <input
                               type="checkbox"
-                              checked={item.isVisible}
+                              checked={item.visibility === "PUBLIC"}
                               onChange={(e) =>
-                                updateItemField(cat.stableId, item.stableId, 'isVisible', e.target.checked)
+                                updateItemField(
+                                  cat.stableId,
+                                  item.stableId,
+                                  "visibility",
+                                  e.target.checked ? "PUBLIC" : "HIDDEN",
+                                )
                               }
                             />
-                            <span className="text-sm">{isZh ? '对顾客可见' : 'Visible to customers'}</span>
+                            <span className="text-sm">{isZh ? "对顾客可见" : "Visible to customers"}</span>
                           </label>
 
                           <label className="flex items-center gap-2 md:col-span-3">

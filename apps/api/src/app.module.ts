@@ -24,6 +24,7 @@ import { BusinessHoursModule } from './admin/business-hours/business-hours.modul
 import { AdminMenuModule } from './admin/menu/admin-menu.module';
 import { AdminImageUploadModule } from './admin/upload/image/admin-image-upload.module';
 import { PublicMenuModule } from './menu/public-menu.module';
+import { PromotionsModule } from './promotions/promotions.module';
 import { PosModule } from './pos/pos.module';
 
 const configModuleFactory: {
@@ -58,6 +59,7 @@ const envConfigModule = configModuleFactory.forRoot({
     AdminMenuModule,
     AdminImageUploadModule,
     PublicMenuModule,
+    PromotionsModule,
   ],
   controllers: [AppController],
   providers: [

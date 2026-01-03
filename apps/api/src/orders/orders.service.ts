@@ -1069,7 +1069,7 @@ export class OrdersService {
         product.isAvailable,
         product.tempUnavailableUntil,
       );
-      if (!product.isVisible || !isAvailableNow(productAvailability)) {
+      if (!isAvailableNow(productAvailability)) {
         throw new BadRequestException(
           `Product not available: ${itemDto.normalizedProductId}`,
         );
@@ -1264,6 +1264,9 @@ export class OrdersService {
     const items = dto.items ?? [];
     const { calculatedItems, calculatedSubtotal, couponEligibleSubtotalCents } =
       await this.calculateLineItems(items);
+    const productStableIds = Array.from(
+      new Set(calculatedItems.map((item) => item.productStableId)),
+    );
     if (normalizedCouponStableId && couponEligibleSubtotalCents <= 0) {
       throw new BadRequestException(
         'coupon is not available for daily special items',
@@ -1353,6 +1356,12 @@ export class OrdersService {
       null;
 
     const orderId = crypto.randomUUID();
+    const rawSelectedUserCouponId =
+      typeof dto.selectedUserCouponId === 'string'
+        ? dto.selectedUserCouponId.trim()
+        : '';
+    const selectedUserCouponId =
+      rawSelectedUserCouponId.length > 0 ? rawSelectedUserCouponId : null;
 
     // ✅ clientRequestId 由服务端生成：SQ + YYMMDD + 4位随机；并用 unique 冲突重试兜底
     for (let attempt = 0; attempt < 10; attempt++) {
@@ -1364,6 +1373,90 @@ export class OrdersService {
             )
               ? providedClientRequestId
               : await this.allocateClientRequestIdTx(tx);
+
+            const hiddenItems = await tx.menuItem.findMany({
+              where: {
+                stableId: { in: productStableIds },
+                deletedAt: null,
+                visibility: 'HIDDEN',
+              },
+              select: { stableId: true },
+            });
+            const hiddenItemStableIds = hiddenItems.map((item) => item.stableId);
+            let userCouponToRedeem:
+              | {
+                  id: string;
+                  couponStableId: string;
+                  stackingPolicy: 'EXCLUSIVE' | 'STACKABLE';
+                  unlockedItemStableIds: string[];
+                }
+              | null = null;
+
+            if (hiddenItemStableIds.length > 0) {
+              if (!normalizedUserStableId) {
+                throw new BadRequestException(
+                  'userStableId is required for hidden items',
+                );
+              }
+              if (!selectedUserCouponId) {
+                throw new BadRequestException(
+                  'selectedUserCouponId is required for hidden items',
+                );
+              }
+              const userCoupon = await tx.userCoupon.findFirst({
+                where: {
+                  id: selectedUserCouponId,
+                  userStableId: normalizedUserStableId,
+                  status: 'AVAILABLE',
+                  AND: [
+                    { OR: [{ expiresAt: null }, { expiresAt: { gt: paidAt } }] },
+                    {
+                      coupon: {
+                        isActive: true,
+                        AND: [
+                          { OR: [{ startsAt: null }, { startsAt: { lte: paidAt } }] },
+                          { OR: [{ endsAt: null }, { endsAt: { gt: paidAt } }] },
+                        ],
+                      },
+                    },
+                  ],
+                },
+                include: { coupon: true },
+              });
+              if (!userCoupon) {
+                throw new BadRequestException('coupon is not available');
+              }
+
+              const unlockedSet = new Set(
+                (userCoupon.coupon.unlockedItemStableIds ?? []).map((value) =>
+                  value.trim(),
+                ),
+              );
+              const missing = hiddenItemStableIds.filter(
+                (stableId) => !unlockedSet.has(stableId),
+              );
+              if (missing.length > 0) {
+                throw new BadRequestException(
+                  'hidden items are not unlocked by this coupon',
+                );
+              }
+
+              if (
+                userCoupon.coupon.stackingPolicy === 'EXCLUSIVE' &&
+                normalizedCouponStableId
+              ) {
+                throw new BadRequestException(
+                  'coupon cannot be stacked with other coupons',
+                );
+              }
+
+              userCouponToRedeem = {
+                id: userCoupon.id,
+                couponStableId: userCoupon.couponStableId,
+                stackingPolicy: userCoupon.coupon.stackingPolicy,
+                unlockedItemStableIds: userCoupon.coupon.unlockedItemStableIds ?? [],
+              };
+            }
 
             const couponInfo = await this.membership.validateCouponForOrder(
               {
@@ -1452,6 +1545,26 @@ export class OrdersService {
               },
               include: { items: true },
             })) as OrderWithItems;
+
+            if (userCouponToRedeem) {
+              const updatedCoupon = await tx.userCoupon.updateMany({
+                where: {
+                  id: userCouponToRedeem.id,
+                  status: 'AVAILABLE',
+                },
+                data: {
+                  status: 'REDEEMED',
+                  redeemedAt: paidAt,
+                  orderStableId: created.orderStableId,
+                },
+              });
+              if (updatedCoupon.count === 0) {
+                throw new BadRequestException('coupon is not available');
+              }
+              this.logger.log(
+                `UserCoupon redeemed: userCouponId=${userCouponToRedeem.id} couponStableId=${userCouponToRedeem.couponStableId} orderStableId=${created.orderStableId}`,
+              );
+            }
 
             if (couponInfo?.coupon?.id) {
               await this.membership.reserveCouponForOrder({
@@ -1615,6 +1728,7 @@ export class OrdersService {
       })),
       redeemValueCents: loyaltyRedeemCents,
       deliveryFeeCents: meta.deliveryFeeCents,
+      selectedUserCouponId: meta.selectedUserCouponId,
     };
 
     const order = await this.createImmediatePaid(

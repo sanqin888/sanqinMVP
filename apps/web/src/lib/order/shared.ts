@@ -9,6 +9,8 @@ import type {
   AdminMenuFullResponse,
   DailySpecialDto,
   MenuItemWithBindingsDto,
+  MenuEntitlementItemDto,
+  MenuEntitlementsResponse as SharedMenuEntitlementsResponse,
   MenuOptionGroupBindingDto,
   MenuOptionGroupWithOptionsDto,
   OptionChoiceDto,
@@ -436,6 +438,7 @@ export type DbMenuCategory = AdminMenuCategoryDto;
 export type DbPublicMenuCategory = PublicMenuCategoryDto;
 export type AdminMenuFull = AdminMenuFullResponse;
 export type PublicMenuApiResponse = PublicMenuResponse;
+export type MenuEntitlementsResponse = SharedMenuEntitlementsResponse;
 export type MenuTemplateLite = TemplateGroupLiteDto;
 export type MenuTemplateFull = TemplateGroupFullDto;
 export type DailySpecial = DailySpecialDto;
@@ -452,6 +455,49 @@ export type LocalizedDailySpecial = {
   sortOrder: number;
 };
 
+export function buildLocalizedEntitlementItems(
+  unlockedItems: MenuEntitlementItemDto[],
+  locale: Locale,
+): LocalizedMenuItem[] {
+  const isZh = locale === "zh";
+
+  return (unlockedItems ?? []).map<LocalizedMenuItem>((item) => {
+    const name = isZh && item.nameZh ? item.nameZh : item.nameEn;
+    const ingredientsText =
+      (isZh && item.ingredientsZh ? item.ingredientsZh : item.ingredientsEn) ?? "";
+    const ingredients = ingredientsText.trim() ? ingredientsText : undefined;
+
+    const optionGroups = (item.optionGroups ?? [])
+      .filter((group) => group.isEnabled && group.template.isAvailable)
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((group) => {
+        const options = (group.options ?? [])
+          .filter((opt) => opt.isAvailable)
+          .sort((a, b) => a.sortOrder - b.sortOrder);
+
+        return {
+          ...group,
+          options,
+        };
+      });
+
+    return {
+      stableId: item.stableId,
+      name,
+      nameEn: item.nameEn,
+      nameZh: item.nameZh ?? undefined,
+      price: item.basePriceCents / 100,
+      basePriceCents: item.basePriceCents,
+      effectivePriceCents: item.basePriceCents,
+      imageUrl: item.imageUrl ?? undefined,
+      ingredients,
+      isAvailable: item.isAvailable,
+      tempUnavailableUntil: item.tempUnavailableUntil ?? null,
+      optionGroups,
+    };
+  });
+}
+
 /**
  * 真正用于前台展示的菜单类型（与 LocalizedCategory 相同）
  */
@@ -462,7 +508,7 @@ export type PublicMenuCategory = LocalizedCategory;
  *
  * - 分类名称用 DB 的 nameEn/nameZh；
  * - 菜品名称/价格/图片/配料/中英文，全部用 DB；
- * - 只展示 isActive && isVisible && isAvailable（永久下架不展示、当日下架保留） 的菜品；
+ * - 只展示 isActive && visibility=PUBLIC && isAvailable（永久下架不展示、当日下架保留） 的菜品；
  * - optionGroups / options 同样按“非永久下架”过滤并按 sortOrder 排序。
  */
 export function buildLocalizedMenuFromDb(
@@ -483,7 +529,7 @@ export function buildLocalizedMenuFromDb(
     const localizedName = isZh && c.nameZh ? c.nameZh : c.nameEn;
 
     const items = (c.items ?? [])
-      .filter((i) => i.isVisible && i.isAvailable)
+      .filter((i) => i.visibility === "PUBLIC" && i.isAvailable)
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map<LocalizedMenuItem>((i) => {
         const stableId = i.stableId.trim();

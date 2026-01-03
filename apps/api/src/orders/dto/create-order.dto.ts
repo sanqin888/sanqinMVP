@@ -193,6 +193,10 @@ export class CreateOrderDto {
   couponStableId?: string;
 
   @IsOptional()
+  @IsString()
+  selectedUserCouponId?: string;
+
+  @IsOptional()
   @ValidateNested()
   @Type(() => DeliveryDestinationDto)
   deliveryDestination?: DeliveryDestinationDto;
