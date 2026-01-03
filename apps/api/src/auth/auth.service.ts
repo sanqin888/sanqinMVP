@@ -921,7 +921,7 @@ export class AuthService {
     return { user, session, verificationToken: record.id };
   }
 
-// apps/api/src/auth/auth.service.ts
+  // apps/api/src/auth/auth.service.ts
 
   async createStaffInvite(params: {
     inviterId: string;
@@ -1035,7 +1035,10 @@ export class AuthService {
     }
 
     const now = new Date();
-    if (invite.lastSentAt && now.getTime() - invite.lastSentAt.getTime() < 60 * 1000) {
+    if (
+      invite.lastSentAt &&
+      now.getTime() - invite.lastSentAt.getTime() < 60 * 1000
+    ) {
       throw new BadRequestException('invite resend too soon');
     }
     if (
