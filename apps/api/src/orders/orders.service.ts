@@ -1382,15 +1382,15 @@ export class OrdersService {
               },
               select: { stableId: true },
             });
-            const hiddenItemStableIds = hiddenItems.map((item) => item.stableId);
-            let userCouponToRedeem:
-              | {
-                  id: string;
-                  couponStableId: string;
-                  stackingPolicy: 'EXCLUSIVE' | 'STACKABLE';
-                  unlockedItemStableIds: string[];
-                }
-              | null = null;
+            const hiddenItemStableIds = hiddenItems.map(
+              (item) => item.stableId,
+            );
+            let userCouponToRedeem: {
+              id: string;
+              couponStableId: string;
+              stackingPolicy: 'EXCLUSIVE' | 'STACKABLE';
+              unlockedItemStableIds: string[];
+            } | null = null;
 
             if (hiddenItemStableIds.length > 0) {
               if (!normalizedUserStableId) {
@@ -1409,13 +1409,22 @@ export class OrdersService {
                   userStableId: normalizedUserStableId,
                   status: 'AVAILABLE',
                   AND: [
-                    { OR: [{ expiresAt: null }, { expiresAt: { gt: paidAt } }] },
+                    {
+                      OR: [{ expiresAt: null }, { expiresAt: { gt: paidAt } }],
+                    },
                     {
                       coupon: {
                         isActive: true,
                         AND: [
-                          { OR: [{ startsAt: null }, { startsAt: { lte: paidAt } }] },
-                          { OR: [{ endsAt: null }, { endsAt: { gt: paidAt } }] },
+                          {
+                            OR: [
+                              { startsAt: null },
+                              { startsAt: { lte: paidAt } },
+                            ],
+                          },
+                          {
+                            OR: [{ endsAt: null }, { endsAt: { gt: paidAt } }],
+                          },
                         ],
                       },
                     },
@@ -1454,7 +1463,8 @@ export class OrdersService {
                 id: userCoupon.id,
                 couponStableId: userCoupon.couponStableId,
                 stackingPolicy: userCoupon.coupon.stackingPolicy,
-                unlockedItemStableIds: userCoupon.coupon.unlockedItemStableIds ?? [],
+                unlockedItemStableIds:
+                  userCoupon.coupon.unlockedItemStableIds ?? [],
               };
             }
 
