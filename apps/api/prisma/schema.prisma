@@ -197,7 +197,7 @@ model TwoFactorChallenge {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId, , expiresAt])
+  @@index([userId, purpose, expiresAt])
 }
 
 model TrustedDevice {
