@@ -16,8 +16,13 @@ import {
   FulfillmentType,
   PaymentMethod,
 } from '@prisma/client';
+import type {
+  CreateOrderInput,
+  CreateOrderItemInput,
+  DeliveryDestinationInput,
+} from '@shared/menu';
 
-class CreateOrderItemDto {
+class CreateOrderItemDto implements CreateOrderItemInput {
   // ✅ 对外统一：引用菜品 stableId
   @IsString()
   productStableId!: string;
@@ -46,7 +51,7 @@ class CreateOrderItemDto {
   options?: Record<string, unknown>;
 }
 
-export class DeliveryDestinationDto {
+export class DeliveryDestinationDto implements DeliveryDestinationInput {
   @IsString()
   name!: string;
 
@@ -101,7 +106,7 @@ export class DeliveryDestinationDto {
   tipCents?: number;
 }
 
-export class CreateOrderDto {
+export class CreateOrderDto implements CreateOrderInput {
   @IsOptional()
   @IsString()
   userStableId?: string;
