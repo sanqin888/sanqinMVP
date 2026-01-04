@@ -13,7 +13,9 @@ function readSnapshot() {
 
 const isUuid = (v) =>
   typeof v === "string" &&
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    v,
+  );
 
 const toDateOrNull = (v) => {
   if (!v) return null;
@@ -22,7 +24,8 @@ const toDateOrNull = (v) => {
 };
 
 // update 阶段：null/undefined 视为“不要改”
-const toUpdateOptional = (v) => (v === null || typeof v === "undefined" ? undefined : v);
+const toUpdateOptional = (v) =>
+  v === null || typeof v === "undefined" ? undefined : v;
 // create 阶段：undefined → null（便于写入）
 const toCreateOptional = (v) => (typeof v === "undefined" ? null : v);
 
@@ -75,7 +78,7 @@ async function main() {
     return prisma.posDevice.create({
       data: {
         ...(isUuid(d.id) ? { id: d.id } : {}),
-        deviceStableId: d.deviceStableId,
+        deviceStableId: d.deviceStableId, // undefined 会被 prisma 视为未提供 → 使用 default(cuid())
         storeId: d.storeId,
         name: toCreateOptional(d.name),
         status: d.status ?? "ACTIVE",
@@ -121,8 +124,10 @@ async function main() {
       marketingEmailOptInAt: toDateOrNull(u.marketingEmailOptInAt) ?? undefined,
 
       referredByUserId: toUpdateOptional(u.referredByUserId),
-      birthdayMonth: typeof u.birthdayMonth === "number" ? u.birthdayMonth : undefined,
-      birthdayDay: typeof u.birthdayDay === "number" ? u.birthdayDay : undefined,
+      birthdayMonth:
+        typeof u.birthdayMonth === "number" ? u.birthdayMonth : undefined,
+      birthdayDay:
+        typeof u.birthdayDay === "number" ? u.birthdayDay : undefined,
 
       googleSub: toUpdateOptional(u.googleSub),
 
@@ -137,7 +142,9 @@ async function main() {
       role: "ADMIN",
       status: u.status ?? "ACTIVE",
 
-      ...(typeof u.userStableId === "string" ? { userStableId: u.userStableId } : {}),
+      ...(typeof u.userStableId === "string"
+        ? { userStableId: u.userStableId }
+        : {}),
 
       email: toCreateOptional(u.email),
       emailVerifiedAt: toDateOrNull(u.emailVerifiedAt),
@@ -151,7 +158,8 @@ async function main() {
       marketingEmailOptInAt: toDateOrNull(u.marketingEmailOptInAt),
 
       referredByUserId: toCreateOptional(u.referredByUserId),
-      birthdayMonth: typeof u.birthdayMonth === "number" ? u.birthdayMonth : null,
+      birthdayMonth:
+        typeof u.birthdayMonth === "number" ? u.birthdayMonth : null,
       birthdayDay: typeof u.birthdayDay === "number" ? u.birthdayDay : null,
 
       googleSub: toCreateOptional(u.googleSub),
@@ -161,9 +169,6 @@ async function main() {
 
       passwordHash: toCreateOptional(u.passwordHash),
       passwordChangedAt: toDateOrNull(u.passwordChangedAt),
-      // createdAt/updatedAt：snapshot 有也不建议强行回写，尤其 updatedAt 有 @updatedAt
-      // createdAt: toDateOrNull(u.createdAt) ?? undefined,
-      // updatedAt: toDateOrNull(u.updatedAt) ?? undefined,
     };
 
     function withPasswordIfTargetEmpty(target) {
@@ -174,7 +179,6 @@ async function main() {
         return {
           ...updateDataBase,
           passwordHash: u.passwordHash ?? undefined,
-          // 如果 snapshot 提供 passwordChangedAt，顺便补上；否则让它保持/由后续逻辑更新
           passwordChangedAt: toDateOrNull(u.passwordChangedAt) ?? undefined,
         };
       }
@@ -184,13 +188,20 @@ async function main() {
     // 依次定位已存在的目标用户（避免 unique 冲突）
     const candidates = [];
 
-    if (isUuid(u.id)) candidates.push(prisma.user.findUnique({ where: { id: u.id } }));
-    if (u.email) candidates.push(prisma.user.findUnique({ where: { email: u.email } }));
-    if (u.phone) candidates.push(prisma.user.findUnique({ where: { phone: u.phone } }));
+    if (isUuid(u.id))
+      candidates.push(prisma.user.findUnique({ where: { id: u.id } }));
+    if (u.email)
+      candidates.push(prisma.user.findUnique({ where: { email: u.email } }));
+    if (u.phone)
+      candidates.push(prisma.user.findUnique({ where: { phone: u.phone } }));
     if (u.userStableId)
-      candidates.push(prisma.user.findUnique({ where: { userStableId: u.userStableId } }));
+      candidates.push(
+        prisma.user.findUnique({ where: { userStableId: u.userStableId } }),
+      );
     if (u.googleSub)
-      candidates.push(prisma.user.findUnique({ where: { googleSub: u.googleSub } }));
+      candidates.push(
+        prisma.user.findUnique({ where: { googleSub: u.googleSub } }),
+      );
 
     const results = await Promise.allSettled(candidates);
     const found = results
@@ -220,6 +231,43 @@ async function main() {
     console.log("No adminUsers in snapshot.");
   }
 
+  // 0.5) BusinessConfig (id=1)
+  // snapshot 里可能没有（为 null），则跳过
+  if (s.businessConfig && typeof s.businessConfig === "object") {
+    const c = s.businessConfig;
+    await prisma.businessConfig.upsert({
+      where: { id: 1 },
+      create: {
+        id: 1,
+        storeName: toCreateOptional(c.storeName),
+        timezone: typeof c.timezone === "string" ? c.timezone : "America/Toronto",
+        isTemporarilyClosed: !!c.isTemporarilyClosed,
+        temporaryCloseReason: toCreateOptional(c.temporaryCloseReason),
+        deliveryBaseFeeCents:
+          typeof c.deliveryBaseFeeCents === "number" ? c.deliveryBaseFeeCents : 600,
+        priorityPerKmCents:
+          typeof c.priorityPerKmCents === "number" ? c.priorityPerKmCents : 100,
+        salesTaxRate:
+          typeof c.salesTaxRate === "number" ? c.salesTaxRate : 0.13,
+      },
+      update: {
+        storeName: toUpdateOptional(c.storeName),
+        timezone: typeof c.timezone === "string" ? c.timezone : undefined,
+        isTemporarilyClosed:
+          typeof c.isTemporarilyClosed === "boolean" ? c.isTemporarilyClosed : undefined,
+        temporaryCloseReason: toUpdateOptional(c.temporaryCloseReason),
+        deliveryBaseFeeCents:
+          typeof c.deliveryBaseFeeCents === "number" ? c.deliveryBaseFeeCents : undefined,
+        priorityPerKmCents:
+          typeof c.priorityPerKmCents === "number" ? c.priorityPerKmCents : undefined,
+        salesTaxRate:
+          typeof c.salesTaxRate === "number" ? c.salesTaxRate : undefined,
+      },
+    });
+  } else {
+    console.log("No businessConfig in snapshot.");
+  }
+
   // 1) Business Hours (weekday is unique)
   if (Array.isArray(s.businessHours)) {
     for (const h of s.businessHours) {
@@ -237,6 +285,36 @@ async function main() {
           isClosed: !!h.isClosed,
         },
       });
+    }
+  }
+
+  // 1.5) Holidays（无 unique 约束，使用 date 做 updateMany + 不存在则 create）
+  if (Array.isArray(s.holidays)) {
+    for (const h of s.holidays) {
+      const date = toDateOrNull(h.date);
+      if (!date) continue;
+
+      const data = {
+        date,
+        name: toCreateOptional(h.name),
+        isClosed: typeof h.isClosed === "boolean" ? h.isClosed : true,
+        openMinutes: typeof h.openMinutes === "number" ? h.openMinutes : null,
+        closeMinutes: typeof h.closeMinutes === "number" ? h.closeMinutes : null,
+      };
+
+      const updated = await prisma.holiday.updateMany({
+        where: { date },
+        data: {
+          name: data.name,
+          isClosed: data.isClosed,
+          openMinutes: data.openMinutes,
+          closeMinutes: data.closeMinutes,
+        },
+      });
+
+      if (updated.count === 0) {
+        await prisma.holiday.create({ data });
+      }
     }
   }
 
@@ -274,7 +352,8 @@ async function main() {
           nameEn: g.nameEn,
           nameZh: typeof g.nameZh === "undefined" ? null : g.nameZh,
           sortOrder: g.sortOrder ?? 0,
-          defaultMinSelect: typeof g.defaultMinSelect === "number" ? g.defaultMinSelect : 0,
+          defaultMinSelect:
+            typeof g.defaultMinSelect === "number" ? g.defaultMinSelect : 0,
           defaultMaxSelect:
             typeof g.defaultMaxSelect === "number" ? g.defaultMaxSelect : null,
           isAvailable: typeof g.isAvailable === "boolean" ? g.isAvailable : true,
@@ -285,7 +364,8 @@ async function main() {
           nameEn: g.nameEn,
           nameZh: typeof g.nameZh === "undefined" ? null : g.nameZh,
           sortOrder: g.sortOrder ?? 0,
-          defaultMinSelect: typeof g.defaultMinSelect === "number" ? g.defaultMinSelect : 0,
+          defaultMinSelect:
+            typeof g.defaultMinSelect === "number" ? g.defaultMinSelect : 0,
           defaultMaxSelect:
             typeof g.defaultMaxSelect === "number" ? g.defaultMaxSelect : null,
           isAvailable: typeof g.isAvailable === "boolean" ? g.isAvailable : true,
@@ -343,15 +423,12 @@ async function main() {
           basePriceCents: i.basePriceCents,
           sortOrder: i.sortOrder ?? 0,
           imageUrl: typeof i.imageUrl === "undefined" ? null : i.imageUrl,
-          ingredientsEn: typeof i.ingredientsEn === "undefined" ? null : i.ingredientsEn,
-          ingredientsZh: typeof i.ingredientsZh === "undefined" ? null : i.ingredientsZh,
+          ingredientsEn:
+            typeof i.ingredientsEn === "undefined" ? null : i.ingredientsEn,
+          ingredientsZh:
+            typeof i.ingredientsZh === "undefined" ? null : i.ingredientsZh,
           isAvailable: typeof i.isAvailable === "boolean" ? i.isAvailable : true,
-          visibility:
-            typeof i.isVisible === "boolean"
-              ? i.isVisible
-                ? "PUBLIC"
-                : "HIDDEN"
-              : i.visibility ?? "PUBLIC",
+          visibility: i.visibility ?? "PUBLIC",
           tempUnavailableUntil: toDateOrNull(i.tempUnavailableUntil),
           deletedAt: null,
         },
@@ -362,16 +439,75 @@ async function main() {
           basePriceCents: i.basePriceCents,
           sortOrder: i.sortOrder ?? 0,
           imageUrl: typeof i.imageUrl === "undefined" ? null : i.imageUrl,
-          ingredientsEn: typeof i.ingredientsEn === "undefined" ? null : i.ingredientsEn,
-          ingredientsZh: typeof i.ingredientsZh === "undefined" ? null : i.ingredientsZh,
+          ingredientsEn:
+            typeof i.ingredientsEn === "undefined" ? null : i.ingredientsEn,
+          ingredientsZh:
+            typeof i.ingredientsZh === "undefined" ? null : i.ingredientsZh,
           isAvailable: typeof i.isAvailable === "boolean" ? i.isAvailable : true,
-          visibility:
-            typeof i.isVisible === "boolean"
-              ? i.isVisible
-                ? "PUBLIC"
-                : "HIDDEN"
-              : i.visibility ?? "PUBLIC",
+          visibility: i.visibility ?? "PUBLIC",
           tempUnavailableUntil: toDateOrNull(i.tempUnavailableUntil),
+          deletedAt: null,
+        },
+      });
+    }
+  }
+
+  // 5.5) Daily Specials (MenuDailySpecial) — 依赖 item 已存在
+  if (Array.isArray(s.dailySpecials)) {
+    for (const ds of s.dailySpecials) {
+      if (!ds.stableId || !ds.itemStableId) continue;
+
+      await prisma.menuDailySpecial.upsert({
+        where: { stableId: ds.stableId },
+        create: {
+          stableId: ds.stableId,
+          weekday: ds.weekday,
+          item: { connect: { stableId: ds.itemStableId } },
+
+          pricingMode: ds.pricingMode,
+          overridePriceCents:
+            typeof ds.overridePriceCents === "number" ? ds.overridePriceCents : null,
+          discountDeltaCents:
+            typeof ds.discountDeltaCents === "number" ? ds.discountDeltaCents : null,
+          discountPercent:
+            typeof ds.discountPercent === "number" ? ds.discountPercent : null,
+
+          startDate: toDateOrNull(ds.startDate),
+          endDate: toDateOrNull(ds.endDate),
+          startMinutes:
+            typeof ds.startMinutes === "number" ? ds.startMinutes : null,
+          endMinutes: typeof ds.endMinutes === "number" ? ds.endMinutes : null,
+
+          disallowCoupons:
+            typeof ds.disallowCoupons === "boolean" ? ds.disallowCoupons : true,
+          isEnabled: typeof ds.isEnabled === "boolean" ? ds.isEnabled : true,
+          sortOrder: typeof ds.sortOrder === "number" ? ds.sortOrder : 0,
+
+          deletedAt: null,
+        },
+        update: {
+          weekday: ds.weekday,
+          item: { connect: { stableId: ds.itemStableId } },
+
+          pricingMode: ds.pricingMode,
+          overridePriceCents:
+            typeof ds.overridePriceCents === "number" ? ds.overridePriceCents : null,
+          discountDeltaCents:
+            typeof ds.discountDeltaCents === "number" ? ds.discountDeltaCents : null,
+          discountPercent:
+            typeof ds.discountPercent === "number" ? ds.discountPercent : null,
+
+          startDate: toDateOrNull(ds.startDate),
+          endDate: toDateOrNull(ds.endDate),
+          startMinutes:
+            typeof ds.startMinutes === "number" ? ds.startMinutes : null,
+          endMinutes: typeof ds.endMinutes === "number" ? ds.endMinutes : null,
+
+          disallowCoupons:
+            typeof ds.disallowCoupons === "boolean" ? ds.disallowCoupons : true,
+          isEnabled: typeof ds.isEnabled === "boolean" ? ds.isEnabled : true,
+          sortOrder: typeof ds.sortOrder === "number" ? ds.sortOrder : 0,
+
           deletedAt: null,
         },
       });
