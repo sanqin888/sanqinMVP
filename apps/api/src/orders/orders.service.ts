@@ -2305,7 +2305,7 @@ export class OrdersService {
     orderStableId?: string | null;
   }): string {
     const parts: string[] = [];
-    if (params?.orderId) parts.push(`orderId=${params.orderId}`);
+    if (params?.orderId) parts.push(`orderId=${params.orderStableId}`);
     if (params?.orderStableId)
       parts.push(`orderStableId=${params.orderStableId}`);
     return parts.length ? `[${parts.join(' ')}] ` : '';
