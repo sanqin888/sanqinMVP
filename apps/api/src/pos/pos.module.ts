@@ -10,9 +10,9 @@ import { PosDeviceModule } from './pos-device.module'; // 引入新模块
 
 @Module({
   imports: [
-    AuthModule, 
+    AuthModule,
     PosDeviceModule, // 引入基础设备模块
-    OrdersModule,    // 现在可以直接引入，不需要 forwardRef 了！
+    OrdersModule, // 现在可以直接引入，不需要 forwardRef 了！
   ],
   controllers: [
     PosSummaryController,
@@ -20,9 +20,9 @@ import { PosDeviceModule } from './pos-device.module'; // 引入新模块
     PosOrdersController,
   ],
   providers: [
-    PosSummaryService, 
+    PosSummaryService,
     // PosDeviceService, PosDeviceGuard 已经移走
-    RolesGuard
+    RolesGuard,
   ],
   // 不需要再导出 DeviceService 了，谁需要谁直接引 PosDeviceModule
 })

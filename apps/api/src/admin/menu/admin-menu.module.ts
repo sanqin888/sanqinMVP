@@ -11,10 +11,10 @@ import { PosDeviceModule } from '../../pos/pos-device.module';
 
 @Module({
   imports: [
-    AuthModule, 
+    AuthModule,
     PosModule,
     // 2. 添加到 imports
-    PosDeviceModule 
+    PosDeviceModule,
   ],
   controllers: [AdminMenuController],
   providers: [AdminMenuService, PrismaService],
