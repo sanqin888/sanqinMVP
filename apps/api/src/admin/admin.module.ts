@@ -6,14 +6,24 @@ import { AdminBusinessService } from './business/admin-business.service';
 import { AdminMenuModule } from './menu/admin-menu.module';
 import { AdminImageUploadController } from './upload/image/admin-image-upload.controller';
 import { AdminImageUploadService } from './upload/image/admin-image-upload.service';
+import { AdminImageUploadModule } from './upload/image/admin-image-upload.module';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { AdminStaffController } from './staff/admin-staff.controller';
 import { AuthModule } from '../auth/auth.module';
 import { AdminCouponsModule } from './coupons/admin-coupons.module';
+import { BusinessHoursModule } from './business-hours/business-hours.module';
+import { PromotionsModule } from '../promotions/promotions.module';
 
 @Module({
-  imports: [AuthModule, AdminMenuModule, AdminCouponsModule],
+  imports: [
+    AuthModule,
+    BusinessHoursModule,
+    AdminMenuModule,
+    AdminImageUploadModule,
+    AdminCouponsModule,
+    PromotionsModule,
+  ],
   controllers: [
     AdminBusinessController,
     AdminImageUploadController,
