@@ -459,8 +459,9 @@ export class AuthService {
     }
 
     const code = this.generateCode();
+    const codeHash: string = this.hashOtp(code);
     const expiresAt = new Date(now.getTime() + 5 * 60 * 1000);
-    const codeHash = this.hashOtp(code);
+    const codeHash: string = this.hashOtp(code);
 
     await this.prisma.twoFactorChallenge.create({
       data: {
@@ -631,7 +632,7 @@ export class AuthService {
       await tx.phoneVerification.create({
         data: {
           phone: normalized,
-          code,
+          codeHash,
           purpose: 'PHONE_ENROLL',
           used: false,
           expiresAt,
@@ -669,7 +670,8 @@ export class AuthService {
       orderBy: { createdAt: 'desc' },
     });
 
-    if (!record || record.code !== params.code) {
+    const codeHash = this.hashOtp(params.code);
+    if (!record || record.codeHash !== codeHash) {
       throw new BadRequestException('verification code is invalid or expired');
     }
 
@@ -827,6 +829,7 @@ export class AuthService {
     }
 
     const code = this.generateCode();
+    const codeHash = this.hashOtp(code);
     const expiresAt = new Date(now.getTime() + 5 * 60 * 1000);
 
     await this.prisma.$transaction(async (tx) => {
@@ -842,7 +845,7 @@ export class AuthService {
       await tx.phoneVerification.create({
         data: {
           phone: normalized,
-          code,
+          codeHash,
           purpose: 'membership-login',
           used: false,
           expiresAt,
@@ -875,7 +878,8 @@ export class AuthService {
       orderBy: { createdAt: 'desc' },
     });
 
-    if (!record || record.code !== params.code) {
+    const codeHash = this.hashOtp(params.code);
+    if (!record || record.codeHash !== codeHash) {
       throw new BadRequestException('verification code is invalid or expired');
     }
 
