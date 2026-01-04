@@ -6,13 +6,15 @@ import { OrdersService } from './orders.service';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { DeliveriesModule } from '../deliveries/deliveries.module';
 import { MembershipModule } from '../membership/membership.module';
+import { PosModule } from '../pos/pos.module';
 
 @Module({
   imports: [
     PrismaModule,
-    forwardRef(() => LoyaltyModule),
-    forwardRef(() => DeliveriesModule),
-    forwardRef(() => MembershipModule),
+    PosModule,
+    LoyaltyModule,
+    DeliveriesModule,
+    MembershipModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService],
