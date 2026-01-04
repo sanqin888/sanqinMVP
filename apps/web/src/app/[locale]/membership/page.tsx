@@ -447,11 +447,11 @@ export default function MembershipHomePage() {
 
   useEffect(() => {
     if (member?.phoneVerified) {
-      setPhoneEnrollInput(member.phone ?? '');
+      setPhoneEnrollInput('');
       setPhoneEnrollCode('');
       setPhoneEnrollError(null);
     }
-  }, [member?.phoneVerified, member?.phone]);
+  }, [member?.phoneVerified]);
 
   // 拉取积分流水：首次切到“积分”tab 且已登录时加载一次
   useEffect(() => {
