@@ -6,12 +6,12 @@ import { OrdersService } from './orders.service';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { DeliveriesModule } from '../deliveries/deliveries.module';
 import { MembershipModule } from '../membership/membership.module';
-import { PosModule } from '../pos/pos.module';
+import { PosDeviceModule } from '../pos/pos-device.module'; // 修改引入
 
 @Module({
   imports: [
     PrismaModule,
-    PosModule,
+    PosDeviceModule, // ✅ 只引入设备验证模块，解耦了业务逻辑
     LoyaltyModule,
     DeliveriesModule,
     MembershipModule,
