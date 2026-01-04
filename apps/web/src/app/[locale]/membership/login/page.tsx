@@ -17,6 +17,7 @@ export default function MemberLoginPage() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [referrerEmail, setReferrerEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,6 +53,25 @@ export default function MemberLoginPage() {
       if (res?.requiresTwoFactor) {
         router.replace(`/${locale}/membership/2fa`);
         return;
+      }
+
+      const referrerEmailTrimmed = referrerEmail.trim();
+      if (referrerEmailTrimmed) {
+        try {
+          await apiFetch('/membership/referrer', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ referrerEmail: referrerEmailTrimmed }),
+          });
+        } catch (referrerError) {
+          console.error(referrerError);
+          setError(
+            isZh
+              ? '推荐人邮箱有误，请确认后重新输入或清空。'
+              : 'Referrer email not found. Please verify it or clear the field.',
+          );
+          return;
+        }
       }
 
       router.replace(`/${locale}/membership`);
@@ -144,6 +164,22 @@ export default function MemberLoginPage() {
               {isZh ? '忘记密码？' : 'Forgot password?'}
             </Link>
           </div>
+
+          <label className="mt-4 block text-xs font-medium text-slate-700">
+            {isZh ? '推荐人：' : 'Referrer:'}
+          </label>
+          <input
+            type="email"
+            value={referrerEmail}
+            onChange={(e) => setReferrerEmail(e.target.value)}
+            placeholder={isZh ? '请输入推荐人邮箱' : 'Enter referrer email'}
+            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400"
+          />
+          <p className="mt-2 text-xs text-slate-500">
+            {isZh
+              ? '提示：注册成功后，推荐人邮箱将无法添加或修改，请确认填写无误。'
+              : 'Note: After registration, the referrer email cannot be added or changed. Please confirm it is correct.'}
+          </p>
 
           {error && (
             <p className="mt-3 text-center text-xs text-rose-500">{error}</p>
