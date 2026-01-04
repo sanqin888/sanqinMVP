@@ -46,7 +46,7 @@ export class PhoneVerificationService {
     return createHmac('sha256', secret).update(code).digest('hex');
   }
 
-  private verifyCode(code: string, codeHash: string): boolean {
+  private verifyCodeHash(code: string, codeHash: string): boolean {
     const computed = this.hashCode(code);
     if (computed.length !== codeHash.length) return false;
     return timingSafeEqual(
@@ -135,7 +135,7 @@ export class PhoneVerificationService {
     }
 
     // 不匹配
-    if (!this.verifyCode(codeTrimmed, latest.codeHash)) {
+    if (!this.verifyCodeHash(codeTrimmed, latest.codeHash)) {
       await this.prisma.phoneVerification.update({
         where: { id: latest.id },
         data: {
