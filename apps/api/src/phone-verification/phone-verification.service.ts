@@ -1,6 +1,6 @@
 // apps/api/src/phone-verification/phone-verification.service.ts
 import { Injectable, Logger } from '@nestjs/common';
-import { randomBytes } from 'crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { PhoneVerificationStatus } from '@prisma/client';
 
@@ -37,6 +37,24 @@ export class PhoneVerificationService {
     return randomBytes(32).toString('hex');
   }
 
+  private hashCode(code: string): string {
+    const secret =
+      process.env.PHONE_VERIFICATION_SECRET ??
+      process.env.OTP_SECRET ??
+      process.env.OAUTH_STATE_SECRET ??
+      'dev-secret';
+    return createHmac('sha256', secret).update(code).digest('hex');
+  }
+
+  private verifyCodeHash(code: string, codeHash: string): boolean {
+    const computed = this.hashCode(code);
+    if (computed.length !== codeHash.length) return false;
+    return timingSafeEqual(
+      Buffer.from(codeHash, 'hex'),
+      Buffer.from(computed, 'hex'),
+    );
+  }
+
   /** 发送验证码（MVP: 只写入 DB + 日志，不真正发短信） */
   async sendCode(params: {
     phone: string;
@@ -52,11 +70,12 @@ export class PhoneVerificationService {
     const expiresAt = new Date(now.getTime() + 10 * 60 * 1000); // 10 分钟有效
 
     const code = this.generateCode();
+    const codeHash = this.hashCode(code);
 
     await this.prisma.phoneVerification.create({
       data: {
         phone: normalized,
-        code,
+        codeHash,
         status: PhoneVerificationStatus.PENDING,
         expiresAt,
       },
@@ -116,7 +135,7 @@ export class PhoneVerificationService {
     }
 
     // 不匹配
-    if (latest.code !== codeTrimmed) {
+    if (!this.verifyCodeHash(codeTrimmed, latest.codeHash)) {
       await this.prisma.phoneVerification.update({
         where: { id: latest.id },
         data: {

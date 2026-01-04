@@ -26,6 +26,15 @@ export class MembershipService {
     private readonly loyalty: LoyaltyService,
   ) {}
 
+  private maskPhone(phone: string): string {
+    const trimmed = phone.trim();
+    if (!trimmed) return '';
+    if (trimmed.length <= 4) return '*'.repeat(trimmed.length);
+    const head = trimmed.slice(0, Math.min(3, trimmed.length - 4));
+    const tail = trimmed.slice(-4);
+    return `${head}****${tail}`;
+  }
+
   private generateUserStableId(): string {
     return createStableId('c');
   }
@@ -505,7 +514,7 @@ export class MembershipService {
       lifetimeSpendCents: account.lifetimeSpendCents ?? 0,
       availableDiscountCents,
       marketingEmailOptIn: user.marketingEmailOptIn ?? false,
-      phone: user.phone ?? null,
+      phone: user.phone ? this.maskPhone(user.phone) : null,
       phoneVerified: !!user.phoneVerifiedAt,
       twoFactorEnabledAt: user.twoFactorEnabledAt,
       twoFactorMethod: user.twoFactorMethod,

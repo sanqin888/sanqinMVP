@@ -504,7 +504,7 @@ model CheckoutIntent {
 model PhoneVerification {
   id            String                  @id @default(uuid()) @db.Uuid
   phone         String
-  code          String
+  codeHash      String
   status        PhoneVerificationStatus @default(PENDING)
   expiresAt     DateTime
   createdAt     DateTime                @default(now())
