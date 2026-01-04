@@ -46,6 +46,24 @@ async function main() {
     },
   });
 
+  // ===== Business Config (id=1) =====
+  // 可能还没初始化过（不存在 row），则导出为 null
+  const businessConfig = await prisma.businessConfig.findUnique({
+    where: { id: 1 },
+    select: {
+      id: true,
+      storeName: true,
+      timezone: true,
+      isTemporarilyClosed: true,
+      temporaryCloseReason: true,
+      deliveryBaseFeeCents: true,
+      priorityPerKmCents: true,
+      salesTaxRate: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+
   // ===== Business Hours =====
   const businessHours = await prisma.businessHour.findMany({
     orderBy: { weekday: "asc" },
@@ -54,7 +72,18 @@ async function main() {
       openMinutes: true,
       closeMinutes: true,
       isClosed: true,
-      // createdAt/updatedAt 不导出也能 seed（有默认值）；如你后续想完整复刻可再加
+    },
+  });
+
+  // ===== Holidays =====
+  const holidays = await prisma.holiday.findMany({
+    orderBy: { date: "asc" },
+    select: {
+      date: true,
+      name: true,
+      isClosed: true,
+      openMinutes: true,
+      closeMinutes: true,
     },
   });
 
@@ -112,6 +141,38 @@ async function main() {
     },
   });
 
+  // ===== Daily Specials =====
+  const dailySpecials = await prisma.menuDailySpecial.findMany({
+    where: {
+      deletedAt: null,
+      item: { deletedAt: null },
+    },
+    orderBy: [{ weekday: "asc" }, { sortOrder: "asc" }, { id: "asc" }],
+    select: {
+      stableId: true,
+      weekday: true,
+      itemStableId: true,
+
+      pricingMode: true,
+      overridePriceCents: true,
+      discountDeltaCents: true,
+      discountPercent: true,
+
+      startDate: true,
+      endDate: true,
+      startMinutes: true,
+      endMinutes: true,
+
+      disallowCoupons: true,
+      isEnabled: true,
+      sortOrder: true,
+
+      deletedAt: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+
   // ===== Option Group Templates =====
   const templateGroups = await prisma.menuOptionGroupTemplate.findMany({
     where: { deletedAt: null },
@@ -165,7 +226,7 @@ async function main() {
   });
 
   const snapshot = {
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
 
     adminUsers: adminUsers.map((u) => ({
@@ -201,11 +262,34 @@ async function main() {
       updatedAt: u.updatedAt,
     })),
 
+    businessConfig: businessConfig
+      ? {
+          id: businessConfig.id,
+          storeName: businessConfig.storeName,
+          timezone: businessConfig.timezone,
+          isTemporarilyClosed: businessConfig.isTemporarilyClosed,
+          temporaryCloseReason: businessConfig.temporaryCloseReason,
+          deliveryBaseFeeCents: businessConfig.deliveryBaseFeeCents,
+          priorityPerKmCents: businessConfig.priorityPerKmCents,
+          salesTaxRate: businessConfig.salesTaxRate,
+          createdAt: businessConfig.createdAt,
+          updatedAt: businessConfig.updatedAt,
+        }
+      : null,
+
     businessHours: businessHours.map((h) => ({
       weekday: h.weekday,
       openMinutes: h.openMinutes,
       closeMinutes: h.closeMinutes,
       isClosed: h.isClosed,
+    })),
+
+    holidays: holidays.map((x) => ({
+      date: x.date,
+      name: x.name,
+      isClosed: x.isClosed,
+      openMinutes: x.openMinutes,
+      closeMinutes: x.closeMinutes,
     })),
 
     posDevices: posDevices.map((d) => ({
@@ -246,13 +330,37 @@ async function main() {
       deletedAt: i.deletedAt,
     })),
 
+    dailySpecials: dailySpecials.map((s) => ({
+      stableId: s.stableId,
+      weekday: s.weekday,
+      itemStableId: s.itemStableId,
+
+      pricingMode: s.pricingMode,
+      overridePriceCents: s.overridePriceCents ?? null,
+      discountDeltaCents: s.discountDeltaCents ?? null,
+      discountPercent: s.discountPercent ?? null,
+
+      startDate: s.startDate,
+      endDate: s.endDate,
+      startMinutes: s.startMinutes ?? null,
+      endMinutes: s.endMinutes ?? null,
+
+      disallowCoupons: s.disallowCoupons,
+      isEnabled: s.isEnabled,
+      sortOrder: s.sortOrder,
+
+      deletedAt: s.deletedAt,
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt,
+    })),
+
     templateGroups: templateGroups.map((g) => ({
       stableId: g.stableId,
       nameEn: g.nameEn,
       nameZh: g.nameZh,
       sortOrder: g.sortOrder,
       defaultMinSelect: g.defaultMinSelect,
-      defaultMaxSelect: g.defaultMaxSelect,
+      defaultMaxSelect: g.defaultMaxSelect ?? null,
       isAvailable: g.isAvailable,
       tempUnavailableUntil: g.tempUnavailableUntil,
       deletedAt: g.deletedAt,
