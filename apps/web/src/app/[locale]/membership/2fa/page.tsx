@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import type { Locale } from '@/lib/order/shared';
 import { useSession } from '@/lib/auth-session';
-import { apiFetch, ApiError } from '@/lib/api-client';
+import { apiFetch, ApiError } from '@/lib/api/client';
 
 export default function MembershipTwoFactorPage() {
   const { locale } = useParams<{ locale: Locale }>();

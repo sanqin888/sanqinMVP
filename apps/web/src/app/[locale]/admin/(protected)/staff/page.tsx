@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import type { Locale } from "@/lib/order/shared";
-import { ApiError, apiFetch } from "@/lib/api-client";
+import { ApiError, apiFetch } from "@/lib/api/client";
 
 type StaffUser = {
   userStableId: string;

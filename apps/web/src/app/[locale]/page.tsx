@@ -26,7 +26,7 @@ import {
   type PublicMenuCategory,
 } from "@/lib/order/shared";
 import { usePersistentCart } from "@/lib/cart";
-import { apiFetch } from "@/lib/api-client";
+import { apiFetch } from "@/lib/api/client";
 import { signOut, useSession } from "@/lib/auth-session";
 
 export default function LocalOrderPage() {

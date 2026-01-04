@@ -6,7 +6,7 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useSession, signIn } from '@/lib/auth-session';
 import type { Locale } from '@/lib/order/shared';
-import { apiFetch } from '@/lib/api-client';
+import { apiFetch } from '@/lib/api/client';
 
 export default function MemberLoginPage() {
   const router = useRouter();

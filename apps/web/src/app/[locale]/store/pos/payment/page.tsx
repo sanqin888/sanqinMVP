@@ -4,7 +4,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { TAX_RATE, type Locale } from "@/lib/order/shared";
-import { ApiError, apiFetch, advanceOrder } from "@/lib/api-client";
+import { ApiError, apiFetch } from "@/lib/api/client";
+import { advanceOrder } from "@/lib/api/pos";
 import {
   POS_DISPLAY_CHANNEL,
   POS_DISPLAY_STORAGE_KEY,
