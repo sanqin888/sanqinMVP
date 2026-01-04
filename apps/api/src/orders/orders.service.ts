@@ -117,19 +117,21 @@ const DEFAULT_PRIORITY_PER_KM_CENTS = parseNumberEnv(
   process.env.PRIORITY_DELIVERY_PER_KM_CENTS,
   100,
 );
-const REDEEM_DOLLAR_PER_POINT = parseNumberEnv(
-  process.env.LOYALTY_REDEEM_DOLLAR_PER_POINT,
-  1,
-);
-
-// 读取店铺坐标（方案 B 核心依赖）
-const STORE_LATITUDE = Number(process.env.STORE_LATITUDE);
-const STORE_LONGITUDE = Number(process.env.STORE_LONGITUDE);
+const DEFAULT_MAX_RANGE_KM = 10;
+const DEFAULT_PRIORITY_DISTANCE_KM = 6;
+const DEFAULT_REDEEM_DOLLAR_PER_POINT = 1;
 
 type DeliveryPricingConfig = {
   deliveryBaseFeeCents: number;
   priorityPerKmCents: number;
   salesTaxRate: number;
+  maxDeliveryRangeKm: number;
+  priorityDefaultDistanceKm: number;
+  storeLatitude: number | null;
+  storeLongitude: number | null;
+  redeemDollarPerPoint: number;
+  enableDoorDash: boolean;
+  enableUberDirect: boolean;
 };
 
 @Injectable()
@@ -143,14 +145,7 @@ export class OrdersService {
     private readonly membership: MembershipService,
     private readonly uberDirect: UberDirectService,
     private readonly doorDashDrive: DoorDashDriveService,
-  ) {
-    // 启动时检查坐标配置，方便排查问题
-    if (!Number.isFinite(STORE_LATITUDE) || !Number.isFinite(STORE_LONGITUDE)) {
-      this.logger.warn(
-        'STORE_LATITUDE or STORE_LONGITUDE is missing or invalid. Dynamic delivery fee calculation will fail and fallback to fixed rates.',
-      );
-    }
-  }
+  ) {}
 
   private toOrderDto(order: OrderWithItems): OrderDto {
     const orderStableId = order.orderStableId;
@@ -442,7 +437,10 @@ export class OrdersService {
           temporaryCloseReason: null,
           deliveryBaseFeeCents: DEFAULT_DELIVERY_BASE_FEE_CENTS,
           priorityPerKmCents: DEFAULT_PRIORITY_PER_KM_CENTS,
+          maxDeliveryRangeKm: DEFAULT_MAX_RANGE_KM,
+          priorityDefaultDistanceKm: DEFAULT_PRIORITY_DISTANCE_KM,
           salesTaxRate: DEFAULT_TAX_RATE,
+          redeemDollarPerPoint: DEFAULT_REDEEM_DOLLAR_PER_POINT,
         },
       }))
     );
@@ -463,11 +461,50 @@ export class OrdersService {
       existing.salesTaxRate >= 0
         ? existing.salesTaxRate
         : DEFAULT_TAX_RATE;
+    const maxDeliveryRangeKm =
+      typeof existing.maxDeliveryRangeKm === 'number' &&
+      Number.isFinite(existing.maxDeliveryRangeKm) &&
+      existing.maxDeliveryRangeKm > 0
+        ? existing.maxDeliveryRangeKm
+        : DEFAULT_MAX_RANGE_KM;
+    const priorityDefaultDistanceKm =
+      typeof existing.priorityDefaultDistanceKm === 'number' &&
+      Number.isFinite(existing.priorityDefaultDistanceKm) &&
+      existing.priorityDefaultDistanceKm >= 0
+        ? existing.priorityDefaultDistanceKm
+        : DEFAULT_PRIORITY_DISTANCE_KM;
+    const storeLatitude = Number.isFinite(existing.storeLatitude ?? NaN)
+      ? (existing.storeLatitude as number)
+      : null;
+    const storeLongitude = Number.isFinite(existing.storeLongitude ?? NaN)
+      ? (existing.storeLongitude as number)
+      : null;
+    const redeemDollarPerPoint =
+      typeof existing.redeemDollarPerPoint === 'number' &&
+      Number.isFinite(existing.redeemDollarPerPoint) &&
+      existing.redeemDollarPerPoint > 0
+        ? existing.redeemDollarPerPoint
+        : DEFAULT_REDEEM_DOLLAR_PER_POINT;
+    const enableDoorDash =
+      typeof existing.enableDoorDash === 'boolean'
+        ? existing.enableDoorDash
+        : true;
+    const enableUberDirect =
+      typeof existing.enableUberDirect === 'boolean'
+        ? existing.enableUberDirect
+        : true;
 
     return {
       deliveryBaseFeeCents,
       priorityPerKmCents,
       salesTaxRate,
+      maxDeliveryRangeKm,
+      priorityDefaultDistanceKm,
+      storeLatitude,
+      storeLongitude,
+      redeemDollarPerPoint,
+      enableDoorDash,
+      enableUberDirect,
     };
   }
 
@@ -477,8 +514,6 @@ export class OrdersService {
     DeliveryType,
     { provider: DeliveryProvider; feeCents: number; etaRange: [number, number] }
   > {
-    const DEFAULT_PRIORITY_DISTANCE_KM = 6;
-
     return {
       [DeliveryType.STANDARD]: {
         provider: DeliveryProvider.DOORDASH,
@@ -489,7 +524,7 @@ export class OrdersService {
         provider: DeliveryProvider.UBER,
         feeCents:
           pricingConfig.deliveryBaseFeeCents +
-          Math.ceil(DEFAULT_PRIORITY_DISTANCE_KM) *
+          Math.ceil(pricingConfig.priorityDefaultDistanceKm) *
             pricingConfig.priorityPerKmCents,
         etaRange: [25, 35],
       },
@@ -528,16 +563,16 @@ export class OrdersService {
     pricingConfig: DeliveryPricingConfig,
   ): number {
     // 1. 🛑 后端强制复验距离限制 (10km)
-    const MAX_RANGE_KM = 10;
+    const maxRangeKm = pricingConfig.maxDeliveryRangeKm;
 
-    if (distanceKm > MAX_RANGE_KM) {
+    if (distanceKm > maxRangeKm) {
       this.logger.warn(
         `Order rejected: distance ${distanceKm.toFixed(
           2,
-        )}km exceeds limit of ${MAX_RANGE_KM}km.`,
+        )}km exceeds limit of ${maxRangeKm}km.`,
       );
       throw new BadRequestException(
-        `Delivery is not available for this address (exceeds ${MAX_RANGE_KM}km limit).`,
+        `Delivery is not available for this address (exceeds ${maxRangeKm}km limit).`,
       );
     }
 
@@ -580,16 +615,19 @@ export class OrdersService {
     return ids;
   }
 
-  private centsToRedeemMicro(cents: number): bigint {
+  private centsToRedeemMicro(
+    cents: number,
+    redeemDollarPerPoint: number,
+  ): bigint {
     if (!Number.isFinite(cents) || cents <= 0) return 0n;
     if (
-      !Number.isFinite(REDEEM_DOLLAR_PER_POINT) ||
-      REDEEM_DOLLAR_PER_POINT <= 0
+      !Number.isFinite(redeemDollarPerPoint) ||
+      redeemDollarPerPoint <= 0
     )
       return 0n;
 
     // cents -> dollars -> points -> microPoints（四舍五入）
-    const pts = cents / 100 / REDEEM_DOLLAR_PER_POINT;
+    const pts = cents / 100 / redeemDollarPerPoint;
     const micro = Math.round(pts * 1_000_000); // 1 pt = 1e6 micro
     return BigInt(micro);
   }
@@ -636,6 +674,7 @@ export class OrdersService {
     const refundGrossCentsRaw = Number.isFinite(params.refundGrossCents)
       ? Math.max(0, Math.round(params.refundGrossCents))
       : 0;
+    const pricingConfig = await this.getBusinessPricingConfig();
 
     // 1) 读订单（需要：userId / totalCents / loyaltyRedeemCents / subtotalCents）
     const order = await tx.order.findUnique({
@@ -712,7 +751,10 @@ export class OrdersService {
     let userBalance = acc.pointsMicro;
 
     // 5) 返还抵扣积分（redeemReturn）
-    const redeemReturnMicro = this.centsToRedeemMicro(redeemReturnCents);
+    const redeemReturnMicro = this.centsToRedeemMicro(
+      redeemReturnCents,
+      pricingConfig.redeemDollarPerPoint,
+    );
 
     if (redeemReturnMicro > 0n) {
       const existed = await tx.loyaltyLedger.findUnique({
@@ -1281,8 +1323,9 @@ export class OrdersService {
       typeof dto.pointsToRedeem === 'number'
         ? dto.pointsToRedeem
         : typeof dto.redeemValueCents === 'number' &&
-            REDEEM_DOLLAR_PER_POINT > 0
-          ? dto.redeemValueCents / (REDEEM_DOLLAR_PER_POINT * 100)
+            pricingConfig.redeemDollarPerPoint > 0
+          ? dto.redeemValueCents /
+            (pricingConfig.redeemDollarPerPoint * 100)
           : undefined;
 
     // —— Step 2: 配送费与税费 (动态计算 & 距离复验)
@@ -1302,16 +1345,16 @@ export class OrdersService {
 
       // 只有当 店铺坐标 和 客户坐标 都存在时，才能动态计算
       if (
-        Number.isFinite(STORE_LATITUDE) &&
-        Number.isFinite(STORE_LONGITUDE) &&
+        Number.isFinite(pricingConfig.storeLatitude ?? NaN) &&
+        Number.isFinite(pricingConfig.storeLongitude ?? NaN) &&
         dest &&
         typeof dest.latitude === 'number' &&
         typeof dest.longitude === 'number'
       ) {
         // 1. 计算距离
         const distKm = this.calculateDistanceKm(
-          STORE_LATITUDE,
-          STORE_LONGITUDE,
+          pricingConfig.storeLatitude as number,
+          pricingConfig.storeLongitude as number,
           dest.latitude,
           dest.longitude,
         );
@@ -1331,7 +1374,7 @@ export class OrdersService {
       } else {
         // 无法计算距离，回退到兜底逻辑
         this.logger.warn(
-          `Cannot calculate dynamic delivery fee (missing coords). Store: [${STORE_LATITUDE},${STORE_LONGITUDE}], Dest: [${dest?.latitude},${dest?.longitude}]. Falling back to fixed/frontend fee.`,
+          `Cannot calculate dynamic delivery fee (missing coords). Store: [${pricingConfig.storeLatitude},${pricingConfig.storeLongitude}], Dest: [${dest?.latitude},${dest?.longitude}]. Falling back to fixed/frontend fee.`,
         );
 
         if (deliveryMeta) {
@@ -1604,8 +1647,8 @@ export class OrdersService {
 
         if (dest && (isStandard || isPriority)) {
           const dropoff = this.normalizeDropoff(dest);
-          const doordashEnabled = process.env.DOORDASH_DRIVE_ENABLED === '1';
-          const uberEnabled = process.env.UBER_DIRECT_ENABLED === '1';
+          const doordashEnabled = pricingConfig.enableDoorDash;
+          const uberEnabled = pricingConfig.enableUberDirect;
 
           try {
             if (isStandard && doordashEnabled) {

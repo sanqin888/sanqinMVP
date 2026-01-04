@@ -358,6 +358,8 @@ export class MembershipService {
 
     const safeUser = await this.ensureUserStableId(user);
     const account = await this.loyalty.ensureAccount(safeUser.id);
+    const availableDiscountCents =
+      await this.loyalty.maxRedeemableCentsFromBalance(account.pointsMicro);
 
     return {
       userStableId: safeUser.userStableId,
@@ -366,9 +368,7 @@ export class MembershipService {
       tier: account.tier,
       points: Number(account.pointsMicro) / MICRO_PER_POINT,
       lifetimeSpendCents: account.lifetimeSpendCents ?? 0,
-      availableDiscountCents: this.loyalty.maxRedeemableCentsFromBalance(
-        account.pointsMicro,
-      ),
+      availableDiscountCents,
     };
   }
 
@@ -484,9 +484,8 @@ export class MembershipService {
     }
 
     const account = await this.loyalty.ensureAccount(user.id);
-    const availableDiscountCents = this.loyalty.maxRedeemableCentsFromBalance(
-      account.pointsMicro,
-    );
+    const availableDiscountCents =
+      await this.loyalty.maxRedeemableCentsFromBalance(account.pointsMicro);
 
     const orders = await this.prisma.order.findMany({
       where: { userId: user.id },
