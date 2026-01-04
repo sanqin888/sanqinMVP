@@ -42,6 +42,7 @@ type ApiEnvelope<T> = {
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+const AUTH_EVENT = 'auth-session-change';
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === 'object';
@@ -95,6 +96,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     void refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handler = () => {
+      void refresh();
+    };
+
+    window.addEventListener(AUTH_EVENT, handler);
+    return () => window.removeEventListener(AUTH_EVENT, handler);
+  }, [refresh]);
+
   const value = useMemo<AuthContextValue>(
     () => ({ session, status, refresh }),
     [session, status, refresh],
@@ -114,6 +126,9 @@ export async function signOut(): Promise<void> {
     method: 'POST',
     credentials: 'include',
   });
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(AUTH_EVENT));
+  }
 }
 
 type SignInOptions = { callbackUrl?: string };

@@ -108,6 +108,12 @@ export class MembershipService {
     return trimmed.replace(/\s+/g, '').replace(/-/g, '');
   }
 
+  private normalizeEmail(raw: string | undefined | null): string | null {
+    if (!raw) return null;
+    const trimmed = raw.trim().toLowerCase();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
   /** 如果带了 phone + verificationToken，就尝试把手机号绑定到 User 上 */
   private async bindPhoneIfNeeded(params: {
     user: User;
@@ -518,6 +524,55 @@ export class MembershipService {
         fulfillmentType: o.fulfillmentType,
         deliveryType: o.deliveryType,
       })),
+    };
+  }
+
+  async bindReferrerEmail(params: {
+    userStableId: string;
+    referrerEmail: string;
+  }) {
+    const referrerEmail = this.normalizeEmail(params.referrerEmail);
+    if (!referrerEmail) {
+      throw new BadRequestException('referrerEmail is required');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { userStableId: params.userStableId },
+    });
+    if (!user) {
+      throw new NotFoundException('user not found');
+    }
+
+    if (user.referredByUserId) {
+      const existingReferrer = await this.prisma.user.findUnique({
+        where: { id: user.referredByUserId },
+        select: { email: true },
+      });
+      return {
+        bound: false,
+        alreadyBound: true,
+        referrerEmail: existingReferrer?.email ?? null,
+      };
+    }
+
+    const referrer = await this.prisma.user.findUnique({
+      where: { email: referrerEmail },
+      select: { id: true, userStableId: true, email: true },
+    });
+
+    if (!referrer || referrer.userStableId === params.userStableId) {
+      throw new NotFoundException('referrer not found');
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { referredByUserId: referrer.id },
+    });
+
+    return {
+      bound: true,
+      alreadyBound: false,
+      referrerEmail: referrer.email ?? referrerEmail,
     };
   }
 
