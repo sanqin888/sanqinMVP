@@ -39,6 +39,8 @@ const DAILY_SPECIAL_WEEKDAYS = [
   { value: 3, labelEn: "Wed", labelZh: "周三" },
   { value: 4, labelEn: "Thu", labelZh: "周四" },
   { value: 5, labelEn: "Fri", labelZh: "周五" },
+  { value: 6, labelEn: "Sat", labelZh: "周六" },
+  { value: 7, labelEn: "Sun", labelZh: "周日" },
 ];
 
 function createDailySpecialDraft(weekday: number): DailySpecialDraft {
@@ -68,6 +70,8 @@ function buildDailySpecialDrafts(
     3: [],
     4: [],
     5: [],
+    6: [],
+    7: [],
   };
   specials.forEach((special) => {
     if (!grouped[special.weekday]) return;
@@ -132,6 +136,8 @@ export default function DailySpecialsPage() {
     3: [],
     4: [],
     5: [],
+    6: [],
+    7: [],
   });
   const [activeWeekday, setActiveWeekday] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -285,7 +291,7 @@ export default function DailySpecialsPage() {
           <p className="mt-2 text-sm text-slate-600">
             {isZh
               ? "配置周一到周日的特价菜。特价只作用于主菜，选项加价不参与。"
-              : "Configure Monday–Friday specials. Specials apply to the main dish only; options remain full price."}
+              : "Configure Monday–Sunday specials. Specials apply to the main dish only; options remain full price."}
           </p>
         </div>
         <div className="flex items-center gap-2">
