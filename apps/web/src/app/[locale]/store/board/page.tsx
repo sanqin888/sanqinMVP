@@ -5,7 +5,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import type { Locale } from "@/lib/order/shared";
-import { apiFetch, advanceOrder } from "@/lib/api-client";
+import { apiFetch } from "@/lib/api/client";
+import { advanceOrder } from "@/lib/api/pos";
 import { parseBackendDateMs } from "@/lib/time/tz";
 
 type BoardOrderItem = {

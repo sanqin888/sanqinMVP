@@ -9,7 +9,7 @@ import {
   useSearchParams,
   useParams,
 } from "next/navigation";
-import { apiFetch } from "@/lib/api-client";
+import { apiFetch } from "@/lib/api/client";
 import { usePersistentCart } from "@/lib/cart";
 import {
   calculateDistanceKm,

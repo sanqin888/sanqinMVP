@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { apiFetch } from '@/lib/api-client';
+import { apiFetch } from '@/lib/api/client';
 
 type CouponTemplate = {
   couponStableId: string;
