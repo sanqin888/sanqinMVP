@@ -150,6 +150,27 @@ export class MembershipController {
     };
   }
 
+  @Post('referrer')
+  async bindReferrer(
+    @Req() req: AuthedRequest,
+    @Body() body: { referrerEmail?: string },
+  ) {
+    const userStableId = req.user?.userStableId;
+    if (!userStableId) {
+      throw new BadRequestException('userStableId is required');
+    }
+    const referrerEmail = body.referrerEmail ?? '';
+    const result = await this.membership.bindReferrerEmail({
+      userStableId,
+      referrerEmail,
+    });
+
+    return {
+      success: true,
+      ...result,
+    };
+  }
+
   // ✅ 优惠券列表（会自动补发欢迎券 / 生日券）
   @Get('coupons')
   async listCoupons(@Req() req: AuthedRequest) {
