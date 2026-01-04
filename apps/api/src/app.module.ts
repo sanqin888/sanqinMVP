@@ -20,11 +20,7 @@ import { AuthModule } from './auth/auth.module';
 import { RequestIdInterceptor } from './common/request-id.interceptor';
 import { AdminModule } from './admin/admin.module';
 import { StoreStatusModule } from './store/store-status.module';
-import { BusinessHoursModule } from './admin/business-hours/business-hours.module';
-import { AdminMenuModule } from './admin/menu/admin-menu.module';
-import { AdminImageUploadModule } from './admin/upload/image/admin-image-upload.module';
 import { PublicMenuModule } from './menu/public-menu.module';
-import { PromotionsModule } from './promotions/promotions.module';
 import { PosModule } from './pos/pos.module';
 
 const configModuleFactory: {
@@ -55,11 +51,7 @@ const envConfigModule = configModuleFactory.forRoot({
     PhoneVerificationModule,
     AdminModule,
     StoreStatusModule,
-    BusinessHoursModule,
-    AdminMenuModule,
-    AdminImageUploadModule,
     PublicMenuModule,
-    PromotionsModule,
   ],
   controllers: [AppController],
   providers: [
