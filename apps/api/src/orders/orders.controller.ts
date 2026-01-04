@@ -11,6 +11,7 @@ import {
   DefaultValuePipe,
   ParseIntPipe,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
 import { Type } from 'class-transformer';
 import {
@@ -37,6 +38,10 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { OrderStatus } from './order-status';
 import { OrderSummaryDto } from './dto/order-summary.dto';
 import { StableIdPipe } from '../common/pipes/stable-id.pipe';
+import { SessionAuthGuard } from '../auth/session-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
+import { PosDeviceGuard } from '../pos/pos-device.guard';
 import type { OrderDto } from './dto/order.dto';
 
 class UpdateStatusDto {
@@ -212,6 +217,7 @@ export class OrdersController {
    * GET /api/v1/orders/recent?limit=10
    */
   @Get('recent')
+  @UseGuards(PosDeviceGuard)
   recent(
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
   ): Promise<OrderDto[]> {
@@ -223,6 +229,7 @@ export class OrdersController {
    * GET /api/v1/orders/board
    */
   @Get('board')
+  @UseGuards(PosDeviceGuard)
   board(
     @Query('status') statusRaw?: string,
     @Query('channel') channelRaw?: string,
@@ -276,6 +283,8 @@ export class OrdersController {
    * PATCH /api/v1/orders/:orderStableId/status
    */
   @Patch(':orderStableId/status')
+  @UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
+  @Roles('ADMIN', 'STAFF')
   updateStatus(
     @Param('orderStableId', StableIdPipe) orderStableId: string,
     @Body() body: UpdateStatusDto,
@@ -289,6 +298,8 @@ export class OrdersController {
    */
   @Post(':orderStableId/amendments')
   @HttpCode(201)
+  @UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
+  @Roles('ADMIN', 'STAFF')
   createAmendment(
     @Param('orderStableId', StableIdPipe) orderStableId: string,
     @Body() body: CreateOrderAmendmentDto,
@@ -310,6 +321,8 @@ export class OrdersController {
    */
   @Post(':orderStableId/advance')
   @HttpCode(200)
+  @UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
+  @Roles('ADMIN', 'STAFF')
   advance(
     @Param('orderStableId', StableIdPipe) orderStableId: string,
   ): Promise<OrderDto> {
