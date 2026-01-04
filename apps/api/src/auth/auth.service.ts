@@ -459,9 +459,8 @@ export class AuthService {
     }
 
     const code = this.generateCode();
-    const codeHash = this.hashOtp(code);
+    const codeHash: string = this.hashOtp(code);
     const expiresAt = new Date(now.getTime() + 5 * 60 * 1000);
-    const codeHash = this.hashOtp(code);
 
     await this.prisma.twoFactorChallenge.create({
       data: {
