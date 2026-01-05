@@ -51,6 +51,9 @@ importers:
       '@shared/menu':
         specifier: workspace:*
         version: link:../../libs/shared
+      '@shared/order':
+        specifier: workspace:*
+        version: link:../../libs/order
       argon2:
         specifier: ^0.44.0
         version: 0.44.0
@@ -163,6 +166,9 @@ importers:
       '@shared/menu':
         specifier: workspace:*
         version: link:../../libs/shared
+      '@shared/order':
+        specifier: workspace:*
+        version: link:../../libs/order
       luxon:
         specifier: ^3.7.2
         version: 3.7.2
@@ -202,6 +208,16 @@ importers:
         version: 4.1.18
       typescript:
         specifier: ^5
+        version: 5.9.3
+
+  libs/order:
+    dependencies:
+      '@shared/menu':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      typescript:
+        specifier: ^5.9.3
         version: 5.9.3
 
   libs/shared:

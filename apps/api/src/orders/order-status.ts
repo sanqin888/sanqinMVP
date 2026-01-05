@@ -1,34 +1,18 @@
-import { OrderStatus } from '@prisma/client';
+import { ORDER_STATUS_FLOW, ORDER_STATUS_SEQUENCE } from '@shared/order';
+import type { OrderStatus } from '@shared/order';
 
-export { OrderStatus };
-
-export const ORDER_STATUS_SEQUENCE: readonly OrderStatus[] = [
-  OrderStatus.pending,
-  OrderStatus.paid,
-  OrderStatus.making,
-  OrderStatus.ready,
-  OrderStatus.completed,
-  OrderStatus.refunded,
-] as const;
+export type { OrderStatus };
+export { ORDER_STATUS_SEQUENCE };
 
 export const ORDER_STATUS_TRANSITIONS: Readonly<
   Record<OrderStatus, readonly OrderStatus[]>
 > = {
-  pending: [OrderStatus.paid, OrderStatus.refunded],
-  paid: [OrderStatus.making, OrderStatus.refunded],
-  making: [OrderStatus.ready, OrderStatus.refunded],
-  ready: [OrderStatus.completed],
-  completed: [OrderStatus.refunded],
+  pending: ['paid', 'refunded'],
+  paid: ['making', 'refunded'],
+  making: ['ready', 'refunded'],
+  ready: ['completed'],
+  completed: ['refunded'],
   refunded: [],
 } as const;
 
-export const ORDER_STATUS_ADVANCE_FLOW: Readonly<
-  Record<OrderStatus, OrderStatus | null>
-> = {
-  pending: OrderStatus.paid,
-  paid: OrderStatus.making,
-  making: OrderStatus.ready,
-  ready: OrderStatus.completed,
-  completed: null,
-  refunded: null,
-} as const;
+export const ORDER_STATUS_ADVANCE_FLOW = ORDER_STATUS_FLOW;
