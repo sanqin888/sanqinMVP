@@ -620,10 +620,7 @@ export class OrdersService {
     redeemDollarPerPoint: number,
   ): bigint {
     if (!Number.isFinite(cents) || cents <= 0) return 0n;
-    if (
-      !Number.isFinite(redeemDollarPerPoint) ||
-      redeemDollarPerPoint <= 0
-    )
+    if (!Number.isFinite(redeemDollarPerPoint) || redeemDollarPerPoint <= 0)
       return 0n;
 
     // cents -> dollars -> points -> microPoints（四舍五入）
@@ -1324,8 +1321,7 @@ export class OrdersService {
         ? dto.pointsToRedeem
         : typeof dto.redeemValueCents === 'number' &&
             pricingConfig.redeemDollarPerPoint > 0
-          ? dto.redeemValueCents /
-            (pricingConfig.redeemDollarPerPoint * 100)
+          ? dto.redeemValueCents / (pricingConfig.redeemDollarPerPoint * 100)
           : undefined;
 
     // —— Step 2: 配送费与税费 (动态计算 & 距离复验)
