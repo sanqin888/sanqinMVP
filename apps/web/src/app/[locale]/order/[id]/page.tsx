@@ -4,7 +4,7 @@
 import { use, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api/client';
-import { isStableId } from '@/lib/stable-id';
+import { isStableId } from '@shared/menu';
 import { ORDER_STATUS_SEQUENCE, OrderStatus } from '@/lib/status/order';
 import type {
   DeliveryProviderOption,
