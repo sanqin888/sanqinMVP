@@ -10,7 +10,7 @@ import type {
   PublicMenuApiResponse,
 } from "@/lib/order/shared";
 import { TAX_RATE, buildLocalizedMenuFromDb } from "@/lib/order/shared";
-import { apiFetch } from "@/lib/api-client";
+import { apiFetch } from "@/lib/api/client";
 import {
   POS_DISPLAY_STORAGE_KEY,
   clearPosDisplaySnapshot,

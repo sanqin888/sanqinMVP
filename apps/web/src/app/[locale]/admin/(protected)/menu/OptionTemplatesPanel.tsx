@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { apiFetch } from '@/lib/api-client';
+import { apiFetch } from '@/lib/api/client';
 import type { OptionChoiceDto, TemplateGroupFullDto } from '@shared/menu';
 
 type AvailabilityMode = 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF';

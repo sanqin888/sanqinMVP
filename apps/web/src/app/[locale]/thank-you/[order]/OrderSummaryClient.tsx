@@ -3,7 +3,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { apiFetch } from "@/lib/api-client";
+import { apiFetch } from "@/lib/api/client";
 import type { Locale } from "@/lib/i18n/locales";
 import type { OrderItemOptionsSnapshot } from "@/lib/order/order-item-options";
 

@@ -11,15 +11,15 @@ import type {
   PublicMenuCategory,
 } from "@/lib/order/shared";
 import { buildLocalizedMenuFromDb } from "@/lib/order/shared";
+import { apiFetch } from "@/lib/api/client";
 import {
   advanceOrder,
-  apiFetch,
   createOrderAmendment,
   fetchRecentOrders,
   updateOrderStatus,
-} from "@/lib/api-client";
+} from "@/lib/api/pos";
 import type { PosDisplaySnapshot } from "@/lib/pos-display";
-import type { CreateOrderAmendmentInput } from "@/lib/api-client";
+import type { CreateOrderAmendmentInput } from "@/lib/api/pos";
 import { parseBackendDate, ymdInTimeZone } from "@/lib/time/tz";
 
 const COPY = {

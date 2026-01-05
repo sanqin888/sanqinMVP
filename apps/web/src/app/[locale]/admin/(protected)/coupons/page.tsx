@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { apiFetch } from '@/lib/api-client';
+import { apiFetch } from '@/lib/api/client';
 
 type CouponTemplate = {
   couponStableId: string;
@@ -35,8 +35,8 @@ type TemplateFormState = {
   status: CouponTemplate['status'];
   validFrom: string;
   validTo: string;
-  useRuleJson: string;
-  issueRuleJson: string;
+  useRulePresetId: string;
+  issueRulePresetId: string;
 };
 
 type ProgramFormState = {
@@ -46,8 +46,8 @@ type ProgramFormState = {
   triggerType: CouponProgram['triggerType'];
   validFrom: string;
   validTo: string;
-  eligibilityJson: string;
-  itemsJson: string;
+  eligibilityKeys: string[];
+  selectedCouponIds: string[];
 };
 
 const emptyTemplateForm: TemplateFormState = {
@@ -56,8 +56,8 @@ const emptyTemplateForm: TemplateFormState = {
   status: 'DRAFT',
   validFrom: '',
   validTo: '',
-  useRuleJson: '',
-  issueRuleJson: '',
+  useRulePresetId: '',
+  issueRulePresetId: '',
 };
 
 const emptyProgramForm: ProgramFormState = {
@@ -67,24 +67,68 @@ const emptyProgramForm: ProgramFormState = {
   triggerType: 'SIGNUP_COMPLETED',
   validFrom: '',
   validTo: '',
-  eligibilityJson: '',
-  itemsJson: '',
+  eligibilityKeys: [],
+  selectedCouponIds: [],
 };
+
+const useRulePresets = [
+  {
+    id: 'order_fixed_5',
+    label: '订单固定立减 ¥5',
+    description: '适用于订单，最低消费 0 元',
+    value: {
+      type: 'FIXED_CENTS',
+      applyTo: 'ORDER',
+      amountCents: 500,
+      constraints: { minSubtotalCents: 0 },
+      preset: 'ORDER_FIXED_5',
+    },
+  },
+  {
+    id: 'order_percent_10',
+    label: '订单 9 折（10% 折扣）',
+    description: '适用于订单，最低消费 0 元',
+    value: {
+      type: 'PERCENT',
+      applyTo: 'ORDER',
+      percentOff: 10,
+      constraints: { minSubtotalCents: 0 },
+      preset: 'ORDER_PERCENT_10',
+    },
+  },
+];
+
+const issueRulePresets = [
+  {
+    id: 'manual',
+    label: '手动发放',
+    description: '通过后台或任务手动发放',
+    value: { mode: 'MANUAL', preset: 'MANUAL' },
+  },
+  {
+    id: 'auto',
+    label: '自动发放',
+    description: '由系统自动触发发放',
+    value: { mode: 'AUTO', preset: 'AUTO' },
+  },
+];
+
+const eligibilityPresets = [
+  {
+    id: 'requireReferralExists',
+    label: '必须存在推荐关系',
+  },
+  {
+    id: 'requireReferrerSignupCompleted',
+    label: '推荐人完成注册',
+  },
+];
 
 function formatDateRange(from?: string | null, to?: string | null) {
   if (!from && !to) return '—';
   return `${from ? new Date(from).toLocaleDateString() : '—'} ~ ${
     to ? new Date(to).toLocaleDateString() : '—'
   }`;
-}
-
-function parseJson(value: string, label: string) {
-  if (!value.trim()) return null;
-  try {
-    return JSON.parse(value);
-  } catch {
-    throw new Error(`${label} JSON 无法解析`);
-  }
 }
 
 function getRuleType(rule: unknown) {
@@ -96,6 +140,23 @@ function getRuleType(rule: unknown) {
 function getItemsCount(items: unknown) {
   if (Array.isArray(items)) return items.length;
   return 0;
+}
+
+function getPresetIdFromValue(
+  value: unknown,
+  presets: Array<{ id: string; value: Record<string, unknown> }>,
+) {
+  if (!value || typeof value !== 'object') return '';
+  const record = value as Record<string, unknown>;
+  if (typeof record.preset === 'string') {
+    const presetMatch = presets.find(
+      (preset) => preset.value.preset === record.preset,
+    );
+    if (presetMatch) return presetMatch.id;
+  }
+  const raw = JSON.stringify(value);
+  const match = presets.find((preset) => JSON.stringify(preset.value) === raw);
+  return match?.id ?? '';
 }
 
 export default function AdminCouponsPage() {
@@ -167,11 +228,17 @@ export default function AdminCouponsPage() {
     setTemplateSaving(true);
     setTemplateError(null);
     try {
-      const useRule = parseJson(templateForm.useRuleJson, '使用规则');
+      const useRulePreset = useRulePresets.find(
+        (preset) => preset.id === templateForm.useRulePresetId,
+      );
+      const useRule = useRulePreset?.value ?? null;
       if (!useRule) {
         throw new Error('使用规则不能为空');
       }
-      const issueRule = parseJson(templateForm.issueRuleJson, '发放规则');
+      const issueRulePreset = issueRulePresets.find(
+        (preset) => preset.id === templateForm.issueRulePresetId,
+      );
+      const issueRule = issueRulePreset?.value ?? null;
       const payload = {
         couponStableId: templateForm.couponStableId || undefined,
         name: templateForm.name.trim(),
@@ -210,9 +277,17 @@ export default function AdminCouponsPage() {
     setProgramSaving(true);
     setProgramError(null);
     try {
-      const items = parseJson(programForm.itemsJson, '礼包内容');
-      if (!items) throw new Error('礼包内容不能为空');
-      const eligibility = parseJson(programForm.eligibilityJson, '资格条件');
+      const items = programForm.selectedCouponIds.map((couponStableId) => ({
+        couponStableId,
+        quantity: 1,
+      }));
+      if (items.length === 0) throw new Error('礼包内容不能为空');
+      const eligibility =
+        programForm.eligibilityKeys.length > 0
+          ? Object.fromEntries(
+              programForm.eligibilityKeys.map((key) => [key, true]),
+            )
+          : null;
       const payload = {
         programStableId: programForm.programStableId || undefined,
         name: programForm.name.trim(),
@@ -256,14 +331,29 @@ export default function AdminCouponsPage() {
       status: template.status,
       validFrom: template.validFrom ? template.validFrom.slice(0, 10) : '',
       validTo: template.validTo ? template.validTo.slice(0, 10) : '',
-      useRuleJson: JSON.stringify(template.useRule ?? {}, null, 2),
-      issueRuleJson: template.issueRule
-        ? JSON.stringify(template.issueRule, null, 2)
-        : '',
+      useRulePresetId: getPresetIdFromValue(template.useRule, useRulePresets),
+      issueRulePresetId: getPresetIdFromValue(
+        template.issueRule ?? null,
+        issueRulePresets,
+      ),
     });
   }
 
   function handleEditProgram(program: CouponProgram) {
+    const rawItems = Array.isArray(program.items) ? program.items : [];
+    const selectedCouponIds = rawItems
+      .map((item) => {
+        if (!item || typeof item !== 'object') return null;
+        const record = item as Record<string, unknown>;
+        return typeof record.couponStableId === 'string'
+          ? record.couponStableId
+          : null;
+      })
+      .filter((value): value is string => Boolean(value));
+    const eligibilityKeys =
+      program.eligibility && typeof program.eligibility === 'object'
+        ? Object.keys(program.eligibility as Record<string, unknown>)
+        : [];
     setProgramEditingId(program.programStableId);
     setProgramForm({
       programStableId: program.programStableId,
@@ -272,10 +362,8 @@ export default function AdminCouponsPage() {
       triggerType: program.triggerType,
       validFrom: program.validFrom ? program.validFrom.slice(0, 10) : '',
       validTo: program.validTo ? program.validTo.slice(0, 10) : '',
-      eligibilityJson: program.eligibility
-        ? JSON.stringify(program.eligibility, null, 2)
-        : '',
-      itemsJson: JSON.stringify(program.items ?? [], null, 2),
+      eligibilityKeys,
+      selectedCouponIds,
     });
   }
 
@@ -431,32 +519,65 @@ export default function AdminCouponsPage() {
               />
             </label>
             <label className="space-y-1">
-              <span className="text-muted-foreground">使用规则（JSON）</span>
-              <textarea
-                className="min-h-[180px] w-full rounded-md border px-3 py-2 font-mono text-xs"
-                value={templateForm.useRuleJson}
-                placeholder='{"type":"FIXED_CENTS","applyTo":"ORDER","constraints":{"minSubtotalCents":0}}'
-                onChange={(e) =>
-                  setTemplateForm((prev) => ({
-                    ...prev,
-                    useRuleJson: e.target.value,
-                  }))
-                }
-              />
+              <span className="text-muted-foreground">使用规则（预设）</span>
+              <div className="space-y-2">
+                {useRulePresets.map((preset) => (
+                  <label
+                    key={preset.id}
+                    className="flex items-start gap-3 rounded-md border px-3 py-2"
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={templateForm.useRulePresetId === preset.id}
+                      onChange={(e) =>
+                        setTemplateForm((prev) => ({
+                          ...prev,
+                          useRulePresetId: e.target.checked ? preset.id : '',
+                        }))
+                      }
+                    />
+                    <div>
+                      <div className="font-medium">{preset.label}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {preset.description}
+                      </div>
+                    </div>
+                  </label>
+                ))}
+              </div>
             </label>
             <label className="space-y-1">
-              <span className="text-muted-foreground">发放规则（JSON，可选）</span>
-              <textarea
-                className="min-h-[120px] w-full rounded-md border px-3 py-2 font-mono text-xs"
-                value={templateForm.issueRuleJson}
-                placeholder='{"mode":"MANUAL"}'
-                onChange={(e) =>
-                  setTemplateForm((prev) => ({
-                    ...prev,
-                    issueRuleJson: e.target.value,
-                  }))
-                }
-              />
+              <span className="text-muted-foreground">发放规则（预设，可选）</span>
+              <div className="space-y-2">
+                {issueRulePresets.map((preset) => (
+                  <label
+                    key={preset.id}
+                    className="flex items-start gap-3 rounded-md border px-3 py-2"
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={templateForm.issueRulePresetId === preset.id}
+                      onChange={(e) =>
+                        setTemplateForm((prev) => ({
+                          ...prev,
+                          issueRulePresetId: e.target.checked ? preset.id : '',
+                        }))
+                      }
+                    />
+                    <div>
+                      <div className="font-medium">{preset.label}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {preset.description}
+                      </div>
+                    </div>
+                  </label>
+                ))}
+                <div className="text-xs text-muted-foreground">
+                  不选择则不设置发放规则。
+                </div>
+              </div>
             </label>
           </div>
           {templateError && (
@@ -636,32 +757,84 @@ export default function AdminCouponsPage() {
               />
             </label>
             <label className="space-y-1">
-              <span className="text-muted-foreground">资格条件（JSON，可选）</span>
-              <textarea
-                className="min-h-[140px] w-full rounded-md border px-3 py-2 font-mono text-xs"
-                value={programForm.eligibilityJson}
-                placeholder='{"requireReferralExists":true,"requireReferrerSignupCompleted":true}'
-                onChange={(e) =>
-                  setProgramForm((prev) => ({
-                    ...prev,
-                    eligibilityJson: e.target.value,
-                  }))
-                }
-              />
+              <span className="text-muted-foreground">资格条件（预设，可选）</span>
+              <div className="space-y-2">
+                {eligibilityPresets.map((preset) => (
+                  <label
+                    key={preset.id}
+                    className="flex items-start gap-3 rounded-md border px-3 py-2"
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={programForm.eligibilityKeys.includes(preset.id)}
+                      onChange={(e) =>
+                        setProgramForm((prev) => {
+                          const next = new Set(prev.eligibilityKeys);
+                          if (e.target.checked) {
+                            next.add(preset.id);
+                          } else {
+                            next.delete(preset.id);
+                          }
+                          return {
+                            ...prev,
+                            eligibilityKeys: Array.from(next),
+                          };
+                        })
+                      }
+                    />
+                    <div className="font-medium">{preset.label}</div>
+                  </label>
+                ))}
+                <div className="text-xs text-muted-foreground">
+                  不选择则不设置资格条件。
+                </div>
+              </div>
             </label>
             <label className="space-y-1">
-              <span className="text-muted-foreground">礼包内容 items（JSON 数组）</span>
-              <textarea
-                className="min-h-[180px] w-full rounded-md border px-3 py-2 font-mono text-xs"
-                value={programForm.itemsJson}
-                placeholder='[{"couponStableId":"cuid","quantity":1,"overrideExpiresInDays":30,"overrideRemainingUses":1}]'
-                onChange={(e) =>
-                  setProgramForm((prev) => ({
-                    ...prev,
-                    itemsJson: e.target.value,
-                  }))
-                }
-              />
+              <span className="text-muted-foreground">礼包内容（优惠券）</span>
+              {templates.length === 0 ? (
+                <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+                  暂无可选优惠券，请先创建优惠券模板。
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {templates.map((template) => (
+                    <label
+                      key={template.couponStableId}
+                      className="flex items-start gap-3 rounded-md border px-3 py-2"
+                    >
+                      <input
+                        type="checkbox"
+                        className="mt-1"
+                        checked={programForm.selectedCouponIds.includes(
+                          template.couponStableId,
+                        )}
+                        onChange={(e) =>
+                          setProgramForm((prev) => {
+                            const next = new Set(prev.selectedCouponIds);
+                            if (e.target.checked) {
+                              next.add(template.couponStableId);
+                            } else {
+                              next.delete(template.couponStableId);
+                            }
+                            return {
+                              ...prev,
+                              selectedCouponIds: Array.from(next),
+                            };
+                          })
+                        }
+                      />
+                      <div>
+                        <div className="font-medium">{template.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {template.couponStableId}
+                        </div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
             </label>
           </div>
           {programError && (

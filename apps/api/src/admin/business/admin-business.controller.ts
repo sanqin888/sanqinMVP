@@ -45,7 +45,22 @@ export class AdminBusinessController {
       reason?: string;
       deliveryBaseFeeCents?: number;
       priorityPerKmCents?: number;
+      maxDeliveryRangeKm?: number;
+      priorityDefaultDistanceKm?: number;
+      storeLatitude?: number | null;
+      storeLongitude?: number | null;
+      storeAddress?: string | null;
+      supportPhone?: string | null;
+      supportEmail?: string | null;
       salesTaxRate?: number;
+      earnPtPerDollar?: number;
+      redeemDollarPerPoint?: number;
+      referralPtPerDollar?: number;
+      tierThresholdSilver?: number;
+      tierThresholdGold?: number;
+      tierThresholdPlatinum?: number;
+      enableDoorDash?: boolean;
+      enableUberDirect?: boolean;
     },
   ): Promise<BusinessConfigResponse> {
     return this.service.updateConfig(body);
@@ -64,7 +79,22 @@ export class AdminBusinessController {
       reason?: string;
       deliveryBaseFeeCents?: number;
       priorityPerKmCents?: number;
+      maxDeliveryRangeKm?: number;
+      priorityDefaultDistanceKm?: number;
+      storeLatitude?: number | null;
+      storeLongitude?: number | null;
+      storeAddress?: string | null;
+      supportPhone?: string | null;
+      supportEmail?: string | null;
       salesTaxRate?: number;
+      earnPtPerDollar?: number;
+      redeemDollarPerPoint?: number;
+      referralPtPerDollar?: number;
+      tierThresholdSilver?: number;
+      tierThresholdGold?: number;
+      tierThresholdPlatinum?: number;
+      enableDoorDash?: boolean;
+      enableUberDirect?: boolean;
     },
   ): Promise<BusinessConfigResponse> {
     return this.service.updateConfig(body);

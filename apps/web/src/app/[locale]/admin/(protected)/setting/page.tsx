@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import type { Locale } from '@/lib/order/shared';
-import { apiFetch } from '@/lib/api-client';
+import { apiFetch } from '@/lib/api/client';
 
 /** ===== 类型定义 ===== */
 

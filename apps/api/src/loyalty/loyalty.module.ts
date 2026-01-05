@@ -8,6 +8,6 @@ import { LoyaltyController } from './loyalty.controller';
   imports: [PrismaModule],
   providers: [LoyaltyService],
   controllers: [LoyaltyController],
-  exports: [LoyaltyService], // 🔑 暴露给其他模块使用
+  exports: [LoyaltyService],
 })
 export class LoyaltyModule {}
