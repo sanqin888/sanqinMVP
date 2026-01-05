@@ -5,6 +5,32 @@ export type FulfillmentType = 'pickup' | 'dine_in' | 'delivery';
 export type DeliveryType = 'STANDARD' | 'PRIORITY';
 export type PaymentMethod = 'CASH' | 'CARD' | 'WECHAT_ALIPAY';
 
+export const OrderStatuses = [
+  'pending',
+  'paid',
+  'making',
+  'ready',
+  'completed',
+  'refunded',
+] as const;
+export type OrderStatus = (typeof OrderStatuses)[number];
+
+export const ORDER_STATUS_SEQUENCE: readonly OrderStatus[] = OrderStatuses;
+
+export const ORDER_STATUS_FLOW: Readonly<
+  Record<OrderStatus, OrderStatus | null>
+> = {
+  pending: 'paid',
+  paid: 'making',
+  making: 'ready',
+  ready: 'completed',
+  completed: null,
+  refunded: null,
+};
+
+export const IS_ORDER_ACTIVE = (status: OrderStatus) =>
+  !['completed', 'refunded'].includes(status);
+
 export const ChannelSchema = z.enum(['web', 'in_store', 'ubereats']);
 export const FulfillmentTypeSchema = z.enum(['pickup', 'dine_in', 'delivery']);
 export const DeliveryTypeSchema = z.enum(['STANDARD', 'PRIORITY']);
