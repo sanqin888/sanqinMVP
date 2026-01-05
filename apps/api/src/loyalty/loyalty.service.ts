@@ -1,16 +1,8 @@
 // apps/api/src/loyalty/loyalty.service.ts
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { LoyaltyEntryType, Prisma } from '@prisma/client';
+import { BusinessConfig, LoyaltyEntryType, Prisma } from '@prisma/client';
 import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
-
-function parseNumberEnv(
-  envValue: string | undefined,
-  fallback: number,
-): number {
-  const n = Number(envValue);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
-}
 
 const MICRO_PER_POINT = 1_000_000n; // 1 pt = 1e6 micro-pts，避免小数误差
 
@@ -20,24 +12,20 @@ const ledgerSourceAmend = (amendStableId: string) => `AMEND:${amendStableId}`;
 const LEDGER_SOURCE_TOPUP = 'TOPUP';
 const LEDGER_SOURCE_MANUAL = 'MANUAL';
 const IDEMPOTENCY_KEY_MAX_LENGTH = 128;
-
-// 可通过环境变量调参：$1 赚取多少“点”、1 点可抵扣 $ 多少、推荐人奖励比例
-const EARN_PT_PER_DOLLAR = parseNumberEnv(
-  process.env.LOYALTY_EARN_PT_PER_DOLLAR,
-  0.01,
-); // 例如：$1 → 0.01 pt（约等于 1% 返现）
-
-const REDEEM_DOLLAR_PER_POINT = parseNumberEnv(
-  process.env.LOYALTY_REDEEM_DOLLAR_PER_POINT,
-  1,
-); // 例如：1 pt → $1（积分≈储值）
-
-const REFERRAL_PT_PER_DOLLAR = parseNumberEnv(
-  process.env.LOYALTY_REFERRAL_PT_PER_DOLLAR,
-  0.01,
-); // 例如：$1 实际消费 → 推荐人 0.01 pt
+const DEFAULT_EARN_PT_PER_DOLLAR = 0.01;
+const DEFAULT_REDEEM_DOLLAR_PER_POINT = 1;
+const DEFAULT_REFERRAL_PT_PER_DOLLAR = 0.01;
+const DEFAULT_TIER_THRESHOLD_SILVER = 1000 * 100;
+const DEFAULT_TIER_THRESHOLD_GOLD = 10000 * 100;
+const DEFAULT_TIER_THRESHOLD_PLATINUM = 30000 * 100;
 
 type Tier = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM';
+type LoyaltyConfig = {
+  earnPtPerDollar: number;
+  redeemDollarPerPoint: number;
+  referralPtPerDollar: number;
+  tierThresholdCents: Record<Exclude<Tier, 'BRONZE'>, number>;
+};
 
 // 等级倍率
 const TIER_MULTIPLIER: Record<Tier, number> = {
@@ -47,18 +35,13 @@ const TIER_MULTIPLIER: Record<Tier, number> = {
   PLATINUM: 5,
 };
 
-// 升级门槛（累计实际消费，单位：分）
-const TIER_THRESHOLD_CENTS = {
-  BRONZE: 0,
-  SILVER: 1000 * 100, // $1,000
-  GOLD: 10000 * 100, // $10,000
-  PLATINUM: 30000 * 100, // $30,000
-};
-
-function computeTierFromLifetime(lifetimeSpendCents: number): Tier {
-  if (lifetimeSpendCents >= TIER_THRESHOLD_CENTS.PLATINUM) return 'PLATINUM';
-  if (lifetimeSpendCents >= TIER_THRESHOLD_CENTS.GOLD) return 'GOLD';
-  if (lifetimeSpendCents >= TIER_THRESHOLD_CENTS.SILVER) return 'SILVER';
+function computeTierFromLifetime(
+  lifetimeSpendCents: number,
+  thresholds: LoyaltyConfig['tierThresholdCents'],
+): Tier {
+  if (lifetimeSpendCents >= thresholds.PLATINUM) return 'PLATINUM';
+  if (lifetimeSpendCents >= thresholds.GOLD) return 'GOLD';
+  if (lifetimeSpendCents >= thresholds.SILVER) return 'SILVER';
   return 'BRONZE';
 }
 
@@ -67,10 +50,13 @@ function toMicroPoints(points: number): bigint {
   return BigInt(Math.round(points * Number(MICRO_PER_POINT)));
 }
 
-function dollarsFromPointsMicro(micro: bigint): number {
-  // 以“1 点 = REDEEM_DOLLAR_PER_POINT 美元”换算
+function dollarsFromPointsMicro(
+  micro: bigint,
+  redeemDollarPerPoint: number,
+): number {
+  // 以“1 点 = redeemDollarPerPoint 美元”换算
   const pts = Number(micro) / Number(MICRO_PER_POINT);
-  return pts * REDEEM_DOLLAR_PER_POINT;
+  return pts * redeemDollarPerPoint;
 }
 
 function buildIdempotencyChildKey(base: string, suffix: string): string {
@@ -90,6 +76,112 @@ function buildIdempotencyChildKey(base: string, suffix: string): string {
 @Injectable()
 export class LoyaltyService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private async ensureBusinessConfig(): Promise<BusinessConfig> {
+    return (
+      (await this.prisma.businessConfig.findUnique({ where: { id: 1 } })) ??
+      (await this.prisma.businessConfig.create({
+        data: {
+          id: 1,
+          storeName: null,
+          timezone: 'America/Toronto',
+          isTemporarilyClosed: false,
+          temporaryCloseReason: null,
+          earnPtPerDollar: DEFAULT_EARN_PT_PER_DOLLAR,
+          redeemDollarPerPoint: DEFAULT_REDEEM_DOLLAR_PER_POINT,
+          referralPtPerDollar: DEFAULT_REFERRAL_PT_PER_DOLLAR,
+          tierThresholdSilver: DEFAULT_TIER_THRESHOLD_SILVER,
+          tierThresholdGold: DEFAULT_TIER_THRESHOLD_GOLD,
+          tierThresholdPlatinum: DEFAULT_TIER_THRESHOLD_PLATINUM,
+        },
+      }))
+    );
+  }
+
+  private async ensureBusinessConfigWithTx(
+    tx: Prisma.TransactionClient,
+  ): Promise<BusinessConfig> {
+    return (
+      (await tx.businessConfig.findUnique({ where: { id: 1 } })) ??
+      (await tx.businessConfig.create({
+        data: {
+          id: 1,
+          storeName: null,
+          timezone: 'America/Toronto',
+          isTemporarilyClosed: false,
+          temporaryCloseReason: null,
+          earnPtPerDollar: DEFAULT_EARN_PT_PER_DOLLAR,
+          redeemDollarPerPoint: DEFAULT_REDEEM_DOLLAR_PER_POINT,
+          referralPtPerDollar: DEFAULT_REFERRAL_PT_PER_DOLLAR,
+          tierThresholdSilver: DEFAULT_TIER_THRESHOLD_SILVER,
+          tierThresholdGold: DEFAULT_TIER_THRESHOLD_GOLD,
+          tierThresholdPlatinum: DEFAULT_TIER_THRESHOLD_PLATINUM,
+        },
+      }))
+    );
+  }
+
+  private normalizeLoyaltyConfig(config: BusinessConfig): LoyaltyConfig {
+    const earnPtPerDollar =
+      typeof config.earnPtPerDollar === 'number' &&
+      Number.isFinite(config.earnPtPerDollar) &&
+      config.earnPtPerDollar >= 0
+        ? config.earnPtPerDollar
+        : DEFAULT_EARN_PT_PER_DOLLAR;
+    const redeemDollarPerPoint =
+      typeof config.redeemDollarPerPoint === 'number' &&
+      Number.isFinite(config.redeemDollarPerPoint) &&
+      config.redeemDollarPerPoint > 0
+        ? config.redeemDollarPerPoint
+        : DEFAULT_REDEEM_DOLLAR_PER_POINT;
+    const referralPtPerDollar =
+      typeof config.referralPtPerDollar === 'number' &&
+      Number.isFinite(config.referralPtPerDollar) &&
+      config.referralPtPerDollar >= 0
+        ? config.referralPtPerDollar
+        : DEFAULT_REFERRAL_PT_PER_DOLLAR;
+    const tierThresholdSilver =
+      typeof config.tierThresholdSilver === 'number' &&
+      Number.isFinite(config.tierThresholdSilver) &&
+      config.tierThresholdSilver >= 0
+        ? config.tierThresholdSilver
+        : DEFAULT_TIER_THRESHOLD_SILVER;
+    const tierThresholdGold =
+      typeof config.tierThresholdGold === 'number' &&
+      Number.isFinite(config.tierThresholdGold) &&
+      config.tierThresholdGold >= 0
+        ? config.tierThresholdGold
+        : DEFAULT_TIER_THRESHOLD_GOLD;
+    const tierThresholdPlatinum =
+      typeof config.tierThresholdPlatinum === 'number' &&
+      Number.isFinite(config.tierThresholdPlatinum) &&
+      config.tierThresholdPlatinum >= 0
+        ? config.tierThresholdPlatinum
+        : DEFAULT_TIER_THRESHOLD_PLATINUM;
+
+    return {
+      earnPtPerDollar,
+      redeemDollarPerPoint,
+      referralPtPerDollar,
+      tierThresholdCents: {
+        SILVER: tierThresholdSilver,
+        GOLD: tierThresholdGold,
+        PLATINUM: tierThresholdPlatinum,
+      },
+    };
+  }
+
+  private async getLoyaltyConfig(): Promise<LoyaltyConfig> {
+    const config = await this.ensureBusinessConfig();
+    return this.normalizeLoyaltyConfig(config);
+  }
+
+  private async getLoyaltyConfigWithTx(
+    tx: Prisma.TransactionClient,
+  ): Promise<LoyaltyConfig> {
+    const config = await this.ensureBusinessConfigWithTx(tx);
+    return this.normalizeLoyaltyConfig(config);
+  }
 
   // ✅ 新增：stableId -> 内部 UUID userId
   async resolveUserIdByStableId(userStableId: string): Promise<string> {
@@ -207,6 +299,7 @@ export class LoyaltyService {
   }) {
     const { orderId, userId, subtotalCents, redeemValueCents, tier } = params;
     if (!userId) return; // 匿名单不处理
+    const loyaltyConfig = await this.getLoyaltyConfig();
 
     await this.prisma.$transaction(async (tx) => {
       const accRaw = await this.ensureAccountWithTx(tx, userId);
@@ -226,7 +319,7 @@ export class LoyaltyService {
 
       // 2) 抵扣
       const requestedRedeemMicro = toMicroPoints(
-        redeemValueCents / 100 / REDEEM_DOLLAR_PER_POINT,
+        redeemValueCents / 100 / loyaltyConfig.redeemDollarPerPoint,
       );
 
       if (requestedRedeemMicro > 0n) {
@@ -267,7 +360,7 @@ export class LoyaltyService {
 
       const earnedPts =
         (netSubtotalCents / 100) *
-        EARN_PT_PER_DOLLAR *
+        loyaltyConfig.earnPtPerDollar *
         TIER_MULTIPLIER[accountTier];
 
       const earnedMicro = toMicroPoints(earnedPts);
@@ -296,7 +389,7 @@ export class LoyaltyService {
               deltaMicro: earnedMicro,
               balanceAfterMicro: newBal,
               note: `earn on $${(netSubtotalCents / 100).toFixed(2)} @${(
-                EARN_PT_PER_DOLLAR * TIER_MULTIPLIER[accountTier]
+                loyaltyConfig.earnPtPerDollar * TIER_MULTIPLIER[accountTier]
               ).toFixed(4)} pt/$`,
             },
           });
@@ -309,7 +402,10 @@ export class LoyaltyService {
       lifetimeSpendCents += netSubtotalCents;
 
       // 5) 更新等级
-      const newTier = computeTierFromLifetime(lifetimeSpendCents);
+      const newTier = computeTierFromLifetime(
+        lifetimeSpendCents,
+        loyaltyConfig.tierThresholdCents,
+      );
 
       // 6) 回写账户
       await tx.loyaltyAccount.update({
@@ -322,7 +418,7 @@ export class LoyaltyService {
       });
 
       // 7) 推荐人奖励（幂等）
-      if (REFERRAL_PT_PER_DOLLAR > 0 && netSubtotalCents > 0) {
+      if (loyaltyConfig.referralPtPerDollar > 0 && netSubtotalCents > 0) {
         const userRow = await tx.user.findUnique({
           where: { id: userId },
           select: { referredByUserId: true },
@@ -344,7 +440,7 @@ export class LoyaltyService {
 
           if (!existedReferral) {
             const referralPts =
-              (netSubtotalCents / 100) * REFERRAL_PT_PER_DOLLAR;
+              (netSubtotalCents / 100) * loyaltyConfig.referralPtPerDollar;
             const referralMicro = toMicroPoints(referralPts);
 
             if (referralMicro > 0n) {
@@ -400,6 +496,7 @@ export class LoyaltyService {
       },
     });
     if (!order?.userId) return;
+    const loyaltyConfig = await this.getLoyaltyConfig();
 
     const netSubtotalCents = Math.max(
       0,
@@ -514,7 +611,10 @@ export class LoyaltyService {
       if (shouldAdjustLifetime && netSubtotalCents > 0) {
         lifetimeSpendCents = Math.max(0, lifetimeSpendCents - netSubtotalCents);
       }
-      const newTier = computeTierFromLifetime(lifetimeSpendCents);
+      const newTier = computeTierFromLifetime(
+        lifetimeSpendCents,
+        loyaltyConfig.tierThresholdCents,
+      );
 
       // 4) 冲回推荐人奖励
       const referralLedger = await tx.loyaltyLedger.findUnique({
@@ -592,27 +692,47 @@ export class LoyaltyService {
   }
 
   /** 工具：把“可抵扣的积分余额（micro）”换算成“最大可抵扣金额（分）” */
-  maxRedeemableCentsFromBalance(micro: bigint): number {
-    const dollars = dollarsFromPointsMicro(micro); // 可抵扣美元
+  async maxRedeemableCentsFromBalance(micro: bigint): Promise<number> {
+    const loyaltyConfig = await this.getLoyaltyConfig();
+    return this.maxRedeemableCentsFromBalanceWithRate(
+      micro,
+      loyaltyConfig.redeemDollarPerPoint,
+    );
+  }
+
+  private maxRedeemableCentsFromBalanceWithRate(
+    micro: bigint,
+    redeemDollarPerPoint: number,
+  ): number {
+    const dollars = dollarsFromPointsMicro(micro, redeemDollarPerPoint); // 可抵扣美元
     return Math.floor(dollars * 100);
   }
 
   private calculateRedeemableCentsFromBalance(
     balanceMicro: bigint,
+    redeemDollarPerPoint: number,
     requestedPoints?: number,
     subtotalCents?: number,
   ): number {
     if (!requestedPoints || requestedPoints <= 0) return 0;
 
-    const maxByBalance = this.maxRedeemableCentsFromBalance(balanceMicro);
-    const rawCents = requestedPoints * REDEEM_DOLLAR_PER_POINT * 100;
+    const maxByBalance = this.maxRedeemableCentsFromBalanceWithRate(
+      balanceMicro,
+      redeemDollarPerPoint,
+    );
+    const rawCents = requestedPoints * redeemDollarPerPoint * 100;
     const requestedCents = Math.round(rawCents + 1e-6);
     const byUserInput = Math.min(requestedCents, maxByBalance);
     return Math.max(0, Math.min(byUserInput, subtotalCents ?? byUserInput));
   }
 
-  private redeemCentsFromMicro(micro: bigint): number {
-    return Math.round(dollarsFromPointsMicro(micro) * 100);
+  private redeemCentsFromMicro(
+    micro: bigint,
+    redeemDollarPerPoint: number,
+  ): number {
+    return Math.round(
+      dollarsFromPointsMicro(micro, redeemDollarPerPoint) * 100,
+    );
   }
 
   async reserveRedeemForOrder(params: {
@@ -637,6 +757,7 @@ export class LoyaltyService {
         : LEDGER_SOURCE_ORDER;
 
     if (!userId || subtotalAfterCoupon <= 0) return 0;
+    const loyaltyConfig = await this.getLoyaltyConfigWithTx(tx);
 
     const account = await this.ensureAccountWithTx(tx, userId);
 
@@ -659,11 +780,15 @@ export class LoyaltyService {
     });
 
     if (existed) {
-      return this.redeemCentsFromMicro(-existed.deltaMicro);
+      return this.redeemCentsFromMicro(
+        -existed.deltaMicro,
+        loyaltyConfig.redeemDollarPerPoint,
+      );
     }
 
     const redeemValueCents = this.calculateRedeemableCentsFromBalance(
       account.pointsMicro,
+      loyaltyConfig.redeemDollarPerPoint,
       requestedPoints,
       subtotalAfterCoupon,
     );
@@ -671,7 +796,7 @@ export class LoyaltyService {
     if (redeemValueCents <= 0) return 0;
 
     const redeemMicro = toMicroPoints(
-      redeemValueCents / 100 / REDEEM_DOLLAR_PER_POINT,
+      redeemValueCents / 100 / loyaltyConfig.redeemDollarPerPoint,
     );
 
     if (redeemMicro > account.pointsMicro) {
@@ -751,6 +876,7 @@ export class LoyaltyService {
     return this.prisma.$transaction(async (tx) => {
       // 0) 解析 stableId -> userId（放在 tx 里）
       const userId = await this.resolveUserIdByStableIdWithTx(tx, userStableId);
+      const loyaltyConfig = await this.getLoyaltyConfigWithTx(tx);
 
       // 1) 确保账户存在
       const acc = await this.ensureAccountWithTx(tx, userId);
@@ -832,7 +958,10 @@ export class LoyaltyService {
           lifetimeSpendCentsAfter - cents,
         );
         const tierAfter = (accNow?.tier ?? acc.tier) as Tier;
-        const tierBefore = computeTierFromLifetime(lifetimeSpendCentsBefore);
+        const tierBefore = computeTierFromLifetime(
+          lifetimeSpendCentsBefore,
+          loyaltyConfig.tierThresholdCents,
+        );
 
         const finalBalanceMicro =
           bonus > 0 && existedBonus
@@ -922,7 +1051,10 @@ export class LoyaltyService {
 
       // 4) lifetime + tier（充值算累计消费）
       const lifetimeSpendCentsAfter = lifetimeSpendCentsBefore + cents;
-      const tierAfter = computeTierFromLifetime(lifetimeSpendCentsAfter);
+      const tierAfter = computeTierFromLifetime(
+        lifetimeSpendCentsAfter,
+        loyaltyConfig.tierThresholdCents,
+      );
 
       await tx.loyaltyAccount.update({
         where: { id: acc.id },
@@ -933,12 +1065,11 @@ export class LoyaltyService {
         },
       });
 
-      // 5) 推荐人奖励：按充值金额给 1%（REFERRAL_PT_PER_DOLLAR）
-      //   例：$100 → 1pt（当 REFERRAL_PT_PER_DOLLAR=0.01）
+      // 5) 推荐人奖励：按充值金额给一定比例（referralPtPerDollar）
       let referralPtsCredited = 0;
       let referralLedgerId: string | undefined;
 
-      if (REFERRAL_PT_PER_DOLLAR > 0 && cents > 0) {
+      if (loyaltyConfig.referralPtPerDollar > 0 && cents > 0) {
         const u = await tx.user.findUnique({
           where: { id: userId },
           select: { referredByUserId: true },
@@ -947,7 +1078,7 @@ export class LoyaltyService {
         const refUserId = u?.referredByUserId;
 
         if (refUserId && refUserId !== userId) {
-          const refPts = (cents / 100) * REFERRAL_PT_PER_DOLLAR;
+          const refPts = (cents / 100) * loyaltyConfig.referralPtPerDollar;
           const refMicro = toMicroPoints(refPts);
 
           if (refMicro > 0n) {
@@ -1041,6 +1172,7 @@ export class LoyaltyService {
     } = params;
 
     const sourceKey = ledgerSourceAmend(amendmentStableId);
+    const loyaltyConfig = await this.getLoyaltyConfigWithTx(tx);
 
     // 幂等锚点：同一 amendment 不重复做
     const existed = await tx.loyaltyLedger.findUnique({
@@ -1103,7 +1235,7 @@ export class LoyaltyService {
     let redeemReturnMicro = 0n;
     if (redeemReturnCents > 0) {
       redeemReturnMicro = toMicroPoints(
-        redeemReturnCents / 100 / REDEEM_DOLLAR_PER_POINT,
+        redeemReturnCents / 100 / loyaltyConfig.redeemDollarPerPoint,
       );
 
       const newBal = balance + redeemReturnMicro;
@@ -1195,7 +1327,10 @@ export class LoyaltyService {
     if (deltaNet !== 0) {
       lifetimeSpendCents = Math.max(0, lifetimeSpendCents + deltaNet);
     }
-    const newTier = computeTierFromLifetime(lifetimeSpendCents);
+    const newTier = computeTierFromLifetime(
+      lifetimeSpendCents,
+      loyaltyConfig.tierThresholdCents,
+    );
 
     await tx.loyaltyAccount.update({
       where: { id: acc.id },
