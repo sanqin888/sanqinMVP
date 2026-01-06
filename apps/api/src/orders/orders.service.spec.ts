@@ -6,7 +6,7 @@ import { UberDirectService } from '../deliveries/uber-direct.service';
 import { MembershipService } from '../membership/membership.service';
 import { DoorDashDriveService } from '../deliveries/doordash-drive.service';
 import { DeliveryType } from '@prisma/client';
-import { CreateOrderDto } from './dto/create-order.dto';
+import { CreateOrderInput } from '@shared/order';
 
 describe('OrdersService', () => {
   let service: OrdersService;
@@ -191,7 +191,7 @@ describe('OrdersService', () => {
   });
 
   it('creates order even when deliveryDestination is missing for priority orders', () => {
-    const dto: Partial<CreateOrderDto> = {
+    const dto: Partial<CreateOrderInput> = {
       channel: 'web',
       fulfillmentType: 'pickup',
       subtotalCents: 1000,
@@ -215,7 +215,7 @@ describe('OrdersService', () => {
     };
     prisma.order.create.mockResolvedValue(storedOrder);
 
-    return service.create(dto as CreateOrderDto).then((order) => {
+    return service.create(dto as CreateOrderInput).then((order) => {
       // ✅ 仍然建单
       expect(prisma.order.create).toHaveBeenCalled();
       expect(order.orderStableId).toBe('cord-no-dest');
@@ -260,7 +260,7 @@ describe('OrdersService', () => {
       externalDeliveryId: 'uber-123',
     });
 
-    const dto: CreateOrderDto = {
+    const dto: CreateOrderInput = {
       channel: 'web',
       fulfillmentType: 'pickup',
       items: [{ productStableId: 'c1234567890abcdefghijklmn', qty: 1 }],
@@ -322,7 +322,7 @@ describe('OrdersService', () => {
     prisma.order.create.mockResolvedValue(storedOrder);
     uberDirect.createDelivery.mockRejectedValue(new Error('boom'));
 
-    const dto: CreateOrderDto = {
+    const dto: CreateOrderInput = {
       channel: 'web',
       fulfillmentType: 'pickup',
       items: [],
