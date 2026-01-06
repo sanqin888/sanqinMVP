@@ -24,10 +24,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { MembershipService } from '../membership/membership.service';
-import {
-  CreateOrderInput,
-  DeliveryDestinationInput,
-} from '@shared/order';
+import { CreateOrderInput, DeliveryDestinationInput } from '@shared/order';
 import {
   ORDER_STATUS_ADVANCE_FLOW,
   ORDER_STATUS_TRANSITIONS,

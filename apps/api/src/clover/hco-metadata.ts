@@ -1,9 +1,6 @@
 // apps/api/src/clover/hco-metadata.ts
 import { DeliveryProvider, DeliveryType } from '@prisma/client';
-import {
-  CreateOrderInput,
-  DeliveryDestinationInput,
-} from '@shared/order';
+import { CreateOrderInput, DeliveryDestinationInput } from '@shared/order';
 import { normalizeStableId } from '../common/utils/stable-id';
 
 export type HostedCheckoutItem = {

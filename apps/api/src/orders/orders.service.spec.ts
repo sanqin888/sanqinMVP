@@ -191,7 +191,7 @@ describe('OrdersService', () => {
   });
 
   it('creates order even when deliveryDestination is missing for priority orders', () => {
-    const dto: Partial<CreateOrderInput> = {
+    const dto: CreateOrderInput = {
       channel: 'web',
       fulfillmentType: 'pickup',
       subtotalCents: 1000,
@@ -215,7 +215,7 @@ describe('OrdersService', () => {
     };
     prisma.order.create.mockResolvedValue(storedOrder);
 
-    return service.create(dto as CreateOrderInput).then((order) => {
+    return service.create(dto).then((order) => {
       // ✅ 仍然建单
       expect(prisma.order.create).toHaveBeenCalled();
       expect(order.orderStableId).toBe('cord-no-dest');
