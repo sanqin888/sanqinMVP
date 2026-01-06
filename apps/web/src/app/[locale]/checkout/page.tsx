@@ -21,24 +21,27 @@ import {
   ConfirmationState,
   HOSTED_CHECKOUT_CURRENCY,
   LANGUAGE_NAMES,
-  LOCALES,
-  type Locale,
   type LocalizedCartItem,
-  type LocalizedMenuItem,
-  type ScheduleSlot,
   TAX_ON_DELIVERY,
   TAX_RATE,
-  UI_STRINGS,
-  addLocaleToPath,
   formatWithOrder,
   formatWithTotal,
   type HostedCheckoutResponse,
   type DeliveryTypeOption,
-  type PublicMenuApiResponse,
-  buildLocalizedMenuFromDb,
-  buildLocalizedEntitlementItems,
-  type MenuEntitlementsResponse,
 } from "@/lib/order/shared";
+import type { Locale } from "@/lib/i18n/locales";
+import { LOCALES } from "@/lib/i18n/locales";
+import { addLocaleToPath } from "@/lib/i18n/path";
+import { UI_STRINGS, type ScheduleSlot } from "@/lib/i18n/dictionaries";
+import {
+  buildLocalizedEntitlementItems,
+  buildLocalizedMenuFromDb,
+  type LocalizedMenuItem,
+} from "@/lib/menu/menu-transformer";
+import type {
+  MenuEntitlementsResponse,
+  PublicMenuResponse as PublicMenuApiResponse,
+} from "@shared/menu";
 import { useSession } from "@/lib/auth-session";
 import { formatStoreTime } from "@/lib/time/tz";
 type MemberAddress = {

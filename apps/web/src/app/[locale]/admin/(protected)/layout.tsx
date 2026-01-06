@@ -2,7 +2,7 @@
 import { redirect } from 'next/navigation';
 import { cookies, headers } from 'next/headers';
 import type { ReactNode } from 'react';
-import type { Locale } from '@/lib/order/shared';
+import type { Locale } from '@/lib/i18n/locales';
 import AdminLayoutClient from '../AdminLayoutClient';
 
 type AdminSessionResponse = {
