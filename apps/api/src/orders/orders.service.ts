@@ -24,7 +24,10 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { MembershipService } from '../membership/membership.service';
-import { CreateOrderDto, DeliveryDestinationDto } from './dto/create-order.dto';
+import {
+  CreateOrderInput,
+  DeliveryDestinationInput,
+} from '@shared/order';
 import {
   ORDER_STATUS_ADVANCE_FLOW,
   ORDER_STATUS_TRANSITIONS,
@@ -61,7 +64,7 @@ import type { OrderDto, OrderItemDto } from './dto/order.dto';
 import type { PrintPosPayloadDto } from '../pos/dto/print-pos-payload.dto';
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
-type OrderItemInput = NonNullable<CreateOrderDto['items']>[number] & {
+type OrderItemInput = NonNullable<CreateOrderInput['items']>[number] & {
   productId?: string;
   productStableId?: string;
   qty: number;
@@ -412,7 +415,7 @@ export class OrdersService {
    * - Web/Clover：默认 CARD
    * - UberEats：平台结算通常可归类为 CARD
    */
-  private resolvePaymentMethod(dto: CreateOrderDto): PaymentMethod {
+  private resolvePaymentMethod(dto: CreateOrderInput): PaymentMethod {
     if (dto.paymentMethod) return dto.paymentMethod;
 
     if (dto.channel === Channel.web) return PaymentMethod.CARD;
@@ -1215,7 +1218,7 @@ export class OrdersService {
   }
 
   async create(
-    dto: CreateOrderDto,
+    dto: CreateOrderInput,
     idempotencyKey?: string,
   ): Promise<OrderDto> {
     const order = await this.createInternal(dto, idempotencyKey);
@@ -1223,7 +1226,7 @@ export class OrdersService {
   }
 
   async createInternal(
-    dto: CreateOrderDto,
+    dto: CreateOrderInput,
     idempotencyKey?: string,
   ): Promise<OrderWithItems> {
     // ✅ 你的业务前提：只在“已收款/支付成功”后才创建订单记录
@@ -1735,7 +1738,7 @@ export class OrdersService {
       );
     }
 
-    let deliveryDestination: DeliveryDestinationDto | undefined;
+    let deliveryDestination: DeliveryDestinationInput | undefined;
     if (meta.fulfillment === 'delivery') {
       const { customer } = meta;
       if (
@@ -1764,7 +1767,7 @@ export class OrdersService {
       };
     }
 
-    const dto: CreateOrderDto = {
+    const dto: CreateOrderInput = {
       userStableId: loyaltyUserStableId,
       orderStableId: normalizeStableId(meta.orderStableId) ?? undefined,
       channel: 'web',
@@ -1788,7 +1791,7 @@ export class OrdersService {
   }
 
   async createImmediatePaid(
-    dto: CreateOrderDto,
+    dto: CreateOrderInput,
     idempotencyKey?: string,
   ): Promise<OrderWithItems> {
     const created = await this.createInternal(dto, idempotencyKey);
@@ -2304,7 +2307,7 @@ export class OrdersService {
   }
 
   private normalizeDropoff(
-    destination: DeliveryDestinationDto,
+    destination: DeliveryDestinationInput,
   ): UberDirectDropoffDetails {
     const sanitize = (value?: string | null): string | undefined => {
       if (typeof value !== 'string') return undefined;

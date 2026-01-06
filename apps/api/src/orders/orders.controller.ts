@@ -12,6 +12,7 @@ import {
   ParseIntPipe,
   BadRequestException,
   UseGuards,
+  UsePipes,
 } from '@nestjs/common';
 import { Type } from 'class-transformer';
 import {
@@ -34,7 +35,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { OrdersService } from './orders.service';
-import { CreateOrderDto } from './dto/create-order.dto';
+import { CreateOrderInput, CreateOrderSchema } from '@shared/order';
 import { OrderStatus } from './order-status';
 import { OrderSummaryDto } from './dto/order-summary.dto';
 import { StableIdPipe } from '../common/pipes/stable-id.pipe';
@@ -42,6 +43,7 @@ import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { PosDeviceGuard } from '../pos/pos-device.guard';
+import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import type { OrderDto } from './dto/order.dto';
 
 class UpdateStatusDto {
@@ -205,7 +207,8 @@ export class OrdersController {
    */
   @Post()
   @HttpCode(201)
-  create(@Body() dto: CreateOrderDto): Promise<OrderDto> {
+  @UsePipes(new ZodValidationPipe(CreateOrderSchema))
+  create(@Body() dto: CreateOrderInput): Promise<OrderDto> {
     if (dto.channel !== 'web') {
       throw new BadRequestException('Public create only allows channel=web');
     }
