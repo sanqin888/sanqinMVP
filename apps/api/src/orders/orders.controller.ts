@@ -36,9 +36,10 @@ import {
   OrderStatus as PrismaOrderStatus,
 } from '@prisma/client';
 import { OrdersService } from './orders.service';
-import { CreateOrderInput, CreateOrderSchema } from '@shared/order';
+import { CreateOrderSchema } from '@shared/order';
+import type { CreateOrderInput } from '@shared/order';
 import type { OrderStatus } from './order-status';
-import { OrderSummaryDto } from './dto/order-summary.dto';
+import type { OrderSummaryDto } from './dto/order-summary.dto';
 import { StableIdPipe } from '../common/pipes/stable-id.pipe';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
