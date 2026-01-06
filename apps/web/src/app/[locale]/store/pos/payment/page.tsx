@@ -3,7 +3,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { TAX_RATE, type Locale } from "@/lib/order/shared";
+import { TAX_RATE } from "@/lib/order/shared";
+import type { Locale } from "@/lib/i18n/locales";
 import { ApiError, apiFetch } from "@/lib/api/client";
 import { advanceOrder } from "@/lib/api/pos";
 import {

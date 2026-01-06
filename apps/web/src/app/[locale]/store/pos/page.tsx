@@ -4,12 +4,13 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
-import type {
-  Locale,
-  PublicMenuCategory,
-  PublicMenuApiResponse,
-} from "@/lib/order/shared";
-import { TAX_RATE, buildLocalizedMenuFromDb } from "@/lib/order/shared";
+import type { Locale } from "@/lib/i18n/locales";
+import type { PublicMenuResponse as PublicMenuApiResponse } from "@shared/menu";
+import {
+  buildLocalizedMenuFromDb,
+  type PublicMenuCategory,
+} from "@/lib/menu/menu-transformer";
+import { TAX_RATE } from "@/lib/order/shared";
 import { apiFetch } from "@/lib/api/client";
 import {
   POS_DISPLAY_STORAGE_KEY,

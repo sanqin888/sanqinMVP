@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { Locale } from "@/lib/i18n/locales";
-import { UI_STRINGS } from "@/lib/order/shared";
+import { UI_STRINGS } from "@/lib/i18n/dictionaries";
 import { ClearCartOnMount } from "./ClearCartOnMount";
 import { OrderSummaryClient } from "./OrderSummaryClient";
 
