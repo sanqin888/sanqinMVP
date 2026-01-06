@@ -1,8 +1,5 @@
-import {
-  ORDER_STATUS_FLOW,
-  ORDER_STATUS_SEQUENCE,
-  OrderStatus,
-} from '@shared/order';
+import { ORDER_STATUS_FLOW, ORDER_STATUS_SEQUENCE } from '@shared/order';
+import type { OrderStatus } from '@shared/order';
 
 export type { OrderStatus };
 export { ORDER_STATUS_SEQUENCE };

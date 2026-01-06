@@ -33,10 +33,11 @@ import {
   OrderAmendmentItemAction,
   PaymentMethod,
   Prisma,
+  OrderStatus as PrismaOrderStatus,
 } from '@prisma/client';
 import { OrdersService } from './orders.service';
 import { CreateOrderInput, CreateOrderSchema } from '@shared/order';
-import { OrderStatus } from './order-status';
+import type { OrderStatus } from './order-status';
 import { OrderSummaryDto } from './dto/order-summary.dto';
 import { StableIdPipe } from '../common/pipes/stable-id.pipe';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
@@ -47,7 +48,7 @@ import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import type { OrderDto } from './dto/order.dto';
 
 class UpdateStatusDto {
-  @IsEnum(OrderStatus)
+  @IsEnum(PrismaOrderStatus)
   status!: OrderStatus;
 }
 
