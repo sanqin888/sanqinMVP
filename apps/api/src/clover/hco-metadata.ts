@@ -1,6 +1,6 @@
 // apps/api/src/clover/hco-metadata.ts
 import { DeliveryProvider, DeliveryType } from '@prisma/client';
-import { CreateOrderDto } from '../orders/dto/create-order.dto';
+import { CreateOrderInput, DeliveryDestinationInput } from '@shared/order';
 import { normalizeStableId } from '../common/utils/stable-id';
 
 export type HostedCheckoutItem = {
@@ -274,11 +274,11 @@ export function parseHostedCheckoutMetadata(
   } satisfies HostedCheckoutMetadata;
 }
 
-// ===== 把 metadata 转成 CreateOrderDto =====
+// ===== 把 metadata 转成 CreateOrderInput =====
 
 const buildDestination = (
   meta: HostedCheckoutMetadata,
-): CreateOrderDto['deliveryDestination'] => {
+): DeliveryDestinationInput | undefined => {
   // 只有 fulfillment = delivery 才需要地址
   if (meta.fulfillment !== 'delivery') return undefined;
 
@@ -314,7 +314,7 @@ const buildDestination = (
 export function buildOrderDtoFromMetadata(
   raw: unknown,
   orderStableId?: string,
-): CreateOrderDto {
+): CreateOrderInput {
   // 统一从原始 JSON 解析，容错更好
   const meta = parseHostedCheckoutMetadata(raw);
   const normalizedStableId = normalizeStableId(
@@ -328,7 +328,7 @@ export function buildOrderDtoFromMetadata(
 
   const redeemValueCents = meta.loyaltyRedeemCents ?? 0;
 
-  const dto: CreateOrderDto = {
+  const dto: CreateOrderInput = {
     channel: 'web',
     ...(normalizedStableId ? { orderStableId: normalizedStableId } : {}),
 
@@ -371,7 +371,7 @@ export function buildOrderDtoFromMetadata(
         productStableId: item.productStableId,
         qty: item.quantity,
 
-        // ⭐ 重要：CreateOrderDto.unitPrice 是“美元”，所以这里用 priceCents / 100
+        // ⭐ 重要：CreateOrderInput.unitPrice 是“美元”，所以这里用 priceCents / 100
         unitPrice: item.priceCents / 100,
 
         ...(item.displayName ? { displayName: item.displayName } : {}),
