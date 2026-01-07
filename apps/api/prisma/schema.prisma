@@ -181,6 +181,7 @@ model UserSession {
   userId       String   @db.Uuid
   expiresAt    DateTime
   deviceInfo   String?
+  loginLocation String?
   mfaVerifiedAt DateTime?
   createdAt    DateTime @default(now())
 
