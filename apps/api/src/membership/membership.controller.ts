@@ -6,6 +6,7 @@ import {
   Delete,
   Get,
   Post,
+  Param,
   Query,
   Req,
   UseGuards,
@@ -17,6 +18,7 @@ import { MfaGuard } from '../auth/mfa.guard';
 
 type AuthedRequest = Request & {
   user?: { id?: string; userStableId?: string };
+  session?: { sessionId?: string };
 };
 
 @UseGuards(SessionAuthGuard, MfaGuard)
@@ -68,6 +70,53 @@ export class MembershipController {
       throw new BadRequestException('phone is required');
     }
     return this.membership.getMemberByPhone(phone);
+  }
+
+  @Get('devices')
+  async listDevices(@Req() req: AuthedRequest) {
+    const userId = req.user?.id;
+    if (!userId) {
+      throw new BadRequestException('userId is required');
+    }
+
+    return this.membership.getDeviceManagement({
+      userId,
+      currentSessionId: req.session?.sessionId,
+    });
+  }
+
+  @Delete('devices/sessions/:sessionId')
+  async revokeSession(
+    @Req() req: AuthedRequest,
+    @Param('sessionId') sessionId?: string,
+  ) {
+    const userId = req.user?.id;
+    if (!userId) {
+      throw new BadRequestException('userId is required');
+    }
+    if (!sessionId) {
+      throw new BadRequestException('sessionId is required');
+    }
+
+    await this.membership.revokeSession({ userId, sessionId });
+    return { success: true };
+  }
+
+  @Delete('devices/trusted/:deviceId')
+  async revokeTrustedDevice(
+    @Req() req: AuthedRequest,
+    @Param('deviceId') deviceId?: string,
+  ) {
+    const userId = req.user?.id;
+    if (!userId) {
+      throw new BadRequestException('userId is required');
+    }
+    if (!deviceId) {
+      throw new BadRequestException('deviceId is required');
+    }
+
+    await this.membership.revokeTrustedDevice({ userId, deviceId });
+    return { success: true };
   }
 
   // ✅ 积分流水

@@ -133,6 +133,13 @@ enum CouponProgramTriggerType {
   REFERRAL_QUALIFIED
 }
 
+enum CouponDistributionType {
+  AUTOMATIC_TRIGGER
+  MANUAL_CLAIM
+  PROMO_CODE
+  ADMIN_PUSH
+}
+
 // === Models ===
 
 model User {
@@ -367,9 +374,15 @@ model CouponProgram {
   programStableId String                   @unique @default(cuid())
   name            String
   status          CouponProgramStatus      @default(DRAFT)
-  triggerType     CouponProgramTriggerType
+  distributionType CouponDistributionType  @default(AUTOMATIC_TRIGGER)
+  triggerType     CouponProgramTriggerType?
   validFrom       DateTime?
   validTo         DateTime?
+  promoCode       String?                  @unique
+  totalLimit      Int?
+  perUserLimit    Int                      @default(1)
+  issuedCount     Int                      @default(0)
+  usedCount       Int                      @default(0)
   eligibility     Json?
   items           Json
   createdAt       DateTime                 @default(now())

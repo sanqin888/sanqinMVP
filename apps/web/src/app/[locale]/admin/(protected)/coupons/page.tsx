@@ -20,9 +20,13 @@ type CouponProgram = {
   programStableId: string;
   name: string;
   status: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
-  triggerType: 'SIGNUP_COMPLETED' | 'REFERRAL_QUALIFIED';
+  distributionType: 'AUTOMATIC_TRIGGER' | 'MANUAL_CLAIM' | 'PROMO_CODE' | 'ADMIN_PUSH';
+  triggerType: 'SIGNUP_COMPLETED' | 'REFERRAL_QUALIFIED' | null;
   validFrom: string | null;
   validTo: string | null;
+  promoCode: string | null;
+  totalLimit: number | null;
+  perUserLimit: number;
   eligibility: unknown | null;
   items: unknown;
   createdAt: string;
@@ -35,17 +39,24 @@ type TemplateFormState = {
   status: CouponTemplate['status'];
   validFrom: string;
   validTo: string;
-  useRulePresetId: string;
-  issueRulePresetId: string;
+  useRuleType: 'FIXED_CENTS' | 'PERCENT';
+  amountCents: string;
+  percentOff: string;
+  minSubtotalCents: string;
+  issueRuleMode: '' | 'MANUAL' | 'AUTO';
 };
 
 type ProgramFormState = {
   programStableId: string;
   name: string;
   status: CouponProgram['status'];
-  triggerType: CouponProgram['triggerType'];
+  distributionType: CouponProgram['distributionType'];
+  triggerType: Exclude<CouponProgram['triggerType'], null>;
   validFrom: string;
   validTo: string;
+  promoCode: string;
+  totalLimit: string;
+  perUserLimit: string;
   eligibilityKeys: string[];
   selectedCouponIds: string[];
 };
@@ -56,62 +67,27 @@ const emptyTemplateForm: TemplateFormState = {
   status: 'DRAFT',
   validFrom: '',
   validTo: '',
-  useRulePresetId: '',
-  issueRulePresetId: '',
+  useRuleType: 'FIXED_CENTS',
+  amountCents: '',
+  percentOff: '',
+  minSubtotalCents: '',
+  issueRuleMode: '',
 };
 
 const emptyProgramForm: ProgramFormState = {
   programStableId: '',
   name: '',
   status: 'DRAFT',
+  distributionType: 'AUTOMATIC_TRIGGER',
   triggerType: 'SIGNUP_COMPLETED',
   validFrom: '',
   validTo: '',
+  promoCode: '',
+  totalLimit: '',
+  perUserLimit: '1',
   eligibilityKeys: [],
   selectedCouponIds: [],
 };
-
-const useRulePresets = [
-  {
-    id: 'order_fixed_5',
-    label: '订单固定立减 ¥5',
-    description: '适用于订单，最低消费 0 元',
-    value: {
-      type: 'FIXED_CENTS',
-      applyTo: 'ORDER',
-      amountCents: 500,
-      constraints: { minSubtotalCents: 0 },
-      preset: 'ORDER_FIXED_5',
-    },
-  },
-  {
-    id: 'order_percent_10',
-    label: '订单 9 折（10% 折扣）',
-    description: '适用于订单，最低消费 0 元',
-    value: {
-      type: 'PERCENT',
-      applyTo: 'ORDER',
-      percentOff: 10,
-      constraints: { minSubtotalCents: 0 },
-      preset: 'ORDER_PERCENT_10',
-    },
-  },
-];
-
-const issueRulePresets = [
-  {
-    id: 'manual',
-    label: '手动发放',
-    description: '通过后台或任务手动发放',
-    value: { mode: 'MANUAL', preset: 'MANUAL' },
-  },
-  {
-    id: 'auto',
-    label: '自动发放',
-    description: '由系统自动触发发放',
-    value: { mode: 'AUTO', preset: 'AUTO' },
-  },
-];
 
 const eligibilityPresets = [
   {
@@ -142,21 +118,73 @@ function getItemsCount(items: unknown) {
   return 0;
 }
 
-function getPresetIdFromValue(
-  value: unknown,
-  presets: Array<{ id: string; value: Record<string, unknown> }>,
-) {
-  if (!value || typeof value !== 'object') return '';
-  const record = value as Record<string, unknown>;
-  if (typeof record.preset === 'string') {
-    const presetMatch = presets.find(
-      (preset) => preset.value.preset === record.preset,
-    );
-    if (presetMatch) return presetMatch.id;
+function formatCurrencyFromCents(cents: number) {
+  return `¥${(cents / 100).toFixed(2)}`;
+}
+
+function buildUseRuleFromForm(form: TemplateFormState) {
+  const minSubtotalCents = Number(form.minSubtotalCents);
+  const constraints =
+    form.minSubtotalCents.trim() === '' || Number.isNaN(minSubtotalCents)
+      ? undefined
+      : { minSubtotalCents };
+  if (form.useRuleType === 'PERCENT') {
+    return {
+      type: 'PERCENT',
+      applyTo: 'ORDER',
+      percentOff: Number(form.percentOff),
+      constraints,
+    };
   }
-  const raw = JSON.stringify(value);
-  const match = presets.find((preset) => JSON.stringify(preset.value) === raw);
-  return match?.id ?? '';
+  return {
+    type: 'FIXED_CENTS',
+    applyTo: 'ORDER',
+    amountCents: Number(form.amountCents),
+    constraints,
+  };
+}
+
+function parseTemplateFormFromRule(
+  template: CouponTemplate,
+): Pick<
+  TemplateFormState,
+  'useRuleType' | 'amountCents' | 'percentOff' | 'minSubtotalCents'
+> {
+  if (!template.useRule || typeof template.useRule !== 'object') {
+    return {
+      useRuleType: 'FIXED_CENTS',
+      amountCents: '',
+      percentOff: '',
+      minSubtotalCents: '',
+    };
+  }
+  const record = template.useRule as Record<string, unknown>;
+  const constraints =
+    record.constraints && typeof record.constraints === 'object'
+      ? (record.constraints as Record<string, unknown>)
+      : null;
+  const minSubtotalValue =
+    constraints && typeof constraints.minSubtotalCents === 'number'
+      ? String(constraints.minSubtotalCents)
+      : '';
+
+  if (record.type === 'PERCENT') {
+    return {
+      useRuleType: 'PERCENT',
+      amountCents: '',
+      percentOff:
+        typeof record.percentOff === 'number' ? String(record.percentOff) : '',
+      minSubtotalCents: minSubtotalValue,
+    };
+  }
+
+  return {
+    useRuleType: 'FIXED_CENTS',
+    amountCents:
+      typeof record.amountCents === 'number' ? String(record.amountCents) : '',
+    percentOff: '',
+    minSubtotalCents: minSubtotalValue,
+  };
 }
 
 export default function AdminCouponsPage() {
@@ -207,6 +235,48 @@ export default function AdminCouponsPage() {
     () => (templateEditingId ? '更新模板' : '创建模板'),
     [templateEditingId],
   );
+  const templatePreview = useMemo(() => {
+    const name = templateForm.name.trim() || '未命名优惠券';
+    const minSubtotalCents = Number(templateForm.minSubtotalCents);
+    const minSubtotalText =
+      templateForm.minSubtotalCents.trim() === '' ||
+      Number.isNaN(minSubtotalCents)
+        ? '无门槛'
+        : `满 ${formatCurrencyFromCents(minSubtotalCents)} 可用`;
+
+    if (templateForm.useRuleType === 'PERCENT') {
+      const percent = Number(templateForm.percentOff);
+      const percentText =
+        templateForm.percentOff.trim() === '' || Number.isNaN(percent)
+          ? '折扣未设置'
+          : `${100 - percent}% OFF`;
+      return {
+        name,
+        badge: '折扣券',
+        value: percentText,
+        limit: minSubtotalText,
+      };
+    }
+
+    const amountCents = Number(templateForm.amountCents);
+    const amountText =
+      templateForm.amountCents.trim() === '' || Number.isNaN(amountCents)
+        ? '金额未设置'
+        : formatCurrencyFromCents(amountCents);
+
+    return {
+      name,
+      badge: '立减券',
+      value: amountText,
+      limit: minSubtotalText,
+    };
+  }, [
+    templateForm.amountCents,
+    templateForm.minSubtotalCents,
+    templateForm.name,
+    templateForm.percentOff,
+    templateForm.useRuleType,
+  ]);
   const programHint = useMemo(
     () => (programEditingId ? '更新礼包' : '创建礼包'),
     [programEditingId],
@@ -228,17 +298,27 @@ export default function AdminCouponsPage() {
     setTemplateSaving(true);
     setTemplateError(null);
     try {
-      const useRulePreset = useRulePresets.find(
-        (preset) => preset.id === templateForm.useRulePresetId,
-      );
-      const useRule = useRulePreset?.value ?? null;
-      if (!useRule) {
-        throw new Error('使用规则不能为空');
+      const useRule = buildUseRuleFromForm(templateForm);
+      if (templateForm.useRuleType === 'PERCENT') {
+        if (!templateForm.percentOff.trim()) {
+          throw new Error('请输入折扣比例');
+        }
+        const percentValue = Number(templateForm.percentOff);
+        if (Number.isNaN(percentValue) || percentValue <= 0) {
+          throw new Error('折扣比例必须为正数');
+        }
+      } else if (!templateForm.amountCents.trim()) {
+        throw new Error('请输入立减金额（分）');
+      } else {
+        const amountValue = Number(templateForm.amountCents);
+        if (Number.isNaN(amountValue) || amountValue <= 0) {
+          throw new Error('立减金额必须为正数');
+        }
       }
-      const issueRulePreset = issueRulePresets.find(
-        (preset) => preset.id === templateForm.issueRulePresetId,
-      );
-      const issueRule = issueRulePreset?.value ?? null;
+      const issueRule =
+        templateForm.issueRuleMode === ''
+          ? null
+          : { mode: templateForm.issueRuleMode };
       const payload = {
         couponStableId: templateForm.couponStableId || undefined,
         name: templateForm.name.trim(),
@@ -282,19 +362,47 @@ export default function AdminCouponsPage() {
         quantity: 1,
       }));
       if (items.length === 0) throw new Error('礼包内容不能为空');
+      if (
+        programForm.distributionType === 'PROMO_CODE' &&
+        !programForm.promoCode.trim()
+      ) {
+        throw new Error('请输入兑换码');
+      }
       const eligibility =
         programForm.eligibilityKeys.length > 0
           ? Object.fromEntries(
               programForm.eligibilityKeys.map((key) => [key, true]),
             )
           : null;
+      const totalLimit = programForm.totalLimit.trim()
+        ? Number(programForm.totalLimit)
+        : null;
+      if (programForm.totalLimit.trim() && Number.isNaN(totalLimit)) {
+        throw new Error('总发放量必须为数字');
+      }
+      const perUserLimit = programForm.perUserLimit.trim()
+        ? Number(programForm.perUserLimit)
+        : 1;
+      if (Number.isNaN(perUserLimit) || perUserLimit <= 0) {
+        throw new Error('单人限领必须为正数');
+      }
       const payload = {
         programStableId: programForm.programStableId || undefined,
         name: programForm.name.trim(),
         status: programForm.status,
-        triggerType: programForm.triggerType,
+        distributionType: programForm.distributionType,
+        triggerType:
+          programForm.distributionType === 'AUTOMATIC_TRIGGER'
+            ? programForm.triggerType
+            : null,
         validFrom: programForm.validFrom || null,
         validTo: programForm.validTo || null,
+        promoCode:
+          programForm.distributionType === 'PROMO_CODE'
+            ? programForm.promoCode.trim()
+            : null,
+        totalLimit,
+        perUserLimit,
         eligibility,
         items,
       };
@@ -324,6 +432,12 @@ export default function AdminCouponsPage() {
   }
 
   function handleEditTemplate(template: CouponTemplate) {
+    const templateRuleState = parseTemplateFormFromRule(template);
+    const issueRuleMode =
+      template.issueRule && typeof template.issueRule === 'object'
+        ? ((template.issueRule as Record<string, unknown>)
+            .mode as TemplateFormState['issueRuleMode']) ?? ''
+        : '';
     setTemplateEditingId(template.couponStableId);
     setTemplateForm({
       couponStableId: template.couponStableId,
@@ -331,11 +445,11 @@ export default function AdminCouponsPage() {
       status: template.status,
       validFrom: template.validFrom ? template.validFrom.slice(0, 10) : '',
       validTo: template.validTo ? template.validTo.slice(0, 10) : '',
-      useRulePresetId: getPresetIdFromValue(template.useRule, useRulePresets),
-      issueRulePresetId: getPresetIdFromValue(
-        template.issueRule ?? null,
-        issueRulePresets,
-      ),
+      ...templateRuleState,
+      issueRuleMode:
+        issueRuleMode === 'MANUAL' || issueRuleMode === 'AUTO'
+          ? issueRuleMode
+          : '',
     });
   }
 
@@ -359,9 +473,16 @@ export default function AdminCouponsPage() {
       programStableId: program.programStableId,
       name: program.name,
       status: program.status,
-      triggerType: program.triggerType,
+      distributionType: program.distributionType,
+      triggerType: program.triggerType ?? 'SIGNUP_COMPLETED',
       validFrom: program.validFrom ? program.validFrom.slice(0, 10) : '',
       validTo: program.validTo ? program.validTo.slice(0, 10) : '',
+      promoCode: program.promoCode ?? '',
+      totalLimit:
+        typeof program.totalLimit === 'number'
+          ? String(program.totalLimit)
+          : '',
+      perUserLimit: String(program.perUserLimit ?? 1),
       eligibilityKeys,
       selectedCouponIds,
     });
@@ -518,67 +639,117 @@ export default function AdminCouponsPage() {
                 }
               />
             </label>
-            <label className="space-y-1">
-              <span className="text-muted-foreground">使用规则（预设）</span>
-              <div className="space-y-2">
-                {useRulePresets.map((preset) => (
-                  <label
-                    key={preset.id}
-                    className="flex items-start gap-3 rounded-md border px-3 py-2"
+            <div className="space-y-3 rounded-lg border p-4">
+              <div className="text-sm font-semibold">使用规则构建器</div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="space-y-1">
+                  <span className="text-muted-foreground">优惠类型</span>
+                  <select
+                    className="w-full rounded-md border px-3 py-2"
+                    value={templateForm.useRuleType}
+                    onChange={(e) =>
+                      setTemplateForm((prev) => ({
+                        ...prev,
+                        useRuleType: e.target
+                          .value as TemplateFormState['useRuleType'],
+                      }))
+                    }
                   >
+                    <option value="FIXED_CENTS">立减</option>
+                    <option value="PERCENT">折扣</option>
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-muted-foreground">最低消费（分）</span>
+                  <input
+                    type="number"
+                    min={0}
+                    className="w-full rounded-md border px-3 py-2"
+                    value={templateForm.minSubtotalCents}
+                    onChange={(e) =>
+                      setTemplateForm((prev) => ({
+                        ...prev,
+                        minSubtotalCents: e.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                {templateForm.useRuleType === 'FIXED_CENTS' ? (
+                  <label className="space-y-1">
+                    <span className="text-muted-foreground">立减金额（分）</span>
                     <input
-                      type="checkbox"
-                      className="mt-1"
-                      checked={templateForm.useRulePresetId === preset.id}
+                      type="number"
+                      min={1}
+                      className="w-full rounded-md border px-3 py-2"
+                      value={templateForm.amountCents}
                       onChange={(e) =>
                         setTemplateForm((prev) => ({
                           ...prev,
-                          useRulePresetId: e.target.checked ? preset.id : '',
+                          amountCents: e.target.value,
                         }))
                       }
                     />
-                    <div>
-                      <div className="font-medium">{preset.label}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {preset.description}
-                      </div>
-                    </div>
                   </label>
-                ))}
+                ) : (
+                  <label className="space-y-1">
+                    <span className="text-muted-foreground">折扣比例（1-100）</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      className="w-full rounded-md border px-3 py-2"
+                      value={templateForm.percentOff}
+                      onChange={(e) =>
+                        setTemplateForm((prev) => ({
+                          ...prev,
+                          percentOff: e.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+            <label className="space-y-1">
+              <span className="text-muted-foreground">发放规则（可选）</span>
+              <select
+                className="w-full rounded-md border px-3 py-2"
+                value={templateForm.issueRuleMode}
+                onChange={(e) =>
+                  setTemplateForm((prev) => ({
+                    ...prev,
+                    issueRuleMode: e.target
+                      .value as TemplateFormState['issueRuleMode'],
+                  }))
+                }
+              >
+                <option value="">不设置发放规则</option>
+                <option value="MANUAL">手动发放</option>
+                <option value="AUTO">自动发放</option>
+              </select>
+              <div className="text-xs text-muted-foreground">
+                选择触发方式，未选择则不设置发放规则。
               </div>
             </label>
-            <label className="space-y-1">
-              <span className="text-muted-foreground">发放规则（预设，可选）</span>
-              <div className="space-y-2">
-                {issueRulePresets.map((preset) => (
-                  <label
-                    key={preset.id}
-                    className="flex items-start gap-3 rounded-md border px-3 py-2"
-                  >
-                    <input
-                      type="checkbox"
-                      className="mt-1"
-                      checked={templateForm.issueRulePresetId === preset.id}
-                      onChange={(e) =>
-                        setTemplateForm((prev) => ({
-                          ...prev,
-                          issueRulePresetId: e.target.checked ? preset.id : '',
-                        }))
-                      }
-                    />
-                    <div>
-                      <div className="font-medium">{preset.label}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {preset.description}
-                      </div>
-                    </div>
-                  </label>
-                ))}
+          </div>
+          <div className="rounded-xl border bg-muted/40 p-4">
+            <div className="text-xs text-muted-foreground">预览</div>
+            <div className="mt-3 flex items-center justify-between rounded-lg border bg-background p-4">
+              <div>
+                <div className="text-sm text-muted-foreground">
+                  {templatePreview.badge}
+                </div>
+                <div className="text-lg font-semibold">
+                  {templatePreview.name}
+                </div>
                 <div className="text-xs text-muted-foreground">
-                  不选择则不设置发放规则。
+                  {templatePreview.limit}
                 </div>
               </div>
-            </label>
+              <div className="text-2xl font-bold text-primary">
+                {templatePreview.value}
+              </div>
+            </div>
           </div>
           {templateError && (
             <div className="text-sm text-red-600">错误：{templateError}</div>
@@ -643,8 +814,16 @@ export default function AdminCouponsPage() {
                     StableId：{program.programStableId}
                   </div>
                   <div className="text-sm text-muted-foreground">
-                    触发器：{program.triggerType}
+                    触发器：{program.triggerType ?? '—'}
                   </div>
+                  <div className="text-sm text-muted-foreground">
+                    发放方式：{program.distributionType}
+                  </div>
+                  {program.distributionType === 'PROMO_CODE' && (
+                    <div className="text-sm text-muted-foreground">
+                      兑换码：{program.promoCode ?? '—'}
+                    </div>
+                  )}
                   <div className="text-sm text-muted-foreground">
                     有效期：{formatDateRange(program.validFrom, program.validTo)}
                   </div>
@@ -706,12 +885,33 @@ export default function AdminCouponsPage() {
                   onChange={(e) =>
                     setProgramForm((prev) => ({
                       ...prev,
-                      triggerType: e.target.value as CouponProgram['triggerType'],
+                      triggerType: e.target
+                        .value as ProgramFormState['triggerType'],
                     }))
                   }
+                  disabled={programForm.distributionType !== 'AUTOMATIC_TRIGGER'}
                 >
                   <option value="SIGNUP_COMPLETED">SIGNUP_COMPLETED</option>
                   <option value="REFERRAL_QUALIFIED">REFERRAL_QUALIFIED</option>
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-muted-foreground">发放方式</span>
+                <select
+                  className="w-full rounded-md border px-3 py-2"
+                  value={programForm.distributionType}
+                  onChange={(e) =>
+                    setProgramForm((prev) => ({
+                      ...prev,
+                      distributionType: e.target
+                        .value as ProgramFormState['distributionType'],
+                    }))
+                  }
+                >
+                  <option value="AUTOMATIC_TRIGGER">自动触发</option>
+                  <option value="MANUAL_CLAIM">手动领取</option>
+                  <option value="PROMO_CODE">兑换码领取</option>
+                  <option value="ADMIN_PUSH">后台发放</option>
                 </select>
               </label>
               <label className="space-y-1">
@@ -743,6 +943,21 @@ export default function AdminCouponsPage() {
                 />
               </label>
             </div>
+            {programForm.distributionType === 'PROMO_CODE' && (
+              <label className="space-y-1">
+                <span className="text-muted-foreground">兑换码</span>
+                <input
+                  className="w-full rounded-md border px-3 py-2"
+                  value={programForm.promoCode}
+                  onChange={(e) =>
+                    setProgramForm((prev) => ({
+                      ...prev,
+                      promoCode: e.target.value,
+                    }))
+                  }
+                />
+              </label>
+            )}
             <label className="space-y-1">
               <span className="text-muted-foreground">礼包 StableId（可选）</span>
               <input
@@ -756,6 +971,38 @@ export default function AdminCouponsPage() {
                 }
               />
             </label>
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="space-y-1">
+                <span className="text-muted-foreground">总发放量（可选）</span>
+                <input
+                  type="number"
+                  min={0}
+                  className="w-full rounded-md border px-3 py-2"
+                  value={programForm.totalLimit}
+                  onChange={(e) =>
+                    setProgramForm((prev) => ({
+                      ...prev,
+                      totalLimit: e.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-muted-foreground">单人限领</span>
+                <input
+                  type="number"
+                  min={1}
+                  className="w-full rounded-md border px-3 py-2"
+                  value={programForm.perUserLimit}
+                  onChange={(e) =>
+                    setProgramForm((prev) => ({
+                      ...prev,
+                      perUserLimit: e.target.value,
+                    }))
+                  }
+                />
+              </label>
+            </div>
             <label className="space-y-1">
               <span className="text-muted-foreground">资格条件（预设，可选）</span>
               <div className="space-y-2">
