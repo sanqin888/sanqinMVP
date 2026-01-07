@@ -1024,7 +1024,10 @@ export default function AdminCouponsPage() {
               <div className="text-xs text-muted-foreground">
                 选择触发方式，未选择则不设置发放规则。
               </div>
-            </label>
+              <div className="text-2xl font-bold text-primary">
+                {templatePreview.value}
+              </div>
+            </div>
           </div>
           <div className="rounded-xl border bg-muted/40 p-4">
             <div className="text-xs text-muted-foreground">预览</div>
