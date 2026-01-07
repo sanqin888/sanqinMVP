@@ -4,13 +4,13 @@
 import { use, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api/client';
-import { isStableId } from '@/lib/stable-id';
-import { ORDER_STATUS_SEQUENCE, OrderStatus } from '@/lib/status/order';
+import { isStableId } from '@shared/menu';
+import { ORDER_STATUS_SEQUENCE, OrderStatus } from '@shared/order';
 import type {
   DeliveryProviderOption,
   DeliveryTypeOption,
-  Locale,
 } from '@/lib/order/shared';
+import type { Locale } from '@/lib/i18n/locales';
 import type { OrderItemOptionsSnapshot } from '@/lib/order/order-item-options';
 
 type OrderItem = {

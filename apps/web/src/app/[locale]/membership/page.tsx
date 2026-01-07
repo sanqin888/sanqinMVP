@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import type { Locale } from '@/lib/order/shared';
+import type { Locale } from '@/lib/i18n/locales';
 import { signOut, useSession } from '@/lib/auth-session';
 import { apiFetch } from '@/lib/api/client';
 
@@ -42,6 +42,28 @@ type Coupon = {
   status: CouponStatus;
   source?: string;
   issuedAt?: string;
+};
+
+type DeviceSession = {
+  sessionId: string;
+  createdAt: string;
+  expiresAt: string;
+  mfaVerifiedAt: string | null;
+  deviceInfo: string | null;
+  isCurrent: boolean;
+};
+
+type TrustedDevice = {
+  id: string;
+  label: string | null;
+  createdAt: string;
+  lastSeenAt: string | null;
+  expiresAt: string;
+};
+
+type DeviceManagementResponse = {
+  sessions: DeviceSession[];
+  trustedDevices: TrustedDevice[];
 };
 
 type MemberProfile = {
@@ -170,6 +192,12 @@ function formatCurrency(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+function formatDateTime(value: string, isZh: boolean): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString(isZh ? 'zh-CN' : 'en-US');
+}
+
 export default function MembershipHomePage() {
   const router = useRouter();
   const { locale } = useParams<{ locale: Locale }>();
@@ -177,7 +205,13 @@ export default function MembershipHomePage() {
   const { data: session, status } = useSession();
 
   const [activeTab, setActiveTab] = useState<
-    'overview' | 'orders' | 'points' | 'addresses' | 'coupons' | 'profile'
+    | 'overview'
+    | 'orders'
+    | 'points'
+    | 'addresses'
+    | 'coupons'
+    | 'devices'
+    | 'profile'
   >('overview');
 
   const [member, setMember] = useState<MemberProfile | null>(null);
@@ -231,6 +265,12 @@ export default function MembershipHomePage() {
   const [addresses, setAddresses] = useState<MemberAddress[]>([]);
   const [addressesLoading, setAddressesLoading] = useState(false);
   const [addressesError, setAddressesError] = useState<string | null>(null);
+
+  const [deviceSessions, setDeviceSessions] = useState<DeviceSession[]>([]);
+  const [trustedDevices, setTrustedDevices] = useState<TrustedDevice[]>([]);
+  const [devicesLoading, setDevicesLoading] = useState(false);
+  const [devicesLoadedOnce, setDevicesLoadedOnce] = useState(false);
+  const [devicesError, setDevicesError] = useState<string | null>(null);
 
   const isZh = locale === 'zh';
 
@@ -945,6 +985,75 @@ export default function MembershipHomePage() {
     [isZh, loadAddresses, member?.userStableId],
   );
 
+  const loadDevices = useCallback(async () => {
+    try {
+      setDevicesLoading(true);
+      setDevicesError(null);
+      const data = await apiFetch<DeviceManagementResponse>(
+        '/membership/devices',
+      );
+      setDeviceSessions(data?.sessions ?? []);
+      setTrustedDevices(data?.trustedDevices ?? []);
+      setDevicesLoadedOnce(true);
+    } catch (error) {
+      console.error('Failed to load device management', error);
+      setDevicesError(
+        isZh ? '设备信息加载失败，请稍后再试。' : 'Failed to load devices.',
+      );
+      setDeviceSessions([]);
+      setTrustedDevices([]);
+    } finally {
+      setDevicesLoading(false);
+      setDevicesLoadedOnce(true);
+    }
+  }, [isZh]);
+
+  useEffect(() => {
+    if (activeTab !== 'devices') return;
+    if (devicesLoadedOnce || devicesLoading) return;
+    void loadDevices();
+  }, [activeTab, devicesLoadedOnce, devicesLoading, loadDevices]);
+
+  const handleRevokeSession = useCallback(
+    async (sessionId: string) => {
+      try {
+        await apiFetch<{ success: boolean }>(
+          `/membership/devices/sessions/${sessionId}`,
+          { method: 'DELETE' },
+        );
+        await loadDevices();
+      } catch (error) {
+        console.error('Failed to revoke session', error);
+        setDevicesError(
+          isZh
+            ? '登录设备移除失败，请稍后再试。'
+            : 'Failed to remove login device.',
+        );
+      }
+    },
+    [isZh, loadDevices],
+  );
+
+  const handleRevokeTrustedDevice = useCallback(
+    async (deviceId: string) => {
+      try {
+        await apiFetch<{ success: boolean }>(
+          `/membership/devices/trusted/${deviceId}`,
+          { method: 'DELETE' },
+        );
+        await loadDevices();
+      } catch (error) {
+        console.error('Failed to revoke trusted device', error);
+        setDevicesError(
+          isZh
+            ? '授信设备移除失败，请稍后再试。'
+            : 'Failed to remove trusted device.',
+        );
+      }
+    },
+    [isZh, loadDevices],
+  );
+
   const tierDisplay =
     member &&
     {
@@ -986,6 +1095,7 @@ const tierProgress = (() => {
     { key: 'points', label: isZh ? '积分' : 'Points' },
     { key: 'addresses', label: isZh ? '地址' : 'Addresses' },
     { key: 'coupons', label: isZh ? '优惠卷' : 'Coupons' },
+    { key: 'devices', label: isZh ? '设备管理' : 'Devices' },
     { key: 'profile', label: isZh ? '账户' : 'Account' },
   ];
 
@@ -1157,6 +1267,20 @@ const tierProgress = (() => {
               coupons={coupons}
               loading={couponLoading}
               error={couponError}
+            />
+          )}
+
+          {activeTab === 'devices' && (
+            <DeviceManagementSection
+              isZh={isZh}
+              sessions={deviceSessions}
+              trustedDevices={trustedDevices}
+              loading={devicesLoading}
+              loadedOnce={devicesLoadedOnce}
+              error={devicesError}
+              onRefresh={loadDevices}
+              onRevokeSession={handleRevokeSession}
+              onRevokeTrustedDevice={handleRevokeTrustedDevice}
             />
           )}
 
@@ -1773,6 +1897,178 @@ function CouponsSection({
             {isZh ? '暂无可用优惠券。' : 'No coupons available right now.'}
           </p>
         )}
+      </div>
+    </section>
+  );
+}
+
+function DeviceManagementSection({
+  isZh,
+  sessions,
+  trustedDevices,
+  loading,
+  loadedOnce,
+  error,
+  onRefresh,
+  onRevokeSession,
+  onRevokeTrustedDevice,
+}: {
+  isZh: boolean;
+  sessions: DeviceSession[];
+  trustedDevices: TrustedDevice[];
+  loading: boolean;
+  loadedOnce: boolean;
+  error: string | null;
+  onRefresh: () => void;
+  onRevokeSession: (sessionId: string) => void;
+  onRevokeTrustedDevice: (deviceId: string) => void;
+}) {
+  return (
+    <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-medium text-slate-900">
+          {isZh ? '设备管理' : 'Device management'}
+        </h2>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={loading}
+          className="text-[11px] text-slate-500 hover:text-slate-900 disabled:cursor-not-allowed"
+        >
+          {isZh ? '刷新' : 'Refresh'}
+        </button>
+      </div>
+      <p className="mt-2 text-[11px] text-slate-500">
+        {isZh
+          ? '管理已登录设备与授信设备，及时移除异常登录。'
+          : 'Review signed-in devices and trusted devices, and remove anything unexpected.'}
+      </p>
+
+      {loading && !loadedOnce && (
+        <p className="mt-3 text-xs text-slate-500">
+          {isZh ? '设备信息加载中…' : 'Loading devices…'}
+        </p>
+      )}
+
+      {loadedOnce && error && (
+        <p className="mt-3 text-xs text-rose-600">{error}</p>
+      )}
+
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-semibold text-slate-900">
+              {isZh ? '登录设备' : 'Signed-in devices'}
+            </h3>
+            <span className="text-[10px] text-slate-400">
+              {isZh ? '最多显示 20 条' : 'Up to 20 items'}
+            </span>
+          </div>
+          <div className="mt-2 space-y-2 text-xs text-slate-600">
+            {sessions.map((session) => (
+              <div
+                key={session.sessionId}
+                className="rounded-lg bg-white px-2 py-2 shadow-sm ring-1 ring-slate-200"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-[11px] font-medium text-slate-900">
+                      {session.deviceInfo ||
+                        (isZh ? '未知设备' : 'Unknown device')}
+                    </p>
+                    <p className="mt-1 text-[10px] text-slate-500">
+                      {isZh ? '登录时间：' : 'Signed in: '}
+                      {formatDateTime(session.createdAt, isZh)}
+                    </p>
+                    <p className="mt-1 text-[10px] text-slate-500">
+                      {isZh ? '到期时间：' : 'Expires: '}
+                      {formatDateTime(session.expiresAt, isZh)}
+                    </p>
+                    {session.mfaVerifiedAt && (
+                      <p className="mt-1 text-[10px] text-emerald-600">
+                        {isZh ? '已完成双重验证' : 'MFA verified'}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    {session.isCurrent && (
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] text-emerald-700">
+                        {isZh ? '当前设备' : 'Current'}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      className="text-[10px] text-rose-600 hover:text-rose-700"
+                      onClick={() => onRevokeSession(session.sessionId)}
+                    >
+                      {isZh ? '退出设备' : 'Sign out'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {sessions.length === 0 && (
+              <p className="text-[11px] text-slate-500">
+                {isZh ? '暂无登录设备记录。' : 'No devices found.'}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-semibold text-slate-900">
+              {isZh ? '授信设备' : 'Trusted devices'}
+            </h3>
+            <span className="text-[10px] text-slate-400">
+              {isZh ? '用于免二次验证' : 'Skip MFA when trusted'}
+            </span>
+          </div>
+          <div className="mt-2 space-y-2 text-xs text-slate-600">
+            {trustedDevices.map((device) => (
+              <div
+                key={device.id}
+                className="rounded-lg bg-white px-2 py-2 shadow-sm ring-1 ring-slate-200"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-[11px] font-medium text-slate-900">
+                      {device.label || (isZh ? '已授信设备' : 'Trusted device')}
+                    </p>
+                    <p className="mt-1 text-[10px] text-slate-500">
+                      {isZh ? '授信时间：' : 'Trusted: '}
+                      {formatDateTime(device.createdAt, isZh)}
+                    </p>
+                    {device.lastSeenAt && (
+                      <p className="mt-1 text-[10px] text-slate-500">
+                        {isZh ? '最近使用：' : 'Last used: '}
+                        {formatDateTime(device.lastSeenAt, isZh)}
+                      </p>
+                    )}
+                    <p className="mt-1 text-[10px] text-slate-500">
+                      {isZh ? '到期时间：' : 'Expires: '}
+                      {formatDateTime(device.expiresAt, isZh)}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="text-[10px] text-rose-600 hover:text-rose-700"
+                    onClick={() => onRevokeTrustedDevice(device.id)}
+                  >
+                    {isZh ? '移除' : 'Remove'}
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {trustedDevices.length === 0 && (
+              <p className="text-[11px] text-slate-500">
+                {isZh ? '暂无授信设备。' : 'No trusted devices.'}
+              </p>
+            )}
+          </div>
+        </div>
       </div>
     </section>
   );

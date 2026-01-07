@@ -2,7 +2,7 @@
 
 import type { Metadata } from "next";
 import { isLocale } from "@/lib/i18n/locales";
-import type { Locale } from "@/lib/order/shared";
+import type { Locale } from "@/lib/i18n/locales";
 import { notFound } from "next/navigation";
 
 export async function generateMetadata({

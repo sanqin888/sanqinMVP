@@ -535,6 +535,75 @@ export class MembershipService {
     };
   }
 
+  async getDeviceManagement(params: {
+    userId: string;
+    currentSessionId?: string;
+  }) {
+    const { userId, currentSessionId } = params;
+
+    const [sessions, trustedDevices] = await Promise.all([
+      this.prisma.userSession.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        select: {
+          sessionId: true,
+          createdAt: true,
+          expiresAt: true,
+          mfaVerifiedAt: true,
+          deviceInfo: true,
+        },
+      }),
+      this.prisma.trustedDevice.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          label: true,
+          createdAt: true,
+          lastSeenAt: true,
+          expiresAt: true,
+        },
+      }),
+    ]);
+
+    return {
+      sessions: sessions.map((session) => ({
+        sessionId: session.sessionId,
+        createdAt: session.createdAt.toISOString(),
+        expiresAt: session.expiresAt.toISOString(),
+        mfaVerifiedAt: session.mfaVerifiedAt?.toISOString() ?? null,
+        deviceInfo: session.deviceInfo ?? null,
+        isCurrent: session.sessionId === currentSessionId,
+      })),
+      trustedDevices: trustedDevices.map((device) => ({
+        id: device.id,
+        label: device.label ?? null,
+        createdAt: device.createdAt.toISOString(),
+        lastSeenAt: device.lastSeenAt?.toISOString() ?? null,
+        expiresAt: device.expiresAt.toISOString(),
+      })),
+    };
+  }
+
+  async revokeSession(params: { userId: string; sessionId: string }) {
+    await this.prisma.userSession.deleteMany({
+      where: {
+        userId: params.userId,
+        sessionId: params.sessionId,
+      },
+    });
+  }
+
+  async revokeTrustedDevice(params: { userId: string; deviceId: string }) {
+    await this.prisma.trustedDevice.deleteMany({
+      where: {
+        userId: params.userId,
+        id: params.deviceId,
+      },
+    });
+  }
+
   async bindReferrerEmail(params: {
     userStableId: string;
     referrerEmail: string;

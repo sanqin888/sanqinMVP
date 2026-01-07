@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import type { Locale } from "@/lib/order/shared";
+import type { Locale } from "@/lib/i18n/locales";
 import {
   POS_DISPLAY_STORAGE_KEY,
   POS_DISPLAY_CHANNEL,

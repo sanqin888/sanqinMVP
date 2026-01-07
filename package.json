@@ -9,7 +9,7 @@
     "node": ">=18.18.0"
   },
   "packageManager": "pnpm@9.0.0",
-"scripts": {
+  "scripts": {
     "dev": "pnpm --filter web dev",
     "dev:web": "pnpm --filter web dev",
     "dev:api": "pnpm --filter api start:dev",
@@ -18,11 +18,9 @@
     "test": "pnpm --filter api test"
   },
   "devDependencies": {
-    "@types/jsonwebtoken": "^9.0.10",
-    "http-proxy": "^1.18.1"
+    "@types/jsonwebtoken": "^9.0.10"
   },
   "dependencies": {
-    "jsonwebtoken": "^9.0.2",
-    "next-auth": "^4.24.13"
+    "jsonwebtoken": "^9.0.2"
   }
 }

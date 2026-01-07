@@ -11,6 +11,7 @@ import {
   Post,
   Query,
   UseGuards,
+  UsePipes,
   BadRequestException,
 } from '@nestjs/common';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
@@ -19,11 +20,13 @@ import { Roles } from '../auth/roles.decorator';
 import { PosDeviceGuard } from './pos-device.guard';
 import { OrdersService } from '../orders/orders.service';
 import { StableIdPipe } from '../common/pipes/stable-id.pipe';
-import { CreateOrderDto } from '../orders/dto/create-order.dto';
-import { OrderStatus } from '../orders/order-status';
+import { CreateOrderSchema } from '@shared/order';
+import type { CreateOrderInput } from '@shared/order';
+import type { OrderStatus } from '../orders/order-status';
 import { OrderAmendmentType, PaymentMethod } from '@prisma/client';
 import type { OrderDto } from '../orders/dto/order.dto';
 import type { PrintPosPayloadDto } from './dto/print-pos-payload.dto';
+import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 
 @Controller('pos/orders')
 @UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
@@ -33,7 +36,8 @@ export class PosOrdersController {
 
   @Post()
   @HttpCode(201)
-  async create(@Body() dto: CreateOrderDto): Promise<OrderDto> {
+  @UsePipes(new ZodValidationPipe(CreateOrderSchema))
+  async create(@Body() dto: CreateOrderInput): Promise<OrderDto> {
     // 强制 POS 只能创建 in_store 订单（避免 public create 被滥用）
     if (dto.channel !== 'in_store') {
       throw new BadRequestException('POS orders must use channel=in_store');

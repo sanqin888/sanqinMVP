@@ -1,5 +1,5 @@
 {
-  "name": "@shared/menu",
+  "name": "@shared/order",
   "type": "commonjs",
   "version": "0.0.0",
   "private": true,
@@ -16,12 +16,9 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "zod": "^3.25.76"
+    "@shared/menu": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.9.3"
-  },
-  "dependencies": {
-    "zod": "^3.25.76"
   }
 }

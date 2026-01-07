@@ -16,6 +16,10 @@ export class ApiError extends Error {
   }
 }
 
+export type PayloadParser<T> = {
+  parse: (input: unknown) => T;
+};
+
 function isRecord(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === 'object';
 }
@@ -32,6 +36,7 @@ function isEnvelopeLike(v: unknown): v is ApiResponseEnvelope<unknown> {
 export async function apiFetch<T>(
   path: string,
   init: RequestInit = {},
+  parser?: PayloadParser<T>,
 ): Promise<T> {
   // 如果传入的是 /api/... 就直接用；否则自动加 /api/v1 前缀
   const url = path.startsWith('/api/')
@@ -99,10 +104,13 @@ export async function apiFetch<T>(
   }
 
   // 成功分支：兼容信封/直返
-  if (isEnvelopeLike(payload)) {
-    const p = payload as ApiResponseEnvelope<unknown>;
-    return (p.details as T) ?? (undefined as unknown as T);
+  const data = isEnvelopeLike(payload)
+    ? (payload as ApiResponseEnvelope<unknown>).details
+    : payload;
+
+  if (parser) {
+    return parser.parse(data);
   }
 
-  return payload as T;
+  return data as T;
 }

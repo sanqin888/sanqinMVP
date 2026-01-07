@@ -1,12 +1,11 @@
 ///Users/apple/sanqinMVP/apps/api/src/common/utils
 import { randomBytes } from 'node:crypto';
+import {
+  isStableId as isSharedStableId,
+  normalizeStableId as normalizeSharedStableId,
+} from '@shared/menu';
 
-// 仅允许 cuid v1：25 chars, starts with 'c'
-const CUID_V1_REGEX = /^c[0-9a-z]{24}$/i;
-
-export function isStableId(value: unknown): value is string {
-  return typeof value === 'string' && CUID_V1_REGEX.test(value);
-}
+export const isStableId = isSharedStableId;
 
 export function assertStableId(value: unknown, label = 'id'): string {
   if (!isStableId(value)) {
@@ -16,9 +15,8 @@ export function assertStableId(value: unknown, label = 'id'): string {
 }
 
 export function normalizeStableId(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
-  const trimmed = value.trim();
-  return isStableId(trimmed) ? trimmed : null;
+  const normalized = normalizeSharedStableId(value);
+  return normalized || null;
 }
 
 export function generateStableId(): string {

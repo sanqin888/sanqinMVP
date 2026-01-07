@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import type { Locale } from '@/lib/order/shared';
+import type { Locale } from '@/lib/i18n/locales';
 import { OptionTemplatesPanel } from '../OptionTemplatesPanel';
 
 export default function AdminOptionLibraryPage() {
