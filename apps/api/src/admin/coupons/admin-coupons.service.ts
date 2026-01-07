@@ -86,14 +86,6 @@ const UseRuleSchema = z
       });
     }
   });
-    .passthrough(),
-  z
-    .object({
-      type: z.literal('PERCENT'),
-      applyTo: z.union([z.literal('ORDER'), z.literal('ITEM')]),
-      itemStableIds: z.array(z.string().min(1)).optional(),
-      percentOff: z.number().int().min(1).max(100),
-      constraints: z
         .object({
           minSubtotalCents: z.number().int().min(0),
         })
