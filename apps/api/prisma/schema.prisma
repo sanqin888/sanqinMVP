@@ -322,6 +322,7 @@ model Order {
   @@index([createdAt])
   @@index([contactPhone, createdAt])
   @@index([rebillGroupId])
+  @@index([userId, createdAt])
 }
 
 model Coupon {
