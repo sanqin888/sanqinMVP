@@ -837,6 +837,7 @@ export class MembershipService {
       phone: addr.phone ?? '',
       addressLine1: addr.addressLine1,
       addressLine2: addr.addressLine2 ?? '',
+      remark: addr.remark ?? '',
       city: addr.city,
       province: addr.province,
       postalCode: addr.postalCode,
@@ -851,6 +852,7 @@ export class MembershipService {
     phone?: string | null;
     addressLine1: string;
     addressLine2?: string | null;
+    remark?: string | null;
     city: string;
     province: string;
     postalCode: string;
@@ -863,6 +865,7 @@ export class MembershipService {
       phone,
       addressLine1,
       addressLine2,
+      remark,
       city,
       province,
       postalCode,
@@ -881,6 +884,7 @@ export class MembershipService {
       phone: phone?.trim() || null,
       addressLine1: addressLine1.trim(),
       addressLine2: addressLine2?.trim() || null,
+      remark: remark?.trim() || null,
       city: city.trim(),
       province: province.trim(),
       postalCode: postalCode.trim(),
@@ -917,6 +921,7 @@ export class MembershipService {
       phone: created.phone ?? '',
       addressLine1: created.addressLine1,
       addressLine2: created.addressLine2 ?? '',
+      remark: created.remark ?? '',
       city: created.city,
       province: created.province,
       postalCode: created.postalCode,

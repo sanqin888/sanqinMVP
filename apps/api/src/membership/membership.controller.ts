@@ -299,6 +299,7 @@ export class MembershipController {
       phone?: string;
       addressLine1?: string;
       addressLine2?: string;
+      remark?: string;
       city?: string;
       province?: string;
       postalCode?: string;
@@ -327,6 +328,7 @@ export class MembershipController {
       phone: body.phone ?? null,
       addressLine1: body.addressLine1,
       addressLine2: body.addressLine2 ?? null,
+      remark: body.remark ?? null,
       city: body.city,
       province: body.province,
       postalCode: body.postalCode,

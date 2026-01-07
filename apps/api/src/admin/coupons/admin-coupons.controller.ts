@@ -18,6 +18,7 @@ type CouponTemplatePayload = {
   couponStableId?: string;
   name: string;
   title?: string | null;
+  titleEn?: string | null;
   description?: string | null;
   status?: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
   validFrom?: string | null;
