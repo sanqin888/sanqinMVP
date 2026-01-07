@@ -26,7 +26,22 @@ export type BusinessConfigResponse = {
   temporaryCloseReason: string | null;
   deliveryBaseFeeCents: number;
   priorityPerKmCents: number;
+  maxDeliveryRangeKm: number;
+  priorityDefaultDistanceKm: number;
+  storeLatitude: number | null;
+  storeLongitude: number | null;
+  storeAddress: string | null;
+  supportPhone: string | null;
+  supportEmail: string | null;
   salesTaxRate: number;
+  earnPtPerDollar: number;
+  redeemDollarPerPoint: number;
+  referralPtPerDollar: number;
+  tierThresholdSilver: number;
+  tierThresholdGold: number;
+  tierThresholdPlatinum: number;
+  enableDoorDash: boolean;
+  enableUberDirect: boolean;
   hours: DayConfigDto[];
   holidays: HolidayDto[];
 };
@@ -57,7 +72,22 @@ export class AdminBusinessService {
       temporaryCloseReason: config.temporaryCloseReason ?? null,
       deliveryBaseFeeCents: config.deliveryBaseFeeCents,
       priorityPerKmCents: config.priorityPerKmCents,
+      maxDeliveryRangeKm: config.maxDeliveryRangeKm,
+      priorityDefaultDistanceKm: config.priorityDefaultDistanceKm,
+      storeLatitude: config.storeLatitude ?? null,
+      storeLongitude: config.storeLongitude ?? null,
+      storeAddress: config.storeAddress ?? null,
+      supportPhone: config.supportPhone ?? null,
+      supportEmail: config.supportEmail ?? null,
       salesTaxRate: config.salesTaxRate,
+      earnPtPerDollar: config.earnPtPerDollar,
+      redeemDollarPerPoint: config.redeemDollarPerPoint,
+      referralPtPerDollar: config.referralPtPerDollar,
+      tierThresholdSilver: config.tierThresholdSilver,
+      tierThresholdGold: config.tierThresholdGold,
+      tierThresholdPlatinum: config.tierThresholdPlatinum,
+      enableDoorDash: config.enableDoorDash,
+      enableUberDirect: config.enableUberDirect,
       hours: hours.map((h) => ({
         weekday: h.weekday,
         openMinutes: h.openMinutes ?? 0,
@@ -181,14 +211,44 @@ export class AdminBusinessService {
       reason,
       deliveryBaseFeeCents,
       priorityPerKmCents,
+      maxDeliveryRangeKm,
+      priorityDefaultDistanceKm,
+      storeLatitude,
+      storeLongitude,
+      storeAddress,
+      supportPhone,
+      supportEmail,
       salesTaxRate,
+      earnPtPerDollar,
+      redeemDollarPerPoint,
+      referralPtPerDollar,
+      tierThresholdSilver,
+      tierThresholdGold,
+      tierThresholdPlatinum,
+      enableDoorDash,
+      enableUberDirect,
     } = payload as {
       timezone?: unknown;
       isTemporarilyClosed?: unknown;
       reason?: unknown;
       deliveryBaseFeeCents?: unknown;
       priorityPerKmCents?: unknown;
+      maxDeliveryRangeKm?: unknown;
+      priorityDefaultDistanceKm?: unknown;
+      storeLatitude?: unknown;
+      storeLongitude?: unknown;
+      storeAddress?: unknown;
+      supportPhone?: unknown;
+      supportEmail?: unknown;
       salesTaxRate?: unknown;
+      earnPtPerDollar?: unknown;
+      redeemDollarPerPoint?: unknown;
+      referralPtPerDollar?: unknown;
+      tierThresholdSilver?: unknown;
+      tierThresholdGold?: unknown;
+      tierThresholdPlatinum?: unknown;
+      enableDoorDash?: unknown;
+      enableUberDirect?: unknown;
     };
 
     if (
@@ -238,8 +298,113 @@ export class AdminBusinessService {
       );
     }
 
+    if (maxDeliveryRangeKm !== undefined) {
+      updates.maxDeliveryRangeKm = this.normalizePositiveNumber(
+        'maxDeliveryRangeKm',
+        maxDeliveryRangeKm,
+      );
+    }
+
+    if (priorityDefaultDistanceKm !== undefined) {
+      updates.priorityDefaultDistanceKm = this.normalizePositiveNumber(
+        'priorityDefaultDistanceKm',
+        priorityDefaultDistanceKm,
+      );
+    }
+
+    if (storeLatitude !== undefined) {
+      updates.storeLatitude = this.normalizeOptionalNumber(
+        'storeLatitude',
+        storeLatitude,
+      );
+    }
+
+    if (storeLongitude !== undefined) {
+      updates.storeLongitude = this.normalizeOptionalNumber(
+        'storeLongitude',
+        storeLongitude,
+      );
+    }
+
+    if (storeAddress !== undefined) {
+      updates.storeAddress = this.normalizeOptionalText(
+        'storeAddress',
+        storeAddress,
+      );
+    }
+
+    if (supportPhone !== undefined) {
+      updates.supportPhone = this.normalizeOptionalText(
+        'supportPhone',
+        supportPhone,
+      );
+    }
+
+    if (supportEmail !== undefined) {
+      updates.supportEmail = this.normalizeOptionalText(
+        'supportEmail',
+        supportEmail,
+      );
+    }
+
     if (salesTaxRate !== undefined) {
       updates.salesTaxRate = this.normalizeRate('salesTaxRate', salesTaxRate);
+    }
+
+    if (earnPtPerDollar !== undefined) {
+      updates.earnPtPerDollar = this.normalizePositiveNumber(
+        'earnPtPerDollar',
+        earnPtPerDollar,
+      );
+    }
+
+    if (redeemDollarPerPoint !== undefined) {
+      updates.redeemDollarPerPoint = this.normalizePositiveNumber(
+        'redeemDollarPerPoint',
+        redeemDollarPerPoint,
+      );
+    }
+
+    if (referralPtPerDollar !== undefined) {
+      updates.referralPtPerDollar = this.normalizePositiveNumber(
+        'referralPtPerDollar',
+        referralPtPerDollar,
+      );
+    }
+
+    if (tierThresholdSilver !== undefined) {
+      updates.tierThresholdSilver = this.normalizeTierThreshold(
+        'tierThresholdSilver',
+        tierThresholdSilver,
+      );
+    }
+
+    if (tierThresholdGold !== undefined) {
+      updates.tierThresholdGold = this.normalizeTierThreshold(
+        'tierThresholdGold',
+        tierThresholdGold,
+      );
+    }
+
+    if (tierThresholdPlatinum !== undefined) {
+      updates.tierThresholdPlatinum = this.normalizeTierThreshold(
+        'tierThresholdPlatinum',
+        tierThresholdPlatinum,
+      );
+    }
+
+    if (enableDoorDash !== undefined) {
+      if (typeof enableDoorDash !== 'boolean') {
+        throw new BadRequestException('enableDoorDash must be a boolean');
+      }
+      updates.enableDoorDash = enableDoorDash;
+    }
+
+    if (enableUberDirect !== undefined) {
+      if (typeof enableUberDirect !== 'boolean') {
+        throw new BadRequestException('enableUberDirect must be a boolean');
+      }
+      updates.enableUberDirect = enableUberDirect;
     }
 
     if (Object.keys(updates).length === 0) {
@@ -495,5 +660,53 @@ export class AdminBusinessService {
     }
 
     return Number(value.toFixed(4));
+  }
+
+  private normalizePositiveNumber(label: string, value: unknown): number {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw new BadRequestException(`${label} must be a finite number`);
+    }
+
+    if (value < 0) {
+      throw new BadRequestException(`${label} must be >= 0`);
+    }
+
+    return Number(value.toFixed(4));
+  }
+
+  private normalizeOptionalNumber(
+    label: string,
+    value: unknown,
+  ): number | null {
+    if (value === null) return null;
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw new BadRequestException(`${label} must be a finite number or null`);
+    }
+    return value;
+  }
+
+  private normalizeOptionalText(
+    label: string,
+    value: unknown,
+  ): string | null {
+    if (value === null) return null;
+    if (typeof value !== 'string') {
+      throw new BadRequestException(`${label} must be a string or null`);
+    }
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  private normalizeTierThreshold(label: string, value: unknown): number {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw new BadRequestException(`${label} must be a finite number`);
+    }
+
+    const cents = Math.round(value);
+    if (cents < 0) {
+      throw new BadRequestException(`${label} must be >= 0`);
+    }
+
+    return cents;
   }
 }

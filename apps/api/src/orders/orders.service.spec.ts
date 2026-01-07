@@ -132,7 +132,7 @@ describe('OrdersService', () => {
 
     loyalty = {
       peekBalanceMicro: jest.fn().mockResolvedValue(0n),
-      maxRedeemableCentsFromBalance: jest.fn().mockReturnValue(0),
+      maxRedeemableCentsFromBalance: jest.fn().mockResolvedValue(0),
       reserveRedeemForOrder: jest.fn().mockResolvedValue(0),
       resolveUserIdByStableId: jest.fn(),
       settleOnPaid: jest.fn(),

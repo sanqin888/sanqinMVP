@@ -247,8 +247,47 @@ async function main() {
           typeof c.deliveryBaseFeeCents === "number" ? c.deliveryBaseFeeCents : 600,
         priorityPerKmCents:
           typeof c.priorityPerKmCents === "number" ? c.priorityPerKmCents : 100,
+        maxDeliveryRangeKm:
+          typeof c.maxDeliveryRangeKm === "number" ? c.maxDeliveryRangeKm : 10,
+        priorityDefaultDistanceKm:
+          typeof c.priorityDefaultDistanceKm === "number"
+            ? c.priorityDefaultDistanceKm
+            : 6,
+        storeLatitude:
+          typeof c.storeLatitude === "number" ? c.storeLatitude : null,
+        storeLongitude:
+          typeof c.storeLongitude === "number" ? c.storeLongitude : null,
+        storeAddress: toCreateOptional(c.storeAddress),
+        supportPhone: toCreateOptional(c.supportPhone),
+        supportEmail: toCreateOptional(c.supportEmail),
         salesTaxRate:
           typeof c.salesTaxRate === "number" ? c.salesTaxRate : 0.13,
+        earnPtPerDollar:
+          typeof c.earnPtPerDollar === "number" ? c.earnPtPerDollar : 0.01,
+        redeemDollarPerPoint:
+          typeof c.redeemDollarPerPoint === "number"
+            ? c.redeemDollarPerPoint
+            : 1,
+        referralPtPerDollar:
+          typeof c.referralPtPerDollar === "number"
+            ? c.referralPtPerDollar
+            : 0.01,
+        tierThresholdSilver:
+          typeof c.tierThresholdSilver === "number"
+            ? c.tierThresholdSilver
+            : 100000,
+        tierThresholdGold:
+          typeof c.tierThresholdGold === "number"
+            ? c.tierThresholdGold
+            : 1000000,
+        tierThresholdPlatinum:
+          typeof c.tierThresholdPlatinum === "number"
+            ? c.tierThresholdPlatinum
+            : 3000000,
+        enableDoorDash:
+          typeof c.enableDoorDash === "boolean" ? c.enableDoorDash : true,
+        enableUberDirect:
+          typeof c.enableUberDirect === "boolean" ? c.enableUberDirect : true,
       },
       update: {
         storeName: toUpdateOptional(c.storeName),
@@ -260,8 +299,47 @@ async function main() {
           typeof c.deliveryBaseFeeCents === "number" ? c.deliveryBaseFeeCents : undefined,
         priorityPerKmCents:
           typeof c.priorityPerKmCents === "number" ? c.priorityPerKmCents : undefined,
+        maxDeliveryRangeKm:
+          typeof c.maxDeliveryRangeKm === "number" ? c.maxDeliveryRangeKm : undefined,
+        priorityDefaultDistanceKm:
+          typeof c.priorityDefaultDistanceKm === "number"
+            ? c.priorityDefaultDistanceKm
+            : undefined,
+        storeLatitude:
+          typeof c.storeLatitude === "number" ? c.storeLatitude : undefined,
+        storeLongitude:
+          typeof c.storeLongitude === "number" ? c.storeLongitude : undefined,
+        storeAddress: toUpdateOptional(c.storeAddress),
+        supportPhone: toUpdateOptional(c.supportPhone),
+        supportEmail: toUpdateOptional(c.supportEmail),
         salesTaxRate:
           typeof c.salesTaxRate === "number" ? c.salesTaxRate : undefined,
+        earnPtPerDollar:
+          typeof c.earnPtPerDollar === "number" ? c.earnPtPerDollar : undefined,
+        redeemDollarPerPoint:
+          typeof c.redeemDollarPerPoint === "number"
+            ? c.redeemDollarPerPoint
+            : undefined,
+        referralPtPerDollar:
+          typeof c.referralPtPerDollar === "number"
+            ? c.referralPtPerDollar
+            : undefined,
+        tierThresholdSilver:
+          typeof c.tierThresholdSilver === "number"
+            ? c.tierThresholdSilver
+            : undefined,
+        tierThresholdGold:
+          typeof c.tierThresholdGold === "number"
+            ? c.tierThresholdGold
+            : undefined,
+        tierThresholdPlatinum:
+          typeof c.tierThresholdPlatinum === "number"
+            ? c.tierThresholdPlatinum
+            : undefined,
+        enableDoorDash:
+          typeof c.enableDoorDash === "boolean" ? c.enableDoorDash : undefined,
+        enableUberDirect:
+          typeof c.enableUberDirect === "boolean" ? c.enableUberDirect : undefined,
       },
     });
   } else {
