@@ -6,7 +6,14 @@ import * as express from 'express';
 import * as path from 'path';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule, { cors: true });
+  const app = await NestFactory.create(AppModule, {
+    cors: {
+      origin: process.env.CORS_ORIGIN
+        ? process.env.CORS_ORIGIN.split(',')
+        : 'http://localhost:3000',
+      credentials: true,
+    },
+  });
 
   configureApp(app);
 
