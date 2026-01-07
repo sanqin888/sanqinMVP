@@ -1369,54 +1369,56 @@ export default function AdminCouponsPage() {
               ) : (
                 <div className="space-y-2">
                   {templates.map((template) => (
-                    <label
+                    <div
                       key={template.couponStableId}
                       className="flex flex-wrap items-center gap-3 rounded-md border px-3 py-2"
                     >
-                      <input
-                        type="checkbox"
-                        className="mt-1"
-                        checked={programForm.selectedCouponIds.includes(
-                          template.couponStableId,
-                        )}
-                        onChange={(e) =>
-                          setProgramForm((prev) => {
-                            const next = new Set(prev.selectedCouponIds);
-                            if (e.target.checked) {
-                              next.add(template.couponStableId);
-                              if (!prev.couponQuantities[template.couponStableId]) {
-                                return {
-                                  ...prev,
-                                  selectedCouponIds: Array.from(next),
-                                  couponQuantities: {
-                                    ...prev.couponQuantities,
-                                    [template.couponStableId]: '1',
-                                  },
-                                };
+                      <label className="flex flex-1 items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="mt-1"
+                          checked={programForm.selectedCouponIds.includes(
+                            template.couponStableId,
+                          )}
+                          onChange={(e) =>
+                            setProgramForm((prev) => {
+                              const next = new Set(prev.selectedCouponIds);
+                              if (e.target.checked) {
+                                next.add(template.couponStableId);
+                                if (!prev.couponQuantities[template.couponStableId]) {
+                                  return {
+                                    ...prev,
+                                    selectedCouponIds: Array.from(next),
+                                    couponQuantities: {
+                                      ...prev.couponQuantities,
+                                      [template.couponStableId]: '1',
+                                    },
+                                  };
+                                }
+                              } else {
+                                next.delete(template.couponStableId);
                               }
-                            } else {
-                              next.delete(template.couponStableId);
-                            }
-                            return {
-                              ...prev,
-                              selectedCouponIds: Array.from(next),
-                              couponQuantities: e.target.checked
-                                ? prev.couponQuantities
-                                : Object.fromEntries(
-                                    Object.entries(prev.couponQuantities).filter(
-                                      ([key]) => key !== template.couponStableId,
+                              return {
+                                ...prev,
+                                selectedCouponIds: Array.from(next),
+                                couponQuantities: e.target.checked
+                                  ? prev.couponQuantities
+                                  : Object.fromEntries(
+                                      Object.entries(prev.couponQuantities).filter(
+                                        ([key]) => key !== template.couponStableId,
+                                      ),
                                     ),
-                                  ),
-                            };
-                          })
-                        }
-                      />
-                      <div className="min-w-[180px] flex-1">
-                        <div className="font-medium">{template.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {template.couponStableId}
+                              };
+                            })
+                          }
+                        />
+                        <div className="min-w-[180px]">
+                          <div className="font-medium">{template.name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {template.couponStableId}
+                          </div>
                         </div>
-                      </div>
+                      </label>
                       {programForm.selectedCouponIds.includes(
                         template.couponStableId,
                       ) && (
@@ -1443,7 +1445,7 @@ export default function AdminCouponsPage() {
                           />
                         </label>
                       )}
-                    </label>
+                    </div>
                   ))}
                 </div>
               )}
