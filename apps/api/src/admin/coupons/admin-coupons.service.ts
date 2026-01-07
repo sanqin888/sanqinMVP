@@ -40,19 +40,21 @@ type CouponProgramInput = {
   items: Prisma.InputJsonValue;
 };
 
-const UseRuleSchema = z.discriminatedUnion('type', [
-  z
+const zod = z as typeof import('zod').z;
+
+const UseRuleSchema = zod.discriminatedUnion('type', [
+  zod
     .object({
-      type: z.literal('FIXED_CENTS'),
-      applyTo: z.union([z.literal('ORDER'), z.literal('ITEM')]),
-      itemStableIds: z.array(z.string().min(1)).optional(),
-      amountCents: z.number().int().positive(),
-      constraints: z
+      type: zod.literal('FIXED_CENTS'),
+      applyTo: zod.union([zod.literal('ORDER'), zod.literal('ITEM')]),
+      itemStableIds: zod.array(zod.string().min(1)).optional(),
+      amountCents: zod.number().int().positive(),
+      constraints: zod
         .object({
-          minSubtotalCents: z.number().int().min(0),
+          minSubtotalCents: zod.number().int().min(0),
         })
         .optional(),
-      preset: z.string().optional(),
+      preset: zod.string().optional(),
     })
     .superRefine((value, ctx) => {
       if (value.applyTo === 'ITEM') {
@@ -70,18 +72,18 @@ const UseRuleSchema = z.discriminatedUnion('type', [
       }
     })
     .passthrough(),
-  z
+  zod
     .object({
-      type: z.literal('PERCENT'),
-      applyTo: z.union([z.literal('ORDER'), z.literal('ITEM')]),
-      itemStableIds: z.array(z.string().min(1)).optional(),
-      percentOff: z.number().int().min(1).max(100),
-      constraints: z
+      type: zod.literal('PERCENT'),
+      applyTo: zod.union([zod.literal('ORDER'), zod.literal('ITEM')]),
+      itemStableIds: zod.array(zod.string().min(1)).optional(),
+      percentOff: zod.number().int().min(1).max(100),
+      constraints: zod
         .object({
-          minSubtotalCents: z.number().int().min(0),
+          minSubtotalCents: zod.number().int().min(0),
         })
         .optional(),
-      preset: z.string().optional(),
+      preset: zod.string().optional(),
     })
     .superRefine((value, ctx) => {
       if (value.applyTo === 'ITEM') {
@@ -101,18 +103,18 @@ const UseRuleSchema = z.discriminatedUnion('type', [
     .passthrough(),
 ]);
 
-const IssueRuleSchema = z
+const IssueRuleSchema = zod
   .object({
-    mode: z.enum(['MANUAL', 'AUTO']),
-    preset: z.string().optional(),
+    mode: zod.enum(['MANUAL', 'AUTO']),
+    preset: zod.string().optional(),
   })
   .passthrough();
 
-const ProgramItemsSchema = z
+const ProgramItemsSchema = zod
   .array(
-    z.object({
-      couponStableId: z.string().cuid(),
-      quantity: z.number().int().positive().optional().default(1),
+    zod.object({
+      couponStableId: zod.string().cuid(),
+      quantity: zod.number().int().positive().optional().default(1),
     }),
   )
   .min(1);
@@ -126,10 +128,7 @@ function parseDateInput(value?: string | null): Date | null {
   return parsed;
 }
 
-function parseDateRange(
-  validFrom?: string | null,
-  validTo?: string | null,
-) {
+function parseDateRange(validFrom?: string | null, validTo?: string | null) {
   const parsedFrom = parseDateInput(validFrom);
   const parsedTo = parseDateInput(validTo);
   if (parsedFrom && parsedTo && parsedTo < parsedFrom) {
@@ -490,7 +489,7 @@ export class AdminCouponsService {
           ? rule.constraints.minSubtotalCents
           : null;
       const unlockedItemStableIds =
-        rule.applyTo === 'ITEM' ? rule.itemStableIds ?? [] : [];
+        rule.applyTo === 'ITEM' ? (rule.itemStableIds ?? []) : [];
 
       for (let i = 0; i < item.quantity; i += 1) {
         const couponStableId = generateStableId();
@@ -538,9 +537,7 @@ export class AdminCouponsService {
     return { issuedCount: couponsToCreate.length };
   }
 
-  private async ensureProgramItemsExist(
-    items: { couponStableId: string }[],
-  ) {
+  private async ensureProgramItemsExist(items: { couponStableId: string }[]) {
     const ids = items.map((item) => item.couponStableId);
     const uniqueIds = Array.from(new Set(ids));
     const count = await this.prisma.couponTemplate.count({
