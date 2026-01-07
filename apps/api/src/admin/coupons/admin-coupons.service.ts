@@ -40,35 +40,52 @@ type CouponProgramInput = {
   items: Prisma.InputJsonValue;
 };
 
-const UseRuleSchema = z.discriminatedUnion('type', [
-  z
-    .object({
-      type: z.literal('FIXED_CENTS'),
-      applyTo: z.union([z.literal('ORDER'), z.literal('ITEM')]),
-      itemStableIds: z.array(z.string().min(1)).optional(),
-      amountCents: z.number().int().positive(),
-      constraints: z
-        .object({
-          minSubtotalCents: z.number().int().min(0),
-        })
-        .optional(),
-      preset: z.string().optional(),
-    })
-    .superRefine((value, ctx) => {
-      if (value.applyTo === 'ITEM') {
-        if (!value.itemStableIds || value.itemStableIds.length === 0) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: 'itemStableIds is required when applyTo is ITEM',
-          });
-        }
-      } else if (value.itemStableIds && value.itemStableIds.length > 0) {
+const UseRuleSchema = z
+  .discriminatedUnion('type', [
+    z
+      .object({
+        type: z.literal('FIXED_CENTS'),
+        applyTo: z.union([z.literal('ORDER'), z.literal('ITEM')]),
+        itemStableIds: z.array(z.string().min(1)).optional(),
+        amountCents: z.number().int().positive(),
+        constraints: z
+          .object({
+            minSubtotalCents: z.number().int().min(0),
+          })
+          .optional(),
+        preset: z.string().optional(),
+      })
+      .passthrough(),
+    z
+      .object({
+        type: z.literal('PERCENT'),
+        applyTo: z.union([z.literal('ORDER'), z.literal('ITEM')]),
+        itemStableIds: z.array(z.string().min(1)).optional(),
+        percentOff: z.number().int().min(1).max(100),
+        constraints: z
+          .object({
+            minSubtotalCents: z.number().int().min(0),
+          })
+          .optional(),
+        preset: z.string().optional(),
+      })
+      .passthrough(),
+  ])
+  .superRefine((value, ctx) => {
+    if (value.applyTo === 'ITEM') {
+      if (!value.itemStableIds || value.itemStableIds.length === 0) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: 'itemStableIds must be empty when applyTo is ORDER',
+          message: 'itemStableIds is required when applyTo is ITEM',
         });
       }
-    })
+    } else if (value.itemStableIds && value.itemStableIds.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'itemStableIds must be empty when applyTo is ORDER',
+      });
+    }
+  });
     .passthrough(),
   z
     .object({
