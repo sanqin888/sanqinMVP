@@ -40,62 +40,60 @@ type CouponProgramInput = {
   items: Prisma.InputJsonValue;
 };
 
-const zod = z as typeof import('zod').z;
-
-const UseRuleSchema = zod.discriminatedUnion('type', [
-  zod
+const UseRuleSchema = z.discriminatedUnion('type', [
+  z
     .object({
-      type: zod.literal('FIXED_CENTS'),
-      applyTo: zod.union([zod.literal('ORDER'), zod.literal('ITEM')]),
-      itemStableIds: zod.array(zod.string().min(1)).optional(),
-      amountCents: zod.number().int().positive(),
-      constraints: zod
+      type: z.literal('FIXED_CENTS'),
+      applyTo: z.union([z.literal('ORDER'), z.literal('ITEM')]),
+      itemStableIds: z.array(z.string().min(1)).optional(),
+      amountCents: z.number().int().positive(),
+      constraints: z
         .object({
-          minSubtotalCents: zod.number().int().min(0),
+          minSubtotalCents: z.number().int().min(0),
         })
         .optional(),
-      preset: zod.string().optional(),
+      preset: z.string().optional(),
     })
     .superRefine((value, ctx) => {
       if (value.applyTo === 'ITEM') {
         if (!value.itemStableIds || value.itemStableIds.length === 0) {
           ctx.addIssue({
-            code: Zod.ZodIssueCode.custom,
+            code: z.ZodIssueCode.custom,
             message: 'itemStableIds is required when applyTo is ITEM',
           });
         }
       } else if (value.itemStableIds && value.itemStableIds.length > 0) {
         ctx.addIssue({
-          code: Zod.ZodIssueCode.custom,
+          code: z.ZodIssueCode.custom,
           message: 'itemStableIds must be empty when applyTo is ORDER',
         });
       }
     })
     .passthrough(),
-  zod
+  z
     .object({
-      type: zod.literal('PERCENT'),
-      applyTo: zod.union([zod.literal('ORDER'), zod.literal('ITEM')]),
-      itemStableIds: zod.array(zod.string().min(1)).optional(),
-      percentOff: zod.number().int().min(1).max(100),
-      constraints: zod
+      type: z.literal('PERCENT'),
+      applyTo: z.union([z.literal('ORDER'), z.literal('ITEM')]),
+      itemStableIds: z.array(z.string().min(1)).optional(),
+      percentOff: z.number().int().min(1).max(100),
+      constraints: z
         .object({
-          minSubtotalCents: zod.number().int().min(0),
+          minSubtotalCents: z.number().int().min(0),
         })
         .optional(),
-      preset: zod.string().optional(),
+      preset: z.string().optional(),
     })
     .superRefine((value, ctx) => {
       if (value.applyTo === 'ITEM') {
         if (!value.itemStableIds || value.itemStableIds.length === 0) {
           ctx.addIssue({
-            code: Zod.ZodIssueCode.custom,
+            code: z.ZodIssueCode.custom,
             message: 'itemStableIds is required when applyTo is ITEM',
           });
         }
       } else if (value.itemStableIds && value.itemStableIds.length > 0) {
         ctx.addIssue({
-          code: Zod.ZodIssueCode.custom,
+          code: z.ZodIssueCode.custom,
           message: 'itemStableIds must be empty when applyTo is ORDER',
         });
       }
@@ -103,18 +101,18 @@ const UseRuleSchema = zod.discriminatedUnion('type', [
     .passthrough(),
 ]);
 
-const IssueRuleSchema = zod
+const IssueRuleSchema = z
   .object({
-    mode: zod.enum(['MANUAL', 'AUTO']),
-    preset: zod.string().optional(),
+    mode: z.enum(['MANUAL', 'AUTO']),
+    preset: z.string().optional(),
   })
   .passthrough();
 
-const ProgramItemsSchema = zod
+const ProgramItemsSchema = z
   .array(
-    zod.object({
-      couponStableId: zod.string().cuid(),
-      quantity: zod.number().int().positive().optional().default(1),
+    z.object({
+      couponStableId: z.string().cuid(),
+      quantity: z.number().int().positive().optional().default(1),
     }),
   )
   .min(1);
