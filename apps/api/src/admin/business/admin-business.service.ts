@@ -682,10 +682,7 @@ export class AdminBusinessService {
     return value;
   }
 
-  private normalizeOptionalText(
-    label: string,
-    value: unknown,
-  ): string | null {
+  private normalizeOptionalText(label: string, value: unknown): string | null {
     if (value === null) return null;
     if (typeof value !== 'string') {
       throw new BadRequestException(`${label} must be a string or null`);
