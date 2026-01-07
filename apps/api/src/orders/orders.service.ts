@@ -620,7 +620,10 @@ export class OrdersService {
     redeemDollarPerPoint: number,
   ): bigint {
     if (!Number.isFinite(cents) || cents <= 0) return 0n;
-    if (!Number.isFinite(redeemDollarPerPoint) || redeemDollarPerPoint <= 0)
+    if (
+      !Number.isFinite(redeemDollarPerPoint) ||
+      redeemDollarPerPoint <= 0
+    )
       return 0n;
 
     // cents -> dollars -> points -> microPoints（四舍五入）

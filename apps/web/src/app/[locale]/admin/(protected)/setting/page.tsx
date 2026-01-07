@@ -37,7 +37,22 @@ type BusinessConfigDto = {
   temporaryCloseReason: string | null;
   deliveryBaseFeeCents: number;
   priorityPerKmCents: number;
+  maxDeliveryRangeKm: number;
+  priorityDefaultDistanceKm: number;
+  storeLatitude: number | null;
+  storeLongitude: number | null;
+  storeAddress: string | null;
+  supportPhone: string | null;
+  supportEmail: string | null;
   salesTaxRate: number;
+  earnPtPerDollar: number;
+  redeemDollarPerPoint: number;
+  referralPtPerDollar: number;
+  tierThresholdSilver: number;
+  tierThresholdGold: number;
+  tierThresholdPlatinum: number;
+  enableDoorDash: boolean;
+  enableUberDirect: boolean;
   holidays: HolidayApiDto[];
 };
 
@@ -123,6 +138,25 @@ function parsePercentToRate(value: string): number | null {
   const rate = num / 100;
   if (rate > 1) return null;
   return Number(rate.toFixed(4));
+}
+
+function parseOptionalNumber(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const num = Number(trimmed);
+  if (!Number.isFinite(num)) return null;
+  return num;
+}
+
+function centsToDollarNumber(cents: number | null | undefined): number {
+  if (cents == null || Number.isNaN(cents)) return 0;
+  return Number((cents / 100).toFixed(2));
+}
+
+function dollarsToCentsNumber(value: string): number | null {
+  const num = parseOptionalNumber(value);
+  if (num == null || num < 0) return null;
+  return Math.round(num * 100);
 }
 
 
@@ -290,6 +324,50 @@ const handleTimeChange = (
     );
   };
 
+  const handleMaxRangeChange = (value: string) => {
+    const num = parseOptionalNumber(value);
+    if (num == null || num < 0) return;
+    setConfig((prev) => (prev ? { ...prev, maxDeliveryRangeKm: num } : prev));
+  };
+
+  const handlePriorityDistanceChange = (value: string) => {
+    const num = parseOptionalNumber(value);
+    if (num == null || num < 0) return;
+    setConfig((prev) =>
+      prev ? { ...prev, priorityDefaultDistanceKm: num } : prev,
+    );
+  };
+
+  const handleStoreLatitudeChange = (value: string) => {
+    const num = parseOptionalNumber(value);
+    if (num == null) {
+      setConfig((prev) => (prev ? { ...prev, storeLatitude: null } : prev));
+      return;
+    }
+    setConfig((prev) => (prev ? { ...prev, storeLatitude: num } : prev));
+  };
+
+  const handleStoreLongitudeChange = (value: string) => {
+    const num = parseOptionalNumber(value);
+    if (num == null) {
+      setConfig((prev) => (prev ? { ...prev, storeLongitude: null } : prev));
+      return;
+    }
+    setConfig((prev) => (prev ? { ...prev, storeLongitude: num } : prev));
+  };
+
+  const handleStoreAddressChange = (value: string) => {
+    setConfig((prev) => (prev ? { ...prev, storeAddress: value } : prev));
+  };
+
+  const handleSupportPhoneChange = (value: string) => {
+    setConfig((prev) => (prev ? { ...prev, supportPhone: value } : prev));
+  };
+
+  const handleSupportEmailChange = (value: string) => {
+    setConfig((prev) => (prev ? { ...prev, supportEmail: value } : prev));
+  };
+
   const handleTaxRateChange = (value: string) => {
     const rate = parsePercentToRate(value);
     if (rate == null) return;
@@ -298,6 +376,45 @@ const handleTimeChange = (
 
   const handleTimezoneChange = (value: string) => {
     setConfig((prev) => (prev ? { ...prev, timezone: value } : prev));
+  };
+
+  const handleEarnRateChange = (value: string) => {
+    const num = parseOptionalNumber(value);
+    if (num == null || num < 0) return;
+    setConfig((prev) => (prev ? { ...prev, earnPtPerDollar: num } : prev));
+  };
+
+  const handleRedeemRateChange = (value: string) => {
+    const num = parseOptionalNumber(value);
+    if (num == null || num <= 0) return;
+    setConfig((prev) =>
+      prev ? { ...prev, redeemDollarPerPoint: num } : prev,
+    );
+  };
+
+  const handleReferralRateChange = (value: string) => {
+    const num = parseOptionalNumber(value);
+    if (num == null || num < 0) return;
+    setConfig((prev) =>
+      prev ? { ...prev, referralPtPerDollar: num } : prev,
+    );
+  };
+
+  const handleTierThresholdChange = (
+    field: 'tierThresholdSilver' | 'tierThresholdGold' | 'tierThresholdPlatinum',
+    value: string,
+  ) => {
+    const cents = dollarsToCentsNumber(value);
+    if (cents == null) return;
+    setConfig((prev) => (prev ? { ...prev, [field]: cents } : prev));
+  };
+
+  const handleDoorDashToggle = (checked: boolean) => {
+    setConfig((prev) => (prev ? { ...prev, enableDoorDash: checked } : prev));
+  };
+
+  const handleUberToggle = (checked: boolean) => {
+    setConfig((prev) => (prev ? { ...prev, enableUberDirect: checked } : prev));
   };
 
   /** ===== 节假日相关 handler ===== */
@@ -459,7 +576,22 @@ await apiFetch('/admin/business/hours', {
           reason: config.temporaryCloseReason ?? null,
           deliveryBaseFeeCents: config.deliveryBaseFeeCents,
           priorityPerKmCents: config.priorityPerKmCents,
+          maxDeliveryRangeKm: config.maxDeliveryRangeKm,
+          priorityDefaultDistanceKm: config.priorityDefaultDistanceKm,
+          storeLatitude: config.storeLatitude,
+          storeLongitude: config.storeLongitude,
+          storeAddress: config.storeAddress ?? null,
+          supportPhone: config.supportPhone ?? null,
+          supportEmail: config.supportEmail ?? null,
           salesTaxRate: config.salesTaxRate,
+          earnPtPerDollar: config.earnPtPerDollar,
+          redeemDollarPerPoint: config.redeemDollarPerPoint,
+          referralPtPerDollar: config.referralPtPerDollar,
+          tierThresholdSilver: config.tierThresholdSilver,
+          tierThresholdGold: config.tierThresholdGold,
+          tierThresholdPlatinum: config.tierThresholdPlatinum,
+          enableDoorDash: config.enableDoorDash,
+          enableUberDirect: config.enableUberDirect,
         }),
       });
 
@@ -706,6 +838,282 @@ setHolidays(
                 ? '如 13% 税率，输入 13.00。'
                 : 'Enter 13.00 for a 13% tax rate.'}
             </span>
+          </label>
+        </div>
+      </section>
+
+      {/* 配送范围与门店坐标 */}
+      <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="text-sm font-semibold text-slate-900">
+          {isZh ? '配送范围与门店坐标' : 'Delivery range & store location'}
+        </h2>
+        <p className="text-xs text-slate-600">
+          {isZh
+            ? '这些设置会影响动态运费与可配送范围，修改后立即生效。'
+            : 'These settings drive dynamic delivery fees and service range. Changes take effect immediately.'}
+        </p>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <label className="flex flex-col text-xs font-medium text-slate-700">
+            <span>{isZh ? '最大配送距离 (km)' : 'Max delivery distance (km)'}</span>
+            <input
+              type="number"
+              min="0"
+              step="0.1"
+              value={config.maxDeliveryRangeKm ?? 0}
+              onChange={(e) => handleMaxRangeChange(e.target.value)}
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+            />
+            <span className="mt-1 text-[11px] font-normal text-slate-500">
+              {isZh
+                ? '超过该距离的地址将无法下单。'
+                : 'Orders beyond this distance will be rejected.'}
+            </span>
+          </label>
+
+          <label className="flex flex-col text-xs font-medium text-slate-700">
+            <span>
+              {isZh ? '优先配送默认距离 (km)' : 'Priority default distance (km)'}
+            </span>
+            <input
+              type="number"
+              min="0"
+              step="0.1"
+              value={config.priorityDefaultDistanceKm ?? 0}
+              onChange={(e) => handlePriorityDistanceChange(e.target.value)}
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+            />
+            <span className="mt-1 text-[11px] font-normal text-slate-500">
+              {isZh
+                ? '当无法计算距离时用于兜底计费。'
+                : 'Fallback distance used when coords are missing.'}
+            </span>
+          </label>
+
+          <label className="flex flex-col text-xs font-medium text-slate-700">
+            <span>{isZh ? '门店显示地址' : 'Store display address'}</span>
+            <input
+              type="text"
+              value={config.storeAddress ?? ''}
+              onChange={(e) => handleStoreAddressChange(e.target.value)}
+              placeholder={isZh ? '例如：123 Main St.' : 'e.g. 123 Main St.'}
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+            />
+            <span className="mt-1 text-[11px] font-normal text-slate-500">
+              {isZh
+                ? '用于小票或页面底部展示。'
+                : 'Shown on receipts and footers.'}
+            </span>
+          </label>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <label className="flex flex-col text-xs font-medium text-slate-700">
+            <span>{isZh ? '门店纬度' : 'Store latitude'}</span>
+            <input
+              type="number"
+              step="0.000001"
+              value={config.storeLatitude ?? ''}
+              onChange={(e) => handleStoreLatitudeChange(e.target.value)}
+              placeholder="43.6532"
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+            />
+          </label>
+
+          <label className="flex flex-col text-xs font-medium text-slate-700">
+            <span>{isZh ? '门店经度' : 'Store longitude'}</span>
+            <input
+              type="number"
+              step="0.000001"
+              value={config.storeLongitude ?? ''}
+              onChange={(e) => handleStoreLongitudeChange(e.target.value)}
+              placeholder="-79.3832"
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+            />
+          </label>
+
+          <div className="flex flex-col text-xs text-slate-600">
+            <span className="font-medium text-slate-700">
+              {isZh ? '坐标用途' : 'Coordinate usage'}
+            </span>
+            <span className="mt-1 text-[11px] text-slate-500">
+              {isZh
+                ? '用于动态运费、配送范围与前端距离展示。'
+                : 'Used for delivery fee calculation and distance display.'}
+            </span>
+          </div>
+        </div>
+      </section>
+
+      {/* 积分规则 */}
+      <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="text-sm font-semibold text-slate-900">
+          {isZh ? '积分与会员规则' : 'Loyalty rules'}
+        </h2>
+        <p className="text-xs text-slate-600">
+          {isZh
+            ? '调整积分获取/抵扣规则与等级门槛，无需重新部署。'
+            : 'Adjust earn/redeem rules and tier thresholds without redeploying.'}
+        </p>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <label className="flex flex-col text-xs font-medium text-slate-700">
+            <span>{isZh ? '积分获取率 (pt / $)' : 'Earn rate (pt per $)'}</span>
+            <input
+              type="number"
+              min="0"
+              step="0.0001"
+              value={config.earnPtPerDollar}
+              onChange={(e) => handleEarnRateChange(e.target.value)}
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+            />
+          </label>
+
+          <label className="flex flex-col text-xs font-medium text-slate-700">
+            <span>{isZh ? '积分抵扣汇率 ($ / pt)' : 'Redeem rate ($ per pt)'}</span>
+            <input
+              type="number"
+              min="0.0001"
+              step="0.0001"
+              value={config.redeemDollarPerPoint}
+              onChange={(e) => handleRedeemRateChange(e.target.value)}
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+            />
+          </label>
+
+          <label className="flex flex-col text-xs font-medium text-slate-700">
+            <span>
+              {isZh ? '推荐奖励比例 (pt / $)' : 'Referral rate (pt per $)'}
+            </span>
+            <input
+              type="number"
+              min="0"
+              step="0.0001"
+              value={config.referralPtPerDollar}
+              onChange={(e) => handleReferralRateChange(e.target.value)}
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+            />
+          </label>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <label className="flex flex-col text-xs font-medium text-slate-700">
+            <span>{isZh ? '银卡门槛 ($)' : 'Silver threshold ($)'}</span>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={centsToDollarNumber(config.tierThresholdSilver)}
+              onChange={(e) =>
+                handleTierThresholdChange('tierThresholdSilver', e.target.value)
+              }
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+            />
+          </label>
+
+          <label className="flex flex-col text-xs font-medium text-slate-700">
+            <span>{isZh ? '金卡门槛 ($)' : 'Gold threshold ($)'}</span>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={centsToDollarNumber(config.tierThresholdGold)}
+              onChange={(e) =>
+                handleTierThresholdChange('tierThresholdGold', e.target.value)
+              }
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+            />
+          </label>
+
+          <label className="flex flex-col text-xs font-medium text-slate-700">
+            <span>{isZh ? '白金卡门槛 ($)' : 'Platinum threshold ($)'}</span>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={centsToDollarNumber(config.tierThresholdPlatinum)}
+              onChange={(e) =>
+                handleTierThresholdChange(
+                  'tierThresholdPlatinum',
+                  e.target.value,
+                )
+              }
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+            />
+          </label>
+        </div>
+      </section>
+
+      {/* 服务开关 */}
+      <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="text-sm font-semibold text-slate-900">
+          {isZh ? '第三方配送开关' : 'Delivery provider toggles'}
+        </h2>
+        <p className="text-xs text-slate-600">
+          {isZh
+            ? '关闭后该渠道将不再派单。'
+            : 'Disable a provider to stop dispatching orders to it.'}
+        </p>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <label className="inline-flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={config.enableDoorDash}
+              onChange={(e) => handleDoorDashToggle(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-emerald-600"
+            />
+            <span className="text-slate-800">
+              {isZh ? '启用 DoorDash' : 'Enable DoorDash'}
+            </span>
+          </label>
+
+          <label className="inline-flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={config.enableUberDirect}
+              onChange={(e) => handleUberToggle(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-emerald-600"
+            />
+            <span className="text-slate-800">
+              {isZh ? '启用 Uber Direct' : 'Enable Uber Direct'}
+            </span>
+          </label>
+        </div>
+      </section>
+
+      {/* 门店联系方式 */}
+      <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="text-sm font-semibold text-slate-900">
+          {isZh ? '门店联系方式' : 'Store contact info'}
+        </h2>
+        <p className="text-xs text-slate-600">
+          {isZh
+            ? '用于小票、网站和客服渠道展示。'
+            : 'Shown on receipts, website, and support channels.'}
+        </p>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <label className="flex flex-col text-xs font-medium text-slate-700">
+            <span>{isZh ? '客服电话' : 'Support phone'}</span>
+            <input
+              type="tel"
+              value={config.supportPhone ?? ''}
+              onChange={(e) => handleSupportPhoneChange(e.target.value)}
+              placeholder={isZh ? '例如：+1 416-000-0000' : 'e.g. +1 416-000-0000'}
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+            />
+          </label>
+
+          <label className="flex flex-col text-xs font-medium text-slate-700">
+            <span>{isZh ? '客服邮箱' : 'Support email'}</span>
+            <input
+              type="email"
+              value={config.supportEmail ?? ''}
+              onChange={(e) => handleSupportEmailChange(e.target.value)}
+              placeholder="support@example.com"
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+            />
           </label>
         </div>
       </section>
