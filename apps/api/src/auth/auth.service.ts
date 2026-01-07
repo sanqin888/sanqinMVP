@@ -79,6 +79,7 @@ export class AuthService {
   async createSession(params: {
     userId: string;
     deviceInfo?: string;
+    loginLocation?: string;
     mfaVerifiedAt?: Date | null;
   }) {
     const sessionId = randomBytes(32).toString('hex');
@@ -90,6 +91,7 @@ export class AuthService {
         userId: params.userId,
         expiresAt,
         deviceInfo: params.deviceInfo,
+        loginLocation: params.loginLocation,
         mfaVerifiedAt: params.mfaVerifiedAt ?? null,
       },
     });
@@ -182,11 +184,19 @@ export class AuthService {
     return { token, expiresAt };
   }
 
+  async createTrustedDeviceForUser(params: { userId: string; label?: string }) {
+    return this.issueTrustedDevice({
+      userId: params.userId,
+      label: params.label,
+    });
+  }
+
   async loginWithGoogleOauth(params: {
     googleSub: string;
     email: string | null;
     name: string | null;
     deviceInfo?: string;
+    loginLocation?: string;
     trustedDeviceToken?: string;
   }) {
     const googleSub = params.googleSub;
@@ -260,6 +270,7 @@ export class AuthService {
     const session = await this.createSession({
       userId: user.id,
       deviceInfo: params.deviceInfo,
+      loginLocation: params.loginLocation,
       mfaVerifiedAt: requiresTwoFactor ? null : now,
     });
 
@@ -270,6 +281,7 @@ export class AuthService {
     email: string;
     password: string;
     deviceInfo?: string;
+    loginLocation?: string;
     purpose?: 'pos' | 'admin';
     posDeviceStableId?: string;
     posDeviceKey?: string;
@@ -343,6 +355,7 @@ export class AuthService {
     const session = await this.createSession({
       userId: user.id,
       deviceInfo: params.deviceInfo,
+      loginLocation: params.loginLocation,
       mfaVerifiedAt: requiresTwoFactor ? null : now,
     });
 
@@ -353,6 +366,7 @@ export class AuthService {
     email: string;
     password: string;
     deviceInfo?: string;
+    loginLocation?: string;
     trustedDeviceToken?: string;
   }) {
     const email = this.normalizeEmail(params.email);
@@ -398,6 +412,7 @@ export class AuthService {
     const session = await this.createSession({
       userId: user.id,
       deviceInfo: params.deviceInfo,
+      loginLocation: params.loginLocation,
       mfaVerifiedAt: requiresTwoFactor ? null : now,
     });
 

@@ -3,10 +3,14 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '@/lib/api/client';
+import type { AdminMenuCategoryDto } from '@shared/menu';
 
 type CouponTemplate = {
   couponStableId: string;
   name: string;
+  title: string | null;
+  titleEn: string | null;
+  description: string | null;
   status: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
   validFrom: string | null;
   validTo: string | null;
@@ -27,6 +31,8 @@ type CouponProgram = {
   promoCode: string | null;
   totalLimit: number | null;
   perUserLimit: number;
+  issuedCount: number;
+  usedCount: number;
   eligibility: unknown | null;
   items: unknown;
   createdAt: string;
@@ -36,10 +42,15 @@ type CouponProgram = {
 type TemplateFormState = {
   couponStableId: string;
   name: string;
+  title: string;
+  titleEn: string;
+  description: string;
   status: CouponTemplate['status'];
   validFrom: string;
   validTo: string;
   useRuleType: 'FIXED_CENTS' | 'PERCENT';
+  applyTo: 'ORDER' | 'ITEM';
+  itemStableIds: string[];
   amountCents: string;
   percentOff: string;
   minSubtotalCents: string;
@@ -59,15 +70,27 @@ type ProgramFormState = {
   perUserLimit: string;
   eligibilityKeys: string[];
   selectedCouponIds: string[];
+  couponQuantities: Record<string, string>;
+};
+
+type ItemChoice = {
+  stableId: string;
+  label: string;
+  categoryLabel: string;
 };
 
 const emptyTemplateForm: TemplateFormState = {
   couponStableId: '',
   name: '',
+  title: '',
+  titleEn: '',
+  description: '',
   status: 'DRAFT',
   validFrom: '',
   validTo: '',
   useRuleType: 'FIXED_CENTS',
+  applyTo: 'ORDER',
+  itemStableIds: [],
   amountCents: '',
   percentOff: '',
   minSubtotalCents: '',
@@ -87,6 +110,7 @@ const emptyProgramForm: ProgramFormState = {
   perUserLimit: '1',
   eligibilityKeys: [],
   selectedCouponIds: [],
+  couponQuantities: {},
 };
 
 const eligibilityPresets = [
@@ -114,12 +138,25 @@ function getRuleType(rule: unknown) {
 }
 
 function getItemsCount(items: unknown) {
-  if (Array.isArray(items)) return items.length;
-  return 0;
+  if (!Array.isArray(items)) return 0;
+  return items.reduce((sum, entry) => {
+    if (!entry || typeof entry !== 'object') return sum;
+    const record = entry as Record<string, unknown>;
+    const quantity =
+      typeof record.quantity === 'number' && Number.isFinite(record.quantity)
+        ? record.quantity
+        : 1;
+    return sum + quantity;
+  }, 0);
 }
 
 function formatCurrencyFromCents(cents: number) {
   return `¥${(cents / 100).toFixed(2)}`;
+}
+
+function formatRedemptionRate(issuedCount: number, usedCount: number) {
+  if (!issuedCount) return '—';
+  return `${((usedCount / issuedCount) * 100).toFixed(1)}%`;
 }
 
 function buildUseRuleFromForm(form: TemplateFormState) {
@@ -128,17 +165,22 @@ function buildUseRuleFromForm(form: TemplateFormState) {
     form.minSubtotalCents.trim() === '' || Number.isNaN(minSubtotalCents)
       ? undefined
       : { minSubtotalCents };
+  const applyTo = form.applyTo;
+  const itemStableIds =
+    applyTo === 'ITEM' ? form.itemStableIds.map((id) => id.trim()) : undefined;
   if (form.useRuleType === 'PERCENT') {
     return {
       type: 'PERCENT',
-      applyTo: 'ORDER',
+      applyTo,
+      itemStableIds,
       percentOff: Number(form.percentOff),
       constraints,
     };
   }
   return {
     type: 'FIXED_CENTS',
-    applyTo: 'ORDER',
+    applyTo,
+    itemStableIds,
     amountCents: Number(form.amountCents),
     constraints,
   };
@@ -148,17 +190,28 @@ function parseTemplateFormFromRule(
   template: CouponTemplate,
 ): Pick<
   TemplateFormState,
-  'useRuleType' | 'amountCents' | 'percentOff' | 'minSubtotalCents'
+  | 'useRuleType'
+  | 'applyTo'
+  | 'itemStableIds'
+  | 'amountCents'
+  | 'percentOff'
+  | 'minSubtotalCents'
 > {
   if (!template.useRule || typeof template.useRule !== 'object') {
     return {
       useRuleType: 'FIXED_CENTS',
+      applyTo: 'ORDER',
+      itemStableIds: [],
       amountCents: '',
       percentOff: '',
       minSubtotalCents: '',
     };
   }
   const record = template.useRule as Record<string, unknown>;
+  const applyTo = record.applyTo === 'ITEM' ? 'ITEM' : 'ORDER';
+  const itemStableIds = Array.isArray(record.itemStableIds)
+    ? record.itemStableIds.filter((id): id is string => typeof id === 'string')
+    : [];
   const constraints =
     record.constraints && typeof record.constraints === 'object'
       ? (record.constraints as Record<string, unknown>)
@@ -171,6 +224,8 @@ function parseTemplateFormFromRule(
   if (record.type === 'PERCENT') {
     return {
       useRuleType: 'PERCENT',
+      applyTo,
+      itemStableIds,
       amountCents: '',
       percentOff:
         typeof record.percentOff === 'number' ? String(record.percentOff) : '',
@@ -180,6 +235,8 @@ function parseTemplateFormFromRule(
 
   return {
     useRuleType: 'FIXED_CENTS',
+    applyTo,
+    itemStableIds,
     amountCents:
       typeof record.amountCents === 'number' ? String(record.amountCents) : '',
     percentOff: '',
@@ -190,6 +247,9 @@ function parseTemplateFormFromRule(
 export default function AdminCouponsPage() {
   const [templates, setTemplates] = useState<CouponTemplate[]>([]);
   const [programs, setPrograms] = useState<CouponProgram[]>([]);
+  const [menuCategories, setMenuCategories] = useState<AdminMenuCategoryDto[]>(
+    [],
+  );
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -206,17 +266,29 @@ export default function AdminCouponsPage() {
   const [programEditingId, setProgramEditingId] = useState<string | null>(null);
   const [programError, setProgramError] = useState<string | null>(null);
   const [programSaving, setProgramSaving] = useState(false);
+  const [issueTarget, setIssueTarget] = useState<{
+    programStableId: string;
+    programName: string;
+  } | null>(null);
+  const [issueForm, setIssueForm] = useState({
+    userStableId: '',
+    phone: '',
+    error: null as string | null,
+    saving: false,
+  });
 
   async function fetchData() {
     setLoading(true);
     setLoadError(null);
     try {
-      const [templateData, programData] = await Promise.all([
+      const [templateData, programData, menuData] = await Promise.all([
         apiFetch<CouponTemplate[]>('/admin/coupons/templates'),
         apiFetch<CouponProgram[]>('/admin/coupons/programs'),
+        apiFetch<{ categories: AdminMenuCategoryDto[] }>('/admin/menu/full'),
       ]);
       setTemplates(templateData);
       setPrograms(programData);
+      setMenuCategories(menuData.categories ?? []);
     } catch (error) {
       setLoadError((error as Error).message);
     } finally {
@@ -236,13 +308,23 @@ export default function AdminCouponsPage() {
     [templateEditingId],
   );
   const templatePreview = useMemo(() => {
-    const name = templateForm.name.trim() || '未命名优惠券';
+    const name =
+      templateForm.title.trim() ||
+      templateForm.name.trim() ||
+      '未命名优惠券';
+    const description =
+      templateForm.description.trim() || templateForm.name.trim() || '优惠详情';
     const minSubtotalCents = Number(templateForm.minSubtotalCents);
     const minSubtotalText =
       templateForm.minSubtotalCents.trim() === '' ||
       Number.isNaN(minSubtotalCents)
         ? '无门槛'
         : `满 ${formatCurrencyFromCents(minSubtotalCents)} 可用`;
+    const applyToText =
+      templateForm.applyTo === 'ITEM' ? '指定商品可用' : '全场可用';
+    const expiresText = templateForm.validTo
+      ? `有效期至 ${new Date(templateForm.validTo).toLocaleDateString()}`
+      : '长期有效';
 
     if (templateForm.useRuleType === 'PERCENT') {
       const percent = Number(templateForm.percentOff);
@@ -254,7 +336,9 @@ export default function AdminCouponsPage() {
         name,
         badge: '折扣券',
         value: percentText,
-        limit: minSubtotalText,
+        limit: `${minSubtotalText} · ${applyToText}`,
+        description,
+        expiresText,
       };
     }
 
@@ -268,19 +352,43 @@ export default function AdminCouponsPage() {
       name,
       badge: '立减券',
       value: amountText,
-      limit: minSubtotalText,
+      limit: `${minSubtotalText} · ${applyToText}`,
+      description,
+      expiresText,
     };
   }, [
     templateForm.amountCents,
+    templateForm.description,
     templateForm.minSubtotalCents,
     templateForm.name,
+    templateForm.title,
+    templateForm.applyTo,
     templateForm.percentOff,
     templateForm.useRuleType,
+    templateForm.validTo,
   ]);
   const programHint = useMemo(
     () => (programEditingId ? '更新礼包' : '创建礼包'),
     [programEditingId],
   );
+  const itemChoices = useMemo<ItemChoice[]>(() => {
+    return menuCategories.flatMap((category) =>
+      category.items.map((item) => ({
+        stableId: item.stableId,
+        label: `${item.nameEn}${item.nameZh ? ` / ${item.nameZh}` : ''}`,
+        categoryLabel: category.nameZh ?? category.nameEn,
+      })),
+    );
+  }, [menuCategories]);
+  const itemChoicesByCategory = useMemo(() => {
+    const map = new Map<string, ItemChoice[]>();
+    itemChoices.forEach((item) => {
+      const list = map.get(item.categoryLabel) ?? [];
+      list.push(item);
+      map.set(item.categoryLabel, list);
+    });
+    return Array.from(map.entries());
+  }, [itemChoices]);
 
   function resetTemplateForm() {
     setTemplateForm(emptyTemplateForm);
@@ -299,6 +407,12 @@ export default function AdminCouponsPage() {
     setTemplateError(null);
     try {
       const useRule = buildUseRuleFromForm(templateForm);
+      if (
+        templateForm.applyTo === 'ITEM' &&
+        templateForm.itemStableIds.length === 0
+      ) {
+        throw new Error('请选择至少一个指定商品');
+      }
       if (templateForm.useRuleType === 'PERCENT') {
         if (!templateForm.percentOff.trim()) {
           throw new Error('请输入折扣比例');
@@ -322,6 +436,9 @@ export default function AdminCouponsPage() {
       const payload = {
         couponStableId: templateForm.couponStableId || undefined,
         name: templateForm.name.trim(),
+        title: templateForm.title.trim() || null,
+        titleEn: templateForm.titleEn.trim() || null,
+        description: templateForm.description.trim() || null,
         status: templateForm.status,
         validFrom: templateForm.validFrom || null,
         validTo: templateForm.validTo || null,
@@ -357,10 +474,17 @@ export default function AdminCouponsPage() {
     setProgramSaving(true);
     setProgramError(null);
     try {
-      const items = programForm.selectedCouponIds.map((couponStableId) => ({
-        couponStableId,
-        quantity: 1,
-      }));
+      const items = programForm.selectedCouponIds.map((couponStableId) => {
+        const rawQuantity = programForm.couponQuantities[couponStableId] ?? '1';
+        const parsedQuantity = Number(rawQuantity);
+        if (!Number.isInteger(parsedQuantity) || parsedQuantity <= 0) {
+          throw new Error('券数量必须为正整数');
+        }
+        return {
+          couponStableId,
+          quantity: parsedQuantity,
+        };
+      });
       if (items.length === 0) throw new Error('礼包内容不能为空');
       if (
         programForm.distributionType === 'PROMO_CODE' &&
@@ -431,6 +555,48 @@ export default function AdminCouponsPage() {
     }
   }
 
+  async function handleIssueProgram() {
+    if (!issueTarget) return;
+    setIssueForm((prev) => ({ ...prev, saving: true, error: null }));
+    try {
+      const userStableId = issueForm.userStableId.trim();
+      const phone = issueForm.phone.trim();
+      if (!userStableId && !phone) {
+        throw new Error('请输入用户 StableId 或手机号');
+      }
+      const payload = userStableId ? { userStableId } : { phone };
+      await apiFetch(`/admin/coupons/programs/${issueTarget.programStableId}/issue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      await fetchData();
+      setIssueTarget(null);
+      setIssueForm({
+        userStableId: '',
+        phone: '',
+        error: null,
+        saving: false,
+      });
+    } catch (error) {
+      setIssueForm((prev) => ({
+        ...prev,
+        error: (error as Error).message,
+        saving: false,
+      }));
+    }
+  }
+
+  function handleCloseIssue() {
+    setIssueTarget(null);
+    setIssueForm({
+      userStableId: '',
+      phone: '',
+      error: null,
+      saving: false,
+    });
+  }
+
   function handleEditTemplate(template: CouponTemplate) {
     const templateRuleState = parseTemplateFormFromRule(template);
     const issueRuleMode =
@@ -442,6 +608,9 @@ export default function AdminCouponsPage() {
     setTemplateForm({
       couponStableId: template.couponStableId,
       name: template.name,
+      title: template.title ?? '',
+      titleEn: template.titleEn ?? '',
+      description: template.description ?? '',
       status: template.status,
       validFrom: template.validFrom ? template.validFrom.slice(0, 10) : '',
       validTo: template.validTo ? template.validTo.slice(0, 10) : '',
@@ -455,13 +624,18 @@ export default function AdminCouponsPage() {
 
   function handleEditProgram(program: CouponProgram) {
     const rawItems = Array.isArray(program.items) ? program.items : [];
+    const couponQuantities: Record<string, string> = {};
     const selectedCouponIds = rawItems
       .map((item) => {
         if (!item || typeof item !== 'object') return null;
         const record = item as Record<string, unknown>;
-        return typeof record.couponStableId === 'string'
-          ? record.couponStableId
-          : null;
+        if (typeof record.couponStableId !== 'string') return null;
+        const quantity =
+          typeof record.quantity === 'number' && Number.isFinite(record.quantity)
+            ? String(record.quantity)
+            : '1';
+        couponQuantities[record.couponStableId] = quantity;
+        return record.couponStableId;
       })
       .filter((value): value is string => Boolean(value));
     const eligibilityKeys =
@@ -485,6 +659,7 @@ export default function AdminCouponsPage() {
       perUserLimit: String(program.perUserLimit ?? 1),
       eligibilityKeys,
       selectedCouponIds,
+      couponQuantities,
     });
   }
 
@@ -503,7 +678,7 @@ export default function AdminCouponsPage() {
         </div>
       )}
 
-      <section className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
+      <section className="grid gap-6 lg:grid-cols-[0.9fr_1.3fr]">
         <div className="rounded-2xl border p-6 space-y-5">
           <div className="flex items-center justify-between">
             <div>
@@ -512,12 +687,6 @@ export default function AdminCouponsPage() {
                 当前共 {templateCount} 个模板
               </p>
             </div>
-            <button
-              onClick={() => resetTemplateForm()}
-              className="rounded-md border px-3 py-2 text-sm hover:bg-accent"
-            >
-              新建模板
-            </button>
           </div>
 
           <div className="space-y-3">
@@ -545,6 +714,12 @@ export default function AdminCouponsPage() {
                     StableId：{template.couponStableId}
                   </div>
                   <div className="text-sm text-muted-foreground">
+                    展示标题：{template.title ?? '—'}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    英文标题：{template.titleEn ?? '—'}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
                     有效期：{formatDateRange(template.validFrom, template.validTo)}
                   </div>
                   <div className="text-sm text-muted-foreground">
@@ -567,7 +742,7 @@ export default function AdminCouponsPage() {
           <div className="space-y-3 text-sm">
             <div className="grid gap-3 md:grid-cols-2">
               <label className="space-y-1">
-                <span className="text-muted-foreground">模板名称</span>
+                <span className="text-muted-foreground">模板名称（内部）</span>
                 <input
                   className="w-full rounded-md border px-3 py-2"
                   value={templateForm.name}
@@ -575,6 +750,32 @@ export default function AdminCouponsPage() {
                     setTemplateForm((prev) => ({
                       ...prev,
                       name: e.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-muted-foreground">展示标题（App端）</span>
+                <input
+                  className="w-full rounded-md border px-3 py-2"
+                  value={templateForm.title}
+                  onChange={(e) =>
+                    setTemplateForm((prev) => ({
+                      ...prev,
+                      title: e.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-muted-foreground">展示标题（英文）</span>
+                <input
+                  className="w-full rounded-md border px-3 py-2"
+                  value={templateForm.titleEn}
+                  onChange={(e) =>
+                    setTemplateForm((prev) => ({
+                      ...prev,
+                      titleEn: e.target.value,
                     }))
                   }
                 />
@@ -596,6 +797,19 @@ export default function AdminCouponsPage() {
                   <option value="PAUSED">PAUSED</option>
                   <option value="ENDED">ENDED</option>
                 </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-muted-foreground">使用说明 / 限制条款</span>
+                <textarea
+                  className="min-h-[44px] w-full rounded-md border px-3 py-2"
+                  value={templateForm.description}
+                  onChange={(e) =>
+                    setTemplateForm((prev) => ({
+                      ...prev,
+                      description: e.target.value,
+                    }))
+                  }
+                />
               </label>
               <label className="space-y-1">
                 <span className="text-muted-foreground">有效期开始</span>
@@ -660,6 +874,26 @@ export default function AdminCouponsPage() {
                   </select>
                 </label>
                 <label className="space-y-1">
+                  <span className="text-muted-foreground">适用范围</span>
+                  <select
+                    className="w-full rounded-md border px-3 py-2"
+                    value={templateForm.applyTo}
+                    onChange={(e) =>
+                      setTemplateForm((prev) => ({
+                        ...prev,
+                        applyTo: e.target.value as TemplateFormState['applyTo'],
+                        itemStableIds:
+                          e.target.value === 'ITEM'
+                            ? prev.itemStableIds
+                            : [],
+                      }))
+                    }
+                  >
+                    <option value="ORDER">整单优惠</option>
+                    <option value="ITEM">指定商品</option>
+                  </select>
+                </label>
+                <label className="space-y-1">
                   <span className="text-muted-foreground">最低消费（分）</span>
                   <input
                     type="number"
@@ -709,6 +943,66 @@ export default function AdminCouponsPage() {
                   </label>
                 )}
               </div>
+              {templateForm.applyTo === 'ITEM' && (
+                <div className="space-y-2">
+                  <div className="text-xs text-muted-foreground">
+                    选择可使用该优惠券的指定商品
+                  </div>
+                  {itemChoicesByCategory.length === 0 ? (
+                    <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+                      暂无可选商品，请先配置菜单。
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {itemChoicesByCategory.map(([category, items]) => (
+                        <div key={category} className="space-y-2">
+                          <div className="text-xs font-semibold text-muted-foreground">
+                            {category}
+                          </div>
+                          <div className="grid gap-2 md:grid-cols-2">
+                            {items.map((item) => (
+                              <label
+                                key={item.stableId}
+                                className="flex items-start gap-2 rounded-md border px-3 py-2"
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="mt-1"
+                                  checked={templateForm.itemStableIds.includes(
+                                    item.stableId,
+                                  )}
+                                  onChange={(e) =>
+                                    setTemplateForm((prev) => {
+                                      const next = new Set(prev.itemStableIds);
+                                      if (e.target.checked) {
+                                        next.add(item.stableId);
+                                      } else {
+                                        next.delete(item.stableId);
+                                      }
+                                      return {
+                                        ...prev,
+                                        itemStableIds: Array.from(next),
+                                      };
+                                    })
+                                  }
+                                />
+                                <div>
+                                  <div className="font-medium">
+                                    {item.label}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {item.stableId}
+                                  </div>
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <label className="space-y-1">
               <span className="text-muted-foreground">发放规则（可选）</span>
@@ -730,24 +1024,33 @@ export default function AdminCouponsPage() {
               <div className="text-xs text-muted-foreground">
                 选择触发方式，未选择则不设置发放规则。
               </div>
+              <div className="text-2xl font-bold text-primary">
+                {templatePreview.value}
+              </div>
             </label>
           </div>
           <div className="rounded-xl border bg-muted/40 p-4">
             <div className="text-xs text-muted-foreground">预览</div>
-            <div className="mt-3 flex items-center justify-between rounded-lg border bg-background p-4">
-              <div>
-                <div className="text-sm text-muted-foreground">
-                  {templatePreview.badge}
+            <div className="mt-3 overflow-hidden rounded-lg border bg-background">
+              <div className="flex items-center justify-between gap-4 border-b border-dashed px-4 py-4">
+                <div>
+                  <div className="text-xs text-muted-foreground">
+                    {templatePreview.badge}
+                  </div>
+                  <div className="text-lg font-semibold">
+                    {templatePreview.name}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {templatePreview.limit}
+                  </div>
                 </div>
-                <div className="text-lg font-semibold">
-                  {templatePreview.name}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {templatePreview.limit}
+                <div className="text-2xl font-bold text-primary">
+                  {templatePreview.value}
                 </div>
               </div>
-              <div className="text-2xl font-bold text-primary">
-                {templatePreview.value}
+              <div className="flex items-center justify-between gap-2 px-4 py-3 text-xs text-muted-foreground">
+                <div>{templatePreview.description}</div>
+                <div>{templatePreview.expiresText}</div>
               </div>
             </div>
           </div>
@@ -774,7 +1077,7 @@ export default function AdminCouponsPage() {
         </div>
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
+      <section className="grid gap-6 lg:grid-cols-[0.9fr_1.3fr]">
         <div className="rounded-2xl border p-6 space-y-5">
           <div className="flex items-center justify-between">
             <div>
@@ -783,12 +1086,6 @@ export default function AdminCouponsPage() {
                 当前共 {programCount} 个礼包
               </p>
             </div>
-            <button
-              onClick={() => resetProgramForm()}
-              className="rounded-md border px-3 py-2 text-sm hover:bg-accent"
-            >
-              新建礼包
-            </button>
           </div>
 
           <div className="space-y-3">
@@ -830,12 +1127,37 @@ export default function AdminCouponsPage() {
                   <div className="text-sm text-muted-foreground">
                     券数量：{getItemsCount(program.items)}
                   </div>
+                  <div className="text-sm text-muted-foreground">
+                    已发放：{program.issuedCount} · 已核销：{program.usedCount}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    核销率：{formatRedemptionRate(program.issuedCount, program.usedCount)}
+                  </div>
                   <button
                     onClick={() => handleEditProgram(program)}
                     className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
                   >
                     编辑
                   </button>
+                  {program.distributionType === 'ADMIN_PUSH' && (
+                    <button
+                      onClick={() => {
+                        setIssueTarget({
+                          programStableId: program.programStableId,
+                          programName: program.name,
+                        });
+                        setIssueForm({
+                          userStableId: '',
+                          phone: '',
+                          error: null,
+                          saving: false,
+                        });
+                      }}
+                      className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
+                    >
+                      去发放
+                    </button>
+                  )}
                 </div>
               ))
             )}
@@ -1003,7 +1325,7 @@ export default function AdminCouponsPage() {
                 />
               </label>
             </div>
-            <label className="space-y-1">
+            <div className="space-y-1">
               <span className="text-muted-foreground">资格条件（预设，可选）</span>
               <div className="space-y-2">
                 {eligibilityPresets.map((preset) => (
@@ -1037,8 +1359,8 @@ export default function AdminCouponsPage() {
                   不选择则不设置资格条件。
                 </div>
               </div>
-            </label>
-            <label className="space-y-1">
+            </div>
+            <div className="space-y-1">
               <span className="text-muted-foreground">礼包内容（优惠券）</span>
               {templates.length === 0 ? (
                 <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
@@ -1047,42 +1369,87 @@ export default function AdminCouponsPage() {
               ) : (
                 <div className="space-y-2">
                   {templates.map((template) => (
-                    <label
+                    <div
                       key={template.couponStableId}
-                      className="flex items-start gap-3 rounded-md border px-3 py-2"
+                      className="flex flex-wrap items-center gap-3 rounded-md border px-3 py-2"
                     >
-                      <input
-                        type="checkbox"
-                        className="mt-1"
-                        checked={programForm.selectedCouponIds.includes(
-                          template.couponStableId,
-                        )}
-                        onChange={(e) =>
-                          setProgramForm((prev) => {
-                            const next = new Set(prev.selectedCouponIds);
-                            if (e.target.checked) {
-                              next.add(template.couponStableId);
-                            } else {
-                              next.delete(template.couponStableId);
-                            }
-                            return {
-                              ...prev,
-                              selectedCouponIds: Array.from(next),
-                            };
-                          })
-                        }
-                      />
-                      <div>
-                        <div className="font-medium">{template.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {template.couponStableId}
+                      <label className="flex flex-1 items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="mt-1"
+                          checked={programForm.selectedCouponIds.includes(
+                            template.couponStableId,
+                          )}
+                          onChange={(e) =>
+                            setProgramForm((prev) => {
+                              const next = new Set(prev.selectedCouponIds);
+                              if (e.target.checked) {
+                                next.add(template.couponStableId);
+                                if (!prev.couponQuantities[template.couponStableId]) {
+                                  return {
+                                    ...prev,
+                                    selectedCouponIds: Array.from(next),
+                                    couponQuantities: {
+                                      ...prev.couponQuantities,
+                                      [template.couponStableId]: '1',
+                                    },
+                                  };
+                                }
+                              } else {
+                                next.delete(template.couponStableId);
+                              }
+                              return {
+                                ...prev,
+                                selectedCouponIds: Array.from(next),
+                                couponQuantities: e.target.checked
+                                  ? prev.couponQuantities
+                                  : Object.fromEntries(
+                                      Object.entries(prev.couponQuantities).filter(
+                                        ([key]) => key !== template.couponStableId,
+                                      ),
+                                    ),
+                              };
+                            })
+                          }
+                        />
+                        <div className="min-w-[180px]">
+                          <div className="font-medium">{template.name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {template.couponStableId}
+                          </div>
                         </div>
-                      </div>
-                    </label>
+                      </label>
+                      {programForm.selectedCouponIds.includes(
+                        template.couponStableId,
+                      ) && (
+                        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                          x
+                          <input
+                            type="number"
+                            min={1}
+                            className="w-20 rounded-md border px-2 py-1 text-sm text-foreground"
+                            value={
+                              programForm.couponQuantities[
+                                template.couponStableId
+                              ] ?? '1'
+                            }
+                            onChange={(e) =>
+                              setProgramForm((prev) => ({
+                                ...prev,
+                                couponQuantities: {
+                                  ...prev.couponQuantities,
+                                  [template.couponStableId]: e.target.value,
+                                },
+                              }))
+                            }
+                          />
+                        </label>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}
-            </label>
+            </div>
           </div>
           {programError && (
             <div className="text-sm text-red-600">错误：{programError}</div>
@@ -1106,6 +1473,68 @@ export default function AdminCouponsPage() {
           </div>
         </div>
       </section>
+
+      {issueTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl border bg-background p-6 shadow-xl">
+            <div className="space-y-2">
+              <div className="text-lg font-semibold">后台发放礼包</div>
+              <div className="text-sm text-muted-foreground">
+                当前礼包：{issueTarget.programName}
+              </div>
+            </div>
+            <div className="mt-4 space-y-3 text-sm">
+              <label className="space-y-1">
+                <span className="text-muted-foreground">用户 StableId</span>
+                <input
+                  className="w-full rounded-md border px-3 py-2"
+                  value={issueForm.userStableId}
+                  onChange={(e) =>
+                    setIssueForm((prev) => ({
+                      ...prev,
+                      userStableId: e.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <div className="text-xs text-muted-foreground">或</div>
+              <label className="space-y-1">
+                <span className="text-muted-foreground">手机号</span>
+                <input
+                  className="w-full rounded-md border px-3 py-2"
+                  value={issueForm.phone}
+                  onChange={(e) =>
+                    setIssueForm((prev) => ({
+                      ...prev,
+                      phone: e.target.value,
+                    }))
+                  }
+                />
+              </label>
+              {issueForm.error && (
+                <div className="text-sm text-red-600">
+                  错误：{issueForm.error}
+                </div>
+              )}
+            </div>
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                onClick={() => handleCloseIssue()}
+                className="rounded-md border px-4 py-2 text-sm hover:bg-accent"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => void handleIssueProgram()}
+                disabled={issueForm.saving}
+                className="rounded-md border px-4 py-2 text-sm hover:bg-accent disabled:opacity-60"
+              >
+                {issueForm.saving ? '发放中…' : '确认发放'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

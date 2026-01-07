@@ -23,6 +23,38 @@ import { GoogleStartGuard } from './oauth/google.guard';
 import { OauthStateService } from './oauth/oauth-state.service';
 import type { GoogleProfile } from './oauth/google.strategy';
 
+const resolveLoginLocation = (req: Request): string | undefined => {
+  const readHeader = (name: string): string | undefined => {
+    const value = req.headers[name];
+    if (Array.isArray(value)) return value[0];
+    if (typeof value === 'string') return value;
+    return undefined;
+  };
+
+  const city =
+    readHeader('x-vercel-ip-city') ||
+    readHeader('cf-ipcity') ||
+    readHeader('x-geo-city');
+  const region =
+    readHeader('x-vercel-ip-region') ||
+    readHeader('cf-region') ||
+    readHeader('x-geo-region');
+  const country =
+    readHeader('x-vercel-ip-country') ||
+    readHeader('cf-country') ||
+    readHeader('x-geo-country');
+
+  const segments = [city, region, country]
+    .map((segment) => segment?.trim())
+    .filter((segment) => segment && segment.toLowerCase() !== 'unknown');
+
+  if (segments.length > 0) {
+    return segments.join(', ');
+  }
+
+  return undefined;
+};
+
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -40,6 +72,7 @@ export class AuthController {
   @UseGuards(AuthGuard('google'))
   async googleCallback(@Req() req: Request, @Res() res: Response) {
     const deviceInfo = req.headers['user-agent'];
+    const loginLocation = resolveLoginLocation(req);
     const stateParam = req.query?.state;
     const stateRaw =
       typeof stateParam === 'string'
@@ -61,6 +94,7 @@ export class AuthController {
       email: g.email,
       name: g.name,
       deviceInfo: typeof deviceInfo === 'string' ? deviceInfo : undefined,
+      loginLocation,
       trustedDeviceToken,
     });
 
@@ -95,6 +129,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const deviceInfo = req.headers['user-agent'];
+    const loginLocation = resolveLoginLocation(req);
     const cookies = req.cookies as Partial<Record<string, string>> | undefined;
     const deviceStableId =
       (typeof body?.posDeviceStableId === 'string'
@@ -122,6 +157,7 @@ export class AuthController {
         typeof deviceStableId === 'string' ? deviceStableId : undefined,
       posDeviceKey: typeof deviceKey === 'string' ? deviceKey : undefined,
       deviceInfo: typeof deviceInfo === 'string' ? deviceInfo : undefined,
+      loginLocation,
       trustedDeviceToken,
     });
 
@@ -167,6 +203,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const deviceInfo = req.headers['user-agent'];
+    const loginLocation = resolveLoginLocation(req);
     const cookies = req.cookies as Partial<Record<string, string>> | undefined;
     const trustedDeviceToken =
       typeof cookies?.[TRUSTED_DEVICE_COOKIE] === 'string'
@@ -176,6 +213,7 @@ export class AuthController {
       email: body?.email ?? '',
       password: body?.password ?? '',
       deviceInfo: typeof deviceInfo === 'string' ? deviceInfo : undefined,
+      loginLocation,
       trustedDeviceToken,
     });
 

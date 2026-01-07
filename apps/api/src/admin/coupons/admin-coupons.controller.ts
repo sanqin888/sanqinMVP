@@ -17,6 +17,9 @@ import { AdminCouponsService } from './admin-coupons.service';
 type CouponTemplatePayload = {
   couponStableId?: string;
   name: string;
+  title?: string | null;
+  titleEn?: string | null;
+  description?: string | null;
   status?: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
   validFrom?: string | null;
   validTo?: string | null;
@@ -41,6 +44,11 @@ type CouponProgramPayload = {
   perUserLimit?: number | null;
   eligibility?: Prisma.InputJsonValue | null;
   items: Prisma.InputJsonValue;
+};
+
+type IssueProgramPayload = {
+  userStableId?: string;
+  phone?: string;
 };
 
 @UseGuards(SessionAuthGuard, RolesGuard)
@@ -93,5 +101,13 @@ export class AdminCouponsController {
     @Body() body: CouponProgramPayload,
   ) {
     return this.service.updateProgram(programStableId, body);
+  }
+
+  @Post('programs/:programStableId/issue')
+  async issueProgram(
+    @Param('programStableId') programStableId: string,
+    @Body() body: IssueProgramPayload,
+  ) {
+    return this.service.issueProgram(programStableId, body);
   }
 }

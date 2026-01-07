@@ -50,6 +50,7 @@ type DeviceSession = {
   expiresAt: string;
   mfaVerifiedAt: string | null;
   deviceInfo: string | null;
+  loginLocation: string | null;
   isCurrent: boolean;
 };
 
@@ -151,6 +152,7 @@ type MemberAddress = {
   phone?: string;
   addressLine1: string;
   addressLine2?: string;
+  remark?: string;
   city: string;
   province: string;
   postalCode: string;
@@ -271,6 +273,9 @@ export default function MembershipHomePage() {
   const [devicesLoading, setDevicesLoading] = useState(false);
   const [devicesLoadedOnce, setDevicesLoadedOnce] = useState(false);
   const [devicesError, setDevicesError] = useState<string | null>(null);
+  const [trustingSessionId, setTrustingSessionId] = useState<string | null>(
+    null,
+  );
 
   const isZh = locale === 'zh';
 
@@ -922,6 +927,7 @@ export default function MembershipHomePage() {
             phone: address.phone ?? '',
             addressLine1: address.addressLine1,
             addressLine2: address.addressLine2 ?? '',
+            remark: address.remark ?? '',
             city: address.city,
             province: address.province,
             postalCode: address.postalCode,
@@ -1049,6 +1055,33 @@ export default function MembershipHomePage() {
             ? '授信设备移除失败，请稍后再试。'
             : 'Failed to remove trusted device.',
         );
+      }
+    },
+    [isZh, loadDevices],
+  );
+
+  const handleTrustSessionDevice = useCallback(
+    async (session: DeviceSession) => {
+      try {
+        setTrustingSessionId(session.sessionId);
+        await apiFetch<{ success: boolean }>(`/membership/devices/trusted`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: session.sessionId,
+            label: session.deviceInfo ?? undefined,
+          }),
+        });
+        await loadDevices();
+      } catch (error) {
+        console.error('Failed to trust device', error);
+        setDevicesError(
+          isZh
+            ? '授信设备添加失败，请稍后再试。'
+            : 'Failed to trust device.',
+        );
+      } finally {
+        setTrustingSessionId(null);
       }
     },
     [isZh, loadDevices],
@@ -1278,8 +1311,10 @@ const tierProgress = (() => {
               loading={devicesLoading}
               loadedOnce={devicesLoadedOnce}
               error={devicesError}
+              trustingSessionId={trustingSessionId}
               onRefresh={loadDevices}
               onRevokeSession={handleRevokeSession}
+              onTrustSessionDevice={handleTrustSessionDevice}
               onRevokeTrustedDevice={handleRevokeTrustedDevice}
             />
           )}
@@ -1600,6 +1635,7 @@ function AddressesSection({
   const [phone, setPhone] = useState('');
   const [addressLine1, setAddressLine1] = useState('');
   const [addressLine2, setAddressLine2] = useState('');
+  const [remark, setRemark] = useState('');
   const [city, setCity] = useState('');
   const [province, setProvince] = useState('');
   const [postalCode, setPostalCode] = useState('');
@@ -1612,6 +1648,7 @@ function AddressesSection({
     setPhone('');
     setAddressLine1('');
     setAddressLine2('');
+    setRemark('');
     setCity('');
     setProvince('');
     setPostalCode('');
@@ -1647,6 +1684,7 @@ function AddressesSection({
       phone: phone.trim(),
       addressLine1: trimmedLine1,
       addressLine2: addressLine2.trim(),
+      remark: remark.trim(),
       city: trimmedCity,
       province: trimmedProvince,
       postalCode: trimmedPostal,
@@ -1706,6 +1744,12 @@ function AddressesSection({
             placeholder={isZh ? '地址行 2（可选）' : 'Address line 2 (optional)'}
             value={addressLine2}
             onChange={(event) => setAddressLine2(event.target.value)}
+          />
+          <input
+            className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
+            placeholder={isZh ? '备注（如 Buzz Code）' : 'Remark (e.g. Buzz Code)'}
+            value={remark}
+            onChange={(event) => setRemark(event.target.value)}
           />
           <input
             className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
@@ -1777,6 +1821,12 @@ function AddressesSection({
             <p className="mt-1 text-slate-600">
               {formatMemberAddress(addr)}
             </p>
+            {addr.remark && (
+              <p className="mt-1 text-slate-500">
+                {isZh ? '备注：' : 'Remark: '}
+                {addr.remark}
+              </p>
+            )}
             <div className="mt-2 flex items-center gap-3 text-[10px] text-slate-500">
               <button
                 type="button"
@@ -1909,8 +1959,10 @@ function DeviceManagementSection({
   loading,
   loadedOnce,
   error,
+  trustingSessionId,
   onRefresh,
   onRevokeSession,
+  onTrustSessionDevice,
   onRevokeTrustedDevice,
 }: {
   isZh: boolean;
@@ -1919,8 +1971,10 @@ function DeviceManagementSection({
   loading: boolean;
   loadedOnce: boolean;
   error: string | null;
+  trustingSessionId: string | null;
   onRefresh: () => void;
   onRevokeSession: (sessionId: string) => void;
+  onTrustSessionDevice: (session: DeviceSession) => void;
   onRevokeTrustedDevice: (deviceId: string) => void;
 }) {
   return (
@@ -1981,6 +2035,11 @@ function DeviceManagementSection({
                       {formatDateTime(session.createdAt, isZh)}
                     </p>
                     <p className="mt-1 text-[10px] text-slate-500">
+                      {isZh ? '登录地点：' : 'Location: '}
+                      {session.loginLocation ||
+                        (isZh ? '未知地点' : 'Unknown')}
+                    </p>
+                    <p className="mt-1 text-[10px] text-slate-500">
                       {isZh ? '到期时间：' : 'Expires: '}
                       {formatDateTime(session.expiresAt, isZh)}
                     </p>
@@ -1995,6 +2054,22 @@ function DeviceManagementSection({
                       <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] text-emerald-700">
                         {isZh ? '当前设备' : 'Current'}
                       </span>
+                    )}
+                    {session.isCurrent && (
+                      <button
+                        type="button"
+                        className="text-[10px] text-slate-500 hover:text-slate-900 disabled:cursor-not-allowed"
+                        onClick={() => onTrustSessionDevice(session)}
+                        disabled={trustingSessionId === session.sessionId}
+                      >
+                        {trustingSessionId === session.sessionId
+                          ? isZh
+                            ? '授信中…'
+                            : 'Trusting…'
+                          : isZh
+                            ? '设为授信设备'
+                            : 'Trust device'}
+                      </button>
                     )}
                     <button
                       type="button"

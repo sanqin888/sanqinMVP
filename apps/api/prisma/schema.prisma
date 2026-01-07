@@ -181,6 +181,7 @@ model UserSession {
   userId       String   @db.Uuid
   expiresAt    DateTime
   deviceInfo   String?
+  loginLocation String?
   mfaVerifiedAt DateTime?
   createdAt    DateTime @default(now())
 
@@ -277,6 +278,7 @@ model UserAddress {
   phone           String?
   addressLine1    String
   addressLine2    String?
+  remark          String?
   city            String
   province        String
   postalCode      String
@@ -346,7 +348,9 @@ model Coupon {
   orderId       String?   @db.Uuid
   source        String?
   campaign      String?
+  fromTemplateId String?  @db.Uuid
   unlockedItemStableIds String[] @default([])
+  isFrozen      Boolean   @default(false)
   isActive      Boolean   @default(true)
   startsAt      DateTime?
   endsAt        DateTime?
@@ -360,6 +364,9 @@ model CouponTemplate {
   id             String               @id @default(uuid()) @db.Uuid
   couponStableId String               @unique @default(cuid())
   name           String
+  title          String?
+  titleEn        String?
+  description    String?
   status         CouponTemplateStatus @default(DRAFT)
   validFrom      DateTime?
   validTo        DateTime?

@@ -51,6 +51,7 @@ type MemberAddress = {
   phone?: string;
   addressLine1: string;
   addressLine2?: string;
+  remark?: string;
   city: string;
   province: string;
   postalCode: string;
@@ -461,6 +462,8 @@ export default function CheckoutPage() {
   const [addressPrefilled, setAddressPrefilled] = useState(false);
   const [memberDefaultAddress, setMemberDefaultAddress] =
     useState<MemberAddress | null>(null);
+  const [addressRemarkPrefilled, setAddressRemarkPrefilled] =
+    useState(false);
 
   // 手机号验证流程状态
   const [phoneVerificationStep, setPhoneVerificationStep] = useState<
@@ -1304,14 +1307,30 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (addressPrefilled) return;
     if (!memberDefaultAddress) return;
+    if (fulfillment !== "delivery") return;
 
     setCustomer((prev) => {
-      if (prev.addressLine1.trim().length > 0) {
+      const nextName =
+        !prev.name.trim() && memberDefaultAddress.receiver
+          ? memberDefaultAddress.receiver
+          : prev.name;
+      const nextPhone =
+        !prev.phone.trim() && memberDefaultAddress.phone
+          ? memberDefaultAddress.phone
+          : prev.phone;
+
+      if (
+        prev.addressLine1.trim().length > 0 &&
+        nextName === prev.name &&
+        nextPhone === prev.phone
+      ) {
         return prev;
       }
 
       return {
         ...prev,
+        name: nextName,
+        phone: nextPhone,
         addressLine1: memberDefaultAddress.addressLine1,
         addressLine2: memberDefaultAddress.addressLine2 ?? "",
         city: memberDefaultAddress.city || prev.city,
@@ -1321,7 +1340,25 @@ export default function CheckoutPage() {
     });
 
     setAddressPrefilled(true);
-  }, [addressPrefilled, memberDefaultAddress]);
+  }, [addressPrefilled, fulfillment, memberDefaultAddress]);
+
+  useEffect(() => {
+    if (addressRemarkPrefilled) return;
+    if (!memberDefaultAddress?.remark) return;
+    if (fulfillment !== "delivery") return;
+
+    setCustomer((prev) => {
+      const remark = memberDefaultAddress.remark?.trim();
+      if (!remark) return prev;
+      if (prev.notes.trim()) return prev;
+      return {
+        ...prev,
+        notes: remark,
+      };
+    });
+
+    setAddressRemarkPrefilled(true);
+  }, [addressRemarkPrefilled, fulfillment, memberDefaultAddress]);
 
   // ✅ 如果当前手机号与会员账号中的手机号一致，就自动视为“已验证”
   useEffect(() => {

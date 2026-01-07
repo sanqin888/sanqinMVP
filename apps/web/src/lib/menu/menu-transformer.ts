@@ -6,10 +6,7 @@ import type {
   AdminMenuCategoryDto,
   DailySpecialDto,
   MenuEntitlementItemDto,
-  MenuItemWithBindingsDto,
-  MenuOptionGroupBindingDto,
   MenuOptionGroupWithOptionsDto,
-  OptionChoiceDto,
   PublicMenuCategoryDto,
   TemplateGroupFullDto,
 } from "@shared/menu";
@@ -41,9 +38,6 @@ export type LocalizedCategory = {
 };
 
 /** ===== API 菜单类型（对齐 /admin/menu/full 与 /menu/public） ===== */
-type DbMenuOption = OptionChoiceDto;
-type DbMenuOptionGroup = MenuOptionGroupBindingDto;
-type DbMenuItem = MenuItemWithBindingsDto;
 type DbMenuCategory = AdminMenuCategoryDto;
 type DbPublicMenuCategory = PublicMenuCategoryDto;
 
