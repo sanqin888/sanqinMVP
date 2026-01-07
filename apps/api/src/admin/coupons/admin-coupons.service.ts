@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { z } from 'zod';
 import { PrismaService } from '../../prisma/prisma.service';
 
 type CouponTemplateInput = {
@@ -21,12 +22,52 @@ type CouponProgramInput = {
   programStableId?: string;
   name: string;
   status?: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
-  triggerType: 'SIGNUP_COMPLETED' | 'REFERRAL_QUALIFIED';
+  distributionType?: 'AUTOMATIC_TRIGGER' | 'MANUAL_CLAIM' | 'PROMO_CODE' | 'ADMIN_PUSH';
+  triggerType?: 'SIGNUP_COMPLETED' | 'REFERRAL_QUALIFIED' | null;
   validFrom?: string | null;
   validTo?: string | null;
+  promoCode?: string | null;
+  totalLimit?: number | null;
+  perUserLimit?: number | null;
   eligibility?: Prisma.InputJsonValue | null;
   items: Prisma.InputJsonValue;
 };
+
+const UseRuleSchema = z.discriminatedUnion('type', [
+  z
+    .object({
+      type: z.literal('FIXED_CENTS'),
+      applyTo: z.literal('ORDER'),
+      amountCents: z.number().int().positive(),
+      constraints: z
+        .object({
+          minSubtotalCents: z.number().int().min(0),
+        })
+        .optional(),
+      preset: z.string().optional(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal('PERCENT'),
+      applyTo: z.literal('ORDER'),
+      percentOff: z.number().int().min(1).max(100),
+      constraints: z
+        .object({
+          minSubtotalCents: z.number().int().min(0),
+        })
+        .optional(),
+      preset: z.string().optional(),
+    })
+    .passthrough(),
+]);
+
+const IssueRuleSchema = z
+  .object({
+    mode: z.enum(['MANUAL', 'AUTO']),
+    preset: z.string().optional(),
+  })
+  .passthrough();
 
 function parseDateInput(value?: string | null): Date | null {
   if (!value) return null;
@@ -37,11 +78,14 @@ function parseDateInput(value?: string | null): Date | null {
   return parsed;
 }
 
-function ensureObject(value: unknown, label: string): Prisma.InputJsonValue {
-  if (!value || typeof value !== 'object') {
-    throw new BadRequestException(`${label} must be an object`);
+function validateUseRule(value: unknown): Prisma.InputJsonValue {
+  const parsed = UseRuleSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new BadRequestException(
+      `Invalid useRule configuration: ${parsed.error.message}`,
+    );
   }
-  return value as Prisma.InputJsonValue;
+  return parsed.data as Prisma.InputJsonValue;
 }
 
 function ensureArray(value: unknown, label: string): Prisma.InputJsonValue {
@@ -51,14 +95,92 @@ function ensureArray(value: unknown, label: string): Prisma.InputJsonValue {
   return value as Prisma.InputJsonValue;
 }
 
+function parseNullableInteger(value: unknown, label: string): number | null {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    throw new BadRequestException(`${label} must be a number`);
+  }
+  if (!Number.isInteger(value)) {
+    throw new BadRequestException(`${label} must be an integer`);
+  }
+  if (value < 0) {
+    throw new BadRequestException(`${label} must be non-negative`);
+  }
+  return value;
+}
+
+function parsePositiveInteger(
+  value: unknown,
+  label: string,
+): number | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    throw new BadRequestException(`${label} must be a number`);
+  }
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new BadRequestException(`${label} must be a positive integer`);
+  }
+  return value;
+}
+
+function normalizePromoCode(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== 'string') {
+    throw new BadRequestException('promoCode must be a string');
+  }
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? null : trimmed.toUpperCase();
+}
+
+function normalizeDistributionType(
+  value: CouponProgramInput['distributionType'],
+): 'AUTOMATIC_TRIGGER' | 'MANUAL_CLAIM' | 'PROMO_CODE' | 'ADMIN_PUSH' {
+  return value ?? 'AUTOMATIC_TRIGGER';
+}
+
+function normalizeTriggerType(
+  distributionType: CouponProgramInput['distributionType'],
+  triggerType: CouponProgramInput['triggerType'],
+): 'SIGNUP_COMPLETED' | 'REFERRAL_QUALIFIED' | null {
+  if (distributionType && distributionType !== 'AUTOMATIC_TRIGGER') {
+    return null;
+  }
+  if (!triggerType) {
+    throw new BadRequestException('triggerType is required for automatic programs');
+  }
+  return triggerType;
+}
+
 function normalizeOptionalObject(
   value: unknown,
   label: string,
 ): Prisma.InputJsonValue | Prisma.NullTypes.DbNull | undefined {
   if (value === undefined) return undefined;
   if (value === null) return Prisma.DbNull;
-  if (typeof value === 'object') return value as Prisma.InputJsonValue;
-  throw new BadRequestException(`${label} must be an object or null`);
+  if (!value || typeof value !== 'object') {
+    throw new BadRequestException(`${label} must be an object or null`);
+  }
+  return value as Prisma.InputJsonValue;
+}
+
+function validateIssueRule(
+  value: unknown,
+  label: string,
+): Prisma.InputJsonValue | Prisma.NullTypes.DbNull | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return Prisma.DbNull;
+  if (!value || typeof value !== 'object') {
+    throw new BadRequestException(`${label} must be an object or null`);
+  }
+
+  const parsed = IssueRuleSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new BadRequestException(
+      `Invalid ${label} configuration: ${parsed.error.message}`,
+    );
+  }
+  return parsed.data as Prisma.InputJsonValue;
 }
 
 @Injectable()
@@ -80,8 +202,8 @@ export class AdminCouponsService {
   }
 
   async createTemplate(input: CouponTemplateInput) {
-    const useRule = ensureObject(input.useRule, 'useRule');
-    const issueRule = normalizeOptionalObject(input.issueRule, 'issueRule');
+    const useRule = validateUseRule(input.useRule);
+    const issueRule = validateIssueRule(input.issueRule, 'issueRule');
 
     return this.prisma.couponTemplate.create({
       data: {
@@ -102,8 +224,8 @@ export class AdminCouponsService {
     });
     if (!existing) throw new NotFoundException('Template not found');
 
-    const useRule = ensureObject(input.useRule, 'useRule');
-    const issueRule = normalizeOptionalObject(input.issueRule, 'issueRule');
+    const useRule = validateUseRule(input.useRule);
+    const issueRule = validateIssueRule(input.issueRule, 'issueRule');
 
     return this.prisma.couponTemplate.update({
       where: { couponStableId },
@@ -138,15 +260,24 @@ export class AdminCouponsService {
       input.eligibility,
       'eligibility',
     );
+    const distributionType = normalizeDistributionType(input.distributionType);
+    const triggerType = normalizeTriggerType(distributionType, input.triggerType);
+    const promoCode = normalizePromoCode(input.promoCode);
+    const totalLimit = parseNullableInteger(input.totalLimit, 'totalLimit');
+    const perUserLimit = parsePositiveInteger(input.perUserLimit, 'perUserLimit');
 
     return this.prisma.couponProgram.create({
       data: {
         programStableId: input.programStableId,
         name: input.name,
         status: input.status,
-        triggerType: input.triggerType,
+        distributionType,
+        triggerType,
         validFrom: parseDateInput(input.validFrom),
         validTo: parseDateInput(input.validTo),
+        promoCode,
+        totalLimit,
+        perUserLimit,
         eligibility,
         items,
       },
@@ -164,15 +295,24 @@ export class AdminCouponsService {
       input.eligibility,
       'eligibility',
     );
+    const distributionType = normalizeDistributionType(input.distributionType);
+    const triggerType = normalizeTriggerType(distributionType, input.triggerType);
+    const promoCode = normalizePromoCode(input.promoCode);
+    const totalLimit = parseNullableInteger(input.totalLimit, 'totalLimit');
+    const perUserLimit = parsePositiveInteger(input.perUserLimit, 'perUserLimit');
 
     return this.prisma.couponProgram.update({
       where: { programStableId },
       data: {
         name: input.name,
         status: input.status,
-        triggerType: input.triggerType,
+        distributionType,
+        triggerType,
         validFrom: parseDateInput(input.validFrom),
         validTo: parseDateInput(input.validTo),
+        promoCode,
+        totalLimit,
+        perUserLimit,
         eligibility,
         items,
       },
