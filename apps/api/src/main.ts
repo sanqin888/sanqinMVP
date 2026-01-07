@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { configureApp, getApiPrefix } from './app.bootstrap';
 import * as express from 'express';
+import * as fs from 'fs';
 import * as path from 'path';
 
 async function bootstrap(): Promise<void> {
@@ -21,6 +22,10 @@ async function bootstrap(): Promise<void> {
   app.use(`/${prefix}/webhooks/clover-hco`, express.raw({ type: '*/*' }));
 
   const uploadsDir = path.resolve(process.cwd(), 'uploads');
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    console.log(`Created uploads directory at: ${uploadsDir}`);
+  }
   app.use('/uploads', express.static(uploadsDir));
 
   const port = process.env.PORT ? Number(process.env.PORT) : 4000;
