@@ -22,9 +22,13 @@ type CouponProgramInput = {
   programStableId?: string;
   name: string;
   status?: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
-  triggerType: 'SIGNUP_COMPLETED' | 'REFERRAL_QUALIFIED';
+  distributionType?: 'AUTOMATIC_TRIGGER' | 'MANUAL_CLAIM' | 'PROMO_CODE' | 'ADMIN_PUSH';
+  triggerType?: 'SIGNUP_COMPLETED' | 'REFERRAL_QUALIFIED' | null;
   validFrom?: string | null;
   validTo?: string | null;
+  promoCode?: string | null;
+  totalLimit?: number | null;
+  perUserLimit?: number | null;
   eligibility?: Prisma.InputJsonValue | null;
   items: Prisma.InputJsonValue;
 };
@@ -89,6 +93,63 @@ function ensureArray(value: unknown, label: string): Prisma.InputJsonValue {
     throw new BadRequestException(`${label} must be an array`);
   }
   return value as Prisma.InputJsonValue;
+}
+
+function parseNullableInteger(value: unknown, label: string): number | null {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    throw new BadRequestException(`${label} must be a number`);
+  }
+  if (!Number.isInteger(value)) {
+    throw new BadRequestException(`${label} must be an integer`);
+  }
+  if (value < 0) {
+    throw new BadRequestException(`${label} must be non-negative`);
+  }
+  return value;
+}
+
+function parsePositiveInteger(
+  value: unknown,
+  label: string,
+): number | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    throw new BadRequestException(`${label} must be a number`);
+  }
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new BadRequestException(`${label} must be a positive integer`);
+  }
+  return value;
+}
+
+function normalizePromoCode(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== 'string') {
+    throw new BadRequestException('promoCode must be a string');
+  }
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? null : trimmed.toUpperCase();
+}
+
+function normalizeDistributionType(
+  value: CouponProgramInput['distributionType'],
+): 'AUTOMATIC_TRIGGER' | 'MANUAL_CLAIM' | 'PROMO_CODE' | 'ADMIN_PUSH' {
+  return value ?? 'AUTOMATIC_TRIGGER';
+}
+
+function normalizeTriggerType(
+  distributionType: CouponProgramInput['distributionType'],
+  triggerType: CouponProgramInput['triggerType'],
+): 'SIGNUP_COMPLETED' | 'REFERRAL_QUALIFIED' | null {
+  if (distributionType && distributionType !== 'AUTOMATIC_TRIGGER') {
+    return null;
+  }
+  if (!triggerType) {
+    throw new BadRequestException('triggerType is required for automatic programs');
+  }
+  return triggerType;
 }
 
 function normalizeOptionalObject(
@@ -199,15 +260,24 @@ export class AdminCouponsService {
       input.eligibility,
       'eligibility',
     );
+    const distributionType = normalizeDistributionType(input.distributionType);
+    const triggerType = normalizeTriggerType(distributionType, input.triggerType);
+    const promoCode = normalizePromoCode(input.promoCode);
+    const totalLimit = parseNullableInteger(input.totalLimit, 'totalLimit');
+    const perUserLimit = parsePositiveInteger(input.perUserLimit, 'perUserLimit');
 
     return this.prisma.couponProgram.create({
       data: {
         programStableId: input.programStableId,
         name: input.name,
         status: input.status,
-        triggerType: input.triggerType,
+        distributionType,
+        triggerType,
         validFrom: parseDateInput(input.validFrom),
         validTo: parseDateInput(input.validTo),
+        promoCode,
+        totalLimit,
+        perUserLimit,
         eligibility,
         items,
       },
@@ -225,15 +295,24 @@ export class AdminCouponsService {
       input.eligibility,
       'eligibility',
     );
+    const distributionType = normalizeDistributionType(input.distributionType);
+    const triggerType = normalizeTriggerType(distributionType, input.triggerType);
+    const promoCode = normalizePromoCode(input.promoCode);
+    const totalLimit = parseNullableInteger(input.totalLimit, 'totalLimit');
+    const perUserLimit = parsePositiveInteger(input.perUserLimit, 'perUserLimit');
 
     return this.prisma.couponProgram.update({
       where: { programStableId },
       data: {
         name: input.name,
         status: input.status,
-        triggerType: input.triggerType,
+        distributionType,
+        triggerType,
         validFrom: parseDateInput(input.validFrom),
         validTo: parseDateInput(input.validTo),
+        promoCode,
+        totalLimit,
+        perUserLimit,
         eligibility,
         items,
       },

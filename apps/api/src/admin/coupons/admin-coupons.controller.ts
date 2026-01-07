@@ -28,9 +28,13 @@ type CouponProgramPayload = {
   programStableId?: string;
   name: string;
   status?: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
-  triggerType: 'SIGNUP_COMPLETED' | 'REFERRAL_QUALIFIED';
+  distributionType?: 'AUTOMATIC_TRIGGER' | 'MANUAL_CLAIM' | 'PROMO_CODE' | 'ADMIN_PUSH';
+  triggerType?: 'SIGNUP_COMPLETED' | 'REFERRAL_QUALIFIED' | null;
   validFrom?: string | null;
   validTo?: string | null;
+  promoCode?: string | null;
+  totalLimit?: number | null;
+  perUserLimit?: number | null;
   eligibility?: Prisma.InputJsonValue | null;
   items: Prisma.InputJsonValue;
 };
