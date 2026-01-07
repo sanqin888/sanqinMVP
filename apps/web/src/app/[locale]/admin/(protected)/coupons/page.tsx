@@ -9,6 +9,7 @@ type CouponTemplate = {
   couponStableId: string;
   name: string;
   title: string | null;
+  titleEn: string | null;
   description: string | null;
   status: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
   validFrom: string | null;
@@ -42,6 +43,7 @@ type TemplateFormState = {
   couponStableId: string;
   name: string;
   title: string;
+  titleEn: string;
   description: string;
   status: CouponTemplate['status'];
   validFrom: string;
@@ -81,6 +83,7 @@ const emptyTemplateForm: TemplateFormState = {
   couponStableId: '',
   name: '',
   title: '',
+  titleEn: '',
   description: '',
   status: 'DRAFT',
   validFrom: '',
@@ -434,6 +437,7 @@ export default function AdminCouponsPage() {
         couponStableId: templateForm.couponStableId || undefined,
         name: templateForm.name.trim(),
         title: templateForm.title.trim() || null,
+        titleEn: templateForm.titleEn.trim() || null,
         description: templateForm.description.trim() || null,
         status: templateForm.status,
         validFrom: templateForm.validFrom || null,
@@ -605,6 +609,7 @@ export default function AdminCouponsPage() {
       couponStableId: template.couponStableId,
       name: template.name,
       title: template.title ?? '',
+      titleEn: template.titleEn ?? '',
       description: template.description ?? '',
       status: template.status,
       validFrom: template.validFrom ? template.validFrom.slice(0, 10) : '',
@@ -673,7 +678,7 @@ export default function AdminCouponsPage() {
         </div>
       )}
 
-      <section className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
+      <section className="grid gap-6 lg:grid-cols-[0.9fr_1.3fr]">
         <div className="rounded-2xl border p-6 space-y-5">
           <div className="flex items-center justify-between">
             <div>
@@ -682,12 +687,6 @@ export default function AdminCouponsPage() {
                 当前共 {templateCount} 个模板
               </p>
             </div>
-            <button
-              onClick={() => resetTemplateForm()}
-              className="rounded-md border px-3 py-2 text-sm hover:bg-accent"
-            >
-              新建模板
-            </button>
           </div>
 
           <div className="space-y-3">
@@ -716,6 +715,9 @@ export default function AdminCouponsPage() {
                   </div>
                   <div className="text-sm text-muted-foreground">
                     展示标题：{template.title ?? '—'}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    英文标题：{template.titleEn ?? '—'}
                   </div>
                   <div className="text-sm text-muted-foreground">
                     有效期：{formatDateRange(template.validFrom, template.validTo)}
@@ -761,6 +763,19 @@ export default function AdminCouponsPage() {
                     setTemplateForm((prev) => ({
                       ...prev,
                       title: e.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-muted-foreground">展示标题（英文）</span>
+                <input
+                  className="w-full rounded-md border px-3 py-2"
+                  value={templateForm.titleEn}
+                  onChange={(e) =>
+                    setTemplateForm((prev) => ({
+                      ...prev,
+                      titleEn: e.target.value,
                     }))
                   }
                 />
@@ -1059,7 +1074,7 @@ export default function AdminCouponsPage() {
         </div>
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
+      <section className="grid gap-6 lg:grid-cols-[0.9fr_1.3fr]">
         <div className="rounded-2xl border p-6 space-y-5">
           <div className="flex items-center justify-between">
             <div>
@@ -1068,12 +1083,6 @@ export default function AdminCouponsPage() {
                 当前共 {programCount} 个礼包
               </p>
             </div>
-            <button
-              onClick={() => resetProgramForm()}
-              className="rounded-md border px-3 py-2 text-sm hover:bg-accent"
-            >
-              新建礼包
-            </button>
           </div>
 
           <div className="space-y-3">

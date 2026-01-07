@@ -13,6 +13,7 @@ type CouponTemplateInput = {
   couponStableId?: string;
   name: string;
   title?: string | null;
+  titleEn?: string | null;
   description?: string | null;
   status?: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
   validFrom?: string | null;
@@ -269,6 +270,7 @@ export class AdminCouponsService {
         couponStableId: input.couponStableId,
         name: input.name,
         title: input.title ?? null,
+        titleEn: input.titleEn ?? null,
         description: input.description ?? null,
         status: input.status,
         validFrom,
@@ -297,6 +299,7 @@ export class AdminCouponsService {
       data: {
         name: input.name,
         title: input.title ?? null,
+        titleEn: input.titleEn ?? null,
         description: input.description ?? null,
         status: input.status,
         validFrom,

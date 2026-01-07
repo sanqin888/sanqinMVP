@@ -152,6 +152,7 @@ type MemberAddress = {
   phone?: string;
   addressLine1: string;
   addressLine2?: string;
+  remark?: string;
   city: string;
   province: string;
   postalCode: string;
@@ -926,6 +927,7 @@ export default function MembershipHomePage() {
             phone: address.phone ?? '',
             addressLine1: address.addressLine1,
             addressLine2: address.addressLine2 ?? '',
+            remark: address.remark ?? '',
             city: address.city,
             province: address.province,
             postalCode: address.postalCode,
@@ -1633,6 +1635,7 @@ function AddressesSection({
   const [phone, setPhone] = useState('');
   const [addressLine1, setAddressLine1] = useState('');
   const [addressLine2, setAddressLine2] = useState('');
+  const [remark, setRemark] = useState('');
   const [city, setCity] = useState('');
   const [province, setProvince] = useState('');
   const [postalCode, setPostalCode] = useState('');
@@ -1645,6 +1648,7 @@ function AddressesSection({
     setPhone('');
     setAddressLine1('');
     setAddressLine2('');
+    setRemark('');
     setCity('');
     setProvince('');
     setPostalCode('');
@@ -1680,6 +1684,7 @@ function AddressesSection({
       phone: phone.trim(),
       addressLine1: trimmedLine1,
       addressLine2: addressLine2.trim(),
+      remark: remark.trim(),
       city: trimmedCity,
       province: trimmedProvince,
       postalCode: trimmedPostal,
@@ -1739,6 +1744,12 @@ function AddressesSection({
             placeholder={isZh ? '地址行 2（可选）' : 'Address line 2 (optional)'}
             value={addressLine2}
             onChange={(event) => setAddressLine2(event.target.value)}
+          />
+          <input
+            className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
+            placeholder={isZh ? '备注（如 Buzz Code）' : 'Remark (e.g. Buzz Code)'}
+            value={remark}
+            onChange={(event) => setRemark(event.target.value)}
           />
           <input
             className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
@@ -1810,6 +1821,12 @@ function AddressesSection({
             <p className="mt-1 text-slate-600">
               {formatMemberAddress(addr)}
             </p>
+            {addr.remark && (
+              <p className="mt-1 text-slate-500">
+                {isZh ? '备注：' : 'Remark: '}
+                {addr.remark}
+              </p>
+            )}
             <div className="mt-2 flex items-center gap-3 text-[10px] text-slate-500">
               <button
                 type="button"
