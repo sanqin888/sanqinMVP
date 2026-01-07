@@ -674,10 +674,7 @@ export class AdminBusinessService {
     return Number(value.toFixed(4));
   }
 
-  private normalizeOptionalNumber(
-    label: string,
-    value: unknown,
-  ): number | null {
+  private normalizeOptionalNumber(label: string, value: unknown): number | null {
     if (value === null) return null;
     if (typeof value !== 'number' || !Number.isFinite(value)) {
       throw new BadRequestException(`${label} must be a finite number or null`);
