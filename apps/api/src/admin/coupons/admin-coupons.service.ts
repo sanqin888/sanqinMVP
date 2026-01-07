@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { z } from 'zod';
 import { PrismaService } from '../../prisma/prisma.service';
 
 type CouponTemplateInput = {
@@ -28,6 +29,42 @@ type CouponProgramInput = {
   items: Prisma.InputJsonValue;
 };
 
+const UseRuleSchema = z.discriminatedUnion('type', [
+  z
+    .object({
+      type: z.literal('FIXED_CENTS'),
+      applyTo: z.literal('ORDER'),
+      amountCents: z.number().int().positive(),
+      constraints: z
+        .object({
+          minSubtotalCents: z.number().int().min(0),
+        })
+        .optional(),
+      preset: z.string().optional(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal('PERCENT'),
+      applyTo: z.literal('ORDER'),
+      percentOff: z.number().int().min(1).max(100),
+      constraints: z
+        .object({
+          minSubtotalCents: z.number().int().min(0),
+        })
+        .optional(),
+      preset: z.string().optional(),
+    })
+    .passthrough(),
+]);
+
+const IssueRuleSchema = z
+  .object({
+    mode: z.enum(['MANUAL', 'AUTO']),
+    preset: z.string().optional(),
+  })
+  .passthrough();
+
 function parseDateInput(value?: string | null): Date | null {
   if (!value) return null;
   const parsed = new Date(value);
@@ -37,11 +74,14 @@ function parseDateInput(value?: string | null): Date | null {
   return parsed;
 }
 
-function ensureObject(value: unknown, label: string): Prisma.InputJsonValue {
-  if (!value || typeof value !== 'object') {
-    throw new BadRequestException(`${label} must be an object`);
+function validateUseRule(value: unknown): Prisma.InputJsonValue {
+  const parsed = UseRuleSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new BadRequestException(
+      `Invalid useRule configuration: ${parsed.error.message}`,
+    );
   }
-  return value as Prisma.InputJsonValue;
+  return parsed.data as Prisma.InputJsonValue;
 }
 
 function ensureArray(value: unknown, label: string): Prisma.InputJsonValue {
@@ -57,8 +97,29 @@ function normalizeOptionalObject(
 ): Prisma.InputJsonValue | Prisma.NullTypes.DbNull | undefined {
   if (value === undefined) return undefined;
   if (value === null) return Prisma.DbNull;
-  if (typeof value === 'object') return value as Prisma.InputJsonValue;
-  throw new BadRequestException(`${label} must be an object or null`);
+  if (!value || typeof value !== 'object') {
+    throw new BadRequestException(`${label} must be an object or null`);
+  }
+  return value as Prisma.InputJsonValue;
+}
+
+function validateIssueRule(
+  value: unknown,
+  label: string,
+): Prisma.InputJsonValue | Prisma.NullTypes.DbNull | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return Prisma.DbNull;
+  if (!value || typeof value !== 'object') {
+    throw new BadRequestException(`${label} must be an object or null`);
+  }
+
+  const parsed = IssueRuleSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new BadRequestException(
+      `Invalid ${label} configuration: ${parsed.error.message}`,
+    );
+  }
+  return parsed.data as Prisma.InputJsonValue;
 }
 
 @Injectable()
@@ -80,8 +141,8 @@ export class AdminCouponsService {
   }
 
   async createTemplate(input: CouponTemplateInput) {
-    const useRule = ensureObject(input.useRule, 'useRule');
-    const issueRule = normalizeOptionalObject(input.issueRule, 'issueRule');
+    const useRule = validateUseRule(input.useRule);
+    const issueRule = validateIssueRule(input.issueRule, 'issueRule');
 
     return this.prisma.couponTemplate.create({
       data: {
@@ -102,8 +163,8 @@ export class AdminCouponsService {
     });
     if (!existing) throw new NotFoundException('Template not found');
 
-    const useRule = ensureObject(input.useRule, 'useRule');
-    const issueRule = normalizeOptionalObject(input.issueRule, 'issueRule');
+    const useRule = validateUseRule(input.useRule);
+    const issueRule = validateIssueRule(input.issueRule, 'issueRule');
 
     return this.prisma.couponTemplate.update({
       where: { couponStableId },
