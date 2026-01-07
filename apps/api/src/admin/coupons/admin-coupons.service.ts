@@ -40,60 +40,62 @@ type CouponProgramInput = {
   items: Prisma.InputJsonValue;
 };
 
-const UseRuleSchema = z.discriminatedUnion('type', [
-  z
+const Zod = z as typeof import('zod');
+
+const UseRuleSchema = Zod.discriminatedUnion('type', [
+  Zod
     .object({
-      type: z.literal('FIXED_CENTS'),
-      applyTo: z.union([z.literal('ORDER'), z.literal('ITEM')]),
-      itemStableIds: z.array(z.string().min(1)).optional(),
-      amountCents: z.number().int().positive(),
-      constraints: z
+      type: Zod.literal('FIXED_CENTS'),
+      applyTo: Zod.union([Zod.literal('ORDER'), Zod.literal('ITEM')]),
+      itemStableIds: Zod.array(Zod.string().min(1)).optional(),
+      amountCents: Zod.number().int().positive(),
+      constraints: Zod
         .object({
-          minSubtotalCents: z.number().int().min(0),
+          minSubtotalCents: Zod.number().int().min(0),
         })
         .optional(),
-      preset: z.string().optional(),
+      preset: Zod.string().optional(),
     })
     .superRefine((value, ctx) => {
       if (value.applyTo === 'ITEM') {
         if (!value.itemStableIds || value.itemStableIds.length === 0) {
           ctx.addIssue({
-            code: z.ZodIssueCode.custom,
+            code: Zod.ZodIssueCode.custom,
             message: 'itemStableIds is required when applyTo is ITEM',
           });
         }
       } else if (value.itemStableIds && value.itemStableIds.length > 0) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: Zod.ZodIssueCode.custom,
           message: 'itemStableIds must be empty when applyTo is ORDER',
         });
       }
     })
     .passthrough(),
-  z
+  Zod
     .object({
-      type: z.literal('PERCENT'),
-      applyTo: z.union([z.literal('ORDER'), z.literal('ITEM')]),
-      itemStableIds: z.array(z.string().min(1)).optional(),
-      percentOff: z.number().int().min(1).max(100),
-      constraints: z
+      type: Zod.literal('PERCENT'),
+      applyTo: Zod.union([Zod.literal('ORDER'), Zod.literal('ITEM')]),
+      itemStableIds: Zod.array(Zod.string().min(1)).optional(),
+      percentOff: Zod.number().int().min(1).max(100),
+      constraints: Zod
         .object({
-          minSubtotalCents: z.number().int().min(0),
+          minSubtotalCents: Zod.number().int().min(0),
         })
         .optional(),
-      preset: z.string().optional(),
+      preset: Zod.string().optional(),
     })
     .superRefine((value, ctx) => {
       if (value.applyTo === 'ITEM') {
         if (!value.itemStableIds || value.itemStableIds.length === 0) {
           ctx.addIssue({
-            code: z.ZodIssueCode.custom,
+            code: Zod.ZodIssueCode.custom,
             message: 'itemStableIds is required when applyTo is ITEM',
           });
         }
       } else if (value.itemStableIds && value.itemStableIds.length > 0) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: Zod.ZodIssueCode.custom,
           message: 'itemStableIds must be empty when applyTo is ORDER',
         });
       }
@@ -101,20 +103,19 @@ const UseRuleSchema = z.discriminatedUnion('type', [
     .passthrough(),
 ]);
 
-const IssueRuleSchema = z
+const IssueRuleSchema = Zod
   .object({
-    mode: z.enum(['MANUAL', 'AUTO']),
-    preset: z.string().optional(),
+    mode: Zod.enum(['MANUAL', 'AUTO']),
+    preset: Zod.string().optional(),
   })
   .passthrough();
 
-const ProgramItemsSchema = z
-  .array(
-    z.object({
-      couponStableId: z.string().cuid(),
-      quantity: z.number().int().positive().optional().default(1),
-    }),
-  )
+const ProgramItemsSchema = Zod.array(
+  Zod.object({
+    couponStableId: Zod.string().cuid(),
+    quantity: Zod.number().int().positive().optional().default(1),
+  }),
+)
   .min(1);
 
 function parseDateInput(value?: string | null): Date | null {
@@ -126,10 +127,7 @@ function parseDateInput(value?: string | null): Date | null {
   return parsed;
 }
 
-function parseDateRange(
-  validFrom?: string | null,
-  validTo?: string | null,
-) {
+function parseDateRange(validFrom?: string | null, validTo?: string | null) {
   const parsedFrom = parseDateInput(validFrom);
   const parsedTo = parseDateInput(validTo);
   if (parsedFrom && parsedTo && parsedTo < parsedFrom) {
@@ -490,7 +488,7 @@ export class AdminCouponsService {
           ? rule.constraints.minSubtotalCents
           : null;
       const unlockedItemStableIds =
-        rule.applyTo === 'ITEM' ? rule.itemStableIds ?? [] : [];
+        rule.applyTo === 'ITEM' ? (rule.itemStableIds ?? []) : [];
 
       for (let i = 0; i < item.quantity; i += 1) {
         const couponStableId = generateStableId();
@@ -538,9 +536,7 @@ export class AdminCouponsService {
     return { issuedCount: couponsToCreate.length };
   }
 
-  private async ensureProgramItemsExist(
-    items: { couponStableId: string }[],
-  ) {
+  private async ensureProgramItemsExist(items: { couponStableId: string }[]) {
     const ids = items.map((item) => item.couponStableId);
     const uniqueIds = Array.from(new Set(ids));
     const count = await this.prisma.couponTemplate.count({
