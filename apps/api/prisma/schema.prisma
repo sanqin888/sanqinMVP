@@ -347,7 +347,9 @@ model Coupon {
   orderId       String?   @db.Uuid
   source        String?
   campaign      String?
+  fromTemplateId String?  @db.Uuid
   unlockedItemStableIds String[] @default([])
+  isFrozen      Boolean   @default(false)
   isActive      Boolean   @default(true)
   startsAt      DateTime?
   endsAt        DateTime?
@@ -361,6 +363,8 @@ model CouponTemplate {
   id             String               @id @default(uuid()) @db.Uuid
   couponStableId String               @unique @default(cuid())
   name           String
+  title          String?
+  description    String?
   status         CouponTemplateStatus @default(DRAFT)
   validFrom      DateTime?
   validTo        DateTime?

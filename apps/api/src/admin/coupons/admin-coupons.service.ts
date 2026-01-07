@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { generateStableId } from '../../common/utils/stable-id';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -11,6 +12,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 type CouponTemplateInput = {
   couponStableId?: string;
   name: string;
+  title?: string | null;
+  description?: string | null;
   status?: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
   validFrom?: string | null;
   validTo?: string | null;
@@ -41,7 +44,8 @@ const UseRuleSchema = z.discriminatedUnion('type', [
   z
     .object({
       type: z.literal('FIXED_CENTS'),
-      applyTo: z.literal('ORDER'),
+      applyTo: z.union([z.literal('ORDER'), z.literal('ITEM')]),
+      itemStableIds: z.array(z.string().min(1)).optional(),
       amountCents: z.number().int().positive(),
       constraints: z
         .object({
@@ -50,11 +54,27 @@ const UseRuleSchema = z.discriminatedUnion('type', [
         .optional(),
       preset: z.string().optional(),
     })
+    .superRefine((value, ctx) => {
+      if (value.applyTo === 'ITEM') {
+        if (!value.itemStableIds || value.itemStableIds.length === 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'itemStableIds is required when applyTo is ITEM',
+          });
+        }
+      } else if (value.itemStableIds && value.itemStableIds.length > 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'itemStableIds must be empty when applyTo is ORDER',
+        });
+      }
+    })
     .passthrough(),
   z
     .object({
       type: z.literal('PERCENT'),
-      applyTo: z.literal('ORDER'),
+      applyTo: z.union([z.literal('ORDER'), z.literal('ITEM')]),
+      itemStableIds: z.array(z.string().min(1)).optional(),
       percentOff: z.number().int().min(1).max(100),
       constraints: z
         .object({
@@ -62,6 +82,21 @@ const UseRuleSchema = z.discriminatedUnion('type', [
         })
         .optional(),
       preset: z.string().optional(),
+    })
+    .superRefine((value, ctx) => {
+      if (value.applyTo === 'ITEM') {
+        if (!value.itemStableIds || value.itemStableIds.length === 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'itemStableIds is required when applyTo is ITEM',
+          });
+        }
+      } else if (value.itemStableIds && value.itemStableIds.length > 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'itemStableIds must be empty when applyTo is ORDER',
+        });
+      }
     })
     .passthrough(),
 ]);
@@ -73,6 +108,15 @@ const IssueRuleSchema = z
   })
   .passthrough();
 
+const ProgramItemsSchema = z
+  .array(
+    z.object({
+      couponStableId: z.string().cuid(),
+      quantity: z.number().int().positive().optional().default(1),
+    }),
+  )
+  .min(1);
+
 function parseDateInput(value?: string | null): Date | null {
   if (!value) return null;
   const parsed = new Date(value);
@@ -80,6 +124,18 @@ function parseDateInput(value?: string | null): Date | null {
     throw new BadRequestException(`Invalid date: ${value}`);
   }
   return parsed;
+}
+
+function parseDateRange(
+  validFrom?: string | null,
+  validTo?: string | null,
+) {
+  const parsedFrom = parseDateInput(validFrom);
+  const parsedTo = parseDateInput(validTo);
+  if (parsedFrom && parsedTo && parsedTo < parsedFrom) {
+    throw new BadRequestException('validTo must be later than validFrom');
+  }
+  return { validFrom: parsedFrom, validTo: parsedTo };
 }
 
 function validateUseRule(value: unknown): Prisma.InputJsonValue {
@@ -92,11 +148,14 @@ function validateUseRule(value: unknown): Prisma.InputJsonValue {
   return parsed.data as Prisma.InputJsonValue;
 }
 
-function ensureArray(value: unknown, label: string): Prisma.InputJsonValue {
-  if (!Array.isArray(value)) {
-    throw new BadRequestException(`${label} must be an array`);
+function parseProgramItems(value: unknown) {
+  const parsed = ProgramItemsSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new BadRequestException(
+      `Invalid items configuration: ${parsed.error.message}`,
+    );
   }
-  return value as Prisma.InputJsonValue;
+  return parsed.data;
 }
 
 function parseNullableInteger(value: unknown, label: string): number | null {
@@ -189,6 +248,13 @@ function validateIssueRule(
   return parsed.data as Prisma.InputJsonValue;
 }
 
+function normalizePhone(raw?: string | null): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  return trimmed.replace(/\s+/g, '').replace(/-/g, '');
+}
+
 @Injectable()
 export class AdminCouponsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -210,14 +276,20 @@ export class AdminCouponsService {
   async createTemplate(input: CouponTemplateInput) {
     const useRule = validateUseRule(input.useRule);
     const issueRule = validateIssueRule(input.issueRule, 'issueRule');
+    const { validFrom, validTo } = parseDateRange(
+      input.validFrom,
+      input.validTo,
+    );
 
     return this.prisma.couponTemplate.create({
       data: {
         couponStableId: input.couponStableId,
         name: input.name,
+        title: input.title ?? null,
+        description: input.description ?? null,
         status: input.status,
-        validFrom: parseDateInput(input.validFrom),
-        validTo: parseDateInput(input.validTo),
+        validFrom,
+        validTo,
         useRule,
         issueRule,
       },
@@ -232,14 +304,20 @@ export class AdminCouponsService {
 
     const useRule = validateUseRule(input.useRule);
     const issueRule = validateIssueRule(input.issueRule, 'issueRule');
+    const { validFrom, validTo } = parseDateRange(
+      input.validFrom,
+      input.validTo,
+    );
 
     return this.prisma.couponTemplate.update({
       where: { couponStableId },
       data: {
         name: input.name,
+        title: input.title ?? null,
+        description: input.description ?? null,
         status: input.status,
-        validFrom: parseDateInput(input.validFrom),
-        validTo: parseDateInput(input.validTo),
+        validFrom,
+        validTo,
         useRule,
         issueRule,
       },
@@ -261,7 +339,8 @@ export class AdminCouponsService {
   }
 
   async createProgram(input: CouponProgramInput) {
-    const items = ensureArray(input.items, 'items');
+    const items = parseProgramItems(input.items);
+    await this.ensureProgramItemsExist(items);
     const eligibility = normalizeOptionalObject(
       input.eligibility,
       'eligibility',
@@ -277,6 +356,10 @@ export class AdminCouponsService {
       input.perUserLimit,
       'perUserLimit',
     );
+    const { validFrom, validTo } = parseDateRange(
+      input.validFrom,
+      input.validTo,
+    );
 
     return this.prisma.couponProgram.create({
       data: {
@@ -285,13 +368,13 @@ export class AdminCouponsService {
         status: input.status,
         distributionType,
         triggerType,
-        validFrom: parseDateInput(input.validFrom),
-        validTo: parseDateInput(input.validTo),
+        validFrom,
+        validTo,
         promoCode,
         totalLimit,
         perUserLimit,
         eligibility,
-        items,
+        items: items as Prisma.InputJsonValue,
       },
     });
   }
@@ -302,7 +385,8 @@ export class AdminCouponsService {
     });
     if (!existing) throw new NotFoundException('Program not found');
 
-    const items = ensureArray(input.items, 'items');
+    const items = parseProgramItems(input.items);
+    await this.ensureProgramItemsExist(items);
     const eligibility = normalizeOptionalObject(
       input.eligibility,
       'eligibility',
@@ -318,6 +402,10 @@ export class AdminCouponsService {
       input.perUserLimit,
       'perUserLimit',
     );
+    const { validFrom, validTo } = parseDateRange(
+      input.validFrom,
+      input.validTo,
+    );
 
     return this.prisma.couponProgram.update({
       where: { programStableId },
@@ -326,14 +414,140 @@ export class AdminCouponsService {
         status: input.status,
         distributionType,
         triggerType,
-        validFrom: parseDateInput(input.validFrom),
-        validTo: parseDateInput(input.validTo),
+        validFrom,
+        validTo,
         promoCode,
         totalLimit,
         perUserLimit,
         eligibility,
-        items,
+        items: items as Prisma.InputJsonValue,
       },
     });
+  }
+
+  async issueProgram(
+    programStableId: string,
+    input: { userStableId?: string; phone?: string },
+  ) {
+    const program = await this.prisma.couponProgram.findUnique({
+      where: { programStableId },
+    });
+    if (!program) throw new NotFoundException('Program not found');
+    if (program.distributionType !== 'ADMIN_PUSH') {
+      throw new BadRequestException('Program is not ADMIN_PUSH');
+    }
+
+    const userStableId = input.userStableId?.trim();
+    const phone = normalizePhone(input.phone);
+    if (!userStableId && !phone) {
+      throw new BadRequestException('userStableId or phone is required');
+    }
+
+    const user = await this.prisma.user.findFirst({
+      where: userStableId ? { userStableId } : { phone: phone ?? undefined },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    const items = parseProgramItems(program.items);
+    await this.ensureProgramItemsExist(items);
+
+    const templates = await this.prisma.couponTemplate.findMany({
+      where: {
+        couponStableId: { in: items.map((item) => item.couponStableId) },
+      },
+    });
+    const templateMap = new Map(
+      templates.map((template) => [template.couponStableId, template]),
+    );
+
+    const now = new Date();
+    const couponsToCreate: Prisma.CouponCreateManyInput[] = [];
+    const userCouponsToCreate: Prisma.UserCouponCreateManyInput[] = [];
+
+    for (const item of items) {
+      const template = templateMap.get(item.couponStableId);
+      if (!template) {
+        throw new BadRequestException('Template not found for program item');
+      }
+      const useRule = validateUseRule(template.useRule);
+      const rule = useRule as {
+        type: 'FIXED_CENTS' | 'PERCENT';
+        applyTo: 'ORDER' | 'ITEM';
+        amountCents?: number;
+        percentOff?: number;
+        constraints?: { minSubtotalCents?: number };
+        itemStableIds?: string[];
+      };
+
+      if (rule.type === 'PERCENT') {
+        throw new BadRequestException(
+          `Percent coupons are not supported for issuing: ${template.couponStableId}`,
+        );
+      }
+
+      const minSpendCents =
+        typeof rule.constraints?.minSubtotalCents === 'number'
+          ? rule.constraints.minSubtotalCents
+          : null;
+      const unlockedItemStableIds =
+        rule.applyTo === 'ITEM' ? rule.itemStableIds ?? [] : [];
+
+      for (let i = 0; i < item.quantity; i += 1) {
+        const couponStableId = generateStableId();
+        couponsToCreate.push({
+          couponStableId,
+          userId: user.id,
+          code: template.couponStableId,
+          title: template.title ?? template.name,
+          discountCents: rule.amountCents ?? 0,
+          minSpendCents,
+          expiresAt: program.validTo ?? null,
+          issuedAt: now,
+          source: `Program: ${program.name}`,
+          campaign: program.programStableId,
+          fromTemplateId: template.id,
+          unlockedItemStableIds,
+          isActive: true,
+          startsAt: program.validFrom ?? null,
+          endsAt: program.validTo ?? null,
+          stackingPolicy: 'EXCLUSIVE',
+        });
+        userCouponsToCreate.push({
+          userStableId: user.userStableId,
+          couponStableId,
+          status: 'AVAILABLE',
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+    }
+
+    if (couponsToCreate.length === 0) {
+      throw new BadRequestException('No coupons to issue');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.coupon.createMany({ data: couponsToCreate });
+      await tx.userCoupon.createMany({ data: userCouponsToCreate });
+      await tx.couponProgram.update({
+        where: { programStableId },
+        data: { issuedCount: { increment: couponsToCreate.length } },
+      });
+    });
+
+    return { issuedCount: couponsToCreate.length };
+  }
+
+  private async ensureProgramItemsExist(
+    items: { couponStableId: string }[],
+  ) {
+    const ids = items.map((item) => item.couponStableId);
+    const uniqueIds = Array.from(new Set(ids));
+    const count = await this.prisma.couponTemplate.count({
+      where: { couponStableId: { in: uniqueIds } },
+    });
+    if (count !== uniqueIds.length) {
+      throw new BadRequestException('包含不存在的优惠券模板');
+    }
   }
 }
