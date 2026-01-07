@@ -9,22 +9,23 @@ import {
   useSearchParams,
   useParams,
 } from "next/navigation";
+import { HOSTED_CHECKOUT_CURRENCY, LANGUAGE_NAMES } from "@/lib/order/shared";
+import type { Locale } from "@/lib/i18n/locales";
+import { LOCALES } from "@/lib/i18n/locales";
+import { addLocaleToPath } from "@/lib/i18n/path";
+import { UI_STRINGS } from "@/lib/i18n/dictionaries";
 import {
-  HOSTED_CHECKOUT_CURRENCY,
-  LANGUAGE_NAMES,
-  LOCALES,
-  type Locale,
-  UI_STRINGS,
-  addLocaleToPath,
   buildLocalizedDailySpecials,
   buildLocalizedEntitlementItems,
   buildLocalizedMenuFromDb,
   type LocalizedDailySpecial,
   type LocalizedMenuItem,
-  type MenuEntitlementsResponse,
-  type PublicMenuApiResponse,
   type PublicMenuCategory,
-} from "@/lib/order/shared";
+} from "@/lib/menu/menu-transformer";
+import type {
+  MenuEntitlementsResponse,
+  PublicMenuResponse as PublicMenuApiResponse,
+} from "@shared/menu";
 import { usePersistentCart } from "@/lib/cart";
 import { apiFetch } from "@/lib/api/client";
 import { signOut, useSession } from "@/lib/auth-session";

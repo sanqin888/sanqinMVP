@@ -12,7 +12,7 @@
     "build": "pnpm --filter @shared/menu build && pnpm --filter @shared/order build && pnpm run prisma:generate && tsc -p tsconfig.build.json",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start:prod": "pnpm run build && node --enable-source-maps dist/main.js",
-    "start:dev": "pnpm --filter @shared/menu build && pnpm --filter @shared/order build && pnpm run prisma:generate && sh -c 'tsc -p tsconfig.build.json && (tsc -p tsconfig.build.json -w --preserveWatchOutput & TSC_PID=$!; node --enable-source-maps --watch dist/main.js; NODE_RC=$?; kill $TSC_PID 2>/dev/null || true; wait $TSC_PID 2>/dev/null || true; if [ \"$NODE_RC\" -eq 130 ]; then exit 0; else exit \"$NODE_RC\"; fi)'",
+    "start:dev": "pnpm --filter @shared/menu build && pnpm --filter @shared/order build && pnpm run prisma:generate && nest start -c nest-cli.json --path tsconfig.build.json --watch",
     "start:debug": "pnpm --filter @shared/menu build && pnpm --filter @shared/order build && pnpm run prisma:generate && nest start -c nest-cli.json --path tsconfig.build.json --debug --watch",
     "lint": "pnpm --filter @shared/menu run build && pnpm --filter @shared/order build && prisma generate && eslint \"{src,apps,libs,test}/**/*.ts\"",
     "lint:fix": "prisma generate && eslint \"{src,apps,libs,test}/**/*.ts\" --fix",

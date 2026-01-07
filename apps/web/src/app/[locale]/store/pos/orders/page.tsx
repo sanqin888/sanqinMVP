@@ -4,13 +4,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import type { Locale } from "@/lib/i18n/locales";
 import type {
   AdminMenuFull,
-  Locale,
-  MenuTemplateFull,
-  PublicMenuCategory,
-} from "@/lib/order/shared";
-import { buildLocalizedMenuFromDb } from "@/lib/order/shared";
+  TemplateGroupFullDto as MenuTemplateFull,
+} from "@shared/menu";
+import {
+  buildLocalizedMenuFromDb,
+  type PublicMenuCategory,
+} from "@/lib/menu/menu-transformer";
 import { apiFetch } from "@/lib/api/client";
 import {
   advanceOrder,

@@ -3,7 +3,7 @@
 
 import { useRouter, useSearchParams, useParams } from "next/navigation";
 import { useState } from "react";
-import type { Locale } from "@/lib/order/shared";
+import type { Locale } from "@/lib/i18n/locales";
 
 export default function AcceptInvitePage() {
   const router = useRouter();

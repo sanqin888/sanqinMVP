@@ -18,8 +18,7 @@
     "test": "pnpm --filter api test"
   },
   "devDependencies": {
-    "@types/jsonwebtoken": "^9.0.10",
-    "http-proxy": "^1.18.1"
+    "@types/jsonwebtoken": "^9.0.10"
   },
   "dependencies": {
     "jsonwebtoken": "^9.0.2",

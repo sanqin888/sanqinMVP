@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import type { Locale } from '@/lib/order/shared';
+import type { Locale } from '@/lib/i18n/locales';
 import { signOut, useSession } from '@/lib/auth-session';
 import { apiFetch } from '@/lib/api/client';
 
