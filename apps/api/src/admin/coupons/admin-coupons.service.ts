@@ -86,29 +86,6 @@ const UseRuleSchema = z
       });
     }
   });
-        .object({
-          minSubtotalCents: z.number().int().min(0),
-        })
-        .optional(),
-      preset: z.string().optional(),
-    })
-    .superRefine((value, ctx) => {
-      if (value.applyTo === 'ITEM') {
-        if (!value.itemStableIds || value.itemStableIds.length === 0) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: 'itemStableIds is required when applyTo is ITEM',
-          });
-        }
-      } else if (value.itemStableIds && value.itemStableIds.length > 0) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'itemStableIds must be empty when applyTo is ORDER',
-        });
-      }
-    })
-    .passthrough(),
-]);
 
 const IssueRuleSchema = z
   .object({
