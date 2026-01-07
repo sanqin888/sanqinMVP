@@ -28,7 +28,11 @@ type CouponProgramPayload = {
   programStableId?: string;
   name: string;
   status?: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
-  distributionType?: 'AUTOMATIC_TRIGGER' | 'MANUAL_CLAIM' | 'PROMO_CODE' | 'ADMIN_PUSH';
+  distributionType?:
+    | 'AUTOMATIC_TRIGGER'
+    | 'MANUAL_CLAIM'
+    | 'PROMO_CODE'
+    | 'ADMIN_PUSH';
   triggerType?: 'SIGNUP_COMPLETED' | 'REFERRAL_QUALIFIED' | null;
   validFrom?: string | null;
   validTo?: string | null;
