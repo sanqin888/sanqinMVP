@@ -40,21 +40,21 @@ type CouponProgramInput = {
   items: Prisma.InputJsonValue;
 };
 
-const Zod = z as typeof import('zod');
+const zod = z as typeof import('zod').z;
 
-const UseRuleSchema = Zod.discriminatedUnion('type', [
-  Zod
+const UseRuleSchema = zod.discriminatedUnion('type', [
+  zod
     .object({
-      type: Zod.literal('FIXED_CENTS'),
-      applyTo: Zod.union([Zod.literal('ORDER'), Zod.literal('ITEM')]),
-      itemStableIds: Zod.array(Zod.string().min(1)).optional(),
-      amountCents: Zod.number().int().positive(),
-      constraints: Zod
+      type: zod.literal('FIXED_CENTS'),
+      applyTo: zod.union([zod.literal('ORDER'), zod.literal('ITEM')]),
+      itemStableIds: zod.array(zod.string().min(1)).optional(),
+      amountCents: zod.number().int().positive(),
+      constraints: zod
         .object({
-          minSubtotalCents: Zod.number().int().min(0),
+          minSubtotalCents: zod.number().int().min(0),
         })
         .optional(),
-      preset: Zod.string().optional(),
+      preset: zod.string().optional(),
     })
     .superRefine((value, ctx) => {
       if (value.applyTo === 'ITEM') {
@@ -72,18 +72,18 @@ const UseRuleSchema = Zod.discriminatedUnion('type', [
       }
     })
     .passthrough(),
-  Zod
+  zod
     .object({
-      type: Zod.literal('PERCENT'),
-      applyTo: Zod.union([Zod.literal('ORDER'), Zod.literal('ITEM')]),
-      itemStableIds: Zod.array(Zod.string().min(1)).optional(),
-      percentOff: Zod.number().int().min(1).max(100),
-      constraints: Zod
+      type: zod.literal('PERCENT'),
+      applyTo: zod.union([zod.literal('ORDER'), zod.literal('ITEM')]),
+      itemStableIds: zod.array(zod.string().min(1)).optional(),
+      percentOff: zod.number().int().min(1).max(100),
+      constraints: zod
         .object({
-          minSubtotalCents: Zod.number().int().min(0),
+          minSubtotalCents: zod.number().int().min(0),
         })
         .optional(),
-      preset: Zod.string().optional(),
+      preset: zod.string().optional(),
     })
     .superRefine((value, ctx) => {
       if (value.applyTo === 'ITEM') {
@@ -103,19 +103,20 @@ const UseRuleSchema = Zod.discriminatedUnion('type', [
     .passthrough(),
 ]);
 
-const IssueRuleSchema = Zod
+const IssueRuleSchema = zod
   .object({
-    mode: Zod.enum(['MANUAL', 'AUTO']),
-    preset: Zod.string().optional(),
+    mode: zod.enum(['MANUAL', 'AUTO']),
+    preset: zod.string().optional(),
   })
   .passthrough();
 
-const ProgramItemsSchema = Zod.array(
-  Zod.object({
-    couponStableId: Zod.string().cuid(),
-    quantity: Zod.number().int().positive().optional().default(1),
-  }),
-)
+const ProgramItemsSchema = zod
+  .array(
+    zod.object({
+      couponStableId: zod.string().cuid(),
+      quantity: zod.number().int().positive().optional().default(1),
+    }),
+  )
   .min(1);
 
 function parseDateInput(value?: string | null): Date | null {
