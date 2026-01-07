@@ -7,7 +7,6 @@ import type {
   DailySpecialDto,
   MenuEntitlementItemDto,
   MenuOptionGroupWithOptionsDto,
-  OptionChoiceDto,
   PublicMenuCategoryDto,
   TemplateGroupFullDto,
 } from "@shared/menu";
