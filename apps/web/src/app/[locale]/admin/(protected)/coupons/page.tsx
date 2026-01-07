@@ -1360,7 +1360,7 @@ export default function AdminCouponsPage() {
                 </div>
               </div>
             </label>
-            <label className="space-y-1">
+            <div className="space-y-1">
               <span className="text-muted-foreground">礼包内容（优惠券）</span>
               {templates.length === 0 ? (
                 <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
@@ -1449,7 +1449,7 @@ export default function AdminCouponsPage() {
                   ))}
                 </div>
               )}
-            </label>
+            </div>
           </div>
           {programError && (
             <div className="text-sm text-red-600">错误：{programError}</div>
