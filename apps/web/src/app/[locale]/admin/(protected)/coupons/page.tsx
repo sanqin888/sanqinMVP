@@ -1027,7 +1027,7 @@ export default function AdminCouponsPage() {
               <div className="text-2xl font-bold text-primary">
                 {templatePreview.value}
               </div>
-            </div>
+            </label>
           </div>
           <div className="rounded-xl border bg-muted/40 p-4">
             <div className="text-xs text-muted-foreground">预览</div>
@@ -1325,7 +1325,7 @@ export default function AdminCouponsPage() {
                 />
               </label>
             </div>
-            <label className="space-y-1">
+            <div className="space-y-1">
               <span className="text-muted-foreground">资格条件（预设，可选）</span>
               <div className="space-y-2">
                 {eligibilityPresets.map((preset) => (
@@ -1359,7 +1359,7 @@ export default function AdminCouponsPage() {
                   不选择则不设置资格条件。
                 </div>
               </div>
-            </label>
+            </div>
             <div className="space-y-1">
               <span className="text-muted-foreground">礼包内容（优惠券）</span>
               {templates.length === 0 ? (
