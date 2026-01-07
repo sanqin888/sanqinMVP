@@ -9,12 +9,15 @@ import {
   Param,
   Query,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { MembershipService } from './membership.service';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { MfaGuard } from '../auth/mfa.guard';
+import { AuthService } from '../auth/auth.service';
+import { TRUSTED_DEVICE_COOKIE } from '../auth/trusted-device.constants';
 
 type AuthedRequest = Request & {
   user?: { id?: string; userStableId?: string };
@@ -24,7 +27,10 @@ type AuthedRequest = Request & {
 @UseGuards(SessionAuthGuard, MfaGuard)
 @Controller('membership')
 export class MembershipController {
-  constructor(private readonly membership: MembershipService) {}
+  constructor(
+    private readonly membership: MembershipService,
+    private readonly auth: AuthService,
+  ) {}
 
   @Get('summary')
   async summary(
@@ -117,6 +123,50 @@ export class MembershipController {
 
     await this.membership.revokeTrustedDevice({ userId, deviceId });
     return { success: true };
+  }
+
+  @Post('devices/trusted')
+  async trustDevice(
+    @Req() req: AuthedRequest,
+    @Res({ passthrough: true }) res: Response,
+    @Body()
+    body: {
+      sessionId?: string;
+      label?: string;
+    },
+  ) {
+    const userId = req.user?.id;
+    const currentSessionId = req.session?.sessionId;
+    if (!userId) {
+      throw new BadRequestException('userId is required');
+    }
+    if (!body?.sessionId) {
+      throw new BadRequestException('sessionId is required');
+    }
+    if (!currentSessionId || body.sessionId !== currentSessionId) {
+      throw new BadRequestException('sessionId must be current');
+    }
+
+    const sessionLabel = await this.membership.getSessionDeviceLabel({
+      userId,
+      sessionId: body.sessionId,
+    });
+    const label = body.label?.trim() || sessionLabel.label;
+    const trustedDevice = await this.auth.createTrustedDeviceForUser({
+      userId,
+      label,
+    });
+
+    const maxAge = trustedDevice.expiresAt.getTime() - Date.now();
+    res.cookie(TRUSTED_DEVICE_COOKIE, trustedDevice.token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge,
+      path: '/',
+    });
+
+    return { success: true, trustedDevice };
   }
 
   // ✅ 积分流水

@@ -50,6 +50,7 @@ type DeviceSession = {
   expiresAt: string;
   mfaVerifiedAt: string | null;
   deviceInfo: string | null;
+  loginLocation: string | null;
   isCurrent: boolean;
 };
 
@@ -271,6 +272,9 @@ export default function MembershipHomePage() {
   const [devicesLoading, setDevicesLoading] = useState(false);
   const [devicesLoadedOnce, setDevicesLoadedOnce] = useState(false);
   const [devicesError, setDevicesError] = useState<string | null>(null);
+  const [trustingSessionId, setTrustingSessionId] = useState<string | null>(
+    null,
+  );
 
   const isZh = locale === 'zh';
 
@@ -1054,6 +1058,33 @@ export default function MembershipHomePage() {
     [isZh, loadDevices],
   );
 
+  const handleTrustSessionDevice = useCallback(
+    async (session: DeviceSession) => {
+      try {
+        setTrustingSessionId(session.sessionId);
+        await apiFetch<{ success: boolean }>(`/membership/devices/trusted`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: session.sessionId,
+            label: session.deviceInfo ?? undefined,
+          }),
+        });
+        await loadDevices();
+      } catch (error) {
+        console.error('Failed to trust device', error);
+        setDevicesError(
+          isZh
+            ? '授信设备添加失败，请稍后再试。'
+            : 'Failed to trust device.',
+        );
+      } finally {
+        setTrustingSessionId(null);
+      }
+    },
+    [isZh, loadDevices],
+  );
+
   const tierDisplay =
     member &&
     {
@@ -1278,8 +1309,10 @@ const tierProgress = (() => {
               loading={devicesLoading}
               loadedOnce={devicesLoadedOnce}
               error={devicesError}
+              trustingSessionId={trustingSessionId}
               onRefresh={loadDevices}
               onRevokeSession={handleRevokeSession}
+              onTrustSessionDevice={handleTrustSessionDevice}
               onRevokeTrustedDevice={handleRevokeTrustedDevice}
             />
           )}
@@ -1909,8 +1942,10 @@ function DeviceManagementSection({
   loading,
   loadedOnce,
   error,
+  trustingSessionId,
   onRefresh,
   onRevokeSession,
+  onTrustSessionDevice,
   onRevokeTrustedDevice,
 }: {
   isZh: boolean;
@@ -1919,8 +1954,10 @@ function DeviceManagementSection({
   loading: boolean;
   loadedOnce: boolean;
   error: string | null;
+  trustingSessionId: string | null;
   onRefresh: () => void;
   onRevokeSession: (sessionId: string) => void;
+  onTrustSessionDevice: (session: DeviceSession) => void;
   onRevokeTrustedDevice: (deviceId: string) => void;
 }) {
   return (
@@ -1981,6 +2018,11 @@ function DeviceManagementSection({
                       {formatDateTime(session.createdAt, isZh)}
                     </p>
                     <p className="mt-1 text-[10px] text-slate-500">
+                      {isZh ? '登录地点：' : 'Location: '}
+                      {session.loginLocation ||
+                        (isZh ? '未知地点' : 'Unknown')}
+                    </p>
+                    <p className="mt-1 text-[10px] text-slate-500">
                       {isZh ? '到期时间：' : 'Expires: '}
                       {formatDateTime(session.expiresAt, isZh)}
                     </p>
@@ -1995,6 +2037,22 @@ function DeviceManagementSection({
                       <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] text-emerald-700">
                         {isZh ? '当前设备' : 'Current'}
                       </span>
+                    )}
+                    {session.isCurrent && (
+                      <button
+                        type="button"
+                        className="text-[10px] text-slate-500 hover:text-slate-900 disabled:cursor-not-allowed"
+                        onClick={() => onTrustSessionDevice(session)}
+                        disabled={trustingSessionId === session.sessionId}
+                      >
+                        {trustingSessionId === session.sessionId
+                          ? isZh
+                            ? '授信中…'
+                            : 'Trusting…'
+                          : isZh
+                            ? '设为授信设备'
+                            : 'Trust device'}
+                      </button>
                     )}
                     <button
                       type="button"

@@ -552,6 +552,7 @@ export class MembershipService {
           expiresAt: true,
           mfaVerifiedAt: true,
           deviceInfo: true,
+          loginLocation: true,
         },
       }),
       this.prisma.trustedDevice.findMany({
@@ -567,15 +568,40 @@ export class MembershipService {
       }),
     ]);
 
+    const sessionItems = sessions.map((session) => ({
+      sessionId: session.sessionId,
+      createdAt: session.createdAt.toISOString(),
+      expiresAt: session.expiresAt.toISOString(),
+      mfaVerifiedAt: session.mfaVerifiedAt?.toISOString() ?? null,
+      deviceInfo: session.deviceInfo ?? null,
+      loginLocation: session.loginLocation ?? null,
+      isCurrent: session.sessionId === currentSessionId,
+    }));
+
+    const dedupedSessions = (() => {
+      const seen = new Map<string, (typeof sessionItems)[number]>();
+      const order: string[] = [];
+
+      for (const session of sessionItems) {
+        const key = session.deviceInfo
+          ? `device:${session.deviceInfo}|${session.loginLocation ?? ''}`
+          : `session:${session.sessionId}`;
+        const existing = seen.get(key);
+        if (!existing) {
+          seen.set(key, session);
+          order.push(key);
+          continue;
+        }
+        if (session.isCurrent && !existing.isCurrent) {
+          seen.set(key, session);
+        }
+      }
+
+      return order.map((key) => seen.get(key)!);
+    })();
+
     return {
-      sessions: sessions.map((session) => ({
-        sessionId: session.sessionId,
-        createdAt: session.createdAt.toISOString(),
-        expiresAt: session.expiresAt.toISOString(),
-        mfaVerifiedAt: session.mfaVerifiedAt?.toISOString() ?? null,
-        deviceInfo: session.deviceInfo ?? null,
-        isCurrent: session.sessionId === currentSessionId,
-      })),
+      sessions: dedupedSessions,
       trustedDevices: trustedDevices.map((device) => ({
         id: device.id,
         label: device.label ?? null,
@@ -602,6 +628,30 @@ export class MembershipService {
         id: params.deviceId,
       },
     });
+  }
+
+  async getSessionDeviceLabel(params: { userId: string; sessionId: string }) {
+    const session = await this.prisma.userSession.findFirst({
+      where: {
+        userId: params.userId,
+        sessionId: params.sessionId,
+      },
+      select: {
+        deviceInfo: true,
+        loginLocation: true,
+      },
+    });
+
+    if (!session) {
+      throw new NotFoundException('session not found');
+    }
+
+    const parts = [session.deviceInfo, session.loginLocation].filter(
+      (segment): segment is string => !!segment,
+    );
+    const label = parts.join(' · ').trim();
+
+    return { label: label || undefined };
   }
 
   async bindReferrerEmail(params: {
