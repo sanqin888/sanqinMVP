@@ -235,9 +235,7 @@ export class AdminMembersService {
     const tier = this.parseTier(params.tier);
     const status = this.parseStatus(params.status);
 
-    const where: Prisma.UserWhereInput = {
-      role: 'CUSTOMER',
-    };
+    const where: Prisma.UserWhereInput = {};
 
     if (status) {
       where.status = status;
