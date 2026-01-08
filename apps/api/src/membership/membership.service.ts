@@ -343,35 +343,6 @@ export class MembershipService {
     return this.ensureUserStableId(user);
   }
 
-  async getMemberByPhone(phone: string) {
-    const normalized = this.normalizePhone(phone);
-    if (!normalized) {
-      throw new BadRequestException('phone is required');
-    }
-
-    const user = await this.prisma.user.findUnique({
-      where: { phone: normalized },
-    });
-    if (!user) {
-      throw new NotFoundException('member not found');
-    }
-
-    const safeUser = await this.ensureUserStableId(user);
-    const account = await this.loyalty.ensureAccount(safeUser.id);
-    const availableDiscountCents =
-      await this.loyalty.maxRedeemableCentsFromBalance(account.pointsMicro);
-
-    return {
-      userStableId: safeUser.userStableId,
-      displayName: safeUser.name,
-      phone: safeUser.phone ?? null,
-      tier: account.tier,
-      points: Number(account.pointsMicro) / MICRO_PER_POINT,
-      lifetimeSpendCents: account.lifetimeSpendCents ?? 0,
-      availableDiscountCents,
-    };
-  }
-
   /**
    * 会员概要：
    * - User 信息

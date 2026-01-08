@@ -368,6 +368,8 @@ export class AdminMembersService {
       this.loyalty.ensureAccount(user.id),
       this.getTierThresholds(),
     ]);
+    const availableDiscountCents =
+      await this.loyalty.maxRedeemableCentsFromBalance(account.pointsMicro);
 
     const lifetimeSpendCents = account.lifetimeSpendCents ?? 0;
     const tierProgress = this.computeTierProgress(
@@ -394,6 +396,7 @@ export class AdminMembersService {
             email: referrer.email,
           }
         : null,
+      availableDiscountCents,
       account: {
         tier: account.tier,
         points: Number(account.pointsMicro) / MICRO_PER_POINT,
