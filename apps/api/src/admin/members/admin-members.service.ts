@@ -94,7 +94,7 @@ export class AdminMembersService {
     if (!raw) return null;
     const trimmed = raw.trim();
     if (!trimmed) return null;
-    return trimmed.replace(/\s+/g, '').replace(/-/g, '');
+    return trimmed.replace(/\D+/g, '');
   }
 
   private normalizeEmail(raw: string | null | undefined): string | null {
@@ -273,6 +273,11 @@ export class AdminMembersService {
           email: {
             contains: search,
             mode: 'insensitive',
+          },
+        },
+        {
+          phone: {
+            contains: search,
           },
         },
         ...(normalizedPhone
