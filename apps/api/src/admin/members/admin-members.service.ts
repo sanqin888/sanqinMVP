@@ -321,7 +321,12 @@ export class AdminMembersService {
     const userIds = users.map((user) => user.id);
     const accounts = await this.prisma.loyaltyAccount.findMany({
       where: { userId: { in: userIds } },
-      select: { userId: true, pointsMicro: true, tier: true, lifetimeSpendCents: true },
+      select: {
+        userId: true,
+        pointsMicro: true,
+        tier: true,
+        lifetimeSpendCents: true,
+      },
     });
     const accountMap = new Map(
       accounts.map((account) => [account.userId, account]),
@@ -446,8 +451,7 @@ export class AdminMembersService {
           createdAt: entry.createdAt.toISOString(),
           type: entry.type,
           deltaPoints: Number(entry.deltaMicro) / MICRO_PER_POINT,
-          balanceAfterPoints:
-            Number(entry.balanceAfterMicro) / MICRO_PER_POINT,
+          balanceAfterPoints: Number(entry.balanceAfterMicro) / MICRO_PER_POINT,
           note: entry.note ?? undefined,
           ...(orderStableId ? { orderStableId } : {}),
         };
@@ -741,9 +745,7 @@ export class AdminMembersService {
         ? rule.constraints.minSubtotalCents
         : null;
 
-    const source = body.note?.trim()
-      ? `Admin: ${body.note.trim()}`
-      : 'Admin';
+    const source = body.note?.trim() ? `Admin: ${body.note.trim()}` : 'Admin';
 
     await this.prisma.$transaction(async (tx) => {
       await tx.coupon.create({
