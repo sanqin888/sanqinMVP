@@ -28,6 +28,7 @@ export default function AdminLayoutClient({
     { href: optionsHref, labelZh: '选项管理' },
     { href: `/${locale}/admin/daily-specials`, labelZh: '每日特价管理' },
     { href: `/${locale}/admin/coupons`, labelZh: '优惠券管理' },
+    { href: `/${locale}/admin/members`, labelZh: '会员管理' },
     { href: `/${locale}/admin/staff`, labelZh: '员工管理' },
   ];
 
