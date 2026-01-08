@@ -256,6 +256,10 @@ export class AdminMembersService {
     const search = params.search?.trim();
     if (search) {
       const normalizedPhone = this.normalizePhone(search);
+      const normalizedPhoneTail =
+        normalizedPhone && normalizedPhone.length > 11
+          ? normalizedPhone.slice(-11)
+          : null;
       where.OR = [
         {
           userStableId: {
@@ -285,6 +289,15 @@ export class AdminMembersService {
               {
                 phone: {
                   contains: normalizedPhone,
+                },
+              },
+            ]
+          : []),
+        ...(normalizedPhoneTail && normalizedPhoneTail !== normalizedPhone
+          ? [
+              {
+                phone: {
+                  contains: normalizedPhoneTail,
                 },
               },
             ]
