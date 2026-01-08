@@ -14,6 +14,7 @@ import { AuthModule } from '../auth/auth.module';
 import { AdminCouponsModule } from './coupons/admin-coupons.module';
 import { BusinessHoursModule } from './business-hours/business-hours.module';
 import { PromotionsModule } from '../promotions/promotions.module';
+import { AdminMembersModule } from './members/admin-members.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { PromotionsModule } from '../promotions/promotions.module';
     AdminImageUploadModule,
     AdminCouponsModule,
     PromotionsModule,
+    AdminMembersModule,
   ],
   controllers: [
     AdminBusinessController,
