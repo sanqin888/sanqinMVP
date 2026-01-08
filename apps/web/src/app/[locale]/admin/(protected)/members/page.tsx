@@ -1,76 +1,32 @@
 // apps/web/src/app/[locale]/admin/(protected)/members/page.tsx
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import type { Locale } from "@/lib/i18n/locales";
+import { apiFetch } from "@/lib/api/client";
 
-const mockMembers = [
-  {
-    id: "SQ-20240318",
-    name: "王小雨",
-    phone: "138-****-3489",
-    email: "xiaoyu.wang@example.com",
-    tier: "GOLD",
-    points: 1280,
-    status: "ACTIVE",
-    joinedAt: "2024-03-18",
-    lastVisit: "2024-09-02",
-    tags: ["线上注册", "生日月"],
-  },
-  {
-    id: "SQ-20240105",
-    name: "陈旭",
-    phone: "186-****-7801",
-    email: "chenxu@example.com",
-    tier: "SILVER",
-    points: 620,
-    status: "ACTIVE",
-    joinedAt: "2024-01-05",
-    lastVisit: "2024-08-21",
-    tags: ["堂食", "已验证"],
-  },
-  {
-    id: "SQ-20231212",
-    name: "刘佳",
-    phone: "155-****-9012",
-    email: "liujia@example.com",
-    tier: "PLATINUM",
-    points: 3560,
-    status: "ACTIVE",
-    joinedAt: "2023-12-12",
-    lastVisit: "2024-09-08",
-    tags: ["VIP", "企业客户"],
-  },
-  {
-    id: "SQ-20231102",
-    name: "周敏",
-    phone: "139-****-2277",
-    email: "zhoumin@example.com",
-    tier: "BRONZE",
-    points: 120,
-    status: "SLEEP",
-    joinedAt: "2023-11-02",
-    lastVisit: "2024-05-14",
-    tags: ["活动领券"],
-  },
-  {
-    id: "SQ-20240228",
-    name: "黄志强",
-    phone: "177-****-6621",
-    email: "huangzq@example.com",
-    tier: "GOLD",
-    points: 980,
-    status: "ACTIVE",
-    joinedAt: "2024-02-28",
-    lastVisit: "2024-08-30",
-    tags: ["到店注册", "可积分抵扣"],
-  },
-];
+type Member = {
+  userStableId: string;
+  displayName: string | null;
+  email: string | null;
+  phone: string | null;
+  tier: TierKey;
+  points: number;
+  status: StatusKey;
+  createdAt: string;
+};
 
 type TierKey = "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
 
-type StatusKey = "ACTIVE" | "SLEEP";
+type StatusKey = "ACTIVE" | "DISABLED";
+
+type MemberListResponse = {
+  items: Member[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
 
 const tierLabels: Record<Locale, Record<TierKey, string>> = {
   zh: {
@@ -90,16 +46,16 @@ const tierLabels: Record<Locale, Record<TierKey, string>> = {
 const statusLabels: Record<Locale, Record<StatusKey, string>> = {
   zh: {
     ACTIVE: "活跃",
-    SLEEP: "沉睡",
+    DISABLED: "禁用",
   },
   en: {
     ACTIVE: "Active",
-    SLEEP: "Dormant",
+    DISABLED: "Disabled",
   },
 };
 
 function statusTone(status: StatusKey): string {
-  return status === "ACTIVE" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700";
+  return status === "ACTIVE" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600";
 }
 
 function tierTone(tier: TierKey): string {
@@ -115,6 +71,20 @@ function tierTone(tier: TierKey): string {
   }
 }
 
+function formatDate(value?: string | null): string {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString();
+}
+
+function isWithinDays(value: string, days: number): boolean {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  const diffMs = Date.now() - date.getTime();
+  return diffMs <= days * 24 * 60 * 60 * 1000;
+}
+
 export default function AdminMembersPage() {
   const { locale } = useParams<{ locale: Locale }>();
   const isZh = locale === "zh";
@@ -124,23 +94,56 @@ export default function AdminMembersPage() {
   const [statusFilter, setStatusFilter] = useState<"ALL" | StatusKey>("ALL");
   const [submitHint, setSubmitHint] = useState<string | null>(null);
 
-  const filteredMembers = useMemo(() => {
-    const trimmed = keyword.trim().toLowerCase();
-    return mockMembers.filter((member) => {
-      if (tierFilter !== "ALL" && member.tier !== tierFilter) return false;
-      if (statusFilter !== "ALL" && member.status !== statusFilter) return false;
-      if (!trimmed) return true;
-      return (
-        member.name.toLowerCase().includes(trimmed) ||
-        member.phone.toLowerCase().includes(trimmed) ||
-        member.id.toLowerCase().includes(trimmed)
-      );
-    });
-  }, [keyword, statusFilter, tierFilter]);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [membersTotal, setMembersTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const activeCount = mockMembers.filter((member) => member.status === "ACTIVE").length;
-  const monthlyActive = mockMembers.filter((member) => member.lastVisit >= "2024-08-01").length;
-  const pointsTotal = mockMembers.reduce((sum, member) => sum + member.points, 0);
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadMembers() {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const params = new URLSearchParams();
+        const trimmed = keyword.trim();
+        if (trimmed) params.set("search", trimmed);
+        if (tierFilter !== "ALL") params.set("tier", tierFilter);
+        if (statusFilter !== "ALL") params.set("status", statusFilter);
+        params.set("pageSize", "200");
+
+        const query = params.toString();
+        const data = await apiFetch<MemberListResponse>(`/admin/members${query ? `?${query}` : ""}`);
+
+        if (cancelled) return;
+        setMembers(data.items ?? []);
+        setMembersTotal(data.total ?? data.items?.length ?? 0);
+      } catch (error) {
+        console.error(error);
+        if (!cancelled) {
+          setLoadError(isZh ? "加载会员数据失败。" : "Failed to load members.");
+          setMembers([]);
+          setMembersTotal(0);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void loadMembers();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isZh, keyword, statusFilter, tierFilter]);
+
+  const activeCount = useMemo(() => members.filter((member) => member.status === "ACTIVE").length, [members]);
+  const recentRegistered = useMemo(
+    () => members.filter((member) => isWithinDays(member.createdAt, 30)).length,
+    [members],
+  );
+  const pointsTotal = useMemo(() => members.reduce((sum, member) => sum + member.points, 0), [members]);
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -179,13 +182,13 @@ export default function AdminMembersPage() {
       <section className="grid gap-4 md:grid-cols-3">
         <div className="rounded-lg border border-slate-200 bg-white p-4">
           <p className="text-sm text-slate-500">{isZh ? "会员总数" : "Total members"}</p>
-          <p className="mt-2 text-2xl font-semibold">{mockMembers.length}</p>
+          <p className="mt-2 text-2xl font-semibold">{membersTotal}</p>
           <p className="mt-1 text-xs text-slate-400">{isZh ? "含全部等级" : "All tiers included"}</p>
         </div>
         <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <p className="text-sm text-slate-500">{isZh ? "本月活跃" : "Monthly active"}</p>
-          <p className="mt-2 text-2xl font-semibold">{monthlyActive}</p>
-          <p className="mt-1 text-xs text-slate-400">{isZh ? "近 30 天到店或下单" : "Visited in the last 30 days"}</p>
+          <p className="text-sm text-slate-500">{isZh ? "近 30 天注册" : "Registered in 30 days"}</p>
+          <p className="mt-2 text-2xl font-semibold">{recentRegistered}</p>
+          <p className="mt-1 text-xs text-slate-400">{isZh ? "最近 30 天注册会员" : "New members in the last 30 days"}</p>
         </div>
         <div className="rounded-lg border border-slate-200 bg-white p-4">
           <p className="text-sm text-slate-500">{isZh ? "积分余额" : "Points balance"}</p>
@@ -223,7 +226,7 @@ export default function AdminMembersPage() {
               >
                 <option value="ALL">{isZh ? "全部状态" : "All status"}</option>
                 <option value="ACTIVE">{statusLabels[locale].ACTIVE}</option>
-                <option value="SLEEP">{statusLabels[locale].SLEEP}</option>
+                <option value="DISABLED">{statusLabels[locale].DISABLED}</option>
               </select>
             </div>
           </div>
@@ -236,36 +239,54 @@ export default function AdminMembersPage() {
                   <th className="px-4 py-3">{isZh ? "等级" : "Tier"}</th>
                   <th className="px-4 py-3">{isZh ? "积分" : "Points"}</th>
                   <th className="px-4 py-3">{isZh ? "状态" : "Status"}</th>
-                  <th className="px-4 py-3">{isZh ? "最近到店" : "Last visit"}</th>
+                  <th className="px-4 py-3">{isZh ? "注册时间" : "Joined"}</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredMembers.map((member) => (
-                  <tr key={member.id} className="border-t border-slate-100">
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-slate-900">{member.name}</div>
-                      <div className="text-xs text-slate-400">{member.id}</div>
-                      <div className="text-xs text-slate-400">{member.phone}</div>
+                {loading && (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
+                      {isZh ? "加载中..." : "Loading..."}
                     </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex rounded-full px-2 py-1 text-xs ${tierTone(member.tier)}`}>
-                        {tierLabels[locale][member.tier]}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 font-semibold text-slate-700">
-                      {member.points.toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex rounded-full px-2 py-1 text-xs ${statusTone(member.status as StatusKey)}`}
-                      >
-                        {statusLabels[locale][member.status as StatusKey]}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">{member.lastVisit}</td>
                   </tr>
-                ))}
-                {filteredMembers.length === 0 && (
+                )}
+                {!loading && loadError && (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
+                      {loadError}
+                    </td>
+                  </tr>
+                )}
+                {!loading &&
+                  !loadError &&
+                  members.map((member) => (
+                    <tr key={member.userStableId} className="border-t border-slate-100">
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-slate-900">
+                          {member.displayName ?? (isZh ? "未命名" : "Unnamed")}
+                        </div>
+                        <div className="text-xs text-slate-400">{member.userStableId}</div>
+                        <div className="text-xs text-slate-400">{member.phone ?? "-"}</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex rounded-full px-2 py-1 text-xs ${tierTone(member.tier)}`}>
+                          {tierLabels[locale][member.tier]}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-slate-700">
+                        {member.points.toLocaleString()}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`inline-flex rounded-full px-2 py-1 text-xs ${statusTone(member.status)}`}
+                        >
+                          {statusLabels[locale][member.status]}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">{formatDate(member.createdAt)}</td>
+                    </tr>
+                  ))}
+                {!loading && !loadError && members.length === 0 && (
                   <tr>
                     <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
                       {isZh ? "未找到匹配的会员" : "No members found"}
