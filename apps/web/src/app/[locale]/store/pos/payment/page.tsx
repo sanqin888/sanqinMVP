@@ -219,6 +219,11 @@ function formatMoney(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+function roundUpToFiveCents(cents: number): number {
+  if (cents <= 0) return 0;
+  return Math.ceil(cents / 5) * 5;
+}
+
 export default function StorePosPaymentPage() {
   const router = useRouter();
   const params = useParams<{ locale?: string }>();
@@ -313,6 +318,8 @@ export default function StorePosPaymentPage() {
   );
   const taxCents = Math.round(effectiveSubtotalCents * TAX_RATE);
   const totalCents = effectiveSubtotalCents + taxCents;
+  const roundedTotalCents =
+    paymentMethod === "cash" ? roundUpToFiveCents(totalCents) : totalCents;
 
   const pointsEarned = useMemo(() => {
     if (!memberInfo) return 0;
@@ -335,7 +342,7 @@ export default function StorePosPaymentPage() {
       subtotalCents: discountedSubtotalCents,
       discountCents,
       taxCents,
-      totalCents,
+      totalCents: roundedTotalCents,
       loyalty: memberInfo
         ? {
             userStableId: memberInfo.userStableId ?? null,
@@ -357,7 +364,7 @@ export default function StorePosPaymentPage() {
     pointsToRedeem,
     snapshot,
     taxCents,
-    totalCents,
+    roundedTotalCents,
   ]);
 
   useEffect(() => {
