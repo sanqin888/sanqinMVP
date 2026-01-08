@@ -18,7 +18,7 @@ export class AuthService {
   constructor(private readonly prisma: PrismaService) {}
 
   private normalizePhone(phone: string): string {
-    return phone.replace(/[\s-]+/g, '');
+    return phone.replace(/\D+/g, '');
   }
 
   private normalizeEmail(email: string): string {

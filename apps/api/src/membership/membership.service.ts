@@ -109,12 +109,12 @@ export class MembershipService {
     };
   }
 
-  /** 和短信验证那边保持一致：去空格和横杠 */
+  /** 和短信验证那边保持一致：只保留数字 */
   private normalizePhone(raw: string | undefined | null): string | null {
     if (!raw) return null;
     const trimmed = raw.trim();
     if (!trimmed) return null;
-    return trimmed.replace(/\s+/g, '').replace(/-/g, '');
+    return trimmed.replace(/\D+/g, '');
   }
 
   private normalizeEmail(raw: string | undefined | null): string | null {
