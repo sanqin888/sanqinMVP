@@ -90,6 +90,7 @@ const STRINGS = {
     menuManage: "菜单管理",
     orderManage: "订单管理",
     summary: "当日小结",
+    memberManage: "会员管理",
   },
   en: {
     title: "Store POS",
@@ -136,6 +137,7 @@ const STRINGS = {
     menuManage: "Menu management",
     orderManage: "Order management",
     summary: "Daily summary",
+    memberManage: "Member management",
   },
 } as const;
 
@@ -503,6 +505,12 @@ export default function StorePosPage() {
             className="rounded-full border border-slate-600 bg-slate-800 px-6 py-2 text-base font-semibold text-slate-100 hover:border-slate-400 hover:text-white"
           >
             {t.summary}
+          </Link>
+          <Link
+            href={`/${locale}/store/pos/membership`}
+            className="rounded-full border border-slate-600 bg-slate-800 px-6 py-2 text-base font-semibold text-slate-100 hover:border-slate-400 hover:text-white"
+          >
+            {t.memberManage}
           </Link>
           <Link
             href={`/${locale}/store/pos/menu`}
