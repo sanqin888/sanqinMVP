@@ -372,70 +372,6 @@ export class MembershipService {
     };
   }
 
-  private async ensureWelcomeCoupon(userId: string) {
-    const existing = await this.prisma.coupon.findFirst({
-      where: { userId, campaign: 'WELCOME' },
-      orderBy: { issuedAt: 'desc' },
-    });
-
-    if (existing) return existing;
-
-    const expiresAt = (() => {
-      const d = new Date();
-      d.setMonth(d.getMonth() + 1);
-      return d;
-    })();
-
-    return this.prisma.coupon.create({
-      data: {
-        userId,
-        campaign: 'WELCOME',
-        code: 'WELCOME10',
-        title: 'Welcome bonus',
-        discountCents: 1000,
-        minSpendCents: 3000,
-        expiresAt,
-        source: 'Signup bonus',
-      },
-    });
-  }
-
-  private async ensureBirthdayCoupon(user: {
-    id: string;
-    birthdayMonth: number | null;
-    birthdayDay: number | null;
-  }) {
-    if (!user.birthdayMonth || !user.birthdayDay) return null;
-
-    const now = new Date();
-    const currentMonth = now.getMonth() + 1;
-    if (currentMonth !== user.birthdayMonth) return null;
-
-    const campaign = `BIRTHDAY-${now.getFullYear()}`;
-    const existed = await this.prisma.coupon.findFirst({
-      where: { userId: user.id, campaign },
-    });
-    if (existed) return existed;
-
-    // 过期时间：生日当月的最后一天 23:59:59
-    const expiresAt = new Date(
-      Date.UTC(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59),
-    );
-
-    return this.prisma.coupon.create({
-      data: {
-        userId: user.id,
-        campaign,
-        code: 'BDAY15',
-        title: 'Birthday treat',
-        discountCents: 1500,
-        minSpendCents: 4500,
-        expiresAt,
-        source: 'Birthday month reward',
-      },
-    });
-  }
-
   /**
    * 会员概要：
    * - User 信息
@@ -704,9 +640,7 @@ export class MembershipService {
   }
 
   /**
-   * 返回用户的所有优惠券列表，会自动补发：
-   * - 欢迎券（仅一次）
-   * - 当月生日券（每年一次，需已填写生日）
+   * 返回用户的所有优惠券列表
    */
   async listCoupons(params: { userStableId: string }) {
     const { userStableId } = params;
@@ -714,13 +648,6 @@ export class MembershipService {
       userStableId,
       name: null,
       email: null,
-    });
-
-    await this.ensureWelcomeCoupon(user.id);
-    await this.ensureBirthdayCoupon({
-      id: user.id,
-      birthdayMonth: user.birthdayMonth,
-      birthdayDay: user.birthdayDay,
     });
 
     const coupons = await this.prisma.coupon.findMany({

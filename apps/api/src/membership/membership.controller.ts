@@ -270,7 +270,7 @@ export class MembershipController {
     };
   }
 
-  // ✅ 优惠券列表（会自动补发欢迎券 / 生日券）
+  // ✅ 优惠券列表
   @Get('coupons')
   async listCoupons(@Req() req: AuthedRequest) {
     const userStableId = req.user?.userStableId;

@@ -1185,7 +1185,15 @@ export default function CheckoutPage() {
         if (!res.ok) {
           throw new Error(`Failed with status ${res.status}`);
         }
-        const list = (await res.json()) as MemberAddress[];
+        const payload = (await res.json()) as unknown;
+        const list = Array.isArray(payload)
+          ? (payload as MemberAddress[])
+          : Array.isArray((payload as { data?: unknown }).data)
+            ? ((payload as { data: MemberAddress[] }).data ?? [])
+            : [];
+        if (!Array.isArray(payload)) {
+          console.warn('Unexpected member addresses payload', payload);
+        }
         const defaultAddress =
           list.find((addr) => addr.isDefault) ?? list[0] ?? null;
         setMemberDefaultAddress(defaultAddress);
