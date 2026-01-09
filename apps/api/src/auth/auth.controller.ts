@@ -424,7 +424,7 @@ export class AuthController {
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const sessionId = req.signedCookies?.[SESSION_COOKIE_NAME];
 
-    if (sessionId) {
+    if (typeof sessionId === 'string' && sessionId) {
       await this.authService.revokeSession(sessionId);
     }
     res.clearCookie(POS_DEVICE_ID_COOKIE, { path: '/' });
