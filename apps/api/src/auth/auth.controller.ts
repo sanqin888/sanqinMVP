@@ -102,6 +102,7 @@ export class AuthController {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
+      signed: true,
       maxAge: result.session.expiresAt.getTime() - Date.now(),
       path: '/',
     });
@@ -165,6 +166,7 @@ export class AuthController {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
+      signed: true,
       maxAge: result.session.expiresAt.getTime() - Date.now(),
       path: '/',
     });
@@ -221,6 +223,7 @@ export class AuthController {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
+      signed: true,
       maxAge: result.session.expiresAt.getTime() - Date.now(),
       path: '/',
     });
@@ -419,12 +422,7 @@ export class AuthController {
 
   @Post('logout')
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const cookieHeader = req.headers.cookie ?? '';
-    const sessionId = cookieHeader
-      .split(';')
-      .map((part) => part.trim())
-      .find((part) => part.startsWith(`${SESSION_COOKIE_NAME}=`))
-      ?.split('=')[1];
+    const sessionId = req.signedCookies?.[SESSION_COOKIE_NAME];
 
     if (sessionId) {
       await this.authService.revokeSession(sessionId);
