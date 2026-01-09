@@ -1829,12 +1829,12 @@ export class OrdersService {
 
     if (!order) throw new NotFoundException('order not found');
     const ownerUserStableId = order.userId
-      ? (
+      ? ((
           await this.prisma.user.findUnique({
             where: { id: order.userId },
             select: { userStableId: true },
           })
-        )?.userStableId ?? null
+        )?.userStableId ?? null)
       : null;
     return {
       order: this.toOrderDto(order),
