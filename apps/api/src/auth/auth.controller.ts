@@ -420,22 +420,23 @@ export class AuthController {
     };
   }
 
-@Post('logout')
-async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-  const rawSessionId = (
-    req.signedCookies as Record<string, unknown> | undefined
-  )?.[SESSION_COOKIE_NAME];
+  @Post('logout')
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const rawSessionId = (
+      req.signedCookies as Record<string, unknown> | undefined
+    )?.[SESSION_COOKIE_NAME];
 
-  const sessionId = typeof rawSessionId === 'string' ? rawSessionId : undefined;
+    const sessionId =
+      typeof rawSessionId === 'string' ? rawSessionId : undefined;
 
-  if (sessionId) {
-    await this.authService.revokeSession(sessionId);
+    if (sessionId) {
+      await this.authService.revokeSession(sessionId);
+    }
+
+    res.clearCookie(POS_DEVICE_ID_COOKIE, { path: '/' });
+    res.clearCookie(POS_DEVICE_KEY_COOKIE, { path: '/' });
+    res.clearCookie(SESSION_COOKIE_NAME, { path: '/' });
+    res.clearCookie(TRUSTED_DEVICE_COOKIE, { path: '/' });
+    return { success: true };
   }
-
-  res.clearCookie(POS_DEVICE_ID_COOKIE, { path: '/' });
-  res.clearCookie(POS_DEVICE_KEY_COOKIE, { path: '/' });
-  res.clearCookie(SESSION_COOKIE_NAME, { path: '/' });
-  res.clearCookie(TRUSTED_DEVICE_COOKIE, { path: '/' });
-  return { success: true };
- }
 }
