@@ -73,27 +73,6 @@ class LoyaltyOrderItemDto {
   qty!: number;
 }
 
-class CreateLoyaltyOnlyOrderDto {
-  @IsOptional()
-  @IsEnum(FulfillmentType)
-  fulfillmentType?: FulfillmentType;
-
-  @IsOptional()
-  @IsEnum(DeliveryType)
-  deliveryType?: DeliveryType;
-
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => DeliveryDestinationDto)
-  deliveryDestination?: DeliveryDestinationDto;
-
-  @IsArray()
-  @ArrayMinSize(1)
-  @ValidateNested({ each: true })
-  @Type(() => LoyaltyOrderItemDto)
-  items!: LoyaltyOrderItemDto[];
-}
-
 class DeliveryDestinationDto {
   @IsString()
   name!: string;
@@ -134,6 +113,27 @@ class DeliveryDestinationDto {
   @Type(() => Number)
   @IsNumber()
   longitude?: number;
+}
+
+class CreateLoyaltyOnlyOrderDto {
+  @IsOptional()
+  @IsEnum(FulfillmentType)
+  fulfillmentType?: FulfillmentType;
+
+  @IsOptional()
+  @IsEnum(DeliveryType)
+  deliveryType?: DeliveryType;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => DeliveryDestinationDto)
+  deliveryDestination?: DeliveryDestinationDto;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => LoyaltyOrderItemDto)
+  items!: LoyaltyOrderItemDto[];
 }
 
 class CreateOrderAmendmentItemDto {
