@@ -306,9 +306,10 @@ export default function OrderDetailPage({ params }: PageProps) {
     )}
 
     <li>税额：${(order.taxCents / 100).toFixed(2)}</li>
-    {order.deliveryFeeCents > 0 && (
-      <li>配送费：${(order.deliveryFeeCents / 100).toFixed(2)}</li>
-    )}
+    {typeof order.deliveryFeeCents === "number" &&
+      order.deliveryFeeCents > 0 && (
+        <li>配送费：${(order.deliveryFeeCents / 100).toFixed(2)}</li>
+      )}
     <li className="font-medium text-gray-900">
       合计：${(order.totalCents / 100).toFixed(2)}
     </li>
