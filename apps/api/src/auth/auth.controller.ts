@@ -397,7 +397,7 @@ export class AuthController {
         email?: string | null;
         role?: string;
         twoFactorEnabledAt?: Date | null;
-        twoFactorMethod?: any;
+        twoFactorMethod?: TwoFactorMethod;
       };
       session?: { mfaVerifiedAt?: Date | null };
     },
