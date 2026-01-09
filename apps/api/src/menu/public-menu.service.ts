@@ -80,7 +80,9 @@ export class PublicMenuService {
                       orderBy: { sortOrder: 'asc' },
                       include: {
                         childLinks: {
-                          include: { childOption: { select: { stableId: true } } },
+                          include: {
+                            childOption: { select: { stableId: true } },
+                          },
                         },
                       },
                     },
