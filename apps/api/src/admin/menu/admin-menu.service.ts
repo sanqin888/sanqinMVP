@@ -500,6 +500,13 @@ export class AdminMenuService {
         options: {
           where: { deletedAt: null },
           orderBy: { sortOrder: 'asc' },
+          include: {
+            childLinks: {
+              include: {
+                childOption: { select: { stableId: true } },
+              },
+            },
+          },
         },
       },
     });
@@ -531,6 +538,9 @@ export class AdminMenuService {
           isAvailable: o.isAvailable,
           tempUnavailableUntil: toIso(o.tempUnavailableUntil),
           sortOrder: o.sortOrder,
+          childOptionStableIds: (o.childLinks ?? []).map(
+            (link) => link.childOption.stableId,
+          ),
         })),
       };
     });
@@ -645,31 +655,99 @@ export class AdminMenuService {
       nameZh?: string | null;
       priceDeltaCents?: number;
       sortOrder?: number;
+      childOptionStableIds?: string[];
     },
   ) {
     const stableId = optionStableId.trim();
 
     const exists = await this.prisma.menuOptionTemplateChoice.findFirst({
       where: { stableId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, templateGroupId: true },
     });
     if (!exists) throw new NotFoundException(`Option not found: ${stableId}`);
 
-    // ✅ 标准 2：只允许创建时写入 stableId（这里不更新 stableId）
-    await this.prisma.menuOptionTemplateChoice.update({
-      where: { stableId },
-      data: {
-        nameEn: body.nameEn === undefined ? undefined : body.nameEn.trim(),
-        nameZh:
-          body.nameZh === undefined ? undefined : body.nameZh?.trim() || null,
-        priceDeltaCents:
-          body.priceDeltaCents === undefined
-            ? undefined
-            : Math.round(body.priceDeltaCents),
-        sortOrder:
-          body.sortOrder === undefined ? undefined : Math.floor(body.sortOrder),
-      },
-    });
+    const updateData = {
+      nameEn: body.nameEn === undefined ? undefined : body.nameEn.trim(),
+      nameZh:
+        body.nameZh === undefined ? undefined : body.nameZh?.trim() || null,
+      priceDeltaCents:
+        body.priceDeltaCents === undefined
+          ? undefined
+          : Math.round(body.priceDeltaCents),
+      sortOrder:
+        body.sortOrder === undefined ? undefined : Math.floor(body.sortOrder),
+    };
+
+    if (body.childOptionStableIds === undefined) {
+      // ✅ 标准 2：只允许创建时写入 stableId（这里不更新 stableId）
+      await this.prisma.menuOptionTemplateChoice.update({
+        where: { stableId },
+        data: updateData,
+      });
+      return { ok: true };
+    }
+
+    const childStableIds = Array.from(
+      new Set(
+        (body.childOptionStableIds ?? [])
+          .map((id) => id.trim())
+          .filter((id) => id && id !== stableId),
+      ),
+    );
+
+    const childOptions =
+      childStableIds.length > 0
+        ? await this.prisma.menuOptionTemplateChoice.findMany({
+            where: {
+              stableId: { in: childStableIds },
+              deletedAt: null,
+              templateGroupId: exists.templateGroupId,
+            },
+            select: { id: true, stableId: true },
+          })
+        : [];
+
+    const foundChildStableIds = new Set(
+      childOptions.map((option) => option.stableId),
+    );
+    const missingChildStableIds = childStableIds.filter(
+      (id) => !foundChildStableIds.has(id),
+    );
+
+    if (missingChildStableIds.length > 0) {
+      throw new BadRequestException(
+        `Invalid child options: ${missingChildStableIds.join(', ')}`,
+      );
+    }
+
+    const ops = [];
+    if (Object.values(updateData).some((value) => value !== undefined)) {
+      ops.push(
+        this.prisma.menuOptionTemplateChoice.update({
+          where: { stableId },
+          data: updateData,
+        }),
+      );
+    }
+
+    ops.push(
+      this.prisma.menuOptionChoiceLink.deleteMany({
+        where: { parentOptionId: exists.id },
+      }),
+    );
+
+    if (childOptions.length > 0) {
+      ops.push(
+        this.prisma.menuOptionChoiceLink.createMany({
+          data: childOptions.map((opt) => ({
+            parentOptionId: exists.id,
+            childOptionId: opt.id,
+          })),
+        }),
+      );
+    }
+
+    await this.prisma.$transaction(ops);
 
     return { ok: true };
   }

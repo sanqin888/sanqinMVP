@@ -41,6 +41,7 @@ export type OptionChoiceDto = LocalizedName & Availability & {
     templateGroupStableId: string;
     priceDeltaCents: number;
     sortOrder: number;
+    childOptionStableIds?: string[];
 };
 export type TemplateGroupLiteDto = LocalizedName & Availability & {
     templateGroupStableId: string;
