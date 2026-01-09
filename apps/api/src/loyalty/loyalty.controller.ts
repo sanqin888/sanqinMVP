@@ -5,9 +5,16 @@ import {
   Controller,
   Headers,
   Post,
+  UseGuards,
 } from '@nestjs/common';
+import { SessionAuthGuard } from '../auth/session-auth.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { PosDeviceGuard } from '../pos/pos-device.guard';
 import { LoyaltyService } from './loyalty.service';
 
+@UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
+@Roles('ADMIN', 'STAFF')
 @Controller('loyalty')
 export class LoyaltyController {
   constructor(private readonly loyalty: LoyaltyService) {}
