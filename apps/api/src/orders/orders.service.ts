@@ -1819,6 +1819,21 @@ export class OrdersService {
     return this.toOrderDto(order);
   }
 
+  async getByStableIdWithOwner(
+    orderStableId: string,
+  ): Promise<{ order: OrderDto; ownerUserStableId: string | null }> {
+    const order = (await this.prisma.order.findUnique({
+      where: { orderStableId: orderStableId.trim() },
+      include: { items: true },
+    })) as OrderWithItems | null;
+
+    if (!order) throw new NotFoundException('order not found');
+    return {
+      order: this.toOrderDto(order),
+      ownerUserStableId: order.userStableId ?? null,
+    };
+  }
+
   async getPrintPayloadByStableId(
     orderStableId: string,
     locale?: string,
@@ -1905,6 +1920,7 @@ export class OrdersService {
     const discountCents =
       (order.loyaltyRedeemCents ?? 0) + (order.couponDiscountCents ?? 0);
 
+    let itemCount = 0;
     const lineItems = order.items.map((item) => {
       const optionsSnapshot = Array.isArray(item.optionsJson)
         ? (item.optionsJson as OrderItemOptionsSnapshot)
@@ -1913,6 +1929,7 @@ export class OrdersService {
       const unitPriceCents = item.unitPriceCents ?? 0;
       const quantity = item.qty;
       const totalPriceCents = unitPriceCents * quantity;
+      itemCount += quantity;
 
       const display =
         item.displayName || item.nameEn || item.nameZh || item.productStableId;
@@ -1934,6 +1951,10 @@ export class OrdersService {
     return {
       orderStableId: order.orderStableId,
       orderNumber,
+      status: order.status,
+      createdAt: order.createdAt.toISOString(),
+      fulfillmentType: order.fulfillmentType,
+      itemCount,
       currency: 'CAD',
       subtotalCents,
       taxCents,
