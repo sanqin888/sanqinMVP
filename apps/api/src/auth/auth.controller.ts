@@ -22,6 +22,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { GoogleStartGuard } from './oauth/google.guard';
 import { OauthStateService } from './oauth/oauth-state.service';
 import type { GoogleProfile } from './oauth/google.strategy';
+import type { TwoFactorMethod } from '@prisma/client';
 
 const resolveLoginLocation = (req: Request): string | undefined => {
   const readHeader = (name: string): string | undefined => {
@@ -102,6 +103,7 @@ export class AuthController {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
+      signed: true,
       maxAge: result.session.expiresAt.getTime() - Date.now(),
       path: '/',
     });
@@ -165,6 +167,7 @@ export class AuthController {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
+      signed: true,
       maxAge: result.session.expiresAt.getTime() - Date.now(),
       path: '/',
     });
@@ -221,6 +224,7 @@ export class AuthController {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
+      signed: true,
       maxAge: result.session.expiresAt.getTime() - Date.now(),
       path: '/',
     });
@@ -394,7 +398,7 @@ export class AuthController {
         email?: string | null;
         role?: string;
         twoFactorEnabledAt?: Date | null;
-        twoFactorMethod?: any;
+        twoFactorMethod?: TwoFactorMethod;
       };
       session?: { mfaVerifiedAt?: Date | null };
     },
@@ -419,16 +423,17 @@ export class AuthController {
 
   @Post('logout')
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const cookieHeader = req.headers.cookie ?? '';
-    const sessionId = cookieHeader
-      .split(';')
-      .map((part) => part.trim())
-      .find((part) => part.startsWith(`${SESSION_COOKIE_NAME}=`))
-      ?.split('=')[1];
+    const rawSessionId = (
+      req.signedCookies as Record<string, unknown> | undefined
+    )?.[SESSION_COOKIE_NAME];
+
+    const sessionId =
+      typeof rawSessionId === 'string' ? rawSessionId : undefined;
 
     if (sessionId) {
       await this.authService.revokeSession(sessionId);
     }
+
     res.clearCookie(POS_DEVICE_ID_COOKIE, { path: '/' });
     res.clearCookie(POS_DEVICE_KEY_COOKIE, { path: '/' });
     res.clearCookie(SESSION_COOKIE_NAME, { path: '/' });

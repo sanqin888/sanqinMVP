@@ -3,7 +3,7 @@
 
 import { use, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { apiFetch } from '@/lib/api/client';
+import { ApiError, apiFetch } from '@/lib/api/client';
 import { isStableId } from '@shared/menu';
 import { ORDER_STATUS_SEQUENCE, OrderStatus } from '@shared/order';
 import type {
@@ -13,7 +13,7 @@ import type {
 import type { Locale } from '@/lib/i18n/locales';
 import type { OrderItemOptionsSnapshot } from '@/lib/order/order-item-options';
 
-type OrderItem = {
+type FullOrderItem = {
   id: string;
   productStableId: string;
   displayName: string | null;
@@ -24,7 +24,7 @@ type OrderItem = {
   optionsJson: OrderItemOptionsSnapshot | Record<string, unknown> | null;
 };
 
-type OrderDetail = {
+type FullOrder = {
   id: string;
   status: OrderStatus;
   channel: string;
@@ -41,13 +41,43 @@ type OrderDetail = {
   deliveryEtaMaxMinutes: number | null;
   externalDeliveryId: string | null;
   createdAt: string;
-  items: OrderItem[];
-  loyaltyRedeemCents: number | null;           
-  subtotalAfterDiscountCents: number | null;   
+  items: FullOrderItem[];
+  loyaltyRedeemCents: number | null;
+  subtotalAfterDiscountCents: number | null;
   couponStableId: string | null;
   couponDiscountCents: number | null;
   couponCodeSnapshot: string | null;
   couponTitleSnapshot: string | null;
+};
+
+type PublicSummaryItem = {
+  productStableId: string;
+  name: string;
+  nameEn: string | null;
+  nameZh: string | null;
+  quantity: number;
+  unitPriceCents: number;
+  totalPriceCents: number;
+  optionsJson?: OrderItemOptionsSnapshot | null;
+};
+
+type PublicSummary = {
+  orderStableId: string;
+  orderNumber: string;
+  status: OrderStatus;
+  createdAt: string;
+  fulfillmentType: string;
+  itemCount: number;
+  currency: 'CAD';
+  subtotalCents: number;
+  taxCents: number;
+  deliveryFeeCents: number;
+  discountCents: number;
+  totalCents: number;
+  loyaltyRedeemCents?: number | null;
+  couponDiscountCents?: number | null;
+  subtotalAfterDiscountCents?: number | null;
+  lineItems: PublicSummaryItem[];
 };
 
 type PageParams = {
@@ -84,7 +114,8 @@ export default function OrderDetailPage({ params }: PageProps) {
   const orderId = orderIdRaw ?? '';
   const locale = (localeRaw ?? 'en') as Locale;
   const isZh = locale === 'zh';
-  const [order, setOrder] = useState<OrderDetail | null>(null);
+  const [order, setOrder] = useState<FullOrder | PublicSummary | null>(null);
+  const [isFullDetail, setIsFullDetail] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -102,13 +133,40 @@ export default function OrderDetailPage({ params }: PageProps) {
       }
       try {
         setError(null);
-        const data = await apiFetch<OrderDetail>(`/orders/${orderId}`);
-        if (!cancelled) setOrder(data);
+        const data = await apiFetch<FullOrder>(`/orders/${orderId}`);
+        if (!cancelled) {
+          setOrder(data);
+          setIsFullDetail(true);
+          setLoading(false);
+        }
       } catch (err) {
-        if (!cancelled)
-          setError(err instanceof Error ? err.message : '订单详情加载失败');
-      } finally {
-        if (!cancelled) setLoading(false);
+        if (cancelled) return;
+        const apiError = err instanceof ApiError ? err : null;
+        if (apiError?.status !== 401 && apiError?.status !== 403) {
+          setError(apiError?.message ?? '订单详情加载失败');
+          setLoading(false);
+          return;
+        }
+
+        try {
+          const summary = await apiFetch<PublicSummary>(
+            `/orders/${orderId}/summary`,
+          );
+          if (!cancelled) {
+            setOrder(summary);
+            setIsFullDetail(false);
+            setLoading(false);
+          }
+        } catch (summaryErr) {
+          if (!cancelled)
+            setError(
+              summaryErr instanceof Error
+                ? summaryErr.message
+                : '订单不存在或无法查看',
+            );
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
       }
     }
 
@@ -122,15 +180,12 @@ export default function OrderDetailPage({ params }: PageProps) {
     if (!order) return -1;
     return ORDER_STATUS_SEQUENCE.indexOf(order.status);
   }, [order]);
+  const fullOrder = isFullDetail ? (order as FullOrder) : null;
+  const summaryOrder = !isFullDetail ? (order as PublicSummary) : null;
 
-  const hasDeliveryInfo = Boolean(
-    order?.deliveryType ||
-      order?.deliveryFeeCents ||
-      order?.externalDeliveryId ||
-      (order?.deliveryEtaMinMinutes && order?.deliveryEtaMaxMinutes),
-  );
-
-  const renderOptions = (rawOptions: OrderItem['optionsJson']) => {
+  const renderOptions = (
+    rawOptions: FullOrderItem['optionsJson'] | PublicSummaryItem['optionsJson'],
+  ) => {
     if (!rawOptions) return null;
 
     if (!Array.isArray(rawOptions)) {
@@ -198,14 +253,20 @@ export default function OrderDetailPage({ params }: PageProps) {
             <span className="rounded bg-gray-900 px-2 py-1 text-xs font-medium uppercase tracking-wide text-white">
               {formatOrderStatus(order.status, isZh)}
             </span>
-            {order.clientRequestId && (
+            {isFullDetail && fullOrder?.clientRequestId ? (
               <span className="text-sm text-gray-600">
                 {isZh ? '订单编号：' : 'Order Number: '}
-                {order.clientRequestId}
+                {fullOrder.clientRequestId}
               </span>
-            )}
+            ) : summaryOrder?.orderNumber ? (
+              <span className="text-sm text-gray-600">
+                {isZh ? '订单编号：' : 'Order Number: '}
+                {summaryOrder.orderNumber}
+              </span>
+            ) : null}
             <span className="text-sm text-gray-600">
-              渠道：{order.channel} · {order.fulfillmentType}
+              {isZh ? '履约方式：' : 'Fulfillment: '}
+              {order.fulfillmentType}
             </span>
             <span className="text-sm text-gray-500">
               创建时间：{new Date(order.createdAt).toLocaleString()}
@@ -238,10 +299,6 @@ export default function OrderDetailPage({ params }: PageProps) {
     order.couponDiscountCents > 0 && (
       <li>
         优惠券：
-        <span className="mr-2">
-          {/* 标题 + ID 二选一/叠加展示 */}
-          {order.couponTitleSnapshot ?? '优惠券'}
-        </span>
         <span className="text-amber-700">
           -${(order.couponDiscountCents / 100).toFixed(2)}
         </span>
@@ -249,44 +306,15 @@ export default function OrderDetailPage({ params }: PageProps) {
     )}
 
     <li>税额：${(order.taxCents / 100).toFixed(2)}</li>
+    {typeof order.deliveryFeeCents === "number" &&
+      order.deliveryFeeCents > 0 && (
+        <li>配送费：${(order.deliveryFeeCents / 100).toFixed(2)}</li>
+      )}
     <li className="font-medium text-gray-900">
       合计：${(order.totalCents / 100).toFixed(2)}
     </li>
   </ul>
 </div>
-
-          {hasDeliveryInfo && (
-            <div className="space-y-2">
-              <h2 className="text-sm font-semibold text-gray-700">配送信息</h2>
-              <ul className="text-sm text-gray-600">
-                {order.deliveryType && (
-                  <li>
-                    类型：
-                    {DELIVERY_TYPE_LABELS[order.deliveryType]} ({order.deliveryType})
-                  </li>
-                )}
-                {order.deliveryProvider && (
-                  <li>
-                    平台：
-                    {DELIVERY_PROVIDER_LABELS[order.deliveryProvider]} (
-                    {order.deliveryProvider})
-                  </li>
-                )}
-                {typeof order.deliveryFeeCents === 'number' && (
-                  <li>配送费：${(order.deliveryFeeCents / 100).toFixed(2)}</li>
-                )}
-                {typeof order.deliveryEtaMinMinutes === 'number' &&
-                  typeof order.deliveryEtaMaxMinutes === 'number' && (
-                    <li>
-                      ETA：{order.deliveryEtaMinMinutes}–{order.deliveryEtaMaxMinutes} 分钟
-                    </li>
-                  )}
-                {order.externalDeliveryId && (
-                  <li>外部单号：{order.externalDeliveryId}</li>
-                )}
-              </ul>
-            </div>
-          )}
 
           <div className="space-y-2">
             <h2 className="text-sm font-semibold text-gray-700">状态流转</h2>
@@ -306,55 +334,102 @@ export default function OrderDetailPage({ params }: PageProps) {
             </ol>
           </div>
 
-          <div className="space-y-2">
-            <h2 className="text-sm font-semibold text-gray-700">项目列表</h2>
-            <ul className="space-y-2 text-sm text-gray-700">
-              {order.items.map((item, idx) => {
-                const unitPrice =
-                  typeof item.unitPriceCents === 'number'
-                    ? item.unitPriceCents
-                    : null;
-                const lineTotal =
-                  unitPrice !== null ? unitPrice * item.qty : null;
-                const displayName =
-                  item.displayName ||
-                  item.nameZh ||
-                  item.nameEn ||
-                  item.productStableId;
+          {isFullDetail && fullOrder ? (
+            <>
+              <div className="space-y-2">
+                <h2 className="text-sm font-semibold text-gray-700">配送信息</h2>
+                <ul className="text-sm text-gray-600">
+                  {fullOrder.deliveryType && (
+                    <li>
+                      类型：
+                      {DELIVERY_TYPE_LABELS[fullOrder.deliveryType]} (
+                      {fullOrder.deliveryType})
+                    </li>
+                  )}
+                  {fullOrder.deliveryProvider && (
+                    <li>
+                      平台：
+                      {DELIVERY_PROVIDER_LABELS[fullOrder.deliveryProvider]} (
+                      {fullOrder.deliveryProvider})
+                    </li>
+                  )}
+                  {typeof fullOrder.deliveryFeeCents === 'number' && (
+                    <li>
+                      配送费：${(fullOrder.deliveryFeeCents / 100).toFixed(2)}
+                    </li>
+                  )}
+                  {typeof fullOrder.deliveryEtaMinMinutes === 'number' &&
+                    typeof fullOrder.deliveryEtaMaxMinutes === 'number' && (
+                      <li>
+                        ETA：{fullOrder.deliveryEtaMinMinutes}–
+                        {fullOrder.deliveryEtaMaxMinutes} 分钟
+                      </li>
+                    )}
+                  {fullOrder.externalDeliveryId && (
+                    <li>外部单号：{fullOrder.externalDeliveryId}</li>
+                  )}
+                </ul>
+              </div>
 
-                const itemKey = `${item.productStableId ?? displayName ?? 'item'}-${idx}`;
+              <div className="space-y-2">
+                <h2 className="text-sm font-semibold text-gray-700">项目列表</h2>
+                <ul className="space-y-2 text-sm text-gray-700">
+                  {fullOrder.items.map((item, idx) => {
+                    const unitPrice =
+                      typeof item.unitPriceCents === 'number'
+                        ? item.unitPriceCents
+                        : null;
+                    const lineTotal =
+                      unitPrice !== null ? unitPrice * item.qty : null;
+                    const displayName =
+                      item.displayName ||
+                      item.nameZh ||
+                      item.nameEn ||
+                      item.productStableId;
 
-                return (
-                  <li key={itemKey} className="rounded border px-3 py-2">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <div className="font-medium text-gray-900">
-                          {displayName}
+                    const itemKey = `${item.productStableId ?? displayName ?? 'item'}-${idx}`;
+
+                    return (
+                      <li key={itemKey} className="rounded border px-3 py-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="font-medium text-gray-900">
+                              {displayName}
+                            </div>
+                            <div className="text-xs text-gray-500 break-all">
+                              {item.productStableId}
+                            </div>
+                          </div>
+                          <div className="text-right text-sm text-gray-700">
+                            <div>×{item.qty}</div>
+                            {unitPrice !== null && (
+                              <div className="text-xs text-gray-500">
+                                单价：${(unitPrice / 100).toFixed(2)}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        <div className="text-xs text-gray-500 break-all">
-                          {item.productStableId}
-                        </div>
-                      </div>
-                      <div className="text-right text-sm text-gray-700">
-                        <div>×{item.qty}</div>
-                        {unitPrice !== null && (
-                          <div className="text-xs text-gray-500">
-                            单价：${(unitPrice / 100).toFixed(2)}
+                        {lineTotal !== null && (
+                          <div className="mt-1 text-xs text-gray-600">
+                            小计：${(lineTotal / 100).toFixed(2)}
                           </div>
                         )}
-                      </div>
-                    </div>
-                    {lineTotal !== null && (
-                      <div className="mt-1 text-xs text-gray-600">
-                        小计：${(lineTotal / 100).toFixed(2)}
-                      </div>
-                    )}
-                    {renderOptions(item.optionsJson)}
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
+                        {renderOptions(item.optionsJson)}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            </>
+          ) : summaryOrder ? (
+            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+              <p>
+                {isZh
+                  ? `已展示公开摘要（${summaryOrder.itemCount} 件商品）`
+                  : `Public summary only (${summaryOrder.itemCount} items)`}
+              </p>
+            </div>
+          ) : null}
 
           <div className="text-xs text-gray-500">
             深链规范：<code className="rounded bg-gray-100 px-1 py-0.5">sanqin://order/{orderId}</code>

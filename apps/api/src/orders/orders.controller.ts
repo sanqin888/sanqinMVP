@@ -12,6 +12,7 @@ import {
   DefaultValuePipe,
   ParseIntPipe,
   BadRequestException,
+  ForbiddenException,
   UseGuards,
   UsePipes,
   ValidationPipe,
@@ -73,27 +74,6 @@ class LoyaltyOrderItemDto {
   qty!: number;
 }
 
-class CreateLoyaltyOnlyOrderDto {
-  @IsOptional()
-  @IsEnum(FulfillmentType)
-  fulfillmentType?: FulfillmentType;
-
-  @IsOptional()
-  @IsEnum(DeliveryType)
-  deliveryType?: DeliveryType;
-
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => DeliveryDestinationDto)
-  deliveryDestination?: DeliveryDestinationDto;
-
-  @IsArray()
-  @ArrayMinSize(1)
-  @ValidateNested({ each: true })
-  @Type(() => LoyaltyOrderItemDto)
-  items!: LoyaltyOrderItemDto[];
-}
-
 class DeliveryDestinationDto {
   @IsString()
   name!: string;
@@ -134,6 +114,27 @@ class DeliveryDestinationDto {
   @Type(() => Number)
   @IsNumber()
   longitude?: number;
+}
+
+class CreateLoyaltyOnlyOrderDto {
+  @IsOptional()
+  @IsEnum(FulfillmentType)
+  fulfillmentType?: FulfillmentType;
+
+  @IsOptional()
+  @IsEnum(DeliveryType)
+  deliveryType?: DeliveryType;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => DeliveryDestinationDto)
+  deliveryDestination?: DeliveryDestinationDto;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => LoyaltyOrderItemDto)
+  items!: LoyaltyOrderItemDto[];
 }
 
 class CreateOrderAmendmentItemDto {
@@ -352,10 +353,24 @@ export class OrdersController {
    * GET /api/v1/orders/:orderStableId
    */
   @Get(':orderStableId')
-  findOne(
+  @UseGuards(SessionAuthGuard)
+  async findOne(
+    @Req() req: AuthedRequest,
     @Param('orderStableId', StableIdPipe) orderStableId: string,
   ): Promise<OrderDto> {
-    return this.ordersService.getByStableId(orderStableId);
+    const userStableId = req.user?.userStableId;
+    if (!userStableId) {
+      throw new BadRequestException('userStableId is required');
+    }
+
+    const { order, ownerUserStableId } =
+      await this.ordersService.getByStableIdWithOwner(orderStableId);
+
+    if (!ownerUserStableId || ownerUserStableId !== userStableId) {
+      throw new ForbiddenException('order access forbidden');
+    }
+
+    return order;
   }
 
   @Post('loyalty-only')
