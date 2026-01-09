@@ -8,17 +8,22 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   DefaultValuePipe,
   ParseIntPipe,
   BadRequestException,
   UseGuards,
   UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { Type } from 'class-transformer';
 import {
+  ArrayMinSize,
   IsArray,
   IsEnum,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   Min,
@@ -34,6 +39,8 @@ import {
   PaymentMethod,
   Prisma,
   OrderStatus as PrismaOrderStatus,
+  FulfillmentType,
+  DeliveryType,
 } from '@prisma/client';
 import { OrdersService } from './orders.service';
 import { CreateOrderSchema } from '@shared/order';
@@ -48,9 +55,85 @@ import { PosDeviceGuard } from '../pos/pos-device.guard';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import type { OrderDto } from './dto/order.dto';
 
+type AuthedRequest = Request & {
+  user?: { id?: string; userStableId?: string };
+};
+
 class UpdateStatusDto {
   @IsEnum(PrismaOrderStatus)
   status!: OrderStatus;
+}
+
+class LoyaltyOrderItemDto {
+  @IsString()
+  productStableId!: string;
+
+  @IsInt()
+  @Min(1)
+  qty!: number;
+}
+
+class CreateLoyaltyOnlyOrderDto {
+  @IsOptional()
+  @IsEnum(FulfillmentType)
+  fulfillmentType?: FulfillmentType;
+
+  @IsOptional()
+  @IsEnum(DeliveryType)
+  deliveryType?: DeliveryType;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => DeliveryDestinationDto)
+  deliveryDestination?: DeliveryDestinationDto;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => LoyaltyOrderItemDto)
+  items!: LoyaltyOrderItemDto[];
+}
+
+class DeliveryDestinationDto {
+  @IsString()
+  name!: string;
+
+  @IsString()
+  phone!: string;
+
+  @IsString()
+  addressLine1!: string;
+
+  @IsOptional()
+  @IsString()
+  addressLine2?: string;
+
+  @IsString()
+  city!: string;
+
+  @IsString()
+  province!: string;
+
+  @IsString()
+  postalCode!: string;
+
+  @IsOptional()
+  @IsString()
+  country?: string;
+
+  @IsOptional()
+  @IsString()
+  instructions?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  latitude?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  longitude?: number;
 }
 
 class CreateOrderAmendmentItemDto {
@@ -276,11 +359,44 @@ export class OrdersController {
   }
 
   @Post('loyalty-only')
-  async createLoyaltyOnlyOrder(@Body() payload: any): Promise<OrderDto> {
-    if (!payload || typeof payload !== 'object') {
-      throw new BadRequestException('Invalid payload');
+  @UseGuards(SessionAuthGuard)
+  @UsePipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  )
+  async createLoyaltyOnlyOrder(
+    @Req() req: AuthedRequest,
+    @Body() payload: CreateLoyaltyOnlyOrderDto,
+  ): Promise<OrderDto> {
+    const userStableId = req.user?.userStableId;
+    if (!userStableId) {
+      throw new BadRequestException('userStableId is required');
     }
-    return this.ordersService.createLoyaltyOnlyOrder(payload);
+
+    const fulfillmentType = payload.fulfillmentType ?? FulfillmentType.pickup;
+    if (
+      fulfillmentType !== FulfillmentType.pickup &&
+      fulfillmentType !== FulfillmentType.delivery
+    ) {
+      throw new BadRequestException('fulfillmentType must be pickup or delivery');
+    }
+
+    if (fulfillmentType === FulfillmentType.delivery) {
+      if (!payload.deliveryDestination) {
+        throw new BadRequestException('deliveryDestination is required');
+      }
+    }
+
+    return this.ordersService.createLoyaltyOnlyOrder({
+      userStableId,
+      fulfillmentType,
+      deliveryType: payload.deliveryType,
+      deliveryDestination: payload.deliveryDestination,
+      items: payload.items,
+    });
   }
 
   /**

@@ -12,6 +12,7 @@ import {
   Channel,
   DeliveryProvider,
   DeliveryType,
+  FulfillmentType,
   LoyaltyEntryType,
   MenuItemOptionGroup,
   MenuOptionGroupTemplate,
@@ -41,7 +42,6 @@ import {
   DoorDashDeliveryResult,
   DoorDashDriveService,
 } from '../deliveries/doordash-drive.service';
-import { parseHostedCheckoutMetadata } from '../clover/hco-metadata';
 import {
   buildClientRequestId,
   CLIENT_REQUEST_ID_RE,
@@ -1710,80 +1710,58 @@ export class OrdersService {
     );
   }
 
-  async createLoyaltyOnlyOrder(payload: unknown): Promise<OrderDto> {
-    if (!payload || typeof payload !== 'object') {
-      throw new BadRequestException('invalid payload');
+  async createLoyaltyOnlyOrder(params: {
+    userStableId: string;
+    fulfillmentType: FulfillmentType;
+    deliveryType?: DeliveryType;
+    deliveryDestination?: DeliveryDestinationInput;
+    items: Array<{ productStableId: string; qty: number }>;
+  }): Promise<OrderDto> {
+    const {
+      userStableId,
+      fulfillmentType,
+      deliveryType,
+      deliveryDestination,
+      items,
+    } = params;
+    if (!userStableId) {
+      throw new BadRequestException('userStableId is required');
+    }
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new BadRequestException('items are required');
     }
 
-    interface LoyaltyOrderPayload {
-      amountCents?: unknown;
-      referenceId?: unknown;
-      metadata?: unknown;
-    }
-    const safePayload = payload as LoyaltyOrderPayload;
+    const { calculatedSubtotal } = await this.calculateLineItems(items);
 
-    const { metadata } = safePayload;
-    if (metadata == null) throw new BadRequestException('metadata is required');
+    const userId = await this.loyalty.resolveUserIdByStableId(userStableId);
+    const account = await this.prisma.loyaltyAccount.findUnique({
+      where: { userId },
+      select: { pointsMicro: true },
+    });
+    const pointsMicro = account?.pointsMicro ?? 0n;
+    const maxRedeemableCents =
+      await this.loyalty.maxRedeemableCentsFromBalance(pointsMicro);
 
-    const meta = parseHostedCheckoutMetadata(metadata);
-    const loyaltyRedeemCents = meta.loyaltyRedeemCents ?? 0;
-    const loyaltyUserStableId = meta.loyaltyUserStableId;
-
-    if (!loyaltyUserStableId || loyaltyRedeemCents <= 0) {
-      throw new BadRequestException(
-        'loyaltyUserStableId and positive loyaltyRedeemCents required',
-      );
+    if (maxRedeemableCents < calculatedSubtotal) {
+      throw new BadRequestException('insufficient loyalty balance');
     }
 
-    let deliveryDestination: DeliveryDestinationInput | undefined;
-    if (meta.fulfillment === 'delivery') {
-      const { customer } = meta;
-      if (
-        !customer.addressLine1 ||
-        !customer.city ||
-        !customer.province ||
-        !customer.postalCode
-      ) {
-        throw new BadRequestException('Delivery address incomplete');
-      }
-      deliveryDestination = {
-        name: customer.name,
-        phone: customer.phone,
-        addressLine1: customer.addressLine1,
-        addressLine2: customer.addressLine2,
-        city: customer.city,
-        province: customer.province,
-        postalCode: customer.postalCode,
-        country: customer.country ?? 'Canada',
-        instructions: customer.notes,
-        latitude: undefined,
-        longitude: undefined,
-        tipCents: undefined,
-        notes: undefined,
-        company: undefined,
-      };
-    }
+    const normalizedDeliveryType =
+      fulfillmentType === FulfillmentType.delivery
+        ? deliveryType ?? DeliveryType.STANDARD
+        : undefined;
 
     const dto: CreateOrderInput = {
-      userStableId: loyaltyUserStableId,
-      orderStableId: normalizeStableId(meta.orderStableId) ?? undefined,
+      userStableId,
       channel: 'web',
-      fulfillmentType: meta.fulfillment,
-      deliveryType: meta.deliveryType,
+      fulfillmentType,
+      deliveryType: normalizedDeliveryType,
       deliveryDestination,
-      items: meta.items.map((item) => ({
-        productStableId: item.productStableId,
-        qty: item.quantity,
-      })),
-      redeemValueCents: loyaltyRedeemCents,
-      deliveryFeeCents: meta.deliveryFeeCents,
-      selectedUserCouponId: meta.selectedUserCouponId,
+      items,
+      redeemValueCents: calculatedSubtotal,
     };
 
-    const order = await this.createImmediatePaid(
-      dto,
-      dto.orderStableId ?? dto.clientRequestId,
-    );
+    const order = await this.createImmediatePaid(dto, dto.clientRequestId);
     return this.toOrderDto(order);
   }
 
