@@ -22,6 +22,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { GoogleStartGuard } from './oauth/google.guard';
 import { OauthStateService } from './oauth/oauth-state.service';
 import type { GoogleProfile } from './oauth/google.strategy';
+import type { TwoFactorMethod } from '@prisma/client';
 
 const resolveLoginLocation = (req: Request): string | undefined => {
   const readHeader = (name: string): string | undefined => {
