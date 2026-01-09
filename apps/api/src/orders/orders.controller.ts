@@ -381,7 +381,9 @@ export class OrdersController {
       fulfillmentType !== FulfillmentType.pickup &&
       fulfillmentType !== FulfillmentType.delivery
     ) {
-      throw new BadRequestException('fulfillmentType must be pickup or delivery');
+      throw new BadRequestException(
+        'fulfillmentType must be pickup or delivery',
+      );
     }
 
     if (fulfillmentType === FulfillmentType.delivery) {

@@ -1748,7 +1748,7 @@ export class OrdersService {
 
     const normalizedDeliveryType =
       fulfillmentType === FulfillmentType.delivery
-        ? deliveryType ?? DeliveryType.STANDARD
+        ? (deliveryType ?? DeliveryType.STANDARD)
         : undefined;
 
     const dto: CreateOrderInput = {
