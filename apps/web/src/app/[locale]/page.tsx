@@ -155,6 +155,9 @@ export default function LocalOrderPage() {
   const [selectedOptions, setSelectedOptions] = useState<
     Record<string, string[]>
   >({});
+  const [selectedChildOptions, setSelectedChildOptions] = useState<
+    Record<string, string[]>
+  >({});
   const entitlementItems = useMemo(
     () =>
       buildLocalizedEntitlementItems(
@@ -218,6 +221,7 @@ export default function LocalOrderPage() {
   const closeOptionsModal = () => {
     setActiveItem(null);
     setSelectedOptions({});
+    setSelectedChildOptions({});
   };
 
   const handleOptionToggle = (
@@ -226,6 +230,7 @@ export default function LocalOrderPage() {
     minSelect: number,
     maxSelect: number | null,
   ) => {
+    let removedParents: string[] = [];
     setSelectedOptions((prev) => {
       const current = new Set(prev[groupStableId] ?? []);
 
@@ -234,15 +239,18 @@ export default function LocalOrderPage() {
           if (minSelect > 0) {
             return prev;
           }
+          removedParents = [optionStableId];
           const next = { ...prev };
           delete next[groupStableId];
           return next;
         }
+        removedParents = Array.from(current);
         return { ...prev, [groupStableId]: [optionStableId] };
       }
 
       if (current.has(optionStableId)) {
         current.delete(optionStableId);
+        removedParents = [optionStableId];
       } else {
         if (typeof maxSelect === "number" && current.size >= maxSelect) {
           return prev;
@@ -257,6 +265,36 @@ export default function LocalOrderPage() {
       }
 
       return { ...prev, [groupStableId]: Array.from(current) };
+    });
+
+    if (removedParents.length > 0) {
+      setSelectedChildOptions((prev) => {
+        const next = { ...prev };
+        removedParents.forEach((parentId) => {
+          delete next[parentId];
+        });
+        return next;
+      });
+    }
+  };
+
+  const handleChildOptionToggle = (
+    parentOptionStableId: string,
+    childOptionStableId: string,
+  ) => {
+    setSelectedChildOptions((prev) => {
+      const current = new Set(prev[parentOptionStableId] ?? []);
+      if (current.has(childOptionStableId)) {
+        current.delete(childOptionStableId);
+      } else {
+        current.add(childOptionStableId);
+      }
+      if (current.size === 0) {
+        const next = { ...prev };
+        delete next[parentOptionStableId];
+        return next;
+      }
+      return { ...prev, [parentOptionStableId]: Array.from(current) };
     });
   };
 
@@ -276,16 +314,16 @@ export default function LocalOrderPage() {
       priceDeltaCents: number;
     }> = [];
     const optionGroups = activeItem.optionGroups ?? [];
+    const allSelectedOptionIds = new Set<string>(
+      Object.values({ ...selectedOptions, ...selectedChildOptions }).flat(),
+    );
     optionGroups.forEach((group) => {
-      const groupSelections =
-        selectedOptions[group.templateGroupStableId] ?? [];
-      if (groupSelections.length === 0) return;
       const groupName =
         locale === "zh" && group.template.nameZh
           ? group.template.nameZh
           : group.template.nameEn;
       group.options.forEach((option) => {
-        if (!groupSelections.includes(option.optionStableId)) return;
+        if (!allSelectedOptionIds.has(option.optionStableId)) return;
         const optionName =
           locale === "zh" && option.nameZh ? option.nameZh : option.nameEn;
         details.push({
@@ -296,7 +334,7 @@ export default function LocalOrderPage() {
       });
     });
     return details;
-  }, [activeItem, locale, selectedOptions]);
+  }, [activeItem, locale, selectedChildOptions, selectedOptions]);
 
   const optionsPriceCents = useMemo(
     () =>
@@ -503,6 +541,7 @@ export default function LocalOrderPage() {
                               if (isTempUnavailable(item.tempUnavailableUntil)) return;
                               setActiveItem(item);
                               setSelectedOptions({});
+                              setSelectedChildOptions({});
                             }}
                           >
                             <div className="space-y-2">
@@ -575,6 +614,7 @@ export default function LocalOrderPage() {
                                 return;
                               setActiveItem(item);
                               setSelectedOptions({});
+                              setSelectedChildOptions({});
                             }}
                           >
                             {/* 菜品图片（可选） */}
@@ -654,6 +694,7 @@ export default function LocalOrderPage() {
                                     return;
                                   setActiveItem(item);
                                   setSelectedOptions({});
+                                  setSelectedChildOptions({});
                                 }}
                                 disabled={isTempUnavailable(
                                   item.tempUnavailableUntil,
@@ -721,6 +762,14 @@ export default function LocalOrderPage() {
                 (activeItem.optionGroups ?? []).map((group) => {
                   const selectedCount =
                     selectedOptions[group.templateGroupStableId]?.length ?? 0;
+                  const childOptionIds = new Set(
+                    group.options.flatMap(
+                      (option) => option.childOptionStableIds ?? [],
+                    ),
+                  );
+                  const parentOptions = group.options.filter(
+                    (option) => !childOptionIds.has(option.optionStableId),
+                  );
                   const requirementLabel = (() => {
                     if (group.minSelect > 0 && group.maxSelect === 1) {
                       return locale === "zh" ? "必选 1 项" : "Required: 1";
@@ -770,7 +819,7 @@ export default function LocalOrderPage() {
                       </div>
 
                       <div className="grid gap-2 md:grid-cols-2">
-                        {group.options.map((option) => {
+                        {parentOptions.map((option) => {
                           const selected =
                             selectedOptions[group.templateGroupStableId]?.includes(
                               option.optionStableId,
@@ -782,6 +831,16 @@ export default function LocalOrderPage() {
                             locale === "zh" && option.nameZh
                               ? option.nameZh
                               : option.nameEn;
+                          const childOptions = (option.childOptionStableIds ?? [])
+                            .map((childId) =>
+                              group.options.find(
+                                (child) => child.optionStableId === childId,
+                              ),
+                            )
+                            .filter(
+                              (childOption): childOption is NonNullable<typeof childOption> =>
+                                Boolean(childOption),
+                            );
                           const priceDelta =
                             option.priceDeltaCents > 0
                               ? `+${currencyFormatter.format(
@@ -794,48 +853,126 @@ export default function LocalOrderPage() {
                                 : "";
 
                           return (
-                            <button
+                            <div
                               key={option.optionStableId}
-                              type="button"
-                              disabled={optionTempUnavailable}
-                              onClick={() =>
-                                optionTempUnavailable
-                                  ? undefined
-                                  : handleOptionToggle(
-                                      group.templateGroupStableId,
-                                      option.optionStableId,
-                                      group.minSelect,
-                                      group.maxSelect,
-                                    )
-                              }
-                              className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-left text-sm transition ${
-                                optionTempUnavailable
-                                  ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
-                                  : selected
-                                    ? "border-slate-900 bg-slate-900 text-white"
-                                    : "border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50"
-                              }`}
+                              className="flex flex-col gap-2"
                             >
-                              <span className="flex flex-col gap-1">
-                                <span className="font-medium">{optionLabel}</span>
-                                {optionTempUnavailable ? (
-                                  <span className="text-xs font-semibold text-amber-600">
-                                    {locale === "zh"
-                                      ? "当日售罄"
-                                      : "Sold out today"}
+                              <button
+                                type="button"
+                                disabled={optionTempUnavailable}
+                                onClick={() =>
+                                  optionTempUnavailable
+                                    ? undefined
+                                    : handleOptionToggle(
+                                        group.templateGroupStableId,
+                                        option.optionStableId,
+                                        group.minSelect,
+                                        group.maxSelect,
+                                      )
+                                }
+                                className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-left text-sm transition ${
+                                  optionTempUnavailable
+                                    ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
+                                    : selected
+                                      ? "border-slate-900 bg-slate-900 text-white"
+                                      : "border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                                }`}
+                              >
+                                <span className="flex flex-col gap-1">
+                                  <span className="font-medium">{optionLabel}</span>
+                                  {optionTempUnavailable ? (
+                                    <span className="text-xs font-semibold text-amber-600">
+                                      {locale === "zh"
+                                        ? "当日售罄"
+                                        : "Sold out today"}
+                                    </span>
+                                  ) : null}
+                                </span>
+                                {priceDelta ? (
+                                  <span
+                                    className={`text-xs font-semibold ${
+                                      selected ? "text-white/80" : "text-slate-400"
+                                    }`}
+                                  >
+                                    {priceDelta}
                                   </span>
                                 ) : null}
-                              </span>
-                              {priceDelta ? (
-                                <span
-                                  className={`text-xs font-semibold ${
-                                    selected ? "text-white/80" : "text-slate-400"
-                                  }`}
-                                >
-                                  {priceDelta}
-                                </span>
+                              </button>
+                              {selected && childOptions.length > 0 ? (
+                                <div className="grid gap-2 pl-2 md:grid-cols-2">
+                                  {childOptions.map((child) => {
+                                    const childSelected =
+                                      selectedChildOptions[
+                                        option.optionStableId
+                                      ]?.includes(child.optionStableId) ?? false;
+                                    const childTempUnavailable = isTempUnavailable(
+                                      child.tempUnavailableUntil,
+                                    );
+                                    const childLabel =
+                                      locale === "zh" && child.nameZh
+                                        ? child.nameZh
+                                        : child.nameEn;
+                                    const childPriceDelta =
+                                      child.priceDeltaCents > 0
+                                        ? `+${currencyFormatter.format(
+                                            child.priceDeltaCents / 100,
+                                          )}`
+                                        : child.priceDeltaCents < 0
+                                          ? `-${currencyFormatter.format(
+                                              Math.abs(child.priceDeltaCents) / 100,
+                                            )}`
+                                          : "";
+
+                                    return (
+                                      <button
+                                        key={child.optionStableId}
+                                        type="button"
+                                        disabled={childTempUnavailable}
+                                        onClick={() =>
+                                          childTempUnavailable
+                                            ? undefined
+                                            : handleChildOptionToggle(
+                                                option.optionStableId,
+                                                child.optionStableId,
+                                              )
+                                        }
+                                        className={`flex items-center justify-between rounded-xl border px-3 py-2 text-left text-xs transition ${
+                                          childTempUnavailable
+                                            ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
+                                            : childSelected
+                                              ? "border-slate-900 bg-slate-900 text-white"
+                                              : "border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                                        }`}
+                                      >
+                                        <span className="flex flex-col gap-1">
+                                          <span className="font-medium">
+                                            {childLabel}
+                                          </span>
+                                          {childTempUnavailable ? (
+                                            <span className="text-[10px] font-semibold text-amber-600">
+                                              {locale === "zh"
+                                                ? "当日售罄"
+                                                : "Sold out today"}
+                                            </span>
+                                          ) : null}
+                                        </span>
+                                        {childPriceDelta ? (
+                                          <span
+                                            className={`text-[10px] font-semibold ${
+                                              childSelected
+                                                ? "text-white/80"
+                                                : "text-slate-400"
+                                            }`}
+                                          >
+                                            {childPriceDelta}
+                                          </span>
+                                        ) : null}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
                               ) : null}
-                            </button>
+                            </div>
                           );
                         })}
                       </div>
@@ -890,7 +1027,10 @@ export default function LocalOrderPage() {
                   type="button"
                   onClick={() => {
                     if (!activeItem || !canAddToCart) return;
-                    addItem(activeItem.stableId, selectedOptions);
+                    addItem(activeItem.stableId, {
+                      ...selectedOptions,
+                      ...selectedChildOptions,
+                    });
                     closeOptionsModal();
                   }}
                   disabled={!canAddToCart}

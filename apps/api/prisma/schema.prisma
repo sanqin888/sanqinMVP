@@ -681,9 +681,22 @@ model MenuOptionTemplateChoice {
   stableId             String                  @unique @default(cuid())
   deletedAt            DateTime?
   templateGroup        MenuOptionGroupTemplate @relation(fields: [templateGroupId], references: [id], onDelete: Cascade)
+  childLinks           MenuOptionChoiceLink[]  @relation("OptionParent")
+  parentLinks          MenuOptionChoiceLink[]  @relation("OptionChild")
 
   @@index([templateGroupId, sortOrder])
   @@index([deletedAt])
+}
+
+model MenuOptionChoiceLink {
+  id             String                  @id @default(uuid())
+  parentOptionId String
+  childOptionId  String
+  parentOption   MenuOptionTemplateChoice @relation("OptionParent", fields: [parentOptionId], references: [id], onDelete: Cascade)
+  childOption    MenuOptionTemplateChoice @relation("OptionChild", fields: [childOptionId], references: [id], onDelete: Cascade)
+
+  @@unique([parentOptionId, childOptionId])
+  @@index([childOptionId])
 }
 
 model MenuItemOptionGroup {

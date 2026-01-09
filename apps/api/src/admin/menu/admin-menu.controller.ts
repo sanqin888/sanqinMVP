@@ -203,6 +203,7 @@ export class AdminMenuController {
       nameZh?: string | null;
       priceDeltaCents?: number;
       sortOrder?: number;
+      childOptionStableIds?: string[];
     },
   ) {
     return this.service.updateTemplateOption(optionStableId, body);

@@ -369,18 +369,19 @@ export default function CheckoutPage() {
       const selectedOptions: SelectedOptionDisplay[] = [];
       let optionDeltaCents = 0;
       const optionGroups = cartItem.item.optionGroups ?? [];
+      const selectedOptionIds = new Set(
+        Object.values(cartItem.options ?? {}).flat(),
+      );
 
       optionGroups.forEach((group) => {
-        const selectedIds =
-          cartItem.options?.[group.templateGroupStableId] ?? [];
-        if (selectedIds.length === 0) return;
+        if (selectedOptionIds.size === 0) return;
         const groupName =
           locale === "zh" && group.template.nameZh
             ? group.template.nameZh
             : group.template.nameEn;
 
         group.options.forEach((option) => {
-          if (!selectedIds.includes(option.optionStableId)) return;
+          if (!selectedOptionIds.has(option.optionStableId)) return;
           const optionName =
             locale === "zh" && option.nameZh ? option.nameZh : option.nameEn;
           optionDeltaCents += option.priceDeltaCents;

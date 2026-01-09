@@ -78,6 +78,11 @@ export class PublicMenuService {
                     options: {
                       where: { deletedAt: null },
                       orderBy: { sortOrder: 'asc' },
+                      include: {
+                        childLinks: {
+                          include: { childOption: { select: { stableId: true } } },
+                        },
+                      },
                     },
                   },
                 },
@@ -143,6 +148,9 @@ export class PublicMenuService {
                   isAvailable: opt.isAvailable,
                   tempUnavailableUntil: toIso(opt.tempUnavailableUntil),
                   sortOrder: opt.sortOrder,
+                  childOptionStableIds: (opt.childLinks ?? []).map(
+                    (link) => link.childOption.stableId,
+                  ),
                 }));
 
               return {

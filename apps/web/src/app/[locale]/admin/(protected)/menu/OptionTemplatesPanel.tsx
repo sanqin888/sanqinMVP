@@ -116,6 +116,7 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
         nameZh: string;
         priceDeltaCents: string;
         sortOrder: string;
+        childOptionStableIds: string[];
       }
     >
   >({});
@@ -313,6 +314,7 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
         nameZh: opt.nameZh ?? '',
         priceDeltaCents: String(opt.priceDeltaCents ?? 0),
         sortOrder: String(opt.sortOrder ?? 0),
+        childOptionStableIds: opt.childOptionStableIds ?? [],
       },
     }));
   }
@@ -336,6 +338,7 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
           nameZh: draft.nameZh.trim() || undefined,
           priceDeltaCents: Number.isFinite(priceDeltaCents) ? priceDeltaCents : 0,
           sortOrder: Number.isFinite(sortOrder) ? sortOrder : 0,
+          childOptionStableIds: draft.childOptionStableIds,
         }),
       });
 
@@ -668,6 +671,9 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
                       const optLabel = getOptionStatusLabel(opt);
                       const isEditing = editingOptionStableId === opt.optionStableId;
                       const draft = optionEditDraft[opt.optionStableId];
+                      const availableChildOptions = g.options.filter(
+                        (child) => child.optionStableId !== opt.optionStableId,
+                      );
 
                       return (
                         <div key={opt.optionStableId} className="rounded-lg border bg-slate-50 p-3">
@@ -816,6 +822,59 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
                                     }))
                                   }
                                 />
+                              </div>
+
+                              <div className="space-y-2 md:col-span-12">
+                                <label className="block text-[11px] font-medium text-slate-500">
+                                  {isZh ? '子选项（可多选）' : 'Child options (multi-select)'}
+                                </label>
+                                {availableChildOptions.length === 0 ? (
+                                  <p className="text-xs text-slate-500">
+                                    {isZh
+                                      ? '该组选项暂无可用子选项。'
+                                      : 'No available child options in this group.'}
+                                  </p>
+                                ) : (
+                                  <div className="grid gap-2 md:grid-cols-2">
+                                    {availableChildOptions.map((child) => {
+                                      const checked = draft.childOptionStableIds.includes(
+                                        child.optionStableId,
+                                      );
+                                      const label =
+                                        isZh && child.nameZh
+                                          ? child.nameZh
+                                          : child.nameEn;
+
+                                      return (
+                                        <label
+                                          key={child.optionStableId}
+                                          className="flex items-center gap-2 rounded-md border px-3 py-2 text-xs text-slate-600"
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={(e) => {
+                                              const nextIds = new Set(draft.childOptionStableIds);
+                                              if (e.target.checked) {
+                                                nextIds.add(child.optionStableId);
+                                              } else {
+                                                nextIds.delete(child.optionStableId);
+                                              }
+                                              setOptionEditDraft((prev) => ({
+                                                ...prev,
+                                                [opt.optionStableId]: {
+                                                  ...prev[opt.optionStableId],
+                                                  childOptionStableIds: Array.from(nextIds),
+                                                },
+                                              }));
+                                            }}
+                                          />
+                                          <span>{label}</span>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                )}
                               </div>
                             </div>
                           ) : null}
