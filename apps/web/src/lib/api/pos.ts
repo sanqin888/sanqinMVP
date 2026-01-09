@@ -6,7 +6,7 @@ import { apiFetch } from '@/lib/api/client';
  * =========================
  * 注意：
  * - 这些 helper 只给 POS 端调用（/store/pos/** 页面）。
- * - 会员/顾客端订单详情仍然走 /orders/:id（不要改成 /pos/orders）。
+ * - 会员/顾客端订单详情仍然走 /orders/:id/summary（不要改成 /pos/orders）。
  */
 
 const enc = (v: string) => encodeURIComponent(v);
