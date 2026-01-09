@@ -19,6 +19,7 @@ import {
   resolveEffectivePriceCents,
   resolveStoreNow,
 } from '../../common/daily-specials';
+import type { Prisma } from '@prisma/client';
 import { SpecialPricingMode } from '@prisma/client';
 
 type AvailabilityMode = 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF';
@@ -720,7 +721,7 @@ export class AdminMenuService {
       );
     }
 
-    const ops = [];
+    const ops: Prisma.PrismaPromise<unknown>[] = [];
     if (Object.values(updateData).some((value) => value !== undefined)) {
       ops.push(
         this.prisma.menuOptionTemplateChoice.update({
