@@ -2,6 +2,7 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { configureApp, getApiPrefix } from './app.bootstrap';
+import * as cookieParser from 'cookie-parser';
 import * as express from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -17,6 +18,8 @@ async function bootstrap(): Promise<void> {
   });
 
   configureApp(app);
+
+  app.use(cookieParser(process.env.COOKIE_SECRET || 'super-secret-key'));
 
   const prefix = getApiPrefix();
   app.use(`/${prefix}/webhooks/clover-hco`, express.raw({ type: '*/*' }));
