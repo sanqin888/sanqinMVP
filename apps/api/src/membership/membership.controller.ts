@@ -70,14 +70,6 @@ export class MembershipController {
     });
   }
 
-  @Get('lookup-by-phone')
-  async lookupByPhone(@Query('phone') phone?: string) {
-    if (!phone) {
-      throw new BadRequestException('phone is required');
-    }
-    return this.membership.getMemberByPhone(phone);
-  }
-
   @Get('devices')
   async listDevices(@Req() req: AuthedRequest) {
     const userId = req.user?.id;

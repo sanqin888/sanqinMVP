@@ -235,9 +235,7 @@ export class AdminMembersService {
     const tier = this.parseTier(params.tier);
     const status = this.parseStatus(params.status);
 
-    const where: Prisma.UserWhereInput = {
-      role: 'CUSTOMER',
-    };
+    const where: Prisma.UserWhereInput = {};
 
     if (status) {
       where.status = status;
@@ -273,6 +271,11 @@ export class AdminMembersService {
           email: {
             contains: search,
             mode: 'insensitive',
+          },
+        },
+        {
+          phone: {
+            contains: search,
           },
         },
         ...(normalizedPhone
@@ -365,6 +368,8 @@ export class AdminMembersService {
       this.loyalty.ensureAccount(user.id),
       this.getTierThresholds(),
     ]);
+    const availableDiscountCents =
+      await this.loyalty.maxRedeemableCentsFromBalance(account.pointsMicro);
 
     const lifetimeSpendCents = account.lifetimeSpendCents ?? 0;
     const tierProgress = this.computeTierProgress(
@@ -391,6 +396,7 @@ export class AdminMembersService {
             email: referrer.email,
           }
         : null,
+      availableDiscountCents,
       account: {
         tier: account.tier,
         points: Number(account.pointsMicro) / MICRO_PER_POINT,

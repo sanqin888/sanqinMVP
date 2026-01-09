@@ -109,12 +109,12 @@ export class MembershipService {
     };
   }
 
-  /** 和短信验证那边保持一致：去空格和横杠 */
+  /** 和短信验证那边保持一致：只保留数字 */
   private normalizePhone(raw: string | undefined | null): string | null {
     if (!raw) return null;
     const trimmed = raw.trim();
     if (!trimmed) return null;
-    return trimmed.replace(/\s+/g, '').replace(/-/g, '');
+    return trimmed.replace(/\D+/g, '');
   }
 
   private normalizeEmail(raw: string | undefined | null): string | null {
@@ -341,35 +341,6 @@ export class MembershipService {
     }
 
     return this.ensureUserStableId(user);
-  }
-
-  async getMemberByPhone(phone: string) {
-    const normalized = this.normalizePhone(phone);
-    if (!normalized) {
-      throw new BadRequestException('phone is required');
-    }
-
-    const user = await this.prisma.user.findUnique({
-      where: { phone: normalized },
-    });
-    if (!user) {
-      throw new NotFoundException('member not found');
-    }
-
-    const safeUser = await this.ensureUserStableId(user);
-    const account = await this.loyalty.ensureAccount(safeUser.id);
-    const availableDiscountCents =
-      await this.loyalty.maxRedeemableCentsFromBalance(account.pointsMicro);
-
-    return {
-      userStableId: safeUser.userStableId,
-      displayName: safeUser.name,
-      phone: safeUser.phone ?? null,
-      tier: account.tier,
-      points: Number(account.pointsMicro) / MICRO_PER_POINT,
-      lifetimeSpendCents: account.lifetimeSpendCents ?? 0,
-      availableDiscountCents,
-    };
   }
 
   /**

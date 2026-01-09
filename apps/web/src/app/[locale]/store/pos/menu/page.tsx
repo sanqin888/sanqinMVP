@@ -25,6 +25,11 @@ const COPY = {
       items: '菜品上下架',
       groups: '选项组上下架',
       options: '选项上下架',
+      off: '已下架',
+    },
+    offSections: {
+      items: '已下架菜品',
+      options: '已下架选项',
     },
     status: {
       on: '上架',
@@ -48,6 +53,11 @@ const COPY = {
       items: 'Item availability',
       groups: 'Option group availability',
       options: 'Option availability',
+      off: 'Unavailable',
+    },
+    offSections: {
+      items: 'Unavailable items',
+      options: 'Unavailable options',
     },
     status: {
       on: 'On',
@@ -76,6 +86,10 @@ type ActionLabels = {
   offToday: string;
   offPermanent: string;
 };
+
+type SectionKey = keyof typeof COPY.en.sections;
+
+const SECTION_ORDER: SectionKey[] = ['items', 'groups', 'options', 'off'];
 
 function getAvailabilityLabel(
   isAvailable: boolean,
@@ -142,6 +156,7 @@ export default function PosMenuManagementPage() {
   const [categories, setCategories] = useState<AdminMenuCategoryDto[]>([]);
   const [templates, setTemplates] = useState<TemplateGroupFullDto[]>([]);
   const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [activeSection, setActiveSection] = useState<SectionKey>('items');
 
   async function load(): Promise<void> {
     setLoading(true);
@@ -213,6 +228,11 @@ export default function PosMenuManagementPage() {
     }
   }
 
+  const sortedCategories = useMemo(
+    () => categories.slice().sort((a, b) => a.sortOrder - b.sortOrder),
+    [categories],
+  );
+
   const sortedTemplates = useMemo(
     () =>
       templates
@@ -223,6 +243,40 @@ export default function PosMenuManagementPage() {
           options: (tpl.options ?? []).slice().sort((a, b) => a.sortOrder - b.sortOrder),
         })),
     [templates],
+  );
+
+  const offItems = useMemo(
+    () =>
+      sortedCategories.flatMap((category) =>
+        category.items
+          .slice()
+          .sort((a, b) => a.sortOrder - b.sortOrder)
+          .filter((item) =>
+            !isAvailableNow({
+              isAvailable: item.isAvailable,
+              tempUnavailableUntil: item.tempUnavailableUntil,
+            }),
+          )
+          .map((item) => ({ category, item })),
+      ),
+    [sortedCategories],
+  );
+
+  const offOptions = useMemo(
+    () =>
+      sortedTemplates.flatMap((group) =>
+        (group.options ?? [])
+          .slice()
+          .sort((a, b) => a.sortOrder - b.sortOrder)
+          .filter((option) =>
+            !isAvailableNow({
+              isAvailable: option.isAvailable,
+              tempUnavailableUntil: option.tempUnavailableUntil,
+            }),
+          )
+          .map((option) => ({ group, option })),
+      ),
+    [sortedTemplates],
   );
 
   return (
@@ -250,17 +304,35 @@ export default function PosMenuManagementPage() {
             {error}
           </div>
         ) : (
-          <div className="mt-8 space-y-8">
-            <section className="rounded-3xl border border-slate-800 bg-slate-800/60 p-6">
-              <h2 className="text-lg font-semibold">{copy.sections.items}</h2>
-              {categories.length === 0 ? (
-                <p className="mt-3 text-sm text-slate-400">{copy.empty}</p>
-              ) : (
-                <div className="mt-4 space-y-4">
-                  {categories
-                    .slice()
-                    .sort((a, b) => a.sortOrder - b.sortOrder)
-                    .map((category) => (
+          <div className="mt-8 space-y-6">
+            <div className="flex flex-wrap gap-2">
+              {SECTION_ORDER.map((key) => {
+                const isActive = activeSection === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setActiveSection(key)}
+                    className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+                      isActive
+                        ? 'border-emerald-400/70 bg-emerald-500/10 text-emerald-100'
+                        : 'border-slate-700 bg-slate-900/60 text-slate-200 hover:border-slate-500'
+                    }`}
+                  >
+                    {copy.sections[key]}
+                  </button>
+                );
+              })}
+            </div>
+
+            {activeSection === 'items' && (
+              <section className="rounded-3xl border border-slate-800 bg-slate-800/60 p-6">
+                <h2 className="text-lg font-semibold">{copy.sections.items}</h2>
+                {sortedCategories.length === 0 ? (
+                  <p className="mt-3 text-sm text-slate-400">{copy.empty}</p>
+                ) : (
+                  <div className="mt-4 space-y-4">
+                    {sortedCategories.map((category) => (
                       <div key={category.stableId} className="space-y-3">
                         <h3 className="text-sm font-semibold text-slate-200">
                           {safeLocale === 'zh'
@@ -309,75 +381,188 @@ export default function PosMenuManagementPage() {
                         </div>
                       </div>
                     ))}
-                </div>
-              )}
-            </section>
+                  </div>
+                )}
+              </section>
+            )}
 
-            <section className="rounded-3xl border border-slate-800 bg-slate-800/60 p-6">
-              <h2 className="text-lg font-semibold">{copy.sections.groups}</h2>
-              {sortedTemplates.length === 0 ? (
-                <p className="mt-3 text-sm text-slate-400">{copy.empty}</p>
-              ) : (
-                <div className="mt-4 space-y-3">
-                  {sortedTemplates.map((group) => {
-                    const label = getAvailabilityLabel(
-                      group.isAvailable,
-                      group.tempUnavailableUntil,
-                      copy.status,
-                    );
-                    const isSaving = savingKey === `group-${group.templateGroupStableId}`;
-                    return (
-                      <div
-                        key={group.templateGroupStableId}
-                        className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-700 bg-slate-900/50 px-4 py-3"
-                      >
-                        <div>
-                          <div className="text-sm font-semibold">
-                            {safeLocale === 'zh'
-                              ? group.nameZh ?? group.nameEn
-                              : group.nameEn}
+            {activeSection === 'groups' && (
+              <section className="rounded-3xl border border-slate-800 bg-slate-800/60 p-6">
+                <h2 className="text-lg font-semibold">{copy.sections.groups}</h2>
+                {sortedTemplates.length === 0 ? (
+                  <p className="mt-3 text-sm text-slate-400">{copy.empty}</p>
+                ) : (
+                  <div className="mt-4 space-y-3">
+                    {sortedTemplates.map((group) => {
+                      const label = getAvailabilityLabel(
+                        group.isAvailable,
+                        group.tempUnavailableUntil,
+                        copy.status,
+                      );
+                      const isSaving = savingKey === `group-${group.templateGroupStableId}`;
+                      return (
+                        <div
+                          key={group.templateGroupStableId}
+                          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-700 bg-slate-900/50 px-4 py-3"
+                        >
+                          <div>
+                            <div className="text-sm font-semibold">
+                              {safeLocale === 'zh'
+                                ? group.nameZh ?? group.nameEn
+                                : group.nameEn}
+                            </div>
+                            <span
+                              className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-xs ${statusTone(
+                                label,
+                                copy.status,
+                              )}`}
+                            >
+                              {label}
+                            </span>
                           </div>
-                          <span
-                            className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-xs ${statusTone(
-                              label,
-                              copy.status,
-                            )}`}
-                          >
-                            {label}
-                          </span>
+                          <AvailabilityActions
+                            labels={copy.actions}
+                            disabled={isSaving}
+                            onSet={(mode) =>
+                              void setGroupAvailability(group.templateGroupStableId, mode)
+                            }
+                          />
                         </div>
-                        <AvailabilityActions
-                          labels={copy.actions}
-                          disabled={isSaving}
-                          onSet={(mode) =>
-                            void setGroupAvailability(group.templateGroupStableId, mode)
-                          }
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            )}
 
-            <section className="rounded-3xl border border-slate-800 bg-slate-800/60 p-6">
-              <h2 className="text-lg font-semibold">{copy.sections.options}</h2>
-              {sortedTemplates.length === 0 ? (
-                <p className="mt-3 text-sm text-slate-400">{copy.empty}</p>
-              ) : (
-                <div className="mt-4 space-y-4">
-                  {sortedTemplates.map((group) => (
-                    <div key={group.templateGroupStableId} className="space-y-3">
-                      <h3 className="text-sm font-semibold text-slate-200">
-                        {safeLocale === 'zh'
-                          ? group.nameZh ?? group.nameEn
-                          : group.nameEn}
-                      </h3>
-                      {(group.options ?? []).length === 0 ? (
-                        <p className="text-sm text-slate-400">{copy.empty}</p>
-                      ) : (
+            {activeSection === 'options' && (
+              <section className="rounded-3xl border border-slate-800 bg-slate-800/60 p-6">
+                <h2 className="text-lg font-semibold">{copy.sections.options}</h2>
+                {sortedTemplates.length === 0 ? (
+                  <p className="mt-3 text-sm text-slate-400">{copy.empty}</p>
+                ) : (
+                  <div className="mt-4 space-y-4">
+                    {sortedTemplates.map((group) => (
+                      <div key={group.templateGroupStableId} className="space-y-3">
+                        <h3 className="text-sm font-semibold text-slate-200">
+                          {safeLocale === 'zh'
+                            ? group.nameZh ?? group.nameEn
+                            : group.nameEn}
+                        </h3>
+                        {(group.options ?? []).length === 0 ? (
+                          <p className="text-sm text-slate-400">{copy.empty}</p>
+                        ) : (
+                          <div className="space-y-3">
+                            {group.options.map((option: OptionChoiceDto) => {
+                              const label = getAvailabilityLabel(
+                                option.isAvailable,
+                                option.tempUnavailableUntil,
+                                copy.status,
+                              );
+                              const isSaving = savingKey === `option-${option.optionStableId}`;
+                              return (
+                                <div
+                                  key={option.optionStableId}
+                                  className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-700 bg-slate-900/50 px-4 py-3"
+                                >
+                                  <div>
+                                    <div className="text-sm font-semibold">
+                                      {safeLocale === 'zh'
+                                        ? option.nameZh ?? option.nameEn
+                                        : option.nameEn}
+                                    </div>
+                                    <span
+                                      className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-xs ${statusTone(
+                                        label,
+                                        copy.status,
+                                      )}`}
+                                    >
+                                      {label}
+                                    </span>
+                                  </div>
+                                  <AvailabilityActions
+                                    labels={copy.actions}
+                                    disabled={isSaving}
+                                    onSet={(mode) =>
+                                      void setOptionAvailability(option.optionStableId, mode)
+                                    }
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {activeSection === 'off' && (
+              <section className="rounded-3xl border border-slate-800 bg-slate-800/60 p-6">
+                <h2 className="text-lg font-semibold">{copy.sections.off}</h2>
+                {offItems.length === 0 && offOptions.length === 0 ? (
+                  <p className="mt-3 text-sm text-slate-400">{copy.empty}</p>
+                ) : (
+                  <div className="mt-4 space-y-6">
+                    {offItems.length > 0 && (
+                      <div className="space-y-3">
+                        <h3 className="text-sm font-semibold text-slate-200">
+                          {copy.offSections.items}
+                        </h3>
                         <div className="space-y-3">
-                          {group.options.map((option: OptionChoiceDto) => {
+                          {offItems.map(({ category, item }) => {
+                            const label = getAvailabilityLabel(
+                              item.isAvailable,
+                              item.tempUnavailableUntil,
+                              copy.status,
+                            );
+                            const isSaving = savingKey === `item-${item.stableId}`;
+                            return (
+                              <div
+                                key={item.stableId}
+                                className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-700 bg-slate-900/50 px-4 py-3"
+                              >
+                                <div>
+                                  <div className="text-sm font-semibold">
+                                    {safeLocale === 'zh'
+                                      ? item.nameZh ?? item.nameEn
+                                      : item.nameEn}
+                                  </div>
+                                  <div className="mt-1 text-xs text-slate-400">
+                                    {safeLocale === 'zh'
+                                      ? category.nameZh ?? category.nameEn
+                                      : category.nameEn}
+                                  </div>
+                                  <span
+                                    className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-xs ${statusTone(
+                                      label,
+                                      copy.status,
+                                    )}`}
+                                  >
+                                    {label}
+                                  </span>
+                                </div>
+                                <AvailabilityActions
+                                  labels={copy.actions}
+                                  disabled={isSaving}
+                                  onSet={(mode) => void setItemAvailability(item.stableId, mode)}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {offOptions.length > 0 && (
+                      <div className="space-y-3">
+                        <h3 className="text-sm font-semibold text-slate-200">
+                          {copy.offSections.options}
+                        </h3>
+                        <div className="space-y-3">
+                          {offOptions.map(({ group, option }) => {
                             const label = getAvailabilityLabel(
                               option.isAvailable,
                               option.tempUnavailableUntil,
@@ -394,6 +579,11 @@ export default function PosMenuManagementPage() {
                                     {safeLocale === 'zh'
                                       ? option.nameZh ?? option.nameEn
                                       : option.nameEn}
+                                  </div>
+                                  <div className="mt-1 text-xs text-slate-400">
+                                    {safeLocale === 'zh'
+                                      ? group.nameZh ?? group.nameEn
+                                      : group.nameEn}
                                   </div>
                                   <span
                                     className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-xs ${statusTone(
@@ -415,12 +605,12 @@ export default function PosMenuManagementPage() {
                             );
                           })}
                         </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </section>
+            )}
           </div>
         )}
       </div>

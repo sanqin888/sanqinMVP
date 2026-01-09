@@ -92,7 +92,6 @@ export default function AdminMembersPage() {
   const [keyword, setKeyword] = useState("");
   const [tierFilter, setTierFilter] = useState<"ALL" | TierKey>("ALL");
   const [statusFilter, setStatusFilter] = useState<"ALL" | StatusKey>("ALL");
-  const [submitHint, setSubmitHint] = useState<string | null>(null);
 
   const [members, setMembers] = useState<Member[]>([]);
   const [membersTotal, setMembersTotal] = useState(0);
@@ -145,13 +144,6 @@ export default function AdminMembersPage() {
   );
   const pointsTotal = useMemo(() => members.reduce((sum, member) => sum + member.points, 0), [members]);
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSubmitHint(
-      isZh ? "已保存为草稿，提交前请再确认手机号。" : "Saved as draft. Please verify the phone before submitting.",
-    );
-  }
-
   return (
     <div className="space-y-6">
       <header className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -169,12 +161,6 @@ export default function AdminMembersPage() {
             className="rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
           >
             {isZh ? "导出会员" : "Export"}
-          </button>
-          <button
-            type="button"
-            className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
-          >
-            {isZh ? "新建活动" : "New campaign"}
           </button>
         </div>
       </header>
@@ -197,7 +183,7 @@ export default function AdminMembersPage() {
         </div>
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-[2fr_1fr]">
+      <section className="grid gap-6">
         <div className="rounded-lg border border-slate-200 bg-white p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <h2 className="text-lg font-semibold">{isZh ? "会员列表" : "Member list"}</h2>
@@ -302,108 +288,6 @@ export default function AdminMembersPage() {
             <span>·</span>
             <span>{isZh ? "按手机号验证后可自动积分" : "Verify phone to enable auto points"}</span>
           </div>
-        </div>
-
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <h2 className="text-lg font-semibold">{isZh ? "新增会员" : "Add member"}</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            {isZh ? "完善会员资料与积分初始化信息。" : "Fill out profile details and initialize points."}
-          </p>
-
-          <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700">{isZh ? "姓名" : "Name"}</label>
-              <input
-                className="h-9 w-full rounded-md border border-slate-200 px-3 text-sm"
-                placeholder={isZh ? "请输入会员姓名" : "Enter member name"}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700">{isZh ? "手机号" : "Phone"}</label>
-              <input
-                className="h-9 w-full rounded-md border border-slate-200 px-3 text-sm"
-                placeholder={isZh ? "用于积分验证" : "For points verification"}
-              />
-              <p className="text-xs text-slate-400">
-                {isZh ? "建议当场验证短信，避免积分累计失败。" : "Verify SMS to ensure points tracking."}
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700">{isZh ? "邮箱" : "Email"}</label>
-              <input
-                className="h-9 w-full rounded-md border border-slate-200 px-3 text-sm"
-                placeholder={isZh ? "用于发送生日券" : "Used for birthday offers"}
-              />
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">{isZh ? "会员等级" : "Tier"}</label>
-                <select
-                  className="h-9 w-full rounded-md border border-slate-200 px-3 text-sm"
-                  defaultValue="BRONZE"
-                >
-                  <option value="BRONZE">{tierLabels[locale].BRONZE}</option>
-                  <option value="SILVER">{tierLabels[locale].SILVER}</option>
-                  <option value="GOLD">{tierLabels[locale].GOLD}</option>
-                  <option value="PLATINUM">{tierLabels[locale].PLATINUM}</option>
-                </select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">{isZh ? "初始积分" : "Initial points"}</label>
-                <input
-                  className="h-9 w-full rounded-md border border-slate-200 px-3 text-sm"
-                  placeholder={isZh ? "例如 100" : "e.g. 100"}
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">{isZh ? "生日" : "Birthday"}</label>
-                <input
-                  type="date"
-                  className="h-9 w-full rounded-md border border-slate-200 px-3 text-sm"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">{isZh ? "来源" : "Source"}</label>
-                <select
-                  className="h-9 w-full rounded-md border border-slate-200 px-3 text-sm"
-                  defaultValue="STORE"
-                >
-                  <option value="STORE">{isZh ? "门店注册" : "In-store"}</option>
-                  <option value="ONLINE">{isZh ? "线上注册" : "Online"}</option>
-                  <option value="EVENT">{isZh ? "活动导入" : "Campaign"}</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700">{isZh ? "备注" : "Notes"}</label>
-              <textarea
-                className="min-h-[90px] w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
-                placeholder={isZh ? "偏好口味、常点菜品、注意事项" : "Preferences, favorite dishes, notes"}
-              />
-            </div>
-
-            <div className="rounded-md bg-slate-50 p-3 text-xs text-slate-500">
-              {isZh
-                ? "保存后可在会员详情中补充地址、营销订阅与优惠券发放。"
-                : "After saving, you can add addresses, marketing consent, and coupons in the member profile."}
-            </div>
-
-            <button
-              type="submit"
-              className="w-full rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
-            >
-              {isZh ? "保存并创建会员" : "Save & create member"}
-            </button>
-
-            {submitHint && <p className="text-xs text-emerald-600">{submitHint}</p>}
-          </form>
         </div>
       </section>
     </div>

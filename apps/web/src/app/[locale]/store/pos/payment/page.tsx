@@ -32,6 +32,24 @@ type MemberLookupResponse = {
   lifetimeSpendCents: number;
 };
 
+type MemberSearchResponse = {
+  items: Array<{
+    userStableId: string;
+  }>;
+};
+
+type MemberDetailResponse = {
+  userStableId: string;
+  displayName?: string | null;
+  phone?: string | null;
+  availableDiscountCents: number;
+  account: {
+    tier: MemberLookupResponse["tier"];
+    points: MemberLookupResponse["points"];
+    lifetimeSpendCents: MemberLookupResponse["lifetimeSpendCents"];
+  };
+};
+
 type PrintPosPayload = {
   locale: Locale;
   orderNumber: string;
@@ -410,10 +428,28 @@ export default function StorePosPaymentPage() {
     setMemberLookupLoading(true);
     setMemberLookupError(null);
     try {
-      const data = await apiFetch<MemberLookupResponse>(
-        `/membership/lookup-by-phone?phone=${encodeURIComponent(memberPhone)}`,
+      const search = memberPhone.trim();
+      const result = await apiFetch<MemberSearchResponse>(
+        `/admin/members?search=${encodeURIComponent(search)}&pageSize=5`,
       );
-      setMemberInfo(data);
+      const match = result.items?.[0];
+      if (!match?.userStableId) {
+        setMemberInfo(null);
+        setMemberLookupError(t.memberNotFound);
+        return;
+      }
+      const detail = await apiFetch<MemberDetailResponse>(
+        `/admin/members/${match.userStableId}`,
+      );
+      setMemberInfo({
+        userStableId: detail.userStableId,
+        displayName: detail.displayName ?? null,
+        phone: detail.phone ?? null,
+        tier: detail.account.tier,
+        points: detail.account.points,
+        availableDiscountCents: detail.availableDiscountCents ?? 0,
+        lifetimeSpendCents: detail.account.lifetimeSpendCents,
+      });
       setRedeemPointsInput("");
     } catch (err) {
       const apiError = err instanceof ApiError ? err : null;
