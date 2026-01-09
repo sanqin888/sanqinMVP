@@ -420,17 +420,22 @@ export class AuthController {
     };
   }
 
-  @Post('logout')
-  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const sessionId = req.signedCookies?.[SESSION_COOKIE_NAME];
+@Post('logout')
+async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+  const rawSessionId = (
+    req.signedCookies as Record<string, unknown> | undefined
+  )?.[SESSION_COOKIE_NAME];
 
-    if (typeof sessionId === 'string' && sessionId) {
-      await this.authService.revokeSession(sessionId);
-    }
-    res.clearCookie(POS_DEVICE_ID_COOKIE, { path: '/' });
-    res.clearCookie(POS_DEVICE_KEY_COOKIE, { path: '/' });
-    res.clearCookie(SESSION_COOKIE_NAME, { path: '/' });
-    res.clearCookie(TRUSTED_DEVICE_COOKIE, { path: '/' });
-    return { success: true };
+  const sessionId = typeof rawSessionId === 'string' ? rawSessionId : undefined;
+
+  if (sessionId) {
+    await this.authService.revokeSession(sessionId);
   }
+
+  res.clearCookie(POS_DEVICE_ID_COOKIE, { path: '/' });
+  res.clearCookie(POS_DEVICE_KEY_COOKIE, { path: '/' });
+  res.clearCookie(SESSION_COOKIE_NAME, { path: '/' });
+  res.clearCookie(TRUSTED_DEVICE_COOKIE, { path: '/' });
+  return { success: true };
+ }
 }
