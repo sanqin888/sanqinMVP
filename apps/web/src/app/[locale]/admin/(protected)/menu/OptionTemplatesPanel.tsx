@@ -104,6 +104,23 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
     >
   >({});
 
+  // ---- Group edit state ----
+  const [editingGroupStableId, setEditingGroupStableId] = useState<string | null>(
+    null,
+  );
+  const [groupEditDraft, setGroupEditDraft] = useState<
+    Record<
+      string,
+      {
+        nameEn: string;
+        nameZh: string;
+        defaultMinSelect: string;
+        defaultMaxSelect: string;
+        sortOrder: string;
+      }
+    >
+  >({});
+
   // ---- Per-option edit state ----
   const [editingOptionStableId, setEditingOptionStableId] = useState<
     string | null
@@ -222,6 +239,64 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
       setNewGroupDefaultMin(0);
       setNewGroupDefaultMax('1');
 
+      await loadTemplates();
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  function startEditGroup(group: TemplateGroupFullDto): void {
+    setEditingGroupStableId(group.templateGroupStableId);
+    setGroupEditDraft((prev) => ({
+      ...prev,
+      [group.templateGroupStableId]: {
+        nameEn: group.nameEn ?? '',
+        nameZh: group.nameZh ?? '',
+        defaultMinSelect: String(group.defaultMinSelect ?? 0),
+        defaultMaxSelect:
+          group.defaultMaxSelect == null ? '' : String(group.defaultMaxSelect),
+        sortOrder: String(group.sortOrder ?? 0),
+      },
+    }));
+  }
+
+  function cancelEditGroup(): void {
+    setEditingGroupStableId(null);
+  }
+
+  async function saveGroup(templateGroupStableId: string): Promise<void> {
+    const draft = groupEditDraft[templateGroupStableId];
+    if (!draft) return;
+
+    const nameEn = draft.nameEn.trim();
+    if (!nameEn) return;
+
+    const defaultMinSelect = Math.max(
+      0,
+      Math.floor(Number(draft.defaultMinSelect || '0')),
+    );
+    const rawMaxSelect = Number(draft.defaultMaxSelect);
+    const defaultMaxSelect =
+      draft.defaultMaxSelect.trim() === ''
+        ? null
+        : Number.isFinite(rawMaxSelect)
+          ? Math.max(0, Math.floor(rawMaxSelect))
+          : null;
+    const sortOrder = Math.floor(Number(draft.sortOrder || '0'));
+
+    try {
+      await apiFetch(`/admin/menu/option-group-templates/${templateGroupStableId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nameEn,
+          nameZh: draft.nameZh.trim() || undefined,
+          defaultMinSelect: Number.isFinite(defaultMinSelect) ? defaultMinSelect : 0,
+          defaultMaxSelect,
+          sortOrder: Number.isFinite(sortOrder) ? sortOrder : 0,
+        }),
+      });
+      setEditingGroupStableId(null);
       await loadTemplates();
     } catch (e) {
       console.error(e);
@@ -486,6 +561,8 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
             const groupName = isZh && g.nameZh ? g.nameZh : g.nameEn;
             const tone = getGroupStatusTone(g);
             const label = getGroupStatusLabel(g);
+            const isEditingGroup = editingGroupStableId === g.templateGroupStableId;
+            const groupDraft = groupEditDraft[g.templateGroupStableId];
 
             return (
               <div
@@ -549,8 +626,134 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
                     >
                       {isZh ? '永久下架' : 'Off perm'}
                     </button>
+                    {!isEditingGroup ? (
+                      <button
+                        type="button"
+                        className="rounded-full border bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                        onClick={() => startEditGroup(g)}
+                      >
+                        {isZh ? '编辑' : 'Edit'}
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className="rounded-full border bg-slate-900 px-3 py-1 text-xs font-medium text-white hover:bg-slate-800"
+                          onClick={() => void saveGroup(g.templateGroupStableId)}
+                        >
+                          {isZh ? '保存' : 'Save'}
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-full border bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                          onClick={cancelEditGroup}
+                        >
+                          {isZh ? '取消' : 'Cancel'}
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
+
+                {isEditingGroup && groupDraft ? (
+                  <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-12">
+                    <div className="space-y-1 md:col-span-4">
+                      <label className="block text-[11px] font-medium text-slate-500">
+                        {isZh ? '组名（英文）*' : 'Group name (EN)*'}
+                      </label>
+                      <input
+                        className="h-9 w-full rounded-md border px-3 text-sm"
+                        value={groupDraft.nameEn}
+                        onChange={(e) =>
+                          setGroupEditDraft((prev) => ({
+                            ...prev,
+                            [g.templateGroupStableId]: {
+                              ...prev[g.templateGroupStableId],
+                              nameEn: e.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </div>
+
+                    <div className="space-y-1 md:col-span-4">
+                      <label className="block text-[11px] font-medium text-slate-500">
+                        {isZh ? '组名（中文）' : 'Group name (ZH)'}
+                      </label>
+                      <input
+                        className="h-9 w-full rounded-md border px-3 text-sm"
+                        value={groupDraft.nameZh}
+                        onChange={(e) =>
+                          setGroupEditDraft((prev) => ({
+                            ...prev,
+                            [g.templateGroupStableId]: {
+                              ...prev[g.templateGroupStableId],
+                              nameZh: e.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </div>
+
+                    <div className="space-y-1 md:col-span-1">
+                      <label className="block text-[11px] font-medium text-slate-500">
+                        min
+                      </label>
+                      <input
+                        className="h-9 w-full rounded-md border px-2 text-sm tabular-nums"
+                        value={groupDraft.defaultMinSelect}
+                        onChange={(e) =>
+                          setGroupEditDraft((prev) => ({
+                            ...prev,
+                            [g.templateGroupStableId]: {
+                              ...prev[g.templateGroupStableId],
+                              defaultMinSelect: e.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </div>
+
+                    <div className="space-y-1 md:col-span-1">
+                      <label className="block text-[11px] font-medium text-slate-500">
+                        max
+                      </label>
+                      <input
+                        className="h-9 w-full rounded-md border px-2 text-sm tabular-nums"
+                        placeholder={isZh ? '空=不限' : 'blank=unlimited'}
+                        value={groupDraft.defaultMaxSelect}
+                        onChange={(e) =>
+                          setGroupEditDraft((prev) => ({
+                            ...prev,
+                            [g.templateGroupStableId]: {
+                              ...prev[g.templateGroupStableId],
+                              defaultMaxSelect: e.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </div>
+
+                    <div className="space-y-1 md:col-span-1">
+                      <label className="block text-[11px] font-medium text-slate-500">
+                        {isZh ? '排序' : 'Sort'}
+                      </label>
+                      <input
+                        className="h-9 w-full rounded-md border px-2 text-sm tabular-nums"
+                        value={groupDraft.sortOrder}
+                        onChange={(e) =>
+                          setGroupEditDraft((prev) => ({
+                            ...prev,
+                            [g.templateGroupStableId]: {
+                              ...prev[g.templateGroupStableId],
+                              sortOrder: e.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+                ) : null}
 
                 {/* Add option */}
                 <div className="mt-4 rounded-lg border bg-white p-3">
