@@ -1,9 +1,18 @@
-import { IsIn, IsOptional } from 'class-validator';
-import { IsStableId } from '../../common/validators/is-stable-id.validator';
+// apps/api/src/clover/dto/simulate-online-payment.dto.ts
+import { IsIn, IsOptional, IsUUID, IsString, ValidateIf, Matches } from 'class-validator';
 
 export class SimulateOnlinePaymentDto {
-  @IsStableId({ message: 'orderId must be cuid/uuid' })
-  orderId!: string;
+  @ValidateIf((o) => !o.referenceId)
+  @IsOptional()
+  @IsUUID()
+  checkoutSessionId?: string;
+
+  @ValidateIf((o) => !o.checkoutSessionId)
+  @IsOptional()
+  @IsString()
+  // 按你截图的格式 SQD + 10位数字，可按实际规则调整
+  @Matches(/^SQD\d+$/, { message: 'referenceId format invalid' })
+  referenceId?: string;
 
   @IsOptional()
   @IsIn(['SUCCESS', 'FAILURE'])
