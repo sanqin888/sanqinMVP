@@ -653,29 +653,9 @@ export default function PosMembershipPage() {
           </div>
 
           <div className="rounded-3xl border border-slate-800 bg-slate-800/60 p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold">{copy.ledgerTitle}</h2>
-                <p className="text-xs text-slate-400">{copy.ledgerSubtitle}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setAdjustOpen(true)}
-                  disabled={!memberDetail}
-                  className="rounded-full border border-slate-600 bg-slate-900 px-4 py-2 text-xs font-semibold text-slate-100 disabled:opacity-50"
-                >
-                  {copy.manualAdjust}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRechargeOpen(true)}
-                  disabled={!memberDetail}
-                  className="rounded-full border border-emerald-400/70 bg-emerald-500/10 px-4 py-2 text-xs font-semibold text-emerald-200 disabled:opacity-50"
-                >
-                  {copy.rechargePoints}
-                </button>
-              </div>
+            <div>
+              <h2 className="text-lg font-semibold">{copy.ledgerTitle}</h2>
+              <p className="text-xs text-slate-400">{copy.ledgerSubtitle}</p>
             </div>
 
             {ledgerEntries.length === 0 ? (
