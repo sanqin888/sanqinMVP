@@ -169,6 +169,21 @@ export class AdminMenuController {
     return this.service.createOptionGroupTemplate(body);
   }
 
+  @Put('option-group-templates/:templateGroupStableId')
+  async updateTemplateGroup(
+    @Param('templateGroupStableId') templateGroupStableId: string,
+    @Body()
+    body: {
+      nameEn?: string;
+      nameZh?: string | null;
+      sortOrder?: number;
+      defaultMinSelect?: number;
+      defaultMaxSelect?: number | null;
+    },
+  ) {
+    return this.service.updateOptionGroupTemplate(templateGroupStableId, body);
+  }
+
   @Post('option-group-templates/:templateGroupStableId/availability')
   async setTemplateGroupAvailability(
     @Param('templateGroupStableId') templateGroupStableId: string,
