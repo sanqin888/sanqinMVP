@@ -58,7 +58,7 @@ type MemberAddress = {
   isDefault?: boolean;
 };
 
-const PHONE_OTP_REQUEST_URL = "/api/v1/auth/phone/request-code";
+const PHONE_OTP_REQUEST_URL = "/api/v1/auth/phone/send-code";
 const PHONE_OTP_VERIFY_URL = "/api/v1/auth/phone/verify-code";
 type DeliveryOptionDefinition = {
   provider: "DOORDASH" | "UBER";
