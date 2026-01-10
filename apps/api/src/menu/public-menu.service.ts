@@ -87,8 +87,8 @@ export class PublicMenuService {
                         parentLinks: {
                           include: {
                             parentOption: { select: { stableId: true } },
+                          },
                         },
-                       },
                       },
                     },
                   },

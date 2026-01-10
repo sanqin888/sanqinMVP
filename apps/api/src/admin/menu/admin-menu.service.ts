@@ -518,10 +518,10 @@ export class AdminMenuService {
                   deletedAt: null,
                 },
               },
-            include: {
-              parentOption: { select: { stableId: true } },
+              include: {
+                parentOption: { select: { stableId: true } },
+              },
             },
-          },
           },
         },
       },
@@ -858,7 +858,7 @@ export class AdminMenuService {
   }
 
   // ✅ 标准 3：软删除（deletedAt 写入），不物理删除，保证 stableId 永不复用
-async deleteTemplateOption(optionStableId: string) {
+  async deleteTemplateOption(optionStableId: string) {
     const stableId = optionStableId.trim();
 
     // 1. 先查找存在的选项以获取其内部 ID (需要用到 id 来清理关联表)
@@ -877,10 +877,7 @@ async deleteTemplateOption(optionStableId: string) {
       // 无论是作为父亲(parent)还是孩子(child)，只要涉及这个选项，关系都删掉
       this.prisma.menuOptionChoiceLink.deleteMany({
         where: {
-          OR: [
-            { parentOptionId: existing.id },
-            { childOptionId: existing.id },
-          ],
+          OR: [{ parentOptionId: existing.id }, { childOptionId: existing.id }],
         },
       }),
 

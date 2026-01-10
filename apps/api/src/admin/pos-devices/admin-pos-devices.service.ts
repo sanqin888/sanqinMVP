@@ -25,7 +25,9 @@ export class AdminPosDevicesService {
 
     // deviceKeyHash 是必填的，但创建时设备还未绑定，给一个初始占位符
     // 当 POS 端调用 claim 接口时，这个值会被更新为真实的通信密钥哈希
-    const initialDeviceKeyHash = this.hashKey('PENDING_CLAIM_' + randomBytes(8).toString('hex'));
+    const initialDeviceKeyHash = this.hashKey(
+      'PENDING_CLAIM_' + randomBytes(8).toString('hex'),
+    );
 
     const device = await this.prisma.posDevice.create({
       data: {
@@ -40,7 +42,7 @@ export class AdminPosDevicesService {
     // 返回给前端展示，注意：这是唯一一次能看到 enrollmentCode 的机会
     return {
       ...device,
-      enrollmentCode, 
+      enrollmentCode,
     };
   }
 
@@ -69,7 +71,7 @@ export class AdminPosDevicesService {
       enrollmentCode,
     };
   }
-  
+
   async delete(id: string) {
     return this.prisma.posDevice.delete({
       where: { id },

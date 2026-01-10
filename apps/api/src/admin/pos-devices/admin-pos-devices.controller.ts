@@ -1,5 +1,14 @@
 //apps/api/src/admin/pos-devices/admin-pos-devices.controller.ts
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { AdminPosDevicesService } from './admin-pos-devices.service';
 import { CreatePosDeviceDto } from './dto/create-pos-device.dto';
 import { RolesGuard } from '../../auth/roles.guard';
