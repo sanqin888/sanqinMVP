@@ -22,7 +22,7 @@ type AvailabilityTarget =
       isTempOff: boolean;
     }
   | {
-      kind: "group" | "option";
+      kind: "option";
       stableId: string;
       label: string;
       isTempOff?: boolean;
@@ -429,22 +429,6 @@ export default function AdminDashboard() {
     }
   }
 
-  async function setTemplateGroupAvailability(
-    templateGroupStableId: string,
-    mode: "ON" | "PERMANENT_OFF" | "TEMP_TODAY_OFF",
-  ): Promise<void> {
-    try {
-      await apiFetch(`/admin/menu/option-group-templates/${templateGroupStableId}/availability`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode }),
-      });
-      await reloadMenu();
-    } catch (e) {
-      console.error(e);
-    }
-  }
-
   async function setOptionAvailability(
     optionStableId: string,
     mode: "ON" | "PERMANENT_OFF" | "TEMP_TODAY_OFF",
@@ -469,10 +453,6 @@ export default function AdminDashboard() {
     setAvailabilityTarget(null);
     if (target.kind === "item") {
       await setMenuItemAvailability(target.categoryStableId, target.stableId, mode);
-      return;
-    }
-    if (target.kind === "group") {
-      await setTemplateGroupAvailability(target.stableId, mode);
       return;
     }
     await setOptionAvailability(target.stableId, mode);
@@ -675,15 +655,6 @@ export default function AdminDashboard() {
                                   templateMap.get(group.templateGroupStableId) ?? group.template;
                                 const groupName =
                                   isZh && tg?.nameZh ? tg.nameZh : tg?.nameEn ?? group.templateGroupStableId;
-
-                                const groupOn = effectiveAvailable(
-                                  tg?.isAvailable ?? false,
-                                  tg?.tempUnavailableUntil ?? null,
-                                );
-                                const groupTone = availabilityTone(
-                                  tg?.isAvailable ?? false,
-                                  tg?.tempUnavailableUntil ?? null,
-                                );
                                 const templateOptions = Array.isArray(
                                   (tg as { options?: unknown })?.options,
                                 )
@@ -697,43 +668,8 @@ export default function AdminDashboard() {
                                   >
                                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                                       <div className="min-w-0">
-                                        <div className="flex items-center gap-2">
-                                          <p className="truncate text-sm font-semibold text-slate-900">{groupName}</p>
-                                          <TonePill tone={groupTone}>
-                                            {availabilityLabel(
-                                              isZh,
-                                              tg?.isAvailable ?? false,
-                                              tg?.tempUnavailableUntil ?? null,
-                                            )}
-                                          </TonePill>
-                                        </div>
-                                        <p className="mt-1 text-xs text-slate-500">
-                                          {isZh ? "组选项上下架为全局生效（模板组）" : "Group availability is global (template group)."}
-                                        </p>
+                                        <p className="truncate text-sm font-semibold text-slate-900">{groupName}</p>
                                       </div>
-
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          tg?.templateGroupStableId
-                                            ? groupOn
-                                              ? setAvailabilityTarget({
-                                                  kind: "group",
-                                                  stableId: tg.templateGroupStableId,
-                                                  label: groupName,
-                                                  isTempOff: false,
-                                                })
-                                              : void setTemplateGroupAvailability(tg.templateGroupStableId, "ON")
-                                            : undefined
-                                        }
-                                        className={`rounded-full px-3 py-1 text-xs font-medium ${
-                                          groupOn
-                                            ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                                            : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                                        }`}
-                                      >
-                                        {groupOn ? (isZh ? "下架该组选项" : "Turn off group") : isZh ? "上架该组选项" : "Turn on group"}
-                                      </button>
                                     </div>
 
                                     {templateOptions.length ? null : (

@@ -129,7 +129,7 @@ export class PromotionsService {
             return false;
           }
 
-          return tg.isAvailable;
+          return true;
         })
         .map((link) => {
           const tg = link.templateGroup;

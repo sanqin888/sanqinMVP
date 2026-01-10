@@ -658,34 +658,6 @@ export class AdminMenuService {
     return { ok: true };
   }
 
-  async setTemplateGroupAvailability(
-    templateGroupStableId: string,
-    mode: AvailabilityMode,
-  ) {
-    const stableId = templateGroupStableId.trim();
-
-    const exists = await this.prisma.menuOptionGroupTemplate.findFirst({
-      where: { stableId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!exists)
-      throw new NotFoundException(`Template group not found: ${stableId}`);
-
-    const data =
-      mode === 'ON'
-        ? { isAvailable: true, tempUnavailableUntil: null }
-        : mode === 'PERMANENT_OFF'
-          ? { isAvailable: false, tempUnavailableUntil: null }
-          : { isAvailable: true, tempUnavailableUntil: nextMidnightLocal() };
-
-    await this.prisma.menuOptionGroupTemplate.update({
-      where: { stableId },
-      data,
-    });
-
-    return { ok: true };
-  }
-
   async createTemplateOption(
     templateGroupStableId: string,
     body: {
