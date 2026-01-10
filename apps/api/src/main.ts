@@ -9,7 +9,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 async function bootstrap(): Promise<void> {
+  // 1. 禁用 NestJS 默认的 bodyParser
+  // 这样我们可以手动控制解析器的顺序，避免 Webhook 的 raw body 被提前消费
   const app = await NestFactory.create(AppModule, {
+    bodyParser: false, //禁用默认
     cors: {
       origin: process.env.CORS_ORIGIN
         ? process.env.CORS_ORIGIN.split(',')
@@ -20,13 +23,19 @@ async function bootstrap(): Promise<void> {
 
   const prefix = getApiPrefix();
 
-  // 处理 Clover Webhooks (需要 raw body 计算签名)
-  // 必须在任何全局 body parser（例如 express.json）之前注册，避免 raw body 被提前消费
+  // 2. 【第一步】特殊处理 Clover Webhooks
+  // 使用 express.raw 只针对这个路径解析为 Buffer，方便验签
+  // 注意：必须在 express.json() 之前注册
   app.use(`/${prefix}/webhooks/clover-hco`, express.raw({ type: '*/*' }));
 
+  // 3. 【第二步】为其余所有路由启用 JSON 解析
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
+
+  // 4. 配置全局拦截器、过滤器等
   configureApp(app);
 
-  // 🔐 安全配置：Cookie 签名
+  // 5. 🔐 安全配置：Cookie 签名
   const cookieSecret = process.env.COOKIE_SIGNING_SECRET;
 
   // 生产环境强制检查：必须配置密钥，否则禁止启动
@@ -40,10 +49,10 @@ async function bootstrap(): Promise<void> {
     process.exit(1);
   }
 
-  // 启用 cookie-parser (开发环境如果没有配置，使用后备密钥)
+  // 启用 cookie-parser
   app.use(cookieParser(cookieSecret || 'dev-fallback-secret-key'));
 
-  // 处理图片上传目录
+  // 6. 处理图片上传目录
   const uploadsDir = path.resolve(process.cwd(), 'uploads');
   if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
@@ -51,6 +60,7 @@ async function bootstrap(): Promise<void> {
   }
   app.use('/uploads', express.static(uploadsDir));
 
+  // 7. 启动监听
   const port = process.env.PORT ? Number(process.env.PORT) : 4000;
   await app.listen(port);
 
