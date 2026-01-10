@@ -58,6 +58,7 @@ export type OptionChoiceDto = LocalizedName &
     priceDeltaCents: number;
     sortOrder: number;
     childOptionStableIds?: string[];
+    parentOptionStableIds?: string[];
   };
 
 export type TemplateGroupLiteDto = LocalizedName &

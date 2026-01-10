@@ -503,10 +503,25 @@ export class AdminMenuService {
           orderBy: { sortOrder: 'asc' },
           include: {
             childLinks: {
+              where: {
+                childOption: {
+                  deletedAt: null,
+                },
+              },
               include: {
                 childOption: { select: { stableId: true } },
               },
             },
+            parentLinks: {
+              where: {
+                parentOption: {
+                  deletedAt: null,
+                },
+              },
+            include: {
+              parentOption: { select: { stableId: true } },
+            },
+          },
           },
         },
       },
@@ -541,6 +556,9 @@ export class AdminMenuService {
           sortOrder: o.sortOrder,
           childOptionStableIds: (o.childLinks ?? []).map(
             (link) => link.childOption.stableId,
+          ),
+          parentOptionStableIds: (o.parentLinks ?? []).map(
+            (link) => link.parentOption.stableId,
           ),
         })),
       };
@@ -840,19 +858,40 @@ export class AdminMenuService {
   }
 
   // ✅ 标准 3：软删除（deletedAt 写入），不物理删除，保证 stableId 永不复用
-  async deleteTemplateOption(optionStableId: string) {
+async deleteTemplateOption(optionStableId: string) {
     const stableId = optionStableId.trim();
 
-    const res = await this.prisma.menuOptionTemplateChoice.updateMany({
+    // 1. 先查找存在的选项以获取其内部 ID (需要用到 id 来清理关联表)
+    const existing = await this.prisma.menuOptionTemplateChoice.findFirst({
       where: { stableId, deletedAt: null },
-      data: {
-        deletedAt: new Date(),
-      },
+      select: { id: true },
     });
 
-    if (res.count === 0) {
+    if (!existing) {
       throw new NotFoundException(`Option not found: ${stableId}`);
     }
+
+    // 2. 使用事务同时执行：清理关联 + 软删除本体
+    await this.prisma.$transaction([
+      // 步骤 A: 物理删除关联表中的死链接
+      // 无论是作为父亲(parent)还是孩子(child)，只要涉及这个选项，关系都删掉
+      this.prisma.menuOptionChoiceLink.deleteMany({
+        where: {
+          OR: [
+            { parentOptionId: existing.id },
+            { childOptionId: existing.id },
+          ],
+        },
+      }),
+
+      // 步骤 B: 对选项本体执行软删除
+      this.prisma.menuOptionTemplateChoice.update({
+        where: { id: existing.id },
+        data: {
+          deletedAt: new Date(),
+        },
+      }),
+    ]);
 
     return { ok: true };
   }
