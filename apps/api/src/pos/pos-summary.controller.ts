@@ -15,7 +15,7 @@ export class PosSummaryController {
   /**
    * GET /api/v1/pos/summary?timeMin=...&timeMax=...&fulfillmentType=pickup|dine_in|delivery&status=paid|refunded|void&payment=cash|card|online|unknown
    */
-  @Get('summary')
+  @Get()
   getSummary(
     @Query('timeMin') timeMin: string,
     @Query('timeMax') timeMax: string,
