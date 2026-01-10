@@ -772,7 +772,7 @@ export default function LocalOrderPage() {
       {/* ===== 菜品选项弹窗 ===== */}
       {activeItem ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-4 md:items-center">
-          <div className="w-full max-w-2xl overflow-hidden rounded-3xl bg-white shadow-xl">
+          <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-white shadow-xl">
             <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -796,7 +796,7 @@ export default function LocalOrderPage() {
               </button>
             </div>
 
-            <div className="max-h-[60vh] space-y-6 overflow-y-auto px-6 py-5">
+            <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">
               {(activeItem.optionGroups ?? []).length === 0 ? (
                 <p className="text-sm text-slate-500">
                   {locale === "zh"
