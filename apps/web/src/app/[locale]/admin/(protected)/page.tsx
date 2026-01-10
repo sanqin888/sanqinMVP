@@ -833,6 +833,24 @@ export default function AdminDashboard() {
         )}
       </SectionCard>
 
+      <SectionCard
+        title={isZh ? "POS 设备初始认证" : "POS device enrollment"}
+        actions={
+          <Link
+            href={`/${locale}/admin/pos-devices`}
+            className="text-xs font-medium text-emerald-700 hover:text-emerald-600"
+          >
+            {isZh ? "进入设备绑定管理" : "Manage device enrollment"}
+          </Link>
+        }
+      >
+        <p className="text-sm text-slate-600">
+          {isZh
+            ? "在后台生成一次性绑定码，用于 POS 设备首次登录认证，并支持重置绑定码。"
+            : "Generate one-time enrollment codes for new POS devices and reset codes when needed."}
+        </p>
+      </SectionCard>
+
       <SectionCard title="门店服务与其他功能">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div className="rounded-xl border p-4">

@@ -84,6 +84,11 @@ export class PublicMenuService {
                             childOption: { select: { stableId: true } },
                           },
                         },
+                        parentLinks: {
+                          include: {
+                            parentOption: { select: { stableId: true } },
+                          },
+                        },
                       },
                     },
                   },
@@ -152,6 +157,9 @@ export class PublicMenuService {
                   sortOrder: opt.sortOrder,
                   childOptionStableIds: (opt.childLinks ?? []).map(
                     (link) => link.childOption.stableId,
+                  ),
+                  parentOptionStableIds: (opt.parentLinks ?? []).map(
+                    (link) => link.parentOption.stableId,
                   ),
                 }));
 
