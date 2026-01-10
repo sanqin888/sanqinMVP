@@ -1336,6 +1336,9 @@ export default function CheckoutPage() {
         return prev;
       }
 
+      const remark = memberDefaultAddress.remark?.trim() ?? "";
+      const nextNotes = !prev.notes.trim() && remark ? remark : prev.notes;
+
       return {
         ...prev,
         name: nextName,
@@ -1345,10 +1348,14 @@ export default function CheckoutPage() {
         city: memberDefaultAddress.city || prev.city,
         province: memberDefaultAddress.province || prev.province,
         postalCode: memberDefaultAddress.postalCode,
+        notes: nextNotes,
       };
     });
 
     setAddressPrefilled(true);
+    if (memberDefaultAddress.remark?.trim()) {
+      setAddressRemarkPrefilled(true);
+    }
   }, [addressPrefilled, fulfillment, memberDefaultAddress]);
 
   useEffect(() => {

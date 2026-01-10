@@ -333,6 +333,60 @@ export class MembershipController {
     };
   }
 
+  @Put('addresses')
+  async updateAddress(
+    @Req() req: AuthedRequest,
+    @Body()
+    body: {
+      addressStableId?: string;
+      label?: string;
+      receiver?: string;
+      phone?: string;
+      addressLine1?: string;
+      addressLine2?: string;
+      remark?: string;
+      city?: string;
+      province?: string;
+      postalCode?: string;
+      isDefault?: boolean;
+    },
+  ) {
+    const userStableId = req.user?.userStableId;
+    if (!userStableId) {
+      throw new BadRequestException('userStableId is required');
+    }
+    if (
+      !body.addressStableId ||
+      !body.receiver ||
+      !body.addressLine1 ||
+      !body.city ||
+      !body.province ||
+      !body.postalCode
+    ) {
+      throw new BadRequestException('address fields are required');
+    }
+
+    const updated = await this.membership.updateAddress({
+      userStableId,
+      addressStableId: body.addressStableId,
+      label: body.label ?? 'Address',
+      receiver: body.receiver,
+      phone: body.phone ?? null,
+      addressLine1: body.addressLine1,
+      addressLine2: body.addressLine2 ?? null,
+      remark: body.remark ?? null,
+      city: body.city,
+      province: body.province,
+      postalCode: body.postalCode,
+      isDefault: body.isDefault ?? false,
+    });
+
+    return {
+      success: true,
+      address: updated,
+    };
+  }
+
   @Post('addresses/default')
   async setDefaultAddress(
     @Req() req: AuthedRequest,

@@ -868,6 +868,92 @@ export class MembershipService {
     return { success: true };
   }
 
+  async updateAddress(params: {
+    userStableId: string;
+    addressStableId: string;
+    label: string;
+    receiver: string;
+    phone?: string | null;
+    addressLine1: string;
+    addressLine2?: string | null;
+    remark?: string | null;
+    city: string;
+    province: string;
+    postalCode: string;
+    isDefault?: boolean;
+  }) {
+    const {
+      userStableId,
+      addressStableId,
+      label,
+      receiver,
+      phone,
+      addressLine1,
+      addressLine2,
+      remark,
+      city,
+      province,
+      postalCode,
+      isDefault,
+    } = params;
+
+    const user = await this.ensureUser({
+      userStableId,
+      name: null,
+      email: null,
+    });
+
+    const target = await this.prisma.userAddress.findFirst({
+      where: { addressStableId, userId: user.id },
+    });
+    if (!target) {
+      throw new NotFoundException('address not found');
+    }
+
+    const normalized = {
+      label: label.trim() || 'Address',
+      receiver: receiver.trim(),
+      phone: phone?.trim() || null,
+      addressLine1: addressLine1.trim(),
+      addressLine2: addressLine2?.trim() || null,
+      remark: remark?.trim() || null,
+      city: city.trim(),
+      province: province.trim(),
+      postalCode: postalCode.trim(),
+    };
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (isDefault) {
+        await tx.userAddress.updateMany({
+          where: { userId: user.id },
+          data: { isDefault: false },
+        });
+      }
+
+      return tx.userAddress.update({
+        where: { id: target.id },
+        data: {
+          ...normalized,
+          ...(isDefault ? { isDefault: true } : {}),
+        },
+      });
+    });
+
+    return {
+      addressStableId: updated.addressStableId,
+      label: updated.label,
+      receiver: updated.receiver,
+      phone: updated.phone ?? '',
+      addressLine1: updated.addressLine1,
+      addressLine2: updated.addressLine2 ?? '',
+      remark: updated.remark ?? '',
+      city: updated.city,
+      province: updated.province,
+      postalCode: updated.postalCode,
+      isDefault: updated.isDefault,
+    };
+  }
+
   async setDefaultAddress(params: {
     userStableId: string;
     addressStableId: string;
