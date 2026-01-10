@@ -2,13 +2,11 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ApiExceptionFilter } from './common/filters/api-exception.filter';
 import { ApiResponseInterceptor } from './common/interceptors/api-response.interceptor';
-import { cookieParser } from './common/middleware/cookie-parser';
 
 const API_PREFIX = 'api/v1';
 
 export function configureApp(app: INestApplication): void {
   app.setGlobalPrefix(API_PREFIX);
-  app.use(cookieParser());
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
