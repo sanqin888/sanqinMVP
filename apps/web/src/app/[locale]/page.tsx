@@ -298,6 +298,51 @@ export default function LocalOrderPage() {
     });
   };
 
+  useEffect(() => {
+    if (!activeItem) return;
+    const selectedParentIds = new Set(
+      Object.values(selectedOptions).flat(),
+    );
+    const allowedChildrenByParent = new Map<string, Set<string>>();
+    activeItem.optionGroups?.forEach((group) => {
+      group.options.forEach((option) => {
+        allowedChildrenByParent.set(
+          option.optionStableId,
+          new Set(option.childOptionStableIds ?? []),
+        );
+      });
+    });
+
+    setSelectedChildOptions((prev) => {
+      let changed = false;
+      const next: Record<string, string[]> = {};
+      Object.entries(prev).forEach(([parentId, childIds]) => {
+        if (!selectedParentIds.has(parentId)) {
+          changed = true;
+          return;
+        }
+        const allowed = allowedChildrenByParent.get(parentId);
+        if (!allowed) {
+          changed = true;
+          return;
+        }
+        const filtered = childIds.filter((id) => allowed.has(id));
+        if (filtered.length === 0) {
+          if (childIds.length > 0) changed = true;
+          return;
+        }
+        if (
+          filtered.length !== childIds.length ||
+          filtered.some((id, index) => id !== childIds[index])
+        ) {
+          changed = true;
+        }
+        next[parentId] = filtered;
+      });
+      return changed ? next : prev;
+    });
+  }, [activeItem, selectedOptions]);
+
   const requiredGroupsMissing = useMemo(() => {
     if (!activeItem) return [];
     return (activeItem.optionGroups ?? []).filter((group) => {

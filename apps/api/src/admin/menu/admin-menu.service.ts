@@ -581,6 +581,65 @@ export class AdminMenuService {
     return { templateGroupStableId: created.stableId };
   }
 
+  async updateOptionGroupTemplate(
+    templateGroupStableId: string,
+    body: {
+      nameEn?: string;
+      nameZh?: string | null;
+      sortOrder?: number;
+      defaultMinSelect?: number;
+      defaultMaxSelect?: number | null;
+    },
+  ) {
+    const stableId = templateGroupStableId.trim();
+
+    const exists = await this.prisma.menuOptionGroupTemplate.findFirst({
+      where: { stableId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!exists)
+      throw new NotFoundException(`Template group not found: ${stableId}`);
+
+    const nameEn =
+      body.nameEn === undefined ? undefined : (body.nameEn ?? '').trim();
+    if (nameEn !== undefined && !nameEn) {
+      throw new BadRequestException('nameEn is required');
+    }
+
+    const updateData = {
+      nameEn,
+      nameZh:
+        body.nameZh === undefined ? undefined : body.nameZh?.trim() || null,
+      sortOrder:
+        body.sortOrder === undefined
+          ? undefined
+          : Number.isFinite(body.sortOrder)
+            ? Math.floor(body.sortOrder)
+            : 0,
+      defaultMinSelect:
+        body.defaultMinSelect === undefined
+          ? undefined
+          : Number.isFinite(body.defaultMinSelect)
+            ? Math.max(0, Math.floor(body.defaultMinSelect))
+            : 0,
+      defaultMaxSelect:
+        body.defaultMaxSelect === undefined
+          ? undefined
+          : body.defaultMaxSelect === null
+            ? null
+            : Number.isFinite(body.defaultMaxSelect)
+              ? Math.max(0, Math.floor(body.defaultMaxSelect))
+              : null,
+    };
+
+    await this.prisma.menuOptionGroupTemplate.update({
+      where: { stableId },
+      data: updateData,
+    });
+
+    return { ok: true };
+  }
+
   async setTemplateGroupAvailability(
     templateGroupStableId: string,
     mode: AvailabilityMode,
