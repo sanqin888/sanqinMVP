@@ -6,6 +6,7 @@ import {
   Delete,
   Get,
   Post,
+  Put,
   Param,
   Query,
   Req,
