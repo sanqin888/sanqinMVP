@@ -51,6 +51,10 @@ export class AuthService {
     return seconds * 1000;
   }
 
+  private getSessionRenewalThresholdMs(): number {
+    return 24 * 60 * 60 * 1000;
+  }
+
   private hashPassword(password: string): Promise<string> {
     return argon2.hash(password, { type: argon2id });
   }
@@ -105,7 +109,7 @@ export class AuthService {
     });
   }
 
-  async getSession(sessionId: string) {
+  private async loadSession(sessionId: string) {
     const session = await this.prisma.userSession.findUnique({
       where: { sessionId },
       include: { user: true },
@@ -122,6 +126,31 @@ export class AuthService {
     }
 
     return session;
+  }
+
+  async getSession(sessionId: string) {
+    return this.loadSession(sessionId);
+  }
+
+  async getSessionWithAutoRenew(sessionId: string) {
+    const session = await this.loadSession(sessionId);
+    if (!session) {
+      return { session: null, renewed: false };
+    }
+
+    const remainingMs = session.expiresAt.getTime() - Date.now();
+    if (remainingMs > this.getSessionRenewalThresholdMs()) {
+      return { session, renewed: false };
+    }
+
+    const expiresAt = new Date(Date.now() + this.getSessionTtlMs());
+    const updated = await this.prisma.userSession.update({
+      where: { id: session.id },
+      data: { expiresAt },
+      include: { user: true },
+    });
+
+    return { session: updated, renewed: true };
   }
 
   async getSessionUser(sessionId: string) {
