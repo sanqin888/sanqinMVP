@@ -1029,16 +1029,7 @@ export class OrdersService {
       for (const link of product.optionGroups ?? []) {
         if (!link.isEnabled || !link.templateGroup) continue;
         const templateGroup = link.templateGroup;
-        if (
-          (templateGroup as { deletedAt?: Date | null }).deletedAt ||
-          !isAvailableNow(
-            availabilityFromDb(
-              templateGroup.isAvailable,
-              templateGroup.tempUnavailableUntil,
-            ),
-          )
-        )
-          continue;
+        if ((templateGroup as { deletedAt?: Date | null }).deletedAt) continue;
 
         const choices = (templateGroup.options ?? []).filter((opt) => {
           const deleted = (opt as { deletedAt?: Date | null }).deletedAt;

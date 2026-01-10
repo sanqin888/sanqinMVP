@@ -132,8 +132,7 @@ export class PublicMenuService {
               // templateGroup.deletedAt 已在 Prisma where 过滤，但保留一层防御式过滤
               if (!tg || (tg as { deletedAt?: Date | null }).deletedAt)
                 return false;
-
-              return tg.isAvailable;
+              return true;
             })
             .map((link) => {
               const tg = link.templateGroup;

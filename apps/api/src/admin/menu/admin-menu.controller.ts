@@ -184,17 +184,6 @@ export class AdminMenuController {
     return this.service.updateOptionGroupTemplate(templateGroupStableId, body);
   }
 
-  @Post('option-group-templates/:templateGroupStableId/availability')
-  async setTemplateGroupAvailability(
-    @Param('templateGroupStableId') templateGroupStableId: string,
-    @Body() body: { mode: 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF' },
-  ) {
-    return this.service.setTemplateGroupAvailability(
-      templateGroupStableId,
-      body.mode,
-    );
-  }
-
   @Post('option-group-templates/:templateGroupStableId/options')
   async createTemplateOption(
     @Param('templateGroupStableId') templateGroupStableId: string,
