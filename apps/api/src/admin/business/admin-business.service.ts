@@ -35,7 +35,6 @@ export type BusinessConfigResponse = {
   storeCity: string | null;
   storeProvince: string | null;
   storePostalCode: string | null;
-  storeAddress: string | null;
   supportPhone: string | null;
   supportEmail: string | null;
   salesTaxRate: number;
@@ -86,7 +85,6 @@ export class AdminBusinessService {
       storeCity: config.storeCity ?? null,
       storeProvince: config.storeProvince ?? null,
       storePostalCode: config.storePostalCode ?? null,
-      storeAddress: config.storeAddress ?? null,
       supportPhone: config.supportPhone ?? null,
       supportEmail: config.supportEmail ?? null,
       salesTaxRate: config.salesTaxRate,
@@ -230,7 +228,6 @@ export class AdminBusinessService {
       storeCity,
       storeProvince,
       storePostalCode,
-      storeAddress,
       supportPhone,
       supportEmail,
       salesTaxRate,
@@ -257,7 +254,6 @@ export class AdminBusinessService {
       storeCity?: unknown;
       storeProvince?: unknown;
       storePostalCode?: unknown;
-      storeAddress?: unknown;
       supportPhone?: unknown;
       supportEmail?: unknown;
       salesTaxRate?: unknown;
@@ -375,13 +371,6 @@ export class AdminBusinessService {
       updates.storePostalCode = this.normalizeOptionalText(
         'storePostalCode',
         storePostalCode,
-      );
-    }
-
-    if (storeAddress !== undefined) {
-      updates.storeAddress = this.normalizeOptionalText(
-        'storeAddress',
-        storeAddress,
       );
     }
 
@@ -608,7 +597,7 @@ export class AdminBusinessService {
     return this.prisma.businessConfig.create({
       data: {
         id: 1,
-        storeName: null,
+        storeName: '',
         timezone: 'America/Toronto',
         isTemporarilyClosed: false,
         temporaryCloseReason: null,
