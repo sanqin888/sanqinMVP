@@ -15,6 +15,7 @@ import { SessionAuthGuard, SESSION_COOKIE_NAME } from './session-auth.guard';
 import {
   POS_DEVICE_ID_COOKIE,
   POS_DEVICE_KEY_COOKIE,
+  POS_DEVICE_COOKIE_MAX_AGE_DAYS,
 } from '../pos/pos-device.constants';
 import { TRUSTED_DEVICE_COOKIE } from './trusted-device.constants';
 import { MfaGuard } from './mfa.guard';
@@ -107,6 +108,27 @@ export class AuthController {
       maxAge: result.session.expiresAt.getTime() - Date.now(),
       path: '/',
     });
+
+    if (body?.purpose === 'pos' && deviceStableId && deviceKey) {
+      // ❌ 原代码 (由 Session 决定，会导致 Session 过期时设备也被踢出)
+      // ✅ 新代码 (使用 365 天常量)
+      const deviceMaxAge = POS_DEVICE_COOKIE_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+
+      res.cookie(POS_DEVICE_ID_COOKIE, deviceStableId, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: deviceMaxAge, // 使用长效时间
+        path: '/',
+      });
+      res.cookie(POS_DEVICE_KEY_COOKIE, deviceKey, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: deviceMaxAge, // 使用长效时间
+        path: '/',
+      });
+    }
 
     const next = cb || '/';
     if (result.requiresTwoFactor) {
