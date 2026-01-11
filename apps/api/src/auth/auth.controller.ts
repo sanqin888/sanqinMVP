@@ -15,6 +15,7 @@ import { SessionAuthGuard, SESSION_COOKIE_NAME } from './session-auth.guard';
 import {
   POS_DEVICE_ID_COOKIE,
   POS_DEVICE_KEY_COOKIE,
+  POS_DEVICE_COOKIE_MAX_AGE_DAYS,
 } from '../pos/pos-device.constants';
 import { TRUSTED_DEVICE_COOKIE } from './trusted-device.constants';
 import { MfaGuard } from './mfa.guard';
@@ -173,19 +174,20 @@ export class AuthController {
     });
     // ✅ 仅当 purpose=pos 且设备已通过后端校验后，才下发设备 cookie（用于后续每次请求的 PosDeviceGuard）
     if (body?.purpose === 'pos' && deviceStableId && deviceKey) {
-      const maxAge = result.session.expiresAt.getTime() - Date.now();
+      const deviceMaxAge = POS_DEVICE_COOKIE_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+
       res.cookie(POS_DEVICE_ID_COOKIE, deviceStableId, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
-        maxAge,
+        maxAge: deviceMaxAge, // 使用长效时间
         path: '/',
       });
       res.cookie(POS_DEVICE_KEY_COOKIE, deviceKey, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
-        maxAge,
+        maxAge: deviceMaxAge, // 使用长效时间
         path: '/',
       });
     }

@@ -1,6 +1,4 @@
 //Users/apple/sanqinMVP/apps/web/src/app/[locale]/thank-you/[order]/page.tsx
-
-import Link from "next/link";
 import type { Locale } from "@/lib/i18n/locales";
 import { UI_STRINGS } from "@/lib/i18n/dictionaries";
 import { ClearCartOnMount } from "./ClearCartOnMount";
@@ -38,12 +36,12 @@ const t = UI_STRINGS[locale].thankYou;
 
       <div className="flex items-center justify-between mb-6">
         <div className="text-sm text-slate-500">{t.brand}</div>
-        <Link
+        <a
           href={`/${alt}/thank-you/${order}`}
           className="rounded-full border px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
         >
           {t.switchLabel}
-        </Link>
+        </a>
       </div>
 
       <div className="rounded-3xl bg-slate-50 p-6 sm:p-10 shadow-sm">
@@ -59,12 +57,12 @@ const t = UI_STRINGS[locale].thankYou;
 
         <div className="mt-8 space-y-3 text-center">
           <p className="text-sm text-slate-600">{t.contact}</p>
-          <Link
+          <a
             href={`/${locale}`}
             className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
           >
             {t.backCta}
-          </Link>
+          </a>
         </div>
       </div>
     </main>

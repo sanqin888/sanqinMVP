@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { AdminPosDevicesService } from './admin-pos-devices.service';
 import { CreatePosDeviceDto } from './dto/create-pos-device.dto';
+import { UpdatePosDeviceStatusDto } from './dto/update-pos-device-status.dto';
 import { RolesGuard } from '../../auth/roles.guard';
 import { Roles } from '../../auth/roles.decorator';
 import { UserRole } from '@prisma/client';
@@ -35,6 +36,14 @@ export class AdminPosDevicesController {
   @Patch(':id/reset-code')
   async resetEnrollmentCode(@Param('id') id: string) {
     return this.service.resetEnrollmentCode(id);
+  }
+
+  @Patch(':id/status')
+  async updateStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdatePosDeviceStatusDto,
+  ) {
+    return this.service.updateStatus(id, dto.status);
   }
 
   @Delete(':id')

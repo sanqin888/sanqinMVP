@@ -1419,11 +1419,6 @@ export class OrdersService {
     }
 
     // —— Step 3: 准备入库
-    const pickupCode =
-      dto.pickupCode?.trim() ||
-      this.derivePickupCode(stableKey) ||
-      (1000 + Math.floor(Math.random() * 9000)).toString();
-
     const contactName =
       dto.contactName?.trim() || dto.deliveryDestination?.name?.trim() || null;
     const contactPhone =
@@ -1449,6 +1444,9 @@ export class OrdersService {
             )
               ? providedClientRequestId
               : await this.allocateClientRequestIdTx(tx);
+            const pickupCode =
+              this.derivePickupCode(clientRequestId) ||
+              (1000 + Math.floor(Math.random() * 9000)).toString();
 
             const hiddenItems = await tx.menuItem.findMany({
               where: {
