@@ -111,18 +111,6 @@ export class MembershipService {
     };
   }
 
-  /** 和短信验证那边保持一致：只保留数字 */
-  private normalizePhone(raw: string | undefined | null): string | null {
-    if (!raw) return null;
-    const trimmed = raw.trim();
-    if (!trimmed) return null;
-    return trimmed.replace(/\D+/g, '');
-  private normalizeEmail(raw: string | undefined | null): string | null {
-    if (!raw) return null;
-    const trimmed = raw.trim().toLowerCase();
-    return trimmed.length > 0 ? trimmed : null;
-  }
-
   /** 如果带了 phone + verificationToken，就尝试把手机号绑定到 User 上 */
   private async bindPhoneIfNeeded(params: {
     user: User;
