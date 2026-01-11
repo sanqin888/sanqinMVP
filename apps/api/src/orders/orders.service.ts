@@ -1688,7 +1688,11 @@ export class OrdersService {
             if (isPriority && uberEnabled) {
               const businessConfig = await this.ensureBusinessConfig();
               const pickup = this.buildUberPickupOverride(businessConfig);
-              return await this.dispatchPriorityDelivery(order, dropoff, pickup);
+              return await this.dispatchPriorityDelivery(
+                order,
+                dropoff,
+                pickup,
+              );
             }
           } catch (error: unknown) {
             let message = 'unknown';

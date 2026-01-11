@@ -374,9 +374,7 @@ export class UberDirectService {
       externalOrderRef;
 
     const manifestItems = this.buildManifestItems(options.items);
-    const pickupNames = splitName(
-      pickup.contactName ?? pickup.businessName,
-    );
+    const pickupNames = splitName(pickup.contactName ?? pickup.businessName);
     const dropoffNames = splitName(destination.name);
 
     const payload = compact({
@@ -458,9 +456,7 @@ export class UberDirectService {
     return payload;
   }
 
-  private resolvePickup(
-    override?: UberDirectPickupDetails,
-  ): PickupConfig {
+  private resolvePickup(override?: UberDirectPickupDetails): PickupConfig {
     const normalized = {
       businessName: trimToUndefined(override?.businessName),
       contactName: trimToUndefined(override?.contactName),
@@ -475,7 +471,9 @@ export class UberDirectService {
       latitude:
         typeof override?.latitude === 'number' ? override.latitude : undefined,
       longitude:
-        typeof override?.longitude === 'number' ? override.longitude : undefined,
+        typeof override?.longitude === 'number'
+          ? override.longitude
+          : undefined,
     };
 
     return {
