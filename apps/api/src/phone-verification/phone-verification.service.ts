@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { PhoneVerificationStatus } from '@prisma/client';
+import { normalizePhone } from '../common/utils/phone';
 
 type SendCodeResult = {
   ok: boolean;
@@ -20,11 +21,6 @@ export class PhoneVerificationService {
   private readonly logger = new Logger(PhoneVerificationService.name);
 
   constructor(private readonly prisma: PrismaService) {}
-
-  /** 简单标准化手机号：去掉空格和中间的破折号等 */
-  private normalizePhone(raw: string): string {
-    return raw.trim().replace(/\s+/g, '').replace(/-/g, '');
-  }
 
   /** 生成 6 位数字验证码 */
   private generateCode(): string {
@@ -62,7 +58,7 @@ export class PhoneVerificationService {
     purpose?: string;
   }): Promise<SendCodeResult> {
     const { phone, purpose } = params;
-    const normalized = this.normalizePhone(phone);
+    const normalized = normalizePhone(phone);
     if (!normalized) {
       return { ok: false, error: 'phone is empty' };
     }
@@ -105,7 +101,7 @@ export class PhoneVerificationService {
     purpose?: string;
   }): Promise<VerifyCodeResult> {
     const { phone, code, purpose } = params;
-    const normalized = this.normalizePhone(phone);
+    const normalized = normalizePhone(phone);
     const codeTrimmed = code.trim();
     const resolvedPurpose = purpose?.trim() || 'generic';
 

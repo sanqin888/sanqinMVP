@@ -7,6 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, type User } from '@prisma/client';
+import { normalizePhone } from '../common/utils/phone';
 import { generateStableId } from '../common/utils/stable-id';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
@@ -109,14 +110,6 @@ export class MembershipService {
     };
   }
 
-  /** 和短信验证那边保持一致：只保留数字 */
-  private normalizePhone(raw: string | undefined | null): string | null {
-    if (!raw) return null;
-    const trimmed = raw.trim();
-    if (!trimmed) return null;
-    return trimmed.replace(/\D+/g, '');
-  }
-
   private normalizeEmail(raw: string | undefined | null): string | null {
     if (!raw) return null;
     const trimmed = raw.trim().toLowerCase();
@@ -131,11 +124,11 @@ export class MembershipService {
   }): Promise<User> {
     const { user, rawPhone, verificationToken } = params;
 
-    const normalizedPhone = this.normalizePhone(rawPhone);
+    const normalizedPhone = normalizePhone(rawPhone);
     if (!normalizedPhone || !verificationToken) return user;
 
     // 已经有手机而且和这次一致，就顺手把 token 标记为 CONSUMED 即可
-    if (user.phone && this.normalizePhone(user.phone) === normalizedPhone) {
+    if (user.phone && normalizePhone(user.phone) === normalizedPhone) {
       await this.prisma.phoneVerification.updateMany({
         where: { token: verificationToken },
         data: {
@@ -154,7 +147,7 @@ export class MembershipService {
     if (
       !pv ||
       pv.status !== 'VERIFIED' ||
-      this.normalizePhone(pv.phone) !== normalizedPhone
+      normalizePhone(pv.phone) !== normalizedPhone
     ) {
       // 找不到 / 状态不对 / 手机不匹配，都直接忽略绑定
       return user;
