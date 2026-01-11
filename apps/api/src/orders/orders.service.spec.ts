@@ -5,6 +5,7 @@ import { LoyaltyService } from '../loyalty/loyalty.service';
 import { UberDirectService } from '../deliveries/uber-direct.service';
 import { MembershipService } from '../membership/membership.service';
 import { DoorDashDriveService } from '../deliveries/doordash-drive.service';
+import { LocationService } from '../location/location.service';
 import { DeliveryType } from '@prisma/client';
 import { CreateOrderInput } from '@shared/order';
 
@@ -49,7 +50,7 @@ describe('OrdersService', () => {
   };
   let uberDirect: { createDelivery: jest.Mock };
   let doorDashDrive: { createDelivery: jest.Mock };
-
+  let locationService: { geocode: jest.Mock };
   beforeEach(() => {
     process.env.UBER_DIRECT_ENABLED = '1';
     const demoProductId = 'c1234567890abcdefghijklmn';
@@ -154,12 +155,20 @@ describe('OrdersService', () => {
       createDelivery: jest.fn(),
     };
 
+    locationService = {
+      geocode: jest.fn().mockResolvedValue({
+        latitude: 43.6532,
+        longitude: -79.3832,
+      }),
+    };
+
     service = new OrdersService(
       prisma as unknown as PrismaService,
       loyalty as unknown as LoyaltyService,
       membership as unknown as MembershipService,
       uberDirect as unknown as UberDirectService,
       doorDashDrive as unknown as DoorDashDriveService,
+      locationService as unknown as LocationService,
     );
   });
 
