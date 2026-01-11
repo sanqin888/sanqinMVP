@@ -91,8 +91,9 @@ const UseRuleSchema = z
 
 const IssueRuleSchema = z
   .object({
-    mode: z.enum(['MANUAL', 'AUTO']),
+    mode: z.enum(['MANUAL', 'AUTO']).optional(),
     preset: z.string().optional(),
+    expiresInDays: z.number().int().positive().optional(),
   })
   .passthrough();
 
@@ -231,6 +232,16 @@ function validateIssueRule(
     );
   }
   return parsed.data as Prisma.InputJsonValue;
+}
+
+function getExpiresInDays(value: unknown) {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.expiresInDays !== 'number') return null;
+  if (!Number.isFinite(record.expiresInDays) || record.expiresInDays <= 0) {
+    return null;
+  }
+  return Math.floor(record.expiresInDays);
 }
 
 @Injectable()
@@ -471,6 +482,12 @@ export class AdminCouponsService {
           : null;
       const unlockedItemStableIds =
         rule.applyTo === 'ITEM' ? (rule.itemStableIds ?? []) : [];
+      const expiresInDays = getExpiresInDays(template.issueRule);
+      const expiresAt = expiresInDays
+        ? new Date(now.getTime() + expiresInDays * 24 * 60 * 60 * 1000)
+        : program.validTo ?? null;
+      const startsAt = expiresInDays ? now : program.validFrom ?? null;
+      const endsAt = expiresInDays ? expiresAt : program.validTo ?? null;
 
       for (let i = 0; i < item.quantity; i += 1) {
         const couponStableId = generateStableId();
@@ -481,15 +498,15 @@ export class AdminCouponsService {
           title: template.title ?? template.name,
           discountCents: rule.amountCents ?? 0,
           minSpendCents,
-          expiresAt: program.validTo ?? null,
+          expiresAt,
           issuedAt: now,
           source: `Program: ${program.name}`,
           campaign: program.programStableId,
           fromTemplateId: template.id,
           unlockedItemStableIds,
           isActive: true,
-          startsAt: program.validFrom ?? null,
-          endsAt: program.validTo ?? null,
+          startsAt,
+          endsAt,
           stackingPolicy: 'EXCLUSIVE',
         });
         userCouponsToCreate.push({
