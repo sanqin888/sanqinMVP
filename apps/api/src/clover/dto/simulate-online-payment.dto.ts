@@ -9,12 +9,12 @@ import {
 } from 'class-validator';
 
 export class SimulateOnlinePaymentDto {
-  @ValidateIf((o) => !o.referenceId)
+  @ValidateIf((o: SimulateOnlinePaymentDto) => !o.referenceId)
   @IsOptional()
   @IsUUID()
   checkoutSessionId?: string;
 
-  @ValidateIf((o) => !o.checkoutSessionId)
+  @ValidateIf((o: SimulateOnlinePaymentDto) => !o.checkoutSessionId)
   @IsOptional()
   @IsString()
   // 按你截图的格式 SQD + 10位数字，可按实际规则调整
