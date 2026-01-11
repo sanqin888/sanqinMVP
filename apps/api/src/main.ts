@@ -16,9 +16,7 @@ async function bootstrap(): Promise<void> {
     : null;
 
   if (!corsOrigin && process.env.NODE_ENV === 'production') {
-    console.error(
-      '\n❌ FATAL ERROR: CORS_ORIGIN is not defined in .env file.',
-    );
+    console.error('\n❌ FATAL ERROR: CORS_ORIGIN is not defined in .env file.');
     console.error(
       '   Application cannot start in production without a strict CORS allowlist.\n',
     );
@@ -80,7 +78,11 @@ async function bootstrap(): Promise<void> {
   ]);
   app.use(
     '/uploads',
-    (req, res, next) => {
+    (
+      req: express.Request,
+      res: express.Response,
+      next: express.NextFunction,
+    ) => {
       const extension = path.extname(req.path).toLowerCase();
       if (!uploadAllowedExtensions.has(extension)) {
         res.status(404).send('Not Found');
@@ -89,9 +91,12 @@ async function bootstrap(): Promise<void> {
       next();
     },
     express.static(uploadsDir, {
-      setHeaders: (res) => {
+      setHeaders: (res: express.Response) => {
         res.setHeader('X-Content-Type-Options', 'nosniff');
-        res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self' data:;");
+        res.setHeader(
+          'Content-Security-Policy',
+          "default-src 'none'; img-src 'self' data:;",
+        );
       },
     }),
   );
