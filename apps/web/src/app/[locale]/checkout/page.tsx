@@ -294,11 +294,16 @@ export default function CheckoutPage() {
       : `/${locale}/membership/login?redirect=${encodeURIComponent(
           checkoutHref,
         )}`;
+  const memberName = session?.user?.email ?? null;
   const membershipLabel =
     authStatus === "authenticated"
       ? locale === "zh"
-        ? "会员中心"
-        : "Membership"
+        ? memberName
+          ? `会员中心（${memberName}）`
+          : "会员中心"
+        : memberName
+          ? `Member center (${memberName})`
+          : "Member center"
       : locale === "zh"
         ? "会员登录"
         : "Member login";
