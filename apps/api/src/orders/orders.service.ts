@@ -378,37 +378,42 @@ export class OrdersService {
       where: { id },
       data: { status: next },
       include: { items: true },
-    })) as OrderWithItems;
+    })) as OrderWithItems & { loyaltyRedeemCents: number };
 
+    // —— 积分结算与优惠券处理
     if (next === 'paid') {
-      const subtotalForRewards = Math.max(0, updated.subtotalCents ?? 0);
-
-      if (updated.couponId) {
-        void this.membership.markCouponUsedForOrder({
-          couponId: updated.couponId,
-          orderId: updated.id,
-        });
-      }
-
-      void this.loyalty.settleOnPaid({
-        orderId: updated.id,
-        userId: updated.userId ?? undefined,
-        subtotalCents: subtotalForRewards,
-        redeemValueCents: updated.loyaltyRedeemCents ?? 0,
-      });
+      // [优化]：使用公共方法，逻辑统一
+      this.handleOrderPaidSideEffects(updated);
     } else if (next === 'refunded') {
-      if (updated.couponId) {
-        void this.membership.releaseCouponForOrder({
-          orderId: updated.id,
-          couponId: updated.couponId,
-        });
-      }
       void this.loyalty.rollbackOnRefund(updated.id);
     }
-
     return updated;
   }
 
+  private handleOrderPaidSideEffects(order: OrderWithItems) {
+    // 1. 计算用于积分奖励的有效金额（小计 - 优惠券折扣）
+    const netSubtotalForRewards = Math.max(
+      0,
+      (order.subtotalCents ?? 0) - (order.couponDiscountCents ?? 0),
+    );
+
+    // 2. 标记优惠券为已使用 (如果使用了优惠券)
+    if (order.couponId) {
+      // 使用 void 不阻塞主流程，但建议根据业务决定是否需要 await
+      void this.membership.markCouponUsedForOrder({
+        couponId: order.couponId,
+        orderId: order.id,
+      });
+    }
+
+    // 3. 触发积分结算
+    void this.loyalty.settleOnPaid({
+      orderId: order.id,
+      userId: order.userId ?? undefined,
+      subtotalCents: netSubtotalForRewards,
+      redeemValueCents: order.loyaltyRedeemCents ?? 0,
+    });
+  }
   /**
    * ✅ 统一推断订单 paymentMethod
    * - POS：建议必传；没传就降级为 CASH 并打 warn（避免静默错账）
@@ -1668,6 +1673,10 @@ export class OrdersService {
           })}Order created successfully (Server-side price calculated). clientRequestId=${order.clientRequestId ?? 'null'}`,
         );
 
+        if (order.status === 'paid') {
+          this.handleOrderPaidSideEffects(order);
+        }
+
         // === 派送逻辑 (DoorDash / Uber) ===
         const isStandard = dto.deliveryType === DeliveryType.STANDARD;
         const isPriority = dto.deliveryType === DeliveryType.PRIORITY;
@@ -2483,6 +2492,43 @@ export class OrdersService {
       throw new BadRequestException('clientRequestId required for delivery');
     }
     const humanRef = order.clientRequestId ?? order.orderStableId ?? '';
+
+    // 1. 如果手机号包含星号 '*' 且订单属于某个会员，尝试去数据库查真实号码
+    if (destination.phone && destination.phone.includes('*') && order.userId) {
+      this.logger.log(
+        `⚠️ [Uber Fix] Detected masked phone "${destination.phone}". Fetching real phone for user ${order.userId}...`,
+      );
+
+      const user = await this.prisma.user.findUnique({
+        where: { id: order.userId },
+        select: { phone: true },
+      });
+
+      if (user && user.phone) {
+        destination.phone = user.phone;
+        this.logger.log(`✅ [Uber Fix] Restored real phone from database.`);
+      } else {
+        this.logger.warn(
+          `❌ [Uber Fix] User has no phone in DB. Using fallback.`,
+        );
+      }
+    }
+
+    // 2. 格式标准化：确保是 E.164 格式 (+1xxxxxxxxxx)
+    if (destination.phone) {
+      const originalPhone = destination.phone;
+      const digits = originalPhone.replace(/\D/g, ''); // 提取纯数字
+
+      // 如果是 10 位 (4375556666) -> 补 +1
+      if (digits.length === 10) {
+        destination.phone = `+1${digits}`;
+      }
+      // 如果是 11 位且以1开头 (14375556666) -> 补 +
+      else if (digits.length === 11 && digits.startsWith('1')) {
+        destination.phone = `+${digits}`;
+      }
+    }
+
     const response: UberDirectDeliveryResult =
       await this.uberDirect.createDelivery({
         orderRef: thirdPartyOrderRef, // ✅ 外发：优先 clientRequestId

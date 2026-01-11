@@ -98,6 +98,19 @@ export function OrderSummaryClient({ orderStableId, locale }: Props) {
   const centsToMoney = (value: number) =>
     currencyFormatter.format(value / 100).replace(/^CA\$\s?/, "$");
 
+  const resolveItemName = (item: OrderSummaryLineItem) => {
+    if (locale === "zh") {
+      return item.nameZh ?? item.name;
+    }
+
+    return item.nameEn ?? item.name;
+  };
+
+  const resolveOptionLabel = (
+    nameZh: string | null,
+    nameEn: string,
+  ) => (locale === "zh" ? nameZh ?? nameEn : nameEn);
+
   const renderOptions = (options?: OrderSummaryLineItem["optionsJson"]) => {
     if (!options || !Array.isArray(options) || options.length === 0) return null;
 
@@ -106,7 +119,7 @@ export function OrderSummaryClient({ orderStableId, locale }: Props) {
         {options.map((group) => (
           <li key={group.templateGroupStableId}>
             <div className="font-medium text-slate-700">
-              {group.nameZh ?? group.nameEn}
+              {resolveOptionLabel(group.nameZh, group.nameEn)}
             </div>
             <ul className="ml-3 list-disc space-y-0.5">
               {group.choices.map((choice) => (
@@ -114,7 +127,9 @@ export function OrderSummaryClient({ orderStableId, locale }: Props) {
                   key={choice.stableId}
                   className="flex items-center justify-between gap-2"
                 >
-                  <span>{choice.nameZh ?? choice.nameEn}</span>
+                  <span>
+                    {resolveOptionLabel(choice.nameZh, choice.nameEn)}
+                  </span>
                   {choice.priceDeltaCents !== 0 && (
                     <span className="whitespace-nowrap">
                       {choice.priceDeltaCents > 0 ? "+" : "-"}$
@@ -212,20 +227,22 @@ export function OrderSummaryClient({ orderStableId, locale }: Props) {
                 {labels.itemsTitle}
               </p>
               <ul className="mt-2 space-y-2">
-                {data.lineItems.map((item) => (
+                {data.lineItems.map((item, index) => (
                   <li
                     key={
                       item.productStableId +
                       "-" +
                       item.name +
                       "-" +
-                      item.quantity
+                      item.quantity +
+                      "-" +
+                      index
                     }
                     className="flex items-start justify-between gap-4 text-xs"
                   >
                     <div className="min-w-0">
                       <p className="truncate font-medium text-slate-900">
-                        {item.name}
+                        {resolveItemName(item)}
                       </p>
                       <p className="mt-0.5 text-[11px] text-slate-500">
                         × {item.quantity}

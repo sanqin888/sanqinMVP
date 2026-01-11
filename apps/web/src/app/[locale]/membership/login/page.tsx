@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useSession, signIn } from '@/lib/auth-session';
 import type { Locale } from '@/lib/i18n/locales';
@@ -11,9 +11,16 @@ import { apiFetch } from '@/lib/api/client';
 export default function MemberLoginPage() {
   const router = useRouter();
   const { locale } = useParams<{ locale: Locale }>();
+  const searchParams = useSearchParams();
   const { data: session, status } = useSession();
 
   const isZh = locale === 'zh';
+  const redirectParam =
+    searchParams?.get('redirect') ?? searchParams?.get('next');
+  const resolvedRedirect =
+    redirectParam && redirectParam.startsWith('/')
+      ? redirectParam
+      : `/${locale}/membership`;
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -24,12 +31,16 @@ export default function MemberLoginPage() {
   useEffect(() => {
     if (status === 'authenticated') {
       if (session?.user?.mfaVerifiedAt) {
-        router.replace(`/${locale}/membership`);
+        router.replace(resolvedRedirect);
       } else {
-        router.replace(`/${locale}/membership/2fa`);
+        router.replace(
+          `/${locale}/membership/2fa?next=${encodeURIComponent(
+            resolvedRedirect,
+          )}`,
+        );
       }
     }
-  }, [status, session?.user?.mfaVerifiedAt, router, locale]);
+  }, [status, session?.user?.mfaVerifiedAt, router, locale, resolvedRedirect]);
 
   async function handlePasswordLogin() {
     if (!email.trim() || !password) {
@@ -51,7 +62,11 @@ export default function MemberLoginPage() {
       });
 
       if (res?.requiresTwoFactor) {
-        router.replace(`/${locale}/membership/2fa`);
+        router.replace(
+          `/${locale}/membership/2fa?next=${encodeURIComponent(
+            resolvedRedirect,
+          )}`,
+        );
         return;
       }
 
@@ -74,7 +89,7 @@ export default function MemberLoginPage() {
         }
       }
 
-      router.replace(`/${locale}/membership`);
+      router.replace(resolvedRedirect);
     } catch (err) {
       console.error(err);
       setError(
@@ -117,7 +132,9 @@ export default function MemberLoginPage() {
         <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
           <button
             type="button"
-            onClick={() => signIn('google', { callbackUrl: `/${locale}/membership` })}
+            onClick={() =>
+              signIn('google', { callbackUrl: resolvedRedirect })
+            }
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
           >
             <span className="rounded bg-white px-1.5 py-0.5 text-xs font-bold text-slate-900">
