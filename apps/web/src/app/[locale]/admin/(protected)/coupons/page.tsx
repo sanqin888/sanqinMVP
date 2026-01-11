@@ -463,6 +463,7 @@ export default function AdminCouponsPage() {
         : null;
       if (hasLimitedValidity) {
         if (
+          parsedValidityDays === null ||
           Number.isNaN(parsedValidityDays) ||
           !Number.isInteger(parsedValidityDays) ||
           parsedValidityDays <= 0
