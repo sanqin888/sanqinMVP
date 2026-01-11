@@ -1674,7 +1674,7 @@ export class OrdersService {
         );
 
         if (order.status === 'paid') {
-          await this.handleOrderPaidSideEffects(order);
+          this.handleOrderPaidSideEffects(order);
         }
 
         // === 派送逻辑 (DoorDash / Uber) ===
