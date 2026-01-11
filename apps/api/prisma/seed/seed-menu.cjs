@@ -257,6 +257,11 @@ async function main() {
           typeof c.storeLatitude === "number" ? c.storeLatitude : null,
         storeLongitude:
           typeof c.storeLongitude === "number" ? c.storeLongitude : null,
+        storeAddressLine1: toCreateOptional(c.storeAddressLine1),
+        storeAddressLine2: toCreateOptional(c.storeAddressLine2),
+        storeCity: toCreateOptional(c.storeCity),
+        storeProvince: toCreateOptional(c.storeProvince),
+        storePostalCode: toCreateOptional(c.storePostalCode),
         storeAddress: toCreateOptional(c.storeAddress),
         supportPhone: toCreateOptional(c.supportPhone),
         supportEmail: toCreateOptional(c.supportEmail),
@@ -309,6 +314,11 @@ async function main() {
           typeof c.storeLatitude === "number" ? c.storeLatitude : undefined,
         storeLongitude:
           typeof c.storeLongitude === "number" ? c.storeLongitude : undefined,
+        storeAddressLine1: toUpdateOptional(c.storeAddressLine1),
+        storeAddressLine2: toUpdateOptional(c.storeAddressLine2),
+        storeCity: toUpdateOptional(c.storeCity),
+        storeProvince: toUpdateOptional(c.storeProvince),
+        storePostalCode: toUpdateOptional(c.storePostalCode),
         storeAddress: toUpdateOptional(c.storeAddress),
         supportPhone: toUpdateOptional(c.supportPhone),
         supportEmail: toUpdateOptional(c.supportEmail),

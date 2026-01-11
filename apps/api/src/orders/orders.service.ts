@@ -36,6 +36,7 @@ import { OrderSummaryDto } from './dto/order-summary.dto';
 import {
   UberDirectDropoffDetails,
   UberDirectDeliveryResult,
+  UberDirectPickupDetails,
   UberDirectService,
 } from '../deliveries/uber-direct.service';
 import {
@@ -1685,7 +1686,9 @@ export class OrdersService {
               );
             }
             if (isPriority && uberEnabled) {
-              return await this.dispatchPriorityDelivery(order, dropoff);
+              const businessConfig = await this.ensureBusinessConfig();
+              const pickup = this.buildUberPickupOverride(businessConfig);
+              return await this.dispatchPriorityDelivery(order, dropoff, pickup);
             }
           } catch (error: unknown) {
             let message = 'unknown';
@@ -2377,6 +2380,41 @@ export class OrdersService {
     };
   }
 
+  private buildUberPickupOverride(
+    config: BusinessConfig,
+  ): UberDirectPickupDetails | undefined {
+    const sanitize = (value?: string | null): string | undefined => {
+      if (typeof value !== 'string') return undefined;
+      const trimmed = value.trim();
+      return trimmed.length > 0 ? trimmed : undefined;
+    };
+
+    const pickup: UberDirectPickupDetails = {
+      businessName: sanitize(config.storeName),
+      contactName: sanitize(config.storeName),
+      phone: sanitize(config.supportPhone),
+      addressLine1: sanitize(config.storeAddressLine1),
+      addressLine2: sanitize(config.storeAddressLine2),
+      city: sanitize(config.storeCity),
+      province: sanitize(config.storeProvince),
+      postalCode: sanitize(config.storePostalCode),
+      latitude:
+        typeof config.storeLatitude === 'number'
+          ? config.storeLatitude
+          : undefined,
+      longitude:
+        typeof config.storeLongitude === 'number'
+          ? config.storeLongitude
+          : undefined,
+    };
+
+    const hasOverrides = Object.values(pickup).some(
+      (value) => value !== undefined && value !== null,
+    );
+
+    return hasOverrides ? pickup : undefined;
+  }
+
   private formatOrderLogContext(params?: {
     orderId?: string | null;
     orderStableId?: string | null;
@@ -2434,6 +2472,7 @@ export class OrdersService {
   private async dispatchPriorityDelivery(
     order: OrderWithItems,
     destination: UberDirectDropoffDetails,
+    pickup?: UberDirectPickupDetails,
   ): Promise<OrderWithItems> {
     const thirdPartyOrderRef = order.clientRequestId;
     if (!thirdPartyOrderRef) {
@@ -2452,6 +2491,7 @@ export class OrdersService {
           priceCents: item.unitPriceCents ?? undefined,
         })),
         destination,
+        pickup,
       });
 
     const updateData: Prisma.OrderUpdateInput = {

@@ -37,6 +37,21 @@ export interface UberDirectDropoffDetails {
   tipCents?: number;
 }
 
+export interface UberDirectPickupDetails {
+  businessName?: string;
+  contactName?: string;
+  phone?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  province?: string;
+  postalCode?: string;
+  country?: string;
+  instructions?: string;
+  latitude?: number;
+  longitude?: number;
+}
+
 export interface UberDirectManifestItem {
   name: string;
   quantity: number;
@@ -50,6 +65,7 @@ export interface UberDirectDeliveryOptions {
   totalCents: number;
   items: UberDirectManifestItem[];
   destination: UberDirectDropoffDetails;
+  pickup?: UberDirectPickupDetails;
 }
 
 /**
@@ -214,13 +230,14 @@ export class UberDirectService {
   async createDelivery(
     options: UberDirectDeliveryOptions,
   ): Promise<UberDirectDeliveryResult> {
-    this.ensureConfigured();
+    const pickup = this.resolvePickup(options.pickup);
+    this.ensureConfigured(pickup);
 
     const url = `${this.apiBase}/v1/customers/${encodeURIComponent(
       this.customerId,
     )}/deliveries`;
     const externalOrderRef = normalizeExternalOrderRef(options.orderRef);
-    const payload = this.buildPayload(options, externalOrderRef);
+    const payload = this.buildPayload(options, externalOrderRef, pickup);
 
     // 仅在需要调试时打印 payload，默认不打
     if (process.env.DEBUG_UBER_DIRECT === '1') {
@@ -265,18 +282,18 @@ export class UberDirectService {
     }
   }
 
-  private ensureConfigured(): void {
+  private ensureConfigured(pickup: PickupConfig): void {
     if (!this.customerId) {
       throw new Error('UBER_DIRECT_CUSTOMER_ID is not configured');
     }
-    if (!this.pickup.phone) {
+    if (!pickup.phone) {
       throw new Error('UBER_DIRECT_STORE_PHONE is required');
     }
     if (
-      !this.pickup.addressLine1 ||
-      !this.pickup.city ||
-      !this.pickup.province ||
-      !this.pickup.postalCode
+      !pickup.addressLine1 ||
+      !pickup.city ||
+      !pickup.province ||
+      !pickup.postalCode
     ) {
       throw new Error('UBER_DIRECT_STORE_ADDRESS_* fields are incomplete');
     }
@@ -331,15 +348,16 @@ export class UberDirectService {
   private buildPayload(
     options: UberDirectDeliveryOptions,
     externalOrderRef: string,
+    pickup: PickupConfig,
   ): Record<string, unknown> {
     const destination = options.destination;
     const pickupAddress = this.formatAddress([
-      this.pickup.addressLine1,
-      this.pickup.addressLine2,
-      this.pickup.city,
-      this.pickup.province,
-      this.pickup.postalCode,
-      this.pickup.country,
+      pickup.addressLine1,
+      pickup.addressLine2,
+      pickup.city,
+      pickup.province,
+      pickup.postalCode,
+      pickup.country,
     ]);
     const dropoffAddress = this.formatAddress([
       destination.addressLine1,
@@ -357,20 +375,20 @@ export class UberDirectService {
 
     const manifestItems = this.buildManifestItems(options.items);
     const pickupNames = splitName(
-      this.pickup.contactName ?? this.pickup.businessName,
+      pickup.contactName ?? pickup.businessName,
     );
     const dropoffNames = splitName(destination.name);
 
     const payload = compact({
       external_delivery_id: externalOrderRef,
       manifest_reference: reference,
-      pickup_name: this.pickup.contactName ?? this.pickup.businessName,
-      pickup_business_name: this.pickup.businessName,
+      pickup_name: pickup.contactName ?? pickup.businessName,
+      pickup_business_name: pickup.businessName,
       pickup_address: pickupAddress,
-      pickup_phone_number: this.pickup.phone,
-      pickup_instructions: this.pickup.instructions,
-      pickup_latitude: this.pickup.latitude,
-      pickup_longitude: this.pickup.longitude,
+      pickup_phone_number: pickup.phone,
+      pickup_instructions: pickup.instructions,
+      pickup_latitude: pickup.latitude,
+      pickup_longitude: pickup.longitude,
       dropoff_name: destination.name,
       dropoff_business_name: trimToUndefined(destination.company),
       dropoff_address: dropoffAddress,
@@ -394,23 +412,23 @@ export class UberDirectService {
     });
 
     payload.pickup = compact({
-      instructions: this.pickup.instructions,
+      instructions: pickup.instructions,
       contact: compact({
-        first_name: pickupNames.first ?? this.pickup.businessName,
+        first_name: pickupNames.first ?? pickup.businessName,
         last_name: pickupNames.last,
-        phone: this.pickup.phone,
-        company_name: this.pickup.businessName,
+        phone: pickup.phone,
+        company_name: pickup.businessName,
       }),
       location: compact({
         address: pickupAddress,
-        address_line1: this.pickup.addressLine1,
-        address_line2: this.pickup.addressLine2,
-        city: this.pickup.city,
-        state: this.pickup.province,
-        postal_code: this.pickup.postalCode,
-        country: this.pickup.country,
-        latitude: this.pickup.latitude,
-        longitude: this.pickup.longitude,
+        address_line1: pickup.addressLine1,
+        address_line2: pickup.addressLine2,
+        city: pickup.city,
+        state: pickup.province,
+        postal_code: pickup.postalCode,
+        country: pickup.country,
+        latitude: pickup.latitude,
+        longitude: pickup.longitude,
       }),
     });
 
@@ -438,6 +456,42 @@ export class UberDirectService {
     });
 
     return payload;
+  }
+
+  private resolvePickup(
+    override?: UberDirectPickupDetails,
+  ): PickupConfig {
+    const normalized = {
+      businessName: trimToUndefined(override?.businessName),
+      contactName: trimToUndefined(override?.contactName),
+      phone: trimToUndefined(override?.phone),
+      addressLine1: trimToUndefined(override?.addressLine1),
+      addressLine2: trimToUndefined(override?.addressLine2),
+      city: trimToUndefined(override?.city),
+      province: trimToUndefined(override?.province),
+      postalCode: trimToUndefined(override?.postalCode),
+      country: trimToUndefined(override?.country),
+      instructions: trimToUndefined(override?.instructions),
+      latitude:
+        typeof override?.latitude === 'number' ? override.latitude : undefined,
+      longitude:
+        typeof override?.longitude === 'number' ? override.longitude : undefined,
+    };
+
+    return {
+      businessName: normalized.businessName ?? this.pickup.businessName,
+      contactName: normalized.contactName ?? this.pickup.contactName,
+      phone: normalized.phone ?? this.pickup.phone,
+      addressLine1: normalized.addressLine1 ?? this.pickup.addressLine1,
+      addressLine2: normalized.addressLine2 ?? this.pickup.addressLine2,
+      city: normalized.city ?? this.pickup.city,
+      province: normalized.province ?? this.pickup.province,
+      postalCode: normalized.postalCode ?? this.pickup.postalCode,
+      country: normalized.country ?? this.pickup.country,
+      instructions: normalized.instructions ?? this.pickup.instructions,
+      latitude: normalized.latitude ?? this.pickup.latitude,
+      longitude: normalized.longitude ?? this.pickup.longitude,
+    };
   }
 
   private buildManifestItems(
