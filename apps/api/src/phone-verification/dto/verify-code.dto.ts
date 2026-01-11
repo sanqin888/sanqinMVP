@@ -12,6 +12,6 @@ export class VerifyCodeDto {
   code!: string; // 必填：短信验证码
 
   @IsOptional()
-  @IsIn(['checkout', 'membership-login', 'membership-bind'])
+  @IsIn(['checkout', 'membership-login', 'membership-bind', 'pos-recharge'])
   purpose?: PhoneOtpPurpose; // 可选：用途
 }

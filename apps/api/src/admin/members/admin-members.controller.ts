@@ -136,6 +136,44 @@ export class AdminMembersController {
     return this.service.adjustPoints(userStableId, body);
   }
 
+  @Post(':userStableId/recharge/send-code')
+  async sendRechargeCode(
+    @Param('userStableId') userStableId: string,
+    @Body()
+    body: {
+      phone?: string;
+      locale?: string;
+    },
+  ) {
+    return this.service.sendRechargeCode(userStableId, body);
+  }
+
+  @Post(':userStableId/recharge/verify-code')
+  async verifyRechargeCode(
+    @Param('userStableId') userStableId: string,
+    @Body()
+    body: {
+      phone?: string;
+      code?: string;
+    },
+  ) {
+    return this.service.verifyRechargeCode(userStableId, body);
+  }
+
+  @Post(':userStableId/recharge')
+  async recharge(
+    @Param('userStableId') userStableId: string,
+    @Body()
+    body: {
+      amountCents?: number;
+      bonusPoints?: number;
+      verificationToken?: string;
+      idempotencyKey?: string;
+    },
+  ) {
+    return this.service.rechargeWithVerification(userStableId, body);
+  }
+
   @Post(':userStableId/ban')
   async banMember(
     @Param('userStableId') userStableId: string,
