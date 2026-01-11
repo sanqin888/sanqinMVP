@@ -2,6 +2,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePosDeviceDto } from './dto/create-pos-device.dto';
+import { PosDeviceStatus } from '@prisma/client';
 import { createHash, randomBytes } from 'crypto';
 
 @Injectable()
@@ -75,6 +76,13 @@ export class AdminPosDevicesService {
   async delete(id: string) {
     return this.prisma.posDevice.delete({
       where: { id },
+    });
+  }
+
+  async updateStatus(id: string, status: PosDeviceStatus) {
+    return this.prisma.posDevice.update({
+      where: { id },
+      data: { status },
     });
   }
 }

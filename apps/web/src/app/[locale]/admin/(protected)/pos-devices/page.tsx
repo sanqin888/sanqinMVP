@@ -44,7 +44,16 @@ export default function AdminPosDevicesPage() {
   const [saving, setSaving] = useState(false);
   const [reveal, setReveal] = useState<RevealState | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
 
+  const pendingDevices = useMemo(
+    () => devices.filter((device) => !device.lastSeenAt),
+    [devices],
+  );
+  const certifiedDevices = useMemo(
+    () => devices.filter((device) => Boolean(device.lastSeenAt)),
+    [devices],
+  );
   const hasDevices = useMemo(() => devices.length > 0, [devices.length]);
 
   async function loadDevices() {
@@ -132,6 +141,24 @@ export default function AdminPosDevicesPage() {
     }
   }
 
+  async function handleToggleStatus(device: PosDevice) {
+    setActionError(null);
+    const nextStatus = device.status === 'ACTIVE' ? 'DISABLED' : 'ACTIVE';
+    setStatusUpdatingId(device.id);
+    try {
+      await apiFetch(`/admin/pos-devices/${device.id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      await loadDevices();
+    } catch (error) {
+      setActionError((error as Error).message);
+    } finally {
+      setStatusUpdatingId(null);
+    }
+  }
+
   async function handleCopy(code: string) {
     try {
       await navigator.clipboard.writeText(code);
@@ -147,7 +174,7 @@ export default function AdminPosDevicesPage() {
           Admin
         </p>
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-3xl font-semibold text-slate-900">POS 设备初始认证</h1>
+          <h1 className="text-3xl font-semibold text-slate-900">POS 设备管理</h1>
           <Link
             href={`/${locale}/admin`}
             className="text-xs font-medium text-emerald-700 hover:text-emerald-600"
@@ -156,7 +183,7 @@ export default function AdminPosDevicesPage() {
           </Link>
         </div>
         <p className="text-sm text-slate-600">
-          在此创建 POS 设备、生成一次性绑定码，并在需要时重置绑定码。绑定码只会在创建或重置时展示，请及时保存。
+          在此完成 POS 设备初始认证，并管理已认证设备的状态。绑定码只会在创建或重置时展示，请及时保存。
         </p>
       </div>
 
@@ -193,8 +220,10 @@ export default function AdminPosDevicesPage() {
       <section className="rounded-2xl border bg-white/80 p-6 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-xl font-semibold text-slate-900">新增设备</h2>
-            <p className="text-sm text-slate-600">创建后会生成一次性绑定码。</p>
+            <h2 className="text-xl font-semibold text-slate-900">POS 设备初始认证</h2>
+            <p className="text-sm text-slate-600">
+              创建新设备并生成一次性绑定码，用于首次登录认证。
+            </p>
           </div>
         </div>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -228,13 +257,80 @@ export default function AdminPosDevicesPage() {
             {saving ? '创建中…' : '生成绑定码'}
           </button>
         </div>
+        <div className="mt-6 border-t pt-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-semibold text-slate-900">待认证设备</h3>
+              <p className="text-sm text-slate-600">尚未完成认证的设备，可以重置绑定码。</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void loadDevices()}
+              className="rounded-md border px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+            >
+              刷新列表
+            </button>
+          </div>
+          {loading ? (
+            <p className="mt-4 text-sm text-slate-500">加载中…</p>
+          ) : loadError ? (
+            <p className="mt-4 text-sm text-red-600">{loadError}</p>
+          ) : !hasDevices ? (
+            <p className="mt-4 text-sm text-slate-500">暂无设备，请先创建。</p>
+          ) : pendingDevices.length === 0 ? (
+            <p className="mt-4 text-sm text-slate-500">当前没有待认证设备。</p>
+          ) : (
+            <div className="mt-4 space-y-3">
+              {pendingDevices.map((device) => (
+                <div key={device.id} className="rounded-xl border p-4">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div className="space-y-1">
+                      <div className="text-base font-semibold text-slate-900">
+                        {device.name ?? '未命名设备'}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        StableId: {device.deviceStableId}
+                      </div>
+                      <div className="text-xs text-slate-500">门店：{device.storeId}</div>
+                    </div>
+                    <span className="inline-flex w-fit rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                      未认证
+                    </span>
+                  </div>
+                  <div className="mt-3 grid gap-3 text-xs text-slate-600 sm:grid-cols-2">
+                    <div>登记时间：{formatDateTime(device.enrolledAt)}</div>
+                    <div>最近在线：—</div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleReset(device)}
+                      className="rounded-md border px-3 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-50"
+                    >
+                      重置绑定码
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleDelete(device)}
+                      className="rounded-md border px-3 py-1 text-xs font-semibold text-red-600 hover:bg-red-50"
+                    >
+                      删除设备
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </section>
 
       <section className="rounded-2xl border bg-white/80 p-6 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-xl font-semibold text-slate-900">已登记设备</h2>
-            <p className="text-sm text-slate-600">管理已创建的 POS 设备与绑定码。</p>
+            <h2 className="text-xl font-semibold text-slate-900">已认证设备管理</h2>
+            <p className="text-sm text-slate-600">
+              查看设备在线情况，并根据需要启用或停用设备。
+            </p>
           </div>
           <button
             type="button"
@@ -249,11 +345,11 @@ export default function AdminPosDevicesPage() {
           <p className="mt-4 text-sm text-slate-500">加载中…</p>
         ) : loadError ? (
           <p className="mt-4 text-sm text-red-600">{loadError}</p>
-        ) : !hasDevices ? (
-          <p className="mt-4 text-sm text-slate-500">暂无设备，请先创建。</p>
+        ) : certifiedDevices.length === 0 ? (
+          <p className="mt-4 text-sm text-slate-500">暂无已认证设备。</p>
         ) : (
           <div className="mt-4 space-y-3">
-            {devices.map((device) => (
+            {certifiedDevices.map((device) => (
               <div key={device.id} className="rounded-xl border p-4">
                 <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                   <div className="space-y-1">
@@ -272,7 +368,7 @@ export default function AdminPosDevicesPage() {
                         : 'bg-slate-100 text-slate-600'
                     }`}
                   >
-                    {device.status}
+                    {device.status === 'ACTIVE' ? '启用中' : '已停用'}
                   </span>
                 </div>
                 <div className="mt-3 grid gap-3 text-xs text-slate-600 sm:grid-cols-2">
@@ -282,10 +378,15 @@ export default function AdminPosDevicesPage() {
                 <div className="mt-4 flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => void handleReset(device)}
-                    className="rounded-md border px-3 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-50"
+                    onClick={() => void handleToggleStatus(device)}
+                    disabled={statusUpdatingId === device.id}
+                    className="rounded-md border px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
                   >
-                    重置绑定码
+                    {statusUpdatingId === device.id
+                      ? '处理中…'
+                      : device.status === 'ACTIVE'
+                        ? '停用设备'
+                        : '启用设备'}
                   </button>
                   <button
                     type="button"
