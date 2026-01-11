@@ -16,8 +16,8 @@ export class PhoneVerificationController {
    */
   @Post('send-code')
   async sendCode(@Body() body: SendCodeDto) {
-    const { phone, locale } = body;
-    const result = await this.service.sendCode({ phone, locale });
+    const { phone, locale, purpose } = body;
+    const result = await this.service.sendCode({ phone, locale, purpose });
     // 统一返回 { ok, error? }
     return result;
   }
@@ -27,8 +27,8 @@ export class PhoneVerificationController {
    */
   @Post('verify-code')
   async verifyCode(@Body() body: VerifyCodeDto): Promise<VerifyCodeResult> {
-    const { phone, code } = body;
-    const result = await this.service.verifyCode({ phone, code });
+    const { phone, code, purpose } = body;
+    const result = await this.service.verifyCode({ phone, code, purpose });
     return result;
   }
 }

@@ -4,17 +4,19 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { PhoneVerificationStatus, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { generateStableId } from '../../common/utils/stable-id';
 import { LoyaltyService } from '../../loyalty/loyalty.service';
 import { MembershipService } from '../../membership/membership.service';
+import { PhoneVerificationService } from '../../phone-verification/phone-verification.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
 const MICRO_PER_POINT = 1_000_000;
 const DEFAULT_TIER_THRESHOLD_SILVER = 1000 * 100;
 const DEFAULT_TIER_THRESHOLD_GOLD = 10000 * 100;
 const DEFAULT_TIER_THRESHOLD_PLATINUM = 30000 * 100;
+const POS_RECHARGE_PURPOSE = 'pos-recharge';
 
 const UseRuleSchema = z
   .discriminatedUnion('type', [
@@ -79,6 +81,7 @@ export class AdminMembersService {
     private readonly prisma: PrismaService,
     private readonly loyalty: LoyaltyService,
     private readonly membership: MembershipService,
+    private readonly phoneVerification: PhoneVerificationService,
   ) {}
 
   private maskPhone(phone: string): string {
@@ -95,6 +98,27 @@ export class AdminMembersService {
     const trimmed = raw.trim();
     if (!trimmed) return null;
     return trimmed.replace(/\s+/g, '').replace(/-/g, '');
+  }
+
+  private resolveRechargePhone(params: {
+    userPhone: string | null;
+    inputPhone?: string;
+  }): string {
+    const normalizedInput = this.normalizePhone(params.inputPhone);
+    const normalizedUser = this.normalizePhone(params.userPhone);
+
+    if (normalizedInput) {
+      if (normalizedUser && normalizedInput !== normalizedUser) {
+        throw new BadRequestException('phone does not match member profile');
+      }
+      return normalizedInput;
+    }
+
+    if (!normalizedUser) {
+      throw new BadRequestException('member does not have a phone');
+    }
+
+    return normalizedUser;
   }
 
   private normalizeEmail(raw: string | null | undefined): string | null {
@@ -697,6 +721,126 @@ export class AdminMembersService {
     });
 
     return updated;
+  }
+
+  async sendRechargeCode(
+    userStableId: string,
+    body: {
+      phone?: string;
+      locale?: string;
+    },
+  ) {
+    const user = await this.getUserByStableId(userStableId);
+    const phone = this.resolveRechargePhone({
+      userPhone: user.phone,
+      inputPhone: body.phone,
+    });
+
+    return this.phoneVerification.sendCode({
+      phone,
+      locale: body.locale,
+      purpose: POS_RECHARGE_PURPOSE,
+    });
+  }
+
+  async verifyRechargeCode(
+    userStableId: string,
+    body: {
+      phone?: string;
+      code?: string;
+    },
+  ) {
+    const code = typeof body.code === 'string' ? body.code.trim() : '';
+    if (!code) {
+      throw new BadRequestException('code is required');
+    }
+
+    const user = await this.getUserByStableId(userStableId);
+    const phone = this.resolveRechargePhone({
+      userPhone: user.phone,
+      inputPhone: body.phone,
+    });
+
+    return this.phoneVerification.verifyCode({
+      phone,
+      code,
+      purpose: POS_RECHARGE_PURPOSE,
+    });
+  }
+
+  async rechargeWithVerification(
+    userStableId: string,
+    body: {
+      amountCents?: number;
+      bonusPoints?: number;
+      verificationToken?: string;
+      idempotencyKey?: string;
+    },
+  ) {
+    const amountCents =
+      typeof body.amountCents === 'number' ? Math.round(body.amountCents) : NaN;
+    if (!Number.isFinite(amountCents) || amountCents <= 0) {
+      throw new BadRequestException('amountCents must be a positive number');
+    }
+
+    const verificationToken =
+      typeof body.verificationToken === 'string'
+        ? body.verificationToken.trim()
+        : '';
+    if (!verificationToken) {
+      throw new BadRequestException('verificationToken is required');
+    }
+
+    const user = await this.getUserByStableId(userStableId);
+    const phone = this.resolveRechargePhone({ userPhone: user.phone });
+    const now = new Date();
+
+    const record = await this.prisma.phoneVerification.findUnique({
+      where: { token: verificationToken },
+    });
+
+    if (
+      !record ||
+      record.status !== PhoneVerificationStatus.VERIFIED ||
+      record.purpose !== POS_RECHARGE_PURPOSE ||
+      this.normalizePhone(record.phone) !== phone
+    ) {
+      throw new BadRequestException('verificationToken is invalid');
+    }
+
+    if (record.expiresAt.getTime() < now.getTime()) {
+      throw new BadRequestException('verificationToken has expired');
+    }
+
+    const updated = await this.prisma.phoneVerification.updateMany({
+      where: {
+        token: verificationToken,
+        status: PhoneVerificationStatus.VERIFIED,
+        purpose: POS_RECHARGE_PURPOSE,
+      },
+      data: {
+        status: PhoneVerificationStatus.CONSUMED,
+        consumedAt: now,
+      },
+    });
+
+    if (updated.count === 0) {
+      throw new BadRequestException('verificationToken already used');
+    }
+
+    const idempotencyKey =
+      typeof body.idempotencyKey === 'string' && body.idempotencyKey.trim()
+        ? body.idempotencyKey.trim()
+        : generateStableId();
+
+    const result = await this.loyalty.applyTopup({
+      userStableId,
+      amountCents,
+      bonusPoints: body.bonusPoints,
+      idempotencyKey,
+    });
+
+    return { userStableId, ...result };
   }
 
   async issueCoupon(
