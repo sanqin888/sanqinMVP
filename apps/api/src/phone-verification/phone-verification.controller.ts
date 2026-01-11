@@ -1,5 +1,5 @@
 // apps/api/src/phone-verification/phone-verification.controller.ts
-import { Body, Controller, Post, Req } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Post, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import {
   PhoneVerificationService,
@@ -33,7 +33,12 @@ export class PhoneVerificationController {
    */
   @Post('verify-code')
   async verifyCode(@Body() body: VerifyCodeDto): Promise<VerifyCodeResult> {
-    const { phone, code, purpose } = body;
+    const { phone, code, purpose, userId } = body as VerifyCodeDto & {
+      userId?: string;
+    };
+    if (userId) {
+      throw new BadRequestException('userId is not allowed');
+    }
     const result = await this.service.verifyCode({ phone, code, purpose });
     return result;
   }
