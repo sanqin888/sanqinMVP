@@ -8,7 +8,12 @@ import { AdminMembersController } from './admin-members.controller';
 import { AdminMembersService } from './admin-members.service';
 
 @Module({
-  imports: [PrismaModule, LoyaltyModule, MembershipModule, PhoneVerificationModule],
+  imports: [
+    PrismaModule,
+    LoyaltyModule,
+    MembershipModule,
+    PhoneVerificationModule,
+  ],
   controllers: [AdminMembersController],
   providers: [AdminMembersService],
 })

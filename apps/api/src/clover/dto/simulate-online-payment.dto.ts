@@ -1,5 +1,12 @@
 // apps/api/src/clover/dto/simulate-online-payment.dto.ts
-import { IsIn, IsOptional, IsUUID, IsString, ValidateIf, Matches } from 'class-validator';
+import {
+  IsIn,
+  IsOptional,
+  IsUUID,
+  IsString,
+  ValidateIf,
+  Matches,
+} from 'class-validator';
 
 export class SimulateOnlinePaymentDto {
   @ValidateIf((o) => !o.referenceId)
