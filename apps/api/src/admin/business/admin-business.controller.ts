@@ -49,6 +49,11 @@ export class AdminBusinessController {
       priorityDefaultDistanceKm?: number;
       storeLatitude?: number | null;
       storeLongitude?: number | null;
+      storeAddressLine1?: string | null;
+      storeAddressLine2?: string | null;
+      storeCity?: string | null;
+      storeProvince?: string | null;
+      storePostalCode?: string | null;
       storeAddress?: string | null;
       supportPhone?: string | null;
       supportEmail?: string | null;
@@ -83,6 +88,11 @@ export class AdminBusinessController {
       priorityDefaultDistanceKm?: number;
       storeLatitude?: number | null;
       storeLongitude?: number | null;
+      storeAddressLine1?: string | null;
+      storeAddressLine2?: string | null;
+      storeCity?: string | null;
+      storeProvince?: string | null;
+      storePostalCode?: string | null;
       storeAddress?: string | null;
       supportPhone?: string | null;
       supportEmail?: string | null;

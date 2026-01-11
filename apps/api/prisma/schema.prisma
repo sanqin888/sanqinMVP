@@ -554,6 +554,11 @@ model BusinessConfig {
   priorityDefaultDistanceKm Float    @default(6.0)
   storeLatitude             Float?
   storeLongitude            Float?
+  storeAddressLine1         String?
+  storeAddressLine2         String?
+  storeCity                 String?
+  storeProvince             String?
+  storePostalCode           String?
   storeAddress              String?
   supportPhone              String?
   supportEmail              String?
