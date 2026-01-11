@@ -405,11 +405,12 @@ export default function LocalOrderPage() {
   );
 
   const checkoutHref = q ? `/${locale}/checkout?${q}` : `/${locale}/checkout`;
+  const orderHref = q ? `/${locale}?${q}` : `/${locale}`;
 
   // 会员按钮跳转和文案
   const membershipHref = isMemberLoggedIn
     ? `/${locale}/membership`
-    : `/${locale}/membership/login`;
+    : `/${locale}/membership/login?redirect=${encodeURIComponent(orderHref)}`;
 
   const membershipLabel = (() => {
     if (locale === "zh") {
