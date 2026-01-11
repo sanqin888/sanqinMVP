@@ -7,6 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, type User } from '@prisma/client';
+import { normalizeEmail } from '../common/utils/email';
 import { generateStableId } from '../common/utils/stable-id';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
@@ -117,12 +118,6 @@ export class MembershipService {
     return trimmed.replace(/\D+/g, '');
   }
 
-  private normalizeEmail(raw: string | undefined | null): string | null {
-    if (!raw) return null;
-    const trimmed = raw.trim().toLowerCase();
-    return trimmed.length > 0 ? trimmed : null;
-  }
-
   /** 如果带了 phone + verificationToken，就尝试把手机号绑定到 User 上 */
   private async bindPhoneIfNeeded(params: {
     user: User;
@@ -230,10 +225,7 @@ export class MembershipService {
 
     const normalizedName =
       typeof name === 'string' && name.trim().length > 0 ? name.trim() : null;
-    const normalizedEmail =
-      typeof email === 'string' && email.trim().length > 0
-        ? email.trim()
-        : null;
+    const normalizedEmail = normalizeEmail(email);
     const emailPrefix =
       normalizedEmail && normalizedEmail.includes('@')
         ? normalizedEmail.split('@')[0].trim()
@@ -241,8 +233,7 @@ export class MembershipService {
     const initialName = emailPrefix || normalizedName;
 
     // —— 解析推荐人（通过邮箱查 User），不能是自己
-    const referrerEmail =
-      typeof referrerEmailParam === 'string' ? referrerEmailParam.trim() : '';
+    const referrerEmail = normalizeEmail(referrerEmailParam);
     let referrerId: string | undefined;
     if (referrerEmail) {
       const ref = await this.prisma.user.findUnique({
@@ -565,7 +556,7 @@ export class MembershipService {
     userStableId: string;
     referrerEmail: string;
   }) {
-    const referrerEmail = this.normalizeEmail(params.referrerEmail);
+    const referrerEmail = normalizeEmail(params.referrerEmail);
     if (!referrerEmail) {
       throw new BadRequestException('referrerEmail is required');
     }
