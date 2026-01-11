@@ -17,6 +17,7 @@ import {
 import type { TwoFactorMethod, UserRole } from '@prisma/client';
 import argon2, { argon2id } from 'argon2';
 import { normalizeEmail } from '../common/utils/email';
+import { normalizePhone } from '../common/utils/phone';
 
 @Injectable()
 export class AuthService {
@@ -26,6 +27,8 @@ export class AuthService {
 
   private normalizePhone(phone: string): string {
     return phone.replace(/\D+/g, '');
+  private normalizeEmail(email: string): string {
+    return email.trim().toLowerCase();
   }
 
   private generateCode(): string {
@@ -628,7 +631,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid session');
     }
 
-    const normalized = this.normalizePhone(params.phone);
+    const normalized = normalizePhone(params.phone);
     if (!normalized || normalized.length < 6) {
       throw new BadRequestException('invalid phone');
     }
@@ -701,7 +704,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid session');
     }
 
-    const normalized = this.normalizePhone(params.phone);
+    const normalized = normalizePhone(params.phone);
     if (!normalized || !params.code) {
       throw new BadRequestException('phone and code are required');
     }
@@ -841,7 +844,7 @@ export class AuthService {
   }
 
   async requestLoginOtp(params: { phone: string }) {
-    const normalized = this.normalizePhone(params.phone);
+    const normalized = normalizePhone(params.phone);
     if (!normalized || normalized.length < 6) {
       throw new BadRequestException('invalid phone');
     }
@@ -909,7 +912,7 @@ export class AuthService {
     code: string;
     deviceInfo?: string;
   }) {
-    const normalized = this.normalizePhone(params.phone);
+    const normalized = normalizePhone(params.phone);
     if (!normalized || !params.code) {
       throw new BadRequestException('phone and code are required');
     }

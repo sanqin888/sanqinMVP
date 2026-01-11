@@ -1,5 +1,11 @@
 // apps/api/src/phone-verification/phone-verification.controller.ts
-import { BadRequestException, Body, Controller, Post, Req } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Post,
+  Req,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import {
   PhoneVerificationService,
