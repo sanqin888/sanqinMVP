@@ -29,6 +29,7 @@ export default function AdminLayoutClient({
     { href: `/${locale}/admin/coupons`, labelZh: '优惠券管理' },
     { href: `/${locale}/admin/members`, labelZh: '会员管理' },
     { href: `/${locale}/admin/staff`, labelZh: '员工管理' },
+    { href: `/${locale}/admin/pos-devices`, labelZh: 'POS 设备管理' },
   ];
 
   function isActive(href: string): boolean {
