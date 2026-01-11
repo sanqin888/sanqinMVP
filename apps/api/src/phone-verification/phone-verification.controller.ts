@@ -1,5 +1,12 @@
 // apps/api/src/phone-verification/phone-verification.controller.ts
-import { BadRequestException, Body, Controller, Post } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Post,
+  Req,
+} from '@nestjs/common';
+import type { Request } from 'express';
 import {
   PhoneVerificationService,
   VerifyCodeResult,
@@ -15,9 +22,14 @@ export class PhoneVerificationController {
    * POST /api/v1/auth/phone/send-code
    */
   @Post('send-code')
-  async sendCode(@Body() body: SendCodeDto) {
+  async sendCode(@Body() body: SendCodeDto, @Req() req: Request) {
     const { phone, locale, purpose } = body;
-    const result = await this.service.sendCode({ phone, locale, purpose });
+    const result = await this.service.sendCode({
+      phone,
+      locale,
+      purpose,
+      ip: req.ip,
+    });
     // 统一返回 { ok, error? }
     return result;
   }
