@@ -31,6 +31,12 @@ type BindDraft = {
   isRequired: boolean; // UI helper => minSelect>=1
 };
 
+type BindingEditDraft = {
+  minSelect: string;
+  maxSelect: string; // "" => null
+  sortOrder: string;
+};
+
 function createEmptyBindDraft(): BindDraft {
   return {
     templateGroupStableId: '',
@@ -111,9 +117,16 @@ export default function AdminMenuPage() {
 
   const [unbindingId, setUnbindingId] = useState<string | null>(null);
   const [bindingItemId, setBindingItemId] = useState<string | null>(null);
+  const [bindingUpdateId, setBindingUpdateId] = useState<string | null>(null);
 
   const [bindDrafts, setBindDrafts] = useState<Record<string, BindDraft>>({});
+  const [bindingEdits, setBindingEdits] = useState<
+    Record<string, Record<string, BindingEditDraft>>
+  >({});
   const [availabilityTarget, setAvailabilityTarget] = useState<AvailabilityTarget | null>(null);
+  const [imageUploads, setImageUploads] = useState<
+    Record<string, { uploading: boolean; error: string | null }>
+  >({});
 
   // ----- Create category form -----
   const [newCatNameEn, setNewCatNameEn] = useState('');
@@ -144,6 +157,38 @@ export default function AdminMenuPage() {
 
   function getBindDraft(itemStableId: string): BindDraft {
     return bindDrafts[itemStableId] ?? createEmptyBindDraft();
+  }
+
+  function getBindingEditDraft(
+    itemStableId: string,
+    templateGroupStableId: string,
+    current: { minSelect: number; maxSelect: number | null; sortOrder: number },
+  ): BindingEditDraft {
+    return (
+      bindingEdits[itemStableId]?.[templateGroupStableId] ?? {
+        minSelect: String(current.minSelect ?? 0),
+        maxSelect: current.maxSelect == null ? '' : String(current.maxSelect),
+        sortOrder: String(current.sortOrder ?? 0),
+      }
+    );
+  }
+
+  function updateBindingEditDraft(
+    itemStableId: string,
+    templateGroupStableId: string,
+    patch: Partial<BindingEditDraft>,
+    current: { minSelect: number; maxSelect: number | null; sortOrder: number },
+  ) {
+    setBindingEdits((prev) => ({
+      ...prev,
+      [itemStableId]: {
+        ...(prev[itemStableId] ?? {}),
+        [templateGroupStableId]: {
+          ...getBindingEditDraft(itemStableId, templateGroupStableId, current),
+          ...patch,
+        },
+      },
+    }));
   }
 
   function toggleItemExpanded(itemStableId: string) {
@@ -389,6 +434,51 @@ export default function AdminMenuPage() {
     }
   }
 
+  async function handleUpdateBinding(
+    itemStableId: string,
+    templateGroupStableId: string,
+    draft: BindingEditDraft,
+  ): Promise<void> {
+    const minSelectRaw = toIntOrNull(draft.minSelect);
+    const maxSelectRaw = toIntOrNull(draft.maxSelect);
+    const sortOrderRaw = toIntOrNull(draft.sortOrder);
+
+    const minSelect = Math.max(0, minSelectRaw ?? 0);
+    const maxSelect = maxSelectRaw == null ? null : Math.max(0, maxSelectRaw);
+    const sortOrder = Math.max(0, sortOrderRaw ?? 0);
+    const bindingKey = `${itemStableId}:${templateGroupStableId}`;
+
+    setBindingUpdateId(bindingKey);
+    try {
+      await apiFetch(BIND_ENDPOINT(itemStableId), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          templateGroupStableId,
+          minSelect,
+          maxSelect,
+          sortOrder,
+          isEnabled: true,
+        }),
+      });
+
+      setBindingEdits((prev) => {
+        const next = { ...prev };
+        if (next[itemStableId]) {
+          const inner = { ...next[itemStableId] };
+          delete inner[templateGroupStableId];
+          next[itemStableId] = inner;
+        }
+        return next;
+      });
+      await load();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBindingUpdateId(null);
+    }
+  }
+
   async function handleUnbindFromItem(
     itemStableId: string,
     templateGroupStableId: string,
@@ -404,6 +494,41 @@ export default function AdminMenuPage() {
     } finally {
       setUnbindingId(null);
     }
+  }
+
+  async function handleImageUpload(
+    categoryStableId: string,
+    itemStableId: string,
+    file: File,
+  ): Promise<void> {
+    setImageUploads((prev) => ({
+      ...prev,
+      [itemStableId]: { uploading: true, error: null },
+    }));
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await apiFetch<{ url: string }>('/admin/upload/image', {
+        method: 'POST',
+        body: formData,
+      });
+      updateItemField(categoryStableId, itemStableId, 'imageUrl', res.url);
+    } catch (e) {
+      setImageUploads((prev) => ({
+        ...prev,
+        [itemStableId]: {
+          uploading: false,
+          error: e instanceof Error ? e.message : String(e),
+        },
+      }));
+      return;
+    }
+
+    setImageUploads((prev) => ({
+      ...prev,
+      [itemStableId]: { uploading: false, error: null },
+    }));
   }
 
   if (loading) {
@@ -750,20 +875,44 @@ export default function AdminMenuPage() {
                           </label>
 
                           <label className="space-y-1 md:col-span-6">
-                            <div className="text-xs text-slate-600">{isZh ? '图片URL' : 'Image URL'}</div>
-                            <input
-                              value={item.imageUrl ?? ''}
-                              onChange={(e) =>
-                                updateItemField(
-                                  cat.stableId,
-                                  item.stableId,
-                                  'imageUrl',
-                                  e.target.value ? e.target.value : null,
-                                )
-                              }
-                              className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
-                              placeholder="https://..."
-                            />
+                            <div className="text-xs text-slate-600">{isZh ? '图片上传' : 'Image upload'}</div>
+                            <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  e.currentTarget.value = '';
+                                  if (!file) return;
+                                  void handleImageUpload(cat.stableId, item.stableId, file);
+                                }}
+                                disabled={imageUploads[item.stableId]?.uploading}
+                                className="block w-full text-sm text-slate-700 file:mr-4 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-slate-700 hover:file:bg-slate-200 disabled:opacity-50"
+                              />
+                              {item.imageUrl ? (
+                                <a
+                                  href={item.imageUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-xs text-slate-600 underline hover:text-slate-900"
+                                >
+                                  {isZh ? '查看当前图片' : 'View current image'}
+                                </a>
+                              ) : null}
+                            </div>
+                            {imageUploads[item.stableId]?.error ? (
+                              <div className="text-xs text-rose-600">
+                                {isZh ? '上传失败：' : 'Upload failed: '}
+                                {imageUploads[item.stableId]?.error}
+                              </div>
+                            ) : null}
+                            {item.imageUrl ? (
+                              <img
+                                src={item.imageUrl}
+                                alt={isZh ? '菜品图片预览' : 'Item image preview'}
+                                className="mt-2 h-28 w-28 rounded-md border border-slate-200 object-cover"
+                              />
+                            ) : null}
                           </label>
 
                           <label className="space-y-1 md:col-span-3">
@@ -837,21 +986,25 @@ export default function AdminMenuPage() {
                                     ? tpl?.nameZh ?? tpl?.nameEn
                                     : tpl?.nameEn ?? tplStableId;
                                   const unbindKey = bindingStableId ?? tplStableId;
+                                  const editDraft = getBindingEditDraft(
+                                    item.stableId,
+                                    tplStableId,
+                                    {
+                                      minSelect: g.minSelect,
+                                      maxSelect: g.maxSelect ?? null,
+                                      sortOrder: g.sortOrder,
+                                    },
+                                  );
+                                  const bindingKey = `${item.stableId}:${tplStableId}`;
 
                                   return (
                                     <div
                                       key={bindingStableId ?? tplStableId}
-                                      className="flex items-center justify-between gap-3 rounded-md border border-slate-200 px-3 py-2"
+                                      className="flex flex-col gap-3 rounded-md border border-slate-200 px-3 py-2 md:flex-row md:items-center md:justify-between"
                                     >
                                       <div className="min-w-0">
                                         <div className="truncate text-sm font-medium">
-                                          {groupName}{' '}
-                                          <span className="ml-2 text-xs text-slate-500">
-                                            ({isZh ? '排序' : 'sort'}: {g.sortOrder} ·{' '}
-                                            {isZh ? 'min' : 'min'}: {g.minSelect} ·{' '}
-                                            {isZh ? 'max' : 'max'}:{' '}
-                                            {g.maxSelect == null ? (isZh ? '不限' : '∞') : g.maxSelect})
-                                          </span>
+                                          {groupName}
                                         </div>
                                         <div className="mt-1 text-xs text-slate-500">
                                           templateGroupStableId:{' '}
@@ -869,6 +1022,60 @@ export default function AdminMenuPage() {
                                             </span>
                                           ) : null}
                                         </div>
+                                        <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-600">
+                                          <label className="flex items-center gap-1">
+                                            <span>{isZh ? '最少' : 'Min'}</span>
+                                            <input
+                                              value={editDraft.minSelect}
+                                              onChange={(e) =>
+                                                updateBindingEditDraft(item.stableId, tplStableId, {
+                                                  minSelect: e.target.value,
+                                                }, {
+                                                  minSelect: g.minSelect,
+                                                  maxSelect: g.maxSelect ?? null,
+                                                  sortOrder: g.sortOrder,
+                                                })
+                                              }
+                                              className="w-16 rounded-md border border-slate-200 px-2 py-1 text-xs"
+                                              inputMode="numeric"
+                                            />
+                                          </label>
+                                          <label className="flex items-center gap-1">
+                                            <span>{isZh ? '最多' : 'Max'}</span>
+                                            <input
+                                              value={editDraft.maxSelect}
+                                              onChange={(e) =>
+                                                updateBindingEditDraft(item.stableId, tplStableId, {
+                                                  maxSelect: e.target.value,
+                                                }, {
+                                                  minSelect: g.minSelect,
+                                                  maxSelect: g.maxSelect ?? null,
+                                                  sortOrder: g.sortOrder,
+                                                })
+                                              }
+                                              className="w-16 rounded-md border border-slate-200 px-2 py-1 text-xs"
+                                              inputMode="numeric"
+                                              placeholder={isZh ? '不限' : '∞'}
+                                            />
+                                          </label>
+                                          <label className="flex items-center gap-1">
+                                            <span>{isZh ? '排序' : 'Sort'}</span>
+                                            <input
+                                              value={editDraft.sortOrder}
+                                              onChange={(e) =>
+                                                updateBindingEditDraft(item.stableId, tplStableId, {
+                                                  sortOrder: e.target.value,
+                                                }, {
+                                                  minSelect: g.minSelect,
+                                                  maxSelect: g.maxSelect ?? null,
+                                                  sortOrder: g.sortOrder,
+                                                })
+                                              }
+                                              className="w-16 rounded-md border border-slate-200 px-2 py-1 text-xs"
+                                              inputMode="numeric"
+                                            />
+                                          </label>
+                                        </div>
                                       </div>
 
                                       <div className="flex shrink-0 items-center gap-2">
@@ -878,6 +1085,27 @@ export default function AdminMenuPage() {
                                         >
                                           {isZh ? '查看模板' : 'View'}
                                         </Link>
+
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            void handleUpdateBinding(
+                                              item.stableId,
+                                              tplStableId,
+                                              editDraft,
+                                            )
+                                          }
+                                          disabled={bindingUpdateId === bindingKey}
+                                          className="rounded-md bg-emerald-600 px-2 py-1 text-xs text-white disabled:opacity-50"
+                                        >
+                                          {bindingUpdateId === bindingKey
+                                            ? isZh
+                                              ? '更新中…'
+                                              : 'Updating…'
+                                            : isZh
+                                              ? '更新'
+                                              : 'Update'}
+                                        </button>
 
                                         <button
                                           type="button"
