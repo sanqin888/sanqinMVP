@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PhoneVerificationStatus, Prisma } from '@prisma/client';
 import { z } from 'zod';
+import { normalizeEmail } from '../../common/utils/email';
 import { normalizePhone } from '../../common/utils/phone';
 import { generateStableId } from '../../common/utils/stable-id';
 import { LoyaltyService } from '../../loyalty/loyalty.service';
@@ -113,12 +114,6 @@ export class AdminMembersService {
     }
 
     return normalizedUser;
-  }
-
-  private normalizeEmail(raw: string | null | undefined): string | null {
-    if (raw == null) return null;
-    const trimmed = raw.trim().toLowerCase();
-    return trimmed.length > 0 ? trimmed : null;
   }
 
   private parseDateInput(value?: string): Date | undefined {
@@ -593,7 +588,7 @@ export class AdminMembersService {
     }
 
     if (body.email !== undefined) {
-      const normalizedEmail = this.normalizeEmail(body.email);
+      const normalizedEmail = normalizeEmail(body.email);
       if (normalizedEmail) {
         const existing = await this.prisma.user.findUnique({
           where: { email: normalizedEmail },

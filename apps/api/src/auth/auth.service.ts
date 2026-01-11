@@ -16,6 +16,7 @@ import {
 } from 'crypto';
 import type { TwoFactorMethod, UserRole } from '@prisma/client';
 import argon2, { argon2id } from 'argon2';
+import { normalizeEmail } from '../common/utils/email';
 import { normalizePhone } from '../common/utils/phone';
 
 @Injectable()
@@ -24,6 +25,8 @@ export class AuthService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  private normalizePhone(phone: string): string {
+    return phone.replace(/\D+/g, '');
   private normalizeEmail(email: string): string {
     return email.trim().toLowerCase();
   }
@@ -232,7 +235,7 @@ export class AuthService {
     trustedDeviceToken?: string;
   }) {
     const googleSub = params.googleSub;
-    const email = params.email ? this.normalizeEmail(params.email) : null;
+    const email = normalizeEmail(params.email);
 
     if (!googleSub || !email) {
       throw new BadRequestException('invalid oauth params');
@@ -319,7 +322,7 @@ export class AuthService {
     posDeviceKey?: string;
     trustedDeviceToken?: string;
   }) {
-    const email = this.normalizeEmail(params.email);
+    const email = normalizeEmail(params.email);
     if (!email || !params.password) {
       throw new BadRequestException('email and password are required');
     }
@@ -401,7 +404,7 @@ export class AuthService {
     loginLocation?: string;
     trustedDeviceToken?: string;
   }) {
-    const email = this.normalizeEmail(params.email);
+    const email = normalizeEmail(params.email);
     if (!email || !params.password) {
       throw new BadRequestException('email and password are required');
     }
@@ -595,7 +598,7 @@ export class AuthService {
   }
 
   async requestPasswordReset(params: { email: string }) {
-    const email = this.normalizeEmail(params.email);
+    const email = normalizeEmail(params.email);
     if (!email) {
       return { success: true };
     }
@@ -980,7 +983,7 @@ export class AuthService {
     role: UserRole;
     expiresInHours?: number;
   }) {
-    const email = this.normalizeEmail(params.email);
+    const email = normalizeEmail(params.email);
     if (!email) {
       throw new BadRequestException('email is required');
     }

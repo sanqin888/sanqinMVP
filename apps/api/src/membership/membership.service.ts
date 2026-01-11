@@ -7,6 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, type User } from '@prisma/client';
+import { normalizeEmail } from '../common/utils/email';
 import { normalizePhone } from '../common/utils/phone';
 import { generateStableId } from '../common/utils/stable-id';
 import { PrismaService } from '../prisma/prisma.service';
@@ -110,6 +111,12 @@ export class MembershipService {
     };
   }
 
+  /** 和短信验证那边保持一致：只保留数字 */
+  private normalizePhone(raw: string | undefined | null): string | null {
+    if (!raw) return null;
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    return trimmed.replace(/\D+/g, '');
   private normalizeEmail(raw: string | undefined | null): string | null {
     if (!raw) return null;
     const trimmed = raw.trim().toLowerCase();
@@ -223,10 +230,7 @@ export class MembershipService {
 
     const normalizedName =
       typeof name === 'string' && name.trim().length > 0 ? name.trim() : null;
-    const normalizedEmail =
-      typeof email === 'string' && email.trim().length > 0
-        ? email.trim()
-        : null;
+    const normalizedEmail = normalizeEmail(email);
     const emailPrefix =
       normalizedEmail && normalizedEmail.includes('@')
         ? normalizedEmail.split('@')[0].trim()
@@ -234,8 +238,7 @@ export class MembershipService {
     const initialName = emailPrefix || normalizedName;
 
     // —— 解析推荐人（通过邮箱查 User），不能是自己
-    const referrerEmail =
-      typeof referrerEmailParam === 'string' ? referrerEmailParam.trim() : '';
+    const referrerEmail = normalizeEmail(referrerEmailParam);
     let referrerId: string | undefined;
     if (referrerEmail) {
       const ref = await this.prisma.user.findUnique({
@@ -558,7 +561,7 @@ export class MembershipService {
     userStableId: string;
     referrerEmail: string;
   }) {
-    const referrerEmail = this.normalizeEmail(params.referrerEmail);
+    const referrerEmail = normalizeEmail(params.referrerEmail);
     if (!referrerEmail) {
       throw new BadRequestException('referrerEmail is required');
     }
