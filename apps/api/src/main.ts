@@ -70,7 +70,31 @@ async function bootstrap(): Promise<void> {
     fs.mkdirSync(uploadsDir, { recursive: true });
     console.log(`Created uploads directory at: ${uploadsDir}`);
   }
-  app.use('/uploads', express.static(uploadsDir));
+  const uploadAllowedExtensions = new Set([
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.gif',
+    '.webp',
+    '.svg',
+  ]);
+  app.use(
+    '/uploads',
+    (req, res, next) => {
+      const extension = path.extname(req.path).toLowerCase();
+      if (!uploadAllowedExtensions.has(extension)) {
+        res.status(404).send('Not Found');
+        return;
+      }
+      next();
+    },
+    express.static(uploadsDir, {
+      setHeaders: (res) => {
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self' data:;");
+      },
+    }),
+  );
 
   // 7. 启动监听
   const port = process.env.PORT ? Number(process.env.PORT) : 4000;
