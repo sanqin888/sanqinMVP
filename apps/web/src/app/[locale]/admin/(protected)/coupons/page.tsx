@@ -477,7 +477,7 @@ export default function AdminCouponsPage() {
               ...(templateForm.issueRuleMode === ''
                 ? {}
                 : { mode: templateForm.issueRuleMode }),
-              ...(hasLimitedValidity
+              ...(hasLimitedValidity && parsedValidityDays !== null
                 ? { expiresInDays: parsedValidityDays }
                 : {}),
             };
