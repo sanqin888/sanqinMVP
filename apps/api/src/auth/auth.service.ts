@@ -704,20 +704,7 @@ export class AuthService {
     }
 
     const now = new Date();
-    const record = await this.prisma.phoneVerification.findFirst({
-      where: {
-        phone: normalized,
-        purpose: 'PHONE_ENROLL',
-        used: false,
-        expiresAt: { gt: now },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
     const codeHash = this.hashOtp(params.code);
-    if (!record || record.codeHash !== codeHash) {
-      throw new BadRequestException('verification code is invalid or expired');
-    }
 
     const conflict = await this.prisma.user.findFirst({
       where: {
@@ -730,23 +717,40 @@ export class AuthService {
       throw new BadRequestException('phone already in use');
     }
 
-    await this.prisma.$transaction([
-      this.prisma.phoneVerification.update({
-        where: { id: record.id },
+    const verification = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.phoneVerification.updateMany({
+        where: {
+          phone: normalized,
+          purpose: 'PHONE_ENROLL',
+          used: false,
+          expiresAt: { gt: now },
+          codeHash,
+        },
         data: {
           used: true,
           status: 'VERIFIED',
           verifiedAt: now,
         },
-      }),
-      this.prisma.user.update({
+      });
+
+      if (updated.count === 0) {
+        return { verified: false };
+      }
+
+      await tx.user.update({
         where: { id: session.userId },
         data: {
           phone: normalized,
           phoneVerifiedAt: now,
         },
-      }),
-    ]);
+      });
+
+      return { verified: true };
+    });
+
+    if (!verification.verified) {
+      throw new BadRequestException('verification code is invalid or expired');
+    }
 
     return { success: true };
   }
