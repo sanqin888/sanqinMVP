@@ -88,8 +88,6 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
   const [newGroupNameEn, setNewGroupNameEn] = useState('');
   const [newGroupNameZh, setNewGroupNameZh] = useState('');
   const [newGroupSortOrder, setNewGroupSortOrder] = useState<number>(0);
-  const [newGroupDefaultMin, setNewGroupDefaultMin] = useState<number>(0);
-  const [newGroupDefaultMax, setNewGroupDefaultMax] = useState<string>('1'); // '' => null
 
   // ---- Per-group “new option” draft ----
   const [newOptionDraft, setNewOptionDraft] = useState<
@@ -195,11 +193,6 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
     const nameEn = newGroupNameEn.trim();
     if (!nameEn) return;
 
-    const defaultMax =
-      newGroupDefaultMax.trim() === ''
-        ? null
-        : Math.max(0, Math.floor(Number(newGroupDefaultMax)));
-
     try {
       await apiFetch('/admin/menu/option-group-templates', {
         method: 'POST',
@@ -208,16 +201,14 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
           nameEn,
           nameZh: newGroupNameZh.trim() || undefined,
           sortOrder: Number.isFinite(newGroupSortOrder) ? newGroupSortOrder : 0,
-          defaultMinSelect: Math.max(0, Math.floor(newGroupDefaultMin)),
-          defaultMaxSelect: defaultMax,
+          defaultMinSelect: 0,
+          defaultMaxSelect: null,
         }),
       });
 
       setNewGroupNameEn('');
       setNewGroupNameZh('');
       setNewGroupSortOrder(0);
-      setNewGroupDefaultMin(0);
-      setNewGroupDefaultMax('1');
 
       await loadTemplates();
     } catch (e) {
@@ -458,30 +449,6 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
 
           <div className="space-y-1 md:col-span-1">
             <label className="block text-[11px] font-medium text-slate-500">
-              min
-            </label>
-            <input
-              className="h-9 w-full rounded-md border px-2 text-sm tabular-nums"
-              type="number"
-              value={newGroupDefaultMin}
-              onChange={(e) => setNewGroupDefaultMin(Number(e.target.value))}
-            />
-          </div>
-
-          <div className="space-y-1 md:col-span-1">
-            <label className="block text-[11px] font-medium text-slate-500">
-              max
-            </label>
-            <input
-              className="h-9 w-full rounded-md border px-2 text-sm tabular-nums"
-              placeholder={isZh ? '空=不限' : 'blank=unlimited'}
-              value={newGroupDefaultMax}
-              onChange={(e) => setNewGroupDefaultMax(e.target.value)}
-            />
-          </div>
-
-          <div className="space-y-1 md:col-span-1">
-            <label className="block text-[11px] font-medium text-slate-500">
               {isZh ? '排序' : 'Sort'}
             </label>
             <input
@@ -501,10 +468,6 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
               {isZh ? '创建' : 'Create'}
             </button>
           </div>
-
-          <p className="md:col-span-12 text-[10px] text-slate-500">
-            {isZh ? '提示：max 留空表示不限制（无限）。' : 'Tip: Leave max blank for unlimited.'}
-          </p>
         </div>
       </div>
 
@@ -535,13 +498,7 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
                       {groupName}
                     </p>
                     <p className="mt-1 text-xs text-slate-500">
-                      {isZh ? '默认规则' : 'Defaults'}: min={g.defaultMinSelect}, max=
-                      {g.defaultMaxSelect == null
-                        ? isZh
-                          ? '不限'
-                          : 'unlimited'
-                        : g.defaultMaxSelect}
-                      , {isZh ? '排序' : 'sort'}={g.sortOrder}
+                      {isZh ? '排序' : 'sort'}={g.sortOrder}
                     </p>
                   </div>
 
@@ -609,45 +566,6 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
                             [g.templateGroupStableId]: {
                               ...prev[g.templateGroupStableId],
                               nameZh: e.target.value,
-                            },
-                          }))
-                        }
-                      />
-                    </div>
-
-                    <div className="space-y-1 md:col-span-1">
-                      <label className="block text-[11px] font-medium text-slate-500">
-                        min
-                      </label>
-                      <input
-                        className="h-9 w-full rounded-md border px-2 text-sm tabular-nums"
-                        value={groupDraft.defaultMinSelect}
-                        onChange={(e) =>
-                          setGroupEditDraft((prev) => ({
-                            ...prev,
-                            [g.templateGroupStableId]: {
-                              ...prev[g.templateGroupStableId],
-                              defaultMinSelect: e.target.value,
-                            },
-                          }))
-                        }
-                      />
-                    </div>
-
-                    <div className="space-y-1 md:col-span-1">
-                      <label className="block text-[11px] font-medium text-slate-500">
-                        max
-                      </label>
-                      <input
-                        className="h-9 w-full rounded-md border px-2 text-sm tabular-nums"
-                        placeholder={isZh ? '空=不限' : 'blank=unlimited'}
-                        value={groupDraft.defaultMaxSelect}
-                        onChange={(e) =>
-                          setGroupEditDraft((prev) => ({
-                            ...prev,
-                            [g.templateGroupStableId]: {
-                              ...prev[g.templateGroupStableId],
-                              defaultMaxSelect: e.target.value,
                             },
                           }))
                         }
