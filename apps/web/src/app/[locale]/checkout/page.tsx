@@ -294,15 +294,15 @@ export default function CheckoutPage() {
       : `/${locale}/membership/login?redirect=${encodeURIComponent(
           checkoutHref,
         )}`;
-  const memberName = session?.user?.email ?? null;
+  const memberCenterName = session?.user?.email ?? null;
   const membershipLabel =
     authStatus === "authenticated"
       ? locale === "zh"
-        ? memberName
-          ? `会员中心（${memberName}）`
+        ? memberCenterName
+          ? `会员中心（${memberCenterName}）`
           : "会员中心"
-        : memberName
-          ? `Member center (${memberName})`
+        : memberCenterName
+          ? `Member center (${memberCenterName})`
           : "Member center"
       : locale === "zh"
         ? "会员登录"
@@ -463,7 +463,9 @@ export default function CheckoutPage() {
   const [memberPhone, setMemberPhone] = useState<string | null>(null);
   const [memberPhoneVerified, setMemberPhoneVerified] = useState(false);
   const [phonePrefilled, setPhonePrefilled] = useState(false); // 只预填一次
-  const [memberName, setMemberName] = useState<string | null>(null);
+  const [memberDisplayName, setMemberDisplayName] = useState<string | null>(
+    null,
+  );
   const [namePrefilled, setNamePrefilled] = useState(false);
   const [addressPrefilled, setAddressPrefilled] = useState(false);
   const [memberDefaultAddress, setMemberDefaultAddress] =
@@ -1101,7 +1103,7 @@ export default function CheckoutPage() {
       setAvailableCoupons([]);
       setMemberPhone(null);
       setMemberPhoneVerified(false);
-      setMemberName(null);
+      setMemberDisplayName(null);
       setPhonePrefilled(false);
       setNamePrefilled(false);
       setAddressPrefilled(false);
@@ -1151,7 +1153,7 @@ export default function CheckoutPage() {
 
         setMemberPhone(data.phone ?? null);
         setMemberPhoneVerified(!!data.phoneVerified);
-        setMemberName(data.displayName ?? null);
+        setMemberDisplayName(data.displayName ?? null);
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") {
           return;
@@ -1306,17 +1308,17 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     if (namePrefilled) return;
-    if (!memberName) return;
+    if (!memberDisplayName) return;
 
     setCustomer((prev) => {
       if (prev.name && prev.name.trim().length > 0) {
         return prev;
       }
-      return { ...prev, name: memberName };
+      return { ...prev, name: memberDisplayName };
     });
 
     setNamePrefilled(true);
-  }, [memberName, namePrefilled]);
+  }, [memberDisplayName, namePrefilled]);
 
   useEffect(() => {
     if (addressPrefilled) return;
