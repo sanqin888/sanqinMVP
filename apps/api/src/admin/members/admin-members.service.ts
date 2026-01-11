@@ -896,9 +896,9 @@ export class AdminMembersService {
     const expiresInDays = this.getExpiresInDays(template.issueRule);
     const expiresAt = expiresInDays
       ? new Date(now.getTime() + expiresInDays * 24 * 60 * 60 * 1000)
-      : template.validTo ?? null;
-    const startsAt = expiresInDays ? now : template.validFrom ?? null;
-    const endsAt = expiresInDays ? expiresAt : template.validTo ?? null;
+      : (template.validTo ?? null);
+    const startsAt = expiresInDays ? now : (template.validFrom ?? null);
+    const endsAt = expiresInDays ? expiresAt : (template.validTo ?? null);
 
     const source = body.note?.trim() ? `Admin: ${body.note.trim()}` : 'Admin';
 

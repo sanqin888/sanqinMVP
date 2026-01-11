@@ -485,9 +485,9 @@ export class AdminCouponsService {
       const expiresInDays = getExpiresInDays(template.issueRule);
       const expiresAt = expiresInDays
         ? new Date(now.getTime() + expiresInDays * 24 * 60 * 60 * 1000)
-        : program.validTo ?? null;
-      const startsAt = expiresInDays ? now : program.validFrom ?? null;
-      const endsAt = expiresInDays ? expiresAt : program.validTo ?? null;
+        : (program.validTo ?? null);
+      const startsAt = expiresInDays ? now : (program.validFrom ?? null);
+      const endsAt = expiresInDays ? expiresAt : (program.validTo ?? null);
 
       for (let i = 0; i < item.quantity; i += 1) {
         const couponStableId = generateStableId();
