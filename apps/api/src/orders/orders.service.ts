@@ -2483,6 +2483,39 @@ export class OrdersService {
       throw new BadRequestException('clientRequestId required for delivery');
     }
     const humanRef = order.clientRequestId ?? order.orderStableId ?? '';
+
+// 1. 如果手机号包含星号 '*' 且订单属于某个会员，尝试去数据库查真实号码
+    if (destination.phone && destination.phone.includes('*') && order.userId) {
+      this.logger.log(`⚠️ [Uber Fix] Detected masked phone "${destination.phone}". Fetching real phone for user ${order.userId}...`);
+      
+      const user = await this.prisma.user.findUnique({
+        where: { id: order.userId },
+        select: { phone: true },
+      });
+
+      if (user && user.phone) {
+        destination.phone = user.phone;
+        this.logger.log(`✅ [Uber Fix] Restored real phone from database.`);
+      } else {
+        this.logger.warn(`❌ [Uber Fix] User has no phone in DB. Using fallback.`);
+      }
+    }
+
+    // 2. 格式标准化：确保是 E.164 格式 (+1xxxxxxxxxx)
+    if (destination.phone) {
+      const originalPhone = destination.phone;
+      const digits = originalPhone.replace(/\D/g, ''); // 提取纯数字
+
+      // 如果是 10 位 (4375556666) -> 补 +1
+      if (digits.length === 10) {
+        destination.phone = `+1${digits}`;
+      } 
+      // 如果是 11 位且以1开头 (14375556666) -> 补 +
+      else if (digits.length === 11 && digits.startsWith('1')) {
+        destination.phone = `+${digits}`;
+      }
+    }
+
     const response: UberDirectDeliveryResult =
       await this.uberDirect.createDelivery({
         orderRef: thirdPartyOrderRef, // ✅ 外发：优先 clientRequestId
