@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { normalizePhone } from '../../common/utils/phone';
 import { generateStableId } from '../../common/utils/stable-id';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
@@ -230,13 +231,6 @@ function validateIssueRule(
     );
   }
   return parsed.data as Prisma.InputJsonValue;
-}
-
-function normalizePhone(raw?: string | null): string | null {
-  if (!raw) return null;
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  return trimmed.replace(/\s+/g, '').replace(/-/g, '');
 }
 
 @Injectable()

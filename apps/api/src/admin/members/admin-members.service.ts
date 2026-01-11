@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PhoneVerificationStatus, Prisma } from '@prisma/client';
 import { z } from 'zod';
+import { normalizePhone } from '../../common/utils/phone';
 import { generateStableId } from '../../common/utils/stable-id';
 import { LoyaltyService } from '../../loyalty/loyalty.service';
 import { MembershipService } from '../../membership/membership.service';
@@ -93,19 +94,12 @@ export class AdminMembersService {
     return `${head}****${tail}`;
   }
 
-  private normalizePhone(raw: string | null | undefined): string | null {
-    if (!raw) return null;
-    const trimmed = raw.trim();
-    if (!trimmed) return null;
-    return trimmed.replace(/\s+/g, '').replace(/-/g, '');
-  }
-
   private resolveRechargePhone(params: {
     userPhone: string | null;
     inputPhone?: string;
   }): string {
-    const normalizedInput = this.normalizePhone(params.inputPhone);
-    const normalizedUser = this.normalizePhone(params.userPhone);
+    const normalizedInput = normalizePhone(params.inputPhone);
+    const normalizedUser = normalizePhone(params.userPhone);
 
     if (normalizedInput) {
       if (normalizedUser && normalizedInput !== normalizedUser) {
@@ -277,7 +271,7 @@ export class AdminMembersService {
 
     const search = params.search?.trim();
     if (search) {
-      const normalizedPhone = this.normalizePhone(search);
+      const normalizedPhone = normalizePhone(search);
       where.OR = [
         {
           userStableId: {
@@ -613,7 +607,7 @@ export class AdminMembersService {
     }
 
     if (body.phone !== undefined) {
-      const normalizedPhone = this.normalizePhone(body.phone);
+      const normalizedPhone = normalizePhone(body.phone);
       if (normalizedPhone) {
         const existing = await this.prisma.user.findUnique({
           where: { phone: normalizedPhone },
@@ -803,7 +797,7 @@ export class AdminMembersService {
       !record ||
       record.status !== PhoneVerificationStatus.VERIFIED ||
       record.purpose !== POS_RECHARGE_PURPOSE ||
-      this.normalizePhone(record.phone) !== phone
+      normalizePhone(record.phone) !== phone
     ) {
       throw new BadRequestException('verificationToken is invalid');
     }
