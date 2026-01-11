@@ -18,6 +18,9 @@ export type VerifyCodeResult = {
 @Injectable()
 export class PhoneVerificationService {
   private readonly logger = new Logger(PhoneVerificationService.name);
+  private readonly ipWindowMs = 60 * 1000;
+  private readonly ipLimit = 1;
+  private readonly ipRequests = new Map<string, number[]>();
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -60,8 +63,9 @@ export class PhoneVerificationService {
     phone: string;
     locale?: string;
     purpose?: string;
+    ip?: string;
   }): Promise<SendCodeResult> {
-    const { phone, purpose } = params;
+    const { phone, purpose, ip } = params;
     const normalized = this.normalizePhone(phone);
     if (!normalized) {
       return { ok: false, error: 'phone is empty' };
@@ -69,7 +73,29 @@ export class PhoneVerificationService {
     const resolvedPurpose = purpose?.trim() || 'generic';
 
     const now = new Date();
+    if (ip) {
+      const timestamps = this.ipRequests.get(ip) ?? [];
+      const cutoff = now.getTime() - this.ipWindowMs;
+      const recent = timestamps.filter((ts) => ts > cutoff);
+      if (recent.length >= this.ipLimit) {
+        return { ok: false, error: 'too many requests, please try later' };
+      }
+      recent.push(now.getTime());
+      this.ipRequests.set(ip, recent);
+    }
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const expiresAt = new Date(now.getTime() + 10 * 60 * 1000); // 10 分钟有效
+
+    const dailyCount = await this.prisma.phoneVerification.count({
+      where: {
+        phone: normalized,
+        createdAt: { gt: oneDayAgo },
+      },
+    });
+
+    if (dailyCount >= 5) {
+      return { ok: false, error: 'too many requests in a day' };
+    }
 
     const code = this.generateCode();
     const codeHash = this.hashCode(code);
