@@ -383,14 +383,14 @@ export class OrdersService {
     // —— 积分结算与优惠券处理
     if (next === 'paid') {
       // [优化]：使用公共方法，逻辑统一
-      await this.handleOrderPaidSideEffects(updated);
+      this.handleOrderPaidSideEffects(updated);
     } else if (next === 'refunded') {
       void this.loyalty.rollbackOnRefund(updated.id);
     }
     return updated;
   }
 
-  private async handleOrderPaidSideEffects(order: OrderWithItems) {
+  private handleOrderPaidSideEffects(order: OrderWithItems) {
     // 1. 计算用于积分奖励的有效金额（小计 - 优惠券折扣）
     const netSubtotalForRewards = Math.max(
       0,
@@ -1674,7 +1674,7 @@ export class OrdersService {
         );
 
         if (order.status === 'paid') {
-          await this.handleOrderPaidSideEffects(order);
+          this.handleOrderPaidSideEffects(order);
         }
 
         // === 派送逻辑 (DoorDash / Uber) ===
