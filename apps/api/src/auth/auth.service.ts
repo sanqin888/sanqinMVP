@@ -7,7 +7,13 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { randomBytes, timingSafeEqual, createHash, createHmac } from 'crypto';
+import {
+  randomBytes,
+  randomInt,
+  timingSafeEqual,
+  createHash,
+  createHmac,
+} from 'crypto';
 import type { TwoFactorMethod, UserRole } from '@prisma/client';
 import argon2, { argon2id } from 'argon2';
 
@@ -26,7 +32,7 @@ export class AuthService {
   }
 
   private generateCode(): string {
-    return String(Math.floor(100000 + Math.random() * 900000));
+    return randomInt(0, 1_000_000).toString().padStart(6, '0');
   }
 
   private hashDeviceKey(value: string): string {
