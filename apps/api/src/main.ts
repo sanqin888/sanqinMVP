@@ -11,12 +11,22 @@ import * as path from 'path';
 async function bootstrap(): Promise<void> {
   // 1. 禁用 NestJS 默认的 bodyParser
   // 这样我们可以手动控制解析器的顺序，避免 Webhook 的 raw body 被提前消费
+  const corsOrigin = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',')
+    : null;
+
+  if (!corsOrigin && process.env.NODE_ENV === 'production') {
+    console.error('\n❌ FATAL ERROR: CORS_ORIGIN is not defined in .env file.');
+    console.error(
+      '   Application cannot start in production without a strict CORS allowlist.\n',
+    );
+    process.exit(1);
+  }
+
   const app = await NestFactory.create(AppModule, {
     bodyParser: false, //禁用默认
     cors: {
-      origin: process.env.CORS_ORIGIN
-        ? process.env.CORS_ORIGIN.split(',')
-        : 'http://localhost:3000',
+      origin: corsOrigin ?? 'http://localhost:3000',
       credentials: true,
     },
   });
@@ -58,7 +68,38 @@ async function bootstrap(): Promise<void> {
     fs.mkdirSync(uploadsDir, { recursive: true });
     console.log(`Created uploads directory at: ${uploadsDir}`);
   }
-  app.use('/uploads', express.static(uploadsDir));
+  const uploadAllowedExtensions = new Set([
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.gif',
+    '.webp',
+    '.svg',
+  ]);
+  app.use(
+    '/uploads',
+    (
+      req: express.Request,
+      res: express.Response,
+      next: express.NextFunction,
+    ) => {
+      const extension = path.extname(req.path).toLowerCase();
+      if (!uploadAllowedExtensions.has(extension)) {
+        res.status(404).send('Not Found');
+        return;
+      }
+      next();
+    },
+    express.static(uploadsDir, {
+      setHeaders: (res: express.Response) => {
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader(
+          'Content-Security-Policy',
+          "default-src 'none'; img-src 'self' data:;",
+        );
+      },
+    }),
+  );
 
   // 7. 启动监听
   const port = process.env.PORT ? Number(process.env.PORT) : 4000;

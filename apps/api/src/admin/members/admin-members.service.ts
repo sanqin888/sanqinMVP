@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import { PhoneVerificationStatus, Prisma } from '@prisma/client';
 import { z } from 'zod';
+import { normalizeEmail } from '../../common/utils/email';
+import { normalizePhone } from '../../common/utils/phone';
 import { generateStableId } from '../../common/utils/stable-id';
 import { LoyaltyService } from '../../loyalty/loyalty.service';
 import { MembershipService } from '../../membership/membership.service';
@@ -93,19 +95,12 @@ export class AdminMembersService {
     return `${head}****${tail}`;
   }
 
-  private normalizePhone(raw: string | null | undefined): string | null {
-    if (!raw) return null;
-    const trimmed = raw.trim();
-    if (!trimmed) return null;
-    return trimmed.replace(/\s+/g, '').replace(/-/g, '');
-  }
-
   private resolveRechargePhone(params: {
     userPhone: string | null;
     inputPhone?: string;
   }): string {
-    const normalizedInput = this.normalizePhone(params.inputPhone);
-    const normalizedUser = this.normalizePhone(params.userPhone);
+    const normalizedInput = normalizePhone(params.inputPhone);
+    const normalizedUser = normalizePhone(params.userPhone);
 
     if (normalizedInput) {
       if (normalizedUser && normalizedInput !== normalizedUser) {
@@ -121,12 +116,6 @@ export class AdminMembersService {
     return normalizedUser;
   }
 
-  private normalizeEmail(raw: string | null | undefined): string | null {
-    if (raw == null) return null;
-    const trimmed = raw.trim().toLowerCase();
-    return trimmed.length > 0 ? trimmed : null;
-  }
-
   private parseDateInput(value?: string): Date | undefined {
     if (!value) return undefined;
     const parsed = new Date(value);
@@ -134,6 +123,16 @@ export class AdminMembersService {
       throw new BadRequestException(`Invalid date: ${value}`);
     }
     return parsed;
+  }
+
+  private getExpiresInDays(rule: unknown): number | null {
+    if (!rule || typeof rule !== 'object') return null;
+    const record = rule as Record<string, unknown>;
+    if (typeof record.expiresInDays !== 'number') return null;
+    if (!Number.isFinite(record.expiresInDays) || record.expiresInDays <= 0) {
+      return null;
+    }
+    return Math.floor(record.expiresInDays);
   }
 
   private parsePage(value?: string, fallback = 1): number {
@@ -277,7 +276,7 @@ export class AdminMembersService {
 
     const search = params.search?.trim();
     if (search) {
-      const normalizedPhone = this.normalizePhone(search);
+      const normalizedPhone = normalizePhone(search);
       where.OR = [
         {
           userStableId: {
@@ -599,7 +598,7 @@ export class AdminMembersService {
     }
 
     if (body.email !== undefined) {
-      const normalizedEmail = this.normalizeEmail(body.email);
+      const normalizedEmail = normalizeEmail(body.email);
       if (normalizedEmail) {
         const existing = await this.prisma.user.findUnique({
           where: { email: normalizedEmail },
@@ -613,7 +612,7 @@ export class AdminMembersService {
     }
 
     if (body.phone !== undefined) {
-      const normalizedPhone = this.normalizePhone(body.phone);
+      const normalizedPhone = normalizePhone(body.phone);
       if (normalizedPhone) {
         const existing = await this.prisma.user.findUnique({
           where: { phone: normalizedPhone },
@@ -803,7 +802,7 @@ export class AdminMembersService {
       !record ||
       record.status !== PhoneVerificationStatus.VERIFIED ||
       record.purpose !== POS_RECHARGE_PURPOSE ||
-      this.normalizePhone(record.phone) !== phone
+      normalizePhone(record.phone) !== phone
     ) {
       throw new BadRequestException('verificationToken is invalid');
     }
@@ -894,6 +893,12 @@ export class AdminMembersService {
       typeof rule.constraints?.minSubtotalCents === 'number'
         ? rule.constraints.minSubtotalCents
         : null;
+    const expiresInDays = this.getExpiresInDays(template.issueRule);
+    const expiresAt = expiresInDays
+      ? new Date(now.getTime() + expiresInDays * 24 * 60 * 60 * 1000)
+      : (template.validTo ?? null);
+    const startsAt = expiresInDays ? now : (template.validFrom ?? null);
+    const endsAt = expiresInDays ? expiresAt : (template.validTo ?? null);
 
     const source = body.note?.trim() ? `Admin: ${body.note.trim()}` : 'Admin';
 
@@ -906,14 +911,14 @@ export class AdminMembersService {
           title: template.title ?? template.name,
           discountCents: rule.amountCents ?? 0,
           minSpendCents,
-          expiresAt: template.validTo ?? null,
+          expiresAt,
           issuedAt: now,
           source,
           fromTemplateId: template.id,
           unlockedItemStableIds,
           isActive: true,
-          startsAt: template.validFrom ?? null,
-          endsAt: template.validTo ?? null,
+          startsAt,
+          endsAt,
           stackingPolicy: 'EXCLUSIVE',
         },
       });
@@ -923,7 +928,7 @@ export class AdminMembersService {
           userStableId: user.userStableId,
           couponStableId,
           status: 'AVAILABLE',
-          expiresAt: template.validTo ?? null,
+          expiresAt,
           createdAt: now,
           updatedAt: now,
         },

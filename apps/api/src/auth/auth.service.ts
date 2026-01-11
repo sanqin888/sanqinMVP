@@ -7,9 +7,17 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { randomBytes, timingSafeEqual, createHash, createHmac } from 'crypto';
+import {
+  randomBytes,
+  randomInt,
+  timingSafeEqual,
+  createHash,
+  createHmac,
+} from 'crypto';
 import type { TwoFactorMethod, UserRole } from '@prisma/client';
 import argon2, { argon2id } from 'argon2';
+import { normalizeEmail } from '../common/utils/email';
+import { normalizePhone } from '../common/utils/phone';
 
 @Injectable()
 export class AuthService {
@@ -17,16 +25,8 @@ export class AuthService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  private normalizePhone(phone: string): string {
-    return phone.replace(/\D+/g, '');
-  }
-
-  private normalizeEmail(email: string): string {
-    return email.trim().toLowerCase();
-  }
-
   private generateCode(): string {
-    return String(Math.floor(100000 + Math.random() * 900000));
+    return randomInt(0, 1_000_000).toString().padStart(6, '0');
   }
 
   private hashDeviceKey(value: string): string {
@@ -229,7 +229,7 @@ export class AuthService {
     trustedDeviceToken?: string;
   }) {
     const googleSub = params.googleSub;
-    const email = params.email ? this.normalizeEmail(params.email) : null;
+    const email = normalizeEmail(params.email);
 
     if (!googleSub || !email) {
       throw new BadRequestException('invalid oauth params');
@@ -316,7 +316,7 @@ export class AuthService {
     posDeviceKey?: string;
     trustedDeviceToken?: string;
   }) {
-    const email = this.normalizeEmail(params.email);
+    const email = normalizeEmail(params.email);
     if (!email || !params.password) {
       throw new BadRequestException('email and password are required');
     }
@@ -398,7 +398,7 @@ export class AuthService {
     loginLocation?: string;
     trustedDeviceToken?: string;
   }) {
-    const email = this.normalizeEmail(params.email);
+    const email = normalizeEmail(params.email);
     if (!email || !params.password) {
       throw new BadRequestException('email and password are required');
     }
@@ -592,7 +592,7 @@ export class AuthService {
   }
 
   async requestPasswordReset(params: { email: string }) {
-    const email = this.normalizeEmail(params.email);
+    const email = normalizeEmail(params.email);
     if (!email) {
       return { success: true };
     }
@@ -625,7 +625,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid session');
     }
 
-    const normalized = this.normalizePhone(params.phone);
+    const normalized = normalizePhone(params.phone);
     if (!normalized || normalized.length < 6) {
       throw new BadRequestException('invalid phone');
     }
@@ -698,26 +698,13 @@ export class AuthService {
       throw new UnauthorizedException('Invalid session');
     }
 
-    const normalized = this.normalizePhone(params.phone);
+    const normalized = normalizePhone(params.phone);
     if (!normalized || !params.code) {
       throw new BadRequestException('phone and code are required');
     }
 
     const now = new Date();
-    const record = await this.prisma.phoneVerification.findFirst({
-      where: {
-        phone: normalized,
-        purpose: 'PHONE_ENROLL',
-        used: false,
-        expiresAt: { gt: now },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
     const codeHash = this.hashOtp(params.code);
-    if (!record || record.codeHash !== codeHash) {
-      throw new BadRequestException('verification code is invalid or expired');
-    }
 
     const conflict = await this.prisma.user.findFirst({
       where: {
@@ -730,23 +717,40 @@ export class AuthService {
       throw new BadRequestException('phone already in use');
     }
 
-    await this.prisma.$transaction([
-      this.prisma.phoneVerification.update({
-        where: { id: record.id },
+    const verification = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.phoneVerification.updateMany({
+        where: {
+          phone: normalized,
+          purpose: 'PHONE_ENROLL',
+          used: false,
+          expiresAt: { gt: now },
+          codeHash,
+        },
         data: {
           used: true,
           status: 'VERIFIED',
           verifiedAt: now,
         },
-      }),
-      this.prisma.user.update({
+      });
+
+      if (updated.count === 0) {
+        return { verified: false };
+      }
+
+      await tx.user.update({
         where: { id: session.userId },
         data: {
           phone: normalized,
           phoneVerifiedAt: now,
         },
-      }),
-    ]);
+      });
+
+      return { verified: true };
+    });
+
+    if (!verification.verified) {
+      throw new BadRequestException('verification code is invalid or expired');
+    }
 
     return { success: true };
   }
@@ -838,7 +842,7 @@ export class AuthService {
   }
 
   async requestLoginOtp(params: { phone: string }) {
-    const normalized = this.normalizePhone(params.phone);
+    const normalized = normalizePhone(params.phone);
     if (!normalized || normalized.length < 6) {
       throw new BadRequestException('invalid phone');
     }
@@ -906,7 +910,7 @@ export class AuthService {
     code: string;
     deviceInfo?: string;
   }) {
-    const normalized = this.normalizePhone(params.phone);
+    const normalized = normalizePhone(params.phone);
     if (!normalized || !params.code) {
       throw new BadRequestException('phone and code are required');
     }
@@ -977,7 +981,7 @@ export class AuthService {
     role: UserRole;
     expiresInHours?: number;
   }) {
-    const email = this.normalizeEmail(params.email);
+    const email = normalizeEmail(params.email);
     if (!email) {
       throw new BadRequestException('email is required');
     }

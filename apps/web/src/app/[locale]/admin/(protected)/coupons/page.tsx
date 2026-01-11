@@ -46,8 +46,8 @@ type TemplateFormState = {
   titleEn: string;
   description: string;
   status: CouponTemplate['status'];
-  validFrom: string;
-  validTo: string;
+  validityType: 'LONG_TERM' | 'LIMITED';
+  validityDays: string;
   useRuleType: 'FIXED_CENTS' | 'PERCENT';
   applyTo: 'ORDER' | 'ITEM';
   itemStableIds: string[];
@@ -86,8 +86,8 @@ const emptyTemplateForm: TemplateFormState = {
   titleEn: '',
   description: '',
   status: 'DRAFT',
-  validFrom: '',
-  validTo: '',
+  validityType: 'LONG_TERM',
+  validityDays: '',
   useRuleType: 'FIXED_CENTS',
   applyTo: 'ORDER',
   itemStableIds: [],
@@ -129,6 +129,26 @@ function formatDateRange(from?: string | null, to?: string | null) {
   return `${from ? new Date(from).toLocaleDateString() : '—'} ~ ${
     to ? new Date(to).toLocaleDateString() : '—'
   }`;
+}
+
+function getExpiresInDays(rule: unknown) {
+  if (!rule || typeof rule !== 'object') return null;
+  const record = rule as Record<string, unknown>;
+  return typeof record.expiresInDays === 'number' &&
+    Number.isFinite(record.expiresInDays)
+    ? record.expiresInDays
+    : null;
+}
+
+function formatTemplateValidity(template: CouponTemplate) {
+  const expiresInDays = getExpiresInDays(template.issueRule);
+  if (typeof expiresInDays === 'number') {
+    return `限时 ${expiresInDays} 天`;
+  }
+  if (template.validFrom || template.validTo) {
+    return formatDateRange(template.validFrom, template.validTo);
+  }
+  return '长期有效';
 }
 
 function getRuleType(rule: unknown) {
@@ -322,9 +342,16 @@ export default function AdminCouponsPage() {
         : `满 ${formatCurrencyFromCents(minSubtotalCents)} 可用`;
     const applyToText =
       templateForm.applyTo === 'ITEM' ? '指定商品可用' : '全场可用';
-    const expiresText = templateForm.validTo
-      ? `有效期至 ${new Date(templateForm.validTo).toLocaleDateString()}`
-      : '长期有效';
+    const expiresInDays =
+      templateForm.validityType === 'LIMITED'
+        ? Number(templateForm.validityDays)
+        : null;
+    const expiresText =
+      templateForm.validityType === 'LIMITED'
+        ? Number.isNaN(expiresInDays) || expiresInDays === null
+          ? '限时未设置'
+          : `限时 ${expiresInDays} 天`
+        : '长期有效';
 
     if (templateForm.useRuleType === 'PERCENT') {
       const percent = Number(templateForm.percentOff);
@@ -365,7 +392,8 @@ export default function AdminCouponsPage() {
     templateForm.applyTo,
     templateForm.percentOff,
     templateForm.useRuleType,
-    templateForm.validTo,
+    templateForm.validityDays,
+    templateForm.validityType,
   ]);
   const programHint = useMemo(
     () => (programEditingId ? '更新礼包' : '创建礼包'),
@@ -429,10 +457,31 @@ export default function AdminCouponsPage() {
           throw new Error('立减金额必须为正数');
         }
       }
+      const hasLimitedValidity = templateForm.validityType === 'LIMITED';
+      const parsedValidityDays = hasLimitedValidity
+        ? Number(templateForm.validityDays)
+        : null;
+      if (hasLimitedValidity) {
+        if (
+          parsedValidityDays === null ||
+          Number.isNaN(parsedValidityDays) ||
+          !Number.isInteger(parsedValidityDays) ||
+          parsedValidityDays <= 0
+        ) {
+          throw new Error('限时天数必须为正整数');
+        }
+      }
       const issueRule =
-        templateForm.issueRuleMode === ''
+        templateForm.issueRuleMode === '' && !hasLimitedValidity
           ? null
-          : { mode: templateForm.issueRuleMode };
+          : {
+              ...(templateForm.issueRuleMode === ''
+                ? {}
+                : { mode: templateForm.issueRuleMode }),
+              ...(hasLimitedValidity && parsedValidityDays !== null
+                ? { expiresInDays: parsedValidityDays }
+                : {}),
+            };
       const payload = {
         couponStableId: templateForm.couponStableId || undefined,
         name: templateForm.name.trim(),
@@ -440,8 +489,8 @@ export default function AdminCouponsPage() {
         titleEn: templateForm.titleEn.trim() || null,
         description: templateForm.description.trim() || null,
         status: templateForm.status,
-        validFrom: templateForm.validFrom || null,
-        validTo: templateForm.validTo || null,
+        validFrom: null,
+        validTo: null,
         useRule,
         issueRule,
       };
@@ -604,6 +653,17 @@ export default function AdminCouponsPage() {
         ? ((template.issueRule as Record<string, unknown>)
             .mode as TemplateFormState['issueRuleMode']) ?? ''
         : '';
+    const expiresInDays = getExpiresInDays(template.issueRule);
+    const validityDays =
+      typeof expiresInDays === 'number' && Number.isFinite(expiresInDays)
+        ? String(expiresInDays)
+        : '';
+    const validityType =
+      typeof expiresInDays === 'number'
+        ? 'LIMITED'
+        : template.validFrom || template.validTo
+          ? 'LIMITED'
+          : 'LONG_TERM';
     setTemplateEditingId(template.couponStableId);
     setTemplateForm({
       couponStableId: template.couponStableId,
@@ -612,8 +672,21 @@ export default function AdminCouponsPage() {
       titleEn: template.titleEn ?? '',
       description: template.description ?? '',
       status: template.status,
-      validFrom: template.validFrom ? template.validFrom.slice(0, 10) : '',
-      validTo: template.validTo ? template.validTo.slice(0, 10) : '',
+      validityType,
+      validityDays:
+        validityDays ||
+        (template.validFrom && template.validTo
+          ? String(
+              Math.max(
+                1,
+                Math.ceil(
+                  (new Date(template.validTo).getTime() -
+                    new Date(template.validFrom).getTime()) /
+                    (24 * 60 * 60 * 1000),
+                ),
+              ),
+            )
+          : ''),
       ...templateRuleState,
       issueRuleMode:
         issueRuleMode === 'MANUAL' || issueRuleMode === 'AUTO'
@@ -720,7 +793,7 @@ export default function AdminCouponsPage() {
                     英文标题：{template.titleEn ?? '—'}
                   </div>
                   <div className="text-sm text-muted-foreground">
-                    有效期：{formatDateRange(template.validFrom, template.validTo)}
+                    有效期：{formatTemplateValidity(template)}
                   </div>
                   <div className="text-sm text-muted-foreground">
                     规则类型：{getRuleType(template.useRule)}
@@ -812,33 +885,46 @@ export default function AdminCouponsPage() {
                 />
               </label>
               <label className="space-y-1">
-                <span className="text-muted-foreground">有效期开始</span>
-                <input
-                  type="date"
+                <span className="text-muted-foreground">有效期类型</span>
+                <select
                   className="w-full rounded-md border px-3 py-2"
-                  value={templateForm.validFrom}
+                  value={templateForm.validityType}
                   onChange={(e) =>
                     setTemplateForm((prev) => ({
                       ...prev,
-                      validFrom: e.target.value,
+                      validityType: e.target
+                        .value as TemplateFormState['validityType'],
+                      validityDays:
+                        e.target.value === 'LIMITED'
+                          ? prev.validityDays
+                          : '',
                     }))
                   }
-                />
+                >
+                  <option value="LONG_TERM">长期</option>
+                  <option value="LIMITED">限时</option>
+                </select>
               </label>
-              <label className="space-y-1">
-                <span className="text-muted-foreground">有效期结束</span>
-                <input
-                  type="date"
-                  className="w-full rounded-md border px-3 py-2"
-                  value={templateForm.validTo}
-                  onChange={(e) =>
-                    setTemplateForm((prev) => ({
-                      ...prev,
-                      validTo: e.target.value,
-                    }))
-                  }
-                />
-              </label>
+              {templateForm.validityType === 'LIMITED' && (
+                <label className="space-y-1">
+                  <span className="text-muted-foreground">限时时长（天）</span>
+                  <input
+                    type="number"
+                    min={1}
+                    className="w-full rounded-md border px-3 py-2"
+                    value={templateForm.validityDays}
+                    onChange={(e) =>
+                      setTemplateForm((prev) => ({
+                        ...prev,
+                        validityDays: e.target.value,
+                      }))
+                    }
+                  />
+                  <div className="text-xs text-muted-foreground">
+                    选择限时后，优惠券从发放日起算，X 天后作废。
+                  </div>
+                </label>
+              )}
             </div>
             <label className="space-y-1">
               <span className="text-muted-foreground">模板 StableId（可选）</span>

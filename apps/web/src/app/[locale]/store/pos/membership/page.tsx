@@ -17,8 +17,6 @@ const COPY = {
     searchEmpty: "暂无匹配会员。",
     memberOverview: "会员概览",
     pointsBalance: "积分余额",
-    storedBalance: "储值余额",
-    storedBalanceNone: "未开通",
     tierLabel: "等级",
     marketingOptIn: "营销短信/邮件",
     marketingOptInYes: "已同意",
@@ -102,8 +100,6 @@ const COPY = {
     searchEmpty: "No matching members.",
     memberOverview: "Member overview",
     pointsBalance: "Points balance",
-    storedBalance: "Stored value",
-    storedBalanceNone: "Not enabled",
     tierLabel: "Tier",
     marketingOptIn: "Marketing email/SMS",
     marketingOptInYes: "Opted in",
@@ -654,21 +650,13 @@ export default function PosMembershipPage() {
                       {copy.tierLabel}: {memberDetail.account.tier}
                     </p>
                   </div>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <div className="rounded-2xl border border-slate-700 bg-slate-900 p-4">
-                      <p className="text-xs text-slate-400">{copy.storedBalance}</p>
-                      <p className="mt-2 text-sm font-semibold text-slate-100">
-                        {copy.storedBalanceNone}
-                      </p>
-                    </div>
-                    <div className="rounded-2xl border border-slate-700 bg-slate-900 p-4">
-                      <p className="text-xs text-slate-400">{copy.marketingOptIn}</p>
-                      <p className="mt-2 text-sm font-semibold text-slate-100">
-                        {memberDetail.marketingEmailOptIn
-                          ? copy.marketingOptInYes
-                          : copy.marketingOptInNo}
-                      </p>
-                    </div>
+                  <div className="rounded-2xl border border-slate-700 bg-slate-900 p-4">
+                    <p className="text-xs text-slate-400">{copy.marketingOptIn}</p>
+                    <p className="mt-2 text-sm font-semibold text-slate-100">
+                      {memberDetail.marketingEmailOptIn
+                        ? copy.marketingOptInYes
+                        : copy.marketingOptInNo}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -738,9 +726,7 @@ export default function PosMembershipPage() {
         <div className="space-y-6">
           <div className="rounded-3xl border border-slate-800 bg-slate-800/60 p-6">
             <h2 className="text-lg font-semibold">{copy.actionsTitle}</h2>
-            <p className="mt-1 text-xs text-slate-400">
-              {copy.pointsBalance} / {copy.storedBalance}
-            </p>
+            <p className="mt-1 text-xs text-slate-400">{copy.pointsBalance}</p>
             <div className="mt-4 space-y-3">
               <button
                 type="button"
