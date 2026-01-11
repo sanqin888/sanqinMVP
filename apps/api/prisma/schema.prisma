@@ -542,7 +542,7 @@ model PhoneVerification {
 
 model BusinessConfig {
   id                        Int      @id @default(1)
-  storeName                 String?  @unique
+  storeName                 String   @unique
   timezone                  String   @default("America/Toronto")
   isTemporarilyClosed       Boolean  @default(false)
   temporaryCloseReason      String?
