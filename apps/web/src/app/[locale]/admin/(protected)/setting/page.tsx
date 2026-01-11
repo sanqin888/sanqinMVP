@@ -41,7 +41,11 @@ type BusinessConfigDto = {
   priorityDefaultDistanceKm: number;
   storeLatitude: number | null;
   storeLongitude: number | null;
-  storeAddress: string | null;
+  storeAddressLine1: string | null;
+  storeAddressLine2: string | null;
+  storeCity: string | null;
+  storeProvince: string | null;
+  storePostalCode: string | null;
   supportPhone: string | null;
   supportEmail: string | null;
   salesTaxRate: number;
@@ -356,8 +360,30 @@ const handleTimeChange = (
     setConfig((prev) => (prev ? { ...prev, storeLongitude: num } : prev));
   };
 
-  const handleStoreAddressChange = (value: string) => {
-    setConfig((prev) => (prev ? { ...prev, storeAddress: value } : prev));
+  const handleStoreAddressLine1Change = (value: string) => {
+    setConfig((prev) =>
+      prev ? { ...prev, storeAddressLine1: value } : prev,
+    );
+  };
+
+  const handleStoreAddressLine2Change = (value: string) => {
+    setConfig((prev) =>
+      prev ? { ...prev, storeAddressLine2: value } : prev,
+    );
+  };
+
+  const handleStoreCityChange = (value: string) => {
+    setConfig((prev) => (prev ? { ...prev, storeCity: value } : prev));
+  };
+
+  const handleStoreProvinceChange = (value: string) => {
+    setConfig((prev) => (prev ? { ...prev, storeProvince: value } : prev));
+  };
+
+  const handleStorePostalCodeChange = (value: string) => {
+    setConfig((prev) =>
+      prev ? { ...prev, storePostalCode: value } : prev,
+    );
   };
 
   const handleSupportPhoneChange = (value: string) => {
@@ -580,7 +606,11 @@ await apiFetch('/admin/business/hours', {
           priorityDefaultDistanceKm: config.priorityDefaultDistanceKm,
           storeLatitude: config.storeLatitude,
           storeLongitude: config.storeLongitude,
-          storeAddress: config.storeAddress ?? null,
+          storeAddressLine1: config.storeAddressLine1 ?? null,
+          storeAddressLine2: config.storeAddressLine2 ?? null,
+          storeCity: config.storeCity ?? null,
+          storeProvince: config.storeProvince ?? null,
+          storePostalCode: config.storePostalCode ?? null,
           supportPhone: config.supportPhone ?? null,
           supportEmail: config.supportEmail ?? null,
           salesTaxRate: config.salesTaxRate,
@@ -853,7 +883,7 @@ setHolidays(
             : 'These settings drive dynamic delivery fees and service range. Changes take effect immediately.'}
         </p>
 
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <label className="flex flex-col text-xs font-medium text-slate-700">
             <span>{isZh ? '最大配送距离 (km)' : 'Max delivery distance (km)'}</span>
             <input
@@ -889,21 +919,68 @@ setHolidays(
                 : 'Fallback distance used when coords are missing.'}
             </span>
           </label>
+        </div>
 
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <label className="flex flex-col text-xs font-medium text-slate-700">
-            <span>{isZh ? '门店显示地址' : 'Store display address'}</span>
+            <span>{isZh ? '门店地址 Line 1' : 'Store address line 1'}</span>
             <input
               type="text"
-              value={config.storeAddress ?? ''}
-              onChange={(e) => handleStoreAddressChange(e.target.value)}
-              placeholder={isZh ? '例如：123 Main St.' : 'e.g. 123 Main St.'}
+              value={config.storeAddressLine1 ?? ''}
+              onChange={(e) => handleStoreAddressLine1Change(e.target.value)}
+              placeholder={
+                isZh ? '例如：123 Main St.' : 'e.g. 123 Main St.'
+              }
               className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
             />
-            <span className="mt-1 text-[11px] font-normal text-slate-500">
-              {isZh
-                ? '用于小票或页面底部展示。'
-                : 'Shown on receipts and footers.'}
-            </span>
+          </label>
+
+          <label className="flex flex-col text-xs font-medium text-slate-700">
+            <span>{isZh ? '门店地址 Line 2' : 'Store address line 2'}</span>
+            <input
+              type="text"
+              value={config.storeAddressLine2 ?? ''}
+              onChange={(e) => handleStoreAddressLine2Change(e.target.value)}
+              placeholder={
+                isZh ? '例如：Unit 2' : 'e.g. Unit 2'
+              }
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+            />
+          </label>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <label className="flex flex-col text-xs font-medium text-slate-700">
+            <span>{isZh ? '门店城市' : 'Store city'}</span>
+            <input
+              type="text"
+              value={config.storeCity ?? ''}
+              onChange={(e) => handleStoreCityChange(e.target.value)}
+              placeholder={isZh ? '例如：Toronto' : 'e.g. Toronto'}
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+            />
+          </label>
+
+          <label className="flex flex-col text-xs font-medium text-slate-700">
+            <span>{isZh ? '门店省/州' : 'Store province/state'}</span>
+            <input
+              type="text"
+              value={config.storeProvince ?? ''}
+              onChange={(e) => handleStoreProvinceChange(e.target.value)}
+              placeholder={isZh ? '例如：ON' : 'e.g. ON'}
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+            />
+          </label>
+
+          <label className="flex flex-col text-xs font-medium text-slate-700">
+            <span>{isZh ? '门店邮编' : 'Store postal code'}</span>
+            <input
+              type="text"
+              value={config.storePostalCode ?? ''}
+              onChange={(e) => handleStorePostalCodeChange(e.target.value)}
+              placeholder={isZh ? '例如：M1M 1M1' : 'e.g. M1M 1M1'}
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+            />
           </label>
         </div>
 

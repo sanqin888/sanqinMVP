@@ -30,6 +30,11 @@ export type BusinessConfigResponse = {
   priorityDefaultDistanceKm: number;
   storeLatitude: number | null;
   storeLongitude: number | null;
+  storeAddressLine1: string | null;
+  storeAddressLine2: string | null;
+  storeCity: string | null;
+  storeProvince: string | null;
+  storePostalCode: string | null;
   storeAddress: string | null;
   supportPhone: string | null;
   supportEmail: string | null;
@@ -76,6 +81,11 @@ export class AdminBusinessService {
       priorityDefaultDistanceKm: config.priorityDefaultDistanceKm,
       storeLatitude: config.storeLatitude ?? null,
       storeLongitude: config.storeLongitude ?? null,
+      storeAddressLine1: config.storeAddressLine1 ?? null,
+      storeAddressLine2: config.storeAddressLine2 ?? null,
+      storeCity: config.storeCity ?? null,
+      storeProvince: config.storeProvince ?? null,
+      storePostalCode: config.storePostalCode ?? null,
       storeAddress: config.storeAddress ?? null,
       supportPhone: config.supportPhone ?? null,
       supportEmail: config.supportEmail ?? null,
@@ -215,6 +225,11 @@ export class AdminBusinessService {
       priorityDefaultDistanceKm,
       storeLatitude,
       storeLongitude,
+      storeAddressLine1,
+      storeAddressLine2,
+      storeCity,
+      storeProvince,
+      storePostalCode,
       storeAddress,
       supportPhone,
       supportEmail,
@@ -237,6 +252,11 @@ export class AdminBusinessService {
       priorityDefaultDistanceKm?: unknown;
       storeLatitude?: unknown;
       storeLongitude?: unknown;
+      storeAddressLine1?: unknown;
+      storeAddressLine2?: unknown;
+      storeCity?: unknown;
+      storeProvince?: unknown;
+      storePostalCode?: unknown;
       storeAddress?: unknown;
       supportPhone?: unknown;
       supportEmail?: unknown;
@@ -323,6 +343,38 @@ export class AdminBusinessService {
       updates.storeLongitude = this.normalizeOptionalNumber(
         'storeLongitude',
         storeLongitude,
+      );
+    }
+
+    if (storeAddressLine1 !== undefined) {
+      updates.storeAddressLine1 = this.normalizeOptionalText(
+        'storeAddressLine1',
+        storeAddressLine1,
+      );
+    }
+
+    if (storeAddressLine2 !== undefined) {
+      updates.storeAddressLine2 = this.normalizeOptionalText(
+        'storeAddressLine2',
+        storeAddressLine2,
+      );
+    }
+
+    if (storeCity !== undefined) {
+      updates.storeCity = this.normalizeOptionalText('storeCity', storeCity);
+    }
+
+    if (storeProvince !== undefined) {
+      updates.storeProvince = this.normalizeOptionalText(
+        'storeProvince',
+        storeProvince,
+      );
+    }
+
+    if (storePostalCode !== undefined) {
+      updates.storePostalCode = this.normalizeOptionalText(
+        'storePostalCode',
+        storePostalCode,
       );
     }
 

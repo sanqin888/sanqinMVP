@@ -945,6 +945,39 @@ export default function MembershipHomePage() {
     [isZh, loadAddresses, member?.userStableId],
   );
 
+  const handleUpdateAddress = useCallback(
+    async (address: MemberAddress, setDefault: boolean) => {
+      if (!member?.userStableId) return;
+      try {
+        await apiFetch<{ success: boolean }>('/membership/addresses', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userStableId: member.userStableId,
+            addressStableId: address.addressStableId,
+            label: address.label,
+            receiver: address.receiver,
+            phone: address.phone ?? '',
+            addressLine1: address.addressLine1,
+            addressLine2: address.addressLine2 ?? '',
+            remark: address.remark ?? '',
+            city: address.city,
+            province: address.province,
+            postalCode: address.postalCode,
+            isDefault: setDefault,
+          }),
+        });
+        await loadAddresses();
+      } catch (error) {
+        console.error('Failed to update address', error);
+        setAddressesError(
+          isZh ? '地址更新失败，请稍后再试。' : 'Failed to update address.',
+        );
+      }
+    },
+    [isZh, loadAddresses, member?.userStableId],
+  );
+
   const handleDeleteAddress = useCallback(
     async (addressStableId: string) => {
       if (!member?.userStableId) return;
@@ -1289,6 +1322,7 @@ const tierProgress = (() => {
               loading={addressesLoading}
               error={addressesError}
               onAddAddress={handleAddAddress}
+              onUpdateAddress={handleUpdateAddress}
               onDeleteAddress={handleDeleteAddress}
               onSetDefault={handleSetDefault}
             />
@@ -1619,6 +1653,7 @@ function AddressesSection({
   loading,
   error,
   onAddAddress,
+  onUpdateAddress,
   onDeleteAddress,
   onSetDefault,
 }: {
@@ -1627,6 +1662,7 @@ function AddressesSection({
   loading: boolean;
   error: string | null;
   onAddAddress: (address: MemberAddress, setDefault: boolean) => void;
+  onUpdateAddress: (address: MemberAddress, setDefault: boolean) => void;
   onDeleteAddress: (addressStableId: string) => void;
   onSetDefault: (addressStableId: string) => void;
 }) {
@@ -1641,6 +1677,11 @@ function AddressesSection({
   const [postalCode, setPostalCode] = useState('');
   const [setAsDefault, setSetAsDefault] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const editingAddress = editingId
+    ? addresses.find((addr) => addr.addressStableId === editingId)
+    : null;
+  const isEditingDefault = !!editingAddress?.isDefault;
 
   const resetForm = () => {
     setLabel('');
@@ -1654,6 +1695,7 @@ function AddressesSection({
     setPostalCode('');
     setSetAsDefault(false);
     setFormError(null);
+    setEditingId(null);
   };
 
   const handleAdd = () => {
@@ -1678,7 +1720,7 @@ function AddressesSection({
 
     const fallbackLabel = isZh ? '地址' : 'Address';
     const address: MemberAddress = {
-      addressStableId: '',
+      addressStableId: editingId ?? '',
       label: label.trim() || fallbackLabel,
       receiver: trimmedReceiver,
       phone: phone.trim(),
@@ -1691,8 +1733,27 @@ function AddressesSection({
       isDefault: setAsDefault,
     };
 
-    onAddAddress(address, setAsDefault);
+    if (editingId) {
+      onUpdateAddress(address, setAsDefault);
+    } else {
+      onAddAddress(address, setAsDefault);
+    }
     resetForm();
+  };
+
+  const startEdit = (address: MemberAddress) => {
+    setLabel(address.label);
+    setReceiver(address.receiver);
+    setPhone(address.phone ?? '');
+    setAddressLine1(address.addressLine1);
+    setAddressLine2(address.addressLine2 ?? '');
+    setRemark(address.remark ?? '');
+    setCity(address.city);
+    setProvince(address.province);
+    setPostalCode(address.postalCode);
+    setSetAsDefault(!!address.isDefault);
+    setFormError(null);
+    setEditingId(address.addressStableId);
   };
 
   return (
@@ -1712,7 +1773,13 @@ function AddressesSection({
 
       <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
         <p className="mb-2 text-[11px] font-medium text-slate-500">
-          {isZh ? '新增地址' : 'Add a new address'}
+          {editingId
+            ? isZh
+              ? '编辑地址'
+              : 'Edit address'
+            : isZh
+              ? '新增地址'
+              : 'Add a new address'}
         </p>
         <div className="grid gap-2 sm:grid-cols-2">
           <input
@@ -1774,18 +1841,36 @@ function AddressesSection({
           <input
             type="checkbox"
             checked={setAsDefault}
+            disabled={isEditingDefault}
             onChange={(event) => setSetAsDefault(event.target.checked)}
           />
           {isZh ? '设为默认地址' : 'Set as default'}
         </label>
         {formError && <p className="mt-2 text-[11px] text-rose-600">{formError}</p>}
-        <button
-          type="button"
-          className="mt-3 inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-[11px] font-medium text-white hover:bg-slate-800"
-          onClick={handleAdd}
-        >
-          {isZh ? '保存地址' : 'Save address'}
-        </button>
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            type="button"
+            className="inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-[11px] font-medium text-white hover:bg-slate-800"
+            onClick={handleAdd}
+          >
+            {editingId
+              ? isZh
+                ? '保存修改'
+                : 'Save changes'
+              : isZh
+                ? '保存地址'
+                : 'Save address'}
+          </button>
+          {editingId && (
+            <button
+              type="button"
+              className="inline-flex items-center justify-center rounded-full border border-slate-300 px-4 py-2 text-[11px] font-medium text-slate-600 hover:text-slate-900"
+              onClick={resetForm}
+            >
+              {isZh ? '取消编辑' : 'Cancel'}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="space-y-3 text-xs text-slate-700">
@@ -1828,6 +1913,13 @@ function AddressesSection({
               </p>
             )}
             <div className="mt-2 flex items-center gap-3 text-[10px] text-slate-500">
+              <button
+                type="button"
+                className="hover:text-slate-900"
+                onClick={() => startEdit(addr)}
+              >
+                {isZh ? '编辑' : 'Edit'}
+              </button>
               <button
                 type="button"
                 className="hover:text-rose-600"

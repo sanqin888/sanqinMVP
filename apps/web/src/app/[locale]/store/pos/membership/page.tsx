@@ -293,6 +293,8 @@ export default function PosMembershipPage() {
   const [rechargeAmount, setRechargeAmount] = useState("");
   const [rechargeBonus, setRechargeBonus] = useState("");
   const [rechargeCode, setRechargeCode] = useState("");
+  const [rechargeVerificationToken, setRechargeVerificationToken] =
+    useState("");
   const [rechargeStep, setRechargeStep] = useState<
     "idle" | "code-sent" | "verified"
   >("idle");
@@ -410,20 +412,19 @@ export default function PosMembershipPage() {
   };
 
   const handleSendCode = async () => {
-    if (!memberDetail?.phone) return;
+    if (!selectedMemberId) return;
     setRechargeSubmitting(true);
     setRechargeError(null);
     try {
-      await apiFetch("/auth/phone/send-code", {
+      await apiFetch(`/admin/members/${selectedMemberId}/recharge/send-code`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          phone: memberDetail.phone,
           locale,
-          purpose: "membership-bind",
         }),
       });
       setRechargeStep("code-sent");
+      setRechargeVerificationToken("");
     } catch (error) {
       console.error("Failed to send code", error);
       setRechargeError(copy.errors.codeFailed);
@@ -433,22 +434,25 @@ export default function PosMembershipPage() {
   };
 
   const handleVerifyCode = async () => {
-    if (!memberDetail?.phone || !rechargeCode.trim()) return;
+    if (!selectedMemberId || !rechargeCode.trim()) return;
     setRechargeSubmitting(true);
     setRechargeError(null);
     try {
-      const res = await apiFetch<{ ok: boolean }>("/auth/phone/verify-code", {
+      const res = await apiFetch<{
+        ok: boolean;
+        verificationToken?: string;
+      }>(`/admin/members/${selectedMemberId}/recharge/verify-code`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          phone: memberDetail.phone,
           code: rechargeCode.trim(),
         }),
       });
-      if (!res.ok) {
+      if (!res.ok || !res.verificationToken) {
         setRechargeError(copy.errors.verifyFailed);
         return;
       }
+      setRechargeVerificationToken(res.verificationToken);
       setRechargeStep("verified");
     } catch (error) {
       console.error("Failed to verify code", error);
@@ -459,18 +463,28 @@ export default function PosMembershipPage() {
   };
 
   const handleConfirmRecharge = async () => {
-    if (!selectedMemberId || totalRechargePoints <= 0) return;
+    if (
+      !selectedMemberId ||
+      totalRechargePoints <= 0 ||
+      !rechargeVerificationToken
+    )
+      return;
+    const amount = Number.parseFloat(rechargeAmount) || 0;
+    const bonus = Number.parseFloat(rechargeBonus) || 0;
+    const amountCents = Math.round(amount * 100);
+    if (!Number.isFinite(amountCents) || amountCents <= 0) return;
     setRechargeSubmitting(true);
     setRechargeError(null);
     try {
-      await apiFetch(`/admin/members/${selectedMemberId}/adjust-points`, {
+      await apiFetch(`/admin/members/${selectedMemberId}/recharge`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          deltaPoints: totalRechargePoints,
-          note: `Recharge cash ${rechargeAmount || 0}, bonus ${rechargeBonus || 0}`,
+          amountCents,
+          bonusPoints: Number.isFinite(bonus) && bonus > 0 ? bonus : 0,
+          verificationToken: rechargeVerificationToken,
           idempotencyKey: crypto.randomUUID(),
         }),
       });
@@ -478,6 +492,7 @@ export default function PosMembershipPage() {
       setRechargeAmount("");
       setRechargeBonus("");
       setRechargeCode("");
+      setRechargeVerificationToken("");
       setRechargeStep("idle");
       if (selectedMemberId) {
         await refreshMemberData(selectedMemberId);
@@ -488,6 +503,16 @@ export default function PosMembershipPage() {
     } finally {
       setRechargeSubmitting(false);
     }
+  };
+
+  const closeRechargeModal = () => {
+    setRechargeOpen(false);
+    setRechargeAmount("");
+    setRechargeBonus("");
+    setRechargeCode("");
+    setRechargeVerificationToken("");
+    setRechargeStep("idle");
+    setRechargeError(null);
   };
 
   return (
@@ -653,29 +678,9 @@ export default function PosMembershipPage() {
           </div>
 
           <div className="rounded-3xl border border-slate-800 bg-slate-800/60 p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold">{copy.ledgerTitle}</h2>
-                <p className="text-xs text-slate-400">{copy.ledgerSubtitle}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setAdjustOpen(true)}
-                  disabled={!memberDetail}
-                  className="rounded-full border border-slate-600 bg-slate-900 px-4 py-2 text-xs font-semibold text-slate-100 disabled:opacity-50"
-                >
-                  {copy.manualAdjust}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRechargeOpen(true)}
-                  disabled={!memberDetail}
-                  className="rounded-full border border-emerald-400/70 bg-emerald-500/10 px-4 py-2 text-xs font-semibold text-emerald-200 disabled:opacity-50"
-                >
-                  {copy.rechargePoints}
-                </button>
-              </div>
+            <div>
+              <h2 className="text-lg font-semibold">{copy.ledgerTitle}</h2>
+              <p className="text-xs text-slate-400">{copy.ledgerSubtitle}</p>
             </div>
 
             {ledgerEntries.length === 0 ? (
@@ -747,7 +752,15 @@ export default function PosMembershipPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setRechargeOpen(true)}
+                onClick={() => {
+                  setRechargeOpen(true);
+                  setRechargeAmount("");
+                  setRechargeBonus("");
+                  setRechargeCode("");
+                  setRechargeVerificationToken("");
+                  setRechargeStep("idle");
+                  setRechargeError(null);
+                }}
                 disabled={!memberDetail}
                 className="w-full rounded-2xl border border-emerald-400/70 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-200 disabled:opacity-50"
               >
@@ -942,7 +955,7 @@ export default function PosMembershipPage() {
             <div className="mt-6 flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setRechargeOpen(false)}
+                onClick={closeRechargeModal}
                 className="rounded-full border border-slate-700 bg-slate-800 px-4 py-2 text-xs text-slate-200"
               >
                 {copy.modal.cancel}
@@ -953,6 +966,7 @@ export default function PosMembershipPage() {
                 disabled={
                   rechargeSubmitting ||
                   rechargeStep !== "verified" ||
+                  !rechargeVerificationToken ||
                   totalRechargePoints <= 0
                 }
                 className="rounded-full border border-emerald-400/70 bg-emerald-500/10 px-4 py-2 text-xs font-semibold text-emerald-200 disabled:opacity-50"

@@ -171,26 +171,6 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isZh]);
 
-  function getGroupStatusTone(g: TemplateGroupFullDto): 'good' | 'warn' | 'off' {
-    if (!g.isAvailable) return 'off';
-    if (
-      g.tempUnavailableUntil &&
-      !isEffectivelyAvailable(g.isAvailable, g.tempUnavailableUntil)
-    )
-      return 'warn';
-    return 'good';
-  }
-
-  function getGroupStatusLabel(g: TemplateGroupFullDto): string {
-    if (!g.isAvailable) return isZh ? '永久下架' : 'Off (permanent)';
-    if (
-      g.tempUnavailableUntil &&
-      !isEffectivelyAvailable(g.isAvailable, g.tempUnavailableUntil)
-    )
-      return isZh ? '今日下架' : 'Off (today)';
-    return isZh ? '上架' : 'On';
-  }
-
   function getOptionStatusTone(o: OptionChoiceDto): 'good' | 'warn' | 'off' {
     if (!o.isAvailable) return 'off';
     if (
@@ -297,25 +277,6 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
         }),
       });
       setEditingGroupStableId(null);
-      await loadTemplates();
-    } catch (e) {
-      console.error(e);
-    }
-  }
-
-  async function setTemplateGroupAvailability(
-    templateGroupStableId: string,
-    mode: AvailabilityMode,
-  ): Promise<void> {
-    try {
-      await apiFetch(
-        `/admin/menu/option-group-templates/${templateGroupStableId}/availability`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode }),
-        },
-      );
       await loadTemplates();
     } catch (e) {
       console.error(e);
@@ -455,8 +416,8 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
       title={isZh ? '选项库（全局）' : 'Option Library (Global)'}
       subtitle={
         isZh
-          ? '这里维护全局复用的选项组与选项（如：香菜、辣度、加蛋），价格/上下架对所有绑定菜品全局生效。'
-          : 'Manage reusable option groups/choices (e.g., cilantro, spiciness, add egg). Price/availability changes apply globally.'
+          ? '这里维护全局复用的选项组与选项（如：香菜、辣度、加蛋），价格及选项上下架对所有绑定菜品全局生效。'
+          : 'Manage reusable option groups/choices (e.g., cilantro, spiciness, add egg). Price and choice availability changes apply globally.'
       }
       actions={
         <button
@@ -559,8 +520,6 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
         <div className="space-y-4">
           {sortedTemplates.map((g) => {
             const groupName = isZh && g.nameZh ? g.nameZh : g.nameEn;
-            const tone = getGroupStatusTone(g);
-            const label = getGroupStatusLabel(g);
             const isEditingGroup = editingGroupStableId === g.templateGroupStableId;
             const groupDraft = groupEditDraft[g.templateGroupStableId];
 
@@ -572,12 +531,9 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
               >
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate text-base font-semibold text-slate-900">
-                        {groupName}
-                      </p>
-                      <Badge tone={tone}>{label}</Badge>
-                    </div>
+                    <p className="truncate text-base font-semibold text-slate-900">
+                      {groupName}
+                    </p>
                     <p className="mt-1 text-xs text-slate-500">
                       {isZh ? '默认规则' : 'Defaults'}: min={g.defaultMinSelect}, max=
                       {g.defaultMaxSelect == null
@@ -590,42 +546,6 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      className="rounded-full border bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                      onClick={() =>
-                        void setTemplateGroupAvailability(
-                          g.templateGroupStableId,
-                          'ON',
-                        )
-                      }
-                    >
-                      {isZh ? '上架' : 'On'}
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded-full border bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                      onClick={() =>
-                        void setTemplateGroupAvailability(
-                          g.templateGroupStableId,
-                          'TEMP_TODAY_OFF',
-                        )
-                      }
-                    >
-                      {isZh ? '今日下架' : 'Off today'}
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded-full border bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                      onClick={() =>
-                        void setTemplateGroupAvailability(
-                          g.templateGroupStableId,
-                          'PERMANENT_OFF',
-                        )
-                      }
-                    >
-                      {isZh ? '永久下架' : 'Off perm'}
-                    </button>
                     {!isEditingGroup ? (
                       <button
                         type="button"

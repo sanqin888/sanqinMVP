@@ -36,6 +36,7 @@ import { OrderSummaryDto } from './dto/order-summary.dto';
 import {
   UberDirectDropoffDetails,
   UberDirectDeliveryResult,
+  UberDirectPickupDetails,
   UberDirectService,
 } from '../deliveries/uber-direct.service';
 import {
@@ -57,6 +58,7 @@ import {
   resolveEffectivePriceCents,
   resolveStoreNow,
 } from '../common/daily-specials';
+import { LocationService } from '../location/location.service';
 import type { OrderDto, OrderItemDto } from './dto/order.dto';
 import type { PrintPosPayloadDto } from '../pos/dto/print-pos-payload.dto';
 
@@ -145,6 +147,7 @@ export class OrdersService {
     private readonly membership: MembershipService,
     private readonly uberDirect: UberDirectService,
     private readonly doorDashDrive: DoorDashDriveService,
+    private readonly locationService: LocationService,
   ) {}
 
   private toOrderDto(order: OrderWithItems): OrderDto {
@@ -1029,16 +1032,7 @@ export class OrdersService {
       for (const link of product.optionGroups ?? []) {
         if (!link.isEnabled || !link.templateGroup) continue;
         const templateGroup = link.templateGroup;
-        if (
-          (templateGroup as { deletedAt?: Date | null }).deletedAt ||
-          !isAvailableNow(
-            availabilityFromDb(
-              templateGroup.isAvailable,
-              templateGroup.tempUnavailableUntil,
-            ),
-          )
-        )
-          continue;
+        if ((templateGroup as { deletedAt?: Date | null }).deletedAt) continue;
 
         const choices = (templateGroup.options ?? []).filter((opt) => {
           const deleted = (opt as { deletedAt?: Date | null }).deletedAt;
@@ -1329,6 +1323,44 @@ export class OrdersService {
       dto.fulfillmentType === 'delivery' ||
       dto.deliveryType === DeliveryType.STANDARD ||
       dto.deliveryType === DeliveryType.PRIORITY;
+
+    if (isDelivery && dto.deliveryDestination) {
+      const dest = dto.deliveryDestination;
+      const hasCoords =
+        typeof dest.latitude === 'number' && typeof dest.longitude === 'number';
+
+      if (!hasCoords && (dest.addressLine1 || dest.addressLine2)) {
+        this.logger.log(
+          `Missing coordinates for destination, geocoding now: ${dest.addressLine1}, ${dest.city}`,
+        );
+        try {
+          // 拼接完整地址
+          const fullAddr = [
+            dest.addressLine1,
+            dest.addressLine2,
+            dest.city,
+            dest.province,
+            dest.postalCode,
+          ]
+            .filter(Boolean)
+            .join(', ');
+
+          const coords = await this.locationService.geocode(fullAddr);
+          if (coords) {
+            // 补全到 dest 对象上，后续逻辑就能用了
+            dest.latitude = coords.latitude;
+            dest.longitude = coords.longitude;
+            this.logger.log(
+              `✅ Geocoded successfully: [${coords.latitude}, ${coords.longitude}]`,
+            );
+          } else {
+            this.logger.warn('❌ Geocoding failed, Uber call might fail.');
+          }
+        } catch (err) {
+          this.logger.error(`Geocoding error: ${err}`);
+        }
+      }
+    }
 
     let deliveryFeeCustomerCents = 0;
     const deliveryMeta = dto.deliveryType
@@ -1654,7 +1686,13 @@ export class OrdersService {
               );
             }
             if (isPriority && uberEnabled) {
-              return await this.dispatchPriorityDelivery(order, dropoff);
+              const businessConfig = await this.ensureBusinessConfig();
+              const pickup = this.buildUberPickupOverride(businessConfig);
+              return await this.dispatchPriorityDelivery(
+                order,
+                dropoff,
+                pickup,
+              );
             }
           } catch (error: unknown) {
             let message = 'unknown';
@@ -2346,6 +2384,41 @@ export class OrdersService {
     };
   }
 
+  private buildUberPickupOverride(
+    config: BusinessConfig,
+  ): UberDirectPickupDetails | undefined {
+    const sanitize = (value?: string | null): string | undefined => {
+      if (typeof value !== 'string') return undefined;
+      const trimmed = value.trim();
+      return trimmed.length > 0 ? trimmed : undefined;
+    };
+
+    const pickup: UberDirectPickupDetails = {
+      businessName: sanitize(config.storeName),
+      contactName: sanitize(config.storeName),
+      phone: sanitize(config.supportPhone),
+      addressLine1: sanitize(config.storeAddressLine1),
+      addressLine2: sanitize(config.storeAddressLine2),
+      city: sanitize(config.storeCity),
+      province: sanitize(config.storeProvince),
+      postalCode: sanitize(config.storePostalCode),
+      latitude:
+        typeof config.storeLatitude === 'number'
+          ? config.storeLatitude
+          : undefined,
+      longitude:
+        typeof config.storeLongitude === 'number'
+          ? config.storeLongitude
+          : undefined,
+    };
+
+    const hasOverrides = Object.values(pickup).some(
+      (value) => value !== undefined && value !== null,
+    );
+
+    return hasOverrides ? pickup : undefined;
+  }
+
   private formatOrderLogContext(params?: {
     orderId?: string | null;
     orderStableId?: string | null;
@@ -2403,13 +2476,13 @@ export class OrdersService {
   private async dispatchPriorityDelivery(
     order: OrderWithItems,
     destination: UberDirectDropoffDetails,
+    pickup?: UberDirectPickupDetails,
   ): Promise<OrderWithItems> {
     const thirdPartyOrderRef = order.clientRequestId;
     if (!thirdPartyOrderRef) {
       throw new BadRequestException('clientRequestId required for delivery');
     }
     const humanRef = order.clientRequestId ?? order.orderStableId ?? '';
-
     const response: UberDirectDeliveryResult =
       await this.uberDirect.createDelivery({
         orderRef: thirdPartyOrderRef, // ✅ 外发：优先 clientRequestId
@@ -2422,6 +2495,7 @@ export class OrdersService {
           priceCents: item.unitPriceCents ?? undefined,
         })),
         destination,
+        pickup,
       });
 
     const updateData: Prisma.OrderUpdateInput = {

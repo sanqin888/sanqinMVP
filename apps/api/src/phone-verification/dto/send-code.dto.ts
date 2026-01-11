@@ -5,7 +5,8 @@ import { IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 export type PhoneOtpPurpose =
   | 'checkout'
   | 'membership-login'
-  | 'membership-bind';
+  | 'membership-bind'
+  | 'pos-recharge';
 
 export class SendCodeDto {
   @IsString()
@@ -17,6 +18,6 @@ export class SendCodeDto {
   locale?: string; // 可选：zh/en，方便将来做多语言短信模板
 
   @IsOptional()
-  @IsIn(['checkout', 'membership-login', 'membership-bind'])
+  @IsIn(['checkout', 'membership-login', 'membership-bind', 'pos-recharge'])
   purpose?: PhoneOtpPurpose; // 可选：用途
 }

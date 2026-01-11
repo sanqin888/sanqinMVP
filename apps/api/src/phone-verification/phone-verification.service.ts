@@ -59,12 +59,14 @@ export class PhoneVerificationService {
   async sendCode(params: {
     phone: string;
     locale?: string;
+    purpose?: string;
   }): Promise<SendCodeResult> {
-    const { phone } = params;
+    const { phone, purpose } = params;
     const normalized = this.normalizePhone(phone);
     if (!normalized) {
       return { ok: false, error: 'phone is empty' };
     }
+    const resolvedPurpose = purpose?.trim() || 'generic';
 
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 10 * 60 * 1000); // 10 分钟有效
@@ -78,6 +80,7 @@ export class PhoneVerificationService {
         codeHash,
         status: PhoneVerificationStatus.PENDING,
         expiresAt,
+        purpose: resolvedPurpose,
       },
     });
 
@@ -99,10 +102,12 @@ export class PhoneVerificationService {
   async verifyCode(params: {
     phone: string;
     code: string;
+    purpose?: string;
   }): Promise<VerifyCodeResult> {
-    const { phone, code } = params;
+    const { phone, code, purpose } = params;
     const normalized = this.normalizePhone(phone);
     const codeTrimmed = code.trim();
+    const resolvedPurpose = purpose?.trim() || 'generic';
 
     if (!normalized || !codeTrimmed) {
       return { ok: false, error: 'phone or code is empty' };
@@ -114,6 +119,8 @@ export class PhoneVerificationService {
     const latest = await this.prisma.phoneVerification.findFirst({
       where: {
         phone: normalized,
+        purpose: resolvedPurpose,
+        status: PhoneVerificationStatus.PENDING,
       },
       orderBy: { createdAt: 'desc' },
     });

@@ -19,11 +19,10 @@ type AvailabilityMode = 'ON' | 'TEMP_TODAY_OFF' | 'PERMANENT_OFF';
 const COPY = {
   zh: {
     title: 'POS 菜单管理',
-    subtitle: '仅用于门店内快速上下架：菜品、选项组与选项。',
+    subtitle: '仅用于门店内快速上下架：菜品与选项。',
     backToPos: '返回 POS 点单',
     sections: {
       items: '菜品上下架',
-      groups: '选项组上下架',
       options: '选项上下架',
       off: '已下架',
     },
@@ -47,11 +46,10 @@ const COPY = {
   },
   en: {
     title: 'POS Menu Management',
-    subtitle: 'In-store availability controls only (items, option groups, options).',
+    subtitle: 'In-store availability controls only (items, options).',
     backToPos: 'Back to POS ordering',
     sections: {
       items: 'Item availability',
-      groups: 'Option group availability',
       options: 'Option availability',
       off: 'Unavailable',
     },
@@ -89,7 +87,7 @@ type ActionLabels = {
 
 type SectionKey = keyof typeof COPY.en.sections;
 
-const SECTION_ORDER: SectionKey[] = ['items', 'groups', 'options', 'off'];
+const SECTION_ORDER: SectionKey[] = ['items', 'options', 'off'];
 
 function getAvailabilityLabel(
   isAvailable: boolean,
@@ -188,26 +186,6 @@ export default function PosMenuManagementPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode }),
       });
-      await load();
-    } finally {
-      setSavingKey(null);
-    }
-  }
-
-  async function setGroupAvailability(
-    templateGroupStableId: string,
-    mode: AvailabilityMode,
-  ) {
-    setSavingKey(`group-${templateGroupStableId}`);
-    try {
-      await apiFetch(
-        `/admin/menu/option-group-templates/${encodeURIComponent(templateGroupStableId)}/availability`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode }),
-        },
-      );
       await load();
     } finally {
       setSavingKey(null);
@@ -381,55 +359,6 @@ export default function PosMenuManagementPage() {
                         </div>
                       </div>
                     ))}
-                  </div>
-                )}
-              </section>
-            )}
-
-            {activeSection === 'groups' && (
-              <section className="rounded-3xl border border-slate-800 bg-slate-800/60 p-6">
-                <h2 className="text-lg font-semibold">{copy.sections.groups}</h2>
-                {sortedTemplates.length === 0 ? (
-                  <p className="mt-3 text-sm text-slate-400">{copy.empty}</p>
-                ) : (
-                  <div className="mt-4 space-y-3">
-                    {sortedTemplates.map((group) => {
-                      const label = getAvailabilityLabel(
-                        group.isAvailable,
-                        group.tempUnavailableUntil,
-                        copy.status,
-                      );
-                      const isSaving = savingKey === `group-${group.templateGroupStableId}`;
-                      return (
-                        <div
-                          key={group.templateGroupStableId}
-                          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-700 bg-slate-900/50 px-4 py-3"
-                        >
-                          <div>
-                            <div className="text-sm font-semibold">
-                              {safeLocale === 'zh'
-                                ? group.nameZh ?? group.nameEn
-                                : group.nameEn}
-                            </div>
-                            <span
-                              className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-xs ${statusTone(
-                                label,
-                                copy.status,
-                              )}`}
-                            >
-                              {label}
-                            </span>
-                          </div>
-                          <AvailabilityActions
-                            labels={copy.actions}
-                            disabled={isSaving}
-                            onSet={(mode) =>
-                              void setGroupAvailability(group.templateGroupStableId, mode)
-                            }
-                          />
-                        </div>
-                      );
-                    })}
                   </div>
                 )}
               </section>

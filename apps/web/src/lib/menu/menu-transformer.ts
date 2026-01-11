@@ -66,7 +66,7 @@ export function buildLocalizedEntitlementItems(
     const ingredients = ingredientsText.trim() ? ingredientsText : undefined;
 
     const optionGroups = (item.optionGroups ?? [])
-      .filter((group) => group.isEnabled && group.template.isAvailable)
+      .filter((group) => group.isEnabled)
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map((group) => {
         const options = (group.options ?? [])
@@ -107,7 +107,7 @@ export type PublicMenuCategory = LocalizedCategory;
  * - 分类名称用 DB 的 nameEn/nameZh；
  * - 菜品名称/价格/图片/配料/中英文，全部用 DB；
  * - 只展示 isActive && visibility=PUBLIC && isAvailable（永久下架不展示、当日下架保留） 的菜品；
- * - optionGroups / options 同样按“非永久下架”过滤并按 sortOrder 排序。
+ * - options 同样按“非永久下架”过滤并按 sortOrder 排序。
  */
 export function buildLocalizedMenuFromDb(
   dbMenu: Array<DbMenuCategory | DbPublicMenuCategory>,
@@ -144,7 +144,7 @@ export function buildLocalizedMenuFromDb(
         const ingredients = ingredientsText.trim() ? ingredientsText : undefined;
 
         const optionGroups = (i.optionGroups ?? [])
-          .filter((g) => g.isEnabled && g.template.isAvailable)
+          .filter((g) => g.isEnabled)
           .sort((a, b) => a.sortOrder - b.sortOrder)
           .map((g) => {
             const templateOptions =
