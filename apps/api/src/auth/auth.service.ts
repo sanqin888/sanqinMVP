@@ -25,12 +25,6 @@ export class AuthService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  private normalizePhone(phone: string): string {
-    return phone.replace(/\D+/g, '');
-  private normalizeEmail(email: string): string {
-    return email.trim().toLowerCase();
-  }
-
   private generateCode(): string {
     return randomInt(0, 1_000_000).toString().padStart(6, '0');
   }
