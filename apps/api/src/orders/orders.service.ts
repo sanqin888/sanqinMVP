@@ -1668,6 +1668,17 @@ export class OrdersService {
           })}Order created successfully (Server-side price calculated). clientRequestId=${order.clientRequestId ?? 'null'}`,
         );
 
+        if (order.status === 'paid') {
+          const subtotalForRewards = Math.max(0, order.subtotalCents ?? 0);
+
+          void this.loyalty.settleOnPaid({
+            orderId: order.id,
+            userId: order.userId ?? undefined,
+            subtotalCents: subtotalForRewards,
+            redeemValueCents: order.loyaltyRedeemCents ?? 0,
+          });
+        }
+
         // === 派送逻辑 (DoorDash / Uber) ===
         const isStandard = dto.deliveryType === DeliveryType.STANDARD;
         const isPriority = dto.deliveryType === DeliveryType.PRIORITY;
