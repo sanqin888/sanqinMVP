@@ -228,7 +228,6 @@ export class AdminBusinessService {
       storeCity,
       storeProvince,
       storePostalCode,
-      storeAddress,
       supportPhone,
       supportEmail,
       salesTaxRate,
@@ -255,7 +254,6 @@ export class AdminBusinessService {
       storeCity?: unknown;
       storeProvince?: unknown;
       storePostalCode?: unknown;
-      storeAddress?: unknown;
       supportPhone?: unknown;
       supportEmail?: unknown;
       salesTaxRate?: unknown;
