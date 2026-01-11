@@ -6,15 +6,17 @@ import { OrdersService } from './orders.service';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { DeliveriesModule } from '../deliveries/deliveries.module';
 import { MembershipModule } from '../membership/membership.module';
-import { PosDeviceModule } from '../pos/pos-device.module'; // 修改引入
+import { PosDeviceModule } from '../pos/pos-device.module';
+import { LocationModule } from '../location/location.module';
 
 @Module({
   imports: [
     PrismaModule,
-    PosDeviceModule, // ✅ 只引入设备验证模块，解耦了业务逻辑
+    PosDeviceModule,
     LoyaltyModule,
     DeliveriesModule,
     MembershipModule,
+    LocationModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService],
