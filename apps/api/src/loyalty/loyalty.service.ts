@@ -83,7 +83,7 @@ export class LoyaltyService {
       (await this.prisma.businessConfig.create({
         data: {
           id: 1,
-          storeName: null,
+          storeName: '',
           timezone: 'America/Toronto',
           isTemporarilyClosed: false,
           temporaryCloseReason: null,
@@ -106,7 +106,7 @@ export class LoyaltyService {
       (await tx.businessConfig.create({
         data: {
           id: 1,
-          storeName: null,
+          storeName: '',
           timezone: 'America/Toronto',
           isTemporarilyClosed: false,
           temporaryCloseReason: null,

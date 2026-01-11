@@ -434,7 +434,7 @@ export class OrdersService {
       (await this.prisma.businessConfig.create({
         data: {
           id: 1,
-          storeName: null,
+          storeName: '',
           timezone: 'America/Toronto',
           isTemporarilyClosed: false,
           temporaryCloseReason: null,
