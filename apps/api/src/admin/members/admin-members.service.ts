@@ -125,6 +125,16 @@ export class AdminMembersService {
     return parsed;
   }
 
+  private getExpiresInDays(rule: unknown): number | null {
+    if (!rule || typeof rule !== 'object') return null;
+    const record = rule as Record<string, unknown>;
+    if (typeof record.expiresInDays !== 'number') return null;
+    if (!Number.isFinite(record.expiresInDays) || record.expiresInDays <= 0) {
+      return null;
+    }
+    return Math.floor(record.expiresInDays);
+  }
+
   private parsePage(value?: string, fallback = 1): number {
     if (!value) return fallback;
     const parsed = Number.parseInt(value, 10);
@@ -883,6 +893,12 @@ export class AdminMembersService {
       typeof rule.constraints?.minSubtotalCents === 'number'
         ? rule.constraints.minSubtotalCents
         : null;
+    const expiresInDays = this.getExpiresInDays(template.issueRule);
+    const expiresAt = expiresInDays
+      ? new Date(now.getTime() + expiresInDays * 24 * 60 * 60 * 1000)
+      : template.validTo ?? null;
+    const startsAt = expiresInDays ? now : template.validFrom ?? null;
+    const endsAt = expiresInDays ? expiresAt : template.validTo ?? null;
 
     const source = body.note?.trim() ? `Admin: ${body.note.trim()}` : 'Admin';
 
@@ -895,14 +911,14 @@ export class AdminMembersService {
           title: template.title ?? template.name,
           discountCents: rule.amountCents ?? 0,
           minSpendCents,
-          expiresAt: template.validTo ?? null,
+          expiresAt,
           issuedAt: now,
           source,
           fromTemplateId: template.id,
           unlockedItemStableIds,
           isActive: true,
-          startsAt: template.validFrom ?? null,
-          endsAt: template.validTo ?? null,
+          startsAt,
+          endsAt,
           stackingPolicy: 'EXCLUSIVE',
         },
       });
@@ -912,7 +928,7 @@ export class AdminMembersService {
           userStableId: user.userStableId,
           couponStableId,
           status: 'AVAILABLE',
-          expiresAt: template.validTo ?? null,
+          expiresAt,
           createdAt: now,
           updatedAt: now,
         },
