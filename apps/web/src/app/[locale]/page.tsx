@@ -152,6 +152,7 @@ export default function LocalOrderPage() {
   const { addItem, totalQuantity, items: cartItems, removeItemsByStableId } =
     usePersistentCart();
   const [activeItem, setActiveItem] = useState<LocalizedMenuItem | null>(null);
+  const [selectedQuantity, setSelectedQuantity] = useState(1);
   const [selectedOptions, setSelectedOptions] = useState<
     Record<string, string[]>
   >({});
@@ -222,6 +223,7 @@ export default function LocalOrderPage() {
     setActiveItem(null);
     setSelectedOptions({});
     setSelectedChildOptions({});
+    setSelectedQuantity(1);
   };
 
   const handleOptionToggle = (
@@ -586,6 +588,7 @@ export default function LocalOrderPage() {
                             onClick={() => {
                               if (isTempUnavailable(item.tempUnavailableUntil)) return;
                               setActiveItem(item);
+                              setSelectedQuantity(1);
                               setSelectedOptions({});
                               setSelectedChildOptions({});
                             }}
@@ -659,6 +662,7 @@ export default function LocalOrderPage() {
                               if (isTempUnavailable(item.tempUnavailableUntil))
                                 return;
                               setActiveItem(item);
+                              setSelectedQuantity(1);
                               setSelectedOptions({});
                               setSelectedChildOptions({});
                             }}
@@ -739,6 +743,7 @@ export default function LocalOrderPage() {
                                   )
                                     return;
                                   setActiveItem(item);
+                                  setSelectedQuantity(1);
                                   setSelectedOptions({});
                                   setSelectedChildOptions({});
                                 }}
@@ -1069,25 +1074,63 @@ export default function LocalOrderPage() {
                     )}
                   </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!activeItem || !canAddToCart) return;
-                    addItem(activeItem.stableId, {
-                      ...selectedOptions,
-                      ...selectedChildOptions,
-                    });
-                    closeOptionsModal();
-                  }}
-                  disabled={!canAddToCart}
-                  className={`inline-flex items-center justify-center rounded-full px-6 py-2 text-sm font-semibold transition ${
-                    canAddToCart
-                      ? "bg-slate-900 text-white hover:bg-slate-700"
-                      : "cursor-not-allowed bg-slate-200 text-slate-400"
-                  }`}
-                >
-                  {strings.addToCart}
-                </button>
+                <div className="flex items-center gap-3">
+                  <div className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-1 shadow-sm">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSelectedQuantity((qty) => Math.max(1, qty - 1))
+                      }
+                      disabled={selectedQuantity <= 1}
+                      className={`flex h-8 w-8 items-center justify-center rounded-full text-lg font-semibold transition ${
+                        selectedQuantity <= 1
+                          ? "cursor-not-allowed text-slate-300"
+                          : "text-slate-600 hover:bg-slate-100"
+                      }`}
+                      aria-label={
+                        locale === "zh" ? "减少数量" : "Decrease quantity"
+                      }
+                    >
+                      −
+                    </button>
+                    <span className="min-w-[2.5rem] text-center text-sm font-semibold text-slate-700">
+                      {selectedQuantity}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedQuantity((qty) => qty + 1)}
+                      className="flex h-8 w-8 items-center justify-center rounded-full text-lg font-semibold text-slate-600 transition hover:bg-slate-100"
+                      aria-label={
+                        locale === "zh" ? "增加数量" : "Increase quantity"
+                      }
+                    >
+                      +
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!activeItem || !canAddToCart) return;
+                      addItem(
+                        activeItem.stableId,
+                        {
+                          ...selectedOptions,
+                          ...selectedChildOptions,
+                        },
+                        selectedQuantity,
+                      );
+                      closeOptionsModal();
+                    }}
+                    disabled={!canAddToCart}
+                    className={`inline-flex items-center justify-center rounded-full px-6 py-2 text-sm font-semibold transition ${
+                      canAddToCart
+                        ? "bg-slate-900 text-white hover:bg-slate-700"
+                        : "cursor-not-allowed bg-slate-200 text-slate-400"
+                    }`}
+                  >
+                    {strings.addToCart}
+                  </button>
+                </div>
               </div>
             </div>
           </div>

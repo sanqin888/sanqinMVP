@@ -163,33 +163,36 @@ export function usePersistentCart() {
   }, [isInitialized, items]);
 
   const addItem = useCallback(
-    (productStableId: string, options?: CartItemOptions) => {
-    const normalizedOptions = normalizeOptions(options);
-    const cartLineId = buildCartLineId(productStableId, normalizedOptions);
-    setItems((prev) => {
-      const existing = prev.find(
-        (entry) => entry.cartLineId === cartLineId,
-      );
-      if (existing) {
-        return prev.map((entry) =>
-          entry.cartLineId === cartLineId
-            ? { ...entry, quantity: entry.quantity + 1 }
-            : entry,
+    (productStableId: string, options?: CartItemOptions, quantity = 1) => {
+      const normalizedOptions = normalizeOptions(options);
+      const cartLineId = buildCartLineId(productStableId, normalizedOptions);
+      const safeQuantity = Number.isFinite(quantity)
+        ? Math.max(1, Math.floor(quantity))
+        : 1;
+      setItems((prev) => {
+        const existing = prev.find(
+          (entry) => entry.cartLineId === cartLineId,
         );
-      }
-      return [
-        ...prev,
-        {
-          cartLineId,
-          productStableId,
-          quantity: 1,
-          notes: "",
-          options: normalizedOptions,
-        },
-      ];
-    });
-  },
-  [],
+        if (existing) {
+          return prev.map((entry) =>
+            entry.cartLineId === cartLineId
+              ? { ...entry, quantity: entry.quantity + safeQuantity }
+              : entry,
+          );
+        }
+        return [
+          ...prev,
+          {
+            cartLineId,
+            productStableId,
+            quantity: safeQuantity,
+            notes: "",
+            options: normalizedOptions,
+          },
+        ];
+      });
+    },
+    [],
   );
 
   const updateQuantity = useCallback((cartLineId: string, delta: number) => {
