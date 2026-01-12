@@ -3,9 +3,23 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { apiFetch } from '@/lib/api/client';
-import type { OptionChoiceDto, TemplateGroupFullDto } from '@shared/menu';
+import type {
+  AdminMenuFullResponse,
+  OptionChoiceDto,
+  TemplateGroupFullDto,
+} from '@shared/menu';
 
 type AvailabilityMode = 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF';
+
+type MenuItemOption = {
+  stableId: string;
+  nameEn: string;
+  nameZh: string | null;
+  categoryNameEn: string;
+  categoryNameZh: string | null;
+  sortOrder: number;
+  categorySortOrder: number;
+};
 
 function formatMoney(cents: number): string {
   const v = (cents ?? 0) / 100;
@@ -25,6 +39,35 @@ function isEffectivelyAvailable(
   if (!isAvailable) return false;
   if (!tempUnavailableUntil) return true;
   return Date.now() >= new Date(tempUnavailableUntil).getTime();
+}
+
+function buildMenuItems(data?: AdminMenuFullResponse | null): MenuItemOption[] {
+  const result: MenuItemOption[] = [];
+  const categories = (data?.categories ?? [])
+    .filter((category) => category.isActive)
+    .slice()
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+
+  for (const category of categories) {
+    const items = (category.items ?? [])
+      .filter((item) => item.isAvailable)
+      .slice()
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+
+    for (const item of items) {
+      result.push({
+        stableId: item.stableId,
+        nameEn: item.nameEn,
+        nameZh: item.nameZh ?? null,
+        categoryNameEn: category.nameEn,
+        categoryNameZh: category.nameZh ?? null,
+        sortOrder: item.sortOrder,
+        categorySortOrder: category.sortOrder,
+      });
+    }
+  }
+
+  return result;
 }
 
 function SectionCard({
@@ -83,6 +126,7 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
   const [templates, setTemplates] = useState<TemplateGroupFullDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [menuItems, setMenuItems] = useState<MenuItemOption[]>([]);
 
   // ---- Create Template Group ----
   const [newGroupNameEn, setNewGroupNameEn] = useState('');
@@ -98,6 +142,7 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
         nameZh: string;
         priceDeltaCents: string; // cents
         sortOrder: string;
+        targetItemStableId: string;
       }
     >
   >({});
@@ -132,6 +177,7 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
         priceDeltaCents: string;
         sortOrder: string;
         childOptionStableIds: string[];
+        targetItemStableId: string;
       }
     >
   >({});
@@ -148,14 +194,42 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
       }));
   }, [templates]);
 
+  const menuItemMap = useMemo(() => {
+    return new Map(menuItems.map((item) => [item.stableId, item]));
+  }, [menuItems]);
+
+  const menuItemOptions = useMemo(() => {
+    return menuItems
+      .slice()
+      .sort((a, b) => {
+        if (a.categorySortOrder !== b.categorySortOrder) {
+          return a.categorySortOrder - b.categorySortOrder;
+        }
+        return a.sortOrder - b.sortOrder;
+      })
+      .map((item) => {
+        const labelName = isZh && item.nameZh ? item.nameZh : item.nameEn;
+        const labelCategory =
+          isZh && item.categoryNameZh
+            ? item.categoryNameZh
+            : item.categoryNameEn;
+        return {
+          value: item.stableId,
+          label: `${labelCategory} · ${labelName}`,
+        };
+      });
+  }, [isZh, menuItems]);
+
   async function loadTemplates(): Promise<void> {
     setLoading(true);
     setErr(null);
     try {
-      const res = await apiFetch<TemplateGroupFullDto[]>(
-        '/admin/menu/option-group-templates',
-      );
-      setTemplates(res ?? []);
+      const [templatesRes, menuRes] = await Promise.all([
+        apiFetch<TemplateGroupFullDto[]>('/admin/menu/option-group-templates'),
+        apiFetch<AdminMenuFullResponse>('/admin/menu/full'),
+      ]);
+      setTemplates(templatesRes ?? []);
+      setMenuItems(buildMenuItems(menuRes));
     } catch (e) {
       console.error(e);
       setErr(isZh ? '加载选项库失败，请稍后重试。' : 'Failed to load option templates.');
@@ -284,6 +358,7 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
           nameZh: '',
           priceDeltaCents: '0',
           sortOrder: '0',
+          targetItemStableId: '',
         },
       };
     });
@@ -312,6 +387,7 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
               ? priceDeltaCents
               : 0,
             sortOrder: Number.isFinite(sortOrder) ? sortOrder : 0,
+            targetItemStableId: draft.targetItemStableId.trim() || null,
           }),
         },
       );
@@ -323,6 +399,7 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
           nameZh: '',
           priceDeltaCents: '0',
           sortOrder: '0',
+          targetItemStableId: '',
         },
       }));
 
@@ -342,6 +419,7 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
         priceDeltaCents: String(opt.priceDeltaCents ?? 0),
         sortOrder: String(opt.sortOrder ?? 0),
         childOptionStableIds: opt.childOptionStableIds ?? [],
+        targetItemStableId: opt.targetItemStableId ?? '',
       },
     }));
   }
@@ -366,6 +444,7 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
           priceDeltaCents: Number.isFinite(priceDeltaCents) ? priceDeltaCents : 0,
           sortOrder: Number.isFinite(sortOrder) ? sortOrder : 0,
           childOptionStableIds: draft.childOptionStableIds,
+          targetItemStableId: draft.targetItemStableId.trim() || null,
         }),
       });
 
@@ -607,6 +686,49 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
 
                   {newOptionDraft[g.templateGroupStableId] ? (
                     <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-12">
+                      <div className="space-y-1 md:col-span-12">
+                        <label className="block text-[11px] font-medium text-slate-500">
+                          {isZh ? '关联现有菜品（可选）' : 'Link existing item (optional)'}
+                        </label>
+                        <select
+                          className="h-9 w-full rounded-md border px-3 text-sm"
+                          value={
+                            newOptionDraft[g.templateGroupStableId]?.targetItemStableId ?? ''
+                          }
+                          onChange={(e) => {
+                            const targetItemStableId = e.target.value;
+                            const linkedItem = menuItemMap.get(targetItemStableId);
+                            setNewOptionDraft((prev) => {
+                              const draft = prev[g.templateGroupStableId];
+                              if (!draft) return prev;
+                              return {
+                                ...prev,
+                                [g.templateGroupStableId]: {
+                                  ...draft,
+                                  targetItemStableId,
+                                  nameEn: linkedItem?.nameEn ?? draft.nameEn,
+                                  nameZh: linkedItem?.nameZh ?? draft.nameZh,
+                                },
+                              };
+                            });
+                          }}
+                        >
+                          <option value="">
+                            {isZh ? '不关联' : 'No linked item'}
+                          </option>
+                          {menuItemOptions.map((item) => (
+                            <option key={item.value} value={item.value}>
+                              {item.label}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-[11px] text-slate-400">
+                          {isZh
+                            ? '选择后会自动填充中英文名，可手动修改。'
+                            : 'Selecting an item auto-fills names; you can edit them.'}
+                        </p>
+                      </div>
+
                       <div className="space-y-1 md:col-span-4">
                         <label className="block text-[11px] font-medium text-slate-500">
                           {isZh ? '选项名（英文）*' : 'Choice name (EN)*'}
@@ -715,6 +837,9 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
                       const availableChildOptions = g.options.filter(
                         (child) => child.optionStableId !== opt.optionStableId,
                       );
+                      const linkedItem = opt.targetItemStableId
+                        ? menuItemMap.get(opt.targetItemStableId)
+                        : null;
 
                       return (
                         <div key={opt.optionStableId} className="rounded-lg border bg-slate-50 p-3">
@@ -730,6 +855,16 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
                                 {isZh ? '加价' : 'Delta'}: {formatMoney(opt.priceDeltaCents)} ·{' '}
                                 {isZh ? '排序' : 'sort'}={opt.sortOrder}
                               </p>
+                              {opt.targetItemStableId ? (
+                                <p className="mt-1 text-xs text-slate-500">
+                                  {isZh ? '关联菜品' : 'Linked item'}:{' '}
+                                  {linkedItem
+                                    ? isZh && linkedItem.nameZh
+                                      ? linkedItem.nameZh
+                                      : linkedItem.nameEn
+                                    : opt.targetItemStableId}
+                                </p>
+                              ) : null}
                             </div>
 
                             <div className="flex flex-wrap gap-2">
@@ -789,6 +924,43 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
 
                           {isEditing && draft ? (
                             <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-12">
+                              <div className="space-y-1 md:col-span-12">
+                                <label className="block text-[11px] font-medium text-slate-500">
+                                  {isZh ? '关联现有菜品（可选）' : 'Link existing item (optional)'}
+                                </label>
+                                <select
+                                  className="h-9 w-full rounded-md border px-3 text-sm"
+                                  value={draft.targetItemStableId}
+                                  onChange={(e) => {
+                                    const targetItemStableId = e.target.value;
+                                    const linkedItem = menuItemMap.get(targetItemStableId);
+                                    setOptionEditDraft((prev) => ({
+                                      ...prev,
+                                      [opt.optionStableId]: {
+                                        ...prev[opt.optionStableId],
+                                        targetItemStableId,
+                                        nameEn: linkedItem?.nameEn ?? draft.nameEn,
+                                        nameZh: linkedItem?.nameZh ?? draft.nameZh,
+                                      },
+                                    }));
+                                  }}
+                                >
+                                  <option value="">
+                                    {isZh ? '不关联' : 'No linked item'}
+                                  </option>
+                                  {menuItemOptions.map((item) => (
+                                    <option key={item.value} value={item.value}>
+                                      {item.label}
+                                    </option>
+                                  ))}
+                                </select>
+                                <p className="text-[11px] text-slate-400">
+                                  {isZh
+                                    ? '选择后会自动填充中英文名，可手动修改。'
+                                    : 'Selecting an item auto-fills names; you can edit them.'}
+                                </p>
+                              </div>
+
                               <div className="space-y-1 md:col-span-4">
                                 <label className="block text-[11px] font-medium text-slate-500">
                                   {isZh ? '英文名 *' : 'Name EN *'}
