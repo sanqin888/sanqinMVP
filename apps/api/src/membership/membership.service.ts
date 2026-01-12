@@ -12,6 +12,7 @@ import { normalizePhone } from '../common/utils/phone';
 import { generateStableId } from '../common/utils/stable-id';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
+import { CouponProgramTriggerService } from '../coupons/coupon-program-trigger.service';
 
 const MICRO_PER_POINT = 1_000_000;
 const createStableId = (prefix: string): string => {
@@ -26,6 +27,7 @@ export class MembershipService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly loyalty: LoyaltyService,
+    private readonly couponTriggerService: CouponProgramTriggerService,
   ) {}
 
   private maskPhone(phone: string): string {
@@ -181,7 +183,37 @@ export class MembershipService {
       }),
     ]);
 
+    if (!user.phoneVerifiedAt && updated.phoneVerifiedAt) {
+      await this.triggerPhoneVerificationPrograms(updated);
+    }
+
     return updated;
+  }
+
+  private async triggerPhoneVerificationPrograms(user: User) {
+    try {
+      await this.couponTriggerService.issueProgramsForUser(
+        'SIGNUP_COMPLETED',
+        user,
+      );
+
+      if (user.referredByUserId) {
+        const referrer = await this.prisma.user.findUnique({
+          where: { id: user.referredByUserId },
+        });
+        if (referrer) {
+          await this.couponTriggerService.issueProgramsForUser(
+            'REFERRAL_QUALIFIED',
+            referrer,
+          );
+        }
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to issue phone verification programs for userStableId=${user.userStableId}`,
+        (error as Error).stack,
+      );
+    }
   }
 
   /**
@@ -1173,6 +1205,14 @@ export class MembershipService {
     const now = new Date();
 
     try {
+      const existing = await this.prisma.user.findUnique({
+        where: { userStableId },
+        select: { id: true, marketingEmailOptIn: true },
+      });
+      if (!existing) {
+        throw new NotFoundException('user not found');
+      }
+
       const user = await this.prisma.user.update({
         where: { userStableId },
         data: {
@@ -1180,6 +1220,7 @@ export class MembershipService {
           marketingEmailOptInAt: marketingEmailOptIn ? now : null,
         },
         select: {
+          id: true,
           userStableId: true,
           email: true,
           marketingEmailOptIn: true,
@@ -1187,13 +1228,22 @@ export class MembershipService {
         },
       });
 
-      return user;
+      if (!existing.marketingEmailOptIn && marketingEmailOptIn) {
+        await this.triggerMarketingOptInPrograms(user);
+      }
+
+      const { id: _, ...response } = user;
+      return response;
     } catch (err) {
       if (
         err instanceof Prisma.PrismaClientKnownRequestError &&
         err.code === 'P2025'
       ) {
         throw new NotFoundException('user not found');
+      }
+
+      if (err instanceof NotFoundException) {
+        throw err;
       }
 
       this.logger.error(
@@ -1203,6 +1253,28 @@ export class MembershipService {
 
       throw new InternalServerErrorException(
         'Failed to update marketing consent',
+      );
+    }
+  }
+
+  private async triggerMarketingOptInPrograms(user: {
+    id: string;
+    userStableId: string;
+  }) {
+    try {
+      const fullUser = await this.prisma.user.findUnique({
+        where: { id: user.id },
+      });
+      if (!fullUser) return;
+
+      await this.couponTriggerService.issueProgramsForUser(
+        'MARKETING_OPT_IN',
+        fullUser,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to issue marketing opt-in programs for userStableId=${user.userStableId}`,
+        (error as Error).stack,
       );
     }
   }

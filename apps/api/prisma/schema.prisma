@@ -131,6 +131,9 @@ enum CouponProgramStatus {
 enum CouponProgramTriggerType {
   SIGNUP_COMPLETED
   REFERRAL_QUALIFIED
+  MARKETING_OPT_IN
+  BIRTHDAY_MONTH
+  TIER_UPGRADE
 }
 
 enum CouponDistributionType {

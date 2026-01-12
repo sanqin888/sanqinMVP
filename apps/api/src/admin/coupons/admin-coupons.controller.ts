@@ -36,7 +36,13 @@ type CouponProgramPayload = {
     | 'MANUAL_CLAIM'
     | 'PROMO_CODE'
     | 'ADMIN_PUSH';
-  triggerType?: 'SIGNUP_COMPLETED' | 'REFERRAL_QUALIFIED' | null;
+  triggerType?:
+    | 'SIGNUP_COMPLETED'
+    | 'REFERRAL_QUALIFIED'
+    | 'MARKETING_OPT_IN'
+    | 'BIRTHDAY_MONTH'
+    | 'TIER_UPGRADE'
+    | null;
   validFrom?: string | null;
   validTo?: string | null;
   promoCode?: string | null;
