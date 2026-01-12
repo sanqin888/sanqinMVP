@@ -234,14 +234,18 @@ export default function AdminMembersPage() {
       try {
         const [detail, ledger, orders] = await Promise.all([
           apiFetch<MemberDetail>(`/admin/members/${selectedMemberId}`),
-          apiFetch<LedgerEntry[]>(`/admin/members/${selectedMemberId}/loyalty-ledger?limit=50`),
-          apiFetch<OrderEntry[]>(`/admin/members/${selectedMemberId}/orders?limit=50`),
+          apiFetch<LedgerEntry[] | { entries: LedgerEntry[] }>(
+            `/admin/members/${selectedMemberId}/loyalty-ledger?limit=50`,
+          ),
+          apiFetch<OrderEntry[] | { orders: OrderEntry[] }>(`/admin/members/${selectedMemberId}/orders?limit=50`),
         ]);
 
         if (cancelled) return;
+        const normalizedLedger = Array.isArray(ledger) ? ledger : ledger?.entries ?? [];
+        const normalizedOrders = Array.isArray(orders) ? orders : orders?.orders ?? [];
         setMemberDetail(detail);
-        setMemberLedger(ledger ?? []);
-        setMemberOrders(orders ?? []);
+        setMemberLedger(normalizedLedger);
+        setMemberOrders(normalizedOrders);
       } catch (error) {
         console.error(error);
         if (!cancelled) {
