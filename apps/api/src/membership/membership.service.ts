@@ -1232,7 +1232,8 @@ export class MembershipService {
         await this.triggerMarketingOptInPrograms(user);
       }
 
-      const { id: _, ...response } = user;
+      const { id, ...response } = user;
+      void id;
       return response;
     } catch (err) {
       if (
