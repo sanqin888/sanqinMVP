@@ -211,6 +211,8 @@ export class PosSummaryService {
           discountCents: 0,
           refundCents: 0,
           netCents: 0,
+          deliveryFeeCents: 0,
+          deliveryCostCents: 0,
         },
         breakdownByPayment: [
           { payment: 'cash', count: 0, amountCents: 0 },
@@ -256,26 +258,6 @@ export class PosSummaryService {
     let netCents = 0;
     let totalDeliveryFeeCents = 0;
     let totalDeliveryCostCents = 0;
-
-    // Breakdown maps
-    const paymentBuckets: PosPaymentBucket[] = [
-      'cash',
-      'card',
-      'online',
-      'unknown',
-    ];
-    const payMap = new Map(
-      paymentBuckets.map((p) => [p, { count: 0, amountCents: 0 }]),
-    );
-
-    const fulfillBuckets: Array<'pickup' | 'dine_in' | 'delivery'> = [
-      'pickup',
-      'dine_in',
-      'delivery',
-    ];
-    const fMap = new Map(
-      fulfillBuckets.map((f) => [f, { count: 0, amountCents: 0 }]),
-    );
 
     for (const o of orders) {
       const amend = amendMap.get(o.id) ?? {
@@ -373,12 +355,12 @@ export class PosSummaryService {
     for (const r of rows) {
       const p = payMap.get(r.payment) ?? payMap.get('unknown')!;
       p.count += 1;
-      p.amountCents += salesCentsForOrder;
+      p.amountCents += r.netCents;
 
       const f = fMap.get(r.fulfillmentType);
       if (f) {
         f.count += 1;
-        f.amountCents += salesCentsForOrder;
+        f.amountCents += r.netCents;
       }
     }
 
