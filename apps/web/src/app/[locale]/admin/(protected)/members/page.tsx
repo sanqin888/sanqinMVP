@@ -2,7 +2,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import type { Locale } from "@/lib/i18n/locales";
 import { apiFetch } from "@/lib/api/client";
 
@@ -58,6 +59,7 @@ type LedgerEntry = {
 
 type OrderEntry = {
   orderStableId: string;
+  clientRequestId: string | null;
   createdAt: string;
   status: string;
   totalCents: number;
@@ -160,6 +162,7 @@ function isWithinDays(value: string, days: number): boolean {
 export default function AdminMembersPage() {
   const { locale } = useParams<{ locale: Locale }>();
   const isZh = locale === "zh";
+  const router = useRouter();
 
   const [keyword, setKeyword] = useState("");
   const [tierFilter, setTierFilter] = useState<"ALL" | TierKey>("ALL");
@@ -574,11 +577,11 @@ export default function AdminMembersPage() {
                 </div>
               </div>
 
-              <div className="grid gap-6 md:grid-cols-2">
+              <div className="space-y-6">
                 <div>
                   <h4 className="text-sm font-semibold">{isZh ? "历史消费记录" : "Order history"}</h4>
-                  <div className="mt-2 overflow-hidden rounded-md border border-slate-200">
-                    <table className="w-full text-xs">
+                  <div className="mt-2 overflow-x-auto rounded-md border border-slate-200">
+                    <table className="min-w-[560px] w-full text-xs">
                       <thead className="bg-slate-50 text-left text-slate-400">
                         <tr>
                           <th className="px-3 py-2">{isZh ? "订单号" : "Order"}</th>
@@ -593,9 +596,22 @@ export default function AdminMembersPage() {
                           const statusLabel = orderStatusLabels[order.status]?.[locale] ?? order.status;
                           const fulfillment =
                             fulfillmentLabels[order.fulfillmentType ?? ""]?.[locale] ?? order.fulfillmentType ?? "-";
+                          const displayOrderNumber = order.clientRequestId ?? order.orderStableId;
                           return (
-                            <tr key={order.orderStableId} className="border-t border-slate-100">
-                              <td className="px-3 py-2 font-medium text-slate-700">{order.orderStableId}</td>
+                            <tr
+                              key={order.orderStableId}
+                              className="cursor-pointer border-t border-slate-100 transition hover:bg-slate-50"
+                              onClick={() => router.push(`/${locale}/order/${order.orderStableId}`)}
+                            >
+                              <td className="px-3 py-2 font-medium text-slate-700">
+                                <Link
+                                  href={`/${locale}/order/${order.orderStableId}`}
+                                  className="underline decoration-dashed underline-offset-2 hover:text-slate-900"
+                                  onClick={(event) => event.stopPropagation()}
+                                >
+                                  {displayOrderNumber}
+                                </Link>
+                              </td>
                               <td className="px-3 py-2 text-slate-500">{formatDate(order.createdAt)}</td>
                               <td className="px-3 py-2 text-slate-500">{statusLabel}</td>
                               <td className="px-3 py-2 text-slate-700">
@@ -618,8 +634,8 @@ export default function AdminMembersPage() {
                 </div>
                 <div>
                   <h4 className="text-sm font-semibold">{isZh ? "积分记录" : "Points ledger"}</h4>
-                  <div className="mt-2 overflow-hidden rounded-md border border-slate-200">
-                    <table className="w-full text-xs">
+                  <div className="mt-2 overflow-x-auto rounded-md border border-slate-200">
+                    <table className="min-w-[520px] w-full text-xs">
                       <thead className="bg-slate-50 text-left text-slate-400">
                         <tr>
                           <th className="px-3 py-2">{isZh ? "时间" : "Time"}</th>

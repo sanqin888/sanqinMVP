@@ -466,6 +466,9 @@ export default function CheckoutPage() {
   const [memberDisplayName, setMemberDisplayName] = useState<string | null>(
     null,
   );
+  const [memberUserStableId, setMemberUserStableId] = useState<string | null>(
+    null,
+  );
   const [namePrefilled, setNamePrefilled] = useState(false);
   const [addressPrefilled, setAddressPrefilled] = useState(false);
   const [memberDefaultAddress, setMemberDefaultAddress] =
@@ -1104,6 +1107,7 @@ export default function CheckoutPage() {
       setMemberPhone(null);
       setMemberPhoneVerified(false);
       setMemberDisplayName(null);
+      setMemberUserStableId(null);
       setPhonePrefilled(false);
       setNamePrefilled(false);
       setAddressPrefilled(false);
@@ -1116,6 +1120,7 @@ export default function CheckoutPage() {
       setAvailableCoupons([]);
       setMemberPhone(null);
       setMemberPhoneVerified(false);
+      setMemberUserStableId(null);
       return;
     }
 
@@ -1151,6 +1156,7 @@ export default function CheckoutPage() {
           setLoyaltyInfo(null);
         }
 
+        setMemberUserStableId(stableId || null);
         setMemberPhone(data.phone ?? null);
         setMemberPhoneVerified(!!data.phoneVerified);
         setMemberDisplayName(data.displayName ?? null);
@@ -1166,6 +1172,7 @@ export default function CheckoutPage() {
         );
         setLoyaltyInfo(null);
         setMemberPhone(null);
+        setMemberUserStableId(null);
       } finally {
         setLoyaltyLoading(false);
       }
@@ -1178,7 +1185,7 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     if (authStatus !== "authenticated") return;
-    const userStableId = session?.user?.userStableId;
+    const userStableId = memberUserStableId ?? session?.user?.userStableId;
     if (!userStableId) return;
 
     const controller = new AbortController();
@@ -1217,7 +1224,7 @@ export default function CheckoutPage() {
     void loadAddresses();
 
     return () => controller.abort();
-  }, [authStatus, session]);
+  }, [authStatus, memberUserStableId, session]);
 
   // 加载优惠券列表
   useEffect(() => {

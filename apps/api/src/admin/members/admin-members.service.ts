@@ -498,6 +498,7 @@ export class AdminMembersService {
       take: limit,
       select: {
         orderStableId: true,
+        clientRequestId: true,
         createdAt: true,
         status: true,
         totalCents: true,
@@ -509,6 +510,7 @@ export class AdminMembersService {
     return {
       orders: orders.map((order) => ({
         orderStableId: order.orderStableId,
+        clientRequestId: order.clientRequestId ?? null,
         createdAt: order.createdAt.toISOString(),
         status: order.status,
         totalCents: order.totalCents,
