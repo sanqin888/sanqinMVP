@@ -408,8 +408,7 @@ function buildKitchenReceiptEscPos(params) {
 
 // ✅ 构建汇总小票函数
 function buildSummaryReceiptEscPos(params) {
-  const { timeRange, totals, breakdownType, breakdownItems } = params;
-
+  const { date, totals, breakdownType, breakdownItems } = params;
   const chunks = [];
 
   // --- 1. 标题 (居中, 倍高) ---
@@ -425,10 +424,10 @@ function buildSummaryReceiptEscPos(params) {
   chunks.push(cmd(ESC, 0x61, 0x00)); // Left align
   chunks.push(encLine(makeLine("-")));
 
-  // --- 2. 时间范围 ---
-  if (timeRange) {
-    chunks.push(encLine(`开始: ${timeRange.start || '--'}`));
-    chunks.push(encLine(`结束: ${timeRange.end || '--'}`));
+// --- 2. 日期 (修改为单行显示) ---
+  // 例如：日期：2023/10/27
+  if (date) {
+    chunks.push(encLine(`日期: ${date}`));
   }
   chunks.push(encLine(makeLine("-")));
 
