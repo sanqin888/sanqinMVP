@@ -32,9 +32,10 @@ export class CouponProgramSchedulerService
     nextMidnight.setHours(0, 0, 0, 0);
 
     const delay = Math.max(nextMidnight.getTime() - now.getTime(), 0);
-    this.timeoutId = setTimeout(async () => {
-      await this.runDailyJobs();
-      this.scheduleNextRun();
+    this.timeoutId = setTimeout(() => {
+      void this.runDailyJobs().then(() => {
+        this.scheduleNextRun();
+      });
     }, delay);
   }
 
