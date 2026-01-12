@@ -151,6 +151,7 @@ export class PublicMenuService {
                   nameEn: opt.nameEn,
                   nameZh: opt.nameZh ?? null,
                   priceDeltaCents: opt.priceDeltaCents,
+                  targetItemStableId: opt.targetItemStableId ?? null,
                   isAvailable: opt.isAvailable,
                   tempUnavailableUntil: toIso(opt.tempUnavailableUntil),
                   sortOrder: opt.sortOrder,

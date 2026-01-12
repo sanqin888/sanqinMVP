@@ -550,6 +550,7 @@ export class AdminMenuService {
           nameEn: o.nameEn,
           nameZh: o.nameZh ?? null,
           priceDeltaCents: o.priceDeltaCents,
+          targetItemStableId: o.targetItemStableId ?? null,
 
           isAvailable: o.isAvailable,
           tempUnavailableUntil: toIso(o.tempUnavailableUntil),
@@ -665,6 +666,7 @@ export class AdminMenuService {
       nameZh?: string;
       priceDeltaCents?: number;
       sortOrder?: number;
+      targetItemStableId?: string | null;
     },
   ) {
     const groupStableId = templateGroupStableId.trim();
@@ -679,6 +681,18 @@ export class AdminMenuService {
     const nameEn = (body.nameEn ?? '').trim();
     if (!nameEn) throw new BadRequestException('nameEn is required');
 
+    const targetItemStableId = (body.targetItemStableId ?? '').trim();
+    if (targetItemStableId) {
+      const exists = await this.prisma.menuItem.findFirst({
+        where: { stableId: targetItemStableId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!exists)
+        throw new BadRequestException(
+          `Invalid targetItemStableId: ${targetItemStableId}`,
+        );
+    }
+
     const created = await this.prisma.menuOptionTemplateChoice.create({
       data: {
         templateGroupId: group.id,
@@ -690,6 +704,7 @@ export class AdminMenuService {
         sortOrder: Number.isFinite(body.sortOrder)
           ? Math.floor(body.sortOrder as number)
           : 0,
+        targetItemStableId: targetItemStableId || null,
         deletedAt: null,
       },
       select: { stableId: true },
@@ -706,6 +721,7 @@ export class AdminMenuService {
       priceDeltaCents?: number;
       sortOrder?: number;
       childOptionStableIds?: string[];
+      targetItemStableId?: string | null;
     },
   ) {
     const stableId = optionStableId.trim();
@@ -715,6 +731,23 @@ export class AdminMenuService {
       select: { id: true, templateGroupId: true },
     });
     if (!exists) throw new NotFoundException(`Option not found: ${stableId}`);
+
+    let targetItemStableId: string | null | undefined;
+    if (body.targetItemStableId !== undefined) {
+      const trimmed = body.targetItemStableId?.trim() ?? '';
+      targetItemStableId = trimmed || null;
+      if (targetItemStableId) {
+        const targetItem = await this.prisma.menuItem.findFirst({
+          where: { stableId: targetItemStableId, deletedAt: null },
+          select: { id: true },
+        });
+        if (!targetItem) {
+          throw new BadRequestException(
+            `Invalid targetItemStableId: ${targetItemStableId}`,
+          );
+        }
+      }
+    }
 
     const updateData = {
       nameEn: body.nameEn === undefined ? undefined : body.nameEn.trim(),
@@ -726,6 +759,7 @@ export class AdminMenuService {
           : Math.round(body.priceDeltaCents),
       sortOrder:
         body.sortOrder === undefined ? undefined : Math.floor(body.sortOrder),
+      targetItemStableId,
     };
 
     if (body.childOptionStableIds === undefined) {

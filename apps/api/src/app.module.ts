@@ -22,6 +22,7 @@ import { AdminModule } from './admin/admin.module';
 import { StoreStatusModule } from './store/store-status.module';
 import { PublicMenuModule } from './menu/public-menu.module';
 import { PosModule } from './pos/pos.module';
+import { CouponsModule } from './coupons/coupons.module';
 
 const configModuleFactory: {
   forRoot(options: ConfigModuleOptions): DynamicModule;
@@ -39,6 +40,7 @@ const envConfigModule = configModuleFactory.forRoot({
   imports: [
     envConfigModule,
     PrismaModule,
+    CouponsModule,
     AuthModule,
     OrdersModule,
     PosModule,

@@ -131,6 +131,9 @@ enum CouponProgramStatus {
 enum CouponProgramTriggerType {
   SIGNUP_COMPLETED
   REFERRAL_QUALIFIED
+  MARKETING_OPT_IN
+  BIRTHDAY_MONTH
+  TIER_UPGRADE
 }
 
 enum CouponDistributionType {
@@ -679,6 +682,7 @@ model MenuOptionTemplateChoice {
   nameEn               String
   nameZh               String?
   priceDeltaCents      Int                     @default(0)
+  targetItemStableId   String?
   isAvailable          Boolean                 @default(true)
   tempUnavailableUntil DateTime?
   sortOrder            Int                     @default(0)

@@ -3,6 +3,7 @@
 
 import { use, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ApiError, apiFetch } from '@/lib/api/client';
 import { isStableId } from '@shared/menu';
 import { ORDER_STATUS_SEQUENCE, OrderStatus } from '@shared/order';
@@ -114,10 +115,12 @@ export default function OrderDetailPage({ params }: PageProps) {
   const orderId = orderIdRaw ?? '';
   const locale = (localeRaw ?? 'en') as Locale;
   const isZh = locale === 'zh';
+  const router = useRouter();
   const [order, setOrder] = useState<FullOrder | PublicSummary | null>(null);
   const [isFullDetail, setIsFullDetail] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [canGoBack, setCanGoBack] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -175,6 +178,19 @@ export default function OrderDetailPage({ params }: PageProps) {
       cancelled = true;
     };
   }, [isZh, orderId]);
+
+  useEffect(() => {
+    setCanGoBack(window.history.length > 1);
+  }, []);
+
+  const handleBack = () => {
+    if (canGoBack) {
+      router.back();
+      return;
+    }
+
+    router.push(`/${locale}/membership`);
+  };
 
   const statusIndex = useMemo(() => {
     if (!order) return -1;
@@ -236,12 +252,13 @@ export default function OrderDetailPage({ params }: PageProps) {
     <h1 className="text-2xl font-semibold">{isZh ? '订单详情' : 'Order details'}</h1>
     <p className="text-sm text-gray-500 break-all">ID: {orderId}</p>
   </div>
-  <Link
-    href={`/${locale}/membership`}
+  <button
+    type="button"
     className="text-sm text-blue-600 hover:underline"
+    onClick={handleBack}
   >
-    ← 返回会员中心
-  </Link>
+    ← {isZh ? '返回' : 'Back'}
+  </button>
 </div>
 
       {loading && <div className="text-gray-500">加载中…</div>}

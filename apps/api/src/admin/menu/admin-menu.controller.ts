@@ -193,6 +193,7 @@ export class AdminMenuController {
       nameZh?: string;
       priceDeltaCents?: number;
       sortOrder?: number;
+      targetItemStableId?: string | null;
     },
   ) {
     return this.service.createTemplateOption(templateGroupStableId, body);
@@ -208,6 +209,7 @@ export class AdminMenuController {
       priceDeltaCents?: number;
       sortOrder?: number;
       childOptionStableIds?: string[];
+      targetItemStableId?: string | null;
     },
   ) {
     return this.service.updateTemplateOption(optionStableId, body);
