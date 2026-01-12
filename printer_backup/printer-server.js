@@ -406,6 +406,123 @@ function buildKitchenReceiptEscPos(params) {
   return Buffer.concat(chunks);
 }
 
+// ✅ 构建汇总小票函数
+function buildSummaryReceiptEscPos(params) {
+  const { timeRange, totals, breakdownType, breakdownItems } = params;
+
+  const chunks = [];
+
+  // --- 1. 标题 (居中, 倍高) ---
+  chunks.push(cmd(ESC, 0x40)); // Init
+  chunks.push(cmd(ESC, 0x33, 20)); // 行间距
+  chunks.push(cmd(ESC, 0x61, 0x01)); // Center
+  chunks.push(cmd(ESC, 0x45, 0x01)); // Bold
+  chunks.push(cmd(GS, 0x21, 0x11)); // Double Height & Width
+  chunks.push(encLine("当日小结"));
+  chunks.push(cmd(GS, 0x21, 0x00)); // Reset size
+  chunks.push(cmd(ESC, 0x45, 0x00)); // Reset bold
+  chunks.push(encLine("Daily Summary"));
+  chunks.push(cmd(ESC, 0x61, 0x00)); // Left align
+  chunks.push(encLine(makeLine("-")));
+
+  // --- 2. 时间范围 ---
+  if (timeRange) {
+    chunks.push(encLine(`开始: ${timeRange.start || '--'}`));
+    chunks.push(encLine(`结束: ${timeRange.end || '--'}`));
+  }
+  chunks.push(encLine(makeLine("-")));
+
+  // --- 3. 汇总列表 (Breakdown) ---
+  if (Array.isArray(breakdownItems)) {
+    chunks.push(cmd(ESC, 0x45, 0x01)); // Bold
+    // 显示当前的汇总方式
+    chunks.push(encLine(breakdownType === 'payment' ? "按支付方式汇总 (By Payment)" : "按渠道汇总 (By Channel)"));
+    chunks.push(cmd(ESC, 0x45, 0x00));
+    chunks.push(encLine("(金额: 实际收款 - 不含税)")); // 提示信息
+    chunks.push(encLine(""));
+    
+    // 表头
+    chunks.push(encLine(padRight("类别", 14) + padLeft("单数", 6) + padLeft("金额", 12)));
+    chunks.push(encLine(makeLine(".")));
+
+    breakdownItems.forEach(item => {
+      // 这里的 amountCents 已经是后端计算好的 salesCentsForOrder
+      const label = item.label || item.payment || item.fulfillmentType || 'Unknown';
+      
+      // 第一行：类别名
+      chunks.push(encLine(label));
+      
+      // 第二行：数据 (右对齐)
+      const countStr = String(item.count);
+      const amtStr = money(item.amountCents);
+      const line = padLeft(countStr, 20) + padLeft(amtStr, 12);
+      chunks.push(encLine(line));
+    });
+    chunks.push(encLine(makeLine("=")));
+  }
+
+  // --- 4. 底部合计 (Totals) ---
+  if (totals) {
+    chunks.push(cmd(ESC, 0x45, 0x01)); // Bold
+    chunks.push(encLine("今日总计 (Totals)"));
+    chunks.push(cmd(ESC, 0x45, 0x00));
+
+    const printRow = (label, valCents) => {
+      const l = padRight(label, 20);
+      const v = padLeft(money(valCents), LINE_WIDTH - 20);
+      chunks.push(encLine(l + v));
+    };
+
+    // 基础指标
+    printRow("总单量 Orders", totals.orders);
+    printRow("销售额(不含税) Sales", totals.salesCents);
+    
+    chunks.push(encLine(makeLine("-")));
+
+    // ✅ 新增要求显示的字段
+    printRow("合计税费 Tax", totals.taxCents);
+    printRow("合计配送费 D.Fee", totals.deliveryFeeCents || 0); // 收入
+    printRow("合计Uber费用 UberCost", totals.deliveryCostCents || 0); // 支出
+    
+    chunks.push(encLine(makeLine("=")));
+    
+    // 总营业额 (Net Revenue) - 方便对账
+    chunks.push(cmd(ESC, 0x45, 0x01)); // Bold
+    chunks.push(cmd(GS, 0x21, 0x01)); // Double Height
+    const totalLabel = padRight("总营业额 Total", 14);
+    // netCents 通常是 (Sales + Tax + DeliveryFee)
+    const totalVal = padLeft(money(totals.netCents), LINE_WIDTH - 14); 
+    chunks.push(encLine(totalLabel + totalVal));
+    chunks.push(cmd(GS, 0x21, 0x00));
+    chunks.push(cmd(ESC, 0x45, 0x00));
+  }
+
+  // --- Footer ---
+  chunks.push(encLine(""));
+  chunks.push(encLine(`打印时间: ${formatPrintTime()}`));
+  chunks.push(encLine(""));
+  chunks.push(encLine(""));
+  
+  chunks.push(cmd(GS, 0x56, 0x42, 0x00)); // Cut
+
+  return Buffer.concat(chunks);
+}
+
+// 路由部分保持之前逻辑：
+app.post("/print-summary", async (req, res) => {
+  const payload = req.body;
+  console.log("[/print-summary] 收到打印请求");
+  try {
+    const dataBuffer = buildSummaryReceiptEscPos(payload);
+    await printEscPosTo(FRONT_PRINTER, dataBuffer);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+
 // ========== Express 服务 ==========
 
 const app = express();
