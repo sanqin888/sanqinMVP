@@ -98,6 +98,8 @@ type PosDailySummaryResponse = {
     discountCents: number;
     refundCents: number;
     netCents: number;
+    deliveryFeeCents: number;
+    deliveryCostCents: number;
   };
   breakdownByPayment: Array<{
     payment: "cash" | "card" | "online" | "unknown";
@@ -254,6 +256,20 @@ function labelPayment(locale: Locale, v: string) {
   return v;
 }
 
+// ✅ 辅助函数：调用打印服务
+async function sendPrintSummaryRequest(payload: unknown) {
+  try {
+    await fetch("http://127.0.0.1:19191/print-summary", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    console.error("Failed to print summary:", err);
+    alert("连接打印机失败 (Port 19191)，请检查插件是否运行。");
+  }
+}
+
 export default function PosDailySummaryPage() {
   const params = useParams<{ locale?: string }>();
   const locale: Locale = params?.locale === "zh" ? "zh" : "en";
@@ -270,6 +286,7 @@ export default function PosDailySummaryPage() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [data, setData] = useState<PosDailySummaryResponse | null>(null);
+  const [isPrintDialogOpen, setIsPrintDialogOpen] = useState(false);
 
   const [storeTimezone, setStoreTimezone] = useState<string>(() => {
     try {
@@ -406,6 +423,36 @@ export default function PosDailySummaryPage() {
     return base;
   }, [data, locale]);
 
+// ✅ 新增：处理打印点击
+  const handlePrintSummary = (type: 'payment' | 'channel') => {
+    if (!data) return;
+
+    // 格式化时间
+    const formatTime = (iso: string) => {
+       const d = new Date(iso);
+       return d.toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-US', {
+         timeZone: storeTimezone,
+         month: 'numeric', day: 'numeric', hour: '2-digit', minute:'2-digit'
+       });
+    };
+
+    const payload = {
+      locale,
+      timeRange: {
+        start: formatTime(data.timeMin),
+        end: formatTime(data.timeMax),
+      },
+      // 直接传递后端返回的 totals (包含 salesCents, netCents, deliveryFeeCents 等)
+      totals: data.totals,
+      breakdownType: type,
+      // breakdownItems 中 amountCents 已由后端改为 actual sales (不含税)
+      breakdownItems: type === 'payment' ? data.breakdownByPayment : data.breakdownByFulfillment,
+    };
+
+    sendPrintSummaryRequest(payload);
+    setIsPrintDialogOpen(false);
+  };
+
   return (
     <main className="min-h-screen bg-slate-900 text-slate-50">
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-700 px-6 py-4">
@@ -445,12 +492,11 @@ export default function PosDailySummaryPage() {
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => window.print()}
-                className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200"
+                onClick={() => setIsPrintDialogOpen(true)}
+                className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200 hover:bg-emerald-500/20"
               >
                 {copy.printSummary}
-              </button>
-              <button
+              </button>              <button
                 type="button"
                 onClick={() => window.print()}
                 className="rounded-full border border-slate-500/60 bg-slate-700/50 px-3 py-1 text-xs font-semibold text-slate-200"
@@ -519,6 +565,44 @@ export default function PosDailySummaryPage() {
           </div>
         </div>
       </section>
+      {/* ✅ 新增：打印选择弹窗 */}
+      {isPrintDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-3xl border border-slate-600 bg-slate-900 p-6 shadow-2xl">
+            <h3 className="text-lg font-semibold text-slate-100 mb-2">
+              {copy.printDialog.title}
+            </h3>
+            <p className="text-sm text-slate-400 mb-6">
+              {copy.printDialog.subtitle}
+            </p>
+            
+            <div className="space-y-3">
+              <button
+                onClick={() => handlePrintSummary('payment')}
+                className="flex w-full items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-100 hover:bg-emerald-500/20"
+              >
+                <span>{copy.breakdownByPayment}</span>
+                <span className="text-xs opacity-60">→</span>
+              </button>
+              
+              <button
+                onClick={() => handlePrintSummary('channel')}
+                className="flex w-full items-center justify-between rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-4 py-3 text-sm font-medium text-indigo-100 hover:bg-indigo-500/20"
+              >
+                <span>{copy.breakdownByChannel}</span>
+                <span className="text-xs opacity-60">→</span>
+              </button>
+            </div>
+
+            <button
+              onClick={() => setIsPrintDialogOpen(false)}
+              className="mt-6 w-full rounded-full border border-slate-700 bg-slate-800 py-2.5 text-sm text-slate-300 hover:bg-slate-700"
+            >
+              {copy.printDialog.cancel}
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

@@ -21,16 +21,18 @@ export type PosDailySummaryResponse = {
     discountCents: number;
     refundCents: number;
     netCents: number;
+    deliveryFeeCents: number; // 合计配送费 (向客人收的)
+    deliveryCostCents: number; // 合计 Uber 费用 (付给平台的)
   };
   breakdownByPayment: Array<{
     payment: PosPaymentBucket;
     count: number;
-    amountCents: number; // net
+    amountCents: number; // ✅ 修改定义：这里将存储“实际收款金额”
   }>;
   breakdownByFulfillment: Array<{
     fulfillmentType: 'pickup' | 'dine_in' | 'delivery';
     count: number;
-    amountCents: number; // net
+    amountCents: number; // ✅ 修改定义：这里将存储“实际收款金额”
   }>;
   orders: Array<{
     orderStableId: string;
@@ -54,6 +56,7 @@ export type PosDailySummaryResponse = {
     additionalChargeCents: number;
 
     netCents: number;
+    salesCents: number;
   }>;
 };
 
@@ -251,6 +254,28 @@ export class PosSummaryService {
     let discountCents = 0;
     let refundCents = 0;
     let netCents = 0;
+    let totalDeliveryFeeCents = 0;
+    let totalDeliveryCostCents = 0;
+
+    // Breakdown maps
+    const paymentBuckets: PosPaymentBucket[] = [
+      'cash',
+      'card',
+      'online',
+      'unknown',
+    ];
+    const payMap = new Map(
+      paymentBuckets.map((p) => [p, { count: 0, amountCents: 0 }]),
+    );
+
+    const fulfillBuckets: Array<'pickup' | 'dine_in' | 'delivery'> = [
+      'pickup',
+      'dine_in',
+      'delivery',
+    ];
+    const fMap = new Map(
+      fulfillBuckets.map((f) => [f, { count: 0, amountCents: 0 }]),
+    );
 
     for (const o of orders) {
       const amend = amendMap.get(o.id) ?? {
@@ -306,6 +331,7 @@ export class PosSummaryService {
         additionalChargeCents: amend.additionalChargeCents,
 
         netCents: netCentsForOrder,
+        salesCents: salesCentsForOrder,
       };
 
       if (statusFilter && row.statusBucket !== statusFilter) continue;
@@ -318,6 +344,8 @@ export class PosSummaryService {
       discountCents += row.discountCents;
       refundCents += row.refundCents;
       netCents += row.netCents;
+      totalDeliveryFeeCents += deliveryFeeCents;
+      totalDeliveryCostCents += deliveryCostCents;
     }
 
     // 4) breakdowns
@@ -345,12 +373,12 @@ export class PosSummaryService {
     for (const r of rows) {
       const p = payMap.get(r.payment) ?? payMap.get('unknown')!;
       p.count += 1;
-      p.amountCents += r.netCents;
+      p.amountCents += salesCentsForOrder;
 
       const f = fMap.get(r.fulfillmentType);
       if (f) {
         f.count += 1;
-        f.amountCents += r.netCents;
+        f.amountCents += salesCentsForOrder;
       }
     }
 
@@ -364,6 +392,8 @@ export class PosSummaryService {
         discountCents,
         refundCents,
         netCents,
+        deliveryFeeCents: totalDeliveryFeeCents,
+        deliveryCostCents: totalDeliveryCostCents,
       },
       breakdownByPayment: paymentBuckets.map((p) => ({
         payment: p,
