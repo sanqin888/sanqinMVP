@@ -26,11 +26,6 @@ const COPY = {
     breakdownByPayment: "按支付方式汇总",
     breakdownByChannel: "按渠道汇总",
     printSummary: "打印汇总报表",
-    printDialog: {
-      title: "选择打印内容",
-      subtitle: "请选择要打印的汇总维度。",
-      cancel: "取消",
-    },
     printPreview: {
       title: "打印预览",
       subtitle: "请确认打印内容无误。",
@@ -73,11 +68,6 @@ const COPY = {
     breakdownByPayment: "By payment method",
     breakdownByChannel: "By channel",
     printSummary: "Print summary report",
-    printDialog: {
-      title: "Select what to print",
-      subtitle: "Choose which summary breakdown to print.",
-      cancel: "Cancel",
-    },
     printPreview: {
       title: "Print preview",
       subtitle: "Please confirm the print details.",
@@ -169,17 +159,6 @@ type PosDailySummaryResponse = {
 
     netCents: number;
   }>;
-};
-
-type PrintSummaryPayload = {
-  locale: Locale;
-  timeRange: {
-    start: string;
-    end: string;
-  };
-  totals: PosDailySummaryResponse["totals"];
-  breakdownType: "payment" | "channel";
-  breakdownItems: PosDailySummaryResponse["breakdownByPayment"] | PosDailySummaryResponse["breakdownByFulfillment"];
 };
 
 function formatMoney(cents: number): string {
@@ -487,7 +466,7 @@ export default function PosDailySummaryPage() {
             year: 'numeric', month: '2-digit', day: '2-digit'
         });
         return dtf.format(new Date(data.timeMin)).replace(/-/g, '/');
-    } catch (e) {
+    } catch {
         return data.timeMin.substring(0, 10); // fallback
     }
   };
