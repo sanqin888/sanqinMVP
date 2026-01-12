@@ -13,9 +13,7 @@ export class CouponProgramSchedulerService
   private readonly logger = new Logger(CouponProgramSchedulerService.name);
   private timeoutId?: NodeJS.Timeout;
 
-  constructor(
-    private readonly triggerService: CouponProgramTriggerService,
-  ) {}
+  constructor(private readonly triggerService: CouponProgramTriggerService) {}
 
   onModuleInit() {
     this.scheduleNextRun();

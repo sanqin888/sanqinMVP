@@ -79,7 +79,6 @@ function parseDateRange(validFrom?: string | null, validTo?: string | null) {
   return { validFrom: parsedFrom, validTo: parsedTo };
 }
 
-
 function parseNullableInteger(value: unknown, label: string): number | null {
   if (value === undefined || value === null || value === '') return null;
   if (typeof value !== 'number' || Number.isNaN(value)) {
@@ -175,7 +174,6 @@ function validateIssueRule(
   }
   return parsed.data as Prisma.InputJsonValue;
 }
-
 
 @Injectable()
 export class AdminCouponsService {
