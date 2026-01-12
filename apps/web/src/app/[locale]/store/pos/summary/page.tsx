@@ -27,6 +27,11 @@ const COPY = {
     breakdownByChannel: "按渠道汇总",
     printSummary: "打印汇总报表",
     printTransactions: "打印流水报表",
+    printDialog: {
+      title: "选择打印内容",
+      subtitle: "请选择要打印的汇总维度。",
+      cancel: "取消",
+    },
     exportCsv: "导出 CSV",
     filters: {
       title: "订单筛选",
@@ -56,6 +61,11 @@ const COPY = {
     breakdownByChannel: "By channel",
     printSummary: "Print summary report",
     printTransactions: "Print transaction report",
+    printDialog: {
+      title: "Select what to print",
+      subtitle: "Choose which summary breakdown to print.",
+      cancel: "Cancel",
+    },
     exportCsv: "Export CSV",
     filters: {
       title: "Order filters",

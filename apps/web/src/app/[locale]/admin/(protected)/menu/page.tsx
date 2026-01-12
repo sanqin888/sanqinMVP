@@ -1,6 +1,7 @@
 //apps/web/src/app/[locale]/admin/(protected)/menu/page.tsx
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
@@ -907,10 +908,13 @@ export default function AdminMenuPage() {
                               </div>
                             ) : null}
                             {item.imageUrl ? (
-                              <img
+                              <Image
                                 src={item.imageUrl}
                                 alt={isZh ? '菜品图片预览' : 'Item image preview'}
+                                width={112}
+                                height={112}
                                 className="mt-2 h-28 w-28 rounded-md border border-slate-200 object-cover"
+                                unoptimized
                               />
                             ) : null}
                           </label>
