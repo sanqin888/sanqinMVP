@@ -1596,8 +1596,11 @@ function PointsSection({
 
       {loadedOnce && !error && entries.length > 0 && (
         <div className="mt-3 divide-y divide-slate-100 text-xs text-slate-700">
-          {entries.map((entry) => (
-            <div key={entry.ledgerId} className="py-2">
+          {entries.map((entry, index) => (
+            <div
+              key={`${entry.ledgerId}-${entry.createdAt}-${index}`}
+              className="py-2"
+            >
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-medium text-slate-900">
