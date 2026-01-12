@@ -59,6 +59,7 @@ export type OptionChoiceDto = LocalizedName &
     sortOrder: number;
     childOptionStableIds?: string[];
     parentOptionStableIds?: string[];
+    targetItemStableId?: string | null;
   };
 
 export type TemplateGroupLiteDto = LocalizedName &
