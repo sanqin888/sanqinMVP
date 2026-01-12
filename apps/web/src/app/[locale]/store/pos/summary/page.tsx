@@ -26,11 +26,16 @@ const COPY = {
     breakdownByPayment: "按支付方式汇总",
     breakdownByChannel: "按渠道汇总",
     printSummary: "打印汇总报表",
-    printTransactions: "打印流水报表",
     printDialog: {
       title: "选择打印内容",
       subtitle: "请选择要打印的汇总维度。",
       cancel: "取消",
+    },
+    printPreview: {
+      title: "打印预览",
+      subtitle: "请确认打印内容无误。",
+      confirm: "确认打印",
+      cancel: "返回修改",
     },
     exportCsv: "导出 CSV",
     filters: {
@@ -60,11 +65,16 @@ const COPY = {
     breakdownByPayment: "By payment method",
     breakdownByChannel: "By channel",
     printSummary: "Print summary report",
-    printTransactions: "Print transaction report",
     printDialog: {
       title: "Select what to print",
       subtitle: "Choose which summary breakdown to print.",
       cancel: "Cancel",
+    },
+    printPreview: {
+      title: "Print preview",
+      subtitle: "Please confirm the print details.",
+      confirm: "Confirm print",
+      cancel: "Back",
     },
     exportCsv: "Export CSV",
     filters: {
@@ -143,6 +153,17 @@ type PosDailySummaryResponse = {
 
     netCents: number;
   }>;
+};
+
+type PrintSummaryPayload = {
+  locale: Locale;
+  timeRange: {
+    start: string;
+    end: string;
+  };
+  totals: PosDailySummaryResponse["totals"];
+  breakdownType: "payment" | "channel";
+  breakdownItems: PosDailySummaryResponse["breakdownByPayment"] | PosDailySummaryResponse["breakdownByFulfillment"];
 };
 
 function formatMoney(cents: number): string {
@@ -297,6 +318,13 @@ export default function PosDailySummaryPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [data, setData] = useState<PosDailySummaryResponse | null>(null);
   const [isPrintDialogOpen, setIsPrintDialogOpen] = useState(false);
+  const [printPreview, setPrintPreview] = useState<{
+    payload: PrintSummaryPayload;
+    timeRange: { start: string; end: string };
+    totals: PosDailySummaryResponse["totals"];
+    items: Array<{ label: string; count: number; amountCents: number }>;
+    breakdownLabel: string;
+  } | null>(null);
 
   const [storeTimezone, setStoreTimezone] = useState<string>(() => {
     try {
@@ -433,18 +461,19 @@ export default function PosDailySummaryPage() {
     return base;
   }, [data, locale]);
 
-// ✅ 新增：处理打印点击
-  const handlePrintSummary = (type: 'payment' | 'channel') => {
-    if (!data) return;
+  const formatTime = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleString(locale === "zh" ? "zh-CN" : "en-US", {
+      timeZone: storeTimezone,
+      month: "numeric",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
 
-    // 格式化时间
-    const formatTime = (iso: string) => {
-       const d = new Date(iso);
-       return d.toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-US', {
-         timeZone: storeTimezone,
-         month: 'numeric', day: 'numeric', hour: '2-digit', minute:'2-digit'
-       });
-    };
+  const handlePrintSummary = (type: "payment" | "channel") => {
+    if (!data) return;
 
     const payload = {
       locale,
@@ -459,7 +488,26 @@ export default function PosDailySummaryPage() {
       breakdownItems: type === 'payment' ? data.breakdownByPayment : data.breakdownByFulfillment,
     };
 
-    sendPrintSummaryRequest(payload);
+    const items =
+      type === "payment"
+        ? data.breakdownByPayment.map((item) => ({
+            label: labelPayment(locale, item.payment),
+            count: item.count,
+            amountCents: item.amountCents,
+          }))
+        : data.breakdownByFulfillment.map((item) => ({
+            label: labelFulfillment(locale, item.fulfillmentType),
+            count: item.count,
+            amountCents: item.amountCents,
+          }));
+
+    setPrintPreview({
+      payload,
+      timeRange: payload.timeRange,
+      totals: data.totals,
+      items,
+      breakdownLabel: type === "payment" ? copy.breakdownByPayment : copy.breakdownByChannel,
+    });
     setIsPrintDialogOpen(false);
   };
 
@@ -506,12 +554,6 @@ export default function PosDailySummaryPage() {
                 className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200 hover:bg-emerald-500/20"
               >
                 {copy.printSummary}
-              </button>              <button
-                type="button"
-                onClick={() => window.print()}
-                className="rounded-full border border-slate-500/60 bg-slate-700/50 px-3 py-1 text-xs font-semibold text-slate-200"
-              >
-                {copy.printTransactions}
               </button>
             </div>
           </div>
@@ -610,6 +652,91 @@ export default function PosDailySummaryPage() {
             >
               {copy.printDialog.cancel}
             </button>
+          </div>
+        </div>
+      )}
+
+      {printPreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-3xl border border-slate-600 bg-slate-900 p-6 shadow-2xl">
+            <h3 className="mb-2 text-lg font-semibold text-slate-100">
+              {copy.printPreview.title}
+            </h3>
+            <p className="mb-4 text-sm text-slate-400">{copy.printPreview.subtitle}</p>
+
+            <div className="space-y-4 text-sm text-slate-200">
+              <div className="rounded-2xl border border-slate-700 bg-slate-900/60 px-4 py-3">
+                <div className="text-xs text-slate-400">
+                  {copy.filters.dateStart} - {copy.filters.dateEnd}
+                </div>
+                <div className="mt-1 text-sm">
+                  {printPreview.timeRange.start} → {printPreview.timeRange.end}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-700 bg-slate-900/60 px-4 py-3">
+                <div className="text-xs text-slate-400">{copy.summary}</div>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <div className="flex items-center justify-between">
+                    <span>{copy.summaryCards.orders}</span>
+                    <span>{printPreview.totals.orders}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>{copy.summaryCards.sales}</span>
+                    <span>{formatMoney(printPreview.totals.salesCents)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>{copy.summaryCards.tax}</span>
+                    <span>{formatMoney(printPreview.totals.taxCents)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>{copy.summaryCards.discount}</span>
+                    <span>{formatMoney(printPreview.totals.discountCents)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>{copy.summaryCards.refund}</span>
+                    <span>{formatMoney(printPreview.totals.refundCents)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>{copy.summaryCards.total}</span>
+                    <span>{formatMoney(printPreview.totals.netCents)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-700 bg-slate-900/60 px-4 py-3">
+                <div className="text-xs text-slate-400">{printPreview.breakdownLabel}</div>
+                <ul className="mt-2 space-y-2">
+                  {printPreview.items.map((item) => (
+                    <li key={item.label} className="flex items-center justify-between">
+                      <span>{item.label}</span>
+                      <span className="text-slate-400">
+                        {item.count} · {formatMoney(item.amountCents)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+              <button
+                onClick={() => setPrintPreview(null)}
+                className="rounded-full border border-slate-700 bg-slate-800 px-4 py-2 text-sm text-slate-300 hover:bg-slate-700"
+              >
+                {copy.printPreview.cancel}
+              </button>
+              <button
+                onClick={() => {
+                  if (!printPreview) return;
+                  sendPrintSummaryRequest(printPreview.payload);
+                  setPrintPreview(null);
+                }}
+                className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-200 hover:bg-emerald-500/20"
+              >
+                {copy.printPreview.confirm}
+              </button>
+            </div>
           </div>
         </div>
       )}
