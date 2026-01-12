@@ -26,7 +26,17 @@ const COPY = {
     breakdownByPayment: "按支付方式汇总",
     breakdownByChannel: "按渠道汇总",
     printSummary: "打印汇总报表",
-    printTransactions: "打印流水报表",
+    printDialog: {
+      title: "选择打印内容",
+      subtitle: "请选择要打印的汇总维度。",
+      cancel: "取消",
+    },
+    printPreview: {
+      title: "打印预览",
+      subtitle: "请确认打印内容无误。",
+      confirm: "确认打印",
+      cancel: "返回修改",
+    },
     exportCsv: "导出 CSV",
     filters: {
       title: "订单筛选",
@@ -63,7 +73,17 @@ const COPY = {
     breakdownByPayment: "By payment method",
     breakdownByChannel: "By channel",
     printSummary: "Print summary report",
-    printTransactions: "Print transaction report",
+    printDialog: {
+      title: "Select what to print",
+      subtitle: "Choose which summary breakdown to print.",
+      cancel: "Cancel",
+    },
+    printPreview: {
+      title: "Print preview",
+      subtitle: "Please confirm the print details.",
+      confirm: "Confirm print",
+      cancel: "Back",
+    },
     exportCsv: "Export CSV",
     filters: {
       title: "Order filters",
@@ -149,6 +169,17 @@ type PosDailySummaryResponse = {
 
     netCents: number;
   }>;
+};
+
+type PrintSummaryPayload = {
+  locale: Locale;
+  timeRange: {
+    start: string;
+    end: string;
+  };
+  totals: PosDailySummaryResponse["totals"];
+  breakdownType: "payment" | "channel";
+  breakdownItems: PosDailySummaryResponse["breakdownByPayment"] | PosDailySummaryResponse["breakdownByFulfillment"];
 };
 
 function formatMoney(cents: number): string {
@@ -596,13 +627,6 @@ export default function PosDailySummaryPage() {
                 className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200 hover:bg-emerald-500/20"
               >
                 {copy.printSummary}
-              </button>
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="rounded-full border border-slate-500/60 bg-slate-700/50 px-3 py-1 text-xs font-semibold text-slate-200"
-              >
-                {copy.printTransactions}
               </button>
             </div>
           </div>
