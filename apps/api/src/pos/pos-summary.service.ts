@@ -291,10 +291,7 @@ export class PosSummaryService {
         createdAt: o.paidAt.toISOString(),
 
         channel,
-        fulfillmentType: o.fulfillmentType as
-          | 'pickup'
-          | 'dine_in'
-          | 'delivery',
+        fulfillmentType: o.fulfillmentType as 'pickup' | 'dine_in' | 'delivery',
 
         status: o.status,
         statusBucket,
