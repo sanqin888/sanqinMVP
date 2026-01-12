@@ -73,8 +73,11 @@ type OrderLite = {
   channel: Channel;
   fulfillmentType: FulfillmentType;
   status: string;
+  subtotalCents: number;
   totalCents: number;
   taxCents: number;
+  deliveryFeeCents: number;
+  deliveryCostCents: number;
   loyaltyRedeemCents: number | null;
   couponDiscountCents: number | null;
   paymentMethod: PaymentMethod | null;
@@ -183,8 +186,11 @@ export class PosSummaryService {
         channel: true,
         fulfillmentType: true,
         status: true,
+        subtotalCents: true,
         totalCents: true,
         taxCents: true,
+        deliveryFeeCents: true,
+        deliveryCostCents: true,
         loyaltyRedeemCents: true,
         couponDiscountCents: true,
         paymentMethod: true,
@@ -239,79 +245,82 @@ export class PosSummaryService {
     }
 
     // 3) 组装订单行 + 应用 status/payment 过滤（因为 payment bucket 不是纯 DB 字段）
-    const rows = orders
-      .map((o) => {
-        const amend = amendMap.get(o.id) ?? {
-          refundCents: 0,
-          additionalChargeCents: 0,
-        };
-
-        const discountCents =
-          this.cents(o.loyaltyRedeemCents) + this.cents(o.couponDiscountCents);
-
-        const statusBucket = this.computeStatusBucket(o.status);
-        const payment = this.computePaymentBucket(o);
-        const channel: PosDailySummaryResponse['orders'][number]['channel'] =
-          o.channel === Channel.web
-            ? 'web'
-            : o.channel === Channel.ubereats
-              ? 'ubereats'
-              : 'in_store';
-
-        const netCents =
-          this.cents(o.totalCents) -
-          amend.refundCents +
-          amend.additionalChargeCents;
-
-        if (!o.orderStableId) {
-          throw new BadRequestException('orderStableId missing');
-        }
-
-        return {
-          orderStableId: o.orderStableId,
-          clientRequestId: o.clientRequestId ?? null,
-          createdAt: o.paidAt.toISOString(),
-
-          channel,
-          fulfillmentType: o.fulfillmentType as
-            | 'pickup'
-            | 'dine_in'
-            | 'delivery',
-
-          status: o.status,
-          statusBucket,
-
-          payment,
-
-          totalCents: this.cents(o.totalCents),
-          taxCents: this.cents(o.taxCents),
-          discountCents,
-
-          refundCents: amend.refundCents,
-          additionalChargeCents: amend.additionalChargeCents,
-
-          netCents,
-        };
-      })
-      .filter((r) => (statusFilter ? r.statusBucket === statusFilter : true))
-      .filter((r) => (paymentFilter ? r.payment === paymentFilter : true));
-
-    // 4) totals
+    const rows: PosDailySummaryResponse['orders'] = [];
     let salesCents = 0;
     let taxCents = 0;
     let discountCents = 0;
     let refundCents = 0;
     let netCents = 0;
 
-    for (const r of rows) {
-      salesCents += r.totalCents;
-      taxCents += r.taxCents;
-      discountCents += r.discountCents;
-      refundCents += r.refundCents;
-      netCents += r.netCents;
+    for (const o of orders) {
+      const amend = amendMap.get(o.id) ?? {
+        refundCents: 0,
+        additionalChargeCents: 0,
+      };
+
+      const loyaltyRedeemCents = this.cents(o.loyaltyRedeemCents);
+      const couponDiscountCents = this.cents(o.couponDiscountCents);
+      const discountCentsForOrder = loyaltyRedeemCents + couponDiscountCents;
+      const salesCentsForOrder =
+        this.cents(o.subtotalCents) - couponDiscountCents - loyaltyRedeemCents;
+      const deliveryFeeCents = this.cents(o.deliveryFeeCents);
+      const deliveryCostCents = this.cents(o.deliveryCostCents);
+
+      const statusBucket = this.computeStatusBucket(o.status);
+      const payment = this.computePaymentBucket(o);
+      const channel: PosDailySummaryResponse['orders'][number]['channel'] =
+        o.channel === Channel.web
+          ? 'web'
+          : o.channel === Channel.ubereats
+            ? 'ubereats'
+            : 'in_store';
+
+      const netCentsForOrder =
+        salesCentsForOrder +
+        this.cents(o.taxCents) +
+        deliveryFeeCents -
+        deliveryCostCents;
+
+      if (!o.orderStableId) {
+        throw new BadRequestException('orderStableId missing');
+      }
+
+      const row = {
+        orderStableId: o.orderStableId,
+        clientRequestId: o.clientRequestId ?? null,
+        createdAt: o.paidAt.toISOString(),
+
+        channel,
+        fulfillmentType: o.fulfillmentType as 'pickup' | 'dine_in' | 'delivery',
+
+        status: o.status,
+        statusBucket,
+
+        payment,
+
+        totalCents: this.cents(o.totalCents),
+        taxCents: this.cents(o.taxCents),
+        discountCents: discountCentsForOrder,
+
+        refundCents: amend.refundCents,
+        additionalChargeCents: amend.additionalChargeCents,
+
+        netCents: netCentsForOrder,
+      };
+
+      if (statusFilter && row.statusBucket !== statusFilter) continue;
+      if (paymentFilter && row.payment !== paymentFilter) continue;
+
+      rows.push(row);
+
+      salesCents += salesCentsForOrder;
+      taxCents += row.taxCents;
+      discountCents += row.discountCents;
+      refundCents += row.refundCents;
+      netCents += row.netCents;
     }
 
-    // 5) breakdowns
+    // 4) breakdowns
     const paymentBuckets: PosPaymentBucket[] = [
       'cash',
       'card',

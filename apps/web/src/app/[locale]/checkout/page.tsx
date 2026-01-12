@@ -1611,6 +1611,27 @@ export default function CheckoutPage() {
         })),
       },
     };
+    const loyaltyOrderPayload = {
+      fulfillmentType: fulfillment,
+      deliveryType: isDeliveryFulfillment ? deliveryType : undefined,
+      deliveryDestination: isDeliveryFulfillment
+        ? {
+            name: customer.name,
+            phone: customer.phone,
+            addressLine1: customer.addressLine1,
+            addressLine2: customer.addressLine2 || undefined,
+            city: customer.city,
+            province: customer.province,
+            postalCode: customer.postalCode,
+            country: DELIVERY_COUNTRY,
+            instructions: customer.notes || undefined,
+          }
+        : undefined,
+      items: cartItemsWithPricing.map((cartItem) => ({
+        productStableId: cartItem.productStableId,
+        qty: cartItem.quantity,
+      })),
+    };
 
     try {
       // 1️⃣ 纯积分订单：抵扣后总价为 0 -> 不走 Clover
@@ -1620,7 +1641,7 @@ export default function CheckoutPage() {
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
+            body: JSON.stringify(loyaltyOrderPayload),
           },
         );
 

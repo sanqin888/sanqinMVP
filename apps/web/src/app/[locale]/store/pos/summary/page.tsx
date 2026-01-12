@@ -21,7 +21,7 @@ const COPY = {
       tax: "税",
       discount: "折扣",
       refund: "退款",
-      net: "净额",
+      total: "总额",
     },
     breakdownByPayment: "按支付方式汇总",
     breakdownByChannel: "按渠道汇总",
@@ -50,7 +50,7 @@ const COPY = {
       tax: "Tax",
       discount: "Discounts",
       refund: "Refunds",
-      net: "Net",
+      total: "Total",
     },
     breakdownByPayment: "By payment method",
     breakdownByChannel: "By channel",
@@ -84,7 +84,7 @@ type OrderRow = {
   channel: string; // fulfillmentType
   status: string;  // statusBucket
   payment: string; // payment bucket
-  amountCents: number; // net
+  amountCents: number; // total
   clientRequestId: string;
 };
 
@@ -224,7 +224,7 @@ function downloadCsv(filename: string, csvText: string) {
 }
 
 function toCsv(rows: OrderRow[]): string {
-  const header = ["orderStableId", "clientRequestId", "time", "fulfillment", "status", "payment", "net"].join(",");
+  const header = ["orderStableId", "clientRequestId", "time", "fulfillment", "status", "payment", "total"].join(",");
   const lines = rows.map((r) =>
     [
       JSON.stringify(r.orderStableId),
@@ -466,7 +466,7 @@ export default function PosDailySummaryPage() {
               { label: copy.summaryCards.tax, value: formatMoney(summaryTotals.taxCents) },
               { label: copy.summaryCards.discount, value: formatMoney(summaryTotals.discountCents) },
               { label: copy.summaryCards.refund, value: formatMoney(summaryTotals.refundCents) },
-              { label: copy.summaryCards.net, value: formatMoney(summaryTotals.netCents) },
+              { label: copy.summaryCards.total, value: formatMoney(summaryTotals.netCents) },
             ].map((item) => (
               <div
                 key={item.label}
