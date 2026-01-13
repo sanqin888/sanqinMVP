@@ -1,5 +1,5 @@
 // apps/api/src/phone-verification/phone-verification.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { PhoneVerificationStatus } from '@prisma/client';
@@ -17,13 +17,37 @@ export type VerifyCodeResult = {
 };
 
 @Injectable()
-export class PhoneVerificationService {
+export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PhoneVerificationService.name);
   private readonly ipWindowMs = 60 * 1000;
   private readonly ipLimit = 1;
+  private readonly ipCleanupIntervalMs = 60 * 60 * 1000;
   private readonly ipRequests = new Map<string, number[]>();
+  private ipCleanupTimer?: NodeJS.Timeout;
 
   constructor(private readonly prisma: PrismaService) {}
+
+  onModuleInit(): void {
+    this.ipCleanupTimer = setInterval(() => {
+      const now = Date.now();
+      for (const [ip, timestamps] of this.ipRequests.entries()) {
+        const valid = timestamps.filter((ts) => now - ts < this.ipWindowMs);
+        if (valid.length === 0) {
+          this.ipRequests.delete(ip);
+        } else {
+          this.ipRequests.set(ip, valid);
+        }
+      }
+    }, this.ipCleanupIntervalMs);
+    this.ipCleanupTimer.unref();
+  }
+
+  onModuleDestroy(): void {
+    if (this.ipCleanupTimer) {
+      clearInterval(this.ipCleanupTimer);
+      this.ipCleanupTimer = undefined;
+    }
+  }
 
   /** 生成 6 位数字验证码 */
   private generateCode(): string {
