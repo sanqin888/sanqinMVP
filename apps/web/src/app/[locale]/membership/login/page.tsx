@@ -1,10 +1,10 @@
 // apps/web/src/app/[locale]/membership/login/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { useSession, signIn } from '@/lib/auth-session';
+import { useSession, signIn, notifyAuthChange } from '@/lib/auth-session';
 import type { Locale } from '@/lib/i18n/locales';
 import { apiFetch } from '@/lib/api/client';
 
@@ -12,7 +12,7 @@ export default function MemberLoginPage() {
   const router = useRouter();
   const { locale } = useParams<{ locale: Locale }>();
   const searchParams = useSearchParams();
-  const { data: session, status } = useSession();
+  const { status } = useSession();
 
   const isZh = locale === 'zh';
   const redirectParam =
@@ -28,9 +28,10 @@ export default function MemberLoginPage() {
   const [countdown, setCountdown] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isHandlingRedirect = useRef(false);
 
   useEffect(() => {
-    if (status === 'authenticated') {
+    if (status === 'authenticated' && !isHandlingRedirect.current) {
       router.replace(resolvedRedirect);
     }
   }, [status, router, resolvedRedirect]);
@@ -86,15 +87,35 @@ export default function MemberLoginPage() {
       setLoading(true);
       setError(null);
 
-      await apiFetch('/auth/login/phone/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phone.trim(), code: code.trim() }),
-      });
+      // 在调用 API 和 notifyAuthChange 之前，设置标记为 true
+      // 这样可以阻止 useEffect 抢先重定向
+      isHandlingRedirect.current = true;
+
+      const result = await apiFetch<{ isNewUser?: boolean }>(
+        '/auth/login/phone/verify',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: phone.trim(), code: code.trim() }),
+        },
+      );
+
+      notifyAuthChange();
+
+      if (result?.isNewUser) {
+        const params = new URLSearchParams({
+          next: resolvedRedirect,
+          source: 'phone',
+        });
+        router.replace(`/${locale}/membership/referrer?${params.toString()}`);
+        return;
+      }
 
       router.replace(resolvedRedirect);
     } catch (err) {
       console.error(err);
+    //如果出错，记得重置标记，允许后续可能的自动重定向（虽然出错通常停留在当前页）
+      isHandlingRedirect.current = false;
       setError(
         isZh
           ? '验证码错误或已过期，请重试。'

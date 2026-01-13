@@ -674,7 +674,7 @@ export default function LocalOrderPage() {
                                 <img
                                   src={item.imageUrl}
                                   alt={item.name}
-                                  className="h-40 w-full object-cover transition duration-300 group-hover:scale-105"
+                                  className="h-64 w-full object-cover transition duration-300 group-hover:scale-105"
                                 />
                               </div>
                             ) : null}
