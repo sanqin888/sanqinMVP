@@ -803,6 +803,18 @@ export default function LocalOrderPage() {
             </div>
 
             <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">
+              {activeItem.imageUrl ? (
+                <div className="overflow-hidden rounded-2xl bg-slate-100">
+                  <div className="aspect-[5/3] w-full">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={activeItem.imageUrl}
+                      alt={activeItem.name}
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                </div>
+              ) : null}
               {(activeItem.optionGroups ?? []).length === 0 ? (
                 <p className="text-sm text-slate-500">
                   {locale === "zh"

@@ -939,6 +939,8 @@ export class AuthService {
         data: {
           phone: normalized,
           phoneVerifiedAt: now,
+          twoFactorEnabledAt: now,
+          twoFactorMethod: 'SMS',
           role: 'CUSTOMER',
         },
       });

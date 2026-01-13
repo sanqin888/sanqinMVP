@@ -20,7 +20,7 @@ type CouponTemplatePayload = {
   title?: string | null;
   titleEn?: string | null;
   description?: string | null;
-  status?: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
+  stackingPolicy?: 'EXCLUSIVE' | 'STACKABLE';
   validFrom?: string | null;
   validTo?: string | null;
   useRule: Prisma.InputJsonValue;

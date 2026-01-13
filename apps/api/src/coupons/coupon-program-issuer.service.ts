@@ -82,7 +82,7 @@ export class CouponProgramIssuerService {
           isActive: true,
           startsAt,
           endsAt,
-          stackingPolicy: 'EXCLUSIVE',
+          stackingPolicy: template.stackingPolicy,
         });
         userCouponsToCreate.push({
           userStableId: user.userStableId,

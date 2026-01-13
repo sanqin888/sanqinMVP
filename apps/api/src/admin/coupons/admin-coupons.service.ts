@@ -21,7 +21,7 @@ type CouponTemplateInput = {
   title?: string | null;
   titleEn?: string | null;
   description?: string | null;
-  status?: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
+  stackingPolicy?: 'EXCLUSIVE' | 'STACKABLE';
   validFrom?: string | null;
   validTo?: string | null;
   useRule: Prisma.InputJsonValue;
@@ -104,6 +104,16 @@ function parsePositiveInteger(
     throw new BadRequestException(`${label} must be a positive integer`);
   }
   return value;
+}
+
+function normalizeStackingPolicy(
+  value: CouponTemplateInput['stackingPolicy'],
+): 'EXCLUSIVE' | 'STACKABLE' {
+  if (!value) return 'EXCLUSIVE';
+  if (value === 'EXCLUSIVE' || value === 'STACKABLE') return value;
+  throw new BadRequestException(
+    'stackingPolicy must be EXCLUSIVE or STACKABLE',
+  );
 }
 
 function normalizePromoCode(value: unknown): string | null | undefined {
@@ -190,6 +200,7 @@ export class AdminCouponsService {
       input.validFrom,
       input.validTo,
     );
+    const stackingPolicy = normalizeStackingPolicy(input.stackingPolicy);
 
     return this.prisma.couponTemplate.create({
       data: {
@@ -198,7 +209,7 @@ export class AdminCouponsService {
         title: input.title ?? null,
         titleEn: input.titleEn ?? null,
         description: input.description ?? null,
-        status: input.status,
+        stackingPolicy,
         validFrom,
         validTo,
         useRule,
@@ -219,6 +230,7 @@ export class AdminCouponsService {
       input.validFrom,
       input.validTo,
     );
+    const stackingPolicy = normalizeStackingPolicy(input.stackingPolicy);
 
     return this.prisma.couponTemplate.update({
       where: { couponStableId },
@@ -227,7 +239,7 @@ export class AdminCouponsService {
         title: input.title ?? null,
         titleEn: input.titleEn ?? null,
         description: input.description ?? null,
-        status: input.status,
+        stackingPolicy,
         validFrom,
         validTo,
         useRule,

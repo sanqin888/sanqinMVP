@@ -863,9 +863,6 @@ export class AdminMembersService {
     if (!template) {
       throw new NotFoundException('coupon template not found');
     }
-    if (template.status !== 'ACTIVE') {
-      throw new BadRequestException('coupon template is not active');
-    }
 
     const parsed = UseRuleSchema.safeParse(template.useRule);
     if (!parsed.success) {
@@ -919,9 +916,9 @@ export class AdminMembersService {
           fromTemplateId: template.id,
           unlockedItemStableIds,
           isActive: true,
+          stackingPolicy: template.stackingPolicy,
           startsAt,
           endsAt,
-          stackingPolicy: 'EXCLUSIVE',
         },
       });
 
