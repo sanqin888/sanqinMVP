@@ -12,7 +12,7 @@ export default function MemberLoginPage() {
   const router = useRouter();
   const { locale } = useParams<{ locale: Locale }>();
   const searchParams = useSearchParams();
-  const { data: session, status } = useSession();
+  const { status } = useSession();
 
   const isZh = locale === 'zh';
   const redirectParam =
@@ -86,11 +86,23 @@ export default function MemberLoginPage() {
       setLoading(true);
       setError(null);
 
-      await apiFetch('/auth/login/phone/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phone.trim(), code: code.trim() }),
-      });
+      const result = await apiFetch<{ isNewUser?: boolean }>(
+        '/auth/login/phone/verify',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: phone.trim(), code: code.trim() }),
+        },
+      );
+
+      if (result?.isNewUser) {
+        const params = new URLSearchParams({
+          next: resolvedRedirect,
+          source: 'phone',
+        });
+        router.replace(`/${locale}/membership/referrer?${params.toString()}`);
+        return;
+      }
 
       router.replace(resolvedRedirect);
     } catch (err) {

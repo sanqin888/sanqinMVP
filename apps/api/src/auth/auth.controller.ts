@@ -81,6 +81,22 @@ const resolveLoginLocation = (req: Request): string | undefined => {
   return 'Unknown Location';
 };
 
+const normalizeNextPath = (next?: string): string => {
+  if (typeof next === 'string' && next.startsWith('/')) return next;
+  return '/';
+};
+
+const buildMembershipReferrerRedirect = (
+  next: string,
+  source: 'google' | 'phone',
+): string => {
+  const safeNext = normalizeNextPath(next);
+  const localeMatch = safeNext.match(/^\/(zh|en)(?:\/|$)/);
+  const localePrefix = localeMatch ? `/${localeMatch[1]}` : '';
+  const params = new URLSearchParams({ next: safeNext, source });
+  return `${localePrefix}/membership/referrer?${params.toString()}`;
+};
+
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -133,13 +149,16 @@ export class AuthController {
       path: '/',
     });
 
-    const next = cb || '/';
+    const next = normalizeNextPath(cb || '/');
+    const redirectTarget = result.isNewUser
+      ? buildMembershipReferrerRedirect(next, 'google')
+      : next;
     if (result.requiresTwoFactor) {
-      const params = new URLSearchParams({ next });
+      const params = new URLSearchParams({ next: redirectTarget });
       return res.redirect(302, `/membership/2fa?${params.toString()}`);
     }
 
-    return res.redirect(302, next);
+    return res.redirect(302, redirectTarget);
   }
 
   @Post('login')
@@ -268,6 +287,7 @@ export class AuthController {
       phone: result.user.phone,
       role: result.user.role,
       expiresAt: result.session.expiresAt,
+      isNewUser: result.isNewUser,
     };
   }
 
