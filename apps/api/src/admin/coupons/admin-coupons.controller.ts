@@ -48,7 +48,6 @@ type CouponProgramPayload = {
   promoCode?: string | null;
   totalLimit?: number | null;
   perUserLimit?: number | null;
-  eligibility?: Prisma.InputJsonValue | null;
   items: Prisma.InputJsonValue;
 };
 

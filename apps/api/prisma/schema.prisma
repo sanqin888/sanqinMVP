@@ -393,7 +393,6 @@ model CouponProgram {
   perUserLimit    Int                      @default(1)
   issuedCount     Int                      @default(0)
   usedCount       Int                      @default(0)
-  eligibility     Json?
   items           Json
   createdAt       DateTime                 @default(now())
   updatedAt       DateTime                 @updatedAt
