@@ -562,7 +562,6 @@ export class AuthService {
     return { success: true };
   }
 
-
   async requestPhoneEnrollOtp(params: { sessionId: string; phone: string }) {
     const session = await this.getSession(params.sessionId);
     if (!session) {
@@ -784,7 +783,6 @@ export class AuthService {
 
     return { success: true };
   }
-
 
   async requestLoginOtp(params: { phone: string }) {
     const normalized = normalizePhone(params.phone);
