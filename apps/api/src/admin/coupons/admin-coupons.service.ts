@@ -111,7 +111,9 @@ function normalizeStackingPolicy(
 ): 'EXCLUSIVE' | 'STACKABLE' {
   if (!value) return 'EXCLUSIVE';
   if (value === 'EXCLUSIVE' || value === 'STACKABLE') return value;
-  throw new BadRequestException('stackingPolicy must be EXCLUSIVE or STACKABLE');
+  throw new BadRequestException(
+    'stackingPolicy must be EXCLUSIVE or STACKABLE',
+  );
 }
 
 function normalizePromoCode(value: unknown): string | null | undefined {
