@@ -77,6 +77,7 @@ export class CloverHcoWebhookController {
       if (!signature) {
         this.logger.warn('Clover HCO webhook missing Clover-Signature header');
         // 不直接 401，避免配置错误时整个支付流程卡死；只是记录日志
+        return res.status(200).send('missing-signature');
       } else {
         const [tPart, v1Part] = signature.split(',').map((s) => s.trim());
         const ts = tPart?.startsWith('t=') ? tPart.slice(2) : undefined;
