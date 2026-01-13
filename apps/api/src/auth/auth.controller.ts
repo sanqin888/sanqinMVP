@@ -201,9 +201,16 @@ export class AuthController {
     };
   }
 
-  @Post('login/password')
-  async loginMemberPassword(
-    @Body() body: { email?: string; password?: string },
+  @Post('login/phone/request')
+  async requestPhoneLogin(@Body() body: { phone?: string }) {
+    return await this.authService.requestLoginOtp({
+      phone: body?.phone ?? '',
+    });
+  }
+
+  @Post('login/phone/verify')
+  async verifyPhoneLogin(
+    @Body() body: { phone?: string; code?: string },
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
@@ -214,9 +221,9 @@ export class AuthController {
       typeof cookies?.[TRUSTED_DEVICE_COOKIE] === 'string'
         ? cookies[TRUSTED_DEVICE_COOKIE]
         : undefined;
-    const result = await this.authService.loginWithMemberPassword({
-      email: body?.email ?? '',
-      password: body?.password ?? '',
+    const result = await this.authService.verifyLoginOtp({
+      phone: body?.phone ?? '',
+      code: body?.code ?? '',
       deviceInfo: typeof deviceInfo === 'string' ? deviceInfo : undefined,
       loginLocation,
       trustedDeviceToken,
@@ -232,12 +239,11 @@ export class AuthController {
     });
 
     return {
-      success: true,
       userStableId: result.user.userStableId,
       email: result.user.email,
+      phone: result.user.phone,
       role: result.user.role,
       expiresAt: result.session.expiresAt,
-      requiresTwoFactor: result.requiresTwoFactor,
     };
   }
 
