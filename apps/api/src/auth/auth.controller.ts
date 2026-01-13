@@ -31,7 +31,7 @@ import { UAParser } from 'ua-parser-js';
 const resolveDeviceInfo = (req: Request): string => {
   const uaString = req.headers['user-agent'] || '';
   const parser = new UAParser(
-    typeof uaString === 'string' ? uaString : uaString[0] ?? '',
+    typeof uaString === 'string' ? uaString : (uaString[0] ?? ''),
   );
   const result = parser.getResult();
 
@@ -462,7 +462,8 @@ export class AuthController {
     const sessionId =
       typeof rawSessionId === 'string' ? rawSessionId : undefined;
 
-    const trustedToken = req.cookies?.[TRUSTED_DEVICE_COOKIE];
+    const cookies = req.cookies as Partial<Record<string, string>> | undefined;
+    const trustedToken = cookies?.[TRUSTED_DEVICE_COOKIE];
 
     await Promise.all([
       sessionId ? this.authService.revokeSession(sessionId) : Promise.resolve(),
