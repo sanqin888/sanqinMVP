@@ -579,11 +579,12 @@ export class MembershipService {
 
   async bindReferrerEmail(params: {
     userStableId: string;
-    referrerEmail: string;
+    referrerInput: string;
   }) {
-    const referrerEmail = normalizeEmail(params.referrerEmail);
-    if (!referrerEmail) {
-      throw new BadRequestException('referrerEmail is required');
+    const referrerEmail = normalizeEmail(params.referrerInput);
+    const referrerPhone = normalizePhone(params.referrerInput);
+    if (!referrerEmail && !referrerPhone) {
+      throw new BadRequestException('referrerEmailOrPhone is required');
     }
 
     const user = await this.prisma.user.findUnique({
@@ -605,10 +606,15 @@ export class MembershipService {
       };
     }
 
-    const referrer = await this.prisma.user.findUnique({
-      where: { email: referrerEmail },
-      select: { id: true, userStableId: true, email: true },
-    });
+    const referrer = referrerEmail
+      ? await this.prisma.user.findUnique({
+          where: { email: referrerEmail },
+          select: { id: true, userStableId: true, email: true },
+        })
+      : await this.prisma.user.findUnique({
+          where: { phone: referrerPhone },
+          select: { id: true, userStableId: true, email: true },
+        });
 
     if (!referrer || referrer.userStableId === params.userStableId) {
       throw new NotFoundException('referrer not found');
@@ -622,7 +628,7 @@ export class MembershipService {
     return {
       bound: true,
       alreadyBound: false,
-      referrerEmail: referrer.email ?? referrerEmail,
+      referrerEmail: referrer.email ?? referrerEmail ?? null,
     };
   }
 

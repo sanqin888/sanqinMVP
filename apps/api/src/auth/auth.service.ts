@@ -268,6 +268,7 @@ export class AuthService {
     const now = new Date();
 
     // 2) 选定要登录/绑定的 user（优先 googleSub，其次 email）
+    let isNewUser = false;
     const user = await this.prisma.$transaction(async (tx) => {
       const byGoogle = await tx.user.findFirst({ where: { googleSub } });
       const byEmail = await tx.user.findUnique({ where: { email } });
@@ -289,6 +290,7 @@ export class AuthService {
             googleSub,
           },
         });
+        isNewUser = true;
         return base;
       }
 
@@ -339,7 +341,7 @@ export class AuthService {
       mfaVerifiedAt: requiresTwoFactor ? null : now,
     });
 
-    return { user, session, requiresTwoFactor };
+    return { user, session, requiresTwoFactor, isNewUser };
   }
 
   async loginWithPassword(params: {
@@ -927,6 +929,7 @@ export class AuthService {
       },
     });
 
+    let isNewUser = false;
     let user = await this.prisma.user.findFirst({
       where: { phone: normalized },
     });
@@ -939,6 +942,7 @@ export class AuthService {
           role: 'CUSTOMER',
         },
       });
+      isNewUser = true;
     } else if (!user.phoneVerifiedAt) {
       user = await this.prisma.user.update({
         where: { id: user.id },
@@ -966,7 +970,7 @@ export class AuthService {
       mfaVerifiedAt: now,
     });
 
-    return { user, session, verificationToken: record.id };
+    return { user, session, verificationToken: record.id, isNewUser };
   }
 
   // apps/api/src/auth/auth.service.ts

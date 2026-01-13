@@ -245,16 +245,16 @@ export class MembershipController {
   @Post('referrer')
   async bindReferrer(
     @Req() req: AuthedRequest,
-    @Body() body: { referrerEmail?: string },
+    @Body() body: { referrerEmail?: string; referrerInput?: string },
   ) {
     const userStableId = req.user?.userStableId;
     if (!userStableId) {
       throw new BadRequestException('userStableId is required');
     }
-    const referrerEmail = body.referrerEmail ?? '';
+    const referrerInput = body.referrerInput ?? body.referrerEmail ?? '';
     const result = await this.membership.bindReferrerEmail({
       userStableId,
-      referrerEmail,
+      referrerInput,
     });
 
     return {
