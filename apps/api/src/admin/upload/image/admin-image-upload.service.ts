@@ -1,6 +1,6 @@
 // apps/api/src/admin/upload/image/admin-image-upload.service.ts
 
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -12,6 +12,21 @@ type UploadedFile = {
 @Injectable()
 export class AdminImageUploadService {
   private readonly logger = new Logger(AdminImageUploadService.name);
+  private readonly allowedExtensions = new Set([
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.gif',
+    '.webp',
+    '.svg',
+  ]);
+  private readonly extensionMap = new Map<string, string[]>([
+    ['jpeg', ['.jpg', '.jpeg']],
+    ['png', ['.png']],
+    ['gif', ['.gif']],
+    ['webp', ['.webp']],
+    ['svg', ['.svg']],
+  ]);
 
   /**
    * 把上传的文件保存到本地，并返回可用于前端的 URL
@@ -22,7 +37,24 @@ export class AdminImageUploadService {
 
     await fs.promises.mkdir(uploadDir, { recursive: true });
 
-    const ext = path.extname(file.originalname) || '.jpg';
+    const extFromName = path.extname(file.originalname).toLowerCase();
+    const detectedType = this.detectImageType(file.buffer);
+
+    if (!detectedType) {
+      throw new BadRequestException('Unsupported or invalid image format.');
+    }
+
+    const allowedExtensions = this.extensionMap.get(detectedType) ?? [];
+
+    if (extFromName && !this.allowedExtensions.has(extFromName)) {
+      throw new BadRequestException('Unsupported file extension.');
+    }
+
+    if (extFromName && !allowedExtensions.includes(extFromName)) {
+      throw new BadRequestException('File extension does not match file type.');
+    }
+
+    const ext = extFromName || allowedExtensions[0];
     const fileName = `${Date.now()}-${Math.random()
       .toString(16)
       .slice(2)}${ext}`;
@@ -36,5 +68,45 @@ export class AdminImageUploadService {
     this.logger.log(`Image uploaded: ${urlPath}`);
 
     return urlPath;
+  }
+
+  private detectImageType(buffer: Buffer): string | null {
+    if (buffer.length < 12) {
+      return null;
+    }
+
+    if (
+      buffer[0] === 0xff &&
+      buffer[1] === 0xd8 &&
+      buffer[2] === 0xff
+    ) {
+      return 'jpeg';
+    }
+
+    const pngSignature = [
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ];
+    if (pngSignature.every((byte, index) => buffer[index] === byte)) {
+      return 'png';
+    }
+
+    const gifHeader = buffer.subarray(0, 6).toString('ascii');
+    if (gifHeader === 'GIF87a' || gifHeader === 'GIF89a') {
+      return 'gif';
+    }
+
+    const riffHeader = buffer.subarray(0, 4).toString('ascii');
+    const webpHeader = buffer.subarray(8, 12).toString('ascii');
+    if (riffHeader === 'RIFF' && webpHeader === 'WEBP') {
+      return 'webp';
+    }
+
+    const sample = buffer.subarray(0, 1024).toString('utf8');
+    const trimmedSample = sample.replace(/^\uFEFF/, '').trimStart();
+    if (/<svg[\s>]/i.test(trimmedSample)) {
+      return 'svg';
+    }
+
+    return null;
   }
 }
