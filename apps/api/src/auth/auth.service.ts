@@ -103,9 +103,39 @@ export class AuthService {
     return { sessionId, expiresAt };
   }
 
+  private async clearDeviceSessions(params: {
+    userId: string;
+    deviceInfo?: string;
+    loginLocation?: string;
+  }) {
+    if (!params.deviceInfo) return;
+    const where: {
+      userId: string;
+      deviceInfo: string;
+      loginLocation?: string;
+    } = {
+      userId: params.userId,
+      deviceInfo: params.deviceInfo,
+    };
+
+    if (params.loginLocation) {
+      where.loginLocation = params.loginLocation;
+    }
+
+    await this.prisma.userSession.deleteMany({ where });
+  }
+
   async revokeSession(sessionId: string) {
     await this.prisma.userSession.deleteMany({
       where: { sessionId },
+    });
+  }
+
+  async revokeTrustedDeviceByToken(rawToken: string) {
+    if (!rawToken) return;
+    const tokenHash = this.hashToken(rawToken);
+    await this.prisma.trustedDevice.deleteMany({
+      where: { tokenHash },
     });
   }
 
@@ -296,6 +326,12 @@ export class AuthService {
         twoFactorMethod: user.twoFactorMethod,
       }) && !isTrusted;
 
+    await this.clearDeviceSessions({
+      userId: user.id,
+      deviceInfo: params.deviceInfo,
+      loginLocation: params.loginLocation,
+    });
+
     const session = await this.createSession({
       userId: user.id,
       deviceInfo: params.deviceInfo,
@@ -380,6 +416,12 @@ export class AuthService {
         twoFactorEnabledAt: user.twoFactorEnabledAt,
         twoFactorMethod: user.twoFactorMethod,
       }) && !isTrusted;
+
+    await this.clearDeviceSessions({
+      userId: user.id,
+      deviceInfo: params.deviceInfo,
+      loginLocation: params.loginLocation,
+    });
 
     const session = await this.createSession({
       userId: user.id,
@@ -910,6 +952,12 @@ export class AuthService {
         token: params.trustedDeviceToken,
       });
     }
+
+    await this.clearDeviceSessions({
+      userId: user.id,
+      deviceInfo: params.deviceInfo,
+      loginLocation: params.loginLocation,
+    });
 
     const session = await this.createSession({
       userId: user.id,
