@@ -114,13 +114,6 @@ enum UserCouponStatus {
   REVOKED
 }
 
-enum CouponTemplateStatus {
-  DRAFT
-  ACTIVE
-  PAUSED
-  ENDED
-}
-
 enum CouponProgramStatus {
   DRAFT
   ACTIVE
@@ -370,7 +363,7 @@ model CouponTemplate {
   title          String?
   titleEn        String?
   description    String?
-  status         CouponTemplateStatus @default(DRAFT)
+  stackingPolicy CouponStackingPolicy @default(EXCLUSIVE)
   validFrom      DateTime?
   validTo        DateTime?
   useRule        Json
