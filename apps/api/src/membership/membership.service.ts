@@ -612,7 +612,7 @@ export class MembershipService {
           select: { id: true, userStableId: true, email: true },
         })
       : await this.prisma.user.findUnique({
-          where: { phone: referrerPhone },
+          where: { phone: referrerPhone ?? undefined },
           select: { id: true, userStableId: true, email: true },
         });
 
