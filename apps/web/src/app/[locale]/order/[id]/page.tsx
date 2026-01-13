@@ -2,7 +2,6 @@
 'use client';
 
 import { use, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ApiError, apiFetch } from '@/lib/api/client';
 import { isStableId } from '@shared/menu';

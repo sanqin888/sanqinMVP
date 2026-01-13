@@ -207,9 +207,13 @@ export default function AdminDashboard() {
     for (const category of menu) {
       for (const item of category.items) {
         const effectiveActive =
-          category.isActive && item.visibility === "PUBLIC" && item.isAvailable;
-        if (effectiveActive) active += 1;
-        else inactive += 1;
+          category.isActive &&
+          effectiveAvailable(item.isAvailable, item.tempUnavailableUntil);
+        if (effectiveActive) {
+          active += 1;
+        } else {
+          inactive += 1;
+        }
       }
     }
 
@@ -616,6 +620,12 @@ export default function AdminDashboard() {
                         category.isActive &&
                         item.visibility === "PUBLIC" &&
                         item.isAvailable;
+                      const isTempOff = item.isAvailable && isTempUnavailable(item.tempUnavailableUntil);
+                      const buttonColorClass = !effectiveActive
+  ? "bg-slate-100 text-slate-600" // 建议改为灰色，代表完全失效/永久下架
+  : isTempOff
+    ? "bg-amber-50 text-amber-700" // 黄色，代表临时下架（醒目提示）
+    : "bg-emerald-50 text-emerald-700"; // 绿色，正常销售
 
                       return (
                         <div key={item.stableId} className="rounded-lg border p-3">
@@ -639,12 +649,10 @@ export default function AdminDashboard() {
                                 }
                                 void setMenuItemAvailability(category.stableId, item.stableId, "ON");
                               }}
-                              className={`rounded-full px-3 py-1 text-xs font-medium ${
-                                effectiveActive ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
-                              }`}
-                              type="button"
-                            >
-                              {itemStatusLabel(isZh, item.isAvailable, item.tempUnavailableUntil)}
+                              className={`rounded-full px-3 py-1 text-xs font-medium ${buttonColorClass}`}
+        type="button"
+      >
+        {itemStatusLabel(isZh, item.isAvailable, item.tempUnavailableUntil)}
                             </button>
                           </div>
 

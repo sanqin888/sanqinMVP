@@ -73,6 +73,8 @@ type ThankYouStrings = {
   intro: string;
   numberLabel: string;
   note: string;
+  mapTitle: string;
+  mapCta: string;
   contact: string;
   backCta: string;
 };
@@ -135,7 +137,7 @@ export const UI_STRINGS: Record<
     tagline: "FRESH • FAST • HANDMADE",
     heroTitle: "Order San Qin fast & tasty dishes",
     heroDescription:
-      "Classic Liangpi, Roujiamo, hand-pulled noodles and more. Order now and pick up in minutes—or get delivery.",
+      "Classic Liangpi, Roujiamo, featured noodles and more. Order now and pick up in minutes—or get delivery.",
     orderSteps: [
       { id: 1, label: "Choose your dishes" },
       { id: 2, label: "Add notes & confirm" },
@@ -249,6 +251,8 @@ export const UI_STRINGS: Record<
       intro: "Thank you for your order! We're preparing your food.",
       numberLabel: "Order number",
       note: "Please keep this order number for pickup or delivery inquiries.",
+      mapTitle: "Store location",
+      mapCta: "Navigate in Google Maps",
       contact: "If you have any questions, feel free to reach out to us.",
       backCta: "Back to homepage",
     },
@@ -257,7 +261,7 @@ export const UI_STRINGS: Record<
     tagline: "新鲜 · 迅速 · 手工",
     heroTitle: "线上点餐 · 三秦特色",
     heroDescription:
-      "经典凉皮、肉夹馍、手擀面等。现在下单，数分钟即可自取，或选择外送。",
+      "经典凉皮、肉夹馍、特色面食等。现在下单，数分钟即可自取，或选择外送。",
     orderSteps: [
       { id: 1, label: "挑选菜品" },
       { id: 2, label: "备注与确认" },
@@ -365,6 +369,8 @@ export const UI_STRINGS: Record<
       intro: "感谢下单！我们已经开始为你制作餐品。",
       numberLabel: "订单编号",
       note: "请保留此订单编号，用于取餐或咨询配送状态。",
+      mapTitle: "门店位置",
+      mapCta: "打开 Google 地图导航",
       contact: "如有问题，欢迎随时联系我们。",
       backCta: "返回首页",
     },

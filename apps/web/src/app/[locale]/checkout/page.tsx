@@ -3,12 +3,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import {
-  usePathname,
-  useRouter,
-  useSearchParams,
-  useParams,
-} from "next/navigation";
+import { useRouter, useSearchParams, useParams } from "next/navigation";
 import { apiFetch } from "@/lib/api/client";
 import { usePersistentCart } from "@/lib/cart";
 import {
@@ -20,7 +15,6 @@ import {
 import {
   ConfirmationState,
   HOSTED_CHECKOUT_CURRENCY,
-  LANGUAGE_NAMES,
   type LocalizedCartItem,
   TAX_ON_DELIVERY,
   TAX_RATE,
@@ -30,8 +24,6 @@ import {
   type DeliveryTypeOption,
 } from "@/lib/order/shared";
 import type { Locale } from "@/lib/i18n/locales";
-import { LOCALES } from "@/lib/i18n/locales";
-import { addLocaleToPath } from "@/lib/i18n/path";
 import { UI_STRINGS, type ScheduleSlot } from "@/lib/i18n/dictionaries";
 import {
   buildLocalizedEntitlementItems,
@@ -259,7 +251,6 @@ const DELIVERY_OPTION_DEFINITIONS: Record<
 const DELIVERY_TYPES: DeliveryTypeOption[] = ["PRIORITY"];
 
 export default function CheckoutPage() {
-  const pathname = usePathname() || "/";
   const params = useParams<{ locale?: string }>();
   const locale = (params?.locale === "zh" ? "zh" : "en") as Locale;
 
@@ -1760,36 +1751,6 @@ export default function CheckoutPage() {
             </p>
           </div>
           <div className="flex flex-col items-start gap-3 md:items-end">
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-              <span className="font-medium">{strings.languageSwitch}</span>
-              <div className="inline-flex gap-1 rounded-full bg-slate-200 p-1">
-                {LOCALES.map((code) => (
-                  <button
-                    key={code}
-                    type="button"
-                    onClick={() => {
-                      try {
-                        document.cookie = `locale=${code}; path=/; max-age=${
-                          60 * 60 * 24 * 365
-                        }`;
-                        localStorage.setItem("preferred-locale", code);
-                      } catch {}
-                      const nextPath = addLocaleToPath(code, pathname || "/");
-                      router.push(q ? `${nextPath}?${q}` : nextPath);
-                    }}
-                    className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                      locale === code
-                        ? "bg-white text-slate-900 shadow"
-                        : "text-slate-600 hover:bg-white/70"
-                    }`}
-                    aria-pressed={locale === code}
-                  >
-                    {LANGUAGE_NAMES[code]}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             {/* 会员入口 + 返回菜单 */}
             <div className="flex flex-wrap gap-2">
               <Link
