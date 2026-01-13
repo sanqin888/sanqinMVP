@@ -469,37 +469,6 @@ export default function LocalOrderPage() {
           </div>
 
           <div className="flex flex-col items-start gap-4 lg:items-end">
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-              <span className="font-medium">{strings.languageSwitch}</span>
-              <div className="inline-flex gap-1 rounded-full bg-slate-200 p-1">
-                {LOCALES.map((code) => (
-                  <button
-                    key={code}
-                    type="button"
-                    onClick={() => {
-                      try {
-                        document.cookie = `locale=${code}; path=/; max-age=${
-                          60 * 60 * 24 * 365
-                        }`;
-                        localStorage.setItem("preferred-locale", code);
-                      } catch {
-                        // ignore
-                      }
-                      const nextPath = addLocaleToPath(code, pathname || "/");
-                      router.push(q ? `${nextPath}?${q}` : nextPath);
-                    }}
-                    className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                      locale === code
-                        ? "bg-white text-slate-900 shadow"
-                        : "text-slate-600 hover:bg-white/70"
-                    }`}
-                    aria-pressed={locale === code}
-                  >
-                    {LANGUAGE_NAMES[code]}
-                  </button>
-                ))}
-              </div>
-            </div>
             <div className="flex flex-wrap gap-2">
               <Link
                 href={membershipHref}
