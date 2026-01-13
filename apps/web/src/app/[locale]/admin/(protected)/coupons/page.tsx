@@ -25,7 +25,13 @@ type CouponProgram = {
   name: string;
   status: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
   distributionType: 'AUTOMATIC_TRIGGER' | 'MANUAL_CLAIM' | 'PROMO_CODE' | 'ADMIN_PUSH';
-  triggerType: 'SIGNUP_COMPLETED' | 'REFERRAL_QUALIFIED' | null;
+  triggerType:
+    | 'SIGNUP_COMPLETED'
+    | 'REFERRAL_QUALIFIED'
+    | 'MARKETING_OPT_IN'
+    | 'BIRTHDAY_MONTH'
+    | 'TIER_UPGRADE'
+    | null;
   validFrom: string | null;
   validTo: string | null;
   promoCode: string | null;
@@ -33,7 +39,6 @@ type CouponProgram = {
   perUserLimit: number;
   issuedCount: number;
   usedCount: number;
-  eligibility: unknown | null;
   items: unknown;
   createdAt: string;
   updatedAt: string;
@@ -45,6 +50,7 @@ type TemplateFormState = {
   title: string;
   titleEn: string;
   description: string;
+  descriptionEn: string;
   status: CouponTemplate['status'];
   validityType: 'LONG_TERM' | 'LIMITED';
   validityDays: string;
@@ -63,12 +69,12 @@ type ProgramFormState = {
   status: CouponProgram['status'];
   distributionType: CouponProgram['distributionType'];
   triggerType: Exclude<CouponProgram['triggerType'], null>;
+  validityType: 'LONG_TERM' | 'LIMITED';
   validFrom: string;
   validTo: string;
   promoCode: string;
   totalLimit: string;
   perUserLimit: string;
-  eligibilityKeys: string[];
   selectedCouponIds: string[];
   couponQuantities: Record<string, string>;
 };
@@ -85,6 +91,7 @@ const emptyTemplateForm: TemplateFormState = {
   title: '',
   titleEn: '',
   description: '',
+  descriptionEn: '',
   status: 'DRAFT',
   validityType: 'LONG_TERM',
   validityDays: '',
@@ -103,26 +110,15 @@ const emptyProgramForm: ProgramFormState = {
   status: 'DRAFT',
   distributionType: 'AUTOMATIC_TRIGGER',
   triggerType: 'SIGNUP_COMPLETED',
+  validityType: 'LONG_TERM',
   validFrom: '',
   validTo: '',
   promoCode: '',
   totalLimit: '',
   perUserLimit: '1',
-  eligibilityKeys: [],
   selectedCouponIds: [],
   couponQuantities: {},
 };
-
-const eligibilityPresets = [
-  {
-    id: 'requireReferralExists',
-    label: '必须存在推荐关系',
-  },
-  {
-    id: 'requireReferrerSignupCompleted',
-    label: '推荐人完成注册',
-  },
-];
 
 function formatDateRange(from?: string | null, to?: string | null) {
   if (!from && !to) return '—';
@@ -149,6 +145,13 @@ function formatTemplateValidity(template: CouponTemplate) {
     return formatDateRange(template.validFrom, template.validTo);
   }
   return '长期有效';
+}
+
+function formatProgramValidity(program: CouponProgram) {
+  if (!program.validFrom && !program.validTo) {
+    return '长期';
+  }
+  return formatDateRange(program.validFrom, program.validTo);
 }
 
 function getRuleType(rule: unknown) {
@@ -188,6 +191,8 @@ function buildUseRuleFromForm(form: TemplateFormState) {
   const applyTo = form.applyTo;
   const itemStableIds =
     applyTo === 'ITEM' ? form.itemStableIds.map((id) => id.trim()) : undefined;
+  const descriptionEn = form.descriptionEn.trim();
+  const descriptionEnPayload = descriptionEn ? { descriptionEn } : {};
   if (form.useRuleType === 'PERCENT') {
     return {
       type: 'PERCENT',
@@ -195,6 +200,7 @@ function buildUseRuleFromForm(form: TemplateFormState) {
       itemStableIds,
       percentOff: Number(form.percentOff),
       constraints,
+      ...descriptionEnPayload,
     };
   }
   return {
@@ -203,6 +209,7 @@ function buildUseRuleFromForm(form: TemplateFormState) {
     itemStableIds,
     amountCents: Number(form.amountCents),
     constraints,
+    ...descriptionEnPayload,
   };
 }
 
@@ -210,6 +217,7 @@ function parseTemplateFormFromRule(
   template: CouponTemplate,
 ): Pick<
   TemplateFormState,
+  | 'descriptionEn'
   | 'useRuleType'
   | 'applyTo'
   | 'itemStableIds'
@@ -219,6 +227,7 @@ function parseTemplateFormFromRule(
 > {
   if (!template.useRule || typeof template.useRule !== 'object') {
     return {
+      descriptionEn: '',
       useRuleType: 'FIXED_CENTS',
       applyTo: 'ORDER',
       itemStableIds: [],
@@ -232,6 +241,8 @@ function parseTemplateFormFromRule(
   const itemStableIds = Array.isArray(record.itemStableIds)
     ? record.itemStableIds.filter((id): id is string => typeof id === 'string')
     : [];
+  const descriptionEn =
+    typeof record.descriptionEn === 'string' ? record.descriptionEn : '';
   const constraints =
     record.constraints && typeof record.constraints === 'object'
       ? (record.constraints as Record<string, unknown>)
@@ -243,6 +254,7 @@ function parseTemplateFormFromRule(
 
   if (record.type === 'PERCENT') {
     return {
+      descriptionEn,
       useRuleType: 'PERCENT',
       applyTo,
       itemStableIds,
@@ -254,6 +266,7 @@ function parseTemplateFormFromRule(
   }
 
   return {
+    descriptionEn,
     useRuleType: 'FIXED_CENTS',
     applyTo,
     itemStableIds,
@@ -262,6 +275,19 @@ function parseTemplateFormFromRule(
     percentOff: '',
     minSubtotalCents: minSubtotalValue,
   };
+}
+
+const triggerLabels: Record<Exclude<CouponProgram['triggerType'], null>, string> = {
+  SIGNUP_COMPLETED: '注册完成',
+  REFERRAL_QUALIFIED: '邀请成功',
+  MARKETING_OPT_IN: '开启订阅',
+  BIRTHDAY_MONTH: '生日月',
+  TIER_UPGRADE: '等级提升',
+};
+
+function formatTriggerLabel(triggerType: CouponProgram['triggerType']) {
+  if (!triggerType) return '—';
+  return triggerLabels[triggerType] ?? triggerType;
 }
 
 export default function AdminCouponsPage() {
@@ -541,12 +567,6 @@ export default function AdminCouponsPage() {
       ) {
         throw new Error('请输入兑换码');
       }
-      const eligibility =
-        programForm.eligibilityKeys.length > 0
-          ? Object.fromEntries(
-              programForm.eligibilityKeys.map((key) => [key, true]),
-            )
-          : null;
       const totalLimit = programForm.totalLimit.trim()
         ? Number(programForm.totalLimit)
         : null;
@@ -568,15 +588,20 @@ export default function AdminCouponsPage() {
           programForm.distributionType === 'AUTOMATIC_TRIGGER'
             ? programForm.triggerType
             : null,
-        validFrom: programForm.validFrom || null,
-        validTo: programForm.validTo || null,
+        validFrom:
+          programForm.validityType === 'LIMITED'
+            ? programForm.validFrom || null
+            : null,
+        validTo:
+          programForm.validityType === 'LIMITED'
+            ? programForm.validTo || null
+            : null,
         promoCode:
           programForm.distributionType === 'PROMO_CODE'
             ? programForm.promoCode.trim()
             : null,
         totalLimit,
         perUserLimit,
-        eligibility,
         items,
       };
 
@@ -711,10 +736,8 @@ export default function AdminCouponsPage() {
         return record.couponStableId;
       })
       .filter((value): value is string => Boolean(value));
-    const eligibilityKeys =
-      program.eligibility && typeof program.eligibility === 'object'
-        ? Object.keys(program.eligibility as Record<string, unknown>)
-        : [];
+    const validityType =
+      program.validFrom || program.validTo ? 'LIMITED' : 'LONG_TERM';
     setProgramEditingId(program.programStableId);
     setProgramForm({
       programStableId: program.programStableId,
@@ -722,6 +745,7 @@ export default function AdminCouponsPage() {
       status: program.status,
       distributionType: program.distributionType,
       triggerType: program.triggerType ?? 'SIGNUP_COMPLETED',
+      validityType,
       validFrom: program.validFrom ? program.validFrom.slice(0, 10) : '',
       validTo: program.validTo ? program.validTo.slice(0, 10) : '',
       promoCode: program.promoCode ?? '',
@@ -730,7 +754,6 @@ export default function AdminCouponsPage() {
           ? String(program.totalLimit)
           : '',
       perUserLimit: String(program.perUserLimit ?? 1),
-      eligibilityKeys,
       selectedCouponIds,
       couponQuantities,
     });
@@ -854,37 +877,6 @@ export default function AdminCouponsPage() {
                 />
               </label>
               <label className="space-y-1">
-                <span className="text-muted-foreground">状态</span>
-                <select
-                  className="w-full rounded-md border px-3 py-2"
-                  value={templateForm.status}
-                  onChange={(e) =>
-                    setTemplateForm((prev) => ({
-                      ...prev,
-                      status: e.target.value as CouponTemplate['status'],
-                    }))
-                  }
-                >
-                  <option value="DRAFT">DRAFT</option>
-                  <option value="ACTIVE">ACTIVE</option>
-                  <option value="PAUSED">PAUSED</option>
-                  <option value="ENDED">ENDED</option>
-                </select>
-              </label>
-              <label className="space-y-1">
-                <span className="text-muted-foreground">使用说明 / 限制条款</span>
-                <textarea
-                  className="min-h-[44px] w-full rounded-md border px-3 py-2"
-                  value={templateForm.description}
-                  onChange={(e) =>
-                    setTemplateForm((prev) => ({
-                      ...prev,
-                      description: e.target.value,
-                    }))
-                  }
-                />
-              </label>
-              <label className="space-y-1">
                 <span className="text-muted-foreground">有效期类型</span>
                 <select
                   className="w-full rounded-md border px-3 py-2"
@@ -926,6 +918,34 @@ export default function AdminCouponsPage() {
                 </label>
               )}
             </div>
+            <label className="space-y-1">
+              <span className="text-muted-foreground">使用说明 / 限制条款</span>
+              <textarea
+                className="min-h-[44px] w-full rounded-md border px-3 py-2"
+                value={templateForm.description}
+                onChange={(e) =>
+                  setTemplateForm((prev) => ({
+                    ...prev,
+                    description: e.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-muted-foreground">
+                Usage Instructions / Restrictions (EN)
+              </span>
+              <textarea
+                className="min-h-[44px] w-full rounded-md border px-3 py-2"
+                value={templateForm.descriptionEn}
+                onChange={(e) =>
+                  setTemplateForm((prev) => ({
+                    ...prev,
+                    descriptionEn: e.target.value,
+                  }))
+                }
+              />
+            </label>
             <label className="space-y-1">
               <span className="text-muted-foreground">模板 StableId（可选）</span>
               <input
@@ -1090,30 +1110,6 @@ export default function AdminCouponsPage() {
                 </div>
               )}
             </div>
-            <label className="space-y-1">
-              <span className="text-muted-foreground">发放规则（可选）</span>
-              <select
-                className="w-full rounded-md border px-3 py-2"
-                value={templateForm.issueRuleMode}
-                onChange={(e) =>
-                  setTemplateForm((prev) => ({
-                    ...prev,
-                    issueRuleMode: e.target
-                      .value as TemplateFormState['issueRuleMode'],
-                  }))
-                }
-              >
-                <option value="">不设置发放规则</option>
-                <option value="MANUAL">手动发放</option>
-                <option value="AUTO">自动发放</option>
-              </select>
-              <div className="text-xs text-muted-foreground">
-                选择触发方式，未选择则不设置发放规则。
-              </div>
-              <div className="text-2xl font-bold text-primary">
-                {templatePreview.value}
-              </div>
-            </label>
           </div>
           <div className="rounded-xl border bg-muted/40 p-4">
             <div className="text-xs text-muted-foreground">预览</div>
@@ -1197,7 +1193,7 @@ export default function AdminCouponsPage() {
                     StableId：{program.programStableId}
                   </div>
                   <div className="text-sm text-muted-foreground">
-                    触发器：{program.triggerType ?? '—'}
+                    触发器：{formatTriggerLabel(program.triggerType)}
                   </div>
                   <div className="text-sm text-muted-foreground">
                     发放方式：{program.distributionType}
@@ -1208,7 +1204,7 @@ export default function AdminCouponsPage() {
                     </div>
                   )}
                   <div className="text-sm text-muted-foreground">
-                    有效期：{formatDateRange(program.validFrom, program.validTo)}
+                    有效期：{formatProgramValidity(program)}
                   </div>
                   <div className="text-sm text-muted-foreground">
                     券数量：{getItemsCount(program.items)}
@@ -1299,8 +1295,11 @@ export default function AdminCouponsPage() {
                   }
                   disabled={programForm.distributionType !== 'AUTOMATIC_TRIGGER'}
                 >
-                  <option value="SIGNUP_COMPLETED">SIGNUP_COMPLETED</option>
-                  <option value="REFERRAL_QUALIFIED">REFERRAL_QUALIFIED</option>
+                  <option value="SIGNUP_COMPLETED">注册完成</option>
+                  <option value="REFERRAL_QUALIFIED">邀请成功</option>
+                  <option value="MARKETING_OPT_IN">开启订阅</option>
+                  <option value="BIRTHDAY_MONTH">生日月</option>
+                  <option value="TIER_UPGRADE">等级提升</option>
                 </select>
               </label>
               <label className="space-y-1">
@@ -1323,33 +1322,58 @@ export default function AdminCouponsPage() {
                 </select>
               </label>
               <label className="space-y-1">
-                <span className="text-muted-foreground">有效期开始</span>
-                <input
-                  type="date"
+                <span className="text-muted-foreground">有效期类型</span>
+                <select
                   className="w-full rounded-md border px-3 py-2"
-                  value={programForm.validFrom}
+                  value={programForm.validityType}
                   onChange={(e) =>
                     setProgramForm((prev) => ({
                       ...prev,
-                      validFrom: e.target.value,
+                      validityType: e.target
+                        .value as ProgramFormState['validityType'],
+                      validFrom:
+                        e.target.value === 'LONG_TERM' ? '' : prev.validFrom,
+                      validTo:
+                        e.target.value === 'LONG_TERM' ? '' : prev.validTo,
                     }))
                   }
-                />
+                >
+                  <option value="LONG_TERM">长期</option>
+                  <option value="LIMITED">限时</option>
+                </select>
               </label>
-              <label className="space-y-1">
-                <span className="text-muted-foreground">有效期结束</span>
-                <input
-                  type="date"
-                  className="w-full rounded-md border px-3 py-2"
-                  value={programForm.validTo}
-                  onChange={(e) =>
-                    setProgramForm((prev) => ({
-                      ...prev,
-                      validTo: e.target.value,
-                    }))
-                  }
-                />
-              </label>
+              {programForm.validityType === 'LIMITED' && (
+                <>
+                  <label className="space-y-1">
+                    <span className="text-muted-foreground">有效期开始</span>
+                    <input
+                      type="date"
+                      className="w-full rounded-md border px-3 py-2"
+                      value={programForm.validFrom}
+                      onChange={(e) =>
+                        setProgramForm((prev) => ({
+                          ...prev,
+                          validFrom: e.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-muted-foreground">有效期结束</span>
+                    <input
+                      type="date"
+                      className="w-full rounded-md border px-3 py-2"
+                      value={programForm.validTo}
+                      onChange={(e) =>
+                        setProgramForm((prev) => ({
+                          ...prev,
+                          validTo: e.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                </>
+              )}
             </div>
             {programForm.distributionType === 'PROMO_CODE' && (
               <label className="space-y-1">
@@ -1410,41 +1434,6 @@ export default function AdminCouponsPage() {
                   }
                 />
               </label>
-            </div>
-            <div className="space-y-1">
-              <span className="text-muted-foreground">资格条件（预设，可选）</span>
-              <div className="space-y-2">
-                {eligibilityPresets.map((preset) => (
-                  <label
-                    key={preset.id}
-                    className="flex items-start gap-3 rounded-md border px-3 py-2"
-                  >
-                    <input
-                      type="checkbox"
-                      className="mt-1"
-                      checked={programForm.eligibilityKeys.includes(preset.id)}
-                      onChange={(e) =>
-                        setProgramForm((prev) => {
-                          const next = new Set(prev.eligibilityKeys);
-                          if (e.target.checked) {
-                            next.add(preset.id);
-                          } else {
-                            next.delete(preset.id);
-                          }
-                          return {
-                            ...prev,
-                            eligibilityKeys: Array.from(next),
-                          };
-                        })
-                      }
-                    />
-                    <div className="font-medium">{preset.label}</div>
-                  </label>
-                ))}
-                <div className="text-xs text-muted-foreground">
-                  不选择则不设置资格条件。
-                </div>
-              </div>
             </div>
             <div className="space-y-1">
               <span className="text-muted-foreground">礼包内容（优惠券）</span>

@@ -49,7 +49,6 @@ type CouponProgramInput = {
   promoCode?: string | null;
   totalLimit?: number | null;
   perUserLimit?: number | null;
-  eligibility?: Prisma.InputJsonValue | null;
   items: Prisma.InputJsonValue;
 };
 
@@ -142,18 +141,6 @@ function normalizeTriggerType(
     );
   }
   return triggerType;
-}
-
-function normalizeOptionalObject(
-  value: unknown,
-  label: string,
-): Prisma.InputJsonValue | Prisma.NullTypes.DbNull | undefined {
-  if (value === undefined) return undefined;
-  if (value === null) return Prisma.DbNull;
-  if (!value || typeof value !== 'object') {
-    throw new BadRequestException(`${label} must be an object or null`);
-  }
-  return value as Prisma.InputJsonValue;
 }
 
 function validateIssueRule(
@@ -266,10 +253,6 @@ export class AdminCouponsService {
   async createProgram(input: CouponProgramInput) {
     const items = parseProgramItems(input.items);
     await ensureProgramItemsExist(this.prisma, items);
-    const eligibility = normalizeOptionalObject(
-      input.eligibility,
-      'eligibility',
-    );
     const distributionType = normalizeDistributionType(input.distributionType);
     const triggerType = normalizeTriggerType(
       distributionType,
@@ -298,7 +281,6 @@ export class AdminCouponsService {
         promoCode,
         totalLimit,
         perUserLimit,
-        eligibility,
         items: items as Prisma.InputJsonValue,
       },
     });
@@ -312,10 +294,6 @@ export class AdminCouponsService {
 
     const items = parseProgramItems(input.items);
     await ensureProgramItemsExist(this.prisma, items);
-    const eligibility = normalizeOptionalObject(
-      input.eligibility,
-      'eligibility',
-    );
     const distributionType = normalizeDistributionType(input.distributionType);
     const triggerType = normalizeTriggerType(
       distributionType,
@@ -344,7 +322,6 @@ export class AdminCouponsService {
         promoCode,
         totalLimit,
         perUserLimit,
-        eligibility,
         items: items as Prisma.InputJsonValue,
       },
     });
