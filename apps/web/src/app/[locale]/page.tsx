@@ -3,16 +3,9 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import {
-  usePathname,
-  useRouter,
-  useSearchParams,
-  useParams,
-} from "next/navigation";
-import { HOSTED_CHECKOUT_CURRENCY, LANGUAGE_NAMES } from "@/lib/order/shared";
+import { useRouter, useSearchParams, useParams } from "next/navigation";
+import { HOSTED_CHECKOUT_CURRENCY } from "@/lib/order/shared";
 import type { Locale } from "@/lib/i18n/locales";
-import { LOCALES } from "@/lib/i18n/locales";
-import { addLocaleToPath } from "@/lib/i18n/path";
 import { UI_STRINGS } from "@/lib/i18n/dictionaries";
 import {
   buildLocalizedDailySpecials,
@@ -31,7 +24,6 @@ import { apiFetch } from "@/lib/api/client";
 import { signOut, useSession } from "@/lib/auth-session";
 
 export default function LocalOrderPage() {
-  const pathname = usePathname() || "/";
   const params = useParams<{ locale?: string }>();
   const locale = (params?.locale === "zh" ? "zh" : "en") as Locale;
 
@@ -52,7 +44,7 @@ export default function LocalOrderPage() {
   const [dailySpecials, setDailySpecials] = useState<
     LocalizedDailySpecial[]
   >([]);
-  const [cartNotice, setCartNotice] = useState<string | null>(null);
+  const [cartNotice] = useState<string | null>(null);
   const [entitlements, setEntitlements] =
     useState<MenuEntitlementsResponse | null>(null);
   const [entitlementsError, setEntitlementsError] = useState<string | null>(
