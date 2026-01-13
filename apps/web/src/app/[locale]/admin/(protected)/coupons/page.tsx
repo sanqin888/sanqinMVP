@@ -11,7 +11,7 @@ type CouponTemplate = {
   title: string | null;
   titleEn: string | null;
   description: string | null;
-  status: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
+  stackingPolicy: 'EXCLUSIVE' | 'STACKABLE';
   validFrom: string | null;
   validTo: string | null;
   useRule: unknown;
@@ -51,7 +51,7 @@ type TemplateFormState = {
   titleEn: string;
   description: string;
   descriptionEn: string;
-  status: CouponTemplate['status'];
+  stackingPolicy: CouponTemplate['stackingPolicy'];
   validityType: 'LONG_TERM' | 'LIMITED';
   validityDays: string;
   useRuleType: 'FIXED_CENTS' | 'PERCENT';
@@ -92,7 +92,7 @@ const emptyTemplateForm: TemplateFormState = {
   titleEn: '',
   description: '',
   descriptionEn: '',
-  status: 'DRAFT',
+  stackingPolicy: 'EXCLUSIVE',
   validityType: 'LONG_TERM',
   validityDays: '',
   useRuleType: 'FIXED_CENTS',
@@ -120,13 +120,6 @@ const emptyProgramForm: ProgramFormState = {
   couponQuantities: {},
 };
 
-function formatDateRange(from?: string | null, to?: string | null) {
-  if (!from && !to) return '—';
-  return `${from ? new Date(from).toLocaleDateString() : '—'} ~ ${
-    to ? new Date(to).toLocaleDateString() : '—'
-  }`;
-}
-
 function getExpiresInDays(rule: unknown) {
   if (!rule || typeof rule !== 'object') return null;
   const record = rule as Record<string, unknown>;
@@ -136,50 +129,8 @@ function getExpiresInDays(rule: unknown) {
     : null;
 }
 
-function formatTemplateValidity(template: CouponTemplate) {
-  const expiresInDays = getExpiresInDays(template.issueRule);
-  if (typeof expiresInDays === 'number') {
-    return `限时 ${expiresInDays} 天`;
-  }
-  if (template.validFrom || template.validTo) {
-    return formatDateRange(template.validFrom, template.validTo);
-  }
-  return '长期有效';
-}
-
-function formatProgramValidity(program: CouponProgram) {
-  if (!program.validFrom && !program.validTo) {
-    return '长期';
-  }
-  return formatDateRange(program.validFrom, program.validTo);
-}
-
-function getRuleType(rule: unknown) {
-  if (!rule || typeof rule !== 'object') return '—';
-  const record = rule as Record<string, unknown>;
-  return typeof record.type === 'string' ? record.type : '—';
-}
-
-function getItemsCount(items: unknown) {
-  if (!Array.isArray(items)) return 0;
-  return items.reduce((sum, entry) => {
-    if (!entry || typeof entry !== 'object') return sum;
-    const record = entry as Record<string, unknown>;
-    const quantity =
-      typeof record.quantity === 'number' && Number.isFinite(record.quantity)
-        ? record.quantity
-        : 1;
-    return sum + quantity;
-  }, 0);
-}
-
 function formatCurrencyFromCents(cents: number) {
   return `¥${(cents / 100).toFixed(2)}`;
-}
-
-function formatRedemptionRate(issuedCount: number, usedCount: number) {
-  if (!issuedCount) return '—';
-  return `${((usedCount / issuedCount) * 100).toFixed(1)}%`;
 }
 
 function buildUseRuleFromForm(form: TemplateFormState) {
@@ -298,6 +249,8 @@ export default function AdminCouponsPage() {
   );
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [selectedItemId, setSelectedItemId] = useState('');
 
   const [templateForm, setTemplateForm] =
     useState<TemplateFormState>(emptyTemplateForm);
@@ -443,6 +396,23 @@ export default function AdminCouponsPage() {
     });
     return Array.from(map.entries());
   }, [itemChoices]);
+  const categoryOptions = useMemo(
+    () => itemChoicesByCategory.map(([category]) => category),
+    [itemChoicesByCategory],
+  );
+  const selectedCategoryItems = useMemo(() => {
+    const entry = itemChoicesByCategory.find(
+      ([category]) => category === selectedCategory,
+    );
+    return entry ? entry[1] : [];
+  }, [itemChoicesByCategory, selectedCategory]);
+  const itemLabelMap = useMemo(() => {
+    const map = new Map<string, string>();
+    itemChoices.forEach((item) => {
+      map.set(item.stableId, item.label);
+    });
+    return map;
+  }, [itemChoices]);
 
   function resetTemplateForm() {
     setTemplateForm(emptyTemplateForm);
@@ -514,7 +484,7 @@ export default function AdminCouponsPage() {
         title: templateForm.title.trim() || null,
         titleEn: templateForm.titleEn.trim() || null,
         description: templateForm.description.trim() || null,
-        status: templateForm.status,
+        stackingPolicy: templateForm.stackingPolicy,
         validFrom: null,
         validTo: null,
         useRule,
@@ -696,7 +666,7 @@ export default function AdminCouponsPage() {
       title: template.title ?? '',
       titleEn: template.titleEn ?? '',
       description: template.description ?? '',
-      status: template.status,
+      stackingPolicy: template.stackingPolicy,
       validityType,
       validityDays:
         validityDays ||
@@ -796,37 +766,19 @@ export default function AdminCouponsPage() {
               templates.map((template) => (
                 <div
                   key={template.couponStableId}
-                  className="rounded-xl border p-4 space-y-2"
+                  className="rounded-xl border p-4"
                 >
                   <div className="flex items-center justify-between">
                     <div className="text-base font-semibold">
                       {template.name}
                     </div>
-                    <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-                      {template.status}
-                    </span>
+                    <button
+                      onClick={() => handleEditTemplate(template)}
+                      className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
+                    >
+                      编辑
+                    </button>
                   </div>
-                  <div className="text-sm text-muted-foreground">
-                    StableId：{template.couponStableId}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    展示标题：{template.title ?? '—'}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    英文标题：{template.titleEn ?? '—'}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    有效期：{formatTemplateValidity(template)}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    规则类型：{getRuleType(template.useRule)}
-                  </div>
-                  <button
-                    onClick={() => handleEditTemplate(template)}
-                    className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
-                  >
-                    编辑
-                  </button>
                 </div>
               ))
             )}
@@ -963,6 +915,23 @@ export default function AdminCouponsPage() {
               <div className="text-sm font-semibold">使用规则构建器</div>
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="space-y-1">
+                  <span className="text-muted-foreground">叠加规则</span>
+                  <select
+                    className="w-full rounded-md border px-3 py-2"
+                    value={templateForm.stackingPolicy}
+                    onChange={(e) =>
+                      setTemplateForm((prev) => ({
+                        ...prev,
+                        stackingPolicy: e.target
+                          .value as TemplateFormState['stackingPolicy'],
+                      }))
+                    }
+                  >
+                    <option value="EXCLUSIVE">EXCLUSIVE</option>
+                    <option value="STACKABLE">STACKABLE</option>
+                  </select>
+                </label>
+                <label className="space-y-1">
                   <span className="text-muted-foreground">优惠类型</span>
                   <select
                     className="w-full rounded-md border px-3 py-2"
@@ -1050,7 +1019,7 @@ export default function AdminCouponsPage() {
                 )}
               </div>
               {templateForm.applyTo === 'ITEM' && (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <div className="text-xs text-muted-foreground">
                     选择可使用该优惠券的指定商品
                   </div>
@@ -1060,51 +1029,99 @@ export default function AdminCouponsPage() {
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {itemChoicesByCategory.map(([category, items]) => (
-                        <div key={category} className="space-y-2">
+                      <div className="grid gap-3 md:grid-cols-3">
+                        <label className="space-y-1 md:col-span-1">
+                          <span className="text-muted-foreground">分类</span>
+                          <select
+                            className="w-full rounded-md border px-3 py-2"
+                            value={selectedCategory}
+                            onChange={(e) => {
+                              setSelectedCategory(e.target.value);
+                              setSelectedItemId('');
+                            }}
+                          >
+                            <option value="">请选择分类</option>
+                            {categoryOptions.map((category) => (
+                              <option key={category} value={category}>
+                                {category}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="space-y-1 md:col-span-1">
+                          <span className="text-muted-foreground">商品</span>
+                          <select
+                            className="w-full rounded-md border px-3 py-2"
+                            value={selectedItemId}
+                            onChange={(e) => setSelectedItemId(e.target.value)}
+                            disabled={!selectedCategory}
+                          >
+                            <option value="">请选择商品</option>
+                            {selectedCategoryItems.map((item) => (
+                              <option key={item.stableId} value={item.stableId}>
+                                {item.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <div className="flex items-end">
+                          <button
+                            type="button"
+                            className="w-full rounded-md border px-3 py-2 text-sm hover:bg-accent disabled:opacity-60"
+                            disabled={!selectedItemId}
+                            onClick={() => {
+                              if (!selectedItemId) return;
+                              setTemplateForm((prev) => {
+                                if (prev.itemStableIds.includes(selectedItemId)) {
+                                  return prev;
+                                }
+                                return {
+                                  ...prev,
+                                  itemStableIds: [
+                                    ...prev.itemStableIds,
+                                    selectedItemId,
+                                  ],
+                                };
+                              });
+                            }}
+                          >
+                            添加
+                          </button>
+                        </div>
+                      </div>
+                      {templateForm.itemStableIds.length > 0 && (
+                        <div className="space-y-2">
                           <div className="text-xs font-semibold text-muted-foreground">
-                            {category}
+                            已选商品
                           </div>
-                          <div className="grid gap-2 md:grid-cols-2">
-                            {items.map((item) => (
-                              <label
-                                key={item.stableId}
-                                className="flex items-start gap-2 rounded-md border px-3 py-2"
+                          <div className="flex flex-wrap gap-2">
+                            {templateForm.itemStableIds.map((stableId) => (
+                              <div
+                                key={stableId}
+                                className="flex items-center gap-2 rounded-full border px-3 py-1 text-xs"
                               >
-                                <input
-                                  type="checkbox"
-                                  className="mt-1"
-                                  checked={templateForm.itemStableIds.includes(
-                                    item.stableId,
-                                  )}
-                                  onChange={(e) =>
-                                    setTemplateForm((prev) => {
-                                      const next = new Set(prev.itemStableIds);
-                                      if (e.target.checked) {
-                                        next.add(item.stableId);
-                                      } else {
-                                        next.delete(item.stableId);
-                                      }
-                                      return {
-                                        ...prev,
-                                        itemStableIds: Array.from(next),
-                                      };
-                                    })
+                                <span>
+                                  {itemLabelMap.get(stableId) ?? stableId}
+                                </span>
+                                <button
+                                  type="button"
+                                  className="text-muted-foreground hover:text-foreground"
+                                  onClick={() =>
+                                    setTemplateForm((prev) => ({
+                                      ...prev,
+                                      itemStableIds: prev.itemStableIds.filter(
+                                        (id) => id !== stableId,
+                                      ),
+                                    }))
                                   }
-                                />
-                                <div>
-                                  <div className="font-medium">
-                                    {item.label}
-                                  </div>
-                                  <div className="text-xs text-muted-foreground">
-                                    {item.stableId}
-                                  </div>
-                                </div>
-                              </label>
+                                >
+                                  ×
+                                </button>
+                              </div>
                             ))}
                           </div>
                         </div>
-                      ))}
+                      )}
                     </div>
                   )}
                 </div>
@@ -1181,65 +1198,45 @@ export default function AdminCouponsPage() {
               programs.map((program) => (
                 <div
                   key={program.programStableId}
-                  className="rounded-xl border p-4 space-y-2"
+                  className="rounded-xl border p-4"
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="text-base font-semibold">{program.name}</div>
-                    <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-                      {program.status}
-                    </span>
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    StableId：{program.programStableId}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    触发器：{formatTriggerLabel(program.triggerType)}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    发放方式：{program.distributionType}
-                  </div>
-                  {program.distributionType === 'PROMO_CODE' && (
-                    <div className="text-sm text-muted-foreground">
-                      兑换码：{program.promoCode ?? '—'}
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="text-base font-semibold">
+                        {program.name}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        状态：{program.status}
+                      </div>
                     </div>
-                  )}
-                  <div className="text-sm text-muted-foreground">
-                    有效期：{formatProgramValidity(program)}
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleEditProgram(program)}
+                        className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
+                      >
+                        编辑
+                      </button>
+                      {program.distributionType === 'ADMIN_PUSH' && (
+                        <button
+                          onClick={() => {
+                            setIssueTarget({
+                              programStableId: program.programStableId,
+                              programName: program.name,
+                            });
+                            setIssueForm({
+                              userStableId: '',
+                              phone: '',
+                              error: null,
+                              saving: false,
+                            });
+                          }}
+                          className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
+                        >
+                          去发放
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div className="text-sm text-muted-foreground">
-                    券数量：{getItemsCount(program.items)}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    已发放：{program.issuedCount} · 已核销：{program.usedCount}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    核销率：{formatRedemptionRate(program.issuedCount, program.usedCount)}
-                  </div>
-                  <button
-                    onClick={() => handleEditProgram(program)}
-                    className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
-                  >
-                    编辑
-                  </button>
-                  {program.distributionType === 'ADMIN_PUSH' && (
-                    <button
-                      onClick={() => {
-                        setIssueTarget({
-                          programStableId: program.programStableId,
-                          programName: program.name,
-                        });
-                        setIssueForm({
-                          userStableId: '',
-                          phone: '',
-                          error: null,
-                          saving: false,
-                        });
-                      }}
-                      className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
-                    >
-                      去发放
-                    </button>
-                  )}
                 </div>
               ))
             )}
