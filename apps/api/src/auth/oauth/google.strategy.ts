@@ -6,6 +6,7 @@ import { Profile, Strategy } from 'passport-google-oauth20';
 export type GoogleProfile = {
   sub: string;
   email: string | null;
+  emailVerified: boolean | null;
   name: string | null;
 };
 
@@ -25,9 +26,17 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
       profile.emails && profile.emails.length > 0
         ? profile.emails[0].value
         : null;
+    const profileJson = (profile as Profile & {
+      _json?: { email_verified?: boolean };
+    })._json;
+    const emailVerified =
+      typeof profileJson?.email_verified === 'boolean'
+        ? profileJson.email_verified
+        : profile.emails?.[0]?.verified ?? null;
     return {
       sub: profile.id,
       email,
+      emailVerified,
       name: profile.displayName ?? null,
     };
   }
