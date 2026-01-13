@@ -134,6 +134,7 @@ export class AuthController {
     const result = await this.authService.loginWithGoogleOauth({
       googleSub: g.sub,
       email: g.email,
+      emailVerified: g.emailVerified,
       name: g.name,
       deviceInfo,
       loginLocation,

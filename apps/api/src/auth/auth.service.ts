@@ -253,6 +253,7 @@ export class AuthService {
   async loginWithGoogleOauth(params: {
     googleSub: string;
     email: string | null;
+    emailVerified: boolean | null;
     name: string | null;
     deviceInfo?: string;
     loginLocation?: string;
@@ -260,6 +261,7 @@ export class AuthService {
   }) {
     const googleSub = params.googleSub;
     const email = normalizeEmail(params.email);
+    const emailVerified = params.emailVerified === true;
 
     if (!googleSub || !email) {
       throw new BadRequestException('invalid oauth params');
@@ -277,7 +279,15 @@ export class AuthService {
         throw new BadRequestException('account conflict');
       }
 
-      let base = byGoogle ?? byEmail ?? null;
+      if (
+        !emailVerified &&
+        byEmail &&
+        (!byGoogle || byGoogle.id !== byEmail.id)
+      ) {
+        throw new BadRequestException('email not verified');
+      }
+
+      let base = byGoogle ?? (emailVerified ? byEmail : null) ?? null;
 
       if (!base) {
         base = await tx.user.create({
@@ -285,7 +295,7 @@ export class AuthService {
             role: 'CUSTOMER',
             status: 'ACTIVE',
             email,
-            emailVerifiedAt: now,
+            emailVerifiedAt: emailVerified ? now : null,
             name: params.name ?? undefined,
             googleSub,
           },
@@ -296,7 +306,8 @@ export class AuthService {
 
       // 更新绑定信息（不轻易覆盖已有 email/name）
       const nextEmail = base.email ? undefined : email;
-      const nextEmailVerified = base.emailVerifiedAt ? undefined : now;
+      const nextEmailVerified =
+        base.emailVerifiedAt || !emailVerified ? undefined : now;
       const nextName = base.name ? undefined : (params.name ?? undefined);
 
       const updated = await tx.user.update({
