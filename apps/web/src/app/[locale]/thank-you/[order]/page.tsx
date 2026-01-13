@@ -28,6 +28,10 @@ const locale = (SUPPORTED.includes(rawLocale as Locale)
 const t = UI_STRINGS[locale].thankYou;
   const order = orderParam ?? "";
   const alt = locale === "zh" ? "en" : "zh";
+  const mapEmbedSrc =
+    "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d860.7447724525811!2d-79.41244863168872!3d43.76037647252751!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x882b2dfb95c33ce1%3A0xf3a474361eec2a31!2z5LiJ56em6IKJ5aS56aaN!5e0!3m2!1szh-CN!2sca!4v1768280762067!5m2!1szh-CN!2sca";
+  const mapNavigateUrl =
+    "https://www.google.com/maps/dir/?api=1&destination=43.76037647252751,-79.41244863168872";
 
   return (
     <main className="mx-auto max-w-3xl p-6 sm:p-10">
@@ -54,6 +58,35 @@ const t = UI_STRINGS[locale].thankYou;
         {order ? (
           <OrderSummaryClient orderStableId={order} locale={locale} />
         ) : null}
+
+        <div className="mt-8">
+          <h2 className="text-lg font-semibold text-slate-900 mb-3 text-center">
+            {t.mapTitle}
+          </h2>
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <iframe
+              title={t.mapTitle}
+              src={mapEmbedSrc}
+              width="600"
+              height="450"
+              className="h-80 w-full sm:h-96"
+              style={{ border: 0 }}
+              allowFullScreen
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+            />
+          </div>
+          <div className="mt-4 flex justify-center">
+            <a
+              href={mapNavigateUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center justify-center rounded-xl border border-slate-900 px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-900 hover:text-white"
+            >
+              {t.mapCta}
+            </a>
+          </div>
+        </div>
 
         <div className="mt-8 space-y-3 text-center">
           <p className="text-sm text-slate-600">{t.contact}</p>
