@@ -28,6 +28,22 @@ function isEnvelopeLike(v: unknown): v is ApiResponseEnvelope<unknown> {
   return isRecord(v) && typeof (v as Record<string, unknown>).code === 'string';
 }
 
+function buildDetailsSnippet(details: unknown): string {
+  if (details === undefined || details === null) return '';
+  if (typeof details === 'string') return ` :: ${details.slice(0, 160)}`;
+  if (typeof details === 'number' || typeof details === 'boolean') {
+    return ` :: ${String(details)}`;
+  }
+  if (isRecord(details)) {
+    return ` :: ${JSON.stringify(details).slice(0, 160)}`;
+  }
+  try {
+    return ` :: ${JSON.stringify(details).slice(0, 160)}`;
+  } catch {
+    return '';
+  }
+}
+
 /**
  * 统一的 API 请求封装。
  * - 既兼容 {code,message,details} 信封结构，也兼容直接返回数据。
@@ -84,11 +100,9 @@ export async function apiFetch<T>(
   if (!response.ok) {
     if (isEnvelopeLike(payload)) {
       const p = payload as ApiResponseEnvelope<unknown>;
-      const snippet = isRecord(p.details)
-        ? ` :: ${JSON.stringify(p.details).slice(0, 160)}`
-        : '';
+      const snippet = buildDetailsSnippet(p.details);
       throw new ApiError(
-        p.message || `API 错误 ${response.status}${snippet}`,
+        `${p.message || 'API 错误'} ${response.status}${snippet} (${init.method ?? 'GET'} ${url})`,
         response.status,
         payload,
       );
@@ -97,7 +111,7 @@ export async function apiFetch<T>(
     throw new ApiError(
       `API 错误 ${response.status}${
         typeof payload === 'string' ? ` :: ${payload.slice(0, 160)}` : ''
-      }`,
+      } (${init.method ?? 'GET'} ${url})`,
       response.status,
       payload,
     );
