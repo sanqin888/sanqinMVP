@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import type { Locale } from '@/lib/i18n/locales';
 import { useSession } from '@/lib/auth-session';
-import { apiFetch } from '@/lib/api/client';
+import { ApiError, apiFetch } from '@/lib/api/client';
 
 type MembershipSummary = {
   phone?: string | null;
@@ -180,6 +180,24 @@ export default function MembershipReferrerPage() {
       });
       router.replace(resolvedNext);
     } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.status === 404) {
+          setError(
+            isZh
+              ? '未找到该推荐人，请确认邮箱或手机号。'
+              : 'Referrer not found. Please check the email or phone.',
+          );
+          return;
+        }
+        if (err.status === 400) {
+          setError(
+            isZh
+              ? '请输入有效的推荐人邮箱或手机号。'
+              : 'Please enter a valid referrer email or phone.',
+          );
+          return;
+        }
+      }
       console.error(err);
       setError(
         isZh ? '推荐人信息填写失败，请稍后再试。' : 'Failed to save referrer.',
