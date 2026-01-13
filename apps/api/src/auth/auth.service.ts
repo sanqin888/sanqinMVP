@@ -103,9 +103,39 @@ export class AuthService {
     return { sessionId, expiresAt };
   }
 
+  private async clearDeviceSessions(params: {
+    userId: string;
+    deviceInfo?: string;
+    loginLocation?: string;
+  }) {
+    if (!params.deviceInfo) return;
+    const where: {
+      userId: string;
+      deviceInfo: string;
+      loginLocation?: string;
+    } = {
+      userId: params.userId,
+      deviceInfo: params.deviceInfo,
+    };
+
+    if (params.loginLocation) {
+      where.loginLocation = params.loginLocation;
+    }
+
+    await this.prisma.userSession.deleteMany({ where });
+  }
+
   async revokeSession(sessionId: string) {
     await this.prisma.userSession.deleteMany({
       where: { sessionId },
+    });
+  }
+
+  async revokeTrustedDeviceByToken(rawToken: string) {
+    if (!rawToken) return;
+    const tokenHash = this.hashToken(rawToken);
+    await this.prisma.trustedDevice.deleteMany({
+      where: { tokenHash },
     });
   }
 
@@ -296,6 +326,12 @@ export class AuthService {
         twoFactorMethod: user.twoFactorMethod,
       }) && !isTrusted;
 
+    await this.clearDeviceSessions({
+      userId: user.id,
+      deviceInfo: params.deviceInfo,
+      loginLocation: params.loginLocation,
+    });
+
     const session = await this.createSession({
       userId: user.id,
       deviceInfo: params.deviceInfo,
@@ -381,62 +417,11 @@ export class AuthService {
         twoFactorMethod: user.twoFactorMethod,
       }) && !isTrusted;
 
-    const session = await this.createSession({
+    await this.clearDeviceSessions({
       userId: user.id,
       deviceInfo: params.deviceInfo,
       loginLocation: params.loginLocation,
-      mfaVerifiedAt: requiresTwoFactor ? null : now,
     });
-
-    return { user, session, requiresTwoFactor };
-  }
-
-  async loginWithMemberPassword(params: {
-    email: string;
-    password: string;
-    deviceInfo?: string;
-    loginLocation?: string;
-    trustedDeviceToken?: string;
-  }) {
-    const email = normalizeEmail(params.email);
-    if (!email || !params.password) {
-      throw new BadRequestException('email and password are required');
-    }
-
-    const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    if (user.status === 'DISABLED') {
-      throw new ForbiddenException('User disabled');
-    }
-
-    if (!user.passwordHash) {
-      throw new UnauthorizedException('Password login not enabled');
-    }
-
-    if (!user.emailVerifiedAt) {
-      throw new ForbiddenException('Email not verified');
-    }
-
-    const ok = await this.verifyPassword(params.password, user.passwordHash);
-    if (!ok) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    const now = new Date();
-    const isTrusted =
-      params.trustedDeviceToken &&
-      (await this.findTrustedDevice({
-        userId: user.id,
-        token: params.trustedDeviceToken,
-      }));
-    const requiresTwoFactor =
-      this.isTwoFactorEnabled({
-        twoFactorEnabledAt: user.twoFactorEnabledAt,
-        twoFactorMethod: user.twoFactorMethod,
-      }) && !isTrusted;
 
     const session = await this.createSession({
       userId: user.id,
@@ -909,6 +894,8 @@ export class AuthService {
     phone: string;
     code: string;
     deviceInfo?: string;
+    loginLocation?: string;
+    trustedDeviceToken?: string;
   }) {
     const normalized = normalizePhone(params.phone);
     if (!normalized || !params.code) {
@@ -959,15 +946,24 @@ export class AuthService {
       });
     }
 
-    const requiresTwoFactor = this.isTwoFactorEnabled({
-      twoFactorEnabledAt: user.twoFactorEnabledAt,
-      twoFactorMethod: user.twoFactorMethod,
+    if (params.trustedDeviceToken) {
+      await this.findTrustedDevice({
+        userId: user.id,
+        token: params.trustedDeviceToken,
+      });
+    }
+
+    await this.clearDeviceSessions({
+      userId: user.id,
+      deviceInfo: params.deviceInfo,
+      loginLocation: params.loginLocation,
     });
 
     const session = await this.createSession({
       userId: user.id,
       deviceInfo: params.deviceInfo,
-      mfaVerifiedAt: requiresTwoFactor ? null : now,
+      loginLocation: params.loginLocation,
+      mfaVerifiedAt: now,
     });
 
     return { user, session, verificationToken: record.id };

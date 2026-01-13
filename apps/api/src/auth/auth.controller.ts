@@ -24,6 +24,22 @@ import { GoogleStartGuard } from './oauth/google.guard';
 import { OauthStateService } from './oauth/oauth-state.service';
 import type { GoogleProfile } from './oauth/google.strategy';
 import type { TwoFactorMethod } from '@prisma/client';
+import * as geoip from 'geoip-lite';
+import * as requestIp from 'request-ip';
+import { UAParser } from 'ua-parser-js';
+
+const resolveDeviceInfo = (req: Request): string => {
+  const uaString = req.headers['user-agent'] || '';
+  const parser = new UAParser(
+    typeof uaString === 'string' ? uaString : (uaString[0] ?? ''),
+  );
+  const result = parser.getResult();
+
+  const browser = result.browser.name || 'Unknown Browser';
+  const os = result.os.name || 'Unknown OS';
+
+  return `${browser} on ${os}`;
+};
 
 const resolveLoginLocation = (req: Request): string | undefined => {
   const readHeader = (name: string): string | undefined => {
@@ -37,24 +53,32 @@ const resolveLoginLocation = (req: Request): string | undefined => {
     readHeader('x-vercel-ip-city') ||
     readHeader('cf-ipcity') ||
     readHeader('x-geo-city');
-  const region =
-    readHeader('x-vercel-ip-region') ||
-    readHeader('cf-region') ||
-    readHeader('x-geo-region');
   const country =
     readHeader('x-vercel-ip-country') ||
     readHeader('cf-country') ||
     readHeader('x-geo-country');
 
-  const segments = [city, region, country]
-    .map((segment) => segment?.trim())
-    .filter((segment) => segment && segment.toLowerCase() !== 'unknown');
-
-  if (segments.length > 0) {
-    return segments.join(', ');
+  if (city) {
+    return country ? `${city}, ${country}` : city;
   }
 
-  return undefined;
+  const clientIp = requestIp.getClientIp(req);
+  if (clientIp) {
+    if (clientIp === '::1' || clientIp === '127.0.0.1') {
+      return 'Localhost';
+    }
+    const geo = geoip.lookup(clientIp);
+    if (geo) {
+      const segments = [geo.city, geo.country]
+        .map((segment) => segment?.trim())
+        .filter((segment) => segment);
+      if (segments.length > 0) {
+        return segments.join(', ');
+      }
+    }
+  }
+
+  return 'Unknown Location';
 };
 
 @Controller('auth')
@@ -73,7 +97,7 @@ export class AuthController {
   @Get('oauth/google/callback')
   @UseGuards(AuthGuard('google'))
   async googleCallback(@Req() req: Request, @Res() res: Response) {
-    const deviceInfo = req.headers['user-agent'];
+    const deviceInfo = resolveDeviceInfo(req);
     const loginLocation = resolveLoginLocation(req);
     const stateParam = req.query?.state;
     const stateRaw =
@@ -95,7 +119,7 @@ export class AuthController {
       googleSub: g.sub,
       email: g.email,
       name: g.name,
-      deviceInfo: typeof deviceInfo === 'string' ? deviceInfo : undefined,
+      deviceInfo,
       loginLocation,
       trustedDeviceToken,
     });
@@ -131,7 +155,7 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const deviceInfo = req.headers['user-agent'];
+    const deviceInfo = resolveDeviceInfo(req);
     const loginLocation = resolveLoginLocation(req);
     const cookies = req.cookies as Partial<Record<string, string>> | undefined;
     const deviceStableId =
@@ -159,7 +183,7 @@ export class AuthController {
       posDeviceStableId:
         typeof deviceStableId === 'string' ? deviceStableId : undefined,
       posDeviceKey: typeof deviceKey === 'string' ? deviceKey : undefined,
-      deviceInfo: typeof deviceInfo === 'string' ? deviceInfo : undefined,
+      deviceInfo,
       loginLocation,
       trustedDeviceToken,
     });
@@ -201,23 +225,30 @@ export class AuthController {
     };
   }
 
-  @Post('login/password')
-  async loginMemberPassword(
-    @Body() body: { email?: string; password?: string },
+  @Post('login/phone/request')
+  async requestPhoneLogin(@Body() body: { phone?: string }) {
+    return await this.authService.requestLoginOtp({
+      phone: body?.phone ?? '',
+    });
+  }
+
+  @Post('login/phone/verify')
+  async verifyPhoneLogin(
+    @Body() body: { phone?: string; code?: string },
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const deviceInfo = req.headers['user-agent'];
+    const deviceInfo = resolveDeviceInfo(req);
     const loginLocation = resolveLoginLocation(req);
     const cookies = req.cookies as Partial<Record<string, string>> | undefined;
     const trustedDeviceToken =
       typeof cookies?.[TRUSTED_DEVICE_COOKIE] === 'string'
         ? cookies[TRUSTED_DEVICE_COOKIE]
         : undefined;
-    const result = await this.authService.loginWithMemberPassword({
-      email: body?.email ?? '',
-      password: body?.password ?? '',
-      deviceInfo: typeof deviceInfo === 'string' ? deviceInfo : undefined,
+    const result = await this.authService.verifyLoginOtp({
+      phone: body?.phone ?? '',
+      code: body?.code ?? '',
+      deviceInfo,
       loginLocation,
       trustedDeviceToken,
     });
@@ -232,12 +263,11 @@ export class AuthController {
     });
 
     return {
-      success: true,
       userStableId: result.user.userStableId,
       email: result.user.email,
+      phone: result.user.phone,
       role: result.user.role,
       expiresAt: result.session.expiresAt,
-      requiresTwoFactor: result.requiresTwoFactor,
     };
   }
 
@@ -432,9 +462,15 @@ export class AuthController {
     const sessionId =
       typeof rawSessionId === 'string' ? rawSessionId : undefined;
 
-    if (sessionId) {
-      await this.authService.revokeSession(sessionId);
-    }
+    const cookies = req.cookies as Partial<Record<string, string>> | undefined;
+    const trustedToken = cookies?.[TRUSTED_DEVICE_COOKIE];
+
+    await Promise.all([
+      sessionId ? this.authService.revokeSession(sessionId) : Promise.resolve(),
+      typeof trustedToken === 'string'
+        ? this.authService.revokeTrustedDeviceByToken(trustedToken)
+        : Promise.resolve(),
+    ]);
 
     res.clearCookie(POS_DEVICE_ID_COOKIE, { path: '/' });
     res.clearCookie(POS_DEVICE_KEY_COOKIE, { path: '/' });

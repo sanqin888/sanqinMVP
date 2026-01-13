@@ -22,29 +22,30 @@ export default function MemberLoginPage() {
       ? redirectParam
       : `/${locale}/membership`;
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [referrerEmail, setReferrerEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [code, setCode] = useState('');
+  const [step, setStep] = useState<'INPUT_PHONE' | 'INPUT_CODE'>('INPUT_PHONE');
+  const [countdown, setCountdown] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (status === 'authenticated') {
-      if (session?.user?.mfaVerifiedAt) {
-        router.replace(resolvedRedirect);
-      } else {
-        router.replace(
-          `/${locale}/membership/2fa?next=${encodeURIComponent(
-            resolvedRedirect,
-          )}`,
-        );
-      }
+      router.replace(resolvedRedirect);
     }
-  }, [status, session?.user?.mfaVerifiedAt, router, locale, resolvedRedirect]);
+  }, [status, router, resolvedRedirect]);
 
-  async function handlePasswordLogin() {
-    if (!email.trim() || !password) {
-      setError(isZh ? '请填写邮箱和密码。' : 'Please enter email and password.');
+  useEffect(() => {
+    if (countdown <= 0) return;
+    const timer = window.setTimeout(() => {
+      setCountdown((prev) => Math.max(prev - 1, 0));
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [countdown]);
+
+  async function handleRequestCode() {
+    if (!phone.trim()) {
+      setError(isZh ? '请输入手机号。' : 'Please enter your phone number.');
       return;
     }
 
@@ -52,50 +53,52 @@ export default function MemberLoginPage() {
       setLoading(true);
       setError(null);
 
-      const res = await apiFetch<{
-        success?: boolean;
-        requiresTwoFactor?: boolean;
-      }>('/auth/login/password', {
+      await apiFetch('/auth/login/phone/request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password }),
+        body: JSON.stringify({ phone: phone.trim() }),
       });
 
-      if (res?.requiresTwoFactor) {
-        router.replace(
-          `/${locale}/membership/2fa?next=${encodeURIComponent(
-            resolvedRedirect,
-          )}`,
-        );
-        return;
-      }
+      setStep('INPUT_CODE');
+      setCountdown(60);
+      setCode('');
+    } catch (err) {
+      console.error(err);
+      setError(
+        isZh ? '验证码发送失败，请稍后重试。' : 'Failed to send code.',
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
 
-      const referrerEmailTrimmed = referrerEmail.trim();
-      if (referrerEmailTrimmed) {
-        try {
-          await apiFetch('/membership/referrer', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ referrerEmail: referrerEmailTrimmed }),
-          });
-        } catch (referrerError) {
-          console.error(referrerError);
-          setError(
-            isZh
-              ? '推荐人邮箱有误，请确认后重新输入或清空。'
-              : 'Referrer email not found. Please verify it or clear the field.',
-          );
-          return;
-        }
-      }
+  async function handleVerifyCode() {
+    if (!phone.trim() || !code.trim()) {
+      setError(
+        isZh
+          ? '请输入手机号和验证码。'
+          : 'Please enter your phone number and code.',
+      );
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      await apiFetch('/auth/login/phone/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phone.trim(), code: code.trim() }),
+      });
 
       router.replace(resolvedRedirect);
     } catch (err) {
       console.error(err);
       setError(
         isZh
-          ? '登录失败，请检查邮箱和密码。'
-          : 'Login failed. Please check your email and password.',
+          ? '验证码错误或已过期，请重试。'
+          : 'Invalid or expired code. Please try again.',
       );
     } finally {
       setLoading(false);
@@ -125,8 +128,8 @@ export default function MemberLoginPage() {
         </h1>
         <p className="mb-6 text-sm text-slate-600">
           {isZh
-            ? '你可以使用 Google 账号或邮箱密码登录。'
-            : 'Sign in with Google or with your email and password.'}
+            ? '可以使用 Google 账号或手机号登录/注册。'
+            : 'Sign-in/register with Google or with your mobile phone.'}
         </p>
 
         <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
@@ -151,71 +154,104 @@ export default function MemberLoginPage() {
         </div>
 
         <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-          <label className="block text-xs font-medium text-slate-700">
-            {isZh ? '邮箱' : 'Email'}
-          </label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder={isZh ? '请输入邮箱' : 'Enter your email'}
-            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400"
-          />
+          {step === 'INPUT_PHONE' && (
+            <>
+              <label className="block text-xs font-medium text-slate-700">
+                {isZh ? '手机号' : 'Phone number'}
+              </label>
+              <div className="mt-1 flex items-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus-within:ring-1 focus-within:ring-slate-400">
+                <span className="mr-2 text-xs text-slate-500">+1</span>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder={isZh ? '请输入手机号' : 'Enter your phone number'}
+                  className="w-full border-0 p-0 text-sm text-slate-900 focus:outline-none"
+                />
+              </div>
 
-          <label className="mt-4 block text-xs font-medium text-slate-700">
-            {isZh ? '密码' : 'Password'}
-          </label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder={isZh ? '请输入密码' : 'Enter your password'}
-            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400"
-          />
+              {error && (
+                <p className="mt-3 text-center text-xs text-rose-500">
+                  {error}
+                </p>
+              )}
 
-          <div className="mt-3 flex items-center justify-between">
-            <Link
-              href={`/${locale}/membership/forgot-password`}
-              className="text-xs text-slate-500 hover:text-slate-700"
-            >
-              {isZh ? '忘记密码？' : 'Forgot password?'}
-            </Link>
-          </div>
-
-          <label className="mt-4 block text-xs font-medium text-slate-700">
-            {isZh ? '推荐人：' : 'Referrer:'}
-          </label>
-          <input
-            type="email"
-            value={referrerEmail}
-            onChange={(e) => setReferrerEmail(e.target.value)}
-            placeholder={isZh ? '请输入推荐人邮箱' : 'Enter referrer email'}
-            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400"
-          />
-          <p className="mt-2 text-xs text-slate-500">
-            {isZh
-              ? '提示：注册成功后，推荐人邮箱将无法添加或修改，请确认填写无误。'
-              : 'Note: After registration, the referrer email cannot be added or changed. Please confirm it is correct.'}
-          </p>
-
-          {error && (
-            <p className="mt-3 text-center text-xs text-rose-500">{error}</p>
+              <button
+                type="button"
+                onClick={handleRequestCode}
+                disabled={loading}
+                className="mt-4 flex w-full items-center justify-center rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loading
+                  ? isZh
+                    ? '发送中...'
+                    : 'Sending...'
+                  : isZh
+                    ? '获取验证码'
+                    : 'Send code'}
+              </button>
+            </>
           )}
 
-          <button
-            type="button"
-            onClick={handlePasswordLogin}
-            disabled={loading}
-            className="mt-4 flex w-full items-center justify-center rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {loading
-              ? isZh
-                ? '登录中...'
-                : 'Signing in...'
-              : isZh
-                ? '邮箱登录'
-                : 'Sign in with email'}
-          </button>
+          {step === 'INPUT_CODE' && (
+            <>
+              <label className="block text-xs font-medium text-slate-700">
+                {isZh ? '验证码' : 'Verification code'}
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={code}
+                maxLength={6}
+                onChange={(e) => setCode(e.target.value)}
+                placeholder={isZh ? '请输入6位验证码' : 'Enter 6-digit code'}
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400"
+              />
+
+              <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+                <span>
+                  {isZh
+                    ? `验证码已发送至 ${phone.trim() || '+1'}`
+                    : `Code sent to ${phone.trim() || '+1'}`}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleRequestCode}
+                  disabled={loading || countdown > 0}
+                  className="text-xs font-medium text-emerald-600 hover:text-emerald-700 disabled:cursor-not-allowed disabled:text-slate-400"
+                >
+                  {countdown > 0
+                    ? isZh
+                      ? `重新发送 (${countdown}s)`
+                      : `Resend (${countdown}s)`
+                    : isZh
+                      ? '重新发送'
+                      : 'Resend'}
+                </button>
+              </div>
+
+              {error && (
+                <p className="mt-3 text-center text-xs text-rose-500">
+                  {error}
+                </p>
+              )}
+
+              <button
+                type="button"
+                onClick={handleVerifyCode}
+                disabled={loading}
+                className="mt-4 flex w-full items-center justify-center rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loading
+                  ? isZh
+                    ? '登录中...'
+                    : 'Signing in...'
+                  : isZh
+                    ? '登录/注册'
+                    : 'Sign in / Sign up'}
+              </button>
+            </>
+          )}
         </div>
 
         <p className="mt-4 text-xs text-slate-500">
