@@ -207,8 +207,13 @@ export default function AdminDashboard() {
     for (const category of menu) {
       for (const item of category.items) {
         const effectiveActive =
-          category.isActive && 
+          category.isActive &&
           effectiveAvailable(item.isAvailable, item.tempUnavailableUntil);
+        if (effectiveActive) {
+          active += 1;
+        } else {
+          inactive += 1;
+        }
       }
     }
 

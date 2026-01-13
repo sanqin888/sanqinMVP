@@ -228,19 +228,6 @@ function parseTemplateFormFromRule(
   };
 }
 
-const triggerLabels: Record<Exclude<CouponProgram['triggerType'], null>, string> = {
-  SIGNUP_COMPLETED: '注册完成',
-  REFERRAL_QUALIFIED: '邀请成功',
-  MARKETING_OPT_IN: '开启订阅',
-  BIRTHDAY_MONTH: '生日月',
-  TIER_UPGRADE: '等级提升',
-};
-
-function formatTriggerLabel(triggerType: CouponProgram['triggerType']) {
-  if (!triggerType) return '—';
-  return triggerLabels[triggerType] ?? triggerType;
-}
-
 export default function AdminCouponsPage() {
   const [templates, setTemplates] = useState<CouponTemplate[]>([]);
   const [programs, setPrograms] = useState<CouponProgram[]>([]);
