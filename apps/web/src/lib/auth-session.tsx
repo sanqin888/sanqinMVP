@@ -126,12 +126,15 @@ export async function signOut(): Promise<void> {
     method: 'POST',
     credentials: 'include',
   });
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new Event(AUTH_EVENT));
-  }
+  notifyAuthChange();
 }
 
 type SignInOptions = { callbackUrl?: string };
+
+export function notifyAuthChange(): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new Event(AUTH_EVENT));
+}
 
 export function signIn(provider: 'google', opts?: SignInOptions): void {
   if (typeof window === 'undefined') return;

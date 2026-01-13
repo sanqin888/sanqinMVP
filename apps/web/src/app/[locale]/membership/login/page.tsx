@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { useSession, signIn } from '@/lib/auth-session';
+import { useSession, signIn, notifyAuthChange } from '@/lib/auth-session';
 import type { Locale } from '@/lib/i18n/locales';
 import { apiFetch } from '@/lib/api/client';
 
@@ -94,6 +94,8 @@ export default function MemberLoginPage() {
           body: JSON.stringify({ phone: phone.trim(), code: code.trim() }),
         },
       );
+
+      notifyAuthChange();
 
       if (result?.isNewUser) {
         const params = new URLSearchParams({
