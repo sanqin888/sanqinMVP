@@ -137,7 +137,7 @@ export const UI_STRINGS: Record<
     tagline: "FRESH • FAST • HANDMADE",
     heroTitle: "Order San Qin fast & tasty dishes",
     heroDescription:
-      "Classic Liangpi, Roujiamo, hand-pulled noodles and more. Order now and pick up in minutes—or get delivery.",
+      "Classic Liangpi, Roujiamo, featured noodles and more. Order now and pick up in minutes—or get delivery.",
     orderSteps: [
       { id: 1, label: "Choose your dishes" },
       { id: 2, label: "Add notes & confirm" },
@@ -261,7 +261,7 @@ export const UI_STRINGS: Record<
     tagline: "新鲜 · 迅速 · 手工",
     heroTitle: "线上点餐 · 三秦特色",
     heroDescription:
-      "经典凉皮、肉夹馍、手擀面等。现在下单，数分钟即可自取，或选择外送。",
+      "经典凉皮、肉夹馍、特色面食等。现在下单，数分钟即可自取，或选择外送。",
     orderSteps: [
       { id: 1, label: "挑选菜品" },
       { id: 2, label: "备注与确认" },
