@@ -128,8 +128,8 @@ export default function MemberLoginPage() {
         </h1>
         <p className="mb-6 text-sm text-slate-600">
           {isZh
-            ? '使用手机号验证码登录或注册。'
-            : 'Sign in or register with your phone number.'}
+            ? '可以使用 Google 账号或手机号登录/注册。'
+            : 'Sign-in/register with Google or with your mobile phone.'}
         </p>
 
         <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
