@@ -235,16 +235,25 @@ async function main() {
   // snapshot 里可能没有（为 null），则跳过
   if (s.businessConfig && typeof s.businessConfig === "object") {
     const c = s.businessConfig;
+
     await prisma.businessConfig.upsert({
       where: { id: 1 },
       create: {
         id: 1,
-        storeName: toCreateOptional(c.storeName),
-        timezone: typeof c.timezone === "string" ? c.timezone : "America/Toronto",
+        // storeName 是必填 String，避免写 null
+        storeName:
+          typeof c.storeName === "string" && c.storeName.trim()
+            ? c.storeName
+            : "SanQin",
+        timezone:
+          typeof c.timezone === "string" ? c.timezone : "America/Toronto",
         isTemporarilyClosed: !!c.isTemporarilyClosed,
         temporaryCloseReason: toCreateOptional(c.temporaryCloseReason),
+
         deliveryBaseFeeCents:
-          typeof c.deliveryBaseFeeCents === "number" ? c.deliveryBaseFeeCents : 600,
+          typeof c.deliveryBaseFeeCents === "number"
+            ? c.deliveryBaseFeeCents
+            : 600,
         priorityPerKmCents:
           typeof c.priorityPerKmCents === "number" ? c.priorityPerKmCents : 100,
         maxDeliveryRangeKm:
@@ -253,8 +262,8 @@ async function main() {
           typeof c.priorityDefaultDistanceKm === "number"
             ? c.priorityDefaultDistanceKm
             : 6,
-        storeLatitude:
-          typeof c.storeLatitude === "number" ? c.storeLatitude : null,
+
+        storeLatitude: typeof c.storeLatitude === "number" ? c.storeLatitude : null,
         storeLongitude:
           typeof c.storeLongitude === "number" ? c.storeLongitude : null,
         storeAddressLine1: toCreateOptional(c.storeAddressLine1),
@@ -262,11 +271,13 @@ async function main() {
         storeCity: toCreateOptional(c.storeCity),
         storeProvince: toCreateOptional(c.storeProvince),
         storePostalCode: toCreateOptional(c.storePostalCode),
-        storeAddress: toCreateOptional(c.storeAddress),
+
+        // ❌ storeAddress 已从 schema 移除（不要写）
         supportPhone: toCreateOptional(c.supportPhone),
         supportEmail: toCreateOptional(c.supportEmail),
-        salesTaxRate:
-          typeof c.salesTaxRate === "number" ? c.salesTaxRate : 0.13,
+
+        salesTaxRate: typeof c.salesTaxRate === "number" ? c.salesTaxRate : 0.13,
+
         earnPtPerDollar:
           typeof c.earnPtPerDollar === "number" ? c.earnPtPerDollar : 0.01,
         redeemDollarPerPoint:
@@ -277,31 +288,38 @@ async function main() {
           typeof c.referralPtPerDollar === "number"
             ? c.referralPtPerDollar
             : 0.01,
+
         tierThresholdSilver:
-          typeof c.tierThresholdSilver === "number"
-            ? c.tierThresholdSilver
-            : 100000,
+          typeof c.tierThresholdSilver === "number" ? c.tierThresholdSilver : 100000,
         tierThresholdGold:
-          typeof c.tierThresholdGold === "number"
-            ? c.tierThresholdGold
-            : 1000000,
+          typeof c.tierThresholdGold === "number" ? c.tierThresholdGold : 1000000,
         tierThresholdPlatinum:
           typeof c.tierThresholdPlatinum === "number"
             ? c.tierThresholdPlatinum
             : 3000000,
+
         enableDoorDash:
           typeof c.enableDoorDash === "boolean" ? c.enableDoorDash : true,
         enableUberDirect:
           typeof c.enableUberDirect === "boolean" ? c.enableUberDirect : true,
       },
       update: {
-        storeName: toUpdateOptional(c.storeName),
+        storeName:
+          typeof c.storeName === "string" && c.storeName.trim()
+            ? c.storeName
+            : undefined,
         timezone: typeof c.timezone === "string" ? c.timezone : undefined,
+
         isTemporarilyClosed:
-          typeof c.isTemporarilyClosed === "boolean" ? c.isTemporarilyClosed : undefined,
+          typeof c.isTemporarilyClosed === "boolean"
+            ? c.isTemporarilyClosed
+            : undefined,
         temporaryCloseReason: toUpdateOptional(c.temporaryCloseReason),
+
         deliveryBaseFeeCents:
-          typeof c.deliveryBaseFeeCents === "number" ? c.deliveryBaseFeeCents : undefined,
+          typeof c.deliveryBaseFeeCents === "number"
+            ? c.deliveryBaseFeeCents
+            : undefined,
         priorityPerKmCents:
           typeof c.priorityPerKmCents === "number" ? c.priorityPerKmCents : undefined,
         maxDeliveryRangeKm:
@@ -310,6 +328,7 @@ async function main() {
           typeof c.priorityDefaultDistanceKm === "number"
             ? c.priorityDefaultDistanceKm
             : undefined,
+
         storeLatitude:
           typeof c.storeLatitude === "number" ? c.storeLatitude : undefined,
         storeLongitude:
@@ -319,11 +338,14 @@ async function main() {
         storeCity: toUpdateOptional(c.storeCity),
         storeProvince: toUpdateOptional(c.storeProvince),
         storePostalCode: toUpdateOptional(c.storePostalCode),
-        storeAddress: toUpdateOptional(c.storeAddress),
+
+        // ❌ storeAddress 已从 schema 移除（不要写）
         supportPhone: toUpdateOptional(c.supportPhone),
         supportEmail: toUpdateOptional(c.supportEmail),
+
         salesTaxRate:
           typeof c.salesTaxRate === "number" ? c.salesTaxRate : undefined,
+
         earnPtPerDollar:
           typeof c.earnPtPerDollar === "number" ? c.earnPtPerDollar : undefined,
         redeemDollarPerPoint:
@@ -334,6 +356,7 @@ async function main() {
           typeof c.referralPtPerDollar === "number"
             ? c.referralPtPerDollar
             : undefined,
+
         tierThresholdSilver:
           typeof c.tierThresholdSilver === "number"
             ? c.tierThresholdSilver
@@ -346,6 +369,7 @@ async function main() {
           typeof c.tierThresholdPlatinum === "number"
             ? c.tierThresholdPlatinum
             : undefined,
+
         enableDoorDash:
           typeof c.enableDoorDash === "boolean" ? c.enableDoorDash : undefined,
         enableUberDirect:
@@ -364,12 +388,14 @@ async function main() {
         create: {
           weekday: h.weekday,
           openMinutes: typeof h.openMinutes === "number" ? h.openMinutes : null,
-          closeMinutes: typeof h.closeMinutes === "number" ? h.closeMinutes : null,
+          closeMinutes:
+            typeof h.closeMinutes === "number" ? h.closeMinutes : null,
           isClosed: !!h.isClosed,
         },
         update: {
           openMinutes: typeof h.openMinutes === "number" ? h.openMinutes : null,
-          closeMinutes: typeof h.closeMinutes === "number" ? h.closeMinutes : null,
+          closeMinutes:
+            typeof h.closeMinutes === "number" ? h.closeMinutes : null,
           isClosed: !!h.isClosed,
         },
       });
@@ -387,7 +413,8 @@ async function main() {
         name: toCreateOptional(h.name),
         isClosed: typeof h.isClosed === "boolean" ? h.isClosed : true,
         openMinutes: typeof h.openMinutes === "number" ? h.openMinutes : null,
-        closeMinutes: typeof h.closeMinutes === "number" ? h.closeMinutes : null,
+        closeMinutes:
+          typeof h.closeMinutes === "number" ? h.closeMinutes : null,
       };
 
       const updated = await prisma.holiday.updateMany({
@@ -444,7 +471,8 @@ async function main() {
             typeof g.defaultMinSelect === "number" ? g.defaultMinSelect : 0,
           defaultMaxSelect:
             typeof g.defaultMaxSelect === "number" ? g.defaultMaxSelect : null,
-          isAvailable: typeof g.isAvailable === "boolean" ? g.isAvailable : true,
+          isAvailable:
+            typeof g.isAvailable === "boolean" ? g.isAvailable : true,
           tempUnavailableUntil: toDateOrNull(g.tempUnavailableUntil),
           deletedAt: null,
         },
@@ -456,7 +484,8 @@ async function main() {
             typeof g.defaultMinSelect === "number" ? g.defaultMinSelect : 0,
           defaultMaxSelect:
             typeof g.defaultMaxSelect === "number" ? g.defaultMaxSelect : null,
-          isAvailable: typeof g.isAvailable === "boolean" ? g.isAvailable : true,
+          isAvailable:
+            typeof g.isAvailable === "boolean" ? g.isAvailable : true,
           tempUnavailableUntil: toDateOrNull(g.tempUnavailableUntil),
           deletedAt: null,
         },
@@ -477,8 +506,12 @@ async function main() {
           nameEn: o.nameEn,
           nameZh: typeof o.nameZh === "undefined" ? null : o.nameZh,
           priceDeltaCents: o.priceDeltaCents ?? 0,
+          // ✅ schema 新增字段
+          targetItemStableId:
+            typeof o.targetItemStableId === "string" ? o.targetItemStableId : null,
           sortOrder: o.sortOrder ?? 0,
-          isAvailable: typeof o.isAvailable === "boolean" ? o.isAvailable : true,
+          isAvailable:
+            typeof o.isAvailable === "boolean" ? o.isAvailable : true,
           tempUnavailableUntil: toDateOrNull(o.tempUnavailableUntil),
           deletedAt: null,
         },
@@ -487,13 +520,61 @@ async function main() {
           nameEn: o.nameEn,
           nameZh: typeof o.nameZh === "undefined" ? null : o.nameZh,
           priceDeltaCents: o.priceDeltaCents ?? 0,
+          // ✅ schema 新增字段
+          targetItemStableId:
+            typeof o.targetItemStableId === "string" ? o.targetItemStableId : null,
           sortOrder: o.sortOrder ?? 0,
-          isAvailable: typeof o.isAvailable === "boolean" ? o.isAvailable : true,
+          isAvailable:
+            typeof o.isAvailable === "boolean" ? o.isAvailable : true,
           tempUnavailableUntil: toDateOrNull(o.tempUnavailableUntil),
           deletedAt: null,
         },
       });
     }
+  }
+
+  // 4.5) Option Choice Links (MenuOptionChoiceLink) — 依赖 Options 已存在
+  // snapshot 里用 stableId 表达 parent/child，这里先映射成 id 再写 join 表
+  if (Array.isArray(s.optionChoiceLinks)) {
+    const optionRows = await prisma.menuOptionTemplateChoice.findMany({
+      where: { deletedAt: null },
+      select: { id: true, stableId: true },
+    });
+    const optionIdByStable = new Map(optionRows.map((r) => [r.stableId, r.id]));
+
+    for (const l of s.optionChoiceLinks) {
+      const parentStableId = l?.parentOptionStableId;
+      const childStableId = l?.childOptionStableId;
+      if (!parentStableId || !childStableId) continue;
+
+      const parentId = optionIdByStable.get(parentStableId);
+      const childId = optionIdByStable.get(childStableId);
+      if (!parentId || !childId) continue;
+
+      // Prisma 对 @@unique([parentOptionId, childOptionId]) 的 where 复合键名一般是 parentOptionId_childOptionId
+      // 若你生成的 client 名称不同，运行时会报错，可据错误提示改键名
+      const exists = await prisma.menuOptionChoiceLink.findUnique({
+        where: {
+          parentOptionId_childOptionId: {
+            parentOptionId: parentId,
+            childOptionId: childId,
+          },
+        },
+        select: { id: true },
+      });
+
+      if (!exists) {
+        await prisma.menuOptionChoiceLink.create({
+          data: {
+            parentOption: { connect: { id: parentId } },
+            childOption: { connect: { id: childId } },
+          },
+        });
+      }
+    }
+  } else {
+    // 兼容旧 snapshot
+    // console.log("No optionChoiceLinks in snapshot.");
   }
 
   // 5) Items
@@ -515,7 +596,8 @@ async function main() {
             typeof i.ingredientsEn === "undefined" ? null : i.ingredientsEn,
           ingredientsZh:
             typeof i.ingredientsZh === "undefined" ? null : i.ingredientsZh,
-          isAvailable: typeof i.isAvailable === "boolean" ? i.isAvailable : true,
+          isAvailable:
+            typeof i.isAvailable === "boolean" ? i.isAvailable : true,
           visibility: i.visibility ?? "PUBLIC",
           tempUnavailableUntil: toDateOrNull(i.tempUnavailableUntil),
           deletedAt: null,
@@ -531,7 +613,8 @@ async function main() {
             typeof i.ingredientsEn === "undefined" ? null : i.ingredientsEn,
           ingredientsZh:
             typeof i.ingredientsZh === "undefined" ? null : i.ingredientsZh,
-          isAvailable: typeof i.isAvailable === "boolean" ? i.isAvailable : true,
+          isAvailable:
+            typeof i.isAvailable === "boolean" ? i.isAvailable : true,
           visibility: i.visibility ?? "PUBLIC",
           tempUnavailableUntil: toDateOrNull(i.tempUnavailableUntil),
           deletedAt: null,
@@ -554,9 +637,13 @@ async function main() {
 
           pricingMode: ds.pricingMode,
           overridePriceCents:
-            typeof ds.overridePriceCents === "number" ? ds.overridePriceCents : null,
+            typeof ds.overridePriceCents === "number"
+              ? ds.overridePriceCents
+              : null,
           discountDeltaCents:
-            typeof ds.discountDeltaCents === "number" ? ds.discountDeltaCents : null,
+            typeof ds.discountDeltaCents === "number"
+              ? ds.discountDeltaCents
+              : null,
           discountPercent:
             typeof ds.discountPercent === "number" ? ds.discountPercent : null,
 
@@ -579,9 +666,13 @@ async function main() {
 
           pricingMode: ds.pricingMode,
           overridePriceCents:
-            typeof ds.overridePriceCents === "number" ? ds.overridePriceCents : null,
+            typeof ds.overridePriceCents === "number"
+              ? ds.overridePriceCents
+              : null,
           discountDeltaCents:
-            typeof ds.discountDeltaCents === "number" ? ds.discountDeltaCents : null,
+            typeof ds.discountDeltaCents === "number"
+              ? ds.discountDeltaCents
+              : null,
           discountPercent:
             typeof ds.discountPercent === "number" ? ds.discountPercent : null,
 

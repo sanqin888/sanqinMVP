@@ -54,11 +54,40 @@ async function main() {
       id: true,
       storeName: true,
       timezone: true,
+
       isTemporarilyClosed: true,
       temporaryCloseReason: true,
+
       deliveryBaseFeeCents: true,
       priorityPerKmCents: true,
+      maxDeliveryRangeKm: true,
+      priorityDefaultDistanceKm: true,
+
       salesTaxRate: true,
+
+      // Loyalty config
+      earnPtPerDollar: true,
+      redeemDollarPerPoint: true,
+      referralPtPerDollar: true,
+      tierThresholdSilver: true,
+      tierThresholdGold: true,
+      tierThresholdPlatinum: true,
+
+      // Delivery provider toggles
+      enableDoorDash: true,
+      enableUberDirect: true,
+
+      // Store geo/address/support
+      storeLatitude: true,
+      storeLongitude: true,
+      storeAddressLine1: true,
+      storeAddressLine2: true,
+      storeCity: true,
+      storeProvince: true,
+      storePostalCode: true,
+      supportPhone: true,
+      supportEmail: true,
+
       createdAt: true,
       updatedAt: true,
     },
@@ -191,7 +220,7 @@ async function main() {
   });
 
   // ===== Option Choices =====
-  const options = await prisma.menuOptionTemplateChoice.findMany({
+  const optionChoices = await prisma.menuOptionTemplateChoice.findMany({
     where: { deletedAt: null, templateGroup: { deletedAt: null } },
     orderBy: [{ templateGroupId: "asc" }, { sortOrder: "asc" }],
     select: {
@@ -199,6 +228,7 @@ async function main() {
       nameEn: true,
       nameZh: true,
       priceDeltaCents: true,
+      targetItemStableId: true, // ✅ schema 新增：指向目标菜品 stableId（可选）
       sortOrder: true,
       isAvailable: true,
       tempUnavailableUntil: true,
@@ -207,8 +237,21 @@ async function main() {
     },
   });
 
+  // ===== Option Choice Links (Parent -> Child) =====
+  const optionChoiceLinks = await prisma.menuOptionChoiceLink.findMany({
+    where: {
+      parentOption: { deletedAt: null },
+      childOption: { deletedAt: null },
+    },
+    orderBy: [{ parentOptionId: "asc" }, { childOptionId: "asc" }],
+    select: {
+      parentOption: { select: { stableId: true } },
+      childOption: { select: { stableId: true } },
+    },
+  });
+
   // ===== Item ↔ OptionGroup Links =====
-  // join 表本身无 deletedAt，因此用两侧 deletedAt 过滤
+  // join 表本身无 deletedAt，因此用两侧 deletedAt  пикир
   const itemOptionGroups = await prisma.menuItemOptionGroup.findMany({
     where: {
       item: { deletedAt: null },
@@ -226,7 +269,7 @@ async function main() {
   });
 
   const snapshot = {
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
 
     adminUsers: adminUsers.map((u) => ({
@@ -267,11 +310,27 @@ async function main() {
           id: businessConfig.id,
           storeName: businessConfig.storeName,
           timezone: businessConfig.timezone,
+
           isTemporarilyClosed: businessConfig.isTemporarilyClosed,
           temporaryCloseReason: businessConfig.temporaryCloseReason,
+
           deliveryBaseFeeCents: businessConfig.deliveryBaseFeeCents,
           priorityPerKmCents: businessConfig.priorityPerKmCents,
+          maxDeliveryRangeKm: businessConfig.maxDeliveryRangeKm,
+          priorityDefaultDistanceKm: businessConfig.priorityDefaultDistanceKm,
+
           salesTaxRate: businessConfig.salesTaxRate,
+
+          earnPtPerDollar: businessConfig.earnPtPerDollar,
+          redeemDollarPerPoint: businessConfig.redeemDollarPerPoint,
+          referralPtPerDollar: businessConfig.referralPtPerDollar,
+          tierThresholdSilver: businessConfig.tierThresholdSilver,
+          tierThresholdGold: businessConfig.tierThresholdGold,
+          tierThresholdPlatinum: businessConfig.tierThresholdPlatinum,
+
+          enableDoorDash: businessConfig.enableDoorDash,
+          enableUberDirect: businessConfig.enableUberDirect,
+
           storeLatitude: businessConfig.storeLatitude,
           storeLongitude: businessConfig.storeLongitude,
           storeAddressLine1: businessConfig.storeAddressLine1,
@@ -279,9 +338,9 @@ async function main() {
           storeCity: businessConfig.storeCity,
           storeProvince: businessConfig.storeProvince,
           storePostalCode: businessConfig.storePostalCode,
-          storeAddress: businessConfig.storeAddress,
           supportPhone: businessConfig.supportPhone,
           supportEmail: businessConfig.supportEmail,
+
           createdAt: businessConfig.createdAt,
           updatedAt: businessConfig.updatedAt,
         }
@@ -376,16 +435,22 @@ async function main() {
       deletedAt: g.deletedAt,
     })),
 
-    options: options.map((o) => ({
+    options: optionChoices.map((o) => ({
       stableId: o.stableId,
       templateGroupStableId: o.templateGroup?.stableId ?? null,
       nameEn: o.nameEn,
       nameZh: o.nameZh,
       priceDeltaCents: o.priceDeltaCents,
+      targetItemStableId: o.targetItemStableId ?? null,
       sortOrder: o.sortOrder,
       isAvailable: o.isAvailable,
       tempUnavailableUntil: o.tempUnavailableUntil,
       deletedAt: o.deletedAt,
+    })),
+
+    optionChoiceLinks: optionChoiceLinks.map((l) => ({
+      parentOptionStableId: l.parentOption?.stableId ?? null,
+      childOptionStableId: l.childOption?.stableId ?? null,
     })),
 
     itemOptionGroups: itemOptionGroups.map((x) => ({
