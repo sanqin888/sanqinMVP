@@ -202,11 +202,6 @@ export default function LocalOrderPage() {
     removeItemsByStableId(
       invalidItems.map((item) => item.productStableId),
     );
-    setCartNotice(
-      locale === "zh"
-        ? "部分需持券套餐已从购物车移除。"
-        : "Some coupon-only items were removed from your cart.",
-    );
   }, [cartItems, entitlementItems, menu, locale, removeItemsByStableId]);
 
   const menuItemMap = useMemo(
