@@ -4,6 +4,8 @@ import { cookies, headers } from 'next/headers';
 import type { ReactNode } from 'react';
 import type { Locale } from '@/lib/i18n/locales';
 
+const SESSION_COOKIE_NAME = 'session_id';
+
 type StaffSessionResponse = {
   userStableId?: string;
   email?: string;
@@ -66,6 +68,12 @@ export default async function PosLayout({
 }) {
   const { locale } = await params;
   const safeLocale: Locale = locale === 'zh' || locale === 'en' ? locale : 'en';
+
+  const cookieStore = await cookies();
+  const sessionId = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+  if (!sessionId) {
+    return children;
+  }
 
   const session = await fetchStaffSession();
   const role = session?.role;
