@@ -181,21 +181,21 @@ export class AuthController {
     const purpose = body?.purpose === 'pos' ? 'pos' : body?.purpose;
     const deviceStableId =
       purpose === 'pos'
-        ? (typeof body?.posDeviceStableId === 'string'
+        ? ((typeof body?.posDeviceStableId === 'string'
             ? body.posDeviceStableId
             : undefined) ??
           (typeof cookies?.[POS_DEVICE_ID_COOKIE] === 'string'
             ? cookies[POS_DEVICE_ID_COOKIE]
-            : undefined)
+            : undefined))
         : undefined;
     const deviceKey =
       purpose === 'pos'
-        ? (typeof body?.posDeviceKey === 'string'
+        ? ((typeof body?.posDeviceKey === 'string'
             ? body.posDeviceKey
             : undefined) ??
           (typeof cookies?.[POS_DEVICE_KEY_COOKIE] === 'string'
             ? cookies[POS_DEVICE_KEY_COOKIE]
-            : undefined)
+            : undefined))
         : undefined;
     const trustedDeviceToken =
       typeof cookies?.[TRUSTED_DEVICE_COOKIE] === 'string'
