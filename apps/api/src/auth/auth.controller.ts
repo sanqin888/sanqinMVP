@@ -178,20 +178,25 @@ export class AuthController {
     const deviceInfo = resolveDeviceInfo(req);
     const loginLocation = resolveLoginLocation(req);
     const cookies = req.cookies as Partial<Record<string, string>> | undefined;
+    const purpose = body?.purpose === 'pos' ? 'pos' : body?.purpose;
     const deviceStableId =
-      (typeof body?.posDeviceStableId === 'string'
-        ? body.posDeviceStableId
-        : undefined) ??
-      (typeof cookies?.[POS_DEVICE_ID_COOKIE] === 'string'
-        ? cookies[POS_DEVICE_ID_COOKIE]
-        : undefined);
+      purpose === 'pos'
+        ? (typeof body?.posDeviceStableId === 'string'
+            ? body.posDeviceStableId
+            : undefined) ??
+          (typeof cookies?.[POS_DEVICE_ID_COOKIE] === 'string'
+            ? cookies[POS_DEVICE_ID_COOKIE]
+            : undefined)
+        : undefined;
     const deviceKey =
-      (typeof body?.posDeviceKey === 'string'
-        ? body.posDeviceKey
-        : undefined) ??
-      (typeof cookies?.[POS_DEVICE_KEY_COOKIE] === 'string'
-        ? cookies[POS_DEVICE_KEY_COOKIE]
-        : undefined);
+      purpose === 'pos'
+        ? (typeof body?.posDeviceKey === 'string'
+            ? body.posDeviceKey
+            : undefined) ??
+          (typeof cookies?.[POS_DEVICE_KEY_COOKIE] === 'string'
+            ? cookies[POS_DEVICE_KEY_COOKIE]
+            : undefined)
+        : undefined;
     const trustedDeviceToken =
       typeof cookies?.[TRUSTED_DEVICE_COOKIE] === 'string'
         ? cookies[TRUSTED_DEVICE_COOKIE]
@@ -199,7 +204,7 @@ export class AuthController {
     const result = await this.authService.loginWithPassword({
       email: body?.email ?? '',
       password: body?.password ?? '',
-      purpose: body?.purpose,
+      purpose,
       posDeviceStableId:
         typeof deviceStableId === 'string' ? deviceStableId : undefined,
       posDeviceKey: typeof deviceKey === 'string' ? deviceKey : undefined,
@@ -217,7 +222,7 @@ export class AuthController {
       path: '/',
     });
     // ✅ 仅当 purpose=pos 且设备已通过后端校验后，才下发设备 cookie（用于后续每次请求的 PosDeviceGuard）
-    if (body?.purpose === 'pos' && deviceStableId && deviceKey) {
+    if (purpose === 'pos' && deviceStableId && deviceKey) {
       const deviceMaxAge = POS_DEVICE_COOKIE_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
 
       res.cookie(POS_DEVICE_ID_COOKIE, deviceStableId, {
