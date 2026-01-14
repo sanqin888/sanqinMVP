@@ -19,9 +19,8 @@ import {
 import { SessionAuthGuard } from '../../auth/session-auth.guard';
 import { Roles } from '../../auth/roles.decorator';
 import { RolesGuard } from '../../auth/roles.guard';
-import { PosDeviceGuard } from '../../pos/pos-device.guard';
 
-@UseGuards(SessionAuthGuard, PosDeviceGuard, RolesGuard)
+@UseGuards(SessionAuthGuard, RolesGuard)
 @Roles('ADMIN', 'STAFF')
 @Controller('admin/menu')
 export class AdminMenuController {
