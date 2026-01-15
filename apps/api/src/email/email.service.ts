@@ -86,4 +86,32 @@ export class EmailService {
       tags: { type: 'coupon' },
     });
   }
+
+  async sendStaffInviteEmail(params: {
+    to: string;
+    token: string;
+    role: string;
+    inviterName?: string | null;
+  }) {
+    const inviteUrl = `${this.baseUrl}/admin/accept-invite?token=${encodeURIComponent(params.token)}`;
+    const subject = '邀请您加入 Sanqin 团队';
+    const roleName = params.role === 'ADMIN' ? '管理员' : '普通员工';
+    const inviterLine = params.inviterName ?? '管理员';
+    const text = `您好，\n\n${inviterLine} 邀请您以 ${roleName} 身份加入管理后台。\n请点击以下链接设置密码并激活账号：\n${inviteUrl}\n\n此链接有效期为 7 天。如果这不是您预期的操作，请忽略此邮件。`;
+    const html = `
+      <p>您好，</p>
+      <p>${inviterLine} 邀请您以 <strong>${roleName}</strong> 身份加入管理后台。</p>
+      <p>请点击下方链接设置您的登录密码并激活账号：</p>
+      <p><a href="${inviteUrl}">${inviteUrl}</a></p>
+      <p>此链接有效期为 7 天。如果这不是您预期的操作，请忽略此邮件。</p>
+    `;
+
+    return this.sendEmail({
+      to: params.to,
+      subject,
+      text,
+      html,
+      tags: { type: 'staff_invite' },
+    });
+  }
 }

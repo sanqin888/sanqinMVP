@@ -16,6 +16,7 @@ import { BusinessHoursModule } from './business-hours/business-hours.module';
 import { PromotionsModule } from '../promotions/promotions.module';
 import { AdminMembersModule } from './members/admin-members.module';
 import { AdminPosDevicesModule } from './pos-devices/admin-pos-devices.module';
+import { EmailModule } from '../email/email.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { AdminPosDevicesModule } from './pos-devices/admin-pos-devices.module';
     PromotionsModule,
     AdminMembersModule,
     AdminPosDevicesModule,
+    EmailModule,
   ],
   controllers: [
     AdminBusinessController,
