@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import type { Locale } from "@/lib/i18n/locales";
 import { apiFetch } from "@/lib/api/client";
+import type { AdminMenuCategoryDto, AdminMenuFull } from "@shared/menu";
 
 // ========== 基本类型 ========== //
 
@@ -96,6 +97,12 @@ function minutesToTimeString(mins: number | null | undefined): string {
   return `${hh.toString().padStart(2, "0")}:${mm.toString().padStart(2, "0")}`;
 }
 
+function effectiveAvailable(isAvailable: boolean, tempUntil: string | null): boolean {
+  if (!isAvailable) return false;
+  if (!tempUntil) return true;
+  return new Date(tempUntil).getTime() <= Date.now();
+}
+
 export default function AdminDashboard() {
   const { locale } = useParams<{ locale: Locale }>();
   const isZh = locale === "zh";
@@ -113,6 +120,30 @@ export default function AdminDashboard() {
   const [staffSummaryError, setStaffSummaryError] = useState<string | null>(null);
   const [sessionRole, setSessionRole] = useState<string | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
+
+  const [menu, setMenu] = useState<AdminMenuCategoryDto[]>([]);
+  const [menuLoading, setMenuLoading] = useState(true);
+  const [menuError, setMenuError] = useState<string | null>(null);
+
+  const { totalActiveItems, totalInactiveItems } = useMemo(() => {
+    let active = 0;
+    let inactive = 0;
+
+    for (const category of menu) {
+      for (const item of category.items) {
+        const effectiveActive =
+          category.isActive &&
+          effectiveAvailable(item.isAvailable, item.tempUnavailableUntil);
+        if (effectiveActive) {
+          active += 1;
+        } else {
+          inactive += 1;
+        }
+      }
+    }
+
+    return { totalActiveItems: active, totalInactiveItems: inactive };
+  }, [menu]);
 
   useEffect(() => {
     let cancelled = false;
@@ -208,6 +239,41 @@ export default function AdminDashboard() {
     };
   }, [isZh, sessionLoading, sessionRole]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadMenuSummary() {
+      setMenuLoading(true);
+      setMenuError(null);
+      try {
+        const menuRes = await apiFetch<AdminMenuFull>("/admin/menu/full");
+        if (cancelled) return;
+
+        const normalized = (menuRes.categories ?? [])
+          .slice()
+          .sort((a, b) => a.sortOrder - b.sortOrder)
+          .map((category) => ({
+            ...category,
+            items: category.items.slice().sort((a, b) => a.sortOrder - b.sortOrder),
+          }));
+
+        setMenu(normalized);
+      } catch (e) {
+        console.error(e);
+        if (!cancelled) {
+          setMenuError(isZh ? "加载菜单失败，请稍后重试。" : "Failed to load menu. Please try again.");
+        }
+      } finally {
+        if (!cancelled) setMenuLoading(false);
+      }
+    }
+
+    void loadMenuSummary();
+    return () => {
+      cancelled = true;
+    };
+  }, [isZh]);
+
 
   return (
     <div className="space-y-8">
@@ -220,7 +286,19 @@ export default function AdminDashboard() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="rounded-2xl border bg-white/80 p-5 shadow-sm">
+          <p className="text-sm text-slate-500">活跃餐品</p>
+          <p className="mt-2 text-3xl font-semibold text-emerald-600">
+            {menuLoading ? "…" : menuError ? "—" : totalActiveItems}
+          </p>
+        </div>
+        <div className="rounded-2xl border bg-white/80 p-5 shadow-sm">
+          <p className="text-sm text-slate-500">下架餐品</p>
+          <p className="mt-2 text-3xl font-semibold text-amber-600">
+            {menuLoading ? "…" : menuError ? "—" : totalInactiveItems}
+          </p>
+        </div>
         <div className="rounded-2xl border bg-white/80 p-5 shadow-sm">
           <p className="text-sm text-slate-500">计划休假</p>
           <p className="mt-2 text-3xl font-semibold text-slate-900">{hoursLoading ? "…" : holidays.length}</p>
