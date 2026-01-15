@@ -47,9 +47,7 @@ export class MembershipService {
     return createStableId('a');
   }
 
-  private normalizeLanguage(
-    language?: string | null,
-  ): UserLanguage | null {
+  private normalizeLanguage(language?: string | null): UserLanguage | null {
     if (!language) return null;
     const normalized = language.trim().toLowerCase();
     if (normalized === 'zh') return UserLanguage.ZH;
@@ -1323,10 +1321,7 @@ export class MembershipService {
       updateData.name = trimmedName;
     }
 
-    if (
-      normalizedLanguage &&
-      normalizedLanguage !== user.language
-    ) {
+    if (normalizedLanguage && normalizedLanguage !== user.language) {
       updateData.language = normalizedLanguage;
     }
 

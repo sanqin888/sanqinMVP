@@ -233,7 +233,11 @@ export class MembershipController {
         ? body.language.trim().toLowerCase()
         : null;
 
-    if (normalizedLanguage && normalizedLanguage !== 'zh' && normalizedLanguage !== 'en') {
+    if (
+      normalizedLanguage &&
+      normalizedLanguage !== 'zh' &&
+      normalizedLanguage !== 'en'
+    ) {
       throw new BadRequestException('language must be zh or en');
     }
 
