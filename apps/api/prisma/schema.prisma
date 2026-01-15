@@ -65,6 +65,11 @@ enum UserRole {
   ADMIN
 }
 
+enum UserLanguage {
+  ZH
+  EN
+}
+
 enum UserStatus {
   ACTIVE
   DISABLED
@@ -152,6 +157,7 @@ model User {
   passwordChangedAt     DateTime?
   twoFactorEnabledAt    DateTime?
   twoFactorMethod       TwoFactorMethod @default(OFF)
+  language              UserLanguage @default(ZH)
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
   marketingEmailOptIn   Boolean   @default(false)

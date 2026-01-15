@@ -78,6 +78,7 @@ type MemberProfile = {
   birthdayMonth?: number | null;
   birthdayDay?: number | null;
   referrerEmail?: string | null;
+  language?: 'zh' | 'en';
   tier: MemberTier;
   points: number;
   availableDiscountCents: number;
@@ -114,6 +115,7 @@ type MembershipSummaryResponse = {
   birthdayMonth?: number | null;
   birthdayDay?: number | null;
   referrerEmail?: string | null;
+  language?: 'zh' | 'en';
   recentOrders: MembershipSummaryOrderDto[];
 };
 
@@ -205,6 +207,7 @@ export default function MembershipHomePage() {
   const { locale } = useParams<{ locale: Locale }>();
   const searchParams = useSearchParams();
   const { data: session, status } = useSession();
+  const isZh = locale === 'zh';
 
   const [activeTab, setActiveTab] = useState<
     | 'overview'
@@ -234,6 +237,12 @@ export default function MembershipHomePage() {
   const [profileName, setProfileName] = useState('');
   const [birthdayMonthInput, setBirthdayMonthInput] = useState('');
   const [birthdayDayInput, setBirthdayDayInput] = useState('');
+  const [languagePreference, setLanguagePreference] = useState<'zh' | 'en'>(
+    isZh ? 'zh' : 'en',
+  );
+  const [languageSaving, setLanguageSaving] = useState(false);
+  const [languageError, setLanguageError] = useState<string | null>(null);
+  const [languageSaved, setLanguageSaved] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileSaved, setProfileSaved] = useState(false);
@@ -276,8 +285,6 @@ export default function MembershipHomePage() {
   const [trustingSessionId, setTrustingSessionId] = useState<string | null>(
     null,
   );
-
-  const isZh = locale === 'zh';
 
   // 未登录时跳回登录页
   useEffect(() => {
@@ -367,6 +374,7 @@ export default function MembershipHomePage() {
           birthdayMonth: data.birthdayMonth ?? null,
           birthdayDay: data.birthdayDay ?? null,
           referrerEmail: data.referrerEmail ?? null,
+          language: data.language ?? (isZh ? 'zh' : 'en'),
           tier: data.tier,
           points: data.points,
           availableDiscountCents: data.availableDiscountCents,
@@ -479,12 +487,18 @@ export default function MembershipHomePage() {
     setBirthdayDayInput(
       member.birthdayDay != null ? String(member.birthdayDay) : '',
     );
+    setLanguagePreference(member.language ?? (isZh ? 'zh' : 'en'));
     setProfileSaved(false);
-  }, [member]);
+  }, [member, isZh]);
 
   useEffect(() => {
     setProfileSaved(false);
   }, [profileName]);
+
+  useEffect(() => {
+    setLanguageSaved(false);
+    setLanguageError(null);
+  }, [languagePreference]);
 
   useEffect(() => {
     setBirthdaySaved(false);
@@ -678,6 +692,58 @@ export default function MembershipHomePage() {
     profileName,
     isZh,
   ]);
+
+  const handleLanguageSave = useCallback(async () => {
+    if (!member) return;
+    setLanguageSaving(true);
+    setLanguageError(null);
+    setLanguageSaved(false);
+
+    try {
+      const res = await fetch('/api/v1/membership/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          language: languagePreference,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Failed with status ${res.status}`);
+      }
+
+      const raw = (await res.json()) as {
+        success?: boolean;
+        user?: {
+          language?: 'zh' | 'en';
+        };
+      };
+
+      const updated = raw?.user;
+
+      if (updated?.language) {
+        setMember((prev) =>
+          prev
+            ? {
+                ...prev,
+                language: updated.language,
+              }
+            : prev,
+        );
+      }
+
+      setLanguageSaved(true);
+    } catch (err) {
+      console.error(err);
+      setLanguageError(
+        isZh
+          ? '语言偏好保存失败，请稍后再试。'
+          : 'Failed to save language preference. Please try again later.',
+      );
+    } finally {
+      setLanguageSaving(false);
+    }
+  }, [member, languagePreference, isZh]);
 
   const handleBirthdaySave = useCallback(async () => {
     if (!member) return;
@@ -1360,9 +1426,11 @@ const tierProgress = (() => {
               profileName={profileName}
               birthdayMonthInput={birthdayMonthInput}
               birthdayDayInput={birthdayDayInput}
+              languagePreference={languagePreference}
               onProfileNameChange={setProfileName}
               onBirthdayMonthChange={setBirthdayMonthInput}
               onBirthdayDayChange={setBirthdayDayInput}
+              onLanguagePreferenceChange={setLanguagePreference}
               profileSaving={profileSaving}
               profileError={profileError}
               profileSaved={profileSaved}
@@ -1371,6 +1439,10 @@ const tierProgress = (() => {
               birthdayError={birthdayError}
               birthdaySaved={birthdaySaved}
               onSaveBirthday={handleBirthdaySave}
+              languageSaving={languageSaving}
+              languageError={languageError}
+              languageSaved={languageSaved}
+              onSaveLanguage={handleLanguageSave}
               phoneEnrollInput={phoneEnrollInput}
               phoneEnrollCode={phoneEnrollCode}
               phoneEnrollSending={phoneEnrollSending}
@@ -2250,9 +2322,11 @@ function ProfileSection({
   profileName,
   birthdayMonthInput,
   birthdayDayInput,
+  languagePreference,
   onProfileNameChange,
   onBirthdayMonthChange,
   onBirthdayDayChange,
+  onLanguagePreferenceChange,
   profileSaving,
   profileError,
   profileSaved,
@@ -2261,6 +2335,10 @@ function ProfileSection({
   birthdayError,
   birthdaySaved,
   onSaveBirthday,
+  languageSaving,
+  languageError,
+  languageSaved,
+  onSaveLanguage,
   phoneEnrollInput,
   phoneEnrollCode,
   phoneEnrollSending,
@@ -2284,9 +2362,11 @@ function ProfileSection({
   profileName: string;
   birthdayMonthInput: string;
   birthdayDayInput: string;
+  languagePreference: 'zh' | 'en';
   onProfileNameChange: (value: string) => void;
   onBirthdayMonthChange: (value: string) => void;
   onBirthdayDayChange: (value: string) => void;
+  onLanguagePreferenceChange: (value: 'zh' | 'en') => void;
   profileSaving: boolean;
   profileError: string | null;
   profileSaved: boolean;
@@ -2295,6 +2375,10 @@ function ProfileSection({
   birthdayError: string | null;
   birthdaySaved: boolean;
   onSaveBirthday: () => void;
+  languageSaving: boolean;
+  languageError: string | null;
+  languageSaved: boolean;
+  onSaveLanguage: () => void;
   phoneEnrollInput: string;
   phoneEnrollCode: string;
   phoneEnrollSending: boolean;
@@ -2425,6 +2509,54 @@ function ProfileSection({
           <p className="mt-0.5 text-slate-900">
             {user.email || (isZh ? '未绑定' : 'Not linked')}
           </p>
+        </div>
+        <div>
+          <p className="text-slate-500">
+            {isZh ? '语言偏好' : 'Language preference'}
+          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <select
+              value={languagePreference}
+              onChange={(event) =>
+                onLanguagePreferenceChange(
+                  event.target.value === 'zh' ? 'zh' : 'en',
+                )
+              }
+              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-slate-400 focus:outline-none"
+            >
+              <option value="zh">{isZh ? '中文' : 'Chinese'}</option>
+              <option value="en">{isZh ? '英文' : 'English'}</option>
+            </select>
+            <button
+              type="button"
+              onClick={onSaveLanguage}
+              disabled={languageSaving}
+              className="rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+            >
+              {languageSaving
+                ? isZh
+                  ? '保存中...'
+                  : 'Saving...'
+                : isZh
+                  ? '保存'
+                  : 'Save'}
+            </button>
+            {languageSaved && !languageSaving && (
+              <span className="text-[11px] text-emerald-600">
+                {isZh ? '已保存' : 'Saved'}
+              </span>
+            )}
+          </div>
+          <p className="mt-1 text-[11px] text-slate-400">
+            {isZh
+              ? '短信、邮件将按照此语言发送。'
+              : 'SMS and emails will follow this language.'}
+          </p>
+          {languageError && (
+            <p className="mt-1 text-[11px] text-rose-500">
+              {languageError}
+            </p>
+          )}
         </div>
         {user.referrerEmail ? (
           <div>

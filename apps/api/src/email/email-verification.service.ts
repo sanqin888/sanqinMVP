@@ -17,6 +17,10 @@ export class EmailVerificationService {
   }) {
     const token = randomUUID();
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const user = await this.prisma.user.findUnique({
+      where: { id: params.userId },
+      select: { language: true },
+    });
 
     await this.prisma.emailVerification.create({
       data: {
@@ -31,6 +35,7 @@ export class EmailVerificationService {
       to: params.email,
       token,
       name: params.name ?? null,
+      locale: user?.language === 'ZH' ? 'zh' : 'en',
     });
 
     return { ok: true };

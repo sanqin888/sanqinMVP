@@ -986,6 +986,7 @@ export default function CheckoutPage() {
         body: JSON.stringify({
           phone: rawPhone,
           purpose: "checkout", // 后端可按用途区分（可选）
+          locale,
         }),
       });
 
