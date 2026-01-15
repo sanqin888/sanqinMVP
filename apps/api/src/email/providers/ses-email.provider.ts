@@ -152,7 +152,7 @@ export class SesEmailProvider implements EmailProvider {
     key: string | Buffer,
     value: string,
     encoding: 'hex' | 'buffer',
-  ) {
+  ): string | Buffer {
     const digest = createHmac('sha256', key).update(value, 'utf8');
     return encoding === 'hex' ? digest.digest('hex') : digest.digest();
   }
