@@ -1192,14 +1192,17 @@ export default function CheckoutPage() {
         if (!res.ok) {
           throw new Error(`Failed with status ${res.status}`);
         }
-        const payload = (await res.json()) as unknown;
-        const list = Array.isArray(payload)
-          ? (payload as MemberAddress[])
-          : Array.isArray((payload as { data?: unknown }).data)
-            ? ((payload as { data: MemberAddress[] }).data ?? [])
-            : [];
-        if (!Array.isArray(payload)) {
-          console.warn('Unexpected member addresses payload', payload);
+        const payload = (await res.json()) as any;
+        let list: MemberAddress[] = [];
+
+        if (Array.isArray(payload)) {
+          list = payload;
+        } else if (payload && typeof payload === 'object') {
+          if (Array.isArray(payload.details)) {
+            list = payload.details;
+          } else if (Array.isArray(payload.data)) {
+            list = payload.data;
+          }
         }
         const defaultAddress =
           list.find((addr) => addr.isDefault) ?? list[0] ?? null;
