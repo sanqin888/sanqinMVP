@@ -1,0 +1,1 @@
+export const SMS_PROVIDER_TOKEN = 'SMS_PROVIDER_TOKEN';

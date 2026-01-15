@@ -59,6 +59,7 @@ import {
   resolveStoreNow,
 } from '../common/daily-specials';
 import { LocationService } from '../location/location.service';
+import { NotificationService } from '../notifications/notification.service';
 import type { OrderDto, OrderItemDto } from './dto/order.dto';
 import type { PrintPosPayloadDto } from '../pos/dto/print-pos-payload.dto';
 
@@ -148,6 +149,7 @@ export class OrdersService {
     private readonly uberDirect: UberDirectService,
     private readonly doorDashDrive: DoorDashDriveService,
     private readonly locationService: LocationService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   private toOrderDto(order: OrderWithItems): OrderDto {
@@ -386,8 +388,21 @@ export class OrdersService {
       this.handleOrderPaidSideEffects(updated);
     } else if (next === 'refunded') {
       void this.loyalty.rollbackOnRefund(updated.id);
+    } else if (next === 'ready') {
+      void this.notifyOrderReady(updated);
     }
     return updated;
+  }
+
+  private async notifyOrderReady(order: OrderWithItems) {
+    if (!order.contactPhone) return;
+    const orderNumber = order.clientRequestId ?? order.orderStableId;
+    if (!orderNumber) return;
+    await this.notificationService.notifyOrderReady({
+      phone: order.contactPhone,
+      orderNumber,
+      name: order.contactName ?? null,
+    });
   }
 
   private handleOrderPaidSideEffects(order: OrderWithItems) {
