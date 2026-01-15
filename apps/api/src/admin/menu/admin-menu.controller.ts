@@ -80,11 +80,23 @@ export class AdminMenuController {
   }
 
   @Put('categories/:categoryStableId')
-  async setCategoryActive(
+  async updateCategory(
     @Param('categoryStableId') categoryStableId: string,
-    @Body() body: { isActive: boolean },
-  ): Promise<{ stableId: string; isActive: boolean }> {
-    return this.service.setCategoryActive(categoryStableId, body.isActive);
+    @Body()
+    body: {
+      nameEn?: string;
+      nameZh?: string | null;
+      sortOrder?: number;
+      isActive?: boolean;
+    },
+  ): Promise<{
+    stableId: string;
+    nameEn: string;
+    nameZh: string | null;
+    sortOrder: number;
+    isActive: boolean;
+  }> {
+    return this.service.updateCategory(categoryStableId, body);
   }
 
   @Post('items')

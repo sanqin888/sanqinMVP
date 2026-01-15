@@ -65,6 +65,12 @@ type CreateItemPayload = {
   visibility?: "PUBLIC" | "HIDDEN";
 };
 
+type CategoryEditDraft = {
+  nameEn: string;
+  nameZh: string;
+  sortOrder: string;
+};
+
 
 const BIND_ENDPOINT = (itemStableId: string) =>
   `/admin/menu/items/${encodeURIComponent(itemStableId)}/option-group-bindings`;
@@ -115,6 +121,12 @@ export default function AdminMenuPage() {
 
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState<SavingState>({ itemStableId: null, error: null });
+
+  const [editingCategoryStableId, setEditingCategoryStableId] = useState<string | null>(null);
+  const [categoryEditDrafts, setCategoryEditDrafts] = useState<
+    Record<string, CategoryEditDraft>
+  >({});
+  const [categorySavingId, setCategorySavingId] = useState<string | null>(null);
 
   const [unbindingId, setUnbindingId] = useState<string | null>(null);
   const [bindingItemId, setBindingItemId] = useState<string | null>(null);
@@ -214,6 +226,72 @@ export default function AdminMenuPage() {
             },
       ),
     );
+  }
+
+  function startEditCategory(category: AdminMenuCategoryDto): void {
+    setEditingCategoryStableId(category.stableId);
+    setCategoryEditDrafts((prev) => ({
+      ...prev,
+      [category.stableId]: {
+        nameEn: category.nameEn,
+        nameZh: category.nameZh ?? '',
+        sortOrder: String(category.sortOrder ?? 0),
+      },
+    }));
+  }
+
+  function cancelEditCategory(): void {
+    setEditingCategoryStableId(null);
+  }
+
+  async function saveCategory(categoryStableId: string): Promise<void> {
+    const draft = categoryEditDrafts[categoryStableId];
+    if (!draft) return;
+
+    const nameEn = draft.nameEn.trim();
+    const nameZh = draft.nameZh.trim();
+    if (!nameEn) {
+      alert(isZh ? '分类英文名必填' : 'Category English name is required.');
+      return;
+    }
+
+    setCategorySavingId(categoryStableId);
+    try {
+      const updated = await apiFetch<{
+        stableId: string;
+        nameEn: string;
+        nameZh: string | null;
+        sortOrder: number;
+        isActive: boolean;
+      }>(`/admin/menu/categories/${encodeURIComponent(categoryStableId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nameEn,
+          nameZh: nameZh ? nameZh : null,
+          sortOrder: toIntOrZero(draft.sortOrder),
+        }),
+      });
+
+      setCategories((prev) =>
+        prev.map((cat) =>
+          cat.stableId === updated.stableId
+            ? {
+                ...cat,
+                nameEn: updated.nameEn,
+                nameZh: updated.nameZh,
+                sortOrder: updated.sortOrder,
+                isActive: updated.isActive,
+              }
+            : cat,
+        ),
+      );
+      setEditingCategoryStableId(null);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCategorySavingId(null);
+    }
   }
 
   async function load(): Promise<void> {
@@ -630,23 +708,117 @@ export default function AdminMenuPage() {
 
       {/* Categories + Items */}
       <section className="space-y-4">
-        {categories.map((cat) => (
-          <div key={cat.stableId} className="rounded-xl border border-slate-200">
-            <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-4">
-              <div>
-                <div className="text-base font-semibold">
-                  {isZh ? cat.nameZh ?? cat.nameEn : cat.nameEn}
+        {categories.map((cat) => {
+          const isEditingCategory = editingCategoryStableId === cat.stableId;
+          const categoryDraft = categoryEditDrafts[cat.stableId];
+
+          return (
+            <div key={cat.stableId} className="rounded-xl border border-slate-200">
+              <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-4">
+                <div>
+                  <div className="text-base font-semibold">
+                    {isZh ? cat.nameZh ?? cat.nameEn : cat.nameEn}
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    stableId: <span className="font-mono">{cat.stableId}</span> · sort:{' '}
+                    {cat.sortOrder} · {cat.isActive ? (isZh ? '启用' : 'active') : isZh ? '停用' : 'inactive'}
+                  </div>
                 </div>
-                <div className="mt-1 text-xs text-slate-500">
-                  stableId: <span className="font-mono">{cat.stableId}</span> · sort:{' '}
-                  {cat.sortOrder} · {cat.isActive ? (isZh ? '启用' : 'active') : isZh ? '停用' : 'inactive'}
+
+                <div className="flex flex-wrap gap-2">
+                  {!isEditingCategory ? (
+                    <button
+                      type="button"
+                      className="rounded-full border bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                      onClick={() => startEditCategory(cat)}
+                    >
+                      {isZh ? '编辑' : 'Edit'}
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="rounded-full border bg-slate-900 px-3 py-1 text-xs font-medium text-white hover:bg-slate-800"
+                        onClick={() => void saveCategory(cat.stableId)}
+                        disabled={categorySavingId === cat.stableId}
+                      >
+                        {categorySavingId === cat.stableId
+                          ? isZh
+                            ? '保存中…'
+                            : 'Saving…'
+                          : isZh
+                            ? '保存'
+                            : 'Save'}
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-full border bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                        onClick={cancelEditCategory}
+                      >
+                        {isZh ? '取消' : 'Cancel'}
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
 
-              <div className="text-xs text-slate-500">
-                {isZh ? '分类编辑在 options/分类页做（如你已有该页）' : 'Category edits can live elsewhere if you have it.'}
-              </div>
-            </div>
+              {isEditingCategory && categoryDraft ? (
+                <div className="border-b border-slate-200 p-4">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-6">
+                    <label className="space-y-1 md:col-span-2">
+                      <div className="text-xs text-slate-600">{isZh ? '英文名' : 'Name (EN)'}</div>
+                      <input
+                        value={categoryDraft.nameEn}
+                        onChange={(e) =>
+                          setCategoryEditDrafts((prev) => ({
+                            ...prev,
+                            [cat.stableId]: {
+                              ...prev[cat.stableId],
+                              nameEn: e.target.value,
+                            },
+                          }))
+                        }
+                        className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                      />
+                    </label>
+
+                    <label className="space-y-1 md:col-span-2">
+                      <div className="text-xs text-slate-600">{isZh ? '中文名' : 'Name (ZH)'}</div>
+                      <input
+                        value={categoryDraft.nameZh}
+                        onChange={(e) =>
+                          setCategoryEditDrafts((prev) => ({
+                            ...prev,
+                            [cat.stableId]: {
+                              ...prev[cat.stableId],
+                              nameZh: e.target.value,
+                            },
+                          }))
+                        }
+                        className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                      />
+                    </label>
+
+                    <label className="space-y-1">
+                      <div className="text-xs text-slate-600">{isZh ? '排序' : 'Sort'}</div>
+                      <input
+                        value={categoryDraft.sortOrder}
+                        onChange={(e) =>
+                          setCategoryEditDrafts((prev) => ({
+                            ...prev,
+                            [cat.stableId]: {
+                              ...prev[cat.stableId],
+                              sortOrder: e.target.value,
+                            },
+                          }))
+                        }
+                        className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                        inputMode="numeric"
+                      />
+                    </label>
+                  </div>
+                </div>
+              ) : null}
 
             {/* Create item in category */}
             <div className="border-b border-slate-200 p-4">
@@ -1239,7 +1411,8 @@ export default function AdminMenuPage() {
               })}
             </div>
           </div>
-        ))}
+          );
+        })}
       </section>
 
       {availabilityTarget ? (
