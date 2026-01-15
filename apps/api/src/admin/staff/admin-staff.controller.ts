@@ -256,6 +256,7 @@ export class AdminStaffController {
       token,
       role: invite.role,
       inviterName: inviter?.name,
+      locale: body.locale,
     });
 
     const dto = this.toInviteDto(invite);
@@ -284,6 +285,7 @@ export class AdminStaffController {
       to: invite.email,
       token,
       role: invite.role,
+      locale: this.normalizeLocale(localeRaw),
     });
     const dto = this.toInviteDto(invite);
 

@@ -220,11 +220,21 @@ export class MembershipController {
       name?: string | null;
       birthdayMonth?: number | null;
       birthdayDay?: number | null;
+      language?: string | null;
     },
   ) {
     const userStableId = req.user?.userStableId;
     if (!userStableId) {
       throw new BadRequestException('userStableId is required');
+    }
+
+    const normalizedLanguage =
+      typeof body.language === 'string'
+        ? body.language.trim().toLowerCase()
+        : null;
+
+    if (normalizedLanguage && normalizedLanguage !== 'zh' && normalizedLanguage !== 'en') {
+      throw new BadRequestException('language must be zh or en');
     }
 
     const user = await this.membership.updateProfile({
@@ -234,6 +244,7 @@ export class MembershipController {
         typeof body.birthdayMonth === 'number' ? body.birthdayMonth : null,
       birthdayDay:
         typeof body.birthdayDay === 'number' ? body.birthdayDay : null,
+      language: normalizedLanguage,
     });
 
     return {
