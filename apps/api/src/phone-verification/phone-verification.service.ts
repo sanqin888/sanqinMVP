@@ -9,6 +9,7 @@ import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { PhoneVerificationStatus } from '@prisma/client';
 import { normalizePhone } from '../common/utils/phone';
+import { SmsService } from '../sms/sms.service';
 
 type SendCodeResult = {
   ok: boolean;
@@ -30,7 +31,10 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
   private readonly ipRequests = new Map<string, number[]>();
   private ipCleanupTimer?: NodeJS.Timeout;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly smsService: SmsService,
+  ) {}
 
   onModuleInit(): void {
     this.ipCleanupTimer = setInterval(() => {
@@ -135,11 +139,18 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
-    // ⭐ 这里将来可以接入真正的短信服务商
-    // 目前先打日志（注意生产环境不要把 code 打到日志里，如果介意安全）
-    this.logger.log(
-      `[DEV] Phone verification code ${code} sent to phone=${normalized}`,
-    );
+    const message = `Your verification code is ${code}. It expires in 10 minutes.`;
+    const smsResult = await this.smsService.sendSms({
+      phone: normalized,
+      body: message,
+    });
+
+    if (!smsResult.ok) {
+      this.logger.warn(
+        `Failed to send verification SMS to ${normalized}: ${smsResult.error ?? 'unknown'}`,
+      );
+      return { ok: false, error: 'sms_send_failed' };
+    }
 
     // 如果你在开发环境想直接把 code 返回给前端方便测试，也可以这样：
     // if (process.env.NODE_ENV !== 'production') {

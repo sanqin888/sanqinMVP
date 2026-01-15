@@ -167,6 +167,7 @@ model User {
   passwordResetTokens   PasswordResetToken[]
   twoFactorChallenges   TwoFactorChallenge[]
   userCoupons           UserCoupon[]
+  emailVerifications    EmailVerification[]
 
   @@index([referredByUserId])
 }
@@ -533,6 +534,21 @@ model PhoneVerification {
   token         String?                 @unique
 
   @@index([phone, purpose, used, createdAt])
+}
+
+model EmailVerification {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  email      String
+  token      String   @unique
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  consumedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([email, createdAt])
 }
 
 model BusinessConfig {

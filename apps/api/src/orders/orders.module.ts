@@ -8,6 +8,7 @@ import { DeliveriesModule } from '../deliveries/deliveries.module';
 import { MembershipModule } from '../membership/membership.module';
 import { PosDeviceModule } from '../pos/pos-device.module';
 import { LocationModule } from '../location/location.module';
+import { NotificationModule } from '../notifications/notification.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { LocationModule } from '../location/location.module';
     DeliveriesModule,
     MembershipModule,
     LocationModule,
+    NotificationModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService],
