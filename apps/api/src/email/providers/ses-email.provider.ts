@@ -64,11 +64,11 @@ export class SesEmailProvider implements EmailProvider {
 
     try {
       const response = await lastValueFrom(
-        this.httpService.post(endpoint, body, {
+        this.httpService.post<SesSendResponse>(endpoint, body, {
           headers,
         }),
       );
-      const messageId = response?.data?.MessageId ?? undefined;
+      const messageId = response.data.MessageId ?? undefined;
       return { ok: true, messageId };
     } catch (error) {
       this.logger.error('SES send failed', error as Error);
@@ -146,6 +146,8 @@ export class SesEmailProvider implements EmailProvider {
     return createHash('sha256').update(value, 'utf8').digest('hex');
   }
 
+  private hmac(key: string | Buffer, value: string, encoding: 'hex'): string;
+  private hmac(key: string | Buffer, value: string, encoding: 'buffer'): Buffer;
   private hmac(
     key: string | Buffer,
     value: string,
@@ -161,9 +163,13 @@ export class SesEmailProvider implements EmailProvider {
     regionName: string,
     serviceName: string,
   ): Buffer {
-    const kDate = this.hmac(`AWS4${secret}`, dateStamp, 'buffer') as Buffer;
-    const kRegion = this.hmac(kDate, regionName, 'buffer') as Buffer;
-    const kService = this.hmac(kRegion, serviceName, 'buffer') as Buffer;
-    return this.hmac(kService, 'aws4_request', 'buffer') as Buffer;
+    const kDate = this.hmac(`AWS4${secret}`, dateStamp, 'buffer');
+    const kRegion = this.hmac(kDate, regionName, 'buffer');
+    const kService = this.hmac(kRegion, serviceName, 'buffer');
+    return this.hmac(kService, 'aws4_request', 'buffer');
   }
 }
+
+type SesSendResponse = {
+  MessageId?: string;
+};
