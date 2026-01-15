@@ -180,6 +180,8 @@ export default function LocalOrderPage() {
 
   useEffect(() => {
     if (cartItems.length === 0) return;
+    if (menuLoading || menu.length === 0 || menuError) return;
+    if (isMemberLoggedIn && !entitlements && !entitlementsError) return;
     const allowedStableIds = new Set(
       menu.flatMap((category) =>
         category.items.map((item) => item.stableId),
@@ -195,7 +197,17 @@ export default function LocalOrderPage() {
     removeItemsByStableId(
       invalidItems.map((item) => item.productStableId),
     );
-  }, [cartItems, entitlementItems, menu, locale, removeItemsByStableId]);
+  }, [
+    cartItems,
+    entitlements,
+    entitlementsError,
+    entitlementItems,
+    isMemberLoggedIn,
+    menu,
+    menuError,
+    menuLoading,
+    removeItemsByStableId,
+  ]);
 
   const menuItemMap = useMemo(
     () =>
