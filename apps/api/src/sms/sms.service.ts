@@ -8,7 +8,9 @@ export class SmsService {
   private readonly defaultCountryCode =
     process.env.SMS_DEFAULT_COUNTRY_CODE?.replace(/\D+/g, '') ?? '1';
 
-  constructor(@Inject(SMS_PROVIDER_TOKEN) private readonly provider: SmsProvider) {}
+  constructor(
+    @Inject(SMS_PROVIDER_TOKEN) private readonly provider: SmsProvider,
+  ) {}
 
   async sendSms(params: {
     phone: string;

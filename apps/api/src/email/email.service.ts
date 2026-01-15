@@ -69,8 +69,8 @@ export class EmailService {
     const html = `
       <p>${greeting}</p>
       <p>We just added <strong>${params.couponCount}</strong> coupon${
-      params.couponCount > 1 ? 's' : ''
-    } to your account for ${params.programName}.</p>
+        params.couponCount > 1 ? 's' : ''
+      } to your account for ${params.programName}.</p>
       ${
         params.expiresAt
           ? `<p>Expires on: ${params.expiresAt.toDateString()}</p>`

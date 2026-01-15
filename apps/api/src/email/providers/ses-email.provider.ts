@@ -2,7 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { createHmac, createHash } from 'crypto';
 import { lastValueFrom } from 'rxjs';
-import type { EmailProvider, EmailSendParams, EmailSendResult } from '../email.provider';
+import type {
+  EmailProvider,
+  EmailSendParams,
+  EmailSendResult,
+} from '../email.provider';
 
 @Injectable()
 export class SesEmailProvider implements EmailProvider {
@@ -133,8 +137,7 @@ export class SesEmailProvider implements EmailProvider {
     );
     const signature = this.hmac(signingKey, stringToSign, 'hex');
 
-    headers.Authorization =
-      `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+    headers.Authorization = `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
     return { headers };
   }

@@ -1,7 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { lastValueFrom } from 'rxjs';
-import type { SmsProvider, SmsSendParams, SmsSendResult } from '../sms.provider';
+import type {
+  SmsProvider,
+  SmsSendParams,
+  SmsSendResult,
+} from '../sms.provider';
 
 @Injectable()
 export class TwilioSmsProvider implements SmsProvider {
