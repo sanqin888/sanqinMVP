@@ -41,8 +41,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
     const { status, body } = this.normalizeException(exception);
 
     const isNotFound = status === HttpStatus.NOT_FOUND;
-    const isInternalServerError =
-      status === HttpStatus.INTERNAL_SERVER_ERROR;
+    const isInternalServerError = status === HttpStatus.INTERNAL_SERVER_ERROR;
 
     if (isNotFound) {
       this.logger.warn(`Request ${req.method} ${req.url} not found.`);
@@ -61,12 +60,12 @@ export class ApiExceptionFilter implements ExceptionFilter {
   }
 
   private normalizeException(exception: unknown): {
-    status: number;
+    status: HttpStatus;
     body: ErrorEnvelope;
   } {
     // 已知的 HttpException：优先从它的 response 中提取 message / code / details
     if (exception instanceof HttpException) {
-      const status = exception.getStatus();
+      const status = exception.getStatus() as HttpStatus;
       const response = exception.getResponse();
       const message = this.extractMessage(exception.message, response);
       const details = this.extractDetails(response);
