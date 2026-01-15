@@ -64,6 +64,14 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
     return String(n);
   }
 
+  private buildVerificationMessage(code: string, locale?: string): string {
+    const normalized = locale?.toLowerCase() ?? '';
+    const isZh = normalized.startsWith('zh');
+    return isZh
+      ? `您的验证码是 ${code}，10 分钟内有效。`
+      : `Your verification code is ${code}. It expires in 10 minutes.`;
+  }
+
   /** 生成验证 token（给前端存起来） */
   private generateVerificationToken(): string {
     return randomBytes(32).toString('hex');
@@ -139,7 +147,7 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
-    const message = `Your verification code is ${code}. It expires in 10 minutes.`;
+    const message = this.buildVerificationMessage(code, params.locale);
     const smsResult = await this.smsService.sendSms({
       phone: normalized,
       body: message,

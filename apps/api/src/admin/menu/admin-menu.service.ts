@@ -54,22 +54,69 @@ export class AdminMenuService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async setCategoryActive(
+  async updateCategory(
     categoryStableId: string,
-    isActive: boolean,
-  ): Promise<{ stableId: string; isActive: boolean }> {
-    if (typeof isActive !== 'boolean') {
-      throw new BadRequestException('isActive must be boolean');
+    body: {
+      nameEn?: string;
+      nameZh?: string | null;
+      sortOrder?: number;
+      isActive?: boolean;
+    },
+  ): Promise<{
+    stableId: string;
+    nameEn: string;
+    nameZh: string | null;
+    sortOrder: number;
+    isActive: boolean;
+  }> {
+    const data: Prisma.MenuCategoryUpdateInput = {};
+
+    if (typeof body.nameEn === 'string') {
+      const nameEn = body.nameEn.trim();
+      if (!nameEn) throw new BadRequestException('nameEn is required');
+      data.nameEn = nameEn;
+    }
+
+    if (body.nameZh !== undefined) {
+      const nameZh = body.nameZh?.trim() ?? '';
+      data.nameZh = nameZh ? nameZh : null;
+    }
+
+    if (body.sortOrder !== undefined) {
+      if (!Number.isFinite(body.sortOrder)) {
+        throw new BadRequestException('sortOrder must be a number');
+      }
+      data.sortOrder = Math.max(0, Math.trunc(body.sortOrder));
+    }
+
+    if (typeof body.isActive === 'boolean') {
+      data.isActive = body.isActive;
+    }
+
+    if (Object.keys(data).length === 0) {
+      throw new BadRequestException('No fields to update');
     }
 
     try {
       const updated = await this.prisma.menuCategory.update({
         where: { stableId: categoryStableId },
-        data: { isActive },
-        select: { stableId: true, isActive: true },
+        data,
+        select: {
+          stableId: true,
+          nameEn: true,
+          nameZh: true,
+          sortOrder: true,
+          isActive: true,
+        },
       });
 
-      return { stableId: updated.stableId, isActive: updated.isActive };
+      return {
+        stableId: updated.stableId,
+        nameEn: updated.nameEn,
+        nameZh: updated.nameZh,
+        sortOrder: updated.sortOrder,
+        isActive: updated.isActive,
+      };
     } catch {
       // Prisma update 找不到会抛错；这里统一转 404
       throw new NotFoundException('Menu category not found');

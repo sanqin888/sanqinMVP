@@ -6,7 +6,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, type User } from '@prisma/client';
+import { Prisma, type User, UserLanguage } from '@prisma/client';
 import { normalizeEmail } from '../common/utils/email';
 import { normalizePhone } from '../common/utils/phone';
 import { generateStableId } from '../common/utils/stable-id';
@@ -45,6 +45,14 @@ export class MembershipService {
 
   private generateAddressStableId(): string {
     return createStableId('a');
+  }
+
+  private normalizeLanguage(language?: string | null): UserLanguage | null {
+    if (!language) return null;
+    const normalized = language.trim().toLowerCase();
+    if (normalized === 'zh') return UserLanguage.ZH;
+    if (normalized === 'en') return UserLanguage.EN;
+    return null;
   }
 
   private async ensureUserStableId(user: User): Promise<User> {
@@ -443,6 +451,7 @@ export class MembershipService {
       birthdayMonth: user.birthdayMonth ?? null,
       birthdayDay: user.birthdayDay ?? null,
       referrerEmail,
+      language: user.language === UserLanguage.ZH ? 'zh' : 'en',
 
       // ✅ 对外统一：不用裸 id；用稳定标识
       recentOrders: orders.map((o) => ({
@@ -1291,8 +1300,9 @@ export class MembershipService {
     name?: string | null;
     birthdayMonth?: number | null;
     birthdayDay?: number | null;
+    language?: string | null;
   }) {
-    const { userStableId, name, birthdayMonth, birthdayDay } = params;
+    const { userStableId, name, birthdayMonth, birthdayDay, language } = params;
 
     const user = await this.prisma.user.findUnique({
       where: { userStableId },
@@ -1305,9 +1315,14 @@ export class MembershipService {
     const updateData: Prisma.UserUpdateInput = {};
     const trimmedName =
       typeof name === 'string' && name.trim().length > 0 ? name.trim() : null;
+    const normalizedLanguage = this.normalizeLanguage(language);
 
     if (trimmedName && trimmedName !== user.name) {
       updateData.name = trimmedName;
+    }
+
+    if (normalizedLanguage && normalizedLanguage !== user.language) {
+      updateData.language = normalizedLanguage;
     }
 
     const wantsBirthdayUpdate = birthdayMonth != null || birthdayDay != null;
@@ -1338,6 +1353,7 @@ export class MembershipService {
         name: user.name,
         birthdayMonth: user.birthdayMonth,
         birthdayDay: user.birthdayDay,
+        language: user.language === UserLanguage.ZH ? 'zh' : 'en',
       };
     }
 
@@ -1348,9 +1364,15 @@ export class MembershipService {
         name: true,
         birthdayMonth: true,
         birthdayDay: true,
+        language: true,
       },
     });
 
-    return updated;
+    return {
+      name: updated.name,
+      birthdayMonth: updated.birthdayMonth,
+      birthdayDay: updated.birthdayDay,
+      language: updated.language === UserLanguage.ZH ? 'zh' : 'en',
+    };
   }
 }

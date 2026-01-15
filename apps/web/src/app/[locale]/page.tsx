@@ -535,13 +535,8 @@ export default function LocalOrderPage() {
                     <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
                       <div>
                         <h2 className="text-2xl font-semibold text-slate-900">
-                          {locale === "zh" ? "每日特价" : "Daily specials"}
+                          {locale === "zh" ? "今日特价" : "Today specials"}
                         </h2>
-                        <p className="text-xs text-slate-500">
-                          {locale === "zh"
-                            ? "特价仅限主菜，选项加价另计"
-                            : "Special price applies to the main dish only. Options are extra."}
-                        </p>
                       </div>
                     </div>
 

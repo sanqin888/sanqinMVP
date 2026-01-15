@@ -50,6 +50,13 @@ type MemberAddress = {
   isDefault?: boolean;
 };
 
+type MemberAddressPayload =
+  | MemberAddress[]
+  | {
+      details?: MemberAddress[];
+      data?: MemberAddress[];
+    };
+
 const PHONE_OTP_REQUEST_URL = "/api/v1/auth/phone/send-code";
 const PHONE_OTP_VERIFY_URL = "/api/v1/auth/phone/verify-code";
 type DeliveryOptionDefinition = {
@@ -986,6 +993,7 @@ export default function CheckoutPage() {
         body: JSON.stringify({
           phone: rawPhone,
           purpose: "checkout", // 后端可按用途区分（可选）
+          locale,
         }),
       });
 
@@ -1191,14 +1199,17 @@ export default function CheckoutPage() {
         if (!res.ok) {
           throw new Error(`Failed with status ${res.status}`);
         }
-        const payload = (await res.json()) as unknown;
-        const list = Array.isArray(payload)
-          ? (payload as MemberAddress[])
-          : Array.isArray((payload as { data?: unknown }).data)
-            ? ((payload as { data: MemberAddress[] }).data ?? [])
-            : [];
-        if (!Array.isArray(payload)) {
-          console.warn('Unexpected member addresses payload', payload);
+        const payload = (await res.json()) as MemberAddressPayload;
+        let list: MemberAddress[] = [];
+
+        if (Array.isArray(payload)) {
+          list = payload;
+        } else if (payload && typeof payload === 'object') {
+          if (Array.isArray(payload.details)) {
+            list = payload.details;
+          } else if (Array.isArray(payload.data)) {
+            list = payload.data;
+          }
         }
         const defaultAddress =
           list.find((addr) => addr.isDefault) ?? list[0] ?? null;

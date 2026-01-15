@@ -17,6 +17,7 @@ import { Roles } from '../../auth/roles.decorator';
 import { RolesGuard } from '../../auth/roles.guard';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthService } from '../../auth/auth.service';
+import { EmailService } from '../../email/email.service';
 import type { UserRole, UserStatus } from '@prisma/client';
 import type { Request } from 'express';
 
@@ -52,6 +53,7 @@ export class AdminStaffController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly authService: AuthService,
+    private readonly emailService: EmailService,
   ) {}
 
   private normalizeLocale(v: unknown): 'en' | 'zh' {
@@ -238,10 +240,23 @@ export class AdminStaffController {
       throw new BadRequestException('Missing inviter');
     }
 
+    const inviter = await this.prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { name: true },
+    });
+
     const { invite, token } = await this.authService.createStaffInvite({
       inviterId: req.user.id,
       email: body.email ?? '',
       role: body.role ?? 'STAFF',
+    });
+
+    await this.emailService.sendStaffInviteEmail({
+      to: invite.email,
+      token,
+      role: invite.role,
+      inviterName: inviter?.name,
+      locale: body.locale,
     });
 
     const dto = this.toInviteDto(invite);
@@ -265,6 +280,13 @@ export class AdminStaffController {
   ): Promise<StaffInviteDto & { inviteUrl?: string }> {
     const { invite, token } =
       await this.authService.resendStaffInvite(inviteStableId);
+
+    await this.emailService.sendStaffInviteEmail({
+      to: invite.email,
+      token,
+      role: invite.role,
+      locale: this.normalizeLocale(localeRaw),
+    });
     const dto = this.toInviteDto(invite);
 
     if (process.env.NODE_ENV !== 'production') {

@@ -4,7 +4,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { useSession, signIn, notifyAuthChange } from '@/lib/auth-session';
+import { useSession, notifyAuthChange } from '@/lib/auth-session';
 import type { Locale } from '@/lib/i18n/locales';
 import { apiFetch } from '@/lib/api/client';
 
@@ -156,9 +156,10 @@ export default function MemberLoginPage() {
         <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
           <button
             type="button"
-            onClick={() =>
-              signIn('google', { callbackUrl: resolvedRedirect })
-            }
+            onClick={() => {
+              const targetUrl = resolvedRedirect || `/${locale}/membership`;
+              window.location.href = `/api/v1/auth/oauth/google/start?callbackUrl=${encodeURIComponent(targetUrl)}`;
+}}
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
           >
             <span className="rounded bg-white px-1.5 py-0.5 text-xs font-bold text-slate-900">

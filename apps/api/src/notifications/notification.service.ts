@@ -73,6 +73,7 @@ export class NotificationService {
       programName: params.programName,
       couponCount: params.couponCount,
       expiresAt: params.expiresAt,
+      locale: params.user.language === 'ZH' ? 'zh' : 'en',
     });
   }
 
