@@ -41,12 +41,12 @@ export class TwilioSmsProvider implements SmsProvider {
 
     try {
       const response = await lastValueFrom(
-        this.httpService.post(url, body.toString(), {
+        this.httpService.post<TwilioMessageResponse>(url, body.toString(), {
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           auth: { username: accountSid, password: authToken },
         }),
       );
-      const messageId = response?.data?.sid ?? undefined;
+      const messageId = response.data.sid ?? undefined;
       return { ok: true, providerMessageId: messageId };
     } catch (error) {
       this.logger.error('Twilio send failed', error as Error);
@@ -54,3 +54,7 @@ export class TwilioSmsProvider implements SmsProvider {
     }
   }
 }
+
+type TwilioMessageResponse = {
+  sid?: string;
+};
