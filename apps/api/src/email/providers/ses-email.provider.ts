@@ -64,11 +64,11 @@ export class SesEmailProvider implements EmailProvider {
 
     try {
       const response = await lastValueFrom(
-        this.httpService.post(endpoint, body, {
+        this.httpService.post<SesSendResponse>(endpoint, body, {
           headers,
         }),
       );
-      const messageId = response?.data?.MessageId ?? undefined;
+      const messageId = response.data.MessageId ?? undefined;
       return { ok: true, messageId };
     } catch (error) {
       this.logger.error('SES send failed', error as Error);
@@ -146,6 +146,12 @@ export class SesEmailProvider implements EmailProvider {
     return createHash('sha256').update(value, 'utf8').digest('hex');
   }
 
+  private hmac(key: string | Buffer, value: string, encoding: 'hex'): string;
+  private hmac(
+    key: string | Buffer,
+    value: string,
+    encoding: 'buffer',
+  ): Buffer;
   private hmac(
     key: string | Buffer,
     value: string,
@@ -167,3 +173,7 @@ export class SesEmailProvider implements EmailProvider {
     return this.hmac(kService, 'aws4_request', 'buffer') as Buffer;
   }
 }
+
+type SesSendResponse = {
+  MessageId?: string;
+};
