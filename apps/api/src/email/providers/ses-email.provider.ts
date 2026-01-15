@@ -147,11 +147,7 @@ export class SesEmailProvider implements EmailProvider {
   }
 
   private hmac(key: string | Buffer, value: string, encoding: 'hex'): string;
-  private hmac(
-    key: string | Buffer,
-    value: string,
-    encoding: 'buffer',
-  ): Buffer;
+  private hmac(key: string | Buffer, value: string, encoding: 'buffer'): Buffer;
   private hmac(
     key: string | Buffer,
     value: string,
@@ -167,10 +163,10 @@ export class SesEmailProvider implements EmailProvider {
     regionName: string,
     serviceName: string,
   ): Buffer {
-    const kDate = this.hmac(`AWS4${secret}`, dateStamp, 'buffer') as Buffer;
-    const kRegion = this.hmac(kDate, regionName, 'buffer') as Buffer;
-    const kService = this.hmac(kRegion, serviceName, 'buffer') as Buffer;
-    return this.hmac(kService, 'aws4_request', 'buffer') as Buffer;
+    const kDate = this.hmac(`AWS4${secret}`, dateStamp, 'buffer');
+    const kRegion = this.hmac(kDate, regionName, 'buffer');
+    const kService = this.hmac(kRegion, serviceName, 'buffer');
+    return this.hmac(kService, 'aws4_request', 'buffer');
   }
 }
 
