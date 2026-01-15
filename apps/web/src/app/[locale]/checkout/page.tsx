@@ -50,6 +50,13 @@ type MemberAddress = {
   isDefault?: boolean;
 };
 
+type MemberAddressPayload =
+  | MemberAddress[]
+  | {
+      details?: MemberAddress[];
+      data?: MemberAddress[];
+    };
+
 const PHONE_OTP_REQUEST_URL = "/api/v1/auth/phone/send-code";
 const PHONE_OTP_VERIFY_URL = "/api/v1/auth/phone/verify-code";
 type DeliveryOptionDefinition = {
@@ -1192,7 +1199,7 @@ export default function CheckoutPage() {
         if (!res.ok) {
           throw new Error(`Failed with status ${res.status}`);
         }
-        const payload = (await res.json()) as any;
+        const payload = (await res.json()) as MemberAddressPayload;
         let list: MemberAddress[] = [];
 
         if (Array.isArray(payload)) {
