@@ -22,6 +22,7 @@ import type {
 import { usePersistentCart } from "@/lib/cart";
 import { apiFetch } from "@/lib/api/client";
 import { signOut, useSession } from "@/lib/auth-session";
+import Image from "next/image";
 
 export default function LocalOrderPage() {
   const params = useParams<{ locale?: string }>();
@@ -436,7 +437,7 @@ export default function LocalOrderPage() {
           {strings.tagline}
         </p>
         <div className="mt-6 flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
-          <div className="space-y-4">
+          <div className="space-y-4 relative z-10">
             <div>
               <h1 className="text-3xl font-semibold tracking-tight text-slate-900 md:text-4xl">
                 {strings.heroTitle}
@@ -460,8 +461,23 @@ export default function LocalOrderPage() {
             </ol>
           </div>
 
-          <div className="flex flex-col items-start gap-4 lg:items-end">
-            <div className="flex flex-wrap gap-2">
+          <div className="flex flex-col items-start gap-4 lg:items-end relative">
+           {/* 新增：插画容器 */}
+<div className="hidden lg:block pointer-events-none absolute -top-32 right-4 z-0 opacity-90 lg:-top-32 lg:right-8">
+               {/* 说明：
+                  - -top-24 / -top-32: 向上移动，位于按钮上方的空白处
+                  - width={130}: 图片缩小
+                  - z-0: 层级最低，被按钮遮盖
+            */}
+          <Image 
+       src="/images/chef.png"
+       alt="Illustration"
+       width={170} 
+       height={200}
+       className="object-contain scale-x-[-1]"
+     />
+  </div>
+            <div className="flex flex-wrap gap-2 z-10 relative">
               <Link
                 href={membershipHref}
                 className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"

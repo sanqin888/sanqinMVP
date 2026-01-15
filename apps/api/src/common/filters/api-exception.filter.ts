@@ -40,24 +40,32 @@ export class ApiExceptionFilter implements ExceptionFilter {
 
     const { status, body } = this.normalizeException(exception);
 
-    // 记录一条统一的错误日志，便于排查（只有真正影响响应的异常才会走到这里）
-    this.logger.error(
-      `Request ${req.method} ${req.url} failed with status ${
-        body.code
-      } (${status}): ${body.message}`,
-      exception instanceof Error ? exception.stack : undefined,
-    );
+    const isNotFound = status === HttpStatus.NOT_FOUND;
+    const isInternalServerError = status === HttpStatus.INTERNAL_SERVER_ERROR;
+
+    if (isNotFound) {
+      this.logger.warn(`Request ${req.method} ${req.url} not found.`);
+    } else {
+      this.logger.error(
+        `Request ${req.method} ${req.url} failed with status ${
+          body.code
+        } (${status}): ${body.message}`,
+        isInternalServerError && exception instanceof Error
+          ? exception.stack
+          : undefined,
+      );
+    }
 
     res.status(status).json(body);
   }
 
   private normalizeException(exception: unknown): {
-    status: number;
+    status: HttpStatus;
     body: ErrorEnvelope;
   } {
     // 已知的 HttpException：优先从它的 response 中提取 message / code / details
     if (exception instanceof HttpException) {
-      const status = exception.getStatus();
+      const status = exception.getStatus() as HttpStatus;
       const response = exception.getResponse();
       const message = this.extractMessage(exception.message, response);
       const details = this.extractDetails(response);

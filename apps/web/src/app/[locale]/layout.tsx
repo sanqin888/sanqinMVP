@@ -6,6 +6,7 @@ import { LOCALES, isLocale } from "@/lib/i18n/locales";
 import { localeAlternates } from "@/lib/i18n/path";
 import Link from "next/link";
 import LocaleSwitcher from "@/components/LocaleSwitcher";
+import Image from "next/image";
 
 export const dynamicParams = false;
 
@@ -47,8 +48,16 @@ export default async function I18nLayout({
 
   return (
     <div className="min-h-screen">
-      <header className="mx-auto flex max-w-5xl items-center justify-between border-b px-4 py-4">
-        <Link href={`/${locale}`} className="font-semibold">
+      <header className="mx-auto flex max-w-5xl items-center justify-between border-b px-4 py-4">        <Link href={`/${locale}`} className="font-semiboldflex flex items-center gap-2">
+        {/* 新增：Logo 图片 */}
+        <div className="relative h-8 w-8 overflow-hidden rounded-full"> {/* 根据需要调整尺寸和样式 */}
+        <Image 
+          src="/images/sanqinLOGO.png" // 替换为您的 Logo 路径，例如放在 public/images/ 下
+          alt="Logo"
+          fill
+          className="object-cover"
+        />
+        </div>
           {isZh ? "三秦" : "San Qin"}
         </Link>
         <LocaleSwitcher locale={locale as "zh" | "en"} />

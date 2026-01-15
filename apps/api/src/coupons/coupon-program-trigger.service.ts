@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CouponProgramIssuerService } from './coupon-program-issuer.service';
 import { parseProgramItems } from './coupon-program.utils';
+import { NotificationService } from '../notifications/notification.service';
 
 @Injectable()
 export class CouponProgramTriggerService {
@@ -15,6 +16,7 @@ export class CouponProgramTriggerService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly issuer: CouponProgramIssuerService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async issueProgramsForUser(
@@ -27,8 +29,12 @@ export class CouponProgramTriggerService {
     let issuedCount = 0;
     for (const program of programs) {
       if (!(await this.canIssueProgram(program, user))) continue;
+      const issuedAt = new Date();
       const result = await this.issuer.issueProgramToUser(program, user);
       issuedCount += result.issuedCount;
+      if (result.issuedCount > 0) {
+        void this.notifyCouponsIssued(user, program, issuedAt);
+      }
     }
 
     return { issuedCount };
@@ -50,8 +56,12 @@ export class CouponProgramTriggerService {
     for (const user of users) {
       for (const program of programs) {
         if (!(await this.canIssueProgram(program, user))) continue;
+        const issuedAt = new Date();
         const result = await this.issuer.issueProgramToUser(program, user);
         issuedCount += result.issuedCount;
+        if (result.issuedCount > 0) {
+          void this.notifyCouponsIssued(user, program, issuedAt);
+        }
       }
     }
 
@@ -98,5 +108,34 @@ export class CouponProgramTriggerService {
     }
 
     return true;
+  }
+
+  private async notifyCouponsIssued(
+    user: User,
+    program: CouponProgram,
+    issuedAt: Date,
+  ) {
+    const coupons = await this.prisma.coupon.findMany({
+      where: {
+        userId: user.id,
+        campaign: program.programStableId,
+        issuedAt: { gte: issuedAt },
+      },
+      select: { expiresAt: true },
+    });
+
+    if (coupons.length === 0) return;
+
+    const expiresAt = coupons
+      .map((coupon) => coupon.expiresAt)
+      .filter((date): date is Date => Boolean(date))
+      .sort((a, b) => a.getTime() - b.getTime())[0];
+
+    await this.notificationService.notifyCouponIssued({
+      user,
+      programName: program.name,
+      couponCount: coupons.length,
+      expiresAt: expiresAt ?? null,
+    });
   }
 }

@@ -23,6 +23,9 @@ import { StoreStatusModule } from './store/store-status.module';
 import { PublicMenuModule } from './menu/public-menu.module';
 import { PosModule } from './pos/pos.module';
 import { CouponsModule } from './coupons/coupons.module';
+import { EmailModule } from './email/email.module';
+import { SmsModule } from './sms/sms.module';
+import { NotificationModule } from './notifications/notification.module';
 
 const configModuleFactory: {
   forRoot(options: ConfigModuleOptions): DynamicModule;
@@ -41,6 +44,9 @@ const envConfigModule = configModuleFactory.forRoot({
     envConfigModule,
     PrismaModule,
     CouponsModule,
+    EmailModule,
+    SmsModule,
+    NotificationModule,
     AuthModule,
     OrdersModule,
     PosModule,
