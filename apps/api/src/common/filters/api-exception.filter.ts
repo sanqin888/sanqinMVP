@@ -40,13 +40,22 @@ export class ApiExceptionFilter implements ExceptionFilter {
 
     const { status, body } = this.normalizeException(exception);
 
-    // 记录一条统一的错误日志，便于排查（只有真正影响响应的异常才会走到这里）
-    this.logger.error(
-      `Request ${req.method} ${req.url} failed with status ${
-        body.code
-      } (${status}): ${body.message}`,
-      exception instanceof Error ? exception.stack : undefined,
-    );
+    const isNotFound = status === HttpStatus.NOT_FOUND;
+    const isInternalServerError =
+      status === HttpStatus.INTERNAL_SERVER_ERROR;
+
+    if (isNotFound) {
+      this.logger.warn(`Request ${req.method} ${req.url} not found.`);
+    } else {
+      this.logger.error(
+        `Request ${req.method} ${req.url} failed with status ${
+          body.code
+        } (${status}): ${body.message}`,
+        isInternalServerError && exception instanceof Error
+          ? exception.stack
+          : undefined,
+      );
+    }
 
     res.status(status).json(body);
   }
