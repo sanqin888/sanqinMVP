@@ -11,14 +11,17 @@ import { GoogleStartGuard } from './oauth/google.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import { RolesGuard } from './roles.guard';
 import { MfaGuard } from './mfa.guard';
+import { EmailModule } from '../email/email.module';
+import { AdminMfaGuard } from './admin-mfa.guard';
 
 @Global()
 @Module({
-  imports: [PrismaModule, PassportModule],
+  imports: [PrismaModule, PassportModule, EmailModule],
   providers: [
     AuthService,
     PrismaService,
     SessionAuthGuard,
+    AdminMfaGuard,
     MfaGuard,
     OauthStateService,
     GoogleStrategy,
@@ -26,6 +29,6 @@ import { MfaGuard } from './mfa.guard';
     RolesGuard,
   ],
   controllers: [AuthController],
-  exports: [AuthService, SessionAuthGuard, MfaGuard, RolesGuard],
+  exports: [AuthService, SessionAuthGuard, AdminMfaGuard, MfaGuard, RolesGuard],
 })
 export class AuthModule {}

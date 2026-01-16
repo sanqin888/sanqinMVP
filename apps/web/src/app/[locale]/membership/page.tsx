@@ -7,6 +7,12 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import type { Locale } from '@/lib/i18n/locales';
 import { signOut, useSession } from '@/lib/auth-session';
 import { apiFetch } from '@/lib/api/client';
+import {
+  formatCanadianPhoneForApi,
+  isValidCanadianPhone,
+  normalizeCanadianPhoneInput,
+  stripCanadianCountryCode,
+} from '@/lib/phone';
 
 type MemberTier = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM';
 
@@ -258,7 +264,7 @@ export default function MembershipHomePage() {
   const [twoFactorError, setTwoFactorError] = useState<string | null>(null);
 
   const handlePhoneEnrollInputChange = useCallback((value: string) => {
-    setPhoneEnrollInput(value);
+    setPhoneEnrollInput(normalizeCanadianPhoneInput(value));
     setPhoneEnrollError(null);
   }, []);
 
@@ -823,10 +829,11 @@ export default function MembershipHomePage() {
   }, [member, birthdayMonthInput, birthdayDayInput, isZh]);
 
   const handleRequestPhoneEnroll = useCallback(async () => {
-    const trimmed = phoneEnrollInput.trim();
-    if (!trimmed) {
+    if (!isValidCanadianPhone(phoneEnrollInput)) {
       setPhoneEnrollError(
-        isZh ? '请输入手机号。' : 'Please enter your phone number.',
+        isZh
+          ? '请输入有效的加拿大手机号。'
+          : 'Please enter a valid Canadian phone number.',
       );
       return;
     }
@@ -837,7 +844,9 @@ export default function MembershipHomePage() {
       await apiFetch('/auth/phone/enroll/request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: trimmed }),
+        body: JSON.stringify({
+          phone: formatCanadianPhoneForApi(phoneEnrollInput),
+        }),
       });
     } catch (err) {
       console.error(err);
@@ -852,10 +861,9 @@ export default function MembershipHomePage() {
   }, [phoneEnrollInput, isZh]);
 
   const handleVerifyPhoneEnroll = useCallback(async () => {
-    const trimmed = phoneEnrollInput.trim();
-    if (!trimmed || !phoneEnrollCode.trim()) {
+    if (!isValidCanadianPhone(phoneEnrollInput) || !phoneEnrollCode.trim()) {
       setPhoneEnrollError(
-        isZh ? '请输入手机号和验证码。' : 'Enter phone and code.',
+        isZh ? '请输入有效的加拿大手机号和验证码。' : 'Enter phone and code.',
       );
       return;
     }
@@ -867,7 +875,7 @@ export default function MembershipHomePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          phone: trimmed,
+          phone: formatCanadianPhoneForApi(phoneEnrollInput),
           code: phoneEnrollCode.trim(),
         }),
       });
@@ -876,7 +884,7 @@ export default function MembershipHomePage() {
         prev
           ? {
               ...prev,
-              phone: trimmed,
+              phone: formatCanadianPhoneForApi(phoneEnrollInput),
               phoneVerified: true,
             }
           : prev,
@@ -1793,12 +1801,22 @@ function AddressesSection({
       return;
     }
 
+    if (phone && !isValidCanadianPhone(phone)) {
+      setFormError(
+        isZh
+          ? '请输入有效的加拿大手机号。'
+          : 'Please enter a valid Canadian phone number.',
+      );
+      return;
+    }
+
     const fallbackLabel = isZh ? '地址' : 'Address';
+    const formattedPhone = phone ? formatCanadianPhoneForApi(phone) : '';
     const address: MemberAddress = {
       addressStableId: editingId ?? '',
       label: label.trim() || fallbackLabel,
       receiver: trimmedReceiver,
-      phone: phone.trim(),
+      phone: formattedPhone,
       addressLine1: trimmedLine1,
       addressLine2: addressLine2.trim(),
       remark: remark.trim(),
@@ -1819,7 +1837,7 @@ function AddressesSection({
   const startEdit = (address: MemberAddress) => {
     setLabel(address.label);
     setReceiver(address.receiver);
-    setPhone(address.phone ?? '');
+    setPhone(stripCanadianCountryCode(address.phone));
     setAddressLine1(address.addressLine1);
     setAddressLine2(address.addressLine2 ?? '');
     setRemark(address.remark ?? '');
@@ -1869,12 +1887,18 @@ function AddressesSection({
             value={receiver}
             onChange={(event) => setReceiver(event.target.value)}
           />
-          <input
-            className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
-            placeholder={isZh ? '联系电话' : 'Phone number'}
-            value={phone}
-            onChange={(event) => setPhone(event.target.value)}
-          />
+          <div className="flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus-within:ring-1 focus-within:ring-slate-400">
+            <span className="mr-2 text-[10px] text-slate-500">+1</span>
+            <input
+              className="w-full border-0 p-0 text-xs text-slate-900 focus:outline-none"
+              placeholder={isZh ? '联系电话' : 'Phone number'}
+              value={phone}
+              inputMode="numeric"
+              onChange={(event) =>
+                setPhone(normalizeCanadianPhoneInput(event.target.value))
+              }
+            />
+          </div>
           <input
             className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
             placeholder={isZh ? '地址行 1' : 'Address line 1'}
@@ -2583,17 +2607,21 @@ function ProfileSection({
               </p>
             ) : (
               <div className="mt-2 space-y-2">
-                <input
-                  type="tel"
-                  value={phoneEnrollInput}
-                  onChange={(event) =>
-                    onPhoneEnrollInputChange(event.target.value)
-                  }
-                  placeholder={
-                    isZh ? '请输入手机号' : 'Enter your phone number'
-                  }
-                  className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-slate-400 focus:outline-none"
-                />
+                <div className="flex items-center rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus-within:ring-1 focus-within:ring-slate-400">
+                  <span className="mr-2 text-[10px] text-slate-500">+1</span>
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    value={phoneEnrollInput}
+                    onChange={(event) =>
+                      onPhoneEnrollInputChange(event.target.value)
+                    }
+                    placeholder={
+                      isZh ? '请输入手机号' : 'Enter your phone number'
+                    }
+                    className="w-full border-0 p-0 text-xs text-slate-900 focus:outline-none"
+                  />
+                </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <input
                     type="text"

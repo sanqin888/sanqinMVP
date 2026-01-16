@@ -5,11 +5,12 @@ import {
   type BusinessHoursResponse,
   type UpdateBusinessHoursDto,
 } from './dto/business-hours.dto';
+import { AdminMfaGuard } from '../../auth/admin-mfa.guard';
 import { SessionAuthGuard } from '../../auth/session-auth.guard';
 import { Roles } from '../../auth/roles.decorator';
 import { RolesGuard } from '../../auth/roles.guard';
 
-@UseGuards(SessionAuthGuard, RolesGuard)
+@UseGuards(SessionAuthGuard, AdminMfaGuard, RolesGuard)
 @Roles('ADMIN')
 @Controller('admin/business')
 export class BusinessHoursController {

@@ -318,8 +318,63 @@ export class AuthController {
   }
 
   @UseGuards(SessionAuthGuard)
+  @Post('2fa/email/request')
+  async requestTwoFactorEmail(
+    @Req() req: Request & { session?: { sessionId?: string } },
+  ) {
+    const sessionId = req.session?.sessionId;
+    if (!sessionId) {
+      throw new ForbiddenException('Missing session');
+    }
+
+    return await this.authService.requestTwoFactorEmail({
+      sessionId,
+      ip: req.ip,
+      userAgent:
+        typeof req.headers['user-agent'] === 'string'
+          ? req.headers['user-agent']
+          : undefined,
+    });
+  }
+
+  @UseGuards(SessionAuthGuard)
   @Post('2fa/sms/verify')
   async verifyTwoFactorSms(
+    @Body()
+    body: { code?: string; rememberDevice?: boolean; deviceLabel?: string },
+    @Req() req: Request & { session?: { sessionId?: string } },
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const sessionId = req.session?.sessionId;
+    if (!sessionId) {
+      throw new ForbiddenException('Missing session');
+    }
+
+    const result = await this.authService.verifyTwoFactorSms({
+      sessionId,
+      code: body?.code ?? '',
+      rememberDevice: !!body?.rememberDevice,
+      deviceLabel:
+        typeof body?.deviceLabel === 'string' ? body.deviceLabel : undefined,
+    });
+
+    if (result.trustedDevice) {
+      const maxAge = result.trustedDevice.expiresAt.getTime() - Date.now();
+      res.cookie(TRUSTED_DEVICE_COOKIE, result.trustedDevice.token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge,
+        path: '/',
+      });
+    }
+
+    return { success: true };
+  }
+
+  @UseGuards(SessionAuthGuard)
+  @Post('2fa/email/verify')
+  async verifyTwoFactorEmail(
     @Body()
     body: { code?: string; rememberDevice?: boolean; deviceLabel?: string },
     @Req() req: Request & { session?: { sessionId?: string } },
@@ -467,7 +522,10 @@ export class AuthController {
     const twoFactorEnabled =
       !!user.twoFactorEnabledAt && user.twoFactorMethod === 'SMS';
     const mfaVerifiedAt = req.session?.mfaVerifiedAt ?? null;
-    const requiresTwoFactor = twoFactorEnabled && !mfaVerifiedAt;
+    const isAdminRole = user.role === 'ADMIN' || user.role === 'STAFF';
+    const requiresTwoFactor = isAdminRole
+      ? !mfaVerifiedAt
+      : twoFactorEnabled && !mfaVerifiedAt;
 
     return {
       userStableId: user.userStableId,

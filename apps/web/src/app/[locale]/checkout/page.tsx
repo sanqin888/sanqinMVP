@@ -36,6 +36,12 @@ import type {
 } from "@shared/menu";
 import { useSession } from "@/lib/auth-session";
 import { formatStoreTime } from "@/lib/time/tz";
+import {
+  formatCanadianPhoneForApi,
+  isValidCanadianPhone,
+  normalizeCanadianPhoneInput,
+  stripCanadianCountryCode,
+} from "@/lib/phone";
 type MemberAddress = {
   addressStableId: string;
   label: string;
@@ -927,7 +933,7 @@ export default function CheckoutPage() {
   const canPlaceOrder =
     localizedCartItems.length > 0 &&
     customer.name.trim().length > 0 &&
-    customer.phone.trim().length >= 6 &&
+    isValidCanadianPhone(customer.phone) &&
     phoneVerified &&
     (fulfillment === "pickup" || deliveryAddressReady) &&
     isStoreOpen &&
@@ -938,14 +944,16 @@ export default function CheckoutPage() {
     "";
 
   const handleCustomerChange = (field: keyof CustomerInfo, value: string) => {
-    setCustomer((prev) => ({ ...prev, [field]: value }));
+    const nextValue =
+      field === "phone" ? normalizeCanadianPhoneInput(value) : value;
+    setCustomer((prev) => ({ ...prev, [field]: nextValue }));
 
     // 🔐 手机号变更时，重置验证状态
     if (field === "phone") {
       setPhoneVerificationError(null);
       setPhoneVerificationCode("");
 
-      const trimmed = value.trim();
+      const trimmed = nextValue.trim();
       if (!trimmed) {
         // 清空手机号 → 一定是未验证
         setPhoneVerified(false);
@@ -956,9 +964,7 @@ export default function CheckoutPage() {
       // 有会员手机号且该手机号在会员系统中已验证时，
       // 如果用户输入的手机号 == 会员手机号，则直接视为已验证。
       if (memberPhone && memberPhoneVerified) {
-        const normalizedMember = memberPhone.replace(/\s+/g, "");
-        const normalizedNew = trimmed.replace(/\s+/g, "");
-        if (normalizedNew === normalizedMember) {
+        if (trimmed === memberPhone) {
           setPhoneVerified(true);
           setPhoneVerificationStep("verified");
           return;
@@ -973,16 +979,16 @@ export default function CheckoutPage() {
 
   // 发送短信验证码
   const handleSendPhoneCode = async () => {
-    const rawPhone = customer.phone.trim();
-    if (rawPhone.length < 6) {
+    if (!isValidCanadianPhone(customer.phone)) {
       setPhoneVerificationError(
         locale === "zh"
-          ? "请输入有效手机号后再获取验证码。"
-          : "Please enter a valid phone number before requesting a code.",
+          ? "请输入有效的加拿大手机号后再获取验证码。"
+          : "Please enter a valid Canadian phone number before requesting a code.",
       );
       return;
     }
 
+    const rawPhone = formatCanadianPhoneForApi(customer.phone);
     setPhoneVerificationLoading(true);
     setPhoneVerificationError(null);
 
@@ -1016,7 +1022,6 @@ export default function CheckoutPage() {
 
   // 校验短信验证码
   const handleVerifyPhoneCode = async () => {
-    const rawPhone = customer.phone.trim();
     if (!phoneVerificationCode.trim()) {
       setPhoneVerificationError(
         locale === "zh"
@@ -1026,6 +1031,7 @@ export default function CheckoutPage() {
       return;
     }
 
+    const rawPhone = formatCanadianPhoneForApi(customer.phone);
     setPhoneVerificationLoading(true);
     setPhoneVerificationError(null);
 
@@ -1156,7 +1162,9 @@ export default function CheckoutPage() {
         }
 
         setMemberUserStableId(stableId || null);
-        setMemberPhone(data.phone ?? null);
+        setMemberPhone(
+          data.phone ? stripCanadianCountryCode(data.phone) : null,
+        );
         setMemberPhoneVerified(!!data.phoneVerified);
         setMemberDisplayName(data.displayName ?? null);
       } catch (err) {
@@ -1341,7 +1349,7 @@ export default function CheckoutPage() {
           : prev.name;
       const nextPhone =
         !prev.phone.trim() && memberDefaultAddress.phone
-          ? memberDefaultAddress.phone
+          ? stripCanadianCountryCode(memberDefaultAddress.phone)
           : prev.phone;
 
       if (
@@ -1396,14 +1404,7 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (!memberPhone || !memberPhoneVerified) return;
 
-    const normalizedMember = memberPhone.replace(/\s+/g, "");
-    const normalizedCurrent = customer.phone.replace(/\s+/g, "");
-
-    if (
-      normalizedCurrent &&
-      normalizedCurrent === normalizedMember &&
-      memberPhoneVerified
-    ) {
+    if (customer.phone && customer.phone === memberPhone) {
       setPhoneVerified(true);
       setPhoneVerificationStep("verified");
       setPhoneVerificationError(null);
@@ -1556,6 +1557,7 @@ export default function CheckoutPage() {
         }
       : null;
 
+    const formattedCustomerPhone = formatCanadianPhoneForApi(customer.phone);
     const payload = {
       locale,
       amountCents: totalCentsForOrder,
@@ -1568,7 +1570,11 @@ export default function CheckoutPage() {
         locale,
         fulfillment,
         schedule,
-        customer: { ...customer, address: deliveryAddressText },
+        customer: {
+          ...customer,
+          phone: formattedCustomerPhone,
+          address: deliveryAddressText,
+        },
         utensils:
           utensilsPreference === "yes"
             ? {
@@ -1626,7 +1632,7 @@ export default function CheckoutPage() {
       deliveryDestination: isDeliveryFulfillment
         ? {
             name: customer.name,
-            phone: customer.phone,
+            phone: formattedCustomerPhone,
             addressLine1: customer.addressLine1,
             addressLine2: customer.addressLine2 || undefined,
             city: customer.city,
@@ -2184,14 +2190,18 @@ export default function CheckoutPage() {
                 <label className="block text-xs font-medium text-slate-600">
                   {strings.contactFields.phone}
                   <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center">
-                    <input
-                      value={customer.phone}
-                      onChange={(event) =>
-                        handleCustomerChange("phone", event.target.value)
-                      }
-                      placeholder={strings.contactFields.phonePlaceholder}
-                      className="w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
-                    />
+                    <div className="flex w-full items-center rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus-within:ring-1 focus-within:ring-slate-400">
+                      <span className="mr-2 text-xs text-slate-500">+1</span>
+                      <input
+                        value={customer.phone}
+                        inputMode="numeric"
+                        onChange={(event) =>
+                          handleCustomerChange("phone", event.target.value)
+                        }
+                        placeholder={strings.contactFields.phonePlaceholder}
+                        className="w-full border-0 p-0 text-sm text-slate-700 focus:outline-none"
+                      />
+                    </div>
                     <div className="flex items-center gap-2">
                       {phoneVerified ? (
                         <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-700">
@@ -2203,7 +2213,7 @@ export default function CheckoutPage() {
                           onClick={handleSendPhoneCode}
                           disabled={
                             phoneVerificationLoading ||
-                            customer.phone.trim().length < 6
+                            !isValidCanadianPhone(customer.phone)
                           }
                           className="shrink-0 rounded-full border border-slate-300 px-3 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                         >

@@ -49,6 +49,7 @@ type BusinessConfigDto = {
   supportPhone: string | null;
   supportEmail: string | null;
   salesTaxRate: number;
+  wechatAlipayExchangeRate: number;
   earnPtPerDollar: number;
   redeemDollarPerPoint: number;
   referralPtPerDollar: number;
@@ -400,6 +401,14 @@ const handleTimeChange = (
     setConfig((prev) => (prev ? { ...prev, salesTaxRate: rate } : prev));
   };
 
+  const handleWechatAlipayRateChange = (value: string) => {
+    const num = parseOptionalNumber(value);
+    if (num == null || num <= 0) return;
+    setConfig((prev) =>
+      prev ? { ...prev, wechatAlipayExchangeRate: num } : prev,
+    );
+  };
+
   const handleTimezoneChange = (value: string) => {
     setConfig((prev) => (prev ? { ...prev, timezone: value } : prev));
   };
@@ -614,6 +623,7 @@ await apiFetch('/admin/business/hours', {
           supportPhone: config.supportPhone ?? null,
           supportEmail: config.supportEmail ?? null,
           salesTaxRate: config.salesTaxRate,
+          wechatAlipayExchangeRate: config.wechatAlipayExchangeRate,
           earnPtPerDollar: config.earnPtPerDollar,
           redeemDollarPerPoint: config.redeemDollarPerPoint,
           referralPtPerDollar: config.referralPtPerDollar,
@@ -867,6 +877,37 @@ setHolidays(
               {isZh
                 ? '如 13% 税率，输入 13.00。'
                 : 'Enter 13.00 for a 13% tax rate.'}
+            </span>
+          </label>
+        </div>
+      </section>
+
+      <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="text-sm font-semibold text-slate-900">
+          {isZh ? 'POS 支付汇率' : 'POS payment exchange rate'}
+        </h2>
+        <p className="text-xs text-slate-600">
+          {isZh
+            ? '用于 POS 端微信/支付宝结算的金额换算展示。'
+            : 'Used for showing converted totals when POS payments use WeChat/Alipay.'}
+        </p>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <label className="flex flex-col text-xs font-medium text-slate-700">
+            <span>
+              {isZh ? '微信/支付宝汇率' : 'WeChat/Alipay exchange rate'}
+            </span>
+            <input
+              type="number"
+              min="0"
+              step="0.0001"
+              value={config.wechatAlipayExchangeRate}
+              onChange={(e) => handleWechatAlipayRateChange(e.target.value)}
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+            />
+            <span className="mt-1 text-[11px] font-normal text-slate-500">
+              {isZh
+                ? '示例：1 CAD = 5.25 RMB，则填写 5.25。'
+                : 'Example: 1 CAD = 5.25 RMB, enter 5.25.'}
             </span>
           </label>
         </div>

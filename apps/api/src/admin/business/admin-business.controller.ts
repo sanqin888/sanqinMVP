@@ -5,11 +5,12 @@ import {
   AdminBusinessService,
   type BusinessConfigResponse,
 } from './admin-business.service';
+import { AdminMfaGuard } from '../../auth/admin-mfa.guard';
 import { SessionAuthGuard } from '../../auth/session-auth.guard';
 import { Roles } from '../../auth/roles.decorator';
 import { RolesGuard } from '../../auth/roles.guard';
 
-@UseGuards(SessionAuthGuard, RolesGuard)
+@UseGuards(SessionAuthGuard, AdminMfaGuard, RolesGuard)
 @Roles('ADMIN')
 @Controller('admin/business')
 export class AdminBusinessController {
@@ -58,6 +59,7 @@ export class AdminBusinessController {
       supportPhone?: string | null;
       supportEmail?: string | null;
       salesTaxRate?: number;
+      wechatAlipayExchangeRate?: number;
       earnPtPerDollar?: number;
       redeemDollarPerPoint?: number;
       referralPtPerDollar?: number;
@@ -97,6 +99,7 @@ export class AdminBusinessController {
       supportPhone?: string | null;
       supportEmail?: string | null;
       salesTaxRate?: number;
+      wechatAlipayExchangeRate?: number;
       earnPtPerDollar?: number;
       redeemDollarPerPoint?: number;
       referralPtPerDollar?: number;
