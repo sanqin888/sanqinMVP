@@ -437,9 +437,9 @@ export class AuthService {
     const requiresTwoFactor = isAdminLogin
       ? true
       : this.isTwoFactorEnabled({
-            twoFactorEnabledAt: user.twoFactorEnabledAt,
-            twoFactorMethod: user.twoFactorMethod,
-          }) && !isTrusted;
+          twoFactorEnabledAt: user.twoFactorEnabledAt,
+          twoFactorMethod: user.twoFactorMethod,
+        }) && !isTrusted;
 
     await this.clearDeviceSessions({
       userId: user.id,
