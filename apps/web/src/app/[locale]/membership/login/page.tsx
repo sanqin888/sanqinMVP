@@ -7,6 +7,12 @@ import Link from 'next/link';
 import { useSession, notifyAuthChange } from '@/lib/auth-session';
 import type { Locale } from '@/lib/i18n/locales';
 import { apiFetch } from '@/lib/api/client';
+import {
+  formatCanadianPhoneForApi,
+  formatCanadianPhoneForDisplay,
+  isValidCanadianPhone,
+  normalizeCanadianPhoneInput,
+} from '@/lib/phone';
 
 export default function MemberLoginPage() {
   const router = useRouter();
@@ -45,8 +51,12 @@ export default function MemberLoginPage() {
   }, [countdown]);
 
   async function handleRequestCode() {
-    if (!phone.trim()) {
-      setError(isZh ? '请输入手机号。' : 'Please enter your phone number.');
+    if (!isValidCanadianPhone(phone)) {
+      setError(
+        isZh
+          ? '请输入有效的加拿大手机号。'
+          : 'Please enter a valid Canadian phone number.',
+      );
       return;
     }
 
@@ -57,7 +67,7 @@ export default function MemberLoginPage() {
       await apiFetch('/auth/login/phone/request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phone.trim() }),
+        body: JSON.stringify({ phone: formatCanadianPhoneForApi(phone) }),
       });
 
       setStep('INPUT_CODE');
@@ -74,11 +84,11 @@ export default function MemberLoginPage() {
   }
 
   async function handleVerifyCode() {
-    if (!phone.trim() || !code.trim()) {
+    if (!isValidCanadianPhone(phone) || !code.trim()) {
       setError(
         isZh
-          ? '请输入手机号和验证码。'
-          : 'Please enter your phone number and code.',
+          ? '请输入有效的加拿大手机号和验证码。'
+          : 'Please enter a valid Canadian phone number and code.',
       );
       return;
     }
@@ -96,7 +106,10 @@ export default function MemberLoginPage() {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone: phone.trim(), code: code.trim() }),
+          body: JSON.stringify({
+            phone: formatCanadianPhoneForApi(phone),
+            code: code.trim(),
+          }),
         },
       );
 
@@ -185,8 +198,11 @@ export default function MemberLoginPage() {
                 <span className="mr-2 text-xs text-slate-500">+1</span>
                 <input
                   type="tel"
+                  inputMode="numeric"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) =>
+                    setPhone(normalizeCanadianPhoneInput(e.target.value))
+                  }
                   placeholder={isZh ? '请输入手机号' : 'Enter your phone number'}
                   className="w-full border-0 p-0 text-sm text-slate-900 focus:outline-none"
                 />
@@ -233,8 +249,8 @@ export default function MemberLoginPage() {
               <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
                 <span>
                   {isZh
-                    ? `验证码已发送至 ${phone.trim() || '+1'}`
-                    : `Code sent to ${phone.trim() || '+1'}`}
+                    ? `验证码已发送至 ${formatCanadianPhoneForDisplay(phone)}`
+                    : `Code sent to ${formatCanadianPhoneForDisplay(phone)}`}
                 </span>
                 <button
                   type="button"

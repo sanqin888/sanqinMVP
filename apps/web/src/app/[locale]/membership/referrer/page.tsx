@@ -7,6 +7,13 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import type { Locale } from '@/lib/i18n/locales';
 import { useSession } from '@/lib/auth-session';
 import { ApiError, apiFetch } from '@/lib/api/client';
+import {
+  formatCanadianPhoneForApi,
+  formatCanadianPhoneForDisplay,
+  isValidCanadianPhone,
+  normalizeCanadianPhoneInput,
+  stripCanadianCountryCode,
+} from '@/lib/phone';
 
 type MembershipSummary = {
   phone?: string | null;
@@ -67,7 +74,7 @@ export default function MembershipReferrerPage() {
           return;
         }
 
-        if (summary.phone) setPhone(summary.phone);
+        if (summary.phone) setPhone(stripCanadianCountryCode(summary.phone));
         setPhoneVerified(Boolean(summary.phoneVerified));
       } catch (err) {
         console.error(err);
@@ -90,8 +97,12 @@ export default function MembershipReferrerPage() {
   }, [phoneCountdown]);
 
   const handleRequestPhoneCode = async () => {
-    if (!phone.trim()) {
-      setPhoneError(isZh ? '请输入手机号。' : 'Please enter your phone number.');
+    if (!isValidCanadianPhone(phone)) {
+      setPhoneError(
+        isZh
+          ? '请输入有效的加拿大手机号。'
+          : 'Please enter a valid Canadian phone number.',
+      );
       return;
     }
     try {
@@ -100,7 +111,7 @@ export default function MembershipReferrerPage() {
       await apiFetch('/auth/phone/enroll/request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phone.trim() }),
+        body: JSON.stringify({ phone: formatCanadianPhoneForApi(phone) }),
       });
       setPhoneStep('INPUT_CODE');
       setPhoneCountdown(60);
@@ -116,11 +127,11 @@ export default function MembershipReferrerPage() {
   };
 
   const handleVerifyPhoneCode = async () => {
-    if (!phone.trim() || !phoneCode.trim()) {
+    if (!isValidCanadianPhone(phone) || !phoneCode.trim()) {
       setPhoneError(
         isZh
-          ? '请输入手机号和验证码。'
-          : 'Please enter your phone number and code.',
+          ? '请输入有效的加拿大手机号和验证码。'
+          : 'Please enter a valid Canadian phone number and code.',
       );
       return;
     }
@@ -130,7 +141,10 @@ export default function MembershipReferrerPage() {
       await apiFetch('/auth/phone/enroll/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phone.trim(), code: phoneCode.trim() }),
+        body: JSON.stringify({
+          phone: formatCanadianPhoneForApi(phone),
+          code: phoneCode.trim(),
+        }),
       });
       setPhoneVerified(true);
     } catch (err) {
@@ -254,8 +268,11 @@ export default function MembershipReferrerPage() {
                       <span className="mr-2 text-xs text-slate-500">+1</span>
                       <input
                         type="tel"
+                        inputMode="numeric"
                         value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
+                        onChange={(e) =>
+                          setPhone(normalizeCanadianPhoneInput(e.target.value))
+                        }
                         placeholder={
                           isZh ? '请输入手机号' : 'Enter your phone number'
                         }
@@ -302,8 +319,8 @@ export default function MembershipReferrerPage() {
                     <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
                       <span>
                         {isZh
-                          ? `验证码已发送至 ${phone.trim() || '+1'}`
-                          : `Code sent to ${phone.trim() || '+1'}`}
+                          ? `验证码已发送至 ${formatCanadianPhoneForDisplay(phone)}`
+                          : `Code sent to ${formatCanadianPhoneForDisplay(phone)}`}
                       </span>
                       <button
                         type="button"
