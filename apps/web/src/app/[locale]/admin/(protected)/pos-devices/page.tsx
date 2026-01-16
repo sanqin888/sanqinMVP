@@ -15,6 +15,7 @@ type PosDevice = {
   status: 'ACTIVE' | 'DISABLED';
   enrolledAt: string;
   lastSeenAt: string | null;
+  enrollmentCode?: string | null;
 };
 
 type PosDeviceWithCode = PosDevice & {
@@ -45,6 +46,7 @@ export default function AdminPosDevicesPage() {
   const [reveal, setReveal] = useState<RevealState | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
+  const [enrollmentCodes, setEnrollmentCodes] = useState<Record<string, string>>({});
 
   const pendingDevices = useMemo(
     () => devices.filter((device) => !device.lastSeenAt),
@@ -62,6 +64,15 @@ export default function AdminPosDevicesPage() {
     try {
       const data = await apiFetch<PosDevice[]>('/admin/pos-devices');
       setDevices(data ?? []);
+      setEnrollmentCodes((prev) => {
+        const next = { ...prev };
+        (data ?? []).forEach((device) => {
+          if (device.enrollmentCode) {
+            next[device.id] = device.enrollmentCode;
+          }
+        });
+        return next;
+      });
     } catch (error) {
       setLoadError((error as Error).message);
     } finally {
@@ -101,6 +112,10 @@ export default function AdminPosDevicesPage() {
         deviceName: created.name ?? name,
         enrollmentCode: created.enrollmentCode,
       });
+      setEnrollmentCodes((prev) => ({
+        ...prev,
+        [created.id]: created.enrollmentCode,
+      }));
       setFormState({ name: '', storeId: '' });
       await loadDevices();
     } catch (error) {
@@ -122,6 +137,10 @@ export default function AdminPosDevicesPage() {
         deviceName: updated.name ?? device.name ?? '未命名设备',
         enrollmentCode: updated.enrollmentCode,
       });
+      setEnrollmentCodes((prev) => ({
+        ...prev,
+        [updated.id]: updated.enrollmentCode,
+      }));
       await loadDevices();
     } catch (error) {
       setActionError((error as Error).message);
@@ -357,9 +376,11 @@ export default function AdminPosDevicesPage() {
                       {device.name ?? '未命名设备'}
                     </div>
                     <div className="text-xs text-slate-500">
-                      StableId: {device.deviceStableId}
+                      当前绑定码：
+                      {enrollmentCodes[device.id] ??
+                        device.enrollmentCode ??
+                        '—'}
                     </div>
-                    <div className="text-xs text-slate-500">门店：{device.storeId}</div>
                   </div>
                   <span
                     className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-semibold ${
