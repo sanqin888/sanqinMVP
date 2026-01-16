@@ -6,6 +6,21 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import type { Locale } from "@/lib/i18n/locales";
 
+type ApiEnvelope<T> = {
+  code: string;
+  message?: string;
+  details?: T;
+};
+
+function unwrapEnvelope<T>(payload: unknown): T | null {
+  if (!payload || typeof payload !== "object") return null;
+  if ("code" in payload) {
+    const env = payload as ApiEnvelope<T>;
+    return (env.details ?? null) as T | null;
+  }
+  return payload as T;
+}
+
 export default function AdminLoginPage() {
   const router = useRouter();
   const params = useParams();
@@ -39,6 +54,13 @@ export default function AdminLoginPage() {
             ? payload.message
             : `登录失败 (${res.status})`;
         throw new Error(message);
+      }
+
+      const payload = await res.json().catch(() => null);
+      const data = unwrapEnvelope<{ requiresTwoFactor?: boolean }>(payload);
+      if (data?.requiresTwoFactor) {
+        router.push(`/${locale}/admin/2fa`);
+        return;
       }
 
       router.push(`/${locale}/admin`);

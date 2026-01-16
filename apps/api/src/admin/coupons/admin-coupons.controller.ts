@@ -8,6 +8,7 @@ import {
   Put,
   UseGuards,
 } from '@nestjs/common';
+import { AdminMfaGuard } from '../../auth/admin-mfa.guard';
 import { SessionAuthGuard } from '../../auth/session-auth.guard';
 import { Roles } from '../../auth/roles.decorator';
 import { RolesGuard } from '../../auth/roles.guard';
@@ -56,7 +57,7 @@ type IssueProgramPayload = {
   phone?: string;
 };
 
-@UseGuards(SessionAuthGuard, RolesGuard)
+@UseGuards(SessionAuthGuard, AdminMfaGuard, RolesGuard)
 @Roles('ADMIN', 'STAFF')
 @Controller('admin/coupons')
 export class AdminCouponsController {

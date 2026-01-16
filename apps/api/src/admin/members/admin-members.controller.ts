@@ -12,10 +12,11 @@ import {
 } from '@nestjs/common';
 import { Roles } from '../../auth/roles.decorator';
 import { RolesGuard } from '../../auth/roles.guard';
+import { AdminMfaGuard } from '../../auth/admin-mfa.guard';
 import { SessionAuthGuard } from '../../auth/session-auth.guard';
 import { AdminMembersService } from './admin-members.service';
 
-@UseGuards(SessionAuthGuard, RolesGuard)
+@UseGuards(SessionAuthGuard, AdminMfaGuard, RolesGuard)
 @Roles('ADMIN', 'STAFF')
 @Controller('admin/members')
 export class AdminMembersController {

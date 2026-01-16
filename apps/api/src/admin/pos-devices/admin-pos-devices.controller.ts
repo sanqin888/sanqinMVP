@@ -15,10 +15,11 @@ import { UpdatePosDeviceStatusDto } from './dto/update-pos-device-status.dto';
 import { RolesGuard } from '../../auth/roles.guard';
 import { Roles } from '../../auth/roles.decorator';
 import { UserRole } from '@prisma/client';
+import { AdminMfaGuard } from '../../auth/admin-mfa.guard';
 import { SessionAuthGuard } from '../../auth/session-auth.guard';
 
 @Controller('admin/pos-devices')
-@UseGuards(SessionAuthGuard, RolesGuard)
+@UseGuards(SessionAuthGuard, AdminMfaGuard, RolesGuard)
 @Roles(UserRole.ADMIN)
 export class AdminPosDevicesController {
   constructor(private readonly service: AdminPosDevicesService) {}
