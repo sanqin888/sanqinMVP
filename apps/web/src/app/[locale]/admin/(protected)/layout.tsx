@@ -9,6 +9,7 @@ type AdminSessionResponse = {
   userStableId?: string;
   email?: string;
   role?: string;
+  requiresTwoFactor?: boolean;
 };
 
 type ApiEnvelope<T> = {
@@ -75,6 +76,10 @@ export default async function AdminLayout({
 
   if (role !== 'ADMIN' && role !== 'STAFF') {
     redirect(`/${safeLocale}/admin/login`);
+  }
+
+  if (session?.requiresTwoFactor) {
+    redirect(`/${safeLocale}/admin/2fa`);
   }
 
   return <AdminLayoutClient locale={safeLocale}>{children}</AdminLayoutClient>;

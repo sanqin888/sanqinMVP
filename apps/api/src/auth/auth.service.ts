@@ -18,12 +18,16 @@ import type { TwoFactorMethod, UserRole } from '@prisma/client';
 import argon2, { argon2id } from 'argon2';
 import { normalizeEmail } from '../common/utils/email';
 import { normalizePhone } from '../common/utils/phone';
+import { EmailService } from '../email/email.service';
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly emailService: EmailService,
+  ) {}
 
   private generateCode(): string {
     return randomInt(0, 1_000_000).toString().padStart(6, '0');
@@ -78,6 +82,10 @@ export class AuthService {
     twoFactorMethod: TwoFactorMethod;
   }): boolean {
     return !!params.twoFactorEnabledAt && params.twoFactorMethod === 'SMS';
+  }
+
+  private isAdminRole(role?: UserRole | null): boolean {
+    return role === 'ADMIN' || role === 'STAFF';
   }
 
   async createSession(params: {
@@ -418,17 +426,20 @@ export class AuthService {
     }
 
     const now = new Date();
+    const isAdminLogin = params.purpose === 'admin';
     const isTrusted =
+      !isAdminLogin &&
       params.trustedDeviceToken &&
       (await this.findTrustedDevice({
         userId: user.id,
         token: params.trustedDeviceToken,
       }));
-    const requiresTwoFactor =
-      this.isTwoFactorEnabled({
-        twoFactorEnabledAt: user.twoFactorEnabledAt,
-        twoFactorMethod: user.twoFactorMethod,
-      }) && !isTrusted;
+    const requiresTwoFactor = isAdminLogin
+      ? true
+      : this.isTwoFactorEnabled({
+            twoFactorEnabledAt: user.twoFactorEnabledAt,
+            twoFactorMethod: user.twoFactorMethod,
+          }) && !isTrusted;
 
     await this.clearDeviceSessions({
       userId: user.id,
@@ -460,7 +471,9 @@ export class AuthService {
     }
 
     const user = session.user;
+    const isAdmin = this.isAdminRole(user.role);
     if (
+      !isAdmin &&
       !this.isTwoFactorEnabled({
         twoFactorEnabledAt: user.twoFactorEnabledAt,
         twoFactorMethod: user.twoFactorMethod,
@@ -518,6 +531,95 @@ export class AuthService {
     });
 
     this.logger.log(`2FA OTP for ${user.phone}: ${code}`);
+    return { success: true, expiresAt };
+  }
+
+  async requestTwoFactorEmail(params: {
+    sessionId: string;
+    ip?: string;
+    userAgent?: string;
+  }) {
+    const session = await this.getSession(params.sessionId);
+    if (!session) {
+      throw new UnauthorizedException('Invalid session');
+    }
+    if (session.mfaVerifiedAt) {
+      throw new BadRequestException('mfa already verified');
+    }
+
+    const user = session.user;
+    const isAdmin = this.isAdminRole(user.role);
+    if (
+      !isAdmin &&
+      !this.isTwoFactorEnabled({
+        twoFactorEnabledAt: user.twoFactorEnabledAt,
+        twoFactorMethod: user.twoFactorMethod,
+      })
+    ) {
+      throw new BadRequestException('mfa not enabled');
+    }
+
+    if (!user.email || !user.emailVerifiedAt) {
+      throw new BadRequestException('email not verified');
+    }
+
+    const now = new Date();
+    const oneMinuteAgo = new Date(now.getTime() - 60 * 1000);
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+
+    const recent = await this.prisma.twoFactorChallenge.findFirst({
+      where: {
+        userId: user.id,
+        purpose: 'LOGIN_2FA',
+        createdAt: { gt: oneMinuteAgo },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (recent) {
+      throw new BadRequestException('too many requests, please try later');
+    }
+
+    const lastHourCount = await this.prisma.twoFactorChallenge.count({
+      where: {
+        userId: user.id,
+        purpose: 'LOGIN_2FA',
+        createdAt: { gt: oneHourAgo },
+      },
+    });
+    if (lastHourCount >= 5) {
+      throw new BadRequestException('too many requests in an hour');
+    }
+
+    const code = this.generateCode();
+    const codeHash: string = this.hashOtp(code);
+    const expiresAt = new Date(now.getTime() + 5 * 60 * 1000);
+
+    await this.prisma.twoFactorChallenge.create({
+      data: {
+        userId: user.id,
+        purpose: 'LOGIN_2FA',
+        codeHash,
+        expiresAt,
+        attempts: 0,
+        maxAttempts: 5,
+        ip: params.ip,
+        userAgent: params.userAgent,
+      },
+    });
+
+    const isZh = user.language === 'ZH';
+    const subject = isZh ? '后台登录验证码' : 'Admin login verification code';
+    const text = isZh
+      ? `您的后台登录验证码是 ${code}，5 分钟内有效。`
+      : `Your admin login verification code is ${code}. It expires in 5 minutes.`;
+
+    await this.emailService.sendEmail({
+      to: user.email,
+      subject,
+      text,
+      tags: { type: 'admin_login_2fa' },
+    });
+
     return { success: true, expiresAt };
   }
 
