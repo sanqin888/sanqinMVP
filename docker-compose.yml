@@ -1,0 +1,100 @@
+  GNU nano 6.2                                                    docker-compose.yml                                                              
+services:
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: sanqin_db
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    restart: always
+    environment:
+      NODE_ENV: "production"
+      DATABASE_URL: "postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/sanqin_db"
+      PORT: 4000
+      TZ: "America/Toronto"
+      COOKIE_SIGNING_SECRET: ${COOKIE_SIGNING_SECRET}
+      JWT_SECRET: ${JWT_SECRET}
+      WEB_BASE_URL: "https://sanq.ca"
+      INTERNAL_API_BASE: "http://api:4000"
+      CURRENCY: "CAD"
+      PRICES_INCLUDE_TAX: "true"
+      SALES_TAX_RATE: "0.13"
+      LOYALTY_EARN_PT_PER_DOLLAR: "0.01"
+      LOYALTY_REDEEM_DOLLAR_PER_POINT: "1"
+      LOYALTY_REFERRAL_PT_PER_DOLLAR: "0.01"
+      CORS_ORIGIN: "https://sanq.ca,https://www.sanq.ca"
+      GOOGLE_CLIENT_ID: "99749299344-bohhqb4i1322lbgjq894ak0n49t8clpb.apps.googleusercontent.com"
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      OAUTH_STATE_SECRET: ${OAUTH_STATE_SECRET}
+      GOOGLE_CALLBACK_URL: "https://sanq.ca/api/v1/auth/oauth/google/callback"
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY}
+      STORE_LATITUDE: "43.760288"
+      STORE_LONGITUDE: "-79.412167"
+      UBER_DIRECT_CUSTOMER_ID: "9b7c3308-0f1f-5c5d-98ae-bb6bf2d881d1"
+      UBER_DIRECT_CLIENT_ID: "mjT9Xw6l0WJyZcEm2aJfRPDSwPHfKXAx"
+      UBER_DIRECT_CLIENT_SECRET: ${UBER_DIRECT_CLIENT_SECRET}
+      UBER_DIRECT_API_BASE: "https://api.uber.com"
+      UBER_DIRECT_OAUTH_URL: "https://auth.uber.com/oauth/v2/token"
+      UBER_DIRECT_OAUTH_SCOPE: "eats.deliveries"
+      UBER_DIRECT_AUTH_SCHEME: "Bearer"
+      UBER_DIRECT_STORE_BUSINESS_NAME: "Qin's Traditional Roujiamo"
+      UBER_DIRECT_STORE_CONTACT: "San Qin"
+      UBER_DIRECT_STORE_PHONE: "+1-437-808-6888"
+      UBER_DIRECT_STORE_ADDRESS_LINE1: "4750 Yonge St."
+      UBER_DIRECT_STORE_ADDRESS_LINE2: "Unit 138"
+      UBER_DIRECT_STORE_CITY: "Toronto"
+      UBER_DIRECT_STORE_PROVINCE: "ON"
+      UBER_DIRECT_STORE_POSTAL_CODE: "M2N 5M6"
+      UBER_DIRECT_STORE_COUNTRY: "CA"
+      CLOVER_ENV: "sandbox"
+      CLOVER_HCO_SIGNING_SECRET: ${CLOVER_HCO_SIGNING_SECRET}
+      CLOVER_MERCHANT_ID: "FWKFTN4XZHSQ1"
+      CLOVER_ACCESS_TOKEN: ${CLOVER_ACCESS_TOKEN}
+      CLOVER_PRIVATE_TOKEN: ${CLOVER_PRIVATE_TOKEN}
+      SMS_PROVIDER: "aws"
+      AWS_REGION: "ca-central-1"
+      AWS_SMS_ORIGINATION_IDENTITY: ${AWS_SMS_ORIGINATION_IDENTITY}
+    ports:
+      - "4000:4000"
+    depends_on:
+      - db
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    restart: always
+    extra_hosts:
+      - "sanq.ca:host-gateway"
+    environment:
+      NEXT_PUBLIC_API_URL: "https://sanq.ca"
+      API_URL: "http://api:4000"
+      NEXTAUTH_URL: "https://sanq.ca"
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      NEXT_PUBLIC_CURRENCY: "CAD"
+      NEXT_PUBLIC_ENV: "production"
+      API_UPSTREAM: "http://api:4000"
+      NEXT_PUBLIC_SALES_TAX_RATE: "0.13"
+      NEXT_PUBLIC_TAX_ON_DELIVERY: "true"
+      NEXT_PUBLIC_STORE_LATITUDE: "43.760288"
+      NEXT_PUBLIC_STORE_LONGITUDE: "-79.412167"
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+      NEXT_PUBLIC_API_BASE_URL: "https://api.sanq.ca/api/v1"
+      NEXT_PUBLIC_WEB_BASE_URL: "https://sanq.ca"
+      NEXT_PUBLIC_ENABLE_UBER_DIRECT: "true"
+      NEXT_PUBLIC_UBER_DIRECT_MODE: "test"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api

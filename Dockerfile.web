@@ -1,0 +1,46 @@
+FROM node:20-alpine AS builder
+
+# 启用 pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
+WORKDIR /app
+
+# 1. 复制依赖定义
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api/package.json ./apps/api/
+COPY apps/web/package.json ./apps/web/
+COPY libs/order/package.json ./libs/order/
+COPY libs/shared/package.json ./libs/shared/
+
+# 2. 安装依赖
+RUN pnpm install --frozen-lockfile
+
+# 3. 复制源码
+COPY . .
+
+# 4. 构建 Web (Next.js Standalone)
+# 这一步会生成 .next/standalone 文件夹，里面包含了所有运行所需的代码和依赖
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN pnpm --filter web build
+
+# --- 运行阶段 (Runner) ---
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+# [关键修复] 直接复制 Standalone 构建产物
+# 这会自动包含 apps/web/server.js 和所有必要的 node_modules (包括 shared libs)
+COPY --from=builder /app/apps/web/.next/standalone ./
+
+# [关键修复] 复制静态资源 (Standalone 默认不包含静态图片和 CSS)
+COPY --from=builder /app/apps/web/public ./apps/web/public
+COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
+
+EXPOSE 3000
+
+# [关键修复] 使用 node 直接启动，不再通过 npm start
+# 这样规避了 package.json 里强制 8080 端口的问题，直接使用 ENV PORT=3000
+CMD ["node", "apps/web/server.js"]

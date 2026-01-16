@@ -1,0 +1,47 @@
+FROM node:20-alpine AS builder
+# 启用 pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
+WORKDIR /app
+
+# 1. 复制依赖定义
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api/package.json ./apps/api/
+COPY apps/web/package.json ./apps/web/
+COPY libs/order/package.json ./libs/order/
+COPY libs/shared/package.json ./libs/shared/
+
+# 2. 安装依赖
+RUN pnpm install --frozen-lockfile
+
+# 3. 复制所有源代码
+COPY . .
+
+# 4. 生成 Prisma Client
+WORKDIR /app/apps/api
+RUN npx prisma generate
+
+# 5. 构建 API (这会自动触发 libs 的构建，因为 api/package.json 里配了 prebuild 脚本)
+WORKDIR /app
+RUN pnpm --filter api build
+
+# --- 运行阶段 (Runner) ---
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=4000
+
+# [关键修复] 复制 node_modules 和构建好的 libs 目录
+# 这样软链接才能找到真正的文件
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/libs ./libs
+
+# 复制 API 的构建产物
+COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=builder /app/apps/api/dist ./apps/api/dist
+COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
+COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
+
+EXPOSE 4000
+
+CMD ["node", "apps/api/dist/main.js"]
