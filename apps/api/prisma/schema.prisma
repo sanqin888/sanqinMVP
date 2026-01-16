@@ -579,6 +579,7 @@ model BusinessConfig {
   supportPhone              String?
   supportEmail              String?
   salesTaxRate              Float    @default(0.13)
+  wechatAlipayExchangeRate  Float    @default(1.0)
   earnPtPerDollar           Float    @default(0.01)
   redeemDollarPerPoint      Float    @default(1.0)
   referralPtPerDollar       Float    @default(0.01)

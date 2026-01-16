@@ -15,6 +15,9 @@ import {
 
 type FulfillmentType = "pickup" | "dine_in";
 type PaymentMethod = "cash" | "card" | "wechat_alipay";
+type BusinessConfigLite = {
+  wechatAlipayExchangeRate: number;
+};
 
 type CreatePosOrderResponse = {
   orderStableId: string;
@@ -138,6 +141,7 @@ const STRINGS: Record<
     memberEarned: string;
     memberBalanceAfter: string;
     fulfillmentRequired: string;
+    wechatAlipayConverted: string;
   }
 > = {
   zh: {
@@ -184,6 +188,7 @@ const STRINGS: Record<
     memberEarned: "本单预计新增积分",
     memberBalanceAfter: "预计结算后积分",
     fulfillmentRequired: "请选择用餐方式后再继续。",
+    wechatAlipayConverted: "微信/支付宝折算金额",
   },
   en: {
     title: "Store POS · Payment",
@@ -230,11 +235,16 @@ const STRINGS: Record<
     memberEarned: "Estimated points earned",
     memberBalanceAfter: "Estimated balance after",
     fulfillmentRequired: "Select a dining option before continuing.",
+    wechatAlipayConverted: "WeChat/Alipay converted total",
   },
 };
 
 function formatMoney(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
+}
+
+function formatFx(amount: number): string {
+  return `¥${amount.toFixed(2)}`;
 }
 
 function roundUpToFiveCents(cents: number): number {
@@ -264,6 +274,7 @@ export default function StorePosPaymentPage() {
   const [memberLookupError, setMemberLookupError] = useState<string | null>(
     null,
   );
+  const [wechatAlipayRate, setWechatAlipayRate] = useState<number>(1);
   const [redeemPointsInput, setRedeemPointsInput] = useState("");
   const [successInfo, setSuccessInfo] = useState<{
     orderNumber: string;
@@ -288,6 +299,26 @@ export default function StorePosPaymentPage() {
     } finally {
       setLoadingSnapshot(false);
     }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    apiFetch<BusinessConfigLite>("/admin/business/config")
+      .then((config) => {
+        if (!active) return;
+        if (
+          typeof config.wechatAlipayExchangeRate === "number" &&
+          Number.isFinite(config.wechatAlipayExchangeRate)
+        ) {
+          setWechatAlipayRate(config.wechatAlipayExchangeRate);
+        }
+      })
+      .catch((err) => {
+        console.warn("Failed to load exchange rate config:", err);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const hasItems =
@@ -417,6 +448,10 @@ export default function StorePosPaymentPage() {
     computedSnapshot?.loyalty?.pointsRedeemed != null
       ? computedSnapshot.loyalty.pointsRedeemed * 100
       : 0;
+  const wechatConvertedTotal =
+    paymentMethod === "wechat_alipay" && wechatAlipayRate > 0
+      ? (summaryTotalCents / 100) * wechatAlipayRate
+      : null;
 
   const discountOptions = [0.05, 0.1, 0.15];
 
@@ -656,6 +691,12 @@ export default function StorePosPaymentPage() {
                   <span>{t.total}</span>
                   <span>{formatMoney(summaryTotalCents)}</span>
                 </div>
+                {wechatConvertedTotal != null && (
+                  <div className="flex justify-between text-sm text-emerald-200">
+                    <span>{t.wechatAlipayConverted}</span>
+                    <span>{formatFx(wechatConvertedTotal)}</span>
+                  </div>
+                )}
               </div>
             </>
           )}
