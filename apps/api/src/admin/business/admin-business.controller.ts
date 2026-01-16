@@ -58,6 +58,7 @@ export class AdminBusinessController {
       supportPhone?: string | null;
       supportEmail?: string | null;
       salesTaxRate?: number;
+      wechatAlipayExchangeRate?: number;
       earnPtPerDollar?: number;
       redeemDollarPerPoint?: number;
       referralPtPerDollar?: number;
@@ -97,6 +98,7 @@ export class AdminBusinessController {
       supportPhone?: string | null;
       supportEmail?: string | null;
       salesTaxRate?: number;
+      wechatAlipayExchangeRate?: number;
       earnPtPerDollar?: number;
       redeemDollarPerPoint?: number;
       referralPtPerDollar?: number;

@@ -38,6 +38,7 @@ export type BusinessConfigResponse = {
   supportPhone: string | null;
   supportEmail: string | null;
   salesTaxRate: number;
+  wechatAlipayExchangeRate: number;
   earnPtPerDollar: number;
   redeemDollarPerPoint: number;
   referralPtPerDollar: number;
@@ -88,6 +89,7 @@ export class AdminBusinessService {
       supportPhone: config.supportPhone ?? null,
       supportEmail: config.supportEmail ?? null,
       salesTaxRate: config.salesTaxRate,
+      wechatAlipayExchangeRate: config.wechatAlipayExchangeRate,
       earnPtPerDollar: config.earnPtPerDollar,
       redeemDollarPerPoint: config.redeemDollarPerPoint,
       referralPtPerDollar: config.referralPtPerDollar,
@@ -231,6 +233,7 @@ export class AdminBusinessService {
       supportPhone,
       supportEmail,
       salesTaxRate,
+      wechatAlipayExchangeRate,
       earnPtPerDollar,
       redeemDollarPerPoint,
       referralPtPerDollar,
@@ -257,6 +260,7 @@ export class AdminBusinessService {
       supportPhone?: unknown;
       supportEmail?: unknown;
       salesTaxRate?: unknown;
+      wechatAlipayExchangeRate?: unknown;
       earnPtPerDollar?: unknown;
       redeemDollarPerPoint?: unknown;
       referralPtPerDollar?: unknown;
@@ -390,6 +394,13 @@ export class AdminBusinessService {
 
     if (salesTaxRate !== undefined) {
       updates.salesTaxRate = this.normalizeRate('salesTaxRate', salesTaxRate);
+    }
+
+    if (wechatAlipayExchangeRate !== undefined) {
+      updates.wechatAlipayExchangeRate = this.normalizePositiveNumber(
+        'wechatAlipayExchangeRate',
+        wechatAlipayExchangeRate,
+      );
     }
 
     if (earnPtPerDollar !== undefined) {

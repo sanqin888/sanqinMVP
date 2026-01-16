@@ -73,6 +73,11 @@ const COPY = {
       rechargeAmount: "充值金额 (现金)",
       rechargeAmountHint: "充值金额将按 1:1 折算为积分",
       bonusPoints: "奖励积分",
+      paymentMethod: "结算方式",
+      payCash: "现金",
+      payCard: "银行卡",
+      payWeChatAlipay: "微信或支付宝",
+      wechatAlipayConverted: "微信/支付宝折算金额",
       sendCode: "发送验证码",
       verifyCode: "验证",
       codeLabel: "手机验证码",
@@ -156,6 +161,11 @@ const COPY = {
       rechargeAmount: "Cash recharge",
       rechargeAmountHint: "Recharge amount converts 1:1 into points",
       bonusPoints: "Bonus points",
+      paymentMethod: "Payment method",
+      payCash: "Cash",
+      payCard: "Card",
+      payWeChatAlipay: "WeChat / Alipay",
+      wechatAlipayConverted: "WeChat/Alipay converted total",
       sendCode: "Send code",
       verifyCode: "Verify",
       codeLabel: "SMS code",
@@ -174,6 +184,8 @@ const COPY = {
     selectMemberHint: "Select a member first.",
   },
 } as const;
+
+type PaymentMethod = "cash" | "card" | "wechat_alipay";
 
 type MemberSummary = {
   userStableId: string;
@@ -245,6 +257,10 @@ function formatMoney(cents: number, locale: Locale) {
   }).format(amount);
 }
 
+function formatFxAmount(value: number) {
+  return `¥${value.toFixed(2)}`;
+}
+
 function formatDate(value: string | null, locale: Locale) {
   if (!value) return "-";
   const date = new Date(value);
@@ -267,6 +283,9 @@ export default function PosMembershipPage() {
   const locale = (params?.locale === "zh" ? "zh" : "en") as Locale;
   const copy = COPY[locale];
 
+  const [wechatAlipayRate, setWechatAlipayRate] = useState<number>(1);
+  const [rechargePaymentMethod, setRechargePaymentMethod] =
+    useState<PaymentMethod>("cash");
   const [searchPhone, setSearchPhone] = useState("");
   const [searchResults, setSearchResults] = useState<MemberSummary[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -296,6 +315,26 @@ export default function PosMembershipPage() {
   >("idle");
   const [rechargeSubmitting, setRechargeSubmitting] = useState(false);
   const [rechargeError, setRechargeError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    apiFetch<{ wechatAlipayExchangeRate: number }>("/admin/business/config")
+      .then((config) => {
+        if (!active) return;
+        if (
+          typeof config.wechatAlipayExchangeRate === "number" &&
+          Number.isFinite(config.wechatAlipayExchangeRate)
+        ) {
+          setWechatAlipayRate(config.wechatAlipayExchangeRate);
+        }
+      })
+      .catch((error) => {
+        console.warn("Failed to load exchange rate config:", error);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleSelectMember = useCallback((member: MemberSummary) => {
     setSelectedMemberId(member.userStableId);
@@ -369,6 +408,16 @@ export default function PosMembershipPage() {
     const bonus = Number.parseFloat(rechargeBonus) || 0;
     return Math.round(base + bonus);
   }, [rechargeAmount, rechargeBonus]);
+
+  const rechargeAmountValue = useMemo(() => {
+    const base = Number.parseFloat(rechargeAmount) || 0;
+    return base > 0 ? base : 0;
+  }, [rechargeAmount]);
+
+  const rechargeConvertedAmount =
+    rechargePaymentMethod === "wechat_alipay" && wechatAlipayRate > 0
+      ? rechargeAmountValue * wechatAlipayRate
+      : null;
 
   const canSubmitAdjust =
     !adjustSubmitting &&
@@ -490,6 +539,7 @@ export default function PosMembershipPage() {
       setRechargeCode("");
       setRechargeVerificationToken("");
       setRechargeStep("idle");
+      setRechargePaymentMethod("cash");
       if (selectedMemberId) {
         await refreshMemberData(selectedMemberId);
       }
@@ -509,6 +559,7 @@ export default function PosMembershipPage() {
     setRechargeVerificationToken("");
     setRechargeStep("idle");
     setRechargeError(null);
+    setRechargePaymentMethod("cash");
   };
 
   return (
@@ -898,6 +949,46 @@ export default function PosMembershipPage() {
                 onChange={(event) => setRechargeBonus(event.target.value)}
                 className="h-11 w-full rounded-2xl border border-slate-700 bg-slate-800 px-4 text-sm"
               />
+              <div className="space-y-2">
+                <label className="text-xs text-slate-400">
+                  {copy.modal.paymentMethod}
+                </label>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setRechargePaymentMethod("cash")}
+                    className={`rounded-full border px-3 py-2 ${
+                      rechargePaymentMethod === "cash"
+                        ? "border-emerald-400/70 bg-emerald-500/10 text-emerald-200"
+                        : "border-slate-700 bg-slate-800 text-slate-200"
+                    }`}
+                  >
+                    {copy.modal.payCash}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRechargePaymentMethod("card")}
+                    className={`rounded-full border px-3 py-2 ${
+                      rechargePaymentMethod === "card"
+                        ? "border-emerald-400/70 bg-emerald-500/10 text-emerald-200"
+                        : "border-slate-700 bg-slate-800 text-slate-200"
+                    }`}
+                  >
+                    {copy.modal.payCard}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRechargePaymentMethod("wechat_alipay")}
+                    className={`rounded-full border px-3 py-2 ${
+                      rechargePaymentMethod === "wechat_alipay"
+                        ? "border-emerald-400/70 bg-emerald-500/10 text-emerald-200"
+                        : "border-slate-700 bg-slate-800 text-slate-200"
+                    }`}
+                  >
+                    {copy.modal.payWeChatAlipay}
+                  </button>
+                </div>
+              </div>
               <label className="text-xs text-slate-400">{copy.modal.codeLabel}</label>
               <div className="flex items-center gap-2">
                 <input
@@ -937,6 +1028,12 @@ export default function PosMembershipPage() {
               <div className="rounded-2xl border border-slate-700 bg-slate-800 px-4 py-3 text-xs text-slate-300">
                 {copy.pointsBalance}: {formatPoints(totalRechargePoints, locale)}
               </div>
+              {rechargeConvertedAmount != null && (
+                <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-100">
+                  {copy.modal.wechatAlipayConverted}:{" "}
+                  {formatFxAmount(rechargeConvertedAmount)}
+                </div>
+              )}
             </div>
             <div className="mt-6 flex justify-end gap-2">
               <button
