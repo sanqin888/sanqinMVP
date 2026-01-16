@@ -1,4 +1,3 @@
-// apps/web/next.config.ts
 import type { NextConfig } from 'next';
 
 // 后端（Nest）地址：端口改为 4000
@@ -6,6 +5,8 @@ const API_TARGET =
   process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || 'http://localhost:4000';
 
 const nextConfig: NextConfig = {
+  // 关键修复：开启 Standalone 模式
+  output: 'standalone',
   async rewrites() {
     return [
       {
