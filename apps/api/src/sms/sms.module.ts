@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { SmsService } from './sms.service';
 import { SMS_PROVIDER_TOKEN } from './sms.tokens';
-import { TwilioSmsProvider } from './providers/twilio-sms.provider';
+import { AwsSmsProvider } from './providers/aws-sms.provider';
 import { LogSmsProvider } from './providers/log-sms.provider';
 import type { SmsProvider } from './sms.provider';
 
@@ -10,21 +10,21 @@ import type { SmsProvider } from './sms.provider';
   imports: [HttpModule],
   providers: [
     SmsService,
-    TwilioSmsProvider,
+    AwsSmsProvider,
     LogSmsProvider,
     {
       provide: SMS_PROVIDER_TOKEN,
       useFactory: (
-        twilio: TwilioSmsProvider,
+        aws: AwsSmsProvider,
         loggerProvider: LogSmsProvider,
       ): SmsProvider => {
         const provider = process.env.SMS_PROVIDER?.toLowerCase();
-        if (provider === 'twilio') {
-          return twilio;
+        if (provider === 'aws') {
+          return aws;
         }
         return loggerProvider;
       },
-      inject: [TwilioSmsProvider, LogSmsProvider],
+      inject: [AwsSmsProvider, LogSmsProvider],
     },
   ],
   exports: [SmsService],

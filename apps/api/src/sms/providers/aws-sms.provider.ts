@@ -8,26 +8,34 @@ import type {
 } from '../sms.provider';
 
 @Injectable()
-export class TwilioSmsProvider implements SmsProvider {
-  private readonly logger = new Logger(TwilioSmsProvider.name);
+export class AwsSmsProvider implements SmsProvider {
+  private readonly logger = new Logger(AwsSmsProvider.name);
 
   constructor(private readonly httpService: HttpService) {}
 
   async sendSms(params: SmsSendParams): Promise<SmsSendResult> {
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    const authToken = process.env.TWILIO_AUTH_TOKEN;
-    const fromNumber = process.env.TWILIO_FROM_NUMBER;
-    const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
+    const accountSid = process.env.AWS_SMS_ACCOUNT_SID;
+    const authToken = process.env.AWS_SMS_AUTH_TOKEN;
+    const fromNumber = process.env.AWS_SMS_FROM_NUMBER;
+    const messagingServiceSid = process.env.AWS_SMS_MESSAGING_SERVICE_SID;
+    const apiUrl = process.env.AWS_SMS_API_URL;
 
     if (!accountSid || !authToken) {
-      return { ok: false, error: 'twilio credentials missing' };
+      return { ok: false, error: 'aws credentials missing' };
     }
 
     if (!fromNumber && !messagingServiceSid) {
-      return { ok: false, error: 'twilio sender missing' };
+      return { ok: false, error: 'aws sender missing' };
     }
 
-    const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
+    if (!apiUrl) {
+      return { ok: false, error: 'aws api url missing' };
+    }
+
+    const url = apiUrl.replace(
+      '{accountSid}',
+      encodeURIComponent(accountSid),
+    );
     const body = new URLSearchParams({
       To: params.to,
       Body: params.body,
@@ -41,7 +49,7 @@ export class TwilioSmsProvider implements SmsProvider {
 
     try {
       const response = await lastValueFrom(
-        this.httpService.post<TwilioMessageResponse>(url, body.toString(), {
+        this.httpService.post<AwsMessageResponse>(url, body.toString(), {
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           auth: { username: accountSid, password: authToken },
         }),
@@ -49,12 +57,12 @@ export class TwilioSmsProvider implements SmsProvider {
       const messageId = response.data.sid ?? undefined;
       return { ok: true, providerMessageId: messageId };
     } catch (error) {
-      this.logger.error('Twilio send failed', error as Error);
-      return { ok: false, error: 'twilio send failed' };
+      this.logger.error('AWS send failed', error as Error);
+      return { ok: false, error: 'aws send failed' };
     }
   }
 }
 
-type TwilioMessageResponse = {
+type AwsMessageResponse = {
   sid?: string;
 };
