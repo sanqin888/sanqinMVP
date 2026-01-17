@@ -573,7 +573,17 @@ export default function LocalOrderPage() {
                             }}
                           >
                             <div className="space-y-2">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-3">
+                                {item.imageUrl ? (
+                                  <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-amber-100">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img
+                                      src={item.imageUrl}
+                                      alt={item.name}
+                                      className="h-full w-full object-cover"
+                                    />
+                                  </div>
+                                ) : null}
                                 <span className="rounded-full bg-amber-500/90 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-white">
                                   {locale === "zh" ? "特价" : "Special"}
                                 </span>
