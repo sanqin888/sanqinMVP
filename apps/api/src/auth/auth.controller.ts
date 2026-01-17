@@ -97,6 +97,21 @@ const buildMembershipReferrerRedirect = (
   return `${localePrefix}/membership/referrer?${params.toString()}`;
 };
 
+// 辅助函数：统一获取 Cookie 配置
+const getCookieOptions = (maxAge?: number) => {
+  const isProd = process.env.NODE_ENV === 'production';
+  return {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: 'lax' as const,
+    signed: true,
+    path: '/',
+    // ✅ 关键修改：生产环境下设置 domain 为 .sanq.ca，让 Cookie 在主域和子域间共享
+    domain: isProd ? '.sanq.ca' : undefined,
+    maxAge,
+  };
+};
+
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -141,15 +156,12 @@ export class AuthController {
       trustedDeviceToken,
     });
 
-    res.cookie(SESSION_COOKIE_NAME, result.session.sessionId, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      signed: true,
-      maxAge: result.session.expiresAt.getTime() - Date.now(),
-      path: '/',
-      domain: process.env.NODE_ENV === 'production' ? '.sanq.ca' : undefined,
-    });
+    res.cookie(
+      SESSION_COOKIE_NAME,
+      result.session.sessionId,
+      getCookieOptions(result.session.expiresAt.getTime() - Date.now()),
+    );
+
     const webBaseUrl = process.env.WEB_BASE_URL ?? '';
     const next = normalizeNextPath(cb || '/');
     const redirectTarget = result.isNewUser
@@ -217,38 +229,31 @@ export class AuthController {
       trustedDeviceToken,
     });
 
-    const sessionCookieOptions = {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax' as const,
-      signed: true,
-      path: '/',
-    };
     const isAdminLogin = purpose === 'admin';
-    res.cookie(SESSION_COOKIE_NAME, result.session.sessionId, {
-      ...sessionCookieOptions,
-      ...(isAdminLogin
-        ? {}
-        : { maxAge: result.session.expiresAt.getTime() - Date.now() }),
-    });
-    // ✅ 仅当 purpose=pos 且设备已通过后端校验后，才下发设备 cookie（用于后续每次请求的 PosDeviceGuard）
+    const maxAge = isAdminLogin
+      ? undefined
+      : result.session.expiresAt.getTime() - Date.now();
+
+    res.cookie(
+      SESSION_COOKIE_NAME,
+      result.session.sessionId,
+      getCookieOptions(maxAge),
+    );
+
+    // ✅ 仅当 purpose=pos 且设备已通过后端校验后，才下发设备 cookie
     if (purpose === 'pos' && deviceStableId && deviceKey) {
       const deviceMaxAge = POS_DEVICE_COOKIE_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
 
-      res.cookie(POS_DEVICE_ID_COOKIE, deviceStableId, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: deviceMaxAge, // 使用长效时间
-        path: '/',
-      });
-      res.cookie(POS_DEVICE_KEY_COOKIE, deviceKey, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: deviceMaxAge, // 使用长效时间
-        path: '/',
-      });
+      res.cookie(
+        POS_DEVICE_ID_COOKIE,
+        deviceStableId,
+        getCookieOptions(deviceMaxAge),
+      );
+      res.cookie(
+        POS_DEVICE_KEY_COOKIE,
+        deviceKey,
+        getCookieOptions(deviceMaxAge),
+      );
     }
 
     return {
@@ -288,14 +293,11 @@ export class AuthController {
       trustedDeviceToken,
     });
 
-    res.cookie(SESSION_COOKIE_NAME, result.session.sessionId, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      signed: true,
-      maxAge: result.session.expiresAt.getTime() - Date.now(),
-      path: '/',
-    });
+    res.cookie(
+      SESSION_COOKIE_NAME,
+      result.session.sessionId,
+      getCookieOptions(result.session.expiresAt.getTime() - Date.now()),
+    );
 
     return {
       userStableId: result.user.userStableId,
@@ -370,13 +372,11 @@ export class AuthController {
 
     if (result.trustedDevice) {
       const maxAge = result.trustedDevice.expiresAt.getTime() - Date.now();
-      res.cookie(TRUSTED_DEVICE_COOKIE, result.trustedDevice.token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge,
-        path: '/',
-      });
+      res.cookie(
+        TRUSTED_DEVICE_COOKIE,
+        result.trustedDevice.token,
+        getCookieOptions(maxAge),
+      );
     }
 
     return { success: true };
@@ -405,13 +405,11 @@ export class AuthController {
 
     if (result.trustedDevice) {
       const maxAge = result.trustedDevice.expiresAt.getTime() - Date.now();
-      res.cookie(TRUSTED_DEVICE_COOKIE, result.trustedDevice.token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge,
-        path: '/',
-      });
+      res.cookie(
+        TRUSTED_DEVICE_COOKIE,
+        result.trustedDevice.token,
+        getCookieOptions(maxAge),
+      );
     }
 
     return { success: true };
@@ -566,10 +564,16 @@ export class AuthController {
         : Promise.resolve(),
     ]);
 
-    res.clearCookie(POS_DEVICE_ID_COOKIE, { path: '/' });
-    res.clearCookie(POS_DEVICE_KEY_COOKIE, { path: '/' });
-    res.clearCookie(SESSION_COOKIE_NAME, { path: '/' });
-    res.clearCookie(TRUSTED_DEVICE_COOKIE, { path: '/' });
+    // 清除 Cookie 时也必须带上 domain，否则无法清除带 domain 的 cookie
+    const clearOptions = {
+      path: '/',
+      domain: process.env.NODE_ENV === 'production' ? '.sanq.ca' : undefined,
+    };
+
+    res.clearCookie(POS_DEVICE_ID_COOKIE, clearOptions);
+    res.clearCookie(POS_DEVICE_KEY_COOKIE, clearOptions);
+    res.clearCookie(SESSION_COOKIE_NAME, clearOptions);
+    res.clearCookie(TRUSTED_DEVICE_COOKIE, clearOptions);
     return { success: true };
   }
 }
