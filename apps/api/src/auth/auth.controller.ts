@@ -148,6 +148,7 @@ export class AuthController {
       signed: true,
       maxAge: result.session.expiresAt.getTime() - Date.now(),
       path: '/',
+      domain: process.env.NODE_ENV === 'production' ? '.sanq.ca' : undefined,
     });
     const webBaseUrl = process.env.WEB_BASE_URL ?? '';
     const next = normalizeNextPath(cb || '/');
