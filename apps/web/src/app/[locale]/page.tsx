@@ -475,7 +475,7 @@ export default function LocalOrderPage() {
 
           <div className="flex flex-col items-start gap-4 lg:items-end relative">
            {/* 新增：插画容器 */}
-<div className="hidden lg:block pointer-events-none absolute -top-40 right-4 z-0 opacity-90 lg:-top-32 lg:right-8">
+<div className="hidden lg:block pointer-events-none absolute -top-50 right-4 z-0 opacity-90 lg:-top-32 lg:right-8">
                {/* 说明：
                   - -top-24 / -top-32: 向上移动，位于按钮上方的空白处
                   - width={130}: 图片缩小

@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { format, subDays } from 'date-fns'; 
+import { format, subDays } from 'date-fns';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   BarChart, Bar, PieChart, Pie, Cell, Legend 
@@ -38,7 +38,6 @@ export default function ReportsPage() {
     const fetchData = async () => {
       setLoading(true);
       try {
-        // ✅ 将日期计算逻辑移入 useEffect 内部，解决依赖警告
         const now = new Date();
         let range = { from: '', to: '' };
         
@@ -65,7 +64,7 @@ export default function ReportsPage() {
       }
     };
     fetchData();
-  }, [dateRange]); // ✅ 现在依赖只有 dateRange，完全正确
+  }, [dateRange]);
 
   const formatMoney = (val: number) => `$${val.toFixed(2)}`;
 
@@ -157,7 +156,8 @@ export default function ReportsPage() {
                 />
                 <Tooltip 
                   contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                  formatter={(val: number) => [`$${val.toFixed(2)}`, '销售额']}
+                  // ✅ 修复 1: 使用 any 类型并处理数值转换
+                  formatter={(val: any) => [`$${Number(val).toFixed(2)}`, '销售额']}
                 />
                 <Line 
                   type="monotone" 
@@ -191,7 +191,8 @@ export default function ReportsPage() {
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(val: number) => `$${val.toFixed(2)}`} />
+                  {/* ✅ 修复 2: 使用 any 类型 */}
+                  <Tooltip formatter={(val: any) => `$${Number(val).toFixed(2)}`} />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
                 </PieChart>
               </ResponsiveContainer>
@@ -205,7 +206,8 @@ export default function ReportsPage() {
                 <BarChart data={data?.breakdown.fulfillment} layout="vertical" margin={{ left: 10 }}>
                   <XAxis type="number" hide />
                   <YAxis type="category" dataKey="name" width={70} tick={{fontSize: 11}} interval={0} />
-                  <Tooltip cursor={{fill: 'transparent'}} formatter={(val: number) => `$${val.toFixed(2)}`} />
+                  {/* ✅ 修复 3: 使用 any 类型 */}
+                  <Tooltip cursor={{fill: 'transparent'}} formatter={(val: any) => `$${Number(val).toFixed(2)}`} />
                   <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={20} />
                 </BarChart>
               </ResponsiveContainer>
