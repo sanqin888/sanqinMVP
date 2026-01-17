@@ -34,7 +34,7 @@ services:
       GOOGLE_CLIENT_ID: "99749299344-bohhqb4i1322lbgjq894ak0n49t8clpb.apps.googleusercontent.com"
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       OAUTH_STATE_SECRET: ${OAUTH_STATE_SECRET}
-      GOOGLE_CALLBACK_URL: "https://sanq.ca/api/v1/auth/oauth/google/callback"
+      GOOGLE_OAUTH_CALLBACK_URL: "https://api.sanq.ca/api/v1/auth/oauth/google/callback"
       GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY}
       STORE_LATITUDE: "43.760288"
       STORE_LONGITUDE: "-79.412167"
