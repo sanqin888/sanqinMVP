@@ -1,7 +1,6 @@
 // apps/web/src/app/[locale]/admin/login/page.tsx
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import type { Locale } from "@/lib/i18n/locales";
@@ -22,7 +21,6 @@ function unwrapEnvelope<T>(payload: unknown): T | null {
 }
 
 export default function AdminLoginPage() {
-  const router = useRouter();
   const params = useParams();
   const locale =
     typeof params?.locale === "string" && (params.locale === "zh" || params.locale === "en")
@@ -59,11 +57,11 @@ export default function AdminLoginPage() {
       const payload = await res.json().catch(() => null);
       const data = unwrapEnvelope<{ requiresTwoFactor?: boolean }>(payload);
       if (data?.requiresTwoFactor) {
-        router.push(`/${locale}/admin/2fa`);
+        window.location.href = `/${locale}/admin/2fa`;
         return;
       }
 
-      router.push(`/${locale}/admin`);
+      window.location.href = `/${locale}/admin`;
     } catch (err) {
       const message = err instanceof Error ? err.message : "登录失败";
       setError(message);

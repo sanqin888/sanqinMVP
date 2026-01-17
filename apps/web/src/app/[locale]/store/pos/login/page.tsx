@@ -1,13 +1,11 @@
 // apps/web/src/app/[locale]/store/pos/login/page.tsx
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import type { Locale } from "@/lib/i18n/locales";
 
 export default function PosLoginPage() {
-  const router = useRouter();
   const params = useParams();
   const locale =
     typeof params?.locale === "string" && (params.locale === "zh" || params.locale === "en")
@@ -87,7 +85,7 @@ export default function PosLoginPage() {
         throw new Error(message);
       }
 
-      router.push(`/${locale}/store/pos`);
+      window.location.href = `/${locale}/store/pos`;
     } catch (err) {
       const message = err instanceof Error ? err.message : "登录失败";
       setError(message);
