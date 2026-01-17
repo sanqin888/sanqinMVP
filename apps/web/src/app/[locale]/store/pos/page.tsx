@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
 import type { Locale } from "@/lib/i18n/locales";
-import type { PublicMenuResponse as PublicMenuApiResponse } from "@shared/menu";
+import type { PublicMenuResponse as PublicMenuApiResponse, OptionChoiceDto } from "@shared/menu";
 import {
   buildLocalizedMenuFromDb,
   type PublicMenuCategory,
@@ -384,7 +384,7 @@ export default function StorePosPage() {
     groupId: string,
     optionId: string,
     maxSelect: number | null,
-    groupOptions: PublicMenuCategory["items"][number]["optionGroups"][number]["options"] = [],
+    groupOptions: OptionChoiceDto[] = [],
   ) => {
     if (!activeItem) return;
 
