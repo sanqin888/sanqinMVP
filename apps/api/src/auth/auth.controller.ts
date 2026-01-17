@@ -156,7 +156,10 @@ export class AuthController {
       : next;
     if (result.requiresTwoFactor) {
       const params = new URLSearchParams({ next: redirectTarget });
-      return res.redirect(302, `${webBaseUrl}/membership/2fa?${params.toString()}`);
+      return res.redirect(
+        302,
+        `${webBaseUrl}/membership/2fa?${params.toString()}`,
+      );
     }
 
     return res.redirect(302, `${webBaseUrl}${redirectTarget}`);
