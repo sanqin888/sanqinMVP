@@ -213,13 +213,19 @@ export class AuthController {
       trustedDeviceToken,
     });
 
-    res.cookie(SESSION_COOKIE_NAME, result.session.sessionId, {
+    const sessionCookieOptions = {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      sameSite: 'lax' as const,
       signed: true,
-      maxAge: result.session.expiresAt.getTime() - Date.now(),
       path: '/',
+    };
+    const isAdminLogin = purpose === 'admin';
+    res.cookie(SESSION_COOKIE_NAME, result.session.sessionId, {
+      ...sessionCookieOptions,
+      ...(isAdminLogin
+        ? {}
+        : { maxAge: result.session.expiresAt.getTime() - Date.now() }),
     });
     // ✅ 仅当 purpose=pos 且设备已通过后端校验后，才下发设备 cookie（用于后续每次请求的 PosDeviceGuard）
     if (purpose === 'pos' && deviceStableId && deviceKey) {
