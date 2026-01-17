@@ -63,15 +63,6 @@ export default function AdminPosDevicesPage() {
     try {
       const data = await apiFetch<PosDevice[]>('/admin/pos-devices');
       setDevices(data ?? []);
-      setEnrollmentCodes((prev) => {
-        const next = { ...prev };
-        (data ?? []).forEach((device) => {
-          if (device.enrollmentCode) {
-            next[device.id] = device.enrollmentCode;
-          }
-        });
-        return next;
-      });
     } catch (error) {
       setLoadError((error as Error).message);
     } finally {
