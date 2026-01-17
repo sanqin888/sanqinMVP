@@ -46,7 +46,6 @@ export default function AdminPosDevicesPage() {
   const [reveal, setReveal] = useState<RevealState | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
-  const [enrollmentCodes, setEnrollmentCodes] = useState<Record<string, string>>({});
 
   const pendingDevices = useMemo(
     () => devices.filter((device) => !device.lastSeenAt),
@@ -112,10 +111,6 @@ export default function AdminPosDevicesPage() {
         deviceName: created.name ?? name,
         enrollmentCode: created.enrollmentCode,
       });
-      setEnrollmentCodes((prev) => ({
-        ...prev,
-        [created.id]: created.enrollmentCode,
-      }));
       setFormState({ name: '', storeId: '' });
       await loadDevices();
     } catch (error) {
@@ -126,21 +121,23 @@ export default function AdminPosDevicesPage() {
   }
 
   async function handleReset(device: PosDevice) {
+    // 1. 增加确认弹窗
+    if (!window.confirm(`确定要重置设备「${device.name ?? '未命名'}」的绑定码吗？\n旧的绑定码将立即失效。`)) {
+      return;
+    }
+
     setActionError(null);
     try {
+      // 2. 使用正确的 API 路径 (PATCH /reset-code) 和 apiFetch
       const updated = await apiFetch<PosDeviceWithCode>(
         `/admin/pos-devices/${device.id}/reset-code`,
         { method: 'PATCH' },
       );
-      setReveal({
-        deviceStableId: updated.deviceStableId,
-        deviceName: updated.name ?? device.name ?? '未命名设备',
-        enrollmentCode: updated.enrollmentCode,
-      });
-      setEnrollmentCodes((prev) => ({
-        ...prev,
-        [updated.id]: updated.enrollmentCode,
-      }));
+
+      // 3. 直接弹窗显示新码，不再设置 React 状态
+      window.alert(`重置成功！\n请在 POS 设备上输入新的绑定码：\n\n${updated.enrollmentCode}\n\n(请立即记录，关闭后无法再次查看)`);
+
+      // 4. 刷新列表（可选，主要为了更新 meta 信息）
       await loadDevices();
     } catch (error) {
       setActionError((error as Error).message);
@@ -375,12 +372,6 @@ export default function AdminPosDevicesPage() {
                     <div className="text-base font-semibold text-slate-900">
                       {device.name ?? '未命名设备'}
                     </div>
-                    <div className="text-xs text-slate-500">
-                      当前绑定码：
-                      {enrollmentCodes[device.id] ??
-                        device.enrollmentCode ??
-                        '—'}
-                    </div>
                   </div>
                   <span
                     className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-semibold ${
@@ -408,6 +399,13 @@ export default function AdminPosDevicesPage() {
                       : device.status === 'ACTIVE'
                         ? '停用设备'
                         : '启用设备'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleReset(device)}
+                    className="rounded-md border px-3 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-50"
+                  >
+                    重置绑定码
                   </button>
                   <button
                     type="button"

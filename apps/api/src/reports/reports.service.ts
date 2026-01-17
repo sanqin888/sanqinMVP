@@ -1,111 +1,143 @@
 // apps/api/src/reports/reports.service.ts
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { OrderStatus } from '@prisma/client';
+import { DateTime } from 'luxon';
 
-export type DailyReport = {
-  count: number;
-  subtotalCents: number;
-  taxCents: number;
-  totalCents: number;
-};
+interface ReportQueryDto {
+  from?: string;
+  to?: string;
+}
 
 @Injectable()
 export class ReportsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** 解析 YYYY-MM-DD */
-  private parseISODate(dateISO: string): { y: number; m: number; d: number } {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateISO)) {
-      throw new BadRequestException('date must be YYYY-MM-DD');
-    }
-    const [y, m, d] = dateISO.split('-').map((n) => Number(n));
-    return { y, m, d };
-  }
+  async getReport(query: ReportQueryDto) {
+    // 1. 确定时间范围 (默认为多伦多时间的一整天)
+    // 注意：这里的入参建议是 ISO 格式 (YYYY-MM-DD)
+    const zone = process.env.TZ || 'America/Toronto';
+    const now = DateTime.now().setZone(zone);
 
-  /**
-   * 计算某个 UTC 时间戳在给定时区下的偏移（毫秒）。
-   * 原理：把该 UTC 时间格式化为该时区的“本地时间”，再将其按 UTC 解析回时间戳，二者差值即偏移。
-   */
-  private offsetMs(zone: string, atUTCms: number): number {
-    const dtf = new Intl.DateTimeFormat('en-CA', {
-      timeZone: zone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
+    const startDt = query.from
+      ? DateTime.fromISO(query.from, { zone }).startOf('day')
+      : now.startOf('day');
+
+    const endDt = query.to
+      ? DateTime.fromISO(query.to, { zone }).endOf('day')
+      : now.endOf('day');
+
+    const startDate = startDt.toJSDate();
+    const endDate = endDt.toJSDate();
+
+    // 2. 定义有效订单的状态
+    // 我们只统计已支付、制作中、待取餐、已完成的订单。排除 pending(未支付) 和 refunded(已退款)
+    const validStatuses: OrderStatus[] = [
+      'paid',
+      'making',
+      'ready',
+      'completed',
+    ];
+
+    const whereCondition = {
+      createdAt: { gte: startDate, lte: endDate },
+      status: { in: validStatuses },
+    };
+
+    // 3. 核心指标聚合 (KPI)
+    const aggregations = await this.prisma.order.aggregate({
+      where: whereCondition,
+      _sum: {
+        totalCents: true,
+        subtotalCents: true,
+        taxCents: true,
+        deliveryFeeCents: true,
+        // 注意：Schema 中没有 tipCents，故不统计小费
+      },
+      _count: {
+        id: true,
+      },
     });
 
-    const parts = dtf.formatToParts(new Date(atUTCms));
-    let y = 0,
-      m = 0,
-      d = 0,
-      h = 0,
-      mi = 0,
-      s = 0;
-
-    for (const p of parts) {
-      switch (p.type) {
-        case 'year':
-          y = Number(p.value);
-          break;
-        case 'month':
-          m = Number(p.value);
-          break;
-        case 'day':
-          d = Number(p.value);
-          break;
-        case 'hour':
-          h = Number(p.value);
-          break;
-        case 'minute':
-          mi = Number(p.value);
-          break;
-        case 'second':
-          s = Number(p.value);
-          break;
-        default:
-          break;
-      }
-    }
-    // 以 UTC 方式解析刚才的“本地时间”
-    const asUTC = Date.UTC(y, m - 1, d, h, mi, s, 0);
-    return asUTC - atUTCms;
-  }
-
-  /** 计算“某时区下某天的起止时间”对应的 UTC Date */
-  private dayRangeInUTC(
-    dateISO: string,
-    zone = process.env.TZ ?? 'America/Toronto',
-  ): { start: Date; end: Date } {
-    const { y, m, d } = this.parseISODate(dateISO);
-
-    const approxStartUTC = Date.UTC(y, m - 1, d, 0, 0, 0, 0);
-    const startUTC = approxStartUTC - this.offsetMs(zone, approxStartUTC);
-
-    const approxEndUTC = Date.UTC(y, m - 1, d, 23, 59, 59, 999);
-    const endUTC = approxEndUTC - this.offsetMs(zone, approxEndUTC);
-
-    return { start: new Date(startUTC), end: new Date(endUTC) };
-  }
-
-  async daily(dateISO: string): Promise<DailyReport> {
-    const { start, end } = this.dayRangeInUTC(dateISO);
-
-    // ✅ 日报用 paidAt 口径（收款时间）
-    const agg = await this.prisma.order.aggregate({
-      where: { paidAt: { gte: start, lte: end } },
-      _sum: { subtotalCents: true, taxCents: true, totalCents: true },
-      _count: { _all: true },
+    // 4. 按支付方式分组
+    const byPaymentMethod = await this.prisma.order.groupBy({
+      by: ['paymentMethod'],
+      where: whereCondition,
+      _sum: { totalCents: true },
+      _count: { id: true },
     });
+
+    // 5. 按用餐方式分组 (Fulfillment)
+    const byFulfillment = await this.prisma.order.groupBy({
+      by: ['fulfillmentType'],
+      where: whereCondition,
+      _sum: { totalCents: true },
+      _count: { id: true },
+    });
+
+    // 6. 获取趋势数据 (用于画折线图)
+    // 为了性能，只取必要的字段并在内存中处理时间分组
+    const rawOrders = await this.prisma.order.findMany({
+      where: whereCondition,
+      select: {
+        createdAt: true,
+        totalCents: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    // 7. 处理图表数据
+    // 如果是同一天，按小时分组；如果是多天，按天分组
+    const diffDays = endDt.diff(startDt, 'days').days;
+    const isSingleDay = diffDays <= 1.1; // 稍微放宽一点浮点误差
+
+    const chartDataMap = new Map<string, number>();
+
+    rawOrders.forEach((order) => {
+      // 将 UTC 时间转回店铺时区
+      const dt = DateTime.fromJSDate(order.createdAt).setZone(zone);
+      const key = isSingleDay
+        ? dt.toFormat('HH:00')
+        : dt.toFormat('yyyy-MM-dd');
+      const current = chartDataMap.get(key) || 0;
+      chartDataMap.set(key, current + order.totalCents);
+    });
+
+    // 补全缺失的时间点 (可选优化，这里先简单返回有的数据)
+    const chartData = Array.from(chartDataMap.entries())
+      .map(([date, cents]) => ({
+        date,
+        total: cents / 100, // 转为元
+      }))
+      // 确保按时间排序
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    // 8. 计算最终结果
+    const totalCents = aggregations._sum.totalCents ?? 0;
+    const count = aggregations._count.id ?? 0;
+    const averageOrderValueCents =
+      count > 0 ? Math.round(totalCents / count) : 0;
 
     return {
-      count: agg._count?._all ?? 0,
-      subtotalCents: agg._sum.subtotalCents ?? 0,
-      taxCents: agg._sum.taxCents ?? 0,
-      totalCents: agg._sum.totalCents ?? 0,
+      summary: {
+        totalSales: totalCents / 100,
+        subtotal: (aggregations._sum.subtotalCents ?? 0) / 100,
+        tax: (aggregations._sum.taxCents ?? 0) / 100,
+        deliveryFees: (aggregations._sum.deliveryFeeCents ?? 0) / 100,
+        orderCount: count,
+        averageOrderValue: averageOrderValueCents / 100,
+      },
+      chartData,
+      breakdown: {
+        payment: byPaymentMethod.map((p) => ({
+          name: p.paymentMethod,
+          value: (p._sum.totalCents ?? 0) / 100,
+        })),
+        fulfillment: byFulfillment.map((f) => ({
+          name: f.fulfillmentType,
+          value: (f._sum.totalCents ?? 0) / 100,
+        })),
+      },
     };
   }
 }
