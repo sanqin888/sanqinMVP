@@ -90,7 +90,7 @@ export default function MembershipTwoFactorPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: code.trim(), rememberDevice }),
       });
-      router.replace(next);
+      window.location.href = next;
     } catch (err) {
       console.error(err);
       setError(
