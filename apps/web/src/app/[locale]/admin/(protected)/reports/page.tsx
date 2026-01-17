@@ -76,6 +76,11 @@ export default function ReportsPage() {
     );
   }
 
+  // 辅助函数：安全地格式化图表数值
+  const chartValueFormatter = (value: number | string | undefined | unknown) => {
+    return `$${Number(value || 0).toFixed(2)}`;
+  };
+
   return (
     <div className="space-y-6 p-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -156,8 +161,8 @@ export default function ReportsPage() {
                 />
                 <Tooltip 
                   contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                  // ✅ 修复 1: 使用 any 类型并处理数值转换
-                  formatter={(val: any) => [`$${Number(val).toFixed(2)}`, '销售额']}
+                  // ✅ 修复：使用更宽泛的类型定义联合类型，避免使用 any
+                  formatter={(val: number | string | undefined) => [chartValueFormatter(val), '销售额']}
                 />
                 <Line 
                   type="monotone" 
@@ -191,8 +196,8 @@ export default function ReportsPage() {
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  {/* ✅ 修复 2: 使用 any 类型 */}
-                  <Tooltip formatter={(val: any) => `$${Number(val).toFixed(2)}`} />
+                  {/* ✅ 修复：使用更宽泛的类型定义联合类型 */}
+                  <Tooltip formatter={(val: number | string | undefined) => chartValueFormatter(val)} />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
                 </PieChart>
               </ResponsiveContainer>
@@ -206,8 +211,8 @@ export default function ReportsPage() {
                 <BarChart data={data?.breakdown.fulfillment} layout="vertical" margin={{ left: 10 }}>
                   <XAxis type="number" hide />
                   <YAxis type="category" dataKey="name" width={70} tick={{fontSize: 11}} interval={0} />
-                  {/* ✅ 修复 3: 使用 any 类型 */}
-                  <Tooltip cursor={{fill: 'transparent'}} formatter={(val: any) => `$${Number(val).toFixed(2)}`} />
+                  {/* ✅ 修复：使用更宽泛的类型定义联合类型 */}
+                  <Tooltip cursor={{fill: 'transparent'}} formatter={(val: number | string | undefined) => chartValueFormatter(val)} />
                   <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={20} />
                 </BarChart>
               </ResponsiveContainer>
