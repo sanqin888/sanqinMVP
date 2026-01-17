@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
 import type { Locale } from "@/lib/i18n/locales";
-import type { PublicMenuResponse as PublicMenuApiResponse } from "@shared/menu";
+import type { PublicMenuResponse as PublicMenuApiResponse, OptionChoiceDto } from "@shared/menu";
 import {
   buildLocalizedMenuFromDb,
   type PublicMenuCategory,
@@ -78,7 +78,6 @@ const STRINGS = {
     errorGeneric: "下单失败，请稍后重试。",
     optionDialogTitle: "选择餐品选项",
     optionDialogSubtitle: "完成所有必选项后可加入本单。",
-    // 门店状态相关
     storeStatusOpen: "营业中",
     storeStatusClosed: "暂停接单",
     storeStatusHoliday: "节假日休息",
@@ -122,7 +121,6 @@ const STRINGS = {
     errorGeneric: "Failed to place order. Please try again.",
     optionDialogTitle: "Choose item options",
     optionDialogSubtitle: "Finish required options before adding to order.",
-    // 门店状态相关
     storeStatusOpen: "Open for orders",
     storeStatusClosed: "Paused",
     storeStatusHoliday: "Closed for holiday",
@@ -152,7 +150,6 @@ export default function StorePosPage() {
   const router = useRouter();
   const t = STRINGS[locale];
 
-  // ⭐ 菜单：从后端 DB 加载
   const [menuCategories, setMenuCategories] = useState<PublicMenuCategory[]>(
     [],
   );
@@ -165,22 +162,23 @@ export default function StorePosPage() {
     pickupCode?: string | null;
   } | null>(null);
 
-  // 门店状态
   const [storeStatus, setStoreStatus] = useState<StoreStatus | null>(null);
   const [storeStatusLoading, setStoreStatusLoading] = useState(false);
   const [storeStatusError, setStoreStatusError] = useState<string | null>(null);
 
-  // 加载 DB 菜单
   useEffect(() => {
     let cancelled = false;
 
     async function loadMenu() {
       try {
-           const dbMenu = await apiFetch<PublicMenuApiResponse>("/menu/public", {
-             cache: "no-store",
-          });
+        const dbMenu = await apiFetch<PublicMenuApiResponse>("/menu/public", {
+          cache: "no-store",
+        });
         if (cancelled) return;
-        const localized = buildLocalizedMenuFromDb(dbMenu.categories ?? [], locale);
+        const localized = buildLocalizedMenuFromDb(
+          dbMenu.categories ?? [],
+          locale,
+        );
         const dailySpecialItems = localized
           .flatMap((category) => category.items)
           .filter((item) => item.activeSpecial);
@@ -209,7 +207,6 @@ export default function StorePosPage() {
     };
   }, [isZh, locale]);
 
-  // 加载门店营业状态（web / POS 共用）
   useEffect(() => {
     let cancelled = false;
 
@@ -237,7 +234,6 @@ export default function StorePosPage() {
 
     void loadStatus();
 
-    // 简单轮询：每 60 秒刷新一次
     const intervalId = window.setInterval(loadStatus, 60_000);
 
     return () => {
@@ -289,13 +285,11 @@ export default function StorePosPage() {
     }
   }
 
-  // 所有可见的菜品（扁平化，方便做购物车关联）
   const allMenuItems = useMemo(
     () => menuCategories.flatMap((cat) => cat.items),
     [menuCategories],
   );
 
-  // 计算带详情的购物车：完全基于 DB 菜单
   const cartWithDetails = useMemo(() => {
     return cart
       .map((entry) => {
@@ -305,8 +299,7 @@ export default function StorePosPage() {
         let optionDeltaCents = 0;
         if (entry.options) {
           (item.optionGroups ?? []).forEach((group) => {
-            const selected =
-              entry.options?.[group.templateGroupStableId] ?? [];
+            const selected = entry.options?.[group.templateGroupStableId] ?? [];
             if (selected.length === 0) return;
             group.options.forEach((option) => {
               if (selected.includes(option.optionStableId)) {
@@ -386,32 +379,85 @@ export default function StorePosPage() {
     });
   };
 
+  // ✅ 核心修复：更新选项选择逻辑，支持父子级互斥和级联取消
   const updateOptionSelection = (
     groupId: string,
     optionId: string,
     maxSelect: number | null,
+    groupOptions: OptionChoiceDto[] = [],
   ) => {
     if (!activeItem) return;
+
     setActiveItem((prev) => {
       if (!prev) return prev;
-      const current = prev.selected[groupId] ?? [];
-      let next: string[];
-      if (current.includes(optionId)) {
-        next = current.filter((id) => id !== optionId);
-      } else {
-        if (maxSelect === 1) {
-          next = [optionId];
-        } else if (typeof maxSelect === "number" && current.length >= maxSelect) {
-          next = [...current.slice(1), optionId];
+
+      const currentSelectedIds = prev.selected[groupId] ?? [];
+      const targetOption = groupOptions.find(
+        (o) => o.optionStableId === optionId,
+      );
+      if (!targetOption) return prev;
+
+      const isTargetChild =
+        (targetOption.parentOptionStableIds?.length ?? 0) > 0;
+
+      let nextSelectedIds: string[];
+
+      if (isTargetChild) {
+        // 子选项逻辑：简单切换
+        if (currentSelectedIds.includes(optionId)) {
+          nextSelectedIds = currentSelectedIds.filter((id) => id !== optionId);
         } else {
-          next = [...current, optionId];
+          nextSelectedIds = [...currentSelectedIds, optionId];
+        }
+      } else {
+        // 父选项逻辑
+        const currentParentIds = currentSelectedIds.filter((id) => {
+          const opt = groupOptions.find((o) => o.optionStableId === id);
+          return !opt?.parentOptionStableIds?.length;
+        });
+
+        const isAlreadySelected = currentSelectedIds.includes(optionId);
+
+        if (isAlreadySelected) {
+          // 取消父项 -> 同时移除该父项的所有子项
+          nextSelectedIds = currentSelectedIds.filter((id) => id !== optionId);
+          const childrenToRemove = targetOption.childOptionStableIds ?? [];
+          nextSelectedIds = nextSelectedIds.filter(
+            (id) => !childrenToRemove.includes(id),
+          );
+        } else {
+          // 选中新父项
+          if (maxSelect === 1) {
+            // 单选：直接替换
+            nextSelectedIds = [optionId];
+          } else if (
+            typeof maxSelect === "number" &&
+            currentParentIds.length >= maxSelect
+          ) {
+            // 达到最大值：移除最早的一个父项及其子项
+            const parentToRemove = currentParentIds[0];
+            const parentToRemoveOpt = groupOptions.find(
+              (o) => o.optionStableId === parentToRemove,
+            );
+            const childrenToRemove =
+              parentToRemoveOpt?.childOptionStableIds ?? [];
+
+            nextSelectedIds = currentSelectedIds.filter(
+              (id) => id !== parentToRemove && !childrenToRemove.includes(id),
+            );
+            nextSelectedIds.push(optionId);
+          } else {
+            // 未达上限：直接添加
+            nextSelectedIds = [...currentSelectedIds, optionId];
+          }
         }
       }
+
       return {
         ...prev,
         selected: {
           ...prev.selected,
-          [groupId]: next,
+          [groupId]: nextSelectedIds,
         },
       };
     });
@@ -441,7 +487,6 @@ export default function StorePosPage() {
     closeDialog();
   };
 
-  // ⭐ 同步当前订单到顾客显示屏（localStorage）
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -475,7 +520,6 @@ export default function StorePosPage() {
     }
   }, [cartWithDetails, subtotalCents, taxCents, totalCents]);
 
-  // 👉 现在：只负责跳转到支付界面
   const handlePlaceOrder = () => {
     if (!hasItems || !isStoreOpen) return;
     setIsPlacing(true);
@@ -545,7 +589,6 @@ export default function StorePosPage() {
       <section className="flex gap-4 p-4 h-[calc(100vh-4rem)]">
         {/* 左侧：菜单（大按钮） */}
         <div className="flex-1 flex flex-col min-w-0">
-          {/* 分类切换 */}
           <div className="flex gap-2 mb-3">
             <button
               type="button"
@@ -574,7 +617,6 @@ export default function StorePosPage() {
             ))}
           </div>
 
-          {/* 菜品大按钮区 */}
           <div className="flex-1 overflow-auto pr-1">
             <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3 auto-rows-[150px]">
               {visibleItems.map((item) => {
@@ -634,7 +676,7 @@ export default function StorePosPage() {
           </div>
         </div>
 
-        {/* 右侧：购物车部分（收银员屏） */}
+        {/* 右侧：购物车部分 */}
         <div className="w-full max-w-md flex flex-col rounded-3xl bg-slate-800/80 border border-slate-700 p-4">
           <h2 className="text-lg font-semibold mb-2">{t.cartTitle}</h2>
 
@@ -771,10 +813,8 @@ export default function StorePosPage() {
         </div>
       </section>
 
-      {/* ✅ 右下角浮窗看板（不影响现有 POS 操作） */}
       <StoreBoardWidget locale={locale} />
 
-      {/* 订单完成弹窗（暂时只有以后真正创建订单时才会用到） */}
       {lastOrderInfo && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50">
           <div className="w-full max-w-sm rounded-3xl bg-slate-900 border border-slate-700 p-6 text-center">
@@ -858,47 +898,120 @@ export default function StorePosPage() {
                       )}
                     </div>
 
+                    {/* ✅ 修复渲染逻辑：先渲染父选项，再渲染子选项 */}
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                      {group.options.map((option) => {
-                        const selected = selection.includes(option.optionStableId);
-                        const optionName =
-                          locale === "zh" && option.nameZh
-                            ? option.nameZh
-                            : option.nameEn;
-                        const priceDeltaLabel =
-                          option.priceDeltaCents > 0
-                            ? `+${formatMoney(option.priceDeltaCents)}`
-                            : option.priceDeltaCents < 0
-                              ? `-${formatMoney(Math.abs(option.priceDeltaCents))}`
-                              : "";
-                        return (
-                          <button
-                            key={option.optionStableId}
-                            type="button"
-                            onClick={() =>
-                              updateOptionSelection(
-                                group.templateGroupStableId,
-                                option.optionStableId,
-                                maxSelect,
-                              )
-                            }
-                            className={`rounded-2xl border px-3 py-3 text-left text-sm transition ${
-                              selected
-                                ? "border-emerald-400 bg-emerald-500/10 text-emerald-100"
-                                : "border-slate-600 bg-slate-900 text-slate-200 hover:border-slate-400"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <span>{optionName}</span>
-                              {priceDeltaLabel && (
-                                <span className="text-xs text-slate-300">
-                                  {priceDeltaLabel}
-                                </span>
+                      {group.options
+                        // 1. 过滤：只显示顶层选项 (没有 parentOptionStableIds 的)
+                        .filter(
+                          (opt) =>
+                            !opt.parentOptionStableIds ||
+                            opt.parentOptionStableIds.length === 0,
+                        )
+                        .map((parentOption) => {
+                          const selected = selection.includes(
+                            parentOption.optionStableId,
+                          );
+                          const optionName =
+                            locale === "zh" && parentOption.nameZh
+                              ? parentOption.nameZh
+                              : parentOption.nameEn;
+
+                          const priceDeltaLabel =
+                            parentOption.priceDeltaCents > 0
+                              ? `+${formatMoney(parentOption.priceDeltaCents)}`
+                              : parentOption.priceDeltaCents < 0
+                                ? `-${formatMoney(
+                                    Math.abs(parentOption.priceDeltaCents),
+                                  )}`
+                                : "";
+
+                          // 2. 查找该父项的子选项
+                          const childOptions = group.options.filter((child) =>
+                            parentOption.childOptionStableIds?.includes(
+                              child.optionStableId,
+                            ),
+                          );
+
+                          return (
+                            <div
+                              key={parentOption.optionStableId}
+                              className="flex flex-col gap-2"
+                            >
+                              {/* 父选项按钮 */}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateOptionSelection(
+                                    group.templateGroupStableId,
+                                    parentOption.optionStableId,
+                                    maxSelect,
+                                    group.options, // 👈 传入完整选项列表
+                                  )
+                                }
+                                className={`rounded-2xl border px-3 py-3 text-left text-sm transition ${
+                                  selected
+                                    ? "border-emerald-400 bg-emerald-500/10 text-emerald-100"
+                                    : "border-slate-600 bg-slate-900 text-slate-200 hover:border-slate-400"
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span>{optionName}</span>
+                                  {priceDeltaLabel && (
+                                    <span className="text-xs text-slate-300">
+                                      {priceDeltaLabel}
+                                    </span>
+                                  )}
+                                </div>
+                              </button>
+
+                              {/* 3. 子选项渲染：仅当父项选中且有子项时显示 */}
+                              {selected && childOptions.length > 0 && (
+                                <div className="ml-4 flex flex-col gap-2 border-l-2 border-slate-700 pl-3">
+                                  {childOptions.map((child) => {
+                                    const childSelected = selection.includes(
+                                      child.optionStableId,
+                                    );
+                                    const childName =
+                                      locale === "zh" && child.nameZh
+                                        ? child.nameZh
+                                        : child.nameEn;
+                                    const childPrice =
+                                      child.priceDeltaCents > 0
+                                        ? `+${formatMoney(child.priceDeltaCents)}`
+                                        : "";
+
+                                    return (
+                                      <button
+                                        key={child.optionStableId}
+                                        type="button"
+                                        onClick={() =>
+                                          updateOptionSelection(
+                                            group.templateGroupStableId,
+                                            child.optionStableId,
+                                            maxSelect,
+                                            group.options,
+                                          )
+                                        }
+                                        className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
+                                          childSelected
+                                            ? "border-emerald-400/70 bg-emerald-500/20 text-emerald-100"
+                                            : "border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700"
+                                        }`}
+                                      >
+                                        <div className="flex items-center justify-between">
+                                          <span>{childName}</span>
+                                          {childPrice && (
+                                            <span>{childPrice}</span>
+                                          )}
+                                        </div>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
                               )}
                             </div>
-                          </button>
-                        );
-                      })}
+                          );
+                        })}
                     </div>
                   </div>
                 );
@@ -920,7 +1033,10 @@ export default function StorePosPage() {
                     onClick={() =>
                       setActiveItem((prev) =>
                         prev
-                          ? { ...prev, quantity: Math.max(1, prev.quantity - 1) }
+                          ? {
+                              ...prev,
+                              quantity: Math.max(1, prev.quantity - 1),
+                            }
                           : prev,
                       )
                     }

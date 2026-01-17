@@ -1,134 +1,240 @@
-//apps/web/src/app/[locale]/admin/(protected)/reports/page.tsx
-
+// apps/web/src/app/[locale]/admin/(protected)/reports/page.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { format, subDays } from 'date-fns';
+import { 
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
+  BarChart, Bar, PieChart, Pie, Cell, Legend 
+} from 'recharts';
+import { Loader2, DollarSign, ShoppingBag, CreditCard, TrendingUp } from 'lucide-react';
+import { twMerge } from 'tailwind-merge';
 
-const RAW_API_BASE = process.env.NEXT_PUBLIC_API_BASE || '';
-
-type DailyReport = {
-  date?: string;          // YYYY-MM-DD （可选）
-  count: number;
-  subtotalCents: number;
-  taxCents: number;
-  totalCents: number;
-};
-
-function moneyFromCents(cents?: number) {
-  if (typeof cents !== 'number') return '—';
-  return (cents / 100).toFixed(2);
+// --- 类型定义 ---
+interface ReportData {
+  summary: {
+    totalSales: number;
+    subtotal: number;
+    tax: number;
+    deliveryFees: number;
+    orderCount: number;
+    averageOrderValue: number;
+  };
+  chartData: Array<{ date: string; total: number }>;
+  breakdown: {
+    payment: Array<{ name: string; value: number }>;
+    fulfillment: Array<{ name: string; value: number }>;
+  };
 }
 
-/**
- * 根据 NEXT_PUBLIC_API_BASE 拼接最终的 /reports/daily URL
- */
-function buildDailyUrl(dateISO: string) {
-  const base = RAW_API_BASE.replace(/\/+$/, ''); // 去掉结尾斜杠
-  let urlBase: string;
+const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6'];
 
-  if (!base) {
-    urlBase = '/api/v1';
-  } else if (/\/api\/v\d+$/i.test(base)) {
-    urlBase = base;                   // .../api/v1
-  } else if (/\/api$/i.test(base)) {
-    urlBase = `${base}/v1`;           // .../api → .../api/v1
-  } else {
-    urlBase = `${base}/api/v1`;       // ... → .../api/v1
+export default function ReportsPage() {
+  const [data, setData] = useState<ReportData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [dateRange, setDateRange] = useState<'today' | 'yesterday' | 'week' | 'month'>('today');
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const now = new Date();
+        let range = { from: '', to: '' };
+        
+        if (dateRange === 'today') {
+          range = { from: format(now, 'yyyy-MM-dd'), to: format(now, 'yyyy-MM-dd') };
+        } else if (dateRange === 'yesterday') {
+          const yest = subDays(now, 1);
+          range = { from: format(yest, 'yyyy-MM-dd'), to: format(yest, 'yyyy-MM-dd') };
+        } else if (dateRange === 'week') {
+          range = { from: format(subDays(now, 6), 'yyyy-MM-dd'), to: format(now, 'yyyy-MM-dd') };
+        } else { // month
+          range = { from: format(subDays(now, 29), 'yyyy-MM-dd'), to: format(now, 'yyyy-MM-dd') };
+        }
+
+        const params = new URLSearchParams(range);
+        const res = await fetch(`/api/v1/reports?${params.toString()}`);
+        if (!res.ok) throw new Error('Failed to fetch reports');
+        const json = await res.json();
+        setData(json);
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [dateRange]);
+
+  const formatMoney = (val: number) => `$${val.toFixed(2)}`;
+
+  if (loading && !data) {
+    return (
+      <div className="flex h-96 items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+      </div>
+    );
   }
 
-  return `${urlBase}/reports/daily?date=${encodeURIComponent(dateISO)}`;
-}
-
-export default function AdminDailyReportPage() {
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [report, setReport] = useState<DailyReport | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  async function fetchReport() {
-    setLoading(true);
-    setErr(null);
-    try {
-      const url = buildDailyUrl(date);
-
-      const res = await fetch(url, {
-        cache: 'no-store',
-        headers: { Accept: 'application/json' },
-      });
-
-      const ct = res.headers.get('content-type') || '';
-
-      if (!res.ok) {
-        const msg = ct.includes('application/json')
-          ? JSON.stringify(await res.json())
-          : await res.text();
-        throw new Error(msg || `HTTP ${res.status}`);
-      }
-
-      if (!ct.includes('application/json')) {
-        const text = await res.text();
-        throw new Error(
-          `非 JSON 响应（content-type=${ct}）：${text.slice(0, 160)}`
-        );
-      }
-
-      // ✅ 兼容“信封结构”和“直接数据结构”
-      const raw = await res.json();
-      const data: DailyReport = ('details' in raw ? raw.details : raw) as DailyReport;
-
-      setReport(data);
-    } catch (e) {
-      setErr((e as Error).message);
-      setReport(null);
-    } finally {
-      setLoading(false);
-    }
-  }
+  // 辅助函数：安全地格式化图表数值
+  const chartValueFormatter = (value: number | string | undefined | unknown) => {
+    return `$${Number(value || 0).toFixed(2)}`;
+  };
 
   return (
-    <main className="mx-auto max-w-5xl p-6 space-y-6">
-      <h1 className="text-3xl font-bold">每日营收报表</h1>
-
-      <div className="flex items-center gap-3">
-        <input
-          type="date"
-          className="rounded-md border px-3 py-2 bg-background"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-        />
-        <button
-          onClick={() => void fetchReport()}
-          disabled={loading}
-          className="rounded-md border px-4 py-2 hover:bg-accent disabled:opacity-60"
-        >
-          查询
-        </button>
-        {err && <span className="text-sm text-red-600">错误：{err}</span>}
+    <div className="space-y-6 p-6">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+          <TrendingUp className="h-6 w-6 text-emerald-600" />
+          销售报表
+        </h1>
+        
+        <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
+          {(['today', 'yesterday', 'week', 'month'] as const).map((range) => (
+            <button
+              key={range}
+              onClick={() => setDateRange(range)}
+              className={twMerge(
+                "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                dateRange === range
+                  ? "bg-white text-emerald-700 shadow-sm"
+                  : "text-slate-600 hover:bg-slate-200/50"
+              )}
+            >
+              {range === 'today' && '今天'}
+              {range === 'yesterday' && '昨天'}
+              {range === 'week' && '近7天'}
+              {range === 'month' && '近30天'}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="rounded-xl border p-6">
-          <div className="text-muted-foreground mb-2">订单数</div>
-          <div className="text-4xl font-semibold">
-            {typeof report?.count === 'number' ? report.count : '—'}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiCard
+          title="总销售额 (Sales)"
+          value={formatMoney(data?.summary.totalSales || 0)}
+          icon={<DollarSign className="h-5 w-5 text-emerald-600" />}
+          subtext={`含税: ${formatMoney(data?.summary.tax || 0)}`}
+        />
+        <KpiCard
+          title="有效订单 (Orders)"
+          value={data?.summary.orderCount.toString() || '0'}
+          icon={<ShoppingBag className="h-5 w-5 text-blue-600" />}
+          subtext="笔已完成交易"
+        />
+        <KpiCard
+          title="客单价 (AOV)"
+          value={formatMoney(data?.summary.averageOrderValue || 0)}
+          icon={<TrendingUp className="h-5 w-5 text-amber-600" />}
+          subtext="平均每单收入"
+        />
+        <KpiCard
+          title="配送费收入"
+          value={formatMoney(data?.summary.deliveryFees || 0)}
+          icon={<CreditCard className="h-5 w-5 text-purple-600" />}
+          subtext="来自顾客支付"
+        />
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
+          <h3 className="mb-4 text-lg font-semibold text-slate-800">销售趋势 (Sales Trend)</h3>
+          <div className="h-80 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={data?.chartData}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                <XAxis 
+                  dataKey="date" 
+                  stroke="#64748b" 
+                  fontSize={12} 
+                  tickLine={false} 
+                  axisLine={false}
+                  minTickGap={30}
+                />
+                <YAxis 
+                  stroke="#64748b" 
+                  fontSize={12} 
+                  tickLine={false} 
+                  axisLine={false} 
+                  tickFormatter={(val) => `$${val}`} 
+                />
+                <Tooltip 
+                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                  // ✅ 修复：使用更宽泛的类型定义联合类型，避免使用 any
+                  formatter={(val: number | string | undefined) => [chartValueFormatter(val), '销售额']}
+                />
+                <Line 
+                  type="monotone" 
+                  dataKey="total" 
+                  stroke="#10b981" 
+                  strokeWidth={3} 
+                  dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#fff' }} 
+                  activeDot={{ r: 6 }} 
+                />
+              </LineChart>
+            </ResponsiveContainer>
           </div>
         </div>
 
-        <div className="rounded-xl border p-6">
-          <div className="text-muted-foreground mb-2">不含税小计（$）</div>
-          <div className="text-4xl font-semibold">{moneyFromCents(report?.subtotalCents)}</div>
-        </div>
+        <div className="flex flex-col gap-6">
+          <div className="flex-1 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="mb-4 text-lg font-semibold text-slate-800">支付方式 (Payment)</h3>
+            <div className="h-48 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={data?.breakdown.payment}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={40}
+                    outerRadius={70}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {data?.breakdown.payment.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  {/* ✅ 修复：使用更宽泛的类型定义联合类型 */}
+                  <Tooltip formatter={(val: number | string | undefined) => chartValueFormatter(val)} />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
 
-        <div className="rounded-xl border p-6">
-          <div className="text-muted-foreground mb-2">税额（$）</div>
-          <div className="text-4xl font-semibold">{moneyFromCents(report?.taxCents)}</div>
-        </div>
-
-        <div className="rounded-xl border p-6">
-          <div className="text-muted-foreground mb-2">合计（$）</div>
-          <div className="text-4xl font-semibold">{moneyFromCents(report?.totalCents)}</div>
+           <div className="flex-1 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="mb-4 text-lg font-semibold text-slate-800">用餐方式 (Fulfillment)</h3>
+            <div className="h-48 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data?.breakdown.fulfillment} layout="vertical" margin={{ left: 10 }}>
+                  <XAxis type="number" hide />
+                  <YAxis type="category" dataKey="name" width={70} tick={{fontSize: 11}} interval={0} />
+                  {/* ✅ 修复：使用更宽泛的类型定义联合类型 */}
+                  <Tooltip cursor={{fill: 'transparent'}} formatter={(val: number | string | undefined) => chartValueFormatter(val)} />
+                  <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={20} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
         </div>
       </div>
-    </main>
+    </div>
+  );
+}
+
+function KpiCard({ title, value, icon, subtext }: { title: string; value: string; icon: React.ReactNode; subtext: string }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium text-slate-500">{title}</p>
+        <div className="rounded-full bg-slate-50 p-2">{icon}</div>
+      </div>
+      <div className="mt-2">
+        <h3 className="text-2xl font-bold text-slate-900">{value}</h3>
+        <p className="mt-1 text-xs text-slate-400">{subtext}</p>
+      </div>
+    </div>
   );
 }

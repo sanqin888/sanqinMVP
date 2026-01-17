@@ -26,22 +26,23 @@ export class PosDevicesController {
     });
 
     const maxAge = POS_DEVICE_COOKIE_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
-
-    res.cookie(POS_DEVICE_ID_COOKIE, result.device.deviceStableId, {
+    const isProd = process.env.NODE_ENV === 'production';
+    const cookieOptions = {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: isProd,
+      sameSite: 'lax' as const,
       maxAge,
       path: '/',
-    });
+      domain: isProd ? '.sanq.ca' : undefined,
+    };
 
-    res.cookie(POS_DEVICE_KEY_COOKIE, result.deviceKey, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge,
-      path: '/',
-    });
+    res.cookie(
+      POS_DEVICE_ID_COOKIE,
+      result.device.deviceStableId,
+      cookieOptions,
+    );
+
+    res.cookie(POS_DEVICE_KEY_COOKIE, result.deviceKey, cookieOptions);
 
     return { success: true, deviceStableId: result.device.deviceStableId };
   }

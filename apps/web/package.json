@@ -13,11 +13,16 @@
   "dependencies": {
     "@shared/menu": "workspace:*",
     "@shared/order": "workspace:*",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "lucide-react": "^0.562.0",
     "luxon": "^3.7.2",
     "next": "15.5.9",
     "next-auth": "^4.24.13",
     "react": "19.1.0",
-    "react-dom": "19.1.0"
+    "react-dom": "19.1.0",
+    "recharts": "^3.6.0",
+    "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
