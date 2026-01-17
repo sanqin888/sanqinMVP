@@ -40,14 +40,19 @@ export class SessionAuthGuard implements CanActivate {
     }
 
     if (renewed) {
-      const maxAge = session.expiresAt.getTime() - Date.now();
-      response.cookie(SESSION_COOKIE_NAME, sessionId, {
+      const baseCookieOptions = {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
+        sameSite: 'lax' as const,
         signed: true,
-        maxAge,
         path: '/',
+      };
+      const isAdminSession =
+        session.user?.role === 'ADMIN' || session.user?.role === 'STAFF';
+      const maxAge = session.expiresAt.getTime() - Date.now();
+      response.cookie(SESSION_COOKIE_NAME, sessionId, {
+        ...baseCookieOptions,
+        ...(isAdminSession ? {} : { maxAge }),
       });
 
       const deviceStableId = request.cookies?.[POS_DEVICE_ID_COOKIE];
