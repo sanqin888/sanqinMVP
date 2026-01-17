@@ -64,6 +64,7 @@ services:
       AWS_SMS_ORIGINATION_IDENTITY: ${AWS_SMS_ORIGINATION_IDENTITY}
     ports:
       - "4000:4000"
+      - "127.0.0.1:5555:5555"
     depends_on:
       - db
 
