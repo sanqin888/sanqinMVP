@@ -149,17 +149,20 @@ export class AuthController {
       maxAge: result.session.expiresAt.getTime() - Date.now(),
       path: '/',
     });
-
+    const webBaseUrl = process.env.WEB_BASE_URL ?? '';
     const next = normalizeNextPath(cb || '/');
     const redirectTarget = result.isNewUser
       ? buildMembershipReferrerRedirect(next, 'google')
       : next;
     if (result.requiresTwoFactor) {
       const params = new URLSearchParams({ next: redirectTarget });
-      return res.redirect(302, `/membership/2fa?${params.toString()}`);
+      return res.redirect(
+        302,
+        `${webBaseUrl}/membership/2fa?${params.toString()}`,
+      );
     }
 
-    return res.redirect(302, redirectTarget);
+    return res.redirect(302, `${webBaseUrl}${redirectTarget}`);
   }
 
   @Post('login')

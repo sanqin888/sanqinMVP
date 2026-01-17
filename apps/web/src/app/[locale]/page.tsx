@@ -475,7 +475,7 @@ export default function LocalOrderPage() {
 
           <div className="flex flex-col items-start gap-4 lg:items-end relative">
            {/* 新增：插画容器 */}
-<div className="hidden lg:block pointer-events-none absolute -top-32 right-4 z-0 opacity-90 lg:-top-32 lg:right-8">
+<div className="hidden lg:block pointer-events-none absolute -top-40 right-4 z-0 opacity-90 lg:-top-32 lg:right-8">
                {/* 说明：
                   - -top-24 / -top-32: 向上移动，位于按钮上方的空白处
                   - width={130}: 图片缩小
@@ -573,7 +573,17 @@ export default function LocalOrderPage() {
                             }}
                           >
                             <div className="space-y-2">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-3">
+                                {item.imageUrl ? (
+                                  <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-amber-100">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img
+                                      src={item.imageUrl}
+                                      alt={item.name}
+                                      className="h-full w-full object-cover"
+                                    />
+                                  </div>
+                                ) : null}
                                 <span className="rounded-full bg-amber-500/90 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-white">
                                   {locale === "zh" ? "特价" : "Special"}
                                 </span>
