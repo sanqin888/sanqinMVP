@@ -1014,7 +1014,11 @@ export class AuthService {
 
     // 3.真正调用短信服务发送
     // 构建短信内容（根据需要支持多语言）
-    const isZh = user.language === 'ZH';
+    const existingUser = await this.prisma.user.findFirst({
+      where: { phone: normalized },
+      select: { language: true },
+    });
+    const isZh = existingUser?.language === 'ZH';
     const message = isZh
       ? `您好，您的登录验证码是 ${code}，5 分钟内有效，若您未曾发送此请求，请忽略此消息（三秦）。`
       : `Hello, Your login verification code is ${code}. It is valid for 5 minutes. If you did not request this, please ignore this message (San Qin).`;
