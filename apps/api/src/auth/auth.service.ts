@@ -539,10 +539,10 @@ export class AuthService {
       ? `您好，您的验证码是 ${code}，5 分钟内有效，若您未曾发送此请求，请忽略此消息（三秦）。`
       : `Hello, Your verification code is ${code}. It is valid for 5 minutes. If you did not request this, please ignore this message (San Qin).`;
 
-     await this.smsService.sendSms({
-       phone: user.phone!, 
-       body: message,
-     });
+    await this.smsService.sendSms({
+      phone: user.phone,
+      body: message,
+    });
     return { success: true, expiresAt };
   }
 
@@ -1022,7 +1022,7 @@ export class AuthService {
     const message = isZh
       ? `您好，您的登录验证码是 ${code}，5 分钟内有效，若您未曾发送此请求，请忽略此消息（三秦）。`
       : `Hello, Your login verification code is ${code}. It is valid for 5 minutes. If you did not request this, please ignore this message (San Qin).`;
-    
+
     await this.smsService.sendSms({
       phone: normalized, // 注意：这里的 normalized 是不带 + 号的纯数字
       body: message,

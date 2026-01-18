@@ -43,7 +43,10 @@ export class AwsSmsProvider implements SmsProvider {
           MessageType: 'TRANSACTIONAL',
           // 如果没有配置 Set Name，不要传 undefined，某些 SDK 版本可能会报错
           ...(process.env.AWS_SMS_CONFIGURATION_SET_NAME
-            ? { ConfigurationSetName: process.env.AWS_SMS_CONFIGURATION_SET_NAME }
+            ? {
+                ConfigurationSetName:
+                  process.env.AWS_SMS_CONFIGURATION_SET_NAME,
+              }
             : {}),
         }),
       );
