@@ -19,6 +19,7 @@ import argon2, { argon2id } from 'argon2';
 import { normalizeEmail } from '../common/utils/email';
 import { normalizePhone } from '../common/utils/phone';
 import { EmailService } from '../email/email.service';
+import { SmsService } from '../sms/sms.service';
 
 @Injectable()
 export class AuthService {
@@ -27,6 +28,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly emailService: EmailService,
+    private readonly smsService: SmsService,
   ) {}
 
   private generateCode(): string {
@@ -531,6 +533,16 @@ export class AuthService {
     });
 
     this.logger.log(`2FA OTP for ${user.phone}: ${code}`);
+
+    const isZh = user.language === 'ZH';
+    const message = isZh
+      ? `您好，您的验证码是 ${code}，5 分钟内有效，若您未曾发送此请求，请忽略此消息（三秦）。`
+      : `Hello, Your verification code is ${code}. It is valid for 5 minutes. If you did not request this, please ignore this message (San Qin).`;
+
+     await this.smsService.sendSms({
+       phone: user.phone!, 
+       body: message,
+     });
     return { success: true, expiresAt };
   }
 
@@ -610,8 +622,8 @@ export class AuthService {
     const isZh = user.language === 'ZH';
     const subject = isZh ? '后台登录验证码' : 'Admin login verification code';
     const text = isZh
-      ? `您的后台登录验证码是 ${code}，5 分钟内有效。`
-      : `Your admin login verification code is ${code}. It expires in 5 minutes.`;
+      ? `您好，您的后台登录验证码是 ${code}，5 分钟内有效。若您未曾发送此请求，请忽略本邮件（三秦）`
+      : `Hello, Your admin login verification code is ${code}. It expires in 5 minutes.If you did not request this, please ignore this mail (San Qin).`;
 
     await this.emailService.sendEmail({
       to: user.email,
@@ -619,7 +631,6 @@ export class AuthService {
       text,
       tags: { type: 'admin_login_2fa' },
     });
-
     return { success: true, expiresAt };
   }
 
@@ -1001,10 +1012,20 @@ export class AuthService {
       });
     });
 
-    this.logger.log(`Login OTP for ${normalized}: ${code}`);
+    // 3.真正调用短信服务发送
+    // 构建短信内容（根据需要支持多语言）
+    const isZh = user.language === 'ZH';
+    const message = isZh
+      ? `您好，您的登录验证码是 ${code}，5 分钟内有效，若您未曾发送此请求，请忽略此消息（三秦）。`
+      : `Hello, Your login verification code is ${code}. It is valid for 5 minutes. If you did not request this, please ignore this message (San Qin).`;
+    
+    await this.smsService.sendSms({
+      phone: normalized, // 注意：这里的 normalized 是不带 + 号的纯数字
+      body: message,
+    });
+
     return { success: true };
   }
-
   async verifyLoginOtp(params: {
     phone: string;
     code: string;
