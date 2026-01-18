@@ -15,7 +15,7 @@ import {
 
 @Injectable()
 export class PosDeviceGuard implements CanActivate {
-  // ✅ 修复 ESLint 错误：显式指定 Logger 类型，防止被推断为 any 导致 unsafe 报错
+  // 显式指定 Logger 类型
   private readonly logger: Logger = new Logger(PosDeviceGuard.name);
 
   constructor(private readonly posDeviceService: PosDeviceService) {}
@@ -23,49 +23,59 @@ export class PosDeviceGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<Request>();
 
-    // 1. 标准获取方式
-    let cookies = req.cookies as Partial<Record<string, string>> | undefined;
+    // 1. 定义获取 Cookie 值的辅助函数
+    const getCookieValue = (key: string): string | undefined => {
+      // 📌 修复 ESLint Error: 对 req.signedCookies 进行显式类型断言
+      const signedCookies = req.signedCookies as
+        | Record<string, string>
+        | undefined;
+      if (signedCookies && signedCookies[key]) {
+        return signedCookies[key];
+      }
 
-    // 🔍 调试日志：如果拿不到，打印原始 Header
-    // 注意：这里使用 req.headers['cookie'] 避免属性访问的潜在 lint 问题
-    if (!cookies?.[POS_DEVICE_ID_COOKIE]) {
-      const rawCookie = req.headers['cookie'];
-      this.logger.warn(
-        `⚠️ Cookie missing in req.cookies. Headers[cookie]: ${rawCookie}`,
-      );
-    }
+      // 📌 修复 ESLint Error: 对 req.cookies 进行显式类型断言
+      const cookies = req.cookies as Record<string, string> | undefined;
+      if (cookies && cookies[key]) {
+        return cookies[key];
+      }
 
-    // 2. 🛡️ 兜底策略：如果 cookie-parser 没解出来，但 Header 里有，我们手动解
-    if (
-      (!cookies?.[POS_DEVICE_ID_COOKIE] || !cookies?.[POS_DEVICE_KEY_COOKIE]) &&
-      req.headers['cookie']
-    ) {
-      this.logger.log('🔧 Attempting manual cookie parsing fallback...');
-      const manualCookies: Record<string, string> = {};
-      const rawCookie = req.headers['cookie']; // 强制断言为 string
-
-      rawCookie.split(';').forEach((pair) => {
-        const parts = pair.trim().split('=');
-        // 确保分割正确，key 不为空
-        if (parts.length >= 2) {
-          const key = parts[0];
-          // 重新组合 value (防止 value 中包含 =)
-          const value = parts.slice(1).join('=');
-          manualCookies[key] = decodeURIComponent(value);
+      // 🛡️ 兜底：手动从 Header 解析
+      if (req.headers['cookie']) {
+        const rawCookie = req.headers['cookie'];
+        const match = rawCookie
+          .split(';')
+          .find((pair) => pair.trim().startsWith(`${key}=`));
+        if (match) {
+          let value = match.trim().split('=')[1];
+          if (value) {
+            value = decodeURIComponent(value);
+            // 如果手动解析到了 's:' 开头的签名字符串，尝试提取原始值
+            if (value.startsWith('s:')) {
+              // 去掉 's:' 前缀，取第一个点之前的部分
+              const unsignedValue = value.substring(2).split('.')[0];
+              return unsignedValue;
+            }
+            return value;
+          }
         }
-      });
-      // 合并到 cookies 对象中
-      cookies = { ...cookies, ...manualCookies };
-    }
+      }
+      return undefined;
+    };
 
-    const deviceStableId = cookies?.[POS_DEVICE_ID_COOKIE];
-    const deviceKey = cookies?.[POS_DEVICE_KEY_COOKIE];
+    // 2. 获取 ID 和 Key
+    const deviceStableId = getCookieValue(POS_DEVICE_ID_COOKIE);
+    const deviceKey = getCookieValue(POS_DEVICE_KEY_COOKIE);
 
-    if (typeof deviceStableId !== 'string' || typeof deviceKey !== 'string') {
-      this.logger.error('❌ Still missing credentials after fallback.');
+    // 🔍 调试日志
+    if (!deviceStableId || !deviceKey) {
+      this.logger.warn(
+        `⚠️ Credentials missing. StableID: ${deviceStableId}, Key present: ${!!deviceKey}`,
+      );
+      this.logger.debug(`Original Headers: ${req.headers['cookie']}`);
       throw new UnauthorizedException('Missing POS device credentials');
     }
 
+    // 3. 验证设备
     const device = await this.posDeviceService.verifyDevice({
       deviceStableId,
       deviceKey,
