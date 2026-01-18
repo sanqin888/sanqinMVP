@@ -626,8 +626,8 @@ export default function AdminMenuPage() {
           <h1 className="text-xl font-semibold">{isZh ? '菜单管理' : 'Menu Admin'}</h1>
           <p className="mt-1 text-sm text-slate-600">
             {isZh
-              ? '这里维护分类、菜品，以及菜品绑定的选项组模板（全链路 stableId）。'
-              : 'Manage categories, items, and item-to-template bindings (stableId end-to-end).'}
+              ? '这里维护分类、菜品，以及菜品绑定的选项组模板。'
+              : 'Manage categories, items, and item-to-template bindings.'}
           </p>
         </div>
 
@@ -720,7 +720,7 @@ export default function AdminMenuPage() {
                     {isZh ? cat.nameZh ?? cat.nameEn : cat.nameEn}
                   </div>
                   <div className="mt-1 text-xs text-slate-500">
-                    stableId: <span className="font-mono">{cat.stableId}</span> · sort:{' '}
+                    sort:{' '}
                     {cat.sortOrder} · {cat.isActive ? (isZh ? '启用' : 'active') : isZh ? '停用' : 'inactive'}
                   </div>
                 </div>
@@ -910,10 +910,6 @@ export default function AdminMenuPage() {
                       <div>
                         <div className="text-sm font-semibold">
                           {isZh ? item.nameZh ?? item.nameEn : item.nameEn}
-                        </div>
-                        <div className="mt-1 text-xs text-slate-500">
-                          stableId: <span className="font-mono">{item.stableId}</span> · categoryStableId:{' '}
-                          <span className="font-mono">{item.categoryStableId}</span>
                         </div>
                       </div>
 
@@ -1183,17 +1179,8 @@ export default function AdminMenuPage() {
                                           {groupName}
                                         </div>
                                         <div className="mt-1 text-xs text-slate-500">
-                                          templateGroupStableId:{' '}
-                                          <span className="font-mono">{tplStableId}</span>
-                                          {bindingStableId ? (
-                                            <>
-                                              {' '}
-                                              · bindingStableId:{' '}
-                                              <span className="font-mono">{bindingStableId}</span>
-                                            </>
-                                          ) : null}
                                           {tpl?.isAvailable === false ? (
-                                            <span className="ml-2 text-xs text-amber-700">
+                                            <span className="text-xs text-amber-700">
                                               {isZh ? '模板当前不可用' : 'Template unavailable'}
                                             </span>
                                           ) : null}
@@ -1328,7 +1315,7 @@ export default function AdminMenuPage() {
                                   .sort((a, b) => a.sortOrder - b.sortOrder)
                                   .map((t) => (
                                     <option key={t.templateGroupStableId} value={t.templateGroupStableId}>
-                                      {isZh ? (t.nameZh ?? t.nameEn) : t.nameEn} — {t.templateGroupStableId}
+                                      {isZh ? (t.nameZh ?? t.nameEn) : t.nameEn}
                                     </option>
                                   ))}
                               </select>
