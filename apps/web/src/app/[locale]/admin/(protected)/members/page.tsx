@@ -421,7 +421,7 @@ export default function AdminMembersPage() {
                         <div className="font-medium text-slate-900">
                           {member.displayName ?? (isZh ? "未命名" : "Unnamed")}
                         </div>
-                        <div className="text-xs text-slate-400">{member.userStableId}</div>
+                        <div className="text-xs text-slate-400">{member.email ?? ""}</div>
                         <div className="text-xs text-slate-400">{member.phone ?? "-"}</div>
                       </td>
                       <td className="px-4 py-3">

@@ -7,7 +7,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   BarChart, Bar, PieChart, Pie, Cell, Legend 
 } from 'recharts';
-import { Loader2, DollarSign, ShoppingBag, CreditCard, TrendingUp } from 'lucide-react';
+import { Loader2, DollarSign, ShoppingBag, CreditCard, TrendingUp, AlertCircle } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 
 // --- 类型定义 ---
@@ -32,11 +32,13 @@ const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6'];
 export default function ReportsPage() {
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null); // ✅ 新增错误状态
   const [dateRange, setDateRange] = useState<'today' | 'yesterday' | 'week' | 'month'>('today');
 
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
+      setError(null);
       try {
         const now = new Date();
         let range = { from: '', to: '' };
@@ -54,11 +56,16 @@ export default function ReportsPage() {
 
         const params = new URLSearchParams(range);
         const res = await fetch(`/api/v1/reports?${params.toString()}`);
-        if (!res.ok) throw new Error('Failed to fetch reports');
+        if (!res.ok) {
+           // 尝试读取后端返回的错误信息
+           const errText = await res.text().catch(() => '');
+           throw new Error(errText || `Request failed: ${res.status}`);
+        }
         const json = await res.json();
         setData(json);
-      } catch (error) {
-        console.error(error);
+      } catch (err) {
+        console.error(err);
+        setError('加载报表数据失败，请检查网络或稍后重试。');
       } finally {
         setLoading(false);
       }
@@ -68,7 +75,13 @@ export default function ReportsPage() {
 
   const formatMoney = (val: number) => `$${val.toFixed(2)}`;
 
-  if (loading && !data) {
+  // 辅助函数：安全地格式化图表数值
+  const chartValueFormatter = (value: number | string | undefined | unknown) => {
+    return `$${Number(value || 0).toFixed(2)}`;
+  };
+
+  // ✅ 1. 加载状态
+  if (loading) {
     return (
       <div className="flex h-96 items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
@@ -76,10 +89,31 @@ export default function ReportsPage() {
     );
   }
 
-  // 辅助函数：安全地格式化图表数值
-  const chartValueFormatter = (value: number | string | undefined | unknown) => {
-    return `$${Number(value || 0).toFixed(2)}`;
-  };
+  // ✅ 2. 错误状态
+  if (error) {
+    return (
+      <div className="flex h-96 flex-col items-center justify-center gap-4 p-6 text-center">
+        <div className="rounded-full bg-red-100 p-4">
+          <AlertCircle className="h-8 w-8 text-red-600" />
+        </div>
+        <div>
+          <h3 className="text-lg font-semibold text-slate-900">无法加载报表</h3>
+          <p className="text-sm text-slate-500 mt-1 max-w-sm">{error}</p>
+        </div>
+        <button 
+          onClick={() => window.location.reload()}
+          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+        >
+          刷新页面
+        </button>
+      </div>
+    );
+  }
+
+  // ✅ 3. 空数据保护 (虽然理论上如果有 data 且无 error，这里不会是 null)
+  if (!data) {
+    return null; 
+  }
 
   return (
     <div className="space-y-6 p-6">
@@ -111,27 +145,28 @@ export default function ReportsPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {/* ✅ 安全访问属性：使用 ?. 防止 undefined 报错 */}
         <KpiCard
           title="总销售额 (Sales)"
-          value={formatMoney(data?.summary.totalSales || 0)}
+          value={formatMoney(data?.summary?.totalSales || 0)}
           icon={<DollarSign className="h-5 w-5 text-emerald-600" />}
-          subtext={`含税: ${formatMoney(data?.summary.tax || 0)}`}
+          subtext={`含税: ${formatMoney(data?.summary?.tax || 0)}`}
         />
         <KpiCard
           title="有效订单 (Orders)"
-          value={data?.summary.orderCount.toString() || '0'}
+          value={data?.summary?.orderCount?.toString() || '0'}
           icon={<ShoppingBag className="h-5 w-5 text-blue-600" />}
           subtext="笔已完成交易"
         />
         <KpiCard
           title="客单价 (AOV)"
-          value={formatMoney(data?.summary.averageOrderValue || 0)}
+          value={formatMoney(data?.summary?.averageOrderValue || 0)}
           icon={<TrendingUp className="h-5 w-5 text-amber-600" />}
           subtext="平均每单收入"
         />
         <KpiCard
           title="配送费收入"
-          value={formatMoney(data?.summary.deliveryFees || 0)}
+          value={formatMoney(data?.summary?.deliveryFees || 0)}
           icon={<CreditCard className="h-5 w-5 text-purple-600" />}
           subtext="来自顾客支付"
         />
@@ -142,7 +177,7 @@ export default function ReportsPage() {
           <h3 className="mb-4 text-lg font-semibold text-slate-800">销售趋势 (Sales Trend)</h3>
           <div className="h-80 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data?.chartData}>
+              <LineChart data={data?.chartData || []}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                 <XAxis 
                   dataKey="date" 
@@ -161,7 +196,6 @@ export default function ReportsPage() {
                 />
                 <Tooltip 
                   contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                  // ✅ 修复：使用更宽泛的类型定义联合类型，避免使用 any
                   formatter={(val: number | string | undefined) => [chartValueFormatter(val), '销售额']}
                 />
                 <Line 
@@ -184,7 +218,7 @@ export default function ReportsPage() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={data?.breakdown.payment}
+                    data={data?.breakdown?.payment || []}
                     cx="50%"
                     cy="50%"
                     innerRadius={40}
@@ -192,11 +226,10 @@ export default function ReportsPage() {
                     paddingAngle={5}
                     dataKey="value"
                   >
-                    {data?.breakdown.payment.map((entry, index) => (
+                    {(data?.breakdown?.payment || []).map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  {/* ✅ 修复：使用更宽泛的类型定义联合类型 */}
                   <Tooltip formatter={(val: number | string | undefined) => chartValueFormatter(val)} />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
                 </PieChart>
@@ -208,10 +241,9 @@ export default function ReportsPage() {
             <h3 className="mb-4 text-lg font-semibold text-slate-800">用餐方式 (Fulfillment)</h3>
             <div className="h-48 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={data?.breakdown.fulfillment} layout="vertical" margin={{ left: 10 }}>
+                <BarChart data={data?.breakdown?.fulfillment || []} layout="vertical" margin={{ left: 10 }}>
                   <XAxis type="number" hide />
                   <YAxis type="category" dataKey="name" width={70} tick={{fontSize: 11}} interval={0} />
-                  {/* ✅ 修复：使用更宽泛的类型定义联合类型 */}
                   <Tooltip cursor={{fill: 'transparent'}} formatter={(val: number | string | undefined) => chartValueFormatter(val)} />
                   <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={20} />
                 </BarChart>
