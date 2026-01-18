@@ -563,6 +563,7 @@ model BusinessConfig {
   timezone                  String   @default("America/Toronto")
   isTemporarilyClosed       Boolean  @default(false)
   temporaryCloseReason      String?
+  publicNotice              String?
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
   deliveryBaseFeeCents      Int      @default(600)

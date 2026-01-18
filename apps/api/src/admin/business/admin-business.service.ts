@@ -24,6 +24,7 @@ export type BusinessConfigResponse = {
   timezone: string;
   isTemporarilyClosed: boolean;
   temporaryCloseReason: string | null;
+  publicNotice: string | null;
   deliveryBaseFeeCents: number;
   priorityPerKmCents: number;
   maxDeliveryRangeKm: number;
@@ -75,6 +76,7 @@ export class AdminBusinessService {
       timezone: config.timezone,
       isTemporarilyClosed: config.isTemporarilyClosed,
       temporaryCloseReason: config.temporaryCloseReason ?? null,
+      publicNotice: config.publicNotice ?? null,
       deliveryBaseFeeCents: config.deliveryBaseFeeCents,
       priorityPerKmCents: config.priorityPerKmCents,
       maxDeliveryRangeKm: config.maxDeliveryRangeKm,
@@ -219,6 +221,7 @@ export class AdminBusinessService {
       timezone,
       isTemporarilyClosed,
       reason,
+      publicNotice,
       deliveryBaseFeeCents,
       priorityPerKmCents,
       maxDeliveryRangeKm,
@@ -246,6 +249,7 @@ export class AdminBusinessService {
       timezone?: unknown;
       isTemporarilyClosed?: unknown;
       reason?: unknown;
+      publicNotice?: unknown;
       deliveryBaseFeeCents?: unknown;
       priorityPerKmCents?: unknown;
       maxDeliveryRangeKm?: unknown;
@@ -302,6 +306,13 @@ export class AdminBusinessService {
       // 允许单独更新 reason（仅当当前是暂停状态）
       updates.temporaryCloseReason =
         trimmedReason.length > 0 ? trimmedReason : null;
+    }
+
+    if (publicNotice !== undefined) {
+      updates.publicNotice = this.normalizeOptionalText(
+        'publicNotice',
+        publicNotice,
+      );
     }
 
     if (deliveryBaseFeeCents !== undefined) {
@@ -612,6 +623,7 @@ export class AdminBusinessService {
         timezone: 'America/Toronto',
         isTemporarilyClosed: false,
         temporaryCloseReason: null,
+        publicNotice: null,
       },
     });
   }
