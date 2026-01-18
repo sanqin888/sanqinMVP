@@ -24,6 +24,15 @@ import { apiFetch } from "@/lib/api/client";
 import { signOut, useSession } from "@/lib/auth-session";
 import Image from "next/image";
 
+type StoreStatus = {
+  publicNotice: string | null;
+  today: {
+    isClosed: boolean;
+    openMinutes: number | null;
+    closeMinutes: number | null;
+  };
+};
+
 export default function LocalOrderPage() {
   const params = useParams<{ locale?: string }>();
   const locale = (params?.locale === "zh" ? "zh" : "en") as Locale;
@@ -51,6 +60,9 @@ export default function LocalOrderPage() {
   const [entitlementsError, setEntitlementsError] = useState<string | null>(
     null,
   );
+  const [storeStatus, setStoreStatus] = useState<StoreStatus | null>(null);
+  const [storeStatusLoading, setStoreStatusLoading] = useState(true);
+  const [storeStatusError, setStoreStatusError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -141,6 +153,41 @@ export default function LocalOrderPage() {
       cancelled = true;
     };
   }, [isMemberLoggedIn, locale]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadStoreStatus() {
+      setStoreStatusLoading(true);
+      setStoreStatusError(null);
+      try {
+        const data = await apiFetch<StoreStatus>("/public/store-status", {
+          cache: "no-store",
+        });
+        if (cancelled) return;
+        setStoreStatus(data);
+      } catch (err) {
+        console.error(err);
+        if (cancelled) return;
+        setStoreStatus(null);
+        setStoreStatusError(
+          locale === "zh"
+            ? "营业时间加载失败，请稍后重试。"
+            : "Failed to load store hours. Please try again later.",
+        );
+      } finally {
+        if (!cancelled) {
+          setStoreStatusLoading(false);
+        }
+      }
+    }
+
+    void loadStoreStatus();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [locale]);
 
   const { addItem, totalQuantity, items: cartItems, removeItemsByStableId } =
     usePersistentCart();
@@ -441,8 +488,50 @@ export default function LocalOrderPage() {
     return parsed > Date.now();
   };
 
+  const formatMinutes = (mins: number | null | undefined) => {
+    if (mins == null || Number.isNaN(mins)) return "";
+    const hours = Math.floor(mins / 60);
+    const minutes = mins % 60;
+    return `${hours.toString().padStart(2, "0")}:${minutes
+      .toString()
+      .padStart(2, "0")}`;
+  };
+
+  const hoursValue = (() => {
+    if (storeStatusLoading) {
+      return locale === "zh" ? "加载中…" : "Loading…";
+    }
+    if (storeStatusError || !storeStatus) {
+      return locale === "zh" ? "暂无法获取" : "Unavailable";
+    }
+    if (
+      storeStatus.today.isClosed ||
+      storeStatus.today.openMinutes == null ||
+      storeStatus.today.closeMinutes == null
+    ) {
+      return locale === "zh" ? "休息" : "Closed";
+    }
+    return `${formatMinutes(storeStatus.today.openMinutes)}-${formatMinutes(
+      storeStatus.today.closeMinutes,
+    )}`;
+  })();
+
+  const publicNoticeText = storeStatus?.publicNotice?.trim() ?? "";
+
   return (
     <div className="space-y-12 pb-28">
+      <section className="rounded-2xl border border-slate-200 bg-white px-6 py-4 shadow-sm">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm font-semibold text-slate-900">
+            {locale === "zh" ? "今日营业时间" : "Today's hours"}：{hoursValue}
+          </p>
+          {publicNoticeText ? (
+            <p className="text-sm text-slate-600">
+              {locale === "zh" ? "网站公告" : "Notice"}：{publicNoticeText}
+            </p>
+          ) : null}
+        </div>
+      </section>
 {/* ===== Hero 区 ===== */}
 <section
   className="
