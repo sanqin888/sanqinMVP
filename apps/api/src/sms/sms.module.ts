@@ -23,8 +23,13 @@ import type { SmsProvider } from './sms.provider';
         const provider = rawValue?.trim().toLowerCase();
 
         if (provider === 'aws') {
+          console.log('[System Check] ✅ Switching to AWS Provider');
           return aws;
         }
+
+        console.log(
+          '[System Check] ⚠️ Fallback to Log Provider (Conditions not met)',
+        );
         return loggerProvider;
       },
       inject: [AwsSmsProvider, LogSmsProvider],
