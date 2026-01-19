@@ -31,6 +31,7 @@ type BusinessConfigDto = {
   isTemporarilyClosed: boolean;
   temporaryCloseReason: string | null;
   publicNotice: string | null;
+  publicNoticeEn: string | null;
   deliveryBaseFeeCents: number;
   priorityPerKmCents: number;
   salesTaxRate: number;
@@ -38,6 +39,7 @@ type BusinessConfigDto = {
 
 type BusinessConfigResponse = {
   publicNotice: string | null;
+  publicNoticeEn: string | null;
   hours: BusinessHourDto[];
   holidays: Holiday[];
 };
@@ -113,6 +115,7 @@ export default function AdminDashboard() {
   const [hoursLoading, setHoursLoading] = useState(true);
   const [hoursError, setHoursError] = useState<string | null>(null);
   const [publicNotice, setPublicNotice] = useState("");
+  const [publicNoticeEn, setPublicNoticeEn] = useState("");
   const [publicNoticeSaving, setPublicNoticeSaving] = useState(false);
   const [publicNoticeError, setPublicNoticeError] = useState<string | null>(null);
   const [publicNoticeSuccess, setPublicNoticeSuccess] = useState<string | null>(null);
@@ -163,6 +166,7 @@ export default function AdminDashboard() {
         setHours([...res.hours].sort((a, b) => a.weekday - b.weekday));
         setHolidays((res.holidays ?? []).slice().sort((a, b) => a.date.localeCompare(b.date)));
         setPublicNotice(res.publicNotice ?? "");
+        setPublicNoticeEn(res.publicNoticeEn ?? "");
       } catch (e) {
         console.error(e);
         if (!cancelled) {
@@ -286,14 +290,17 @@ export default function AdminDashboard() {
     setPublicNoticeSuccess(null);
     try {
       const trimmedNotice = publicNotice.trim();
+      const trimmedNoticeEn = publicNoticeEn.trim();
       const res = await apiFetch<BusinessConfigResponse>("/admin/business/config", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           publicNotice: trimmedNotice.length > 0 ? trimmedNotice : null,
+          publicNoticeEn: trimmedNoticeEn.length > 0 ? trimmedNoticeEn : null,
         }),
       });
       setPublicNotice(res.publicNotice ?? "");
+      setPublicNoticeEn(res.publicNoticeEn ?? "");
       setPublicNoticeSuccess(isZh ? "公告已保存。" : "Notice saved.");
     } catch (e) {
       console.error(e);
@@ -476,6 +483,13 @@ export default function AdminDashboard() {
                 value={publicNotice}
                 onChange={(event) => setPublicNotice(event.target.value)}
                 placeholder="例如：本周末 18:00 提前打烊，线上订单截止 17:30。"
+              />
+              <textarea
+                className="mt-3 w-full rounded-md border px-3 py-2 text-sm"
+                rows={3}
+                value={publicNoticeEn}
+                onChange={(event) => setPublicNoticeEn(event.target.value)}
+                placeholder="Example: We close early at 6 PM this weekend. Online orders stop at 5:30 PM."
               />
               {publicNoticeError ? (
                 <p className="mt-2 text-xs text-red-600">{publicNoticeError}</p>

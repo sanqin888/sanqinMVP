@@ -25,6 +25,7 @@ export type BusinessConfigResponse = {
   isTemporarilyClosed: boolean;
   temporaryCloseReason: string | null;
   publicNotice: string | null;
+  publicNoticeEn: string | null;
   deliveryBaseFeeCents: number;
   priorityPerKmCents: number;
   maxDeliveryRangeKm: number;
@@ -77,6 +78,7 @@ export class AdminBusinessService {
       isTemporarilyClosed: config.isTemporarilyClosed,
       temporaryCloseReason: config.temporaryCloseReason ?? null,
       publicNotice: config.publicNotice ?? null,
+      publicNoticeEn: config.publicNoticeEn ?? null,
       deliveryBaseFeeCents: config.deliveryBaseFeeCents,
       priorityPerKmCents: config.priorityPerKmCents,
       maxDeliveryRangeKm: config.maxDeliveryRangeKm,
@@ -222,6 +224,7 @@ export class AdminBusinessService {
       isTemporarilyClosed,
       reason,
       publicNotice,
+      publicNoticeEn,
       deliveryBaseFeeCents,
       priorityPerKmCents,
       maxDeliveryRangeKm,
@@ -250,6 +253,7 @@ export class AdminBusinessService {
       isTemporarilyClosed?: unknown;
       reason?: unknown;
       publicNotice?: unknown;
+      publicNoticeEn?: unknown;
       deliveryBaseFeeCents?: unknown;
       priorityPerKmCents?: unknown;
       maxDeliveryRangeKm?: unknown;
@@ -312,6 +316,13 @@ export class AdminBusinessService {
       updates.publicNotice = this.normalizeOptionalText(
         'publicNotice',
         publicNotice,
+      );
+    }
+
+    if (publicNoticeEn !== undefined) {
+      updates.publicNoticeEn = this.normalizeOptionalText(
+        'publicNoticeEn',
+        publicNoticeEn,
       );
     }
 
@@ -624,6 +635,7 @@ export class AdminBusinessService {
         isTemporarilyClosed: false,
         temporaryCloseReason: null,
         publicNotice: null,
+        publicNoticeEn: null,
       },
     });
   }

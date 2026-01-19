@@ -12,6 +12,7 @@ export type StoreStatus = {
   isTemporarilyClosed: boolean;
   temporaryCloseReason: string | null;
   publicNotice: string | null;
+  publicNoticeEn: string | null;
 
   isOpen: boolean;
 
@@ -129,6 +130,7 @@ export class StoreStatusService {
       isTemporarilyClosed,
       temporaryCloseReason: config.temporaryCloseReason ?? null,
       publicNotice: config.publicNotice ?? null,
+      publicNoticeEn: config.publicNoticeEn ?? null,
       isOpen,
       ruleSource,
       now: nowIso,
@@ -215,6 +217,7 @@ export class StoreStatusService {
         isTemporarilyClosed: false,
         temporaryCloseReason: null,
         publicNotice: null,
+        publicNoticeEn: null,
       },
     });
   }
