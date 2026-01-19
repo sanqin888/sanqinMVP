@@ -64,6 +64,9 @@ services:
       AWS_SMS_ORIGINATION_IDENTITY: ${AWS_SMS_ORIGINATION_IDENTITY}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      EMAIL_PROVIDER: "ses"
+      AWS_SES_FROM_EMAIL: "no-reply@sanq.ca"
+      AWS_SES_REGION: "us-east-1"
     ports:
       - "4000:4000"
       - "127.0.0.1:5555:5555"
