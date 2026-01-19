@@ -564,6 +564,7 @@ model BusinessConfig {
   isTemporarilyClosed       Boolean  @default(false)
   temporaryCloseReason      String?
   publicNotice              String?
+  publicNoticeEn            String?
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
   deliveryBaseFeeCents      Int      @default(600)

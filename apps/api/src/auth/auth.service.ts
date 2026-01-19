@@ -532,8 +532,6 @@ export class AuthService {
       },
     });
 
-    this.logger.log(`2FA OTP for ${user.phone}: ${code}`);
-
     const isZh = user.language === 'ZH';
     const message = isZh
       ? `您好，您的验证码是 ${code}，5 分钟内有效，若您未曾发送此请求，请忽略此消息（三秦）。`
@@ -725,8 +723,6 @@ export class AuthService {
       },
     });
 
-    this.logger.log(`[DEV] Password reset token for ${email}: ${token}`);
-
     return { success: true };
   }
 
@@ -795,7 +791,6 @@ export class AuthService {
       });
     });
 
-    this.logger.log(`Phone enroll OTP for ${normalized}: ${code}`);
     return { success: true };
   }
 

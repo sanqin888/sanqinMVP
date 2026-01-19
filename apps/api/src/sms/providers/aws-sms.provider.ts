@@ -31,8 +31,8 @@ export class AwsSmsProvider implements SmsProvider {
       destination = `+${destination}`;
     }
 
-    // 建议加一行日志，确保你看到最终发给 AWS 的号码是对的
-    this.logger.log(`[AWS Sending] To: ${destination}, Body: ${params.body}`);
+    // 这样在生产环境如果不开启 debug 级别日志，就不会显示，保持清爽
+    this.logger.debug(`Sending SMS to ${destination}`);
 
     try {
       const out = await this.client.send(
@@ -50,6 +50,8 @@ export class AwsSmsProvider implements SmsProvider {
             : {}),
         }),
       );
+      // 发送成功也记录一条 debug 日志
+      this.logger.debug(`SMS sent successfully. MessageId: ${out.MessageId}`);
 
       return { ok: true, providerMessageId: out.MessageId };
     } catch (e) {
