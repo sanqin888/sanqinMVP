@@ -262,7 +262,7 @@ export const UI_STRINGS: Record<
     tagline: "新鲜 · 迅速 · 手工",
     heroTitle: "三秦肉夹馍 · 线上点餐",
     heroDescription:
-      "经典凉皮、肉夹馍、特色面食等。现在下单，数分钟即可自取或外送。",
+      "经典凉皮、肉夹馍、特色面食等。现在下单，数分钟即可自取或外送，享受美食。",
     orderSteps: [
       { id: 1, label: "挑选菜品" },
       { id: 2, label: "备注与确认" },

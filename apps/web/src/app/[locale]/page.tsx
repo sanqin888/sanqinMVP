@@ -610,7 +610,92 @@ export default function LocalOrderPage() {
           </div>
         </div>
       </section>
+<section
+  className="
+    relative overflow-hidden
+    rounded-3xl bg-white p-8 shadow-sm
+    min-h-[260px] lg:min-h-[320px]
+  "
+>
+  {/* 装饰插画：仅桌面显示，固定右下角 */}
+  <div
+    className="
+      hidden lg:block pointer-events-none
+      absolute top-1/2 -translate-y-1/2 right-15
+      z-0 opacity-100
+    "
+  >
+    <Image
+      src="/images/chef.png"
+      alt="Illustration"
+      width={220}
+      height={250}
+      className="object-contain scale-x-[-1]"
+    />
+  </div>
 
+  <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
+    {strings.tagline}
+  </p>
+
+  <div className="mt-6 flex flex-col gap-8 lg:flex-row lg:justify-between">
+    {/* 左侧：文案 + steps + 按钮 */}
+    <div className="relative z-10 flex flex-col gap-6">
+      <div>
+        <h1 className="text-3xl font-semibold tracking-tight text-slate-900 md:text-4xl">
+          {strings.heroTitle}
+        </h1>
+        <p className="mt-3 max-w-2xl text-base text-slate-600">
+          {strings.heroDescription}
+        </p>
+      </div>
+
+      <ol className="flex flex-wrap gap-2 text-xs text-slate-500">
+        {strings.orderSteps.map((step) => (
+          <li
+            key={step.id}
+            className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-600"
+          >
+            <span className="grid h-5 w-5 place-items-center rounded-full bg-slate-900 text-[0.65rem] font-semibold text-white">
+              {step.id}
+            </span>
+            {step.label}
+          </li>
+        ))}
+      </ol>
+
+      {/* ✅ 按钮：左侧底部，手机/桌面都横排 */}
+      <div className="flex flex-wrap gap-2 mt-4">
+        <Link
+          href={membershipHref}
+          className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
+        >
+          {membershipLabel}
+        </Link>
+
+        {isMemberLoggedIn ? (
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
+          >
+            {logoutLabel}
+          </button>
+        ) : null}
+
+        <Link
+          href={checkoutHref}
+          className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
+        >
+          {strings.cartTitle}
+        </Link>
+      </div>
+    </div>
+
+    {/* 右侧：留白（给图片用，不放内容） */}
+    <div className="hidden lg:block lg:w-[220px]" />
+  </div>
+</section>
       {/* ===== 菜单区 ===== */}
       <section className="space-y-10">
         {menuLoading ? (

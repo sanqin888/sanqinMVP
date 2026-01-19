@@ -16,7 +16,12 @@ import type { SmsProvider } from './sms.provider';
         aws: AwsSmsProvider,
         loggerProvider: LogSmsProvider,
       ): SmsProvider => {
-        const provider = process.env.SMS_PROVIDER?.toLowerCase();
+        // 获取原始值
+        const rawValue = process.env.SMS_PROVIDER;
+
+        // .trim() 去除首尾空格/换行符
+        const provider = rawValue?.trim().toLowerCase();
+
         if (provider === 'aws') {
           return aws;
         }
