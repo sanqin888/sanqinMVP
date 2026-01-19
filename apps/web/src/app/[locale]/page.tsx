@@ -525,20 +525,21 @@ export default function LocalOrderPage() {
         "";
 
   return (
-    <div className="space-y-12 pb-28">
-      <section className="rounded-2xl border border-slate-200 bg-white px-6 py-4 shadow-sm">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm font-semibold text-slate-900">
-            {locale === "zh" ? "今日营业时间" : "Today's hours"}：{hoursValue}
-          </p>
-          {publicNoticeText ? (
-            <p className="text-sm text-slate-600">
-              {locale === "zh" ? "网站公告" : "Notice"}：{publicNoticeText}
-            </p>
-          ) : null}
-        </div>
-      </section> 
-{/* ===== Hero 区 ===== */}
+<div className="space-y-12 pb-28">
+  <section className="rounded-2xl border border-slate-200 bg-white px-6 py-4 shadow-sm">
+    <div className="flex flex-col gap-2">
+      <p className="text-sm font-semibold text-slate-900">
+        {locale === "zh" ? "今日营业时间" : "Today's hours"}：{hoursValue}
+      </p>
+
+      {publicNoticeText ? (
+        <p className="text-sm text-slate-600">
+          {locale === "zh" ? "网站公告" : "Notice"}：{publicNoticeText}
+        </p>
+      ) : null}
+    </div>
+  </section>
+      {/* ===== Hero 区 ===== */}
 <section
   className="
     relative overflow-hidden
