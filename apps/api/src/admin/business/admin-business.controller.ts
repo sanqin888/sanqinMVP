@@ -44,6 +44,8 @@ export class AdminBusinessController {
       timezone?: string;
       isTemporarilyClosed?: boolean;
       reason?: string;
+      publicNotice?: string | null;
+      publicNoticeEn?: string | null;
       deliveryBaseFeeCents?: number;
       priorityPerKmCents?: number;
       maxDeliveryRangeKm?: number;
@@ -84,6 +86,8 @@ export class AdminBusinessController {
       timezone?: string;
       isTemporarilyClosed?: boolean;
       reason?: string;
+      publicNotice?: string | null;
+      publicNoticeEn?: string | null;
       deliveryBaseFeeCents?: number;
       priorityPerKmCents?: number;
       maxDeliveryRangeKm?: number;

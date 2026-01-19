@@ -30,13 +30,16 @@ type BusinessConfigDto = {
   timezone: string;
   isTemporarilyClosed: boolean;
   temporaryCloseReason: string | null;
+  publicNotice: string | null;
+  publicNoticeEn: string | null;
   deliveryBaseFeeCents: number;
   priorityPerKmCents: number;
   salesTaxRate: number;
 };
 
 type BusinessConfigResponse = {
-  config: BusinessConfigDto;
+  publicNotice: string | null;
+  publicNoticeEn: string | null;
   hours: BusinessHourDto[];
   holidays: Holiday[];
 };
@@ -111,6 +114,11 @@ export default function AdminDashboard() {
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [hoursLoading, setHoursLoading] = useState(true);
   const [hoursError, setHoursError] = useState<string | null>(null);
+  const [publicNotice, setPublicNotice] = useState("");
+  const [publicNoticeEn, setPublicNoticeEn] = useState("");
+  const [publicNoticeSaving, setPublicNoticeSaving] = useState(false);
+  const [publicNoticeError, setPublicNoticeError] = useState<string | null>(null);
+  const [publicNoticeSuccess, setPublicNoticeSuccess] = useState<string | null>(null);
 
   const weekdayLabels = useMemo(() => (isZh ? WEEKDAY_LABELS_ZH : WEEKDAY_LABELS_EN), [isZh]);
 
@@ -157,6 +165,8 @@ export default function AdminDashboard() {
 
         setHours([...res.hours].sort((a, b) => a.weekday - b.weekday));
         setHolidays((res.holidays ?? []).slice().sort((a, b) => a.date.localeCompare(b.date)));
+        setPublicNotice(res.publicNotice ?? "");
+        setPublicNoticeEn(res.publicNoticeEn ?? "");
       } catch (e) {
         console.error(e);
         if (!cancelled) {
@@ -273,6 +283,32 @@ export default function AdminDashboard() {
       cancelled = true;
     };
   }, [isZh]);
+
+  const handleSavePublicNotice = async () => {
+    setPublicNoticeSaving(true);
+    setPublicNoticeError(null);
+    setPublicNoticeSuccess(null);
+    try {
+      const trimmedNotice = publicNotice.trim();
+      const trimmedNoticeEn = publicNoticeEn.trim();
+      const res = await apiFetch<BusinessConfigResponse>("/admin/business/config", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          publicNotice: trimmedNotice.length > 0 ? trimmedNotice : null,
+          publicNoticeEn: trimmedNoticeEn.length > 0 ? trimmedNoticeEn : null,
+        }),
+      });
+      setPublicNotice(res.publicNotice ?? "");
+      setPublicNoticeEn(res.publicNoticeEn ?? "");
+      setPublicNoticeSuccess(isZh ? "公告已保存。" : "Notice saved.");
+    } catch (e) {
+      console.error(e);
+      setPublicNoticeError(isZh ? "保存公告失败，请稍后重试。" : "Failed to save notice. Please try again.");
+    } finally {
+      setPublicNoticeSaving(false);
+    }
+  };
 
 
   return (
@@ -441,10 +477,34 @@ export default function AdminDashboard() {
             <p className="text-sm font-semibold text-slate-900">运营公告</p>
             <p className="mt-2 text-sm text-slate-500">设置首页公告栏，用于提示节假日营业安排、价格调整或新品上线。</p>
             <div className="mt-3">
-              <textarea className="w-full rounded-md border px-3 py-2 text-sm" rows={3} defaultValue="本周末 18:00 提前打烊，线上订单截止 17:30。" />
+              <textarea
+                className="w-full rounded-md border px-3 py-2 text-sm"
+                rows={3}
+                value={publicNotice}
+                onChange={(event) => setPublicNotice(event.target.value)}
+                placeholder="例如：本周末 18:00 提前打烊，线上订单截止 17:30。"
+              />
+              <textarea
+                className="mt-3 w-full rounded-md border px-3 py-2 text-sm"
+                rows={3}
+                value={publicNoticeEn}
+                onChange={(event) => setPublicNoticeEn(event.target.value)}
+                placeholder="Example: We close early at 6 PM this weekend. Online orders stop at 5:30 PM."
+              />
+              {publicNoticeError ? (
+                <p className="mt-2 text-xs text-red-600">{publicNoticeError}</p>
+              ) : null}
+              {publicNoticeSuccess ? (
+                <p className="mt-2 text-xs text-emerald-600">{publicNoticeSuccess}</p>
+              ) : null}
               <div className="mt-2 flex justify-end">
-                <button className="rounded-md border bg-slate-900 px-4 py-2 text-sm font-semibold text-white" type="button">
-                  保存公告
+                <button
+                  className="rounded-md border bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                  type="button"
+                  onClick={handleSavePublicNotice}
+                  disabled={publicNoticeSaving}
+                >
+                  {publicNoticeSaving ? "保存中…" : "保存公告"}
                 </button>
               </div>
             </div>
