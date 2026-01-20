@@ -66,6 +66,7 @@ const UseRuleSchema = z
   });
 
 type Tier = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM';
+type LedgerTarget = 'POINTS' | 'BALANCE';
 
 type MemberListParams = {
   search?: string;
@@ -168,6 +169,15 @@ export class AdminMembersService {
       return normalized;
     }
     throw new BadRequestException('Invalid status');
+  }
+
+  private parseLedgerTarget(value?: string): LedgerTarget | undefined {
+    if (!value) return undefined;
+    const normalized = value.trim().toUpperCase();
+    if (normalized === 'POINTS' || normalized === 'BALANCE') {
+      return normalized;
+    }
+    throw new BadRequestException('Invalid ledger target');
   }
 
   private async getUserByStableId(userStableId: string) {
@@ -433,13 +443,18 @@ export class AdminMembersService {
     };
   }
 
-  async getLoyaltyLedger(userStableId: string, limitRaw?: string) {
+  async getLoyaltyLedger(
+    userStableId: string,
+    limitRaw?: string,
+    targetRaw?: string,
+  ) {
     const user = await this.getUserByStableId(userStableId);
     const limit = limitRaw ? Number.parseInt(limitRaw, 10) || 50 : 50;
+    const target = this.parseLedgerTarget(targetRaw);
 
     const account = await this.loyalty.ensureAccount(user.id);
     const entries = await this.prisma.loyaltyLedger.findMany({
-      where: { accountId: account.id },
+      where: { accountId: account.id, ...(target ? { target } : {}) },
       orderBy: { createdAt: 'desc' },
       take: limit,
       select: {

@@ -53,6 +53,7 @@ type LedgerEntry = {
   ledgerStableId: string;
   createdAt: string;
   type: string;
+  target: "POINTS" | "BALANCE";
   deltaPoints: number;
   balanceAfterPoints: number;
   note?: string;
@@ -211,7 +212,9 @@ export default function AdminMembersPage() {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [memberDetail, setMemberDetail] = useState<MemberDetail | null>(null);
   const [memberOrders, setMemberOrders] = useState<OrderEntry[]>([]);
-  const [memberLedger, setMemberLedger] = useState<LedgerEntry[]>([]);
+  const [memberPointsLedger, setMemberPointsLedger] = useState<LedgerEntry[]>([]);
+  const [memberBalanceLedger, setMemberBalanceLedger] = useState<LedgerEntry[]>([]);
+  const [ledgerTab, setLedgerTab] = useState<"POINTS" | "BALANCE">("POINTS");
   const [banLoadingIds, setBanLoadingIds] = useState<Record<string, boolean>>({});
   const [loyaltyConfig, setLoyaltyConfig] = useState<LoyaltyConfigDto | null>(null);
   const [loyaltySaving, setLoyaltySaving] = useState(false);
@@ -286,38 +289,46 @@ export default function AdminMembersPage() {
     if (!selectedMemberId) {
       setMemberDetail(null);
       setMemberOrders([]);
-      setMemberLedger([]);
+      setMemberPointsLedger([]);
+      setMemberBalanceLedger([]);
       setDetailError(null);
       setDetailLoading(false);
       return;
     }
 
     let cancelled = false;
+    setLedgerTab("POINTS");
 
     async function loadMemberDetail() {
       setDetailLoading(true);
       setDetailError(null);
       try {
-        const [detail, ledger, orders] = await Promise.all([
+        const [detail, pointsLedger, balanceLedger, orders] = await Promise.all([
           apiFetch<MemberDetail>(`/admin/members/${selectedMemberId}`),
           apiFetch<LedgerEntry[] | { entries: LedgerEntry[] }>(
-            `/admin/members/${selectedMemberId}/loyalty-ledger?limit=50`,
+            `/admin/members/${selectedMemberId}/loyalty-ledger?limit=50&target=POINTS`,
+          ),
+          apiFetch<LedgerEntry[] | { entries: LedgerEntry[] }>(
+            `/admin/members/${selectedMemberId}/loyalty-ledger?limit=50&target=BALANCE`,
           ),
           apiFetch<OrderEntry[] | { orders: OrderEntry[] }>(`/admin/members/${selectedMemberId}/orders?limit=50`),
         ]);
 
         if (cancelled) return;
-        const normalizedLedger = Array.isArray(ledger) ? ledger : ledger?.entries ?? [];
+        const normalizedPointsLedger = Array.isArray(pointsLedger) ? pointsLedger : pointsLedger?.entries ?? [];
+        const normalizedBalanceLedger = Array.isArray(balanceLedger) ? balanceLedger : balanceLedger?.entries ?? [];
         const normalizedOrders = Array.isArray(orders) ? orders : orders?.orders ?? [];
         setMemberDetail(detail);
-        setMemberLedger(normalizedLedger);
+        setMemberPointsLedger(normalizedPointsLedger);
+        setMemberBalanceLedger(normalizedBalanceLedger);
         setMemberOrders(normalizedOrders);
       } catch (error) {
         console.error(error);
         if (!cancelled) {
           setDetailError(isZh ? "加载会员详情失败。" : "Failed to load member details.");
           setMemberDetail(null);
-          setMemberLedger([]);
+          setMemberPointsLedger([]);
+          setMemberBalanceLedger([]);
           setMemberOrders([]);
         }
       } finally {
@@ -339,6 +350,7 @@ export default function AdminMembersPage() {
   );
   const pointsTotal = useMemo(() => members.reduce((sum, member) => sum + member.points, 0), [members]);
   const balanceTotal = useMemo(() => members.reduce((sum, member) => sum + member.balance, 0), [members]);
+  const activeLedger = ledgerTab === "POINTS" ? memberPointsLedger : memberBalanceLedger;
 
   const handleLoyaltyConfigChange = (field: keyof LoyaltyConfigDto, value: string) => {
     if (!loyaltyConfig) return;
@@ -912,19 +924,44 @@ export default function AdminMembersPage() {
                   </div>
                 </div>
                 <div>
-                  <h4 className="text-sm font-semibold">{isZh ? "积分记录" : "Points ledger"}</h4>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h4 className="text-sm font-semibold">{isZh ? "账户记录" : "Account ledger"}</h4>
+                    <div className="flex items-center gap-2 rounded-full bg-slate-100 p-1 text-xs">
+                      {([
+                        { key: "POINTS", label: isZh ? "积分记录" : "Points" },
+                        { key: "BALANCE", label: isZh ? "储值记录" : "Balance" },
+                      ] as const).map((tab) => (
+                        <button
+                          key={tab.key}
+                          type="button"
+                          onClick={() => setLedgerTab(tab.key)}
+                          className={`rounded-full px-3 py-1 transition ${
+                            ledgerTab === tab.key
+                              ? "bg-white text-slate-700 shadow"
+                              : "text-slate-500 hover:text-slate-700"
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <div className="mt-2 overflow-x-auto rounded-md border border-slate-200">
                     <table className="min-w-[520px] w-full text-xs">
                       <thead className="bg-slate-50 text-left text-slate-400">
                         <tr>
                           <th className="px-3 py-2">{isZh ? "时间" : "Time"}</th>
                           <th className="px-3 py-2">{isZh ? "类型" : "Type"}</th>
-                          <th className="px-3 py-2">{isZh ? "积分变动" : "Delta"}</th>
-                          <th className="px-3 py-2">{isZh ? "余额" : "Balance"}</th>
+                          <th className="px-3 py-2">
+                            {ledgerTab === "POINTS" ? (isZh ? "积分变动" : "Points delta") : isZh ? "储值变动" : "Balance delta"}
+                          </th>
+                          <th className="px-3 py-2">
+                            {ledgerTab === "POINTS" ? (isZh ? "积分余额" : "Points balance") : isZh ? "储值余额" : "Balance"}
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
-                        {memberLedger.map((entry) => (
+                        {activeLedger.map((entry) => (
                           <tr key={entry.ledgerStableId} className="border-t border-slate-100">
                             <td className="px-3 py-2 text-slate-500">{formatDate(entry.createdAt)}</td>
                             <td className="px-3 py-2 text-slate-500">{entry.type}</td>
@@ -935,10 +972,16 @@ export default function AdminMembersPage() {
                             <td className="px-3 py-2 text-slate-700">{entry.balanceAfterPoints}</td>
                           </tr>
                         ))}
-                        {memberLedger.length === 0 && (
+                        {activeLedger.length === 0 && (
                           <tr>
                             <td colSpan={4} className="px-3 py-4 text-center text-slate-400">
-                              {isZh ? "暂无积分记录。" : "No ledger entries."}
+                              {ledgerTab === "POINTS"
+                                ? isZh
+                                  ? "暂无积分记录。"
+                                  : "No points entries."
+                                : isZh
+                                  ? "暂无储值记录。"
+                                  : "No balance entries."}
                             </td>
                           </tr>
                         )}
