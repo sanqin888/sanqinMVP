@@ -116,8 +116,9 @@ export default function ReportsPage() {
     return null; 
   }
 
-  const maxQty = data.topItems.length
-    ? Math.max(...data.topItems.map((item) => item.quantity))
+  const topItems = data.topItems ?? [];
+  const maxQty = topItems.length
+    ? Math.max(...topItems.map((item) => item.quantity))
     : 0;
 
   return (
@@ -222,11 +223,11 @@ export default function ReportsPage() {
             热销单品排名
           </h3>
           <div className="flex-1 overflow-y-auto pr-2">
-            {data.topItems.length === 0 ? (
+            {topItems.length === 0 ? (
               <div className="flex h-full items-center justify-center text-slate-400 text-sm">暂无数据</div>
             ) : (
               <div className="space-y-4">
-                {data.topItems.map((item, index) => {
+                {topItems.map((item, index) => {
                   const width = maxQty ? (item.quantity / maxQty) * 100 : 0;
                   return (
                     <div key={`${item.name}-${index}`} className="group">
