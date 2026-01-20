@@ -44,6 +44,10 @@ export type BusinessConfigResponse = {
   earnPtPerDollar: number;
   redeemDollarPerPoint: number;
   referralPtPerDollar: number;
+  tierMultiplierBronze: number;
+  tierMultiplierSilver: number;
+  tierMultiplierGold: number;
+  tierMultiplierPlatinum: number;
   tierThresholdSilver: number;
   tierThresholdGold: number;
   tierThresholdPlatinum: number;
@@ -97,6 +101,10 @@ export class AdminBusinessService {
       earnPtPerDollar: config.earnPtPerDollar,
       redeemDollarPerPoint: config.redeemDollarPerPoint,
       referralPtPerDollar: config.referralPtPerDollar,
+      tierMultiplierBronze: config.tierMultiplierBronze,
+      tierMultiplierSilver: config.tierMultiplierSilver,
+      tierMultiplierGold: config.tierMultiplierGold,
+      tierMultiplierPlatinum: config.tierMultiplierPlatinum,
       tierThresholdSilver: config.tierThresholdSilver,
       tierThresholdGold: config.tierThresholdGold,
       tierThresholdPlatinum: config.tierThresholdPlatinum,
@@ -243,6 +251,10 @@ export class AdminBusinessService {
       earnPtPerDollar,
       redeemDollarPerPoint,
       referralPtPerDollar,
+      tierMultiplierBronze,
+      tierMultiplierSilver,
+      tierMultiplierGold,
+      tierMultiplierPlatinum,
       tierThresholdSilver,
       tierThresholdGold,
       tierThresholdPlatinum,
@@ -272,6 +284,10 @@ export class AdminBusinessService {
       earnPtPerDollar?: unknown;
       redeemDollarPerPoint?: unknown;
       referralPtPerDollar?: unknown;
+      tierMultiplierBronze?: unknown;
+      tierMultiplierSilver?: unknown;
+      tierMultiplierGold?: unknown;
+      tierMultiplierPlatinum?: unknown;
       tierThresholdSilver?: unknown;
       tierThresholdGold?: unknown;
       tierThresholdPlatinum?: unknown;
@@ -443,6 +459,34 @@ export class AdminBusinessService {
       updates.referralPtPerDollar = this.normalizePositiveNumber(
         'referralPtPerDollar',
         referralPtPerDollar,
+      );
+    }
+
+    if (tierMultiplierBronze !== undefined) {
+      updates.tierMultiplierBronze = this.normalizePositiveNumber(
+        'tierMultiplierBronze',
+        tierMultiplierBronze,
+      );
+    }
+
+    if (tierMultiplierSilver !== undefined) {
+      updates.tierMultiplierSilver = this.normalizePositiveNumber(
+        'tierMultiplierSilver',
+        tierMultiplierSilver,
+      );
+    }
+
+    if (tierMultiplierGold !== undefined) {
+      updates.tierMultiplierGold = this.normalizePositiveNumber(
+        'tierMultiplierGold',
+        tierMultiplierGold,
+      );
+    }
+
+    if (tierMultiplierPlatinum !== undefined) {
+      updates.tierMultiplierPlatinum = this.normalizePositiveNumber(
+        'tierMultiplierPlatinum',
+        tierMultiplierPlatinum,
       );
     }
 

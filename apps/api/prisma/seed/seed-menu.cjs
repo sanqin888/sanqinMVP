@@ -288,6 +288,22 @@ async function main() {
           typeof c.referralPtPerDollar === "number"
             ? c.referralPtPerDollar
             : 0.01,
+        tierMultiplierBronze:
+          typeof c.tierMultiplierBronze === "number"
+            ? c.tierMultiplierBronze
+            : 1,
+        tierMultiplierSilver:
+          typeof c.tierMultiplierSilver === "number"
+            ? c.tierMultiplierSilver
+            : 2,
+        tierMultiplierGold:
+          typeof c.tierMultiplierGold === "number"
+            ? c.tierMultiplierGold
+            : 3,
+        tierMultiplierPlatinum:
+          typeof c.tierMultiplierPlatinum === "number"
+            ? c.tierMultiplierPlatinum
+            : 5,
 
         tierThresholdSilver:
           typeof c.tierThresholdSilver === "number" ? c.tierThresholdSilver : 100000,
@@ -355,6 +371,22 @@ async function main() {
         referralPtPerDollar:
           typeof c.referralPtPerDollar === "number"
             ? c.referralPtPerDollar
+            : undefined,
+        tierMultiplierBronze:
+          typeof c.tierMultiplierBronze === "number"
+            ? c.tierMultiplierBronze
+            : undefined,
+        tierMultiplierSilver:
+          typeof c.tierMultiplierSilver === "number"
+            ? c.tierMultiplierSilver
+            : undefined,
+        tierMultiplierGold:
+          typeof c.tierMultiplierGold === "number"
+            ? c.tierMultiplierGold
+            : undefined,
+        tierMultiplierPlatinum:
+          typeof c.tierMultiplierPlatinum === "number"
+            ? c.tierMultiplierPlatinum
             : undefined,
 
         tierThresholdSilver:

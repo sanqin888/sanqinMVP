@@ -14,6 +14,7 @@ type Member = {
   phone: string | null;
   tier: TierKey;
   points: number;
+  balance: number;
   status: StatusKey;
   createdAt: string;
 };
@@ -43,6 +44,7 @@ type MemberDetail = {
   account: {
     tier: TierKey;
     points: number;
+    balance: number;
     lifetimeSpendCents: number;
   };
 };
@@ -65,6 +67,19 @@ type OrderEntry = {
   totalCents: number;
   fulfillmentType: string | null;
   deliveryType: string | null;
+};
+
+type LoyaltyConfigDto = {
+  earnPtPerDollar: number;
+  redeemDollarPerPoint: number;
+  referralPtPerDollar: number;
+  tierMultiplierBronze: number;
+  tierMultiplierSilver: number;
+  tierMultiplierGold: number;
+  tierMultiplierPlatinum: number;
+  tierThresholdSilver: number;
+  tierThresholdGold: number;
+  tierThresholdPlatinum: number;
 };
 
 const tierLabels: Record<Locale, Record<TierKey, string>> = {
@@ -152,6 +167,25 @@ function formatMoney(cents: number, locale: Locale) {
   }).format(cents / 100);
 }
 
+function centsToDollarNumber(cents: number | null | undefined): number {
+  if (cents == null || Number.isNaN(cents)) return 0;
+  return Number((cents / 100).toFixed(2));
+}
+
+function dollarsToCentsNumber(value: string): number | null {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num < 0) return null;
+  return Math.round(num * 100);
+}
+
+function parseOptionalNumber(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const num = Number(trimmed);
+  if (!Number.isFinite(num)) return null;
+  return num;
+}
+
 function isWithinDays(value: string, days: number): boolean {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return false;
@@ -179,6 +213,35 @@ export default function AdminMembersPage() {
   const [memberOrders, setMemberOrders] = useState<OrderEntry[]>([]);
   const [memberLedger, setMemberLedger] = useState<LedgerEntry[]>([]);
   const [banLoadingIds, setBanLoadingIds] = useState<Record<string, boolean>>({});
+  const [loyaltyConfig, setLoyaltyConfig] = useState<LoyaltyConfigDto | null>(null);
+  const [loyaltySaving, setLoyaltySaving] = useState(false);
+  const [loyaltyError, setLoyaltyError] = useState<string | null>(null);
+  const [loyaltySuccess, setLoyaltySuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadConfig() {
+      setLoyaltyError(null);
+      try {
+        const config = await apiFetch<LoyaltyConfigDto>("/admin/business/config");
+        if (!cancelled) {
+          setLoyaltyConfig(config);
+        }
+      } catch (error) {
+        console.error(error);
+        if (!cancelled) {
+          setLoyaltyError(isZh ? "加载积分规则失败。" : "Failed to load loyalty rules.");
+        }
+      }
+    }
+
+    void loadConfig();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isZh]);
 
   useEffect(() => {
     let cancelled = false;
@@ -275,6 +338,57 @@ export default function AdminMembersPage() {
     [members],
   );
   const pointsTotal = useMemo(() => members.reduce((sum, member) => sum + member.points, 0), [members]);
+  const balanceTotal = useMemo(() => members.reduce((sum, member) => sum + member.balance, 0), [members]);
+
+  const handleLoyaltyConfigChange = (field: keyof LoyaltyConfigDto, value: string) => {
+    if (!loyaltyConfig) return;
+    if (
+      field === "tierThresholdSilver" ||
+      field === "tierThresholdGold" ||
+      field === "tierThresholdPlatinum"
+    ) {
+      const cents = dollarsToCentsNumber(value);
+      if (cents == null) return;
+      setLoyaltyConfig({ ...loyaltyConfig, [field]: cents });
+      return;
+    }
+
+    const num = parseOptionalNumber(value);
+    if (num == null) return;
+    setLoyaltyConfig({ ...loyaltyConfig, [field]: num });
+  };
+
+  const handleSaveLoyaltyConfig = async () => {
+    if (!loyaltyConfig) return;
+    setLoyaltySaving(true);
+    setLoyaltyError(null);
+    setLoyaltySuccess(null);
+    try {
+      const updated = await apiFetch<LoyaltyConfigDto>("/admin/business/config", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          earnPtPerDollar: loyaltyConfig.earnPtPerDollar,
+          redeemDollarPerPoint: loyaltyConfig.redeemDollarPerPoint,
+          referralPtPerDollar: loyaltyConfig.referralPtPerDollar,
+          tierMultiplierBronze: loyaltyConfig.tierMultiplierBronze,
+          tierMultiplierSilver: loyaltyConfig.tierMultiplierSilver,
+          tierMultiplierGold: loyaltyConfig.tierMultiplierGold,
+          tierMultiplierPlatinum: loyaltyConfig.tierMultiplierPlatinum,
+          tierThresholdSilver: loyaltyConfig.tierThresholdSilver,
+          tierThresholdGold: loyaltyConfig.tierThresholdGold,
+          tierThresholdPlatinum: loyaltyConfig.tierThresholdPlatinum,
+        }),
+      });
+      setLoyaltyConfig(updated);
+      setLoyaltySuccess(isZh ? "积分规则已保存。" : "Loyalty rules saved.");
+    } catch (error) {
+      console.error(error);
+      setLoyaltyError(isZh ? "保存积分规则失败。" : "Failed to save loyalty rules.");
+    } finally {
+      setLoyaltySaving(false);
+    }
+  };
 
   const handleToggleBan = async (member: Member) => {
     setBanLoadingIds((prev) => ({ ...prev, [member.userStableId]: true }));
@@ -328,7 +442,159 @@ export default function AdminMembersPage() {
         </div>
       </header>
 
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">{isZh ? "积分与会员规则" : "Loyalty rules"}</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              {isZh
+                ? "配置积分获取、抵扣与各等级奖励倍率。"
+                : "Configure earning, redemption, and tier multipliers."}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleSaveLoyaltyConfig()}
+            disabled={!loyaltyConfig || loyaltySaving}
+            className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 disabled:opacity-50"
+          >
+            {loyaltySaving ? (isZh ? "保存中…" : "Saving…") : isZh ? "保存规则" : "Save rules"}
+          </button>
+        </div>
+        {loyaltyError && <p className="mt-3 text-xs text-rose-500">{loyaltyError}</p>}
+        {loyaltySuccess && <p className="mt-3 text-xs text-emerald-600">{loyaltySuccess}</p>}
+
+        {loyaltyConfig && (
+          <div className="mt-4 space-y-4">
+            <div className="grid gap-3 md:grid-cols-3">
+              <label className="flex flex-col text-xs font-medium text-slate-700">
+                <span className="whitespace-nowrap">
+                  {isZh ? "积分获取率 (pt / $)" : "Earn rate (pt per $)"}
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.0001"
+                  value={loyaltyConfig.earnPtPerDollar}
+                  onChange={(event) => handleLoyaltyConfigChange("earnPtPerDollar", event.target.value)}
+                  className="mt-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="flex flex-col text-xs font-medium text-slate-700">
+                <span className="whitespace-nowrap">
+                  {isZh ? "积分抵扣汇率 ($ / pt)" : "Redeem rate ($ per pt)"}
+                </span>
+                <input
+                  type="number"
+                  min="0.0001"
+                  step="0.0001"
+                  value={loyaltyConfig.redeemDollarPerPoint}
+                  onChange={(event) => handleLoyaltyConfigChange("redeemDollarPerPoint", event.target.value)}
+                  className="mt-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="flex flex-col text-xs font-medium text-slate-700">
+                <span className="whitespace-nowrap">
+                  {isZh ? "推荐奖励比例 (pt / $)" : "Referral rate (pt per $)"}
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.0001"
+                  value={loyaltyConfig.referralPtPerDollar}
+                  onChange={(event) => handleLoyaltyConfigChange("referralPtPerDollar", event.target.value)}
+                  className="mt-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+              </label>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-4">
+              <label className="flex flex-col text-xs font-medium text-slate-700">
+                <span>{isZh ? "青铜倍率" : "Bronze multiplier"}</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={loyaltyConfig.tierMultiplierBronze}
+                  onChange={(event) => handleLoyaltyConfigChange("tierMultiplierBronze", event.target.value)}
+                  className="mt-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="flex flex-col text-xs font-medium text-slate-700">
+                <span>{isZh ? "白银倍率" : "Silver multiplier"}</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={loyaltyConfig.tierMultiplierSilver}
+                  onChange={(event) => handleLoyaltyConfigChange("tierMultiplierSilver", event.target.value)}
+                  className="mt-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="flex flex-col text-xs font-medium text-slate-700">
+                <span>{isZh ? "黄金倍率" : "Gold multiplier"}</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={loyaltyConfig.tierMultiplierGold}
+                  onChange={(event) => handleLoyaltyConfigChange("tierMultiplierGold", event.target.value)}
+                  className="mt-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="flex flex-col text-xs font-medium text-slate-700">
+                <span>{isZh ? "铂金倍率" : "Platinum multiplier"}</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={loyaltyConfig.tierMultiplierPlatinum}
+                  onChange={(event) => handleLoyaltyConfigChange("tierMultiplierPlatinum", event.target.value)}
+                  className="mt-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+              </label>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-3">
+              <label className="flex flex-col text-xs font-medium text-slate-700">
+                <span>{isZh ? "银卡门槛 ($)" : "Silver threshold ($)"}</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={centsToDollarNumber(loyaltyConfig.tierThresholdSilver)}
+                  onChange={(event) => handleLoyaltyConfigChange("tierThresholdSilver", event.target.value)}
+                  className="mt-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="flex flex-col text-xs font-medium text-slate-700">
+                <span>{isZh ? "金卡门槛 ($)" : "Gold threshold ($)"}</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={centsToDollarNumber(loyaltyConfig.tierThresholdGold)}
+                  onChange={(event) => handleLoyaltyConfigChange("tierThresholdGold", event.target.value)}
+                  className="mt-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="flex flex-col text-xs font-medium text-slate-700">
+                <span>{isZh ? "白金卡门槛 ($)" : "Platinum threshold ($)"}</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={centsToDollarNumber(loyaltyConfig.tierThresholdPlatinum)}
+                  onChange={(event) => handleLoyaltyConfigChange("tierThresholdPlatinum", event.target.value)}
+                  className="mt-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+              </label>
+            </div>
+          </div>
+        )}
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-4">
         <div className="rounded-lg border border-slate-200 bg-white p-4">
           <p className="text-sm text-slate-500">{isZh ? "会员总数" : "Total members"}</p>
           <p className="mt-2 text-2xl font-semibold">{membersTotal}</p>
@@ -343,6 +609,13 @@ export default function AdminMembersPage() {
           <p className="text-sm text-slate-500">{isZh ? "积分余额" : "Points balance"}</p>
           <p className="mt-2 text-2xl font-semibold">{pointsTotal.toLocaleString()}</p>
           <p className="mt-1 text-xs text-slate-400">{isZh ? "含可抵扣积分" : "Redeemable points"}</p>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <p className="text-sm text-slate-500">{isZh ? "储值余额" : "Store balance"}</p>
+          <p className="mt-2 text-2xl font-semibold">
+            {formatMoney(Math.round(balanceTotal * 100), locale)}
+          </p>
+          <p className="mt-1 text-xs text-slate-400">{isZh ? "充值余额合计" : "Total stored value"}</p>
         </div>
       </section>
 
@@ -559,6 +832,12 @@ export default function AdminMembersPage() {
                   <p className="text-xs text-slate-400">{isZh ? "积分余额" : "Points"}</p>
                   <p className="mt-1 text-sm font-semibold text-slate-800">
                     {memberDetail.account.points.toLocaleString()}
+                  </p>
+                </div>
+                <div className="rounded-md bg-slate-50 p-3">
+                  <p className="text-xs text-slate-400">{isZh ? "储值余额" : "Store balance"}</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-800">
+                    {formatMoney(Math.round(memberDetail.account.balance * 100), locale)}
                   </p>
                 </div>
                 <div className="rounded-md bg-slate-50 p-3">
