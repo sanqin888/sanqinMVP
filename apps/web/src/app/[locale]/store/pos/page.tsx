@@ -175,26 +175,15 @@ export default function StorePosPage() {
           cache: "no-store",
         });
         if (cancelled) return;
+
+        // 1. 获取正常的分类列表（这里面的 items 已经包含了 activeSpecial 信息）
         const localized = buildLocalizedMenuFromDb(
           dbMenu.categories ?? [],
           locale,
         );
-        const dailySpecialItems = localized
-          .flatMap((category) => category.items)
-          .filter((item) => item.activeSpecial);
-        const dailySpecialCategory =
-          dailySpecialItems.length > 0
-            ? {
-                stableId: "daily-specials",
-                name: isZh ? "每日特价" : "Daily specials",
-                items: dailySpecialItems,
-              }
-            : null;
-        setMenuCategories(
-          dailySpecialCategory
-            ? [dailySpecialCategory, ...localized]
-            : localized,
-        );
+        // 2. 直接设置原分类列表
+        setMenuCategories(localized);
+
       } catch (error) {
         console.error("Failed to load POS menu", error);
       }

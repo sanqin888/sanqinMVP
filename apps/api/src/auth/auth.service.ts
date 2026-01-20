@@ -429,6 +429,8 @@ export class AuthService {
 
     const now = new Date();
     const isAdminLogin = params.purpose === 'admin';
+    const isPosLogin = params.purpose === 'pos';
+
     const isTrusted =
       !isAdminLogin &&
       params.trustedDeviceToken &&
@@ -436,12 +438,16 @@ export class AuthService {
         userId: user.id,
         token: params.trustedDeviceToken,
       }));
+
+    // 如果是 POS 登录，我们认为设备校验通过等同于通过了 MFA，不需要额外的短信验证
     const requiresTwoFactor = isAdminLogin
       ? true
-      : this.isTwoFactorEnabled({
+      : !isPosLogin && //如果是 POS 登录，直接跳过 2FA 检查 (requiresTwoFactor = false)
+        this.isTwoFactorEnabled({
           twoFactorEnabledAt: user.twoFactorEnabledAt,
           twoFactorMethod: user.twoFactorMethod,
-        }) && !isTrusted;
+        }) &&
+        !isTrusted;
 
     await this.clearDeviceSessions({
       userId: user.id,
@@ -449,6 +455,8 @@ export class AuthService {
       loginLocation: params.loginLocation,
     });
 
+    // 因为 requiresTwoFactor 变成了 false，这里就会写入 now()，
+    // 从而让 AdminMfaGuard 认为该 Session 已通过验证。
     const session = await this.createSession({
       userId: user.id,
       deviceInfo: params.deviceInfo,

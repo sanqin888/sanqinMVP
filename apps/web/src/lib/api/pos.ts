@@ -82,7 +82,7 @@ export type CreateOrderAmendmentType =
   | 'ADDITIONAL_CHARGE';
 
 // ✅ 直接对齐后端枚举（无需映射）
-export type PaymentMethod = 'CASH' | 'CARD' | 'WECHAT_ALIPAY';
+export type PaymentMethod = 'CASH' | 'CARD' | 'WECHAT_ALIPAY' | 'STORE_BALANCE';
 
 export type CreateOrderAmendmentInput = {
   type: CreateOrderAmendmentType;
