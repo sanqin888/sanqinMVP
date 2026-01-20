@@ -17,6 +17,11 @@ import type { PaymentMethod } from "@/lib/api/pos";
 type FulfillmentType = "pickup" | "dine_in";
 type BusinessConfigLite = {
   wechatAlipayExchangeRate: number;
+  earnPtPerDollar: number;
+  tierMultiplierBronze: number;
+  tierMultiplierSilver: number;
+  tierMultiplierGold: number;
+  tierMultiplierPlatinum: number;
 };
 
 type CreatePosOrderResponse = {
@@ -291,6 +296,13 @@ export default function StorePosPaymentPage() {
     null,
   );
   const [wechatAlipayRate, setWechatAlipayRate] = useState<number>(1);
+  const [earnRate, setEarnRate] = useState(0.01);
+  const [tierMultipliers, setTierMultipliers] = useState({
+    BRONZE: 1,
+    SILVER: 2,
+    GOLD: 3,
+    PLATINUM: 5,
+  });
   const [redeemPointsInput, setRedeemPointsInput] = useState("");
   const [successInfo, setSuccessInfo] = useState<{
     orderNumber: string;
@@ -327,6 +339,25 @@ export default function StorePosPaymentPage() {
           Number.isFinite(config.wechatAlipayExchangeRate)
         ) {
           setWechatAlipayRate(config.wechatAlipayExchangeRate);
+        }
+        if (
+          typeof config.earnPtPerDollar === "number" &&
+          Number.isFinite(config.earnPtPerDollar)
+        ) {
+          setEarnRate(config.earnPtPerDollar);
+        }
+        if (
+          typeof config.tierMultiplierBronze === "number" &&
+          typeof config.tierMultiplierSilver === "number" &&
+          typeof config.tierMultiplierGold === "number" &&
+          typeof config.tierMultiplierPlatinum === "number"
+        ) {
+          setTierMultipliers({
+            BRONZE: config.tierMultiplierBronze,
+            SILVER: config.tierMultiplierSilver,
+            GOLD: config.tierMultiplierGold,
+            PLATINUM: config.tierMultiplierPlatinum,
+          });
         }
       })
       .catch((err) => {
@@ -388,18 +419,11 @@ export default function StorePosPaymentPage() {
 
   const pointsEarned = useMemo(() => {
     if (!memberInfo) return 0;
-    const tierMultiplier = {
-      BRONZE: 1,
-      SILVER: 2,
-      GOLD: 3,
-      PLATINUM: 5,
-    } as const;
-    const earnRate = 0.01;
     // 余额支付也算有效消费，按折后金额计算
     const base = (effectiveSubtotalCents / 100) * earnRate;
-    const earned = base * tierMultiplier[memberInfo.tier];
+    const earned = base * tierMultipliers[memberInfo.tier];
     return Math.round(earned * 100) / 100;
-  }, [effectiveSubtotalCents, memberInfo]);
+  }, [earnRate, effectiveSubtotalCents, memberInfo, tierMultipliers]);
 
   // ✅ 新增：计算余额是否充足
   const isBalanceSufficient = useMemo(() => {
