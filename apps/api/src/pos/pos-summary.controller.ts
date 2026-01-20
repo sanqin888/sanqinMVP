@@ -13,7 +13,7 @@ export class PosSummaryController {
   constructor(private readonly service: PosSummaryService) {}
 
   /**
-   * GET /api/v1/pos/summary?timeMin=...&timeMax=...&fulfillmentType=pickup|dine_in|delivery&status=paid|refunded|void&payment=cash|card|online|unknown
+   * GET /api/v1/pos/summary?timeMin=...&timeMax=...&fulfillmentType=pickup|dine_in|delivery&status=paid|refunded|void&payment=cash|card|online|store_balance
    */
   @Get()
   getSummary(

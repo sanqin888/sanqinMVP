@@ -52,8 +52,9 @@ export class AdminMembersController {
   async getLoyaltyLedger(
     @Param('userStableId') userStableId: string,
     @Query('limit') limitRaw?: string,
+    @Query('target') targetRaw?: string,
   ) {
-    return this.service.getLoyaltyLedger(userStableId, limitRaw);
+    return this.service.getLoyaltyLedger(userStableId, limitRaw, targetRaw);
   }
 
   @Get(':userStableId/orders')

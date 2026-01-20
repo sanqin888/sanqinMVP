@@ -64,6 +64,48 @@ import type { OrderDto, OrderItemDto } from './dto/order.dto';
 import type { PrintPosPayloadDto } from '../pos/dto/print-pos-payload.dto';
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
+
+const orderDetailSelect = {
+  orderStableId: true,
+  clientRequestId: true,
+  status: true,
+  channel: true,
+  fulfillmentType: true,
+  paymentMethod: true,
+  pickupCode: true,
+  contactName: true,
+  contactPhone: true,
+  deliveryType: true,
+  deliveryProvider: true,
+  deliveryEtaMinMinutes: true,
+  deliveryEtaMaxMinutes: true,
+  subtotalCents: true,
+  taxCents: true,
+  deliveryFeeCents: true,
+  deliveryCostCents: true,
+  deliverySubsidyCents: true,
+  totalCents: true,
+  couponCodeSnapshot: true,
+  couponTitleSnapshot: true,
+  couponDiscountCents: true,
+  loyaltyRedeemCents: true,
+  createdAt: true,
+  paidAt: true,
+  userId: true,
+  items: {
+    select: {
+      productStableId: true,
+      qty: true,
+      displayName: true,
+      nameEn: true,
+      nameZh: true,
+      unitPriceCents: true,
+      optionsJson: true,
+    },
+  },
+} satisfies Prisma.OrderSelect;
+
+type OrderDetail = Prisma.OrderGetPayload<{ select: typeof orderDetailSelect }>;
 type OrderItemInput = NonNullable<CreateOrderInput['items']>[number] & {
   productId?: string;
   productStableId?: string;
@@ -152,7 +194,7 @@ export class OrdersService {
     private readonly notificationService: NotificationService,
   ) {}
 
-  private toOrderDto(order: OrderWithItems): OrderDto {
+  private toOrderDto(order: OrderWithItems | OrderDetail): OrderDto {
     const orderStableId = order.orderStableId;
     const deliveryFeeCents = order.deliveryFeeCents ?? 0;
     const deliveryCostCents = order.deliveryCostCents ?? 0;
@@ -1894,8 +1936,8 @@ export class OrdersService {
   async getByStableId(orderStableId: string): Promise<OrderDto> {
     const order = (await this.prisma.order.findUnique({
       where: { orderStableId: orderStableId.trim() },
-      include: { items: true },
-    })) as OrderWithItems | null;
+      select: orderDetailSelect,
+    })) as OrderDetail | null;
 
     if (!order) throw new NotFoundException('order not found');
     return this.toOrderDto(order);
@@ -1906,8 +1948,8 @@ export class OrdersService {
   ): Promise<{ order: OrderDto; ownerUserStableId: string | null }> {
     const order = (await this.prisma.order.findUnique({
       where: { orderStableId: orderStableId.trim() },
-      include: { items: true },
-    })) as OrderWithItems | null;
+      select: orderDetailSelect,
+    })) as OrderDetail | null;
 
     if (!order) throw new NotFoundException('order not found');
     const ownerUserStableId = order.userId

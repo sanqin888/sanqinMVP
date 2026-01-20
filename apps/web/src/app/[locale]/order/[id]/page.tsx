@@ -28,6 +28,7 @@ type FullOrder = {
   id: string;
   status: OrderStatus;
   channel: string;
+  paymentMethod: string | null;
   subtotalCents: number;
   taxCents: number;
   totalCents: number;
@@ -107,6 +108,18 @@ function formatOrderStatus(status: OrderStatus, isZh: boolean): string {
     refunded: 'Refunded',
   };
   return isZh ? zh[status] : en[status];
+}
+
+function formatPaymentMethod(value: string | null, isZh: boolean): string {
+  if (!value) return isZh ? "未知" : "Unknown";
+  const map: Record<string, { zh: string; en: string }> = {
+    CASH: { zh: "现金", en: "Cash" },
+    CARD: { zh: "刷卡", en: "Card" },
+    WECHAT_ALIPAY: { zh: "微信/支付宝", en: "WeChat/Alipay" },
+    STORE_BALANCE: { zh: "储值余额", en: "Store balance" },
+  };
+  const hit = map[value];
+  return hit ? (isZh ? hit.zh : hit.en) : value;
 }
 
 export default function OrderDetailPage({ params }: PageProps) {
@@ -197,6 +210,7 @@ export default function OrderDetailPage({ params }: PageProps) {
   }, [order]);
   const fullOrder = isFullDetail ? (order as FullOrder) : null;
   const summaryOrder = !isFullDetail ? (order as PublicSummary) : null;
+  const paymentLabel = formatPaymentMethod(fullOrder?.paymentMethod ?? null, isZh);
 
   const renderOptions = (
     rawOptions: FullOrderItem['optionsJson'] | PublicSummaryItem['optionsJson'],
@@ -329,6 +343,12 @@ export default function OrderDetailPage({ params }: PageProps) {
     <li className="font-medium text-gray-900">
       合计：${(order.totalCents / 100).toFixed(2)}
     </li>
+    {isFullDetail && fullOrder ? (
+      <li>
+        {isZh ? "支付方式：" : "Payment method: "}
+        <span className="text-gray-700">{paymentLabel}</span>
+      </li>
+    ) : null}
   </ul>
 </div>
 
