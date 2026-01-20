@@ -440,6 +440,7 @@ export class MembershipService {
       displayName: user.name,
       email: user.email,
       tier: account.tier,
+      balance: Number(account.balanceMicro) / MICRO_PER_POINT,
       points: Number(account.pointsMicro) / MICRO_PER_POINT,
       lifetimeSpendCents: account.lifetimeSpendCents ?? 0,
       availableDiscountCents,

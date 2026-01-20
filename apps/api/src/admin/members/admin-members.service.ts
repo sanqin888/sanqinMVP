@@ -370,6 +370,7 @@ export class AdminMembersService {
           email: user.email ?? null,
           phone: user.phone ? this.maskPhone(user.phone) : null,
           tier: account?.tier ?? 'BRONZE',
+          balance: account ? Number(account.balanceMicro) / MICRO_PER_POINT : 0,
           points: account ? Number(account.pointsMicro) / MICRO_PER_POINT : 0,
           lifetimeSpendCents: account?.lifetimeSpendCents ?? 0,
           status: user.status,
@@ -422,6 +423,7 @@ export class AdminMembersService {
       availableDiscountCents,
       account: {
         tier: account.tier,
+        balance: Number(account.balanceMicro) / MICRO_PER_POINT,
         points: Number(account.pointsMicro) / MICRO_PER_POINT,
         lifetimeSpendCents,
         nextTier: tierProgress.nextTier,
