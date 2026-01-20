@@ -1,0 +1,60 @@
+# --- VCS ---
+.git
+.gitignore
+
+# --- OS / Editor ---
+.DS_Store
+Thumbs.db
+.idea
+.vscode
+*.swp
+*.swo
+
+# --- Logs ---
+*.log
+logs
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# --- Node / package managers ---
+**/node_modules
+**/.pnp
+**/.pnp.*
+.pnpm-store
+
+# --- Build outputs ---
+**/dist
+**/.next
+**/.turbo
+**/.cache
+**/coverage
+**/out
+
+# --- Runtime artifacts / local data ---
+.env
+.env.*
+!.env.example
+*.local
+tmp
+temp
+
+# --- Prisma / DB dumps (if any) ---
+**/*.sqlite
+**/*.db
+**/*.dump
+**/*.sql
+
+# --- Docker related (optional) ---
+docker-compose.override.yml
+
+# --- Tools: local printer server (Windows only, do not ship to VM images) ---
+tools/printer-server/**
+**/printer-server.js
+
+# --- Misc ---
+*.bin
+*.psd
+*.ai
+*.sketch

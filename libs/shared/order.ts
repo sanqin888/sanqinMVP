@@ -80,7 +80,7 @@ export const CreateOrderSchema = z.object({
   paymentMethod: PaymentMethodSchema.optional(),
   deliveryType: DeliveryTypeSchema.optional(),
   items: z.array(CreateOrderItemSchema).optional(),
-  pointsToRedeem: z.number().int().min(0).optional(),
+  pointsToRedeem: z.number().min(0).optional(),
   redeemValueCents: z.number().int().min(0).optional(),
   balanceUsedCents: z.number().int().min(0).optional(),
   subtotalCents: z.number().int().min(0).optional(),
