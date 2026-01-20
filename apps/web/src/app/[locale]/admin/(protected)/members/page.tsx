@@ -44,6 +44,7 @@ type MemberDetail = {
   account: {
     tier: TierKey;
     points: number;
+    balance: number;
     lifetimeSpendCents: number;
   };
 };
@@ -464,10 +465,12 @@ export default function AdminMembersPage() {
         {loyaltySuccess && <p className="mt-3 text-xs text-emerald-600">{loyaltySuccess}</p>}
 
         {loyaltyConfig && (
-          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <div className="mt-4 space-y-4">
             <div className="grid gap-3 md:grid-cols-3">
               <label className="flex flex-col text-xs font-medium text-slate-700">
-                <span>{isZh ? "积分获取率 (pt / $)" : "Earn rate (pt per $)"}</span>
+                <span className="whitespace-nowrap">
+                  {isZh ? "积分获取率 (pt / $)" : "Earn rate (pt per $)"}
+                </span>
                 <input
                   type="number"
                   min="0"
@@ -478,7 +481,9 @@ export default function AdminMembersPage() {
                 />
               </label>
               <label className="flex flex-col text-xs font-medium text-slate-700">
-                <span>{isZh ? "积分抵扣汇率 ($ / pt)" : "Redeem rate ($ per pt)"}</span>
+                <span className="whitespace-nowrap">
+                  {isZh ? "积分抵扣汇率 ($ / pt)" : "Redeem rate ($ per pt)"}
+                </span>
                 <input
                   type="number"
                   min="0.0001"
@@ -489,7 +494,9 @@ export default function AdminMembersPage() {
                 />
               </label>
               <label className="flex flex-col text-xs font-medium text-slate-700">
-                <span>{isZh ? "推荐奖励比例 (pt / $)" : "Referral rate (pt per $)"}</span>
+                <span className="whitespace-nowrap">
+                  {isZh ? "推荐奖励比例 (pt / $)" : "Referral rate (pt per $)"}
+                </span>
                 <input
                   type="number"
                   min="0"
@@ -825,6 +832,12 @@ export default function AdminMembersPage() {
                   <p className="text-xs text-slate-400">{isZh ? "积分余额" : "Points"}</p>
                   <p className="mt-1 text-sm font-semibold text-slate-800">
                     {memberDetail.account.points.toLocaleString()}
+                  </p>
+                </div>
+                <div className="rounded-md bg-slate-50 p-3">
+                  <p className="text-xs text-slate-400">{isZh ? "储值余额" : "Store balance"}</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-800">
+                    {formatMoney(Math.round(memberDetail.account.balance * 100), locale)}
                   </p>
                 </div>
                 <div className="rounded-md bg-slate-50 p-3">
