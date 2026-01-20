@@ -137,7 +137,7 @@ export class PosSummaryService {
   /**
    * ✅ 统一 payment bucket：
    * - web / ubereats：归 online
-   * - in_store：看 paymentMethod（CASH/CARD/WECHAT_ALIPAY）
+   * - in_store：看 paymentMethod（CASH/CARD/WECHAT_ALIPAY/STORE_BALANCE）
    */
   private computePaymentBucket(
     o: Pick<OrderLite, 'channel' | 'paymentMethod'>,
@@ -151,6 +151,8 @@ export class PosSummaryService {
       case PaymentMethod.CARD:
         return 'card';
       case PaymentMethod.WECHAT_ALIPAY:
+        return 'online';
+      case PaymentMethod.STORE_BALANCE:
         return 'online';
       default:
         return 'unknown';

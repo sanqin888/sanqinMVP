@@ -770,6 +770,7 @@ enum PaymentMethod {
   CASH
   CARD
   WECHAT_ALIPAY
+  STORE_BALANCE
 }
 
 enum OrderAmendmentItemAction {

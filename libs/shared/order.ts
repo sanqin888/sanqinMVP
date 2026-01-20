@@ -3,7 +3,7 @@ import { z } from 'zod';
 export type Channel = 'web' | 'in_store' | 'ubereats';
 export type FulfillmentType = 'pickup' | 'dine_in' | 'delivery';
 export type DeliveryType = 'STANDARD' | 'PRIORITY';
-export type PaymentMethod = 'CASH' | 'CARD' | 'WECHAT_ALIPAY';
+export type PaymentMethod = 'CASH' | 'CARD' | 'WECHAT_ALIPAY' | 'STORE_BALANCE';
 
 export const OrderStatuses = [
   'pending',
@@ -38,6 +38,7 @@ export const PaymentMethodSchema = z.enum([
   'CASH',
   'CARD',
   'WECHAT_ALIPAY',
+  'STORE_BALANCE',
 ]);
 
 export const CreateOrderItemSchema = z.object({

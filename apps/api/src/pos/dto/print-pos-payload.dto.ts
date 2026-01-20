@@ -2,7 +2,11 @@
 import type { FulfillmentType } from '@prisma/client';
 import type { OrderItemOptionsSnapshot } from '../../orders/order-item-options';
 
-type PrintPosPaymentMethod = 'cash' | 'card' | 'wechat_alipay';
+type PrintPosPaymentMethod =
+  | 'cash'
+  | 'card'
+  | 'wechat_alipay'
+  | 'store_balance';
 
 type PrintPosItemSnapshot = {
   productStableId: string;
