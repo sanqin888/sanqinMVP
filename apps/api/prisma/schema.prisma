@@ -53,6 +53,11 @@ enum LoyaltyEntryType {
   AMEND_REFERRAL_ADJUST
 }
 
+enum LoyaltyTarget {
+  POINTS   // 积分（赠送、消费返利）
+  BALANCE  // 余额（充值本金）
+}
+
 enum PhoneVerificationStatus {
   PENDING
   VERIFIED
@@ -476,7 +481,8 @@ model OrderAmendmentItem {
 
 model LoyaltyAccount {
   userId             String          @unique
-  pointsMicro        BigInt
+  pointsMicro        BigInt          @default(0) // 积分池 (赠送 + 返利)
+  balanceMicro       BigInt          @default(0) // 余额池 (充值本金)
   tier               LoyaltyTier     @default(BRONZE)
   createdAt          DateTime        @default(now())
   id                 String          @id @default(uuid()) @db.Uuid
@@ -488,6 +494,7 @@ model LoyaltyAccount {
 
 model LoyaltyLedger {
   type              LoyaltyEntryType
+  target            LoyaltyTarget    @default(POINTS) // 默认动积分，充值时动余额
   deltaMicro        BigInt
   balanceAfterMicro BigInt
   note              String?

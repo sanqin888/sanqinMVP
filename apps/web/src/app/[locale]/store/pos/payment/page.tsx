@@ -12,9 +12,9 @@ import {
   POS_DISPLAY_STORAGE_KEY,
   type PosDisplaySnapshot,
 } from "@/lib/pos-display";
+import type { PaymentMethod } from "@/lib/api/pos";
 
 type FulfillmentType = "pickup" | "dine_in";
-type PaymentMethod = "cash" | "card" | "wechat_alipay";
 type BusinessConfigLite = {
   wechatAlipayExchangeRate: number;
 };
@@ -25,12 +25,14 @@ type CreatePosOrderResponse = {
   pickupCode?: string | null;
 };
 
+// ✅ 更新：增加 balance 字段
 type MemberLookupResponse = {
   userStableId: string;
   displayName?: string | null;
   phone?: string | null;
   tier: "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
   points: number;
+  balance?: number; // 余额 (单位: 元)
   availableDiscountCents: number;
   lifetimeSpendCents: number;
 };
@@ -41,6 +43,7 @@ type MemberSearchResponse = {
   }>;
 };
 
+// ✅ 更新：增加 balance 字段
 type MemberDetailResponse = {
   userStableId: string;
   displayName?: string | null;
@@ -49,6 +52,7 @@ type MemberDetailResponse = {
   account: {
     tier: MemberLookupResponse["tier"];
     points: MemberLookupResponse["points"];
+    balance?: number; // 余额 (单位: 元)
     lifetimeSpendCents: MemberLookupResponse["lifetimeSpendCents"];
   };
 };
@@ -95,6 +99,9 @@ async function sendPosPrintPayload(
   }
 }
 
+// ✅ 本地支付方式状态类型
+type LocalPaymentMethod = "cash" | "card" | "wechat_alipay" | "store_balance";
+
 const STRINGS: Record<
   Locale,
   {
@@ -112,6 +119,8 @@ const STRINGS: Record<
     payCash: string;
     payCard: string;
     payWeChatAlipay: string;
+    payStoreBalance: string; // ✅ 新增
+    balanceInsufficient: string; // ✅ 新增
     back: string;
     confirm: string;
     confirming: string;
@@ -159,6 +168,8 @@ const STRINGS: Record<
     payCash: "现金",
     payCard: "银行卡",
     payWeChatAlipay: "微信或支付宝",
+    payStoreBalance: "储值余额支付",
+    balanceInsufficient: "余额不足",
     back: "返回点单",
     confirm: "确认收款并生成订单",
     confirming: "处理中…",
@@ -205,6 +216,8 @@ const STRINGS: Record<
     payCash: "Cash",
     payCard: "Card",
     payWeChatAlipay: "WeChat / Alipay",
+    payStoreBalance: "Store Balance",
+    balanceInsufficient: "Insufficient balance",
     back: "Back to POS",
     confirm: "Confirm payment & create order",
     confirming: "Saving…",
@@ -261,7 +274,10 @@ export default function StorePosPaymentPage() {
   const [snapshot, setSnapshot] = useState<PosDisplaySnapshot | null>(null);
   const [loadingSnapshot, setLoadingSnapshot] = useState(true);
   const [fulfillment, setFulfillment] = useState<FulfillmentType | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
+  
+  // ✅ 状态更新：支持 store_balance
+  const [paymentMethod, setPaymentMethod] = useState<LocalPaymentMethod>("cash");
+  
   const [discountRate, setDiscountRate] = useState<number>(0);
   const [showDiscountOptions, setShowDiscountOptions] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -379,10 +395,19 @@ export default function StorePosPaymentPage() {
       PLATINUM: 5,
     } as const;
     const earnRate = 0.01;
+    // 余额支付也算有效消费，按折后金额计算
     const base = (effectiveSubtotalCents / 100) * earnRate;
     const earned = base * tierMultiplier[memberInfo.tier];
     return Math.round(earned * 100) / 100;
   }, [effectiveSubtotalCents, memberInfo]);
+
+  // ✅ 新增：计算余额是否充足
+  const isBalanceSufficient = useMemo(() => {
+    if (paymentMethod !== 'store_balance') return true;
+    if (!memberInfo) return false;
+    const balanceCents = (memberInfo.balance ?? 0) * 100;
+    return balanceCents >= roundedTotalCents;
+  }, [paymentMethod, memberInfo, roundedTotalCents]);
 
   const computedSnapshot = useMemo(() => {
     if (!snapshot) return null;
@@ -482,6 +507,7 @@ export default function StorePosPaymentPage() {
         phone: detail.phone ?? null,
         tier: detail.account.tier,
         points: detail.account.points,
+        balance: detail.account.balance, // ✅ 获取余额
         availableDiscountCents: detail.availableDiscountCents ?? 0,
         lifetimeSpendCents: detail.account.lifetimeSpendCents,
       });
@@ -505,6 +531,10 @@ export default function StorePosPaymentPage() {
     setMemberPhone("");
     setRedeemPointsInput("");
     setMemberLookupError(null);
+    // 如果之前选的是余额支付，清除会员后重置为现金
+    if (paymentMethod === "store_balance") {
+        setPaymentMethod("cash");
+    }
   };
 
   const handleBack = () => {
@@ -526,12 +556,24 @@ export default function StorePosPaymentPage() {
       return;
     }
 
+    // ✅ 余额支付前置校验
+    if (paymentMethod === 'store_balance') {
+        if (!memberInfo) {
+            setError(t.memberNotFound);
+            setSubmitting(false);
+            return;
+        }
+        if (!isBalanceSufficient) {
+            setError(t.balanceInsufficient);
+            setSubmitting(false);
+            return;
+        }
+    }
+
     try {
       const itemsPayload = snapshot.items.map((item) => ({
         productStableId: item.stableId,
         qty: item.quantity,
-        // 后端单价通常用“元”还是“分”你之前已经定过了，
-        // 这里我按你 web 那套：API 用“元”，DB 存“分”，所以 /100
         unitPrice: item.unitPriceCents / 100,
         displayName: locale === "zh" ? item.nameZh : item.nameEn,
         nameEn: item.nameEn,
@@ -539,12 +581,11 @@ export default function StorePosPaymentPage() {
         options: item.options,
       }));
 
-      const apiPaymentMethod =
-        paymentMethod === "cash"
-          ? "CASH"
-          : paymentMethod === "card"
-            ? "CARD"
-            : "WECHAT_ALIPAY";
+      // ✅ 映射 PaymentMethod
+      let apiPaymentMethod: PaymentMethod = "CASH";
+      if (paymentMethod === "card") apiPaymentMethod = "CARD";
+      else if (paymentMethod === "wechat_alipay") apiPaymentMethod = "WECHAT_ALIPAY";
+      else if (paymentMethod === "store_balance") apiPaymentMethod = "STORE_BALANCE";
 
       const body = {
         channel: "in_store" as const,
@@ -559,16 +600,12 @@ export default function StorePosPaymentPage() {
         contactPhone: memberInfo?.phone ?? undefined,
       };
 
-      // 👉 调试用：你可以先打开这一行看看真实发出去是什么
-      // console.log("POS create order body:", body);
-
       const order = await apiFetch<CreatePosOrderResponse>("/pos/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
 
-      // ✅ 打印：发送给本地打印服务（无弹窗）
       if (typeof window !== "undefined" && order.orderStableId) {
         void sendPosPrintPayload(order.orderStableId, locale);
 
@@ -619,7 +656,6 @@ export default function StorePosPaymentPage() {
           <h1 className="text-2xl font-semibold">{t.title}</h1>
           <p className="text-sm text-slate-300">{t.subtitle}</p>
         </div>
-        {/* 右上角全站语言切换由根布局提供，这里不再重复 */}
       </header>
 
       <section className="p-4 max-w-5xl mx-auto flex flex-col gap-4 lg:flex-row">
@@ -908,10 +944,34 @@ export default function StorePosPaymentPage() {
                 >
                   {t.payWeChatAlipay}
                 </button>
+                
+                {/* ✅ 新增：储值余额支付按钮 */}
+                {memberInfo && (memberInfo.balance ?? 0) > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod("store_balance")}
+                    className={`h-10 rounded-2xl border font-medium flex justify-between px-4 items-center ${
+                      paymentMethod === "store_balance"
+                        ? "border-emerald-400 bg-emerald-500 text-slate-900"
+                        : "border-slate-600 bg-slate-900 text-slate-100"
+                    }`}
+                  >
+                    <span>{t.payStoreBalance}</span>
+                    <span className="text-xs opacity-80">
+                       {/* 显示当前余额 */}
+                       {formatMoney((memberInfo.balance ?? 0) * 100)}
+                    </span>
+                  </button>
+                )}
               </div>
             </div>
 
             <p className="text-xs text-slate-400">{t.tip}</p>
+
+            {/* ✅ 显示余额不足提示 */}
+            {!isBalanceSufficient && paymentMethod === 'store_balance' && (
+                 <p className="mt-2 text-xs text-rose-300">{t.balanceInsufficient}</p>
+            )}
 
             {error && (
               <div className="rounded-2xl border border-rose-500/60 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">
@@ -930,10 +990,11 @@ export default function StorePosPaymentPage() {
             </button>
             <button
               type="button"
-              disabled={!hasItems || submitting || !snapshot || !fulfillment}
+              // ✅ 增加条件：如果选了余额支付且余额不足，禁止提交
+              disabled={!hasItems || submitting || !snapshot || !fulfillment || (!isBalanceSufficient && paymentMethod === 'store_balance')}
               onClick={handleConfirm}
               className={`flex-[1.5] h-11 rounded-2xl text-sm font-semibold ${
-                !hasItems || submitting || !snapshot || !fulfillment
+                !hasItems || submitting || !snapshot || !fulfillment || (!isBalanceSufficient && paymentMethod === 'store_balance')
                   ? "bg-slate-500 text-slate-200"
                   : "bg-emerald-500 text-slate-900 hover:bg-emerald-400"
               }`}

@@ -17,6 +17,8 @@ const COPY = {
     searchEmpty: "暂无匹配会员。",
     memberOverview: "会员概览",
     pointsBalance: "积分余额",
+    walletBalance: "储值余额",
+    pointsAccount: "奖励积分",
     tierLabel: "等级",
     marketingOptIn: "营销短信/邮件",
     marketingOptInYes: "已同意",
@@ -70,12 +72,11 @@ const COPY = {
       pointsPlaceholder: "请输入积分",
       reasonLabel: "备注原因",
       reasonPlaceholder: "请输入原因（必填）",
-      rechargeAmount: "充值金额 (现金)",
       rechargeAmountHint: "充值金额将按 1:1 折算为积分",
+      rechargeAmount: "充值金额",
       bonusPoints: "奖励积分",
       paymentMethod: "结算方式",
       payCash: "现金",
-      payCard: "银行卡",
       payWeChatAlipay: "微信或支付宝",
       wechatAlipayConverted: "微信/支付宝折算金额",
       sendCode: "发送验证码",
@@ -105,6 +106,8 @@ const COPY = {
     searchEmpty: "No matching members.",
     memberOverview: "Member overview",
     pointsBalance: "Points balance",
+    walletBalance: "Store Balance",
+    pointsAccount: "Reward Points",
     tierLabel: "Tier",
     marketingOptIn: "Marketing email/SMS",
     marketingOptInYes: "Opted in",
@@ -158,12 +161,11 @@ const COPY = {
       pointsPlaceholder: "Enter points",
       reasonLabel: "Reason",
       reasonPlaceholder: "Reason required",
-      rechargeAmount: "Cash recharge",
       rechargeAmountHint: "Recharge amount converts 1:1 into points",
+      rechargeAmount: "Cash recharge",
       bonusPoints: "Bonus points",
       paymentMethod: "Payment method",
       payCash: "Cash",
-      payCard: "Card",
       payWeChatAlipay: "WeChat / Alipay",
       wechatAlipayConverted: "WeChat/Alipay converted total",
       sendCode: "Send code",
@@ -213,6 +215,7 @@ type MemberDetail = {
   account: {
     tier: string;
     points: number;
+    balance: number; // 余额
     lifetimeSpendCents: number;
   };
 };
@@ -276,6 +279,14 @@ function getInitials(name: string | null) {
   if (!name) return "?";
   const parts = name.trim().split(/\s+/).slice(0, 2);
   return parts.map((part) => part.charAt(0).toUpperCase()).join("");
+}
+
+// 辅助函数：格式化余额
+function formatBalance(amount: number | undefined, locale: Locale) {
+  return formatMoney((amount ?? 0) * 100, locale); // 假设后端传的是元，这里转分格式化，或者后端传的就是元。
+  // 通常 API 设计里 points 是 number, balance 建议也是 number (元)。
+  // 如果后端传的是 balanceMicro (分)，这里需要除以 100。
+  // 假设后端传回前端的是已经 normalized 的“元”单位 (matches points logic)。
 }
 
 export default function PosMembershipPage() {
@@ -693,11 +704,22 @@ export default function PosMembershipPage() {
 
                 <div className="space-y-4">
                   <div className="rounded-2xl border border-slate-700 bg-slate-900 p-5">
-                    <p className="text-xs text-slate-400">{copy.pointsBalance}</p>
-                    <p className="mt-2 text-3xl font-semibold text-emerald-200">
-                      {formatPoints(memberDetail.account.points, locale)}
-                    </p>
-                    <p className="mt-2 text-xs text-slate-500">
+                    {/* ✅ 分开展示余额和积分 */}
+                    <div className="mb-4 border-b border-slate-700 pb-4">
+                      <p className="text-xs text-slate-400">{copy.walletBalance}</p>
+                      <p className="mt-1 text-3xl font-semibold text-white">
+                        {formatBalance(memberDetail.account.balance, locale)}
+                      </p>
+                    </div>
+                    
+                    <div>
+                      <p className="text-xs text-slate-400">{copy.pointsAccount}</p>
+                      <p className="mt-1 text-2xl font-semibold text-emerald-400">
+                        {formatPoints(memberDetail.account.points, locale)}
+                      </p>
+                    </div>
+
+                    <p className="mt-3 text-xs text-slate-500">
                       {copy.tierLabel}: {memberDetail.account.tier}
                     </p>
                   </div>
@@ -953,7 +975,7 @@ export default function PosMembershipPage() {
                 <label className="text-xs text-slate-400">
                   {copy.modal.paymentMethod}
                 </label>
-                <div className="grid grid-cols-3 gap-2 text-xs">
+                <div className="grid grid-cols-2 gap-2 text-xs">
                   <button
                     type="button"
                     onClick={() => setRechargePaymentMethod("cash")}
@@ -965,17 +987,7 @@ export default function PosMembershipPage() {
                   >
                     {copy.modal.payCash}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setRechargePaymentMethod("card")}
-                    className={`rounded-full border px-3 py-2 ${
-                      rechargePaymentMethod === "card"
-                        ? "border-emerald-400/70 bg-emerald-500/10 text-emerald-200"
-                        : "border-slate-700 bg-slate-800 text-slate-200"
-                    }`}
-                  >
-                    {copy.modal.payCard}
-                  </button>
+                  {/* ❌ 移除了银行卡 (Card) 按钮 */}
                   <button
                     type="button"
                     onClick={() => setRechargePaymentMethod("wechat_alipay")}

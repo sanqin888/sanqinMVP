@@ -24,19 +24,6 @@ type BusinessHourDto = {
   isClosed: boolean;
 };
 
-type BusinessConfigDto = {
-  id: number;
-  storeName: string | null;
-  timezone: string;
-  isTemporarilyClosed: boolean;
-  temporaryCloseReason: string | null;
-  publicNotice: string | null;
-  publicNoticeEn: string | null;
-  deliveryBaseFeeCents: number;
-  priorityPerKmCents: number;
-  salesTaxRate: number;
-};
-
 type BusinessConfigResponse = {
   publicNotice: string | null;
   publicNoticeEn: string | null;
