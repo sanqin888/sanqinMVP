@@ -6,7 +6,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import type { Locale } from '@/lib/i18n/locales';
 import { signOut, useSession } from '@/lib/auth-session';
-import { apiFetch } from '@/lib/api/client';
+import { ApiError, apiFetch } from '@/lib/api/client';
 import {
   formatCanadianPhoneForApi,
   isValidCanadianPhone,
@@ -260,6 +260,34 @@ export default function MembershipHomePage() {
   const [phoneEnrollSending, setPhoneEnrollSending] = useState(false);
   const [phoneEnrollVerifying, setPhoneEnrollVerifying] = useState(false);
   const [phoneEnrollError, setPhoneEnrollError] = useState<string | null>(null);
+
+  const [emailEnrollInput, setEmailEnrollInput] = useState('');
+  const [emailEnrollCode, setEmailEnrollCode] = useState('');
+  const [emailEnrollSending, setEmailEnrollSending] = useState(false);
+  const [emailEnrollVerifying, setEmailEnrollVerifying] = useState(false);
+  const [emailEnrollError, setEmailEnrollError] = useState<string | null>(null);
+  const [emailEnrollSent, setEmailEnrollSent] = useState(false);
+  const [emailEnrollVisible, setEmailEnrollVisible] = useState(false);
+  const [marketingOptInPending, setMarketingOptInPending] = useState(false);
+
+  const isValidEmail = useCallback((value: string) => {
+    const trimmed = value.trim();
+    return trimmed.includes('@');
+  }, []);
+
+  const readApiErrorMessage = useCallback((error: unknown) => {
+    if (!(error instanceof ApiError)) return null;
+    const payload = error.payload;
+    if (!payload || typeof payload !== 'object') return null;
+    const maybe = payload as { message?: string | string[] };
+    if (Array.isArray(maybe.message)) {
+      return maybe.message.join(', ');
+    }
+    if (typeof maybe.message === 'string') {
+      return maybe.message;
+    }
+    return null;
+  }, []);
   const [twoFactorSaving, setTwoFactorSaving] = useState(false);
   const [twoFactorError, setTwoFactorError] = useState<string | null>(null);
 
@@ -597,6 +625,21 @@ export default function MembershipHomePage() {
     async (next: boolean) => {
       if (!member) return;
 
+      if (!next) {
+        setMarketingOptInPending(false);
+      }
+
+      if (next && !member.email) {
+        setMarketingError(
+          isZh
+            ? '请先绑定邮箱后再开启订阅。'
+            : 'Please link an email before enabling subscriptions.',
+        );
+        setEmailEnrollVisible(true);
+        setMarketingOptInPending(true);
+        return;
+      }
+
       setMarketingSaving(true);
       setMarketingError(null);
 
@@ -611,23 +654,62 @@ export default function MembershipHomePage() {
         });
 
         if (!res.ok) {
+          let errorMessage: string | null = null;
+          try {
+            const data = (await res.json()) as { message?: string | string[] };
+            if (Array.isArray(data.message)) {
+              errorMessage = data.message.join(', ');
+            } else if (typeof data.message === 'string') {
+              errorMessage = data.message;
+            }
+          } catch (parseError) {
+            console.error(parseError);
+          }
+          if (errorMessage === 'email_not_linked') {
+            throw new Error(errorMessage);
+          }
           throw new Error(`Failed with status ${res.status}`);
         }
 
         setMarketingOptIn(next);
       } catch (err) {
         console.error(err);
-        setMarketingError(
-          isZh
-            ? '更新订阅偏好失败，请稍后再试。'
-            : 'Failed to update email preference. Please try again later.',
-        );
+        if (err instanceof Error && err.message === 'email_not_linked') {
+          setEmailEnrollVisible(true);
+          setMarketingOptInPending(true);
+          setMarketingError(
+            isZh
+              ? '请先绑定邮箱后再开启订阅。'
+              : 'Please link an email before enabling subscriptions.',
+          );
+        } else {
+          setMarketingError(
+            isZh
+              ? '更新订阅偏好失败，请稍后再试。'
+              : 'Failed to update email preference. Please try again later.',
+          );
+        }
       } finally {
         setMarketingSaving(false);
       }
     },
     [member, isZh],
   );
+
+  useEffect(() => {
+    if (member?.email) {
+      setEmailEnrollVisible(false);
+      setEmailEnrollError(null);
+      setEmailEnrollSent(false);
+    }
+  }, [member?.email]);
+
+  useEffect(() => {
+    if (marketingOptInPending && member?.email) {
+      setMarketingOptInPending(false);
+      void handleMarketingToggle(true);
+    }
+  }, [marketingOptInPending, member?.email, handleMarketingToggle]);
 
   const handleProfileSave = useCallback(async () => {
     if (!member) return;
@@ -901,6 +983,112 @@ export default function MembershipHomePage() {
       setPhoneEnrollVerifying(false);
     }
   }, [phoneEnrollInput, phoneEnrollCode, isZh]);
+
+  const handleEmailEnrollInputChange = useCallback((value: string) => {
+    setEmailEnrollInput(value);
+    if (emailEnrollError) {
+      setEmailEnrollError(null);
+    }
+  }, [emailEnrollError]);
+
+  const handleEmailEnrollCodeChange = useCallback((value: string) => {
+    setEmailEnrollCode(value);
+    if (emailEnrollError) {
+      setEmailEnrollError(null);
+    }
+  }, [emailEnrollError]);
+
+  const handleRequestEmailEnroll = useCallback(async () => {
+    if (!isValidEmail(emailEnrollInput)) {
+      setEmailEnrollError(
+        isZh ? '请输入有效的邮箱地址。' : 'Please enter a valid email.',
+      );
+      return;
+    }
+
+    try {
+      setEmailEnrollSending(true);
+      setEmailEnrollError(null);
+      setEmailEnrollSent(false);
+      await apiFetch('/membership/email/verification/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailEnrollInput.trim() }),
+      });
+      setEmailEnrollSent(true);
+    } catch (err) {
+      console.error(err);
+      const message = readApiErrorMessage(err);
+      if (message === 'email_in_use') {
+        setEmailEnrollError(
+          isZh ? '该邮箱已被使用。' : 'That email is already in use.',
+        );
+      } else if (message === 'invalid_email') {
+        setEmailEnrollError(
+          isZh ? '请输入有效的邮箱地址。' : 'Please enter a valid email.',
+        );
+      } else {
+        setEmailEnrollError(
+          isZh ? '验证码发送失败，请稍后再试。' : 'Failed to send code.',
+        );
+      }
+    } finally {
+      setEmailEnrollSending(false);
+    }
+  }, [emailEnrollInput, isZh, isValidEmail, readApiErrorMessage]);
+
+  const handleVerifyEmailEnroll = useCallback(async () => {
+    if (!emailEnrollCode.trim()) {
+      setEmailEnrollError(isZh ? '请输入验证码。' : 'Enter the code.');
+      return;
+    }
+
+    try {
+      setEmailEnrollVerifying(true);
+      setEmailEnrollError(null);
+      const result = await apiFetch<{
+        email?: string | null;
+      }>('/membership/email/verification/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: emailEnrollCode.trim() }),
+      });
+
+      if (result?.email) {
+        setMember((prev) =>
+          prev
+            ? {
+                ...prev,
+                email: result.email ?? prev.email,
+              }
+            : prev,
+        );
+      }
+      setEmailEnrollCode('');
+      setEmailEnrollSent(false);
+    } catch (err) {
+      console.error(err);
+      const message = readApiErrorMessage(err);
+      if (message === 'token_expired' || message === 'token_not_found') {
+        setEmailEnrollError(
+          isZh ? '验证码无效或已过期。' : 'The code is invalid or expired.',
+        );
+      } else if (message === 'code_required') {
+        setEmailEnrollError(isZh ? '请输入验证码。' : 'Enter the code.');
+      } else {
+        setEmailEnrollError(
+          isZh ? '验证失败，请稍后再试。' : 'Verification failed.',
+        );
+      }
+    } finally {
+      setEmailEnrollVerifying(false);
+    }
+  }, [emailEnrollCode, isZh, readApiErrorMessage]);
+
+  const handleOpenEmailEnroll = useCallback(() => {
+    setEmailEnrollVisible(true);
+    setEmailEnrollError(null);
+  }, []);
 
   const handleToggleTwoFactor = useCallback(
     async (enable: boolean) => {
@@ -1460,6 +1648,18 @@ const tierProgress = (() => {
               onPhoneEnrollCodeChange={handlePhoneEnrollCodeChange}
               onRequestPhoneEnroll={handleRequestPhoneEnroll}
               onVerifyPhoneEnroll={handleVerifyPhoneEnroll}
+              emailEnrollInput={emailEnrollInput}
+              emailEnrollCode={emailEnrollCode}
+              emailEnrollSending={emailEnrollSending}
+              emailEnrollVerifying={emailEnrollVerifying}
+              emailEnrollError={emailEnrollError}
+              emailEnrollSent={emailEnrollSent}
+              emailEnrollVisible={emailEnrollVisible}
+              onEmailEnrollInputChange={handleEmailEnrollInputChange}
+              onEmailEnrollCodeChange={handleEmailEnrollCodeChange}
+              onRequestEmailEnroll={handleRequestEmailEnroll}
+              onVerifyEmailEnroll={handleVerifyEmailEnroll}
+              onOpenEmailEnroll={handleOpenEmailEnroll}
               twoFactorSaving={twoFactorSaving}
               twoFactorError={twoFactorError}
               onToggleTwoFactor={handleToggleTwoFactor}
@@ -2368,6 +2568,18 @@ function ProfileSection({
   phoneEnrollSending,
   phoneEnrollVerifying,
   phoneEnrollError,
+  emailEnrollInput,
+  emailEnrollCode,
+  emailEnrollSending,
+  emailEnrollVerifying,
+  emailEnrollError,
+  emailEnrollSent,
+  emailEnrollVisible,
+  onEmailEnrollInputChange,
+  onEmailEnrollCodeChange,
+  onRequestEmailEnroll,
+  onVerifyEmailEnroll,
+  onOpenEmailEnroll,
   onPhoneEnrollInputChange,
   onPhoneEnrollCodeChange,
   onRequestPhoneEnroll,
@@ -2408,6 +2620,18 @@ function ProfileSection({
   phoneEnrollSending: boolean;
   phoneEnrollVerifying: boolean;
   phoneEnrollError: string | null;
+  emailEnrollInput: string;
+  emailEnrollCode: string;
+  emailEnrollSending: boolean;
+  emailEnrollVerifying: boolean;
+  emailEnrollError: string | null;
+  emailEnrollSent: boolean;
+  emailEnrollVisible: boolean;
+  onEmailEnrollInputChange: (value: string) => void;
+  onEmailEnrollCodeChange: (value: string) => void;
+  onRequestEmailEnroll: () => void;
+  onVerifyEmailEnroll: () => void;
+  onOpenEmailEnroll: () => void;
   onPhoneEnrollInputChange: (value: string) => void;
   onPhoneEnrollCodeChange: (value: string) => void;
   onRequestPhoneEnroll: () => void;
@@ -2533,6 +2757,82 @@ function ProfileSection({
           <p className="mt-0.5 text-slate-900">
             {user.email || (isZh ? '未绑定' : 'Not linked')}
           </p>
+          {!user.email && (
+            <button
+              type="button"
+              onClick={onOpenEmailEnroll}
+              className="mt-2 inline-flex items-center rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+            >
+              {isZh ? '绑定邮箱' : 'Link email'}
+            </button>
+          )}
+          {!user.email && emailEnrollVisible && (
+            <div className="mt-2 space-y-2 rounded-xl border border-slate-100 bg-slate-50 p-3">
+              <p className="text-[11px] font-medium text-slate-700">
+                {isZh ? '绑定邮箱后可开启订阅' : 'Link an email to enable subscriptions'}
+              </p>
+              <div className="flex items-center rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus-within:ring-1 focus-within:ring-slate-400">
+                <input
+                  type="email"
+                  value={emailEnrollInput}
+                  onChange={(event) =>
+                    onEmailEnrollInputChange(event.target.value)
+                  }
+                  placeholder={isZh ? '请输入邮箱地址' : 'Enter your email'}
+                  className="w-full border-0 p-0 text-xs text-slate-900 focus:outline-none"
+                />
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="text"
+                  value={emailEnrollCode}
+                  onChange={(event) =>
+                    onEmailEnrollCodeChange(event.target.value)
+                  }
+                  placeholder={isZh ? '验证码' : 'Code'}
+                  className="w-24 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-slate-400 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={onRequestEmailEnroll}
+                  disabled={emailEnrollSending}
+                  className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {emailEnrollSending
+                    ? isZh
+                      ? '发送中...'
+                      : 'Sending...'
+                    : isZh
+                      ? '发送验证码'
+                      : 'Send code'}
+                </button>
+                <button
+                  type="button"
+                  onClick={onVerifyEmailEnroll}
+                  disabled={emailEnrollVerifying}
+                  className="rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                >
+                  {emailEnrollVerifying
+                    ? isZh
+                      ? '验证中...'
+                      : 'Verifying...'
+                    : isZh
+                      ? '完成绑定'
+                      : 'Verify'}
+                </button>
+              </div>
+              {emailEnrollSent && (
+                <p className="text-[11px] text-emerald-600">
+                  {isZh ? '验证码已发送，请查收邮箱。' : 'Code sent. Check your email.'}
+                </p>
+              )}
+              {emailEnrollError && (
+                <p className="text-[11px] text-rose-500">
+                  {emailEnrollError}
+                </p>
+              )}
+            </div>
+          )}
         </div>
         <div>
           <p className="text-slate-500">
@@ -2750,6 +3050,18 @@ function ProfileSection({
               />
             </button>
           </div>
+          {!user.email && (
+            <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500">
+              <span>{isZh ? '开启前需先绑定邮箱。' : 'Link an email first.'}</span>
+              <button
+                type="button"
+                onClick={onOpenEmailEnroll}
+                className="text-amber-600 hover:underline"
+              >
+                {isZh ? '去绑定' : 'Bind now'}
+              </button>
+            </div>
+          )}
           {marketingError && (
             <p className="mt-1 text-[11px] text-rose-500">
               {marketingError}

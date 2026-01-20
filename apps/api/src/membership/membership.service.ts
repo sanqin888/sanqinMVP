@@ -13,6 +13,7 @@ import { generateStableId } from '../common/utils/stable-id';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { CouponProgramTriggerService } from '../coupons/coupon-program-trigger.service';
+import { EmailVerificationService } from '../email/email-verification.service';
 
 const MICRO_PER_POINT = 1_000_000;
 const createStableId = (prefix: string): string => {
@@ -28,6 +29,7 @@ export class MembershipService {
     private readonly prisma: PrismaService,
     private readonly loyalty: LoyaltyService,
     private readonly couponTriggerService: CouponProgramTriggerService,
+    private readonly emailVerification: EmailVerificationService,
   ) {}
 
   private maskPhone(phone: string): string {
@@ -1223,10 +1225,16 @@ export class MembershipService {
     try {
       const existing = await this.prisma.user.findUnique({
         where: { userStableId },
-        select: { id: true, marketingEmailOptIn: true },
+        select: { id: true, marketingEmailOptIn: true, email: true },
       });
       if (!existing) {
         throw new NotFoundException('user not found');
+      }
+
+      if (!existing.marketingEmailOptIn && marketingEmailOptIn) {
+        if (!existing.email) {
+          throw new BadRequestException('email_not_linked');
+        }
       }
 
       const user = await this.prisma.user.update({
@@ -1272,6 +1280,61 @@ export class MembershipService {
         'Failed to update marketing consent',
       );
     }
+  }
+
+  async requestEmailVerification(params: { userId: string; email?: string }) {
+    const email = normalizeEmail(params.email ?? '');
+    if (!email) {
+      throw new BadRequestException('invalid_email');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: params.userId },
+      select: { id: true, email: true, emailVerifiedAt: true, name: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('user not found');
+    }
+
+    const emailOwner = await this.prisma.user.findUnique({
+      where: { email },
+      select: { id: true },
+    });
+
+    if (emailOwner && emailOwner.id !== user.id) {
+      throw new BadRequestException('email_in_use');
+    }
+
+    if (user.email === email && user.emailVerifiedAt) {
+      return { ok: true, alreadyVerified: true };
+    }
+
+    await this.emailVerification.requestVerification({
+      userId: user.id,
+      email,
+      name: user.name ?? null,
+    });
+
+    return { ok: true };
+  }
+
+  async verifyEmailCode(params: { userId: string; code?: string }) {
+    const code = params.code?.trim() ?? '';
+    if (!code) {
+      throw new BadRequestException('code_required');
+    }
+
+    const result = await this.emailVerification.verifyTokenForUser({
+      token: code,
+      userId: params.userId,
+    });
+
+    if (!result.ok) {
+      throw new BadRequestException(result.error ?? 'token_invalid');
+    }
+
+    return { ok: true, email: result.email };
   }
 
   private async triggerMarketingOptInPrograms(user: {
