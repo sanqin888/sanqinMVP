@@ -11,9 +11,9 @@ const COPY = {
     title: "会员管理",
     subtitle: "POS 端会员查询、积分与资产管理。",
     backToPos: "返回 POS 点单",
-    searchLabel: "手机号搜索",
-    searchPlaceholder: "输入会员手机号，自动识别会员",
-    searchHint: "输入手机号后自动显示会员简要信息。",
+    searchLabel: "手机号或邮箱搜索",
+    searchPlaceholder: "输入会员手机号或邮箱",
+    searchHint: "输入手机号或邮箱后自动显示会员简要信息。",
     searchEmpty: "暂无匹配会员。",
     memberOverview: "会员概览",
     pointsBalance: "积分余额",
@@ -31,9 +31,12 @@ const COPY = {
     actionsTitle: "积分与资产管理",
     manualAdjust: "手动调整积分",
     rechargePoints: "会员充值",
-    ledgerTitle: "积分记录",
-    ledgerSubtitle: "积分获取与消耗流水。",
-    ledgerEmpty: "暂无积分记录。",
+    ledgerTitle: "积分流水",
+    ledgerSubtitle: "最近 5 条积分记录。",
+    ledgerEmpty: "暂无积分流水。",
+    balanceLedgerTitle: "储值余额流水",
+    balanceLedgerSubtitle: "最近 5 条储值记录。",
+    balanceLedgerEmpty: "暂无储值流水。",
     ordersTitle: "消费历史",
     ordersSubtitle: "点击订单查看详情或处理退款。",
     ordersEmpty: "暂无历史订单。",
@@ -100,9 +103,9 @@ const COPY = {
     title: "Member Management",
     subtitle: "Lookup members and manage points in POS.",
     backToPos: "Back to POS",
-    searchLabel: "Search by phone",
-    searchPlaceholder: "Enter phone number",
-    searchHint: "Type a phone number to see member info.",
+    searchLabel: "Search by phone or email",
+    searchPlaceholder: "Enter phone or email",
+    searchHint: "Type a phone number or email to see member info.",
     searchEmpty: "No matching members.",
     memberOverview: "Member overview",
     pointsBalance: "Points balance",
@@ -121,8 +124,11 @@ const COPY = {
     manualAdjust: "Manual adjustment",
     rechargePoints: "Recharge",
     ledgerTitle: "Points ledger",
-    ledgerSubtitle: "Track earned and spent points.",
-    ledgerEmpty: "No ledger entries.",
+    ledgerSubtitle: "Latest 5 point entries.",
+    ledgerEmpty: "No point entries.",
+    balanceLedgerTitle: "Store balance ledger",
+    balanceLedgerSubtitle: "Latest 5 balance entries.",
+    balanceLedgerEmpty: "No balance entries.",
     ordersTitle: "Order history",
     ordersSubtitle: "Open orders to review or refund.",
     ordersEmpty: "No orders yet.",
@@ -224,6 +230,7 @@ type LedgerEntry = {
   ledgerStableId: string;
   createdAt: string;
   type: string;
+  target?: string;
   deltaPoints: number;
   balanceAfterPoints: number;
   note?: string;
@@ -382,6 +389,22 @@ export default function PosMembershipPage() {
     if (!selectedMemberId) return;
     void refreshMemberData(selectedMemberId);
   }, [refreshMemberData, selectedMemberId]);
+
+  const pointsLedger = useMemo(
+    () =>
+      ledgerEntries
+        .filter((entry) => (entry.target ?? "POINTS") === "POINTS")
+        .slice(0, 5),
+    [ledgerEntries],
+  );
+
+  const balanceLedger = useMemo(
+    () =>
+      ledgerEntries
+        .filter((entry) => (entry.target ?? "POINTS") === "BALANCE")
+        .slice(0, 5),
+    [ledgerEntries],
+  );
 
   useEffect(() => {
     const trimmed = searchPhone.trim();
@@ -638,12 +661,6 @@ export default function PosMembershipPage() {
                         {copy.tierLabel}: {member.tier}
                       </p>
                     </div>
-                  <div className="text-right">
-                    <p className="text-lg font-semibold text-slate-100">
-                      {formatPoints(member.points, locale)}
-                    </p>
-                    <p className="text-xs text-slate-400">{copy.pointsBalance}</p>
-                  </div>
                 </button>
               ))}
             </div>
@@ -744,53 +761,92 @@ export default function PosMembershipPage() {
               <p className="text-xs text-slate-400">{copy.ledgerSubtitle}</p>
             </div>
 
-            {ledgerEntries.length === 0 ? (
+            {pointsLedger.length === 0 ? (
               <p className="mt-4 text-sm text-slate-400">{copy.ledgerEmpty}</p>
             ) : (
-              <div className="mt-4 overflow-hidden rounded-2xl border border-slate-700">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-slate-900 text-xs text-slate-400">
-                    <tr>
-                      <th className="px-4 py-3">{copy.orderFields.time}</th>
-                      <th className="px-4 py-3">Type</th>
-                      <th className="px-4 py-3">Delta</th>
-                      <th className="px-4 py-3">Balance</th>
-                      <th className="px-4 py-3">Note</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {ledgerEntries.map((entry) => {
-                      const label = LEDGER_LABELS[entry.type]?.[locale] ?? entry.type;
-                      return (
-                        <tr
-                          key={entry.ledgerStableId}
-                          className="border-t border-slate-800 text-xs text-slate-200"
+              <div className="mt-4 space-y-3">
+                {pointsLedger.map((entry) => {
+                  const label = LEDGER_LABELS[entry.type]?.[locale] ?? entry.type;
+                  return (
+                    <div
+                      key={entry.ledgerStableId}
+                      className="rounded-2xl border border-slate-700 bg-slate-900 p-4 text-xs text-slate-200"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400">
+                          {formatDate(entry.createdAt, locale)}
+                        </span>
+                        <span className="rounded-full border border-slate-700 bg-slate-800 px-2 py-0.5 text-[11px] text-slate-300">
+                          {label}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                        <span
+                          className={`font-semibold ${
+                            entry.deltaPoints >= 0
+                              ? "text-emerald-200"
+                              : "text-rose-200"
+                          }`}
                         >
-                          <td className="px-4 py-3">
-                            {formatDate(entry.createdAt, locale)}
-                          </td>
-                          <td className="px-4 py-3">{label}</td>
-                          <td
-                            className={`px-4 py-3 font-semibold ${
-                              entry.deltaPoints >= 0
-                                ? "text-emerald-200"
-                                : "text-rose-200"
-                            }`}
-                          >
-                            {entry.deltaPoints >= 0 ? "+" : ""}
-                            {formatPoints(entry.deltaPoints, locale)}
-                          </td>
-                          <td className="px-4 py-3">
-                            {formatPoints(entry.balanceAfterPoints, locale)}
-                          </td>
-                          <td className="px-4 py-3 text-slate-400">
-                            {entry.note ?? "-"}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                          {entry.deltaPoints >= 0 ? "+" : ""}
+                          {formatPoints(entry.deltaPoints, locale)}
+                        </span>
+                        <span className="text-slate-300">
+                          {copy.pointsBalance}: {formatPoints(entry.balanceAfterPoints, locale)}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-slate-400">{entry.note ?? "-"}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-3xl border border-slate-800 bg-slate-800/60 p-6">
+            <div>
+              <h2 className="text-lg font-semibold">{copy.balanceLedgerTitle}</h2>
+              <p className="text-xs text-slate-400">{copy.balanceLedgerSubtitle}</p>
+            </div>
+
+            {balanceLedger.length === 0 ? (
+              <p className="mt-4 text-sm text-slate-400">{copy.balanceLedgerEmpty}</p>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {balanceLedger.map((entry) => {
+                  const label = LEDGER_LABELS[entry.type]?.[locale] ?? entry.type;
+                  return (
+                    <div
+                      key={entry.ledgerStableId}
+                      className="rounded-2xl border border-slate-700 bg-slate-900 p-4 text-xs text-slate-200"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400">
+                          {formatDate(entry.createdAt, locale)}
+                        </span>
+                        <span className="rounded-full border border-slate-700 bg-slate-800 px-2 py-0.5 text-[11px] text-slate-300">
+                          {label}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                        <span
+                          className={`font-semibold ${
+                            entry.deltaPoints >= 0
+                              ? "text-emerald-200"
+                              : "text-rose-200"
+                          }`}
+                        >
+                          {entry.deltaPoints >= 0 ? "+" : ""}
+                          {formatBalance(entry.deltaPoints, locale)}
+                        </span>
+                        <span className="text-slate-300">
+                          {copy.walletBalance}: {formatBalance(entry.balanceAfterPoints, locale)}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-slate-400">{entry.note ?? "-"}</p>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

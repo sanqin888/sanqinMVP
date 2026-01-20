@@ -18,6 +18,10 @@ const DEFAULT_REFERRAL_PT_PER_DOLLAR = 0.01;
 const DEFAULT_TIER_THRESHOLD_SILVER = 1000 * 100;
 const DEFAULT_TIER_THRESHOLD_GOLD = 10000 * 100;
 const DEFAULT_TIER_THRESHOLD_PLATINUM = 30000 * 100;
+const DEFAULT_TIER_MULTIPLIER_BRONZE = 1;
+const DEFAULT_TIER_MULTIPLIER_SILVER = 2;
+const DEFAULT_TIER_MULTIPLIER_GOLD = 3;
+const DEFAULT_TIER_MULTIPLIER_PLATINUM = 5;
 
 type Tier = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM';
 type LoyaltyConfig = {
@@ -25,14 +29,7 @@ type LoyaltyConfig = {
   redeemDollarPerPoint: number;
   referralPtPerDollar: number;
   tierThresholdCents: Record<Exclude<Tier, 'BRONZE'>, number>;
-};
-
-// 等级倍率
-const TIER_MULTIPLIER: Record<Tier, number> = {
-  BRONZE: 1,
-  SILVER: 2,
-  GOLD: 3,
-  PLATINUM: 5,
+  tierMultipliers: Record<Tier, number>;
 };
 
 function computeTierFromLifetime(
@@ -90,6 +87,10 @@ export class LoyaltyService {
           earnPtPerDollar: DEFAULT_EARN_PT_PER_DOLLAR,
           redeemDollarPerPoint: DEFAULT_REDEEM_DOLLAR_PER_POINT,
           referralPtPerDollar: DEFAULT_REFERRAL_PT_PER_DOLLAR,
+          tierMultiplierBronze: DEFAULT_TIER_MULTIPLIER_BRONZE,
+          tierMultiplierSilver: DEFAULT_TIER_MULTIPLIER_SILVER,
+          tierMultiplierGold: DEFAULT_TIER_MULTIPLIER_GOLD,
+          tierMultiplierPlatinum: DEFAULT_TIER_MULTIPLIER_PLATINUM,
           tierThresholdSilver: DEFAULT_TIER_THRESHOLD_SILVER,
           tierThresholdGold: DEFAULT_TIER_THRESHOLD_GOLD,
           tierThresholdPlatinum: DEFAULT_TIER_THRESHOLD_PLATINUM,
@@ -113,6 +114,10 @@ export class LoyaltyService {
           earnPtPerDollar: DEFAULT_EARN_PT_PER_DOLLAR,
           redeemDollarPerPoint: DEFAULT_REDEEM_DOLLAR_PER_POINT,
           referralPtPerDollar: DEFAULT_REFERRAL_PT_PER_DOLLAR,
+          tierMultiplierBronze: DEFAULT_TIER_MULTIPLIER_BRONZE,
+          tierMultiplierSilver: DEFAULT_TIER_MULTIPLIER_SILVER,
+          tierMultiplierGold: DEFAULT_TIER_MULTIPLIER_GOLD,
+          tierMultiplierPlatinum: DEFAULT_TIER_MULTIPLIER_PLATINUM,
           tierThresholdSilver: DEFAULT_TIER_THRESHOLD_SILVER,
           tierThresholdGold: DEFAULT_TIER_THRESHOLD_GOLD,
           tierThresholdPlatinum: DEFAULT_TIER_THRESHOLD_PLATINUM,
@@ -158,6 +163,30 @@ export class LoyaltyService {
       config.tierThresholdPlatinum >= 0
         ? config.tierThresholdPlatinum
         : DEFAULT_TIER_THRESHOLD_PLATINUM;
+    const tierMultiplierBronze =
+      typeof config.tierMultiplierBronze === 'number' &&
+      Number.isFinite(config.tierMultiplierBronze) &&
+      config.tierMultiplierBronze >= 0
+        ? config.tierMultiplierBronze
+        : DEFAULT_TIER_MULTIPLIER_BRONZE;
+    const tierMultiplierSilver =
+      typeof config.tierMultiplierSilver === 'number' &&
+      Number.isFinite(config.tierMultiplierSilver) &&
+      config.tierMultiplierSilver >= 0
+        ? config.tierMultiplierSilver
+        : DEFAULT_TIER_MULTIPLIER_SILVER;
+    const tierMultiplierGold =
+      typeof config.tierMultiplierGold === 'number' &&
+      Number.isFinite(config.tierMultiplierGold) &&
+      config.tierMultiplierGold >= 0
+        ? config.tierMultiplierGold
+        : DEFAULT_TIER_MULTIPLIER_GOLD;
+    const tierMultiplierPlatinum =
+      typeof config.tierMultiplierPlatinum === 'number' &&
+      Number.isFinite(config.tierMultiplierPlatinum) &&
+      config.tierMultiplierPlatinum >= 0
+        ? config.tierMultiplierPlatinum
+        : DEFAULT_TIER_MULTIPLIER_PLATINUM;
 
     return {
       earnPtPerDollar,
@@ -167,6 +196,12 @@ export class LoyaltyService {
         SILVER: tierThresholdSilver,
         GOLD: tierThresholdGold,
         PLATINUM: tierThresholdPlatinum,
+      },
+      tierMultipliers: {
+        BRONZE: tierMultiplierBronze,
+        SILVER: tierMultiplierSilver,
+        GOLD: tierMultiplierGold,
+        PLATINUM: tierMultiplierPlatinum,
       },
     };
   }
@@ -365,7 +400,7 @@ export class LoyaltyService {
       const earnedPts =
         (netSubtotalCents / 100) *
         loyaltyConfig.earnPtPerDollar *
-        TIER_MULTIPLIER[accountTier];
+        loyaltyConfig.tierMultipliers[accountTier];
 
       const earnedMicro = toMicroPoints(earnedPts);
 
@@ -393,7 +428,8 @@ export class LoyaltyService {
               deltaMicro: earnedMicro,
               balanceAfterMicro: newBal,
               note: `earn on $${(netSubtotalCents / 100).toFixed(2)} @${(
-                loyaltyConfig.earnPtPerDollar * TIER_MULTIPLIER[accountTier]
+                loyaltyConfig.earnPtPerDollar *
+                loyaltyConfig.tierMultipliers[accountTier]
               ).toFixed(4)} pt/$`,
             },
           });

@@ -53,6 +53,10 @@ type BusinessConfigDto = {
   earnPtPerDollar: number;
   redeemDollarPerPoint: number;
   referralPtPerDollar: number;
+  tierMultiplierBronze: number;
+  tierMultiplierSilver: number;
+  tierMultiplierGold: number;
+  tierMultiplierPlatinum: number;
   tierThresholdSilver: number;
   tierThresholdGold: number;
   tierThresholdPlatinum: number;
@@ -1060,105 +1064,6 @@ setHolidays(
                 : 'Used for delivery fee calculation and distance display.'}
             </span>
           </div>
-        </div>
-      </section>
-
-      {/* 积分规则 */}
-      <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="text-sm font-semibold text-slate-900">
-          {isZh ? '积分与会员规则' : 'Loyalty rules'}
-        </h2>
-        <p className="text-xs text-slate-600">
-          {isZh
-            ? '调整积分获取/抵扣规则与等级门槛，无需重新部署。'
-            : 'Adjust earn/redeem rules and tier thresholds without redeploying.'}
-        </p>
-
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          <label className="flex flex-col text-xs font-medium text-slate-700">
-            <span>{isZh ? '积分获取率 (pt / $)' : 'Earn rate (pt per $)'}</span>
-            <input
-              type="number"
-              min="0"
-              step="0.0001"
-              value={config.earnPtPerDollar}
-              onChange={(e) => handleEarnRateChange(e.target.value)}
-              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
-            />
-          </label>
-
-          <label className="flex flex-col text-xs font-medium text-slate-700">
-            <span>{isZh ? '积分抵扣汇率 ($ / pt)' : 'Redeem rate ($ per pt)'}</span>
-            <input
-              type="number"
-              min="0.0001"
-              step="0.0001"
-              value={config.redeemDollarPerPoint}
-              onChange={(e) => handleRedeemRateChange(e.target.value)}
-              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
-            />
-          </label>
-
-          <label className="flex flex-col text-xs font-medium text-slate-700">
-            <span>
-              {isZh ? '推荐奖励比例 (pt / $)' : 'Referral rate (pt per $)'}
-            </span>
-            <input
-              type="number"
-              min="0"
-              step="0.0001"
-              value={config.referralPtPerDollar}
-              onChange={(e) => handleReferralRateChange(e.target.value)}
-              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
-            />
-          </label>
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          <label className="flex flex-col text-xs font-medium text-slate-700">
-            <span>{isZh ? '银卡门槛 ($)' : 'Silver threshold ($)'}</span>
-            <input
-              type="number"
-              min="0"
-              step="1"
-              value={centsToDollarNumber(config.tierThresholdSilver)}
-              onChange={(e) =>
-                handleTierThresholdChange('tierThresholdSilver', e.target.value)
-              }
-              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
-            />
-          </label>
-
-          <label className="flex flex-col text-xs font-medium text-slate-700">
-            <span>{isZh ? '金卡门槛 ($)' : 'Gold threshold ($)'}</span>
-            <input
-              type="number"
-              min="0"
-              step="1"
-              value={centsToDollarNumber(config.tierThresholdGold)}
-              onChange={(e) =>
-                handleTierThresholdChange('tierThresholdGold', e.target.value)
-              }
-              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
-            />
-          </label>
-
-          <label className="flex flex-col text-xs font-medium text-slate-700">
-            <span>{isZh ? '白金卡门槛 ($)' : 'Platinum threshold ($)'}</span>
-            <input
-              type="number"
-              min="0"
-              step="1"
-              value={centsToDollarNumber(config.tierThresholdPlatinum)}
-              onChange={(e) =>
-                handleTierThresholdChange(
-                  'tierThresholdPlatinum',
-                  e.target.value,
-                )
-              }
-              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
-            />
-          </label>
         </div>
       </section>
 
