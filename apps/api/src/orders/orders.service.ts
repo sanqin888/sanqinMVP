@@ -1965,19 +1965,27 @@ export class OrdersService {
     const discountCents =
       (order.couponDiscountCents ?? 0) + (order.loyaltyRedeemCents ?? 0);
 
+    const paymentMethod = (() => {
+      switch (order.paymentMethod) {
+        case PaymentMethod.CASH:
+          return 'cash';
+        case PaymentMethod.CARD:
+          return 'card';
+        case PaymentMethod.WECHAT_ALIPAY:
+          return 'wechat_alipay';
+        case PaymentMethod.STORE_BALANCE:
+          return 'store_balance';
+        default:
+          return order.channel === Channel.in_store ? 'cash' : 'card';
+      }
+    })();
+
     return {
       locale: locale ?? 'zh',
       orderNumber,
       pickupCode: order.pickupCode ?? null,
       fulfillment: order.fulfillmentType,
-      paymentMethod:
-        order.paymentMethod?.toLowerCase() === 'wechat_alipay'
-          ? 'wechat_alipay'
-          : order.paymentMethod?.toLowerCase() === 'cash'
-            ? 'cash'
-            : order.paymentMethod?.toLowerCase() === 'store_balance'
-              ? 'store_balance'
-              : 'card',
+      paymentMethod,
       snapshot: {
         items,
         subtotalCents: order.subtotalCents ?? 0,
