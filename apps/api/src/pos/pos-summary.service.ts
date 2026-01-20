@@ -156,7 +156,7 @@ export class PosSummaryService {
       case PaymentMethod.CARD:
         return 'card';
       case PaymentMethod.WECHAT_ALIPAY:
-        return 'online';
+        return 'cash';
       case PaymentMethod.STORE_BALANCE:
         return 'store_balance';
       default:
