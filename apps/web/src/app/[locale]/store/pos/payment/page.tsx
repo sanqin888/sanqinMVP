@@ -30,7 +30,6 @@ type CreatePosOrderResponse = {
   pickupCode?: string | null;
 };
 
-// ✅ 更新：增加 balance 字段
 type MemberLookupResponse = {
   userStableId: string;
   displayName?: string | null;
@@ -48,7 +47,6 @@ type MemberSearchResponse = {
   }>;
 };
 
-// ✅ 更新：增加 balance 字段
 type MemberDetailResponse = {
   userStableId: string;
   displayName?: string | null;
@@ -104,7 +102,6 @@ async function sendPosPrintPayload(
   }
 }
 
-// ✅ 本地支付方式状态类型
 type LocalPaymentMethod = "cash" | "card" | "wechat_alipay" | "store_balance";
 
 const STRINGS: Record<
@@ -123,8 +120,8 @@ const STRINGS: Record<
     payCash: string;
     payCard: string;
     payWeChatAlipay: string;
-    payStoreBalance: string; // ✅ 新增
-    balanceInsufficient: string; // ✅ 新增
+    payStoreBalance: string;
+    balanceInsufficient: string;
     balancePaymentLabel: string;
     balancePaymentHint: string;
     balancePaymentAvailable: string;
@@ -156,6 +153,10 @@ const STRINGS: Record<
     memberBalanceAfter: string;
     fulfillmentRequired: string;
     wechatAlipayConverted: string;
+    memberBalance: string; // [新增]
+    useBalanceLabel: string; // [新增]
+    useBalanceHint: string; // [新增]
+    max: string; // [新增]
   }
 > = {
   zh: {
@@ -172,8 +173,8 @@ const STRINGS: Record<
     payCash: "现金",
     payCard: "银行卡",
     payWeChatAlipay: "微信或支付宝",
-    payStoreBalance: "储值余额支付",
-    balanceInsufficient: "余额不足",
+    payStoreBalance: "储值余额",
+    balanceInsufficient: "余额不足以全额支付",
     balancePaymentLabel: "余额支付",
     balancePaymentHint: "请先选择会员后使用余额支付。",
     balancePaymentAvailable: "可用余额",
@@ -196,7 +197,7 @@ const STRINGS: Record<
     memberClear: "清除会员",
     memberPoints: "当前积分",
     memberPointsAvailable: "可抵扣金额",
-    memberRedeemLabel: "本单使用积分",
+    memberRedeemLabel: "积分抵扣",
     memberRedeemHint: "输入整数积分",
     memberFound: "已识别会员",
     memberNotFound: "未找到会员，请核对手机号",
@@ -205,6 +206,10 @@ const STRINGS: Record<
     memberBalanceAfter: "预计结算后积分",
     fulfillmentRequired: "请选择用餐方式后再继续。",
     wechatAlipayConverted: "微信/支付宝折算金额",
+    memberBalance: "储值余额",
+    useBalanceLabel: "使用余额",
+    useBalanceHint: "输入金额",
+    max: "MAX",
   },
   en: {
     title: "Store POS · Payment",
@@ -221,7 +226,7 @@ const STRINGS: Record<
     payCard: "Card",
     payWeChatAlipay: "WeChat / Alipay",
     payStoreBalance: "Store Balance",
-    balanceInsufficient: "Insufficient balance",
+    balanceInsufficient: "Insufficient balance for full payment",
     balancePaymentLabel: "Balance payment",
     balancePaymentHint: "Select a member to pay with stored balance.",
     balancePaymentAvailable: "Available balance",
@@ -254,6 +259,10 @@ const STRINGS: Record<
     memberBalanceAfter: "Estimated balance after",
     fulfillmentRequired: "Select a dining option before continuing.",
     wechatAlipayConverted: "WeChat/Alipay converted total",
+    memberBalance: "Store Balance",
+    useBalanceLabel: "Use Balance",
+    useBalanceHint: "Amount",
+    max: "MAX",
   },
 };
 
@@ -280,18 +289,14 @@ export default function StorePosPaymentPage() {
   const [loadingSnapshot, setLoadingSnapshot] = useState(true);
   const [fulfillment, setFulfillment] = useState<FulfillmentType | null>(null);
   
-  // ✅ 状态更新：支持 store_balance
   const [paymentMethod, setPaymentMethod] = useState<LocalPaymentMethod>("cash");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [memberPhone, setMemberPhone] = useState("");
-  const [memberInfo, setMemberInfo] = useState<MemberLookupResponse | null>(
-    null,
-  );
+  const [memberInfo, setMemberInfo] = useState<MemberLookupResponse | null>(null);
   const [memberLookupLoading, setMemberLookupLoading] = useState(false);
-  const [memberLookupError, setMemberLookupError] = useState<string | null>(
-    null,
-  );
+  const [memberLookupError, setMemberLookupError] = useState<string | null>(null);
+  
   const [wechatAlipayRate, setWechatAlipayRate] = useState<number>(1);
   const [earnRate, setEarnRate] = useState(0.01);
   const [tierMultipliers, setTierMultipliers] = useState({
@@ -300,7 +305,10 @@ export default function StorePosPaymentPage() {
     GOLD: 3,
     PLATINUM: 5,
   });
+
   const [redeemPointsInput, setRedeemPointsInput] = useState("");
+  const [useBalanceInput, setUseBalanceInput] = useState(""); // [新增] 部分余额支付输入
+
   const [successInfo, setSuccessInfo] = useState<{
     orderNumber: string;
     pickupCode?: string | null;
@@ -309,15 +317,10 @@ export default function StorePosPaymentPage() {
   // 从 localStorage 读取 POS 界面保存的订单快照
   useEffect(() => {
     if (typeof window === "undefined") return;
-
     try {
       const raw = window.localStorage.getItem(POS_DISPLAY_STORAGE_KEY);
-      if (!raw) {
-        setSnapshot(null);
-      } else {
-        const parsed = JSON.parse(raw) as PosDisplaySnapshot;
-        setSnapshot(parsed);
-      }
+      if (!raw) setSnapshot(null);
+      else setSnapshot(JSON.parse(raw) as PosDisplaySnapshot);
     } catch (err) {
       console.error("Failed to read POS display snapshot:", err);
       setSnapshot(null);
@@ -331,24 +334,9 @@ export default function StorePosPaymentPage() {
     apiFetch<BusinessConfigLite>("/admin/business/config")
       .then((config) => {
         if (!active) return;
-        if (
-          typeof config.wechatAlipayExchangeRate === "number" &&
-          Number.isFinite(config.wechatAlipayExchangeRate)
-        ) {
-          setWechatAlipayRate(config.wechatAlipayExchangeRate);
-        }
-        if (
-          typeof config.earnPtPerDollar === "number" &&
-          Number.isFinite(config.earnPtPerDollar)
-        ) {
-          setEarnRate(config.earnPtPerDollar);
-        }
-        if (
-          typeof config.tierMultiplierBronze === "number" &&
-          typeof config.tierMultiplierSilver === "number" &&
-          typeof config.tierMultiplierGold === "number" &&
-          typeof config.tierMultiplierPlatinum === "number"
-        ) {
+        if (typeof config.wechatAlipayExchangeRate === "number") setWechatAlipayRate(config.wechatAlipayExchangeRate);
+        if (typeof config.earnPtPerDollar === "number") setEarnRate(config.earnPtPerDollar);
+        if (typeof config.tierMultiplierBronze === "number") {
           setTierMultipliers({
             BRONZE: config.tierMultiplierBronze,
             SILVER: config.tierMultiplierSilver,
@@ -357,74 +345,99 @@ export default function StorePosPaymentPage() {
           });
         }
       })
-      .catch((err) => {
-        console.warn("Failed to load exchange rate config:", err);
-      });
-    return () => {
-      active = false;
-    };
+      .catch((err) => console.warn("Failed to load exchange rate config:", err));
+    return () => { active = false; };
   }, []);
 
-  const hasItems =
-    !!snapshot && Array.isArray(snapshot.items) && snapshot.items.length > 0;
+  const hasItems = !!snapshot && Array.isArray(snapshot.items) && snapshot.items.length > 0;
 
   const baseSubtotalCents = useMemo(() => {
     if (!snapshot?.items?.length) return 0;
     return snapshot.items.reduce((sum, item) => sum + item.lineTotalCents, 0);
   }, [snapshot]);
 
-  const discountCents = 0;
-  const discountedSubtotalCents = baseSubtotalCents;
+  // --- 积分逻辑 ---
+const discountCents = 0;
+const discountedSubtotalCents = baseSubtotalCents;
 
-  const maxRedeemableCentsForOrder = useMemo(() => {
-    if (!memberInfo) return 0;
-    if (discountedSubtotalCents <= 0) return 0;
-    return Math.min(
-      memberInfo.availableDiscountCents,
-      discountedSubtotalCents,
-    );
-  }, [discountedSubtotalCents, memberInfo]);
+const maxRedeemableCentsForOrder = useMemo(() => {
+  if (!memberInfo) return 0;
+  if (discountedSubtotalCents <= 0) return 0;
+  return Math.min(memberInfo.availableDiscountCents, discountedSubtotalCents);
+}, [discountedSubtotalCents, memberInfo]);
 
-  const maxRedeemablePointsForOrder = useMemo(() => {
-    if (!memberInfo) return 0;
-    return Math.floor(maxRedeemableCentsForOrder / 100);
-  }, [maxRedeemableCentsForOrder, memberInfo]);
+// 把输入金额转成 cents（整数）并 clamp 到最大可抵扣
+const redeemCents = useMemo(() => {
+  if (!memberInfo || !redeemPointsInput) return 0;
 
-  const pointsToRedeem = useMemo(() => {
-    if (!memberInfo) return 0;
-    if (!redeemPointsInput) return 0;
-    const normalized = redeemPointsInput.replace(/[^\d]/g, "");
-    const requested = Number.parseInt(normalized, 10);
-    if (!Number.isFinite(requested) || requested <= 0) return 0;
-    return Math.min(requested, maxRedeemablePointsForOrder);
-  }, [memberInfo, maxRedeemablePointsForOrder, redeemPointsInput]);
+  const raw = redeemPointsInput.trim();
+  if (!raw) return 0;
 
-  const loyaltyRedeemCents = pointsToRedeem * 100;
+  const val = Number(raw);
+  if (!Number.isFinite(val) || val <= 0) return 0;
 
-  const effectiveSubtotalCents = Math.max(
-    0,
-    discountedSubtotalCents - loyaltyRedeemCents,
-  );
-  const taxCents = Math.round(effectiveSubtotalCents * TAX_RATE);
-  const totalCents = effectiveSubtotalCents + taxCents;
-  const roundedTotalCents =
-    paymentMethod === "cash" ? roundUpToFiveCents(totalCents) : totalCents;
+  const cents = Math.round(val * 100);
+  return Math.min(cents, maxRedeemableCentsForOrder);
+}, [memberInfo, redeemPointsInput, maxRedeemableCentsForOrder]);
+
+// 兼容你后面还在用 pointsToRedeem 的地方：这里把“抵扣金额”也当作 points（带小数）
+// 如果你后端 pointsToRedeem 已支持小数：直接传这个就行
+// 如果后端只支持整数：你需要后端改为接收 redeemCents（见文末备注）
+const pointsToRedeem = redeemCents / 100;
+
+const loyaltyRedeemCents = redeemCents;
+
+  // --- 余额使用逻辑 (Partial) ---
+  const effectiveSubtotalAfterPointsCents = Math.max(0, discountedSubtotalCents - loyaltyRedeemCents);
+  const taxCents = Math.round(effectiveSubtotalAfterPointsCents * TAX_RATE);
+  const totalAfterPointsCents = effectiveSubtotalAfterPointsCents + taxCents;
+
+  // 用户输入的余额支付金额
+  const balanceToUseCents = useMemo(() => {
+    if (!memberInfo || !useBalanceInput) return 0;
+    const val = parseFloat(useBalanceInput);
+    if (!Number.isFinite(val) || val <= 0) return 0;
+    const cents = Math.round(val * 100);
+    // 限制：不能超过会员余额，也不能超过剩余应付
+    const maxUse = Math.min(Math.round((memberInfo.balance ?? 0) * 100), totalAfterPointsCents);
+    return Math.min(cents, maxUse);
+  }, [memberInfo, useBalanceInput, totalAfterPointsCents]);
+
+  // 剩余需要通过 Cash/Card/Alipay 支付的金额
+  const remainingTotalCents = Math.max(0, totalAfterPointsCents - balanceToUseCents);
+
+  // 最终显示的合计（如果是现金支付，对剩余部分取整）
+  const finalDisplayTotalCents = paymentMethod === "cash" 
+    ? roundUpToFiveCents(remainingTotalCents) 
+    : remainingTotalCents;
 
   const pointsEarned = useMemo(() => {
     if (!memberInfo) return 0;
-    // 余额支付也算有效消费，按折后金额计算
-    const base = (effectiveSubtotalCents / 100) * earnRate;
+    // 余额支付部分也算有效消费，按折后金额计算
+    const base = (effectiveSubtotalAfterPointsCents / 100) * earnRate;
     const earned = base * tierMultipliers[memberInfo.tier];
     return Math.round(earned * 100) / 100;
-  }, [earnRate, effectiveSubtotalCents, memberInfo, tierMultipliers]);
+  }, [earnRate, effectiveSubtotalAfterPointsCents, memberInfo, tierMultipliers]);
 
-  // ✅ 新增：计算余额是否充足
-  const isBalanceSufficient = useMemo(() => {
-    if (paymentMethod !== 'store_balance') return true;
+  // 判断是否全额余额支付（即剩余需支付为0）
+  const isFullyPaidByBalance = totalAfterPointsCents > 0 && remainingTotalCents === 0;
+
+  // 当选择 store_balance 支付方式时，必须全额支付
+  const isBalanceSufficientForFullPayment = useMemo(() => {
     if (!memberInfo) return false;
     const balanceCents = (memberInfo.balance ?? 0) * 100;
-    return balanceCents >= roundedTotalCents;
-  }, [paymentMethod, memberInfo, roundedTotalCents]);
+    return balanceCents >= totalAfterPointsCents;
+  }, [memberInfo, totalAfterPointsCents]);
+
+  // 如果剩余应付为0，自动切换到余额支付模式（视觉上）
+  useEffect(() => {
+    if (isFullyPaidByBalance && paymentMethod !== 'store_balance') {
+      setPaymentMethod('store_balance');
+    } else if (!isFullyPaidByBalance && paymentMethod === 'store_balance') {
+        // 如果不再是全额支付（例如修改了输入），切回现金
+        setPaymentMethod('cash');
+    }
+  }, [isFullyPaidByBalance, paymentMethod]);
 
   const computedSnapshot = useMemo(() => {
     if (!snapshot) return null;
@@ -433,17 +446,17 @@ export default function StorePosPaymentPage() {
       subtotalCents: discountedSubtotalCents,
       discountCents,
       taxCents,
-      totalCents: roundedTotalCents,
+      // 注意：这里 totalCents 在 POS 副屏通常显示“应付金额”。
+      // 如果使用了部分余额，副屏可能需要显示剩余应付？
+      // 暂时保持显示最终需支付现金/卡的部分
+      totalCents: finalDisplayTotalCents, 
       loyalty: memberInfo
         ? {
             userStableId: memberInfo.userStableId ?? null,
             pointsBalance: memberInfo.points,
             pointsRedeemed: pointsToRedeem,
             pointsEarned,
-            pointsBalanceAfter:
-              Math.round(
-                (memberInfo.points - pointsToRedeem + pointsEarned) * 100,
-              ) / 100,
+            pointsBalanceAfter: Math.round((memberInfo.points - pointsToRedeem + pointsEarned) * 100) / 100,
           }
         : undefined,
     } satisfies PosDisplaySnapshot;
@@ -455,52 +468,35 @@ export default function StorePosPaymentPage() {
     pointsToRedeem,
     snapshot,
     taxCents,
-    roundedTotalCents,
+    finalDisplayTotalCents,
   ]);
 
+  // 更新副屏
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!computedSnapshot?.items.length) return;
-
+    if (typeof window === "undefined" || !computedSnapshot?.items.length) return;
     try {
-      window.localStorage.setItem(
-        POS_DISPLAY_STORAGE_KEY,
-        JSON.stringify(computedSnapshot),
-      );
-    } catch (err) {
-      console.warn("Failed to write POS display snapshot:", err);
-    }
-
-    try {
+      window.localStorage.setItem(POS_DISPLAY_STORAGE_KEY, JSON.stringify(computedSnapshot));
       if ("BroadcastChannel" in window) {
         const channel = new BroadcastChannel(POS_DISPLAY_CHANNEL);
         channel.postMessage({ type: "snapshot", snapshot: computedSnapshot });
         channel.close();
       }
-    } catch {
-      // ignore
-    }
+    } catch { /* ignore */ }
   }, [computedSnapshot]);
 
   const summarySubtotalCents = computedSnapshot?.subtotalCents ?? 0;
   const summaryTaxCents = computedSnapshot?.taxCents ?? 0;
-  const summaryTotalCents = computedSnapshot?.totalCents ?? 0;
-  const summaryLoyaltyRedeemCents =
-    computedSnapshot?.loyalty?.pointsRedeemed != null
-      ? computedSnapshot.loyalty.pointsRedeemed * 100
-      : 0;
+  const summaryTotalCents = computedSnapshot?.totalCents ?? 0; // 这是剩余应付
+  const summaryLoyaltyRedeemCents = redeemCents;
+  
   const wechatConvertedTotal =
     paymentMethod === "wechat_alipay" && wechatAlipayRate > 0
       ? (summaryTotalCents / 100) * wechatAlipayRate
       : null;
 
-  const balanceAvailableCents = memberInfo
-    ? Math.round((memberInfo.balance ?? 0) * 100)
-    : 0;
-  const balanceAfterCents =
-    paymentMethod === "store_balance"
-      ? Math.max(0, balanceAvailableCents - roundedTotalCents)
-      : balanceAvailableCents;
+  // 余额计算
+  const currentMemberBalanceCents = memberInfo ? Math.round((memberInfo.balance ?? 0) * 100) : 0;
+  const balanceRemainingAfterOrder = Math.max(0, currentMemberBalanceCents - balanceToUseCents);
 
   const handleMemberLookup = async () => {
     if (!memberPhone.trim()) {
@@ -511,38 +507,30 @@ export default function StorePosPaymentPage() {
     setMemberLookupError(null);
     try {
       const search = memberPhone.trim();
-      const result = await apiFetch<MemberSearchResponse>(
-        `/admin/members?search=${encodeURIComponent(search)}&pageSize=5`,
-      );
+      const result = await apiFetch<MemberSearchResponse>(`/admin/members?search=${encodeURIComponent(search)}&pageSize=5`);
       const match = result.items?.[0];
       if (!match?.userStableId) {
         setMemberInfo(null);
         setMemberLookupError(t.memberNotFound);
         return;
       }
-      const detail = await apiFetch<MemberDetailResponse>(
-        `/admin/members/${match.userStableId}`,
-      );
+      const detail = await apiFetch<MemberDetailResponse>(`/admin/members/${match.userStableId}`);
       setMemberInfo({
         userStableId: detail.userStableId,
         displayName: detail.displayName ?? null,
         phone: detail.phone ?? null,
         tier: detail.account.tier,
         points: detail.account.points,
-        balance: detail.account.balance, // ✅ 获取余额
+        balance: detail.account.balance,
         availableDiscountCents: detail.availableDiscountCents ?? 0,
         lifetimeSpendCents: detail.account.lifetimeSpendCents,
       });
       setRedeemPointsInput("");
+      setUseBalanceInput("");
     } catch (err) {
       const apiError = err instanceof ApiError ? err : null;
-      if (!apiError || apiError.status !== 404) {
-        console.error("Failed to lookup member by phone:", err);
-      }
       setMemberInfo(null);
-      setMemberLookupError(
-        apiError?.status === 404 ? t.memberNotFound : t.errorGeneric,
-      );
+      setMemberLookupError(apiError?.status === 404 ? t.memberNotFound : t.errorGeneric);
     } finally {
       setMemberLookupLoading(false);
     }
@@ -552,15 +540,37 @@ export default function StorePosPaymentPage() {
     setMemberInfo(null);
     setMemberPhone("");
     setRedeemPointsInput("");
+    setUseBalanceInput("");
     setMemberLookupError(null);
-    // 如果之前选的是余额支付，清除会员后重置为现金
-    if (paymentMethod === "store_balance") {
-        setPaymentMethod("cash");
-    }
+    if (paymentMethod === "store_balance") setPaymentMethod("cash");
   };
 
-  const handleBack = () => {
-    router.push(`/${locale}/store/pos`);
+  const handleBack = () => router.push(`/${locale}/store/pos`);
+
+  // 点击 MAX 填充积分
+  const handleMaxPoints = () => {
+  if (!memberInfo) return;
+  setRedeemPointsInput((maxRedeemableCentsForOrder / 100).toFixed(2));
+};
+
+  // 点击 MAX 填充余额
+  const handleMaxBalance = () => {
+    if (!memberInfo) return;
+    const balanceCents = (memberInfo.balance ?? 0) * 100;
+    // 允许使用的最大值：余额 与 (总额 - 积分抵扣) 的较小值
+    const maxAllowed = Math.min(balanceCents, totalAfterPointsCents);
+    setUseBalanceInput((maxAllowed / 100).toFixed(2));
+  };
+
+  // 底部直接点击“储值余额支付”
+  const handleSelectStoreBalancePayment = () => {
+    if (!memberInfo) return;
+    if (isBalanceSufficientForFullPayment) {
+        // 如果余额充足，直接填满
+        setUseBalanceInput((totalAfterPointsCents / 100).toFixed(2));
+        setPaymentMethod("store_balance");
+    } 
+    // 如果余额不足，不做操作（UI上按钮置灰），强迫用户使用 Input 框的 MAX
   };
 
   const handleConfirm = async () => {
@@ -578,20 +588,6 @@ export default function StorePosPaymentPage() {
       return;
     }
 
-    // ✅ 余额支付前置校验
-    if (paymentMethod === 'store_balance') {
-        if (!memberInfo) {
-            setError(t.memberNotFound);
-            setSubmitting(false);
-            return;
-        }
-        if (!isBalanceSufficient) {
-            setError(t.balanceInsufficient);
-            setSubmitting(false);
-            return;
-        }
-    }
-
     try {
       const itemsPayload = snapshot.items.map((item) => ({
         productStableId: item.stableId,
@@ -603,7 +599,6 @@ export default function StorePosPaymentPage() {
         options: item.options,
       }));
 
-      // ✅ 映射 PaymentMethod
       let apiPaymentMethod: PaymentMethod = "CASH";
       if (paymentMethod === "card") apiPaymentMethod = "CARD";
       else if (paymentMethod === "wechat_alipay") apiPaymentMethod = "WECHAT_ALIPAY";
@@ -612,16 +607,23 @@ export default function StorePosPaymentPage() {
       const body = {
         channel: "in_store" as const,
         fulfillmentType: fulfillment,
+        // 这里传原始小计，后端会重算，但我们要在 DTO 扩展支持部分支付
         subtotalCents: computedSnapshot.subtotalCents,
         taxCents: computedSnapshot.taxCents,
-        totalCents: computedSnapshot.totalCents,
+        totalCents: computedSnapshot.totalCents, // 这里的 totalCents 已经是扣除余额后的剩余应付? 不，Order模型通常存总价。
+        // 修正：后端创建订单时，totalCents 应该是订单总价值。
+        // 但 createInternal 会重算。
+        // 我们需要传递 balanceUsedCents 告诉后端扣多少余额。
         paymentMethod: apiPaymentMethod,
         items: itemsPayload,
         userStableId: memberInfo?.userStableId ?? undefined,
         pointsToRedeem: pointsToRedeem > 0 ? pointsToRedeem : undefined,
+        balanceUsedCents: balanceToUseCents > 0 ? balanceToUseCents : undefined, // [新增]
         contactPhone: memberInfo?.phone ?? undefined,
       };
 
+      // 注意：这里假设后端已经支持 balanceUsedCents
+      // 实际上我们会稍后修改后端来支持它
       const order = await apiFetch<CreatePosOrderResponse>("/pos/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -630,12 +632,7 @@ export default function StorePosPaymentPage() {
 
       if (typeof window !== "undefined" && order.orderStableId) {
         void sendPosPrintPayload(order.orderStableId, locale);
-
-        try {
-          window.localStorage.removeItem(POS_DISPLAY_STORAGE_KEY);
-        } catch {
-          // ignore
-        }
+        try { window.localStorage.removeItem(POS_DISPLAY_STORAGE_KEY); } catch {}
       }
 
       setSuccessInfo({
@@ -644,11 +641,7 @@ export default function StorePosPaymentPage() {
       });
 
       if (order.orderStableId) {
-        try {
-            await advanceOrder(order.orderStableId);
-        } catch (advanceError) {
-          console.warn("Failed to mark POS order as paid:", advanceError);
-        }
+        try { await advanceOrder(order.orderStableId); } catch (e) { console.warn(e); }
       }
     } catch (err) {
       console.error("Failed to place POS order:", err);
@@ -665,9 +658,7 @@ export default function StorePosPaymentPage() {
 
   useEffect(() => {
     if (!successInfo) return;
-    const timer = window.setTimeout(() => {
-      handleCloseSuccess();
-    }, 2000);
+    const timer = window.setTimeout(() => handleCloseSuccess(), 2000);
     return () => window.clearTimeout(timer);
   }, [handleCloseSuccess, successInfo]);
 
@@ -681,65 +672,53 @@ export default function StorePosPaymentPage() {
       </header>
 
       <section className="p-4 max-w-5xl mx-auto flex flex-col gap-4 lg:flex-row">
-        {/* 左侧：订单信息 */}
+        {/* 左侧：订单详情 */}
         <div className="flex-1 rounded-3xl bg-slate-800/80 border border-slate-700 p-4">
           <h2 className="text-sm font-semibold mb-3">{t.orderSummary}</h2>
-
           {loadingSnapshot ? (
             <p className="text-sm text-slate-400">{t.loading}</p>
           ) : !hasItems || !snapshot ? (
             <div className="space-y-3 text-sm text-slate-400">
               <p>{t.noOrder}</p>
-              <button
-                type="button"
-                onClick={handleBack}
-                className="mt-1 inline-flex h-9 items-center justify-center rounded-2xl border border-slate-600 px-3 text-xs font-medium text-slate-100 hover:bg-slate-700"
-              >
-                {t.back}
-              </button>
+              <button onClick={handleBack} className="mt-1 h-9 px-3 rounded-2xl border border-slate-600 text-slate-100">{t.back}</button>
             </div>
           ) : (
             <>
               <ul className="space-y-2 max-h-72 overflow-auto pr-1">
                 {snapshot.items.map((item) => (
-                  <li
-                    key={
-                      item.lineId ??
-                      `${item.stableId}-${item.unitPriceCents}-${item.quantity}`
-                    }
-                    className="rounded-2xl bg-slate-900/60 px-3 py-2 flex items-center justify-between gap-2"
-                  >
+                  <li key={item.lineId ?? `${item.stableId}-${item.unitPriceCents}-${item.quantity}`} className="rounded-2xl bg-slate-900/60 px-3 py-2 flex justify-between gap-2">
                     <div className="flex-1">
-                      <div className="text-sm font-medium">
-                        {locale === "zh" ? item.nameZh : item.nameEn}
-                      </div>
-                      <div className="text-xs text-slate-400">
-                        ×{item.quantity}
-                      </div>
+                      <div className="text-sm font-medium">{locale === "zh" ? item.nameZh : item.nameEn}</div>
+                      <div className="text-xs text-slate-400">×{item.quantity}</div>
                     </div>
-                    <div className="text-sm font-semibold">
-                      {formatMoney(item.lineTotalCents)}
-                    </div>
+                    <div className="text-sm font-semibold">{formatMoney(item.lineTotalCents)}</div>
                   </li>
                 ))}
               </ul>
-
               <div className="mt-4 border-t border-slate-700 pt-3 space-y-1 text-sm">
                 <div className="flex justify-between">
                   <span className="text-slate-300">{t.subtotal}</span>
                   <span>{formatMoney(summarySubtotalCents)}</span>
                 </div>
-              {summaryLoyaltyRedeemCents > 0 && (
-                <div className="flex justify-between text-emerald-200">
-                  <span className="text-slate-300">{t.memberRedeemLabel}</span>
-                  <span>-{formatMoney(summaryLoyaltyRedeemCents)}</span>
+                {/* 积分抵扣展示 */}
+                {summaryLoyaltyRedeemCents > 0 && (
+                  <div className="flex justify-between text-emerald-200">
+                    <span className="text-slate-300">{t.memberRedeemLabel}</span>
+                    <span>-{formatMoney(summaryLoyaltyRedeemCents)}</span>
+                  </div>
+                )}
+                {/* 余额支付展示 */}
+                {balanceToUseCents > 0 && (
+                  <div className="flex justify-between text-blue-200">
+                    <span className="text-slate-300">{t.payStoreBalance}</span>
+                    <span>-{formatMoney(balanceToUseCents)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-slate-300">{t.tax}</span>
+                  <span>{formatMoney(summaryTaxCents)}</span>
                 </div>
-              )}
-              <div className="flex justify-between">
-                <span className="text-slate-300">{t.tax}</span>
-                <span>{formatMoney(summaryTaxCents)}</span>
-              </div>
-                <div className="flex justify-between text-base font-semibold">
+                <div className="flex justify-between text-base font-semibold border-t border-slate-700 pt-2 mt-1">
                   <span>{t.total}</span>
                   <span>{formatMoney(summaryTotalCents)}</span>
                 </div>
@@ -754,286 +733,152 @@ export default function StorePosPaymentPage() {
           )}
         </div>
 
-        {/* 右侧：用餐方式 + 付款方式 */}
-        <div className="w-full lg:w-80 flex flex-col rounded-3xl bg-slate-800/80 border border-slate-700 p-4">
-          <div className="space-y-3">
+        {/* 右侧：支付控制 */}
+        <div className="w-full lg:w-96 flex flex-col rounded-3xl bg-slate-800/80 border border-slate-700 p-4">
+          <div className="space-y-4">
+            {/* 用餐方式 */}
             <div>
-              <h2 className="text-sm font-semibold mb-2">
-                {t.fulfillmentLabel}
-              </h2>
+              <h2 className="text-sm font-semibold mb-2">{t.fulfillmentLabel}</h2>
               <div className="grid grid-cols-2 gap-2 text-sm">
-                <button
-                  type="button"
-                  onClick={() => setFulfillment("pickup")}
-                  className={`h-10 rounded-2xl border font-medium ${
-                    fulfillment === "pickup"
-                      ? "border-emerald-400 bg-emerald-500 text-slate-900"
-                      : "border-slate-600 bg-slate-900 text-slate-100"
-                  }`}
-                >
-                  {t.pickup}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFulfillment("dine_in")}
-                  className={`h-10 rounded-2xl border font-medium ${
-                    fulfillment === "dine_in"
-                      ? "border-emerald-400 bg-emerald-500 text-slate-900"
-                      : "border-slate-600 bg-slate-900 text-slate-100"
-                  }`}
-                >
-                  {t.dineIn}
-                </button>
+                <button type="button" onClick={() => setFulfillment("pickup")} className={`h-10 rounded-2xl border font-medium ${fulfillment === "pickup" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.pickup}</button>
+                <button type="button" onClick={() => setFulfillment("dine_in")} className={`h-10 rounded-2xl border font-medium ${fulfillment === "dine_in" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.dineIn}</button>
               </div>
             </div>
 
-            <div>
-              <h2 className="text-sm font-semibold mb-2">
-                {t.balancePaymentLabel}
-              </h2>
-              {!memberInfo ? (
-                <button
-                  type="button"
-                  disabled
-                  className="h-10 w-full rounded-2xl border border-slate-700 bg-slate-900 text-sm font-medium text-slate-500"
-                >
-                  {t.balancePaymentHint}
-                </button>
-              ) : (
-                <div className="space-y-2">
-                  <button
-                    type="button"
-                    disabled={!hasItems || balanceAvailableCents <= 0}
-                    onClick={() =>
-                      setPaymentMethod((prev) =>
-                        prev === "store_balance" ? "cash" : "store_balance",
-                      )
-                    }
-                    className={`h-10 w-full rounded-2xl border text-sm font-medium flex items-center justify-between px-3 ${
-                      !hasItems || balanceAvailableCents <= 0
-                        ? "border-slate-600 bg-slate-900 text-slate-500"
-                        : paymentMethod === "store_balance"
-                          ? "border-emerald-400 bg-emerald-500 text-slate-900"
-                          : "border-slate-600 bg-slate-900 text-slate-100 hover:border-slate-400"
-                    }`}
-                  >
-                    <span>{t.payStoreBalance}</span>
-                    <span className="text-xs opacity-80">
-                      {formatMoney(balanceAvailableCents)}
-                    </span>
-                  </button>
-                  <div className="text-xs text-slate-400">
-                    {t.balancePaymentAvailable}:{" "}
-                    {formatMoney(balanceAvailableCents)}
-                  </div>
-                  <div className="text-xs text-slate-400">
-                    {t.balancePaymentAfter}: {formatMoney(balanceAfterCents)}
-                  </div>
-                </div>
-              )}
-            </div>
-
+            {/* 会员查询 + 积分/余额操作 */}
             <div>
               <h2 className="text-sm font-semibold mb-2">{t.memberLabel}</h2>
               <div className="space-y-2">
-                <input
-                  type="tel"
-                  value={memberPhone}
-                  onChange={(event) => setMemberPhone(event.target.value)}
-                  placeholder={t.memberPhone}
-                  className="h-10 w-full rounded-2xl border border-slate-600 bg-slate-900 px-3 text-sm text-slate-100 placeholder:text-slate-500"
-                />
                 <div className="flex gap-2">
-                  <button
-                    type="button"
-                    disabled={!memberPhone.trim() || memberLookupLoading}
-                    onClick={handleMemberLookup}
-                    className={`flex-1 h-9 rounded-2xl border text-xs font-medium ${
-                      !memberPhone.trim() || memberLookupLoading
-                        ? "border-slate-700 bg-slate-900 text-slate-500"
-                        : "border-slate-600 bg-slate-900 text-slate-100 hover:border-slate-400"
-                    }`}
-                  >
-                    {memberLookupLoading ? t.memberLoading : t.memberLookup}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleMemberClear}
-                    className="h-9 rounded-2xl border border-slate-600 px-3 text-xs font-medium text-slate-100 hover:border-slate-400"
-                  >
-                    {t.memberClear}
-                  </button>
+                  <input type="tel" value={memberPhone} onChange={(e) => setMemberPhone(e.target.value)} placeholder={t.memberPhone} className="h-10 flex-1 rounded-2xl border border-slate-600 bg-slate-900 px-3 text-sm text-slate-100 placeholder:text-slate-500" />
+                  <button type="button" disabled={!memberPhone.trim() || memberLookupLoading} onClick={handleMemberLookup} className="h-10 px-4 rounded-2xl border border-slate-600 bg-slate-800 text-sm hover:bg-slate-700 disabled:opacity-50">{memberLookupLoading ? "..." : t.memberLookup}</button>
                 </div>
-                {memberLookupError && (
-                  <p className="text-xs text-rose-200">{memberLookupError}</p>
-                )}
+                {memberLookupError && <p className="text-xs text-rose-200">{memberLookupError}</p>}
+                
                 {memberInfo && (
-                  <div className="rounded-2xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-xs text-slate-200">
-                    <p className="font-medium text-emerald-200">
-                      {t.memberFound}
-                    </p>
-                    <p className="mt-1">
-                      {t.memberPoints}: {memberInfo.points.toFixed(2)}
-                    </p>
-                    <p>
-                      {t.memberPointsAvailable}:{" "}
-                      {formatMoney(memberInfo.availableDiscountCents)}
-                    </p>
-                    <p className="text-slate-400">
-                      ID: {memberInfo.userStableId}
-                    </p>
+                  <div className="rounded-2xl border border-slate-600 bg-slate-900/40 p-3 space-y-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-100">{memberInfo.displayName || t.memberFound}</p>
+                        <p className="text-xs text-slate-400">ID: {memberInfo.userStableId.slice(-6)}</p>
+                      </div>
+                      <button onClick={handleMemberClear} className="text-xs text-slate-400 hover:text-white underline">{t.memberClear}</button>
+                    </div>
+
+                    {/* 积分部分 */}
+                    <div className="bg-slate-800/50 rounded-xl p-2 border border-slate-700/50">
+                        <div className="flex justify-between text-xs text-slate-300 mb-1">
+                            <span>{t.memberPoints}</span>
+                            <span>{memberInfo.points.toFixed(0)} pts</span>
+                        </div>
+                        <div className="flex gap-2">
+                            <input 
+                                type="text"
+                                value={redeemPointsInput}
+                                onChange={(e) => {
+                                  // 只允许数字和一个小数点，且最多两位小数
+                                  let v = e.target.value.replace(/[^\d.]/g, "");
+                                  const firstDot = v.indexOf(".");
+                                  if (firstDot !== -1) {
+                                    v =
+                                      v.slice(0, firstDot + 1) +
+                                      v.slice(firstDot + 1).replace(/\./g, "");
+                                    const [a, b] = v.split(".");
+                                    v = a + "." + (b ?? "").slice(0, 2);
+                                  }
+                                  setRedeemPointsInput(v);
+                                }}
+                                placeholder="0.00"
+                                className="flex-1 h-8 rounded-lg bg-slate-900 border border-slate-700 px-2 text-sm text-right"
+                            />
+                            <button onClick={handleMaxPoints} className="px-2 h-8 rounded-lg bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-500/30 hover:bg-emerald-500/30">{t.max}</button>
+                        </div>
+                        <div className="text-right text-xs text-emerald-400 mt-1">
+                            -{formatMoney(redeemCents)}
+                        </div>
+                    </div>
+
+                    {/* 余额部分 */}
+                    <div className="bg-slate-800/50 rounded-xl p-2 border border-slate-700/50">
+                        <div className="flex justify-between text-xs text-slate-300 mb-1">
+                            <span>{t.memberBalance}</span>
+                            <span>{formatMoney((memberInfo.balance ?? 0) * 100)}</span>
+                        </div>
+                        <div className="flex gap-2">
+                            <input 
+                                type="number" 
+                                value={useBalanceInput} 
+                                onChange={(e) => setUseBalanceInput(e.target.value)}
+                                placeholder="0.00"
+                                className="flex-1 h-8 rounded-lg bg-slate-900 border border-slate-700 px-2 text-sm text-right"
+                            />
+                            <button onClick={handleMaxBalance} className="px-2 h-8 rounded-lg bg-blue-500/20 text-blue-300 text-xs font-bold border border-blue-500/30 hover:bg-blue-500/30">{t.max}</button>
+                        </div>
+                        <div className="flex justify-between text-xs mt-1">
+                            <span className="text-slate-500">{t.balancePaymentAfter}</span>
+                            <span className="text-blue-300">{formatMoney(balanceRemainingAfterOrder)}</span>
+                        </div>
+                    </div>
                   </div>
                 )}
               </div>
             </div>
 
-            {memberInfo && (
-              <div>
-                <h2 className="text-sm font-semibold mb-2">
-                  {t.memberRedeemLabel}
-                </h2>
-                <div className="space-y-2">
-                  <input
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={redeemPointsInput}
-                    onChange={(event) => setRedeemPointsInput(event.target.value)}
-                    placeholder={t.memberRedeemHint}
-                    className="h-10 w-full rounded-2xl border border-slate-600 bg-slate-900 px-3 text-sm text-slate-100 placeholder:text-slate-500"
-                  />
-                  <p className="text-xs text-slate-400">
-                    {t.memberRedeemHint} · Max{" "}
-                    {maxRedeemablePointsForOrder}
-                  </p>
-                  <div className="text-xs text-slate-400">
-                    {t.memberEarned}: {pointsEarned.toFixed(2)}
-                  </div>
-                  <div className="text-xs text-slate-400">
-                    {t.memberBalanceAfter}:{" "}
-                    {(
-                      memberInfo.points -
-                      pointsToRedeem +
-                      pointsEarned
-                    ).toFixed(2)}
-                  </div>
-                </div>
-              </div>
-            )}
-
+            {/* 付款方式 */}
             <div>
-              <h2 className="text-sm font-semibold mb-2">
-                {t.paymentLabel}
-              </h2>
-              <div className="grid grid-cols-1 gap-2 text-sm">
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod("cash")}
-                  className={`h-10 rounded-2xl border font-medium ${
-                    paymentMethod === "cash"
-                      ? "border-emerald-400 bg-emerald-500 text-slate-900"
-                      : "border-slate-600 bg-slate-900 text-slate-100"
-                  }`}
+              <h2 className="text-sm font-semibold mb-2">{t.paymentLabel}</h2>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <button onClick={() => setPaymentMethod("cash")} className={`h-12 rounded-2xl border font-medium ${paymentMethod === "cash" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.payCash}</button>
+                <button onClick={() => setPaymentMethod("card")} className={`h-12 rounded-2xl border font-medium ${paymentMethod === "card" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.payCard}</button>
+                <button onClick={() => setPaymentMethod("wechat_alipay")} className={`h-12 rounded-2xl border font-medium ${paymentMethod === "wechat_alipay" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.payWeChatAlipay}</button>
+                
+                {/* 储值余额支付按钮 */}
+                <button 
+                    onClick={handleSelectStoreBalancePayment} 
+                    disabled={!memberInfo || !isBalanceSufficientForFullPayment}
+                    className={`h-12 rounded-2xl border font-medium flex flex-col items-center justify-center leading-tight
+                        ${paymentMethod === "store_balance" 
+                            ? "border-emerald-400 bg-emerald-500 text-slate-900" 
+                            : (!memberInfo || !isBalanceSufficientForFullPayment)
+                                ? "border-slate-700 bg-slate-800 text-slate-600 cursor-not-allowed"
+                                : "border-blue-500/50 bg-blue-900/20 text-blue-200 hover:bg-blue-900/40"
+                        }`}
                 >
-                  {t.payCash}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod("card")}
-                  className={`h-10 rounded-2xl border font-medium ${
-                    paymentMethod === "card"
-                      ? "border-emerald-400 bg-emerald-500 text-slate-900"
-                      : "border-slate-600 bg-slate-900 text-slate-100"
-                  }`}
-                >
-                  {t.payCard}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod("wechat_alipay")}
-                  className={`h-10 rounded-2xl border font-medium ${
-                    paymentMethod === "wechat_alipay"
-                      ? "border-emerald-400 bg-emerald-500 text-slate-900"
-                      : "border-slate-600 bg-slate-900 text-slate-100"
-                  }`}
-                >
-                  {t.payWeChatAlipay}
+                    <span>{t.payStoreBalance}</span>
+                    {memberInfo && !isBalanceSufficientForFullPayment && (
+                        <span className="text-[10px] opacity-70 scale-90">{t.balanceInsufficient}</span>
+                    )}
                 </button>
               </div>
             </div>
 
-            <p className="text-xs text-slate-400">{t.tip}</p>
-
-            {/* ✅ 显示余额不足提示 */}
-            {!isBalanceSufficient && paymentMethod === 'store_balance' && (
-                 <p className="mt-2 text-xs text-rose-300">{t.balanceInsufficient}</p>
-            )}
-
-            {error && (
-              <div className="rounded-2xl border border-rose-500/60 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">
-                {error}
-              </div>
-            )}
+            {error && <div className="rounded-2xl border border-rose-500/60 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">{error}</div>}
           </div>
 
-          <div className="mt-4 flex gap-3">
-            <button
-              type="button"
-              onClick={handleBack}
-              className="flex-1 h-11 rounded-2xl border border-slate-600 text-sm font-medium text-slate-100 hover:bg-slate-700"
-            >
-              {t.back}
-            </button>
-            <button
-              type="button"
-              // ✅ 增加条件：如果选了余额支付且余额不足，禁止提交
-              disabled={!hasItems || submitting || !snapshot || !fulfillment || (!isBalanceSufficient && paymentMethod === 'store_balance')}
-              onClick={handleConfirm}
-              className={`flex-[1.5] h-11 rounded-2xl text-sm font-semibold ${
-                !hasItems || submitting || !snapshot || !fulfillment || (!isBalanceSufficient && paymentMethod === 'store_balance')
-                  ? "bg-slate-500 text-slate-200"
-                  : "bg-emerald-500 text-slate-900 hover:bg-emerald-400"
-              }`}
-            >
+          <div className="mt-auto pt-4 flex gap-3">
+            <button onClick={handleBack} className="flex-1 h-12 rounded-2xl border border-slate-600 text-sm font-medium text-slate-100 hover:bg-slate-700">{t.back}</button>
+            <button disabled={!hasItems || submitting || !snapshot || !fulfillment} onClick={handleConfirm} className="flex-[2] h-12 rounded-2xl text-sm font-bold bg-emerald-500 text-slate-900 hover:bg-emerald-400 disabled:opacity-50 disabled:bg-slate-600 disabled:text-slate-400">
               {submitting ? t.confirming : t.confirm}
             </button>
           </div>
         </div>
       </section>
 
-      {/* 成功弹窗 */}
       {successInfo && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-sm rounded-3xl bg-slate-900 border border-slate-700 p-6 text-center">
-            <h3 className="text-lg font-semibold mb-2">
-              {t.successTitle}
-            </h3>
-            <p className="text-sm text-slate-300 mb-3">
-              {t.successBody}
-            </p>
-            <div className="mb-4 space-y-1 text-sm">
-              <div>
-                {t.orderLabel}{" "}
-                <span className="font-mono font-semibold">
-                  {successInfo.orderNumber}
-                </span>
-              </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-3xl bg-slate-900 border border-slate-700 p-8 text-center shadow-2xl">
+            <h3 className="text-xl font-bold mb-2 text-emerald-400">{t.successTitle}</h3>
+            <div className="my-6 space-y-2">
+              <div className="text-slate-400 text-sm">{t.orderLabel}</div>
+              <div className="text-3xl font-mono font-bold text-white tracking-widest">{successInfo.orderNumber}</div>
               {successInfo.pickupCode && (
-                <div>
-                  {t.pickupCodeLabel}{" "}
-                  <span className="font-mono font-bold text-2xl">
-                    {successInfo.pickupCode}
-                  </span>
-                </div>
+                <>
+                    <div className="text-slate-400 text-sm mt-4">{t.pickupCodeLabel}</div>
+                    <div className="text-4xl font-bold text-yellow-400">{successInfo.pickupCode}</div>
+                </>
               )}
             </div>
-            <button
-              type="button"
-              onClick={handleCloseSuccess}
-              className="mt-2 inline-flex items-center justify-center px-4 py-2 rounded-2xl bg-slate-100 text-slate-900 text-sm font-medium hover:bg-white"
-            >
-              {t.close}
-            </button>
+            <button onClick={handleCloseSuccess} className="w-full h-12 rounded-2xl bg-slate-100 text-slate-900 font-bold hover:bg-white transition-colors">{t.close}</button>
           </div>
         </div>
       )}

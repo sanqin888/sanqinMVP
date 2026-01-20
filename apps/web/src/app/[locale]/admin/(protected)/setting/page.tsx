@@ -157,11 +157,6 @@ function parseOptionalNumber(value: string): number | null {
   return num;
 }
 
-function centsToDollarNumber(cents: number | null | undefined): number {
-  if (cents == null || Number.isNaN(cents)) return 0;
-  return Number((cents / 100).toFixed(2));
-}
-
 function dollarsToCentsNumber(value: string): number | null {
   const num = parseOptionalNumber(value);
   if (num == null || num < 0) return null;
@@ -415,37 +410,6 @@ const handleTimeChange = (
 
   const handleTimezoneChange = (value: string) => {
     setConfig((prev) => (prev ? { ...prev, timezone: value } : prev));
-  };
-
-  const handleEarnRateChange = (value: string) => {
-    const num = parseOptionalNumber(value);
-    if (num == null || num < 0) return;
-    setConfig((prev) => (prev ? { ...prev, earnPtPerDollar: num } : prev));
-  };
-
-  const handleRedeemRateChange = (value: string) => {
-    const num = parseOptionalNumber(value);
-    if (num == null || num <= 0) return;
-    setConfig((prev) =>
-      prev ? { ...prev, redeemDollarPerPoint: num } : prev,
-    );
-  };
-
-  const handleReferralRateChange = (value: string) => {
-    const num = parseOptionalNumber(value);
-    if (num == null || num < 0) return;
-    setConfig((prev) =>
-      prev ? { ...prev, referralPtPerDollar: num } : prev,
-    );
-  };
-
-  const handleTierThresholdChange = (
-    field: 'tierThresholdSilver' | 'tierThresholdGold' | 'tierThresholdPlatinum',
-    value: string,
-  ) => {
-    const cents = dollarsToCentsNumber(value);
-    if (cents == null) return;
-    setConfig((prev) => (prev ? { ...prev, [field]: cents } : prev));
   };
 
   const handleDoorDashToggle = (checked: boolean) => {

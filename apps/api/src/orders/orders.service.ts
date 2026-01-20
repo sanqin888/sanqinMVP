@@ -1581,6 +1581,28 @@ export class OrdersService {
               subtotalAfterCoupon,
             });
 
+            // 储值余额支付
+            const balanceUsedCents =
+              dto.balanceUsedCents && dto.balanceUsedCents > 0
+                ? dto.balanceUsedCents
+                : 0;
+
+            if (balanceUsedCents > 0) {
+              if (!userId) {
+                throw new BadRequestException(
+                  'User required for balance payment',
+                );
+              }
+
+              await this.loyalty.deductBalanceForOrder({
+                tx,
+                userId,
+                orderId,
+                amountCents: balanceUsedCents,
+                sourceKey: 'ORDER',
+              });
+            }
+
             // 税基计算：(小计 - 优惠券 - 积分) + 配送费
             const purchaseBaseCents = Math.max(
               0,

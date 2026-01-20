@@ -400,12 +400,41 @@ export class LoyaltyService {
           balance = newBal;
         }
       }
+      // --- 查询本单使用了多少储值余额 ---
+      // 我们通过查找 Ledger 中 target='BALANCE' 的记录来获知余额扣除额
+      const balanceLedger = await tx.loyaltyLedger.findFirst({
+        where: {
+          orderId,
+          type: LoyaltyEntryType.REDEEM_ON_ORDER,
+          target: 'BALANCE', // 明确是余额扣除
+        },
+        select: { deltaMicro: true },
+      });
+
+      // deltaMicro 是负数，取反转正。如果没有记录则为0。
+      // 简单转换，注意精度处理
+      const balanceUsedMicro = balanceLedger ? -balanceLedger.deltaMicro : 0n;
+      const balanceUsedCents = Number(balanceUsedMicro) / 10000;
+
+      // 1. 用户实际消费额（用于用户自己升级和赚积分）
+      // 逻辑：余额支付也算有效消费，只扣除“积分抵扣”部分
+      const netSubtotalForUserEarn = Math.max(
+        0,
+        subtotalCents - redeemValueCents,
+      );
+
+      // 2. 资金净流入额（用于推荐人奖励）
+      // 逻辑：扣除“积分抵扣” AND “余额支付”，避免充值+消费双重奖励
+      const netSubtotalForReferral = Math.max(
+        0,
+        netSubtotalForUserEarn - balanceUsedCents,
+      );
 
       // 3) 赚取积分
       const accountTier: Tier = tier ?? (accRaw.tier as Tier);
 
       const earnedPts =
-        (netSubtotalCents / 100) *
+        (netSubtotalForUserEarn / 100) *
         loyaltyConfig.earnPtPerDollar *
         loyaltyConfig.tierMultipliers[accountTier];
 
@@ -446,7 +475,7 @@ export class LoyaltyService {
       }
 
       // 4) 累加累计实际消费
-      lifetimeSpendCents += netSubtotalCents;
+      lifetimeSpendCents += netSubtotalForUserEarn;
 
       // 5) 更新等级
       const newTier = computeTierFromLifetime(
@@ -465,7 +494,7 @@ export class LoyaltyService {
       });
 
       // 7) 推荐人奖励（幂等）
-      if (loyaltyConfig.referralPtPerDollar > 0 && netSubtotalCents > 0) {
+      if (loyaltyConfig.referralPtPerDollar > 0 && netSubtotalForReferral > 0) {
         const userRow = await tx.user.findUnique({
           where: { id: userId },
           select: { referredByUserId: true },
@@ -487,7 +516,8 @@ export class LoyaltyService {
 
           if (!existedReferral) {
             const referralPts =
-              (netSubtotalCents / 100) * loyaltyConfig.referralPtPerDollar;
+              (netSubtotalForReferral / 100) *
+              loyaltyConfig.referralPtPerDollar;
             const referralMicro = toMicroPoints(referralPts);
 
             if (referralMicro > 0n) {
@@ -529,6 +559,65 @@ export class LoyaltyService {
     });
   }
 
+  // ✅ 新增方法：扣除储值余额
+  async deductBalanceForOrder(params: {
+    tx: Prisma.TransactionClient;
+    userId: string;
+    orderId: string;
+    amountCents: number;
+    sourceKey?: string;
+  }): Promise<void> {
+    const { tx, userId, orderId, amountCents, sourceKey } = params;
+    if (amountCents <= 0) return;
+
+    const account = await this.ensureAccountWithTx(tx, userId);
+
+    // 锁行
+    await tx.$queryRaw`SELECT id FROM "LoyaltyAccount" WHERE id = ${account.id}::uuid FOR UPDATE`;
+
+    // 转换金额：1 cent = 0.01 dollar. 假设 balanceMicro 存储逻辑是 1 unit = 1e6 micro.
+    // 需要确认 balanceMicro 的单位。在 applyTopup 中：toMicroPoints(cents / 100).
+    // 所以 balanceMicro 是以“元”为单位的 micro 值 (1e6 micro = 1 dollar).
+    const deductMicro = toMicroPoints(amountCents / 100);
+
+    if (account.balanceMicro < deductMicro) {
+      throw new BadRequestException(`Insufficient store balance.`);
+    }
+
+    const newBalance = account.balanceMicro - deductMicro;
+    const sk = sourceKey || LEDGER_SOURCE_ORDER;
+
+    // 检查是否已经扣过（幂等）
+    const existed = await tx.loyaltyLedger.findFirst({
+      where: {
+        orderId,
+        type: LoyaltyEntryType.REDEEM_ON_ORDER, // 复用类型，通过 target 区分
+        target: 'BALANCE',
+        sourceKey: sk,
+      },
+    });
+
+    if (!existed) {
+      await tx.loyaltyLedger.create({
+        data: {
+          accountId: account.id,
+          orderId,
+          type: LoyaltyEntryType.REDEEM_ON_ORDER,
+          target: 'BALANCE', // ✅ 明确标记扣除的是余额
+          sourceKey: sk,
+          deltaMicro: -deductMicro,
+          balanceAfterMicro: newBalance,
+          note: `balance payment $${(amountCents / 100).toFixed(2)}`,
+        },
+      });
+
+      await tx.loyaltyAccount.update({
+        where: { id: account.id },
+        data: { balanceMicro: newBalance },
+      });
+    }
+  }
+
   /**
    * 退款：冲回【自己】赚取、返还抵扣 + 回退累计消费 & 等级 + 冲回推荐人奖励（幂等）
    */
@@ -562,7 +651,8 @@ export class LoyaltyService {
         FOR UPDATE
       `;
 
-      let balance = acc.pointsMicro;
+      let pointsBalance = acc.pointsMicro; // 积分余额
+      let storeBalance = acc.balanceMicro; // 储值余额
       let lifetimeSpendCents = acc.lifetimeSpendCents ?? 0;
       let shouldAdjustLifetime = false;
 
@@ -591,8 +681,8 @@ export class LoyaltyService {
         });
 
         if (!existed) {
-          const newBal = balance - earn.deltaMicro;
-
+          pointsBalance -= earn.deltaMicro; // 更新本地变量
+          shouldAdjustLifetime = true;
           await tx.loyaltyLedger.create({
             data: {
               accountId: acc.id,
@@ -600,57 +690,88 @@ export class LoyaltyService {
               type: LoyaltyEntryType.REFUND_REVERSE_EARN,
               sourceKey: LEDGER_SOURCE_FULL_REFUND,
               deltaMicro: -earn.deltaMicro,
-              balanceAfterMicro: newBal,
+              balanceAfterMicro: pointsBalance, // ✅ 使用正确的 pointsBalance
               note: 'reverse earned on refund',
             },
           });
-
-          balance = newBal;
-          shouldAdjustLifetime = true;
         }
       }
 
       // 2) 退回抵扣积分
-      const redeem = await tx.loyaltyLedger.findUnique({
+      const redeemPointsRecord = await tx.loyaltyLedger.findFirst({
         where: {
-          orderId_type_sourceKey: {
-            orderId,
-            type: LoyaltyEntryType.REDEEM_ON_ORDER,
-            sourceKey: LEDGER_SOURCE_ORDER,
-          },
+          orderId,
+          type: LoyaltyEntryType.REDEEM_ON_ORDER,
+          sourceKey: LEDGER_SOURCE_ORDER,
+          target: 'POINTS', // ✅ 明确只找积分抵扣
         },
-        select: { deltaMicro: true },
       });
 
-      if (redeem && redeem.deltaMicro < 0n) {
-        const existed = await tx.loyaltyLedger.findUnique({
+      if (redeemPointsRecord && redeemPointsRecord.deltaMicro < 0n) {
+        const existedPointsRefund = await tx.loyaltyLedger.findFirst({
           where: {
-            orderId_type_sourceKey: {
-              orderId,
-              type: LoyaltyEntryType.REFUND_RETURN_REDEEM,
-              sourceKey: LEDGER_SOURCE_FULL_REFUND,
-            },
+            orderId,
+            type: LoyaltyEntryType.REFUND_RETURN_REDEEM,
+            sourceKey: LEDGER_SOURCE_FULL_REFUND,
+            target: 'POINTS',
           },
-          select: { id: true },
         });
 
-        if (!existed) {
-          const back = -redeem.deltaMicro;
-          const newBal = balance + back;
+        if (!existedPointsRefund) {
+          const back = -redeemPointsRecord.deltaMicro;
+          pointsBalance += back;
 
           await tx.loyaltyLedger.create({
             data: {
               accountId: acc.id,
               orderId,
               type: LoyaltyEntryType.REFUND_RETURN_REDEEM,
+              target: 'POINTS',
               sourceKey: LEDGER_SOURCE_FULL_REFUND,
               deltaMicro: back,
-              balanceAfterMicro: newBal,
-              note: 'return redeemed on refund',
+              balanceAfterMicro: pointsBalance,
+              note: 'return redeemed points on refund',
             },
           });
+        }
+      }
 
-          balance = newBal;
+      // ✅ 3) [新增] 退回使用的【储值余额】 (REDEEM - BALANCE)
+      const redeemBalanceRecord = await tx.loyaltyLedger.findFirst({
+        where: {
+          orderId,
+          type: LoyaltyEntryType.REDEEM_ON_ORDER,
+          sourceKey: LEDGER_SOURCE_ORDER,
+          target: 'BALANCE', // ✅ 明确查找余额扣除记录
+        },
+      });
+
+      if (redeemBalanceRecord && redeemBalanceRecord.deltaMicro < 0n) {
+        const existedBalanceRefund = await tx.loyaltyLedger.findFirst({
+          where: {
+            orderId,
+            type: LoyaltyEntryType.REFUND_RETURN_REDEEM, // 复用类型
+            sourceKey: LEDGER_SOURCE_FULL_REFUND,
+            target: 'BALANCE', // ✅
+          },
+        });
+
+        if (!existedBalanceRefund) {
+          const back = -redeemBalanceRecord.deltaMicro; // 取反（变正数）
+          storeBalance += back; // ✅ 余额加回
+
+          await tx.loyaltyLedger.create({
+            data: {
+              accountId: acc.id,
+              orderId,
+              type: LoyaltyEntryType.REFUND_RETURN_REDEEM,
+              target: 'BALANCE', // ✅ 标记
+              sourceKey: LEDGER_SOURCE_FULL_REFUND,
+              deltaMicro: back,
+              balanceAfterMicro: storeBalance,
+              note: 'return store balance on refund',
+            },
+          });
         }
       }
 
@@ -730,7 +851,8 @@ export class LoyaltyService {
       await tx.loyaltyAccount.update({
         where: { id: acc.id },
         data: {
-          pointsMicro: balance,
+          pointsMicro: pointsBalance,
+          balanceMicro: storeBalance, // ✅ 更新余额
           lifetimeSpendCents,
           tier: newTier,
         },
