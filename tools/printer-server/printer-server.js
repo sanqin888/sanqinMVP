@@ -160,25 +160,27 @@ const dineEn = isDelivery ? "DELIVERY" : f === "pickup" ? "TAKE-OUT" : "DINE-IN"
     .toLowerCase()
     .replace(/[\s-]/g, "_"); // safety
 
+  const normalizedPm = pm === "storebalance" ? "store_balance" : pm;
+
   const payZh =
-    pm === "cash"
+    normalizedPm === "cash"
       ? "现金"
-      : pm === "card"
+      : normalizedPm === "card"
       ? "银行卡"
-      : pm === "wechat_alipay"
+      : normalizedPm === "wechat_alipay"
       ? "微信/支付宝"
-      : pm === "store_balance" || pm === "storebalance" || pm === "balance"
+      : normalizedPm === "store_balance" || normalizedPm === "balance"
       ? "储值余额"
       : "其他";
 
   const payEn =
-    pm === "cash"
+    normalizedPm === "cash"
       ? "Cash"
-      : pm === "card"
+      : normalizedPm === "card"
       ? "Card"
-      : pm === "wechat_alipay"
+      : normalizedPm === "wechat_alipay"
       ? "WeChat / Alipay"
-      : pm === "store_balance" || pm === "storebalance" || pm === "balance"
+      : normalizedPm === "store_balance" || normalizedPm === "balance"
       ? "Store Balance"
       : "Other";
 
