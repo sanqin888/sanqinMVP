@@ -114,7 +114,6 @@ const STRINGS: Record<
     subtitle: string;
     orderSummary: string;
     subtotal: string;
-    discount: string;
     tax: string;
     total: string;
     fulfillmentLabel: string;
@@ -126,6 +125,10 @@ const STRINGS: Record<
     payWeChatAlipay: string;
     payStoreBalance: string; // ✅ 新增
     balanceInsufficient: string; // ✅ 新增
+    balancePaymentLabel: string;
+    balancePaymentHint: string;
+    balancePaymentAvailable: string;
+    balancePaymentAfter: string;
     back: string;
     confirm: string;
     confirming: string;
@@ -138,9 +141,6 @@ const STRINGS: Record<
     close: string;
     orderLabel: string;
     pickupCodeLabel: string;
-    discountLabel: string;
-    discountButton: string;
-    discountNone: string;
     memberLabel: string;
     memberPhone: string;
     memberLookup: string;
@@ -163,7 +163,6 @@ const STRINGS: Record<
     subtitle: "选择用餐方式和付款方式，然后在收银机上完成支付。",
     orderSummary: "订单信息",
     subtotal: "小计",
-    discount: "折扣",
     tax: "税费 (HST)",
     total: "合计",
     fulfillmentLabel: "用餐方式",
@@ -175,6 +174,10 @@ const STRINGS: Record<
     payWeChatAlipay: "微信或支付宝",
     payStoreBalance: "储值余额支付",
     balanceInsufficient: "余额不足",
+    balancePaymentLabel: "余额支付",
+    balancePaymentHint: "请先选择会员后使用余额支付。",
+    balancePaymentAvailable: "可用余额",
+    balancePaymentAfter: "预计结算后余额",
     back: "返回点单",
     confirm: "确认收款并生成订单",
     confirming: "处理中…",
@@ -187,9 +190,6 @@ const STRINGS: Record<
     close: "完成",
     orderLabel: "订单号：",
     pickupCodeLabel: "取餐码：",
-    discountLabel: "折扣选项",
-    discountButton: "选择折扣",
-    discountNone: "不使用折扣",
     memberLabel: "会员手机号",
     memberPhone: "输入会员手机号",
     memberLookup: "确认会员",
@@ -211,7 +211,6 @@ const STRINGS: Record<
     subtitle: "Choose dining and payment method, then take payment on terminal.",
     orderSummary: "Order summary",
     subtotal: "Subtotal",
-    discount: "Discount",
     tax: "Tax (HST)",
     total: "Total",
     fulfillmentLabel: "Dining",
@@ -223,6 +222,10 @@ const STRINGS: Record<
     payWeChatAlipay: "WeChat / Alipay",
     payStoreBalance: "Store Balance",
     balanceInsufficient: "Insufficient balance",
+    balancePaymentLabel: "Balance payment",
+    balancePaymentHint: "Select a member to pay with stored balance.",
+    balancePaymentAvailable: "Available balance",
+    balancePaymentAfter: "Estimated balance after",
     back: "Back to POS",
     confirm: "Confirm payment & create order",
     confirming: "Saving…",
@@ -236,9 +239,6 @@ const STRINGS: Record<
     close: "Done",
     orderLabel: "Order:",
     pickupCodeLabel: "Pickup code:",
-    discountLabel: "Discount",
-    discountButton: "Select discount",
-    discountNone: "No discount",
     memberLabel: "Member phone",
     memberPhone: "Enter member phone",
     memberLookup: "Confirm member",
@@ -282,9 +282,6 @@ export default function StorePosPaymentPage() {
   
   // ✅ 状态更新：支持 store_balance
   const [paymentMethod, setPaymentMethod] = useState<LocalPaymentMethod>("cash");
-  
-  const [discountRate, setDiscountRate] = useState<number>(0);
-  const [showDiscountOptions, setShowDiscountOptions] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [memberPhone, setMemberPhone] = useState("");
@@ -376,12 +373,8 @@ export default function StorePosPaymentPage() {
     return snapshot.items.reduce((sum, item) => sum + item.lineTotalCents, 0);
   }, [snapshot]);
 
-  const discountCents = useMemo(
-    () => Math.round(baseSubtotalCents * discountRate),
-    [baseSubtotalCents, discountRate],
-  );
-
-  const discountedSubtotalCents = Math.max(0, baseSubtotalCents - discountCents);
+  const discountCents = 0;
+  const discountedSubtotalCents = baseSubtotalCents;
 
   const maxRedeemableCentsForOrder = useMemo(() => {
     if (!memberInfo) return 0;
@@ -492,7 +485,6 @@ export default function StorePosPaymentPage() {
   const summarySubtotalCents = computedSnapshot?.subtotalCents ?? 0;
   const summaryTaxCents = computedSnapshot?.taxCents ?? 0;
   const summaryTotalCents = computedSnapshot?.totalCents ?? 0;
-  const summaryDiscountCents = computedSnapshot?.discountCents ?? 0;
   const summaryLoyaltyRedeemCents =
     computedSnapshot?.loyalty?.pointsRedeemed != null
       ? computedSnapshot.loyalty.pointsRedeemed * 100
@@ -502,7 +494,13 @@ export default function StorePosPaymentPage() {
       ? (summaryTotalCents / 100) * wechatAlipayRate
       : null;
 
-  const discountOptions = [0.05, 0.1, 0.15];
+  const balanceAvailableCents = memberInfo
+    ? Math.round((memberInfo.balance ?? 0) * 100)
+    : 0;
+  const balanceAfterCents =
+    paymentMethod === "store_balance"
+      ? Math.max(0, balanceAvailableCents - roundedTotalCents)
+      : balanceAvailableCents;
 
   const handleMemberLookup = async () => {
     if (!memberPhone.trim()) {
@@ -731,12 +729,6 @@ export default function StorePosPaymentPage() {
                   <span className="text-slate-300">{t.subtotal}</span>
                   <span>{formatMoney(summarySubtotalCents)}</span>
                 </div>
-              {summaryDiscountCents > 0 && (
-                <div className="flex justify-between text-emerald-200">
-                  <span className="text-slate-300">{t.discount}</span>
-                  <span>-{formatMoney(summaryDiscountCents)}</span>
-                </div>
-              )}
               {summaryLoyaltyRedeemCents > 0 && (
                 <div className="flex justify-between text-emerald-200">
                   <span className="text-slate-300">{t.memberRedeemLabel}</span>
@@ -796,50 +788,49 @@ export default function StorePosPaymentPage() {
             </div>
 
             <div>
-              <h2 className="text-sm font-semibold mb-2">{t.discountLabel}</h2>
-              <div className="relative">
+              <h2 className="text-sm font-semibold mb-2">
+                {t.balancePaymentLabel}
+              </h2>
+              {!memberInfo ? (
                 <button
                   type="button"
-                  disabled={!hasItems}
-                  onClick={() => setShowDiscountOptions((prev) => !prev)}
-                  className={`h-10 w-full rounded-2xl border text-sm font-medium ${
-                    !hasItems
-                      ? "border-slate-600 bg-slate-900 text-slate-500"
-                      : "border-slate-600 bg-slate-900 text-slate-100 hover:border-slate-400"
-                  }`}
+                  disabled
+                  className="h-10 w-full rounded-2xl border border-slate-700 bg-slate-900 text-sm font-medium text-slate-500"
                 >
-                  {discountRate > 0
-                    ? `${t.discountButton} (-${Math.round(discountRate * 100)}%)`
-                    : t.discountButton}
+                  {t.balancePaymentHint}
                 </button>
-                {showDiscountOptions && (
-                  <div className="absolute z-10 mt-2 w-full rounded-2xl border border-slate-600 bg-slate-900 p-2 shadow-lg">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDiscountRate(0);
-                        setShowDiscountOptions(false);
-                      }}
-                      className="w-full rounded-xl px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800"
-                    >
-                      {t.discountNone}
-                    </button>
-                    {discountOptions.map((rate) => (
-                      <button
-                        key={rate}
-                        type="button"
-                        onClick={() => {
-                          setDiscountRate(rate);
-                          setShowDiscountOptions(false);
-                        }}
-                        className="mt-1 w-full rounded-xl px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800"
-                      >
-                        -{Math.round(rate * 100)}%
-                      </button>
-                    ))}
+              ) : (
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    disabled={!hasItems || balanceAvailableCents <= 0}
+                    onClick={() =>
+                      setPaymentMethod((prev) =>
+                        prev === "store_balance" ? "cash" : "store_balance",
+                      )
+                    }
+                    className={`h-10 w-full rounded-2xl border text-sm font-medium flex items-center justify-between px-3 ${
+                      !hasItems || balanceAvailableCents <= 0
+                        ? "border-slate-600 bg-slate-900 text-slate-500"
+                        : paymentMethod === "store_balance"
+                          ? "border-emerald-400 bg-emerald-500 text-slate-900"
+                          : "border-slate-600 bg-slate-900 text-slate-100 hover:border-slate-400"
+                    }`}
+                  >
+                    <span>{t.payStoreBalance}</span>
+                    <span className="text-xs opacity-80">
+                      {formatMoney(balanceAvailableCents)}
+                    </span>
+                  </button>
+                  <div className="text-xs text-slate-400">
+                    {t.balancePaymentAvailable}:{" "}
+                    {formatMoney(balanceAvailableCents)}
                   </div>
-                )}
-              </div>
+                  <div className="text-xs text-slate-400">
+                    {t.balancePaymentAfter}: {formatMoney(balanceAfterCents)}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div>
@@ -968,25 +959,6 @@ export default function StorePosPaymentPage() {
                 >
                   {t.payWeChatAlipay}
                 </button>
-                
-                {/* ✅ 新增：储值余额支付按钮 */}
-                {memberInfo && (memberInfo.balance ?? 0) > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod("store_balance")}
-                    className={`h-10 rounded-2xl border font-medium flex justify-between px-4 items-center ${
-                      paymentMethod === "store_balance"
-                        ? "border-emerald-400 bg-emerald-500 text-slate-900"
-                        : "border-slate-600 bg-slate-900 text-slate-100"
-                    }`}
-                  >
-                    <span>{t.payStoreBalance}</span>
-                    <span className="text-xs opacity-80">
-                       {/* 显示当前余额 */}
-                       {formatMoney((memberInfo.balance ?? 0) * 100)}
-                    </span>
-                  </button>
-                )}
               </div>
             </div>
 

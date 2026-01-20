@@ -1953,7 +1953,9 @@ export class OrdersService {
           ? 'wechat_alipay'
           : order.paymentMethod?.toLowerCase() === 'cash'
             ? 'cash'
-            : 'card',
+            : order.paymentMethod?.toLowerCase() === 'store_balance'
+              ? 'store_balance'
+              : 'card',
       snapshot: {
         items,
         subtotalCents: order.subtotalCents ?? 0,

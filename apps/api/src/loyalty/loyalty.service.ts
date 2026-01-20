@@ -1,6 +1,13 @@
 // apps/api/src/loyalty/loyalty.service.ts
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { BusinessConfig, LoyaltyEntryType, Prisma } from '@prisma/client';
+import {
+  BusinessConfig,
+  Channel,
+  FulfillmentType,
+  LoyaltyEntryType,
+  PaymentMethod,
+  Prisma,
+} from '@prisma/client';
 import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -962,6 +969,24 @@ export class LoyaltyService {
       const tierBefore = acc.tier as Tier;
       const lifetimeSpendCentsBefore = acc.lifetimeSpendCents ?? 0;
 
+      const topupOrder = await tx.order.create({
+        data: {
+          status: 'paid',
+          paidAt: new Date(),
+          paymentMethod: PaymentMethod.CASH,
+          channel: Channel.in_store,
+          fulfillmentType: FulfillmentType.pickup,
+          userId,
+          subtotalCents: cents,
+          taxCents: 0,
+          totalCents: cents,
+          subtotalAfterDiscountCents: cents,
+          loyaltyRedeemCents: 0,
+          couponDiscountCents: 0,
+        },
+        select: { id: true },
+      });
+
       // 计算本金部分 (pointsToCredit 通常等于 amountCents/100)
       const pts =
         typeof pointsToCredit === 'number' ? pointsToCredit : cents / 100;
@@ -981,7 +1006,7 @@ export class LoyaltyService {
       await tx.loyaltyLedger.create({
         data: {
           accountId: acc.id,
-          orderId: null,
+          orderId: topupOrder.id,
           sourceKey: LEDGER_SOURCE_TOPUP,
           type: LoyaltyEntryType.TOPUP_PURCHASED,
           target: 'BALANCE', // 标记为余额
@@ -1005,7 +1030,7 @@ export class LoyaltyService {
         const bonusLedger = await tx.loyaltyLedger.create({
           data: {
             accountId: acc.id,
-            orderId: null,
+            orderId: topupOrder.id,
             sourceKey: LEDGER_SOURCE_TOPUP,
             type: LoyaltyEntryType.ADJUSTMENT_MANUAL, // 或定义 TOPUP_BONUS
             target: 'POINTS', // 标记为积分
@@ -1061,7 +1086,7 @@ export class LoyaltyService {
             const refLedger = await tx.loyaltyLedger.create({
               data: {
                 accountId: refAcc.id,
-                orderId: null,
+                orderId: topupOrder.id,
                 sourceKey: LEDGER_SOURCE_TOPUP,
                 type: LoyaltyEntryType.REFERRAL_BONUS,
                 target: 'POINTS',
