@@ -112,7 +112,29 @@ export class ReportsService {
       // 确保按时间排序
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    // 8. 计算最终结果
+    // 8. 统计畅销单品 Top 10
+    const topItemsRaw = await this.prisma.orderItem.groupBy({
+      by: ['displayName'],
+      where: {
+        order: whereCondition,
+      },
+      _sum: {
+        qty: true,
+      },
+      orderBy: {
+        _sum: {
+          qty: 'desc',
+        },
+      },
+      take: 10,
+    });
+
+    const topItems = topItemsRaw.map((item) => ({
+      name: item.displayName || '未知商品',
+      quantity: item._sum.qty ?? 0,
+    }));
+
+    // 9. 计算最终结果
     const totalCents = aggregations._sum.totalCents ?? 0;
     const count = aggregations._count.id ?? 0;
     const averageOrderValueCents =
@@ -138,6 +160,7 @@ export class ReportsService {
           value: (f._sum.totalCents ?? 0) / 100,
         })),
       },
+      topItems,
     };
   }
 }
