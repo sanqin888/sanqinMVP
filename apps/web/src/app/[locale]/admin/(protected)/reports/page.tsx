@@ -25,6 +25,7 @@ interface ReportData {
     payment: Array<{ name: string; value: number }>;
     fulfillment: Array<{ name: string; value: number }>;
   };
+  topItems: Array<{ name: string; quantity: number }>;
 }
 
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6'];
@@ -114,6 +115,10 @@ export default function ReportsPage() {
   if (!data) {
     return null; 
   }
+
+  const maxQty = data.topItems.length
+    ? Math.max(...data.topItems.map((item) => item.quantity))
+    : 0;
 
   return (
     <div className="space-y-6 p-6">
@@ -211,44 +216,78 @@ export default function ReportsPage() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-6">
-          <div className="flex-1 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h3 className="mb-4 text-lg font-semibold text-slate-800">支付方式 (Payment)</h3>
-            <div className="h-48 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={data?.breakdown?.payment || []}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={40}
-                    outerRadius={70}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {(data?.breakdown?.payment || []).map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(val: number | string | undefined) => chartValueFormatter(val)} />
-                  <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col">
+          <h3 className="mb-4 text-lg font-semibold text-slate-800 flex items-center gap-2">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-600">Top</span>
+            热销单品排名
+          </h3>
+          <div className="flex-1 overflow-y-auto pr-2">
+            {data.topItems.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-slate-400 text-sm">暂无数据</div>
+            ) : (
+              <div className="space-y-4">
+                {data.topItems.map((item, index) => {
+                  const width = maxQty ? (item.quantity / maxQty) * 100 : 0;
+                  return (
+                    <div key={`${item.name}-${index}`} className="group">
+                      <div className="mb-1 flex justify-between text-sm">
+                        <span className="font-medium text-slate-700 truncate mr-2" title={item.name}>
+                          {index + 1}. {item.name}
+                        </span>
+                        <span className="font-bold text-slate-900">{item.quantity}份</span>
+                      </div>
+                      <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+                        <div 
+                          className="h-full rounded-full bg-emerald-500 transition-all duration-500 group-hover:bg-emerald-600"
+                          style={{ width: `${width}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
+        </div>
+      </div>
 
-           <div className="flex-1 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h3 className="mb-4 text-lg font-semibold text-slate-800">用餐方式 (Fulfillment)</h3>
-            <div className="h-48 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={data?.breakdown?.fulfillment || []} layout="vertical" margin={{ left: 10 }}>
-                  <XAxis type="number" hide />
-                  <YAxis type="category" dataKey="name" width={70} tick={{fontSize: 11}} interval={0} />
-                  <Tooltip cursor={{fill: 'transparent'}} formatter={(val: number | string | undefined) => chartValueFormatter(val)} />
-                  <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={20} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+      <div className="grid gap-6 md:grid-cols-2">
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h3 className="mb-4 text-lg font-semibold text-slate-800">支付方式 (Payment)</h3>
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={data?.breakdown?.payment || []}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={90}
+                  paddingAngle={5}
+                  dataKey="value"
+                >
+                  {(data?.breakdown?.payment || []).map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(val: number | string | undefined) => chartValueFormatter(val)} />
+                <Legend iconType="circle" verticalAlign="bottom" height={36}/>
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h3 className="mb-4 text-lg font-semibold text-slate-800">用餐方式 (Fulfillment)</h3>
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data?.breakdown?.fulfillment || []} layout="vertical" margin={{ left: 10, right: 30 }}>
+                <XAxis type="number" hide />
+                <YAxis type="category" dataKey="name" width={80} tick={{fontSize: 12}} interval={0} />
+                <Tooltip cursor={{fill: 'transparent'}} formatter={(val: number | string | undefined) => chartValueFormatter(val)} />
+                <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={24} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </div>
       </div>
