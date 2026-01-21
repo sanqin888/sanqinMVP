@@ -120,8 +120,14 @@ export class EmailService {
       .map((item) => {
         const name =
           locale === 'zh'
-            ? item.nameZh ?? item.displayName ?? item.nameEn ?? item.productStableId
-            : item.nameEn ?? item.displayName ?? item.nameZh ?? item.productStableId;
+            ? (item.nameZh ??
+              item.displayName ??
+              item.nameEn ??
+              item.productStableId)
+            : (item.nameEn ??
+              item.displayName ??
+              item.nameZh ??
+              item.productStableId);
         const safeName = this.escapeHtml(name);
         const options = Array.isArray(item.options) ? item.options : [];
         const optionsHtml =
@@ -130,13 +136,13 @@ export class EmailService {
                 .map((group) => {
                   const groupName =
                     locale === 'zh'
-                      ? group.nameZh ?? group.nameEn
+                      ? (group.nameZh ?? group.nameEn)
                       : group.nameEn;
                   const choices = group.choices
                     .map((choice) => {
                       const choiceName =
                         locale === 'zh'
-                          ? choice.nameZh ?? choice.nameEn
+                          ? (choice.nameZh ?? choice.nameEn)
                           : choice.nameEn;
                       const delta =
                         choice.priceDeltaCents !== 0
@@ -320,18 +326,24 @@ export class EmailService {
       .map((item) => {
         const name =
           locale === 'zh'
-            ? item.nameZh ?? item.displayName ?? item.nameEn ?? item.productStableId
-            : item.nameEn ?? item.displayName ?? item.nameZh ?? item.productStableId;
+            ? (item.nameZh ??
+              item.displayName ??
+              item.nameEn ??
+              item.productStableId)
+            : (item.nameEn ??
+              item.displayName ??
+              item.nameZh ??
+              item.productStableId);
         const options = Array.isArray(item.options) ? item.options : [];
         const optionLines = options
           .map((group) => {
             const groupName =
-              locale === 'zh' ? group.nameZh ?? group.nameEn : group.nameEn;
+              locale === 'zh' ? (group.nameZh ?? group.nameEn) : group.nameEn;
             const choices = group.choices
               .map((choice) => {
                 const choiceName =
                   locale === 'zh'
-                    ? choice.nameZh ?? choice.nameEn
+                    ? (choice.nameZh ?? choice.nameEn)
                     : choice.nameEn;
                 const delta =
                   choice.priceDeltaCents !== 0
@@ -440,7 +452,8 @@ ${totalLines.join('\n')}`;
       locale: resolvedLocale,
       storeName,
       storeAddress,
-      storePhone: snapshot.supportPhone ?? messagingConfig.baseVars.supportPhone,
+      storePhone:
+        snapshot.supportPhone ?? messagingConfig.baseVars.supportPhone,
       supportEmail: messagingConfig.baseVars.supportEmail,
     });
     const text = this.buildInvoiceText({
@@ -448,7 +461,8 @@ ${totalLines.join('\n')}`;
       locale: resolvedLocale,
       storeName,
       storeAddress,
-      storePhone: snapshot.supportPhone ?? messagingConfig.baseVars.supportPhone,
+      storePhone:
+        snapshot.supportPhone ?? messagingConfig.baseVars.supportPhone,
       supportEmail: messagingConfig.baseVars.supportEmail,
     });
 

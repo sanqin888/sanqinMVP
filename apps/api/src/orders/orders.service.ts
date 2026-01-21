@@ -208,7 +208,6 @@ export class OrdersService {
     private readonly emailService: EmailService,
   ) {}
 
-
   private toOrderDto(order: OrderWithItems | OrderDetail): OrderDto {
     const orderStableId = order.orderStableId;
     const deliveryFeeCents = order.deliveryFeeCents ?? 0;
