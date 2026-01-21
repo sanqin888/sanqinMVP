@@ -1292,9 +1292,6 @@ export class OrdersService {
     idempotencyKey?: string,
   ): Promise<OrderDto> {
     const order = await this.createInternal(dto, idempotencyKey);
-    if (order.status === 'paid') {
-      this.handleOrderPaidSideEffects(order);
-    }
     return this.toOrderDto(order);
   }
 
@@ -1770,6 +1767,10 @@ export class OrdersService {
           })}Order created successfully (Server-side price calculated). clientRequestId=${order.clientRequestId ?? 'null'}`,
         );
 
+        if (order.status === 'paid') {
+          this.handleOrderPaidSideEffects(order);
+        }
+
         // === 派送逻辑 (DoorDash / Uber) ===
         const isStandard = dto.deliveryType === DeliveryType.STANDARD;
         const isPriority = dto.deliveryType === DeliveryType.PRIORITY;
@@ -1910,10 +1911,7 @@ export class OrdersService {
     idempotencyKey?: string,
   ): Promise<OrderWithItems> {
     const created = await this.createInternal(dto, idempotencyKey);
-    if (created.status === 'paid') {
-      this.handleOrderPaidSideEffects(created);
-      return created;
-    }
+    if (created.status === 'paid') return created;
     return this.updateStatusByInternalId(created.id, 'paid');
   }
 
