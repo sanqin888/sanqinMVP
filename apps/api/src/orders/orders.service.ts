@@ -33,6 +33,7 @@ import {
   OrderStatus,
 } from './order-status';
 import { normalizeStableId } from '../common/utils/stable-id';
+import { normalizePhone } from '../common/utils/phone';
 import { OrderSummaryDto } from './dto/order-summary.dto';
 import {
   UberDirectDropoffDetails,
@@ -1339,15 +1340,29 @@ export class OrdersService {
 
     const rawUserStableId =
       typeof dto.userStableId === 'string' ? dto.userStableId.trim() : '';
-    const normalizedUserStableId = rawUserStableId
+    let normalizedUserStableId = rawUserStableId
       ? normalizeStableId(rawUserStableId)
       : null;
     if (rawUserStableId && !normalizedUserStableId) {
       throw new BadRequestException('userStableId must be a cuid');
     }
-    const userId = normalizedUserStableId
+    let userId = normalizedUserStableId
       ? await this.loyalty.resolveUserIdByStableId(normalizedUserStableId)
       : undefined;
+    const fallbackPhone =
+      dto.channel === Channel.in_store
+        ? normalizePhone(dto.contactPhone ?? dto.deliveryDestination?.phone)
+        : null;
+    if (!userId && fallbackPhone) {
+      const userByPhone = await this.prisma.user.findFirst({
+        where: { phone: fallbackPhone },
+        select: { id: true, userStableId: true },
+      });
+      if (userByPhone) {
+        userId = userByPhone.id;
+        normalizedUserStableId = userByPhone.userStableId;
+      }
+    }
 
     const rawCouponStableId =
       typeof dto.couponStableId === 'string' ? dto.couponStableId.trim() : '';
