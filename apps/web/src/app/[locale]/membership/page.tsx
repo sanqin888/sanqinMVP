@@ -208,12 +208,21 @@ function formatDateTime(value: string, isZh: boolean): string {
   return parsed.toLocaleString(isZh ? 'zh-CN' : 'en-US');
 }
 
+function getBrowserLanguagePreference(): 'zh' | 'en' {
+  if (typeof navigator === 'undefined') return 'en';
+  const primary = navigator.languages?.[0] ?? navigator.language ?? '';
+  return primary.toLowerCase().startsWith('zh') ? 'zh' : 'en';
+}
+
 export default function MembershipHomePage() {
   const router = useRouter();
   const { locale } = useParams<{ locale: Locale }>();
   const searchParams = useSearchParams();
   const { data: session, status } = useSession();
   const isZh = locale === 'zh';
+  const [browserLanguagePreference] = useState<'zh' | 'en'>(() =>
+    getBrowserLanguagePreference(),
+  );
 
   const [activeTab, setActiveTab] = useState<
     | 'overview'
@@ -244,7 +253,7 @@ export default function MembershipHomePage() {
   const [birthdayMonthInput, setBirthdayMonthInput] = useState('');
   const [birthdayDayInput, setBirthdayDayInput] = useState('');
   const [languagePreference, setLanguagePreference] = useState<'zh' | 'en'>(
-    isZh ? 'zh' : 'en',
+    browserLanguagePreference,
   );
   const [languageSaving, setLanguageSaving] = useState(false);
   const [languageError, setLanguageError] = useState<string | null>(null);
@@ -408,7 +417,7 @@ export default function MembershipHomePage() {
           birthdayMonth: data.birthdayMonth ?? null,
           birthdayDay: data.birthdayDay ?? null,
           referrerEmail: data.referrerEmail ?? null,
-          language: data.language ?? (isZh ? 'zh' : 'en'),
+          language: data.language ?? browserLanguagePreference,
           tier: data.tier,
           points: data.points,
           availableDiscountCents: data.availableDiscountCents,
@@ -451,7 +460,7 @@ export default function MembershipHomePage() {
     void loadSummary();
 
     return () => controller.abort();
-  }, [status, session, isZh, locale, searchParams]);
+  }, [status, session, isZh, locale, searchParams, browserLanguagePreference]);
 
   // 拉取优惠券：会员信息到手后再查询
   useEffect(() => {
@@ -521,9 +530,9 @@ export default function MembershipHomePage() {
     setBirthdayDayInput(
       member.birthdayDay != null ? String(member.birthdayDay) : '',
     );
-    setLanguagePreference(member.language ?? (isZh ? 'zh' : 'en'));
+    setLanguagePreference(member.language ?? browserLanguagePreference);
     setProfileSaved(false);
-  }, [member, isZh]);
+  }, [member, browserLanguagePreference]);
 
   useEffect(() => {
     setProfileSaved(false);
