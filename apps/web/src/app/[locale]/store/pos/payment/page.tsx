@@ -30,6 +30,7 @@ type CreatePosOrderResponse = {
   pickupCode?: string | null;
 };
 
+// ✅ 更新：增加 balance 字段
 type MemberLookupResponse = {
   userStableId: string;
   displayName?: string | null;
@@ -47,6 +48,7 @@ type MemberSearchResponse = {
   }>;
 };
 
+// ✅ 更新：增加 balance 字段
 type MemberDetailResponse = {
   userStableId: string;
   displayName?: string | null;
@@ -102,6 +104,7 @@ async function sendPosPrintPayload(
   }
 }
 
+// ✅ 本地支付方式状态类型
 type LocalPaymentMethod = "cash" | "card" | "wechat_alipay" | "store_balance";
 
 const STRINGS: Record<
@@ -439,6 +442,14 @@ const loyaltyRedeemCents = redeemCents;
     }
   }, [isFullyPaidByBalance, paymentMethod]);
 
+  // ✅ 新增：计算余额是否充足
+  const isBalanceSufficient = useMemo(() => {
+    if (paymentMethod !== 'store_balance') return true;
+    if (!memberInfo) return false;
+    const balanceCents = (memberInfo.balance ?? 0) * 100;
+    return balanceCents >= roundedTotalCents;
+  }, [paymentMethod, memberInfo, roundedTotalCents]);
+
   const computedSnapshot = useMemo(() => {
     if (!snapshot) return null;
     return {
@@ -588,6 +599,20 @@ const loyaltyRedeemCents = redeemCents;
       return;
     }
 
+    // ✅ 余额支付前置校验
+    if (paymentMethod === 'store_balance') {
+        if (!memberInfo) {
+            setError(t.memberNotFound);
+            setSubmitting(false);
+            return;
+        }
+        if (!isBalanceSufficient) {
+            setError(t.balanceInsufficient);
+            setSubmitting(false);
+            return;
+        }
+    }
+
     try {
       const itemsPayload = snapshot.items.map((item) => ({
         productStableId: item.stableId,
@@ -599,6 +624,7 @@ const loyaltyRedeemCents = redeemCents;
         options: item.options,
       }));
 
+      // ✅ 映射 PaymentMethod
       let apiPaymentMethod: PaymentMethod = "CASH";
       if (paymentMethod === "card") apiPaymentMethod = "CARD";
       else if (paymentMethod === "wechat_alipay") apiPaymentMethod = "WECHAT_ALIPAY";
@@ -622,8 +648,6 @@ const loyaltyRedeemCents = redeemCents;
         contactPhone: memberInfo?.phone ?? undefined,
       };
 
-      // 注意：这里假设后端已经支持 balanceUsedCents
-      // 实际上我们会稍后修改后端来支持它
       const order = await apiFetch<CreatePosOrderResponse>("/pos/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -849,6 +873,25 @@ const loyaltyRedeemCents = redeemCents;
                         <span className="text-[10px] opacity-70 scale-90">{t.balanceInsufficient}</span>
                     )}
                 </button>
+                
+                {/* ✅ 新增：储值余额支付按钮 */}
+                {memberInfo && (memberInfo.balance ?? 0) > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod("store_balance")}
+                    className={`h-10 rounded-2xl border font-medium flex justify-between px-4 items-center ${
+                      paymentMethod === "store_balance"
+                        ? "border-emerald-400 bg-emerald-500 text-slate-900"
+                        : "border-slate-600 bg-slate-900 text-slate-100"
+                    }`}
+                  >
+                    <span>{t.payStoreBalance}</span>
+                    <span className="text-xs opacity-80">
+                       {/* 显示当前余额 */}
+                       {formatMoney((memberInfo.balance ?? 0) * 100)}
+                    </span>
+                  </button>
+                )}
               </div>
             </div>
 
