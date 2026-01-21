@@ -252,6 +252,20 @@ const LEDGER_LABELS: Record<string, { zh: string; en: string }> = {
   EXPIRATION: { zh: "积分过期", en: "Expired" },
 };
 
+function getLedgerLabel(entry: LedgerEntry, locale: Locale) {
+  if (entry.type === "REDEEM_ON_ORDER") {
+    const target = entry.target ?? "POINTS";
+    if (target === "BALANCE") {
+      return locale === "zh" ? "余额支付" : "Balance Payment";
+    }
+    if (target === "POINTS") {
+      return locale === "zh" ? "积分抵扣" : "Points Redemption";
+    }
+  }
+
+  return LEDGER_LABELS[entry.type]?.[locale] ?? entry.type;
+}
+
 function formatPoints(value: number, locale: Locale) {
   return new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en-US").format(
     Math.round(value),
@@ -765,7 +779,7 @@ export default function PosMembershipPage() {
             ) : (
               <div className="mt-4 space-y-3">
                 {pointsLedger.map((entry) => {
-                  const label = LEDGER_LABELS[entry.type]?.[locale] ?? entry.type;
+                  const label = getLedgerLabel(entry, locale);
                   return (
                     <div
                       key={entry.ledgerStableId}
@@ -813,7 +827,7 @@ export default function PosMembershipPage() {
             ) : (
               <div className="mt-4 space-y-3">
                 {balanceLedger.map((entry) => {
-                  const label = LEDGER_LABELS[entry.type]?.[locale] ?? entry.type;
+                  const label = getLedgerLabel(entry, locale);
                   return (
                     <div
                       key={entry.ledgerStableId}
