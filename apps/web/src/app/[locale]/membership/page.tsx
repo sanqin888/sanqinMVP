@@ -6,7 +6,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import type { Locale } from '@/lib/i18n/locales';
 import { signOut, useSession } from '@/lib/auth-session';
-import { apiFetch } from '@/lib/api/client';
+import { ApiError, apiFetch } from '@/lib/api/client';
 import {
   formatCanadianPhoneForApi,
   isValidCanadianPhone,
@@ -87,6 +87,7 @@ type MemberProfile = {
   language?: 'zh' | 'en';
   tier: MemberTier;
   points: number;
+  balance: number;
   availableDiscountCents: number;
   lifetimeSpendCents?: number;
 };
@@ -115,6 +116,7 @@ type MembershipSummaryResponse = {
   twoFactorMethod?: 'OFF' | 'SMS';
   tier: MemberTier;
   points: number;
+  balance: number;
   lifetimeSpendCents: number;
   availableDiscountCents: number;
   marketingEmailOptIn?: boolean;
@@ -143,10 +145,13 @@ type LoyaltyEntryType =
   | 'TOPUP_PURCHASED'
   | 'ADJUSTMENT_MANUAL';
 
+type LoyaltyTarget = 'POINTS' | 'BALANCE';
+
 type LoyaltyEntry = {
   ledgerId: string;
   createdAt: string;
   type: LoyaltyEntryType;
+  target?: LoyaltyTarget;
   deltaPoints: number;
   balanceAfterPoints: number;
   note?: string;
@@ -202,10 +207,20 @@ function formatCurrency(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+function formatBalanceAmount(amount: number): string {
+  return formatCurrency(Math.round(amount * 100));
+}
+
 function formatDateTime(value: string, isZh: boolean): string {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
   return parsed.toLocaleString(isZh ? 'zh-CN' : 'en-US');
+}
+
+function getBrowserLanguagePreference(): 'zh' | 'en' {
+  if (typeof navigator === 'undefined') return 'en';
+  const primary = navigator.languages?.[0] ?? navigator.language ?? '';
+  return primary.toLowerCase().startsWith('zh') ? 'zh' : 'en';
 }
 
 export default function MembershipHomePage() {
@@ -214,11 +229,15 @@ export default function MembershipHomePage() {
   const searchParams = useSearchParams();
   const { data: session, status } = useSession();
   const isZh = locale === 'zh';
+  const [browserLanguagePreference] = useState<'zh' | 'en'>(() =>
+    getBrowserLanguagePreference(),
+  );
 
   const [activeTab, setActiveTab] = useState<
     | 'overview'
     | 'orders'
     | 'points'
+    | 'balance'
     | 'addresses'
     | 'coupons'
     | 'devices'
@@ -244,7 +263,7 @@ export default function MembershipHomePage() {
   const [birthdayMonthInput, setBirthdayMonthInput] = useState('');
   const [birthdayDayInput, setBirthdayDayInput] = useState('');
   const [languagePreference, setLanguagePreference] = useState<'zh' | 'en'>(
-    isZh ? 'zh' : 'en',
+    browserLanguagePreference,
   );
   const [languageSaving, setLanguageSaving] = useState(false);
   const [languageError, setLanguageError] = useState<string | null>(null);
@@ -260,6 +279,34 @@ export default function MembershipHomePage() {
   const [phoneEnrollSending, setPhoneEnrollSending] = useState(false);
   const [phoneEnrollVerifying, setPhoneEnrollVerifying] = useState(false);
   const [phoneEnrollError, setPhoneEnrollError] = useState<string | null>(null);
+
+  const [emailEnrollInput, setEmailEnrollInput] = useState('');
+  const [emailEnrollCode, setEmailEnrollCode] = useState('');
+  const [emailEnrollSending, setEmailEnrollSending] = useState(false);
+  const [emailEnrollVerifying, setEmailEnrollVerifying] = useState(false);
+  const [emailEnrollError, setEmailEnrollError] = useState<string | null>(null);
+  const [emailEnrollSent, setEmailEnrollSent] = useState(false);
+  const [emailEnrollVisible, setEmailEnrollVisible] = useState(false);
+  const [marketingOptInPending, setMarketingOptInPending] = useState(false);
+
+  const isValidEmail = useCallback((value: string) => {
+    const trimmed = value.trim();
+    return trimmed.includes('@');
+  }, []);
+
+  const readApiErrorMessage = useCallback((error: unknown) => {
+    if (!(error instanceof ApiError)) return null;
+    const payload = error.payload;
+    if (!payload || typeof payload !== 'object') return null;
+    const maybe = payload as { message?: string | string[] };
+    if (Array.isArray(maybe.message)) {
+      return maybe.message.join(', ');
+    }
+    if (typeof maybe.message === 'string') {
+      return maybe.message;
+    }
+    return null;
+  }, []);
   const [twoFactorSaving, setTwoFactorSaving] = useState(false);
   const [twoFactorError, setTwoFactorError] = useState<string | null>(null);
 
@@ -380,9 +427,10 @@ export default function MembershipHomePage() {
           birthdayMonth: data.birthdayMonth ?? null,
           birthdayDay: data.birthdayDay ?? null,
           referrerEmail: data.referrerEmail ?? null,
-          language: data.language ?? (isZh ? 'zh' : 'en'),
+          language: data.language ?? browserLanguagePreference,
           tier: data.tier,
           points: data.points,
+          balance: data.balance,
           availableDiscountCents: data.availableDiscountCents,
           lifetimeSpendCents: data.lifetimeSpendCents ?? 0,
         });
@@ -423,7 +471,7 @@ export default function MembershipHomePage() {
     void loadSummary();
 
     return () => controller.abort();
-  }, [status, session, isZh, locale, searchParams]);
+  }, [status, session, isZh, locale, searchParams, browserLanguagePreference]);
 
   // 拉取优惠券：会员信息到手后再查询
   useEffect(() => {
@@ -493,9 +541,9 @@ export default function MembershipHomePage() {
     setBirthdayDayInput(
       member.birthdayDay != null ? String(member.birthdayDay) : '',
     );
-    setLanguagePreference(member.language ?? (isZh ? 'zh' : 'en'));
+    setLanguagePreference(member.language ?? browserLanguagePreference);
     setProfileSaved(false);
-  }, [member, isZh]);
+  }, [member, browserLanguagePreference]);
 
   useEffect(() => {
     setProfileSaved(false);
@@ -518,10 +566,10 @@ export default function MembershipHomePage() {
     }
   }, [member?.phoneVerified]);
 
-  // 拉取积分流水：首次切到“积分”tab 且已登录时加载一次
+  // 拉取积分/余额流水：首次切到“积分/余额”tab 且已登录时加载一次
   useEffect(() => {
     if (
-      activeTab !== 'points' ||
+      (activeTab !== 'points' && activeTab !== 'balance') ||
       status !== 'authenticated' ||
       !session?.user ||
       loyaltyLoadedOnce ||
@@ -597,6 +645,21 @@ export default function MembershipHomePage() {
     async (next: boolean) => {
       if (!member) return;
 
+      if (!next) {
+        setMarketingOptInPending(false);
+      }
+
+      if (next && !member.email) {
+        setMarketingError(
+          isZh
+            ? '请先绑定邮箱后再开启订阅。'
+            : 'Please link an email before enabling subscriptions.',
+        );
+        setEmailEnrollVisible(true);
+        setMarketingOptInPending(true);
+        return;
+      }
+
       setMarketingSaving(true);
       setMarketingError(null);
 
@@ -611,23 +674,62 @@ export default function MembershipHomePage() {
         });
 
         if (!res.ok) {
+          let errorMessage: string | null = null;
+          try {
+            const data = (await res.json()) as { message?: string | string[] };
+            if (Array.isArray(data.message)) {
+              errorMessage = data.message.join(', ');
+            } else if (typeof data.message === 'string') {
+              errorMessage = data.message;
+            }
+          } catch (parseError) {
+            console.error(parseError);
+          }
+          if (errorMessage === 'email_not_linked') {
+            throw new Error(errorMessage);
+          }
           throw new Error(`Failed with status ${res.status}`);
         }
 
         setMarketingOptIn(next);
       } catch (err) {
         console.error(err);
-        setMarketingError(
-          isZh
-            ? '更新订阅偏好失败，请稍后再试。'
-            : 'Failed to update email preference. Please try again later.',
-        );
+        if (err instanceof Error && err.message === 'email_not_linked') {
+          setEmailEnrollVisible(true);
+          setMarketingOptInPending(true);
+          setMarketingError(
+            isZh
+              ? '请先绑定邮箱后再开启订阅。'
+              : 'Please link an email before enabling subscriptions.',
+          );
+        } else {
+          setMarketingError(
+            isZh
+              ? '更新订阅偏好失败，请稍后再试。'
+              : 'Failed to update email preference. Please try again later.',
+          );
+        }
       } finally {
         setMarketingSaving(false);
       }
     },
     [member, isZh],
   );
+
+  useEffect(() => {
+    if (member?.email) {
+      setEmailEnrollVisible(false);
+      setEmailEnrollError(null);
+      setEmailEnrollSent(false);
+    }
+  }, [member?.email]);
+
+  useEffect(() => {
+    if (marketingOptInPending && member?.email) {
+      setMarketingOptInPending(false);
+      void handleMarketingToggle(true);
+    }
+  }, [marketingOptInPending, member?.email, handleMarketingToggle]);
 
   const handleProfileSave = useCallback(async () => {
     if (!member) return;
@@ -901,6 +1003,112 @@ export default function MembershipHomePage() {
       setPhoneEnrollVerifying(false);
     }
   }, [phoneEnrollInput, phoneEnrollCode, isZh]);
+
+  const handleEmailEnrollInputChange = useCallback((value: string) => {
+    setEmailEnrollInput(value);
+    if (emailEnrollError) {
+      setEmailEnrollError(null);
+    }
+  }, [emailEnrollError]);
+
+  const handleEmailEnrollCodeChange = useCallback((value: string) => {
+    setEmailEnrollCode(value);
+    if (emailEnrollError) {
+      setEmailEnrollError(null);
+    }
+  }, [emailEnrollError]);
+
+  const handleRequestEmailEnroll = useCallback(async () => {
+    if (!isValidEmail(emailEnrollInput)) {
+      setEmailEnrollError(
+        isZh ? '请输入有效的邮箱地址。' : 'Please enter a valid email.',
+      );
+      return;
+    }
+
+    try {
+      setEmailEnrollSending(true);
+      setEmailEnrollError(null);
+      setEmailEnrollSent(false);
+      await apiFetch('/membership/email/verification/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailEnrollInput.trim() }),
+      });
+      setEmailEnrollSent(true);
+    } catch (err) {
+      console.error(err);
+      const message = readApiErrorMessage(err);
+      if (message === 'email_in_use') {
+        setEmailEnrollError(
+          isZh ? '该邮箱已被使用。' : 'That email is already in use.',
+        );
+      } else if (message === 'invalid_email') {
+        setEmailEnrollError(
+          isZh ? '请输入有效的邮箱地址。' : 'Please enter a valid email.',
+        );
+      } else {
+        setEmailEnrollError(
+          isZh ? '验证码发送失败，请稍后再试。' : 'Failed to send code.',
+        );
+      }
+    } finally {
+      setEmailEnrollSending(false);
+    }
+  }, [emailEnrollInput, isZh, isValidEmail, readApiErrorMessage]);
+
+  const handleVerifyEmailEnroll = useCallback(async () => {
+    if (!emailEnrollCode.trim()) {
+      setEmailEnrollError(isZh ? '请输入验证码。' : 'Enter the code.');
+      return;
+    }
+
+    try {
+      setEmailEnrollVerifying(true);
+      setEmailEnrollError(null);
+      const result = await apiFetch<{
+        email?: string | null;
+      }>('/membership/email/verification/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: emailEnrollCode.trim() }),
+      });
+
+      if (result?.email) {
+        setMember((prev) =>
+          prev
+            ? {
+                ...prev,
+                email: result.email ?? prev.email,
+              }
+            : prev,
+        );
+      }
+      setEmailEnrollCode('');
+      setEmailEnrollSent(false);
+    } catch (err) {
+      console.error(err);
+      const message = readApiErrorMessage(err);
+      if (message === 'token_expired' || message === 'token_not_found') {
+        setEmailEnrollError(
+          isZh ? '验证码无效或已过期。' : 'The code is invalid or expired.',
+        );
+      } else if (message === 'code_required') {
+        setEmailEnrollError(isZh ? '请输入验证码。' : 'Enter the code.');
+      } else {
+        setEmailEnrollError(
+          isZh ? '验证失败，请稍后再试。' : 'Verification failed.',
+        );
+      }
+    } finally {
+      setEmailEnrollVerifying(false);
+    }
+  }, [emailEnrollCode, isZh, readApiErrorMessage]);
+
+  const handleOpenEmailEnroll = useCallback(() => {
+    setEmailEnrollVisible(true);
+    setEmailEnrollError(null);
+  }, []);
 
   const handleToggleTwoFactor = useCallback(
     async (enable: boolean) => {
@@ -1233,6 +1441,7 @@ const tierProgress = (() => {
     { key: 'overview', label: isZh ? '总览' : 'Overview' },
     { key: 'orders', label: isZh ? '订单' : 'Orders' },
     { key: 'points', label: isZh ? '积分' : 'Points' },
+    { key: 'balance', label: isZh ? '余额' : 'Balance' },
     { key: 'addresses', label: isZh ? '地址' : 'Addresses' },
     { key: 'coupons', label: isZh ? '优惠卷' : 'Coupons' },
     { key: 'devices', label: isZh ? '设备管理' : 'Devices' },
@@ -1315,6 +1524,12 @@ const tierProgress = (() => {
                 {isZh ? '积分' : 'Points'}
               </p>
               <p className="mt-1 text-2xl font-semibold">{member.points}</p>
+              <p className="mt-2 text-xs uppercase tracking-wide text-slate-300">
+                {isZh ? '储值余额' : 'Store balance'}
+              </p>
+              <p className="mt-1 text-base font-semibold text-emerald-200">
+                {formatBalanceAmount(member.balance)}
+              </p>
               <p className="mt-1 text-xs text-amber-300">
                 {isZh
                   ? `当前积分最多可抵扣 ${formatCurrency(
@@ -1380,6 +1595,17 @@ const tierProgress = (() => {
 
           {activeTab === 'points' && (
             <PointsSection
+              isZh={isZh}
+              entries={loyaltyEntries}
+              loading={loyaltyLoading}
+              error={loyaltyError}
+              locale={locale as Locale}
+              loadedOnce={loyaltyLoadedOnce}
+            />
+          )}
+
+          {activeTab === 'balance' && (
+            <BalanceSection
               isZh={isZh}
               entries={loyaltyEntries}
               loading={loyaltyLoading}
@@ -1460,6 +1686,18 @@ const tierProgress = (() => {
               onPhoneEnrollCodeChange={handlePhoneEnrollCodeChange}
               onRequestPhoneEnroll={handleRequestPhoneEnroll}
               onVerifyPhoneEnroll={handleVerifyPhoneEnroll}
+              emailEnrollInput={emailEnrollInput}
+              emailEnrollCode={emailEnrollCode}
+              emailEnrollSending={emailEnrollSending}
+              emailEnrollVerifying={emailEnrollVerifying}
+              emailEnrollError={emailEnrollError}
+              emailEnrollSent={emailEnrollSent}
+              emailEnrollVisible={emailEnrollVisible}
+              onEmailEnrollInputChange={handleEmailEnrollInputChange}
+              onEmailEnrollCodeChange={handleEmailEnrollCodeChange}
+              onRequestEmailEnroll={handleRequestEmailEnroll}
+              onVerifyEmailEnroll={handleVerifyEmailEnroll}
+              onOpenEmailEnroll={handleOpenEmailEnroll}
               twoFactorSaving={twoFactorSaving}
               twoFactorError={twoFactorError}
               onToggleTwoFactor={handleToggleTwoFactor}
@@ -1652,6 +1890,10 @@ function PointsSection({
     ADJUSTMENT_MANUAL: isZh ? '人工调整' : 'Manual adjustment',
   };
 
+  const pointsEntries = entries.filter(
+    (entry) => (entry.target ?? 'POINTS') === 'POINTS',
+  );
+
   return (
     <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
       <h2 className="text-sm font-medium text-slate-900">
@@ -1668,15 +1910,15 @@ function PointsSection({
         <p className="mt-3 text-xs text-red-500">{error}</p>
       )}
 
-      {loadedOnce && !error && entries.length === 0 && (
+      {loadedOnce && !error && pointsEntries.length === 0 && (
         <p className="mt-3 text-xs text-slate-500">
           {isZh ? '暂无积分记录。' : 'No points records yet.'}
         </p>
       )}
 
-      {loadedOnce && !error && entries.length > 0 && (
+      {loadedOnce && !error && pointsEntries.length > 0 && (
         <div className="mt-3 divide-y divide-slate-100 text-xs text-slate-700">
-          {entries.map((entry, index) => (
+          {pointsEntries.map((entry, index) => (
             <div
               key={`${entry.ledgerId}-${entry.createdAt}-${index}`}
               className="py-2"
@@ -1724,6 +1966,116 @@ function PointsSection({
               </div>
             </div>
           ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function BalanceSection({
+  isZh,
+  entries,
+  loading,
+  error,
+  locale,
+  loadedOnce,
+}: {
+  isZh: boolean;
+  entries: LoyaltyEntry[];
+  loading: boolean;
+  error: string | null;
+  locale: Locale;
+  loadedOnce: boolean;
+}) {
+  const typeLabel: Record<LoyaltyEntryType, string> = {
+    EARN_ON_PURCHASE: isZh ? '消费赚取' : 'Earn on purchase',
+    REDEEM_ON_ORDER: isZh ? '下单抵扣' : 'Redeem on order',
+    REFUND_REVERSE_EARN: isZh ? '退款扣回' : 'Reverse earn on refund',
+    REFUND_RETURN_REDEEM: isZh ? '退款退回抵扣' : 'Return redeemed on refund',
+    TOPUP_PURCHASED: isZh ? '储值充值' : 'Top-up purchased',
+    ADJUSTMENT_MANUAL: isZh ? '人工调整' : 'Manual adjustment',
+  };
+
+  const balanceEntries = entries.filter(
+    (entry) => (entry.target ?? 'POINTS') === 'BALANCE',
+  );
+
+  return (
+    <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+      <h2 className="text-sm font-medium text-slate-900">
+        {isZh ? '余额流水' : 'Balance history'}
+      </h2>
+
+      {loading && !loadedOnce && (
+        <p className="mt-3 text-xs text-slate-500">
+          {isZh ? '加载中…' : 'Loading…'}
+        </p>
+      )}
+
+      {loadedOnce && error && (
+        <p className="mt-3 text-xs text-red-500">{error}</p>
+      )}
+
+      {loadedOnce && !error && balanceEntries.length === 0 && (
+        <p className="mt-3 text-xs text-slate-500">
+          {isZh ? '暂无余额记录。' : 'No balance records yet.'}
+        </p>
+      )}
+
+      {loadedOnce && !error && balanceEntries.length > 0 && (
+        <div className="mt-3 divide-y divide-slate-100 text-xs text-slate-700">
+          {balanceEntries.map((entry, index) => {
+            const deltaAmount = formatBalanceAmount(Math.abs(entry.deltaPoints));
+            return (
+            <div
+              key={`${entry.ledgerId}-${entry.createdAt}-${index}`}
+              className="py-2"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium text-slate-900">
+                    {typeLabel[entry.type]}
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    {new Date(entry.createdAt).toLocaleString()}
+                  </p>
+                  {entry.note && (
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      {entry.note}
+                    </p>
+                  )}
+                  {entry.orderStableId && (
+                    <p className="mt-1 text-[11px]">
+                      <Link
+                        href={`/${locale}/order/${entry.orderStableId}`}
+                        className="text-amber-600 hover:underline"
+                      >
+                        {isZh ? '关联订单' : 'Related order'}:{' '}
+                        {entry.orderStableId}
+                      </Link>
+                    </p>
+                  )}
+                </div>
+                <div className="text-right">
+                  <p
+                    className={`font-semibold ${
+                      entry.deltaPoints >= 0
+                        ? 'text-emerald-600'
+                        : 'text-rose-600'
+                    }`}
+                  >
+                    {entry.deltaPoints >= 0 ? '+' : '-'}
+                    {deltaAmount}
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    {isZh ? '余额：' : 'Balance: '}
+                    {formatBalanceAmount(entry.balanceAfterPoints)}
+                  </p>
+                </div>
+              </div>
+            </div>
+            );
+          })}
         </div>
       )}
     </section>
@@ -2368,6 +2720,18 @@ function ProfileSection({
   phoneEnrollSending,
   phoneEnrollVerifying,
   phoneEnrollError,
+  emailEnrollInput,
+  emailEnrollCode,
+  emailEnrollSending,
+  emailEnrollVerifying,
+  emailEnrollError,
+  emailEnrollSent,
+  emailEnrollVisible,
+  onEmailEnrollInputChange,
+  onEmailEnrollCodeChange,
+  onRequestEmailEnroll,
+  onVerifyEmailEnroll,
+  onOpenEmailEnroll,
   onPhoneEnrollInputChange,
   onPhoneEnrollCodeChange,
   onRequestPhoneEnroll,
@@ -2408,6 +2772,18 @@ function ProfileSection({
   phoneEnrollSending: boolean;
   phoneEnrollVerifying: boolean;
   phoneEnrollError: string | null;
+  emailEnrollInput: string;
+  emailEnrollCode: string;
+  emailEnrollSending: boolean;
+  emailEnrollVerifying: boolean;
+  emailEnrollError: string | null;
+  emailEnrollSent: boolean;
+  emailEnrollVisible: boolean;
+  onEmailEnrollInputChange: (value: string) => void;
+  onEmailEnrollCodeChange: (value: string) => void;
+  onRequestEmailEnroll: () => void;
+  onVerifyEmailEnroll: () => void;
+  onOpenEmailEnroll: () => void;
   onPhoneEnrollInputChange: (value: string) => void;
   onPhoneEnrollCodeChange: (value: string) => void;
   onRequestPhoneEnroll: () => void;
@@ -2533,6 +2909,82 @@ function ProfileSection({
           <p className="mt-0.5 text-slate-900">
             {user.email || (isZh ? '未绑定' : 'Not linked')}
           </p>
+          {!user.email && (
+            <button
+              type="button"
+              onClick={onOpenEmailEnroll}
+              className="mt-2 inline-flex items-center rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+            >
+              {isZh ? '绑定邮箱' : 'Link email'}
+            </button>
+          )}
+          {!user.email && emailEnrollVisible && (
+            <div className="mt-2 space-y-2 rounded-xl border border-slate-100 bg-slate-50 p-3">
+              <p className="text-[11px] font-medium text-slate-700">
+                {isZh ? '绑定邮箱后可开启订阅' : 'Link an email to enable subscriptions'}
+              </p>
+              <div className="flex items-center rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus-within:ring-1 focus-within:ring-slate-400">
+                <input
+                  type="email"
+                  value={emailEnrollInput}
+                  onChange={(event) =>
+                    onEmailEnrollInputChange(event.target.value)
+                  }
+                  placeholder={isZh ? '请输入邮箱地址' : 'Enter your email'}
+                  className="w-full border-0 p-0 text-xs text-slate-900 focus:outline-none"
+                />
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="text"
+                  value={emailEnrollCode}
+                  onChange={(event) =>
+                    onEmailEnrollCodeChange(event.target.value)
+                  }
+                  placeholder={isZh ? '验证码' : 'Code'}
+                  className="w-24 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-slate-400 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={onRequestEmailEnroll}
+                  disabled={emailEnrollSending}
+                  className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {emailEnrollSending
+                    ? isZh
+                      ? '发送中...'
+                      : 'Sending...'
+                    : isZh
+                      ? '发送验证码'
+                      : 'Send code'}
+                </button>
+                <button
+                  type="button"
+                  onClick={onVerifyEmailEnroll}
+                  disabled={emailEnrollVerifying}
+                  className="rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                >
+                  {emailEnrollVerifying
+                    ? isZh
+                      ? '验证中...'
+                      : 'Verifying...'
+                    : isZh
+                      ? '完成绑定'
+                      : 'Verify'}
+                </button>
+              </div>
+              {emailEnrollSent && (
+                <p className="text-[11px] text-emerald-600">
+                  {isZh ? '验证码已发送，请查收邮箱。' : 'Code sent. Check your email.'}
+                </p>
+              )}
+              {emailEnrollError && (
+                <p className="text-[11px] text-rose-500">
+                  {emailEnrollError}
+                </p>
+              )}
+            </div>
+          )}
         </div>
         <div>
           <p className="text-slate-500">
@@ -2750,6 +3202,18 @@ function ProfileSection({
               />
             </button>
           </div>
+          {!user.email && (
+            <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500">
+              <span>{isZh ? '开启前需先绑定邮箱。' : 'Link an email first.'}</span>
+              <button
+                type="button"
+                onClick={onOpenEmailEnroll}
+                className="text-amber-600 hover:underline"
+              >
+                {isZh ? '去绑定' : 'Bind now'}
+              </button>
+            </div>
+          )}
           {marketingError && (
             <p className="mt-1 text-[11px] text-rose-500">
               {marketingError}

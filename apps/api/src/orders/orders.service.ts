@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { AppLogger } from '../common/app-logger';
+import { normalizeEmail } from '../common/utils/email';
 import {
   BusinessConfig,
   Channel,
@@ -60,10 +61,64 @@ import {
 } from '../common/daily-specials';
 import { LocationService } from '../location/location.service';
 import { NotificationService } from '../notifications/notification.service';
+import { EmailService } from '../email/email.service';
 import type { OrderDto, OrderItemDto } from './dto/order.dto';
 import type { PrintPosPayloadDto } from '../pos/dto/print-pos-payload.dto';
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
+type OrderItemSnapshot = Prisma.OrderItemGetPayload<{
+  select: {
+    productStableId: true;
+    qty: true;
+    displayName: true;
+    nameEn: true;
+    nameZh: true;
+    unitPriceCents: true;
+    optionsJson: true;
+  };
+}>;
+
+const orderDetailSelect = {
+  orderStableId: true,
+  clientRequestId: true,
+  status: true,
+  channel: true,
+  fulfillmentType: true,
+  paymentMethod: true,
+  pickupCode: true,
+  contactName: true,
+  contactPhone: true,
+  deliveryType: true,
+  deliveryProvider: true,
+  deliveryEtaMinMinutes: true,
+  deliveryEtaMaxMinutes: true,
+  subtotalCents: true,
+  taxCents: true,
+  deliveryFeeCents: true,
+  deliveryCostCents: true,
+  deliverySubsidyCents: true,
+  totalCents: true,
+  couponCodeSnapshot: true,
+  couponTitleSnapshot: true,
+  couponDiscountCents: true,
+  loyaltyRedeemCents: true,
+  createdAt: true,
+  paidAt: true,
+  userId: true,
+  items: {
+    select: {
+      productStableId: true,
+      qty: true,
+      displayName: true,
+      nameEn: true,
+      nameZh: true,
+      unitPriceCents: true,
+      optionsJson: true,
+    },
+  },
+} satisfies Prisma.OrderSelect;
+
+type OrderDetail = Prisma.OrderGetPayload<{ select: typeof orderDetailSelect }>;
 type OrderItemInput = NonNullable<CreateOrderInput['items']>[number] & {
   productId?: string;
   productStableId?: string;
@@ -150,9 +205,10 @@ export class OrdersService {
     private readonly doorDashDrive: DoorDashDriveService,
     private readonly locationService: LocationService,
     private readonly notificationService: NotificationService,
+    private readonly emailService: EmailService,
   ) {}
 
-  private toOrderDto(order: OrderWithItems): OrderDto {
+  private toOrderDto(order: OrderWithItems | OrderDetail): OrderDto {
     const orderStableId = order.orderStableId;
     const deliveryFeeCents = order.deliveryFeeCents ?? 0;
     const deliveryCostCents = order.deliveryCostCents ?? 0;
@@ -170,7 +226,10 @@ export class OrdersService {
         ? Math.max(0, Math.round(deliverySubsidyCentsRaw))
         : Math.max(0, deliveryCostCents - deliveryFeeCents);
 
-    const items: OrderItemDto[] = (order.items ?? []).map((it) => ({
+    const rawItems: OrderItemSnapshot[] = Array.isArray(order.items)
+      ? (order.items as OrderItemSnapshot[])
+      : [];
+    const items: OrderItemDto[] = rawItems.map((it) => ({
       productStableId: it.productStableId,
       qty: it.qty,
       displayName:
@@ -1581,6 +1640,28 @@ export class OrdersService {
               subtotalAfterCoupon,
             });
 
+            // 储值余额支付
+            const balanceUsedCents =
+              dto.balanceUsedCents && dto.balanceUsedCents > 0
+                ? dto.balanceUsedCents
+                : 0;
+
+            if (balanceUsedCents > 0) {
+              if (!userId) {
+                throw new BadRequestException(
+                  'User required for balance payment',
+                );
+              }
+
+              await this.loyalty.deductBalanceForOrder({
+                tx,
+                userId,
+                orderId,
+                amountCents: balanceUsedCents,
+                sourceKey: 'ORDER',
+              });
+            }
+
             // 税基计算：(小计 - 优惠券 - 积分) + 配送费
             const purchaseBaseCents = Math.max(
               0,
@@ -1872,8 +1953,8 @@ export class OrdersService {
   async getByStableId(orderStableId: string): Promise<OrderDto> {
     const order = (await this.prisma.order.findUnique({
       where: { orderStableId: orderStableId.trim() },
-      include: { items: true },
-    })) as OrderWithItems | null;
+      select: orderDetailSelect,
+    })) as OrderDetail | null;
 
     if (!order) throw new NotFoundException('order not found');
     return this.toOrderDto(order);
@@ -1884,8 +1965,8 @@ export class OrdersService {
   ): Promise<{ order: OrderDto; ownerUserStableId: string | null }> {
     const order = (await this.prisma.order.findUnique({
       where: { orderStableId: orderStableId.trim() },
-      include: { items: true },
-    })) as OrderWithItems | null;
+      select: orderDetailSelect,
+    })) as OrderDetail | null;
 
     if (!order) throw new NotFoundException('order not found');
     const ownerUserStableId = order.userId
@@ -1943,17 +2024,27 @@ export class OrdersService {
     const discountCents =
       (order.couponDiscountCents ?? 0) + (order.loyaltyRedeemCents ?? 0);
 
+    const paymentMethod = (() => {
+      switch (order.paymentMethod) {
+        case PaymentMethod.CASH:
+          return 'cash';
+        case PaymentMethod.CARD:
+          return 'card';
+        case PaymentMethod.WECHAT_ALIPAY:
+          return 'wechat_alipay';
+        case PaymentMethod.STORE_BALANCE:
+          return 'store_balance';
+        default:
+          return order.channel === Channel.in_store ? 'cash' : 'card';
+      }
+    })();
+
     return {
       locale: locale ?? 'zh',
       orderNumber,
       pickupCode: order.pickupCode ?? null,
       fulfillment: order.fulfillmentType,
-      paymentMethod:
-        order.paymentMethod?.toLowerCase() === 'wechat_alipay'
-          ? 'wechat_alipay'
-          : order.paymentMethod?.toLowerCase() === 'cash'
-            ? 'cash'
-            : 'card',
+      paymentMethod,
       snapshot: {
         items,
         subtotalCents: order.subtotalCents ?? 0,
@@ -2031,6 +2122,37 @@ export class OrdersService {
       totalCents: order.totalCents ?? 0,
       lineItems,
     };
+  }
+
+  async sendInvoiceEmail(params: {
+    orderStableId: string;
+    email?: string | null;
+    locale?: string;
+  }): Promise<{ ok: boolean }> {
+    return this.sendInvoice(params);
+  }
+
+  async sendInvoice(params: {
+    orderStableId: string;
+    email?: string | null;
+    locale?: string;
+  }): Promise<{ ok: boolean }> {
+    const normalizedEmail = normalizeEmail(params.email);
+    if (!normalizedEmail) {
+      throw new BadRequestException('invalid_email');
+    }
+
+    const payload = await this.getPrintPayloadByStableId(
+      params.orderStableId,
+      params.locale,
+    );
+    await this.emailService.sendOrderInvoice({
+      to: normalizedEmail,
+      payload,
+      locale: params.locale,
+    });
+
+    return { ok: true };
   }
 
   async updateStatus(

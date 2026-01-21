@@ -14,10 +14,17 @@ import { MfaGuard } from './mfa.guard';
 import { EmailModule } from '../email/email.module';
 import { AdminMfaGuard } from './admin-mfa.guard';
 import { SmsModule } from '../sms/sms.module';
+import { MessagingModule } from '../messaging/messaging.module';
 
 @Global()
 @Module({
-  imports: [PrismaModule, PassportModule, EmailModule, SmsModule],
+  imports: [
+    PrismaModule,
+    PassportModule,
+    EmailModule,
+    SmsModule,
+    MessagingModule,
+  ],
   providers: [
     AuthService,
     PrismaService,

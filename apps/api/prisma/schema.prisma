@@ -585,6 +585,13 @@ model BusinessConfig {
   storeCity                 String?
   storeProvince             String?
   storePostalCode           String?
+  brandNameZh               String?
+  brandNameEn               String?
+  siteUrl                   String?
+  emailFromNameZh           String?
+  emailFromNameEn           String?
+  emailFromAddress          String?
+  smsSignature              String?
   supportPhone              String?
   supportEmail              String?
   salesTaxRate              Float    @default(0.13)
@@ -592,6 +599,10 @@ model BusinessConfig {
   earnPtPerDollar           Float    @default(0.01)
   redeemDollarPerPoint      Float    @default(1.0)
   referralPtPerDollar       Float    @default(0.01)
+  tierMultiplierBronze      Float    @default(1.0)
+  tierMultiplierSilver      Float    @default(2.0)
+  tierMultiplierGold        Float    @default(3.0)
+  tierMultiplierPlatinum    Float    @default(5.0)
   tierThresholdSilver       Int      @default(100000)
   tierThresholdGold         Int      @default(1000000)
   tierThresholdPlatinum     Int      @default(3000000)
@@ -766,6 +777,7 @@ enum PaymentMethod {
   CASH
   CARD
   WECHAT_ALIPAY
+  STORE_BALANCE
 }
 
 enum OrderAmendmentItemAction {

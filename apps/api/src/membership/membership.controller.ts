@@ -211,6 +211,42 @@ export class MembershipController {
     };
   }
 
+  @Post('email/verification/request')
+  async requestEmailVerification(
+    @Req() req: AuthedRequest,
+    @Body() body: { email?: string },
+  ) {
+    const userId = req.user?.id;
+    if (!userId) {
+      throw new BadRequestException('userId is required');
+    }
+
+    const result = await this.membership.requestEmailVerification({
+      userId,
+      email: body.email,
+    });
+
+    return { success: true, ...result };
+  }
+
+  @Post('email/verification/confirm')
+  async confirmEmailVerification(
+    @Req() req: AuthedRequest,
+    @Body() body: { code?: string },
+  ) {
+    const userId = req.user?.id;
+    if (!userId) {
+      throw new BadRequestException('userId is required');
+    }
+
+    const result = await this.membership.verifyEmailCode({
+      userId,
+      code: body.code,
+    });
+
+    return { success: true, ...result };
+  }
+
   // ✅ 更新昵称 / 生日
   @Post('profile')
   async updateProfile(

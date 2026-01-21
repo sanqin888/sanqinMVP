@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { PrismaModule } from '../prisma/prisma.module';
+import { MessagingModule } from '../messaging/messaging.module';
 import { EmailService } from './email.service';
 import { EmailVerificationService } from './email-verification.service';
 import { EMAIL_PROVIDER_TOKEN } from './email.tokens';
@@ -9,7 +10,7 @@ import { LogEmailProvider } from './providers/log-email.provider';
 import type { EmailProvider } from './email.provider';
 
 @Module({
-  imports: [HttpModule, PrismaModule],
+  imports: [HttpModule, PrismaModule, MessagingModule],
   providers: [
     EmailService,
     EmailVerificationService,

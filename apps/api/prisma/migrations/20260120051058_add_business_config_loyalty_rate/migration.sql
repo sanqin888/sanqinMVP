@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE "BusinessConfig" ADD COLUMN     "tierMultiplierBronze" DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+ADD COLUMN     "tierMultiplierGold" DOUBLE PRECISION NOT NULL DEFAULT 3.0,
+ADD COLUMN     "tierMultiplierPlatinum" DOUBLE PRECISION NOT NULL DEFAULT 5.0,
+ADD COLUMN     "tierMultiplierSilver" DOUBLE PRECISION NOT NULL DEFAULT 2.0;

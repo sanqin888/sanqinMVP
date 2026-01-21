@@ -66,6 +66,7 @@ const UseRuleSchema = z
   });
 
 type Tier = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM';
+type LedgerTarget = 'POINTS' | 'BALANCE';
 
 type MemberListParams = {
   search?: string;
@@ -168,6 +169,15 @@ export class AdminMembersService {
       return normalized;
     }
     throw new BadRequestException('Invalid status');
+  }
+
+  private parseLedgerTarget(value?: string): LedgerTarget | undefined {
+    if (!value) return undefined;
+    const normalized = value.trim().toUpperCase();
+    if (normalized === 'POINTS' || normalized === 'BALANCE') {
+      return normalized;
+    }
+    throw new BadRequestException('Invalid ledger target');
   }
 
   private async getUserByStableId(userStableId: string) {
@@ -350,6 +360,7 @@ export class AdminMembersService {
       select: {
         userId: true,
         pointsMicro: true,
+        balanceMicro: true,
         tier: true,
         lifetimeSpendCents: true,
       },
@@ -370,6 +381,7 @@ export class AdminMembersService {
           email: user.email ?? null,
           phone: user.phone ? this.maskPhone(user.phone) : null,
           tier: account?.tier ?? 'BRONZE',
+          balance: account ? Number(account.balanceMicro) / MICRO_PER_POINT : 0,
           points: account ? Number(account.pointsMicro) / MICRO_PER_POINT : 0,
           lifetimeSpendCents: account?.lifetimeSpendCents ?? 0,
           status: user.status,
@@ -422,6 +434,7 @@ export class AdminMembersService {
       availableDiscountCents,
       account: {
         tier: account.tier,
+        balance: Number(account.balanceMicro) / MICRO_PER_POINT,
         points: Number(account.pointsMicro) / MICRO_PER_POINT,
         lifetimeSpendCents,
         nextTier: tierProgress.nextTier,
@@ -430,19 +443,25 @@ export class AdminMembersService {
     };
   }
 
-  async getLoyaltyLedger(userStableId: string, limitRaw?: string) {
+  async getLoyaltyLedger(
+    userStableId: string,
+    limitRaw?: string,
+    targetRaw?: string,
+  ) {
     const user = await this.getUserByStableId(userStableId);
     const limit = limitRaw ? Number.parseInt(limitRaw, 10) || 50 : 50;
+    const target = this.parseLedgerTarget(targetRaw);
 
     const account = await this.loyalty.ensureAccount(user.id);
     const entries = await this.prisma.loyaltyLedger.findMany({
-      where: { accountId: account.id },
+      where: { accountId: account.id, ...(target ? { target } : {}) },
       orderBy: { createdAt: 'desc' },
       take: limit,
       select: {
         ledgerStableId: true,
         createdAt: true,
         type: true,
+        target: true,
         orderId: true,
         deltaMicro: true,
         balanceAfterMicro: true,
@@ -479,6 +498,7 @@ export class AdminMembersService {
           ledgerStableId: entry.ledgerStableId,
           createdAt: entry.createdAt.toISOString(),
           type: entry.type,
+          target: entry.target,
           deltaPoints: Number(entry.deltaMicro) / MICRO_PER_POINT,
           balanceAfterPoints: Number(entry.balanceAfterMicro) / MICRO_PER_POINT,
           note: entry.note ?? undefined,

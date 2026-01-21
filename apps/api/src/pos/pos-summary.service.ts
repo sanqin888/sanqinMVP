@@ -8,7 +8,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
-export type PosPaymentBucket = 'cash' | 'card' | 'online' | 'unknown';
+export type PosPaymentBucket = 'cash' | 'card' | 'online' | 'store_balance';
 export type PosStatusBucket = 'paid' | 'refunded' | 'void';
 
 export type PosDailySummaryResponse = {
@@ -65,7 +65,7 @@ type SummaryQuery = {
   timeMax: string; // ISO (exclusive)
   fulfillmentType?: string;
   status?: string; // paid|refunded|void
-  payment?: string; // cash|card|online|unknown
+  payment?: string; // cash|card|online|store_balance
 };
 
 type OrderLite = {
@@ -120,7 +120,7 @@ export class PosSummaryService {
   private toPaymentBucket(v: unknown): PosPaymentBucket | undefined {
     if (typeof v !== 'string' || v.trim().length === 0) return undefined;
     const s = v.trim().toLowerCase();
-    if (s === 'cash' || s === 'card' || s === 'online' || s === 'unknown')
+    if (s === 'cash' || s === 'card' || s === 'online' || s === 'store_balance')
       return s;
     return undefined;
   }
@@ -137,7 +137,7 @@ export class PosSummaryService {
   /**
    * ✅ 统一 payment bucket：
    * - web / ubereats：归 online
-   * - in_store：看 paymentMethod（CASH/CARD/WECHAT_ALIPAY）
+   * - in_store：看 paymentMethod（CASH/CARD/WECHAT_ALIPAY/STORE_BALANCE）
    */
   private computePaymentBucket(
     o: Pick<OrderLite, 'channel' | 'paymentMethod'>,
@@ -151,9 +151,11 @@ export class PosSummaryService {
       case PaymentMethod.CARD:
         return 'card';
       case PaymentMethod.WECHAT_ALIPAY:
-        return 'online';
+        return 'cash';
+      case PaymentMethod.STORE_BALANCE:
+        return 'store_balance';
       default:
-        return 'unknown';
+        return 'store_balance';
     }
   }
 
@@ -218,7 +220,7 @@ export class PosSummaryService {
           { payment: 'cash', count: 0, amountCents: 0 },
           { payment: 'card', count: 0, amountCents: 0 },
           { payment: 'online', count: 0, amountCents: 0 },
-          { payment: 'unknown', count: 0, amountCents: 0 },
+          { payment: 'store_balance', count: 0, amountCents: 0 },
         ],
         breakdownByFulfillment: [
           { fulfillmentType: 'pickup', count: 0, amountCents: 0 },
@@ -335,7 +337,7 @@ export class PosSummaryService {
       'cash',
       'card',
       'online',
-      'unknown',
+      'store_balance',
     ];
     const payMap = new Map<
       PosPaymentBucket,
@@ -353,7 +355,7 @@ export class PosSummaryService {
     >(fulfillBuckets.map((f) => [f, { count: 0, amountCents: 0 }]));
 
     for (const r of rows) {
-      const p = payMap.get(r.payment) ?? payMap.get('unknown')!;
+      const p = payMap.get(r.payment) ?? payMap.get('store_balance')!;
       p.count += 1;
       p.amountCents += r.netCents;
 

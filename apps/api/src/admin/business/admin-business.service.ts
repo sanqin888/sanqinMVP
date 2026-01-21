@@ -37,6 +37,13 @@ export type BusinessConfigResponse = {
   storeCity: string | null;
   storeProvince: string | null;
   storePostalCode: string | null;
+  brandNameZh: string | null;
+  brandNameEn: string | null;
+  siteUrl: string | null;
+  emailFromNameZh: string | null;
+  emailFromNameEn: string | null;
+  emailFromAddress: string | null;
+  smsSignature: string | null;
   supportPhone: string | null;
   supportEmail: string | null;
   salesTaxRate: number;
@@ -44,6 +51,10 @@ export type BusinessConfigResponse = {
   earnPtPerDollar: number;
   redeemDollarPerPoint: number;
   referralPtPerDollar: number;
+  tierMultiplierBronze: number;
+  tierMultiplierSilver: number;
+  tierMultiplierGold: number;
+  tierMultiplierPlatinum: number;
   tierThresholdSilver: number;
   tierThresholdGold: number;
   tierThresholdPlatinum: number;
@@ -90,6 +101,13 @@ export class AdminBusinessService {
       storeCity: config.storeCity ?? null,
       storeProvince: config.storeProvince ?? null,
       storePostalCode: config.storePostalCode ?? null,
+      brandNameZh: config.brandNameZh ?? null,
+      brandNameEn: config.brandNameEn ?? null,
+      siteUrl: config.siteUrl ?? null,
+      emailFromNameZh: config.emailFromNameZh ?? null,
+      emailFromNameEn: config.emailFromNameEn ?? null,
+      emailFromAddress: config.emailFromAddress ?? null,
+      smsSignature: config.smsSignature ?? null,
       supportPhone: config.supportPhone ?? null,
       supportEmail: config.supportEmail ?? null,
       salesTaxRate: config.salesTaxRate,
@@ -97,6 +115,10 @@ export class AdminBusinessService {
       earnPtPerDollar: config.earnPtPerDollar,
       redeemDollarPerPoint: config.redeemDollarPerPoint,
       referralPtPerDollar: config.referralPtPerDollar,
+      tierMultiplierBronze: config.tierMultiplierBronze,
+      tierMultiplierSilver: config.tierMultiplierSilver,
+      tierMultiplierGold: config.tierMultiplierGold,
+      tierMultiplierPlatinum: config.tierMultiplierPlatinum,
       tierThresholdSilver: config.tierThresholdSilver,
       tierThresholdGold: config.tierThresholdGold,
       tierThresholdPlatinum: config.tierThresholdPlatinum,
@@ -236,6 +258,13 @@ export class AdminBusinessService {
       storeCity,
       storeProvince,
       storePostalCode,
+      brandNameZh,
+      brandNameEn,
+      siteUrl,
+      emailFromNameZh,
+      emailFromNameEn,
+      emailFromAddress,
+      smsSignature,
       supportPhone,
       supportEmail,
       salesTaxRate,
@@ -243,6 +272,10 @@ export class AdminBusinessService {
       earnPtPerDollar,
       redeemDollarPerPoint,
       referralPtPerDollar,
+      tierMultiplierBronze,
+      tierMultiplierSilver,
+      tierMultiplierGold,
+      tierMultiplierPlatinum,
       tierThresholdSilver,
       tierThresholdGold,
       tierThresholdPlatinum,
@@ -265,6 +298,13 @@ export class AdminBusinessService {
       storeCity?: unknown;
       storeProvince?: unknown;
       storePostalCode?: unknown;
+      brandNameZh?: unknown;
+      brandNameEn?: unknown;
+      siteUrl?: unknown;
+      emailFromNameZh?: unknown;
+      emailFromNameEn?: unknown;
+      emailFromAddress?: unknown;
+      smsSignature?: unknown;
       supportPhone?: unknown;
       supportEmail?: unknown;
       salesTaxRate?: unknown;
@@ -272,6 +312,10 @@ export class AdminBusinessService {
       earnPtPerDollar?: unknown;
       redeemDollarPerPoint?: unknown;
       referralPtPerDollar?: unknown;
+      tierMultiplierBronze?: unknown;
+      tierMultiplierSilver?: unknown;
+      tierMultiplierGold?: unknown;
+      tierMultiplierPlatinum?: unknown;
       tierThresholdSilver?: unknown;
       tierThresholdGold?: unknown;
       tierThresholdPlatinum?: unknown;
@@ -400,6 +444,52 @@ export class AdminBusinessService {
       );
     }
 
+    if (brandNameZh !== undefined) {
+      updates.brandNameZh = this.normalizeOptionalText(
+        'brandNameZh',
+        brandNameZh,
+      );
+    }
+
+    if (brandNameEn !== undefined) {
+      updates.brandNameEn = this.normalizeOptionalText(
+        'brandNameEn',
+        brandNameEn,
+      );
+    }
+
+    if (siteUrl !== undefined) {
+      updates.siteUrl = this.normalizeOptionalText('siteUrl', siteUrl);
+    }
+
+    if (emailFromNameZh !== undefined) {
+      updates.emailFromNameZh = this.normalizeOptionalText(
+        'emailFromNameZh',
+        emailFromNameZh,
+      );
+    }
+
+    if (emailFromNameEn !== undefined) {
+      updates.emailFromNameEn = this.normalizeOptionalText(
+        'emailFromNameEn',
+        emailFromNameEn,
+      );
+    }
+
+    if (emailFromAddress !== undefined) {
+      updates.emailFromAddress = this.normalizeOptionalText(
+        'emailFromAddress',
+        emailFromAddress,
+      );
+    }
+
+    if (smsSignature !== undefined) {
+      updates.smsSignature = this.normalizeOptionalText(
+        'smsSignature',
+        smsSignature,
+      );
+    }
+
     if (supportPhone !== undefined) {
       updates.supportPhone = this.normalizeOptionalText(
         'supportPhone',
@@ -443,6 +533,34 @@ export class AdminBusinessService {
       updates.referralPtPerDollar = this.normalizePositiveNumber(
         'referralPtPerDollar',
         referralPtPerDollar,
+      );
+    }
+
+    if (tierMultiplierBronze !== undefined) {
+      updates.tierMultiplierBronze = this.normalizePositiveNumber(
+        'tierMultiplierBronze',
+        tierMultiplierBronze,
+      );
+    }
+
+    if (tierMultiplierSilver !== undefined) {
+      updates.tierMultiplierSilver = this.normalizePositiveNumber(
+        'tierMultiplierSilver',
+        tierMultiplierSilver,
+      );
+    }
+
+    if (tierMultiplierGold !== undefined) {
+      updates.tierMultiplierGold = this.normalizePositiveNumber(
+        'tierMultiplierGold',
+        tierMultiplierGold,
+      );
+    }
+
+    if (tierMultiplierPlatinum !== undefined) {
+      updates.tierMultiplierPlatinum = this.normalizePositiveNumber(
+        'tierMultiplierPlatinum',
+        tierMultiplierPlatinum,
       );
     }
 

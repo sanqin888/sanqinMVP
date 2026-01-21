@@ -65,6 +65,10 @@ export class AdminBusinessController {
       earnPtPerDollar?: number;
       redeemDollarPerPoint?: number;
       referralPtPerDollar?: number;
+      tierMultiplierBronze?: number;
+      tierMultiplierSilver?: number;
+      tierMultiplierGold?: number;
+      tierMultiplierPlatinum?: number;
       tierThresholdSilver?: number;
       tierThresholdGold?: number;
       tierThresholdPlatinum?: number;
@@ -107,6 +111,10 @@ export class AdminBusinessController {
       earnPtPerDollar?: number;
       redeemDollarPerPoint?: number;
       referralPtPerDollar?: number;
+      tierMultiplierBronze?: number;
+      tierMultiplierSilver?: number;
+      tierMultiplierGold?: number;
+      tierMultiplierPlatinum?: number;
       tierThresholdSilver?: number;
       tierThresholdGold?: number;
       tierThresholdPlatinum?: number;

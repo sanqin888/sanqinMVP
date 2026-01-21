@@ -14,12 +14,18 @@ import {
   createHash,
   createHmac,
 } from 'crypto';
-import type { TwoFactorMethod, UserRole } from '@prisma/client';
+import {
+  UserLanguage,
+  type TwoFactorMethod,
+  type UserRole,
+} from '@prisma/client';
 import argon2, { argon2id } from 'argon2';
 import { normalizeEmail } from '../common/utils/email';
 import { normalizePhone } from '../common/utils/phone';
 import { EmailService } from '../email/email.service';
 import { SmsService } from '../sms/sms.service';
+import { BusinessConfigService } from '../messaging/business-config.service';
+import { TemplateRenderer } from '../messaging/template-renderer';
 
 @Injectable()
 export class AuthService {
@@ -29,6 +35,8 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly emailService: EmailService,
     private readonly smsService: SmsService,
+    private readonly templateRenderer: TemplateRenderer,
+    private readonly businessConfigService: BusinessConfigService,
   ) {}
 
   private generateCode(): string {
@@ -88,6 +96,26 @@ export class AuthService {
 
   private isAdminRole(role?: UserRole | null): boolean {
     return role === 'ADMIN' || role === 'STAFF';
+  }
+
+  private normalizeLanguage(
+    language?: string | null,
+  ): UserLanguage | undefined {
+    if (!language) return undefined;
+    const normalized = language.trim().toLowerCase();
+    if (normalized.startsWith('zh')) return UserLanguage.ZH;
+    if (normalized === 'en') return UserLanguage.EN;
+    return undefined;
+  }
+
+  private resolveUserLocale(language?: string | null): string | undefined {
+    if (language === UserLanguage.ZH) return 'zh-CN';
+    if (language === UserLanguage.EN) return 'en';
+    if (!language) return undefined;
+    const normalized = language.toString().trim().toLowerCase();
+    if (normalized.startsWith('zh')) return 'zh-CN';
+    if (normalized === 'en') return 'en';
+    return undefined;
   }
 
   async createSession(params: {
@@ -268,10 +296,12 @@ export class AuthService {
     deviceInfo?: string;
     loginLocation?: string;
     trustedDeviceToken?: string;
+    language?: string;
   }) {
     const googleSub = params.googleSub;
     const email = normalizeEmail(params.email);
     const emailVerified = params.emailVerified === true;
+    const language = this.normalizeLanguage(params.language);
 
     if (!googleSub || !email) {
       throw new BadRequestException('invalid oauth params');
@@ -308,6 +338,7 @@ export class AuthService {
             emailVerifiedAt: emailVerified ? now : null,
             name: params.name ?? undefined,
             googleSub,
+            language,
           },
         });
         isNewUser = true;
@@ -540,10 +571,19 @@ export class AuthService {
       },
     });
 
-    const isZh = user.language === 'ZH';
-    const message = isZh
-      ? `您好，您的验证码是 ${code}，5 分钟内有效，若您未曾发送此请求，请忽略此消息（三秦）。`
-      : `Hello, Your verification code is ${code}. It is valid for 5 minutes. If you did not request this, please ignore this message (San Qin).`;
+    const locale = this.resolveUserLocale(user.language);
+    const { baseVars } =
+      await this.businessConfigService.getMessagingSnapshot(locale);
+    const message = await this.templateRenderer.renderSms({
+      template: 'otp',
+      locale,
+      vars: {
+        ...baseVars,
+        code,
+        expiresInMin: 5,
+        purpose: 'login_2fa',
+      },
+    });
 
     await this.smsService.sendSms({
       phone: user.phone,
@@ -625,17 +665,27 @@ export class AuthService {
       },
     });
 
-    const isZh = user.language === 'ZH';
-    const subject = isZh ? '后台登录验证码' : 'Admin login verification code';
-    const text = isZh
-      ? `您好，您的后台登录验证码是 ${code}，5 分钟内有效。若您未曾发送此请求，请忽略本邮件（三秦）`
-      : `Hello, Your admin login verification code is ${code}. It expires in 5 minutes.If you did not request this, please ignore this mail (San Qin).`;
+    const locale = this.resolveUserLocale(user.language);
+    const { baseVars } =
+      await this.businessConfigService.getMessagingSnapshot(locale);
+    const { subject, html, text } = await this.templateRenderer.renderEmail({
+      template: 'otp',
+      locale,
+      vars: {
+        ...baseVars,
+        code,
+        expiresInMin: 5,
+        purpose: 'admin_login',
+      },
+    });
 
     await this.emailService.sendEmail({
       to: user.email,
       subject,
       text,
+      html,
       tags: { type: 'admin_login_2fa' },
+      locale,
     });
     return { success: true, expiresAt };
   }
@@ -1021,10 +1071,19 @@ export class AuthService {
       where: { phone: normalized },
       select: { language: true },
     });
-    const isZh = existingUser?.language === 'ZH';
-    const message = isZh
-      ? `您好，您的登录验证码是 ${code}，5 分钟内有效，若您未曾发送此请求，请忽略此消息（三秦）。`
-      : `Hello, Your login verification code is ${code}. It is valid for 5 minutes. If you did not request this, please ignore this message (San Qin).`;
+    const locale = this.resolveUserLocale(existingUser?.language ?? null);
+    const { baseVars } =
+      await this.businessConfigService.getMessagingSnapshot(locale);
+    const message = await this.templateRenderer.renderSms({
+      template: 'otp',
+      locale,
+      vars: {
+        ...baseVars,
+        code,
+        expiresInMin: 5,
+        purpose: 'login',
+      },
+    });
 
     await this.smsService.sendSms({
       phone: normalized, // 注意：这里的 normalized 是不带 + 号的纯数字
@@ -1039,6 +1098,7 @@ export class AuthService {
     deviceInfo?: string;
     loginLocation?: string;
     trustedDeviceToken?: string;
+    language?: string;
   }) {
     const normalized = normalizePhone(params.phone);
     if (!normalized || !params.code) {
@@ -1076,6 +1136,7 @@ export class AuthService {
     });
 
     if (!user) {
+      const language = this.normalizeLanguage(params.language);
       user = await this.prisma.user.create({
         data: {
           phone: normalized,
@@ -1083,6 +1144,7 @@ export class AuthService {
           twoFactorEnabledAt: now,
           twoFactorMethod: 'SMS',
           role: 'CUSTOMER',
+          language,
         },
       });
       isNewUser = true;

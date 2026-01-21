@@ -48,11 +48,22 @@ type BusinessConfigDto = {
   storePostalCode: string | null;
   supportPhone: string | null;
   supportEmail: string | null;
+  brandNameZh: string | null;
+  brandNameEn: string | null;
+  siteUrl: string | null;
+  emailFromNameZh: string | null;
+  emailFromNameEn: string | null;
+  emailFromAddress: string | null;
+  smsSignature: string | null;
   salesTaxRate: number;
   wechatAlipayExchangeRate: number;
   earnPtPerDollar: number;
   redeemDollarPerPoint: number;
   referralPtPerDollar: number;
+  tierMultiplierBronze: number;
+  tierMultiplierSilver: number;
+  tierMultiplierGold: number;
+  tierMultiplierPlatinum: number;
   tierThresholdSilver: number;
   tierThresholdGold: number;
   tierThresholdPlatinum: number;
@@ -152,18 +163,6 @@ function parseOptionalNumber(value: string): number | null {
   if (!Number.isFinite(num)) return null;
   return num;
 }
-
-function centsToDollarNumber(cents: number | null | undefined): number {
-  if (cents == null || Number.isNaN(cents)) return 0;
-  return Number((cents / 100).toFixed(2));
-}
-
-function dollarsToCentsNumber(value: string): number | null {
-  const num = parseOptionalNumber(value);
-  if (num == null || num < 0) return null;
-  return Math.round(num * 100);
-}
-
 
 function toHolidayUi(list: HolidayApiDto[]): HolidayUiDto[] {
   return (list ?? []).map((h, idx) => ({
@@ -395,6 +394,34 @@ const handleTimeChange = (
     setConfig((prev) => (prev ? { ...prev, supportEmail: value } : prev));
   };
 
+  const handleBrandNameZhChange = (value: string) => {
+    setConfig((prev) => (prev ? { ...prev, brandNameZh: value } : prev));
+  };
+
+  const handleBrandNameEnChange = (value: string) => {
+    setConfig((prev) => (prev ? { ...prev, brandNameEn: value } : prev));
+  };
+
+  const handleSiteUrlChange = (value: string) => {
+    setConfig((prev) => (prev ? { ...prev, siteUrl: value } : prev));
+  };
+
+  const handleEmailFromNameZhChange = (value: string) => {
+    setConfig((prev) => (prev ? { ...prev, emailFromNameZh: value } : prev));
+  };
+
+  const handleEmailFromNameEnChange = (value: string) => {
+    setConfig((prev) => (prev ? { ...prev, emailFromNameEn: value } : prev));
+  };
+
+  const handleEmailFromAddressChange = (value: string) => {
+    setConfig((prev) => (prev ? { ...prev, emailFromAddress: value } : prev));
+  };
+
+  const handleSmsSignatureChange = (value: string) => {
+    setConfig((prev) => (prev ? { ...prev, smsSignature: value } : prev));
+  };
+
   const handleTaxRateChange = (value: string) => {
     const rate = parsePercentToRate(value);
     if (rate == null) return;
@@ -411,37 +438,6 @@ const handleTimeChange = (
 
   const handleTimezoneChange = (value: string) => {
     setConfig((prev) => (prev ? { ...prev, timezone: value } : prev));
-  };
-
-  const handleEarnRateChange = (value: string) => {
-    const num = parseOptionalNumber(value);
-    if (num == null || num < 0) return;
-    setConfig((prev) => (prev ? { ...prev, earnPtPerDollar: num } : prev));
-  };
-
-  const handleRedeemRateChange = (value: string) => {
-    const num = parseOptionalNumber(value);
-    if (num == null || num <= 0) return;
-    setConfig((prev) =>
-      prev ? { ...prev, redeemDollarPerPoint: num } : prev,
-    );
-  };
-
-  const handleReferralRateChange = (value: string) => {
-    const num = parseOptionalNumber(value);
-    if (num == null || num < 0) return;
-    setConfig((prev) =>
-      prev ? { ...prev, referralPtPerDollar: num } : prev,
-    );
-  };
-
-  const handleTierThresholdChange = (
-    field: 'tierThresholdSilver' | 'tierThresholdGold' | 'tierThresholdPlatinum',
-    value: string,
-  ) => {
-    const cents = dollarsToCentsNumber(value);
-    if (cents == null) return;
-    setConfig((prev) => (prev ? { ...prev, [field]: cents } : prev));
   };
 
   const handleDoorDashToggle = (checked: boolean) => {
@@ -622,6 +618,13 @@ await apiFetch('/admin/business/hours', {
           storePostalCode: config.storePostalCode ?? null,
           supportPhone: config.supportPhone ?? null,
           supportEmail: config.supportEmail ?? null,
+          brandNameZh: config.brandNameZh ?? null,
+          brandNameEn: config.brandNameEn ?? null,
+          siteUrl: config.siteUrl ?? null,
+          emailFromNameZh: config.emailFromNameZh ?? null,
+          emailFromNameEn: config.emailFromNameEn ?? null,
+          emailFromAddress: config.emailFromAddress ?? null,
+          smsSignature: config.smsSignature ?? null,
           salesTaxRate: config.salesTaxRate,
           wechatAlipayExchangeRate: config.wechatAlipayExchangeRate,
           earnPtPerDollar: config.earnPtPerDollar,
@@ -1063,105 +1066,6 @@ setHolidays(
         </div>
       </section>
 
-      {/* 积分规则 */}
-      <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="text-sm font-semibold text-slate-900">
-          {isZh ? '积分与会员规则' : 'Loyalty rules'}
-        </h2>
-        <p className="text-xs text-slate-600">
-          {isZh
-            ? '调整积分获取/抵扣规则与等级门槛，无需重新部署。'
-            : 'Adjust earn/redeem rules and tier thresholds without redeploying.'}
-        </p>
-
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          <label className="flex flex-col text-xs font-medium text-slate-700">
-            <span>{isZh ? '积分获取率 (pt / $)' : 'Earn rate (pt per $)'}</span>
-            <input
-              type="number"
-              min="0"
-              step="0.0001"
-              value={config.earnPtPerDollar}
-              onChange={(e) => handleEarnRateChange(e.target.value)}
-              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
-            />
-          </label>
-
-          <label className="flex flex-col text-xs font-medium text-slate-700">
-            <span>{isZh ? '积分抵扣汇率 ($ / pt)' : 'Redeem rate ($ per pt)'}</span>
-            <input
-              type="number"
-              min="0.0001"
-              step="0.0001"
-              value={config.redeemDollarPerPoint}
-              onChange={(e) => handleRedeemRateChange(e.target.value)}
-              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
-            />
-          </label>
-
-          <label className="flex flex-col text-xs font-medium text-slate-700">
-            <span>
-              {isZh ? '推荐奖励比例 (pt / $)' : 'Referral rate (pt per $)'}
-            </span>
-            <input
-              type="number"
-              min="0"
-              step="0.0001"
-              value={config.referralPtPerDollar}
-              onChange={(e) => handleReferralRateChange(e.target.value)}
-              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
-            />
-          </label>
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          <label className="flex flex-col text-xs font-medium text-slate-700">
-            <span>{isZh ? '银卡门槛 ($)' : 'Silver threshold ($)'}</span>
-            <input
-              type="number"
-              min="0"
-              step="1"
-              value={centsToDollarNumber(config.tierThresholdSilver)}
-              onChange={(e) =>
-                handleTierThresholdChange('tierThresholdSilver', e.target.value)
-              }
-              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
-            />
-          </label>
-
-          <label className="flex flex-col text-xs font-medium text-slate-700">
-            <span>{isZh ? '金卡门槛 ($)' : 'Gold threshold ($)'}</span>
-            <input
-              type="number"
-              min="0"
-              step="1"
-              value={centsToDollarNumber(config.tierThresholdGold)}
-              onChange={(e) =>
-                handleTierThresholdChange('tierThresholdGold', e.target.value)
-              }
-              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
-            />
-          </label>
-
-          <label className="flex flex-col text-xs font-medium text-slate-700">
-            <span>{isZh ? '白金卡门槛 ($)' : 'Platinum threshold ($)'}</span>
-            <input
-              type="number"
-              min="0"
-              step="1"
-              value={centsToDollarNumber(config.tierThresholdPlatinum)}
-              onChange={(e) =>
-                handleTierThresholdChange(
-                  'tierThresholdPlatinum',
-                  e.target.value,
-                )
-              }
-              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
-            />
-          </label>
-        </div>
-      </section>
-
       {/* 服务开关 */}
       <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-900">
@@ -1196,6 +1100,101 @@ setHolidays(
             <span className="text-slate-800">
               {isZh ? '启用 Uber Direct' : 'Enable Uber Direct'}
             </span>
+          </label>
+        </div>
+      </section>
+
+      {/* 消息与品牌展示设置 */}
+      <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="text-sm font-semibold text-slate-900">
+          {isZh ? '消息与品牌展示' : 'Messaging & brand display'}
+        </h2>
+        <p className="text-xs text-slate-600">
+          {isZh
+            ? '这些字段用于短信/邮件模板与站点展示，修改后将直接用于消息内容。'
+            : 'These fields are used in SMS/email templates and site display.'}
+        </p>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <label className="flex flex-col text-xs font-medium text-slate-700">
+            <span>{isZh ? '品牌名（中文）' : 'Brand name (ZH)'}</span>
+            <input
+              type="text"
+              value={config.brandNameZh ?? ''}
+              onChange={(e) => handleBrandNameZhChange(e.target.value)}
+              placeholder={isZh ? '例如：三秦肉夹馍' : 'e.g. San Qin Roujiamo'}
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+            />
+          </label>
+
+          <label className="flex flex-col text-xs font-medium text-slate-700">
+            <span>{isZh ? '品牌名（英文）' : 'Brand name (EN)'}</span>
+            <input
+              type="text"
+              value={config.brandNameEn ?? ''}
+              onChange={(e) => handleBrandNameEnChange(e.target.value)}
+              placeholder="e.g. San Qin Roujiamo"
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+            />
+          </label>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <label className="flex flex-col text-xs font-medium text-slate-700">
+            <span>{isZh ? '站点网址' : 'Site URL'}</span>
+            <input
+              type="url"
+              value={config.siteUrl ?? ''}
+              onChange={(e) => handleSiteUrlChange(e.target.value)}
+              placeholder="https://example.com"
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+            />
+          </label>
+
+          <label className="flex flex-col text-xs font-medium text-slate-700">
+            <span>{isZh ? '短信签名' : 'SMS signature'}</span>
+            <input
+              type="text"
+              value={config.smsSignature ?? ''}
+              onChange={(e) => handleSmsSignatureChange(e.target.value)}
+              placeholder={isZh ? '例如：【三秦】' : 'e.g. [San Qin]'}
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+            />
+          </label>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <label className="flex flex-col text-xs font-medium text-slate-700">
+            <span>{isZh ? '邮件发件人名称（中文）' : 'Email from name (ZH)'}</span>
+            <input
+              type="text"
+              value={config.emailFromNameZh ?? ''}
+              onChange={(e) => handleEmailFromNameZhChange(e.target.value)}
+              placeholder={isZh ? '例如：三秦肉夹馍' : 'e.g. San Qin Roujiamo'}
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+            />
+          </label>
+
+          <label className="flex flex-col text-xs font-medium text-slate-700">
+            <span>{isZh ? '邮件发件人名称（英文）' : 'Email from name (EN)'}</span>
+            <input
+              type="text"
+              value={config.emailFromNameEn ?? ''}
+              onChange={(e) => handleEmailFromNameEnChange(e.target.value)}
+              placeholder="e.g. San Qin Roujiamo"
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+            />
+          </label>
+
+          <label className="flex flex-col text-xs font-medium text-slate-700">
+            <span>{isZh ? '邮件发件人地址' : 'Email from address'}</span>
+            <input
+              type="email"
+              value={config.emailFromAddress ?? ''}
+              onChange={(e) => handleEmailFromAddressChange(e.target.value)}
+              placeholder="no-reply@example.com"
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+            />
           </label>
         </div>
       </section>

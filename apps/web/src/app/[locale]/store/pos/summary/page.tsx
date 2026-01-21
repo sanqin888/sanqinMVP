@@ -101,7 +101,7 @@ type FilterState = {
   dateEnd: string;   // YYYY-MM-DD
   channel: string;   // pickup|dine_in|delivery
   status: string;    // paid|refunded|void
-  payment: string;   // cash|card|online|unknown
+  payment: string;   // cash|card|online|store_balance
 };
 
 type OrderRow = {
@@ -128,7 +128,7 @@ type PosDailySummaryResponse = {
     deliveryCostCents: number;
   };
   breakdownByPayment: Array<{
-    payment: "cash" | "card" | "online" | "unknown";
+    payment: "cash" | "card" | "online" | "store_balance";
     count: number;
     amountCents: number;
   }>;
@@ -148,7 +148,7 @@ type PosDailySummaryResponse = {
     status: "pending" | "paid" | "making" | "ready" | "completed" | "refunded";
     statusBucket: "paid" | "refunded" | "void";
 
-    payment: "cash" | "card" | "online" | "unknown";
+    payment: "cash" | "card" | "online" | "store_balance";
 
     totalCents: number;
     taxCents: number;
@@ -274,7 +274,7 @@ function labelPayment(locale: Locale, v: string) {
   if (v === "cash") return locale === "zh" ? "现金" : "Cash";
   if (v === "card") return locale === "zh" ? "信用卡/借记卡" : "Card";
   if (v === "online") return locale === "zh" ? "在线支付" : "Online";
-  if (v === "unknown") return locale === "zh" ? "其他" : "Other";
+  if (v === "store_balance") return locale === "zh" ? "储值余额" : "Store balance";
   return v;
 }
 
@@ -423,11 +423,11 @@ export default function PosDailySummaryPage() {
       { key: "cash", label: labelPayment(locale, "cash"), count: 0, amountCents: 0 },
       { key: "card", label: labelPayment(locale, "card"), count: 0, amountCents: 0 },
       { key: "online", label: labelPayment(locale, "online"), count: 0, amountCents: 0 },
-      { key: "unknown", label: labelPayment(locale, "unknown"), count: 0, amountCents: 0 },
+      { key: "store_balance", label: labelPayment(locale, "store_balance"), count: 0, amountCents: 0 },
     ];
     const map = new Map(base.map((x) => [x.key, x]));
     for (const item of data?.breakdownByPayment ?? []) {
-      const hit = map.get(item.payment) ?? map.get("unknown")!;
+      const hit = map.get(item.payment) ?? map.get("store_balance")!;
       hit.count += item.count;
       hit.amountCents += item.amountCents;
     }
@@ -536,6 +536,10 @@ export default function PosDailySummaryPage() {
         <div className="flex justify-between">
           <span>销售额 Sales</span>
           <span>{formatMoney(data.totals.salesCents)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span>优惠金额 Discount</span>
+          <span>{formatMoney(data.totals.discountCents)}</span>
         </div>
         <div className="border-b border-dashed border-black my-1 opacity-50"></div>
         <div className="flex justify-between">

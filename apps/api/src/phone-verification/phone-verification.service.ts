@@ -10,6 +10,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PhoneVerificationStatus } from '@prisma/client';
 import { normalizePhone } from '../common/utils/phone';
 import { SmsService } from '../sms/sms.service';
+import { BusinessConfigService } from '../messaging/business-config.service';
+import { TemplateRenderer } from '../messaging/template-renderer';
 
 type SendCodeResult = {
   ok: boolean;
@@ -34,6 +36,8 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly smsService: SmsService,
+    private readonly templateRenderer: TemplateRenderer,
+    private readonly businessConfigService: BusinessConfigService,
   ) {}
 
   onModuleInit(): void {
@@ -64,12 +68,22 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
     return String(n);
   }
 
-  private buildVerificationMessage(code: string, locale?: string): string {
-    const normalized = locale?.toLowerCase() ?? '';
-    const isZh = normalized.startsWith('zh');
-    return isZh
-      ? `您的验证码是 ${code}，10 分钟内有效。`
-      : `Your verification code is ${code}. It expires in 10 minutes.`;
+  private async buildVerificationMessage(
+    code: string,
+    locale?: string,
+  ): Promise<string> {
+    const { baseVars } =
+      await this.businessConfigService.getMessagingSnapshot(locale);
+    return this.templateRenderer.renderSms({
+      template: 'otp',
+      locale,
+      vars: {
+        ...baseVars,
+        code,
+        expiresInMin: 10,
+        purpose: 'verify',
+      },
+    });
   }
 
   /** 生成验证 token（给前端存起来） */
@@ -147,7 +161,7 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
-    const message = this.buildVerificationMessage(code, params.locale);
+    const message = await this.buildVerificationMessage(code, params.locale);
     const smsResult = await this.smsService.sendSms({
       phone: normalized,
       body: message,
