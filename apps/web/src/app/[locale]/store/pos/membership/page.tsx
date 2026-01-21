@@ -75,7 +75,6 @@ const COPY = {
       pointsPlaceholder: "请输入积分",
       reasonLabel: "备注原因",
       reasonPlaceholder: "请输入原因（必填）",
-      rechargeAmountHint: "充值金额将按 1:1 折算为积分",
       rechargeAmount: "充值金额",
       bonusPoints: "奖励积分",
       paymentMethod: "结算方式",
@@ -167,7 +166,6 @@ const COPY = {
       pointsPlaceholder: "Enter points",
       reasonLabel: "Reason",
       reasonPlaceholder: "Reason required",
-      rechargeAmountHint: "Recharge amount converts 1:1 into points",
       rechargeAmount: "Cash recharge",
       bonusPoints: "Bonus points",
       paymentMethod: "Payment method",
@@ -1020,7 +1018,6 @@ export default function PosMembershipPage() {
                 onChange={(event) => setRechargeAmount(event.target.value)}
                 className="h-11 w-full rounded-2xl border border-slate-700 bg-slate-800 px-4 text-sm"
               />
-              <p className="text-[11px] text-slate-500">{copy.modal.rechargeAmountHint}</p>
               <label className="text-xs text-slate-400">{copy.modal.bonusPoints}</label>
               <input
                 value={rechargeBonus}
