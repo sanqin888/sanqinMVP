@@ -237,6 +237,7 @@ type LedgerEntry = {
 
 type OrderEntry = {
   orderStableId: string;
+  clientRequestId: string | null;
   createdAt: string;
   status: string;
   totalCents: number;
@@ -897,7 +898,7 @@ export default function PosMembershipPage() {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-semibold text-slate-100">
-                          {order.orderStableId}
+                          {order.clientRequestId ?? order.orderStableId}
                         </p>
                         <p className="text-xs text-slate-400">
                           {formatDate(order.createdAt, locale)}
