@@ -39,6 +39,8 @@ const toTemplateString = (value: unknown): string => {
     return String(value);
   }
   if (typeof value === 'bigint') return value.toString();
+  if (typeof value === 'symbol') return value.description ?? '';
+  if (typeof value === 'function') return value.name || '[function]';
   if (value instanceof Date) return value.toISOString();
   if (typeof value === 'object') {
     try {
@@ -47,18 +49,21 @@ const toTemplateString = (value: unknown): string => {
       return '';
     }
   }
-  return String(value);
+  return '';
 };
 
 const renderTemplateString = (
   template: string,
   vars: Record<string, unknown>,
 ): string => {
-  const withRaw = template.replace(/\{\{\{\s*([\w.]+)\s*\}\}\}/g, (_, key) => {
-    const value = getVar(vars, key);
-    return toTemplateString(value);
-  });
-  return withRaw.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key) => {
+  const withRaw = template.replace(
+    /\{\{\{\s*([\w.]+)\s*\}\}\}/g,
+    (_, key: string) => {
+      const value = getVar(vars, key);
+      return toTemplateString(value);
+    },
+  );
+  return withRaw.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key: string) => {
     const value = getVar(vars, key);
     return escapeHtml(toTemplateString(value));
   });
