@@ -14,7 +14,11 @@ import {
   createHash,
   createHmac,
 } from 'crypto';
-import { UserLanguage, type TwoFactorMethod, type UserRole } from '@prisma/client';
+import {
+  UserLanguage,
+  type TwoFactorMethod,
+  type UserRole,
+} from '@prisma/client';
 import argon2, { argon2id } from 'argon2';
 import { normalizeEmail } from '../common/utils/email';
 import { normalizePhone } from '../common/utils/phone';
@@ -90,7 +94,9 @@ export class AuthService {
     return role === 'ADMIN' || role === 'STAFF';
   }
 
-  private normalizeLanguage(language?: string | null): UserLanguage | undefined {
+  private normalizeLanguage(
+    language?: string | null,
+  ): UserLanguage | undefined {
     if (!language) return undefined;
     const normalized = language.trim().toLowerCase();
     if (normalized.startsWith('zh')) return UserLanguage.ZH;
