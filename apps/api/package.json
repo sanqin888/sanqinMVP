@@ -9,7 +9,7 @@
     "seed": "node prisma/seed/seed-menu.cjs"
   },
   "scripts": {
-    "build": "pnpm --filter @shared/menu build && pnpm --filter @shared/order build && pnpm run prisma:generate && tsc -p tsconfig.build.json",
+    "build": "pnpm --filter @shared/menu build && pnpm --filter @shared/order build && pnpm run prisma:generate && nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start:prod": "pnpm run build && node --enable-source-maps dist/main.js",
     "start:dev": "pnpm --filter @shared/menu build && pnpm --filter @shared/order build && pnpm run prisma:generate && nest start -c nest-cli.json --path tsconfig.build.json --watch",
