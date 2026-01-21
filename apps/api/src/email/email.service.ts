@@ -1,15 +1,16 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { BusinessConfigService } from '../messaging/business-config.service';
 import type { EmailProvider } from './email.provider';
 import { EMAIL_PROVIDER_TOKEN } from './email.tokens';
 
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
-  private readonly fromName = process.env.EMAIL_FROM_NAME ?? 'Sanq';
   private readonly baseUrl = process.env.PUBLIC_BASE_URL ?? 'https://sanq.ca';
 
   constructor(
     @Inject(EMAIL_PROVIDER_TOKEN) private readonly provider: EmailProvider,
+    private readonly businessConfigService: BusinessConfigService,
   ) {}
 
   async sendEmail(params: {
@@ -18,8 +19,18 @@ export class EmailService {
     html?: string;
     text?: string;
     tags?: Record<string, string>;
+    locale?: string;
+    fromName?: string;
+    fromAddress?: string;
   }) {
-    const result = await this.provider.sendEmail(params);
+    const { locale, ...payload } = params;
+    const messagingConfig =
+      await this.businessConfigService.getMessagingSnapshot(locale);
+    const result = await this.provider.sendEmail({
+      ...payload,
+      fromName: params.fromName ?? messagingConfig.emailFromName,
+      fromAddress: params.fromAddress ?? messagingConfig.emailFromAddress,
+    });
     if (!result.ok) {
       this.logger.warn(`Email send failed: ${result.error ?? 'unknown'}`);
     }
@@ -76,6 +87,7 @@ export class EmailService {
       text,
       html,
       tags: { type: 'email_verification' },
+      locale: params.locale,
     });
   }
 
@@ -141,6 +153,7 @@ export class EmailService {
       text,
       html,
       tags: { type: 'coupon' },
+      locale: params.locale,
     });
   }
 
@@ -171,6 +184,7 @@ export class EmailService {
         text,
         html,
         tags: { type: 'staff_invite' },
+        locale: params.locale,
       });
     }
 
@@ -192,6 +206,7 @@ export class EmailService {
       text,
       html,
       tags: { type: 'staff_invite' },
+      locale: params.locale,
     });
   }
 }

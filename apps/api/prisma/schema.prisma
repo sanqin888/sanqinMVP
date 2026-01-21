@@ -585,6 +585,13 @@ model BusinessConfig {
   storeCity                 String?
   storeProvince             String?
   storePostalCode           String?
+  brandNameZh               String?
+  brandNameEn               String?
+  siteUrl                   String?
+  emailFromNameZh           String?
+  emailFromNameEn           String?
+  emailFromAddress          String?
+  smsSignature              String?
   supportPhone              String?
   supportEmail              String?
   salesTaxRate              Float    @default(0.13)

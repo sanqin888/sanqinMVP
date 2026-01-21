@@ -19,11 +19,16 @@ export class SesEmailProvider implements EmailProvider {
     const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
     const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
     const sessionToken = process.env.AWS_SESSION_TOKEN;
-    const fromEmail = process.env.AWS_SES_FROM_EMAIL;
+    const fallbackFromEmail = process.env.AWS_SES_FROM_EMAIL;
+    const fromAddress = params.fromAddress ?? fallbackFromEmail;
 
-    if (!accessKeyId || !secretAccessKey || !fromEmail) {
+    if (!accessKeyId || !secretAccessKey || !fromAddress) {
       return { ok: false, error: 'ses credentials missing' };
     }
+
+    const fromEmail = params.fromName
+      ? `${params.fromName} <${fromAddress}>`
+      : fromAddress;
 
     const endpoint = `https://email.${region}.amazonaws.com/v2/email/outbound-emails`;
     const payload = {

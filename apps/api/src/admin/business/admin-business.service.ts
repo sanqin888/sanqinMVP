@@ -37,6 +37,13 @@ export type BusinessConfigResponse = {
   storeCity: string | null;
   storeProvince: string | null;
   storePostalCode: string | null;
+  brandNameZh: string | null;
+  brandNameEn: string | null;
+  siteUrl: string | null;
+  emailFromNameZh: string | null;
+  emailFromNameEn: string | null;
+  emailFromAddress: string | null;
+  smsSignature: string | null;
   supportPhone: string | null;
   supportEmail: string | null;
   salesTaxRate: number;
@@ -94,6 +101,13 @@ export class AdminBusinessService {
       storeCity: config.storeCity ?? null,
       storeProvince: config.storeProvince ?? null,
       storePostalCode: config.storePostalCode ?? null,
+      brandNameZh: config.brandNameZh ?? null,
+      brandNameEn: config.brandNameEn ?? null,
+      siteUrl: config.siteUrl ?? null,
+      emailFromNameZh: config.emailFromNameZh ?? null,
+      emailFromNameEn: config.emailFromNameEn ?? null,
+      emailFromAddress: config.emailFromAddress ?? null,
+      smsSignature: config.smsSignature ?? null,
       supportPhone: config.supportPhone ?? null,
       supportEmail: config.supportEmail ?? null,
       salesTaxRate: config.salesTaxRate,
@@ -244,6 +258,13 @@ export class AdminBusinessService {
       storeCity,
       storeProvince,
       storePostalCode,
+      brandNameZh,
+      brandNameEn,
+      siteUrl,
+      emailFromNameZh,
+      emailFromNameEn,
+      emailFromAddress,
+      smsSignature,
       supportPhone,
       supportEmail,
       salesTaxRate,
@@ -277,6 +298,13 @@ export class AdminBusinessService {
       storeCity?: unknown;
       storeProvince?: unknown;
       storePostalCode?: unknown;
+      brandNameZh?: unknown;
+      brandNameEn?: unknown;
+      siteUrl?: unknown;
+      emailFromNameZh?: unknown;
+      emailFromNameEn?: unknown;
+      emailFromAddress?: unknown;
+      smsSignature?: unknown;
       supportPhone?: unknown;
       supportEmail?: unknown;
       salesTaxRate?: unknown;
@@ -413,6 +441,53 @@ export class AdminBusinessService {
       updates.storePostalCode = this.normalizeOptionalText(
         'storePostalCode',
         storePostalCode,
+      );
+    }
+
+
+    if (brandNameZh !== undefined) {
+      updates.brandNameZh = this.normalizeOptionalText(
+        'brandNameZh',
+        brandNameZh,
+      );
+    }
+
+    if (brandNameEn !== undefined) {
+      updates.brandNameEn = this.normalizeOptionalText(
+        'brandNameEn',
+        brandNameEn,
+      );
+    }
+
+    if (siteUrl !== undefined) {
+      updates.siteUrl = this.normalizeOptionalText('siteUrl', siteUrl);
+    }
+
+    if (emailFromNameZh !== undefined) {
+      updates.emailFromNameZh = this.normalizeOptionalText(
+        'emailFromNameZh',
+        emailFromNameZh,
+      );
+    }
+
+    if (emailFromNameEn !== undefined) {
+      updates.emailFromNameEn = this.normalizeOptionalText(
+        'emailFromNameEn',
+        emailFromNameEn,
+      );
+    }
+
+    if (emailFromAddress !== undefined) {
+      updates.emailFromAddress = this.normalizeOptionalText(
+        'emailFromAddress',
+        emailFromAddress,
+      );
+    }
+
+    if (smsSignature !== undefined) {
+      updates.smsSignature = this.normalizeOptionalText(
+        'smsSignature',
+        smsSignature,
       );
     }
 

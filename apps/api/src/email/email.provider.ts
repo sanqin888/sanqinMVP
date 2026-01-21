@@ -4,6 +4,8 @@ export type EmailSendParams = {
   html?: string;
   text?: string;
   tags?: Record<string, string>;
+  fromName?: string;
+  fromAddress?: string;
 };
 
 export type EmailSendResult = {
