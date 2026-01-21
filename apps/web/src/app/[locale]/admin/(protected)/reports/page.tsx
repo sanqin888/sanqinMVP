@@ -3,12 +3,31 @@
 
 import { useState, useEffect } from 'react';
 import { format, subDays } from 'date-fns';
-import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  BarChart, Bar, PieChart, Pie, Cell, Legend 
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
 } from 'recharts';
-import { Loader2, DollarSign, ShoppingBag, CreditCard, TrendingUp, AlertCircle } from 'lucide-react';
+import {
+  Loader2,
+  DollarSign,
+  ShoppingBag,
+  CreditCard,
+  TrendingUp,
+  AlertCircle,
+} from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
+import { apiFetch } from '@/lib/api/client';
 
 // --- 类型定义 ---
 interface ReportData {
@@ -56,13 +75,7 @@ export default function ReportsPage() {
         }
 
         const params = new URLSearchParams(range);
-        const res = await fetch(`/api/v1/reports?${params.toString()}`);
-        if (!res.ok) {
-           // 尝试读取后端返回的错误信息
-           const errText = await res.text().catch(() => '');
-           throw new Error(errText || `Request failed: ${res.status}`);
-        }
-        const json = await res.json();
+        const json = await apiFetch<ReportData>(`/reports?${params.toString()}`);
         setData(json);
       } catch (err) {
         console.error(err);
