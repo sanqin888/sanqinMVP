@@ -272,6 +272,13 @@ function formatPoints(value: number, locale: Locale) {
   );
 }
 
+function formatPointsWithDecimals(value: number, locale: Locale) {
+  return new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 function formatMoney(cents: number, locale: Locale) {
   const amount = cents / 100;
   return new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en-US", {
@@ -802,10 +809,10 @@ export default function PosMembershipPage() {
                           }`}
                         >
                           {entry.deltaPoints >= 0 ? "+" : ""}
-                          {formatPoints(entry.deltaPoints, locale)}
+                          {formatPointsWithDecimals(entry.deltaPoints, locale)}
                         </span>
                         <span className="text-slate-300">
-                          {copy.pointsBalance}: {formatPoints(entry.balanceAfterPoints, locale)}
+                          {copy.pointsBalance}: {formatPointsWithDecimals(entry.balanceAfterPoints, locale)}
                         </span>
                       </div>
                       <p className="mt-2 text-slate-400">{entry.note ?? "-"}</p>
