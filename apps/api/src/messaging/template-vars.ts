@@ -42,7 +42,7 @@ export type InvoiceVars = BaseVars & {
 export type TemplateVarsMap = {
   otp: OtpVars;
   welcome: WelcomeVars;
-  firstSubscription: FirstSubVars;
+  Subscription: FirstSubVars;
   orderReady: OrderReadyVars;
   invoice: InvoiceVars;
 };
