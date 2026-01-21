@@ -447,8 +447,8 @@ const loyaltyRedeemCents = redeemCents;
     if (paymentMethod !== 'store_balance') return true;
     if (!memberInfo) return false;
     const balanceCents = (memberInfo.balance ?? 0) * 100;
-    return balanceCents >= roundedTotalCents;
-  }, [paymentMethod, memberInfo, roundedTotalCents]);
+    return balanceCents >= totalAfterPointsCents;
+  }, [paymentMethod, memberInfo, totalAfterPointsCents]);
 
   const computedSnapshot = useMemo(() => {
     if (!snapshot) return null;
