@@ -18,7 +18,13 @@ import { MessagingModule } from '../messaging/messaging.module';
 
 @Global()
 @Module({
-  imports: [PrismaModule, PassportModule, EmailModule, SmsModule, MessagingModule],
+  imports: [
+    PrismaModule,
+    PassportModule,
+    EmailModule,
+    SmsModule,
+    MessagingModule,
+  ],
   providers: [
     AuthService,
     PrismaService,

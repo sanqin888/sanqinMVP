@@ -444,7 +444,6 @@ export class AdminBusinessService {
       );
     }
 
-
     if (brandNameZh !== undefined) {
       updates.brandNameZh = this.normalizeOptionalText(
         'brandNameZh',

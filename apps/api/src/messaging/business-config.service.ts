@@ -39,7 +39,9 @@ export class BusinessConfigService {
     }
   }
 
-  async getMessagingSnapshot(locale?: string): Promise<MessagingConfigSnapshot> {
+  async getMessagingSnapshot(
+    locale?: string,
+  ): Promise<MessagingConfigSnapshot> {
     const config = await this.getSnapshot();
     const resolvedLocale = this.resolveLocale(locale);
     const brandName =
