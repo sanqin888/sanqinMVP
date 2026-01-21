@@ -108,6 +108,18 @@ export class AuthService {
     return undefined;
   }
 
+  private resolveUserLocale(
+    language?: UserLanguage | string | null,
+  ): string | undefined {
+    if (language === UserLanguage.ZH) return 'zh-CN';
+    if (language === UserLanguage.EN) return 'en';
+    if (!language) return undefined;
+    const normalized = language.toString().trim().toLowerCase();
+    if (normalized.startsWith('zh')) return 'zh-CN';
+    if (normalized === 'en') return 'en';
+    return undefined;
+  }
+
   async createSession(params: {
     userId: string;
     deviceInfo?: string;

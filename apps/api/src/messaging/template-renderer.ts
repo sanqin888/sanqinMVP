@@ -32,17 +32,35 @@ const getVar = (vars: Record<string, unknown>, key: string): unknown => {
   }, vars);
 };
 
+const toTemplateString = (value: unknown): string => {
+  if (value == null) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (typeof value === 'bigint') return value.toString();
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return '';
+    }
+  }
+  return String(value);
+};
+
 const renderTemplateString = (
   template: string,
   vars: Record<string, unknown>,
 ): string => {
   const withRaw = template.replace(/\{\{\{\s*([\w.]+)\s*\}\}\}/g, (_, key) => {
     const value = getVar(vars, key);
-    return value == null ? '' : String(value);
+    return toTemplateString(value);
   });
   return withRaw.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key) => {
     const value = getVar(vars, key);
-    return value == null ? '' : escapeHtml(String(value));
+    return escapeHtml(toTemplateString(value));
   });
 };
 
