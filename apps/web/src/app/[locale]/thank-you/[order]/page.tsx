@@ -3,6 +3,7 @@ import type { Locale } from "@/lib/i18n/locales";
 import { UI_STRINGS } from "@/lib/i18n/dictionaries";
 import { ClearCartOnMount } from "./ClearCartOnMount";
 import { OrderSummaryClient } from "./OrderSummaryClient";
+import { InvoiceButton } from "./InvoiceButton";
 
 type PageParams = {
   locale?: string;
@@ -20,12 +21,12 @@ export default async function ThankYouPage({ params }: PageProps) {
   // ✅ 先 await，再拿 locale / order
   const { locale: rawLocale, order: orderParam } = await params;
 
-const locale = (SUPPORTED.includes(rawLocale as Locale)
-  ? (rawLocale as Locale)
-  : "en") as Locale;
+  const locale = (SUPPORTED.includes(rawLocale as Locale)
+    ? (rawLocale as Locale)
+    : "en") as Locale;
 
-// 这里直接从 UI_STRINGS 拿 thankYou 文案
-const t = UI_STRINGS[locale].thankYou;
+  // 这里直接从 UI_STRINGS 拿 thankYou 文案
+  const t = UI_STRINGS[locale].thankYou;
   const order = orderParam ?? "";
   const alt = locale === "zh" ? "en" : "zh";
   const mapEmbedSrc =
@@ -56,7 +57,10 @@ const t = UI_STRINGS[locale].thankYou;
 
         {/* ✅ 新增：订单小结（从后端拉菜品/金额清单） */}
         {order ? (
-          <OrderSummaryClient orderStableId={order} locale={locale} />
+          <>
+            <OrderSummaryClient orderStableId={order} locale={locale} />
+            <InvoiceButton orderStableId={order} locale={locale} />
+          </>
         ) : null}
 
         <div className="mt-8">
