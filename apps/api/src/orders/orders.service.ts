@@ -230,13 +230,10 @@ export class OrdersService {
 
   private formatOrderDate(dateIso: string, locale: 'zh' | 'en'): string {
     const dt = new Date(dateIso);
-    return new Intl.DateTimeFormat(
-      locale === 'zh' ? 'zh-Hans-CA' : 'en-CA',
-      {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-      },
-    ).format(dt);
+    return new Intl.DateTimeFormat(locale === 'zh' ? 'zh-Hans-CA' : 'en-CA', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(dt);
   }
 
   private escapeHtml(value: string): string {
@@ -260,8 +257,14 @@ export class OrdersService {
     storePhone?: string;
     supportEmail?: string;
   }): string {
-    const { summary, locale, storeName, storeAddress, storePhone, supportEmail } =
-      params;
+    const {
+      summary,
+      locale,
+      storeName,
+      storeAddress,
+      storePhone,
+      supportEmail,
+    } = params;
     const labels =
       locale === 'zh'
         ? {
@@ -298,24 +301,24 @@ export class OrdersService {
     const itemRows = summary.lineItems
       .map((item) => {
         const name =
-          locale === 'zh' ? item.nameZh ?? item.name : item.nameEn ?? item.name;
+          locale === 'zh'
+            ? (item.nameZh ?? item.name)
+            : (item.nameEn ?? item.name);
         const safeName = this.escapeHtml(name);
-        const options = Array.isArray(item.optionsJson)
-          ? item.optionsJson
-          : [];
+        const options = Array.isArray(item.optionsJson) ? item.optionsJson : [];
         const optionsHtml =
           options.length > 0
             ? `<div style="margin-top:4px;color:#64748b;font-size:12px;">${options
                 .map((group) => {
                   const groupName =
                     locale === 'zh'
-                      ? group.nameZh ?? group.nameEn
+                      ? (group.nameZh ?? group.nameEn)
                       : group.nameEn;
                   const choices = group.choices
                     .map((choice) => {
                       const choiceName =
                         locale === 'zh'
-                          ? choice.nameZh ?? choice.nameEn
+                          ? (choice.nameZh ?? choice.nameEn)
                           : choice.nameEn;
                       const delta =
                         choice.priceDeltaCents !== 0
@@ -467,8 +470,14 @@ export class OrdersService {
     storePhone?: string;
     supportEmail?: string;
   }): string {
-    const { summary, locale, storeName, storeAddress, storePhone, supportEmail } =
-      params;
+    const {
+      summary,
+      locale,
+      storeName,
+      storeAddress,
+      storePhone,
+      supportEmail,
+    } = params;
     const labels =
       locale === 'zh'
         ? {
@@ -497,19 +506,19 @@ export class OrdersService {
     const itemLines = summary.lineItems
       .map((item) => {
         const name =
-          locale === 'zh' ? item.nameZh ?? item.name : item.nameEn ?? item.name;
-        const options = Array.isArray(item.optionsJson)
-          ? item.optionsJson
-          : [];
+          locale === 'zh'
+            ? (item.nameZh ?? item.name)
+            : (item.nameEn ?? item.name);
+        const options = Array.isArray(item.optionsJson) ? item.optionsJson : [];
         const optionLines = options
           .map((group) => {
             const groupName =
-              locale === 'zh' ? group.nameZh ?? group.nameEn : group.nameEn;
+              locale === 'zh' ? (group.nameZh ?? group.nameEn) : group.nameEn;
             const choices = group.choices
               .map((choice) => {
                 const choiceName =
                   locale === 'zh'
-                    ? choice.nameZh ?? choice.nameEn
+                    ? (choice.nameZh ?? choice.nameEn)
                     : choice.nameEn;
                 const delta =
                   choice.priceDeltaCents !== 0
@@ -2501,9 +2510,8 @@ ${totalLines.join('\n')}`;
 
     const locale = this.resolveLocale(params.locale);
     const summary = await this.getPublicOrderSummary(params.orderStableId);
-    const messaging = await this.businessConfigService.getMessagingSnapshot(
-      locale,
-    );
+    const messaging =
+      await this.businessConfigService.getMessagingSnapshot(locale);
     const snapshot = await this.businessConfigService.getSnapshot();
 
     const storeName =
