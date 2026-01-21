@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { User } from '@prisma/client';
 import { EmailService } from '../email/email.service';
 import { SmsService } from '../sms/sms.service';
+import { BusinessConfigService } from '../messaging/business-config.service';
+import { TemplateRenderer } from '../messaging/template-renderer';
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
@@ -31,6 +33,8 @@ export class NotificationService {
   constructor(
     private readonly emailService: EmailService,
     private readonly smsService: SmsService,
+    private readonly templateRenderer: TemplateRenderer,
+    private readonly businessConfigService: BusinessConfigService,
   ) {}
 
   async notifyOrderReady(params: {
@@ -38,8 +42,17 @@ export class NotificationService {
     orderNumber: string;
     name?: string | null;
   }) {
-    const greeting = params.name ? `Hi ${params.name},` : 'Hi,';
-    const body = `${greeting} your order ${params.orderNumber} is ready for pickup.`;
+    const locale = 'en';
+    const { baseVars } =
+      await this.businessConfigService.getMessagingSnapshot(locale);
+    const body = await this.templateRenderer.renderSms({
+      template: 'orderReady',
+      locale,
+      vars: {
+        ...baseVars,
+        pickupCode: params.orderNumber,
+      },
+    });
     return this.smsService.sendSms({
       phone: params.phone,
       body,
@@ -103,6 +116,7 @@ export class NotificationService {
       html: params.html,
       text: params.text,
       tags: { type: 'marketing' },
+      locale: params.user.language === 'ZH' ? 'zh-CN' : 'en',
     });
   }
 
@@ -132,6 +146,7 @@ export class NotificationService {
       html: params.html,
       text: params.text,
       tags: { type: 'points_reminder' },
+      locale: params.user.language === 'ZH' ? 'zh-CN' : 'en',
     });
   }
 }

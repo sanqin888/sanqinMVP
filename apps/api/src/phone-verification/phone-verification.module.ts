@@ -5,11 +5,13 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { SmsModule } from '../sms/sms.module';
 import { PhoneVerificationService } from './phone-verification.service';
 import { PhoneVerificationController } from './phone-verification.controller';
+import { MessagingModule } from '../messaging/messaging.module';
 
 @Module({
   imports: [
     PrismaModule,
     SmsModule,
+    MessagingModule,
     ThrottlerModule.forRoot({
       throttlers: [
         {
