@@ -40,11 +40,16 @@ yarn-error.log*
 tmp
 temp
 
-# --- Prisma / DB dumps (if any) ---
+# --- Prisma migrations must be included ---
+!**/prisma/migrations/**
+
+# --- DB dumps (ignore) ---
+**/*.dump
 **/*.sqlite
 **/*.db
-**/*.dump
-**/*.sql
+dumps/**/*.sql
+**/*dump*.sql
+**/*backup*.sql
 
 # --- Docker related (optional) ---
 docker-compose.override.yml
