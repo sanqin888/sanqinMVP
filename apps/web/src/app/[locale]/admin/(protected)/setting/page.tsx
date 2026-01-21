@@ -164,13 +164,6 @@ function parseOptionalNumber(value: string): number | null {
   return num;
 }
 
-function dollarsToCentsNumber(value: string): number | null {
-  const num = parseOptionalNumber(value);
-  if (num == null || num < 0) return null;
-  return Math.round(num * 100);
-}
-
-
 function toHolidayUi(list: HolidayApiDto[]): HolidayUiDto[] {
   return (list ?? []).map((h, idx) => ({
     ...h,
