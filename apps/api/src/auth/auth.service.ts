@@ -108,9 +108,7 @@ export class AuthService {
     return undefined;
   }
 
-  private resolveUserLocale(
-    language?: UserLanguage | string | null,
-  ): string | undefined {
+  private resolveUserLocale(language?: string | null): string | undefined {
     if (language === UserLanguage.ZH) return 'zh-CN';
     if (language === UserLanguage.EN) return 'en';
     if (!language) return undefined;
