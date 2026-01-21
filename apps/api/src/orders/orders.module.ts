@@ -9,6 +9,8 @@ import { MembershipModule } from '../membership/membership.module';
 import { PosDeviceModule } from '../pos/pos-device.module';
 import { LocationModule } from '../location/location.module';
 import { NotificationModule } from '../notifications/notification.module';
+import { EmailModule } from '../email/email.module';
+import { MessagingModule } from '../messaging/messaging.module';
 
 @Module({
   imports: [
@@ -19,6 +21,8 @@ import { NotificationModule } from '../notifications/notification.module';
     MembershipModule,
     LocationModule,
     NotificationModule,
+    EmailModule,
+    MessagingModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService],

@@ -57,7 +57,7 @@ import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import type { OrderDto } from './dto/order.dto';
 
 type AuthedRequest = Request & {
-  user?: { id?: string; userStableId?: string };
+  user?: { id?: string; userStableId?: string; email?: string | null };
 };
 
 class UpdateStatusDto {
@@ -476,5 +476,41 @@ export class OrdersController {
     @Param('orderStableId', StableIdPipe) orderStableId: string,
   ): Promise<OrderSummaryDto> {
     return this.ordersService.getPublicOrderSummary(orderStableId);
+  }
+
+  /**
+   * POST /orders/:orderStableId/invoice/email
+   * guest invoice email
+   */
+  @Post(':orderStableId/invoice/email')
+  @HttpCode(200)
+  sendInvoiceEmail(
+    @Param('orderStableId', StableIdPipe) orderStableId: string,
+    @Body() body: { email?: string; locale?: string },
+  ): Promise<{ ok: boolean }> {
+    return this.ordersService.sendInvoiceEmail({
+      orderStableId,
+      email: body?.email,
+      locale: body?.locale,
+    });
+  }
+
+  /**
+   * POST /orders/:orderStableId/invoice/email/member
+   * member invoice email
+   */
+  @Post(':orderStableId/invoice/email/member')
+  @HttpCode(200)
+  @UseGuards(SessionAuthGuard)
+  sendInvoiceEmailForMember(
+    @Param('orderStableId', StableIdPipe) orderStableId: string,
+    @Req() req: AuthedRequest,
+    @Body() body: { locale?: string },
+  ): Promise<{ ok: boolean }> {
+    return this.ordersService.sendInvoiceEmail({
+      orderStableId,
+      email: req.user?.email ?? null,
+      locale: body?.locale,
+    });
   }
 }
