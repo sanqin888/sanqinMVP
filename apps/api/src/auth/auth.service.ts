@@ -14,7 +14,11 @@ import {
   createHash,
   createHmac,
 } from 'crypto';
-import type { TwoFactorMethod, UserRole } from '@prisma/client';
+import {
+  UserLanguage,
+  type TwoFactorMethod,
+  type UserRole,
+} from '@prisma/client';
 import argon2, { argon2id } from 'argon2';
 import { normalizeEmail } from '../common/utils/email';
 import { normalizePhone } from '../common/utils/phone';
@@ -94,8 +98,14 @@ export class AuthService {
     return role === 'ADMIN' || role === 'STAFF';
   }
 
-  private resolveUserLocale(language?: string | null): string {
-    return language === 'ZH' ? 'zh-CN' : 'en';
+  private normalizeLanguage(
+    language?: string | null,
+  ): UserLanguage | undefined {
+    if (!language) return undefined;
+    const normalized = language.trim().toLowerCase();
+    if (normalized.startsWith('zh')) return UserLanguage.ZH;
+    if (normalized === 'en') return UserLanguage.EN;
+    return undefined;
   }
 
   async createSession(params: {
@@ -276,10 +286,12 @@ export class AuthService {
     deviceInfo?: string;
     loginLocation?: string;
     trustedDeviceToken?: string;
+    language?: string;
   }) {
     const googleSub = params.googleSub;
     const email = normalizeEmail(params.email);
     const emailVerified = params.emailVerified === true;
+    const language = this.normalizeLanguage(params.language);
 
     if (!googleSub || !email) {
       throw new BadRequestException('invalid oauth params');
@@ -316,6 +328,7 @@ export class AuthService {
             emailVerifiedAt: emailVerified ? now : null,
             name: params.name ?? undefined,
             googleSub,
+            language,
           },
         });
         isNewUser = true;
@@ -1075,6 +1088,7 @@ export class AuthService {
     deviceInfo?: string;
     loginLocation?: string;
     trustedDeviceToken?: string;
+    language?: string;
   }) {
     const normalized = normalizePhone(params.phone);
     if (!normalized || !params.code) {
@@ -1112,6 +1126,7 @@ export class AuthService {
     });
 
     if (!user) {
+      const language = this.normalizeLanguage(params.language);
       user = await this.prisma.user.create({
         data: {
           phone: normalized,
@@ -1119,6 +1134,7 @@ export class AuthService {
           twoFactorEnabledAt: now,
           twoFactorMethod: 'SMS',
           role: 'CUSTOMER',
+          language,
         },
       });
       isNewUser = true;

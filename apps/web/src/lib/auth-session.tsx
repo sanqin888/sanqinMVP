@@ -143,6 +143,9 @@ export function signIn(provider: 'google', opts?: SignInOptions): void {
   const callbackUrl = opts?.callbackUrl ?? '/';
   const qs = new URLSearchParams();
   qs.set('callbackUrl', callbackUrl);
+  const primary = navigator.languages?.[0] ?? navigator.language ?? '';
+  const language = primary.toLowerCase().startsWith('zh') ? 'zh' : 'en';
+  qs.set('language', language);
 
   // 走你现有 /api 代理到 UPSTREAM/api
   window.location.assign(`/api/v1/auth/oauth/google/start?${qs.toString()}`);

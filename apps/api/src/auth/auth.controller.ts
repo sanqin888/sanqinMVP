@@ -137,7 +137,7 @@ export class AuthController {
         : Array.isArray(stateParam) && typeof stateParam[0] === 'string'
           ? stateParam[0]
           : '';
-    const { cb } = this.oauthState.verify(stateRaw);
+    const { cb, language } = this.oauthState.verify(stateRaw);
     const cookies = req.cookies as Partial<Record<string, string>> | undefined;
     const trustedDeviceToken =
       typeof cookies?.[TRUSTED_DEVICE_COOKIE] === 'string'
@@ -154,6 +154,7 @@ export class AuthController {
       deviceInfo,
       loginLocation,
       trustedDeviceToken,
+      language,
     });
 
     res.cookie(
@@ -274,7 +275,7 @@ export class AuthController {
 
   @Post('login/phone/verify')
   async verifyPhoneLogin(
-    @Body() body: { phone?: string; code?: string },
+    @Body() body: { phone?: string; code?: string; language?: string },
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
@@ -291,6 +292,7 @@ export class AuthController {
       deviceInfo,
       loginLocation,
       trustedDeviceToken,
+      language: body?.language,
     });
 
     res.cookie(

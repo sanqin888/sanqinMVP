@@ -14,6 +14,12 @@ import {
   normalizeCanadianPhoneInput,
 } from '@/lib/phone';
 
+const getBrowserLanguage = (): 'zh' | 'en' => {
+  if (typeof navigator === 'undefined') return 'en';
+  const primary = navigator.languages?.[0] ?? navigator.language ?? '';
+  return primary.toLowerCase().startsWith('zh') ? 'zh' : 'en';
+};
+
 export default function MemberLoginPage() {
   const router = useRouter();
   const { locale } = useParams<{ locale: Locale }>();
@@ -109,6 +115,7 @@ export default function MemberLoginPage() {
           body: JSON.stringify({
             phone: formatCanadianPhoneForApi(phone),
             code: code.trim(),
+            language: getBrowserLanguage(),
           }),
         },
       );
@@ -171,8 +178,12 @@ export default function MemberLoginPage() {
             type="button"
             onClick={() => {
               const targetUrl = resolvedRedirect || `/${locale}/membership`;
-              window.location.href = `/api/v1/auth/oauth/google/start?callbackUrl=${encodeURIComponent(targetUrl)}`;
-}}
+              const params = new URLSearchParams({
+                callbackUrl: targetUrl,
+                language: getBrowserLanguage(),
+              });
+              window.location.href = `/api/v1/auth/oauth/google/start?${params.toString()}`;
+            }}
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
           >
             <span className="rounded bg-white px-1.5 py-0.5 text-xs font-bold text-slate-900">
