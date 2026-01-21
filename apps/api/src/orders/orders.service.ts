@@ -64,6 +64,17 @@ import type { OrderDto, OrderItemDto } from './dto/order.dto';
 import type { PrintPosPayloadDto } from '../pos/dto/print-pos-payload.dto';
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
+type OrderItemSnapshot = Prisma.OrderItemGetPayload<{
+  select: {
+    productStableId: true;
+    qty: true;
+    displayName: true;
+    nameEn: true;
+    nameZh: true;
+    unitPriceCents: true;
+    optionsJson: true;
+  };
+}>;
 
 const orderDetailSelect = {
   orderStableId: true,
@@ -212,7 +223,10 @@ export class OrdersService {
         ? Math.max(0, Math.round(deliverySubsidyCentsRaw))
         : Math.max(0, deliveryCostCents - deliveryFeeCents);
 
-    const items: OrderItemDto[] = (order.items ?? []).map((it) => ({
+    const rawItems: OrderItemSnapshot[] = Array.isArray(order.items)
+      ? (order.items as OrderItemSnapshot[])
+      : [];
+    const items: OrderItemDto[] = rawItems.map((it) => ({
       productStableId: it.productStableId,
       qty: it.qty,
       displayName:

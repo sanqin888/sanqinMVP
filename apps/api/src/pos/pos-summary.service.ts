@@ -120,12 +120,7 @@ export class PosSummaryService {
   private toPaymentBucket(v: unknown): PosPaymentBucket | undefined {
     if (typeof v !== 'string' || v.trim().length === 0) return undefined;
     const s = v.trim().toLowerCase();
-    if (
-      s === 'cash' ||
-      s === 'card' ||
-      s === 'online' ||
-      s === 'store_balance'
-    )
+    if (s === 'cash' || s === 'card' || s === 'online' || s === 'store_balance')
       return s;
     return undefined;
   }
