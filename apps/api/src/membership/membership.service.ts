@@ -698,6 +698,7 @@ export class MembershipService {
         ledgerStableId: true,
         createdAt: true,
         type: true,
+        target: true,
         orderId: true,
         deltaMicro: true,
         balanceAfterMicro: true,
@@ -738,6 +739,7 @@ export class MembershipService {
 
           createdAt: entry.createdAt.toISOString(),
           type: entry.type,
+          target: entry.target,
           deltaPoints: Number(entry.deltaMicro) / MICRO_PER_POINT,
           balanceAfterPoints: Number(entry.balanceAfterMicro) / MICRO_PER_POINT,
           note: entry.note ?? undefined,

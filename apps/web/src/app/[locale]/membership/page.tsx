@@ -87,6 +87,7 @@ type MemberProfile = {
   language?: 'zh' | 'en';
   tier: MemberTier;
   points: number;
+  balance: number;
   availableDiscountCents: number;
   lifetimeSpendCents?: number;
 };
@@ -115,6 +116,7 @@ type MembershipSummaryResponse = {
   twoFactorMethod?: 'OFF' | 'SMS';
   tier: MemberTier;
   points: number;
+  balance: number;
   lifetimeSpendCents: number;
   availableDiscountCents: number;
   marketingEmailOptIn?: boolean;
@@ -143,10 +145,13 @@ type LoyaltyEntryType =
   | 'TOPUP_PURCHASED'
   | 'ADJUSTMENT_MANUAL';
 
+type LoyaltyTarget = 'POINTS' | 'BALANCE';
+
 type LoyaltyEntry = {
   ledgerId: string;
   createdAt: string;
   type: LoyaltyEntryType;
+  target?: LoyaltyTarget;
   deltaPoints: number;
   balanceAfterPoints: number;
   note?: string;
@@ -202,6 +207,10 @@ function formatCurrency(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+function formatBalanceAmount(amount: number): string {
+  return formatCurrency(Math.round(amount * 100));
+}
+
 function formatDateTime(value: string, isZh: boolean): string {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
@@ -228,6 +237,7 @@ export default function MembershipHomePage() {
     | 'overview'
     | 'orders'
     | 'points'
+    | 'balance'
     | 'addresses'
     | 'coupons'
     | 'devices'
@@ -420,6 +430,7 @@ export default function MembershipHomePage() {
           language: data.language ?? browserLanguagePreference,
           tier: data.tier,
           points: data.points,
+          balance: data.balance,
           availableDiscountCents: data.availableDiscountCents,
           lifetimeSpendCents: data.lifetimeSpendCents ?? 0,
         });
@@ -555,10 +566,10 @@ export default function MembershipHomePage() {
     }
   }, [member?.phoneVerified]);
 
-  // 拉取积分流水：首次切到“积分”tab 且已登录时加载一次
+  // 拉取积分/余额流水：首次切到“积分/余额”tab 且已登录时加载一次
   useEffect(() => {
     if (
-      activeTab !== 'points' ||
+      (activeTab !== 'points' && activeTab !== 'balance') ||
       status !== 'authenticated' ||
       !session?.user ||
       loyaltyLoadedOnce ||
@@ -1430,6 +1441,7 @@ const tierProgress = (() => {
     { key: 'overview', label: isZh ? '总览' : 'Overview' },
     { key: 'orders', label: isZh ? '订单' : 'Orders' },
     { key: 'points', label: isZh ? '积分' : 'Points' },
+    { key: 'balance', label: isZh ? '余额' : 'Balance' },
     { key: 'addresses', label: isZh ? '地址' : 'Addresses' },
     { key: 'coupons', label: isZh ? '优惠卷' : 'Coupons' },
     { key: 'devices', label: isZh ? '设备管理' : 'Devices' },
@@ -1512,6 +1524,12 @@ const tierProgress = (() => {
                 {isZh ? '积分' : 'Points'}
               </p>
               <p className="mt-1 text-2xl font-semibold">{member.points}</p>
+              <p className="mt-2 text-xs uppercase tracking-wide text-slate-300">
+                {isZh ? '储值余额' : 'Store balance'}
+              </p>
+              <p className="mt-1 text-base font-semibold text-emerald-200">
+                {formatBalanceAmount(member.balance)}
+              </p>
               <p className="mt-1 text-xs text-amber-300">
                 {isZh
                   ? `当前积分最多可抵扣 ${formatCurrency(
@@ -1577,6 +1595,17 @@ const tierProgress = (() => {
 
           {activeTab === 'points' && (
             <PointsSection
+              isZh={isZh}
+              entries={loyaltyEntries}
+              loading={loyaltyLoading}
+              error={loyaltyError}
+              locale={locale as Locale}
+              loadedOnce={loyaltyLoadedOnce}
+            />
+          )}
+
+          {activeTab === 'balance' && (
+            <BalanceSection
               isZh={isZh}
               entries={loyaltyEntries}
               loading={loyaltyLoading}
@@ -1861,6 +1890,10 @@ function PointsSection({
     ADJUSTMENT_MANUAL: isZh ? '人工调整' : 'Manual adjustment',
   };
 
+  const pointsEntries = entries.filter(
+    (entry) => (entry.target ?? 'POINTS') === 'POINTS',
+  );
+
   return (
     <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
       <h2 className="text-sm font-medium text-slate-900">
@@ -1877,15 +1910,15 @@ function PointsSection({
         <p className="mt-3 text-xs text-red-500">{error}</p>
       )}
 
-      {loadedOnce && !error && entries.length === 0 && (
+      {loadedOnce && !error && pointsEntries.length === 0 && (
         <p className="mt-3 text-xs text-slate-500">
           {isZh ? '暂无积分记录。' : 'No points records yet.'}
         </p>
       )}
 
-      {loadedOnce && !error && entries.length > 0 && (
+      {loadedOnce && !error && pointsEntries.length > 0 && (
         <div className="mt-3 divide-y divide-slate-100 text-xs text-slate-700">
-          {entries.map((entry, index) => (
+          {pointsEntries.map((entry, index) => (
             <div
               key={`${entry.ledgerId}-${entry.createdAt}-${index}`}
               className="py-2"
@@ -1933,6 +1966,116 @@ function PointsSection({
               </div>
             </div>
           ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function BalanceSection({
+  isZh,
+  entries,
+  loading,
+  error,
+  locale,
+  loadedOnce,
+}: {
+  isZh: boolean;
+  entries: LoyaltyEntry[];
+  loading: boolean;
+  error: string | null;
+  locale: Locale;
+  loadedOnce: boolean;
+}) {
+  const typeLabel: Record<LoyaltyEntryType, string> = {
+    EARN_ON_PURCHASE: isZh ? '消费赚取' : 'Earn on purchase',
+    REDEEM_ON_ORDER: isZh ? '下单抵扣' : 'Redeem on order',
+    REFUND_REVERSE_EARN: isZh ? '退款扣回' : 'Reverse earn on refund',
+    REFUND_RETURN_REDEEM: isZh ? '退款退回抵扣' : 'Return redeemed on refund',
+    TOPUP_PURCHASED: isZh ? '储值充值' : 'Top-up purchased',
+    ADJUSTMENT_MANUAL: isZh ? '人工调整' : 'Manual adjustment',
+  };
+
+  const balanceEntries = entries.filter(
+    (entry) => (entry.target ?? 'POINTS') === 'BALANCE',
+  );
+
+  return (
+    <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+      <h2 className="text-sm font-medium text-slate-900">
+        {isZh ? '余额流水' : 'Balance history'}
+      </h2>
+
+      {loading && !loadedOnce && (
+        <p className="mt-3 text-xs text-slate-500">
+          {isZh ? '加载中…' : 'Loading…'}
+        </p>
+      )}
+
+      {loadedOnce && error && (
+        <p className="mt-3 text-xs text-red-500">{error}</p>
+      )}
+
+      {loadedOnce && !error && balanceEntries.length === 0 && (
+        <p className="mt-3 text-xs text-slate-500">
+          {isZh ? '暂无余额记录。' : 'No balance records yet.'}
+        </p>
+      )}
+
+      {loadedOnce && !error && balanceEntries.length > 0 && (
+        <div className="mt-3 divide-y divide-slate-100 text-xs text-slate-700">
+          {balanceEntries.map((entry, index) => {
+            const deltaAmount = formatBalanceAmount(Math.abs(entry.deltaPoints));
+            return (
+            <div
+              key={`${entry.ledgerId}-${entry.createdAt}-${index}`}
+              className="py-2"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium text-slate-900">
+                    {typeLabel[entry.type]}
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    {new Date(entry.createdAt).toLocaleString()}
+                  </p>
+                  {entry.note && (
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      {entry.note}
+                    </p>
+                  )}
+                  {entry.orderStableId && (
+                    <p className="mt-1 text-[11px]">
+                      <Link
+                        href={`/${locale}/order/${entry.orderStableId}`}
+                        className="text-amber-600 hover:underline"
+                      >
+                        {isZh ? '关联订单' : 'Related order'}:{' '}
+                        {entry.orderStableId}
+                      </Link>
+                    </p>
+                  )}
+                </div>
+                <div className="text-right">
+                  <p
+                    className={`font-semibold ${
+                      entry.deltaPoints >= 0
+                        ? 'text-emerald-600'
+                        : 'text-rose-600'
+                    }`}
+                  >
+                    {entry.deltaPoints >= 0 ? '+' : '-'}
+                    {deltaAmount}
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    {isZh ? '余额：' : 'Balance: '}
+                    {formatBalanceAmount(entry.balanceAfterPoints)}
+                  </p>
+                </div>
+              </div>
+            </div>
+            );
+          })}
         </div>
       )}
     </section>
