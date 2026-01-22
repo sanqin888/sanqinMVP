@@ -14,6 +14,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { CouponProgramTriggerService } from '../coupons/coupon-program-trigger.service';
 import { EmailVerificationService } from '../email/email-verification.service';
+import { NotificationService } from '../notifications/notification.service';
 
 const MICRO_PER_POINT = 1_000_000;
 const createStableId = (prefix: string): string => {
@@ -30,6 +31,7 @@ export class MembershipService {
     private readonly loyalty: LoyaltyService,
     private readonly couponTriggerService: CouponProgramTriggerService,
     private readonly emailVerification: EmailVerificationService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   private maskPhone(phone: string): string {
@@ -1349,6 +1351,12 @@ export class MembershipService {
       });
       if (!fullUser) return;
 
+      // 1. 先发一封通用的订阅感谢信
+      await this.notificationService.notifySubscriptionWelcome({
+        user: fullUser,
+      });
+
+      // 2. 原有的逻辑保持不变（如果有优惠券，它自己会发第二封）
       await this.couponTriggerService.issueProgramsForUser(
         'MARKETING_OPT_IN',
         fullUser,
