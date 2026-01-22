@@ -81,23 +81,10 @@ services:
     extra_hosts:
       - "sanq.ca:host-gateway"
     environment:
-      NEXT_PUBLIC_API_URL: "https://sanq.ca"
-      API_URL: "http://api:4000"
-      NEXTAUTH_URL: "https://sanq.ca"
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
-      NEXT_PUBLIC_CURRENCY: "CAD"
-      NEXT_PUBLIC_ENV: "production"
+      API_URL: "http://api:4000"
       API_UPSTREAM: "http://api:4000"
-      NEXT_PUBLIC_SALES_TAX_RATE: "0.13"
-      NEXT_PUBLIC_TAX_ON_DELIVERY: "true"
-      NEXT_PUBLIC_STORE_LATITUDE: "43.760288"
-      NEXT_PUBLIC_STORE_LONGITUDE: "-79.412167"
-      PORT: "3000"
-      HOSTNAME: "0.0.0.0"
-      NEXT_PUBLIC_API_BASE_URL: "https://api.sanq.ca/api/v1"
-      NEXT_PUBLIC_WEB_BASE_URL: "https://sanq.ca"
-      NEXT_PUBLIC_ENABLE_UBER_DIRECT: "true"
-      NEXT_PUBLIC_UBER_DIRECT_MODE: "test"
+      NEXTAUTH_URL: "https://sanq.ca"
     ports:
       - "3000:3000"
     depends_on:
