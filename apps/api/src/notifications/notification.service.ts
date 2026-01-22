@@ -59,6 +59,41 @@ export class NotificationService {
     });
   }
 
+  async notifySubscriptionWelcome(params: { user: User }) {
+    // 1. 基础检查
+    if (!params.user.email || !params.user.marketingEmailOptIn) {
+      return { ok: false, error: 'marketing opt-in missing' };
+    }
+
+    // 2. 准备语言环境和基础变量 (Store Name 等)
+    const locale = params.user.language === 'ZH' ? 'zh' : 'en';
+    const { baseVars } =
+      await this.businessConfigService.getMessagingSnapshot(locale);
+
+    // 3. 渲染模版 (Subscription.email.html.hbs)
+    const { subject, html, text } = await this.templateRenderer.renderEmail({
+      template: 'Subscription',
+      locale,
+      vars: {
+        ...baseVars,
+        userName: params.user.name || (locale === 'zh' ? '朋友' : 'Friend'),
+        // 这里生成管理订阅的链接，假设您的前端地址配置在环境变量中
+        manageUrl: `${process.env.PUBLIC_BASE_URL || 'https://www.sanqin.ca'}/account/settings`,
+        giftValue: '', // 既然我们决定模版里不提奖励，这里传空即可
+      },
+    });
+
+    // 4. 发送邮件
+    return this.emailService.sendEmail({
+      to: params.user.email,
+      subject,
+      html,
+      text,
+      tags: { type: 'marketing_welcome' }, //以此标记这是欢迎信
+      locale: params.user.language === 'ZH' ? 'zh-CN' : 'en',
+    });
+  }
+
   async notifyCouponIssued(params: {
     user: User;
     programName: string;

@@ -371,8 +371,7 @@ model Coupon {
 model CouponTemplate {
   id             String               @id @default(uuid()) @db.Uuid
   couponStableId String               @unique @default(cuid())
-  name           String
-  title          String?
+  tittleCh       String?
   titleEn        String?
   description    String?
   stackingPolicy CouponStackingPolicy @default(EXCLUSIVE)
@@ -387,7 +386,8 @@ model CouponTemplate {
 model CouponProgram {
   id              String                   @id @default(uuid()) @db.Uuid
   programStableId String                   @unique @default(cuid())
-  name            String
+  tittleCh        String
+  tittleEn        String?
   status          CouponProgramStatus      @default(DRAFT)
   distributionType CouponDistributionType  @default(AUTOMATIC_TRIGGER)
   triggerType     CouponProgramTriggerType?

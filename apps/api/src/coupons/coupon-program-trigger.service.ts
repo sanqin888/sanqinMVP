@@ -133,7 +133,8 @@ export class CouponProgramTriggerService {
 
     await this.notificationService.notifyCouponIssued({
       user,
-      programName: program.name,
+      programName:
+        program.tittleCh ?? program.tittleEn ?? program.programStableId,
       couponCount: coupons.length,
       expiresAt: expiresAt ?? null,
     });
