@@ -17,8 +17,7 @@ import { AdminCouponsService } from './admin-coupons.service';
 
 type CouponTemplatePayload = {
   couponStableId?: string;
-  name: string;
-  title?: string | null;
+  tittleCh?: string | null;
   titleEn?: string | null;
   description?: string | null;
   stackingPolicy?: 'EXCLUSIVE' | 'STACKABLE';
@@ -30,7 +29,8 @@ type CouponTemplatePayload = {
 
 type CouponProgramPayload = {
   programStableId?: string;
-  name: string;
+  tittleCh: string;
+  tittleEn?: string | null;
   status?: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
   distributionType?:
     | 'AUTOMATIC_TRIGGER'

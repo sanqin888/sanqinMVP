@@ -66,16 +66,20 @@ export class CouponProgramIssuerService {
 
       for (let i = 0; i < item.quantity; i += 1) {
         const couponStableId = generateStableId();
+        const templateTitle =
+          template.tittleCh ?? template.titleEn ?? template.couponStableId;
+        const programTitle =
+          program.tittleCh ?? program.tittleEn ?? program.programStableId;
         couponsToCreate.push({
           couponStableId,
           userId: user.id,
           code: template.couponStableId,
-          title: template.title ?? template.name,
+          title: templateTitle,
           discountCents: rule.amountCents ?? 0,
           minSpendCents,
           expiresAt,
           issuedAt: now,
-          source: `Program: ${program.name}`,
+          source: `Program: ${programTitle}`,
           campaign: program.programStableId,
           fromTemplateId: template.id,
           unlockedItemStableIds,

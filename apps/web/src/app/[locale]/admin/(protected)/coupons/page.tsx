@@ -7,8 +7,7 @@ import type { AdminMenuCategoryDto } from '@shared/menu';
 
 type CouponTemplate = {
   couponStableId: string;
-  name: string;
-  title: string | null;
+  tittleCh: string | null;
   titleEn: string | null;
   description: string | null;
   stackingPolicy: 'EXCLUSIVE' | 'STACKABLE';
@@ -22,7 +21,8 @@ type CouponTemplate = {
 
 type CouponProgram = {
   programStableId: string;
-  name: string;
+  tittleCh: string;
+  tittleEn: string | null;
   status: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
   distributionType: 'AUTOMATIC_TRIGGER' | 'MANUAL_CLAIM' | 'PROMO_CODE' | 'ADMIN_PUSH';
   triggerType:
@@ -45,9 +45,7 @@ type CouponProgram = {
 };
 
 type TemplateFormState = {
-  couponStableId: string;
-  name: string;
-  title: string;
+  tittleCh: string;
   titleEn: string;
   description: string;
   descriptionEn: string;
@@ -64,8 +62,8 @@ type TemplateFormState = {
 };
 
 type ProgramFormState = {
-  programStableId: string;
-  name: string;
+  tittleCh: string;
+  tittleEn: string;
   status: CouponProgram['status'];
   distributionType: CouponProgram['distributionType'];
   triggerType: Exclude<CouponProgram['triggerType'], null>;
@@ -86,9 +84,7 @@ type ItemChoice = {
 };
 
 const emptyTemplateForm: TemplateFormState = {
-  couponStableId: '',
-  name: '',
-  title: '',
+  tittleCh: '',
   titleEn: '',
   description: '',
   descriptionEn: '',
@@ -105,8 +101,8 @@ const emptyTemplateForm: TemplateFormState = {
 };
 
 const emptyProgramForm: ProgramFormState = {
-  programStableId: '',
-  name: '',
+  tittleCh: '',
+  tittleEn: '',
   status: 'DRAFT',
   distributionType: 'AUTOMATIC_TRIGGER',
   triggerType: 'SIGNUP_COMPLETED',
@@ -295,11 +291,13 @@ export default function AdminCouponsPage() {
   );
   const templatePreview = useMemo(() => {
     const name =
-      templateForm.title.trim() ||
-      templateForm.name.trim() ||
+      templateForm.tittleCh.trim() ||
+      templateForm.titleEn.trim() ||
       '未命名优惠券';
     const description =
-      templateForm.description.trim() || templateForm.name.trim() || '优惠详情';
+      templateForm.description.trim() ||
+      templateForm.tittleCh.trim() ||
+      '优惠详情';
     const minSubtotalCents = Number(templateForm.minSubtotalCents);
     const minSubtotalText =
       templateForm.minSubtotalCents.trim() === '' ||
@@ -353,8 +351,8 @@ export default function AdminCouponsPage() {
     templateForm.amountCents,
     templateForm.description,
     templateForm.minSubtotalCents,
-    templateForm.name,
-    templateForm.title,
+    templateForm.tittleCh,
+    templateForm.titleEn,
     templateForm.applyTo,
     templateForm.percentOff,
     templateForm.useRuleType,
@@ -466,9 +464,7 @@ export default function AdminCouponsPage() {
                 : {}),
             };
       const payload = {
-        couponStableId: templateForm.couponStableId || undefined,
-        name: templateForm.name.trim(),
-        title: templateForm.title.trim() || null,
+        tittleCh: templateForm.tittleCh.trim() || null,
         titleEn: templateForm.titleEn.trim() || null,
         description: templateForm.description.trim() || null,
         stackingPolicy: templateForm.stackingPolicy,
@@ -478,7 +474,7 @@ export default function AdminCouponsPage() {
         issueRule,
       };
 
-      if (!payload.name) throw new Error('模板名称不能为空');
+      if (!payload.tittleCh) throw new Error('模板标题不能为空');
 
       if (templateEditingId) {
         await apiFetch(`/admin/coupons/templates/${templateEditingId}`, {
@@ -537,8 +533,8 @@ export default function AdminCouponsPage() {
         throw new Error('单人限领必须为正数');
       }
       const payload = {
-        programStableId: programForm.programStableId || undefined,
-        name: programForm.name.trim(),
+        tittleCh: programForm.tittleCh.trim(),
+        tittleEn: programForm.tittleEn.trim() || null,
         status: programForm.status,
         distributionType: programForm.distributionType,
         triggerType:
@@ -562,7 +558,7 @@ export default function AdminCouponsPage() {
         items,
       };
 
-      if (!payload.name) throw new Error('礼包名称不能为空');
+      if (!payload.tittleCh) throw new Error('礼包标题不能为空');
 
       if (programEditingId) {
         await apiFetch(`/admin/coupons/programs/${programEditingId}`, {
@@ -648,9 +644,7 @@ export default function AdminCouponsPage() {
           : 'LONG_TERM';
     setTemplateEditingId(template.couponStableId);
     setTemplateForm({
-      couponStableId: template.couponStableId,
-      name: template.name,
-      title: template.title ?? '',
+      tittleCh: template.tittleCh ?? '',
       titleEn: template.titleEn ?? '',
       description: template.description ?? '',
       stackingPolicy: template.stackingPolicy,
@@ -697,8 +691,8 @@ export default function AdminCouponsPage() {
       program.validFrom || program.validTo ? 'LIMITED' : 'LONG_TERM';
     setProgramEditingId(program.programStableId);
     setProgramForm({
-      programStableId: program.programStableId,
-      name: program.name,
+      tittleCh: program.tittleCh,
+      tittleEn: program.tittleEn ?? '',
       status: program.status,
       distributionType: program.distributionType,
       triggerType: program.triggerType ?? 'SIGNUP_COMPLETED',
@@ -757,7 +751,9 @@ export default function AdminCouponsPage() {
                 >
                   <div className="flex items-center justify-between">
                     <div className="text-base font-semibold">
-                      {template.name}
+                      {template.tittleCh ??
+                        template.titleEn ??
+                        template.couponStableId}
                     </div>
                     <button
                       onClick={() => handleEditTemplate(template)}
@@ -777,27 +773,14 @@ export default function AdminCouponsPage() {
           <div className="space-y-3 text-sm">
             <div className="grid gap-3 md:grid-cols-2">
               <label className="space-y-1">
-                <span className="text-muted-foreground">模板名称（内部）</span>
+                <span className="text-muted-foreground">展示标题（中文）</span>
                 <input
                   className="w-full rounded-md border px-3 py-2"
-                  value={templateForm.name}
+                  value={templateForm.tittleCh}
                   onChange={(e) =>
                     setTemplateForm((prev) => ({
                       ...prev,
-                      name: e.target.value,
-                    }))
-                  }
-                />
-              </label>
-              <label className="space-y-1">
-                <span className="text-muted-foreground">展示标题（App端）</span>
-                <input
-                  className="w-full rounded-md border px-3 py-2"
-                  value={templateForm.title}
-                  onChange={(e) =>
-                    setTemplateForm((prev) => ({
-                      ...prev,
-                      title: e.target.value,
+                      tittleCh: e.target.value,
                     }))
                   }
                 />
@@ -881,19 +864,6 @@ export default function AdminCouponsPage() {
                   setTemplateForm((prev) => ({
                     ...prev,
                     descriptionEn: e.target.value,
-                  }))
-                }
-              />
-            </label>
-            <label className="space-y-1">
-              <span className="text-muted-foreground">模板 StableId（可选）</span>
-              <input
-                className="w-full rounded-md border px-3 py-2"
-                value={templateForm.couponStableId}
-                onChange={(e) =>
-                  setTemplateForm((prev) => ({
-                    ...prev,
-                    couponStableId: e.target.value,
                   }))
                 }
               />
@@ -1190,7 +1160,9 @@ export default function AdminCouponsPage() {
                   <div className="flex items-center justify-between gap-4">
                     <div className="space-y-1">
                       <div className="text-base font-semibold">
-                        {program.name}
+                        {program.tittleCh ??
+                          program.tittleEn ??
+                          program.programStableId}
                       </div>
                       <div className="text-xs text-muted-foreground">
                         状态：{program.status}
@@ -1208,7 +1180,10 @@ export default function AdminCouponsPage() {
                           onClick={() => {
                             setIssueTarget({
                               programStableId: program.programStableId,
-                              programName: program.name,
+                              programName:
+                                program.tittleCh ??
+                                program.tittleEn ??
+                                program.programStableId,
                             });
                             setIssueForm({
                               userStableId: '',
@@ -1235,14 +1210,27 @@ export default function AdminCouponsPage() {
           <div className="space-y-3 text-sm">
             <div className="grid gap-3 md:grid-cols-2">
               <label className="space-y-1">
-                <span className="text-muted-foreground">礼包名称</span>
+                <span className="text-muted-foreground">礼包标题（中文）</span>
                 <input
                   className="w-full rounded-md border px-3 py-2"
-                  value={programForm.name}
+                  value={programForm.tittleCh}
                   onChange={(e) =>
                     setProgramForm((prev) => ({
                       ...prev,
-                      name: e.target.value,
+                      tittleCh: e.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-muted-foreground">礼包标题（英文）</span>
+                <input
+                  className="w-full rounded-md border px-3 py-2"
+                  value={programForm.tittleEn}
+                  onChange={(e) =>
+                    setProgramForm((prev) => ({
+                      ...prev,
+                      tittleEn: e.target.value,
                     }))
                   }
                 />
@@ -1374,19 +1362,6 @@ export default function AdminCouponsPage() {
                 />
               </label>
             )}
-            <label className="space-y-1">
-              <span className="text-muted-foreground">礼包 StableId（可选）</span>
-              <input
-                className="w-full rounded-md border px-3 py-2"
-                value={programForm.programStableId}
-                onChange={(e) =>
-                  setProgramForm((prev) => ({
-                    ...prev,
-                    programStableId: e.target.value,
-                  }))
-                }
-              />
-            </label>
             <div className="grid gap-3 md:grid-cols-2">
               <label className="space-y-1">
                 <span className="text-muted-foreground">总发放量（可选）</span>
@@ -1472,7 +1447,11 @@ export default function AdminCouponsPage() {
                           }
                         />
                         <div className="min-w-[180px]">
-                          <div className="font-medium">{template.name}</div>
+                          <div className="font-medium">
+                            {template.tittleCh ??
+                              template.titleEn ??
+                              template.couponStableId}
+                          </div>
                           <div className="text-xs text-muted-foreground">
                             {template.couponStableId}
                           </div>

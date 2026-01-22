@@ -17,8 +17,7 @@ import { CouponProgramIssuerService } from '../../coupons/coupon-program-issuer.
 
 type CouponTemplateInput = {
   couponStableId?: string;
-  name: string;
-  title?: string | null;
+  tittleCh?: string | null;
   titleEn?: string | null;
   description?: string | null;
   stackingPolicy?: 'EXCLUSIVE' | 'STACKABLE';
@@ -30,7 +29,8 @@ type CouponTemplateInput = {
 
 type CouponProgramInput = {
   programStableId?: string;
-  name: string;
+  tittleCh: string;
+  tittleEn?: string | null;
   status?: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
   distributionType?:
     | 'AUTOMATIC_TRIGGER'
@@ -205,8 +205,7 @@ export class AdminCouponsService {
     return this.prisma.couponTemplate.create({
       data: {
         couponStableId: input.couponStableId,
-        name: input.name,
-        title: input.title ?? null,
+        tittleCh: input.tittleCh ?? null,
         titleEn: input.titleEn ?? null,
         description: input.description ?? null,
         stackingPolicy,
@@ -235,8 +234,7 @@ export class AdminCouponsService {
     return this.prisma.couponTemplate.update({
       where: { couponStableId },
       data: {
-        name: input.name,
-        title: input.title ?? null,
+        tittleCh: input.tittleCh ?? null,
         titleEn: input.titleEn ?? null,
         description: input.description ?? null,
         stackingPolicy,
@@ -284,7 +282,8 @@ export class AdminCouponsService {
     return this.prisma.couponProgram.create({
       data: {
         programStableId: input.programStableId,
-        name: input.name,
+        tittleCh: input.tittleCh,
+        tittleEn: input.tittleEn ?? null,
         status: input.status,
         distributionType,
         triggerType,
@@ -325,7 +324,8 @@ export class AdminCouponsService {
     return this.prisma.couponProgram.update({
       where: { programStableId },
       data: {
-        name: input.name,
+        tittleCh: input.tittleCh,
+        tittleEn: input.tittleEn ?? null,
         status: input.status,
         distributionType,
         triggerType,

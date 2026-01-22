@@ -927,7 +927,8 @@ export class AdminMembersService {
           couponStableId,
           userId: user.id,
           code: template.couponStableId,
-          title: template.title ?? template.name,
+          title:
+            template.tittleCh ?? template.titleEn ?? template.couponStableId,
           discountCents: rule.amountCents ?? 0,
           minSpendCents,
           expiresAt,
