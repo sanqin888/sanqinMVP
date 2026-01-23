@@ -9,6 +9,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { createHash } from 'crypto';
+import { CouponProgramTriggerService } from '../coupons/coupon-program-trigger.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 const MICRO_PER_POINT = 1_000_000n; // 1 pt = 1e6 micro-pts，避免小数误差
@@ -49,6 +50,17 @@ function computeTierFromLifetime(
   return 'BRONZE';
 }
 
+const TIER_RANK: Record<Tier, number> = {
+  BRONZE: 0,
+  SILVER: 1,
+  GOLD: 2,
+  PLATINUM: 3,
+};
+
+function isTierUpgrade(before: Tier, after: Tier): boolean {
+  return TIER_RANK[after] > TIER_RANK[before];
+}
+
 function toMicroPoints(points: number): bigint {
   // 四舍五入到 micro
   return BigInt(Math.round(points * Number(MICRO_PER_POINT)));
@@ -79,7 +91,10 @@ function buildIdempotencyChildKey(base: string, suffix: string): string {
 
 @Injectable()
 export class LoyaltyService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly couponTriggerService: CouponProgramTriggerService,
+  ) {}
 
   private async ensureBusinessConfig(): Promise<BusinessConfig> {
     return (
@@ -347,7 +362,7 @@ export class LoyaltyService {
     if (!userId) return; // 匿名单不处理
     const loyaltyConfig = await this.getLoyaltyConfig();
 
-    await this.prisma.$transaction(async (tx) => {
+    const settleResult = await this.prisma.$transaction(async (tx) => {
       const accRaw = await this.ensureAccountWithTx(tx, userId);
 
       await tx.$queryRaw`
@@ -556,7 +571,22 @@ export class LoyaltyService {
           }
         }
       }
+
+      return {
+        tierBefore: accRaw.tier as Tier,
+        tierAfter: newTier,
+      };
     });
+
+    if (isTierUpgrade(settleResult.tierBefore, settleResult.tierAfter)) {
+      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      if (user) {
+        await this.couponTriggerService.issueProgramsForUser(
+          'TIER_UPGRADE',
+          user,
+        );
+      }
+    }
   }
 
   // ✅ 新增方法：扣除储值余额
@@ -1042,7 +1072,7 @@ export class LoyaltyService {
       throw new BadRequestException('bonusPoints must be >= 0');
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const topupResult = await this.prisma.$transaction(async (tx) => {
       // 0) 解析 userId
       const userId = await this.resolveUserIdByStableIdWithTx(tx, userStableId);
       const loyaltyConfig = await this.getLoyaltyConfigWithTx(tx);
@@ -1067,6 +1097,7 @@ export class LoyaltyService {
         }
         // ... (保留这里的返回逻辑，可以使用当前 acc 的状态返回)
         return {
+          userId,
           amountCents: cents,
           pointsCredited: Number(existedTopup.deltaMicro) / 1_000_000,
           bonusPoints: bonus,
@@ -1231,6 +1262,7 @@ export class LoyaltyService {
       }
 
       return {
+        userId,
         amountCents: cents,
         pointsCredited: pts,
         bonusPoints: bonus,
@@ -1246,6 +1278,21 @@ export class LoyaltyService {
         referralReceiptId: referralLedgerId ? refKey : undefined,
       };
     });
+
+    if (isTierUpgrade(topupResult.tierBefore, topupResult.tierAfter)) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: topupResult.userId },
+      });
+      if (user) {
+        await this.couponTriggerService.issueProgramsForUser(
+          'TIER_UPGRADE',
+          user,
+        );
+      }
+    }
+
+    const { userId, ...result } = topupResult;
+    return result;
   }
 
   private roundMulDiv(
