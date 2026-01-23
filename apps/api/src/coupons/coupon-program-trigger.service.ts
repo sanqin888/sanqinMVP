@@ -126,17 +126,9 @@ export class CouponProgramTriggerService {
 
     if (coupons.length === 0) return;
 
-    const expiresAt = coupons
-      .map((coupon) => coupon.expiresAt)
-      .filter((date): date is Date => Boolean(date))
-      .sort((a, b) => a.getTime() - b.getTime())[0];
-
     await this.notificationService.notifyCouponIssued({
       user,
-      programName:
-        program.tittleCh ?? program.tittleEn ?? program.programStableId,
-      couponCount: coupons.length,
-      expiresAt: expiresAt ?? null,
+      program,
     });
   }
 }

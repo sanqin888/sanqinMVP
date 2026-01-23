@@ -23,6 +23,7 @@ type CouponProgram = {
   programStableId: string;
   tittleCh: string;
   tittleEn: string | null;
+  giftValue: string | null;
   status: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
   distributionType: 'AUTOMATIC_TRIGGER' | 'MANUAL_CLAIM' | 'PROMO_CODE' | 'ADMIN_PUSH';
   triggerType:
@@ -64,6 +65,7 @@ type TemplateFormState = {
 type ProgramFormState = {
   tittleCh: string;
   tittleEn: string;
+  giftValue: string;
   status: CouponProgram['status'];
   distributionType: CouponProgram['distributionType'];
   triggerType: Exclude<CouponProgram['triggerType'], null>;
@@ -103,6 +105,7 @@ const emptyTemplateForm: TemplateFormState = {
 const emptyProgramForm: ProgramFormState = {
   tittleCh: '',
   tittleEn: '',
+  giftValue: '',
   status: 'DRAFT',
   distributionType: 'AUTOMATIC_TRIGGER',
   triggerType: 'SIGNUP_COMPLETED',
@@ -535,6 +538,7 @@ export default function AdminCouponsPage() {
       const payload = {
         tittleCh: programForm.tittleCh.trim(),
         tittleEn: programForm.tittleEn.trim() || null,
+        giftValue: programForm.giftValue.trim() || null,
         status: programForm.status,
         distributionType: programForm.distributionType,
         triggerType:
@@ -693,6 +697,7 @@ export default function AdminCouponsPage() {
     setProgramForm({
       tittleCh: program.tittleCh,
       tittleEn: program.tittleEn ?? '',
+      giftValue: program.giftValue ?? '',
       status: program.status,
       distributionType: program.distributionType,
       triggerType: program.triggerType ?? 'SIGNUP_COMPLETED',
@@ -1233,6 +1238,20 @@ export default function AdminCouponsPage() {
                       tittleEn: e.target.value,
                     }))
                   }
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-muted-foreground">礼包价值</span>
+                <input
+                  className="w-full rounded-md border px-3 py-2"
+                  value={programForm.giftValue}
+                  onChange={(e) =>
+                    setProgramForm((prev) => ({
+                      ...prev,
+                      giftValue: e.target.value,
+                    }))
+                  }
+                  placeholder="如：¥50"
                 />
               </label>
               <label className="space-y-1">
