@@ -3,20 +3,66 @@ import type { CouponProgramTriggerType, User } from '@prisma/client';
 import { EmailService } from '../email/email.service';
 import { SmsService } from '../sms/sms.service';
 import { BusinessConfigService } from '../messaging/business-config.service';
-import type { TemplateName } from '../messaging/template-vars';
 import { TemplateRenderer } from '../messaging/template-renderer';
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 
-type GiftTemplateName = Extract<
-  TemplateName,
-  | 'giftSignup'
-  | 'giftSubscription'
-  | 'giftReferral'
-  | 'giftBirthday'
-  | 'giftTierUpgrade'
->;
+const GIFT_CONTENT_MAP: Record<
+  CouponProgramTriggerType,
+  {
+    zh: { title: string; message: string };
+    en: { title: string; message: string };
+  }
+> = {
+  SIGNUP_COMPLETED: {
+    zh: {
+      title: '欢迎加入我们！',
+      message: '感谢您的注册，这是为您准备的新人见面礼：',
+    },
+    en: {
+      title: 'Welcome!',
+      message: 'Thanks for signing up! Here is a welcome gift for you:',
+    },
+  },
+  MARKETING_OPT_IN: {
+    zh: { title: '订阅成功！', message: '感谢您的订阅，送上一份小心意：' },
+    en: {
+      title: 'Subscribed!',
+      message: 'Thanks for subscribing. Here is a gift for you:',
+    },
+  },
+  REFERRAL_QUALIFIED: {
+    zh: {
+      title: '邀请奖励到账！',
+      message: '感谢您邀请好友，这是您的邀请奖励：',
+    },
+    en: {
+      title: 'Referral Reward!',
+      message: 'Thanks for referring a friend. Here is your reward:',
+    },
+  },
+  BIRTHDAY_MONTH: {
+    zh: {
+      title: '生日快乐！',
+      message: '祝您生日快乐！这是为您准备的专属生日礼包：',
+    },
+    en: {
+      title: 'Happy Birthday!',
+      message: 'Wishing you a happy birthday! Please enjoy this gift:',
+    },
+  },
+  TIER_UPGRADE: {
+    zh: {
+      title: '会员升级啦！',
+      message: '恭喜您的会员等级提升！这是您的升级奖励：',
+    },
+    en: {
+      title: 'Level Up!',
+      message: 'Congratulations on your tier upgrade! Here is your reward:',
+    },
+  },
+};
 
 class NotificationRateLimiter {
   private readonly events = new Map<string, number[]>();
@@ -168,12 +214,12 @@ export class NotificationService {
     };
   }) {
     const { user, program } = params;
-    const template = this.resolveGiftTemplate(program.triggerType);
-    if (!template) {
-      return { ok: false, error: 'unsupported_trigger' };
+    if (!program.triggerType || !GIFT_CONTENT_MAP[program.triggerType]) {
+      return { ok: false, error: 'unsupported_trigger_type' };
     }
 
     const locale = user.language === 'ZH' ? 'zh' : 'en';
+    const content = GIFT_CONTENT_MAP[program.triggerType][locale];
     const { baseVars } =
       await this.businessConfigService.getMessagingSnapshot(locale);
     const claimUrl = `${process.env.PUBLIC_BASE_URL}/${locale}/membership`;
@@ -187,7 +233,10 @@ export class NotificationService {
       giftName,
       giftValue: program.giftValue ?? '',
       claimUrl,
+      giftTitle: content.title,
+      giftMessage: content.message,
     };
+    const template = 'giftGeneral';
 
     if (user.email) {
       const { subject, html, text } = await this.templateRenderer.renderEmail({
@@ -218,25 +267,6 @@ export class NotificationService {
     }
 
     return { ok: false, error: 'no_contact' };
-  }
-
-  private resolveGiftTemplate(
-    triggerType: CouponProgramTriggerType | null,
-  ): GiftTemplateName | null {
-    switch (triggerType) {
-      case 'SIGNUP_COMPLETED':
-        return 'giftSignup';
-      case 'MARKETING_OPT_IN':
-        return 'giftSubscription';
-      case 'REFERRAL_QUALIFIED':
-        return 'giftReferral';
-      case 'BIRTHDAY_MONTH':
-        return 'giftBirthday';
-      case 'TIER_UPGRADE':
-        return 'giftTierUpgrade';
-      default:
-        return null;
-    }
   }
 
   async notifyMarketing(params: {

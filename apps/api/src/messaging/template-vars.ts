@@ -30,6 +30,8 @@ export type GiftIssuedVars = BaseVars & {
   giftName: string;
   giftValue: string;
   claimUrl: string;
+  giftTitle: string;
+  giftMessage: string;
 };
 
 export type OrderReadyVars = BaseVars & {
@@ -48,11 +50,7 @@ export type TemplateVarsMap = {
   otp: OtpVars;
   welcome: WelcomeVars;
   Subscription: FirstSubVars;
-  giftSignup: GiftIssuedVars;
-  giftSubscription: GiftIssuedVars;
-  giftReferral: GiftIssuedVars;
-  giftBirthday: GiftIssuedVars;
-  giftTierUpgrade: GiftIssuedVars;
+  giftGeneral: GiftIssuedVars;
   orderReady: OrderReadyVars;
   invoice: InvoiceVars;
 };
