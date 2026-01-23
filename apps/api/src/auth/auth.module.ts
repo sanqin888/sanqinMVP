@@ -15,6 +15,7 @@ import { EmailModule } from '../email/email.module';
 import { AdminMfaGuard } from './admin-mfa.guard';
 import { SmsModule } from '../sms/sms.module';
 import { MessagingModule } from '../messaging/messaging.module';
+import { NotificationModule } from '../notifications/notification.module';
 
 @Global()
 @Module({
@@ -24,6 +25,7 @@ import { MessagingModule } from '../messaging/messaging.module';
     EmailModule,
     SmsModule,
     MessagingModule,
+    NotificationModule,
   ],
   providers: [
     AuthService,
