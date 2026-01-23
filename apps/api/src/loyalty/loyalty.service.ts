@@ -1291,7 +1291,7 @@ export class LoyaltyService {
       }
     }
 
-    const { userId, ...result } = topupResult;
+    const { userId: _userId, ...result } = topupResult;
     return result;
   }
 
