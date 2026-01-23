@@ -26,6 +26,7 @@ import { EmailService } from '../email/email.service';
 import { SmsService } from '../sms/sms.service';
 import { BusinessConfigService } from '../messaging/business-config.service';
 import { TemplateRenderer } from '../messaging/template-renderer';
+import { NotificationService } from '../notifications/notification.service';
 
 @Injectable()
 export class AuthService {
@@ -37,6 +38,7 @@ export class AuthService {
     private readonly smsService: SmsService,
     private readonly templateRenderer: TemplateRenderer,
     private readonly businessConfigService: BusinessConfigService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   private generateCode(): string {
@@ -392,6 +394,11 @@ export class AuthService {
       loginLocation: params.loginLocation,
       mfaVerifiedAt: requiresTwoFactor ? null : now,
     });
+
+    //新增：如果是新用户，发送欢迎通知
+    if (isNewUser) {
+      void this.notificationService.notifyRegisterWelcome({ user });
+    }
 
     return { user, session, requiresTwoFactor, isNewUser };
   }
@@ -849,6 +856,27 @@ export class AuthService {
       });
     });
 
+    // ================== 添加以下发送短信的代码 ==================
+    const locale = this.resolveUserLocale(session.user.language);
+    const { baseVars } =
+      await this.businessConfigService.getMessagingSnapshot(locale);
+
+    const message = await this.templateRenderer.renderSms({
+      template: 'otp',
+      locale,
+      vars: {
+        ...baseVars,
+        code,
+        expiresInMin: 5,
+        purpose: 'verify',
+      },
+    });
+
+    await this.smsService.sendSms({
+      phone: normalized,
+      body: message,
+    });
+
     return { success: true };
   }
 
@@ -1174,6 +1202,11 @@ export class AuthService {
       loginLocation: params.loginLocation,
       mfaVerifiedAt: now,
     });
+
+    //如果是新用户，发送欢迎通知
+    if (isNewUser) {
+      void this.notificationService.notifyRegisterWelcome({ user });
+    }
 
     return { user, session, verificationToken: record.id, isNewUser };
   }

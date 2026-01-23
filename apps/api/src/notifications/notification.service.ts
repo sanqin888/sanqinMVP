@@ -37,6 +37,57 @@ export class NotificationService {
     private readonly businessConfigService: BusinessConfigService,
   ) {}
 
+  async notifyRegisterWelcome(params: { user: User }) {
+    // 准备基础变量
+    const locale = params.user.language === 'ZH' ? 'zh' : 'en';
+    const { baseVars } =
+      await this.businessConfigService.getMessagingSnapshot(locale);
+    const claimUrl = `${process.env.PUBLIC_BASE_URL}/${locale}/membership/login`;
+
+    // 1. 优先尝试发送邮件
+    if (params.user.email) {
+      return this.templateRenderer
+        .renderEmail({
+          template: 'welcome',
+          locale,
+          vars: {
+            ...baseVars,
+            userName:
+              params.user.name ||
+              (locale === 'zh' ? '亲爱的顾客' : 'Dear Customer'),
+            claimUrl,
+          },
+        })
+        .then(({ subject, html, text }) => {
+          return this.emailService.sendEmail({
+            to: params.user.email!,
+            subject,
+            html,
+            text,
+            tags: { type: 'register_welcome' },
+            locale: params.user.language === 'ZH' ? 'zh-CN' : 'en',
+          });
+        });
+    }
+
+    // 2. 如果没邮箱，但有手机号，发送短信
+    if (params.user.phone) {
+      const body = await this.templateRenderer.renderSms({
+        template: 'welcome',
+        locale,
+        vars: {
+          ...baseVars,
+          giftValue: '',
+        },
+      });
+
+      return this.smsService.sendSms({
+        phone: params.user.phone,
+        body,
+      });
+    }
+  }
+
   async notifyOrderReady(params: {
     phone: string;
     orderNumber: string;
@@ -69,6 +120,7 @@ export class NotificationService {
     const locale = params.user.language === 'ZH' ? 'zh' : 'en';
     const { baseVars } =
       await this.businessConfigService.getMessagingSnapshot(locale);
+    const manageUrl = `${process.env.PUBLIC_BASE_URL}/${locale}/membership`;
 
     // 3. 渲染模版 (Subscription.email.html.hbs)
     const { subject, html, text } = await this.templateRenderer.renderEmail({
@@ -76,10 +128,11 @@ export class NotificationService {
       locale,
       vars: {
         ...baseVars,
-        userName: params.user.name || (locale === 'zh' ? '朋友' : 'Friend'),
+        userName:
+          params.user.name ||
+          (locale === 'zh' ? '亲爱的顾客' : 'Dear Customer'),
         // 这里生成管理订阅的链接，假设您的前端地址配置在环境变量中
-        manageUrl: `${process.env.PUBLIC_BASE_URL || 'https://www.sanqin.ca'}/account/settings`,
-        giftValue: '', // 既然我们决定模版里不提奖励，这里传空即可
+        manageUrl,
       },
     });
 
@@ -89,7 +142,7 @@ export class NotificationService {
       subject,
       html,
       text,
-      tags: { type: 'marketing_welcome' }, //以此标记这是欢迎信
+      tags: { type: 'welcome' }, //以此标记这是欢迎信
       locale: params.user.language === 'ZH' ? 'zh-CN' : 'en',
     });
   }
