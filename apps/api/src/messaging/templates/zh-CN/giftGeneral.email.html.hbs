@@ -1,0 +1,20 @@
+{{!< emailLayout}}
+
+{{! 这里的 giftTitle 和 giftMessage 将由代码动态传入 }}
+<h1>{{giftTitle}}</h1>
+
+<p>{{userName}}，您好！</p>
+
+<p>{{giftMessage}}</p>
+
+{{! 礼包卡片区域 }}
+<div style="background-color: #f9f9f9; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0;">
+  <h2 style="color: #e53e3e; margin: 0;">{{giftName}}</h2>
+  {{#if giftValue}}
+  <p style="color: #666; margin-top: 5px;">价值: {{giftValue}}</p>
+  {{/if}}
+</div>
+
+<p>请点击下方按钮查看或使用您的礼包：</p>
+
+<a href="{{claimUrl}}" style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #ffffff; border-radius: 6px;">立即查看</a>

@@ -1,0 +1,19 @@
+{{!< emailLayout}}
+
+{{! giftTitle and giftMessage are injected dynamically }}
+<h1>{{giftTitle}}</h1>
+
+<p>Hello {{userName}},</p>
+
+<p>{{giftMessage}}</p>
+
+<div style="background-color: #f9f9f9; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0;">
+  <h2 style="color: #e53e3e; margin: 0;">{{giftName}}</h2>
+  {{#if giftValue}}
+  <p style="color: #666; margin-top: 5px;">Value: {{giftValue}}</p>
+  {{/if}}
+</div>
+
+<p>Please click the button below to view or use your gift:</p>
+
+<a href="{{claimUrl}}" style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #ffffff; border-radius: 6px;">View Gift</a>
