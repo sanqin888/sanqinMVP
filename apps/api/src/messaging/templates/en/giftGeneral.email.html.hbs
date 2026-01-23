@@ -1,6 +1,5 @@
 {{!< emailLayout}}
 
-{{! giftTitle and giftMessage are injected dynamically }}
 <h1>{{giftTitle}}</h1>
 
 <p>Hello {{userName}},</p>
@@ -14,6 +13,14 @@
   {{/if}}
 </div>
 
-<p>Please click the button below to view or use your gift:</p>
+<p>
+  View your giftpackage in your account:
+</p>
 
 <a href="{{claimUrl}}" style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #ffffff; border-radius: 6px;">View Gift</a>
+
+
+<p style="color:#666;font-size:13px;line-height:1.4;">
+  You’re receiving this email because you have an account on sanq.ca and a giftpackage was added to your account.
+  If you did not request this, you can ignore this email or contact support.
+</p>

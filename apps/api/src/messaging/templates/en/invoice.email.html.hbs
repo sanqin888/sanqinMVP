@@ -1,5 +1,22 @@
-<p>Hello,</p>
+{{!< emailLayout}}
+
+<h1>Receipt</h1>
+
+<p>Hello {{userName}},</p>
+
 <p>Your receipt is ready.</p>
-<p>Amount: {{amount}}</p>
-<p>View/download: <a href="{{invoiceUrl}}">{{invoiceUrl}}</a></p>
-<p>Receipt No.: {{clientRequestId}}</p>
+
+<ul>
+  <li>Amount: {{amount}}</li>
+  <li>Receipt No.: {{clientRequestId}}</li>
+</ul>
+
+<p>
+  View/download your receipt:
+  <a href="{{invoiceUrl}}">{{invoiceUrl}}</a>
+</p>
+
+<p style="color:#666;font-size:13px;line-height:1.4;">
+  You’re receiving this email because you placed an order on sanq.ca.
+  If you did not make this purchase, please contact support immediately.
+</p>

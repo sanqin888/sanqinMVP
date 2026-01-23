@@ -1,3 +1,17 @@
-<p>您好{{userName}}，</p>
-<p>感谢您的订阅！我们将第一时间告知您活动和优惠的消息。</p>
-<p>您可以在会员中心管理订阅：<a href="{{manageUrl}}">{{manageUrl}}</a></p>
+{{!< emailLayout}}
+
+<h1>订阅已确认</h1>
+
+<p>{{userName}}，你好：</p>
+
+<p>你已成功订阅 {{brandName}} 的更新与优惠信息。</p>
+
+<p>
+  管理订阅/取消订阅：
+  <a href="{{manageUrl}}">{{manageUrl}}</a>
+</p>
+
+<p style="color:#666;font-size:13px;line-height:1.4;">
+  你收到此邮件是因为你在 {{siteUrl}} 订阅了我们网站。
+  若不是你本人订阅，可点击上方链接取消订阅。
+</p>

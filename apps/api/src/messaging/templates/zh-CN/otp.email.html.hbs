@@ -1,4 +1,17 @@
-<p>您好，</p>
-<p>您的验证码是 <strong>{{code}}</strong>。</p>
-<p>有效期 {{expiresInMin}} 分钟。</p>
+{{!< emailLayout}}
+
+<h1>验证码</h1>
+
+<p>你好：</p>
+
+<p>你的验证码是：<strong style="font-size:18px;">{{code}}</strong></p>
+
+<p>有效期：{{expiresInMin}} 分钟</p>
+
 <p>用途：{{purpose}}</p>
+
+<p style="color:#666;font-size:13px;line-height:1.4;">
+  请勿将验证码泄露给他人。
+  你收到此邮件是因为有人在 {{siteUrl}} 发起了验证码请求。
+  若非你本人操作，可忽略本邮件。
+</p>

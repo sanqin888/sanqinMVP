@@ -1,5 +1,22 @@
-<p>您好，</p>
-<p>您的收据已生成。</p>
-<p>金额：{{amount}}</p>
-<p>查看/下载：<a href="{{invoiceUrl}}">{{invoiceUrl}}</a></p>
-<p>收据编号：{{clientRequestId}}</p>
+{{!< emailLayout}}
+
+<h1>收据已生成</h1>
+
+<p>{{userName}}，你好：</p>
+
+<p>你的收据已准备好，可在线查看/下载。</p>
+
+<ul>
+  <li>金额：{{amount}}</li>
+  <li>收据号：{{clientRequestId}}</li>
+</ul>
+
+<p>
+  查看/下载链接：
+  <a href="{{invoiceUrl}}">{{invoiceUrl}}</a>
+</p>
+
+<p style="color:#666;font-size:13px;line-height:1.4;">
+  你收到此邮件是因为你在 {{siteUrl}} 下过订单/产生了交易记录。
+  若你并未进行此交易，请尽快联系支持。
+</p>

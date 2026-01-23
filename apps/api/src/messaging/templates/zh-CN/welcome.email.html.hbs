@@ -1,3 +1,17 @@
-<p>您好{{userName}}，</p>
-<p>欢迎加入 {{brandName}}，我们将竭诚为您服务。</p>
-<p><a href="{{claimUrl}}">点击进入您的账户中心</a></p>
+{{!< emailLayout}}
+
+<h1>欢迎加入 {{brandName}}</h1>
+
+<p>{{userName}}，你好：</p>
+
+<p>欢迎你加入！你的账户已创建成功。</p>
+
+<p>
+  前往会员中心：
+  <a href="{{claimUrl}}">{{claimUrl}}</a>
+</p>
+
+<p style="color:#666;font-size:13px;line-height:1.4;">
+  你收到此邮件是因为你在 {{siteUrl}} 注册了账户。
+  若非你本人操作，可忽略本邮件或联系支持。
+</p>
