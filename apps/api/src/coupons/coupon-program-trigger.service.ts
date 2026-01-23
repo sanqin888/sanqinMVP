@@ -96,11 +96,22 @@ export class CouponProgramTriggerService {
       }
     }
 
+    const whereInput: {
+      userStableId: string;
+      coupon: { campaign: string; issuedAt?: { gte: Date } };
+    } = {
+      userStableId: user.userStableId,
+      coupon: { campaign: program.programStableId },
+    };
+
+    if (program.triggerType === 'BIRTHDAY_MONTH') {
+      const currentYear = new Date().getFullYear();
+      const startOfYear = new Date(currentYear, 0, 1);
+      whereInput.coupon.issuedAt = { gte: startOfYear };
+    }
+
     const issuedCount = await this.prisma.userCoupon.count({
-      where: {
-        userStableId: user.userStableId,
-        coupon: { campaign: program.programStableId },
-      },
+      where: whereInput,
     });
 
     if (issuedCount >= program.perUserLimit) {
