@@ -96,11 +96,22 @@ export class CouponProgramTriggerService {
       }
     }
 
+    const whereInput: {
+      userStableId: string;
+      coupon: { campaign: string; issuedAt?: { gte: Date } };
+    } = {
+      userStableId: user.userStableId,
+      coupon: { campaign: program.programStableId },
+    };
+
+    if (program.triggerType === 'BIRTHDAY_MONTH') {
+      const currentYear = new Date().getFullYear();
+      const startOfYear = new Date(currentYear, 0, 1);
+      whereInput.coupon.issuedAt = { gte: startOfYear };
+    }
+
     const issuedCount = await this.prisma.userCoupon.count({
-      where: {
-        userStableId: user.userStableId,
-        coupon: { campaign: program.programStableId },
-      },
+      where: whereInput,
     });
 
     if (issuedCount >= program.perUserLimit) {
@@ -126,17 +137,9 @@ export class CouponProgramTriggerService {
 
     if (coupons.length === 0) return;
 
-    const expiresAt = coupons
-      .map((coupon) => coupon.expiresAt)
-      .filter((date): date is Date => Boolean(date))
-      .sort((a, b) => a.getTime() - b.getTime())[0];
-
     await this.notificationService.notifyCouponIssued({
       user,
-      programName:
-        program.tittleCh ?? program.tittleEn ?? program.programStableId,
-      couponCount: coupons.length,
-      expiresAt: expiresAt ?? null,
+      program,
     });
   }
 }

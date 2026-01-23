@@ -31,6 +31,7 @@ type CouponProgramInput = {
   programStableId?: string;
   tittleCh: string;
   tittleEn?: string | null;
+  giftValue?: string | null;
   status?: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
   distributionType?:
     | 'AUTOMATIC_TRIGGER'
@@ -124,6 +125,16 @@ function normalizePromoCode(value: unknown): string | null | undefined {
   }
   const trimmed = value.trim();
   return trimmed.length === 0 ? null : trimmed.toUpperCase();
+}
+
+function normalizeGiftValue(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== 'string') {
+    throw new BadRequestException('giftValue must be a string');
+  }
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? null : trimmed;
 }
 
 function normalizeDistributionType(
@@ -274,6 +285,7 @@ export class AdminCouponsService {
       input.perUserLimit,
       'perUserLimit',
     );
+    const giftValue = normalizeGiftValue(input.giftValue);
     const { validFrom, validTo } = parseDateRange(
       input.validFrom,
       input.validTo,
@@ -284,6 +296,7 @@ export class AdminCouponsService {
         programStableId: input.programStableId,
         tittleCh: input.tittleCh,
         tittleEn: input.tittleEn ?? null,
+        giftValue,
         status: input.status,
         distributionType,
         triggerType,
@@ -316,6 +329,7 @@ export class AdminCouponsService {
       input.perUserLimit,
       'perUserLimit',
     );
+    const giftValue = normalizeGiftValue(input.giftValue);
     const { validFrom, validTo } = parseDateRange(
       input.validFrom,
       input.validTo,
@@ -326,6 +340,7 @@ export class AdminCouponsService {
       data: {
         tittleCh: input.tittleCh,
         tittleEn: input.tittleEn ?? null,
+        giftValue,
         status: input.status,
         distributionType,
         triggerType,
