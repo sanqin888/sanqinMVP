@@ -1,12 +1,22 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { User } from '@prisma/client';
+import type { CouponProgramTriggerType, User } from '@prisma/client';
 import { EmailService } from '../email/email.service';
 import { SmsService } from '../sms/sms.service';
 import { BusinessConfigService } from '../messaging/business-config.service';
+import type { TemplateName } from '../messaging/template-vars';
 import { TemplateRenderer } from '../messaging/template-renderer';
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
+
+type GiftTemplateName = Extract<
+  TemplateName,
+  | 'giftSignup'
+  | 'giftSubscription'
+  | 'giftReferral'
+  | 'giftBirthday'
+  | 'giftTierUpgrade'
+>;
 
 class NotificationRateLimiter {
   private readonly events = new Map<string, number[]>();
@@ -77,7 +87,7 @@ export class NotificationService {
         locale,
         vars: {
           ...baseVars,
-          giftValue: '',
+          claimUrl,
         },
       });
 
@@ -149,33 +159,84 @@ export class NotificationService {
 
   async notifyCouponIssued(params: {
     user: User;
-    programName: string;
-    couponCount: number;
-    expiresAt?: Date | null;
+    program: {
+      tittleCh?: string | null;
+      tittleEn?: string | null;
+      programStableId: string;
+      giftValue?: string | null;
+      triggerType: CouponProgramTriggerType | null;
+    };
   }) {
-    if (!params.user.email || !params.user.marketingEmailOptIn) {
-      return { ok: false, error: 'marketing opt-in missing' };
+    const { user, program } = params;
+    const template = this.resolveGiftTemplate(program.triggerType);
+    if (!template) {
+      return { ok: false, error: 'unsupported_trigger' };
     }
 
-    const canSend = this.marketingLimiter.canSend(
-      `coupon:${params.user.id}`,
-      WEEK_MS,
-      3,
-    );
+    const locale = user.language === 'ZH' ? 'zh' : 'en';
+    const { baseVars } =
+      await this.businessConfigService.getMessagingSnapshot(locale);
+    const claimUrl = `${process.env.PUBLIC_BASE_URL}/${locale}/membership`;
+    const giftName =
+      program.tittleCh ?? program.tittleEn ?? program.programStableId;
+    const userName =
+      user.name || (locale === 'zh' ? '亲爱的顾客' : 'Dear Customer');
+    const vars = {
+      ...baseVars,
+      userName,
+      giftName,
+      giftValue: program.giftValue ?? '',
+      claimUrl,
+    };
 
-    if (!canSend) {
-      this.logger.warn(`Coupon email suppressed for user ${params.user.id}`);
-      return { ok: false, error: 'rate_limited' };
+    if (user.email) {
+      const { subject, html, text } = await this.templateRenderer.renderEmail({
+        template,
+        locale,
+        vars,
+      });
+      return this.emailService.sendEmail({
+        to: user.email,
+        subject,
+        html,
+        text,
+        tags: { type: 'gift_issued' },
+        locale: user.language === 'ZH' ? 'zh-CN' : 'en',
+      });
     }
 
-    return this.emailService.sendCouponIssuedEmail({
-      to: params.user.email,
-      name: params.user.name,
-      programName: params.programName,
-      couponCount: params.couponCount,
-      expiresAt: params.expiresAt,
-      locale: params.user.language === 'ZH' ? 'zh' : 'en',
-    });
+    if (user.phone) {
+      const body = await this.templateRenderer.renderSms({
+        template,
+        locale,
+        vars,
+      });
+      return this.smsService.sendSms({
+        phone: user.phone,
+        body,
+      });
+    }
+
+    return { ok: false, error: 'no_contact' };
+  }
+
+  private resolveGiftTemplate(
+    triggerType: CouponProgramTriggerType | null,
+  ): GiftTemplateName | null {
+    switch (triggerType) {
+      case 'SIGNUP_COMPLETED':
+        return 'giftSignup';
+      case 'MARKETING_OPT_IN':
+        return 'giftSubscription';
+      case 'REFERRAL_QUALIFIED':
+        return 'giftReferral';
+      case 'BIRTHDAY_MONTH':
+        return 'giftBirthday';
+      case 'TIER_UPGRADE':
+        return 'giftTierUpgrade';
+      default:
+        return null;
+    }
   }
 
   async notifyMarketing(params: {

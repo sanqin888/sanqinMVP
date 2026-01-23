@@ -388,6 +388,7 @@ model CouponProgram {
   programStableId String                   @unique @default(cuid())
   tittleCh        String
   tittleEn        String?
+  giftValue       String?
   status          CouponProgramStatus      @default(DRAFT)
   distributionType CouponDistributionType  @default(AUTOMATIC_TRIGGER)
   triggerType     CouponProgramTriggerType?

@@ -31,6 +31,7 @@ type CouponProgramPayload = {
   programStableId?: string;
   tittleCh: string;
   tittleEn?: string | null;
+  giftValue?: string | null;
   status?: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
   distributionType?:
     | 'AUTOMATIC_TRIGGER'

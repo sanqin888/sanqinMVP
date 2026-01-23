@@ -17,14 +17,19 @@ export type OtpVars = BaseVars & {
 
 export type WelcomeVars = BaseVars & {
   userName?: string;
-  giftValue: string;
   claimUrl: string;
 };
 
 export type FirstSubVars = BaseVars & {
   userName?: string;
-  giftValue: string;
   manageUrl: string;
+};
+
+export type GiftIssuedVars = BaseVars & {
+  userName?: string;
+  giftName: string;
+  giftValue: string;
+  claimUrl: string;
 };
 
 export type OrderReadyVars = BaseVars & {
@@ -43,6 +48,11 @@ export type TemplateVarsMap = {
   otp: OtpVars;
   welcome: WelcomeVars;
   Subscription: FirstSubVars;
+  giftSignup: GiftIssuedVars;
+  giftSubscription: GiftIssuedVars;
+  giftReferral: GiftIssuedVars;
+  giftBirthday: GiftIssuedVars;
+  giftTierUpgrade: GiftIssuedVars;
   orderReady: OrderReadyVars;
   invoice: InvoiceVars;
 };
