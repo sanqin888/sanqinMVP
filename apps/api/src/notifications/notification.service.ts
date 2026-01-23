@@ -16,7 +16,10 @@ const GIFT_CONTENT_MAP: Record<
   }
 > = {
   SIGNUP_COMPLETED: {
-    zh: { title: '欢迎加入我们！', message: '感谢您的注册，这是为您准备的新人见面礼：' },
+    zh: {
+      title: '欢迎加入我们！',
+      message: '感谢您的注册，这是为您准备的新人见面礼：',
+    },
     en: {
       title: 'Welcome!',
       message: 'Thanks for signing up! Here is a welcome gift for you:',
@@ -30,7 +33,10 @@ const GIFT_CONTENT_MAP: Record<
     },
   },
   REFERRAL_QUALIFIED: {
-    zh: { title: '邀请奖励到账！', message: '感谢您邀请好友，这是您的邀请奖励：' },
+    zh: {
+      title: '邀请奖励到账！',
+      message: '感谢您邀请好友，这是您的邀请奖励：',
+    },
     en: {
       title: 'Referral Reward!',
       message: 'Thanks for referring a friend. Here is your reward:',
@@ -47,7 +53,10 @@ const GIFT_CONTENT_MAP: Record<
     },
   },
   TIER_UPGRADE: {
-    zh: { title: '会员升级啦！', message: '恭喜您的会员等级提升！这是您的升级奖励：' },
+    zh: {
+      title: '会员升级啦！',
+      message: '恭喜您的会员等级提升！这是您的升级奖励：',
+    },
     en: {
       title: 'Level Up!',
       message: 'Congratulations on your tier upgrade! Here is your reward:',
