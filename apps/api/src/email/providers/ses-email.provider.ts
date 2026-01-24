@@ -15,7 +15,7 @@ export class SesEmailProvider implements EmailProvider {
   constructor(private readonly httpService: HttpService) {}
 
   async sendEmail(params: EmailSendParams): Promise<EmailSendResult> {
-    const region = process.env.AWS_SES_REGION ?? 'us-east-1';
+    const region = process.env.AWS_SES_REGION ?? 'ca-central-1';
     const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
     const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
     const sessionToken = process.env.AWS_SESSION_TOKEN;
@@ -31,14 +31,16 @@ export class SesEmailProvider implements EmailProvider {
       : fromAddress;
 
     const endpoint = `https://email.${region}.amazonaws.com/v2/email/outbound-emails`;
+    const configSet = process.env.AWS_SES_CONFIGURATION_SET ?? 'sanq-events';
     const payload = {
       FromEmailAddress: fromEmail,
       Destination: {
         ToAddresses: [params.to],
       },
+      ConfigurationSetName: configSet,
       Content: {
         Simple: {
-          Subject: { Data: params.subject },
+          Subject: { Data: params.subject, Charset: 'UTF-8' },
           Body: {
             ...(params.html ? { Html: { Data: params.html } } : {}),
             ...(params.text ? { Text: { Data: params.text } } : {}),
