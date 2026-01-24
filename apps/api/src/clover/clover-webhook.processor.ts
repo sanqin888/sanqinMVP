@@ -57,7 +57,7 @@ export class CloverWebhookProcessor implements OnModuleInit, OnModuleDestroy {
       handleMessage: async (message) => {
         if (!message.Body) {
           this.logger.warn('Received empty SQS message body.');
-          return;
+          return undefined;
         }
         let payload: unknown;
         try {
@@ -66,9 +66,10 @@ export class CloverWebhookProcessor implements OnModuleInit, OnModuleDestroy {
           this.logger.error(
             `Invalid JSON in SQS message: ${errToString(error)}`,
           );
-          return;
+          return undefined;
         }
         await this.processEvent(payload);
+        return message;
       },
     });
 
