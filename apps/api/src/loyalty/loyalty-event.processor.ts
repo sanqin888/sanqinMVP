@@ -38,6 +38,7 @@ export class LoyaltyEventProcessor implements OnModuleInit, OnModuleDestroy {
           );
           throw error;
         }
+        return message;
       },
     });
 
