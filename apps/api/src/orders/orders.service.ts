@@ -15,7 +15,6 @@ import {
   DeliveryProvider,
   DeliveryType,
   FulfillmentType,
-  LoyaltyEntryType,
   MenuItemOptionGroup,
   MenuOptionGroupTemplate,
   MenuOptionTemplateChoice,
