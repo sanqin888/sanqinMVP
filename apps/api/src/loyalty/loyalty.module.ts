@@ -4,10 +4,11 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { PosDeviceModule } from '../pos/pos-device.module';
 import { LoyaltyService } from './loyalty.service';
 import { LoyaltyController } from './loyalty.controller';
+import { LoyaltyEventProcessor } from './loyalty-event.processor';
 
 @Module({
   imports: [PrismaModule, PosDeviceModule],
-  providers: [LoyaltyService],
+  providers: [LoyaltyService, LoyaltyEventProcessor],
   controllers: [LoyaltyController],
   exports: [LoyaltyService],
 })
