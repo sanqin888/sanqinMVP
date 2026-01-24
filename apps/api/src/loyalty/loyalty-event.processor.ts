@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { Consumer } from 'sqs-consumer';
 import { SQSClient } from '@aws-sdk/client-sqs';
 import { LoyaltyService } from './loyalty.service';
@@ -88,7 +93,9 @@ export class LoyaltyEventProcessor implements OnModuleInit, OnModuleDestroy {
     if (eventPayload.event === 'ORDER_PAID') {
       const { orderId, userId, amountCents, redeemValueCents } = eventPayload;
 
-      this.logger.log(`Processing ORDER_PAID for order=${orderId}, user=${userId}`);
+      this.logger.log(
+        `Processing ORDER_PAID for order=${orderId}, user=${userId}`,
+      );
 
       await this.loyaltyService.settleOnPaid({
         orderId: orderId ?? '',

@@ -69,6 +69,9 @@ services:
       AWS_SES_FROM_EMAIL: "no-reply@sanq.ca"
       AWS_SES_REGION: "ca-central-1"
       AWS_SES_CONFIGURATION_SET: "sanq-events"
+      LOYALTY_SQS_QUEUE_URL: "https://sqs.ca-central-1.amazonaws.com/328944069269/sanqin-loyalty-processing-prod"
+      CLOVER_SQS_QUEUE_URL: "https://sqs.ca-central-1.amazonaws.com/328944069269/clover-payment-webhooks-prod"
+      SNS_TOPIC_ARN: "arn:aws:sns:ca-central-1:328944069269:sanqin-order-events-prod"
     ports:
       - "4000:4000"
       - "127.0.0.1:5555:5555"

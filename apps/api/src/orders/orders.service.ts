@@ -197,7 +197,9 @@ type DeliveryPricingConfig = {
 export class OrdersService {
   private readonly logger = new AppLogger(OrdersService.name);
   private readonly CLIENT_REQUEST_ID_RE = CLIENT_REQUEST_ID_RE;
-  private readonly snsClient = new SNSClient({ region: process.env.AWS_REGION });
+  private readonly snsClient = new SNSClient({
+    region: process.env.AWS_REGION,
+  });
   private readonly snsTopicArn = process.env.SNS_TOPIC_ARN;
 
   constructor(

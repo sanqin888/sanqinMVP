@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { SQSClient } from '@aws-sdk/client-sqs';
 import { Consumer } from 'sqs-consumer';
 import { CheckoutIntentsService } from './checkout-intents.service';
@@ -40,7 +45,9 @@ export class CloverWebhookProcessor implements OnModuleInit, OnModuleDestroy {
   onModuleInit() {
     const queueUrl = process.env.CLOVER_SQS_QUEUE_URL;
     if (!queueUrl) {
-      this.logger.warn('CLOVER_SQS_QUEUE_URL not configured, skipping processor.');
+      this.logger.warn(
+        'CLOVER_SQS_QUEUE_URL not configured, skipping processor.',
+      );
       return;
     }
 
@@ -56,7 +63,9 @@ export class CloverWebhookProcessor implements OnModuleInit, OnModuleDestroy {
         try {
           payload = JSON.parse(message.Body);
         } catch (error) {
-          this.logger.error(`Invalid JSON in SQS message: ${errToString(error)}`);
+          this.logger.error(
+            `Invalid JSON in SQS message: ${errToString(error)}`,
+          );
           return;
         }
         await this.processEvent(payload);
