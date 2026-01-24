@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { PublishCommand, SNSClient } from '@aws-sdk/client-sns';
 import * as crypto from 'crypto';
 import { AppLogger } from '../common/app-logger';
 import { normalizeEmail } from '../common/utils/email';
@@ -196,6 +197,8 @@ type DeliveryPricingConfig = {
 export class OrdersService {
   private readonly logger = new AppLogger(OrdersService.name);
   private readonly CLIENT_REQUEST_ID_RE = CLIENT_REQUEST_ID_RE;
+  private readonly snsClient = new SNSClient({ region: process.env.AWS_REGION });
+  private readonly snsTopicArn = process.env.SNS_TOPIC_ARN;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -444,7 +447,7 @@ export class OrdersService {
     // —— 积分结算与优惠券处理
     if (next === 'paid') {
       // [优化]：使用公共方法，逻辑统一
-      this.handleOrderPaidSideEffects(updated);
+      void this.handleOrderPaidSideEffects(updated);
     } else if (next === 'refunded') {
       void this.loyalty.rollbackOnRefund(updated.id);
     } else if (next === 'ready') {
@@ -464,7 +467,7 @@ export class OrdersService {
     });
   }
 
-  private handleOrderPaidSideEffects(order: OrderWithItems) {
+  private async handleOrderPaidSideEffects(order: OrderWithItems) {
     // 1. 计算用于积分奖励的有效金额（小计 - 优惠券折扣）
     const netSubtotalForRewards = Math.max(
       0,
@@ -480,13 +483,31 @@ export class OrdersService {
       });
     }
 
-    // 3. 触发积分结算
-    void this.loyalty.settleOnPaid({
-      orderId: order.id,
-      userId: order.userId ?? undefined,
-      subtotalCents: netSubtotalForRewards,
-      redeemValueCents: order.loyaltyRedeemCents ?? 0,
-    });
+    if (!this.snsTopicArn) {
+      this.logger.warn(
+        `SNS_TOPIC_ARN not configured, skipping ORDER_PAID publish for order ${order.id}`,
+      );
+      return;
+    }
+
+    try {
+      await this.snsClient.send(
+        new PublishCommand({
+          TopicArn: this.snsTopicArn,
+          Message: JSON.stringify({
+            event: 'ORDER_PAID',
+            orderId: order.id,
+            userId: order.userId,
+            amountCents: netSubtotalForRewards,
+            redeemValueCents: order.loyaltyRedeemCents ?? 0,
+            timestamp: new Date().toISOString(),
+          }),
+        }),
+      );
+      this.logger.log(`Published ORDER_PAID event for order ${order.id}`);
+    } catch (error) {
+      this.logger.error(`Failed to publish SNS: ${String(error)}`);
+    }
   }
   /**
    * ✅ 统一推断订单 paymentMethod
