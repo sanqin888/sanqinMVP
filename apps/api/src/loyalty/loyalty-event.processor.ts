@@ -82,7 +82,7 @@ export class LoyaltyEventProcessor implements OnModuleInit, OnModuleDestroy {
         amountCents?: number;
         redeemValueCents?: number;
       };
-    } catch (e) {
+    } catch {
       this.logger.warn(`Invalid JSON in SQS body: ${sqsMessage.Body}`);
       return;
     }
