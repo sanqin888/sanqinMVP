@@ -41,7 +41,7 @@ async function main() {
       meta: typeof d.meta === "undefined" ? undefined : d.meta,
       lastSeenAt: toDateOrNull(d.lastSeenAt) ?? undefined,
       // enrolledAt：一般不建议在 update 时回写历史时间；保留数据库现值更安全
-      // enrollmentKeyHash/deviceKeyHash：也不建议在 update 中覆盖（除非你明确想“重置设备密钥”）
+      // enrollmentKeyHash/deviceKeyHash：也不建议在 update 中覆盖（除非你明确想重置）
     };
 
     // 1) 优先按 deviceStableId（unique）
@@ -67,7 +67,6 @@ async function main() {
           where: { enrollmentKeyHash: d.enrollmentKeyHash },
           data: {
             ...baseUpdate,
-            // 这里可以把 deviceStableId 对齐回 snapshot（可选但推荐）
             ...(d.deviceStableId ? { deviceStableId: d.deviceStableId } : {}),
           },
         });
@@ -78,7 +77,7 @@ async function main() {
     return prisma.posDevice.create({
       data: {
         ...(isUuid(d.id) ? { id: d.id } : {}),
-        deviceStableId: d.deviceStableId, // undefined 会被 prisma 视为未提供 → 使用 default(cuid())
+        deviceStableId: d.deviceStableId, // undefined → 使用 default(cuid())
         storeId: d.storeId,
         name: toCreateOptional(d.name),
         status: d.status ?? "ACTIVE",
@@ -92,22 +91,16 @@ async function main() {
   }
 
   if (Array.isArray(s.posDevices) && s.posDevices.length > 0) {
-    for (const d of s.posDevices) {
-      await upsertPosDevice(d);
-    }
+    for (const d of s.posDevices) await upsertPosDevice(d);
   } else {
     console.log("No posDevices in snapshot.");
   }
 
   // 0) Admin Users
   async function upsertAdminUser(u) {
-    // update 时尽量不清空（snapshot null/undefined 默认不改）
     const updateDataBase = {
       role: "ADMIN",
       status: u.status ?? "ACTIVE",
-
-      // userStableId：默认不在 update 覆盖，避免已有环境外部引用漂移
-      // userStableId: toUpdateOptional(u.userStableId),
 
       email: toUpdateOptional(u.email),
       emailVerifiedAt: toDateOrNull(u.emailVerifiedAt) ?? undefined,
@@ -126,16 +119,12 @@ async function main() {
       referredByUserId: toUpdateOptional(u.referredByUserId),
       birthdayMonth:
         typeof u.birthdayMonth === "number" ? u.birthdayMonth : undefined,
-      birthdayDay:
-        typeof u.birthdayDay === "number" ? u.birthdayDay : undefined,
+      birthdayDay: typeof u.birthdayDay === "number" ? u.birthdayDay : undefined,
 
       googleSub: toUpdateOptional(u.googleSub),
 
       twoFactorMethod: toUpdateOptional(u.twoFactorMethod),
       twoFactorEnabledAt: toDateOrNull(u.twoFactorEnabledAt) ?? undefined,
-
-      // passwordChangedAt：仅在需要写入密码时再决定是否写（见下方）
-      // passwordHash：仅在目标为空时写（见下方）
     };
 
     const createDataBase = {
@@ -214,7 +203,6 @@ async function main() {
       return prisma.user.update({ where: { id: found.id }, data });
     }
 
-    // 不存在则 create：✅ 可以带 uuid + stableId + 密码
     return prisma.user.create({
       data: {
         ...(isUuid(u.id) ? { id: u.id } : {}),
@@ -224,15 +212,12 @@ async function main() {
   }
 
   if (Array.isArray(s.adminUsers) && s.adminUsers.length > 0) {
-    for (const u of s.adminUsers) {
-      await upsertAdminUser(u);
-    }
+    for (const u of s.adminUsers) await upsertAdminUser(u);
   } else {
     console.log("No adminUsers in snapshot.");
   }
 
   // 0.5) BusinessConfig (id=1)
-  // snapshot 里可能没有（为 null），则跳过
   if (s.businessConfig && typeof s.businessConfig === "object") {
     const c = s.businessConfig;
 
@@ -240,15 +225,18 @@ async function main() {
       where: { id: 1 },
       create: {
         id: 1,
-        // storeName 是必填 String，避免写 null
         storeName:
           typeof c.storeName === "string" && c.storeName.trim()
             ? c.storeName
             : "SanQin",
         timezone:
           typeof c.timezone === "string" ? c.timezone : "America/Toronto",
+
         isTemporarilyClosed: !!c.isTemporarilyClosed,
         temporaryCloseReason: toCreateOptional(c.temporaryCloseReason),
+
+        publicNotice: toCreateOptional(c.publicNotice),
+        publicNoticeEn: toCreateOptional(c.publicNoticeEn),
 
         deliveryBaseFeeCents:
           typeof c.deliveryBaseFeeCents === "number"
@@ -272,11 +260,22 @@ async function main() {
         storeProvince: toCreateOptional(c.storeProvince),
         storePostalCode: toCreateOptional(c.storePostalCode),
 
-        // ❌ storeAddress 已从 schema 移除（不要写）
         supportPhone: toCreateOptional(c.supportPhone),
         supportEmail: toCreateOptional(c.supportEmail),
 
+        brandNameZh: toCreateOptional(c.brandNameZh),
+        brandNameEn: toCreateOptional(c.brandNameEn),
+        siteUrl: toCreateOptional(c.siteUrl),
+        emailFromNameZh: toCreateOptional(c.emailFromNameZh),
+        emailFromNameEn: toCreateOptional(c.emailFromNameEn),
+        emailFromAddress: toCreateOptional(c.emailFromAddress),
+        smsSignature: toCreateOptional(c.smsSignature),
+
         salesTaxRate: typeof c.salesTaxRate === "number" ? c.salesTaxRate : 0.13,
+        wechatAlipayExchangeRate:
+          typeof c.wechatAlipayExchangeRate === "number"
+            ? c.wechatAlipayExchangeRate
+            : 1.0,
 
         earnPtPerDollar:
           typeof c.earnPtPerDollar === "number" ? c.earnPtPerDollar : 0.01,
@@ -306,9 +305,13 @@ async function main() {
             : 5,
 
         tierThresholdSilver:
-          typeof c.tierThresholdSilver === "number" ? c.tierThresholdSilver : 100000,
+          typeof c.tierThresholdSilver === "number"
+            ? c.tierThresholdSilver
+            : 100000,
         tierThresholdGold:
-          typeof c.tierThresholdGold === "number" ? c.tierThresholdGold : 1000000,
+          typeof c.tierThresholdGold === "number"
+            ? c.tierThresholdGold
+            : 1000000,
         tierThresholdPlatinum:
           typeof c.tierThresholdPlatinum === "number"
             ? c.tierThresholdPlatinum
@@ -332,12 +335,17 @@ async function main() {
             : undefined,
         temporaryCloseReason: toUpdateOptional(c.temporaryCloseReason),
 
+        publicNotice: toUpdateOptional(c.publicNotice),
+        publicNoticeEn: toUpdateOptional(c.publicNoticeEn),
+
         deliveryBaseFeeCents:
           typeof c.deliveryBaseFeeCents === "number"
             ? c.deliveryBaseFeeCents
             : undefined,
         priorityPerKmCents:
-          typeof c.priorityPerKmCents === "number" ? c.priorityPerKmCents : undefined,
+          typeof c.priorityPerKmCents === "number"
+            ? c.priorityPerKmCents
+            : undefined,
         maxDeliveryRangeKm:
           typeof c.maxDeliveryRangeKm === "number" ? c.maxDeliveryRangeKm : undefined,
         priorityDefaultDistanceKm:
@@ -355,12 +363,23 @@ async function main() {
         storeProvince: toUpdateOptional(c.storeProvince),
         storePostalCode: toUpdateOptional(c.storePostalCode),
 
-        // ❌ storeAddress 已从 schema 移除（不要写）
         supportPhone: toUpdateOptional(c.supportPhone),
         supportEmail: toUpdateOptional(c.supportEmail),
 
+        brandNameZh: toUpdateOptional(c.brandNameZh),
+        brandNameEn: toUpdateOptional(c.brandNameEn),
+        siteUrl: toUpdateOptional(c.siteUrl),
+        emailFromNameZh: toUpdateOptional(c.emailFromNameZh),
+        emailFromNameEn: toUpdateOptional(c.emailFromNameEn),
+        emailFromAddress: toUpdateOptional(c.emailFromAddress),
+        smsSignature: toUpdateOptional(c.smsSignature),
+
         salesTaxRate:
           typeof c.salesTaxRate === "number" ? c.salesTaxRate : undefined,
+        wechatAlipayExchangeRate:
+          typeof c.wechatAlipayExchangeRate === "number"
+            ? c.wechatAlipayExchangeRate
+            : undefined,
 
         earnPtPerDollar:
           typeof c.earnPtPerDollar === "number" ? c.earnPtPerDollar : undefined,
@@ -434,7 +453,7 @@ async function main() {
     }
   }
 
-  // 1.5) Holidays（无 unique 约束，使用 date 做 updateMany + 不存在则 create）
+  // 1.5) Holidays（无 unique 约束，date 做 updateMany + 不存在则 create）
   if (Array.isArray(s.holidays)) {
     for (const h of s.holidays) {
       const date = toDateOrNull(h.date);
@@ -538,7 +557,6 @@ async function main() {
           nameEn: o.nameEn,
           nameZh: typeof o.nameZh === "undefined" ? null : o.nameZh,
           priceDeltaCents: o.priceDeltaCents ?? 0,
-          // ✅ schema 新增字段
           targetItemStableId:
             typeof o.targetItemStableId === "string" ? o.targetItemStableId : null,
           sortOrder: o.sortOrder ?? 0,
@@ -552,7 +570,6 @@ async function main() {
           nameEn: o.nameEn,
           nameZh: typeof o.nameZh === "undefined" ? null : o.nameZh,
           priceDeltaCents: o.priceDeltaCents ?? 0,
-          // ✅ schema 新增字段
           targetItemStableId:
             typeof o.targetItemStableId === "string" ? o.targetItemStableId : null,
           sortOrder: o.sortOrder ?? 0,
@@ -565,8 +582,7 @@ async function main() {
     }
   }
 
-  // 4.5) Option Choice Links (MenuOptionChoiceLink) — 依赖 Options 已存在
-  // snapshot 里用 stableId 表达 parent/child，这里先映射成 id 再写 join 表
+  // 4.5) Option Choice Links (MenuOptionChoiceLink)
   if (Array.isArray(s.optionChoiceLinks)) {
     const optionRows = await prisma.menuOptionTemplateChoice.findMany({
       where: { deletedAt: null },
@@ -583,8 +599,6 @@ async function main() {
       const childId = optionIdByStable.get(childStableId);
       if (!parentId || !childId) continue;
 
-      // Prisma 对 @@unique([parentOptionId, childOptionId]) 的 where 复合键名一般是 parentOptionId_childOptionId
-      // 若你生成的 client 名称不同，运行时会报错，可据错误提示改键名
       const exists = await prisma.menuOptionChoiceLink.findUnique({
         where: {
           parentOptionId_childOptionId: {
@@ -604,9 +618,6 @@ async function main() {
         });
       }
     }
-  } else {
-    // 兼容旧 snapshot
-    // console.log("No optionChoiceLinks in snapshot.");
   }
 
   // 5) Items
@@ -655,7 +666,7 @@ async function main() {
     }
   }
 
-  // 5.5) Daily Specials (MenuDailySpecial) — 依赖 item 已存在
+  // 5.5) Daily Specials
   if (Array.isArray(s.dailySpecials)) {
     for (const ds of s.dailySpecials) {
       if (!ds.stableId || !ds.itemStableId) continue;
@@ -669,13 +680,9 @@ async function main() {
 
           pricingMode: ds.pricingMode,
           overridePriceCents:
-            typeof ds.overridePriceCents === "number"
-              ? ds.overridePriceCents
-              : null,
+            typeof ds.overridePriceCents === "number" ? ds.overridePriceCents : null,
           discountDeltaCents:
-            typeof ds.discountDeltaCents === "number"
-              ? ds.discountDeltaCents
-              : null,
+            typeof ds.discountDeltaCents === "number" ? ds.discountDeltaCents : null,
           discountPercent:
             typeof ds.discountPercent === "number" ? ds.discountPercent : null,
 
@@ -698,13 +705,9 @@ async function main() {
 
           pricingMode: ds.pricingMode,
           overridePriceCents:
-            typeof ds.overridePriceCents === "number"
-              ? ds.overridePriceCents
-              : null,
+            typeof ds.overridePriceCents === "number" ? ds.overridePriceCents : null,
           discountDeltaCents:
-            typeof ds.discountDeltaCents === "number"
-              ? ds.discountDeltaCents
-              : null,
+            typeof ds.discountDeltaCents === "number" ? ds.discountDeltaCents : null,
           discountPercent:
             typeof ds.discountPercent === "number" ? ds.discountPercent : null,
 
