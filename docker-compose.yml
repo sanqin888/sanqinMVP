@@ -15,6 +15,8 @@ services:
       context: .
       dockerfile: Dockerfile.api
     restart: always
+    volumes:
+      - .:/app
     environment:
       NODE_ENV: "production"
       DATABASE_URL: "postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/sanqin_db"
@@ -73,7 +75,7 @@ services:
       CLOVER_SQS_QUEUE_URL: "https://sqs.ca-central-1.amazonaws.com/328944069269/clover-payment-webhooks-prod"
       SNS_TOPIC_ARN: "arn:aws:sns:ca-central-1:328944069269:sanqin-order-events-prod"
     ports:
-      - "4000:4000"
+      - "127.0.0.1:4000:4000"
       - "127.0.0.1:5555:5555"
     depends_on:
       - db
@@ -83,6 +85,8 @@ services:
       context: .
       dockerfile: Dockerfile.web
     restart: always
+    volumes:
+      - .:/app
     extra_hosts:
       - "sanq.ca:host-gateway"
     environment:
@@ -91,7 +95,7 @@ services:
       API_UPSTREAM: "http://api:4000"
       NEXTAUTH_URL: "https://sanq.ca"
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       - api
 volumes:
