@@ -23,7 +23,7 @@ services:
       COOKIE_SIGNING_SECRET: ${COOKIE_SIGNING_SECRET}
       JWT_SECRET: ${JWT_SECRET}
       WEB_BASE_URL: "https://sanq.ca"
-      PUBLIC_BASE_URL=https://sanq.ca
+      PUBLIC_BASE_URL: "https://sanq.ca"
       INTERNAL_API_BASE: "http://api:4000"
       CURRENCY: "CAD"
       PRICES_INCLUDE_TAX: "true"
