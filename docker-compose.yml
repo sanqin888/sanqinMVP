@@ -23,6 +23,7 @@ services:
       COOKIE_SIGNING_SECRET: ${COOKIE_SIGNING_SECRET}
       JWT_SECRET: ${JWT_SECRET}
       WEB_BASE_URL: "https://sanq.ca"
+      PUBLIC_BASE_URL=https://sanq.ca
       INTERNAL_API_BASE: "http://api:4000"
       CURRENCY: "CAD"
       PRICES_INCLUDE_TAX: "true"
@@ -67,6 +68,10 @@ services:
       EMAIL_PROVIDER: "ses"
       AWS_SES_FROM_EMAIL: "no-reply@sanq.ca"
       AWS_SES_REGION: "ca-central-1"
+      AWS_SES_CONFIGURATION_SET: "sanq-events"
+      LOYALTY_SQS_QUEUE_URL: "https://sqs.ca-central-1.amazonaws.com/328944069269/sanqin-loyalty-processing-prod"
+      CLOVER_SQS_QUEUE_URL: "https://sqs.ca-central-1.amazonaws.com/328944069269/clover-payment-webhooks-prod"
+      SNS_TOPIC_ARN: "arn:aws:sns:ca-central-1:328944069269:sanqin-order-events-prod"
     ports:
       - "4000:4000"
       - "127.0.0.1:5555:5555"

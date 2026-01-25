@@ -8,7 +8,7 @@ const prisma = new PrismaClient();
 
 async function main() {
   // ===== Admin Users (role = ADMIN) =====
-  // ⚠️ dev snapshot：会包含 passwordHash、deviceKeyHash、enrollmentKeyHash 等敏感字段，确保该文件产物在 .gitignore 内
+  // ⚠️ dev snapshot：包含 passwordHash 等敏感字段，确保产物在 .gitignore 内
   const adminUsers = await prisma.user.findMany({
     where: { role: "ADMIN" },
     orderBy: { createdAt: "asc" },
@@ -47,7 +47,6 @@ async function main() {
   });
 
   // ===== Business Config (id=1) =====
-  // 可能还没初始化过（不存在 row），则导出为 null
   const businessConfig = await prisma.businessConfig.findUnique({
     where: { id: 1 },
     select: {
@@ -58,12 +57,16 @@ async function main() {
       isTemporarilyClosed: true,
       temporaryCloseReason: true,
 
+      publicNotice: true,
+      publicNoticeEn: true,
+
       deliveryBaseFeeCents: true,
       priorityPerKmCents: true,
       maxDeliveryRangeKm: true,
       priorityDefaultDistanceKm: true,
 
       salesTaxRate: true,
+      wechatAlipayExchangeRate: true,
 
       // Loyalty config
       earnPtPerDollar: true,
@@ -91,6 +94,15 @@ async function main() {
       storePostalCode: true,
       supportPhone: true,
       supportEmail: true,
+
+      // Branding / messaging
+      brandNameZh: true,
+      brandNameEn: true,
+      siteUrl: true,
+      emailFromNameZh: true,
+      emailFromNameEn: true,
+      emailFromAddress: true,
+      smsSignature: true,
 
       createdAt: true,
       updatedAt: true,
@@ -176,10 +188,7 @@ async function main() {
 
   // ===== Daily Specials =====
   const dailySpecials = await prisma.menuDailySpecial.findMany({
-    where: {
-      deletedAt: null,
-      item: { deletedAt: null },
-    },
+    where: { deletedAt: null, item: { deletedAt: null } },
     orderBy: [{ weekday: "asc" }, { sortOrder: "asc" }, { id: "asc" }],
     select: {
       stableId: true,
@@ -232,7 +241,7 @@ async function main() {
       nameEn: true,
       nameZh: true,
       priceDeltaCents: true,
-      targetItemStableId: true, // ✅ schema 新增：指向目标菜品 stableId（可选）
+      targetItemStableId: true,
       sortOrder: true,
       isAvailable: true,
       tempUnavailableUntil: true,
@@ -255,7 +264,6 @@ async function main() {
   });
 
   // ===== Item ↔ OptionGroup Links =====
-  // join 表本身无 deletedAt，因此用两侧 deletedAt  пикир
   const itemOptionGroups = await prisma.menuItemOptionGroup.findMany({
     where: {
       item: { deletedAt: null },
@@ -273,7 +281,7 @@ async function main() {
   });
 
   const snapshot = {
-    version: 3,
+    version: 4,
     exportedAt: new Date().toISOString(),
 
     adminUsers: adminUsers.map((u) => ({
@@ -318,12 +326,16 @@ async function main() {
           isTemporarilyClosed: businessConfig.isTemporarilyClosed,
           temporaryCloseReason: businessConfig.temporaryCloseReason,
 
+          publicNotice: businessConfig.publicNotice,
+          publicNoticeEn: businessConfig.publicNoticeEn,
+
           deliveryBaseFeeCents: businessConfig.deliveryBaseFeeCents,
           priorityPerKmCents: businessConfig.priorityPerKmCents,
           maxDeliveryRangeKm: businessConfig.maxDeliveryRangeKm,
           priorityDefaultDistanceKm: businessConfig.priorityDefaultDistanceKm,
 
           salesTaxRate: businessConfig.salesTaxRate,
+          wechatAlipayExchangeRate: businessConfig.wechatAlipayExchangeRate,
 
           earnPtPerDollar: businessConfig.earnPtPerDollar,
           redeemDollarPerPoint: businessConfig.redeemDollarPerPoint,
@@ -348,6 +360,14 @@ async function main() {
           storePostalCode: businessConfig.storePostalCode,
           supportPhone: businessConfig.supportPhone,
           supportEmail: businessConfig.supportEmail,
+
+          brandNameZh: businessConfig.brandNameZh,
+          brandNameEn: businessConfig.brandNameEn,
+          siteUrl: businessConfig.siteUrl,
+          emailFromNameZh: businessConfig.emailFromNameZh,
+          emailFromNameEn: businessConfig.emailFromNameEn,
+          emailFromAddress: businessConfig.emailFromAddress,
+          smsSignature: businessConfig.smsSignature,
 
           createdAt: businessConfig.createdAt,
           updatedAt: businessConfig.updatedAt,
@@ -471,6 +491,7 @@ async function main() {
     })),
   };
 
+  // 写到 apps/api/prisma/seed/menu.snapshot.json（建议在 apps/api 目录执行）
   const outDir = path.join(process.cwd(), "prisma", "seed");
   fs.mkdirSync(outDir, { recursive: true });
 

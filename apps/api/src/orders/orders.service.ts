@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { PublishCommand, SNSClient } from '@aws-sdk/client-sns';
 import * as crypto from 'crypto';
 import { AppLogger } from '../common/app-logger';
 import { normalizeEmail } from '../common/utils/email';
@@ -14,7 +15,6 @@ import {
   DeliveryProvider,
   DeliveryType,
   FulfillmentType,
-  LoyaltyEntryType,
   MenuItemOptionGroup,
   MenuOptionGroupTemplate,
   MenuOptionTemplateChoice,
@@ -196,6 +196,10 @@ type DeliveryPricingConfig = {
 export class OrdersService {
   private readonly logger = new AppLogger(OrdersService.name);
   private readonly CLIENT_REQUEST_ID_RE = CLIENT_REQUEST_ID_RE;
+  private readonly snsClient = new SNSClient({
+    region: process.env.AWS_REGION,
+  });
+  private readonly snsTopicArn = process.env.SNS_TOPIC_ARN;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -444,7 +448,7 @@ export class OrdersService {
     // —— 积分结算与优惠券处理
     if (next === 'paid') {
       // [优化]：使用公共方法，逻辑统一
-      this.handleOrderPaidSideEffects(updated);
+      void this.handleOrderPaidSideEffects(updated);
     } else if (next === 'refunded') {
       void this.loyalty.rollbackOnRefund(updated.id);
     } else if (next === 'ready') {
@@ -464,7 +468,7 @@ export class OrdersService {
     });
   }
 
-  private handleOrderPaidSideEffects(order: OrderWithItems) {
+  private async handleOrderPaidSideEffects(order: OrderWithItems) {
     // 1. 计算用于积分奖励的有效金额（小计 - 优惠券折扣）
     const netSubtotalForRewards = Math.max(
       0,
@@ -480,13 +484,31 @@ export class OrdersService {
       });
     }
 
-    // 3. 触发积分结算
-    void this.loyalty.settleOnPaid({
-      orderId: order.id,
-      userId: order.userId ?? undefined,
-      subtotalCents: netSubtotalForRewards,
-      redeemValueCents: order.loyaltyRedeemCents ?? 0,
-    });
+    if (!this.snsTopicArn) {
+      this.logger.warn(
+        `SNS_TOPIC_ARN not configured, skipping ORDER_PAID publish for order ${order.id}`,
+      );
+      return;
+    }
+
+    try {
+      await this.snsClient.send(
+        new PublishCommand({
+          TopicArn: this.snsTopicArn,
+          Message: JSON.stringify({
+            event: 'ORDER_PAID',
+            orderId: order.id,
+            userId: order.userId,
+            amountCents: netSubtotalForRewards,
+            redeemValueCents: order.loyaltyRedeemCents ?? 0,
+            timestamp: new Date().toISOString(),
+          }),
+        }),
+      );
+      this.logger.log(`Published ORDER_PAID event for order ${order.id}`);
+    } catch (error) {
+      this.logger.error(`Failed to publish SNS: ${String(error)}`);
+    }
   }
   /**
    * ✅ 统一推断订单 paymentMethod
@@ -730,311 +752,6 @@ export class OrdersService {
         pointsMicro: true,
         tier: true,
         lifetimeSpendCents: true,
-      },
-    });
-  }
-
-  /**
-   * 方案B：在“创建 amendment 的同一个事务”里调用
-   * - 计算：现金可退额度 vs 积分返还额度（考虑历史 amendments 已退）
-   * - 写：OrderAmendment 的 refundCents / redeemReturnCents / redeemReturnMicro / earnAdjustMicro / referralAdjustMicro
-   * - 写：LoyaltyLedger（用 sourceKey 幂等）并更新账户余额
-   *
-   * 注意：refundGrossCents 建议传“你本次退菜对应的应退价值（分）”，不要包含小费。
-   */
-  private async applyLoyaltyAdjustmentsForAmendmentTx(params: {
-    tx: Prisma.TransactionClient;
-    orderId: string;
-    amendmentId: string;
-    amendmentStableId: string;
-    refundGrossCents: number;
-  }): Promise<void> {
-    const { tx, orderId, amendmentId, amendmentStableId } = params;
-    const refundGrossCentsRaw = Number.isFinite(params.refundGrossCents)
-      ? Math.max(0, Math.round(params.refundGrossCents))
-      : 0;
-    const pricingConfig = await this.getBusinessPricingConfig();
-
-    // 1) 读订单（需要：userId / totalCents / loyaltyRedeemCents / subtotalCents）
-    const order = await tx.order.findUnique({
-      where: { id: orderId },
-      select: {
-        id: true,
-        userId: true,
-        subtotalCents: true,
-        totalCents: true,
-        loyaltyRedeemCents: true,
-      },
-    });
-
-    if (!order?.userId) {
-      // 匿名单：不处理积分；但仍可把 refundCents 写回 amendment（按现金退）
-      await tx.orderAmendment.update({
-        where: { id: amendmentId },
-        data: {
-          refundCents: refundGrossCentsRaw,
-          redeemReturnCents: 0,
-          redeemReturnMicro: 0n,
-          earnAdjustMicro: 0n,
-          referralAdjustMicro: 0n,
-        },
-      });
-      return;
-    }
-
-    const originalCashPaidCents = Math.max(0, order.totalCents ?? 0);
-    const originalRedeemCents = Math.max(0, order.loyaltyRedeemCents ?? 0);
-
-    // 2) 汇总历史已退（现金/积分），避免超退
-    const agg = await tx.orderAmendment.aggregate({
-      where: { orderId },
-      _sum: { refundCents: true, redeemReturnCents: true },
-    });
-
-    const refundedCashAlready = Math.max(0, agg._sum.refundCents ?? 0);
-    const returnedRedeemAlready = Math.max(0, agg._sum.redeemReturnCents ?? 0);
-
-    const remainingCashRefundable = Math.max(
-      0,
-      originalCashPaidCents - refundedCashAlready,
-    );
-    const remainingRedeemRefundable = Math.max(
-      0,
-      originalRedeemCents - returnedRedeemAlready,
-    );
-
-    const maxRefundableCents =
-      remainingCashRefundable + remainingRedeemRefundable;
-
-    const refundGrossCents = Math.min(refundGrossCentsRaw, maxRefundableCents);
-
-    // 3) 规则：先退现金（不超过 remainingCashRefundable），超出部分返还积分（不超过 remainingRedeemRefundable）
-    const redeemReturnCents = Math.min(
-      remainingRedeemRefundable,
-      Math.max(0, refundGrossCents - remainingCashRefundable),
-    );
-    const refundCashCents = Math.max(0, refundGrossCents - redeemReturnCents);
-
-    const sourceKey = `AMEND:${amendmentStableId}`;
-
-    // 4) 锁定用户积分账户
-    const acc = await this.ensureLoyaltyAccountWithTx(tx, order.userId);
-
-    await tx.$queryRaw`
-    SELECT id
-    FROM "LoyaltyAccount"
-    WHERE id = ${acc.id}::uuid
-    FOR UPDATE
-  `;
-
-    let userBalance = acc.pointsMicro;
-
-    // 5) 返还抵扣积分（redeemReturn）
-    const redeemReturnMicro = this.centsToRedeemMicro(
-      redeemReturnCents,
-      pricingConfig.redeemDollarPerPoint,
-    );
-
-    if (redeemReturnMicro > 0n) {
-      const existed = await tx.loyaltyLedger.findUnique({
-        where: {
-          orderId_type_sourceKey: {
-            orderId,
-            type: LoyaltyEntryType.REFUND_RETURN_REDEEM,
-            sourceKey,
-          },
-        },
-        select: { id: true, deltaMicro: true, balanceAfterMicro: true },
-      });
-
-      if (!existed) {
-        const newBal = userBalance + redeemReturnMicro;
-        await tx.loyaltyLedger.create({
-          data: {
-            accountId: acc.id,
-            orderId,
-            type: LoyaltyEntryType.REFUND_RETURN_REDEEM,
-            sourceKey,
-            deltaMicro: redeemReturnMicro,
-            balanceAfterMicro: newBal,
-            note: `amend return redeem $${(redeemReturnCents / 100).toFixed(2)}`,
-          },
-        });
-        userBalance = newBal;
-      } else {
-        userBalance = existed.balanceAfterMicro;
-      }
-    }
-
-    // 6) 回收 earned（按比例，基于 netBase=subtotal-redeem；refund 口径用 refundCashCents）
-    //    这里不把 coupon 纳入 net（与 settleOnPaid 现状一致）
-    let earnAdjustMicroApplied = 0n;
-
-    const netBaseCents = Math.max(
-      0,
-      (order.subtotalCents ?? 0) - (order.loyaltyRedeemCents ?? 0),
-    );
-
-    if (netBaseCents > 0 && refundCashCents > 0) {
-      const earn = await tx.loyaltyLedger.findUnique({
-        where: {
-          orderId_type_sourceKey: {
-            orderId,
-            type: LoyaltyEntryType.EARN_ON_PURCHASE,
-            sourceKey: 'ORDER',
-          },
-        },
-        select: { deltaMicro: true },
-      });
-
-      const earnedTotalMicro = earn?.deltaMicro ?? 0n;
-      if (earnedTotalMicro > 0n) {
-        const refundableBaseCents = Math.min(refundCashCents, netBaseCents);
-
-        const proportionalMicro =
-          (earnedTotalMicro * BigInt(refundableBaseCents)) /
-          BigInt(netBaseCents);
-
-        if (proportionalMicro > 0n) {
-          const willDeduct =
-            proportionalMicro > userBalance ? userBalance : proportionalMicro;
-
-          const existedReverse = await tx.loyaltyLedger.findUnique({
-            where: {
-              orderId_type_sourceKey: {
-                orderId,
-                type: LoyaltyEntryType.REFUND_REVERSE_EARN,
-                sourceKey,
-              },
-            },
-            select: { id: true, deltaMicro: true, balanceAfterMicro: true },
-          });
-
-          if (!existedReverse) {
-            const newBal = userBalance - willDeduct;
-            await tx.loyaltyLedger.create({
-              data: {
-                accountId: acc.id,
-                orderId,
-                type: LoyaltyEntryType.REFUND_REVERSE_EARN,
-                sourceKey,
-                deltaMicro: -willDeduct,
-                balanceAfterMicro: newBal,
-                note: `amend reverse earn on $${(
-                  refundableBaseCents / 100
-                ).toFixed(2)}`,
-              },
-            });
-            userBalance = newBal;
-            earnAdjustMicroApplied = -willDeduct;
-          } else {
-            earnAdjustMicroApplied = existedReverse.deltaMicro ?? 0n;
-            userBalance = existedReverse.balanceAfterMicro;
-          }
-        }
-      }
-    }
-
-    // 7) 回收 referral（若存在，按同一比例；扣推荐人账户）
-    let referralAdjustMicroApplied = 0n;
-
-    if (netBaseCents > 0 && refundCashCents > 0) {
-      const referral = await tx.loyaltyLedger.findUnique({
-        where: {
-          orderId_type_sourceKey: {
-            orderId,
-            type: LoyaltyEntryType.REFERRAL_BONUS,
-            sourceKey: 'ORDER',
-          },
-        },
-        select: { accountId: true, deltaMicro: true },
-      });
-
-      const referralTotalMicro = referral?.deltaMicro ?? 0n;
-
-      if (referral && referralTotalMicro > 0n) {
-        const refundableBaseCents = Math.min(refundCashCents, netBaseCents);
-
-        const proportionalMicro =
-          (referralTotalMicro * BigInt(refundableBaseCents)) /
-          BigInt(netBaseCents);
-
-        if (proportionalMicro > 0n) {
-          const existedReverse = await tx.loyaltyLedger.findUnique({
-            where: {
-              orderId_type_sourceKey: {
-                orderId,
-                type: LoyaltyEntryType.REFUND_REVERSE_REFERRAL,
-                sourceKey,
-              },
-            },
-            select: { id: true, deltaMicro: true },
-          });
-
-          if (!existedReverse) {
-            const refAcc = await tx.loyaltyAccount.findUnique({
-              where: { id: referral.accountId },
-              select: { id: true, pointsMicro: true },
-            });
-
-            if (refAcc) {
-              await tx.$queryRaw`
-              SELECT id
-              FROM "LoyaltyAccount"
-              WHERE id = ${refAcc.id}::uuid
-              FOR UPDATE
-            `;
-
-              const willDeduct =
-                proportionalMicro > refAcc.pointsMicro
-                  ? refAcc.pointsMicro
-                  : proportionalMicro;
-
-              const refNewBal = refAcc.pointsMicro - willDeduct;
-
-              await tx.loyaltyLedger.create({
-                data: {
-                  accountId: refAcc.id,
-                  orderId,
-                  type: LoyaltyEntryType.REFUND_REVERSE_REFERRAL,
-                  sourceKey,
-                  deltaMicro: -willDeduct,
-                  balanceAfterMicro: refNewBal,
-                  note: `amend reverse referral on $${(
-                    refundableBaseCents / 100
-                  ).toFixed(2)}`,
-                },
-              });
-
-              await tx.loyaltyAccount.update({
-                where: { id: refAcc.id },
-                data: { pointsMicro: refNewBal },
-              });
-
-              referralAdjustMicroApplied = -willDeduct;
-            }
-          } else {
-            referralAdjustMicroApplied = existedReverse.deltaMicro ?? 0n;
-          }
-        }
-      }
-    }
-
-    // 8) 回写用户账户余额
-    await tx.loyaltyAccount.update({
-      where: { id: acc.id },
-      data: { pointsMicro: userBalance },
-    });
-
-    // 9) 回写 amendment（方案B字段）
-    await tx.orderAmendment.update({
-      where: { id: amendmentId },
-      data: {
-        refundCents: refundCashCents,
-        redeemReturnCents,
-        redeemReturnMicro,
-        earnAdjustMicro: earnAdjustMicroApplied,
-        referralAdjustMicro: referralAdjustMicroApplied,
       },
     });
   }
@@ -1768,7 +1485,7 @@ export class OrdersService {
         );
 
         if (order.status === 'paid') {
-          this.handleOrderPaidSideEffects(order);
+          void this.handleOrderPaidSideEffects(order);
         }
 
         // === 派送逻辑 (DoorDash / Uber) ===
