@@ -83,8 +83,6 @@ services:
       context: .
       dockerfile: Dockerfile.web
     restart: always
-    extra_hosts:
-      - "sanq.ca:host-gateway"
     environment:
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       API_URL: "http://api:4000"
