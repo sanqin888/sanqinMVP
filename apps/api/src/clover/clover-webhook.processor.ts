@@ -1,3 +1,4 @@
+//apps/api/src/clover/clover-webhook.processor.ts
 import {
   Injectable,
   Logger,
@@ -21,11 +22,13 @@ const normalizeClientRequestId = (
   return CLIENT_REQUEST_ID_RE.test(trimmed) ? trimmed : undefined;
 };
 
+// 🟢 修改: 增加 cloverOrderId 字段
 type CloverWebhookEvent = {
   checkoutSessionId?: string;
   referenceId?: string;
   result?: string;
   status?: string;
+  cloverOrderId?: string;
 };
 
 const errToString = (err: unknown): string =>
@@ -51,6 +54,8 @@ export class CloverWebhookProcessor implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    this.logger.log(`Initializing SQS Consumer for: ${queueUrl}`);
+
     this.consumer = Consumer.create({
       queueUrl,
       sqs: new SQSClient({ region: process.env.AWS_REGION }),
@@ -62,7 +67,8 @@ export class CloverWebhookProcessor implements OnModuleInit, OnModuleDestroy {
         let payload: unknown;
         try {
           payload = JSON.parse(message.Body);
-        } catch (error) {
+        } catch (error: unknown) {
+          // 🟢 修复: 显式标记 error 为 unknown
           this.logger.error(
             `Invalid JSON in SQS message: ${errToString(error)}`,
           );
@@ -93,6 +99,9 @@ export class CloverWebhookProcessor implements OnModuleInit, OnModuleDestroy {
 
   private async processEvent(payload: unknown) {
     this.logger.log('Processing payload from SQS...');
+
+    // 调试日志
+    this.logger.log(`Received Webhook Payload: ${JSON.stringify(payload)}`);
 
     // ---- 1. 抽取我们关心的字段 ----
     const event = this.extractEvent(payload);
@@ -155,9 +164,6 @@ export class CloverWebhookProcessor implements OnModuleInit, OnModuleDestroy {
 
     // ---- 3. 根据 Clover 返回的状态判断是否支付成功 ----
     const rawStatus = (event.status || event.result || '').toString();
-
-    // 目前 webhook payload 的状态字段是简单字符串，
-    // 直接用字符串匹配即可识别成功状态（APPROVED / SUCCESS / PAID / COMPLETE / SETTLED 等）
     const isSuccess = /success|approved|paid|complete|settled/i.test(rawStatus);
 
     if (!isSuccess) {
@@ -171,22 +177,37 @@ export class CloverWebhookProcessor implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    // ---- 4. （可选）调用 Clover API 再次确认支付状态 ----
-    const skipVerify =
-      process.env.CLOVER_SKIP_VERIFY === '1' ||
-      process.env.NODE_ENV !== 'production';
+    // ---- 4. 调用 Clover API 再次确认支付状态 ----
+    const skipVerify = process.env.CLOVER_SKIP_VERIFY === '1';
 
     if (skipVerify) {
       this.logger.warn(
-        `Skipping Clover payment verification for intent ${intent.id} in dev mode`,
+        `Skipping Clover payment verification for intent ${intent.id} due to CLOVER_SKIP_VERIFY`,
       );
-    } else if (intent.checkoutSessionId) {
-      const ok = await this.clover.verifyHostedCheckoutPaid(
-        intent.checkoutSessionId,
-      );
-      if (!ok) {
+    } else {
+      let verified = false;
+
+      // 优先使用 Order ID 进行验证
+      if (event.cloverOrderId) {
+        this.logger.log(
+          `Verifying payment using Clover Order ID: ${event.cloverOrderId}`,
+        );
+        verified = await this.clover.verifyOrderPaid(event.cloverOrderId);
+      }
+      // 降级方案
+      else if (intent.checkoutSessionId) {
         this.logger.warn(
-          `verifyHostedCheckoutPaid returned false for checkoutSessionId=${intent.checkoutSessionId}`,
+          `No cloverOrderId in payload, falling back to Order ID verification using checkoutSessionId...`,
+        );
+        verified = await this.clover.verifyOrderPaid(intent.checkoutSessionId);
+      } else {
+        this.logger.error('Cannot verify payment: missing Clover identifiers');
+        verified = false;
+      }
+
+      if (!verified) {
+        this.logger.warn(
+          `Payment verification failed for intent ${intent.id}. cloverOrderId=${event.cloverOrderId}`,
         );
         await this.checkoutIntents.markFailed({
           intentId: intent.id,
@@ -219,7 +240,11 @@ export class CloverWebhookProcessor implements OnModuleInit, OnModuleDestroy {
         intent.id;
 
       // 1) 先建订单（已支付）
-      const order = await this.orders.createInternal(orderDto, idempotencyKey);
+      // 🟢 修复: 类型断言解决 Unsafe assignment
+      const order = (await this.orders.createInternal(
+        orderDto,
+        idempotencyKey,
+      )) as { id: string; status: string };
 
       // 2) 标记 CheckoutIntent 已处理
       await this.checkoutIntents.markCompleted({
@@ -233,7 +258,8 @@ export class CloverWebhookProcessor implements OnModuleInit, OnModuleDestroy {
           intent.checkoutSessionId ?? intent.referenceId
         }`,
       );
-    } catch (error) {
+    } catch (error: unknown) {
+      // 🟢 修复: 显式标记 error 为 unknown
       this.logger.error(
         `Failed to create order for checkout intent ${intent.id}: ${errToString(
           error,
@@ -243,7 +269,7 @@ export class CloverWebhookProcessor implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  // 从 Clover webhook JSON 里递归抽取 checkoutSessionId / referenceId / status / result
+  // 递归抽取字段
   private extractEvent(payload: unknown): CloverWebhookEvent {
     const event: CloverWebhookEvent = {};
 
@@ -259,7 +285,6 @@ export class CloverWebhookProcessor implements OnModuleInit, OnModuleDestroy {
       )) {
         const lower = key.toLowerCase();
 
-        // Hosted Checkout webhook 文档中，Data 字段 = Checkout Session UUID
         if (
           !event.checkoutSessionId &&
           (lower === 'checkoutsessionid' || lower === 'data') &&
@@ -270,10 +295,22 @@ export class CloverWebhookProcessor implements OnModuleInit, OnModuleDestroy {
 
         if (
           !event.referenceId &&
-          (lower === 'referenceid' || lower === 'orderid') &&
+          lower === 'referenceid' &&
           typeof raw === 'string'
         ) {
           event.referenceId = raw;
+        }
+
+        if (
+          !event.cloverOrderId &&
+          (lower === 'orderid' || lower === 'id') &&
+          typeof raw === 'string'
+        ) {
+          if (lower === 'orderid') {
+            event.cloverOrderId = raw;
+          } else if (lower === 'id' && raw.length > 5) {
+            // Optional fallback
+          }
         }
 
         if (!event.result && lower === 'result' && typeof raw === 'string') {
