@@ -174,7 +174,7 @@ export function OrderSummaryClient({ orderStableId, locale }: Props) {
           setData(summary);
           setLoading(false);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (cancelled) return;
 
         // 核心逻辑：如果还没达到最大重试次数，就等待后重试
