@@ -347,6 +347,9 @@ export class MembershipController {
       city?: string;
       province?: string;
       postalCode?: string;
+      placeId?: string;
+      latitude?: number;
+      longitude?: number;
       isDefault?: boolean;
     },
   ) {
@@ -376,6 +379,9 @@ export class MembershipController {
       city: body.city,
       province: body.province,
       postalCode: body.postalCode,
+      placeId: body.placeId ?? null,
+      latitude: body.latitude ?? null,
+      longitude: body.longitude ?? null,
       isDefault: body.isDefault ?? false,
     });
 
@@ -400,6 +406,9 @@ export class MembershipController {
       city?: string;
       province?: string;
       postalCode?: string;
+      placeId?: string;
+      latitude?: number;
+      longitude?: number;
       isDefault?: boolean;
     },
   ) {
@@ -430,6 +439,9 @@ export class MembershipController {
       city: body.city,
       province: body.province,
       postalCode: body.postalCode,
+      placeId: body.placeId ?? null,
+      latitude: body.latitude ?? null,
+      longitude: body.longitude ?? null,
       isDefault: body.isDefault ?? false,
     });
 

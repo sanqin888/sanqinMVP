@@ -581,6 +581,9 @@ export class AdminMembersService {
       city: addr.city,
       province: addr.province,
       postalCode: addr.postalCode,
+      placeId: addr.placeId ?? undefined,
+      latitude: addr.latitude ?? undefined,
+      longitude: addr.longitude ?? undefined,
       isDefault: addr.isDefault,
     }));
   }

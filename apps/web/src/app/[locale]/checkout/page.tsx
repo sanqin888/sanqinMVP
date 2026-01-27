@@ -57,6 +57,9 @@ type MemberAddress = {
   city: string;
   province: string;
   postalCode: string;
+  placeId?: string;
+  latitude?: number;
+  longitude?: number;
   isDefault?: boolean;
 };
 
@@ -1387,6 +1390,18 @@ export default function CheckoutPage() {
         notes: nextNotes,
       };
     });
+    if (
+      typeof memberDefaultAddress.latitude === "number" &&
+      typeof memberDefaultAddress.longitude === "number"
+    ) {
+      setSelectedCoordinates({
+        latitude: memberDefaultAddress.latitude,
+        longitude: memberDefaultAddress.longitude,
+      });
+    } else {
+      setSelectedCoordinates(null);
+    }
+    setSelectedPlaceId(memberDefaultAddress.placeId ?? null);
 
     setAddressPrefilled(true);
     if (memberDefaultAddress.remark?.trim()) {
@@ -2316,6 +2331,7 @@ export default function CheckoutPage() {
                         onChange={(nextValue) => {
                           handleCustomerChange("addressLine1", nextValue);
                           setSelectedPlaceId(null);
+                          setSelectedCoordinates(null);
                         }}
                         onSelect={(selection) => {
                           const { addressLine1, city, province, postalCode } =

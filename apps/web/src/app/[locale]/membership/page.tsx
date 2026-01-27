@@ -175,6 +175,8 @@ type MemberAddress = {
   province: string;
   postalCode: string;
   placeId?: string;
+  latitude?: number;
+  longitude?: number;
   isDefault?: boolean;
 };
 
@@ -1228,6 +1230,8 @@ export default function MembershipHomePage() {
             province: address.province,
             postalCode: address.postalCode,
             placeId: address.placeId ?? '',
+            latitude: address.latitude ?? null,
+            longitude: address.longitude ?? null,
             isDefault: setDefault,
           }),
         });
@@ -1262,6 +1266,8 @@ export default function MembershipHomePage() {
             province: address.province,
             postalCode: address.postalCode,
             placeId: address.placeId ?? '',
+            latitude: address.latitude ?? null,
+            longitude: address.longitude ?? null,
             isDefault: setDefault,
           }),
         });
@@ -2127,6 +2133,10 @@ function AddressesSection({
   const [province, setProvince] = useState('');
   const [postalCode, setPostalCode] = useState('');
   const [placeId, setPlaceId] = useState<string | null>(null);
+  const [coordinates, setCoordinates] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
   const [setAsDefault, setSetAsDefault] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -2146,6 +2156,7 @@ function AddressesSection({
     setProvince('');
     setPostalCode('');
     setPlaceId(null);
+    setCoordinates(null);
     setSetAsDefault(false);
     setFormError(null);
     setEditingId(null);
@@ -2194,6 +2205,8 @@ function AddressesSection({
       province: trimmedProvince,
       postalCode: trimmedPostal,
       placeId: placeId ?? undefined,
+      latitude: coordinates?.latitude,
+      longitude: coordinates?.longitude,
       isDefault: setAsDefault,
     };
 
@@ -2216,6 +2229,17 @@ function AddressesSection({
     setProvince(address.province);
     setPostalCode(address.postalCode);
     setPlaceId(address.placeId ?? null);
+    if (
+      typeof address.latitude === 'number' &&
+      typeof address.longitude === 'number'
+    ) {
+      setCoordinates({
+        latitude: address.latitude,
+        longitude: address.longitude,
+      });
+    } else {
+      setCoordinates(null);
+    }
     setSetAsDefault(!!address.isDefault);
     setFormError(null);
     setEditingId(address.addressStableId);
@@ -2276,6 +2300,7 @@ function AddressesSection({
             onChange={(nextValue) => {
               setAddressLine1(nextValue);
               setPlaceId(null);
+              setCoordinates(null);
             }}
             onSelect={(selection) => {
               const { addressLine1, city, province, postalCode } =
@@ -2291,6 +2316,14 @@ function AddressesSection({
                 setPostalCode(formatPostalCodeInput(postalCode));
               }
               setPlaceId(selection.placeId ?? null);
+              if (selection.location) {
+                setCoordinates({
+                  latitude: selection.location.lat,
+                  longitude: selection.location.lng,
+                });
+              } else {
+                setCoordinates(null);
+              }
             }}
             placeholder={isZh ? '地址行 1' : 'Address line 1'}
             containerClassName="relative"
