@@ -1,4 +1,4 @@
-///Users/apple/sanqinMVP/apps/api/src/clover/clover.service.ts
+//Users/apple/sanqinMVP/apps/api/src/clover/clover.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 
 /**
@@ -46,6 +46,19 @@ interface HostedCheckoutApiResponse {
   checkoutSessionId?: string;
   // allow passthrough
   [k: string]: unknown;
+}
+
+interface CloverOrder {
+  id: string;
+  currency?: string;
+  total?: number;
+  paymentState?: string;
+  state?: string; // LOCKED, etc.
+  payments?: Array<{
+    id: string;
+    result?: string;
+    amount?: number;
+  }>;
 }
 
 // ===== Guards & utils =====
@@ -173,60 +186,53 @@ export class CloverService {
     return verdict === true;
   }
 
-  async verifyHostedCheckoutPaid(checkoutSessionId: string): Promise<boolean> {
-    if (!checkoutSessionId) {
-      this.logger.warn(
-        'verifyHostedCheckoutPaid called without checkoutSessionId',
-      );
-      return false;
-    }
-    if (!this.privateKey || !this.merchantId || !this.apiToken) {
-      this.logger.error(
-        'Cannot verify checkout payment: missing Clover credentials',
-      );
+  /**
+   * 通过 Order ID 验证支付状态 (使用 /v3/ 接口)
+   */
+  async verifyOrderPaid(orderId: string): Promise<boolean> {
+    if (!orderId || !this.apiToken || !this.merchantId) {
+      this.logger.warn('verifyOrderPaid: missing args or credentials');
       return false;
     }
 
-    const url = `${this.apiBase}/invoicingcheckoutservice/v1/checkouts/${encodeURIComponent(checkoutSessionId)}`;
-    this.logger.log(`verifyHostedCheckoutPaid -> GET ${url}`);
+    // 使用标准的 Order API
+    const url = `${this.apiBase}/v3/merchants/${this.merchantId}/orders/${orderId}?expand=payments`;
+    this.logger.log(`Checking Order Status -> GET ${url}`);
 
     try {
       const resp = await fetch(url, {
         method: 'GET',
         headers: {
           Accept: 'application/json',
-          'X-Clover-Merchant-Id': this.merchantId,
-          Authorization: `Bearer ${this.apiToken}`,
+          Authorization: `Bearer ${this.apiToken}`, // 必须用 Access Token
         },
       });
 
-      const rawText = await resp.text();
-      let parsed: unknown;
-      try {
-        parsed = rawText ? JSON.parse(rawText) : undefined;
-      } catch {
-        parsed = undefined;
-      }
-
       if (!resp.ok) {
-        const preview = rawText.slice(0, 200);
-        this.logger.warn(
-          `verifyHostedCheckoutPaid failed: status=${resp.status} response=${preview}`,
-        );
+        this.logger.error(`Failed to fetch order: ${resp.status}`);
         return false;
       }
 
-      const paid = this.isCheckoutPaid(parsed);
-      if (!paid) {
-        this.logger.log(
-          `verifyHostedCheckoutPaid indicates checkout ${checkoutSessionId} is not settled yet`,
+      // 🟢 修复: 强制转换为 CloverOrder 类型，解决 "Unsafe assignment of any value"
+      const orderData = (await resp.json()) as CloverOrder;
+
+      // 逻辑：检查订单状态是否为 PAID 或有成功的支付记录
+      // 🟢 修复: 现在 orderData 有了类型，这些访问不再报错
+      const isPaid =
+        orderData.paymentState === 'PAID' || orderData.state === 'LOCKED';
+
+      // 或者检查 payments 数组里是否有成功的支付
+      // 🟢 修复: 给 p 指定类型，或者通过接口自动推断
+      const hasSuccessPayment =
+        Array.isArray(orderData.payments) &&
+        orderData.payments.some(
+          (p) => p.result === 'SUCCESS' || p.result === 'APPROVED',
         );
-      }
-      return paid;
+
+      // 🟢 修复: 明确返回 boolean
+      return !!(isPaid || hasSuccessPayment);
     } catch (error) {
-      this.logger.error(
-        `verifyHostedCheckoutPaid exception for ${checkoutSessionId}: ${errToString(error)}`,
-      );
+      this.logger.error(`verifyOrderPaid error: ${errToString(error)}`);
       return false;
     }
   }
