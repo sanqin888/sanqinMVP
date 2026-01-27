@@ -189,36 +189,30 @@ export class CloverWebhookProcessor implements OnModuleInit, OnModuleDestroy {
       let verified = false;
       let targetOrderId = event.cloverOrderId;
 
-      // 🟢 策略 A: 如果没有 OrderID 但有 PaymentID，先去换取 OrderID
+      // 🟢 策略 A: 如果没有 OrderID 但有 PaymentID，用 paymentId 验证并获取 OrderID
       if (!targetOrderId && event.paymentId) {
         this.logger.log(
-          `Fetching Order ID from Payment ID: ${event.paymentId}`,
+          `Verifying payment using Clover Payment ID: ${event.paymentId}`,
         );
-        const foundId = await this.clover.getOrderIdByPaymentId(
+        const verification = await this.clover.verifyOrderId(
           event.paymentId,
         );
-        if (foundId) {
-          targetOrderId = foundId;
+        verified = verification.verified;
+        targetOrderId = verification.orderId ?? targetOrderId;
+        if (targetOrderId) {
           this.logger.log(`Resolved Order ID: ${targetOrderId}`);
         }
       }
 
       // 🟢 策略 B: 如果拿到了 OrderID，进行验证
-      if (targetOrderId) {
+      if (!verified && targetOrderId) {
         this.logger.log(
           `Verifying payment using Clover Order ID: ${targetOrderId}`,
         );
         verified = await this.clover.verifyOrderPaid(targetOrderId);
       }
-      // 🟢 策略 C: 降级方案 (仅在完全没办法时尝试用 SessionID)
-      else if (intent.checkoutSessionId) {
-        this.logger.warn(
-          `No cloverOrderId/paymentId resolved, falling back to Session ID verification...`,
-        );
-        verified = await this.clover.verifyHostedCheckoutPaid(
-          intent.checkoutSessionId,
-        );
-      } else {
+
+      if (!verified && !targetOrderId) {
         this.logger.error('Cannot verify payment: missing Clover identifiers');
         verified = false;
       }
