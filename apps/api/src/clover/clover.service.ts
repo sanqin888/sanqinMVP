@@ -91,7 +91,7 @@ export class CloverService {
 
   private readonly apiBase: string;
   private readonly merchantId: string | undefined;
-  private readonly apiToken: string;
+  private readonly apiToken: string | undefined;
   private readonly privateKey: string | undefined;
 
   private readonly taxId: string | undefined;
@@ -180,7 +180,7 @@ export class CloverService {
       );
       return false;
     }
-    if (!this.privateKey || !this.merchantId) {
+    if (!this.privateKey || !this.merchantId || !this.apiToken) {
       this.logger.error(
         'Cannot verify checkout payment: missing Clover credentials',
       );
