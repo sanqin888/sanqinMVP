@@ -84,13 +84,13 @@ services:
       dockerfile: Dockerfile.web
     restart: always
     args:
-      NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_KEY}
+      NEXT_PUBLIC_GOOGLE_MAPS_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_KEY}
     environment:
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       API_URL: "http://api:4000"
       API_UPSTREAM: "http://api:4000"
       NEXTAUTH_URL: "https://sanq.ca"
-      NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${NEXT_PUBLIC_GOOGLE_MAPS_KEY}
+      NEXT_PUBLIC_GOOGLE_MAPS_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_KEY}
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:
