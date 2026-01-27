@@ -1,6 +1,7 @@
 // apps/web/src/app/layout.tsx
 import type { Metadata } from "next";
 import { cookies, headers } from "next/headers";
+import Script from "next/script";
 import "./globals.css";
 import type { Locale } from "@/lib/i18n/locales";
 import { AuthProvider } from "./providers";
@@ -35,6 +36,10 @@ export default async function RootLayout({
       <body className="antialiased">
         {/* ✅ 在这里包一层 AuthProvider，里面才可以安全 useSession() */}
         <AuthProvider>{children}</AuthProvider>
+        <Script
+          src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY}&libraries=places`}
+          strategy="lazyOnload"
+        />
       </body>
     </html>
   );

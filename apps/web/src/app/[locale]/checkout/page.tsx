@@ -483,6 +483,10 @@ export default function CheckoutPage() {
     useState<MemberAddress | null>(null);
   const [addressRemarkPrefilled, setAddressRemarkPrefilled] =
     useState(false);
+  const [selectedCoordinates, setSelectedCoordinates] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
 
   // 手机号验证流程状态
   const [phoneVerificationStep, setPhoneVerificationStep] = useState<
@@ -951,6 +955,9 @@ export default function CheckoutPage() {
     const nextValue =
       field === "phone" ? normalizeCanadianPhoneInput(value) : value;
     setCustomer((prev) => ({ ...prev, [field]: nextValue }));
+    if (field === "addressLine1") {
+      setSelectedCoordinates(null);
+    }
 
     // 🔐 手机号变更时，重置验证状态
     if (field === "phone") {
@@ -1424,9 +1431,12 @@ export default function CheckoutPage() {
     setAddressValidation({ distanceKm: null, isChecking: true, error: null });
 
     try {
-      const coordinates = await geocodeAddress(deliveryAddressText, {
-        cityHint: `${customer.city}, ${customer.province}`,
-      });
+      let coordinates = selectedCoordinates;
+      if (!coordinates) {
+        coordinates = await geocodeAddress(deliveryAddressText, {
+          cityHint: `${customer.city}, ${customer.province}`,
+        });
+      }
 
       if (!coordinates) {
         setAddressValidation({
@@ -2289,6 +2299,14 @@ export default function CheckoutPage() {
                         onSelect={(selection) => {
                           const { addressLine1, city, province, postalCode } =
                             extractAddressParts(selection);
+                          if (selection.location) {
+                            setSelectedCoordinates({
+                              latitude: selection.location.lat,
+                              longitude: selection.location.lng,
+                            });
+                          } else {
+                            setSelectedCoordinates(null);
+                          }
                           setCustomer((prev) => ({
                             ...prev,
                             addressLine1:
@@ -2311,7 +2329,7 @@ export default function CheckoutPage() {
                         }
                         containerClassName="relative"
                         inputClassName="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
-                        suggestionListClassName="absolute z-10 mt-1 w-full rounded-2xl border border-slate-200 bg-white py-1 text-sm shadow-lg"
+                        suggestionListClassName="absolute z-50 mt-1 w-full rounded-2xl border border-slate-200 bg-white py-1 text-sm shadow-lg"
                         suggestionItemClassName="cursor-pointer px-3 py-2 text-slate-700 hover:bg-slate-100"
                         onBlur={triggerDistanceValidationIfReady}
                         debounceMs={500}

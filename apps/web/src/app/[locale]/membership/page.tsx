@@ -2284,7 +2284,7 @@ function AddressesSection({
             placeholder={isZh ? '地址行 1' : 'Address line 1'}
             containerClassName="relative"
             inputClassName="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"
-            suggestionListClassName="absolute z-10 mt-1 w-full rounded-lg border border-slate-200 bg-white py-1 text-xs shadow-lg"
+            suggestionListClassName="absolute z-50 mt-1 w-full rounded-lg border border-slate-200 bg-white py-1 text-xs shadow-lg"
             suggestionItemClassName="cursor-pointer px-3 py-2 text-slate-700 hover:bg-slate-100"
             debounceMs={500}
             minLength={3}

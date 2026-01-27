@@ -100,6 +100,7 @@ export function AddressAutocomplete({
   const placesServiceRef = useRef<any>(null);
   const requestIdRef = useRef(0);
   const blurTimeoutRef = useRef<number | null>(null);
+  const isFocusedRef = useRef(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -153,6 +154,11 @@ export function AddressAutocomplete({
 
     const trimmed = value.trim();
     if (trimmed.length < minLength) {
+      setPredictions([]);
+      return;
+    }
+
+    if (!isFocusedRef.current) {
       setPredictions([]);
       return;
     }
@@ -278,12 +284,14 @@ export function AddressAutocomplete({
         placeholder={placeholder}
         disabled={disabled}
         onFocus={(event) => {
+          isFocusedRef.current = true;
           if (!sessionToken && isReady) {
             startSessionToken();
           }
           onFocus?.(event);
         }}
         onBlur={(event) => {
+          isFocusedRef.current = false;
           blurTimeoutRef.current = window.setTimeout(() => {
             setPredictions([]);
           }, 150);
@@ -314,6 +322,13 @@ export function AddressAutocomplete({
               )}
             </li>
           ))}
+          <li className="flex justify-end px-3 py-2">
+            <img
+              src="https://developers.google.com/maps/documentation/images/powered_by_google_on_white.png"
+              alt="Powered by Google"
+              className="h-4 object-contain"
+            />
+          </li>
         </ul>
       )}
     </div>
