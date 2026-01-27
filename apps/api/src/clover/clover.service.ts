@@ -91,6 +91,7 @@ export class CloverService {
 
   private readonly apiBase: string;
   private readonly merchantId: string | undefined;
+  private readonly apiToken: string;
   private readonly privateKey: string | undefined;
 
   private readonly taxId: string | undefined;
@@ -104,6 +105,7 @@ export class CloverService {
 
     this.merchantId = process.env.CLOVER_MERCHANT_ID?.trim();
     this.privateKey = process.env.CLOVER_PRIVATE_TOKEN?.trim();
+    this.apiToken = process.env.CLOVER_ACCESS_TOKEN?.trim();
 
     // tax config
     this.taxId = process.env.CLOVER_TAX_ID?.trim();
@@ -194,7 +196,7 @@ export class CloverService {
         headers: {
           Accept: 'application/json',
           'X-Clover-Merchant-Id': this.merchantId,
-          Authorization: `Bearer ${this.privateKey}`,
+          Authorization: `Bearer ${this.apiToken}`,
         },
       });
 
