@@ -238,6 +238,58 @@ export class CloverService {
   }
 
   /**
+   * 通过 Payment ID 查询 Order ID
+   */
+  async getOrderIdByPaymentId(paymentId: string): Promise<string | null> {
+    if (!paymentId || !this.apiToken || !this.merchantId) {
+      return null;
+    }
+    // 使用 Payments API
+    const url = `${this.apiBase}/v3/merchants/${this.merchantId}/payments/${paymentId}`;
+    try {
+      const resp = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${this.apiToken}`,
+        },
+      });
+
+      if (!resp.ok) {
+        this.logger.warn(`getOrderIdByPaymentId failed: ${resp.status}`);
+        return null;
+      }
+
+      const data = (await resp.json()) as { order?: { id: string } };
+      return data.order?.id ?? null;
+    } catch (error) {
+      this.logger.error(
+        `getOrderIdByPaymentId exception: ${errToString(error)}`,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * 通过 Payment ID 验证订单支付，并返回 Order ID
+   */
+  async verifyOrderId(
+    paymentId: string,
+  ): Promise<{ verified: boolean; orderId?: string | null }> {
+    if (!paymentId) {
+      return { verified: false, orderId: null };
+    }
+
+    const orderId = await this.getOrderIdByPaymentId(paymentId);
+    if (!orderId) {
+      return { verified: false, orderId: null };
+    }
+
+    const verified = await this.verifyOrderPaid(orderId);
+    return { verified, orderId };
+  }
+
+  /**
    * Create Hosted Checkout with redirectUrls to your thank-you page.
    * success: {WEB_BASE_URL}/{locale}/thank-you/{orderId}
    * failure: {WEB_BASE_URL}/{locale}/payment-failed/{orderId}
