@@ -1,4 +1,4 @@
-//apps/api/src/clover/clover-webhook.processor.ts
+// apps/api/src/clover/clover-webhook.processor.ts
 import {
   Injectable,
   Logger,
@@ -22,13 +22,14 @@ const normalizeClientRequestId = (
   return CLIENT_REQUEST_ID_RE.test(trimmed) ? trimmed : undefined;
 };
 
-// 🟢 修改: 增加 cloverOrderId 字段
+// 🟢 类型定义: 包含 paymentId
 type CloverWebhookEvent = {
   checkoutSessionId?: string;
   referenceId?: string;
   result?: string;
   status?: string;
   cloverOrderId?: string;
+  paymentId?: string; // <--- 新增
 };
 
 const errToString = (err: unknown): string =>
@@ -68,7 +69,7 @@ export class CloverWebhookProcessor implements OnModuleInit, OnModuleDestroy {
         try {
           payload = JSON.parse(message.Body);
         } catch (error: unknown) {
-          // 🟢 修复: 显式标记 error 为 unknown
+          // 🟢 ESLint 修复
           this.logger.error(
             `Invalid JSON in SQS message: ${errToString(error)}`,
           );
@@ -177,7 +178,7 @@ export class CloverWebhookProcessor implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    // ---- 4. 调用 Clover API 再次确认支付状态 ----
+    // ---- 4. 调用 Clover API 再次确认支付状态 (核心修改) ----
     const skipVerify = process.env.CLOVER_SKIP_VERIFY === '1';
 
     if (skipVerify) {
@@ -186,20 +187,37 @@ export class CloverWebhookProcessor implements OnModuleInit, OnModuleDestroy {
       );
     } else {
       let verified = false;
+      let targetOrderId = event.cloverOrderId;
 
-      // 优先使用 Order ID 进行验证
-      if (event.cloverOrderId) {
+      // 🟢 策略 A: 如果没有 OrderID 但有 PaymentID，先去换取 OrderID
+      if (!targetOrderId && event.paymentId) {
         this.logger.log(
-          `Verifying payment using Clover Order ID: ${event.cloverOrderId}`,
+          `Fetching Order ID from Payment ID: ${event.paymentId}`,
         );
-        verified = await this.clover.verifyOrderPaid(event.cloverOrderId);
+        const foundId = await this.clover.getOrderIdByPaymentId(
+          event.paymentId,
+        );
+        if (foundId) {
+          targetOrderId = foundId;
+          this.logger.log(`Resolved Order ID: ${targetOrderId}`);
+        }
       }
-      // 降级方案
+
+      // 🟢 策略 B: 如果拿到了 OrderID，进行验证
+      if (targetOrderId) {
+        this.logger.log(
+          `Verifying payment using Clover Order ID: ${targetOrderId}`,
+        );
+        verified = await this.clover.verifyOrderPaid(targetOrderId);
+      }
+      // 🟢 策略 C: 降级方案 (仅在完全没办法时尝试用 SessionID)
       else if (intent.checkoutSessionId) {
         this.logger.warn(
-          `No cloverOrderId in payload, falling back to Order ID verification using checkoutSessionId...`,
+          `No cloverOrderId/paymentId resolved, falling back to Session ID verification...`,
         );
-        verified = await this.clover.verifyOrderPaid(intent.checkoutSessionId);
+        verified = await this.clover.verifyHostedCheckoutPaid(
+          intent.checkoutSessionId,
+        );
       } else {
         this.logger.error('Cannot verify payment: missing Clover identifiers');
         verified = false;
@@ -207,7 +225,7 @@ export class CloverWebhookProcessor implements OnModuleInit, OnModuleDestroy {
 
       if (!verified) {
         this.logger.warn(
-          `Payment verification failed for intent ${intent.id}. cloverOrderId=${event.cloverOrderId}`,
+          `Payment verification failed for intent ${intent.id}. cloverOrderId=${targetOrderId}`,
         );
         await this.checkoutIntents.markFailed({
           intentId: intent.id,
@@ -240,7 +258,7 @@ export class CloverWebhookProcessor implements OnModuleInit, OnModuleDestroy {
         intent.id;
 
       // 1) 先建订单（已支付）
-      // 🟢 修复: 类型断言解决 Unsafe assignment
+      // 🟢 修复: 类型断言解决 ESLint Unsafe assignment
       const order = (await this.orders.createInternal(
         orderDto,
         idempotencyKey,
@@ -259,7 +277,7 @@ export class CloverWebhookProcessor implements OnModuleInit, OnModuleDestroy {
         }`,
       );
     } catch (error: unknown) {
-      // 🟢 修复: 显式标记 error 为 unknown
+      // 🟢 ESLint 修复
       this.logger.error(
         `Failed to create order for checkout intent ${intent.id}: ${errToString(
           error,
@@ -269,7 +287,7 @@ export class CloverWebhookProcessor implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  // 递归抽取字段
+  // 🟢 修改: 提取 id 为 paymentId
   private extractEvent(payload: unknown): CloverWebhookEvent {
     const event: CloverWebhookEvent = {};
 
@@ -301,15 +319,22 @@ export class CloverWebhookProcessor implements OnModuleInit, OnModuleDestroy {
           event.referenceId = raw;
         }
 
-        if (
-          !event.cloverOrderId &&
-          (lower === 'orderid' || lower === 'id') &&
-          typeof raw === 'string'
-        ) {
-          if (lower === 'orderid') {
+        // 提取逻辑更新
+        if (typeof raw === 'string') {
+          // Clover Order ID (Explicit)
+          if (!event.cloverOrderId && lower === 'orderid') {
             event.cloverOrderId = raw;
-          } else if (lower === 'id' && raw.length > 5) {
-            // Optional fallback
+          }
+          // ID 处理: 区分 paymentId 和 orderId (简单起见，如果 type=PAYMENT 已知，则 id 为 paymentId)
+          // 但这里我们根据 key 和 length 做尽量智能的猜测
+          else if (lower === 'id' && raw.length === 13) {
+            // 这里我们假设没有 explicit orderId 的情况下，这个 id 可能是 PaymentID
+            // 因为如果是 Order Webhook，它通常会有 orderId 字段或者 id 就是 orderId
+            // 但我们的 Log 显示 type=PAYMENT, id=..., 没有 orderId
+            // 所以将它捕获为 paymentId 是安全的，因为 processEvent 会先检查 cloverOrderId
+            if (!event.paymentId) {
+              event.paymentId = raw;
+            }
           }
         }
 
