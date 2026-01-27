@@ -240,6 +240,11 @@ export function AddressAutocomplete({
       return;
     }
 
+    const autocompleteService = autocompleteServiceRef.current;
+    if (!autocompleteService) {
+      setPredictions([]);
+      return;
+    }
     const requestId = (requestIdRef.current += 1);
     const timeoutId = window.setTimeout(() => {
       const request: AutocompletePredictionRequest = {
@@ -259,7 +264,7 @@ export function AddressAutocomplete({
         };
       }
 
-      autocompleteServiceRef.current.getPlacePredictions(
+      autocompleteService.getPlacePredictions(
         request,
         (results: PlacePrediction[] | null, status: string) => {
           if (requestId !== requestIdRef.current) return;
