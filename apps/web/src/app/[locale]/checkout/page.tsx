@@ -42,6 +42,10 @@ import {
   normalizeCanadianPhoneInput,
   stripCanadianCountryCode,
 } from "@/lib/phone";
+import {
+  AddressAutocomplete,
+  extractAddressParts,
+} from "@/components/AddressAutocomplete";
 type MemberAddress = {
   addressStableId: string;
   label: string;
@@ -479,6 +483,10 @@ export default function CheckoutPage() {
     useState<MemberAddress | null>(null);
   const [addressRemarkPrefilled, setAddressRemarkPrefilled] =
     useState(false);
+  const [selectedCoordinates, setSelectedCoordinates] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
 
   // 手机号验证流程状态
   const [phoneVerificationStep, setPhoneVerificationStep] = useState<
@@ -947,6 +955,9 @@ export default function CheckoutPage() {
     const nextValue =
       field === "phone" ? normalizeCanadianPhoneInput(value) : value;
     setCustomer((prev) => ({ ...prev, [field]: nextValue }));
+    if (field === "addressLine1") {
+      setSelectedCoordinates(null);
+    }
 
     // 🔐 手机号变更时，重置验证状态
     if (field === "phone") {
@@ -1420,9 +1431,12 @@ export default function CheckoutPage() {
     setAddressValidation({ distanceKm: null, isChecking: true, error: null });
 
     try {
-      const coordinates = await geocodeAddress(deliveryAddressText, {
-        cityHint: `${customer.city}, ${customer.province}`,
-      });
+      let coordinates = selectedCoordinates;
+      if (!coordinates) {
+        coordinates = await geocodeAddress(deliveryAddressText, {
+          cityHint: `${customer.city}, ${customer.province}`,
+        });
+      }
 
       if (!coordinates) {
         setAddressValidation({
@@ -2277,18 +2291,55 @@ export default function CheckoutPage() {
                   <div className="space-y-3 rounded-2xl bg-slate-50 p-3">
                     <label className="block text-xs font-medium text-slate-600">
                       {strings.contactFields.addressLine1}
-                      <input
+                      <AddressAutocomplete
                         value={customer.addressLine1}
-                        onChange={(event) =>
-                          handleCustomerChange(
-                            "addressLine1",
-                            event.target.value,
-                          )
+                        onChange={(nextValue) =>
+                          handleCustomerChange("addressLine1", nextValue)
                         }
+                        onSelect={(selection) => {
+                          const { addressLine1, city, province, postalCode } =
+                            extractAddressParts(selection);
+                          if (selection.location) {
+                            setSelectedCoordinates({
+                              latitude: selection.location.lat,
+                              longitude: selection.location.lng,
+                            });
+                          } else {
+                            setSelectedCoordinates(null);
+                          }
+                          setCustomer((prev) => ({
+                            ...prev,
+                            addressLine1:
+                              addressLine1 ||
+                              selection.description ||
+                              prev.addressLine1,
+                            city: city || prev.city,
+                            province: province || prev.province,
+                            postalCode: postalCode
+                              ? formatPostalCodeInput(postalCode)
+                              : prev.postalCode,
+                          }));
+                          window.setTimeout(
+                            triggerDistanceValidationIfReady,
+                            0,
+                          );
+                        }}
                         placeholder={
                           strings.contactFields.addressLine1Placeholder
                         }
-                        className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                        containerClassName="relative"
+                        inputClassName="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                        suggestionListClassName="absolute z-50 mt-1 w-full rounded-2xl border border-slate-200 bg-white py-1 text-sm shadow-lg"
+                        suggestionItemClassName="cursor-pointer px-3 py-2 text-slate-700 hover:bg-slate-100"
+                        onBlur={triggerDistanceValidationIfReady}
+                        debounceMs={500}
+                        minLength={3}
+                        country="ca"
+                        locationBias={{
+                          lat: STORE_COORDINATES.latitude,
+                          lng: STORE_COORDINATES.longitude,
+                          radiusMeters: DELIVERY_RADIUS_KM * 1000,
+                        }}
                       />
                     </label>
                     <label className="block text-xs font-medium text-slate-600">
