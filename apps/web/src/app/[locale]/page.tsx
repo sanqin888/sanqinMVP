@@ -556,7 +556,7 @@ export default function LocalOrderPage() {
     "
   >
     <Image
-      src="/images/chef.png"
+      src="/images/hero.png"
       alt="Illustration"
       width={220}
       height={250}

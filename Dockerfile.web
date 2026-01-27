@@ -19,6 +19,8 @@ COPY . .
 
 # 4. 构建 Web (Next.js Standalone)
 # 这一步会生成 .next/standalone 文件夹，里面包含了所有运行所需的代码和依赖
+ARG NEXT_PUBLIC_GOOGLE_MAPS_KEY
+ENV NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=$NEXT_PUBLIC_GOOGLE_MAPS_KEY
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm --filter web build
 

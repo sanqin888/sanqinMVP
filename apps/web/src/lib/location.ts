@@ -61,8 +61,6 @@ export function calculateDistanceKm(from: Coordinates, to: Coordinates): number 
 // ==== 地址解析：调用后端 /location/geocode ====
 
 const geocodeCache = new Map<string, Coordinates>();
-
-// 例如 http://localhost:4000/api/v1
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "/api/v1";
 
 /**
