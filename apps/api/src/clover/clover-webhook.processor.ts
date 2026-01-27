@@ -197,11 +197,9 @@ export class CloverWebhookProcessor implements OnModuleInit, OnModuleDestroy {
       // 降级方案
       else if (intent.checkoutSessionId) {
         this.logger.warn(
-          `No cloverOrderId in payload, falling back to Session ID verification...`,
+          `No cloverOrderId in payload, falling back to Order ID verification using checkoutSessionId...`,
         );
-        verified = await this.clover.verifyHostedCheckoutPaid(
-          intent.checkoutSessionId,
-        );
+        verified = await this.clover.verifyOrderPaid(intent.checkoutSessionId);
       } else {
         this.logger.error('Cannot verify payment: missing Clover identifiers');
         verified = false;
