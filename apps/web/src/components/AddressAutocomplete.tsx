@@ -216,6 +216,11 @@ export function AddressAutocomplete({
       setPredictions([]);
       return;
     }
+    const google = window.google;
+    if (!google?.maps?.places) {
+      setPredictions([]);
+      return;
+    }
 
     const trimmed = value.trim();
     if (trimmed.length < minLength) {
@@ -246,7 +251,7 @@ export function AddressAutocomplete({
 
       if (locationBias) {
         request.locationBias = {
-          center: new window.google.maps.LatLng(
+          center: new google.maps.LatLng(
             locationBias.lat,
             locationBias.lng,
           ),
@@ -259,7 +264,7 @@ export function AddressAutocomplete({
         (results: PlacePrediction[] | null, status: string) => {
           if (requestId !== requestIdRef.current) return;
           if (
-            status !== window.google.maps.places.PlacesServiceStatus.OK ||
+            status !== google.maps.places.PlacesServiceStatus.OK ||
             !results
           ) {
             setPredictions([]);
@@ -274,8 +279,10 @@ export function AddressAutocomplete({
   }, [value, minLength, debounceMs, country, locationBias, isReady, sessionToken]);
 
   const startSessionToken = useCallback(() => {
-    if (!isReady || !window.google?.maps?.places) return;
-    setSessionToken(new window.google.maps.places.AutocompleteSessionToken());
+    if (!isReady) return;
+    const google = window.google;
+    if (!google?.maps?.places) return;
+    setSessionToken(new google.maps.places.AutocompleteSessionToken());
   }, [isReady]);
 
   const handleSelect = useCallback(
@@ -289,14 +296,15 @@ export function AddressAutocomplete({
 
       const placeId = prediction.place_id;
       const currentToken = sessionToken;
+      const google = window.google;
 
-      if (!placesServiceRef.current || !currentToken) {
+      if (!placesServiceRef.current || !currentToken || !google?.maps?.places) {
         onSelect({
           description: prediction.description,
           placeId,
         });
-        if (isReady) {
-          setSessionToken(new window.google.maps.places.AutocompleteSessionToken());
+        if (isReady && google?.maps?.places) {
+          setSessionToken(new google.maps.places.AutocompleteSessionToken());
         }
         return;
       }
@@ -313,7 +321,7 @@ export function AddressAutocomplete({
           sessionToken: currentToken,
         },
         (place: PlaceDetailsResult | null, status: string) => {
-          if (status !== window.google.maps.places.PlacesServiceStatus.OK) {
+          if (status !== google.maps.places.PlacesServiceStatus.OK) {
             onSelect({
               description: prediction.description,
               placeId,
@@ -337,7 +345,9 @@ export function AddressAutocomplete({
       );
 
       if (isReady) {
-        setSessionToken(new window.google.maps.places.AutocompleteSessionToken());
+        if (google?.maps?.places) {
+          setSessionToken(new google.maps.places.AutocompleteSessionToken());
+        }
       }
     },
     [isReady, onChange, onSelect, sessionToken],
