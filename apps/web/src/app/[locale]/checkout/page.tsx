@@ -42,6 +42,10 @@ import {
   normalizeCanadianPhoneInput,
   stripCanadianCountryCode,
 } from "@/lib/phone";
+import {
+  AddressAutocomplete,
+  extractAddressParts,
+} from "@/components/AddressAutocomplete";
 type MemberAddress = {
   addressStableId: string;
   label: string;
@@ -2277,18 +2281,47 @@ export default function CheckoutPage() {
                   <div className="space-y-3 rounded-2xl bg-slate-50 p-3">
                     <label className="block text-xs font-medium text-slate-600">
                       {strings.contactFields.addressLine1}
-                      <input
+                      <AddressAutocomplete
                         value={customer.addressLine1}
-                        onChange={(event) =>
-                          handleCustomerChange(
-                            "addressLine1",
-                            event.target.value,
-                          )
+                        onChange={(nextValue) =>
+                          handleCustomerChange("addressLine1", nextValue)
                         }
+                        onSelect={(selection) => {
+                          const { addressLine1, city, province, postalCode } =
+                            extractAddressParts(selection);
+                          setCustomer((prev) => ({
+                            ...prev,
+                            addressLine1:
+                              addressLine1 ||
+                              selection.description ||
+                              prev.addressLine1,
+                            city: city || prev.city,
+                            province: province || prev.province,
+                            postalCode: postalCode
+                              ? formatPostalCodeInput(postalCode)
+                              : prev.postalCode,
+                          }));
+                          window.setTimeout(
+                            triggerDistanceValidationIfReady,
+                            0,
+                          );
+                        }}
                         placeholder={
                           strings.contactFields.addressLine1Placeholder
                         }
-                        className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                        containerClassName="relative"
+                        inputClassName="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                        suggestionListClassName="absolute z-10 mt-1 w-full rounded-2xl border border-slate-200 bg-white py-1 text-sm shadow-lg"
+                        suggestionItemClassName="cursor-pointer px-3 py-2 text-slate-700 hover:bg-slate-100"
+                        onBlur={triggerDistanceValidationIfReady}
+                        debounceMs={500}
+                        minLength={3}
+                        country="ca"
+                        locationBias={{
+                          lat: STORE_COORDINATES.latitude,
+                          lng: STORE_COORDINATES.longitude,
+                          radiusMeters: DELIVERY_RADIUS_KM * 1000,
+                        }}
                       />
                     </label>
                     <label className="block text-xs font-medium text-slate-600">

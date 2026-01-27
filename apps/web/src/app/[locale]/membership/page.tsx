@@ -13,6 +13,11 @@ import {
   normalizeCanadianPhoneInput,
   stripCanadianCountryCode,
 } from '@/lib/phone';
+import { DELIVERY_RADIUS_KM, STORE_COORDINATES } from '@/lib/location';
+import {
+  AddressAutocomplete,
+  extractAddressParts,
+} from '@/components/AddressAutocomplete';
 
 type MemberTier = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM';
 
@@ -170,6 +175,14 @@ type MemberAddress = {
   province: string;
   postalCode: string;
   isDefault?: boolean;
+};
+
+const formatPostalCodeInput = (value: string) => {
+  const sanitized = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (sanitized.length <= 3) {
+    return sanitized;
+  }
+  return `${sanitized.slice(0, 3)} ${sanitized.slice(3, 6)}`.trim();
 };
 
 const formatMemberAddress = (address: MemberAddress): string => {
@@ -2251,11 +2264,36 @@ function AddressesSection({
               }
             />
           </div>
-          <input
-            className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
-            placeholder={isZh ? '地址行 1' : 'Address line 1'}
+          <AddressAutocomplete
             value={addressLine1}
-            onChange={(event) => setAddressLine1(event.target.value)}
+            onChange={(nextValue) => setAddressLine1(nextValue)}
+            onSelect={(selection) => {
+              const { addressLine1, city, province, postalCode } =
+                extractAddressParts(selection);
+              if (addressLine1) {
+                setAddressLine1(addressLine1);
+              } else if (selection.description) {
+                setAddressLine1(selection.description);
+              }
+              if (city) setCity(city);
+              if (province) setProvince(province);
+              if (postalCode) {
+                setPostalCode(formatPostalCodeInput(postalCode));
+              }
+            }}
+            placeholder={isZh ? '地址行 1' : 'Address line 1'}
+            containerClassName="relative"
+            inputClassName="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"
+            suggestionListClassName="absolute z-10 mt-1 w-full rounded-lg border border-slate-200 bg-white py-1 text-xs shadow-lg"
+            suggestionItemClassName="cursor-pointer px-3 py-2 text-slate-700 hover:bg-slate-100"
+            debounceMs={500}
+            minLength={3}
+            country="ca"
+            locationBias={{
+              lat: STORE_COORDINATES.latitude,
+              lng: STORE_COORDINATES.longitude,
+              radiusMeters: DELIVERY_RADIUS_KM * 1000,
+            }}
           />
           <input
             className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
