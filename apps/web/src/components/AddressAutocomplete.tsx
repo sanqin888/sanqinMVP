@@ -195,17 +195,19 @@ export function AddressAutocomplete({
 
   useEffect(() => {
     if (!isReady) return;
+    const google = window.google;
+    if (!google || !google.maps?.places) return;
     if (!autocompleteServiceRef.current) {
       autocompleteServiceRef.current =
-        new window.google.maps.places.AutocompleteService();
+        new google.maps.places.AutocompleteService();
     }
     if (!placesServiceRef.current) {
-      placesServiceRef.current = new window.google.maps.places.PlacesService(
+      placesServiceRef.current = new google.maps.places.PlacesService(
         document.createElement("div"),
       );
     }
     if (!sessionToken) {
-      setSessionToken(new window.google.maps.places.AutocompleteSessionToken());
+      setSessionToken(new google.maps.places.AutocompleteSessionToken());
     }
   }, [isReady, sessionToken]);
 
@@ -227,7 +229,9 @@ export function AddressAutocomplete({
     }
 
     if (!sessionToken) {
-      setSessionToken(new window.google.maps.places.AutocompleteSessionToken());
+      const google = window.google;
+      if (!google || !google.maps?.places) return;
+      setSessionToken(new google.maps.places.AutocompleteSessionToken());
       return;
     }
 
