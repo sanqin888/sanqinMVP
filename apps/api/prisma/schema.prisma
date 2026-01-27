@@ -286,6 +286,8 @@ model UserAddress {
   phone           String?
   addressLine1    String
   placeId         String?
+  latitude        Float?
+  longitude       Float?
   addressLine2    String?
   remark          String?
   city            String
