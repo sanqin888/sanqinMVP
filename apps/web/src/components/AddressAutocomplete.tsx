@@ -3,6 +3,68 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+type AutocompleteSessionToken = {
+  readonly __autocompleteSessionToken?: unique symbol;
+};
+
+type LatLngConstructor = new (lat: number, lng: number) => unknown;
+
+type AutocompletePredictionRequest = {
+  input: string;
+  sessionToken: AutocompleteSessionToken;
+  componentRestrictions: { country: string };
+  types: string[];
+  locationBias?: {
+    center: unknown;
+    radius: number;
+  };
+};
+
+type AutocompleteService = {
+  getPlacePredictions: (
+    request: AutocompletePredictionRequest,
+    callback: (results: PlacePrediction[] | null, status: string) => void,
+  ) => void;
+};
+
+type PlaceDetailsRequest = {
+  placeId: string;
+  fields: string[];
+  sessionToken: AutocompleteSessionToken;
+};
+
+type PlaceDetailsResult = {
+  geometry?: {
+    location?: {
+      lat: () => number;
+      lng: () => number;
+    };
+  };
+  formatted_address?: string;
+  address_components?: GooglePlaceComponent[];
+};
+
+type PlacesService = {
+  getDetails: (
+    request: PlaceDetailsRequest,
+    callback: (place: PlaceDetailsResult | null, status: string) => void,
+  ) => void;
+};
+
+type GoogleMapsPlaces = {
+  AutocompleteService: new () => AutocompleteService;
+  AutocompleteSessionToken: new () => AutocompleteSessionToken;
+  PlacesService: new (element: HTMLElement) => PlacesService;
+  PlacesServiceStatus: { OK: string };
+};
+
+type GoogleMaps = {
+  maps: {
+    places: GoogleMapsPlaces;
+    LatLng: LatLngConstructor;
+  };
+};
+
 type GooglePlaceComponent = {
   long_name: string;
   short_name: string;
@@ -46,7 +108,7 @@ export type AddressAutocompleteProps = {
 
 declare global {
   interface Window {
-    google?: any;
+    google?: GoogleMaps;
   }
 }
 
@@ -95,9 +157,10 @@ export function AddressAutocomplete({
 }: AddressAutocompleteProps) {
   const [isReady, setIsReady] = useState(false);
   const [predictions, setPredictions] = useState<PlacePrediction[]>([]);
-  const [sessionToken, setSessionToken] = useState<any | null>(null);
-  const autocompleteServiceRef = useRef<any>(null);
-  const placesServiceRef = useRef<any>(null);
+  const [sessionToken, setSessionToken] =
+    useState<AutocompleteSessionToken | null>(null);
+  const autocompleteServiceRef = useRef<AutocompleteService | null>(null);
+  const placesServiceRef = useRef<PlacesService | null>(null);
   const requestIdRef = useRef(0);
   const blurTimeoutRef = useRef<number | null>(null);
   const isFocusedRef = useRef(false);
@@ -170,7 +233,7 @@ export function AddressAutocomplete({
 
     const requestId = (requestIdRef.current += 1);
     const timeoutId = window.setTimeout(() => {
-      const request: any = {
+      const request: AutocompletePredictionRequest = {
         input: trimmed,
         sessionToken,
         componentRestrictions: { country },
@@ -245,7 +308,7 @@ export function AddressAutocomplete({
           ],
           sessionToken: currentToken,
         },
-        (place: any, status: string) => {
+        (place: PlaceDetailsResult | null, status: string) => {
           if (status !== window.google.maps.places.PlacesServiceStatus.OK) {
             onSelect({
               description: prediction.description,
@@ -322,9 +385,10 @@ export function AddressAutocomplete({
               )}
             </li>
           ))}
-          <li className="flex justify-end px-3 py-2">
+          <li className="flex justify-end p-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="https://developers.google.com/maps/documentation/images/powered_by_google_on_white.png"
+              src="https://maps.gstatic.com/mapfiles/api-3/images/powered-by-google-on-white3.png"
               alt="Powered by Google"
               className="h-4 object-contain"
             />
