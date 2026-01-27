@@ -487,6 +487,7 @@ export default function CheckoutPage() {
     latitude: number;
     longitude: number;
   } | null>(null);
+  const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
 
   // 手机号验证流程状态
   const [phoneVerificationStep, setPhoneVerificationStep] = useState<
@@ -1589,6 +1590,22 @@ export default function CheckoutPage() {
           phone: formattedCustomerPhone,
           address: deliveryAddressText,
         },
+        deliveryDestination: isDeliveryFulfillment
+          ? {
+              name: customer.name,
+              phone: formattedCustomerPhone,
+              addressLine1: customer.addressLine1,
+              addressLine2: customer.addressLine2 || undefined,
+              city: customer.city,
+              province: customer.province,
+              postalCode: customer.postalCode,
+              country: DELIVERY_COUNTRY,
+              instructions: customer.notes || undefined,
+              latitude: selectedCoordinates?.latitude,
+              longitude: selectedCoordinates?.longitude,
+              placeId: selectedPlaceId ?? undefined,
+            }
+          : undefined,
         utensils:
           utensilsPreference === "yes"
             ? {
@@ -1654,6 +1671,9 @@ export default function CheckoutPage() {
             postalCode: customer.postalCode,
             country: DELIVERY_COUNTRY,
             instructions: customer.notes || undefined,
+            latitude: selectedCoordinates?.latitude,
+            longitude: selectedCoordinates?.longitude,
+            placeId: selectedPlaceId ?? undefined,
           }
         : undefined,
       items: cartItemsWithPricing.map((cartItem) => ({
@@ -2293,9 +2313,10 @@ export default function CheckoutPage() {
                       {strings.contactFields.addressLine1}
                       <AddressAutocomplete
                         value={customer.addressLine1}
-                        onChange={(nextValue) =>
-                          handleCustomerChange("addressLine1", nextValue)
-                        }
+                        onChange={(nextValue) => {
+                          handleCustomerChange("addressLine1", nextValue);
+                          setSelectedPlaceId(null);
+                        }}
                         onSelect={(selection) => {
                           const { addressLine1, city, province, postalCode } =
                             extractAddressParts(selection);
@@ -2307,6 +2328,7 @@ export default function CheckoutPage() {
                           } else {
                             setSelectedCoordinates(null);
                           }
+                          setSelectedPlaceId(selection.placeId ?? null);
                           setCustomer((prev) => ({
                             ...prev,
                             addressLine1:

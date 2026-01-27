@@ -174,6 +174,7 @@ type MemberAddress = {
   city: string;
   province: string;
   postalCode: string;
+  placeId?: string;
   isDefault?: boolean;
 };
 
@@ -1226,6 +1227,7 @@ export default function MembershipHomePage() {
             city: address.city,
             province: address.province,
             postalCode: address.postalCode,
+            placeId: address.placeId ?? '',
             isDefault: setDefault,
           }),
         });
@@ -1259,6 +1261,7 @@ export default function MembershipHomePage() {
             city: address.city,
             province: address.province,
             postalCode: address.postalCode,
+            placeId: address.placeId ?? '',
             isDefault: setDefault,
           }),
         });
@@ -2123,6 +2126,7 @@ function AddressesSection({
   const [city, setCity] = useState('');
   const [province, setProvince] = useState('');
   const [postalCode, setPostalCode] = useState('');
+  const [placeId, setPlaceId] = useState<string | null>(null);
   const [setAsDefault, setSetAsDefault] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -2141,6 +2145,7 @@ function AddressesSection({
     setCity('');
     setProvince('');
     setPostalCode('');
+    setPlaceId(null);
     setSetAsDefault(false);
     setFormError(null);
     setEditingId(null);
@@ -2188,6 +2193,7 @@ function AddressesSection({
       city: trimmedCity,
       province: trimmedProvince,
       postalCode: trimmedPostal,
+      placeId: placeId ?? undefined,
       isDefault: setAsDefault,
     };
 
@@ -2209,6 +2215,7 @@ function AddressesSection({
     setCity(address.city);
     setProvince(address.province);
     setPostalCode(address.postalCode);
+    setPlaceId(address.placeId ?? null);
     setSetAsDefault(!!address.isDefault);
     setFormError(null);
     setEditingId(address.addressStableId);
@@ -2266,7 +2273,10 @@ function AddressesSection({
           </div>
           <AddressAutocomplete
             value={addressLine1}
-            onChange={(nextValue) => setAddressLine1(nextValue)}
+            onChange={(nextValue) => {
+              setAddressLine1(nextValue);
+              setPlaceId(null);
+            }}
             onSelect={(selection) => {
               const { addressLine1, city, province, postalCode } =
                 extractAddressParts(selection);
@@ -2280,6 +2290,7 @@ function AddressesSection({
               if (postalCode) {
                 setPostalCode(formatPostalCodeInput(postalCode));
               }
+              setPlaceId(selection.placeId ?? null);
             }}
             placeholder={isZh ? '地址行 1' : 'Address line 1'}
             containerClassName="relative"
