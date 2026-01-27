@@ -194,9 +194,7 @@ export class CloverWebhookProcessor implements OnModuleInit, OnModuleDestroy {
         this.logger.log(
           `Verifying payment using Clover Payment ID: ${event.paymentId}`,
         );
-        const verification = await this.clover.verifyOrderId(
-          event.paymentId,
-        );
+        const verification = await this.clover.verifyOrderId(event.paymentId);
         verified = verification.verified;
         targetOrderId = verification.orderId ?? targetOrderId;
         if (targetOrderId) {
