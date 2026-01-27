@@ -1,7 +1,6 @@
 // apps/web/src/components/AddressAutocomplete.tsx
 "use client";
 
-import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 type AutocompleteSessionToken = {
@@ -386,13 +385,12 @@ export function AddressAutocomplete({
               )}
             </li>
           ))}
-          <li className="flex justify-end px-3 py-2">
-            <Image
-              src="https://developers.google.com/maps/documentation/images/powered_by_google_on_white.png"
+          <li className="flex justify-end p-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="https://maps.gstatic.com/mapfiles/api-3/images/powered-by-google-on-white3.png"
               alt="Powered by Google"
-              width={120}
-              height={16}
-              className="h-4 w-auto object-contain"
+              className="h-4 object-contain"
             />
           </li>
         </ul>
