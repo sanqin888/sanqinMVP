@@ -1189,7 +1189,8 @@ export default function CheckoutPage() {
       setPhonePrefilled(false);
       setNamePrefilled(false);
       setAddressPrefilled(false);
-      setMemberDefaultAddress(null);
+      setMemberAddresses([]);
+      setSelectedAddressStableId(null);
       return;
     }
 
