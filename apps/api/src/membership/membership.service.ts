@@ -59,6 +59,21 @@ export class MembershipService {
     return null;
   }
 
+  private normalizeCoordinates(
+    latitude?: number | null,
+    longitude?: number | null,
+  ): { latitude: number | null; longitude: number | null } {
+    const lat = typeof latitude === 'number' ? latitude : null;
+    const lng = typeof longitude === 'number' ? longitude : null;
+    if (lat === null || lng === null) {
+      return { latitude: null, longitude: null };
+    }
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return { latitude: null, longitude: null };
+    }
+    return { latitude: lat, longitude: lng };
+  }
+
   private async ensureUserStableId(user: User): Promise<User> {
     if (user.userStableId) return user;
 
@@ -777,6 +792,9 @@ export class MembershipService {
       city: addr.city,
       province: addr.province,
       postalCode: addr.postalCode,
+      placeId: addr.placeId ?? undefined,
+      latitude: addr.latitude ?? undefined,
+      longitude: addr.longitude ?? undefined,
       isDefault: addr.isDefault,
     }));
   }
@@ -792,6 +810,9 @@ export class MembershipService {
     city: string;
     province: string;
     postalCode: string;
+    placeId?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
     isDefault?: boolean;
   }) {
     const {
@@ -805,6 +826,9 @@ export class MembershipService {
       city,
       province,
       postalCode,
+      placeId,
+      latitude,
+      longitude,
       isDefault = false,
     } = params;
 
@@ -825,6 +849,8 @@ export class MembershipService {
       province: province.trim(),
       postalCode: postalCode.trim(),
     };
+    const normalizedPlaceId = placeId?.trim() || null;
+    const coords = this.normalizeCoordinates(latitude, longitude);
 
     const hasDefault = await this.prisma.userAddress.count({
       where: { userId: user.id, isDefault: true },
@@ -846,6 +872,9 @@ export class MembershipService {
           addressStableId: this.generateAddressStableId(),
           ...normalized,
           isDefault: shouldDefault,
+          placeId: normalizedPlaceId,
+          latitude: coords.latitude,
+          longitude: coords.longitude,
         },
       });
     });
@@ -861,6 +890,9 @@ export class MembershipService {
       city: created.city,
       province: created.province,
       postalCode: created.postalCode,
+      placeId: created.placeId ?? undefined,
+      latitude: created.latitude ?? undefined,
+      longitude: created.longitude ?? undefined,
       isDefault: created.isDefault,
     };
   }
@@ -918,6 +950,9 @@ export class MembershipService {
     city: string;
     province: string;
     postalCode: string;
+    placeId?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
     isDefault?: boolean;
   }) {
     const {
@@ -932,6 +967,9 @@ export class MembershipService {
       city,
       province,
       postalCode,
+      placeId,
+      latitude,
+      longitude,
       isDefault,
     } = params;
 
@@ -959,6 +997,8 @@ export class MembershipService {
       province: province.trim(),
       postalCode: postalCode.trim(),
     };
+    const normalizedPlaceId = placeId?.trim() || null;
+    const coords = this.normalizeCoordinates(latitude, longitude);
 
     const updated = await this.prisma.$transaction(async (tx) => {
       if (isDefault) {
@@ -973,6 +1013,9 @@ export class MembershipService {
         data: {
           ...normalized,
           ...(isDefault ? { isDefault: true } : {}),
+          placeId: normalizedPlaceId,
+          latitude: coords.latitude,
+          longitude: coords.longitude,
         },
       });
     });
@@ -988,6 +1031,9 @@ export class MembershipService {
       city: updated.city,
       province: updated.province,
       postalCode: updated.postalCode,
+      placeId: updated.placeId ?? undefined,
+      latitude: updated.latitude ?? undefined,
+      longitude: updated.longitude ?? undefined,
       isDefault: updated.isDefault,
     };
   }

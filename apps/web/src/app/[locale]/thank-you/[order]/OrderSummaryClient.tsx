@@ -152,11 +152,19 @@ export function OrderSummaryClient({ orderStableId, locale }: Props) {
     }
 
     let cancelled = false;
+    let attempts = 0;
+    
+    // 配置：最多重试 20 次，每次间隔 1 秒 (共等待约 20秒)
+    const MAX_ATTEMPTS = 20; 
+    const RETRY_INTERVAL_MS = 1000; 
 
-    (async () => {
+    const fetchOrder = async () => {
       try {
-        setLoading(true);
-        setError(null);
+        // 只在第一次请求时重置 error，避免重试过程中闪烁
+        if (attempts === 0) {
+          setError(null);
+          setLoading(true);
+        }
 
         const summary = await apiFetch<OrderSummaryResponse>(
           `/orders/${encodeURIComponent(orderStableId)}/summary`,
@@ -164,19 +172,29 @@ export function OrderSummaryClient({ orderStableId, locale }: Props) {
 
         if (!cancelled) {
           setData(summary);
+          setLoading(false);
         }
-      } catch (err) {
-        if (!cancelled) {
+      } catch (err: unknown) {
+        if (cancelled) return;
+
+        // 核心逻辑：如果还没达到最大重试次数，就等待后重试
+        // 注意：这里我们假设 apiFetch 在 404 时会抛出异常
+        // 如果你的 apiFetch 返回 status，你需要相应调整判断逻辑
+        if (attempts < MAX_ATTEMPTS) {
+          attempts++;
+          console.log(`Order not found, retrying... (${attempts}/${MAX_ATTEMPTS})`);
+          setTimeout(fetchOrder, RETRY_INTERVAL_MS);
+        } else {
+          // 超过最大重试次数，彻底放弃
           const msg =
             err instanceof Error ? err.message : labels.failed;
           setError(msg);
-        }
-      } finally {
-        if (!cancelled) {
           setLoading(false);
         }
       }
-    })();
+    };
+
+    fetchOrder();
 
     return () => {
       cancelled = true;

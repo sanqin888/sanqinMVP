@@ -285,6 +285,9 @@ model UserAddress {
   receiver        String
   phone           String?
   addressLine1    String
+  placeId         String?
+  latitude        Float?
+  longitude       Float?
   addressLine2    String?
   remark          String?
   city            String
@@ -329,6 +332,7 @@ model Order {
   couponTitleSnapshot        String?
   contactName                String?
   contactPhone               String?
+  placeId                    String?
   orderStableId              String            @unique @default(cuid())
   rebillGroupId              String?
   paidAt                     DateTime

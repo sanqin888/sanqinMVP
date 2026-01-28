@@ -11,6 +11,7 @@ import {
   geocodeAddress,
   STORE_COORDINATES,
   DELIVERY_RADIUS_KM,
+  type Coordinates,
 } from "@/lib/location";
 import {
   ConfirmationState,
@@ -42,10 +43,16 @@ import {
   normalizeCanadianPhoneInput,
   stripCanadianCountryCode,
 } from "@/lib/phone";
+import {
+  AddressAutocomplete,
+  extractAddressParts,
+} from "@/components/AddressAutocomplete";
 type MemberAddress = {
-  addressStableId: string;
-  label: string;
-  receiver: string;
+  addressStableId?: string;
+  stableId?: string;
+  id?: string;
+  label?: string;
+  receiver?: string;
   phone?: string;
   addressLine1: string;
   addressLine2?: string;
@@ -53,6 +60,9 @@ type MemberAddress = {
   city: string;
   province: string;
   postalCode: string;
+  placeId?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   isDefault?: boolean;
 };
 
@@ -194,6 +204,8 @@ const DEFAULT_PROVINCE = "ON";
 const DELIVERY_COUNTRY = "Canada";
 const POSTAL_CODE_PATTERN = /^[A-Za-z]\d[A-Za-z]\s?\d[A-Za-z]\d$/;
 const PRIORITY_MAX_RADIUS_KM = DELIVERY_RADIUS_KM;
+const getAddressStableId = (address: MemberAddress) =>
+  address.addressStableId ?? address.stableId ?? address.id ?? "";
 
 const formatDeliveryAddress = (customer: CustomerInfo) => {
   const cityProvince = [customer.city.trim(), customer.province.trim()]
@@ -475,10 +487,13 @@ export default function CheckoutPage() {
   );
   const [namePrefilled, setNamePrefilled] = useState(false);
   const [addressPrefilled, setAddressPrefilled] = useState(false);
-  const [memberDefaultAddress, setMemberDefaultAddress] =
-    useState<MemberAddress | null>(null);
-  const [addressRemarkPrefilled, setAddressRemarkPrefilled] =
-    useState(false);
+  const [memberAddresses, setMemberAddresses] = useState<MemberAddress[]>([]);
+  const [selectedAddressStableId, setSelectedAddressStableId] = useState<
+    string | null
+  >(null);
+  const [selectedCoordinates, setSelectedCoordinates] =
+    useState<Coordinates | null>(null);
+  const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
 
   // 手机号验证流程状态
   const [phoneVerificationStep, setPhoneVerificationStep] = useState<
@@ -947,6 +962,25 @@ export default function CheckoutPage() {
     const nextValue =
       field === "phone" ? normalizeCanadianPhoneInput(value) : value;
     setCustomer((prev) => ({ ...prev, [field]: nextValue }));
+    if (
+      field === "addressLine1" ||
+      field === "city" ||
+      field === "province" ||
+      field === "postalCode"
+    ) {
+      setSelectedCoordinates(null);
+      setSelectedPlaceId(null);
+    }
+    if (
+      (field === "addressLine1" ||
+        field === "addressLine2" ||
+        field === "city" ||
+        field === "province" ||
+        field === "postalCode") &&
+      selectedAddressStableId
+    ) {
+      setSelectedAddressStableId(null);
+    }
 
     // 🔐 手机号变更时，重置验证状态
     if (field === "phone") {
@@ -975,6 +1009,45 @@ export default function CheckoutPage() {
       setPhoneVerified(false);
       setPhoneVerificationStep("idle");
     }
+  };
+
+  const applySelectedAddress = (selected: MemberAddress, stableId: string) => {
+    setSelectedAddressStableId(stableId);
+    setCustomer((prev) => ({
+      ...prev,
+      name: selected.receiver || prev.name,
+      phone: selected.phone
+        ? stripCanadianCountryCode(selected.phone)
+        : prev.phone,
+      addressLine1: selected.addressLine1,
+      addressLine2: selected.addressLine2 ?? "",
+      city: selected.city,
+      province: selected.province,
+      postalCode: selected.postalCode,
+      notes: selected.remark?.trim() ? selected.remark : prev.notes,
+    }));
+
+    if (
+      typeof selected.latitude === "number" &&
+      typeof selected.longitude === "number"
+    ) {
+      setSelectedCoordinates({
+        latitude: selected.latitude,
+        longitude: selected.longitude,
+      });
+    } else {
+      setSelectedCoordinates(null);
+    }
+    setSelectedPlaceId(selected.placeId ?? null);
+    resetAddressValidation();
+  };
+
+  const handleSelectAddress = (stableId: string) => {
+    const selected = memberAddresses.find(
+      (address) => getAddressStableId(address) === stableId,
+    );
+    if (!selected) return;
+    applySelectedAddress(selected, stableId);
   };
 
   // 发送短信验证码
@@ -1116,7 +1189,8 @@ export default function CheckoutPage() {
       setPhonePrefilled(false);
       setNamePrefilled(false);
       setAddressPrefilled(false);
-      setMemberDefaultAddress(null);
+      setMemberAddresses([]);
+      setSelectedAddressStableId(null);
       return;
     }
 
@@ -1219,15 +1293,14 @@ export default function CheckoutPage() {
             list = payload.data;
           }
         }
-        const defaultAddress =
-          list.find((addr) => addr.isDefault) ?? list[0] ?? null;
-        setMemberDefaultAddress(defaultAddress);
+        setMemberAddresses(list);
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
           return;
         }
         console.error("Failed to load member addresses", error);
-        setMemberDefaultAddress(null);
+        setMemberAddresses([]);
+        setSelectedAddressStableId(null);
       }
     };
 
@@ -1339,66 +1412,30 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     if (addressPrefilled) return;
-    if (!memberDefaultAddress) return;
-    if (fulfillment !== "delivery") return;
+    if (!isDeliveryFulfillment) return;
+    if (customer.addressLine1.trim()) return;
+    if (memberAddresses.length === 0) return;
 
-    setCustomer((prev) => {
-      const nextName =
-        !prev.name.trim() && memberDefaultAddress.receiver
-          ? memberDefaultAddress.receiver
-          : prev.name;
-      const nextPhone =
-        !prev.phone.trim() && memberDefaultAddress.phone
-          ? stripCanadianCountryCode(memberDefaultAddress.phone)
-          : prev.phone;
+    const defaultAddress =
+      memberAddresses.find((address) => address.isDefault) ??
+      memberAddresses[0];
+    if (!defaultAddress) return;
 
-      if (
-        prev.addressLine1.trim().length > 0 &&
-        nextName === prev.name &&
-        nextPhone === prev.phone
-      ) {
-        return prev;
-      }
-
-      const remark = memberDefaultAddress.remark?.trim() ?? "";
-      const nextNotes = !prev.notes.trim() && remark ? remark : prev.notes;
-
-      return {
-        ...prev,
-        name: nextName,
-        phone: nextPhone,
-        addressLine1: memberDefaultAddress.addressLine1,
-        addressLine2: memberDefaultAddress.addressLine2 ?? "",
-        city: memberDefaultAddress.city || prev.city,
-        province: memberDefaultAddress.province || prev.province,
-        postalCode: memberDefaultAddress.postalCode,
-        notes: nextNotes,
-      };
-    });
-
-    setAddressPrefilled(true);
-    if (memberDefaultAddress.remark?.trim()) {
-      setAddressRemarkPrefilled(true);
+    const stableId = getAddressStableId(defaultAddress);
+    if (!stableId) {
+      setAddressPrefilled(true);
+      return;
     }
-  }, [addressPrefilled, fulfillment, memberDefaultAddress]);
 
-  useEffect(() => {
-    if (addressRemarkPrefilled) return;
-    if (!memberDefaultAddress?.remark) return;
-    if (fulfillment !== "delivery") return;
-
-    setCustomer((prev) => {
-      const remark = memberDefaultAddress.remark?.trim();
-      if (!remark) return prev;
-      if (prev.notes.trim()) return prev;
-      return {
-        ...prev,
-        notes: remark,
-      };
-    });
-
-    setAddressRemarkPrefilled(true);
-  }, [addressRemarkPrefilled, fulfillment, memberDefaultAddress]);
+    applySelectedAddress(defaultAddress, stableId);
+    setAddressPrefilled(true);
+  }, [
+    addressPrefilled,
+    applySelectedAddress,
+    customer.addressLine1,
+    isDeliveryFulfillment,
+    memberAddresses,
+  ]);
 
   // ✅ 如果当前手机号与会员账号中的手机号一致，就自动视为“已验证”
   useEffect(() => {
@@ -1420,9 +1457,16 @@ export default function CheckoutPage() {
     setAddressValidation({ distanceKm: null, isChecking: true, error: null });
 
     try {
-      const coordinates = await geocodeAddress(deliveryAddressText, {
-        cityHint: `${customer.city}, ${customer.province}`,
-      });
+      let coordinates = selectedCoordinates;
+      if (!coordinates) {
+        coordinates = await geocodeAddress(deliveryAddressText, {
+          cityHint: `${customer.city}, ${customer.province}`,
+        });
+        if (coordinates) {
+          setSelectedCoordinates(coordinates);
+          setSelectedPlaceId(null);
+        }
+      }
 
       if (!coordinates) {
         setAddressValidation({
@@ -1483,13 +1527,63 @@ export default function CheckoutPage() {
     }
   };
 
-  // ⭐ 统一触发：只在外送 + 有地址1 + 合法邮编 时才会真正调用 validateDeliveryDistance
-  const triggerDistanceValidationIfReady = () => {
+  useEffect(() => {
     if (!isDeliveryFulfillment) return;
-    if (!hasDeliveryAddressInputs) return;
-    if (addressValidation.isChecking) return;
+    const timer = window.setTimeout(() => {
+      if (
+        customer.addressLine1 &&
+        customer.city &&
+        customer.province &&
+        postalCodeIsValid
+      ) {
+        void validateDeliveryDistance();
+      }
+    }, 800);
 
-    void validateDeliveryDistance();
+    return () => window.clearTimeout(timer);
+  }, [
+    customer.addressLine1,
+    customer.city,
+    customer.postalCode,
+    customer.province,
+    isDeliveryFulfillment,
+    postalCodeIsValid,
+  ]);
+
+  const saveNewAddressToBook = async () => {
+    if (!isMemberLoggedIn) return;
+    if (selectedAddressStableId) return;
+    const userStableId = memberUserStableId ?? session?.user?.userStableId;
+    if (!userStableId) return;
+    if (!customer.addressLine1.trim()) return;
+
+    try {
+      const formattedPhone = formatCanadianPhoneForApi(customer.phone);
+      const payload = {
+        userStableId,
+        label: customer.addressLine1,
+        receiver: customer.name,
+        phone: formattedPhone,
+        addressLine1: customer.addressLine1,
+        addressLine2: customer.addressLine2 ?? "",
+        city: customer.city,
+        province: customer.province,
+        postalCode: customer.postalCode,
+        placeId: selectedPlaceId,
+        latitude: selectedCoordinates?.latitude ?? null,
+        longitude: selectedCoordinates?.longitude ?? null,
+        isDefault: memberAddresses.length === 0,
+      };
+
+      await fetch("/api/v1/membership/addresses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      console.log("New address auto-saved to address book");
+    } catch (error) {
+      console.error("Failed to auto-save address", error);
+    }
   };
 
   const handlePlaceOrder = async () => {
@@ -1509,6 +1603,7 @@ export default function CheckoutPage() {
         return;
       }
       deliveryDistanceKm = validationResult.distanceKm ?? null;
+      await saveNewAddressToBook();
     } else {
       resetAddressValidation();
     }
@@ -1575,6 +1670,22 @@ export default function CheckoutPage() {
           phone: formattedCustomerPhone,
           address: deliveryAddressText,
         },
+        deliveryDestination: isDeliveryFulfillment
+          ? {
+              name: customer.name,
+              phone: formattedCustomerPhone,
+              addressLine1: customer.addressLine1,
+              addressLine2: customer.addressLine2 || undefined,
+              city: customer.city,
+              province: customer.province,
+              postalCode: customer.postalCode,
+              country: DELIVERY_COUNTRY,
+              instructions: customer.notes || undefined,
+              latitude: selectedCoordinates?.latitude,
+              longitude: selectedCoordinates?.longitude,
+              placeId: selectedPlaceId ?? undefined,
+            }
+          : undefined,
         utensils:
           utensilsPreference === "yes"
             ? {
@@ -1640,6 +1751,9 @@ export default function CheckoutPage() {
             postalCode: customer.postalCode,
             country: DELIVERY_COUNTRY,
             instructions: customer.notes || undefined,
+            latitude: selectedCoordinates?.latitude,
+            longitude: selectedCoordinates?.longitude,
+            placeId: selectedPlaceId ?? undefined,
           }
         : undefined,
       items: cartItemsWithPricing.map((cartItem) => ({
@@ -2275,20 +2389,133 @@ export default function CheckoutPage() {
 
                 {fulfillment === "delivery" ? (
                   <div className="space-y-3 rounded-2xl bg-slate-50 p-3">
+                    {isMemberLoggedIn && memberAddresses.length > 0 && (
+                      <div className="mb-4">
+                        <div className="mb-1 flex items-center justify-between">
+                          <label className="text-xs font-medium text-slate-600">
+                            {locale === "zh"
+                              ? "选择收货地址"
+                              : "Select Address"}
+                          </label>
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            className="cursor-pointer text-[10px] text-blue-600"
+                            onClick={() => {
+                              setSelectedAddressStableId(null);
+                              setSelectedCoordinates(null);
+                              setSelectedPlaceId(null);
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                setSelectedAddressStableId(null);
+                                setSelectedCoordinates(null);
+                                setSelectedPlaceId(null);
+                              }
+                            }}
+                          >
+                            {selectedAddressStableId
+                              ? locale === "zh"
+                                ? "使用新地址"
+                                : "Use new address"
+                              : ""}
+                          </span>
+                        </div>
+
+                        <select
+                          className="w-full rounded-xl border border-slate-200 bg-white p-2 text-sm outline-none focus:border-blue-500"
+                          value={selectedAddressStableId ?? ""}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            if (value) {
+                              handleSelectAddress(value);
+                              return;
+                            }
+                            setSelectedAddressStableId(null);
+                            setSelectedCoordinates(null);
+                            setSelectedPlaceId(null);
+                            setCustomer((prev) => ({
+                              ...prev,
+                              addressLine1: "",
+                              addressLine2: "",
+                              postalCode: "",
+                            }));
+                          }}
+                        >
+                          <option value="">
+                            {locale === "zh"
+                              ? "-- 输入新地址 --"
+                              : "-- Enter new address --"}
+                          </option>
+                          {memberAddresses.map((address) => {
+                            const stableId = getAddressStableId(address);
+                            if (!stableId) return null;
+                            return (
+                              <option key={stableId} value={stableId}>
+                                {address.addressLine1}
+                                {address.addressLine2
+                                  ? ` (${address.addressLine2})`
+                                  : ""}{" "}
+                                - {address.receiver ?? ""}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+                    )}
                     <label className="block text-xs font-medium text-slate-600">
                       {strings.contactFields.addressLine1}
-                      <input
+                      <AddressAutocomplete
                         value={customer.addressLine1}
-                        onChange={(event) =>
-                          handleCustomerChange(
-                            "addressLine1",
-                            event.target.value,
-                          )
-                        }
+                        onChange={(nextValue) => {
+                          handleCustomerChange("addressLine1", nextValue);
+                          setSelectedAddressStableId(null);
+                        }}
+                        onSelect={(selection) => {
+                          const { addressLine1, city, province, postalCode } =
+                            extractAddressParts(selection);
+                          if (selection.location) {
+                            setSelectedCoordinates({
+                              latitude: selection.location.lat,
+                              longitude: selection.location.lng,
+                            });
+                          } else {
+                            setSelectedCoordinates(null);
+                          }
+                          setSelectedPlaceId(selection.placeId ?? null);
+                          setSelectedAddressStableId(null);
+                          setCustomer((prev) => ({
+                            ...prev,
+                            addressLine1:
+                              addressLine1 ||
+                              selection.description ||
+                              prev.addressLine1,
+                            addressLine2: selection.detectedUnit
+                              ? selection.detectedUnit
+                              : prev.addressLine2,
+                            city: city || prev.city,
+                            province: province || prev.province,
+                            postalCode: postalCode
+                              ? formatPostalCodeInput(postalCode)
+                              : prev.postalCode,
+                          }));
+                        }}
                         placeholder={
                           strings.contactFields.addressLine1Placeholder
                         }
-                        className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                        containerClassName="relative"
+                        inputClassName="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                        suggestionListClassName="absolute z-50 mt-1 w-full rounded-2xl border border-slate-200 bg-white py-1 text-sm shadow-lg"
+                        suggestionItemClassName="cursor-pointer px-3 py-2 text-slate-700 hover:bg-slate-100"
+                        debounceMs={500}
+                        minLength={3}
+                        country="ca"
+                        locationBias={{
+                          lat: STORE_COORDINATES.latitude,
+                          lng: STORE_COORDINATES.longitude,
+                          radiusMeters: DELIVERY_RADIUS_KM * 1000,
+                        }}
                       />
                     </label>
                     <label className="block text-xs font-medium text-slate-600">
@@ -2347,7 +2574,6 @@ export default function CheckoutPage() {
                               formatPostalCodeInput(event.target.value),
                             )
                           }
-                          onBlur={triggerDistanceValidationIfReady}
                           placeholder={
                             strings.contactFields.postalCodePlaceholder
                           }
