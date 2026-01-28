@@ -86,6 +86,7 @@ export type AddressSelection = {
   formattedAddress?: string;
   location?: { lat: number; lng: number };
   components?: GooglePlaceComponent[];
+  detectedUnit?: string;
 };
 
 export type AddressAutocompleteProps = {
@@ -114,6 +115,29 @@ declare global {
 
 const DEFAULT_DEBOUNCE_MS = 500;
 const DEFAULT_MIN_LENGTH = 3;
+
+const extractUnitNumber = (rawInput: string, selectedAddress: string): string => {
+  if (!rawInput) return "";
+
+  const input = rawInput.toLowerCase().trim();
+  const address = selectedAddress.toLowerCase().trim();
+
+  const prefixMatch = rawInput.match(/^(\d+)\s*-\s*/);
+  if (prefixMatch && prefixMatch[1]) {
+    if (!address.startsWith(prefixMatch[1])) {
+      return prefixMatch[1];
+    }
+  }
+
+  const suffixMatch = input.match(
+    /(?:#|unit|apt|suite|ste)\.?\s*([a-z0-9-]+)/i,
+  );
+  if (suffixMatch && suffixMatch[1]) {
+    return suffixMatch[1];
+  }
+
+  return "";
+};
 
 export const extractAddressParts = (selection: AddressSelection) => {
   const components = selection.components ?? [];
@@ -297,6 +321,8 @@ export function AddressAutocomplete({
         blurTimeoutRef.current = null;
       }
       setPredictions([]);
+      const rawInput = value;
+      const detectedUnit = extractUnitNumber(rawInput, prediction.description);
       onChange(prediction.description);
 
       const placeId = prediction.place_id;
@@ -307,6 +333,7 @@ export function AddressAutocomplete({
         onSelect({
           description: prediction.description,
           placeId,
+          detectedUnit,
         });
         if (isReady && google?.maps?.places) {
           setSessionToken(new google.maps.places.AutocompleteSessionToken());
@@ -330,6 +357,7 @@ export function AddressAutocomplete({
             onSelect({
               description: prediction.description,
               placeId,
+              detectedUnit,
             });
           } else {
             const location = place?.geometry?.location
@@ -344,6 +372,7 @@ export function AddressAutocomplete({
               formattedAddress: place?.formatted_address,
               components: place?.address_components ?? [],
               location,
+              detectedUnit,
             });
           }
         },
@@ -355,7 +384,7 @@ export function AddressAutocomplete({
         }
       }
     },
-    [isReady, onChange, onSelect, sessionToken],
+    [isReady, onChange, onSelect, sessionToken, value],
   );
 
   return (
