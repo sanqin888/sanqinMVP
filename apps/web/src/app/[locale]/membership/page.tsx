@@ -2310,6 +2310,11 @@ function AddressesSection({
               } else if (selection.description) {
                 setAddressLine1(selection.description);
               }
+              if (selection.detectedUnit) {
+                setAddressLine2(selection.detectedUnit);
+              } else {
+                setAddressLine2("");
+              }
               if (city) setCity(city);
               if (province) setProvince(province);
               if (postalCode) {
