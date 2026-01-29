@@ -195,9 +195,13 @@ export default function LocalOrderPage() {
     usePersistentCart();
   const [activeItem, setActiveItem] = useState<LocalizedMenuItem | null>(null);
   const [selectedQuantity, setSelectedQuantity] = useState(1);
+  
+  // 选中的选项：Record<OptionGroupStableId, OptionStableId[]>
   const [selectedOptions, setSelectedOptions] = useState<
     Record<string, string[]>
   >({});
+  
+  // 子选项（原逻辑）：Record<ParentOptionStableId, ChildOptionStableId[]>
   const [selectedChildOptions, setSelectedChildOptions] = useState<
     Record<string, string[]>
   >({});
@@ -432,6 +436,7 @@ export default function LocalOrderPage() {
     return groups;
   }, [activeItem, getGroupKey, resolveLinkedItem, selectedOptions]);
 
+  // 更新：使用 activeOptionGroups 来计算缺失的必选项
   const requiredGroupsMissing = useMemo(() => {
     return activeOptionGroups.filter((group) => {
       // 使用 getGroupKey 检查
@@ -440,6 +445,7 @@ export default function LocalOrderPage() {
     });
   }, [activeOptionGroups, getGroupKey, selectedOptions]);
 
+  // 更新：使用 activeOptionGroups 来计算价格和详情
   const selectedOptionsDetails = useMemo(() => {
     const details: Array<{
       groupName: string;
@@ -493,6 +499,7 @@ export default function LocalOrderPage() {
     [locale],
   );
 
+  // ... (保持 checkoutHref, membershipHref 等逻辑不变)
   const checkoutHref = q ? `/${locale}/checkout?${q}` : `/${locale}/checkout`;
   const orderHref = q ? `/${locale}?${q}` : `/${locale}`;
   const membershipHref = isMemberLoggedIn
