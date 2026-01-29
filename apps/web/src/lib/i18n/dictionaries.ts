@@ -58,6 +58,9 @@ type UtensilStrings = {
   description: string;
   yes: string;
   no: string;
+  typeLabel: string;
+  typeChopsticks: string;
+  typeFork: string;
   quantityLabel: string;
   optionOne: string;
   optionTwo: string;
@@ -211,6 +214,9 @@ export const UI_STRINGS: Record<
       description: "Do you need disposable utensils with your order?",
       yes: "Yes",
       no: "No",
+      typeLabel: "Choose a utensil",
+      typeChopsticks: "Chopsticks",
+      typeFork: "Fork",
       quantityLabel: "How many sets?",
       optionOne: "1 set",
       optionTwo: "2 sets",
@@ -334,6 +340,9 @@ export const UI_STRINGS: Record<
       description: "需要一次性餐具吗？",
       yes: "需要",
       no: "不需要",
+      typeLabel: "选择餐具",
+      typeChopsticks: "筷子",
+      typeFork: "叉子",
       quantityLabel: "需要几套餐具？",
       optionOne: "1 份",
       optionTwo: "2 份",
