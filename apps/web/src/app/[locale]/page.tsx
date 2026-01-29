@@ -20,7 +20,7 @@ import type {
   MenuEntitlementsResponse,
   PublicMenuResponse as PublicMenuApiResponse,
   MenuOptionGroupWithOptionsDto,
-  MenuOptionDto,
+  OptionChoiceDto,
 } from "@shared/menu";
 import { usePersistentCart } from "@/lib/cart";
 import { apiFetch } from "@/lib/api/client";
@@ -252,7 +252,7 @@ export default function LocalOrderPage() {
   // 优先级 1: targetItemStableId (最准确)
   // 优先级 2: Name matching (回退方案)
   const resolveLinkedItem = useCallback(
-    (option: MenuOptionDto): LocalizedMenuItem | undefined => {
+    (option: OptionChoiceDto): LocalizedMenuItem | undefined => {
       // 1. Try by ID
       if (option.targetItemStableId) {
         const byId = menuItemMap.get(option.targetItemStableId);
@@ -265,12 +265,6 @@ export default function LocalOrderPage() {
       if (nameKey) {
         const byName = menuItemMapByName.get(nameKey.trim());
         if (byName) return byName;
-      }
-
-      // 3. Try by raw Name as fallback
-      if (option.name) {
-        const byRawName = menuItemMapByName.get(option.name.trim());
-        if (byRawName) return byRawName;
       }
 
       return undefined;
