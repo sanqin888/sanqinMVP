@@ -1,8 +1,9 @@
 // apps/web/src/app/[locale]/page.tsx
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams, useParams } from "next/navigation";
 import { HOSTED_CHECKOUT_CURRENCY } from "@/lib/order/shared";
 import type { Locale } from "@/lib/i18n/locales";
@@ -19,11 +20,11 @@ import type {
   MenuEntitlementsResponse,
   PublicMenuResponse as PublicMenuApiResponse,
   MenuOptionGroupWithOptionsDto,
+  OptionChoiceDto,
 } from "@shared/menu";
 import { usePersistentCart } from "@/lib/cart";
 import { apiFetch } from "@/lib/api/client";
 import { signOut, useSession } from "@/lib/auth-session";
-import Image from "next/image";
 
 type StoreStatus = {
   publicNotice: string | null;
@@ -214,11 +215,6 @@ export default function LocalOrderPage() {
     [entitlements, locale],
   );
 
-  const entitlementItemSet = useMemo(
-    () => new Set(entitlements?.unlockedItemStableIds ?? []),
-    [entitlements],
-  );
-
   const mergedMenu = useMemo(() => {
     if (entitlementItems.length === 0) return menu;
     return [
@@ -231,19 +227,7 @@ export default function LocalOrderPage() {
     ];
   }, [entitlementItems, locale, menu]);
 
-  // ✅ 1. 建立基于名称的 Item 映射表，用于把 "选项" 关联到 "餐品"
-  const menuItemMapByName = useMemo(() => {
-    const map = new Map<string, LocalizedMenuItem>();
-    mergedMenu.forEach((category) => {
-      category.items.forEach((item) => {
-        if (item.name) map.set(item.name.trim(), item);
-        if (item.nameEn) map.set(item.nameEn.trim(), item);
-        if (item.nameZh) map.set(item.nameZh.trim(), item);
-      });
-    });
-    return map;
-  }, [mergedMenu]);
-
+  // Map: ID -> Item
   const menuItemMap = useMemo(
     () =>
       new Map(
@@ -252,6 +236,53 @@ export default function LocalOrderPage() {
         ),
       ),
     [mergedMenu],
+  );
+
+  // Map: Name -> Item (Fallback)
+  const menuItemMapByName = useMemo(() => {
+    const map = new Map<string, LocalizedMenuItem>();
+    mergedMenu.forEach((category) => {
+      category.items.forEach((item) => {
+        if (item.name) map.set(item.name.trim(), item);
+        // 同时建立中英文映射，增加匹配几率
+        if (item.nameEn) map.set(item.nameEn.trim(), item);
+        if (item.nameZh) map.set(item.nameZh.trim(), item);
+      });
+    });
+    return map;
+  }, [mergedMenu]);
+
+  // ✅ 核心辅助函数：查找选项关联的餐品
+  // 优先级 1: targetItemStableId (最准确)
+  // 优先级 2: Name matching (回退方案)
+  const resolveLinkedItem = useCallback(
+    (option: OptionChoiceDto): LocalizedMenuItem | undefined => {
+      // 1. Try by ID
+      if (option.targetItemStableId) {
+        const byId = menuItemMap.get(option.targetItemStableId);
+        if (byId) return byId;
+      }
+
+      // 2. Try by Name (Localized)
+      const nameKey =
+        locale === "zh" && option.nameZh ? option.nameZh : option.nameEn;
+      if (nameKey) {
+        const byName = menuItemMapByName.get(nameKey.trim());
+        if (byName) return byName;
+      }
+
+      return undefined;
+    },
+    [locale, menuItemMap, menuItemMapByName],
+  );
+
+  // ✅ 核心修改：获取 Group 的唯一 Key
+  // 如果有 bindingStableId（说明是双人套餐等复用场景），优先使用它
+  // 否则降级使用 templateGroupStableId
+  const getGroupKey = useCallback(
+    (group: MenuOptionGroupWithOptionsDto) =>
+      group.bindingStableId ?? group.templateGroupStableId,
+    [],
   );
 
   useEffect(() => {
@@ -293,14 +324,14 @@ export default function LocalOrderPage() {
   };
 
   const handleOptionToggle = (
-    groupStableId: string,
+    groupKey: string, // 修改：接收 groupKey (bindingId or templateId)
     optionStableId: string,
     minSelect: number,
     maxSelect: number | null,
   ) => {
     let removedParents: string[] = [];
     setSelectedOptions((prev) => {
-      const current = new Set(prev[groupStableId] ?? []);
+      const current = new Set(prev[groupKey] ?? []);
 
       if (maxSelect === 1) {
         if (current.has(optionStableId)) {
@@ -309,11 +340,11 @@ export default function LocalOrderPage() {
           }
           removedParents = [optionStableId];
           const next = { ...prev };
-          delete next[groupStableId];
+          delete next[groupKey];
           return next;
         }
         removedParents = Array.from(current);
-        return { ...prev, [groupStableId]: [optionStableId] };
+        return { ...prev, [groupKey]: [optionStableId] };
       }
 
       if (current.has(optionStableId)) {
@@ -328,11 +359,11 @@ export default function LocalOrderPage() {
 
       if (current.size === 0) {
         const next = { ...prev };
-        delete next[groupStableId];
+        delete next[groupKey];
         return next;
       }
 
-      return { ...prev, [groupStableId]: Array.from(current) };
+      return { ...prev, [groupKey]: Array.from(current) };
     });
 
     if (removedParents.length > 0) {
@@ -366,51 +397,53 @@ export default function LocalOrderPage() {
     });
   };
 
-  // ✅ 2. 动态收集所有“激活”的选项组（包括因为选中某个选项而展示出来的嵌套选项组）
-  // 用于：计算价格、校验必选、展示已选列表
+  // ✅ 优化后的 activeOptionGroups 逻辑，使用 getGroupKey 进行去重和查找
   const activeOptionGroups = useMemo(() => {
     if (!activeItem) return [];
     
-    // 从主商品的选项组开始
-    let groups: MenuOptionGroupWithOptionsDto[] = [...(activeItem.optionGroups ?? [])];
+    const groups: MenuOptionGroupWithOptionsDto[] = [
+      ...(activeItem.optionGroups ?? []),
+    ];
+    const visitedGroupIds = new Set<string>();
     
-    // 遍历当前已知的 group 列表（用 for 循环因为列表会动态增长）
+    // 初始化访问记录，使用 getGroupKey
+    groups.forEach((group) => visitedGroupIds.add(getGroupKey(group)));
+
+    // 使用索引遍历，因为数组长度会动态增加
     for (let i = 0; i < groups.length; i++) {
         const group = groups[i];
-        const selectedIds = selectedOptions[group.templateGroupStableId] ?? [];
+        // 使用 getGroupKey 获取当前组的选中项
+        const selectedIds = selectedOptions[getGroupKey(group)] ?? [];
         
-        // 遍历该组下所有被选中的选项
         for (const option of group.options) {
             if (selectedIds.includes(option.optionStableId)) {
-                // 尝试通过名称找到对应的 Item（解决嵌套关联问题）
-                const nameKey = locale === 'zh' && option.nameZh ? option.nameZh : option.nameEn;
-                const linkedItem = menuItemMapByName.get(nameKey.trim());
+                // 查找关联 Item
+                const linkedItem = resolveLinkedItem(option);
                 
                 if (linkedItem && linkedItem.optionGroups && linkedItem.optionGroups.length > 0) {
-                    // 将该 Item 的选项组加入到待处理列表中
-                    // 注意：这里需要确保 templateGroupStableId 全局唯一，否则可能冲突（通常UUID不冲突）
-                    groups = [...groups, ...linkedItem.optionGroups];
+                    for (const nestedGroup of linkedItem.optionGroups) {
+                        const nestedGroupKey = getGroupKey(nestedGroup);
+                        if (!visitedGroupIds.has(nestedGroupKey)) {
+                            visitedGroupIds.add(nestedGroupKey);
+                            groups.push(nestedGroup);
+                        }
+                    }
                 }
             }
         }
     }
     
-    // 去重（防止多处引用同一个 templateGroup 导致计算重复）
-    const seen = new Set();
-    return groups.filter(g => {
-        if (seen.has(g.templateGroupStableId)) return false;
-        seen.add(g.templateGroupStableId);
-        return true;
-    });
-  }, [activeItem, selectedOptions, menuItemMapByName, locale]);
+    return groups;
+  }, [activeItem, getGroupKey, resolveLinkedItem, selectedOptions]);
 
   // 更新：使用 activeOptionGroups 来计算缺失的必选项
   const requiredGroupsMissing = useMemo(() => {
     return activeOptionGroups.filter((group) => {
-      const selectedCount = selectedOptions[group.templateGroupStableId]?.length;
+      // 使用 getGroupKey 检查
+      const selectedCount = selectedOptions[getGroupKey(group)]?.length;
       return group.minSelect > 0 && (selectedCount ?? 0) < group.minSelect;
     });
-  }, [activeOptionGroups, selectedOptions]);
+  }, [activeOptionGroups, getGroupKey, selectedOptions]);
 
   // 更新：使用 activeOptionGroups 来计算价格和详情
   const selectedOptionsDetails = useMemo(() => {
@@ -510,11 +543,12 @@ export default function LocalOrderPage() {
       ? storeStatus?.publicNotice?.trim() ?? ""
       : storeStatus?.publicNoticeEn?.trim() ?? storeStatus?.publicNotice?.trim() ?? "";
 
-  // ✅ 3. 抽离出的通用选项组渲染函数，支持递归渲染
+  // ✅ 渲染函数也更新，使用 getGroupKey
   const renderOptionGroup = (group: MenuOptionGroupWithOptionsDto) => {
-    const selectedCount = selectedOptions[group.templateGroupStableId]?.length ?? 0;
+    // 关键：获取唯一 Key
+    const groupKey = getGroupKey(group);
+    const selectedCount = selectedOptions[groupKey]?.length ?? 0;
     
-    // Requirements label logic...
     const requirementLabel = (() => {
         if (group.minSelect > 0 && group.maxSelect === 1) return locale === "zh" ? "必选 1 项" : "Required: 1";
         if (group.minSelect > 0 && group.maxSelect) return locale === "zh" ? `必选 ${group.minSelect}-${group.maxSelect} 项` : `Required: ${group.minSelect}-${group.maxSelect}`;
@@ -524,7 +558,7 @@ export default function LocalOrderPage() {
     })();
 
     return (
-        <div key={group.templateGroupStableId} className="space-y-3">
+        <div key={groupKey} className="space-y-3">
             <div className="flex items-center justify-between gap-4">
             <div>
                 <h4 className="text-base font-semibold text-slate-900">
@@ -539,14 +573,14 @@ export default function LocalOrderPage() {
 
             <div className="grid gap-2 md:grid-cols-2">
             {group.options.map((option) => {
-                const selected = selectedOptions[group.templateGroupStableId]?.includes(option.optionStableId) ?? false;
+                // 使用 groupKey 检查选中状态
+                const selected = selectedOptions[groupKey]?.includes(option.optionStableId) ?? false;
                 const optionTempUnavailable = isTempUnavailable(option.tempUnavailableUntil);
                 const optionLabel = locale === "zh" && option.nameZh ? option.nameZh : option.nameEn;
                 
-                // 查找关联的 Item（通过名称）
-                const linkedItem = menuItemMapByName.get(optionLabel.trim());
+                // 使用增强后的查找逻辑
+                const linkedItem = resolveLinkedItem(option);
                 
-                // 原有的子选项逻辑 (Sibling dependencies)
                 const childOptions = (option.childOptionStableIds ?? [])
                 .map((childId) => group.options.find((child) => child.optionStableId === childId))
                 .filter((childOption): childOption is NonNullable<typeof childOption> => Boolean(childOption));
@@ -559,7 +593,8 @@ export default function LocalOrderPage() {
                     <button
                         type="button"
                         disabled={optionTempUnavailable}
-                        onClick={() => optionTempUnavailable ? undefined : handleOptionToggle(group.templateGroupStableId, option.optionStableId, group.minSelect, group.maxSelect)}
+                        // 使用 groupKey 传递点击事件
+                        onClick={() => optionTempUnavailable ? undefined : handleOptionToggle(groupKey, option.optionStableId, group.minSelect, group.maxSelect)}
                         className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-left text-sm transition ${
                             optionTempUnavailable ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400" : 
                             selected ? "border-slate-900 bg-slate-900 text-white" : 
@@ -577,15 +612,28 @@ export default function LocalOrderPage() {
                     ) : null}
                     </button>
 
-                    {/* 原有的子选项渲染 */}
                     {selected && childOptions.length > 0 ? (
                         <div className="grid gap-2 pl-2 md:grid-cols-2">
-                            {/* ... (Existing child options logic omitted for brevity, logic is same as before but inside generic function) ... */}
-                            {/* 为了简洁，这部分逻辑如果没用到可以忽略。如果用了，请保留原有逻辑。此处为了代码清晰，暂不重复渲染 Sibling Child Options */}
+                             {childOptions.map((child) => {
+                                const childSelected = selectedChildOptions[option.optionStableId]?.includes(child.optionStableId) ?? false;
+                                const childTempUnavailable = isTempUnavailable(child.tempUnavailableUntil);
+                                const childLabel = locale === "zh" && child.nameZh ? child.nameZh : child.nameEn;
+                                const childPriceDelta = child.priceDeltaCents > 0 ? `+${currencyFormatter.format(child.priceDeltaCents / 100)}` : child.priceDeltaCents < 0 ? `-${currencyFormatter.format(Math.abs(child.priceDeltaCents) / 100)}` : "";
+
+                                return (
+                                    <button key={child.optionStableId} type="button" disabled={childTempUnavailable}
+                                        onClick={() => childTempUnavailable ? undefined : handleChildOptionToggle(option.optionStableId, child.optionStableId)}
+                                        className={`flex items-center justify-between rounded-xl border px-3 py-2 text-left text-xs transition ${childTempUnavailable ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400" : childSelected ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"}`}
+                                    >
+                                        <span className="flex flex-col gap-1"><span className="font-medium">{childLabel}</span>{childTempUnavailable && <span className="text-[10px] font-semibold text-amber-600">{locale === "zh" ? "当日售罄" : "Sold out today"}</span>}</span>
+                                        {childPriceDelta && <span className={`text-[10px] font-semibold ${childSelected ? "text-white/80" : "text-slate-400"}`}>{childPriceDelta}</span>}
+                                    </button>
+                                );
+                            })}
                         </div>
                     ) : null}
 
-                    {/* ✅ 嵌套 Item 渲染：如果选中了且关联了 Item，渲染该 Item 的所有 OptionGroups */}
+                    {/* ✅ 嵌套 Item 渲染：递归调用 renderOptionGroup */}
                     {selected && linkedItem && linkedItem.optionGroups && linkedItem.optionGroups.length > 0 ? (
                         <div className="mt-2 ml-2 pl-3 border-l-2 border-slate-100 space-y-4">
                             {linkedItem.optionGroups.map(nestedGroup => renderOptionGroup(nestedGroup))}
@@ -601,7 +649,6 @@ export default function LocalOrderPage() {
 
   return (
     <div className="space-y-12 pb-28">
-      {/* ... Hero Section (unchanged) ... */}
       <section className="rounded-2xl border border-slate-200 bg-white px-6 py-4 shadow-sm">
         <div className="flex flex-col gap-2">
           <p className="text-sm font-semibold text-slate-900">
@@ -673,9 +720,18 @@ export default function LocalOrderPage() {
                                         className={`group flex h-full flex-col justify-between rounded-3xl border border-amber-200 bg-amber-50/40 p-5 shadow-sm transition ${isTempUnavailable(item.tempUnavailableUntil) ? "cursor-not-allowed opacity-70" : "cursor-pointer hover:-translate-y-0.5 hover:shadow-md"}`}
                                         onClick={() => { if (!isTempUnavailable(item.tempUnavailableUntil)) { setActiveItem(item); setSelectedQuantity(1); setSelectedOptions({}); setSelectedChildOptions({}); } }}
                                     >
-                                        {/* ... Special Card Content ... */}
                                         <div className="flex items-center gap-3">
-                                            {item.imageUrl && <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-amber-100"><img src={item.imageUrl} alt={item.name} className="h-full w-full object-cover"/></div>}
+                                            {item.imageUrl && (
+                                              <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-amber-100">
+                                                <Image
+                                                  src={item.imageUrl}
+                                                  alt={item.name}
+                                                  fill
+                                                  sizes="48px"
+                                                  className="object-cover"
+                                                />
+                                              </div>
+                                            )}
                                             <span className="rounded-full bg-amber-500/90 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-white">{locale === "zh" ? "特价" : "Special"}</span>
                                             <h3 className="text-lg font-semibold text-slate-900">{special.name}</h3>
                                         </div>
@@ -711,8 +767,19 @@ export default function LocalOrderPage() {
                               setSelectedChildOptions({});
                             }}
                           >
-                            {/* ... Item Card Content (Image, Name, Price) ... */}
-                            {item.imageUrl && <div className="mb-3 overflow-hidden rounded-2xl bg-slate-100"><img src={item.imageUrl} alt={item.name} className="h-64 w-full object-cover transition duration-300 group-hover:scale-105"/></div>}
+                            {item.imageUrl && (
+                              <div className="mb-3 overflow-hidden rounded-2xl bg-slate-100">
+                                <div className="relative h-64 w-full">
+                                  <Image
+                                    src={item.imageUrl}
+                                    alt={item.name}
+                                    fill
+                                    sizes="(min-width: 768px) 50vw, 100vw"
+                                    className="object-cover transition duration-300 group-hover:scale-105"
+                                  />
+                                </div>
+                              </div>
+                            )}
                             <div className="space-y-3">
                                 <div className="flex items-start justify-between gap-4">
                                     <div>
@@ -763,8 +830,14 @@ export default function LocalOrderPage() {
             <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">
               {activeItem.imageUrl ? (
                 <div className="overflow-hidden rounded-2xl bg-slate-100">
-                  <div className="aspect-[5/3] w-full">
-                    <img src={activeItem.imageUrl} alt={activeItem.name} className="h-full w-full object-cover" />
+                  <div className="relative aspect-[5/3] w-full">
+                    <Image
+                      src={activeItem.imageUrl}
+                      alt={activeItem.name}
+                      fill
+                      sizes="(min-width: 768px) 50vw, 100vw"
+                      className="object-cover"
+                    />
                   </div>
                 </div>
               ) : null}
@@ -806,7 +879,6 @@ export default function LocalOrderPage() {
                     type="button"
                     onClick={() => {
                       if (!activeItem || !canAddToCart) return;
-                      // ✅ 将所有选项（包括递归选中的）扁平化存入购物车
                       addItem(activeItem.stableId, { ...selectedOptions, ...selectedChildOptions }, selectedQuantity);
                       closeOptionsModal();
                     }}

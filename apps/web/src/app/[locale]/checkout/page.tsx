@@ -2,7 +2,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams, useParams } from "next/navigation";
 import { apiFetch } from "@/lib/api/client";
 import { usePersistentCart } from "@/lib/cart";
@@ -545,6 +545,9 @@ export default function CheckoutPage() {
   const [utensilsPreference, setUtensilsPreference] = useState<
     "yes" | "no"
   >("no");
+  const [utensilsType, setUtensilsType] = useState<
+    "chopsticks" | "fork"
+  >("chopsticks");
   const [utensilsQuantity, setUtensilsQuantity] = useState<
     "1" | "2" | "other"
   >("1");
@@ -743,8 +746,15 @@ export default function CheckoutPage() {
     },
   );
 
-  const resetAddressValidation = () =>
-    setAddressValidation({ distanceKm: null, isChecking: false, error: null });
+  const resetAddressValidation = useCallback(
+    () =>
+      setAddressValidation({
+        distanceKm: null,
+        isChecking: false,
+        error: null,
+      }),
+    [],
+  );
 
   const currencyFormatter = useMemo(
     () =>
@@ -761,19 +771,22 @@ export default function CheckoutPage() {
   const formatMoney = (cents: number) =>
     currencyFormatter.format(cents / 100).replace(/^CA\$\s?/, "$");
 
-  const formatDistanceValue = (km: number) => {
+  const formatDistanceValue = useCallback((km: number) => {
     const rounded = Math.round(km * 10) / 10;
     if (!Number.isFinite(rounded)) return `${km} km`;
     return `${
       Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1)
     } km`;
-  };
+  }, []);
 
-  const applyDistanceTemplate = (template: string, distanceLabel?: string) =>
-    template.replace("{distance}", distanceLabel ?? "").replace(
-      "{radius}",
-      radiusLabel,
-    );
+  const applyDistanceTemplate = useCallback(
+    (template: string, distanceLabel?: string) =>
+      template.replace("{distance}", distanceLabel ?? "").replace(
+        "{radius}",
+        radiusLabel,
+      ),
+    [radiusLabel],
+  );
 
   const selectedDeliveryDefinition = DELIVERY_OPTION_DEFINITIONS[deliveryType];
 
@@ -1011,36 +1024,39 @@ export default function CheckoutPage() {
     }
   };
 
-  const applySelectedAddress = (selected: MemberAddress, stableId: string) => {
-    setSelectedAddressStableId(stableId);
-    setCustomer((prev) => ({
-      ...prev,
-      name: selected.receiver || prev.name,
-      phone: selected.phone
-        ? stripCanadianCountryCode(selected.phone)
-        : prev.phone,
-      addressLine1: selected.addressLine1,
-      addressLine2: selected.addressLine2 ?? "",
-      city: selected.city,
-      province: selected.province,
-      postalCode: selected.postalCode,
-      notes: selected.remark?.trim() ? selected.remark : prev.notes,
-    }));
+  const applySelectedAddress = useCallback(
+    (selected: MemberAddress, stableId: string) => {
+      setSelectedAddressStableId(stableId);
+      setCustomer((prev) => ({
+        ...prev,
+        name: selected.receiver || prev.name,
+        phone: selected.phone
+          ? stripCanadianCountryCode(selected.phone)
+          : prev.phone,
+        addressLine1: selected.addressLine1,
+        addressLine2: selected.addressLine2 ?? "",
+        city: selected.city,
+        province: selected.province,
+        postalCode: selected.postalCode,
+        notes: selected.remark?.trim() ? selected.remark : prev.notes,
+      }));
 
-    if (
-      typeof selected.latitude === "number" &&
-      typeof selected.longitude === "number"
-    ) {
-      setSelectedCoordinates({
-        latitude: selected.latitude,
-        longitude: selected.longitude,
-      });
-    } else {
-      setSelectedCoordinates(null);
-    }
-    setSelectedPlaceId(selected.placeId ?? null);
-    resetAddressValidation();
-  };
+      if (
+        typeof selected.latitude === "number" &&
+        typeof selected.longitude === "number"
+      ) {
+        setSelectedCoordinates({
+          latitude: selected.latitude,
+          longitude: selected.longitude,
+        });
+      } else {
+        setSelectedCoordinates(null);
+      }
+      setSelectedPlaceId(selected.placeId ?? null);
+      resetAddressValidation();
+    },
+    [resetAddressValidation],
+  );
 
   const handleSelectAddress = (stableId: string) => {
     const selected = memberAddresses.find(
@@ -1163,7 +1179,7 @@ export default function CheckoutPage() {
     if (!isDeliveryFulfillment) {
       resetAddressValidation();
     }
-  }, [isDeliveryFulfillment]);
+  }, [isDeliveryFulfillment, resetAddressValidation]);
 
   useEffect(() => {
     if (!isDeliveryFulfillment) return;
@@ -1175,6 +1191,7 @@ export default function CheckoutPage() {
     customer.province,
     customer.postalCode,
     isDeliveryFulfillment,
+    resetAddressValidation,
   ]);
 
   // 加载会员积分 + 会员手机号
@@ -1449,9 +1466,8 @@ export default function CheckoutPage() {
   }, [memberPhone, memberPhoneVerified, customer.phone]);
 
   // 带可选 override 类型的距离校验
-  const validateDeliveryDistance = async (
-    overrideDeliveryType?: DeliveryTypeOption,
-  ) => {
+  const validateDeliveryDistance = useCallback(
+    async (overrideDeliveryType?: DeliveryTypeOption) => {
     const effectiveType = overrideDeliveryType ?? deliveryType;
 
     setAddressValidation({ distanceKm: null, isChecking: true, error: null });
@@ -1525,7 +1541,21 @@ export default function CheckoutPage() {
       });
       return { success: false } as const;
     }
-  };
+    },
+    [
+      applyDistanceTemplate,
+      customer.city,
+      customer.province,
+      deliveryAddressText,
+      deliveryType,
+      formatDistanceValue,
+      locale,
+      selectedCoordinates,
+      strings.deliveryDistance.failed,
+      strings.deliveryDistance.notFound,
+      strings.deliveryDistance.outsideRange,
+    ],
+  );
 
   useEffect(() => {
     if (!isDeliveryFulfillment) return;
@@ -1548,6 +1578,7 @@ export default function CheckoutPage() {
     customer.province,
     isDeliveryFulfillment,
     postalCodeIsValid,
+    validateDeliveryDistance,
   ]);
 
   const saveNewAddressToBook = async () => {
@@ -1690,6 +1721,7 @@ export default function CheckoutPage() {
           utensilsPreference === "yes"
             ? {
                 needed: true,
+                type: utensilsType,
                 quantity:
                   utensilsQuantity === "other"
                     ? Number.parseInt(utensilsCustomQuantity, 10) || null
@@ -2128,6 +2160,7 @@ export default function CheckoutPage() {
                   type="button"
                   onClick={() => {
                     setUtensilsPreference("no");
+                    setUtensilsType("chopsticks");
                     setUtensilsQuantity("1");
                     setUtensilsCustomQuantity("");
                   }}
@@ -2156,6 +2189,37 @@ export default function CheckoutPage() {
 
               {utensilsPreference === "yes" ? (
                 <div className="mt-3 space-y-2 text-xs text-slate-600">
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-slate-700">
+                      {strings.utensils.typeLabel}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setUtensilsType("chopsticks")}
+                        className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                          utensilsType === "chopsticks"
+                            ? "border-slate-900 bg-slate-900 text-white"
+                            : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300"
+                        }`}
+                        aria-pressed={utensilsType === "chopsticks"}
+                      >
+                        {strings.utensils.typeChopsticks}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setUtensilsType("fork")}
+                        className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                          utensilsType === "fork"
+                            ? "border-slate-900 bg-slate-900 text-white"
+                            : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300"
+                        }`}
+                        aria-pressed={utensilsType === "fork"}
+                      >
+                        {strings.utensils.typeFork}
+                      </button>
+                    </div>
+                  </div>
                   <label className="block font-medium text-slate-700">
                     {strings.utensils.quantityLabel}
                     <select
