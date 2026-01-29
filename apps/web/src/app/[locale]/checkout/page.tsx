@@ -545,6 +545,9 @@ export default function CheckoutPage() {
   const [utensilsPreference, setUtensilsPreference] = useState<
     "yes" | "no"
   >("no");
+  const [utensilsType, setUtensilsType] = useState<
+    "chopsticks" | "fork"
+  >("chopsticks");
   const [utensilsQuantity, setUtensilsQuantity] = useState<
     "1" | "2" | "other"
   >("1");
@@ -1690,6 +1693,7 @@ export default function CheckoutPage() {
           utensilsPreference === "yes"
             ? {
                 needed: true,
+                type: utensilsType,
                 quantity:
                   utensilsQuantity === "other"
                     ? Number.parseInt(utensilsCustomQuantity, 10) || null
@@ -2128,6 +2132,7 @@ export default function CheckoutPage() {
                   type="button"
                   onClick={() => {
                     setUtensilsPreference("no");
+                    setUtensilsType("chopsticks");
                     setUtensilsQuantity("1");
                     setUtensilsCustomQuantity("");
                   }}
@@ -2156,6 +2161,37 @@ export default function CheckoutPage() {
 
               {utensilsPreference === "yes" ? (
                 <div className="mt-3 space-y-2 text-xs text-slate-600">
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-slate-700">
+                      {strings.utensils.typeLabel}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setUtensilsType("chopsticks")}
+                        className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                          utensilsType === "chopsticks"
+                            ? "border-slate-900 bg-slate-900 text-white"
+                            : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300"
+                        }`}
+                        aria-pressed={utensilsType === "chopsticks"}
+                      >
+                        {strings.utensils.typeChopsticks}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setUtensilsType("fork")}
+                        className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                          utensilsType === "fork"
+                            ? "border-slate-900 bg-slate-900 text-white"
+                            : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300"
+                        }`}
+                        aria-pressed={utensilsType === "fork"}
+                      >
+                        {strings.utensils.typeFork}
+                      </button>
+                    </div>
+                  </div>
                   <label className="block font-medium text-slate-700">
                     {strings.utensils.quantityLabel}
                     <select
