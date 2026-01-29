@@ -1,8 +1,9 @@
 // apps/web/src/app/[locale]/page.tsx
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams, useParams } from "next/navigation";
 import { HOSTED_CHECKOUT_CURRENCY } from "@/lib/order/shared";
 import type { Locale } from "@/lib/i18n/locales";
@@ -24,7 +25,6 @@ import type {
 import { usePersistentCart } from "@/lib/cart";
 import { apiFetch } from "@/lib/api/client";
 import { signOut, useSession } from "@/lib/auth-session";
-import Image from "next/image";
 
 type StoreStatus = {
   publicNotice: string | null;
@@ -211,11 +211,6 @@ export default function LocalOrderPage() {
     [entitlements, locale],
   );
 
-  const entitlementItemSet = useMemo(
-    () => new Set(entitlements?.unlockedItemStableIds ?? []),
-    [entitlements],
-  );
-
   const mergedMenu = useMemo(() => {
     if (entitlementItems.length === 0) return menu;
     return [
@@ -256,33 +251,41 @@ export default function LocalOrderPage() {
   // ✅ 核心辅助函数：查找选项关联的餐品
   // 优先级 1: targetItemStableId (最准确)
   // 优先级 2: Name matching (回退方案)
-  const resolveLinkedItem = (option: MenuOptionDto): LocalizedMenuItem | undefined => {
-    // 1. Try by ID
-    if (option.targetItemStableId) {
-      const byId = menuItemMap.get(option.targetItemStableId);
-      if (byId) return byId;
-    }
+  const resolveLinkedItem = useCallback(
+    (option: MenuOptionDto): LocalizedMenuItem | undefined => {
+      // 1. Try by ID
+      if (option.targetItemStableId) {
+        const byId = menuItemMap.get(option.targetItemStableId);
+        if (byId) return byId;
+      }
 
-    // 2. Try by Name (Localized)
-    const nameKey = locale === 'zh' && option.nameZh ? option.nameZh : option.nameEn;
-    if (nameKey) {
-      const byName = menuItemMapByName.get(nameKey.trim());
-      if (byName) return byName;
-    }
-    
-    // 3. Try by raw Name as fallback
-    if (option.name) {
-       const byRawName = menuItemMapByName.get(option.name.trim());
-       if (byRawName) return byRawName;
-    }
+      // 2. Try by Name (Localized)
+      const nameKey =
+        locale === "zh" && option.nameZh ? option.nameZh : option.nameEn;
+      if (nameKey) {
+        const byName = menuItemMapByName.get(nameKey.trim());
+        if (byName) return byName;
+      }
 
-    return undefined;
-  };
+      // 3. Try by raw Name as fallback
+      if (option.name) {
+        const byRawName = menuItemMapByName.get(option.name.trim());
+        if (byRawName) return byRawName;
+      }
+
+      return undefined;
+    },
+    [locale, menuItemMap, menuItemMapByName],
+  );
 
   // ✅ 核心修改：获取 Group 的唯一 Key
   // 如果有 bindingStableId（说明是双人套餐等复用场景），优先使用它
   // 否则降级使用 templateGroupStableId
-  const getGroupKey = (g: MenuOptionGroupWithOptionsDto) => g.bindingStableId ?? g.templateGroupStableId;
+  const getGroupKey = useCallback(
+    (group: MenuOptionGroupWithOptionsDto) =>
+      group.bindingStableId ?? group.templateGroupStableId,
+    [],
+  );
 
   useEffect(() => {
     if (cartItems.length === 0) return;
@@ -400,11 +403,13 @@ export default function LocalOrderPage() {
   const activeOptionGroups = useMemo(() => {
     if (!activeItem) return [];
     
-    let groups: MenuOptionGroupWithOptionsDto[] = [...(activeItem.optionGroups ?? [])];
+    const groups: MenuOptionGroupWithOptionsDto[] = [
+      ...(activeItem.optionGroups ?? []),
+    ];
     const visitedGroupIds = new Set<string>();
     
     // 初始化访问记录，使用 getGroupKey
-    groups.forEach(g => visitedGroupIds.add(getGroupKey(g)));
+    groups.forEach((group) => visitedGroupIds.add(getGroupKey(group)));
 
     // 使用索引遍历，因为数组长度会动态增加
     for (let i = 0; i < groups.length; i++) {
@@ -431,7 +436,7 @@ export default function LocalOrderPage() {
     }
     
     return groups;
-  }, [activeItem, selectedOptions, menuItemMap, menuItemMapByName, locale]);
+  }, [activeItem, getGroupKey, resolveLinkedItem, selectedOptions]);
 
   const requiredGroupsMissing = useMemo(() => {
     return activeOptionGroups.filter((group) => {
@@ -439,7 +444,7 @@ export default function LocalOrderPage() {
       const selectedCount = selectedOptions[getGroupKey(group)]?.length;
       return group.minSelect > 0 && (selectedCount ?? 0) < group.minSelect;
     });
-  }, [activeOptionGroups, selectedOptions]);
+  }, [activeOptionGroups, getGroupKey, selectedOptions]);
 
   const selectedOptionsDetails = useMemo(() => {
     const details: Array<{
@@ -715,7 +720,17 @@ export default function LocalOrderPage() {
                                         onClick={() => { if (!isTempUnavailable(item.tempUnavailableUntil)) { setActiveItem(item); setSelectedQuantity(1); setSelectedOptions({}); setSelectedChildOptions({}); } }}
                                     >
                                         <div className="flex items-center gap-3">
-                                            {item.imageUrl && <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-amber-100"><img src={item.imageUrl} alt={item.name} className="h-full w-full object-cover"/></div>}
+                                            {item.imageUrl && (
+                                              <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-amber-100">
+                                                <Image
+                                                  src={item.imageUrl}
+                                                  alt={item.name}
+                                                  fill
+                                                  sizes="48px"
+                                                  className="object-cover"
+                                                />
+                                              </div>
+                                            )}
                                             <span className="rounded-full bg-amber-500/90 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-white">{locale === "zh" ? "特价" : "Special"}</span>
                                             <h3 className="text-lg font-semibold text-slate-900">{special.name}</h3>
                                         </div>
@@ -751,7 +766,19 @@ export default function LocalOrderPage() {
                               setSelectedChildOptions({});
                             }}
                           >
-                            {item.imageUrl && <div className="mb-3 overflow-hidden rounded-2xl bg-slate-100"><img src={item.imageUrl} alt={item.name} className="h-64 w-full object-cover transition duration-300 group-hover:scale-105"/></div>}
+                            {item.imageUrl && (
+                              <div className="mb-3 overflow-hidden rounded-2xl bg-slate-100">
+                                <div className="relative h-64 w-full">
+                                  <Image
+                                    src={item.imageUrl}
+                                    alt={item.name}
+                                    fill
+                                    sizes="(min-width: 768px) 50vw, 100vw"
+                                    className="object-cover transition duration-300 group-hover:scale-105"
+                                  />
+                                </div>
+                              </div>
+                            )}
                             <div className="space-y-3">
                                 <div className="flex items-start justify-between gap-4">
                                     <div>
@@ -802,8 +829,14 @@ export default function LocalOrderPage() {
             <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">
               {activeItem.imageUrl ? (
                 <div className="overflow-hidden rounded-2xl bg-slate-100">
-                  <div className="aspect-[5/3] w-full">
-                    <img src={activeItem.imageUrl} alt={activeItem.name} className="h-full w-full object-cover" />
+                  <div className="relative aspect-[5/3] w-full">
+                    <Image
+                      src={activeItem.imageUrl}
+                      alt={activeItem.name}
+                      fill
+                      sizes="(min-width: 768px) 50vw, 100vw"
+                      className="object-cover"
+                    />
                   </div>
                 </div>
               ) : null}
