@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api/client';
+import { ImageLibraryModal } from '@/components/admin/ImageLibraryModal';
 import type { Locale } from '@/lib/i18n/locales';
 import type {
   AdminMenuCategoryDto,
@@ -140,6 +141,11 @@ export default function AdminMenuPage() {
   const [imageUploads, setImageUploads] = useState<
     Record<string, { uploading: boolean; error: string | null }>
   >({});
+  const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+  const [activeItemForImage, setActiveItemForImage] = useState<{
+    catId: string;
+    itemId: string;
+  } | null>(null);
 
   // ----- Create category form -----
   const [newCatNameEn, setNewCatNameEn] = useState('');
@@ -1044,7 +1050,9 @@ export default function AdminMenuPage() {
                           </label>
 
                           <label className="space-y-1 md:col-span-6">
-                            <div className="text-xs text-slate-600">{isZh ? '图片上传' : 'Image upload'}</div>
+                            <div className="text-xs text-slate-600">
+                              {isZh ? '图片管理' : 'Image management'}
+                            </div>
                             <div className="flex flex-col gap-2 md:flex-row md:items-center">
                               <input
                                 type="file"
@@ -1058,6 +1066,19 @@ export default function AdminMenuPage() {
                                 disabled={imageUploads[item.stableId]?.uploading}
                                 className="block w-full text-sm text-slate-700 file:mr-4 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-slate-700 hover:file:bg-slate-200 disabled:opacity-50"
                               />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveItemForImage({
+                                    catId: cat.stableId,
+                                    itemId: item.stableId,
+                                  });
+                                  setIsImageModalOpen(true);
+                                }}
+                                className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50"
+                              >
+                                {isZh ? '从媒体库选择' : 'Select from library'}
+                              </button>
                               {item.imageUrl ? (
                                 <a
                                   href={item.imageUrl}
@@ -1438,6 +1459,21 @@ export default function AdminMenuPage() {
             </button>
           </div>
         </div>
+      ) : null}
+
+      {isImageModalOpen && activeItemForImage ? (
+        <ImageLibraryModal
+          isZh={isZh}
+          onClose={() => {
+            setIsImageModalOpen(false);
+            setActiveItemForImage(null);
+          }}
+          onSelect={(url) => {
+            updateItemField(activeItemForImage.catId, activeItemForImage.itemId, 'imageUrl', url);
+            setIsImageModalOpen(false);
+            setActiveItemForImage(null);
+          }}
+        />
       ) : null}
     </div>
   );
