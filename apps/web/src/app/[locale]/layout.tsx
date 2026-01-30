@@ -83,6 +83,9 @@ export default async function I18nLayout({
             <Link href={`/${locale}/legal/allergen`} className="hover:text-gray-800">
               {isZh ? "过敏原说明" : "Allergen info"}
             </Link>
+            <Link href={`/${locale}/legal/contact`} className="hover:text-gray-800">
+              {isZh ? "联系我们" : "Contact us"}
+            </Link>
           </div>
           <div className="text-xs text-gray-400">© {year} San Qin. All rights reserved.</div>
         </div>
