@@ -72,6 +72,7 @@ services:
       LOYALTY_SQS_QUEUE_URL: "https://sqs.ca-central-1.amazonaws.com/328944069269/sanqin-loyalty-processing-prod"
       CLOVER_SQS_QUEUE_URL: "https://sqs.ca-central-1.amazonaws.com/328944069269/clover-payment-webhooks-prod"
       SNS_TOPIC_ARN: "arn:aws:sns:ca-central-1:328944069269:sanqin-order-events-prod"
+      SES_EVENTS_SQS_QUEUE_URL: "https://sqs.ca-central-1.amazonaws.com/328944069269/ses-events-queue"
     ports:
       - "127.0.0.1:4000:4000"
       - "127.0.0.1:5555:5555"
