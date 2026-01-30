@@ -3,6 +3,7 @@
 import {
   BadRequestException,
   Controller,
+  Get,
   Post,
   UploadedFile,
   UseGuards,
@@ -43,5 +44,11 @@ export class AdminImageUploadController {
 
     const url = await this.service.saveFileToLocal(file);
     return { url };
+  }
+
+  @Get('list')
+  async listImages(): Promise<{ images: string[] }> {
+    const images = await this.service.listLocalImages();
+    return { images };
   }
 }
