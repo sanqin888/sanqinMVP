@@ -270,7 +270,12 @@ export class SesEventProcessor implements OnModuleInit, OnModuleDestroy {
     await this.prisma.emailSuppression.updateMany({
       where: {
         email: { in: uniqueTargets },
-        reason: { not: EmailSuppressionReason.COMPLAINT },
+        reason: {
+          notIn: [
+            EmailSuppressionReason.BOUNCE,
+            EmailSuppressionReason.COMPLAINT,
+          ],
+        },
       },
       data: {
         reason,
