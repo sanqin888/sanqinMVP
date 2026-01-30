@@ -751,7 +751,7 @@ export default function LocalOrderPage() {
                 {/* ... Main Menu Categories ... */}
                 {mergedMenu.map((category) => (
                   <div key={category.stableId} className="space-y-4">
-                    <h2 className="text-2xl font-semibold text-slate-900">{category.name}</h2>
+                    <h2 className="rounded-2xl bg-black py-3 text-center text-2xl font-semibold text-white">{category.name}</h2>
                     <div className="grid gap-4 md:grid-cols-2">
                       {category.items.map((item) => {
                         const isDailySpecial = Boolean(item.activeSpecial);
