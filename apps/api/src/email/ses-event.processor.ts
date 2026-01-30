@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Consumer } from 'sqs-consumer';
 import { SQSClient } from '@aws-sdk/client-sqs';
+import { createHash } from 'crypto';
 import { EmailSuppressionReason, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { normalizeEmail } from '../common/utils/email';
@@ -101,7 +102,10 @@ export class SesEventProcessor implements OnModuleInit, OnModuleDestroy {
     try {
       payload = JSON.parse(message.Body) as SesEventPayload;
     } catch {
-      this.logger.warn(`Invalid JSON in SES SQS body: ${message.Body}`);
+      const bodyFingerprint = this.fingerprintBody(message.Body);
+      this.logger.warn(
+        `Invalid JSON in SES SQS body len=${bodyFingerprint.length} hash=${bodyFingerprint.hash}`,
+      );
       return;
     }
 
@@ -111,7 +115,10 @@ export class SesEventProcessor implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const eventType = payload.eventType ?? DEFAULT_EVENT_TYPE;
+    const rawEventType = payload.eventType ?? '';
+    const normalizedEventType = rawEventType.trim();
+    const eventType = normalizedEventType || DEFAULT_EVENT_TYPE;
+    const eventTypeKey = eventType.toLowerCase();
     const feedbackId = this.extractFeedbackId(payload);
     const destinations = Array.isArray(payload.mail?.destination)
       ? payload.mail?.destination ?? []
@@ -119,7 +126,7 @@ export class SesEventProcessor implements OnModuleInit, OnModuleDestroy {
     const mailTimestamp = this.parseTimestamp(payload.mail?.timestamp);
     const idempotencyKey = this.buildIdempotencyKey({
       messageId,
-      eventType,
+      eventType: eventTypeKey,
       feedbackId,
     });
     const now = new Date();
@@ -153,7 +160,7 @@ export class SesEventProcessor implements OnModuleInit, OnModuleDestroy {
       `SES event recorded type=${eventType} messageId=${messageId} destination=${destinations[0] ?? 'n/a'}`,
     );
 
-    if (eventType === 'Bounce') {
+    if (eventTypeKey === 'bounce') {
       await this.handleSuppression({
         payload,
         reason: EmailSuppressionReason.BOUNCE,
@@ -163,7 +170,7 @@ export class SesEventProcessor implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    if (eventType === 'Complaint') {
+    if (eventTypeKey === 'complaint') {
       await this.handleSuppression({
         payload,
         reason: EmailSuppressionReason.COMPLAINT,
@@ -235,34 +242,22 @@ export class SesEventProcessor implements OnModuleInit, OnModuleDestroy {
       `SES ${reason.toLowerCase()} suppression for ${targets.join(',')} messageId=${messageId} detail=${detail ?? 'n/a'}`,
     );
 
-    await Promise.all(
-      targets.map((email) =>
-        this.upsertSuppression({ email, reason, messageId, feedbackId }),
-      ),
-    );
-  }
+    const uniqueTargets = Array.from(new Set(targets));
+    const createData = uniqueTargets.map((email) => ({
+      email,
+      reason,
+      sourceMessageId: messageId,
+      feedbackId: feedbackId ?? null,
+    }));
 
-  private async upsertSuppression(params: {
-    email: string;
-    reason: EmailSuppressionReason;
-    messageId: string;
-    feedbackId?: string;
-  }) {
-    const { email, reason, messageId, feedbackId } = params;
-    const existing = await this.prisma.emailSuppression.findUnique({
-      where: { email },
+    await this.prisma.emailSuppression.createMany({
+      data: createData,
+      skipDuplicates: true,
     });
 
-    if (existing) {
-      if (
-        existing.reason === EmailSuppressionReason.COMPLAINT &&
-        reason === EmailSuppressionReason.BOUNCE
-      ) {
-        return;
-      }
-
-      await this.prisma.emailSuppression.update({
-        where: { email },
+    if (reason === EmailSuppressionReason.COMPLAINT) {
+      await this.prisma.emailSuppression.updateMany({
+        where: { email: { in: uniqueTargets } },
         data: {
           reason,
           sourceMessageId: messageId,
@@ -272,9 +267,12 @@ export class SesEventProcessor implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    await this.prisma.emailSuppression.create({
+    await this.prisma.emailSuppression.updateMany({
+      where: {
+        email: { in: uniqueTargets },
+        reason: { not: EmailSuppressionReason.COMPLAINT },
+      },
       data: {
-        email,
         reason,
         sourceMessageId: messageId,
         feedbackId: feedbackId ?? null,
@@ -287,5 +285,10 @@ export class SesEventProcessor implements OnModuleInit, OnModuleDestroy {
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === 'P2002'
     );
+  }
+
+  private fingerprintBody(body: string): { length: number; hash: string } {
+    const hash = createHash('sha256').update(body).digest('hex').slice(0, 12);
+    return { length: body.length, hash };
   }
 }

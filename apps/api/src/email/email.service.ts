@@ -31,6 +31,8 @@ export class EmailService {
     const { locale, ...payload } = params;
     const suppression = await this.checkSuppression(params.to);
     if (suppression.suppressed) {
+      // NOTE: callers should translate suppression into a user-friendly message
+      // for critical flows (e.g. verification or password reset).
       this.logger.warn(
         `Email suppressed for ${suppression.email} reason=${suppression.reason ?? 'unknown'}`,
       );
