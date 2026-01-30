@@ -86,7 +86,9 @@ export class AdminImageUploadService {
     return entries
       .filter((entry) => entry.isFile())
       .map((entry) => entry.name)
-      .filter((name) => this.allowedExtensions.has(path.extname(name).toLowerCase()))
+      .filter((name) =>
+        this.allowedExtensions.has(path.extname(name).toLowerCase()),
+      )
       .sort()
       .map((name) => `/uploads/images/${name}`);
   }
