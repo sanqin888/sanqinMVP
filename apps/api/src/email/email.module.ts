@@ -7,6 +7,7 @@ import { EmailVerificationService } from './email-verification.service';
 import { EMAIL_PROVIDER_TOKEN } from './email.tokens';
 import { SesEmailProvider } from './providers/ses-email.provider';
 import { LogEmailProvider } from './providers/log-email.provider';
+import { SesEventProcessor } from './ses-event.processor';
 import type { EmailProvider } from './email.provider';
 
 @Module({
@@ -16,6 +17,7 @@ import type { EmailProvider } from './email.provider';
     EmailVerificationService,
     SesEmailProvider,
     LogEmailProvider,
+    SesEventProcessor,
     {
       provide: EMAIL_PROVIDER_TOKEN,
       useFactory: (

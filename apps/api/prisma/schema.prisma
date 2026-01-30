@@ -85,6 +85,12 @@ enum TwoFactorMethod {
   SMS
 }
 
+enum EmailSuppressionReason {
+  BOUNCE
+  COMPLAINT
+  MANUAL
+}
+
 enum PosDeviceStatus {
   ACTIVE
   DISABLED
@@ -567,6 +573,34 @@ model EmailVerification {
 
   @@index([userId, expiresAt])
   @@index([email, createdAt])
+}
+
+model EmailEvent {
+  id             String   @id @default(uuid()) @db.Uuid
+  idempotencyKey String   @unique
+  messageId      String
+  eventType      String
+  source         String?
+  destinations   String[]
+  mailTimestamp  DateTime?
+  feedbackId     String?
+  payload        Json
+  createdAt      DateTime @default(now())
+  lastSeenAt     DateTime @default(now())
+
+  @@index([messageId, eventType])
+  @@index([createdAt])
+}
+
+model EmailSuppression {
+  email           String                 @id
+  reason          EmailSuppressionReason @default(BOUNCE)
+  sourceMessageId String?
+  feedbackId      String?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  @@index([reason, updatedAt])
 }
 
 model BusinessConfig {
