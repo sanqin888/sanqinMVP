@@ -77,7 +77,8 @@ services:
       - "127.0.0.1:5555:5555"
     depends_on:
       - db
-
+    volumes:
+      - ./uploads:/app/uploads
   web:
     build:
       context: .

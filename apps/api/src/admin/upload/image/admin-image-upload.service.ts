@@ -70,6 +70,29 @@ export class AdminImageUploadService {
     return urlPath;
   }
 
+  async listLocalImages(): Promise<string[]> {
+    const uploadDir = path.join(process.cwd(), 'uploads', 'images');
+
+    let entries: fs.Dirent[] = [];
+    try {
+      entries = await fs.promises.readdir(uploadDir, { withFileTypes: true });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return [];
+      }
+      throw error;
+    }
+
+    return entries
+      .filter((entry) => entry.isFile())
+      .map((entry) => entry.name)
+      .filter((name) =>
+        this.allowedExtensions.has(path.extname(name).toLowerCase()),
+      )
+      .sort()
+      .map((name) => `/uploads/images/${name}`);
+  }
+
   private detectImageType(buffer: Buffer): string | null {
     if (buffer.length < 12) {
       return null;
