@@ -121,7 +121,7 @@ export class SesEventProcessor implements OnModuleInit, OnModuleDestroy {
     const eventTypeKey = eventType.toLowerCase();
     const feedbackId = this.extractFeedbackId(payload);
     const destinations = Array.isArray(payload.mail?.destination)
-      ? payload.mail?.destination ?? []
+      ? (payload.mail?.destination ?? [])
       : [];
     const mailTimestamp = this.parseTimestamp(payload.mail?.timestamp);
     const idempotencyKey = this.buildIdempotencyKey({
