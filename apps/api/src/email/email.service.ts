@@ -1,8 +1,11 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import type { EmailSuppressionReason } from '@prisma/client';
 import { BusinessConfigService } from '../messaging/business-config.service';
 import type { EmailProvider } from './email.provider';
 import { EMAIL_PROVIDER_TOKEN } from './email.tokens';
 import type { PrintPosPayloadDto } from '../pos/dto/print-pos-payload.dto';
+import { PrismaService } from '../prisma/prisma.service';
+import { normalizeEmail } from '../common/utils/email';
 
 @Injectable()
 export class EmailService {
@@ -12,6 +15,7 @@ export class EmailService {
   constructor(
     @Inject(EMAIL_PROVIDER_TOKEN) private readonly provider: EmailProvider,
     private readonly businessConfigService: BusinessConfigService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async sendEmail(params: {
@@ -25,6 +29,44 @@ export class EmailService {
     fromAddress?: string;
   }) {
     const { locale, ...payload } = params;
+    const suppression = await this.checkSuppression(params.to);
+    if (suppression.suppressed) {
+      // NOTE: callers should translate suppression into a user-friendly message
+      // for critical flows (e.g. verification or password reset).
+      const now = new Date();
+      const suppressionMessageId = `suppressed:${suppression.email ?? 'unknown'}`;
+      try {
+        await this.prisma.emailEvent.create({
+          data: {
+            idempotencyKey: `${suppressionMessageId}:${now.getTime()}:${Math.random()}`,
+            messageId: suppressionMessageId,
+            eventType: 'SuppressedSendAttempt',
+            source: params.fromAddress ?? null,
+            destinations: [suppression.email ?? params.to],
+            mailTimestamp: now,
+            feedbackId: null,
+            payload: {
+              to: params.to,
+              subject: params.subject,
+              reason: suppression.reason ?? null,
+              tags: params.tags ?? null,
+            },
+            lastSeenAt: now,
+          },
+        });
+      } catch (error) {
+        this.logger.warn(
+          `Failed to record suppression event for ${suppression.email}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      this.logger.warn(
+        `Email suppressed for ${suppression.email} reason=${suppression.reason ?? 'unknown'}`,
+      );
+      return {
+        ok: false,
+        error: `suppressed:${suppression.reason ?? 'unknown'}`,
+      };
+    }
     const messagingConfig =
       await this.businessConfigService.getMessagingSnapshot(locale);
     const result = await this.provider.sendEmail({
@@ -36,6 +78,29 @@ export class EmailService {
       this.logger.warn(`Email send failed: ${result.error ?? 'unknown'}`);
     }
     return result;
+  }
+
+  private async checkSuppression(email: string): Promise<{
+    suppressed: boolean;
+    email?: string;
+    reason?: EmailSuppressionReason;
+  }> {
+    const normalized = normalizeEmail(email);
+    if (!normalized) {
+      return { suppressed: false };
+    }
+
+    const suppression = await this.prisma.emailSuppression.findUnique({
+      where: { email: normalized },
+    });
+    if (!suppression) {
+      return { suppressed: false };
+    }
+    return {
+      suppressed: true,
+      email: normalized,
+      reason: suppression.reason,
+    };
   }
 
   private resolveLocale(locale?: string): 'zh' | 'en' {
