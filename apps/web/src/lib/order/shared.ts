@@ -17,12 +17,18 @@ export const TAX_RATE = 0.13;
 export const TAX_ON_DELIVERY = true;
 
 /** ===== 结算页相关类型 ===== */
+export type SelectedOptionSnapshot = {
+  id: string;
+  name: string;
+  priceDeltaCents?: number;
+};
+
 export type CartEntry = {
   cartLineId: string;
   productStableId: string; // 对应 LocalizedMenuItem.stableId
   quantity: number;
   notes: string;
-  options?: Record<string, string[]>;
+  options?: Record<string, SelectedOptionSnapshot[]>;
 };
 
 export type LocalizedCartItem = {
@@ -30,7 +36,7 @@ export type LocalizedCartItem = {
   productStableId: string;
   quantity: number;
   notes: string;
-  options?: Record<string, string[]>;
+  options?: Record<string, SelectedOptionSnapshot[]>;
   item: LocalizedMenuItem;
 };
 

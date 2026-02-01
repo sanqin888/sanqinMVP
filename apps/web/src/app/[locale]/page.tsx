@@ -5,7 +5,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams, useParams } from "next/navigation";
-import { HOSTED_CHECKOUT_CURRENCY } from "@/lib/order/shared";
+import {
+  HOSTED_CHECKOUT_CURRENCY,
+  SelectedOptionSnapshot,
+} from "@/lib/order/shared";
 import type { Locale } from "@/lib/i18n/locales";
 import { UI_STRINGS } from "@/lib/i18n/dictionaries";
 import {
@@ -537,6 +540,37 @@ export default function LocalOrderPage() {
     [selectedOptionsDetails],
   );
 
+  const optionSnapshotLookup = useMemo(() => {
+    const lookup = new Map<string, SelectedOptionSnapshot>();
+    if (!activeItem?.optionGroups) return lookup;
+    activeItem.optionGroups.forEach((group) => {
+      group.options.forEach((option) => {
+        const name =
+          locale === "zh" && option.nameZh ? option.nameZh : option.nameEn;
+        lookup.set(option.optionStableId, {
+          id: option.optionStableId,
+          name,
+          priceDeltaCents: option.priceDeltaCents,
+        });
+      });
+    });
+    return lookup;
+  }, [activeItem?.optionGroups, locale]);
+
+  const buildOptionSnapshots = useCallback(
+    (selections: Record<string, string[]>): Record<string, SelectedOptionSnapshot[]> =>
+      Object.fromEntries(
+        Object.entries(selections).map(([groupKey, optionIds]) => [
+          groupKey,
+          optionIds.map((optionId) => {
+            const snapshot = optionSnapshotLookup.get(optionId);
+            return snapshot ?? { id: optionId, name: "" };
+          }),
+        ]),
+      ),
+    [optionSnapshotLookup],
+  );
+
   const canAddToCart =
     activeItem && requiredGroupsMissing.length === 0 && menuLoading === false;
 
@@ -951,7 +985,14 @@ export default function LocalOrderPage() {
                     type="button"
                     onClick={() => {
                       if (!activeItem || !canAddToCart) return;
-                      addItem(activeItem.stableId, { ...selectedOptions, ...selectedChildOptions }, selectedQuantity);
+                      addItem(
+                        activeItem.stableId,
+                        buildOptionSnapshots({
+                          ...selectedOptions,
+                          ...selectedChildOptions,
+                        }),
+                        selectedQuantity,
+                      );
                       closeOptionsModal();
                     }}
                     disabled={!canAddToCart}

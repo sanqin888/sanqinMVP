@@ -2,7 +2,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { CartEntry } from "@/lib/order/shared";
+import type { CartEntry, SelectedOptionSnapshot } from "@/lib/order/shared";
 
 type CartItemOptions = CartEntry["options"];
 
@@ -11,20 +11,62 @@ const STORAGE_KEY = "sanqin-cart";
 /**
  * 把任何乱七八糟的数据，变成一个「干净的 CartEntry[]」
  */
+function normalizeOptionSnapshots(
+  input: unknown,
+): SelectedOptionSnapshot[] | undefined {
+  if (!Array.isArray(input)) return undefined;
+  const normalized = input
+    .map((entry) => {
+      if (typeof entry === "string") {
+        const id = entry.trim();
+        if (!id) return null;
+        return { id, name: "" };
+      }
+      if (!entry || typeof entry !== "object") return null;
+      const { id, name, priceDeltaCents } = entry as Partial<SelectedOptionSnapshot> & {
+        id?: unknown;
+        name?: unknown;
+        priceDeltaCents?: unknown;
+      };
+      if (typeof id !== "string" || !id.trim()) return null;
+      const safeName = typeof name === "string" ? name.trim() : "";
+      const safePrice =
+        typeof priceDeltaCents === "number" && Number.isFinite(priceDeltaCents)
+          ? priceDeltaCents
+          : undefined;
+      return {
+        id: id.trim(),
+        name: safeName,
+        priceDeltaCents: safePrice,
+      };
+    })
+    .filter((entry): entry is SelectedOptionSnapshot => Boolean(entry));
+
+  return normalized.length > 0 ? normalized : undefined;
+}
+
 function normalizeOptions(input?: CartItemOptions): CartItemOptions | undefined {
   if (!input || typeof input !== "object") return undefined;
 
-  const normalized: Record<string, string[]> = {};
+  const normalized: Record<string, SelectedOptionSnapshot[]> = {};
   Object.entries(input).forEach(([groupId, value]) => {
     if (!groupId) return;
-    const values = Array.isArray(value)
-      ? value.filter((entry): entry is string => typeof entry === "string")
-      : typeof value === "string"
-        ? [value]
-        : [];
-    const deduped = Array.from(new Set(values.map((v) => v.trim()).filter(Boolean)));
-    if (deduped.length > 0) {
-      normalized[groupId] = deduped.sort();
+    const snapshots =
+      typeof value === "string"
+        ? normalizeOptionSnapshots([value])
+        : normalizeOptionSnapshots(value);
+    if (!snapshots || snapshots.length === 0) return;
+    const deduped = new Map<string, SelectedOptionSnapshot>();
+    snapshots.forEach((snapshot) => {
+      if (!deduped.has(snapshot.id)) {
+        deduped.set(snapshot.id, snapshot);
+      }
+    });
+    const sorted = Array.from(deduped.values()).sort((a, b) =>
+      a.id.localeCompare(b.id),
+    );
+    if (sorted.length > 0) {
+      normalized[groupId] = sorted;
     }
   });
 
@@ -34,7 +76,10 @@ function normalizeOptions(input?: CartItemOptions): CartItemOptions | undefined 
 function buildOptionsSignature(options?: CartItemOptions) {
   if (!options) return "";
   const sortedEntries = Object.entries(options)
-    .map(([groupId, values]) => [groupId, [...values].sort()] as const)
+    .map(([groupId, values]) => [
+      groupId,
+      values.map((value) => value.id).sort(),
+    ] as const)
     .sort(([a], [b]) => a.localeCompare(b));
   return sortedEntries
     .map(([groupId, values]) => `${groupId}:${values.join(",")}`)

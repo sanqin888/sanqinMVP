@@ -23,6 +23,7 @@ import {
   formatWithTotal,
   type HostedCheckoutResponse,
   type DeliveryTypeOption,
+  type SelectedOptionSnapshot,
 } from "@/lib/order/shared";
 import type { Locale } from "@/lib/i18n/locales";
 import { UI_STRINGS, type ScheduleSlot } from "@/lib/i18n/dictionaries";
@@ -111,6 +112,17 @@ type CartItemWithPricing = LocalizedCartItem & {
   selectedOptions: SelectedOptionDisplay[];
   isDailySpecial: boolean;
   disallowCoupons: boolean;
+};
+
+const stripOptionSnapshots = (
+  options?: Record<string, SelectedOptionSnapshot[]>,
+): Record<string, string[]> | undefined => {
+  if (!options) return undefined;
+  const entries = Object.entries(options).map(([groupId, snapshots]) => [
+    groupId,
+    snapshots.map((snapshot) => snapshot.id),
+  ]);
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 };
 
 type LoyaltyOrderResponse = {
@@ -418,11 +430,9 @@ export default function CheckoutPage() {
       const selectedOptions: SelectedOptionDisplay[] = [];
       let optionDeltaCents = 0;
       const optionGroups = cartItem.item.optionGroups ?? [];
-      const selectedOptionIds = Object.values(cartItem.options ?? {}).flat();
+      const selectedOptionSnapshots = Object.values(cartItem.options ?? {}).flat();
       const optionLookup = new Map<string, SelectedOptionDisplay>();
       const missingOptionGroupLabel = locale === "zh" ? "已选项" : "Selected option";
-      const missingOptionName =
-        locale === "zh" ? "未知选项" : "Unknown option";
 
       optionGroups.forEach((group) => {
         const groupName =
@@ -443,19 +453,23 @@ export default function CheckoutPage() {
       });
 
       const seenOptionIds = new Set<string>();
-      selectedOptionIds.forEach((optionStableId) => {
-        if (seenOptionIds.has(optionStableId)) return;
-        seenOptionIds.add(optionStableId);
-        const optionDisplay = optionLookup.get(optionStableId);
-        if (optionDisplay) {
-          optionDeltaCents += optionDisplay.priceDeltaCents;
-          selectedOptions.push(optionDisplay);
-          return;
-        }
+      selectedOptionSnapshots.forEach((snapshot) => {
+        if (seenOptionIds.has(snapshot.id)) return;
+        seenOptionIds.add(snapshot.id);
+        const optionDisplay = optionLookup.get(snapshot.id);
+        const optionName =
+          snapshot.name?.trim() || optionDisplay?.optionName || "";
+        if (!optionName) return;
+        const groupName = optionDisplay?.groupName ?? missingOptionGroupLabel;
+        const priceDeltaCents =
+          typeof snapshot.priceDeltaCents === "number"
+            ? snapshot.priceDeltaCents
+            : optionDisplay?.priceDeltaCents ?? 0;
+        optionDeltaCents += priceDeltaCents;
         selectedOptions.push({
-          groupName: missingOptionGroupLabel,
-          optionName: missingOptionName,
-          priceDeltaCents: 0,
+          groupName,
+          optionName,
+          priceDeltaCents,
         });
       });
 
@@ -1809,7 +1823,7 @@ export default function CheckoutPage() {
           displayName: cartItem.item.name,
           quantity: cartItem.quantity,
           notes: cartItem.notes,
-          options: cartItem.options,
+          options: stripOptionSnapshots(cartItem.options),
           priceCents: cartItem.unitPriceCents,
         })),
       },
