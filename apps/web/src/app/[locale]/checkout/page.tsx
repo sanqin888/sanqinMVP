@@ -452,10 +452,7 @@ export default function CheckoutPage() {
         });
       });
 
-      const seenOptionIds = new Set<string>();
       selectedOptionSnapshots.forEach((snapshot) => {
-        if (seenOptionIds.has(snapshot.id)) return;
-        seenOptionIds.add(snapshot.id);
         const optionDisplay = optionLookup.get(snapshot.id);
         const optionName =
           snapshot.name?.trim() || optionDisplay?.optionName || "";
