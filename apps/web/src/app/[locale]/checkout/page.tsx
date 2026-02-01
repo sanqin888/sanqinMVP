@@ -187,6 +187,10 @@ type CouponsApiEnvelope =
       details?: CheckoutCoupon[];
     };
 
+type PrepTimeResponse = {
+  minutes: number;
+};
+
 // CustomerInfo.phone = 本单的联系电话（可能等于账号手机号，但不会自动反写到 User.phone）
 type CustomerInfo = {
   name: string;
@@ -326,6 +330,30 @@ export default function CheckoutPage() {
 
   const [loyaltyLoading, setLoyaltyLoading] = useState(false);
   const [loyaltyError, setLoyaltyError] = useState<string | null>(null);
+  const [prepTimeMinutes, setPrepTimeMinutes] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchPrepTime = async () => {
+      try {
+        const response = await apiFetch<PrepTimeResponse>("/orders/prep-time");
+        if (!cancelled) {
+          setPrepTimeMinutes(response.minutes);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setPrepTimeMinutes(null);
+        }
+      }
+    };
+
+    fetchPrepTime();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const entitlementItems = useMemo(
     () =>
@@ -2257,6 +2285,21 @@ export default function CheckoutPage() {
               ) : null}
             </div>
 
+            {prepTimeMinutes ? (
+              <div className="rounded-2xl border border-orange-200 bg-orange-50 p-3 text-xs text-orange-700">
+                <p className="font-semibold">
+                  {locale === "zh"
+                    ? "近一小时平均制作时间"
+                    : "Avg prep time (last hour)"}
+                </p>
+                <p className="mt-1">
+                  {locale === "zh"
+                    ? `当前厨房平均出餐时间约 ${prepTimeMinutes} 分钟`
+                    : `Kitchen prep time is about ${prepTimeMinutes} mins`}
+                </p>
+              </div>
+            ) : null}
+
             <div className="space-y-4">
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
@@ -3014,14 +3057,14 @@ export default function CheckoutPage() {
                     <span>{strings.summary.total}</span>
                     <span>{formatMoney(totalCents)}</span>
                   </div>
-                </div>
               </div>
+            </div>
 
-              <button
-                type="button"
-                onClick={handlePlaceOrder}
-                disabled={!canPlaceOrder || isSubmitting}
-                className="w-full rounded-full bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition enabled:hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-emerald-200"
+            <button
+              type="button"
+              onClick={handlePlaceOrder}
+              disabled={!canPlaceOrder || isSubmitting}
+              className="w-full rounded-full bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition enabled:hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-emerald-200"
               >
                 {payButtonLabel}
               </button>
