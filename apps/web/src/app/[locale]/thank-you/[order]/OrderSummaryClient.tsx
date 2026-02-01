@@ -34,6 +34,10 @@ type OrderSummaryResponse = {
   couponDiscountCents?: number | null;
 };
 
+type PrepTimeResponse = {
+  minutes: number;
+};
+
 type Props = {
   orderStableId: string;
   locale: Locale;
@@ -81,6 +85,7 @@ export function OrderSummaryClient({ orderStableId, locale }: Props) {
   const [data, setData] = useState<OrderSummaryResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [prepTimeMinutes, setPrepTimeMinutes] = useState<number | null>(null);
 
   const labels = LABELS[locale];
 
@@ -144,6 +149,29 @@ export function OrderSummaryClient({ orderStableId, locale }: Props) {
       </ul>
     );
   };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchPrepTime = async () => {
+      try {
+        const response = await apiFetch<PrepTimeResponse>("/orders/prep-time");
+        if (!cancelled) {
+          setPrepTimeMinutes(response.minutes);
+        }
+      } catch (err: unknown) {
+        if (!cancelled) {
+          setPrepTimeMinutes(null);
+        }
+      }
+    };
+
+    fetchPrepTime();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!orderStableId) {
@@ -232,6 +260,14 @@ export function OrderSummaryClient({ orderStableId, locale }: Props) {
         <h2 className="text-base font-semibold text-slate-900">
           {labels.heading}
         </h2>
+
+        {prepTimeMinutes ? (
+          <div className="mt-3 rounded-xl border border-orange-200 bg-orange-50 p-3 text-xs text-orange-700">
+            {locale === "zh"
+              ? `您的订单已提交。目前平均制作时间为 ${prepTimeMinutes} 分钟，请留意短信通知。`
+              : `Your order is confirmed. Avg prep time is ${prepTimeMinutes} mins. Please watch for SMS updates.`}
+          </div>
+        ) : null}
 
         {loading ? (
           <p className="mt-3 text-xs text-slate-500">{labels.loading}</p>

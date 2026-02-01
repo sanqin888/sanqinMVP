@@ -342,6 +342,8 @@ model Order {
   orderStableId              String            @unique @default(cuid())
   rebillGroupId              String?
   paidAt                     DateTime
+  makingAt                   DateTime?
+  readyAt                    DateTime?
   paymentMethod              PaymentMethod
   amendments                 OrderAmendment[]
   items                      OrderItem[]

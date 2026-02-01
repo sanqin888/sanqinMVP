@@ -138,9 +138,9 @@ export const UI_STRINGS: Record<
 > = {
   en: {
     tagline: "FRESH • FAST • HANDMADE",
-    heroTitle: "Order San Qin fast & tasty dishes",
+    heroTitle: "Order SanQ Rougamo fast & tasty dishes",
     heroDescription:
-      "Classic Liangpi, Roujiamo, featured noodles and more. Order now and pick up in minutes—or get delivery.",
+      "Classic Liangpi, Rougamo, featured noodles and more. Order now and pick up in minutes—or get delivery.",
     orderSteps: [
       { id: 1, label: "Choose your dishes" },
       { id: 2, label: "Add notes & confirm" },
@@ -252,7 +252,7 @@ export const UI_STRINGS: Record<
     },
 
     thankYou: {
-      brand: "San Qin · Xi'an Street Food",
+      brand: "SanQ · Xi'an Street Food",
       switchLabel: "中文",
       title: "Payment successful",
       intro: "Thank you for your order! We're preparing your food.",

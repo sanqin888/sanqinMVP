@@ -349,6 +349,16 @@ export class OrdersController {
   }
 
   /**
+   * 近一小时平均制作时间
+   * GET /api/v1/orders/prep-time
+   */
+  @Get('prep-time')
+  async getAveragePrepTime(): Promise<{ minutes: number }> {
+    const minutes = await this.ordersService.getAveragePrepTimeMinutes();
+    return { minutes };
+  }
+
+  /**
    * 按 stableId 获取订单
    * GET /api/v1/orders/:orderStableId
    */
