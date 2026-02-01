@@ -930,8 +930,8 @@ export default function LocalOrderPage() {
 
               {selectedOptionsDetails.length > 0 ? (
                 <div className="space-y-2 rounded-2xl bg-slate-50 p-4 text-xs text-slate-500">
-                  {selectedOptionsDetails.map((option) => (
-                    <div key={`${option.groupName}-${option.optionName}`} className="flex items-center justify-between">
+                  {selectedOptionsDetails.map((option, idx) => (
+                    <div key={`${option.groupName}-${option.optionName}-${idx}`} className="flex items-center justify-between">
                       <span>{option.groupName} · {option.optionName}</span>
                       {option.priceDeltaCents !== 0 ? <span>{option.priceDeltaCents > 0 ? "+" : "-"}{currencyFormatter.format(Math.abs(option.priceDeltaCents) / 100)}</span> : null}
                     </div>
