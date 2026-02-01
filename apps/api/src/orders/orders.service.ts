@@ -429,7 +429,7 @@ export class OrdersService {
   ): Promise<OrderWithItems> {
     const current = await this.prisma.order.findUnique({
       where: { id },
-      select: { status: true },
+      select: { status: true, paidAt: true, makingAt: true },
     });
     if (!current) throw new NotFoundException('order not found');
 
@@ -439,9 +439,20 @@ export class OrdersService {
       );
     }
 
+    const data: Prisma.OrderUpdateInput = { status: next };
+    if (next === 'making' && !current.makingAt) {
+      data.makingAt = new Date();
+    }
+    if (next === 'ready') {
+      data.readyAt = new Date();
+      if (!current.makingAt) {
+        data.makingAt = current.paidAt;
+      }
+    }
+
     const updated = (await this.prisma.order.update({
       where: { id },
-      data: { status: next },
+      data,
       include: { items: true },
     })) as OrderWithItems & { loyaltyRedeemCents: number };
 
@@ -455,6 +466,35 @@ export class OrdersService {
       void this.notifyOrderReady(updated);
     }
     return updated;
+  }
+
+  async getAveragePrepTimeMinutes(): Promise<number> {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+
+    const recentOrders = await this.prisma.order.findMany({
+      where: {
+        status: { in: ['ready', 'completed'] },
+        readyAt: { gte: oneHourAgo },
+        makingAt: { not: null },
+      },
+      select: {
+        makingAt: true,
+        readyAt: true,
+      },
+    });
+
+    if (recentOrders.length === 0) return 15;
+
+    const totalMinutes = recentOrders.reduce((acc, order) => {
+      const makingAt = order.makingAt;
+      const readyAt = order.readyAt;
+      if (!makingAt || !readyAt) return acc;
+      const diffMs = readyAt.getTime() - makingAt.getTime();
+      return acc + diffMs / 60000;
+    }, 0);
+
+    const avg = Math.round(totalMinutes / recentOrders.length);
+    return Math.max(avg, 5);
   }
 
   private async notifyOrderReady(order: OrderWithItems) {
