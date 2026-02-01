@@ -26,7 +26,7 @@ export async function generateMetadata({
 
   return {
     title: {
-      default: locale === "zh" ? "三秦肉夹馍" : "SanQin Traditional Burger",
+      default: locale === "zh" ? "三秦肉夹馍" : "SanQ Rougamo",
       template: locale === "zh" ? "三秦 • %s" : "SanQin • %s",
     },
     alternates,
