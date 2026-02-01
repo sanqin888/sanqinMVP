@@ -421,6 +421,8 @@ export default function CheckoutPage() {
       const selectedOptionIds = Object.values(cartItem.options ?? {}).flat();
       const optionLookup = new Map<string, SelectedOptionDisplay>();
       const missingOptionGroupLabel = locale === "zh" ? "已选项" : "Selected option";
+      const missingOptionName =
+        locale === "zh" ? "未知选项" : "Unknown option";
 
       optionGroups.forEach((group) => {
         const groupName =
@@ -452,7 +454,7 @@ export default function CheckoutPage() {
         }
         selectedOptions.push({
           groupName: missingOptionGroupLabel,
-          optionName: optionStableId,
+          optionName: missingOptionName,
           priceDeltaCents: 0,
         });
       });
