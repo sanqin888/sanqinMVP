@@ -195,13 +195,13 @@ export default function LocalOrderPage() {
     usePersistentCart();
   const [activeItem, setActiveItem] = useState<LocalizedMenuItem | null>(null);
   const [selectedQuantity, setSelectedQuantity] = useState(1);
-  
-  // 选中的选项：Record<OptionGroupStableId, OptionStableId[]>
+
+  // 选中的选项：Record<PathKey, OptionStableId[]>
   const [selectedOptions, setSelectedOptions] = useState<
     Record<string, string[]>
   >({});
-  
-  // 子选项（原逻辑）：Record<ParentOptionStableId, ChildOptionStableId[]>
+
+  // 子选项：Record<ParentOptionPathKey, ChildOptionStableId[]>
   const [selectedChildOptions, setSelectedChildOptions] = useState<
     Record<string, string[]>
   >({});
@@ -276,12 +276,22 @@ export default function LocalOrderPage() {
     [locale, menuItemMap, menuItemMapByName],
   );
 
-  // ✅ 核心修改：获取 Group 的唯一 Key
-  // 如果有 bindingStableId（说明是双人套餐等复用场景），优先使用它
-  // 否则降级使用 templateGroupStableId
-  const getGroupKey = useCallback(
-    (group: MenuOptionGroupWithOptionsDto) =>
-      group.bindingStableId ?? group.templateGroupStableId,
+  const buildPathKey = useCallback((segments: string[]) => segments.join("__"), []);
+
+  const buildGroupSegment = useCallback(
+    (group: MenuOptionGroupWithOptionsDto, index: number) =>
+      group.bindingStableId ?? `${group.templateGroupStableId}-${index}`,
+    [],
+  );
+
+  const buildOptionSegment = useCallback(
+    (option: OptionChoiceDto) => `option-${option.optionStableId}`,
+    [],
+  );
+
+  const buildOptionPathKey = useCallback(
+    (groupPathKey: string, optionStableId: string) =>
+      `${groupPathKey}__option-${optionStableId}`,
     [],
   );
 
@@ -324,32 +334,34 @@ export default function LocalOrderPage() {
   };
 
   const handleOptionToggle = (
-    groupKey: string, // 修改：接收 groupKey (bindingId or templateId)
+    groupPathKey: string,
     optionStableId: string,
     minSelect: number,
     maxSelect: number | null,
   ) => {
-    let removedParents: string[] = [];
+    let removedParentKeys: string[] = [];
     setSelectedOptions((prev) => {
-      const current = new Set(prev[groupKey] ?? []);
+      const current = new Set(prev[groupPathKey] ?? []);
 
       if (maxSelect === 1) {
         if (current.has(optionStableId)) {
           if (minSelect > 0) {
             return prev;
           }
-          removedParents = [optionStableId];
+          removedParentKeys = [buildOptionPathKey(groupPathKey, optionStableId)];
           const next = { ...prev };
-          delete next[groupKey];
+          delete next[groupPathKey];
           return next;
         }
-        removedParents = Array.from(current);
-        return { ...prev, [groupKey]: [optionStableId] };
+        removedParentKeys = Array.from(current).map((id) =>
+          buildOptionPathKey(groupPathKey, id),
+        );
+        return { ...prev, [groupPathKey]: [optionStableId] };
       }
 
       if (current.has(optionStableId)) {
         current.delete(optionStableId);
-        removedParents = [optionStableId];
+        removedParentKeys = [buildOptionPathKey(groupPathKey, optionStableId)];
       } else {
         if (typeof maxSelect === "number" && current.size >= maxSelect) {
           return prev;
@@ -359,18 +371,18 @@ export default function LocalOrderPage() {
 
       if (current.size === 0) {
         const next = { ...prev };
-        delete next[groupKey];
+        delete next[groupPathKey];
         return next;
       }
 
-      return { ...prev, [groupKey]: Array.from(current) };
+      return { ...prev, [groupPathKey]: Array.from(current) };
     });
 
-    if (removedParents.length > 0) {
+    if (removedParentKeys.length > 0) {
       setSelectedChildOptions((prev) => {
         const next = { ...prev };
-        removedParents.forEach((parentId) => {
-          delete next[parentId];
+        removedParentKeys.forEach((parentKey) => {
+          delete next[parentKey];
         });
         return next;
       });
@@ -378,11 +390,11 @@ export default function LocalOrderPage() {
   };
 
   const handleChildOptionToggle = (
-    parentOptionStableId: string,
+    parentOptionPathKey: string,
     childOptionStableId: string,
   ) => {
     setSelectedChildOptions((prev) => {
-      const current = new Set(prev[parentOptionStableId] ?? []);
+      const current = new Set(prev[parentOptionPathKey] ?? []);
       if (current.has(childOptionStableId)) {
         current.delete(childOptionStableId);
       } else {
@@ -390,60 +402,73 @@ export default function LocalOrderPage() {
       }
       if (current.size === 0) {
         const next = { ...prev };
-        delete next[parentOptionStableId];
+        delete next[parentOptionPathKey];
         return next;
       }
-      return { ...prev, [parentOptionStableId]: Array.from(current) };
+      return { ...prev, [parentOptionPathKey]: Array.from(current) };
     });
   };
 
-  // ✅ 优化后的 activeOptionGroups 逻辑，使用 getGroupKey 进行去重和查找
+  const collectActiveGroups = useCallback(
+    (
+      item: LocalizedMenuItem,
+      basePath: string[],
+      visited: Set<string>,
+    ): Array<{ group: MenuOptionGroupWithOptionsDto; path: string[] }> => {
+      const groups = item.optionGroups ?? [];
+      const collected: Array<{
+        group: MenuOptionGroupWithOptionsDto;
+        path: string[];
+      }> = [];
+
+      groups.forEach((group, groupIndex) => {
+        const groupPath = [...basePath, buildGroupSegment(group, groupIndex)];
+        const groupKey = buildPathKey(groupPath);
+        if (visited.has(groupKey)) return;
+        visited.add(groupKey);
+        collected.push({ group, path: groupPath });
+
+        const selectedIds = selectedOptions[groupKey] ?? [];
+        if (selectedIds.length === 0) return;
+
+        group.options.forEach((option) => {
+          if (!selectedIds.includes(option.optionStableId)) return;
+          const linkedItem = resolveLinkedItem(option);
+          if (!linkedItem?.optionGroups?.length) return;
+          const optionPath = [...groupPath, buildOptionSegment(option)];
+          collected.push(
+            ...collectActiveGroups(linkedItem, optionPath, visited),
+          );
+        });
+      });
+
+      return collected;
+    },
+    [
+      buildGroupSegment,
+      buildOptionSegment,
+      buildPathKey,
+      resolveLinkedItem,
+      selectedOptions,
+    ],
+  );
+
   const activeOptionGroups = useMemo(() => {
     if (!activeItem) return [];
-    
-    const groups: MenuOptionGroupWithOptionsDto[] = [
-      ...(activeItem.optionGroups ?? []),
-    ];
-    const visitedGroupIds = new Set<string>();
-    
-    // 初始化访问记录，使用 getGroupKey
-    groups.forEach((group) => visitedGroupIds.add(getGroupKey(group)));
-
-    // 使用索引遍历，因为数组长度会动态增加
-    for (let i = 0; i < groups.length; i++) {
-        const group = groups[i];
-        // 使用 getGroupKey 获取当前组的选中项
-        const selectedIds = selectedOptions[getGroupKey(group)] ?? [];
-        
-        for (const option of group.options) {
-            if (selectedIds.includes(option.optionStableId)) {
-                // 查找关联 Item
-                const linkedItem = resolveLinkedItem(option);
-                
-                if (linkedItem && linkedItem.optionGroups && linkedItem.optionGroups.length > 0) {
-                    for (const nestedGroup of linkedItem.optionGroups) {
-                        const nestedGroupKey = getGroupKey(nestedGroup);
-                        if (!visitedGroupIds.has(nestedGroupKey)) {
-                            visitedGroupIds.add(nestedGroupKey);
-                            groups.push(nestedGroup);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    return groups;
-  }, [activeItem, getGroupKey, resolveLinkedItem, selectedOptions]);
+    return collectActiveGroups(
+      activeItem,
+      ["root", activeItem.stableId],
+      new Set<string>(),
+    );
+  }, [activeItem, collectActiveGroups]);
 
   // 更新：使用 activeOptionGroups 来计算缺失的必选项
   const requiredGroupsMissing = useMemo(() => {
-    return activeOptionGroups.filter((group) => {
-      // 使用 getGroupKey 检查
-      const selectedCount = selectedOptions[getGroupKey(group)]?.length;
+    return activeOptionGroups.filter(({ group, path }) => {
+      const selectedCount = selectedOptions[buildPathKey(path)]?.length;
       return group.minSelect > 0 && (selectedCount ?? 0) < group.minSelect;
     });
-  }, [activeOptionGroups, getGroupKey, selectedOptions]);
+  }, [activeOptionGroups, buildPathKey, selectedOptions]);
 
   // 更新：使用 activeOptionGroups 来计算价格和详情
   const selectedOptionsDetails = useMemo(() => {
@@ -453,17 +478,19 @@ export default function LocalOrderPage() {
       priceDeltaCents: number;
     }> = [];
     
-    const allSelectedOptionIds = new Set<string>(
-      Object.values({ ...selectedOptions, ...selectedChildOptions }).flat(),
-    );
-
-    activeOptionGroups.forEach((group) => {
+    activeOptionGroups.forEach(({ group, path }) => {
+      const groupKey = buildPathKey(path);
+      const selectedIds = selectedOptions[groupKey] ?? [];
+      const optionById = new Map(
+        group.options.map((option) => [option.optionStableId, option]),
+      );
       const groupName =
         locale === "zh" && group.template.nameZh
           ? group.template.nameZh
           : group.template.nameEn;
-      group.options.forEach((option) => {
-        if (!allSelectedOptionIds.has(option.optionStableId)) return;
+      selectedIds.forEach((optionId) => {
+        const option = optionById.get(optionId);
+        if (!option) return;
         const optionName =
           locale === "zh" && option.nameZh ? option.nameZh : option.nameEn;
         details.push({
@@ -472,9 +499,34 @@ export default function LocalOrderPage() {
           priceDeltaCents: option.priceDeltaCents,
         });
       });
+
+      selectedIds.forEach((optionId) => {
+        const parentPathKey = buildOptionPathKey(groupKey, optionId);
+        const childSelectedIds = selectedChildOptions[parentPathKey] ?? [];
+        childSelectedIds.forEach((childId) => {
+          const childOption = optionById.get(childId);
+          if (!childOption) return;
+          const optionName =
+            locale === "zh" && childOption.nameZh
+              ? childOption.nameZh
+              : childOption.nameEn;
+          details.push({
+            groupName,
+            optionName,
+            priceDeltaCents: childOption.priceDeltaCents,
+          });
+        });
+      });
     });
     return details;
-  }, [activeOptionGroups, locale, selectedChildOptions, selectedOptions]);
+  }, [
+    activeOptionGroups,
+    buildOptionPathKey,
+    buildPathKey,
+    locale,
+    selectedChildOptions,
+    selectedOptions,
+  ]);
 
   const optionsPriceCents = useMemo(
     () =>
@@ -543,10 +595,13 @@ export default function LocalOrderPage() {
       ? storeStatus?.publicNotice?.trim() ?? ""
       : storeStatus?.publicNoticeEn?.trim() ?? storeStatus?.publicNotice?.trim() ?? "";
 
-  // ✅ 渲染函数也更新，使用 getGroupKey
-  const renderOptionGroup = (group: MenuOptionGroupWithOptionsDto) => {
-    // 关键：获取唯一 Key
-    const groupKey = getGroupKey(group);
+  const renderOptionGroup = (
+    group: MenuOptionGroupWithOptionsDto,
+    basePath: string[],
+    groupIndex: number,
+  ) => {
+    const groupPath = [...basePath, buildGroupSegment(group, groupIndex)];
+    const groupKey = buildPathKey(groupPath);
     const selectedCount = selectedOptions[groupKey]?.length ?? 0;
     
     const requirementLabel = (() => {
@@ -585,6 +640,11 @@ export default function LocalOrderPage() {
                 .map((childId) => group.options.find((child) => child.optionStableId === childId))
                 .filter((childOption): childOption is NonNullable<typeof childOption> => Boolean(childOption));
 
+                const parentOptionPathKey = buildOptionPathKey(
+                  groupKey,
+                  option.optionStableId,
+                );
+
                 const priceDelta = option.priceDeltaCents > 0 ? `+${currencyFormatter.format(option.priceDeltaCents / 100)}` : 
                                 option.priceDeltaCents < 0 ? `-${currencyFormatter.format(Math.abs(option.priceDeltaCents) / 100)}` : "";
 
@@ -615,14 +675,14 @@ export default function LocalOrderPage() {
                     {selected && childOptions.length > 0 ? (
                         <div className="grid gap-2 pl-2 md:grid-cols-2">
                              {childOptions.map((child) => {
-                                const childSelected = selectedChildOptions[option.optionStableId]?.includes(child.optionStableId) ?? false;
+                                const childSelected = selectedChildOptions[parentOptionPathKey]?.includes(child.optionStableId) ?? false;
                                 const childTempUnavailable = isTempUnavailable(child.tempUnavailableUntil);
                                 const childLabel = locale === "zh" && child.nameZh ? child.nameZh : child.nameEn;
                                 const childPriceDelta = child.priceDeltaCents > 0 ? `+${currencyFormatter.format(child.priceDeltaCents / 100)}` : child.priceDeltaCents < 0 ? `-${currencyFormatter.format(Math.abs(child.priceDeltaCents) / 100)}` : "";
 
                                 return (
                                     <button key={child.optionStableId} type="button" disabled={childTempUnavailable}
-                                        onClick={() => childTempUnavailable ? undefined : handleChildOptionToggle(option.optionStableId, child.optionStableId)}
+                                        onClick={() => childTempUnavailable ? undefined : handleChildOptionToggle(parentOptionPathKey, child.optionStableId)}
                                         className={`flex items-center justify-between rounded-xl border px-3 py-2 text-left text-xs transition ${childTempUnavailable ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400" : childSelected ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"}`}
                                     >
                                         <span className="flex flex-col gap-1"><span className="font-medium">{childLabel}</span>{childTempUnavailable && <span className="text-[10px] font-semibold text-amber-600">{locale === "zh" ? "当日售罄" : "Sold out today"}</span>}</span>
@@ -636,7 +696,13 @@ export default function LocalOrderPage() {
                     {/* ✅ 嵌套 Item 渲染：递归调用 renderOptionGroup */}
                     {selected && linkedItem && linkedItem.optionGroups && linkedItem.optionGroups.length > 0 ? (
                         <div className="mt-2 ml-2 pl-3 border-l-2 border-slate-100 space-y-4">
-                            {linkedItem.optionGroups.map(nestedGroup => renderOptionGroup(nestedGroup))}
+                            {linkedItem.optionGroups.map((nestedGroup, nestedIndex) =>
+                              renderOptionGroup(
+                                nestedGroup,
+                                [...groupPath, buildOptionSegment(option)],
+                                nestedIndex,
+                              ),
+                            )}
                         </div>
                     ) : null}
                 </div>
@@ -846,7 +912,13 @@ export default function LocalOrderPage() {
                 <p className="text-sm text-slate-500">{locale === "zh" ? "该菜品暂无可选项。" : "No options available for this dish."}</p>
               ) : (
                 // ✅ 使用递归渲染函数
-                (activeItem.optionGroups ?? []).map(group => renderOptionGroup(group))
+                (activeItem.optionGroups ?? []).map((group, groupIndex) =>
+                  renderOptionGroup(
+                    group,
+                    ["root", activeItem.stableId],
+                    groupIndex,
+                  ),
+                )
               )}
             </div>
 
@@ -858,8 +930,8 @@ export default function LocalOrderPage() {
 
               {selectedOptionsDetails.length > 0 ? (
                 <div className="space-y-2 rounded-2xl bg-slate-50 p-4 text-xs text-slate-500">
-                  {selectedOptionsDetails.map((option) => (
-                    <div key={`${option.groupName}-${option.optionName}`} className="flex items-center justify-between">
+                  {selectedOptionsDetails.map((option, idx) => (
+                    <div key={`${option.groupName}-${option.optionName}-${idx}`} className="flex items-center justify-between">
                       <span>{option.groupName} · {option.optionName}</span>
                       {option.priceDeltaCents !== 0 ? <span>{option.priceDeltaCents > 0 ? "+" : "-"}{currencyFormatter.format(Math.abs(option.priceDeltaCents) / 100)}</span> : null}
                     </div>
