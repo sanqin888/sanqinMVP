@@ -929,7 +929,7 @@ export default function LocalOrderPage() {
               ) : null}
 
               {selectedOptionsDetails.length > 0 ? (
-                <div className="space-y-2 rounded-2xl bg-slate-50 p-4 text-xs text-slate-500">
+                <div className="h-40 space-y-2 overflow-y-auto rounded-2xl bg-slate-50 p-4 text-xs text-slate-500">
                   {selectedOptionsDetails.map((option, idx) => (
                     <div key={`${option.groupName}-${option.optionName}-${idx}`} className="flex items-center justify-between">
                       <span>{option.groupName} · {option.optionName}</span>
