@@ -418,27 +418,42 @@ export default function CheckoutPage() {
       const selectedOptions: SelectedOptionDisplay[] = [];
       let optionDeltaCents = 0;
       const optionGroups = cartItem.item.optionGroups ?? [];
-      const selectedOptionIds = new Set(
-        Object.values(cartItem.options ?? {}).flat(),
-      );
+      const selectedOptionIds = Object.values(cartItem.options ?? {}).flat();
+      const optionLookup = new Map<string, SelectedOptionDisplay>();
+      const missingOptionGroupLabel = locale === "zh" ? "已选项" : "Selected option";
 
       optionGroups.forEach((group) => {
-        if (selectedOptionIds.size === 0) return;
         const groupName =
           locale === "zh" && group.template.nameZh
             ? group.template.nameZh
             : group.template.nameEn;
 
         group.options.forEach((option) => {
-          if (!selectedOptionIds.has(option.optionStableId)) return;
+          if (optionLookup.has(option.optionStableId)) return;
           const optionName =
             locale === "zh" && option.nameZh ? option.nameZh : option.nameEn;
-          optionDeltaCents += option.priceDeltaCents;
-          selectedOptions.push({
+          optionLookup.set(option.optionStableId, {
             groupName,
             optionName,
             priceDeltaCents: option.priceDeltaCents,
           });
+        });
+      });
+
+      const seenOptionIds = new Set<string>();
+      selectedOptionIds.forEach((optionStableId) => {
+        if (seenOptionIds.has(optionStableId)) return;
+        seenOptionIds.add(optionStableId);
+        const optionDisplay = optionLookup.get(optionStableId);
+        if (optionDisplay) {
+          optionDeltaCents += optionDisplay.priceDeltaCents;
+          selectedOptions.push(optionDisplay);
+          return;
+        }
+        selectedOptions.push({
+          groupName: missingOptionGroupLabel,
+          optionName: optionStableId,
+          priceDeltaCents: 0,
         });
       });
 
