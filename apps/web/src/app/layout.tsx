@@ -7,9 +7,9 @@ import type { Locale } from "@/lib/i18n/locales";
 import { AuthProvider } from "./providers";
 
 export const metadata: Metadata = {
-  title: "San Qin Noodle House",
+  title: "SanQ Rougamo",
   description:
-    "San Qin Noodle House online ordering experience with Clover checkout integration.",
+    "SanQ Rougamo online ordering experience with Clover checkout integration.",
 };
 
 // 服务器端检测语言：优先 Cookie('locale')，否则看 Accept-Language

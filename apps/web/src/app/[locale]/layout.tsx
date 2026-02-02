@@ -50,15 +50,16 @@ export default async function I18nLayout({
     <div className="min-h-screen">
       <header className="mx-auto flex max-w-5xl items-center justify-between border-b px-4 py-4">        <Link href={`/${locale}`} className="font-semiboldflex flex items-center gap-2">
         {/* 新增：Logo 图片 */}
-        <div className="relative h-8 w-8 overflow-hidden rounded-full"> {/* 根据需要调整尺寸和样式 */}
-        <Image 
-          src="/images/sanqinLOGO.png" // 替换为您的 Logo 路径，例如放在 public/images/ 下
-          alt="Logo"
-          fill
-          className="object-cover"
-        />
+        <div className="relative h-8 w-16 rounded-md bg-white">
+          <Image
+            src="/images/sanqinLOGO.png"
+            alt="Logo"
+            fill
+            className="object-contain"
+            priority
+          />
         </div>
-          {isZh ? "三秦" : "SanQ"}
+          {isZh ? "三秦肉夹馍" : "SanQ Rougamo"}
         </Link>
         <LocaleSwitcher locale={locale as "zh" | "en"} />
       </header>
