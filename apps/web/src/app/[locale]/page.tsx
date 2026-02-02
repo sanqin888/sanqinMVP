@@ -664,26 +664,51 @@ export default function LocalOrderPage() {
             </div>
 
             <div className="grid gap-2 md:grid-cols-2">
-            {group.options.map((option) => {
+            {group.options
+              .filter(
+                (option) =>
+                  !option.parentOptionStableIds ||
+                  option.parentOptionStableIds.length === 0,
+              )
+              .map((option) => {
                 // 使用 groupKey 检查选中状态
-                const selected = selectedOptions[groupKey]?.includes(option.optionStableId) ?? false;
-                const optionTempUnavailable = isTempUnavailable(option.tempUnavailableUntil);
-                const optionLabel = locale === "zh" && option.nameZh ? option.nameZh : option.nameEn;
-                
+                const selected =
+                  selectedOptions[groupKey]?.includes(option.optionStableId) ??
+                  false;
+                const optionTempUnavailable = isTempUnavailable(
+                  option.tempUnavailableUntil,
+                );
+                const optionLabel =
+                  locale === "zh" && option.nameZh ? option.nameZh : option.nameEn;
+
                 // 使用增强后的查找逻辑
                 const linkedItem = resolveLinkedItem(option);
-                
+
                 const childOptions = (option.childOptionStableIds ?? [])
-                .map((childId) => group.options.find((child) => child.optionStableId === childId))
-                .filter((childOption): childOption is NonNullable<typeof childOption> => Boolean(childOption));
+                  .map((childId) =>
+                    group.options.find(
+                      (child) => child.optionStableId === childId,
+                    ),
+                  )
+                  .filter(
+                    (childOption): childOption is NonNullable<
+                      typeof childOption
+                    > => Boolean(childOption),
+                  );
 
                 const parentOptionPathKey = buildOptionPathKey(
                   groupKey,
                   option.optionStableId,
                 );
 
-                const priceDelta = option.priceDeltaCents > 0 ? `+${currencyFormatter.format(option.priceDeltaCents / 100)}` : 
-                                option.priceDeltaCents < 0 ? `-${currencyFormatter.format(Math.abs(option.priceDeltaCents) / 100)}` : "";
+                const priceDelta =
+                  option.priceDeltaCents > 0
+                    ? `+${currencyFormatter.format(option.priceDeltaCents / 100)}`
+                    : option.priceDeltaCents < 0
+                      ? `-${currencyFormatter.format(
+                          Math.abs(option.priceDeltaCents) / 100,
+                        )}`
+                      : "";
 
                 return (
                 <div key={option.optionStableId} className="flex flex-col gap-2">
