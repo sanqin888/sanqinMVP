@@ -5,7 +5,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams, useParams } from "next/navigation";
-import { HOSTED_CHECKOUT_CURRENCY } from "@/lib/order/shared";
+import {
+  HOSTED_CHECKOUT_CURRENCY,
+  SelectedOptionSnapshot,
+} from "@/lib/order/shared";
 import type { Locale } from "@/lib/i18n/locales";
 import { UI_STRINGS } from "@/lib/i18n/dictionaries";
 import {
@@ -537,6 +540,40 @@ export default function LocalOrderPage() {
     [selectedOptionsDetails],
   );
 
+  const optionSnapshotLookup = useMemo(() => {
+  const lookup = new Map<string, SelectedOptionSnapshot>();
+
+  // ✅ 用递归收集到的所有 active groups（包含套餐嵌套组选项）
+  activeOptionGroups.forEach(({ group }) => {
+    group.options.forEach((option) => {
+      const name =
+        locale === "zh" && option.nameZh ? option.nameZh : option.nameEn;
+
+      lookup.set(option.optionStableId, {
+        id: option.optionStableId,
+        name: name ?? "",
+        priceDeltaCents: option.priceDeltaCents ?? 0,
+      });
+    });
+  });
+
+  return lookup;
+ }, [activeOptionGroups, locale]);
+
+  const buildOptionSnapshots = useCallback(
+    (selections: Record<string, string[]>): Record<string, SelectedOptionSnapshot[]> =>
+      Object.fromEntries(
+        Object.entries(selections).map(([groupKey, optionIds]) => [
+          groupKey,
+          optionIds.map((optionId) => {
+            const snapshot = optionSnapshotLookup.get(optionId);
+            return snapshot ?? { id: optionId, name: "", priceDeltaCents: 0 };
+          }),
+        ]),
+      ),
+    [optionSnapshotLookup],
+  );
+
   const canAddToCart =
     activeItem && requiredGroupsMissing.length === 0 && menuLoading === false;
 
@@ -627,26 +664,51 @@ export default function LocalOrderPage() {
             </div>
 
             <div className="grid gap-2 md:grid-cols-2">
-            {group.options.map((option) => {
+            {group.options
+              .filter(
+                (option) =>
+                  !option.parentOptionStableIds ||
+                  option.parentOptionStableIds.length === 0,
+              )
+              .map((option) => {
                 // 使用 groupKey 检查选中状态
-                const selected = selectedOptions[groupKey]?.includes(option.optionStableId) ?? false;
-                const optionTempUnavailable = isTempUnavailable(option.tempUnavailableUntil);
-                const optionLabel = locale === "zh" && option.nameZh ? option.nameZh : option.nameEn;
-                
+                const selected =
+                  selectedOptions[groupKey]?.includes(option.optionStableId) ??
+                  false;
+                const optionTempUnavailable = isTempUnavailable(
+                  option.tempUnavailableUntil,
+                );
+                const optionLabel =
+                  locale === "zh" && option.nameZh ? option.nameZh : option.nameEn;
+
                 // 使用增强后的查找逻辑
                 const linkedItem = resolveLinkedItem(option);
-                
+
                 const childOptions = (option.childOptionStableIds ?? [])
-                .map((childId) => group.options.find((child) => child.optionStableId === childId))
-                .filter((childOption): childOption is NonNullable<typeof childOption> => Boolean(childOption));
+                  .map((childId) =>
+                    group.options.find(
+                      (child) => child.optionStableId === childId,
+                    ),
+                  )
+                  .filter(
+                    (childOption): childOption is NonNullable<
+                      typeof childOption
+                    > => Boolean(childOption),
+                  );
 
                 const parentOptionPathKey = buildOptionPathKey(
                   groupKey,
                   option.optionStableId,
                 );
 
-                const priceDelta = option.priceDeltaCents > 0 ? `+${currencyFormatter.format(option.priceDeltaCents / 100)}` : 
-                                option.priceDeltaCents < 0 ? `-${currencyFormatter.format(Math.abs(option.priceDeltaCents) / 100)}` : "";
+                const priceDelta =
+                  option.priceDeltaCents > 0
+                    ? `+${currencyFormatter.format(option.priceDeltaCents / 100)}`
+                    : option.priceDeltaCents < 0
+                      ? `-${currencyFormatter.format(
+                          Math.abs(option.priceDeltaCents) / 100,
+                        )}`
+                      : "";
 
                 return (
                 <div key={option.optionStableId} className="flex flex-col gap-2">
@@ -683,10 +745,19 @@ export default function LocalOrderPage() {
                                 return (
                                     <button key={child.optionStableId} type="button" disabled={childTempUnavailable}
                                         onClick={() => childTempUnavailable ? undefined : handleChildOptionToggle(parentOptionPathKey, child.optionStableId)}
-                                        className={`flex items-center justify-between rounded-xl border px-3 py-2 text-left text-xs transition ${childTempUnavailable ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400" : childSelected ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"}`}
+                                        className={`flex flex-col items-start gap-1 rounded-xl border px-3 py-2 text-left text-xs transition ${childTempUnavailable ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400" : childSelected ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"}`}
                                     >
-                                        <span className="flex flex-col gap-1"><span className="font-medium">{childLabel}</span>{childTempUnavailable && <span className="text-[10px] font-semibold text-amber-600">{locale === "zh" ? "当日售罄" : "Sold out today"}</span>}</span>
-                                        {childPriceDelta && <span className={`text-[10px] font-semibold ${childSelected ? "text-white/80" : "text-slate-400"}`}>{childPriceDelta}</span>}
+                                        <span className="font-medium">{childLabel}</span>
+                                        {childTempUnavailable && (
+                                          <span className="text-[10px] font-semibold text-amber-600">
+                                            {locale === "zh" ? "当日售罄" : "Sold out today"}
+                                          </span>
+                                        )}
+                                        {childPriceDelta && (
+                                          <span className={`text-[10px] font-semibold ${childSelected ? "text-white/80" : "text-slate-400"}`}>
+                                            {childPriceDelta}
+                                          </span>
+                                        )}
                                     </button>
                                 );
                             })}
@@ -929,7 +1000,7 @@ export default function LocalOrderPage() {
               ) : null}
 
               {selectedOptionsDetails.length > 0 ? (
-                <div className="space-y-2 rounded-2xl bg-slate-50 p-4 text-xs text-slate-500">
+                <div className="h-30 space-y-2 overflow-y-auto rounded-2xl bg-slate-50 p-4 text-xs text-slate-500">
                   {selectedOptionsDetails.map((option, idx) => (
                     <div key={`${option.groupName}-${option.optionName}-${idx}`} className="flex items-center justify-between">
                       <span>{option.groupName} · {option.optionName}</span>
@@ -951,7 +1022,14 @@ export default function LocalOrderPage() {
                     type="button"
                     onClick={() => {
                       if (!activeItem || !canAddToCart) return;
-                      addItem(activeItem.stableId, { ...selectedOptions, ...selectedChildOptions }, selectedQuantity);
+                      addItem(
+                        activeItem.stableId,
+                        buildOptionSnapshots({
+                          ...selectedOptions,
+                          ...selectedChildOptions,
+                        }),
+                        selectedQuantity,
+                      );
                       closeOptionsModal();
                     }}
                     disabled={!canAddToCart}
