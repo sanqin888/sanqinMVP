@@ -393,13 +393,35 @@ export default function CheckoutPage() {
   }, [entitlements]);
 
   const menuLookup = useMemo(() => {
-    const merged = new Map<string, LocalizedMenuItem>();
-    if (publicMenuLookup) {
-      publicMenuLookup.forEach((value, key) => merged.set(key, value));
+  const merged = new Map<string, LocalizedMenuItem>();
+
+  if (publicMenuLookup) {
+    publicMenuLookup.forEach((value, key) => merged.set(key, value));
+  }
+
+  entitlementItems.forEach((ent) => {
+    const existing = merged.get(ent.stableId);
+
+    if (!existing) {
+      merged.set(ent.stableId, ent);
+      return;
     }
-    entitlementItems.forEach((item) => merged.set(item.stableId, item));
-    return merged.size ? merged : null;
+
+    merged.set(ent.stableId, {
+      ...existing,
+      ...ent,
+
+      // ✅ entitlement 没有 optionGroups 时，保留菜单版本的 optionGroups
+      optionGroups:
+        ent.optionGroups && ent.optionGroups.length > 0
+          ? ent.optionGroups
+          : existing.optionGroups,
+    });
+  });
+
+  return merged.size ? merged : null;
   }, [entitlementItems, publicMenuLookup]);
+
 
   useEffect(() => {
     if (!menuLookup || items.length === 0) return;

@@ -541,21 +541,24 @@ export default function LocalOrderPage() {
   );
 
   const optionSnapshotLookup = useMemo(() => {
-    const lookup = new Map<string, SelectedOptionSnapshot>();
-    if (!activeItem?.optionGroups) return lookup;
-    activeItem.optionGroups.forEach((group) => {
-      group.options.forEach((option) => {
-        const name =
-          locale === "zh" && option.nameZh ? option.nameZh : option.nameEn;
-        lookup.set(option.optionStableId, {
-          id: option.optionStableId,
-          name,
-          priceDeltaCents: option.priceDeltaCents,
-        });
+  const lookup = new Map<string, SelectedOptionSnapshot>();
+
+  // ✅ 用递归收集到的所有 active groups（包含套餐嵌套组选项）
+  activeOptionGroups.forEach(({ group }) => {
+    group.options.forEach((option) => {
+      const name =
+        locale === "zh" && option.nameZh ? option.nameZh : option.nameEn;
+
+      lookup.set(option.optionStableId, {
+        id: option.optionStableId,
+        name: name ?? "",
+        priceDeltaCents: option.priceDeltaCents ?? 0,
       });
     });
-    return lookup;
-  }, [activeItem?.optionGroups, locale]);
+  });
+
+  return lookup;
+ }, [activeOptionGroups, locale]);
 
   const buildOptionSnapshots = useCallback(
     (selections: Record<string, string[]>): Record<string, SelectedOptionSnapshot[]> =>
@@ -564,7 +567,7 @@ export default function LocalOrderPage() {
           groupKey,
           optionIds.map((optionId) => {
             const snapshot = optionSnapshotLookup.get(optionId);
-            return snapshot ?? { id: optionId, name: "" };
+            return snapshot ?? { id: optionId, name: "", priceDeltaCents: 0 };
           }),
         ]),
       ),
