@@ -32,7 +32,7 @@ export class TwilioSmsProvider implements SmsProvider {
     }
 
     try {
-      const createClient = twilio as unknown as TwilioFactory;
+      const createClient = twilio as TwilioFactory;
       const client = createClient(accountSid, authToken);
       const message = await client.messages.create({
         to: params.to,

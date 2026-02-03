@@ -9,7 +9,7 @@ import type {
 
 @Injectable()
 export class SendGridEmailProvider implements EmailProvider {
-  private readonly mailClient = sgMail as unknown as SendGridMailClient;
+  private readonly mailClient = sgMail as SendGridMailClient;
   private readonly defaultFromName =
     process.env.SENDGRID_FROM_NAME?.trim() || undefined;
   private readonly defaultFromAddress =
