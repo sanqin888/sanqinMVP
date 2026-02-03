@@ -40,15 +40,18 @@ export class SendGridEmailProvider implements EmailProvider {
 
     try {
       const [res] = await this.mailClient.send({
-        to: params.to,
-        from: { name: fromName, email: fromAddress },
-        subject: params.subject,
-        html: params.html,
-        text: params.text,
-        // 如果你未来要用 SendGrid categories / custom args，可在这里接 tags
-        // categories: params.tags ? Object.entries(params.tags).map(([k,v]) => `${k}:${v}`) : undefined,
-        // customArgs: params.tags ?? undefined,
-      });
+  to: params.to,
+  from: { name: fromName, email: fromAddress },
+  subject: params.subject,
+  html: params.html,
+  text: params.text,
+
+  categories: params.tags
+    ? Object.entries(params.tags).map(([k, v]) => `sanq:${k}:${v}`)
+    : undefined,
+
+  customArgs: params.tags ?? undefined,
+});
 
       const messageId = getMessageId(res);
 
@@ -76,6 +79,8 @@ type SendGridMailData = {
   subject: string;
   html?: string;
   text?: string;
+  categories?: string[];
+  customArgs?: Record<string, string>;
 };
 
 type SendGridMailClient = {

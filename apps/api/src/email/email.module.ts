@@ -11,9 +11,13 @@ import { LogEmailProvider } from './providers/log-email.provider';
 import { SendGridEmailProvider } from './providers/sendgrid-email.provider';
 import { SesEventProcessor } from './ses-event.processor';
 import type { EmailProvider } from './email.provider';
+import { SendGridEmailWebhookController } from './webhook/sendgrid-email.webhook.controller';
+import { SendGridEmailWebhookService } from './webhook/sendgrid-email.webhook.service';
+import { SendGridEmailWebhookVerifier } from './webhook/sendgrid-email.webhook.verifier';
 
 @Module({
   imports: [HttpModule, PrismaModule, MessagingModule],
+  controllers: [SendGridEmailWebhookController],
   providers: [
     EmailService,
     EmailVerificationService,
@@ -21,6 +25,8 @@ import type { EmailProvider } from './email.provider';
     SendGridEmailProvider,
     LogEmailProvider,
     SesEventProcessor,
+    SendGridEmailWebhookService,
+    SendGridEmailWebhookVerifier,
     {
       provide: EMAIL_PROVIDER_TOKEN,
       useFactory: (
