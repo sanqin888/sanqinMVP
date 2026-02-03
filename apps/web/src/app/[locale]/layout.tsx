@@ -26,8 +26,8 @@ export async function generateMetadata({
 
   return {
     title: {
-      default: locale === "zh" ? "三秦肉夹馍" : "SanQ Rougamo",
-      template: locale === "zh" ? "三秦 • %s" : "SanQ • %s",
+      default: locale === "zh" ? "三秦肉夹馍" : "SanQ Roujiamo",
+      template: locale === "zh" ? "三秦肉夹馍 • %s" : "SanQ Roujiamo • %s",
     },
     alternates,
   };
@@ -59,7 +59,7 @@ export default async function I18nLayout({
             priority
           />
         </div>
-          {isZh ? "三秦肉夹馍" : "SanQ Rougamo"}
+          {isZh ? "三秦肉夹馍" : "SanQ Roujiamo"}
         </Link>
         <LocaleSwitcher locale={locale as "zh" | "en"} />
       </header>
