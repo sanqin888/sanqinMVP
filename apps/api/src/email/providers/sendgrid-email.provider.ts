@@ -1,12 +1,18 @@
 //apps/api/src/email/providers/sendgrid-email.provider.ts
 import { Injectable } from '@nestjs/common';
 import sgMail from '@sendgrid/mail';
-import type { EmailProvider, EmailSendParams, EmailSendResult } from '../email.provider';
+import type {
+  EmailProvider,
+  EmailSendParams,
+  EmailSendResult,
+} from '../email.provider';
 
 @Injectable()
 export class SendGridEmailProvider implements EmailProvider {
-  private readonly defaultFromName = process.env.SENDGRID_FROM_NAME?.trim() || undefined;
-  private readonly defaultFromAddress = process.env.SENDGRID_FROM_ADDRESS?.trim() || undefined;
+  private readonly defaultFromName =
+    process.env.SENDGRID_FROM_NAME?.trim() || undefined;
+  private readonly defaultFromAddress =
+    process.env.SENDGRID_FROM_ADDRESS?.trim() || undefined;
 
   constructor() {
     const apiKey = process.env.SENDGRID_API_KEY?.trim();
@@ -24,7 +30,11 @@ export class SendGridEmailProvider implements EmailProvider {
     const fromName = params.fromName ?? this.defaultFromName ?? 'SanQ';
     const fromAddress = params.fromAddress ?? this.defaultFromAddress;
     if (!fromAddress) {
-      return { ok: false, error: 'missing fromAddress (SENDGRID_FROM_ADDRESS or params.fromAddress)' };
+      return {
+        ok: false,
+        error:
+          'missing fromAddress (SENDGRID_FROM_ADDRESS or params.fromAddress)',
+      };
     }
 
     try {
@@ -48,7 +58,9 @@ export class SendGridEmailProvider implements EmailProvider {
     } catch (err: any) {
       const msg = err?.response?.body
         ? JSON.stringify(err.response.body)
-        : (err instanceof Error ? err.message : String(err));
+        : err instanceof Error
+          ? err.message
+          : String(err);
       return { ok: false, error: msg };
     }
   }

@@ -1,7 +1,11 @@
 //apps/api/src/sms/providers/twilio-sms.provider.ts
 import { Injectable } from '@nestjs/common';
 import twilio from 'twilio';
-import type { SmsProvider, SmsSendParams, SmsSendResult } from '../sms.provider';
+import type {
+  SmsProvider,
+  SmsSendParams,
+  SmsSendResult,
+} from '../sms.provider';
 
 @Injectable()
 export class TwilioSmsProvider implements SmsProvider {
@@ -11,13 +15,20 @@ export class TwilioSmsProvider implements SmsProvider {
 
     // 二选一：from number 或 messaging service sid
     const fromNumber = process.env.TWILIO_FROM_NUMBER?.trim();
-    const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID?.trim();
+    const messagingServiceSid =
+      process.env.TWILIO_MESSAGING_SERVICE_SID?.trim();
 
     if (!accountSid || !authToken) {
-      return { ok: false, error: 'missing TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN' };
+      return {
+        ok: false,
+        error: 'missing TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN',
+      };
     }
     if (!fromNumber && !messagingServiceSid) {
-      return { ok: false, error: 'missing TWILIO_FROM_NUMBER or TWILIO_MESSAGING_SERVICE_SID' };
+      return {
+        ok: false,
+        error: 'missing TWILIO_FROM_NUMBER or TWILIO_MESSAGING_SERVICE_SID',
+      };
     }
 
     try {
@@ -25,7 +36,9 @@ export class TwilioSmsProvider implements SmsProvider {
       const message = await client.messages.create({
         to: params.to,
         body: params.body,
-        ...(messagingServiceSid ? { messagingServiceSid } : { from: fromNumber }),
+        ...(messagingServiceSid
+          ? { messagingServiceSid }
+          : { from: fromNumber }),
       });
 
       return { ok: true, providerMessageId: message.sid };
