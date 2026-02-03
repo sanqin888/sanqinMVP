@@ -11,9 +11,9 @@ import { LogEmailProvider } from './providers/log-email.provider';
 import { SendGridEmailProvider } from './providers/sendgrid-email.provider';
 import { SesEventProcessor } from './ses-event.processor';
 import type { EmailProvider } from './email.provider';
-import { SendGridEmailWebhookController } from './webhook/sendgrid-email.webhook.controller';
-import { SendGridEmailWebhookService } from './webhook/sendgrid-email.webhook.service';
-import { SendGridEmailWebhookVerifier } from './webhook/sendgrid-email.webhook.verifier';
+import { SendGridEmailWebhookController } from './webhooks/sendgrid-email.webhook.controller';
+import { SendGridEmailWebhookService } from './webhooks/sendgrid-email.webhook.service';
+import { SendGridEmailWebhookVerifier } from './webhooks/sendgrid-email.webhook.verifier';
 
 @Module({
   imports: [HttpModule, PrismaModule, MessagingModule],
