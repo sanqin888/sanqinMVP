@@ -32,7 +32,8 @@ export class TwilioSmsProvider implements SmsProvider {
     }
 
     try {
-      const client = twilio(accountSid, authToken);
+      const createClient = twilio as unknown as TwilioFactory;
+      const client = createClient(accountSid, authToken);
       const message = await client.messages.create({
         to: params.to,
         body: params.body,
@@ -42,9 +43,30 @@ export class TwilioSmsProvider implements SmsProvider {
       });
 
       return { ok: true, providerMessageId: message.sid };
-    } catch (err: any) {
+    } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       return { ok: false, error: msg };
     }
   }
 }
+
+type TwilioMessageCreateParams = {
+  to: string;
+  body: string;
+  from?: string;
+  messagingServiceSid?: string;
+};
+
+type TwilioMessage = {
+  sid: string;
+};
+
+type TwilioMessagesClient = {
+  create: (params: TwilioMessageCreateParams) => Promise<TwilioMessage>;
+};
+
+type TwilioClient = {
+  messages: TwilioMessagesClient;
+};
+
+type TwilioFactory = (accountSid: string, authToken: string) => TwilioClient;
