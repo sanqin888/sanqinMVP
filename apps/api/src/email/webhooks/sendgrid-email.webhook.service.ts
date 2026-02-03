@@ -51,7 +51,9 @@ export class SendGridEmailWebhookService {
 
     const idempotencyKey = ev.sg_event_id
       ? `sg:${ev.sg_event_id}`
-      : this.fingerprint(`${messageId}:${eventKey}:${email ?? ''}:${ev.timestamp ?? ''}`);
+      : this.fingerprint(
+          `${messageId}:${eventKey}:${email ?? ''}:${ev.timestamp ?? ''}`,
+        );
 
     // 1) record EmailEvent (idempotent)
     try {
@@ -82,13 +84,25 @@ export class SendGridEmailWebhookService {
     // 2) automation rules
     // Complaint (spamreport) -> suppression(COMPLAINT)
     if (eventKey === 'spamreport') {
-      await this.upsertSuppression(email, EmailSuppressionReason.COMPLAINT, messageId);
+      await this.upsertSuppression(
+        email,
+        EmailSuppressionReason.COMPLAINT,
+        messageId,
+      );
       return;
     }
 
     // Bounce-like -> suppression(BOUNCE)
-    if (eventKey === 'bounce' || eventKey === 'blocked' || eventKey === 'dropped') {
-      await this.upsertSuppression(email, EmailSuppressionReason.BOUNCE, messageId);
+    if (
+      eventKey === 'bounce' ||
+      eventKey === 'blocked' ||
+      eventKey === 'dropped'
+    ) {
+      await this.upsertSuppression(
+        email,
+        EmailSuppressionReason.BOUNCE,
+        messageId,
+      );
       return;
     }
 
@@ -147,7 +161,9 @@ export class SendGridEmailWebhookService {
   }
 
   private fingerprint(input: string): string {
-    return 'sg:' + createHash('sha256').update(input).digest('hex').slice(0, 32);
+    return (
+      'sg:' + createHash('sha256').update(input).digest('hex').slice(0, 32)
+    );
   }
 
   private isUniqueConstraintError(error: unknown): boolean {

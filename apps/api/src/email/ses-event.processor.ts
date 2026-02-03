@@ -51,58 +51,62 @@ export class SesEventProcessor implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly prisma: PrismaService) {}
 
   onModuleInit() {
-  // ✅ 严格模式：只有明确 EMAIL_PROVIDER=ses 才启用
-  const emailProvider = (process.env.EMAIL_PROVIDER ?? '').trim().toLowerCase();
-  if (emailProvider !== 'ses') {
-    this.logger.warn(
-      `EMAIL_PROVIDER=${emailProvider || '(not set)'}; SES event processor disabled.`,
-    );
-    return;
+    // ✅ 严格模式：只有明确 EMAIL_PROVIDER=ses 才启用
+    const emailProvider = (process.env.EMAIL_PROVIDER ?? '')
+      .trim()
+      .toLowerCase();
+    if (emailProvider !== 'ses') {
+      this.logger.warn(
+        `EMAIL_PROVIDER=${emailProvider || '(not set)'}; SES event processor disabled.`,
+      );
+      return;
+    }
+
+    const queueUrl = process.env.SES_EVENTS_SQS_QUEUE_URL;
+    if (!queueUrl) {
+      this.logger.warn(
+        'SES_EVENTS_SQS_QUEUE_URL not configured, SES event processor disabled.',
+      );
+      return;
+    }
+
+    const region = process.env.AWS_REGION;
+    if (!region) {
+      this.logger.warn(
+        'AWS_REGION not configured, SES event processor disabled.',
+      );
+      return;
+    }
+
+    this.consumer = Consumer.create({
+      queueUrl,
+      sqs: new SQSClient({ region }),
+      handleMessage: async (message) => {
+        try {
+          await this.processMessage(message);
+        } catch (error) {
+          this.logger.error(
+            `Failed to process SES event: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+          throw error;
+        }
+        return message;
+      },
+    });
+
+    this.consumer.on('error', (err) => {
+      this.logger.error(`SQS Consumer Error: ${err.message}`);
+    });
+
+    this.consumer.on('processing_error', (err) => {
+      this.logger.error(`SQS Processing Error: ${err.message}`);
+    });
+
+    this.consumer.start();
+    this.logger.log(`SES SQS Consumer started listening on ${queueUrl}`);
   }
-
-  const queueUrl = process.env.SES_EVENTS_SQS_QUEUE_URL;
-  if (!queueUrl) {
-    this.logger.warn(
-      'SES_EVENTS_SQS_QUEUE_URL not configured, SES event processor disabled.',
-    );
-    return;
-  }
-
-  const region = process.env.AWS_REGION;
-  if (!region) {
-    this.logger.warn('AWS_REGION not configured, SES event processor disabled.');
-    return;
-  }
-
-  this.consumer = Consumer.create({
-    queueUrl,
-    sqs: new SQSClient({ region }),
-    handleMessage: async (message) => {
-      try {
-        await this.processMessage(message);
-      } catch (error) {
-        this.logger.error(
-          `Failed to process SES event: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-        throw error;
-      }
-      return message;
-    },
-  });
-
-  this.consumer.on('error', (err) => {
-    this.logger.error(`SQS Consumer Error: ${err.message}`);
-  });
-
-  this.consumer.on('processing_error', (err) => {
-    this.logger.error(`SQS Processing Error: ${err.message}`);
-  });
-
-  this.consumer.start();
-  this.logger.log(`SES SQS Consumer started listening on ${queueUrl}`);
-}
 
   onModuleDestroy() {
     if (this.consumer) {

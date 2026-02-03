@@ -20,11 +20,13 @@ export class SendGridEmailWebhookController {
         .send('missing SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY');
     }
 
-    const signature = req.header('X-Twilio-Email-Event-Webhook-Signature') ?? undefined;
-    const timestamp = req.header('X-Twilio-Email-Event-Webhook-Timestamp') ?? undefined;
+    const signature =
+      req.header('X-Twilio-Email-Event-Webhook-Signature') ?? undefined;
+    const timestamp =
+      req.header('X-Twilio-Email-Event-Webhook-Timestamp') ?? undefined;
 
     // Because main.ts uses express.raw() for this route, req.body should be Buffer
-    const rawBody = Buffer.isBuffer(req.body) ? (req.body as Buffer) : Buffer.from('');
+    const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from('');
 
     try {
       this.verifier.verifyOrThrow({
