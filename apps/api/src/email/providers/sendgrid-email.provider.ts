@@ -87,7 +87,9 @@ type SendGridResponse = {
   headers?: Record<string, string | string[] | undefined>;
 };
 
-const getMessageId = (response: SendGridResponse | undefined): string | undefined => {
+const getMessageId = (
+  response: SendGridResponse | undefined,
+): string | undefined => {
   const headers = response?.headers;
   if (!headers) {
     return undefined;
