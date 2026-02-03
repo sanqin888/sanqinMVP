@@ -1,38 +1,33 @@
+//apps/api/src/sms/sms.module.ts
 import { Module } from '@nestjs/common';
 import { SmsService } from './sms.service';
 import { SMS_PROVIDER_TOKEN } from './sms.tokens';
 import { AwsSmsProvider } from './providers/aws-sms.provider';
 import { LogSmsProvider } from './providers/log-sms.provider';
+import { TwilioSmsProvider } from './providers/twilio-sms.provider';
 import type { SmsProvider } from './sms.provider';
 
 @Module({
   providers: [
     SmsService,
     AwsSmsProvider,
+    TwilioSmsProvider,
     LogSmsProvider,
     {
       provide: SMS_PROVIDER_TOKEN,
       useFactory: (
         aws: AwsSmsProvider,
+        twilioProvider: TwilioSmsProvider,
         loggerProvider: LogSmsProvider,
       ): SmsProvider => {
-        // 获取原始值
-        const rawValue = process.env.SMS_PROVIDER;
+        const provider = process.env.SMS_PROVIDER?.trim().toLowerCase();
 
-        // .trim() 去除首尾空格/换行符
-        const provider = rawValue?.trim().toLowerCase();
+        if (provider === 'aws') return aws;
+        if (provider === 'twilio') return twilioProvider;
 
-        if (provider === 'aws') {
-          console.log('[System Check] ✅ Switching to AWS Provider');
-          return aws;
-        }
-
-        console.log(
-          '[System Check] ⚠️ Fallback to Log Provider (Conditions not met)',
-        );
         return loggerProvider;
       },
-      inject: [AwsSmsProvider, LogSmsProvider],
+      inject: [AwsSmsProvider, TwilioSmsProvider, LogSmsProvider],
     },
   ],
   exports: [SmsService],

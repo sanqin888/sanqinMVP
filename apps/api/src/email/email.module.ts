@@ -1,3 +1,4 @@
+//apps/api/src/email/email.module.ts
 import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -7,6 +8,7 @@ import { EmailVerificationService } from './email-verification.service';
 import { EMAIL_PROVIDER_TOKEN } from './email.tokens';
 import { SesEmailProvider } from './providers/ses-email.provider';
 import { LogEmailProvider } from './providers/log-email.provider';
+import { SendGridEmailProvider } from './providers/sendgrid-email.provider';
 import { SesEventProcessor } from './ses-event.processor';
 import type { EmailProvider } from './email.provider';
 
@@ -16,21 +18,24 @@ import type { EmailProvider } from './email.provider';
     EmailService,
     EmailVerificationService,
     SesEmailProvider,
+    SendGridEmailProvider,
     LogEmailProvider,
     SesEventProcessor,
     {
       provide: EMAIL_PROVIDER_TOKEN,
       useFactory: (
         sesProvider: SesEmailProvider,
+        sendgridProvider: SendGridEmailProvider,
         logProvider: LogEmailProvider,
       ): EmailProvider => {
-        const provider = process.env.EMAIL_PROVIDER?.toLowerCase();
-        if (provider === 'ses') {
-          return sesProvider;
-        }
+        const provider = process.env.EMAIL_PROVIDER?.trim().toLowerCase();
+
+        if (provider === 'ses') return sesProvider;
+        if (provider === 'sendgrid') return sendgridProvider;
+
         return logProvider;
       },
-      inject: [SesEmailProvider, LogEmailProvider],
+      inject: [SesEmailProvider, SendGridEmailProvider, LogEmailProvider],
     },
   ],
   exports: [EmailService, EmailVerificationService],

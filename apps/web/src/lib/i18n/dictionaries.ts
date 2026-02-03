@@ -138,9 +138,9 @@ export const UI_STRINGS: Record<
 > = {
   en: {
     tagline: "FRESH • FAST • HANDMADE",
-    heroTitle: "Order SanQ Rougamo fast & tasty dishes",
+    heroTitle: "Order SanQ Roujiamo fast & tasty dishes",
     heroDescription:
-      "Classic Liangpi, Rougamo, featured noodles and more. Order now and pick up in minutes—or get delivery.",
+      "Classic Liangpi, Roujiamo, featured noodles and more. Order now and pick up in minutes—or get delivery.",
     orderSteps: [
       { id: 1, label: "Choose your dishes" },
       { id: 2, label: "Add notes & confirm" },
