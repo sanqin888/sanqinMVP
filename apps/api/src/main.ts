@@ -33,11 +33,11 @@ async function bootstrap(): Promise<void> {
 
   const prefix = getApiPrefix();
 
-  // 2. 【第一步】特殊处理 Clover Webhooks
+  // 2. 【第一步】特殊处理 Clover Webhooks / sendgrid webhooks
   // 使用 express.raw 只针对这个路径解析为 Buffer，方便验签
   // 注意：必须在 express.json() 之前注册
   app.use(`/${prefix}/webhooks/clover-hco`, express.raw({ type: '*/*' }));
-
+  app.use(`/${prefix}/webhooks/sendgrid-email`, express.raw({ type: '*/*' }));
   // 3. 【第二步】为其余所有路由启用 JSON 解析
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));

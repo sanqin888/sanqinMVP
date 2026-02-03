@@ -51,6 +51,17 @@ export class SesEventProcessor implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly prisma: PrismaService) {}
 
   onModuleInit() {
+    // ✅ 严格模式：只有明确 EMAIL_PROVIDER=ses 才启用
+    const emailProvider = (process.env.EMAIL_PROVIDER ?? '')
+      .trim()
+      .toLowerCase();
+    if (emailProvider !== 'ses') {
+      this.logger.warn(
+        `EMAIL_PROVIDER=${emailProvider || '(not set)'}; SES event processor disabled.`,
+      );
+      return;
+    }
+
     const queueUrl = process.env.SES_EVENTS_SQS_QUEUE_URL;
     if (!queueUrl) {
       this.logger.warn(
@@ -59,9 +70,17 @@ export class SesEventProcessor implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    const region = process.env.AWS_REGION;
+    if (!region) {
+      this.logger.warn(
+        'AWS_REGION not configured, SES event processor disabled.',
+      );
+      return;
+    }
+
     this.consumer = Consumer.create({
       queueUrl,
-      sqs: new SQSClient({ region: process.env.AWS_REGION }),
+      sqs: new SQSClient({ region }),
       handleMessage: async (message) => {
         try {
           await this.processMessage(message);
