@@ -9,6 +9,7 @@ import type {
 
 @Injectable()
 export class SendGridEmailProvider implements EmailProvider {
+  private readonly mailClient = sgMail as unknown as SendGridMailClient;
   private readonly defaultFromName =
     process.env.SENDGRID_FROM_NAME?.trim() || undefined;
   private readonly defaultFromAddress =
@@ -17,7 +18,7 @@ export class SendGridEmailProvider implements EmailProvider {
   constructor() {
     const apiKey = process.env.SENDGRID_API_KEY?.trim();
     if (apiKey) {
-      sgMail.setApiKey(apiKey);
+      this.mailClient.setApiKey(apiKey);
     }
   }
 
@@ -38,7 +39,7 @@ export class SendGridEmailProvider implements EmailProvider {
     }
 
     try {
-      const [res] = await sgMail.send({
+      const [res] = await this.mailClient.send({
         to: params.to,
         from: { name: fromName, email: fromAddress },
         subject: params.subject,
@@ -49,15 +50,13 @@ export class SendGridEmailProvider implements EmailProvider {
         // customArgs: params.tags ?? undefined,
       });
 
-      const messageId =
-        (res?.headers as any)?.['x-message-id'] ||
-        (res?.headers as any)?.['X-Message-Id'] ||
-        undefined;
+      const messageId = getMessageId(res);
 
       return { ok: true, messageId };
-    } catch (err: any) {
-      const msg = err?.response?.body
-        ? JSON.stringify(err.response.body)
+    } catch (err: unknown) {
+      const responseBody = getErrorResponseBody(err);
+      const msg = responseBody
+        ? responseBody
         : err instanceof Error
           ? err.message
           : String(err);
@@ -65,3 +64,61 @@ export class SendGridEmailProvider implements EmailProvider {
     }
   }
 }
+
+type SendGridMailAddress = {
+  name: string;
+  email: string;
+};
+
+type SendGridMailData = {
+  to: string;
+  from: SendGridMailAddress;
+  subject: string;
+  html?: string;
+  text?: string;
+};
+
+type SendGridMailClient = {
+  setApiKey: (apiKey: string) => void;
+  send: (message: SendGridMailData) => Promise<[SendGridResponse]>;
+};
+
+type SendGridResponse = {
+  headers?: Record<string, string | string[] | undefined>;
+};
+
+const getMessageId = (response: SendGridResponse | undefined): string | undefined => {
+  const headers = response?.headers;
+  if (!headers) {
+    return undefined;
+  }
+
+  const lowerCase = headers['x-message-id'];
+  if (typeof lowerCase === 'string') {
+    return lowerCase;
+  }
+
+  const upperCase = headers['X-Message-Id'];
+  return typeof upperCase === 'string' ? upperCase : undefined;
+};
+
+const getErrorResponseBody = (err: unknown): string | undefined => {
+  if (!isRecord(err)) {
+    return undefined;
+  }
+
+  const response = err.response;
+  if (!isRecord(response)) {
+    return undefined;
+  }
+
+  const body = response.body;
+  if (body === undefined) {
+    return undefined;
+  }
+
+  return JSON.stringify(body);
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
