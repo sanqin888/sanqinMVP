@@ -31,6 +31,43 @@ enum DeliveryProvider {
   UBER
 }
 
+// =======================
+// Messaging (Unified)
+// =======================
+
+enum MessagingChannel {
+  EMAIL
+  SMS
+}
+
+enum MessagingProvider {
+  SENDGRID
+  AWS_SES
+  TWILIO
+  AWS_SMS
+  MANUAL
+}
+
+enum MessagingSendStatus {
+  QUEUED
+  ACCEPTED
+  SENT
+  DELIVERED
+  FAILED
+  BOUNCED
+  COMPLAINED
+  SUPPRESSED
+}
+
+enum SuppressionReason {
+  BOUNCE_HARD
+  COMPLAINT
+  USER_OPT_OUT
+  INVALID_RECIPIENT
+  CARRIER_BLOCK
+  MANUAL
+}
+
 enum LoyaltyTier {
   BRONZE
   SILVER
@@ -83,12 +120,6 @@ enum UserStatus {
 enum TwoFactorMethod {
   OFF
   SMS
-}
-
-enum EmailSuppressionReason {
-  BOUNCE
-  COMPLAINT
-  MANUAL
 }
 
 enum PosDeviceStatus {
@@ -577,32 +608,107 @@ model EmailVerification {
   @@index([email, createdAt])
 }
 
-model EmailEvent {
-  id             String   @id @default(uuid()) @db.Uuid
-  idempotencyKey String   @unique
-  messageId      String
-  eventType      String
-  source         String?
-  destinations   String[]
-  mailTimestamp  DateTime?
-  feedbackId     String?
-  payload        Json
-  createdAt      DateTime @default(now())
-  lastSeenAt     DateTime @default(now())
+// =======================
+// Messaging (Unified)
+// =======================
 
-  @@index([messageId, eventType])
-  @@index([createdAt])
-}
-
-model EmailSuppression {
-  email           String                 @id
-  reason          EmailSuppressionReason @default(BOUNCE)
+model MessagingSuppression {
+  id              String            @id @default(uuid()) @db.Uuid
+  channel         MessagingChannel
+  addressNorm     String
+  addressRaw      String?
+  reason          SuppressionReason
+  sourceProvider  MessagingProvider?
   sourceMessageId String?
   feedbackId      String?
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
+  metadata        Json?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  liftedAt        DateTime?
 
-  @@index([reason, updatedAt])
+  @@unique([channel, addressNorm])
+  @@index([channel, reason, updatedAt])
+}
+
+model MessagingSend {
+  id                 String              @id @default(uuid()) @db.Uuid
+  channel            MessagingChannel
+  provider           MessagingProvider
+  toAddressNorm      String
+  toAddressRaw       String?
+  fromAddress        String?
+  templateType       String
+  templateVersion    String?
+  locale             UserLanguage?
+  providerMessageId  String?
+  statusLatest       MessagingSendStatus @default(QUEUED)
+  errorCodeLatest    String?
+  errorMessageLatest String?
+  metadata           Json?
+  userId             String?             @db.Uuid
+  user               User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@index([channel, toAddressNorm, createdAt])
+  @@index([provider, providerMessageId])
+  @@index([statusLatest, updatedAt])
+}
+
+model MessagingDeliveryEvent {
+  id                String            @id @default(uuid()) @db.Uuid
+  sendId            String?           @db.Uuid
+  send              MessagingSend?    @relation(fields: [sendId], references: [id], onDelete: SetNull)
+  channel           MessagingChannel
+  provider          MessagingProvider
+  eventType         String
+  providerMessageId String?
+  status            String?
+  errorCode         String?
+  errorMessage      String?
+  occurredAt        DateTime?
+  payload           Json
+  createdAt         DateTime          @default(now())
+
+  @@index([provider, providerMessageId, createdAt])
+  @@index([channel, eventType, createdAt])
+  @@index([sendId, createdAt])
+}
+
+model MessagingWebhookEvent {
+  id                String            @id @default(uuid()) @db.Uuid
+  idempotencyKey     String            @unique
+  channel           MessagingChannel
+  provider          MessagingProvider
+  eventKind         String
+  requestUrl        String?
+  headersJson       Json?
+  rawBody           String?
+  paramsJson        Json?
+  remoteIp          String?
+  providerMessageId String?
+  toAddressNorm     String?
+  fromAddressNorm   String?
+  occurredAt        DateTime?
+  createdAt         DateTime          @default(now())
+  lastSeenAt        DateTime          @default(now())
+
+  @@index([provider, eventKind, createdAt])
+  @@index([providerMessageId])
+}
+
+model RecipientFailureCounter {
+  id            String            @id @default(uuid()) @db.Uuid
+  channel       MessagingChannel
+  addressNorm   String
+  provider      MessagingProvider?
+  failCount     Int               @default(0)
+  lastErrorCode String?
+  lastFailedAt  DateTime?
+  updatedAt     DateTime          @updatedAt
+
+  @@unique([channel, addressNorm])
+  @@index([channel, failCount, updatedAt])
 }
 
 model BusinessConfig {
