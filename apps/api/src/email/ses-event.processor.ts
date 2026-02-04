@@ -327,8 +327,14 @@ export class SesEventProcessor implements OnModuleInit, OnModuleDestroy {
     mailTimestamp: Date | null;
     now: Date;
   }): Promise<boolean> {
-    const { idempotencyKey, messageId, payload, destinations, mailTimestamp, now } =
-      params;
+    const {
+      idempotencyKey,
+      messageId,
+      payload,
+      destinations,
+      mailTimestamp,
+      now,
+    } = params;
     const toAddressNorm = destinations[0]
       ? normalizeEmail(destinations[0])
       : null;
