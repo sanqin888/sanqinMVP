@@ -7,7 +7,12 @@ import {
 import { Consumer } from 'sqs-consumer';
 import { SQSClient } from '@aws-sdk/client-sqs';
 import { createHash } from 'crypto';
-import { EmailSuppressionReason, Prisma } from '@prisma/client';
+import {
+  MessagingChannel,
+  MessagingProvider,
+  Prisma,
+  SuppressionReason,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { normalizeEmail } from '../common/utils/email';
 
@@ -150,39 +155,37 @@ export class SesEventProcessor implements OnModuleInit, OnModuleDestroy {
     });
     const now = new Date();
 
-    try {
-      await this.prisma.emailEvent.create({
-        data: {
-          idempotencyKey,
-          messageId,
-          eventType,
-          source: payload.mail?.source ?? null,
-          destinations,
-          mailTimestamp,
-          feedbackId: feedbackId ?? null,
-          payload: payload as Prisma.InputJsonValue,
-          lastSeenAt: now,
-        },
-      });
-    } catch (error) {
-      if (this.isUniqueConstraintError(error)) {
-        await this.prisma.emailEvent.update({
-          where: { idempotencyKey },
-          data: { lastSeenAt: now },
-        });
-        return;
-      }
-      throw error;
-    }
+    const webhookCreated = await this.recordWebhookEvent({
+      idempotencyKey,
+      messageId,
+      payload,
+      destinations,
+      mailTimestamp,
+      now,
+    });
 
     this.logger.log(
       `SES event recorded type=${eventType} messageId=${messageId} destination=${destinations[0] ?? 'n/a'}`,
     );
 
+    if (webhookCreated) {
+      await this.prisma.messagingDeliveryEvent.create({
+        data: {
+          channel: MessagingChannel.EMAIL,
+          provider: MessagingProvider.AWS_SES,
+          eventType,
+          providerMessageId: messageId,
+          status: payload.eventType ?? null,
+          occurredAt: mailTimestamp,
+          payload: payload as Prisma.InputJsonValue,
+        },
+      });
+    }
+
     if (eventTypeKey === 'bounce') {
       await this.handleSuppression({
         payload,
-        reason: EmailSuppressionReason.BOUNCE,
+        reason: SuppressionReason.BOUNCE_HARD,
         messageId,
         feedbackId,
       });
@@ -192,7 +195,7 @@ export class SesEventProcessor implements OnModuleInit, OnModuleDestroy {
     if (eventTypeKey === 'complaint') {
       await this.handleSuppression({
         payload,
-        reason: EmailSuppressionReason.COMPLAINT,
+        reason: SuppressionReason.COMPLAINT,
         messageId,
         feedbackId,
       });
@@ -239,7 +242,7 @@ export class SesEventProcessor implements OnModuleInit, OnModuleDestroy {
 
   private async handleSuppression(params: {
     payload: SesEventPayload;
-    reason: EmailSuppressionReason;
+    reason: SuppressionReason;
     messageId: string;
     feedbackId?: string;
   }) {
@@ -253,7 +256,7 @@ export class SesEventProcessor implements OnModuleInit, OnModuleDestroy {
     }
 
     const detail =
-      reason === EmailSuppressionReason.BOUNCE
+      reason === SuppressionReason.BOUNCE_HARD
         ? payload.bounce?.bounceType
         : payload.complaint?.complaintFeedbackType;
 
@@ -269,39 +272,96 @@ export class SesEventProcessor implements OnModuleInit, OnModuleDestroy {
       feedbackId: feedbackId ?? null,
     }));
 
-    await this.prisma.emailSuppression.createMany({
-      data: createData,
+    await this.prisma.messagingSuppression.createMany({
+      data: createData.map((entry) => ({
+        channel: MessagingChannel.EMAIL,
+        addressNorm: entry.email,
+        addressRaw: entry.email,
+        reason: entry.reason,
+        sourceProvider: MessagingProvider.AWS_SES,
+        sourceMessageId: entry.sourceMessageId,
+        feedbackId: entry.feedbackId,
+        metadata: detail ? { detail } : undefined,
+      })),
       skipDuplicates: true,
     });
 
-    if (reason === EmailSuppressionReason.COMPLAINT) {
-      await this.prisma.emailSuppression.updateMany({
-        where: { email: { in: uniqueTargets } },
+    if (reason === SuppressionReason.COMPLAINT) {
+      await this.prisma.messagingSuppression.updateMany({
+        where: {
+          channel: MessagingChannel.EMAIL,
+          addressNorm: { in: uniqueTargets },
+        },
         data: {
           reason,
+          sourceProvider: MessagingProvider.AWS_SES,
           sourceMessageId: messageId,
           feedbackId: feedbackId ?? null,
+          metadata: detail ? { detail } : undefined,
         },
       });
       return;
     }
 
-    await this.prisma.emailSuppression.updateMany({
+    await this.prisma.messagingSuppression.updateMany({
       where: {
-        email: { in: uniqueTargets },
-        reason: {
-          notIn: [
-            EmailSuppressionReason.BOUNCE,
-            EmailSuppressionReason.COMPLAINT,
-          ],
-        },
+        channel: MessagingChannel.EMAIL,
+        addressNorm: { in: uniqueTargets },
+        reason: { notIn: [SuppressionReason.COMPLAINT] },
       },
       data: {
         reason,
+        sourceProvider: MessagingProvider.AWS_SES,
         sourceMessageId: messageId,
         feedbackId: feedbackId ?? null,
+        metadata: detail ? { detail } : undefined,
       },
     });
+  }
+
+  private async recordWebhookEvent(params: {
+    idempotencyKey: string;
+    messageId: string;
+    payload: SesEventPayload;
+    destinations: string[];
+    mailTimestamp: Date | null;
+    now: Date;
+  }): Promise<boolean> {
+    const { idempotencyKey, messageId, payload, destinations, mailTimestamp, now } =
+      params;
+    const toAddressNorm = destinations[0]
+      ? normalizeEmail(destinations[0])
+      : null;
+    const fromAddressNorm = payload.mail?.source
+      ? normalizeEmail(payload.mail?.source)
+      : null;
+
+    try {
+      await this.prisma.messagingWebhookEvent.create({
+        data: {
+          idempotencyKey,
+          channel: MessagingChannel.EMAIL,
+          provider: MessagingProvider.AWS_SES,
+          eventKind: 'SES_SNS',
+          paramsJson: payload as Prisma.InputJsonValue,
+          providerMessageId: messageId,
+          toAddressNorm,
+          fromAddressNorm,
+          occurredAt: mailTimestamp,
+          lastSeenAt: now,
+        },
+      });
+      return true;
+    } catch (error) {
+      if (this.isUniqueConstraintError(error)) {
+        await this.prisma.messagingWebhookEvent.update({
+          where: { idempotencyKey },
+          data: { lastSeenAt: now },
+        });
+        return false;
+      }
+      throw error;
+    }
   }
 
   private isUniqueConstraintError(error: unknown): boolean {

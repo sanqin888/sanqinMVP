@@ -1,6 +1,11 @@
 //apps/api/src/email/webhooks/sendgrid-email.webhook.service.ts
 import { Injectable, Logger } from '@nestjs/common';
-import { Prisma, EmailSuppressionReason } from '@prisma/client';
+import {
+  MessagingChannel,
+  MessagingProvider,
+  Prisma,
+  SuppressionReason,
+} from '@prisma/client';
 import { createHash } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { normalizeEmail } from '../../common/utils/email';
@@ -43,8 +48,6 @@ export class SendGridEmailWebhookService {
     const eventKey = eventType.toLowerCase();
 
     const email = normalizeEmail(ev.email);
-    const destinations = email ? [email] : [];
-
     const messageId = ev.sg_message_id ?? 'unknown';
     const mailTimestamp = ev.timestamp ? new Date(ev.timestamp * 1000) : null;
     const now = new Date();
@@ -55,24 +58,24 @@ export class SendGridEmailWebhookService {
           `${messageId}:${eventKey}:${email ?? ''}:${ev.timestamp ?? ''}`,
         );
 
-    // 1) record EmailEvent (idempotent)
+    // 1) record webhook audit (idempotent)
     try {
-      await this.prisma.emailEvent.create({
+      await this.prisma.messagingWebhookEvent.create({
         data: {
           idempotencyKey,
-          messageId,
-          eventType,
-          source: null,
-          destinations,
-          mailTimestamp,
-          feedbackId: null,
-          payload: ev as Prisma.InputJsonValue,
+          channel: MessagingChannel.EMAIL,
+          provider: MessagingProvider.SENDGRID,
+          eventKind: 'SENDGRID_EVENT',
+          paramsJson: ev as Prisma.InputJsonValue,
+          providerMessageId: messageId,
+          toAddressNorm: email ?? null,
+          occurredAt: mailTimestamp,
           lastSeenAt: now,
         },
       });
     } catch (error) {
       if (this.isUniqueConstraintError(error)) {
-        await this.prisma.emailEvent.update({
+        await this.prisma.messagingWebhookEvent.update({
           where: { idempotencyKey },
           data: { lastSeenAt: now },
         });
@@ -81,12 +84,25 @@ export class SendGridEmailWebhookService {
       }
     }
 
+    await this.prisma.messagingDeliveryEvent.create({
+      data: {
+        channel: MessagingChannel.EMAIL,
+        provider: MessagingProvider.SENDGRID,
+        eventType,
+        providerMessageId: messageId,
+        status: ev.status ?? null,
+        errorMessage: ev.reason ?? null,
+        occurredAt: mailTimestamp,
+        payload: ev as Prisma.InputJsonValue,
+      },
+    });
+
     // 2) automation rules
     // Complaint (spamreport) -> suppression(COMPLAINT)
     if (eventKey === 'spamreport') {
       await this.upsertSuppression(
         email,
-        EmailSuppressionReason.COMPLAINT,
+        SuppressionReason.COMPLAINT,
         messageId,
       );
       return;
@@ -100,7 +116,7 @@ export class SendGridEmailWebhookService {
     ) {
       await this.upsertSuppression(
         email,
-        EmailSuppressionReason.BOUNCE,
+        SuppressionReason.BOUNCE_HARD,
         messageId,
       );
       return;
@@ -130,33 +146,59 @@ export class SendGridEmailWebhookService {
 
   private async upsertSuppression(
     email: string | null,
-    reason: EmailSuppressionReason,
+    reason: SuppressionReason,
     sourceMessageId: string,
   ) {
     if (!email) return;
 
     // create if missing
-    await this.prisma.emailSuppression.createMany({
-      data: [{ email, reason, sourceMessageId, feedbackId: null }],
+    await this.prisma.messagingSuppression.createMany({
+      data: [
+        {
+          channel: MessagingChannel.EMAIL,
+          addressNorm: email,
+          addressRaw: email,
+          reason,
+          sourceProvider: MessagingProvider.SENDGRID,
+          sourceMessageId,
+          feedbackId: null,
+        },
+      ],
       skipDuplicates: true,
     });
 
     // complaint always wins
-    if (reason === EmailSuppressionReason.COMPLAINT) {
-      await this.prisma.emailSuppression.update({
-        where: { email },
-        data: { reason, sourceMessageId, feedbackId: null },
+    if (reason === SuppressionReason.COMPLAINT) {
+      await this.prisma.messagingSuppression.update({
+        where: {
+          channel_addressNorm: {
+            channel: MessagingChannel.EMAIL,
+            addressNorm: email,
+          },
+        },
+        data: {
+          reason,
+          sourceProvider: MessagingProvider.SENDGRID,
+          sourceMessageId,
+          feedbackId: null,
+        },
       });
       return;
     }
 
     // bounce updates only if not already complaint
-    await this.prisma.emailSuppression.updateMany({
+    await this.prisma.messagingSuppression.updateMany({
       where: {
-        email,
-        reason: { notIn: [EmailSuppressionReason.COMPLAINT] },
+        channel: MessagingChannel.EMAIL,
+        addressNorm: email,
+        reason: { notIn: [SuppressionReason.COMPLAINT] },
       },
-      data: { reason, sourceMessageId, feedbackId: null },
+      data: {
+        reason,
+        sourceProvider: MessagingProvider.SENDGRID,
+        sourceMessageId,
+        feedbackId: null,
+      },
     });
   }
 
