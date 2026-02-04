@@ -216,6 +216,7 @@ model User {
   twoFactorChallenges   TwoFactorChallenge[]
   userCoupons           UserCoupon[]
   emailVerifications    EmailVerification[]
+  messagingSends        MessagingSend[]
 
   @@index([referredByUserId])
 }
@@ -647,6 +648,7 @@ model MessagingSend {
   metadata           Json?
   userId             String?             @db.Uuid
   user               User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  deliveryEvents     MessagingDeliveryEvent[]
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
 
