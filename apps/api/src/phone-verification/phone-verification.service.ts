@@ -165,6 +165,9 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
     const smsResult = await this.smsService.sendSms({
       phone: normalized,
       body: message,
+      templateType: 'phone_verification',
+      locale: params.locale,
+      metadata: { purpose: resolvedPurpose },
     });
 
     if (!smsResult.ok) {

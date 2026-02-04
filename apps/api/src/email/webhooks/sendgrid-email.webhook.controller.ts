@@ -36,6 +36,12 @@ export class SendGridEmailWebhookController {
         publicKey,
       });
     } catch {
+      await this.service.recordSignatureInvalid({
+        rawBody: rawBody.toString('utf8'),
+        requestUrl: req.originalUrl,
+        headers: req.headers,
+        remoteIp: req.ip,
+      });
       return res.status(HttpStatus.UNAUTHORIZED).send('invalid signature');
     }
 
@@ -46,7 +52,12 @@ export class SendGridEmailWebhookController {
       return res.status(HttpStatus.BAD_REQUEST).send('invalid json');
     }
 
-    await this.service.process(payload);
+    await this.service.process(payload, {
+      rawBody: rawBody.toString('utf8'),
+      headers: req.headers,
+      requestUrl: req.originalUrl,
+      remoteIp: req.ip,
+    });
     return res.status(HttpStatus.OK).send('ok');
   }
 }

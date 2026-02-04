@@ -595,6 +595,10 @@ export class AuthService {
     await this.smsService.sendSms({
       phone: user.phone,
       body: message,
+      templateType: 'otp',
+      locale,
+      userId: user.id,
+      metadata: { purpose: 'login_2fa' },
     });
     return { success: true, expiresAt };
   }
@@ -693,6 +697,9 @@ export class AuthService {
       html,
       tags: { type: 'admin_login_2fa' },
       locale,
+      templateType: 'otp',
+      userId: user.id,
+      metadata: { purpose: 'admin_login' },
     });
     return { success: true, expiresAt };
   }
@@ -875,6 +882,10 @@ export class AuthService {
     await this.smsService.sendSms({
       phone: normalized,
       body: message,
+      templateType: 'otp',
+      locale,
+      userId: session.userId,
+      metadata: { purpose: 'verify' },
     });
 
     return { success: true };
@@ -1116,6 +1127,9 @@ export class AuthService {
     await this.smsService.sendSms({
       phone: normalized, // 注意：这里的 normalized 是不带 + 号的纯数字
       body: message,
+      templateType: 'otp',
+      locale,
+      metadata: { purpose: 'login' },
     });
 
     return { success: true };
