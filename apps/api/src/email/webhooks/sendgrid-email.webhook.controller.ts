@@ -4,14 +4,14 @@ import type { Request, Response } from 'express';
 import { SendGridEmailWebhookVerifier } from './sendgrid-email.webhook.verifier';
 import { SendGridEmailWebhookService } from './sendgrid-email.webhook.service';
 
-@Controller('api/v1/webhooks/sendgrid-email')
+@Controller('webhooks')
 export class SendGridEmailWebhookController {
   constructor(
     private readonly verifier: SendGridEmailWebhookVerifier,
     private readonly service: SendGridEmailWebhookService,
   ) {}
 
-  @Post()
+  @Post('sendgrid-email')
   async handle(@Req() req: Request, @Res() res: Response) {
     const publicKey = process.env.SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY?.trim();
     if (!publicKey) {
