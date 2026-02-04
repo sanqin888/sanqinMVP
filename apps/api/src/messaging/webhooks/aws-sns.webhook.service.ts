@@ -255,8 +255,7 @@ export class AwsSnsWebhookService {
     try {
       const url = new URL(value);
       return (
-        url.protocol === 'https:' &&
-        url.hostname.endsWith('.amazonaws.com')
+        url.protocol === 'https:' && url.hostname.endsWith('.amazonaws.com')
       );
     } catch {
       return false;
@@ -318,7 +317,10 @@ const buildStringToSign = (payload: SnsMessage): string | null => {
     );
     return lines.join('\n') + '\n';
   }
-  if (type === 'SubscriptionConfirmation' || type === 'UnsubscribeConfirmation') {
+  if (
+    type === 'SubscriptionConfirmation' ||
+    type === 'UnsubscribeConfirmation'
+  ) {
     const lines = [
       'Message',
       payload.Message ?? '',
@@ -371,9 +373,7 @@ const resolveChannel = (
   return MessagingChannel.EMAIL;
 };
 
-const mapSnsStatus = (
-  eventType: string,
-): MessagingSendStatus | undefined => {
+const mapSnsStatus = (eventType: string): MessagingSendStatus | undefined => {
   const key = eventType.toLowerCase();
   if (key.includes('bounce')) return MessagingSendStatus.BOUNCED;
   if (key.includes('complaint')) return MessagingSendStatus.COMPLAINED;

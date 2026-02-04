@@ -351,7 +351,10 @@ const mapTwilioStatus = (
 ): { eventType: string; sendStatus?: MessagingSendStatus } => {
   const normalized = status?.toLowerCase() ?? 'unknown';
   if (normalized === 'delivered') {
-    return { eventType: 'DELIVERED', sendStatus: MessagingSendStatus.DELIVERED };
+    return {
+      eventType: 'DELIVERED',
+      sendStatus: MessagingSendStatus.DELIVERED,
+    };
   }
   if (normalized === 'sent' || normalized === 'queued') {
     return { eventType: 'SENT', sendStatus: MessagingSendStatus.SENT };
