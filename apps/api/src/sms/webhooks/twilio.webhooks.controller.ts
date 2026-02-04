@@ -2,12 +2,25 @@
 import { Controller, Post, Req, Res, HttpCode } from '@nestjs/common';
 import type { Request, Response } from 'express';
 
-function parseTwilioFormBody(req: Request): Record<string, string> {
+function parseTwilioFormBody(
+  req: Request<unknown, unknown, unknown>,
+): Record<string, string> {
   // 因为你对 /api/v1/webhooks/twilio 使用了 express.raw({ type: "*/*" })
   // 所以 req.body 是 Buffer（或 string），需要手动解析 x-www-form-urlencoded
-  const raw = Buffer.isBuffer(req.body)
-    ? req.body.toString('utf8')
-    : (req.body?.toString?.() ?? '');
+  const rawBody = req.body;
+  let raw = '';
+  if (typeof rawBody === 'string') {
+    raw = rawBody;
+  } else if (Buffer.isBuffer(rawBody)) {
+    raw = rawBody.toString('utf8');
+  } else if (
+    rawBody &&
+    typeof rawBody === 'object' &&
+    'toString' in rawBody &&
+    typeof (rawBody as { toString: () => string }).toString === 'function'
+  ) {
+    raw = (rawBody as { toString: () => string }).toString();
+  }
 
   const params = new URLSearchParams(raw);
   const obj: Record<string, string> = {};
@@ -20,7 +33,10 @@ export class TwilioWebhooksController {
   // ✅ 入站短信（包含用户回复/STOP/HELP/START）
   @Post('sms/inbound')
   @HttpCode(200)
-  inboundSms(@Req() req: Request, @Res() res: Response) {
+  inboundSms(
+    @Req() req: Request<unknown, unknown, unknown>,
+    @Res() res: Response,
+  ) {
     const body = parseTwilioFormBody(req);
 
     const from = body.From;
@@ -39,7 +55,10 @@ export class TwilioWebhooksController {
   // ✅ 短信状态回执（你发出去的短信状态）
   @Post('sms/status')
   @HttpCode(200)
-  smsStatus(@Req() req: Request, @Res() res: Response) {
+  smsStatus(
+    @Req() req: Request<unknown, unknown, unknown>,
+    @Res() res: Response,
+  ) {
     const body = parseTwilioFormBody(req);
 
     console.log('[twilio sms status]', {
