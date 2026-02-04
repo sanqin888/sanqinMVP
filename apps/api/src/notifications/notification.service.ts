@@ -122,6 +122,9 @@ export class NotificationService {
             text,
             tags: { type: 'register_welcome' },
             locale: params.user.language === 'ZH' ? 'zh-CN' : 'en',
+            templateType: 'welcome',
+            userId: params.user.id,
+            metadata: { trigger: 'register' },
           });
         });
     }
@@ -140,6 +143,10 @@ export class NotificationService {
       return this.smsService.sendSms({
         phone: params.user.phone,
         body,
+        templateType: 'welcome',
+        locale,
+        userId: params.user.id,
+        metadata: { trigger: 'register' },
       });
     }
   }
@@ -163,6 +170,8 @@ export class NotificationService {
     return this.smsService.sendSms({
       phone: params.phone,
       body,
+      templateType: 'orderReady',
+      locale,
     });
   }
 
@@ -200,6 +209,9 @@ export class NotificationService {
       text,
       tags: { type: 'welcome' }, //以此标记这是欢迎信
       locale: params.user.language === 'ZH' ? 'zh-CN' : 'en',
+      templateType: 'Subscription',
+      userId: params.user.id,
+      metadata: { trigger: 'marketing_opt_in' },
     });
   }
 
@@ -251,6 +263,9 @@ export class NotificationService {
         text,
         tags: { type: 'gift_issued' },
         locale: user.language === 'ZH' ? 'zh-CN' : 'en',
+        templateType: template,
+        userId: user.id,
+        metadata: { triggerType: program.triggerType ?? null },
       });
     }
 
@@ -263,6 +278,10 @@ export class NotificationService {
       return this.smsService.sendSms({
         phone: user.phone,
         body,
+        templateType: template,
+        locale,
+        userId: user.id,
+        metadata: { triggerType: program.triggerType ?? null },
       });
     }
 
@@ -296,6 +315,8 @@ export class NotificationService {
       text: params.text,
       tags: { type: 'marketing' },
       locale: params.user.language === 'ZH' ? 'zh-CN' : 'en',
+      templateType: 'marketing',
+      userId: params.user.id,
     });
   }
 
@@ -326,6 +347,8 @@ export class NotificationService {
       text: params.text,
       tags: { type: 'points_reminder' },
       locale: params.user.language === 'ZH' ? 'zh-CN' : 'en',
+      templateType: 'points_reminder',
+      userId: params.user.id,
     });
   }
 }

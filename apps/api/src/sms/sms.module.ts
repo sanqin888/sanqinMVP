@@ -1,5 +1,6 @@
 //apps/api/src/sms/sms.module.ts
 import { Module } from '@nestjs/common';
+import { PrismaModule } from '../prisma/prisma.module';
 import { SmsService } from './sms.service';
 import { SMS_PROVIDER_TOKEN } from './sms.tokens';
 import { AwsSmsProvider } from './providers/aws-sms.provider';
@@ -9,6 +10,7 @@ import type { SmsProvider } from './sms.provider';
 import { TwilioWebhooksController } from './webhooks/twilio.webhooks.controller';
 
 @Module({
+  imports: [PrismaModule],
   controllers: [TwilioWebhooksController],
   providers: [
     SmsService,

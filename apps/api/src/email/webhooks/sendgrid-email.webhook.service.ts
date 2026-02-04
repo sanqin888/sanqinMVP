@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   MessagingChannel,
   MessagingProvider,
+  MessagingSendStatus,
   Prisma,
   SuppressionReason,
 } from '@prisma/client';
@@ -32,18 +33,70 @@ export class SendGridEmailWebhookService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async process(raw: unknown) {
+  async process(
+    raw: unknown,
+    context: {
+      rawBody: string;
+      headers: Record<string, unknown>;
+      requestUrl: string;
+      remoteIp: string;
+    },
+  ) {
     if (!Array.isArray(raw)) {
       this.logger.warn('SendGrid webhook payload is not an array');
       return;
     }
 
     for (const ev of raw as SendGridEvent[]) {
-      await this.processOne(ev);
+      await this.processOne(ev, context);
     }
   }
 
-  private async processOne(ev: SendGridEvent) {
+  async recordSignatureInvalid(params: {
+    rawBody: string;
+    headers: Record<string, unknown>;
+    requestUrl: string;
+    remoteIp: string;
+  }) {
+    const idempotencyKey = this.fingerprint(
+      `sendgrid:signature-invalid:${params.requestUrl}:${params.rawBody}`,
+    );
+    const now = new Date();
+    try {
+      await this.prisma.messagingWebhookEvent.create({
+        data: {
+          idempotencyKey,
+          channel: MessagingChannel.EMAIL,
+          provider: MessagingProvider.SENDGRID,
+          eventKind: 'SIGNATURE_INVALID',
+          requestUrl: params.requestUrl,
+          headersJson: params.headers as Prisma.InputJsonValue,
+          rawBody: params.rawBody,
+          remoteIp: params.remoteIp,
+          lastSeenAt: now,
+        },
+      });
+    } catch (error) {
+      if (this.isUniqueConstraintError(error)) {
+        await this.prisma.messagingWebhookEvent.update({
+          where: { idempotencyKey },
+          data: { lastSeenAt: now },
+        });
+        return;
+      }
+      throw error;
+    }
+  }
+
+  private async processOne(
+    ev: SendGridEvent,
+    context: {
+      rawBody: string;
+      headers: Record<string, unknown>;
+      requestUrl: string;
+      remoteIp: string;
+    },
+  ) {
     const eventType = (ev.event ?? 'Unknown').trim() || 'Unknown';
     const eventKey = eventType.toLowerCase();
 
@@ -53,12 +106,13 @@ export class SendGridEmailWebhookService {
     const now = new Date();
 
     const idempotencyKey = ev.sg_event_id
-      ? `sg:${ev.sg_event_id}`
+      ? `sendgrid:event:${ev.sg_event_id}`
       : this.fingerprint(
-          `${messageId}:${eventKey}:${email ?? ''}:${ev.timestamp ?? ''}`,
+          `sendgrid:event:${messageId}:${eventKey}:${email ?? ''}:${ev.timestamp ?? ''}`,
         );
 
     // 1) record webhook audit (idempotent)
+    let webhookCreated = true;
     try {
       await this.prisma.messagingWebhookEvent.create({
         data: {
@@ -66,7 +120,11 @@ export class SendGridEmailWebhookService {
           channel: MessagingChannel.EMAIL,
           provider: MessagingProvider.SENDGRID,
           eventKind: 'SENDGRID_EVENT',
+          requestUrl: context.requestUrl,
+          headersJson: context.headers as Prisma.InputJsonValue,
+          rawBody: context.rawBody,
           paramsJson: ev as Prisma.InputJsonValue,
+          remoteIp: context.remoteIp,
           providerMessageId: messageId,
           toAddressNorm: email ?? null,
           occurredAt: mailTimestamp,
@@ -79,23 +137,43 @@ export class SendGridEmailWebhookService {
           where: { idempotencyKey },
           data: { lastSeenAt: now },
         });
+        webhookCreated = false;
       } else {
         throw error;
       }
     }
 
-    await this.prisma.messagingDeliveryEvent.create({
-      data: {
-        channel: MessagingChannel.EMAIL,
-        provider: MessagingProvider.SENDGRID,
-        eventType,
-        providerMessageId: messageId,
-        status: ev.status ?? null,
-        errorMessage: ev.reason ?? null,
-        occurredAt: mailTimestamp,
-        payload: ev as Prisma.InputJsonValue,
-      },
-    });
+    if (webhookCreated) {
+      const send = await this.prisma.messagingSend.findFirst({
+        where: {
+          provider: MessagingProvider.SENDGRID,
+          providerMessageId: messageId,
+        },
+      });
+      const { sendStatus } = mapSendGridStatus(eventKey);
+      await this.prisma.messagingDeliveryEvent.create({
+        data: {
+          sendId: send?.id ?? null,
+          channel: MessagingChannel.EMAIL,
+          provider: MessagingProvider.SENDGRID,
+          eventType,
+          providerMessageId: messageId,
+          status: ev.status ?? null,
+          errorMessage: ev.reason ?? null,
+          occurredAt: mailTimestamp,
+          payload: ev as Prisma.InputJsonValue,
+        },
+      });
+      if (send && sendStatus) {
+        await this.prisma.messagingSend.update({
+          where: { id: send.id },
+          data: {
+            statusLatest: sendStatus,
+            errorMessageLatest: ev.reason ?? null,
+          },
+        });
+      }
+    }
 
     // 2) automation rules
     // Complaint (spamreport) -> suppression(COMPLAINT)
@@ -215,3 +293,26 @@ export class SendGridEmailWebhookService {
     );
   }
 }
+
+const mapSendGridStatus = (
+  eventKey: string,
+): { sendStatus?: MessagingSendStatus } => {
+  switch (eventKey) {
+    case 'processed':
+      return { sendStatus: MessagingSendStatus.SENT };
+    case 'delivered':
+      return { sendStatus: MessagingSendStatus.DELIVERED };
+    case 'bounce':
+    case 'blocked':
+    case 'dropped':
+      return { sendStatus: MessagingSendStatus.BOUNCED };
+    case 'spamreport':
+      return { sendStatus: MessagingSendStatus.COMPLAINED };
+    case 'deferred':
+      return { sendStatus: MessagingSendStatus.FAILED };
+    case 'sent':
+      return { sendStatus: MessagingSendStatus.SENT };
+    default:
+      return {};
+  }
+};
