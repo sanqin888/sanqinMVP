@@ -6,8 +6,10 @@ import { AwsSmsProvider } from './providers/aws-sms.provider';
 import { LogSmsProvider } from './providers/log-sms.provider';
 import { TwilioSmsProvider } from './providers/twilio-sms.provider';
 import type { SmsProvider } from './sms.provider';
+import { TwilioWebhooksController } from './webhooks/twilio.webhooks.controller';
 
 @Module({
+  controllers: [TwilioWebhooksController],
   providers: [
     SmsService,
     AwsSmsProvider,

@@ -38,6 +38,7 @@ async function bootstrap(): Promise<void> {
   // 注意：必须在 express.json() 之前注册
   app.use(`/${prefix}/webhooks/clover-hco`, express.raw({ type: '*/*' }));
   app.use(`/${prefix}/webhooks/sendgrid-email`, express.raw({ type: '*/*' }));
+  app.use(`/${prefix}/webhooks/twilio`, express.raw({ type: '*/*' }));
   // 3. 【第二步】为其余所有路由启用 JSON 解析
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));

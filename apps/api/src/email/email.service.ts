@@ -1,5 +1,10 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import type { EmailSuppressionReason } from '@prisma/client';
+import {
+  MessagingChannel,
+  MessagingProvider,
+  MessagingSendStatus,
+  SuppressionReason,
+} from '@prisma/client';
 import { BusinessConfigService } from '../messaging/business-config.service';
 import type { EmailProvider } from './email.provider';
 import { EMAIL_PROVIDER_TOKEN } from './email.tokens';
@@ -36,22 +41,23 @@ export class EmailService {
       const now = new Date();
       const suppressionMessageId = `suppressed:${suppression.email ?? 'unknown'}`;
       try {
-        await this.prisma.emailEvent.create({
+        await this.prisma.messagingSend.create({
           data: {
-            idempotencyKey: `${suppressionMessageId}:${now.getTime()}:${Math.random()}`,
-            messageId: suppressionMessageId,
-            eventType: 'SuppressedSendAttempt',
-            source: params.fromAddress ?? null,
-            destinations: [suppression.email ?? params.to],
-            mailTimestamp: now,
-            feedbackId: null,
-            payload: {
-              to: params.to,
+            channel: MessagingChannel.EMAIL,
+            provider: this.resolveProvider(),
+            toAddressNorm: suppression.email ?? params.to,
+            toAddressRaw: params.to,
+            fromAddress: params.fromAddress ?? null,
+            templateType: 'CUSTOM',
+            statusLatest: MessagingSendStatus.SUPPRESSED,
+            errorMessageLatest: suppression.reason ?? null,
+            metadata: {
+              suppressionMessageId,
               subject: params.subject,
               reason: suppression.reason ?? null,
               tags: params.tags ?? null,
+              occurredAt: now.toISOString(),
             },
-            lastSeenAt: now,
           },
         });
       } catch (error) {
@@ -83,15 +89,19 @@ export class EmailService {
   private async checkSuppression(email: string): Promise<{
     suppressed: boolean;
     email?: string;
-    reason?: EmailSuppressionReason;
+    reason?: SuppressionReason;
   }> {
     const normalized = normalizeEmail(email);
     if (!normalized) {
       return { suppressed: false };
     }
 
-    const suppression = await this.prisma.emailSuppression.findUnique({
-      where: { email: normalized },
+    const suppression = await this.prisma.messagingSuppression.findFirst({
+      where: {
+        channel: MessagingChannel.EMAIL,
+        addressNorm: normalized,
+        liftedAt: null,
+      },
     });
     if (!suppression) {
       return { suppressed: false };
@@ -101,6 +111,13 @@ export class EmailService {
       email: normalized,
       reason: suppression.reason,
     };
+  }
+
+  private resolveProvider(): MessagingProvider {
+    const provider = (process.env.EMAIL_PROVIDER ?? '').trim().toLowerCase();
+    if (provider === 'ses') return MessagingProvider.AWS_SES;
+    if (provider === 'sendgrid') return MessagingProvider.SENDGRID;
+    return MessagingProvider.MANUAL;
   }
 
   private resolveLocale(locale?: string): 'zh' | 'en' {
