@@ -40,6 +40,11 @@ enum MessagingChannel {
   SMS
 }
 
+enum MessagingDirection {
+  OUTBOUND
+  INBOUND
+}
+
 enum MessagingProvider {
   SENDGRID
   AWS_SES
@@ -68,6 +73,31 @@ enum SuppressionReason {
   MANUAL
 }
 
+enum MessagingTemplateType {
+  OTP
+  SIGNUP_WELCOME
+  SUBSCRIPTION_CONFIRM
+  ORDER_READY
+  RECEIPT
+
+  EMAIL_VERIFY_LINK
+  PASSWORD_RESET_LINK
+}
+
+enum AuthChallengeType {
+  EMAIL_VERIFY
+  PHONE_VERIFY
+  TWO_FACTOR
+  PASSWORD_RESET
+}
+
+enum AuthChallengeStatus {
+  PENDING
+  CONSUMED
+  EXPIRED
+  REVOKED
+}
+
 enum LoyaltyTier {
   BRONZE
   SILVER
@@ -93,12 +123,6 @@ enum LoyaltyEntryType {
 enum LoyaltyTarget {
   POINTS   // 积分（赠送、消费返利）
   BALANCE  // 余额（充值本金）
-}
-
-enum PhoneVerificationStatus {
-  PENDING
-  VERIFIED
-  CONSUMED
 }
 
 enum UserRole {
@@ -212,11 +236,9 @@ model User {
   invitesSent           UserInvite[]  @relation("InvitesSent")
   sessions              UserSession[]
   trustedDevices        TrustedDevice[]
-  passwordResetTokens   PasswordResetToken[]
-  twoFactorChallenges   TwoFactorChallenge[]
   userCoupons           UserCoupon[]
-  emailVerifications    EmailVerification[]
   messagingSends        MessagingSend[]
+  authChallenges        AuthChallenge[]
 
   @@index([referredByUserId])
 }
@@ -236,24 +258,6 @@ model UserSession {
   @@index([userId])
 }
 
-model TwoFactorChallenge {
-  id           String   @id @default(uuid()) @db.Uuid
-  userId       String   @db.Uuid
-  purpose      String
-  codeHash     String
-  expiresAt    DateTime
-  attempts     Int      @default(0)
-  maxAttempts  Int      @default(5)
-  consumedAt   DateTime?
-  ip           String?
-  userAgent    String?
-  createdAt    DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, purpose, expiresAt])
-}
-
 model TrustedDevice {
   id          String   @id @default(uuid()) @db.Uuid
   userId      String   @db.Uuid
@@ -268,17 +272,32 @@ model TrustedDevice {
   @@index([userId, expiresAt])
 }
 
-model PasswordResetToken {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @db.Uuid
-  tokenHash String   @unique
-  expiresAt DateTime
-  usedAt    DateTime?
-  createdAt DateTime @default(now())
+model AuthChallenge {
+  id              String              @id @default(uuid()) @db.Uuid
+  userId          String?             @db.Uuid
+  user            User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type            AuthChallengeType
+  status          AuthChallengeStatus @default(PENDING)
+  channel         MessagingChannel
+  addressNorm     String
+  addressRaw      String?
+  codeHash        String?
+  tokenHash       String?
+  purpose         String              @default("generic")
+  expiresAt       DateTime
+  consumedAt      DateTime?
+  attempts        Int                 @default(0)
+  maxAttempts     Int                 @default(5)
+  ip              String?
+  userAgent       String?
+  messagingSendId String?             @db.Uuid
+  messagingSend   MessagingSend?      @relation(fields: [messagingSendId], references: [id], onDelete: SetNull)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, expiresAt])
+  @@index([userId, type, createdAt])
+  @@index([channel, addressNorm, expiresAt])
+  @@index([status, expiresAt])
 }
 
 model PosDevice {
@@ -576,39 +595,6 @@ model CheckoutIntent {
   @@index([referenceId, createdAt])
 }
 
-model PhoneVerification {
-  id            String                  @id @default(uuid()) @db.Uuid
-  phone         String
-  codeHash      String
-  status        PhoneVerificationStatus @default(PENDING)
-  expiresAt     DateTime
-  createdAt     DateTime                @default(now())
-  verifiedAt    DateTime?
-  consumedAt    DateTime?
-  attempts      Int                     @default(0)
-  lastAttemptAt DateTime?
-  purpose       String                  @default("generic")
-  used          Boolean                 @default(false)
-  token         String?                 @unique
-
-  @@index([phone, purpose, used, createdAt])
-}
-
-model EmailVerification {
-  id         String   @id @default(uuid()) @db.Uuid
-  userId     String   @db.Uuid
-  email      String
-  token      String   @unique
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
-  consumedAt DateTime?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, expiresAt])
-  @@index([email, createdAt])
-}
-
 // =======================
 // Messaging (Unified)
 // =======================
@@ -633,12 +619,13 @@ model MessagingSuppression {
 
 model MessagingSend {
   id                 String              @id @default(uuid()) @db.Uuid
+  direction          MessagingDirection  @default(OUTBOUND)
   channel            MessagingChannel
   provider           MessagingProvider
   toAddressNorm      String
   toAddressRaw       String?
   fromAddress        String?
-  templateType       String
+  templateType       MessagingTemplateType
   templateVersion    String?
   locale             UserLanguage?
   providerMessageId  String?
@@ -648,19 +635,24 @@ model MessagingSend {
   metadata           Json?
   userId             String?             @db.Uuid
   user               User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  orderId            String?             @db.Uuid
   deliveryEvents     MessagingDeliveryEvent[]
+  authChallenges     AuthChallenge[]
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
 
   @@index([channel, toAddressNorm, createdAt])
   @@index([provider, providerMessageId])
   @@index([statusLatest, updatedAt])
+  @@index([orderId])
 }
 
 model MessagingDeliveryEvent {
   id                String            @id @default(uuid()) @db.Uuid
   sendId            String?           @db.Uuid
   send              MessagingSend?    @relation(fields: [sendId], references: [id], onDelete: SetNull)
+  webhookEventId    String?           @db.Uuid
+  webhookEvent      MessagingWebhookEvent? @relation(fields: [webhookEventId], references: [id], onDelete: SetNull)
   channel           MessagingChannel
   provider          MessagingProvider
   eventType         String
@@ -675,6 +667,7 @@ model MessagingDeliveryEvent {
   @@index([provider, providerMessageId, createdAt])
   @@index([channel, eventType, createdAt])
   @@index([sendId, createdAt])
+  @@index([webhookEventId])
 }
 
 model MessagingWebhookEvent {

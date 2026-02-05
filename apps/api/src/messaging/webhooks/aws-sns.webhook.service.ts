@@ -98,7 +98,7 @@ export class AwsSnsWebhookService {
     headers: Record<string, unknown>;
     requestUrl: string;
     remoteIp: string;
-  }): Promise<boolean> {
+  }): Promise<string | null> {
     const idempotencyKey = params.payload.MessageId
       ? `sns:${params.payload.MessageId}`
       : this.fingerprint(`sns:${params.rawBody}`);
@@ -115,7 +115,7 @@ export class AwsSnsWebhookService {
     });
   }
 
-  async recordDeliveryEvent(payload: SnsMessage) {
+  async recordDeliveryEvent(payload: SnsMessage, webhookEventId?: string) {
     if (!payload.Message) return;
     const parsed = parseJson(payload.Message);
     const channel = resolveChannel(parsed);
@@ -145,6 +145,7 @@ export class AwsSnsWebhookService {
     await this.prisma.messagingDeliveryEvent.create({
       data: {
         sendId: send?.id ?? null,
+        webhookEventId: webhookEventId ?? null,
         channel,
         provider,
         eventType,
@@ -175,7 +176,7 @@ export class AwsSnsWebhookService {
     requestUrl: string;
     remoteIp: string;
     now: Date;
-  }): Promise<boolean> {
+  }): Promise<string | null> {
     const parsedMessage = parseJson(params.payload.Message ?? '');
     const channel = resolveChannel(parsedMessage);
     const provider =
@@ -184,7 +185,7 @@ export class AwsSnsWebhookService {
         : MessagingProvider.AWS_SES;
 
     try {
-      await this.prisma.messagingWebhookEvent.create({
+      const webhookEvent = await this.prisma.messagingWebhookEvent.create({
         data: {
           idempotencyKey: params.idempotencyKey,
           channel,
@@ -202,14 +203,14 @@ export class AwsSnsWebhookService {
           lastSeenAt: params.now,
         },
       });
-      return true;
+      return webhookEvent.id;
     } catch (error) {
       if (this.isUniqueConstraintError(error)) {
         await this.prisma.messagingWebhookEvent.update({
           where: { idempotencyKey: params.idempotencyKey },
           data: { lastSeenAt: params.now },
         });
-        return false;
+        return null;
       }
       throw error;
     }

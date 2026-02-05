@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   MessagingChannel,
+  MessagingTemplateType,
   MessagingProvider,
   MessagingSendStatus,
   Prisma,
@@ -34,12 +35,12 @@ export class EmailService {
     locale?: string;
     fromName?: string;
     fromAddress?: string;
-    templateType?: string;
+    templateType: MessagingTemplateType;
     templateVersion?: string;
     userId?: string;
     metadata?: Record<string, unknown> | null;
     skipSuppression?: boolean;
-  }) {
+  }): Promise<{ ok: boolean; messageId?: string; error?: string; sendId: string }> {
     const {
       locale,
       templateType,
@@ -57,7 +58,7 @@ export class EmailService {
         toAddressNorm,
         toAddressRaw: params.to,
         fromAddress: params.fromAddress ?? null,
-        templateType: templateType ?? 'CUSTOM',
+        templateType,
         templateVersion: templateVersion ?? null,
         locale: locale ? this.resolveLanguageEnum(locale) : null,
         userId: userId ?? null,
@@ -87,6 +88,7 @@ export class EmailService {
         return {
           ok: false,
           error: `suppressed:${suppression.reason ?? 'unknown'}`,
+          sendId: sendRecord.id,
         };
       }
     }
@@ -107,7 +109,7 @@ export class EmailService {
           providerMessageId: result.messageId ?? null,
         },
       });
-      return result;
+      return { ...result, sendId: sendRecord.id };
     }
 
     await this.prisma.messagingSend.update({
@@ -119,7 +121,7 @@ export class EmailService {
       },
     });
     this.logger.warn(`Email send failed: ${result.error ?? 'unknown'}`);
-    return result;
+    return { ...result, sendId: sendRecord.id };
   }
 
   private async checkSuppression(email: string): Promise<{
@@ -615,7 +617,7 @@ ${totalLines.join('\n')}`;
       text,
       tags: { type: 'invoice' },
       locale: resolvedLocale === 'zh' ? 'zh-CN' : 'en',
-      templateType: 'invoice',
+      templateType: MessagingTemplateType.RECEIPT,
     });
   }
 
@@ -665,7 +667,7 @@ ${totalLines.join('\n')}`;
       html,
       tags: { type: 'email_verification' },
       locale: params.locale,
-      templateType: 'email_verification',
+      templateType: MessagingTemplateType.EMAIL_VERIFY_LINK,
     });
   }
 
@@ -697,7 +699,7 @@ ${totalLines.join('\n')}`;
         html,
         tags: { type: 'staff_invite' },
         locale: params.locale,
-        templateType: 'staff_invite',
+        templateType: MessagingTemplateType.SIGNUP_WELCOME,
       });
     }
 
@@ -720,7 +722,7 @@ ${totalLines.join('\n')}`;
       html,
       tags: { type: 'staff_invite' },
       locale: params.locale,
-      templateType: 'staff_invite',
+      templateType: MessagingTemplateType.SIGNUP_WELCOME,
     });
   }
 }
