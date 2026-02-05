@@ -319,6 +319,12 @@ export class AuthService {
       throw new BadRequestException('invalid oauth params');
     }
 
+    if (!emailVerified) {
+      throw new BadRequestException(
+        'google email is not verified, please complete email OTP verification first',
+      );
+    }
+
     const now = new Date();
 
     // 2) 选定要登录/绑定的 user（优先 googleSub，其次 email）
@@ -331,15 +337,7 @@ export class AuthService {
         throw new BadRequestException('account conflict');
       }
 
-      if (
-        !emailVerified &&
-        byEmail &&
-        (!byGoogle || byGoogle.id !== byEmail.id)
-      ) {
-        throw new BadRequestException('email not verified');
-      }
-
-      let base = byGoogle ?? (emailVerified ? byEmail : null) ?? null;
+      let base = byGoogle ?? byEmail ?? null;
 
       if (!base) {
         base = await tx.user.create({
@@ -782,7 +780,81 @@ export class AuthService {
       throw new BadRequestException('verification code is invalid or expired');
     }
 
-    const codeHash = this.hashOtp(params.code);
+    const codeHash = this.hashOtp(params.code.trim());
+    if (codeHash !== challenge.codeHash) {
+      const nextAttempts = challenge.attempts + 1;
+      await this.prisma.authChallenge.update({
+        where: { id: challenge.id },
+        data: {
+          attempts: nextAttempts,
+          status:
+            nextAttempts >= challenge.maxAttempts
+              ? AuthChallengeStatus.REVOKED
+              : AuthChallengeStatus.PENDING,
+          consumedAt: nextAttempts >= challenge.maxAttempts ? now : null,
+        },
+      });
+      throw new BadRequestException('verification code is invalid or expired');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.authChallenge.update({
+        where: { id: challenge.id },
+        data: { status: AuthChallengeStatus.CONSUMED, consumedAt: now },
+      }),
+      this.prisma.userSession.update({
+        where: { id: session.id },
+        data: { mfaVerifiedAt: now },
+      }),
+    ]);
+
+    let trustedDevice: { token: string; expiresAt: Date } | null = null;
+    if (params.rememberDevice) {
+      trustedDevice = await this.issueTrustedDevice({
+        userId: user.id,
+        label: params.deviceLabel,
+      });
+    }
+
+    return {
+      success: true,
+      trustedDevice,
+    };
+  }
+
+  async verifyTwoFactorEmail(params: {
+    sessionId: string;
+    code: string;
+    rememberDevice?: boolean;
+    deviceLabel?: string;
+  }) {
+    const session = await this.getSession(params.sessionId);
+    if (!session) {
+      throw new UnauthorizedException('Invalid session');
+    }
+    if (session.mfaVerifiedAt) {
+      return { success: true, alreadyVerified: true };
+    }
+
+    const user = session.user;
+    const now = new Date();
+    const challenge = await this.prisma.authChallenge.findFirst({
+      where: {
+        userId: user.id,
+        type: AuthChallengeType.TWO_FACTOR,
+        channel: MessagingChannel.EMAIL,
+        purpose: 'LOGIN_2FA',
+        status: AuthChallengeStatus.PENDING,
+        expiresAt: { gt: now },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!challenge) {
+      throw new BadRequestException('verification code is invalid or expired');
+    }
+
+    const codeHash = this.hashOtp(params.code.trim());
     if (codeHash !== challenge.codeHash) {
       const nextAttempts = challenge.attempts + 1;
       await this.prisma.authChallenge.update({

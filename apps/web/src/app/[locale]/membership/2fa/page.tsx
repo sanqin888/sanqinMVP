@@ -1,7 +1,7 @@
 //Users/apple/sanqinMVP/apps/web/src/app/[locale]/membership/2fa/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import type { Locale } from '@/lib/i18n/locales';
@@ -17,6 +17,7 @@ export default function MembershipTwoFactorPage() {
   const isZh = locale === 'zh';
   const next = searchParams.get('next') ?? `/${locale}/membership`;
 
+  const [method, setMethod] = useState<'email' | 'sms'>('email');
   const [code, setCode] = useState('');
   const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
@@ -53,11 +54,16 @@ export default function MembershipTwoFactorPage() {
     return () => window.clearTimeout(timer);
   }, [countdown]);
 
+  const methodLabel = useMemo(() => {
+    if (method === 'email') return isZh ? '邮箱' : 'email';
+    return isZh ? '短信' : 'SMS';
+  }, [isZh, method]);
+
   async function handleRequestCode() {
     try {
       setSending(true);
       setError(null);
-      await apiFetch('/auth/2fa/sms/request', { method: 'POST' });
+      await apiFetch(`/auth/2fa/${method}/request`, { method: 'POST' });
       setCountdown(60);
     } catch (err) {
       console.error(err);
@@ -85,7 +91,7 @@ export default function MembershipTwoFactorPage() {
     try {
       setVerifying(true);
       setError(null);
-      await apiFetch('/auth/2fa/sms/verify', {
+      await apiFetch(`/auth/2fa/${method}/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: code.trim(), rememberDevice }),
@@ -95,8 +101,8 @@ export default function MembershipTwoFactorPage() {
       console.error(err);
       setError(
         isZh
-          ? '验证码无效或已过期。'
-          : 'The code is invalid or expired.',
+          ? `${method === 'email' ? '邮箱' : '短信'}验证码无效或已过期。`
+          : `The ${methodLabel} code is invalid or expired.`,
       );
     } finally {
       setVerifying(false);
@@ -122,13 +128,38 @@ export default function MembershipTwoFactorPage() {
 
       <main className="mx-auto flex max-w-md flex-col px-4 py-10">
         <h1 className="mb-4 text-2xl font-semibold text-slate-900">
-          {isZh ? '输入短信验证码' : 'Enter your SMS code'}
+          {isZh ? '输入验证码' : 'Enter your verification code'}
         </h1>
         <p className="mb-6 text-sm text-slate-600">
           {isZh
-            ? '我们已向你已绑定的手机号发送验证码。'
-            : 'We sent a verification code to your verified phone.'}
+            ? '默认使用邮箱验证，需要时可切换到短信验证。'
+            : 'Email verification is used by default. You can switch to SMS if needed.'}
         </p>
+
+        <div className="mb-3 flex gap-2">
+          <button
+            type="button"
+            onClick={() => setMethod('email')}
+            className={`flex-1 rounded-xl border px-3 py-2 text-xs font-medium ${
+              method === 'email'
+                ? 'border-slate-900 bg-slate-900 text-white'
+                : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+            }`}
+          >
+            {isZh ? '邮箱验证（默认）' : 'Email (default)'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setMethod('sms')}
+            className={`flex-1 rounded-xl border px-3 py-2 text-xs font-medium ${
+              method === 'sms'
+                ? 'border-slate-900 bg-slate-900 text-white'
+                : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+            }`}
+          >
+            {isZh ? '短信验证' : 'SMS'}
+          </button>
+        </div>
 
         <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
           <label className="block text-xs font-medium text-slate-700">
@@ -153,8 +184,8 @@ export default function MembershipTwoFactorPage() {
                   ? `重新发送 (${countdown}s)`
                   : `Resend (${countdown}s)`
                 : isZh
-                  ? '发送验证码'
-                  : 'Send code'}
+                  ? `发送${methodLabel}验证码`
+                  : `Send ${methodLabel} code`}
             </button>
           </div>
 
