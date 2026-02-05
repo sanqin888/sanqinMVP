@@ -40,7 +40,12 @@ export class EmailService {
     userId?: string;
     metadata?: Record<string, unknown> | null;
     skipSuppression?: boolean;
-  }): Promise<{ ok: boolean; messageId?: string; error?: string; sendId: string }> {
+  }): Promise<{
+    ok: boolean;
+    messageId?: string;
+    error?: string;
+    sendId: string;
+  }> {
     const {
       locale,
       templateType,

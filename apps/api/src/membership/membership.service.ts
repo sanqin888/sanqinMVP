@@ -194,10 +194,7 @@ export class MembershipService {
       },
     });
 
-    if (
-      !pv ||
-      pv.addressNorm !== addressNorm
-    ) {
+    if (!pv || pv.addressNorm !== addressNorm) {
       // 找不到 / 状态不对 / 手机不匹配，都直接忽略绑定
       return user;
     }

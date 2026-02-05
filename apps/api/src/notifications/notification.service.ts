@@ -1,5 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { MessagingTemplateType, type CouponProgramTriggerType, type User } from '@prisma/client';
+import {
+  MessagingTemplateType,
+  type CouponProgramTriggerType,
+  type User,
+} from '@prisma/client';
 import { EmailService } from '../email/email.service';
 import { SmsService } from '../sms/sms.service';
 import { BusinessConfigService } from '../messaging/business-config.service';
