@@ -159,7 +159,7 @@ export function OrderSummaryClient({ orderStableId, locale }: Props) {
         if (!cancelled) {
           setPrepTimeMinutes(response.minutes);
         }
-      } catch (err: unknown) {
+      } catch {
         if (!cancelled) {
           setPrepTimeMinutes(null);
         }

@@ -353,7 +353,7 @@ export default function CheckoutPage() {
         if (!cancelled) {
           setPrepTimeMinutes(response.minutes);
         }
-      } catch (error) {
+      } catch {
         if (!cancelled) {
           setPrepTimeMinutes(null);
         }
