@@ -20,7 +20,7 @@ function parseTwilioFormBody(req: Request): {
 } {
   // 因为你对 /api/v1/webhooks/twilio 使用了 express.raw({ type: "*/*" })
   // 所以 req.body 是 Buffer（或 string），需要手动解析 x-www-form-urlencoded
-  const rawBody = req.body;
+  const rawBody: unknown = req.body;
   let raw = '';
   if (typeof rawBody === 'string') {
     raw = rawBody;
