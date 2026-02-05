@@ -512,14 +512,19 @@ export default function CheckoutPage() {
   }, [localizedCartItems, locale]);
 
   const requiredEntitlementItemStableIds = useMemo(() => {
+    if (!publicMenuLookup) {
+      return new Set<string>();
+    }
+
     const required = new Set<string>();
     for (const cartItem of cartItemsWithPricing) {
-      if (entitlementItemCouponMap.has(cartItem.productStableId)) {
+      const isPublicMenuItem = publicMenuLookup.has(cartItem.productStableId);
+      if (!isPublicMenuItem && entitlementItemCouponMap.has(cartItem.productStableId)) {
         required.add(cartItem.productStableId);
       }
     }
     return required;
-  }, [cartItemsWithPricing, entitlementItemCouponMap]);
+  }, [cartItemsWithPricing, entitlementItemCouponMap, publicMenuLookup]);
 
   const selectedEntitlement = useMemo(() => {
     if (!entitlements || requiredEntitlementItemStableIds.size === 0) {
@@ -604,6 +609,7 @@ export default function CheckoutPage() {
   const [appliedCoupon, setAppliedCoupon] = useState<CheckoutCoupon | null>(
     null,
   );
+  const [couponModalOpen, setCouponModalOpen] = useState(false);
   const entitlementBlockingMessage = useMemo(() => {
     if (requiredEntitlementItemStableIds.size === 0) return null;
     if (!selectedEntitlement) {
@@ -1233,9 +1239,22 @@ export default function CheckoutPage() {
     }
   };
 
-  const isCouponApplicable = (coupon: CheckoutCoupon) =>
-    couponEligibleSubtotalCents > 0 &&
-    couponEligibleSubtotalCents >= (coupon.minSpendCents ?? 0);
+  const isCouponApplicable = useCallback(
+    (coupon: CheckoutCoupon) =>
+      couponEligibleSubtotalCents > 0 &&
+      couponEligibleSubtotalCents >= (coupon.minSpendCents ?? 0),
+    [couponEligibleSubtotalCents],
+  );
+
+  const applicableCoupons = useMemo(
+    () => availableCoupons.filter((coupon) => isCouponApplicable(coupon)),
+    [availableCoupons, isCouponApplicable],
+  );
+
+  const inapplicableCoupons = useMemo(
+    () => availableCoupons.filter((coupon) => !isCouponApplicable(coupon)),
+    [availableCoupons, isCouponApplicable],
+  );
 
   const handleApplyCoupon = (coupon: CheckoutCoupon) => {
     if (!isCouponApplicable(coupon)) return;
@@ -1244,6 +1263,7 @@ export default function CheckoutPage() {
     setAvailableCoupons((prev) =>
       prev.filter((item) => item.couponStableId !== coupon.couponStableId),
     );
+    setCouponModalOpen(false);
     setCouponError(null);
   };
 
@@ -2834,11 +2854,27 @@ export default function CheckoutPage() {
                         </p>
                       ) : null}
                     </div>
-                    {couponLoading && (
-                      <span className="text-[11px] text-slate-500">
-                        {locale === "zh" ? "加载中…" : "Loading…"}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {couponLoading && (
+                        <span className="text-[11px] text-slate-500">
+                          {locale === "zh" ? "加载中…" : "Loading…"}
+                        </span>
+                      )}
+                      {!appliedCoupon ? (
+                        <button
+                          type="button"
+                          onClick={() => setCouponModalOpen(true)}
+                          disabled={availableCoupons.length === 0}
+                          className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-medium ${
+                            availableCoupons.length > 0
+                              ? "border border-amber-300 text-amber-700 hover:bg-amber-100"
+                              : "border border-slate-200 text-slate-400"
+                          }`}
+                        >
+                          {locale === "zh" ? "选择优惠券" : "Choose coupon"}
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
 
                   {appliedCoupon ? (
@@ -2887,81 +2923,164 @@ export default function CheckoutPage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="mt-2 space-y-2">
-                      {availableCoupons.map((coupon, index) => {
-                        const applicable = isCouponApplicable(coupon);
-                        const couponKey =
-                          coupon.couponStableId ||
-                          coupon.code ||
-                          `${coupon.title}-${index}`;
-                        return (
-                          <div
-                            key={`${couponKey}-${index}`}
-                            className="rounded-xl border border-dashed border-amber-200 bg-white px-3 py-2"
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <div>
-                                <p className="text-sm font-semibold text-slate-900">
-                                  {coupon.title}
-                                </p>
-                                <p className="text-[11px] text-slate-500">
-                                  {coupon.minSpendCents
-                                    ? locale === "zh"
-                                      ? `满 ${formatMoney(
-                                          coupon.minSpendCents,
-                                        )} 可用`
-                                      : `Min spend ${formatMoney(
-                                          coupon.minSpendCents,
-                                        )}`
-                                    : locale === "zh"
-                                      ? "无门槛"
-                                      : "No minimum spend"}
-                                </p>
-                              </div>
-                              <button
-                                type="button"
-                                disabled={!applicable}
-                                onClick={() => handleApplyCoupon(coupon)}
-                                className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-medium ${
-                                  applicable
-                                    ? "border border-amber-300 text-amber-700 hover:bg-amber-100"
-                                    : "border border-slate-200 text-slate-400"
-                                }`}
-                              >
-                                {applicable
-                                  ? locale === "zh"
-                                    ? "使用"
-                                    : "Apply"
-                                  : locale === "zh"
-                                    ? "未满足条件"
-                                    : "Not eligible"}
-                              </button>
-                            </div>
-
-                            <div className="mt-1 flex items-center justify-between text-[11px] text-slate-600">
-                              <span className="font-semibold text-amber-700">
-                                {locale === "zh" ? "立减 " : "Save "}
-                                {formatMoney(coupon.discountCents)}
-                              </span>
-                              {coupon.expiresAt ? (
-                                <span className="text-slate-500">
-                                  {coupon.expiresAt}
-                                </span>
-                              ) : null}
-                            </div>
-                          </div>
-                        );
-                      })}
-
-                      {availableCoupons.length === 0 && !couponLoading ? (
-                        <p className="text-[11px] text-slate-600">
-                          {locale === "zh"
-                            ? "暂无可用优惠券。"
-                            : "No coupons available."}
-                        </p>
-                      ) : null}
-                    </div>
+                    <p className="mt-2 text-[11px] text-slate-600">
+                      {availableCoupons.length > 0
+                        ? locale === "zh"
+                          ? `可选优惠券 ${applicableCoupons.length}/${availableCoupons.length}`
+                          : `${applicableCoupons.length}/${availableCoupons.length} coupons eligible`
+                        : locale === "zh"
+                          ? "暂无可用优惠券。"
+                          : "No coupons available."}
+                    </p>
                   )}
+
+                  {couponModalOpen ? (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4">
+                      <div className="max-h-[80vh] w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
+                        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">
+                              {locale === "zh" ? "选择优惠券" : "Choose coupon"}
+                            </p>
+                            <p className="mt-1 text-[11px] text-slate-500">
+                              {locale === "zh"
+                                ? "可使用券已高亮，不可用券已置灰。"
+                                : "Eligible coupons are highlighted; unavailable coupons are greyed out."}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setCouponModalOpen(false)}
+                            className="rounded-full border border-slate-200 px-3 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-100"
+                          >
+                            {locale === "zh" ? "关闭" : "Close"}
+                          </button>
+                        </div>
+
+                        <div className="max-h-[60vh] space-y-3 overflow-y-auto px-4 py-3">
+                          {availableCoupons.length === 0 && !couponLoading ? (
+                            <p className="text-[11px] text-slate-600">
+                              {locale === "zh"
+                                ? "暂无可用优惠券。"
+                                : "No coupons available."}
+                            </p>
+                          ) : null}
+
+                          {applicableCoupons.length > 0 ? (
+                            <div className="space-y-2">
+                              <p className="text-[11px] font-semibold text-emerald-700">
+                                {locale === "zh" ? "可使用" : "Eligible"}
+                              </p>
+                              {applicableCoupons.map((coupon, index) => {
+                                const couponKey =
+                                  coupon.couponStableId ||
+                                  coupon.code ||
+                                  `${coupon.title}-${index}`;
+                                return (
+                                  <div
+                                    key={`${couponKey}-${index}`}
+                                    className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2"
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div>
+                                        <p className="text-sm font-semibold text-slate-900">
+                                          {coupon.title}
+                                        </p>
+                                        <p className="text-[11px] text-slate-500">
+                                          {coupon.minSpendCents
+                                            ? locale === "zh"
+                                              ? `满 ${formatMoney(
+                                                  coupon.minSpendCents,
+                                                )} 可用`
+                                              : `Min spend ${formatMoney(
+                                                  coupon.minSpendCents,
+                                                )}`
+                                            : locale === "zh"
+                                              ? "无门槛"
+                                              : "No minimum spend"}
+                                        </p>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleApplyCoupon(coupon)}
+                                        className="shrink-0 rounded-full border border-emerald-300 bg-white px-3 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100"
+                                      >
+                                        {locale === "zh" ? "使用" : "Apply"}
+                                      </button>
+                                    </div>
+                                    <div className="mt-1 flex items-center justify-between text-[11px] text-slate-600">
+                                      <span className="font-semibold text-amber-700">
+                                        {locale === "zh" ? "立减 " : "Save "}
+                                        {formatMoney(coupon.discountCents)}
+                                      </span>
+                                      {coupon.expiresAt ? (
+                                        <span className="text-slate-500">
+                                          {coupon.expiresAt}
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+
+                          {inapplicableCoupons.length > 0 ? (
+                            <div className="space-y-2">
+                              <p className="text-[11px] font-semibold text-slate-500">
+                                {locale === "zh" ? "不可使用" : "Unavailable"}
+                              </p>
+                              {inapplicableCoupons.map((coupon, index) => {
+                                const couponKey =
+                                  coupon.couponStableId ||
+                                  coupon.code ||
+                                  `${coupon.title}-${index}`;
+                                return (
+                                  <div
+                                    key={`${couponKey}-inapplicable-${index}`}
+                                    className="rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 opacity-80"
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div>
+                                        <p className="text-sm font-semibold text-slate-500">
+                                          {coupon.title}
+                                        </p>
+                                        <p className="text-[11px] text-slate-500">
+                                          {coupon.minSpendCents
+                                            ? locale === "zh"
+                                              ? `满 ${formatMoney(
+                                                  coupon.minSpendCents,
+                                                )} 可用`
+                                              : `Min spend ${formatMoney(
+                                                  coupon.minSpendCents,
+                                                )}`
+                                            : locale === "zh"
+                                              ? "无门槛"
+                                              : "No minimum spend"}
+                                        </p>
+                                      </div>
+                                      <span className="shrink-0 rounded-full border border-slate-300 px-3 py-1 text-[11px] font-medium text-slate-400">
+                                        {locale === "zh" ? "未满足条件" : "Not eligible"}
+                                      </span>
+                                    </div>
+                                    <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
+                                      <span className="font-semibold">
+                                        {locale === "zh" ? "立减 " : "Save "}
+                                        {formatMoney(coupon.discountCents)}
+                                      </span>
+                                      {coupon.expiresAt ? (
+                                        <span>{coupon.expiresAt}</span>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
 
                   {couponError && (
                     <p className="mt-2 text-[11px] text-red-600">
@@ -2970,6 +3089,7 @@ export default function CheckoutPage() {
                   )}
                 </div>
               )}
+
 
               {loyaltyInfo && (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-slate-800">
