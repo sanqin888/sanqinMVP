@@ -3,6 +3,7 @@ import {
   MessagingChannel,
   MessagingProvider,
   MessagingSendStatus,
+  Prisma,
   SuppressionReason,
   UserLanguage,
 } from '@prisma/client';
@@ -138,14 +139,14 @@ export class SmsService {
   private buildSendMetadata(params: {
     base?: Record<string, unknown> | null;
     body: string;
-  }): Record<string, unknown> {
+  }): Prisma.InputJsonValue {
     const preview =
       params.body.length > 200 ? `${params.body.slice(0, 200)}…` : params.body;
     return {
       ...(params.base ?? {}),
       bodyPreview: preview,
       bodyLength: params.body.length,
-    };
+    } as Prisma.InputJsonValue;
   }
 
   private async checkSuppression(

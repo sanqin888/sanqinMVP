@@ -11,7 +11,10 @@ import { createHash } from 'crypto';
 import twilio from 'twilio';
 import { PrismaService } from '../../prisma/prisma.service';
 
-function parseTwilioFormBody(req: Request<unknown, unknown, unknown>): {
+const resolveRemoteIp = (req: Request): string =>
+  req.ip ?? req.socket?.remoteAddress ?? 'unknown';
+
+function parseTwilioFormBody(req: Request): {
   raw: string;
   params: Record<string, string>;
 } {
@@ -45,10 +48,7 @@ export class TwilioWebhooksController {
   // ✅ 入站短信（包含用户回复/STOP/HELP/START）
   @Post('sms/inbound')
   @HttpCode(200)
-  async inboundSms(
-    @Req() req: Request<unknown, unknown, unknown>,
-    @Res() res: Response,
-  ) {
+  async inboundSms(@Req() req: Request, @Res() res: Response) {
     const { raw, params } = parseTwilioFormBody(req);
     const requestUrl = buildRequestUrl(req);
     const signature =
@@ -61,7 +61,7 @@ export class TwilioWebhooksController {
         rawBody: raw,
         requestUrl,
         headers: req.headers,
-        remoteIp: req.ip,
+        remoteIp: resolveRemoteIp(req),
       });
       return res.status(401).send('invalid signature');
     }
@@ -79,7 +79,7 @@ export class TwilioWebhooksController {
       rawBody: raw,
       requestUrl,
       headers: req.headers,
-      remoteIp: req.ip,
+      remoteIp: resolveRemoteIp(req),
       params,
       providerMessageId: sid ?? null,
       toAddressNorm: normalizePhone(to),
@@ -97,10 +97,7 @@ export class TwilioWebhooksController {
   // ✅ 短信状态回执（你发出去的短信状态）
   @Post('sms/status')
   @HttpCode(200)
-  async smsStatus(
-    @Req() req: Request<unknown, unknown, unknown>,
-    @Res() res: Response,
-  ) {
+  async smsStatus(@Req() req: Request, @Res() res: Response) {
     const { raw, params } = parseTwilioFormBody(req);
     const requestUrl = buildRequestUrl(req);
     const signature =
@@ -113,7 +110,7 @@ export class TwilioWebhooksController {
         rawBody: raw,
         requestUrl,
         headers: req.headers,
-        remoteIp: req.ip,
+        remoteIp: resolveRemoteIp(req),
       });
       return res.status(401).send('invalid signature');
     }
@@ -126,7 +123,7 @@ export class TwilioWebhooksController {
       rawBody: raw,
       requestUrl,
       headers: req.headers,
-      remoteIp: req.ip,
+      remoteIp: resolveRemoteIp(req),
       params,
       providerMessageId: params.MessageSid ?? null,
       toAddressNorm: normalizePhone(params.To),

@@ -123,14 +123,15 @@ export class AwsSnsWebhookService {
       channel === MessagingChannel.SMS
         ? MessagingProvider.AWS_SMS
         : MessagingProvider.AWS_SES;
+    const mailRecord = getRecord(parsed?.mail);
     const providerMessageId =
-      (parsed?.mail?.messageId as string | undefined) ??
-      (parsed?.messageId as string | undefined) ??
+      getString(mailRecord?.messageId) ??
+      getString(parsed?.messageId) ??
       payload.MessageId ??
       null;
     const eventType =
-      (parsed?.notificationType as string | undefined) ??
-      (parsed?.eventType as string | undefined) ??
+      getString(parsed?.notificationType) ??
+      getString(parsed?.eventType) ??
       payload.Type ??
       'SNS_NOTIFICATION';
 
@@ -149,8 +150,8 @@ export class AwsSnsWebhookService {
         eventType,
         providerMessageId,
         status:
-          (parsed?.notificationType as string | undefined) ??
-          (parsed?.eventType as string | undefined) ??
+          getString(parsed?.notificationType) ??
+          getString(parsed?.eventType) ??
           null,
         occurredAt: payload.Timestamp ? new Date(payload.Timestamp) : null,
         payload: (parsed ?? payload) as Prisma.InputJsonValue,
@@ -355,6 +356,14 @@ const parseJson = (value: string): Record<string, unknown> | null => {
     return null;
   }
 };
+
+const getRecord = (value: unknown): Record<string, unknown> | null =>
+  typeof value === 'object' && value !== null
+    ? (value as Record<string, unknown>)
+    : null;
+
+const getString = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.length > 0 ? value : undefined;
 
 const resolveChannel = (
   payload: Record<string, unknown> | null,

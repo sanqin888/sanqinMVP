@@ -3,6 +3,7 @@ import {
   MessagingChannel,
   MessagingProvider,
   MessagingSendStatus,
+  Prisma,
   SuppressionReason,
   UserLanguage,
 } from '@prisma/client';
@@ -170,13 +171,13 @@ export class EmailService {
     base?: Record<string, unknown> | null;
     subject: string;
     tags?: Record<string, string>;
-  }): Record<string, unknown> {
+  }): Prisma.InputJsonValue {
     const { base, subject, tags } = params;
     return {
       ...(base ?? {}),
       subject,
       tags: tags ?? null,
-    };
+    } as Prisma.InputJsonValue;
   }
 
   private formatCurrency(cents: number, locale: 'zh' | 'en'): string {
