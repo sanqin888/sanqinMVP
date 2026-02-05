@@ -103,6 +103,7 @@ export type MenuItemDtoBase = LocalizedName &
     effectivePriceCents?: number;
     activeSpecial?: ActiveSpecialDto | null;
     visibility: MenuItemVisibility;
+    isVisibleOnMainMenu: boolean;
     sortOrder: number;
     imageUrl: string | null;
     ingredientsEn: string | null;

@@ -200,6 +200,7 @@ export class PublicMenuService {
               : null,
             isAvailable: it.isAvailable,
             visibility: it.visibility,
+            isVisibleOnMainMenu: it.isVisibleOnMainMenu,
             tempUnavailableUntil: toIso(it.tempUnavailableUntil),
             sortOrder: it.sortOrder,
             imageUrl: it.imageUrl ?? null,
