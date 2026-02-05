@@ -295,6 +295,7 @@ export default function MembershipHomePage() {
   const [phoneEnrollSending, setPhoneEnrollSending] = useState(false);
   const [phoneEnrollVerifying, setPhoneEnrollVerifying] = useState(false);
   const [phoneEnrollError, setPhoneEnrollError] = useState<string | null>(null);
+  const [phoneEnrollVisible, setPhoneEnrollVisible] = useState(false);
 
   const [emailEnrollInput, setEmailEnrollInput] = useState('');
   const [emailEnrollCode, setEmailEnrollCode] = useState('');
@@ -947,6 +948,16 @@ export default function MembershipHomePage() {
   }, [member, birthdayMonthInput, birthdayDayInput, isZh]);
 
   const handleRequestPhoneEnroll = useCallback(async () => {
+    if (!session?.user?.mfaVerifiedAt) {
+      setPhoneEnrollError(
+        isZh
+          ? '请先完成二次验证后再更换手机号。'
+          : 'Complete 2FA before changing your phone number.',
+      );
+      router.push(`/${locale}/membership/2fa`);
+      return;
+    }
+
     if (!isValidCanadianPhone(phoneEnrollInput)) {
       setPhoneEnrollError(
         isZh
@@ -976,9 +987,19 @@ export default function MembershipHomePage() {
     } finally {
       setPhoneEnrollSending(false);
     }
-  }, [phoneEnrollInput, isZh]);
+  }, [phoneEnrollInput, isZh, session?.user?.mfaVerifiedAt, router, locale]);
 
   const handleVerifyPhoneEnroll = useCallback(async () => {
+    if (!session?.user?.mfaVerifiedAt) {
+      setPhoneEnrollError(
+        isZh
+          ? '请先完成二次验证后再更换手机号。'
+          : 'Complete 2FA before changing your phone number.',
+      );
+      router.push(`/${locale}/membership/2fa`);
+      return;
+    }
+
     if (!isValidCanadianPhone(phoneEnrollInput) || !phoneEnrollCode.trim()) {
       setPhoneEnrollError(
         isZh ? '请输入有效的加拿大手机号和验证码。' : 'Enter phone and code.',
@@ -1008,6 +1029,7 @@ export default function MembershipHomePage() {
           : prev,
       );
       setPhoneEnrollCode('');
+      setPhoneEnrollVisible(false);
     } catch (err) {
       console.error(err);
       setPhoneEnrollError(
@@ -1018,7 +1040,7 @@ export default function MembershipHomePage() {
     } finally {
       setPhoneEnrollVerifying(false);
     }
-  }, [phoneEnrollInput, phoneEnrollCode, isZh]);
+  }, [phoneEnrollInput, phoneEnrollCode, isZh, session?.user?.mfaVerifiedAt, router, locale]);
 
   const handleEmailEnrollInputChange = useCallback((value: string) => {
     setEmailEnrollInput(value);
@@ -1035,6 +1057,16 @@ export default function MembershipHomePage() {
   }, [emailEnrollError]);
 
   const handleRequestEmailEnroll = useCallback(async () => {
+    if (!session?.user?.mfaVerifiedAt) {
+      setEmailEnrollError(
+        isZh
+          ? '请先完成二次验证后再更换邮箱。'
+          : 'Complete 2FA before changing your email.',
+      );
+      router.push(`/${locale}/membership/2fa`);
+      return;
+    }
+
     if (!isValidEmail(emailEnrollInput)) {
       setEmailEnrollError(
         isZh ? '请输入有效的邮箱地址。' : 'Please enter a valid email.',
@@ -1071,9 +1103,27 @@ export default function MembershipHomePage() {
     } finally {
       setEmailEnrollSending(false);
     }
-  }, [emailEnrollInput, isZh, isValidEmail, readApiErrorMessage]);
+  }, [
+    emailEnrollInput,
+    isZh,
+    isValidEmail,
+    readApiErrorMessage,
+    session?.user?.mfaVerifiedAt,
+    router,
+    locale,
+  ]);
 
   const handleVerifyEmailEnroll = useCallback(async () => {
+    if (!session?.user?.mfaVerifiedAt) {
+      setEmailEnrollError(
+        isZh
+          ? '请先完成二次验证后再更换邮箱。'
+          : 'Complete 2FA before changing your email.',
+      );
+      router.push(`/${locale}/membership/2fa`);
+      return;
+    }
+
     if (!emailEnrollCode.trim()) {
       setEmailEnrollError(isZh ? '请输入验证码。' : 'Enter the code.');
       return;
@@ -1102,6 +1152,7 @@ export default function MembershipHomePage() {
       }
       setEmailEnrollCode('');
       setEmailEnrollSent(false);
+      setEmailEnrollVisible(false);
     } catch (err) {
       console.error(err);
       const message = readApiErrorMessage(err);
@@ -1119,11 +1170,23 @@ export default function MembershipHomePage() {
     } finally {
       setEmailEnrollVerifying(false);
     }
-  }, [emailEnrollCode, isZh, readApiErrorMessage]);
+  }, [
+    emailEnrollCode,
+    isZh,
+    readApiErrorMessage,
+    session?.user?.mfaVerifiedAt,
+    router,
+    locale,
+  ]);
 
   const handleOpenEmailEnroll = useCallback(() => {
     setEmailEnrollVisible(true);
     setEmailEnrollError(null);
+  }, []);
+
+  const handleOpenPhoneEnroll = useCallback(() => {
+    setPhoneEnrollVisible(true);
+    setPhoneEnrollError(null);
   }, []);
 
   const handleToggleTwoFactor = useCallback(
@@ -1704,10 +1767,12 @@ const tierProgress = (() => {
               phoneEnrollSending={phoneEnrollSending}
               phoneEnrollVerifying={phoneEnrollVerifying}
               phoneEnrollError={phoneEnrollError}
+              phoneEnrollVisible={phoneEnrollVisible}
               onPhoneEnrollInputChange={handlePhoneEnrollInputChange}
               onPhoneEnrollCodeChange={handlePhoneEnrollCodeChange}
               onRequestPhoneEnroll={handleRequestPhoneEnroll}
               onVerifyPhoneEnroll={handleVerifyPhoneEnroll}
+              onOpenPhoneEnroll={handleOpenPhoneEnroll}
               emailEnrollInput={emailEnrollInput}
               emailEnrollCode={emailEnrollCode}
               emailEnrollSending={emailEnrollSending}
@@ -2807,6 +2872,7 @@ function ProfileSection({
   phoneEnrollSending,
   phoneEnrollVerifying,
   phoneEnrollError,
+  phoneEnrollVisible,
   emailEnrollInput,
   emailEnrollCode,
   emailEnrollSending,
@@ -2823,6 +2889,7 @@ function ProfileSection({
   onPhoneEnrollCodeChange,
   onRequestPhoneEnroll,
   onVerifyPhoneEnroll,
+  onOpenPhoneEnroll,
   twoFactorSaving,
   twoFactorError,
   onToggleTwoFactor,
@@ -2859,6 +2926,7 @@ function ProfileSection({
   phoneEnrollSending: boolean;
   phoneEnrollVerifying: boolean;
   phoneEnrollError: string | null;
+  phoneEnrollVisible: boolean;
   emailEnrollInput: string;
   emailEnrollCode: string;
   emailEnrollSending: boolean;
@@ -2875,6 +2943,7 @@ function ProfileSection({
   onPhoneEnrollCodeChange: (value: string) => void;
   onRequestPhoneEnroll: () => void;
   onVerifyPhoneEnroll: () => void;
+  onOpenPhoneEnroll: () => void;
   twoFactorSaving: boolean;
   twoFactorError: string | null;
   onToggleTwoFactor: (enable: boolean) => void;
@@ -2996,19 +3065,36 @@ function ProfileSection({
           <p className="mt-0.5 text-slate-900">
             {user.email || (isZh ? '未绑定' : 'Not linked')}
           </p>
-          {!user.email && (
-            <button
-              type="button"
-              onClick={onOpenEmailEnroll}
-              className="mt-2 inline-flex items-center rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
-            >
-              {isZh ? '绑定邮箱' : 'Link email'}
-            </button>
+          {user.email && (
+            <p className="mt-1 text-[11px] text-slate-500">
+              {isZh
+                ? '更换邮箱需先通过二次验证（2FA）。'
+                : 'Changing email requires a completed 2FA check.'}
+            </p>
           )}
-          {!user.email && emailEnrollVisible && (
+          <button
+            type="button"
+            onClick={onOpenEmailEnroll}
+            className="mt-2 inline-flex items-center rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+          >
+            {user.email
+              ? isZh
+                ? '更换邮箱'
+                : 'Change email'
+              : isZh
+                ? '绑定邮箱'
+                : 'Link email'}
+          </button>
+          {emailEnrollVisible && (
             <div className="mt-2 space-y-2 rounded-xl border border-slate-100 bg-slate-50 p-3">
               <p className="text-[11px] font-medium text-slate-700">
-                {isZh ? '绑定邮箱后可开启订阅' : 'Link an email to enable subscriptions'}
+                {user.email
+                  ? isZh
+                    ? '更换邮箱需邮箱验证码确认。'
+                    : 'Confirm your new email with a verification code.'
+                  : isZh
+                    ? '绑定邮箱后可开启订阅'
+                    : 'Link an email to enable subscriptions'}
               </p>
               <div className="flex items-center rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus-within:ring-1 focus-within:ring-slate-400">
                 <input
@@ -3138,13 +3224,29 @@ function ProfileSection({
               {isZh ? '手机号绑定' : 'Phone verification'}
             </p>
             {user.phoneVerified ? (
-              <p className="mt-1 text-xs text-slate-900">
-                {user.phone}{' '}
-                <span className="ml-2 text-[11px] text-emerald-600">
-                  {isZh ? '已验证' : 'Verified'}
-                </span>
-              </p>
-            ) : (
+              <div className="mt-2">
+                <p className="text-xs text-slate-900">
+                  {user.phone}{' '}
+                  <span className="ml-2 text-[11px] text-emerald-600">
+                    {isZh ? '已验证' : 'Verified'}
+                  </span>
+                </p>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  {isZh
+                    ? '更换手机号需先通过二次验证（2FA）。'
+                    : 'Changing phone requires a completed 2FA check.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={onOpenPhoneEnroll}
+                  className="mt-2 inline-flex items-center rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  {isZh ? '更换手机号' : 'Change phone'}
+                </button>
+              </div>
+            ) : null}
+
+            {(!user.phoneVerified || phoneEnrollVisible) && (
               <div className="mt-2 space-y-2">
                 <div className="flex items-center rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus-within:ring-1 focus-within:ring-slate-400">
                   <span className="mr-2 text-[10px] text-slate-500">+1</span>
