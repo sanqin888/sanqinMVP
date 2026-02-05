@@ -1,4 +1,4 @@
-// apps/web/src/app/[locale]/membership/referrer/page.tsx
+// apps/web/src/app/[locale]/membership/info/page.tsx
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
@@ -45,8 +45,11 @@ export default function MembershipReferrerPage() {
   const [phoneVerified, setPhoneVerified] = useState(false);
   const [loading, setLoading] = useState(false);
   const [phoneLoading, setPhoneLoading] = useState(false);
+  const [birthMonth, setBirthMonth] = useState('');
+  const [birthDay, setBirthDay] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [birthdayError, setBirthdayError] = useState<string | null>(null);
 
   const canSubmitReferrer = useMemo(() => {
     if (needsPhoneVerification && !phoneVerified) return false;
@@ -167,6 +170,30 @@ export default function MembershipReferrerPage() {
       return;
     }
 
+
+    const month = Number(birthMonth);
+    const day = Number(birthDay);
+    if (!birthMonth.trim() || !birthDay.trim()) {
+      setBirthdayError(
+        isZh ? '请输入生日月份和日期。' : 'Please enter your birth month and day.',
+      );
+      return;
+    }
+    if (
+      Number.isNaN(month) ||
+      Number.isNaN(day) ||
+      month < 1 ||
+      month > 12 ||
+      day < 1 ||
+      day > [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]
+    ) {
+      setBirthdayError(
+        isZh ? '请输入有效的生日（月/日）。' : 'Please enter a valid birthday (month/day).',
+      );
+      return;
+    }
+    setBirthdayError(null);
+
     const trimmed = referrerEmail.trim();
     if (!trimmed) {
       router.replace(resolvedNext);
@@ -232,26 +259,20 @@ export default function MembershipReferrerPage() {
             ← {isZh ? '稍后填写' : 'Skip for now'}
           </Link>
           <div className="text-sm font-medium text-slate-900">
-            {isZh ? '填写推荐人' : 'Add a referrer'}
+            {isZh ? '会员信息' : 'Member information'}
           </div>
           <div className="w-10" />
         </div>
       </header>
 
       <main className="mx-auto flex max-w-md flex-col px-4 py-10">
-        <h1 className="mb-3 text-2xl font-semibold text-slate-900">
-          {isZh ? '填写推荐人信息' : 'Enter referrer info'}
+        <h1 className="mb-6 text-2xl font-semibold text-slate-900">
+          {isZh ? '会员信息' : 'Member information'}
         </h1>
-        <p className="mb-6 text-sm text-slate-600">
-          {isZh
-            ? '推荐人邮箱或手机号用于绑定推荐关系，提交后不可更改。'
-            : 'Referrer email or phone is used to bind the referral relationship.'}
-        </p>
 
-        {needsPhoneVerification && (
-          <div className="mb-6 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+        <div className="mb-6 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
             <div className="mb-3 text-sm font-medium text-slate-900">
-              {isZh ? '手机号验证' : 'Verify your phone'}
+              {isZh ? '绑定会员手机号码' : 'Bind member phone number'}
             </div>
             {phoneVerified ? (
               <p className="text-xs text-emerald-600">
@@ -362,10 +383,58 @@ export default function MembershipReferrerPage() {
                 )}
               </>
             )}
+          <div className="mt-5 border-t border-slate-100 pt-4">
+            <label className="block text-xs font-medium text-slate-700">
+              {isZh ? '生日（月/日）' : 'Birthday (month/day)'}
+            </label>
+            <div className="mt-1 grid grid-cols-2 gap-3">
+              <input
+                type="text"
+                inputMode="numeric"
+                value={birthMonth}
+                maxLength={2}
+                onChange={(e) => {
+                  setBirthMonth(e.target.value.replace(/\D/g, ''));
+                  setBirthdayError(null);
+                }}
+                placeholder={isZh ? '月' : 'Month'}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400"
+              />
+              <input
+                type="text"
+                inputMode="numeric"
+                value={birthDay}
+                maxLength={2}
+                onChange={(e) => {
+                  setBirthDay(e.target.value.replace(/\D/g, ''));
+                  setBirthdayError(null);
+                }}
+                placeholder={isZh ? '日' : 'Day'}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400"
+              />
+            </div>
+            <p className="mt-2 text-xs text-slate-500">
+              {isZh
+                ? '（将在您生日月发送会员专属生日礼包）'
+                : '(A member birthday gift will be sent during your birthday month.)'}
+            </p>
           </div>
-        )}
+
+          {birthdayError && (
+            <p className="mt-3 text-center text-xs text-rose-500">
+              {birthdayError}
+            </p>
+          )}
+
+
+          </div>
 
         <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+          <p className="mb-3 text-sm text-slate-600">
+            {isZh
+              ? '推荐人邮箱或手机号用于绑定推荐关系，提交后不可更改，如跳过不可补充。'
+              : 'Referrer email or phone is used to bind the referral relationship and cannot be changed after submission. If skipped, it cannot be added later.'}
+          </p>
           <label className="block text-xs font-medium text-slate-700">
             {isZh ? '推荐人邮箱或手机号（可选）' : 'Referrer email or phone (optional)'}
           </label>
