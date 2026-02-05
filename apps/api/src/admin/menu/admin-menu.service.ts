@@ -255,6 +255,7 @@ export class AdminMenuService {
               : null,
             isAvailable: it.isAvailable,
             visibility: it.visibility,
+            isVisibleOnMainMenu: it.isVisibleOnMainMenu,
             tempUnavailableUntil: toIso(it.tempUnavailableUntil),
             sortOrder: it.sortOrder,
             imageUrl: it.imageUrl ?? null,
@@ -366,6 +367,7 @@ export class AdminMenuService {
 
     isAvailable?: boolean;
     visibility?: 'PUBLIC' | 'HIDDEN';
+    isVisibleOnMainMenu?: boolean;
     tempUnavailableUntil?: string | null;
   }) {
     const categoryStableId = (body.categoryStableId ?? '').trim();
@@ -410,6 +412,10 @@ export class AdminMenuService {
         isAvailable:
           typeof body.isAvailable === 'boolean' ? body.isAvailable : true,
         visibility: body.visibility ?? 'PUBLIC',
+        isVisibleOnMainMenu:
+          typeof body.isVisibleOnMainMenu === 'boolean'
+            ? body.isVisibleOnMainMenu
+            : true,
         tempUnavailableUntil: parseIsoOrNull(body.tempUnavailableUntil),
 
         deletedAt: null,
@@ -437,6 +443,7 @@ export class AdminMenuService {
 
       isAvailable?: boolean;
       visibility?: 'PUBLIC' | 'HIDDEN';
+      isVisibleOnMainMenu?: boolean;
       tempUnavailableUntil?: string | null;
     },
   ) {
@@ -493,6 +500,10 @@ export class AdminMenuService {
         isAvailable:
           body.isAvailable === undefined ? undefined : body.isAvailable,
         visibility: body.visibility === undefined ? undefined : body.visibility,
+        isVisibleOnMainMenu:
+          body.isVisibleOnMainMenu === undefined
+            ? undefined
+            : body.isVisibleOnMainMenu,
         tempUnavailableUntil:
           body.tempUnavailableUntil === undefined
             ? undefined
@@ -527,6 +538,7 @@ export class AdminMenuService {
         stableId: true,
         isAvailable: true,
         visibility: true,
+        isVisibleOnMainMenu: true,
         tempUnavailableUntil: true,
       },
     });
@@ -535,6 +547,7 @@ export class AdminMenuService {
       stableId: updated.stableId,
       isAvailable: updated.isAvailable,
       visibility: updated.visibility,
+      isVisibleOnMainMenu: updated.isVisibleOnMainMenu,
       tempUnavailableUntil: toIso(updated.tempUnavailableUntil),
     };
   }

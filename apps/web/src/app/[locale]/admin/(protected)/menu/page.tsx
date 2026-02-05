@@ -64,6 +64,7 @@ type CreateItemPayload = {
   sortOrder?: number;
   isAvailable?: boolean;
   visibility?: "PUBLIC" | "HIDDEN";
+  isVisibleOnMainMenu?: boolean;
 };
 
 type CategoryEditDraft = {
@@ -385,6 +386,7 @@ export default function AdminMenuPage() {
       sortOrder,
       isAvailable: true,
       visibility: "PUBLIC",
+      isVisibleOnMainMenu: true,
     };
 
     try {
@@ -417,6 +419,7 @@ export default function AdminMenuPage() {
         basePriceCents: item.basePriceCents,
         isAvailable: item.isAvailable,
         visibility: item.visibility,
+        isVisibleOnMainMenu: item.isVisibleOnMainMenu,
         sortOrder: item.sortOrder,
         imageUrl: item.imageUrl ?? undefined,
         ingredientsEn: item.ingredientsEn ?? undefined,
@@ -1036,6 +1039,23 @@ export default function AdminMenuPage() {
                               }
                             />
                             <span className="text-sm">{isZh ? "对顾客可见" : "Visible to customers"}</span>
+                          </label>
+
+
+                          <label className="flex items-center gap-2 md:col-span-3">
+                            <input
+                              type="checkbox"
+                              checked={item.isVisibleOnMainMenu}
+                              onChange={(e) =>
+                                updateItemField(
+                                  cat.stableId,
+                                  item.stableId,
+                                  "isVisibleOnMainMenu",
+                                  e.target.checked,
+                                )
+                              }
+                            />
+                            <span className="text-sm">{isZh ? "在主菜单展示" : "Show on main menu"}</span>
                           </label>
 
                           <label className="flex items-center gap-2 md:col-span-3">

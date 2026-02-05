@@ -127,7 +127,7 @@ export default function MemberLoginPage() {
           next: resolvedRedirect,
           source: 'phone',
         });
-        router.replace(`/${locale}/membership/referrer?${params.toString()}`);
+        router.replace(`/${locale}/membership/info?${params.toString()}`);
         return;
       }
 
