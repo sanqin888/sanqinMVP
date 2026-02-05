@@ -397,7 +397,7 @@ export class AuthController {
       throw new ForbiddenException('Missing session');
     }
 
-    const result = await this.authService.verifyTwoFactorSms({
+    const result = await this.authService.verifyTwoFactorEmail({
       sessionId,
       code: body?.code ?? '',
       rememberDevice: !!body?.rememberDevice,
