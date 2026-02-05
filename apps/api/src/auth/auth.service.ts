@@ -20,6 +20,7 @@ import {
   MessagingChannel,
   MessagingTemplateType,
   UserLanguage,
+  type User,
   type TwoFactorMethod,
   type UserRole,
 } from '@prisma/client';
@@ -31,6 +32,7 @@ import { SmsService } from '../sms/sms.service';
 import { BusinessConfigService } from '../messaging/business-config.service';
 import { TemplateRenderer } from '../messaging/template-renderer';
 import { NotificationService } from '../notifications/notification.service';
+import { CouponProgramTriggerService } from '../coupons/coupon-program-trigger.service';
 
 @Injectable()
 export class AuthService {
@@ -43,7 +45,22 @@ export class AuthService {
     private readonly templateRenderer: TemplateRenderer,
     private readonly businessConfigService: BusinessConfigService,
     private readonly notificationService: NotificationService,
+    private readonly couponTriggerService: CouponProgramTriggerService,
   ) {}
+
+  private async triggerSignupCompletedPrograms(user: User) {
+    try {
+      await this.couponTriggerService.issueProgramsForUser(
+        'SIGNUP_COMPLETED',
+        user,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to issue signup completed programs for userStableId=${user.userStableId}`,
+        (error as Error).stack,
+      );
+    }
+  }
 
   private generateCode(): string {
     return randomInt(0, 1_000_000).toString().padStart(6, '0');
@@ -406,6 +423,7 @@ export class AuthService {
     //新增：如果是新用户，发送欢迎通知
     if (isNewUser) {
       void this.notificationService.notifyRegisterWelcome({ user });
+      void this.triggerSignupCompletedPrograms(user);
     }
 
     return { user, session, requiresTwoFactor, isNewUser };
@@ -1398,6 +1416,7 @@ export class AuthService {
     //如果是新用户，发送欢迎通知
     if (isNewUser) {
       void this.notificationService.notifyRegisterWelcome({ user });
+      void this.triggerSignupCompletedPrograms(user);
     }
 
     return { user, session, verificationToken: record.id, isNewUser };
