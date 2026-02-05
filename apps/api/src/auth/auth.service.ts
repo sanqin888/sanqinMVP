@@ -319,6 +319,12 @@ export class AuthService {
       throw new BadRequestException('invalid oauth params');
     }
 
+    if (!emailVerified) {
+      throw new BadRequestException(
+        'google email is not verified, please complete email OTP verification first',
+      );
+    }
+
     const now = new Date();
 
     // 2) 选定要登录/绑定的 user（优先 googleSub，其次 email）
@@ -331,15 +337,7 @@ export class AuthService {
         throw new BadRequestException('account conflict');
       }
 
-      if (
-        !emailVerified &&
-        byEmail &&
-        (!byGoogle || byGoogle.id !== byEmail.id)
-      ) {
-        throw new BadRequestException('email not verified');
-      }
-
-      let base = byGoogle ?? (emailVerified ? byEmail : null) ?? null;
+      let base = byGoogle ?? byEmail ?? null;
 
       if (!base) {
         base = await tx.user.create({
