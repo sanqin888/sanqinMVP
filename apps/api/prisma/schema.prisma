@@ -685,6 +685,7 @@ model MessagingWebhookEvent {
   toAddressNorm     String?
   fromAddressNorm   String?
   occurredAt        DateTime?
+  deliveryEvents    MessagingDeliveryEvent[]
   createdAt         DateTime          @default(now())
   lastSeenAt        DateTime          @default(now())
 
