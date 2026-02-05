@@ -34,7 +34,7 @@ export default function AdminTwoFactorPage() {
       ? (params.locale as Locale)
       : "en";
 
-  const [method, setMethod] = useState<Method>("sms");
+  const [method, setMethod] = useState<Method>("email");
   const [code, setCode] = useState("");
   const [requesting, setRequesting] = useState(false);
   const [verifying, setVerifying] = useState(false);
@@ -124,7 +124,7 @@ export default function AdminTwoFactorPage() {
     <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
       <div className="w-full max-w-md rounded-2xl border bg-white p-6 shadow-sm">
         <h1 className="text-xl font-semibold text-slate-900">后台二次验证</h1>
-        <p className="mt-2 text-sm text-slate-500">请选择短信或邮件完成登录验证。</p>
+        <p className="mt-2 text-sm text-slate-500">默认使用邮件验证，可切换到短信验证。</p>
 
         <div className="mt-5 flex gap-2">
           <button
@@ -147,7 +147,7 @@ export default function AdminTwoFactorPage() {
                 : "border-slate-200 text-slate-700 hover:border-slate-300"
             }`}
           >
-            邮件验证
+            邮件验证（默认）
           </button>
         </div>
 
