@@ -2,6 +2,9 @@ import { Controller, Post, Req, Res, HttpStatus } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AwsSnsWebhookService } from './aws-sns.webhook.service';
 
+const resolveRemoteIp = (req: Request): string =>
+  req.ip ?? req.socket?.remoteAddress ?? 'unknown';
+
 @Controller('webhooks')
 export class AwsSnsWebhookController {
   constructor(private readonly service: AwsSnsWebhookService) {}
@@ -41,7 +44,7 @@ export class AwsSnsWebhookController {
         rawBody,
         headers: req.headers,
         requestUrl: req.originalUrl,
-        remoteIp: req.ip,
+        remoteIp: resolveRemoteIp(req),
       });
       return res.status(HttpStatus.UNAUTHORIZED).send('invalid signature');
     }
@@ -51,7 +54,7 @@ export class AwsSnsWebhookController {
       rawBody,
       headers: req.headers,
       requestUrl: req.originalUrl,
-      remoteIp: req.ip,
+      remoteIp: resolveRemoteIp(req),
     });
 
     const type = snsPayload.Type ?? '';
