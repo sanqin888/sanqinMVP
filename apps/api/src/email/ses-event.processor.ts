@@ -155,7 +155,7 @@ export class SesEventProcessor implements OnModuleInit, OnModuleDestroy {
     });
     const now = new Date();
 
-    const webhookCreated = await this.recordWebhookEvent({
+    const webhookEventId = await this.recordWebhookEvent({
       idempotencyKey,
       messageId,
       payload,
@@ -168,9 +168,10 @@ export class SesEventProcessor implements OnModuleInit, OnModuleDestroy {
       `SES event recorded type=${eventType} messageId=${messageId} destination=${destinations[0] ?? 'n/a'}`,
     );
 
-    if (webhookCreated) {
+    if (webhookEventId) {
       await this.prisma.messagingDeliveryEvent.create({
         data: {
+          webhookEventId,
           channel: MessagingChannel.EMAIL,
           provider: MessagingProvider.AWS_SES,
           eventType,
@@ -326,7 +327,7 @@ export class SesEventProcessor implements OnModuleInit, OnModuleDestroy {
     destinations: string[];
     mailTimestamp: Date | null;
     now: Date;
-  }): Promise<boolean> {
+  }): Promise<string | null> {
     const {
       idempotencyKey,
       messageId,
@@ -343,7 +344,7 @@ export class SesEventProcessor implements OnModuleInit, OnModuleDestroy {
       : null;
 
     try {
-      await this.prisma.messagingWebhookEvent.create({
+      const webhookEvent = await this.prisma.messagingWebhookEvent.create({
         data: {
           idempotencyKey,
           channel: MessagingChannel.EMAIL,
@@ -357,14 +358,14 @@ export class SesEventProcessor implements OnModuleInit, OnModuleDestroy {
           lastSeenAt: now,
         },
       });
-      return true;
+      return webhookEvent.id;
     } catch (error) {
       if (this.isUniqueConstraintError(error)) {
         await this.prisma.messagingWebhookEvent.update({
           where: { idempotencyKey },
           data: { lastSeenAt: now },
         });
-        return false;
+        return null;
       }
       throw error;
     }

@@ -1,9 +1,12 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   MessagingChannel,
+  MessagingTemplateType,
   MessagingProvider,
   MessagingSendStatus,
+  Prisma,
   SuppressionReason,
+  UserLanguage,
 } from '@prisma/client';
 import { BusinessConfigService } from '../messaging/business-config.service';
 import type { EmailProvider } from './email.provider';
@@ -32,47 +35,69 @@ export class EmailService {
     locale?: string;
     fromName?: string;
     fromAddress?: string;
-  }) {
-    const { locale, ...payload } = params;
-    const suppression = await this.checkSuppression(params.to);
-    if (suppression.suppressed) {
-      // NOTE: callers should translate suppression into a user-friendly message
-      // for critical flows (e.g. verification or password reset).
-      const now = new Date();
-      const suppressionMessageId = `suppressed:${suppression.email ?? 'unknown'}`;
-      try {
-        await this.prisma.messagingSend.create({
+    templateType: MessagingTemplateType;
+    templateVersion?: string;
+    userId?: string;
+    metadata?: Record<string, unknown> | null;
+    skipSuppression?: boolean;
+  }): Promise<{
+    ok: boolean;
+    messageId?: string;
+    error?: string;
+    sendId: string;
+  }> {
+    const {
+      locale,
+      templateType,
+      templateVersion,
+      userId,
+      metadata,
+      skipSuppression,
+      ...payload
+    } = params;
+    const toAddressNorm = normalizeEmail(params.to) ?? params.to.trim();
+    const sendRecord = await this.prisma.messagingSend.create({
+      data: {
+        channel: MessagingChannel.EMAIL,
+        provider: this.resolveProvider(),
+        toAddressNorm,
+        toAddressRaw: params.to,
+        fromAddress: params.fromAddress ?? null,
+        templateType,
+        templateVersion: templateVersion ?? null,
+        locale: locale ? this.resolveLanguageEnum(locale) : null,
+        userId: userId ?? null,
+        statusLatest: MessagingSendStatus.QUEUED,
+        metadata: this.buildSendMetadata({
+          base: metadata,
+          subject: params.subject,
+          tags: params.tags,
+        }),
+      },
+    });
+
+    if (!skipSuppression) {
+      const suppression = await this.checkSuppression(params.to);
+      if (suppression.suppressed) {
+        await this.prisma.messagingSend.update({
+          where: { id: sendRecord.id },
           data: {
-            channel: MessagingChannel.EMAIL,
-            provider: this.resolveProvider(),
-            toAddressNorm: suppression.email ?? params.to,
-            toAddressRaw: params.to,
-            fromAddress: params.fromAddress ?? null,
-            templateType: 'CUSTOM',
-            statusLatest: MessagingSendStatus.SUPPRESSED,
+            statusLatest: MessagingSendStatus.FAILED,
+            errorCodeLatest: 'SUPPRESSED',
             errorMessageLatest: suppression.reason ?? null,
-            metadata: {
-              suppressionMessageId,
-              subject: params.subject,
-              reason: suppression.reason ?? null,
-              tags: params.tags ?? null,
-              occurredAt: now.toISOString(),
-            },
           },
         });
-      } catch (error) {
         this.logger.warn(
-          `Failed to record suppression event for ${suppression.email}: ${error instanceof Error ? error.message : String(error)}`,
+          `Email suppressed for ${suppression.email} reason=${suppression.reason ?? 'unknown'}`,
         );
+        return {
+          ok: false,
+          error: `suppressed:${suppression.reason ?? 'unknown'}`,
+          sendId: sendRecord.id,
+        };
       }
-      this.logger.warn(
-        `Email suppressed for ${suppression.email} reason=${suppression.reason ?? 'unknown'}`,
-      );
-      return {
-        ok: false,
-        error: `suppressed:${suppression.reason ?? 'unknown'}`,
-      };
     }
+
     const messagingConfig =
       await this.businessConfigService.getMessagingSnapshot(locale);
     const result = await this.provider.sendEmail({
@@ -80,10 +105,28 @@ export class EmailService {
       fromName: params.fromName ?? messagingConfig.emailFromName,
       fromAddress: params.fromAddress ?? messagingConfig.emailFromAddress,
     });
-    if (!result.ok) {
-      this.logger.warn(`Email send failed: ${result.error ?? 'unknown'}`);
+
+    if (result.ok) {
+      await this.prisma.messagingSend.update({
+        where: { id: sendRecord.id },
+        data: {
+          statusLatest: MessagingSendStatus.SENT,
+          providerMessageId: result.messageId ?? null,
+        },
+      });
+      return { ...result, sendId: sendRecord.id };
     }
-    return result;
+
+    await this.prisma.messagingSend.update({
+      where: { id: sendRecord.id },
+      data: {
+        statusLatest: MessagingSendStatus.FAILED,
+        errorCodeLatest: result.error ? 'PROVIDER_ERROR' : null,
+        errorMessageLatest: result.error ?? null,
+      },
+    });
+    this.logger.warn(`Email send failed: ${result.error ?? 'unknown'}`);
+    return { ...result, sendId: sendRecord.id };
   }
 
   private async checkSuppression(email: string): Promise<{
@@ -123,6 +166,25 @@ export class EmailService {
   private resolveLocale(locale?: string): 'zh' | 'en' {
     const normalized = locale?.toLowerCase() ?? '';
     return normalized.startsWith('zh') ? 'zh' : 'en';
+  }
+
+  private resolveLanguageEnum(locale: string): UserLanguage {
+    return locale.toLowerCase().startsWith('zh')
+      ? UserLanguage.ZH
+      : UserLanguage.EN;
+  }
+
+  private buildSendMetadata(params: {
+    base?: Record<string, unknown> | null;
+    subject: string;
+    tags?: Record<string, string>;
+  }): Prisma.InputJsonValue {
+    const { base, subject, tags } = params;
+    return {
+      ...(base ?? {}),
+      subject,
+      tags: tags ?? null,
+    } as Prisma.InputJsonValue;
   }
 
   private formatCurrency(cents: number, locale: 'zh' | 'en'): string {
@@ -560,6 +622,7 @@ ${totalLines.join('\n')}`;
       text,
       tags: { type: 'invoice' },
       locale: resolvedLocale === 'zh' ? 'zh-CN' : 'en',
+      templateType: MessagingTemplateType.RECEIPT,
     });
   }
 
@@ -609,6 +672,7 @@ ${totalLines.join('\n')}`;
       html,
       tags: { type: 'email_verification' },
       locale: params.locale,
+      templateType: MessagingTemplateType.EMAIL_VERIFY_LINK,
     });
   }
 
@@ -640,6 +704,7 @@ ${totalLines.join('\n')}`;
         html,
         tags: { type: 'staff_invite' },
         locale: params.locale,
+        templateType: MessagingTemplateType.SIGNUP_WELCOME,
       });
     }
 
@@ -662,6 +727,7 @@ ${totalLines.join('\n')}`;
       html,
       tags: { type: 'staff_invite' },
       locale: params.locale,
+      templateType: MessagingTemplateType.SIGNUP_WELCOME,
     });
   }
 }

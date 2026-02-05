@@ -5,9 +5,14 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
+import {
+  AuthChallengeStatus,
+  AuthChallengeType,
+  MessagingChannel,
+  MessagingTemplateType,
+} from '@prisma/client';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
-import { PhoneVerificationStatus } from '@prisma/client';
 import { normalizePhone } from '../common/utils/phone';
 import { SmsService } from '../sms/sms.service';
 import { BusinessConfigService } from '../messaging/business-config.service';
@@ -100,6 +105,10 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
     return createHmac('sha256', secret).update(code).digest('hex');
   }
 
+  private hashToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
   private verifyCodeHash(code: string, codeHash: string): boolean {
     const computed = this.hashCode(code);
     if (computed.length !== codeHash.length) return false;
@@ -107,6 +116,12 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
       Buffer.from(codeHash, 'hex'),
       Buffer.from(computed, 'hex'),
     );
+  }
+
+  private normalizePhoneAddress(raw?: string | null): string | null {
+    const normalized = normalizePhone(raw);
+    if (!normalized) return null;
+    return normalized.startsWith('+') ? normalized : `+${normalized}`;
   }
 
   /** 发送验证码（MVP: 只写入 DB + 日志，不真正发短信） */
@@ -118,7 +133,8 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
   }): Promise<SendCodeResult> {
     const { phone, purpose, ip } = params;
     const normalized = normalizePhone(phone);
-    if (!normalized) {
+    const addressNorm = this.normalizePhoneAddress(phone);
+    if (!normalized || !addressNorm) {
       return { ok: false, error: 'phone is empty' };
     }
     const resolvedPurpose = purpose?.trim() || 'generic';
@@ -137,9 +153,11 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
     const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const expiresAt = new Date(now.getTime() + 10 * 60 * 1000); // 10 分钟有效
 
-    const dailyCount = await this.prisma.phoneVerification.count({
+    const dailyCount = await this.prisma.authChallenge.count({
       where: {
-        phone: normalized,
+        type: AuthChallengeType.PHONE_VERIFY,
+        channel: MessagingChannel.SMS,
+        addressNorm,
         createdAt: { gt: oneDayAgo },
       },
     });
@@ -151,11 +169,14 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
     const code = this.generateCode();
     const codeHash = this.hashCode(code);
 
-    await this.prisma.phoneVerification.create({
+    const challenge = await this.prisma.authChallenge.create({
       data: {
-        phone: normalized,
+        type: AuthChallengeType.PHONE_VERIFY,
+        status: AuthChallengeStatus.PENDING,
+        channel: MessagingChannel.SMS,
+        addressNorm,
+        addressRaw: phone,
         codeHash,
-        status: PhoneVerificationStatus.PENDING,
         expiresAt,
         purpose: resolvedPurpose,
       },
@@ -165,6 +186,14 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
     const smsResult = await this.smsService.sendSms({
       phone: normalized,
       body: message,
+      templateType: MessagingTemplateType.OTP,
+      locale: params.locale,
+      metadata: { purpose: resolvedPurpose },
+    });
+
+    await this.prisma.authChallenge.update({
+      where: { id: challenge.id },
+      data: { messagingSendId: smsResult.sendId },
     });
 
     if (!smsResult.ok) {
@@ -173,11 +202,6 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
       );
       return { ok: false, error: 'sms_send_failed' };
     }
-
-    // 如果你在开发环境想直接把 code 返回给前端方便测试，也可以这样：
-    // if (process.env.NODE_ENV !== 'production') {
-    //   return { ok: true, devCode: code } as any;
-    // }
 
     return { ok: true };
   }
@@ -190,21 +214,24 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
   }): Promise<VerifyCodeResult> {
     const { phone, code, purpose } = params;
     const normalized = normalizePhone(phone);
+    const addressNorm = this.normalizePhoneAddress(phone);
     const codeTrimmed = code.trim();
     const resolvedPurpose = purpose?.trim() || 'generic';
 
-    if (!normalized || !codeTrimmed) {
+    if (!normalized || !addressNorm || !codeTrimmed) {
       return { ok: false, error: 'phone or code is empty' };
     }
 
     const now = new Date();
 
     // 找到该手机号最近一次验证码记录
-    const latest = await this.prisma.phoneVerification.findFirst({
+    const latest = await this.prisma.authChallenge.findFirst({
       where: {
-        phone: normalized,
+        type: AuthChallengeType.PHONE_VERIFY,
+        channel: MessagingChannel.SMS,
+        addressNorm,
         purpose: resolvedPurpose,
-        status: PhoneVerificationStatus.PENDING,
+        status: AuthChallengeStatus.PENDING,
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -215,10 +242,10 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
 
     // 过期
     if (latest.expiresAt.getTime() < now.getTime()) {
-      await this.prisma.phoneVerification.update({
+      await this.prisma.authChallenge.update({
         where: { id: latest.id },
         data: {
-          status: PhoneVerificationStatus.CONSUMED,
+          status: AuthChallengeStatus.EXPIRED,
           consumedAt: now,
         },
       });
@@ -226,28 +253,47 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
     }
 
     // 不匹配
-    if (!this.verifyCodeHash(codeTrimmed, latest.codeHash)) {
-      await this.prisma.phoneVerification.update({
+    if (!this.verifyCodeHash(codeTrimmed, latest.codeHash ?? '')) {
+      const nextAttempts = latest.attempts + 1;
+      await this.prisma.authChallenge.update({
         where: { id: latest.id },
         data: {
-          attempts: latest.attempts + 1,
-          lastAttemptAt: now,
+          attempts: nextAttempts,
+          status:
+            nextAttempts >= latest.maxAttempts
+              ? AuthChallengeStatus.REVOKED
+              : AuthChallengeStatus.PENDING,
+          consumedAt: nextAttempts >= latest.maxAttempts ? now : null,
         },
       });
       return { ok: false, error: 'code_invalid' };
     }
 
-    // ✅ 验证成功：标记为 VERIFIED
+    // ✅ 验证成功：生成一次性 token
     const verificationToken = this.generateVerificationToken();
+    const tokenHash = this.hashToken(verificationToken);
 
-    await this.prisma.phoneVerification.update({
-      where: { id: latest.id },
-      data: {
-        status: PhoneVerificationStatus.VERIFIED,
-        verifiedAt: now,
-        token: verificationToken,
-      },
-    });
+    await this.prisma.$transaction([
+      this.prisma.authChallenge.update({
+        where: { id: latest.id },
+        data: {
+          status: AuthChallengeStatus.CONSUMED,
+          consumedAt: now,
+        },
+      }),
+      this.prisma.authChallenge.create({
+        data: {
+          type: AuthChallengeType.PHONE_VERIFY,
+          status: AuthChallengeStatus.PENDING,
+          channel: MessagingChannel.SMS,
+          addressNorm,
+          addressRaw: phone,
+          tokenHash,
+          purpose: resolvedPurpose,
+          expiresAt: latest.expiresAt,
+        },
+      }),
+    ]);
 
     return {
       ok: true,

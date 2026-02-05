@@ -4,6 +4,9 @@ import type { Request, Response } from 'express';
 import { SendGridEmailWebhookVerifier } from './sendgrid-email.webhook.verifier';
 import { SendGridEmailWebhookService } from './sendgrid-email.webhook.service';
 
+const resolveRemoteIp = (req: Request): string =>
+  req.ip ?? req.socket?.remoteAddress ?? 'unknown';
+
 @Controller('webhooks')
 export class SendGridEmailWebhookController {
   constructor(
@@ -36,6 +39,12 @@ export class SendGridEmailWebhookController {
         publicKey,
       });
     } catch {
+      await this.service.recordSignatureInvalid({
+        rawBody: rawBody.toString('utf8'),
+        requestUrl: req.originalUrl,
+        headers: req.headers,
+        remoteIp: resolveRemoteIp(req),
+      });
       return res.status(HttpStatus.UNAUTHORIZED).send('invalid signature');
     }
 
@@ -46,7 +55,12 @@ export class SendGridEmailWebhookController {
       return res.status(HttpStatus.BAD_REQUEST).send('invalid json');
     }
 
-    await this.service.process(payload);
+    await this.service.process(payload, {
+      rawBody: rawBody.toString('utf8'),
+      headers: req.headers,
+      requestUrl: req.originalUrl,
+      remoteIp: resolveRemoteIp(req),
+    });
     return res.status(HttpStatus.OK).send('ok');
   }
 }

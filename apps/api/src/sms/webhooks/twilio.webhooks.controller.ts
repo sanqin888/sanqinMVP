@@ -1,13 +1,26 @@
 //apps/api/src/sms/webhooks/twilio.webhooks.controller.ts
 import { Controller, Post, Req, Res, HttpCode } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import {
+  MessagingChannel,
+  MessagingProvider,
+  MessagingSendStatus,
+  Prisma,
+} from '@prisma/client';
+import { createHash } from 'crypto';
+import twilio from 'twilio';
+import { PrismaService } from '../../prisma/prisma.service';
 
-function parseTwilioFormBody(
-  req: Request<unknown, unknown, unknown>,
-): Record<string, string> {
+const resolveRemoteIp = (req: Request): string =>
+  req.ip ?? req.socket?.remoteAddress ?? 'unknown';
+
+function parseTwilioFormBody(req: Request): {
+  raw: string;
+  params: Record<string, string>;
+} {
   // 因为你对 /api/v1/webhooks/twilio 使用了 express.raw({ type: "*/*" })
   // 所以 req.body 是 Buffer（或 string），需要手动解析 x-www-form-urlencoded
-  const rawBody = req.body;
+  const rawBody: unknown = req.body;
   let raw = '';
   if (typeof rawBody === 'string') {
     raw = rawBody;
@@ -25,24 +38,53 @@ function parseTwilioFormBody(
   const params = new URLSearchParams(raw);
   const obj: Record<string, string> = {};
   for (const [k, v] of params.entries()) obj[k] = v;
-  return obj;
+  return { raw, params: obj };
 }
 
 @Controller('webhooks/twilio')
 export class TwilioWebhooksController {
+  constructor(private readonly prisma: PrismaService) {}
+
   // ✅ 入站短信（包含用户回复/STOP/HELP/START）
   @Post('sms/inbound')
   @HttpCode(200)
-  inboundSms(
-    @Req() req: Request<unknown, unknown, unknown>,
-    @Res() res: Response,
-  ) {
-    const body = parseTwilioFormBody(req);
+  async inboundSms(@Req() req: Request, @Res() res: Response) {
+    const { raw, params } = parseTwilioFormBody(req);
+    const requestUrl = buildRequestUrl(req);
+    const signature =
+      req.header('X-Twilio-Signature') ??
+      req.header('x-twilio-signature') ??
+      '';
 
-    const from = body.From;
-    const to = body.To;
-    const text = body.Body;
-    const sid = body.MessageSid;
+    if (!this.verifySignature(requestUrl, signature, params)) {
+      await this.recordSignatureInvalid({
+        rawBody: raw,
+        requestUrl,
+        headers: req.headers,
+        remoteIp: resolveRemoteIp(req),
+      });
+      return res.status(401).send('invalid signature');
+    }
+
+    const from = params.From;
+    const to = params.To;
+    const text = params.Body;
+    const sid = params.MessageSid;
+
+    await this.recordWebhookEvent({
+      eventKind: 'SMS_INBOUND',
+      idempotencyKey: sid
+        ? `twilio:inbound:${sid}`
+        : this.fingerprint(`twilio:inbound:${raw}`),
+      rawBody: raw,
+      requestUrl,
+      headers: req.headers,
+      remoteIp: resolveRemoteIp(req),
+      params,
+      providerMessageId: sid ?? null,
+      toAddressNorm: normalizePhone(to),
+      fromAddressNorm: normalizePhone(from),
+    });
 
     console.log('[twilio inbound sms]', { sid, from, to, text });
 
@@ -55,19 +97,84 @@ export class TwilioWebhooksController {
   // ✅ 短信状态回执（你发出去的短信状态）
   @Post('sms/status')
   @HttpCode(200)
-  smsStatus(
-    @Req() req: Request<unknown, unknown, unknown>,
-    @Res() res: Response,
-  ) {
-    const body = parseTwilioFormBody(req);
+  async smsStatus(@Req() req: Request, @Res() res: Response) {
+    const { raw, params } = parseTwilioFormBody(req);
+    const requestUrl = buildRequestUrl(req);
+    const signature =
+      req.header('X-Twilio-Signature') ??
+      req.header('x-twilio-signature') ??
+      '';
+
+    if (!this.verifySignature(requestUrl, signature, params)) {
+      await this.recordSignatureInvalid({
+        rawBody: raw,
+        requestUrl,
+        headers: req.headers,
+        remoteIp: resolveRemoteIp(req),
+      });
+      return res.status(401).send('invalid signature');
+    }
+
+    const webhookEventId = await this.recordWebhookEvent({
+      eventKind: 'SMS_STATUS',
+      idempotencyKey: params.MessageSid
+        ? `twilio:status:${params.MessageSid}:${params.MessageStatus}`
+        : this.fingerprint(`twilio:status:${raw}`),
+      rawBody: raw,
+      requestUrl,
+      headers: req.headers,
+      remoteIp: resolveRemoteIp(req),
+      params,
+      providerMessageId: params.MessageSid ?? null,
+      toAddressNorm: normalizePhone(params.To),
+      fromAddressNorm: normalizePhone(params.From),
+      occurredAt: new Date(),
+    });
+
+    if (webhookEventId) {
+      const { eventType, sendStatus } = mapTwilioStatus(params.MessageStatus);
+      const send = await this.prisma.messagingSend.findFirst({
+        where: {
+          provider: MessagingProvider.TWILIO,
+          providerMessageId: params.MessageSid ?? undefined,
+        },
+      });
+
+      await this.prisma.messagingDeliveryEvent.create({
+        data: {
+          sendId: send?.id ?? null,
+          webhookEventId,
+          channel: MessagingChannel.SMS,
+          provider: MessagingProvider.TWILIO,
+          eventType,
+          providerMessageId: params.MessageSid ?? null,
+          status: params.MessageStatus ?? null,
+          errorCode: params.ErrorCode ?? null,
+          errorMessage: params.ErrorMessage ?? null,
+          occurredAt: new Date(),
+          payload: params as Prisma.InputJsonValue,
+        },
+      });
+
+      if (send && sendStatus) {
+        await this.prisma.messagingSend.update({
+          where: { id: send.id },
+          data: {
+            statusLatest: sendStatus,
+            errorCodeLatest: params.ErrorCode ?? null,
+            errorMessageLatest: params.ErrorMessage ?? null,
+          },
+        });
+      }
+    }
 
     console.log('[twilio sms status]', {
-      messageSid: body.MessageSid,
-      status: body.MessageStatus, // queued/sent/delivered/failed/undelivered
-      to: body.To,
-      from: body.From,
-      errorCode: body.ErrorCode,
-      errorMessage: body.ErrorMessage,
+      messageSid: params.MessageSid,
+      status: params.MessageStatus, // queued/sent/delivered/failed/undelivered
+      to: params.To,
+      from: params.From,
+      errorCode: params.ErrorCode,
+      errorMessage: params.ErrorMessage,
     });
 
     res.send('ok');
@@ -83,4 +190,178 @@ export class TwilioWebhooksController {
         `<?xml version="1.0" encoding="UTF-8"?><Response><Reject reason="rejected"/></Response>`,
       );
   }
+
+  private verifySignature(
+    requestUrl: string,
+    signature: string,
+    params: Record<string, string>,
+  ): boolean {
+    const authToken = process.env.TWILIO_AUTH_TOKEN?.trim();
+    if (!authToken || !signature) {
+      return false;
+    }
+    const validateRequest = (twilio as TwilioValidator).validateRequest;
+    return validateRequest(authToken, signature, requestUrl, params);
+  }
+
+  private async recordSignatureInvalid(params: {
+    rawBody: string;
+    requestUrl: string;
+    headers: Record<string, unknown>;
+    remoteIp: string;
+  }) {
+    const idempotencyKey = this.fingerprint(
+      `twilio:signature-invalid:${params.requestUrl}:${params.rawBody}`,
+    );
+    const now = new Date();
+    await this.upsertWebhookEvent({
+      idempotencyKey,
+      eventKind: 'SIGNATURE_INVALID',
+      rawBody: params.rawBody,
+      requestUrl: params.requestUrl,
+      headers: params.headers,
+      remoteIp: params.remoteIp,
+      now,
+    });
+  }
+
+  private async recordWebhookEvent(params: {
+    eventKind: string;
+    idempotencyKey: string;
+    rawBody: string;
+    requestUrl: string;
+    headers: Record<string, unknown>;
+    remoteIp: string;
+    params: Record<string, string>;
+    providerMessageId: string | null;
+    toAddressNorm: string | null;
+    fromAddressNorm: string | null;
+    occurredAt?: Date;
+  }): Promise<string | null> {
+    const now = new Date();
+    try {
+      const webhookEvent = await this.prisma.messagingWebhookEvent.create({
+        data: {
+          idempotencyKey: params.idempotencyKey,
+          channel: MessagingChannel.SMS,
+          provider: MessagingProvider.TWILIO,
+          eventKind: params.eventKind,
+          requestUrl: params.requestUrl,
+          headersJson: params.headers as Prisma.InputJsonValue,
+          rawBody: params.rawBody,
+          paramsJson: params.params as Prisma.InputJsonValue,
+          remoteIp: params.remoteIp,
+          providerMessageId: params.providerMessageId,
+          toAddressNorm: params.toAddressNorm,
+          fromAddressNorm: params.fromAddressNorm,
+          occurredAt: params.occurredAt ?? null,
+          lastSeenAt: now,
+        },
+      });
+      return webhookEvent.id;
+    } catch (error) {
+      if (this.isUniqueConstraintError(error)) {
+        await this.prisma.messagingWebhookEvent.update({
+          where: { idempotencyKey: params.idempotencyKey },
+          data: { lastSeenAt: now },
+        });
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  private async upsertWebhookEvent(params: {
+    idempotencyKey: string;
+    eventKind: string;
+    rawBody: string;
+    requestUrl: string;
+    headers: Record<string, unknown>;
+    remoteIp: string;
+    now: Date;
+  }) {
+    try {
+      await this.prisma.messagingWebhookEvent.create({
+        data: {
+          idempotencyKey: params.idempotencyKey,
+          channel: MessagingChannel.SMS,
+          provider: MessagingProvider.TWILIO,
+          eventKind: params.eventKind,
+          requestUrl: params.requestUrl,
+          headersJson: params.headers as Prisma.InputJsonValue,
+          rawBody: params.rawBody,
+          remoteIp: params.remoteIp,
+          lastSeenAt: params.now,
+        },
+      });
+    } catch (error) {
+      if (this.isUniqueConstraintError(error)) {
+        await this.prisma.messagingWebhookEvent.update({
+          where: { idempotencyKey: params.idempotencyKey },
+          data: { lastSeenAt: params.now },
+        });
+        return;
+      }
+      throw error;
+    }
+  }
+
+  private isUniqueConstraintError(error: unknown): boolean {
+    return (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    );
+  }
+
+  private fingerprint(input: string): string {
+    return createHash('sha256').update(input).digest('hex').slice(0, 32);
+  }
 }
+
+type TwilioValidator = {
+  validateRequest: (
+    authToken: string,
+    signature: string,
+    url: string,
+    params: Record<string, string>,
+  ) => boolean;
+};
+
+const buildRequestUrl = (req: Request): string => {
+  const forwardedProto = req.header('x-forwarded-proto');
+  const protocol = forwardedProto ?? req.protocol;
+  const host = req.header('host') ?? '';
+  return `${protocol}://${host}${req.originalUrl}`;
+};
+
+const normalizePhone = (value?: string): string | null => {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('+')) return trimmed;
+  const digits = trimmed.replace(/\D+/g, '');
+  if (!digits) return null;
+  return `+${digits}`;
+};
+
+const mapTwilioStatus = (
+  status?: string,
+): { eventType: string; sendStatus?: MessagingSendStatus } => {
+  const normalized = status?.toLowerCase() ?? 'unknown';
+  if (normalized === 'delivered') {
+    return {
+      eventType: 'DELIVERED',
+      sendStatus: MessagingSendStatus.DELIVERED,
+    };
+  }
+  if (normalized === 'sent' || normalized === 'queued') {
+    return { eventType: 'SENT', sendStatus: MessagingSendStatus.SENT };
+  }
+  if (normalized === 'undelivered') {
+    return { eventType: 'UNDELIVERED', sendStatus: MessagingSendStatus.FAILED };
+  }
+  if (normalized === 'failed') {
+    return { eventType: 'FAILED', sendStatus: MessagingSendStatus.FAILED };
+  }
+  return { eventType: status ?? 'UNKNOWN' };
+};

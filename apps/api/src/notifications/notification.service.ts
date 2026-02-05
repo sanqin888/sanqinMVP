@@ -1,5 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { CouponProgramTriggerType, User } from '@prisma/client';
+import {
+  MessagingTemplateType,
+  type CouponProgramTriggerType,
+  type User,
+} from '@prisma/client';
 import { EmailService } from '../email/email.service';
 import { SmsService } from '../sms/sms.service';
 import { BusinessConfigService } from '../messaging/business-config.service';
@@ -122,6 +126,9 @@ export class NotificationService {
             text,
             tags: { type: 'register_welcome' },
             locale: params.user.language === 'ZH' ? 'zh-CN' : 'en',
+            templateType: MessagingTemplateType.SIGNUP_WELCOME,
+            userId: params.user.id,
+            metadata: { trigger: 'register' },
           });
         });
     }
@@ -140,6 +147,10 @@ export class NotificationService {
       return this.smsService.sendSms({
         phone: params.user.phone,
         body,
+        templateType: MessagingTemplateType.SIGNUP_WELCOME,
+        locale,
+        userId: params.user.id,
+        metadata: { trigger: 'register' },
       });
     }
   }
@@ -163,6 +174,8 @@ export class NotificationService {
     return this.smsService.sendSms({
       phone: params.phone,
       body,
+      templateType: MessagingTemplateType.ORDER_READY,
+      locale,
     });
   }
 
@@ -200,6 +213,9 @@ export class NotificationService {
       text,
       tags: { type: 'welcome' }, //以此标记这是欢迎信
       locale: params.user.language === 'ZH' ? 'zh-CN' : 'en',
+      templateType: MessagingTemplateType.SUBSCRIPTION_CONFIRM,
+      userId: params.user.id,
+      metadata: { trigger: 'marketing_opt_in' },
     });
   }
 
@@ -251,6 +267,9 @@ export class NotificationService {
         text,
         tags: { type: 'gift_issued' },
         locale: user.language === 'ZH' ? 'zh-CN' : 'en',
+        templateType: MessagingTemplateType.SIGNUP_WELCOME,
+        userId: user.id,
+        metadata: { triggerType: program.triggerType ?? null },
       });
     }
 
@@ -263,6 +282,10 @@ export class NotificationService {
       return this.smsService.sendSms({
         phone: user.phone,
         body,
+        templateType: MessagingTemplateType.SIGNUP_WELCOME,
+        locale,
+        userId: user.id,
+        metadata: { triggerType: program.triggerType ?? null },
       });
     }
 
@@ -296,6 +319,8 @@ export class NotificationService {
       text: params.text,
       tags: { type: 'marketing' },
       locale: params.user.language === 'ZH' ? 'zh-CN' : 'en',
+      templateType: MessagingTemplateType.SUBSCRIPTION_CONFIRM,
+      userId: params.user.id,
     });
   }
 
@@ -326,6 +351,8 @@ export class NotificationService {
       text: params.text,
       tags: { type: 'points_reminder' },
       locale: params.user.language === 'ZH' ? 'zh-CN' : 'en',
+      templateType: MessagingTemplateType.SUBSCRIPTION_CONFIRM,
+      userId: params.user.id,
     });
   }
 }

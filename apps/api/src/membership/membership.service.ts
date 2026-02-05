@@ -6,7 +6,15 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, type User, UserLanguage } from '@prisma/client';
+import {
+  AuthChallengeStatus,
+  AuthChallengeType,
+  MessagingChannel,
+  Prisma,
+  type User,
+  UserLanguage,
+} from '@prisma/client';
+import { createHash } from 'crypto';
 import { normalizeEmail } from '../common/utils/email';
 import { normalizePhone } from '../common/utils/phone';
 import { generateStableId } from '../common/utils/stable-id';
@@ -33,6 +41,10 @@ export class MembershipService {
     private readonly emailVerification: EmailVerificationService,
     private readonly notificationService: NotificationService,
   ) {}
+
+  private hashToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
+  }
 
   //  private maskPhone(phone: string): string {
   //    const trimmed = phone.trim();
@@ -150,13 +162,22 @@ export class MembershipService {
 
     const normalizedPhone = normalizePhone(rawPhone);
     if (!normalizedPhone || !verificationToken) return user;
+    const addressNorm = normalizedPhone.startsWith('+')
+      ? normalizedPhone
+      : `+${normalizedPhone}`;
+    const tokenHash = this.hashToken(verificationToken);
 
     // 已经有手机而且和这次一致，就顺手把 token 标记为 CONSUMED 即可
     if (user.phone && normalizePhone(user.phone) === normalizedPhone) {
-      await this.prisma.phoneVerification.updateMany({
-        where: { token: verificationToken },
+      await this.prisma.authChallenge.updateMany({
+        where: {
+          tokenHash,
+          type: AuthChallengeType.PHONE_VERIFY,
+          channel: MessagingChannel.SMS,
+          status: AuthChallengeStatus.PENDING,
+        },
         data: {
-          status: 'CONSUMED',
+          status: AuthChallengeStatus.CONSUMED,
           consumedAt: new Date(),
         },
       });
@@ -164,15 +185,16 @@ export class MembershipService {
     }
 
     // 查这条验证码记录
-    const pv = await this.prisma.phoneVerification.findUnique({
-      where: { token: verificationToken },
+    const pv = await this.prisma.authChallenge.findFirst({
+      where: {
+        tokenHash,
+        type: AuthChallengeType.PHONE_VERIFY,
+        channel: MessagingChannel.SMS,
+        status: AuthChallengeStatus.PENDING,
+      },
     });
 
-    if (
-      !pv ||
-      pv.status !== 'VERIFIED' ||
-      normalizePhone(pv.phone) !== normalizedPhone
-    ) {
+    if (!pv || pv.addressNorm !== addressNorm) {
       // 找不到 / 状态不对 / 手机不匹配，都直接忽略绑定
       return user;
     }
@@ -201,10 +223,10 @@ export class MembershipService {
           phoneVerifiedAt: user.phoneVerifiedAt ?? now,
         },
       }),
-      this.prisma.phoneVerification.update({
+      this.prisma.authChallenge.update({
         where: { id: pv.id },
         data: {
-          status: 'CONSUMED',
+          status: AuthChallengeStatus.CONSUMED,
           consumedAt: now,
         },
       }),
