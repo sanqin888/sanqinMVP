@@ -146,7 +146,7 @@ export default function MembershipTwoFactorPage() {
                 : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
             }`}
           >
-            {isZh ? '邮箱验证（默认）' : 'Email (default)'}
+            {isZh ? '邮箱验证' : 'Email'}
           </button>
           <button
             type="button"
