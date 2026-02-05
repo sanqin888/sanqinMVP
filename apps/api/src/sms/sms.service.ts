@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   MessagingChannel,
+  MessagingTemplateType,
   MessagingProvider,
   MessagingSendStatus,
   Prisma,
@@ -25,15 +26,15 @@ export class SmsService {
   async sendSms(params: {
     phone: string;
     body: string;
-    templateType?: string;
+    templateType: MessagingTemplateType;
     templateVersion?: string;
     locale?: string;
     userId?: string;
     metadata?: Record<string, unknown> | null;
-  }): Promise<SmsSendResult> {
+  }): Promise<SmsSendResult & { sendId: string }> {
     const formatted = this.formatPhoneNumber(params.phone);
     if (!formatted) {
-      await this.recordFailedSend({
+      const sendId = await this.recordFailedSend({
         phone: params.phone,
         body: params.body,
         errorCode: 'INVALID_RECIPIENT',
@@ -44,7 +45,7 @@ export class SmsService {
         userId: params.userId,
         metadata: params.metadata,
       });
-      return { ok: false, error: 'invalid phone number' };
+      return { ok: false, error: 'invalid phone number', sendId };
     }
 
     const sendRecord = await this.prisma.messagingSend.create({
@@ -53,7 +54,7 @@ export class SmsService {
         provider: this.resolveProvider(),
         toAddressNorm: formatted,
         toAddressRaw: params.phone,
-        templateType: params.templateType ?? 'CUSTOM',
+        templateType: params.templateType,
         templateVersion: params.templateVersion ?? null,
         locale: params.locale ? this.resolveLanguageEnum(params.locale) : null,
         userId: params.userId ?? null,
@@ -78,7 +79,7 @@ export class SmsService {
       this.logger.warn(
         `SMS suppressed for ${formatted} reason=${suppression.reason ?? 'unknown'}`,
       );
-      return { ok: false, error: 'suppressed' };
+      return { ok: false, error: 'suppressed', sendId: sendRecord.id };
     }
 
     const result = await this.provider.sendSms({
@@ -93,7 +94,7 @@ export class SmsService {
           providerMessageId: result.providerMessageId ?? null,
         },
       });
-      return result;
+      return { ...result, sendId: sendRecord.id };
     }
 
     await this.prisma.messagingSend.update({
@@ -105,7 +106,7 @@ export class SmsService {
       },
     });
     this.logger.warn(`SMS send failed: ${result.error ?? 'unknown'}`);
-    return result;
+    return { ...result, sendId: sendRecord.id };
   }
 
   private formatPhoneNumber(raw: string): string | null {
@@ -168,20 +169,20 @@ export class SmsService {
     body: string;
     errorCode: string;
     errorMessage: string;
-    templateType?: string;
+    templateType: MessagingTemplateType;
     templateVersion?: string;
     locale?: string;
     userId?: string;
     metadata?: Record<string, unknown> | null;
-  }) {
+  }): Promise<string> {
     const toAddressNorm = params.phone.trim() || 'unknown';
-    await this.prisma.messagingSend.create({
+    const record = await this.prisma.messagingSend.create({
       data: {
         channel: MessagingChannel.SMS,
         provider: this.resolveProvider(),
         toAddressNorm,
         toAddressRaw: params.phone,
-        templateType: params.templateType ?? 'CUSTOM',
+        templateType: params.templateType,
         templateVersion: params.templateVersion ?? null,
         locale: params.locale ? this.resolveLanguageEnum(params.locale) : null,
         userId: params.userId ?? null,
@@ -194,5 +195,6 @@ export class SmsService {
         }),
       },
     });
+    return record.id;
   }
 }

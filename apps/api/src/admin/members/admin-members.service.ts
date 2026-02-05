@@ -4,7 +4,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { PhoneVerificationStatus, Prisma } from '@prisma/client';
+import {
+  AuthChallengeStatus,
+  AuthChallengeType,
+  MessagingChannel,
+  Prisma,
+} from '@prisma/client';
+import { createHash } from 'crypto';
 import { z } from 'zod';
 import { normalizeEmail } from '../../common/utils/email';
 import { normalizePhone } from '../../common/utils/phone';
@@ -115,6 +121,10 @@ export class AdminMembersService {
     }
 
     return normalizedUser;
+  }
+
+  private hashToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
   }
 
   private parseDateInput(value?: string): Date | undefined {
@@ -817,17 +827,25 @@ export class AdminMembersService {
 
     const user = await this.getUserByStableId(userStableId);
     const phone = this.resolveRechargePhone({ userPhone: user.phone });
+    const addressNorm = phone.startsWith('+') ? phone : `+${phone}`;
     const now = new Date();
+    const tokenHash = this.hashToken(verificationToken);
 
-    const record = await this.prisma.phoneVerification.findUnique({
-      where: { token: verificationToken },
+    const record = await this.prisma.authChallenge.findFirst({
+      where: {
+        tokenHash,
+        type: AuthChallengeType.PHONE_VERIFY,
+        channel: MessagingChannel.SMS,
+        purpose: POS_RECHARGE_PURPOSE,
+        status: AuthChallengeStatus.PENDING,
+        addressNorm,
+      },
     });
 
     if (
       !record ||
-      record.status !== PhoneVerificationStatus.VERIFIED ||
       record.purpose !== POS_RECHARGE_PURPOSE ||
-      normalizePhone(record.phone) !== phone
+      record.addressNorm !== addressNorm
     ) {
       throw new BadRequestException('verificationToken is invalid');
     }
@@ -836,14 +854,14 @@ export class AdminMembersService {
       throw new BadRequestException('verificationToken has expired');
     }
 
-    const updated = await this.prisma.phoneVerification.updateMany({
+    const updated = await this.prisma.authChallenge.updateMany({
       where: {
-        token: verificationToken,
-        status: PhoneVerificationStatus.VERIFIED,
+        id: record.id,
+        status: AuthChallengeStatus.PENDING,
         purpose: POS_RECHARGE_PURPOSE,
       },
       data: {
-        status: PhoneVerificationStatus.CONSUMED,
+        status: AuthChallengeStatus.CONSUMED,
         consumedAt: now,
       },
     });

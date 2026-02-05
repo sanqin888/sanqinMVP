@@ -1,8 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import {
+  AuthChallengeStatus,
+  AuthChallengeType,
+  MessagingChannel,
+} from '@prisma/client';
+import { randomInt, createHmac } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from './email.service';
-import { randomInt } from 'crypto';
+import { normalizeEmail } from '../common/utils/email';
 
 @Injectable()
 export class EmailVerificationService {
@@ -15,109 +20,141 @@ export class EmailVerificationService {
     return String(randomInt(0, 1_000_000)).padStart(6, '0');
   }
 
+  private hashCode(code: string): string {
+    const secret =
+      process.env.OTP_SECRET ?? process.env.OAUTH_STATE_SECRET ?? 'dev-secret';
+    return createHmac('sha256', secret).update(code).digest('hex');
+  }
+
   async requestVerification(params: {
     userId: string;
     email: string;
     name?: string | null;
   }) {
+    const normalized = normalizeEmail(params.email);
+    if (!normalized) {
+      return { ok: false, error: 'invalid_email' };
+    }
+
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const user = await this.prisma.user.findUnique({
       where: { id: params.userId },
       select: { language: true },
     });
 
-    let token = '';
-    let created = false;
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      token = this.generateVerificationCode();
-      try {
-        await this.prisma.emailVerification.create({
-          data: {
-            userId: params.userId,
-            email: params.email,
-            token,
-            expiresAt,
-          },
-        });
-        created = true;
-        break;
-      } catch (error) {
-        if (error instanceof Prisma.PrismaClientKnownRequestError) {
-          if (error.code === 'P2002' && attempt < 4) {
-            continue;
-          }
-        }
-        throw error;
-      }
-    }
+    const token = this.generateVerificationCode();
+    const codeHash = this.hashCode(token);
 
-    if (!created) {
-      throw new Error('failed to allocate verification code');
-    }
+    const challenge = await this.prisma.authChallenge.create({
+      data: {
+        userId: params.userId,
+        type: AuthChallengeType.EMAIL_VERIFY,
+        channel: MessagingChannel.EMAIL,
+        addressNorm: normalized,
+        addressRaw: params.email,
+        codeHash,
+        purpose: 'email_verify',
+        expiresAt,
+      },
+    });
 
-    await this.emailService.sendVerificationEmail({
+    const sendResult = await this.emailService.sendVerificationEmail({
       to: params.email,
       token,
       name: params.name ?? null,
       locale: user?.language === 'ZH' ? 'zh' : 'en',
     });
 
+    await this.prisma.authChallenge.update({
+      where: { id: challenge.id },
+      data: { messagingSendId: sendResult.sendId },
+    });
+
     return { ok: true };
   }
 
   async verifyToken(token: string) {
-    const record = await this.prisma.emailVerification.findUnique({
-      where: { token },
+    const codeHash = this.hashCode(token);
+    const now = new Date();
+
+    const record = await this.prisma.authChallenge.findFirst({
+      where: {
+        type: AuthChallengeType.EMAIL_VERIFY,
+        channel: MessagingChannel.EMAIL,
+        status: AuthChallengeStatus.PENDING,
+        codeHash,
+      },
+      orderBy: { createdAt: 'desc' },
     });
 
     if (!record) {
       return { ok: false, error: 'token_not_found' };
     }
 
-    const now = new Date();
-    if (record.expiresAt < now || record.consumedAt) {
+    if (record.expiresAt < now) {
+      await this.prisma.authChallenge.update({
+        where: { id: record.id },
+        data: { status: AuthChallengeStatus.EXPIRED, consumedAt: now },
+      });
       return { ok: false, error: 'token_expired' };
     }
 
     await this.prisma.$transaction([
-      this.prisma.emailVerification.update({
-        where: { token },
-        data: { consumedAt: now },
+      this.prisma.authChallenge.update({
+        where: { id: record.id },
+        data: { status: AuthChallengeStatus.CONSUMED, consumedAt: now },
       }),
-      this.prisma.user.update({
-        where: { id: record.userId },
-        data: { emailVerifiedAt: now, email: record.email },
-      }),
+      ...(record.userId
+        ? [
+            this.prisma.user.update({
+              where: { id: record.userId },
+              data: { emailVerifiedAt: now, email: record.addressNorm },
+            }),
+          ]
+        : []),
     ]);
 
     return { ok: true };
   }
 
   async verifyTokenForUser(params: { token: string; userId: string }) {
-    const record = await this.prisma.emailVerification.findUnique({
-      where: { token: params.token },
+    const codeHash = this.hashCode(params.token);
+    const now = new Date();
+
+    const record = await this.prisma.authChallenge.findFirst({
+      where: {
+        type: AuthChallengeType.EMAIL_VERIFY,
+        channel: MessagingChannel.EMAIL,
+        status: AuthChallengeStatus.PENDING,
+        userId: params.userId,
+        codeHash,
+      },
+      orderBy: { createdAt: 'desc' },
     });
 
-    if (!record || record.userId !== params.userId) {
+    if (!record) {
       return { ok: false, error: 'token_not_found' };
     }
 
-    const now = new Date();
-    if (record.expiresAt < now || record.consumedAt) {
+    if (record.expiresAt < now) {
+      await this.prisma.authChallenge.update({
+        where: { id: record.id },
+        data: { status: AuthChallengeStatus.EXPIRED, consumedAt: now },
+      });
       return { ok: false, error: 'token_expired' };
     }
 
     await this.prisma.$transaction([
-      this.prisma.emailVerification.update({
-        where: { token: params.token },
-        data: { consumedAt: now },
+      this.prisma.authChallenge.update({
+        where: { id: record.id },
+        data: { status: AuthChallengeStatus.CONSUMED, consumedAt: now },
       }),
       this.prisma.user.update({
-        where: { id: record.userId },
-        data: { emailVerifiedAt: now, email: record.email },
+        where: { id: record.userId ?? params.userId },
+        data: { emailVerifiedAt: now, email: record.addressNorm },
       }),
     ]);
 
-    return { ok: true, email: record.email };
+    return { ok: true, email: record.addressNorm };
   }
 }

@@ -112,9 +112,9 @@ export class SendGridEmailWebhookService {
         );
 
     // 1) record webhook audit (idempotent)
-    let webhookCreated = true;
+    let webhookEventId: string | null = null;
     try {
-      await this.prisma.messagingWebhookEvent.create({
+      const webhookEvent = await this.prisma.messagingWebhookEvent.create({
         data: {
           idempotencyKey,
           channel: MessagingChannel.EMAIL,
@@ -131,19 +131,20 @@ export class SendGridEmailWebhookService {
           lastSeenAt: now,
         },
       });
+      webhookEventId = webhookEvent.id;
     } catch (error) {
       if (this.isUniqueConstraintError(error)) {
         await this.prisma.messagingWebhookEvent.update({
           where: { idempotencyKey },
           data: { lastSeenAt: now },
         });
-        webhookCreated = false;
+        webhookEventId = null;
       } else {
         throw error;
       }
     }
 
-    if (webhookCreated) {
+    if (webhookEventId) {
       const send = await this.prisma.messagingSend.findFirst({
         where: {
           provider: MessagingProvider.SENDGRID,
@@ -154,6 +155,7 @@ export class SendGridEmailWebhookService {
       await this.prisma.messagingDeliveryEvent.create({
         data: {
           sendId: send?.id ?? null,
+          webhookEventId,
           channel: MessagingChannel.EMAIL,
           provider: MessagingProvider.SENDGRID,
           eventType,

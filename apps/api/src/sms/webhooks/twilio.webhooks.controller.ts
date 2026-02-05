@@ -115,7 +115,7 @@ export class TwilioWebhooksController {
       return res.status(401).send('invalid signature');
     }
 
-    const webhookCreated = await this.recordWebhookEvent({
+    const webhookEventId = await this.recordWebhookEvent({
       eventKind: 'SMS_STATUS',
       idempotencyKey: params.MessageSid
         ? `twilio:status:${params.MessageSid}:${params.MessageStatus}`
@@ -131,7 +131,7 @@ export class TwilioWebhooksController {
       occurredAt: new Date(),
     });
 
-    if (webhookCreated) {
+    if (webhookEventId) {
       const { eventType, sendStatus } = mapTwilioStatus(params.MessageStatus);
       const send = await this.prisma.messagingSend.findFirst({
         where: {
@@ -143,6 +143,7 @@ export class TwilioWebhooksController {
       await this.prisma.messagingDeliveryEvent.create({
         data: {
           sendId: send?.id ?? null,
+          webhookEventId,
           channel: MessagingChannel.SMS,
           provider: MessagingProvider.TWILIO,
           eventType,
@@ -236,10 +237,10 @@ export class TwilioWebhooksController {
     toAddressNorm: string | null;
     fromAddressNorm: string | null;
     occurredAt?: Date;
-  }): Promise<boolean> {
+  }): Promise<string | null> {
     const now = new Date();
     try {
-      await this.prisma.messagingWebhookEvent.create({
+      const webhookEvent = await this.prisma.messagingWebhookEvent.create({
         data: {
           idempotencyKey: params.idempotencyKey,
           channel: MessagingChannel.SMS,
@@ -257,14 +258,14 @@ export class TwilioWebhooksController {
           lastSeenAt: now,
         },
       });
-      return true;
+      return webhookEvent.id;
     } catch (error) {
       if (this.isUniqueConstraintError(error)) {
         await this.prisma.messagingWebhookEvent.update({
           where: { idempotencyKey: params.idempotencyKey },
           data: { lastSeenAt: now },
         });
-        return false;
+        return null;
       }
       throw error;
     }

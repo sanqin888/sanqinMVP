@@ -49,7 +49,7 @@ export class AwsSnsWebhookController {
       return res.status(HttpStatus.UNAUTHORIZED).send('invalid signature');
     }
 
-    const webhookCreated = await this.service.recordWebhookEvent({
+    const webhookEventId = await this.service.recordWebhookEvent({
       payload: snsPayload,
       rawBody,
       headers: req.headers,
@@ -62,8 +62,8 @@ export class AwsSnsWebhookController {
       await this.service.confirmSubscription(snsPayload.SubscribeURL);
     }
 
-    if (webhookCreated && type === 'Notification') {
-      await this.service.recordDeliveryEvent(snsPayload);
+    if (webhookEventId && type === 'Notification') {
+      await this.service.recordDeliveryEvent(snsPayload, webhookEventId);
     }
 
     return res.status(HttpStatus.OK).send('ok');
