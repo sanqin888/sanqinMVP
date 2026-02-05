@@ -1098,6 +1098,10 @@ export class AuthService {
     if (!record) {
       throw new BadRequestException('reset token is invalid or expired');
     }
+    if (!record.userId) {
+      throw new BadRequestException('reset token is invalid or expired');
+    }
+    const userId = record.userId;
 
     const passwordHash = await this.hashPassword(params.newPassword);
 
@@ -1107,17 +1111,17 @@ export class AuthService {
         data: { status: AuthChallengeStatus.CONSUMED, consumedAt: now },
       }),
       this.prisma.user.update({
-        where: { id: record.userId },
+        where: { id: userId },
         data: {
           passwordHash,
           passwordChangedAt: now,
         },
       }),
       this.prisma.userSession.deleteMany({
-        where: { userId: record.userId },
+        where: { userId },
       }),
       this.prisma.trustedDevice.deleteMany({
-        where: { userId: record.userId },
+        where: { userId },
       }),
     ]);
 
