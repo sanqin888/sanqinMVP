@@ -26,6 +26,7 @@ export type LocalizedMenuItem = {
   ingredients?: string;
   isAvailable: boolean;
   tempUnavailableUntil?: string | null;
+  isVisibleOnMainMenu: boolean;
 
   // 注意：对外只暴露 templateGroupStableId / stableId（以及 admin 才会有 bindingStableId）
   optionGroups?: MenuOptionGroupWithOptionsDto[];
@@ -91,6 +92,7 @@ export function buildLocalizedEntitlementItems(
       ingredients,
       isAvailable: item.isAvailable,
       tempUnavailableUntil: item.tempUnavailableUntil ?? null,
+      isVisibleOnMainMenu: true,
       optionGroups,
     };
   });
@@ -106,7 +108,7 @@ export type PublicMenuCategory = LocalizedCategory;
  *
  * - 分类名称用 DB 的 nameEn/nameZh；
  * - 菜品名称/价格/图片/配料/中英文，全部用 DB；
- * - 只展示 isActive && visibility=PUBLIC && isAvailable（永久下架不展示、当日下架保留） 的菜品；
+ * - 返回 isActive && visibility=PUBLIC && isAvailable 的菜品；是否在主菜单展示由 isVisibleOnMainMenu 控制；
  * - options 同样按“非永久下架”过滤并按 sortOrder 排序。
  */
 export function buildLocalizedMenuFromDb(
@@ -178,6 +180,7 @@ export function buildLocalizedMenuFromDb(
           ingredients,
           isAvailable: i.isAvailable,
           tempUnavailableUntil: i.tempUnavailableUntil ?? null,
+          isVisibleOnMainMenu: i.isVisibleOnMainMenu,
           optionGroups,
         };
       });

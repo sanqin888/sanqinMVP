@@ -230,6 +230,17 @@ export default function LocalOrderPage() {
     ];
   }, [entitlementItems, locale, menu]);
 
+  const displayedMenu = useMemo(
+    () =>
+      mergedMenu
+        .map((category) => ({
+          ...category,
+          items: category.items.filter((item) => item.isVisibleOnMainMenu),
+        }))
+        .filter((category) => category.items.length > 0),
+    [mergedMenu],
+  );
+
   // Map: ID -> Item
   const menuItemMap = useMemo(
     () =>
@@ -840,7 +851,7 @@ export default function LocalOrderPage() {
             {entitlementsError && <p className="text-xs text-amber-600">{entitlementsError}</p>}
             {cartNotice && <p className="text-xs text-amber-600">{cartNotice}</p>}
 
-            {mergedMenu.length === 0 ? (
+            {displayedMenu.length === 0 ? (
               <p className="text-sm text-slate-500">{locale === "zh" ? "当前暂无可售菜品。" : "No items available at the moment."}</p>
             ) : (
               <>
@@ -886,7 +897,7 @@ export default function LocalOrderPage() {
                 )}
 
                 {/* ... Main Menu Categories ... */}
-                {mergedMenu.map((category) => (
+                {displayedMenu.map((category) => (
                   <div key={category.stableId} className="space-y-4">
                     <h2 className="rounded-2xl bg-black py-3 text-center text-2xl font-semibold text-white">{category.name}</h2>
                     <div className="grid gap-4 md:grid-cols-2">
