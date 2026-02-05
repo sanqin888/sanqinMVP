@@ -270,7 +270,9 @@ export class AwsSnsWebhookService {
       https
         .get(url, (res) => {
           const chunks: Buffer[] = [];
-          res.on('data', (chunk) => chunks.push(chunk));
+          res.on('data', (chunk: Buffer | string) => {
+            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+          });
           res.on('end', () => {
             resolve(Buffer.concat(chunks).toString('utf8'));
           });
@@ -345,7 +347,7 @@ const buildStringToSign = (payload: SnsMessage): string | null => {
 const parseJson = (value: string): Record<string, unknown> | null => {
   if (!value) return null;
   try {
-    const parsed = JSON.parse(value);
+    const parsed: unknown = JSON.parse(value);
     return typeof parsed === 'object' && parsed !== null
       ? (parsed as Record<string, unknown>)
       : null;
