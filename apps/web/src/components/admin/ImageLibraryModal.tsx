@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api/client';
 
@@ -64,10 +65,12 @@ export function ImageLibraryModal({
                 onClick={() => onSelect(url)}
                 className="group relative aspect-square cursor-pointer overflow-hidden rounded-md border border-slate-200 hover:border-emerald-500"
               >
-                <img
+                <Image
                   src={url}
-                  className="h-full w-full object-cover"
+                  className="object-cover"
                   alt={isZh ? '图片库预览' : 'Gallery image'}
+                  fill
+                  sizes="(max-width: 640px) 33vw, (max-width: 768px) 25vw, 20vw"
                 />
                 <div className="absolute inset-0 bg-black/0 transition-colors group-hover:bg-black/10" />
               </div>

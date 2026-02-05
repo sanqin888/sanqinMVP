@@ -52,11 +52,34 @@ const toTemplateString = (value: unknown): string => {
   return '';
 };
 
-const renderTemplateString = (
+const renderConditionalBlocks = (
   template: string,
   vars: Record<string, unknown>,
 ): string => {
-  const withRaw = template.replace(
+  let rendered = template;
+  let previous = '';
+
+  // 重复替换以支持简单嵌套条件块
+  while (rendered !== previous) {
+    previous = rendered;
+    rendered = rendered.replace(
+      /\{\{#if\s+([\w.]+)\s*\}\}([\s\S]*?)\{\{\/if\}\}/g,
+      (_, key: string, blockContent: string) => {
+        const value = getVar(vars, key);
+        return value ? blockContent : '';
+      },
+    );
+  }
+
+  return rendered;
+};
+
+export const renderTemplateString = (
+  template: string,
+  vars: Record<string, unknown>,
+): string => {
+  const withConditionals = renderConditionalBlocks(template, vars);
+  const withRaw = withConditionals.replace(
     /\{\{\{\s*([\w.]+)\s*\}\}\}/g,
     (_, key: string) => {
       const value = getVar(vars, key);
