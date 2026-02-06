@@ -131,6 +131,7 @@ export class MembershipService {
     usedAt: Date | null;
     issuedAt: Date;
     source: string | null;
+    unlockedItemStableIds: string[];
   }) {
     const status = this.couponStatus({
       expiresAt: coupon.expiresAt,
@@ -149,7 +150,42 @@ export class MembershipService {
       issuedAt: coupon.issuedAt.toISOString(),
       status,
       source: coupon.source ?? undefined,
+      unlockedItemStableIds: coupon.unlockedItemStableIds,
     };
+  }
+
+  private resolveCouponApplicableSubtotalCents(params: {
+    subtotalCents: number;
+    couponUnlockedItemStableIds: string[];
+    couponEligibleLineItems?: {
+      productStableId: string;
+      lineTotalCents: number;
+    }[];
+  }) {
+    const {
+      subtotalCents,
+      couponUnlockedItemStableIds,
+      couponEligibleLineItems,
+    } = params;
+
+    const restrictedStableIds = new Set(
+      (couponUnlockedItemStableIds ?? [])
+        .map((id) => id.trim())
+        .filter(Boolean),
+    );
+    if (restrictedStableIds.size === 0) {
+      return subtotalCents;
+    }
+
+    const matchingSubtotal = (couponEligibleLineItems ?? []).reduce(
+      (sum, line) =>
+        restrictedStableIds.has(line.productStableId)
+          ? sum + line.lineTotalCents
+          : sum,
+      0,
+    );
+
+    return matchingSubtotal;
   }
 
   /** 如果带了 phone + verificationToken，就尝试把手机号绑定到 User 上 */
@@ -711,6 +747,7 @@ export class MembershipService {
         usedAt: coupon.usedAt,
         issuedAt: coupon.issuedAt,
         source: coupon.source,
+        unlockedItemStableIds: coupon.unlockedItemStableIds ?? [],
       }),
     );
   }
@@ -1097,15 +1134,21 @@ export class MembershipService {
       userId?: string;
       couponStableId?: string;
       subtotalCents: number;
+      couponEligibleLineItems?: {
+        productStableId: string;
+        lineTotalCents: number;
+      }[];
     },
     options?: { tx?: Prisma.TransactionClient },
   ) {
-    const { userId, couponStableId, subtotalCents } = params;
+    const { userId, couponStableId, subtotalCents, couponEligibleLineItems } =
+      params;
     if (!couponStableId) return null;
     return this.validateCouponForOrderWithWhere(
       {
         userId,
         subtotalCents,
+        couponEligibleLineItems,
         where: { couponStableId },
       },
       options,
@@ -1117,15 +1160,20 @@ export class MembershipService {
       userId?: string;
       couponId?: string;
       subtotalCents: number;
+      couponEligibleLineItems?: {
+        productStableId: string;
+        lineTotalCents: number;
+      }[];
     },
     options?: { tx?: Prisma.TransactionClient },
   ) {
-    const { userId, couponId, subtotalCents } = params;
+    const { userId, couponId, subtotalCents, couponEligibleLineItems } = params;
     if (!couponId) return null;
     return this.validateCouponForOrderWithWhere(
       {
         userId,
         subtotalCents,
+        couponEligibleLineItems,
         where: { id: couponId },
       },
       options,
@@ -1136,11 +1184,15 @@ export class MembershipService {
     params: {
       userId?: string;
       subtotalCents: number;
+      couponEligibleLineItems?: {
+        productStableId: string;
+        lineTotalCents: number;
+      }[];
       where: Prisma.CouponWhereUniqueInput;
     },
     options?: { tx?: Prisma.TransactionClient },
   ) {
-    const { userId, subtotalCents, where } = params;
+    const { userId, subtotalCents, where, couponEligibleLineItems } = params;
     const prisma = options?.tx ?? this.prisma;
     if (!userId) {
       throw new BadRequestException('userId is required when applying coupon');
@@ -1160,18 +1212,28 @@ export class MembershipService {
       throw new BadRequestException('coupon is not available');
     }
 
+    const applicableSubtotalCents = this.resolveCouponApplicableSubtotalCents({
+      subtotalCents,
+      couponUnlockedItemStableIds: coupon.unlockedItemStableIds ?? [],
+      couponEligibleLineItems,
+    });
+
     if (
       typeof coupon.minSpendCents === 'number' &&
-      subtotalCents < coupon.minSpendCents
+      applicableSubtotalCents < coupon.minSpendCents
     ) {
       throw new BadRequestException(
         'order subtotal does not meet coupon rules',
       );
     }
 
+    if (applicableSubtotalCents <= 0) {
+      throw new BadRequestException('coupon does not apply to selected items');
+    }
+
     const discountCents = Math.max(
       0,
-      Math.min(coupon.discountCents, subtotalCents),
+      Math.min(coupon.discountCents, applicableSubtotalCents),
     );
 
     return {
@@ -1185,13 +1247,24 @@ export class MembershipService {
     userId?: string;
     couponId?: string | null;
     subtotalCents: number;
+    couponEligibleLineItems?: {
+      productStableId: string;
+      lineTotalCents: number;
+    }[];
     orderId: string;
   }) {
-    const { tx, userId, couponId, subtotalCents, orderId } = params;
+    const {
+      tx,
+      userId,
+      couponId,
+      subtotalCents,
+      couponEligibleLineItems,
+      orderId,
+    } = params;
     if (!couponId) return null;
 
     const couponInfo = await this.validateCouponForOrderById(
-      { userId, couponId, subtotalCents },
+      { userId, couponId, subtotalCents, couponEligibleLineItems },
       { tx },
     );
 

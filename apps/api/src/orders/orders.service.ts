@@ -803,6 +803,10 @@ export class OrdersService {
     calculatedItems: Prisma.OrderItemCreateWithoutOrderInput[];
     calculatedSubtotal: number;
     couponEligibleSubtotalCents: number;
+    couponEligibleLineItems: {
+      productStableId: string;
+      lineTotalCents: number;
+    }[];
   }> {
     const normalizedItems = itemsDto.map((item) => {
       const normalizedId = normalizeStableId(
@@ -926,6 +930,10 @@ export class OrdersService {
     let calculatedSubtotal = 0;
     let couponEligibleSubtotalCents = 0;
     const calculatedItems: Prisma.OrderItemCreateWithoutOrderInput[] = [];
+    const couponEligibleLineItems: {
+      productStableId: string;
+      lineTotalCents: number;
+    }[] = [];
 
     for (const itemDto of normalizedItems) {
       const product = productMap.get(itemDto.normalizedProductId);
@@ -1019,6 +1027,10 @@ export class OrdersService {
       calculatedSubtotal += lineTotal;
       if (!activeSpecial?.disallowCoupons) {
         couponEligibleSubtotalCents += lineTotal;
+        couponEligibleLineItems.push({
+          productStableId: product.stableId,
+          lineTotalCents: lineTotal,
+        });
       }
 
       const displayName =
@@ -1041,7 +1053,12 @@ export class OrdersService {
       });
     }
 
-    return { calculatedItems, calculatedSubtotal, couponEligibleSubtotalCents };
+    return {
+      calculatedItems,
+      calculatedSubtotal,
+      couponEligibleSubtotalCents,
+      couponEligibleLineItems,
+    };
   }
 
   async create(
@@ -1131,8 +1148,12 @@ export class OrdersService {
 
     // —— Step 1: 服务端重算商品小计 (Security)
     const items = dto.items ?? [];
-    const { calculatedItems, calculatedSubtotal, couponEligibleSubtotalCents } =
-      await this.calculateLineItems(items);
+    const {
+      calculatedItems,
+      calculatedSubtotal,
+      couponEligibleSubtotalCents,
+      couponEligibleLineItems,
+    } = await this.calculateLineItems(items);
     const productStableIds = Array.from(
       new Set(calculatedItems.map((item) => item.productStableId)),
     );
@@ -1378,6 +1399,7 @@ export class OrdersService {
                 userId,
                 couponStableId: normalizedCouponStableId ?? undefined,
                 subtotalCents: couponEligibleSubtotalCents,
+                couponEligibleLineItems,
               },
               { tx },
             );
@@ -1509,6 +1531,7 @@ export class OrdersService {
                 userId,
                 couponId: couponInfo.coupon.id,
                 subtotalCents: couponEligibleSubtotalCents,
+                couponEligibleLineItems,
                 orderId,
               });
             }
