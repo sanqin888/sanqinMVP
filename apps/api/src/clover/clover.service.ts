@@ -114,7 +114,7 @@ export class CloverService {
   constructor() {
     this.apiBase =
       (process.env.CLOVER_BASE && process.env.CLOVER_BASE.trim()) ||
-      'https://apisandbox.dev.clover.com';
+      'https://api.clover.com';
 
     this.merchantId = process.env.CLOVER_MERCHANT_ID?.trim();
     this.privateKey = process.env.CLOVER_PRIVATE_TOKEN?.trim();
