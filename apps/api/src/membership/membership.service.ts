@@ -762,10 +762,9 @@ export class MembershipService {
       tittleEn: string | null;
     };
 
-    const [templates, programs] = await Promise.all<[
-      CouponTemplateLocalization[],
-      CouponProgramLocalization[],
-    ]>([
+    const [templates, programs] = await Promise.all<
+      [CouponTemplateLocalization[], CouponProgramLocalization[]]
+    >([
       templateIds.length > 0
         ? this.prisma.couponTemplate.findMany({
             where: { id: { in: templateIds } },
