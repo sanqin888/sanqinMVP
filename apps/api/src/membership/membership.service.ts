@@ -131,6 +131,7 @@ export class MembershipService {
     usedAt: Date | null;
     issuedAt: Date;
     source: string | null;
+    unlockedItemStableIds: string[];
   }) {
     const status = this.couponStatus({
       expiresAt: coupon.expiresAt,
@@ -149,7 +150,42 @@ export class MembershipService {
       issuedAt: coupon.issuedAt.toISOString(),
       status,
       source: coupon.source ?? undefined,
+      unlockedItemStableIds: coupon.unlockedItemStableIds,
     };
+  }
+
+  private resolveCouponApplicableSubtotalCents(params: {
+    subtotalCents: number;
+    couponUnlockedItemStableIds: string[];
+    couponEligibleLineItems?: {
+      productStableId: string;
+      lineTotalCents: number;
+    }[];
+  }) {
+    const {
+      subtotalCents,
+      couponUnlockedItemStableIds,
+      couponEligibleLineItems,
+    } = params;
+
+    const restrictedStableIds = new Set(
+      (couponUnlockedItemStableIds ?? [])
+        .map((id) => id.trim())
+        .filter(Boolean),
+    );
+    if (restrictedStableIds.size === 0) {
+      return subtotalCents;
+    }
+
+    const matchingSubtotal = (couponEligibleLineItems ?? []).reduce(
+      (sum, line) =>
+        restrictedStableIds.has(line.productStableId)
+          ? sum + line.lineTotalCents
+          : sum,
+      0,
+    );
+
+    return matchingSubtotal;
   }
 
   /** 如果带了 phone + verificationToken，就尝试把手机号绑定到 User 上 */
@@ -686,8 +722,8 @@ export class MembershipService {
   /**
    * 返回用户的所有优惠券列表
    */
-  async listCoupons(params: { userStableId: string }) {
-    const { userStableId } = params;
+  async listCoupons(params: { userStableId: string; locale?: 'zh' | 'en' }) {
+    const { userStableId, locale } = params;
     const user = await this.ensureUser({
       userStableId,
       name: null,
@@ -699,20 +735,87 @@ export class MembershipService {
       orderBy: [{ expiresAt: 'asc' }, { issuedAt: 'desc' }],
     });
 
-    return coupons.map((coupon) =>
-      this.serializeCoupon({
+    const preferEnglish = locale === 'en';
+    const templateIds = Array.from(
+      new Set(
+        coupons
+          .map((coupon) => coupon.fromTemplateId)
+          .filter((value): value is string => Boolean(value)),
+      ),
+    );
+    const programStableIds = Array.from(
+      new Set(
+        coupons
+          .map((coupon) => coupon.campaign)
+          .filter((value): value is string => Boolean(value)),
+      ),
+    );
+
+    type CouponTemplateLocalization = {
+      id: string;
+      tittleCh: string | null;
+      titleEn: string | null;
+    };
+    type CouponProgramLocalization = {
+      programStableId: string;
+      tittleCh: string | null;
+      tittleEn: string | null;
+    };
+
+    const [templates, programs] = await Promise.all([
+      templateIds.length > 0
+        ? this.prisma.couponTemplate.findMany({
+            where: { id: { in: templateIds } },
+            select: { id: true, tittleCh: true, titleEn: true },
+          })
+        : Promise.resolve<CouponTemplateLocalization[]>([]),
+      programStableIds.length > 0
+        ? this.prisma.couponProgram.findMany({
+            where: { programStableId: { in: programStableIds } },
+            select: { programStableId: true, tittleCh: true, tittleEn: true },
+          })
+        : Promise.resolve<CouponProgramLocalization[]>([]),
+    ] as const);
+
+    const templateMap = new Map(
+      templates.map((template) => [template.id, template]),
+    );
+    const programMap = new Map(
+      programs.map((program) => [program.programStableId, program]),
+    );
+
+    return coupons.map((coupon) => {
+      const template = coupon.fromTemplateId
+        ? templateMap.get(coupon.fromTemplateId)
+        : undefined;
+      const program = coupon.campaign
+        ? programMap.get(coupon.campaign)
+        : undefined;
+      const localizedTitle =
+        preferEnglish && template
+          ? template.titleEn?.trim() ||
+            template.tittleCh?.trim() ||
+            coupon.title
+          : coupon.title;
+      const localizedSource =
+        preferEnglish && program
+          ? `Program: ${program.tittleEn?.trim() || program.tittleCh}`
+          : coupon.source;
+
+      return this.serializeCoupon({
         id: coupon.id,
         couponStableId: coupon.couponStableId,
-        title: coupon.title,
+        title: localizedTitle,
         code: coupon.code,
         discountCents: coupon.discountCents,
         minSpendCents: coupon.minSpendCents,
         expiresAt: coupon.expiresAt,
         usedAt: coupon.usedAt,
         issuedAt: coupon.issuedAt,
-        source: coupon.source,
-      }),
-    );
+        source: localizedSource,
+        unlockedItemStableIds: coupon.unlockedItemStableIds ?? [],
+      });
+    });
   }
 
   /**
@@ -1097,15 +1200,21 @@ export class MembershipService {
       userId?: string;
       couponStableId?: string;
       subtotalCents: number;
+      couponEligibleLineItems?: {
+        productStableId: string;
+        lineTotalCents: number;
+      }[];
     },
     options?: { tx?: Prisma.TransactionClient },
   ) {
-    const { userId, couponStableId, subtotalCents } = params;
+    const { userId, couponStableId, subtotalCents, couponEligibleLineItems } =
+      params;
     if (!couponStableId) return null;
     return this.validateCouponForOrderWithWhere(
       {
         userId,
         subtotalCents,
+        couponEligibleLineItems,
         where: { couponStableId },
       },
       options,
@@ -1117,15 +1226,20 @@ export class MembershipService {
       userId?: string;
       couponId?: string;
       subtotalCents: number;
+      couponEligibleLineItems?: {
+        productStableId: string;
+        lineTotalCents: number;
+      }[];
     },
     options?: { tx?: Prisma.TransactionClient },
   ) {
-    const { userId, couponId, subtotalCents } = params;
+    const { userId, couponId, subtotalCents, couponEligibleLineItems } = params;
     if (!couponId) return null;
     return this.validateCouponForOrderWithWhere(
       {
         userId,
         subtotalCents,
+        couponEligibleLineItems,
         where: { id: couponId },
       },
       options,
@@ -1136,11 +1250,15 @@ export class MembershipService {
     params: {
       userId?: string;
       subtotalCents: number;
+      couponEligibleLineItems?: {
+        productStableId: string;
+        lineTotalCents: number;
+      }[];
       where: Prisma.CouponWhereUniqueInput;
     },
     options?: { tx?: Prisma.TransactionClient },
   ) {
-    const { userId, subtotalCents, where } = params;
+    const { userId, subtotalCents, where, couponEligibleLineItems } = params;
     const prisma = options?.tx ?? this.prisma;
     if (!userId) {
       throw new BadRequestException('userId is required when applying coupon');
@@ -1160,18 +1278,28 @@ export class MembershipService {
       throw new BadRequestException('coupon is not available');
     }
 
+    const applicableSubtotalCents = this.resolveCouponApplicableSubtotalCents({
+      subtotalCents,
+      couponUnlockedItemStableIds: coupon.unlockedItemStableIds ?? [],
+      couponEligibleLineItems,
+    });
+
     if (
       typeof coupon.minSpendCents === 'number' &&
-      subtotalCents < coupon.minSpendCents
+      applicableSubtotalCents < coupon.minSpendCents
     ) {
       throw new BadRequestException(
         'order subtotal does not meet coupon rules',
       );
     }
 
+    if (applicableSubtotalCents <= 0) {
+      throw new BadRequestException('coupon does not apply to selected items');
+    }
+
     const discountCents = Math.max(
       0,
-      Math.min(coupon.discountCents, subtotalCents),
+      Math.min(coupon.discountCents, applicableSubtotalCents),
     );
 
     return {
@@ -1185,13 +1313,24 @@ export class MembershipService {
     userId?: string;
     couponId?: string | null;
     subtotalCents: number;
+    couponEligibleLineItems?: {
+      productStableId: string;
+      lineTotalCents: number;
+    }[];
     orderId: string;
   }) {
-    const { tx, userId, couponId, subtotalCents, orderId } = params;
+    const {
+      tx,
+      userId,
+      couponId,
+      subtotalCents,
+      couponEligibleLineItems,
+      orderId,
+    } = params;
     if (!couponId) return null;
 
     const couponInfo = await this.validateCouponForOrderById(
-      { userId, couponId, subtotalCents },
+      { userId, couponId, subtotalCents, couponEligibleLineItems },
       { tx },
     );
 

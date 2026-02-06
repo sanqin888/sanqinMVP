@@ -316,12 +316,15 @@ export class MembershipController {
 
   // ✅ 优惠券列表
   @Get('coupons')
-  async listCoupons(@Req() req: AuthedRequest) {
+  async listCoupons(
+    @Req() req: AuthedRequest,
+    @Query('locale') locale?: 'zh' | 'en',
+  ) {
     const userStableId = req.user?.userStableId;
     if (!userStableId) {
       throw new BadRequestException('userStableId is required');
     }
-    return this.membership.listCoupons({ userStableId });
+    return this.membership.listCoupons({ userStableId, locale });
   }
 
   @Get('addresses')
