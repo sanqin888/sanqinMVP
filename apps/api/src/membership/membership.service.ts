@@ -751,19 +751,33 @@ export class MembershipService {
       ),
     );
 
-    const [templates, programs] = await Promise.all([
+    type CouponTemplateLocalization = {
+      id: string;
+      tittleCh: string | null;
+      titleEn: string | null;
+    };
+    type CouponProgramLocalization = {
+      programStableId: string;
+      tittleCh: string | null;
+      tittleEn: string | null;
+    };
+
+    const [templates, programs] = await Promise.all<[
+      CouponTemplateLocalization[],
+      CouponProgramLocalization[],
+    ]>([
       templateIds.length > 0
         ? this.prisma.couponTemplate.findMany({
             where: { id: { in: templateIds } },
             select: { id: true, tittleCh: true, titleEn: true },
           })
-        : Promise.resolve([]),
+        : Promise.resolve<CouponTemplateLocalization[]>([]),
       programStableIds.length > 0
         ? this.prisma.couponProgram.findMany({
             where: { programStableId: { in: programStableIds } },
             select: { programStableId: true, tittleCh: true, tittleEn: true },
           })
-        : Promise.resolve([]),
+        : Promise.resolve<CouponProgramLocalization[]>([]),
     ]);
 
     const templateMap = new Map(
