@@ -762,9 +762,7 @@ export class MembershipService {
       tittleEn: string | null;
     };
 
-    const [templates, programs] = await Promise.all<
-      [CouponTemplateLocalization[], CouponProgramLocalization[]]
-    >([
+    const [templates, programs] = await Promise.all([
       templateIds.length > 0
         ? this.prisma.couponTemplate.findMany({
             where: { id: { in: templateIds } },
@@ -777,7 +775,7 @@ export class MembershipService {
             select: { programStableId: true, tittleCh: true, tittleEn: true },
           })
         : Promise.resolve<CouponProgramLocalization[]>([]),
-    ]);
+    ] as const);
 
     const templateMap = new Map(
       templates.map((template) => [template.id, template]),
