@@ -93,7 +93,8 @@ services:
       dockerfile: Dockerfile.web
       args:
         - NEXT_PUBLIC_GOOGLE_MAPS_KEY=${NEXT_PUBLIC_GOOGLE_MAPS_KEY}
-
+    volumes:
+      - /home/ubuntu/sanq-assets/sounds:/app/apps/web/public/sounds:ro
     restart: always
     environment:
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
