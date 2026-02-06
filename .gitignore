@@ -35,3 +35,7 @@ apps/web/nest/
 # DB seed
 apps/api/prisma/seed/menu.snapshot.json
 apps/api/prisma/seed/*.snapshot.json
+
+# sounds
+/apps/web/public/sounds/*.wav
+/apps/web/public/sounds/*.mp3
