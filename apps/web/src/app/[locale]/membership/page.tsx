@@ -508,6 +508,7 @@ export default function MembershipHomePage() {
 
         const params = new URLSearchParams([
           ['userStableId', member.userStableId],
+          ['locale', isZh ? 'zh' : 'en'],
         ]);
         const res = await fetch(
           `/api/v1/membership/coupons?${params.toString()}`,
