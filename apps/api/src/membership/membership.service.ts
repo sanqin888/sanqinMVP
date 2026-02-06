@@ -722,8 +722,8 @@ export class MembershipService {
   /**
    * 返回用户的所有优惠券列表
    */
-  async listCoupons(params: { userStableId: string }) {
-    const { userStableId } = params;
+  async listCoupons(params: { userStableId: string; locale?: 'zh' | 'en' }) {
+    const { userStableId, locale } = params;
     const user = await this.ensureUser({
       userStableId,
       name: null,
@@ -735,21 +735,76 @@ export class MembershipService {
       orderBy: [{ expiresAt: 'asc' }, { issuedAt: 'desc' }],
     });
 
-    return coupons.map((coupon) =>
-      this.serializeCoupon({
+    const preferEnglish = locale === 'en';
+    const templateIds = Array.from(
+      new Set(
+        coupons
+          .map((coupon) => coupon.fromTemplateId)
+          .filter((value): value is string => Boolean(value)),
+      ),
+    );
+    const programStableIds = Array.from(
+      new Set(
+        coupons
+          .map((coupon) => coupon.campaign)
+          .filter((value): value is string => Boolean(value)),
+      ),
+    );
+
+    const [templates, programs] = await Promise.all([
+      templateIds.length > 0
+        ? this.prisma.couponTemplate.findMany({
+            where: { id: { in: templateIds } },
+            select: { id: true, tittleCh: true, titleEn: true },
+          })
+        : Promise.resolve([]),
+      programStableIds.length > 0
+        ? this.prisma.couponProgram.findMany({
+            where: { programStableId: { in: programStableIds } },
+            select: { programStableId: true, tittleCh: true, tittleEn: true },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const templateMap = new Map(
+      templates.map((template) => [template.id, template]),
+    );
+    const programMap = new Map(
+      programs.map((program) => [program.programStableId, program]),
+    );
+
+    return coupons.map((coupon) => {
+      const template = coupon.fromTemplateId
+        ? templateMap.get(coupon.fromTemplateId)
+        : undefined;
+      const program = coupon.campaign
+        ? programMap.get(coupon.campaign)
+        : undefined;
+      const localizedTitle =
+        preferEnglish && template
+          ? template.titleEn?.trim() ||
+            template.tittleCh?.trim() ||
+            coupon.title
+          : coupon.title;
+      const localizedSource =
+        preferEnglish && program
+          ? `Program: ${program.tittleEn?.trim() || program.tittleCh}`
+          : coupon.source;
+
+      return this.serializeCoupon({
         id: coupon.id,
         couponStableId: coupon.couponStableId,
-        title: coupon.title,
+        title: localizedTitle,
         code: coupon.code,
         discountCents: coupon.discountCents,
         minSpendCents: coupon.minSpendCents,
         expiresAt: coupon.expiresAt,
         usedAt: coupon.usedAt,
         issuedAt: coupon.issuedAt,
-        source: coupon.source,
+        source: localizedSource,
         unlockedItemStableIds: coupon.unlockedItemStableIds ?? [],
-      }),
-    );
+      });
+    });
   }
 
   /**

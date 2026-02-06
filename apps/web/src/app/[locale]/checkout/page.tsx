@@ -1473,6 +1473,7 @@ export default function CheckoutPage() {
 
         const params = new URLSearchParams([
           ["userStableId", ensuredUserStableId],
+          ["locale", locale === "zh" ? "zh" : "en"],
         ]);
         const res = await fetch(
           `/api/v1/membership/coupons?${params.toString()}`,
