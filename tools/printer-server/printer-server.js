@@ -3,6 +3,7 @@
 //
 // - /ping 测试服务是否正常
 // - /print-pos 接收 POS 打印请求，生成 ESC/POS 二进制数据
+// - /print-summary 接收汇总打印请求
 // - 通过 copy /B 把原始数据发到打印机共享
 
 const express = require("express");
@@ -16,8 +17,8 @@ const iconv = require("iconv-lite");
 // === 打印机配置 ===
 // 可以通过环境变量覆盖：POS_FRONT_PRINTER / POS_KITCHEN_PRINTER
 // 注意：这里的名字建议用“打印机共享名”，例如 POS80、KITCHEN 等
-const FRONT_PRINTER = "POS80";
-const KITCHEN_PRINTER = "KC80";
+const FRONT_PRINTER = process.env.POS_FRONT_PRINTER || "POS80";
+const KITCHEN_PRINTER = process.env.POS_KITCHEN_PRINTER || "KC80";
 
 // === ESC/POS 常量 ===
 const ESC = 0x1b;
@@ -80,9 +81,7 @@ function printEscPosTo(printerName, dataBuffer) {
   return new Promise((resolve, reject) => {
     const tmpFile = path.join(
       os.tmpdir(),
-      `pos-escpos-${Date.now()}-${Math.random()
-        .toString(16)
-        .slice(2)}.bin`
+      `pos-escpos-${Date.now()}-${Math.random().toString(16).slice(2)}.bin`
     );
 
     fs.writeFile(tmpFile, dataBuffer, (err) => {
@@ -103,7 +102,6 @@ function printEscPosTo(printerName, dataBuffer) {
       }
 
       // 使用 copy /B 直接把二进制发送到打印机共享
-      // 例如：cmd /C copy /B "C:\Temp\xxx.bin" "\\localhost\POS80"
       let cmdStr;
       if (devicePath) {
         cmdStr = `cmd /C copy /B "${tmpFile}" "${devicePath}"`;
@@ -125,16 +123,10 @@ function printEscPosTo(printerName, dataBuffer) {
         }
 
         if (stderr) {
-          console.warn(
-            "[printEscPosTo] 打印命令 stderr:",
-            stderr.toString().trim()
-          );
+          console.warn("[printEscPosTo] 打印命令 stderr:", stderr.toString().trim());
         }
 
-        console.log(
-          "[printEscPosTo] 打印命令 stdout:",
-          (stdout || "").toString().trim()
-        );
+        console.log("[printEscPosTo] 打印命令 stdout:", (stdout || "").toString().trim());
         resolve();
       });
     });
@@ -145,14 +137,13 @@ function printEscPosTo(printerName, dataBuffer) {
 
 // 顾客联
 function buildCustomerReceiptEscPos(params) {
-  const { orderNumber, pickupCode, fulfillment, paymentMethod, snapshot } =
-    params;
+  const { orderNumber, pickupCode, fulfillment, paymentMethod, snapshot } = params;
 
-const f = String(fulfillment || "").toLowerCase();
-const isDelivery = f === "delivery";
+  const f = String(fulfillment || "").toLowerCase();
+  const isDelivery = f === "delivery";
 
-const dineZh = isDelivery ? "配送" : f === "pickup" ? "外带" : "堂食";
-const dineEn = isDelivery ? "DELIVERY" : f === "pickup" ? "TAKE-OUT" : "DINE-IN";
+  const dineZh = isDelivery ? "配送" : f === "pickup" ? "外带" : "堂食";
+  const dineEn = isDelivery ? "DELIVERY" : f === "pickup" ? "TAKE-OUT" : "DINE-IN";
 
   // --- payment method normalize ---
   const pm = String(paymentMethod || "")
@@ -190,7 +181,6 @@ const dineEn = isDelivery ? "DELIVERY" : f === "pickup" ? "TAKE-OUT" : "DINE-IN"
   chunks.push(cmd(ESC, 0x40)); // ESC @
 
   // ✅ 行距调紧（减少整体留白）
-  // n 越小越紧；一般 18~24 比较合适（默认通常更大）
   chunks.push(cmd(ESC, 0x33, 20)); // ESC 3 n
 
   // ==== 取餐码（如果有的话） ====
@@ -219,40 +209,39 @@ const dineEn = isDelivery ? "DELIVERY" : f === "pickup" ? "TAKE-OUT" : "DINE-IN"
   chunks.push(encLine(makeLine("-")));
 
   // ==== 订单信息 ====
-  // 只打印一行订单号（不再中英文各一行）
   if (orderNumber) {
     chunks.push(encLine(`Order: ${orderNumber}`));
     chunks.push(encLine(""));
   }
 
-  // 用餐方式：保持中英两行
+  // 用餐方式
   chunks.push(encLine(`用餐方式: ${dineZh}`));
   chunks.push(encLine(`Dining:   ${dineEn}`));
   chunks.push(encLine(""));
 
-  // 付款方式：保持中英两行
+  // 付款方式
   chunks.push(encLine(`付款方式: ${payZh}`));
   chunks.push(encLine(`Payment:  ${payEn}`));
   chunks.push(encLine(makeLine("-")));
 
-  // ==== 菜品列表（字体调大：名称/选项放大，价格行保持对齐） ====
+  // ==== 菜品列表 ====
   if (Array.isArray(snapshot.items)) {
     snapshot.items.forEach((item) => {
       const nameZh = item.nameZh || "";
       const nameEn = item.nameEn || "";
 
-      // ✅ 菜名：加粗 + 双倍高度（0x01 = 高度x2，宽度不变）
+      // 菜名：加粗 + 双倍高度
       chunks.push(cmd(ESC, 0x45, 0x01)); // bold on
       chunks.push(cmd(GS, 0x21, 0x01));  // double-height only
 
       if (nameZh) chunks.push(encLine(nameZh));
       if (nameEn) chunks.push(encLine(nameEn));
 
-      // 恢复正常字号（后面价格行要对齐）
+      // 恢复正常字号
       chunks.push(cmd(GS, 0x21, 0x00));
       chunks.push(cmd(ESC, 0x45, 0x00)); // bold off
 
-      // 数量 + 行小计（保持普通字号，便于对齐）
+      // 数量 + 行小计
       const qtyPart = `x${item.quantity}`;
       const pricePart = money(item.lineTotalCents ?? 0);
 
@@ -260,7 +249,7 @@ const dineEn = isDelivery ? "DELIVERY" : f === "pickup" ? "TAKE-OUT" : "DINE-IN"
       const pricePadded = padLeft(pricePart, LINE_WIDTH - 8);
       chunks.push(encLine(qtyPadded + pricePadded));
 
-      // ✅ 选项（可选）：支持 item.options 为数组 或 optionsText 为字符串
+      // 选项
       const optionLines = (() => {
         if (Array.isArray(item.options)) {
           return item.options
@@ -277,38 +266,32 @@ const dineEn = isDelivery ? "DELIVERY" : f === "pickup" ? "TAKE-OUT" : "DINE-IN"
       })();
 
       if (optionLines.length > 0) {
-        // 选项也放大一点：双倍高度，不加粗
         chunks.push(cmd(GS, 0x21, 0x01));
         optionLines.forEach((opt) => {
-          // 缩进 + 标记
           chunks.push(encLine(`  - ${opt}`));
         });
         chunks.push(cmd(GS, 0x21, 0x00));
       }
 
-      // ✅ 每个菜之间只留一行（减少留白）
       chunks.push(encLine(""));
     });
   }
 
-  // ==== 金额汇总（数字只打印一次） ====
+  // ==== 金额汇总 ====
   const subtotal = snapshot.subtotalCents ?? 0;
   const discount = snapshot.discountCents ?? 0;
   const tax = snapshot.taxCents ?? 0;
   const total = snapshot.totalCents ?? 0;
   const loyalty = snapshot.loyalty || {};
 
-const deliveryFee = snapshot.deliveryFeeCents ?? 0;
+  const deliveryFee = snapshot.deliveryFeeCents ?? 0;
+  const deliveryCost =
+    typeof snapshot.deliveryCostCents === "number" ? snapshot.deliveryCostCents : null;
 
-// 允许 cost/subsidy 为 null（比如派单回填尚未完成）
-const deliveryCost =
-  typeof snapshot.deliveryCostCents === "number" ? snapshot.deliveryCostCents : null;
-
-// subsidy：优先用后端落库值；没有就按 cost-fee 推导
-const deliverySubsidy =
-  typeof snapshot.deliverySubsidyCents === "number"
-    ? snapshot.deliverySubsidyCents
-    : typeof deliveryCost === "number"
+  const deliverySubsidy =
+    typeof snapshot.deliverySubsidyCents === "number"
+      ? snapshot.deliverySubsidyCents
+      : typeof deliveryCost === "number"
       ? Math.max(0, deliveryCost - deliveryFee)
       : null;
 
@@ -320,20 +303,22 @@ const deliverySubsidy =
   if (typeof loyalty.pointsRedeemed === "number" && loyalty.pointsRedeemed > 0) {
     chunks.push(encLine(`积分抵扣 Points: -${loyalty.pointsRedeemed.toFixed(2)} pt`));
   }
-if (isDelivery || deliveryFee > 0 || deliveryCost !== null) {
-  chunks.push(encLine(`配送费(顾客) Delivery Fee: ${money(deliveryFee)}`));
 
-  if (deliveryCost === null) {
-    chunks.push(encLine(`平台运费成本 Delivery Cost: (pending)`));
-    chunks.push(encLine(`本单补贴 Subsidy: (pending)`));
-  } else {
-    chunks.push(encLine(`平台运费成本 Delivery Cost: ${money(deliveryCost)}`));
-    chunks.push(encLine(`本单补贴 Subsidy: ${money(deliverySubsidy ?? 0)}`));
+  if (isDelivery || deliveryFee > 0 || deliveryCost !== null) {
+    chunks.push(encLine(`配送费(顾客) Delivery Fee: ${money(deliveryFee)}`));
+
+    if (deliveryCost === null) {
+      chunks.push(encLine(`平台运费成本 Delivery Cost: (pending)`));
+      chunks.push(encLine(`本单补贴 Subsidy: (pending)`));
+    } else {
+      chunks.push(encLine(`平台运费成本 Delivery Cost: ${money(deliveryCost)}`));
+      chunks.push(encLine(`本单补贴 Subsidy: ${money(deliverySubsidy ?? 0)}`));
+    }
   }
-}
 
-chunks.push(encLine(`税费(HST) Tax: ${money(tax)}`));
-chunks.push(encLine(`合计 Total:   ${money(total)}`));
+  chunks.push(encLine(`税费(HST) Tax: ${money(tax)}`));
+  chunks.push(encLine(`合计 Total:   ${money(total)}`));
+
   if (typeof loyalty.pointsEarned === "number" && loyalty.pointsEarned > 0) {
     chunks.push(encLine(`本单新增积分 Earned: +${loyalty.pointsEarned.toFixed(2)} pt`));
   }
@@ -342,12 +327,11 @@ chunks.push(encLine(`合计 Total:   ${money(total)}`));
   }
   chunks.push(encLine(makeLine("-")));
 
-  // ==== 底部：谢谢惠顾 + 顾客联 ====
+  // ==== 底部 ====
   chunks.push(cmd(ESC, 0x61, 0x01)); // 居中
   chunks.push(encLine("谢谢惠顾"));
   chunks.push(encLine("Thank you!"));
   chunks.push(encLine("顾客联 CUSTOMER COPY"));
-  // ✅ 打印时间
   chunks.push(encLine(`打印时间 Print: ${formatPrintTime()}`));
   chunks.push(encLine(""));
   chunks.push(cmd(ESC, 0x61, 0x00)); // 左对齐
@@ -389,37 +373,27 @@ function buildKitchenReceiptEscPos(params) {
       const nameEn = item.nameEn || "";
       const qty = item.quantity ?? 0;
 
-      // 菜品名：双倍高度 + 加粗
       chunks.push(cmd(ESC, 0x45, 0x01)); // 加粗
       chunks.push(cmd(GS, 0x21, 0x11)); // 双倍高度
 
-      // 为了更贴近你厨房票的风格，把数量一起放在菜名前面
-      if (nameZh) {
-        chunks.push(encLine(`${qty}  ${nameZh}`));
-      }
-      if (nameEn) {
-        chunks.push(encLine(`${qty}  ${nameEn}`));
-      }
+      if (nameZh) chunks.push(encLine(`${qty}  ${nameZh}`));
+      if (nameEn) chunks.push(encLine(`${qty}  ${nameEn}`));
 
-      // 恢复正常字号
       chunks.push(cmd(GS, 0x21, 0x00));
       chunks.push(cmd(ESC, 0x45, 0x00));
-      chunks.push(encLine("")); // 每个菜之间空一行
+      chunks.push(encLine(""));
     });
   }
 
-  // ==== 底部说明 + 后厨联标记 ====
+  // ==== 底部 ====
   chunks.push(encLine(makeLine("-")));
   chunks.push(cmd(ESC, 0x61, 0x01)); // 居中
   chunks.push(encLine("后厨联 KITCHEN COPY"));
-  // ✅ 打印时间
   chunks.push(encLine(`打印时间 Print: ${formatPrintTime()}`));
   chunks.push(encLine(""));
   chunks.push(cmd(ESC, 0x61, 0x00)); // 左对齐
 
-  // 切纸
   chunks.push(cmd(GS, 0x56, 0x42, 0x00));
-
   return Buffer.concat(chunks);
 }
 
@@ -428,7 +402,6 @@ function buildSummaryReceiptEscPos(params) {
   const { date, totals, breakdownType, breakdownItems } = params;
   const chunks = [];
 
-  // --- 1. 标题 (居中, 倍高) ---
   chunks.push(cmd(ESC, 0x40)); // Init
   chunks.push(cmd(ESC, 0x33, 20)); // 行间距
   chunks.push(cmd(ESC, 0x61, 0x01)); // Center
@@ -441,34 +414,27 @@ function buildSummaryReceiptEscPos(params) {
   chunks.push(cmd(ESC, 0x61, 0x00)); // Left align
   chunks.push(encLine(makeLine("-")));
 
-// --- 2. 日期 (修改为单行显示) ---
-  // 例如：日期：2023/10/27
   if (date) {
     chunks.push(encLine(`日期: ${date}`));
   }
   chunks.push(encLine(makeLine("-")));
 
-  // --- 3. 汇总列表 (Breakdown) ---
   if (Array.isArray(breakdownItems)) {
     chunks.push(cmd(ESC, 0x45, 0x01)); // Bold
-    // 显示当前的汇总方式
-    chunks.push(encLine(breakdownType === 'payment' ? "按支付方式汇总 (By Payment)" : "按渠道汇总 (By Channel)"));
+    chunks.push(
+      encLine(breakdownType === "payment" ? "按支付方式汇总 (By Payment)" : "按渠道汇总 (By Channel)")
+    );
     chunks.push(cmd(ESC, 0x45, 0x00));
-    chunks.push(encLine("(金额: 实际收款 - 不含税)")); // 提示信息
+    chunks.push(encLine("(金额: 实际收款 - 不含税)"));
     chunks.push(encLine(""));
-    
-    // 表头
+
     chunks.push(encLine(padRight("类别", 14) + padLeft("单数", 6) + padLeft("金额", 12)));
     chunks.push(encLine(makeLine(".")));
 
-    breakdownItems.forEach(item => {
-      // 这里的 amountCents 已经是后端计算好的 salesCentsForOrder
-      const label = item.label || item.payment || item.fulfillmentType || 'Unknown';
-      
-      // 第一行：类别名
+    breakdownItems.forEach((item) => {
+      const label = item.label || item.payment || item.fulfillmentType || "Unknown";
       chunks.push(encLine(label));
-      
-      // 第二行：数据 (右对齐)
+
       const countStr = String(item.count);
       const amtStr = money(item.amountCents);
       const line = padLeft(countStr, 20) + padLeft(amtStr, 12);
@@ -477,7 +443,6 @@ function buildSummaryReceiptEscPos(params) {
     chunks.push(encLine(makeLine("=")));
   }
 
-  // --- 4. 底部合计 (Totals) ---
   if (totals) {
     chunks.push(cmd(ESC, 0x45, 0x01)); // Bold
     chunks.push(encLine("今日总计 (Totals)"));
@@ -489,57 +454,37 @@ function buildSummaryReceiptEscPos(params) {
       chunks.push(encLine(l + v));
     };
 
-    // 基础指标
+    // 注意：orders 不是 cents，但你原逻辑就是这么打印的（保持不改）
     printRow("总单量 Orders", totals.orders);
     printRow("销售额(不含税) Sales", totals.salesCents);
-    
+
     chunks.push(encLine(makeLine("-")));
 
-    // ✅ 新增要求显示的字段
     printRow("合计税费 Tax", totals.taxCents);
-    printRow("合计配送费 D.Fee", totals.deliveryFeeCents || 0); // 收入
-    printRow("合计Uber费用 UberCost", totals.deliveryCostCents || 0); // 支出
-    
+    printRow("合计配送费 D.Fee", totals.deliveryFeeCents || 0);
+    printRow("合计Uber费用 UberCost", totals.deliveryCostCents || 0);
+
     chunks.push(encLine(makeLine("=")));
-    
-    // 总营业额 (Net Revenue) - 方便对账
+
     chunks.push(cmd(ESC, 0x45, 0x01)); // Bold
     chunks.push(cmd(GS, 0x21, 0x01)); // Double Height
     const totalLabel = padRight("总营业额 Total", 14);
-    // netCents 通常是 (Sales + Tax + DeliveryFee)
-    const totalVal = padLeft(money(totals.netCents), LINE_WIDTH - 14); 
+    const totalVal = padLeft(money(totals.netCents), LINE_WIDTH - 14);
     chunks.push(encLine(totalLabel + totalVal));
     chunks.push(cmd(GS, 0x21, 0x00));
     chunks.push(cmd(ESC, 0x45, 0x00));
   }
 
-  // --- Footer ---
   chunks.push(encLine(""));
   chunks.push(encLine(`打印时间: ${formatPrintTime()}`));
   chunks.push(encLine(""));
   chunks.push(encLine(""));
-  
-  chunks.push(cmd(GS, 0x56, 0x42, 0x00)); // Cut
 
+  chunks.push(cmd(GS, 0x56, 0x42, 0x00)); // Cut
   return Buffer.concat(chunks);
 }
 
-// 路由部分保持之前逻辑：
-app.post("/print-summary", async (req, res) => {
-  const payload = req.body;
-  console.log("[/print-summary] 收到打印请求");
-  try {
-    const dataBuffer = buildSummaryReceiptEscPos(payload);
-    await printEscPosTo(FRONT_PRINTER, dataBuffer);
-    res.json({ ok: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: String(err) });
-  }
-});
-
-
-// ========== Express 服务 ==========
+// ========== Express 服务（必须先初始化 app，再注册路由）=========
 
 const app = express();
 app.use(bodyParser.json());
@@ -560,18 +505,24 @@ app.get("/ping", (req, res) => {
   res.send("POS ESC/POS printer server is running");
 });
 
+// 汇总打印接口
+app.post("/print-summary", async (req, res) => {
+  const payload = req.body;
+  console.log("[/print-summary] 收到打印请求");
+  try {
+    const dataBuffer = buildSummaryReceiptEscPos(payload);
+    await printEscPosTo(FRONT_PRINTER, dataBuffer);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 // 主打印接口
 app.post("/print-pos", async (req, res) => {
   const payload = req.body;
-  const {
-    locale,
-    orderNumber,
-    pickupCode,
-    fulfillment,
-    paymentMethod,
-    snapshot,
-    targets,
-  } = payload || {};
+  const { locale, orderNumber, pickupCode, fulfillment, paymentMethod, snapshot, targets } = payload || {};
 
   console.log(
     "[/print-pos] 收到打印请求:",
@@ -590,9 +541,7 @@ app.post("/print-pos", async (req, res) => {
 
   if (!snapshot || !Array.isArray(snapshot.items)) {
     console.error("[/print-pos] 缺少 snapshot.items");
-    return res
-      .status(400)
-      .json({ error: "Missing snapshot.items in payload" });
+    return res.status(400).json({ error: "Missing snapshot.items in payload" });
   }
 
   try {
@@ -636,15 +585,7 @@ app.post("/print-pos", async (req, res) => {
 const PORT = process.env.POS_PRINTER_PORT || 19191;
 
 app.listen(PORT, () => {
-  console.log(
-    `POS ESC/POS printer server listening on http://127.0.0.1:${PORT}`
-  );
-  console.log(
-    "Front printer logical name:",
-    FRONT_PRINTER || "(system default)"
-  );
-  console.log(
-    "Kitchen printer logical name:",
-    KITCHEN_PRINTER || "(same as front)"
-  );
+  console.log(`POS ESC/POS printer server listening on http://127.0.0.1:${PORT}`);
+  console.log("Front printer logical name:", FRONT_PRINTER || "(system default)");
+  console.log("Kitchen printer logical name:", KITCHEN_PRINTER || "(same as front)");
 });
