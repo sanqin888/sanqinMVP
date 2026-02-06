@@ -7,6 +7,8 @@ import { apiFetch } from "@/lib/api/client";
 import { advanceOrder } from "@/lib/api/pos";
 import { parseBackendDateMs } from "@/lib/time/tz";
 
+const ALARM_LOOP_SRC = "/sounds/pos-alarm-loop.mp3";
+
 type BoardOrderItem = {
   productStableId: string
   qty: number;
@@ -105,11 +107,18 @@ function formatChannel(channel: BoardOrder["channel"], locale: Locale): string {
 }
 
 // 浏览器语音提醒
-function speak(text: string, locale: Locale) {
+function speak(
+  text: string,
+  locale: Locale,
+  onEnd?: () => void,
+) {
   if (typeof window === "undefined") return;
   if (!("speechSynthesis" in window)) return;
   const utter = new SpeechSynthesisUtterance(text);
   utter.lang = locale === "zh" ? "zh-CN" : "en-US";
+  if (onEnd) {
+    utter.onend = onEnd;
+  }
   window.speechSynthesis.speak(utter);
 }
 
@@ -216,6 +225,7 @@ export function StoreBoardWidget(props: { locale: Locale }) {
   const [open, setOpen] = useState(false);
   const [orders, setOrders] = useState<BoardOrder[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(false);
 
   // ✅ 增强1：新 web 订单到达时，高亮闪烁（并自动展开）
   const [flash, setFlash] = useState(false);
@@ -228,6 +238,8 @@ export function StoreBoardWidget(props: { locale: Locale }) {
   const hadPersistedRef = useRef(false);
   const inactivityTimerRef = useRef<number | null>(null);
   const highlightTimersRef = useRef<Record<string, number>>({});
+  const alarmAudioRef = useRef<HTMLAudioElement | null>(null);
+  const alarmPlayingRef = useRef(false);
 
   // ✅ 增强2：待接单数（只统计 web + paid）
   const webPaidCount = useMemo(
@@ -236,6 +248,23 @@ export function StoreBoardWidget(props: { locale: Locale }) {
   );
 
   const activeCount = orders.length;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const audio = new Audio(ALARM_LOOP_SRC);
+    audio.loop = true;
+    audio.preload = "auto";
+    audio.volume = 1.0;
+    alarmAudioRef.current = audio;
+
+    return () => {
+      try {
+        audio.pause();
+      } catch {}
+      alarmAudioRef.current = null;
+      alarmPlayingRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!flash) return;
@@ -256,6 +285,32 @@ export function StoreBoardWidget(props: { locale: Locale }) {
     inactivityTimerRef.current = window.setTimeout(() => {
       setOpen(false);
     }, 30000);
+  }, []);
+
+  const startAlarmLoop = useCallback(async () => {
+    if (!soundEnabled) return;
+    if (alarmPlayingRef.current) return;
+    const audio = alarmAudioRef.current;
+    if (!audio) return;
+    if (!audio.paused) return;
+
+    try {
+      await audio.play();
+      alarmPlayingRef.current = true;
+    } catch (error) {
+      console.warn("Alarm play blocked:", error);
+      alarmPlayingRef.current = false;
+    }
+  }, [soundEnabled]);
+
+  const stopAlarmLoop = useCallback(() => {
+    const audio = alarmAudioRef.current;
+    if (!audio) return;
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+    } catch {}
+    alarmPlayingRef.current = false;
   }, []);
 
   const markNewOrders = useCallback((orderIds: string[]) => {
@@ -377,9 +432,20 @@ export function StoreBoardWidget(props: { locale: Locale }) {
       scheduleAutoCollapse();
 
       const n = newWebPaid.length;
-      speak(n === 1 ? t.voiceOne : t.voiceMany(n), locale);
+      stopAlarmLoop();
+      speak(n === 1 ? t.voiceOne : t.voiceMany(n), locale, () => {
+        void startAlarmLoop();
+      });
     }
-  }, [query, t, locale, markNewOrders, scheduleAutoCollapse]);
+  }, [
+    query,
+    t,
+    locale,
+    markNewOrders,
+    scheduleAutoCollapse,
+    startAlarmLoop,
+    stopAlarmLoop,
+  ]);
 
   const handleAdvance = useCallback(
     async (orderStableId: string) => {
@@ -429,6 +495,14 @@ export function StoreBoardWidget(props: { locale: Locale }) {
       window.clearInterval(timer);
     };
   }, [fetchOrdersAndProcess]);
+
+  useEffect(() => {
+    if (webPaidCount > 0) {
+      void startAlarmLoop();
+    } else {
+      stopAlarmLoop();
+    }
+  }, [webPaidCount, startAlarmLoop, stopAlarmLoop]);
 
   useEffect(() => {
     if (!open) {
@@ -515,13 +589,45 @@ export function StoreBoardWidget(props: { locale: Locale }) {
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="rounded-md border border-slate-700 bg-slate-950/40 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800/50 transition"
-            >
-              {t.collapse}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  setSoundEnabled(true);
+                  try {
+                    const audio = alarmAudioRef.current;
+                    if (audio) {
+                      await audio.play();
+                      audio.pause();
+                      audio.currentTime = 0;
+                    }
+                  } catch (error) {
+                    console.warn("Sound unlock failed:", error);
+                  }
+                }}
+                className={[
+                  "ml-2 rounded-full border px-3 py-1 text-xs font-semibold transition",
+                  soundEnabled
+                    ? "border-emerald-400/50 bg-emerald-500/15 text-emerald-200"
+                    : "border-slate-600 bg-slate-800/60 text-slate-200 hover:bg-slate-800",
+                ].join(" ")}
+              >
+                {soundEnabled
+                  ? isZh
+                    ? "声音已启用"
+                    : "Sound on"
+                  : isZh
+                    ? "启用声音"
+                    : "Enable sound"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="rounded-md border border-slate-700 bg-slate-950/40 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800/50 transition"
+              >
+                {t.collapse}
+              </button>
+            </div>
           </div>
 
           <div className="p-3 space-y-3 overflow-auto h-[calc(640px-56px)] max-h-[calc(100vh-2rem-56px)]">
