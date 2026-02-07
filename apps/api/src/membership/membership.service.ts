@@ -1555,8 +1555,7 @@ export class MembershipService {
     await this.emailVerification.requestVerification({
       userId: user.id,
       email,
-      name:
-        [user.firstName, user.lastName].filter(Boolean).join(' ') || null,
+      name: [user.firstName, user.lastName].filter(Boolean).join(' ') || null,
     });
 
     return { ok: true };

@@ -220,7 +220,9 @@ const parseCustomer = (value: unknown): HostedCheckoutCustomer => {
   const phone = toString(value.phone);
   const email = toString(value.email);
   if (!firstName || !lastName || !email || !phone) {
-    throw new Error('customer firstName, lastName, email, and phone are required');
+    throw new Error(
+      'customer firstName, lastName, email, and phone are required',
+    );
   }
   return {
     firstName,

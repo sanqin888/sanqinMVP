@@ -136,8 +136,7 @@ export class AdminStaffController {
       status: user.status,
       createdAt: user.createdAt,
       lastLoginAt: user.sessions[0]?.createdAt ?? null,
-      name:
-        [user.firstName, user.lastName].filter(Boolean).join(' ') || null,
+      name: [user.firstName, user.lastName].filter(Boolean).join(' ') || null,
     }));
 
     return { staff };
@@ -257,10 +256,9 @@ export class AdminStaffController {
       to: invite.email,
       token,
       role: invite.role,
-      inviterName:
-        inviter
-          ? [inviter.firstName, inviter.lastName].filter(Boolean).join(' ')
-          : undefined,
+      inviterName: inviter
+        ? [inviter.firstName, inviter.lastName].filter(Boolean).join(' ')
+        : undefined,
       locale: body.locale,
     });
 

@@ -422,7 +422,12 @@ export class AdminMembersService {
       user.referredByUserId
         ? this.prisma.user.findUnique({
             where: { id: user.referredByUserId },
-            select: { userStableId: true, firstName: true, lastName: true, email: true },
+            select: {
+              userStableId: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
           })
         : null,
       this.loyalty.ensureAccount(user.id),
