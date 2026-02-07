@@ -425,30 +425,29 @@ export class CloverService {
       // 关键：Clover 在创建 payment 时需要一个非空的“姓名”（nickname/任意名字都行）
       const metaCustomer =
         isPlainObject(rq.metadata) && isPlainObject(rq.metadata.customer)
-          ? (rq.metadata.customer as Record<string, unknown>)
+          ? rq.metadata.customer
           : undefined;
 
       const reqCustomer = isPlainObject(req.customer)
-        ? (req.customer as Record<string, unknown>)
+        ? req.customer
         : undefined;
 
       const pickStr = (v: unknown): string | undefined =>
         typeof v === 'string' && v.trim().length > 0 ? v.trim() : undefined;
 
-      const name =
-        pickStr(metaCustomer?.name) ?? pickStr(reqCustomer?.name);
+      const name = pickStr(metaCustomer?.name) ?? pickStr(reqCustomer?.name);
 
-      const email =
-        pickStr(metaCustomer?.email) ?? pickStr(reqCustomer?.email);
+      const email = pickStr(metaCustomer?.email) ?? pickStr(reqCustomer?.email);
 
-      const phone =
-        pickStr(metaCustomer?.phone) ?? pickStr(reqCustomer?.phone);
+      const phone = pickStr(metaCustomer?.phone) ?? pickStr(reqCustomer?.phone);
 
       // ✅ 姓名兜底：避免 production 报 “Card holder name is not provided”
       const safeName =
         name ??
         (email ? email.split('@')[0] : undefined) ??
-        (phone ? `Customer ${phone.replace(/\D/g, '').slice(-4)}` : undefined) ??
+        (phone
+          ? `Customer ${phone.replace(/\D/g, '').slice(-4)}`
+          : undefined) ??
         'Customer';
 
       const body = {
