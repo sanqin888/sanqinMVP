@@ -154,6 +154,8 @@ type MemberTier = "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
 
 type MembershipSummaryResponse = {
   userStableId?: string;
+  firstName?: string | null;
+  lastName?: string | null;
   displayName: string | null;
   email: string | null;
   phone: string | null;
@@ -206,7 +208,9 @@ type PrepTimeResponse = {
 
 // CustomerInfo.phone = 本单的联系电话（可能等于账号手机号，但不会自动反写到 User.phone）
 type CustomerInfo = {
-  name: string;
+  firstName: string;
+  lastName: string;
+  email: string;
   phone: string;
   addressLine1: string;
   addressLine2: string;
@@ -223,6 +227,10 @@ const POSTAL_CODE_PATTERN = /^[A-Za-z]\d[A-Za-z]\s?\d[A-Za-z]\d$/;
 const PRIORITY_MAX_RADIUS_KM = DELIVERY_RADIUS_KM;
 const getAddressStableId = (address: MemberAddress) =>
   address.addressStableId ?? address.stableId ?? address.id ?? "";
+const formatCustomerFullName = (customer: CustomerInfo) =>
+  [customer.firstName.trim(), customer.lastName.trim()]
+    .filter(Boolean)
+    .join(" ");
 
 const formatDeliveryAddress = (customer: CustomerInfo) => {
   const cityProvince = [customer.city.trim(), customer.province.trim()]
@@ -553,7 +561,9 @@ export default function CheckoutPage() {
     useState<DeliveryTypeOption>("PRIORITY");
   const [schedule] = useState<ScheduleSlot>("asap");
   const [customer, setCustomer] = useState<CustomerInfo>({
-    name: "",
+    firstName: "",
+    lastName: "",
+    email: "",
     phone: "",
     addressLine1: "",
     addressLine2: "",
@@ -567,13 +577,15 @@ export default function CheckoutPage() {
   const [memberPhone, setMemberPhone] = useState<string | null>(null);
   const [memberPhoneVerified, setMemberPhoneVerified] = useState(false);
   const [phonePrefilled, setPhonePrefilled] = useState(false); // 只预填一次
-  const [memberDisplayName, setMemberDisplayName] = useState<string | null>(
-    null,
-  );
+  const [memberFirstName, setMemberFirstName] = useState<string | null>(null);
+  const [memberLastName, setMemberLastName] = useState<string | null>(null);
+  const [memberEmail, setMemberEmail] = useState<string | null>(null);
   const [memberUserStableId, setMemberUserStableId] = useState<string | null>(
     null,
   );
-  const [namePrefilled, setNamePrefilled] = useState(false);
+  const [firstNamePrefilled, setFirstNamePrefilled] = useState(false);
+  const [lastNamePrefilled, setLastNamePrefilled] = useState(false);
+  const [emailPrefilled, setEmailPrefilled] = useState(false);
   const [addressPrefilled, setAddressPrefilled] = useState(false);
   const [memberAddresses, setMemberAddresses] = useState<MemberAddress[]>([]);
   const [selectedAddressStableId, setSelectedAddressStableId] = useState<
@@ -1049,10 +1061,46 @@ export default function CheckoutPage() {
     }
   }
 
-  // ⭐ 下单前置条件：有菜 + 姓名 + 手机号长度 + 手机已验证 + （外送时地址完整）+ 门店当前允许下单
+  const isEmailValid = /^\S+@\S+\.\S+$/.test(customer.email.trim());
+  const missingContactFields = useMemo(() => {
+    const missing: string[] = [];
+    if (!customer.firstName.trim()) {
+      missing.push(strings.contactFields.firstName);
+    }
+    if (!customer.lastName.trim()) {
+      missing.push(strings.contactFields.lastName);
+    }
+    if (!customer.email.trim() || !isEmailValid) {
+      missing.push(strings.contactFields.email);
+    }
+    if (!isValidCanadianPhone(customer.phone)) {
+      missing.push(strings.contactFields.phone);
+    }
+    return missing;
+  }, [
+    customer.email,
+    customer.firstName,
+    customer.lastName,
+    customer.phone,
+    isEmailValid,
+    strings.contactFields.email,
+    strings.contactFields.firstName,
+    strings.contactFields.lastName,
+    strings.contactFields.phone,
+  ]);
+  const missingContactMessage =
+    missingContactFields.length > 0
+      ? locale === "zh"
+        ? `请补全：${missingContactFields.join("、")}`
+        : `Please complete: ${missingContactFields.join(", ")}`
+      : null;
+
+  // ⭐ 下单前置条件：有菜 + 姓名 + 邮箱 + 手机号长度 + 手机已验证 + （外送时地址完整）+ 门店当前允许下单
   const canPlaceOrder =
     localizedCartItems.length > 0 &&
-    customer.name.trim().length > 0 &&
+    customer.firstName.trim().length > 0 &&
+    customer.lastName.trim().length > 0 &&
+    isEmailValid &&
     isValidCanadianPhone(customer.phone) &&
     phoneVerified &&
     (fulfillment === "pickup" || deliveryAddressReady) &&
@@ -1325,10 +1373,14 @@ export default function CheckoutPage() {
       setAvailableCoupons([]);
       setMemberPhone(null);
       setMemberPhoneVerified(false);
-      setMemberDisplayName(null);
+      setMemberFirstName(null);
+      setMemberLastName(null);
+      setMemberEmail(null);
       setMemberUserStableId(null);
       setPhonePrefilled(false);
-      setNamePrefilled(false);
+      setFirstNamePrefilled(false);
+      setLastNamePrefilled(false);
+      setEmailPrefilled(false);
       setAddressPrefilled(false);
       setMemberAddresses([]);
       setSelectedAddressStableId(null);
@@ -1341,6 +1393,9 @@ export default function CheckoutPage() {
       setMemberPhone(null);
       setMemberPhoneVerified(false);
       setMemberUserStableId(null);
+      setMemberFirstName(null);
+      setMemberLastName(null);
+      setMemberEmail(null);
       return;
     }
 
@@ -1381,7 +1436,16 @@ export default function CheckoutPage() {
           data.phone ? stripCanadianCountryCode(data.phone) : null,
         );
         setMemberPhoneVerified(!!data.phoneVerified);
-        setMemberDisplayName(data.displayName ?? null);
+        const fallbackName = data.displayName ?? "";
+        const fallbackParts = fallbackName.trim()
+          ? fallbackName.trim().split(/\s+/)
+          : [];
+        setMemberFirstName(data.firstName ?? fallbackParts[0] ?? null);
+        setMemberLastName(
+          data.lastName ??
+            (fallbackParts.length > 1 ? fallbackParts.slice(1).join(" ") : null),
+        );
+        setMemberEmail(data.email ?? null);
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") {
           return;
@@ -1539,18 +1603,46 @@ export default function CheckoutPage() {
   }, [memberPhone, phonePrefilled]);
 
   useEffect(() => {
-    if (namePrefilled) return;
-    if (!memberDisplayName) return;
+    if (firstNamePrefilled) return;
+    if (!memberFirstName) return;
 
     setCustomer((prev) => {
-      if (prev.name && prev.name.trim().length > 0) {
+      if (prev.firstName && prev.firstName.trim().length > 0) {
         return prev;
       }
-      return { ...prev, name: memberDisplayName };
+      return { ...prev, firstName: memberFirstName };
     });
 
-    setNamePrefilled(true);
-  }, [memberDisplayName, namePrefilled]);
+    setFirstNamePrefilled(true);
+  }, [firstNamePrefilled, memberFirstName]);
+
+  useEffect(() => {
+    if (lastNamePrefilled) return;
+    if (!memberLastName) return;
+
+    setCustomer((prev) => {
+      if (prev.lastName && prev.lastName.trim().length > 0) {
+        return prev;
+      }
+      return { ...prev, lastName: memberLastName };
+    });
+
+    setLastNamePrefilled(true);
+  }, [lastNamePrefilled, memberLastName]);
+
+  useEffect(() => {
+    if (emailPrefilled) return;
+    if (!memberEmail) return;
+
+    setCustomer((prev) => {
+      if (prev.email && prev.email.trim().length > 0) {
+        return prev;
+      }
+      return { ...prev, email: memberEmail };
+    });
+
+    setEmailPrefilled(true);
+  }, [emailPrefilled, memberEmail]);
 
   useEffect(() => {
     if (addressPrefilled) return;
@@ -1721,7 +1813,7 @@ export default function CheckoutPage() {
       const payload = {
         userStableId,
         label: customer.addressLine1,
-        receiver: customer.name,
+        receiver: formatCustomerFullName(customer),
         phone: formattedPhone,
         addressLine1: customer.addressLine1,
         addressLine2: customer.addressLine2 ?? "",
@@ -1829,7 +1921,7 @@ export default function CheckoutPage() {
         },
         deliveryDestination: isDeliveryFulfillment
           ? {
-              name: customer.name,
+              name: formatCustomerFullName(customer),
               phone: formattedCustomerPhone,
               addressLine1: customer.addressLine1,
               addressLine2: customer.addressLine2 || undefined,
@@ -1899,7 +1991,7 @@ export default function CheckoutPage() {
       deliveryType: isDeliveryFulfillment ? deliveryType : undefined,
       deliveryDestination: isDeliveryFulfillment
         ? {
-            name: customer.name,
+            name: formatCustomerFullName(customer),
             phone: formattedCustomerPhone,
             addressLine1: customer.addressLine1,
             addressLine2: customer.addressLine2 || undefined,
@@ -2495,17 +2587,47 @@ export default function CheckoutPage() {
                 <h3 className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
                   {strings.contactInfoLabel}
                 </h3>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block text-xs font-medium text-slate-600">
+                    {strings.contactFields.firstName}
+                    <input
+                      value={customer.firstName}
+                      onChange={(event) =>
+                        handleCustomerChange("firstName", event.target.value)
+                      }
+                      placeholder={strings.contactFields.firstNamePlaceholder}
+                      className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                    />
+                  </label>
+                  <label className="block text-xs font-medium text-slate-600">
+                    {strings.contactFields.lastName}
+                    <input
+                      value={customer.lastName}
+                      onChange={(event) =>
+                        handleCustomerChange("lastName", event.target.value)
+                      }
+                      placeholder={strings.contactFields.lastNamePlaceholder}
+                      className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                    />
+                  </label>
+                </div>
+
                 <label className="block text-xs font-medium text-slate-600">
-                  {strings.contactFields.name}
+                  {strings.contactFields.email}
                   <input
-                    value={customer.name}
+                    value={customer.email}
                     onChange={(event) =>
-                      handleCustomerChange("name", event.target.value)
+                      handleCustomerChange("email", event.target.value)
                     }
-                    placeholder={strings.contactFields.namePlaceholder}
+                    placeholder={strings.contactFields.emailPlaceholder}
                     className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
                   />
                 </label>
+                {missingContactMessage ? (
+                  <p className="text-[11px] text-rose-600">
+                    {missingContactMessage}
+                  </p>
+                ) : null}
 
                 <label className="block text-xs font-medium text-slate-600">
                   {strings.contactFields.phone}

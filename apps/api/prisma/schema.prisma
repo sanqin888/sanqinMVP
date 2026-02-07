@@ -216,7 +216,8 @@ model User {
   emailVerifiedAt       DateTime?
   phone                 String?   @unique
   phoneVerifiedAt       DateTime?
-  name                  String?
+  firstName             String?
+  lastName              String?
   role                  UserRole  @default(CUSTOMER)
   status                UserStatus @default(ACTIVE)
   passwordHash          String?

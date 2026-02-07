@@ -97,6 +97,14 @@ export class NotificationService {
     private readonly businessConfigService: BusinessConfigService,
   ) {}
 
+  private formatUserName(user: {
+    firstName?: string | null;
+    lastName?: string | null;
+  }): string | null {
+    const name = [user.firstName, user.lastName].filter(Boolean).join(' ');
+    return name.length > 0 ? name : null;
+  }
+
   async notifyRegisterWelcome(params: { user: User }) {
     // 准备基础变量
     const locale = params.user.language === 'ZH' ? 'zh' : 'en';
@@ -113,7 +121,7 @@ export class NotificationService {
           vars: {
             ...baseVars,
             userName:
-              params.user.name ||
+              this.formatUserName(params.user) ||
               (locale === 'zh' ? '亲爱的顾客' : 'Dear Customer'),
             claimUrl,
           },
@@ -198,7 +206,7 @@ export class NotificationService {
       vars: {
         ...baseVars,
         userName:
-          params.user.name ||
+          this.formatUserName(params.user) ||
           (locale === 'zh' ? '亲爱的顾客' : 'Dear Customer'),
         // 这里生成管理订阅的链接，假设您的前端地址配置在环境变量中
         manageUrl,
@@ -242,7 +250,8 @@ export class NotificationService {
     const giftName =
       program.tittleCh ?? program.tittleEn ?? program.programStableId;
     const userName =
-      user.name || (locale === 'zh' ? '亲爱的顾客' : 'Dear Customer');
+      this.formatUserName(user) ||
+      (locale === 'zh' ? '亲爱的顾客' : 'Dear Customer');
     const vars = {
       ...baseVars,
       userName,

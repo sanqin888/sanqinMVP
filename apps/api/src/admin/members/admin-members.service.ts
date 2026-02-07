@@ -102,6 +102,14 @@ export class AdminMembersService {
     return `${head}****${tail}`;
   }
 
+  private formatDisplayName(user: {
+    firstName?: string | null;
+    lastName?: string | null;
+  }): string | null {
+    const name = [user.firstName, user.lastName].filter(Boolean).join(' ');
+    return name.length > 0 ? name : null;
+  }
+
   private resolveRechargePhone(params: {
     userPhone: string | null;
     inputPhone?: string;
@@ -305,7 +313,13 @@ export class AdminMembersService {
           },
         },
         {
-          name: {
+          firstName: {
+            contains: search,
+            mode: 'insensitive',
+          },
+        },
+        {
+          lastName: {
             contains: search,
             mode: 'insensitive',
           },
@@ -355,7 +369,8 @@ export class AdminMembersService {
         select: {
           id: true,
           userStableId: true,
-          name: true,
+          firstName: true,
+          lastName: true,
           email: true,
           phone: true,
           status: true,
@@ -387,7 +402,7 @@ export class AdminMembersService {
         const account = accountMap.get(user.id);
         return {
           userStableId: user.userStableId,
-          displayName: user.name,
+          displayName: this.formatDisplayName(user),
           email: user.email ?? null,
           phone: user.phone ? this.maskPhone(user.phone) : null,
           tier: account?.tier ?? 'BRONZE',
@@ -407,7 +422,7 @@ export class AdminMembersService {
       user.referredByUserId
         ? this.prisma.user.findUnique({
             where: { id: user.referredByUserId },
-            select: { userStableId: true, name: true, email: true },
+            select: { userStableId: true, firstName: true, lastName: true, email: true },
           })
         : null,
       this.loyalty.ensureAccount(user.id),
@@ -425,7 +440,7 @@ export class AdminMembersService {
 
     return {
       userStableId: user.userStableId,
-      displayName: user.name,
+      displayName: this.formatDisplayName(user),
       email: user.email,
       phone: user.phone,
       phoneVerifiedAt: user.phoneVerifiedAt?.toISOString() ?? null,
@@ -437,7 +452,7 @@ export class AdminMembersService {
       referrer: referrer
         ? {
             userStableId: referrer.userStableId,
-            name: referrer.name,
+            name: this.formatDisplayName(referrer),
             email: referrer.email,
           }
         : null,
@@ -616,7 +631,8 @@ export class AdminMembersService {
   async updateMember(
     userStableId: string,
     body: {
-      name?: string | null;
+      firstName?: string | null;
+      lastName?: string | null;
       email?: string | null;
       phone?: string | null;
       birthdayMonth?: number | null;
@@ -627,9 +643,14 @@ export class AdminMembersService {
 
     const updateData: Prisma.UserUpdateInput = {};
 
-    if (body.name !== undefined) {
-      const trimmed = body.name?.trim();
-      updateData.name = trimmed && trimmed.length > 0 ? trimmed : null;
+    if (body.firstName !== undefined) {
+      const trimmed = body.firstName?.trim();
+      updateData.firstName = trimmed && trimmed.length > 0 ? trimmed : null;
+    }
+
+    if (body.lastName !== undefined) {
+      const trimmed = body.lastName?.trim();
+      updateData.lastName = trimmed && trimmed.length > 0 ? trimmed : null;
     }
 
     if (body.email !== undefined) {
@@ -692,7 +713,8 @@ export class AdminMembersService {
     if (Object.keys(updateData).length === 0) {
       return {
         userStableId: user.userStableId,
-        name: user.name,
+        firstName: user.firstName,
+        lastName: user.lastName,
         email: user.email,
         phone: user.phone,
         birthdayMonth: user.birthdayMonth,
@@ -705,7 +727,8 @@ export class AdminMembersService {
       data: updateData,
       select: {
         userStableId: true,
-        name: true,
+        firstName: true,
+        lastName: true,
         email: true,
         phone: true,
         birthdayMonth: true,

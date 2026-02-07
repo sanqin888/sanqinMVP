@@ -304,13 +304,14 @@ export class MembershipService {
   /**
    * 确保 User 存在，并在需要时补全信息：
    * - userStableId 必填，供前后端识别
-   * - name / email：可以更新
+   * - firstName / lastName / email：可以更新
    * - referredByUserId：只在“当前为空且 referrerEmail 有效”时写入一次
    * - birthdayMonth / birthdayDay：只在“当前为空且生日合法”时写入一次
    */
   private async ensureUser(params: {
     userStableId: string;
-    name?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
     email?: string | null;
     referrerEmail?: string;
     birthdayMonth?: number;
@@ -320,7 +321,8 @@ export class MembershipService {
   }) {
     const {
       userStableId,
-      name,
+      firstName,
+      lastName,
       email,
       referrerEmail: referrerEmailParam,
       birthdayMonth,
@@ -333,14 +335,20 @@ export class MembershipService {
       throw new Error('userStableId is required');
     }
 
-    const normalizedName =
-      typeof name === 'string' && name.trim().length > 0 ? name.trim() : null;
+    const normalizedFirstName =
+      typeof firstName === 'string' && firstName.trim().length > 0
+        ? firstName.trim()
+        : null;
+    const normalizedLastName =
+      typeof lastName === 'string' && lastName.trim().length > 0
+        ? lastName.trim()
+        : null;
     const normalizedEmail = normalizeEmail(email);
     const emailPrefix =
       normalizedEmail && normalizedEmail.includes('@')
         ? normalizedEmail.split('@')[0].trim()
         : null;
-    const initialName = emailPrefix || normalizedName;
+    const initialFirstName = normalizedFirstName || emailPrefix;
 
     // —— 解析推荐人（通过邮箱查 User），不能是自己
     const referrerEmail = normalizeEmail(referrerEmailParam);
@@ -384,7 +392,8 @@ export class MembershipService {
         data: {
           userStableId,
           email: normalizedEmail,
-          name: initialName,
+          firstName: initialFirstName,
+          lastName: normalizedLastName,
           ...(referrerId ? { referredByUserId: referrerId } : {}),
           ...(validBirthday
             ? {
@@ -395,11 +404,14 @@ export class MembershipService {
         },
       });
     } else {
-      // ⭐ 已有用户：只在字段为空时补充 referrer / 生日；name/email 按需更新
+      // ⭐ 已有用户：只在字段为空时补充 referrer / 生日；姓名/email 按需更新
       const updateData: Prisma.UserUpdateInput = {};
 
-      if (!user.name && normalizedName) {
-        updateData.name = normalizedName;
+      if (!user.firstName && normalizedFirstName) {
+        updateData.firstName = normalizedFirstName;
+      }
+      if (!user.lastName && normalizedLastName) {
+        updateData.lastName = normalizedLastName;
       }
       if (normalizedEmail && normalizedEmail !== user.email) {
         const existingEmailUser = await this.prisma.user.findUnique({
@@ -452,7 +464,8 @@ export class MembershipService {
    */
   async getMemberSummary(params: {
     userStableId: string;
-    name?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
     email?: string | null;
     referrerEmail?: string;
     birthdayMonth?: number;
@@ -462,7 +475,8 @@ export class MembershipService {
   }) {
     const {
       userStableId,
-      name,
+      firstName,
+      lastName,
       email,
       referrerEmail: referrerEmailParam,
       birthdayMonth,
@@ -473,7 +487,8 @@ export class MembershipService {
 
     const user = await this.ensureUser({
       userStableId,
-      name,
+      firstName,
+      lastName,
       email,
       referrerEmail: referrerEmailParam,
       birthdayMonth,
@@ -514,7 +529,10 @@ export class MembershipService {
 
     return {
       userStableId: user.userStableId,
-      displayName: user.name,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      displayName:
+        [user.firstName, user.lastName].filter(Boolean).join(' ') || null,
       email: user.email,
       tier: account.tier,
       balance: Number(account.balanceMicro) / MICRO_PER_POINT,
@@ -726,7 +744,8 @@ export class MembershipService {
     const { userStableId, locale } = params;
     const user = await this.ensureUser({
       userStableId,
-      name: null,
+      firstName: null,
+      lastName: null,
       email: null,
     });
 
@@ -826,7 +845,8 @@ export class MembershipService {
 
     const user = await this.ensureUser({
       userStableId,
-      name: null,
+      firstName: null,
+      lastName: null,
       email: null,
     });
 
@@ -897,7 +917,8 @@ export class MembershipService {
     const { userStableId } = params;
     const user = await this.ensureUser({
       userStableId,
-      name: null,
+      firstName: null,
+      lastName: null,
       email: null,
     });
 
@@ -959,7 +980,8 @@ export class MembershipService {
 
     const user = await this.ensureUser({
       userStableId,
-      name: null,
+      firstName: null,
+      lastName: null,
       email: null,
     });
 
@@ -1029,7 +1051,8 @@ export class MembershipService {
     const { userStableId, addressStableId } = params;
     const user = await this.ensureUser({
       userStableId,
-      name: null,
+      firstName: null,
+      lastName: null,
       email: null,
     });
 
@@ -1100,7 +1123,8 @@ export class MembershipService {
 
     const user = await this.ensureUser({
       userStableId,
-      name: null,
+      firstName: null,
+      lastName: null,
       email: null,
     });
 
@@ -1170,7 +1194,8 @@ export class MembershipService {
     const { userStableId, addressStableId } = params;
     const user = await this.ensureUser({
       userStableId,
-      name: null,
+      firstName: null,
+      lastName: null,
       email: null,
     });
 
@@ -1501,7 +1526,13 @@ export class MembershipService {
 
     const user = await this.prisma.user.findUnique({
       where: { id: params.userId },
-      select: { id: true, email: true, emailVerifiedAt: true, name: true },
+      select: {
+        id: true,
+        email: true,
+        emailVerifiedAt: true,
+        firstName: true,
+        lastName: true,
+      },
     });
 
     if (!user) {
@@ -1524,7 +1555,8 @@ export class MembershipService {
     await this.emailVerification.requestVerification({
       userId: user.id,
       email,
-      name: user.name ?? null,
+      name:
+        [user.firstName, user.lastName].filter(Boolean).join(' ') || null,
     });
 
     return { ok: true };
@@ -1578,12 +1610,20 @@ export class MembershipService {
 
   async updateProfile(params: {
     userStableId: string;
-    name?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
     birthdayMonth?: number | null;
     birthdayDay?: number | null;
     language?: string | null;
   }) {
-    const { userStableId, name, birthdayMonth, birthdayDay, language } = params;
+    const {
+      userStableId,
+      firstName,
+      lastName,
+      birthdayMonth,
+      birthdayDay,
+      language,
+    } = params;
 
     const user = await this.prisma.user.findUnique({
       where: { userStableId },
@@ -1594,12 +1634,21 @@ export class MembershipService {
     }
 
     const updateData: Prisma.UserUpdateInput = {};
-    const trimmedName =
-      typeof name === 'string' && name.trim().length > 0 ? name.trim() : null;
+    const trimmedFirstName =
+      typeof firstName === 'string' && firstName.trim().length > 0
+        ? firstName.trim()
+        : null;
+    const trimmedLastName =
+      typeof lastName === 'string' && lastName.trim().length > 0
+        ? lastName.trim()
+        : null;
     const normalizedLanguage = this.normalizeLanguage(language);
 
-    if (trimmedName && trimmedName !== user.name) {
-      updateData.name = trimmedName;
+    if (trimmedFirstName && trimmedFirstName !== user.firstName) {
+      updateData.firstName = trimmedFirstName;
+    }
+    if (trimmedLastName && trimmedLastName !== user.lastName) {
+      updateData.lastName = trimmedLastName;
     }
 
     if (normalizedLanguage && normalizedLanguage !== user.language) {
@@ -1631,7 +1680,8 @@ export class MembershipService {
 
     if (Object.keys(updateData).length === 0) {
       return {
-        name: user.name,
+        firstName: user.firstName,
+        lastName: user.lastName,
         birthdayMonth: user.birthdayMonth,
         birthdayDay: user.birthdayDay,
         language: user.language === UserLanguage.ZH ? 'zh' : 'en',
@@ -1642,7 +1692,8 @@ export class MembershipService {
       where: { userStableId },
       data: updateData,
       select: {
-        name: true,
+        firstName: true,
+        lastName: true,
         birthdayMonth: true,
         birthdayDay: true,
         language: true,
@@ -1650,7 +1701,8 @@ export class MembershipService {
     });
 
     return {
-      name: updated.name,
+      firstName: updated.firstName,
+      lastName: updated.lastName,
       birthdayMonth: updated.birthdayMonth,
       birthdayDay: updated.birthdayDay,
       language: updated.language === UserLanguage.ZH ? 'zh' : 'en',

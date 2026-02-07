@@ -1,5 +1,5 @@
 //Users/apple/sanqinMVP/apps/api/src/clover/clover.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 
 /**
  * Clover Hosted Checkout - type-safe minimal service
@@ -434,10 +434,27 @@ export class CloverService {
       const pickStr = (v: unknown): string | undefined =>
         typeof v === 'string' && v.trim().length > 0 ? v.trim() : undefined;
 
-      const name =
+      const rawName =
         pickStr(metaCustomer?.name) ??
         pickStr(reqCustomer?.name) ??
         pickStr(rq?.name);
+
+      const derivedParts = rawName ? rawName.split(/\s+/) : [];
+      const derivedFirstName = derivedParts[0];
+      const derivedLastName =
+        derivedParts.length > 1 ? derivedParts.slice(1).join(' ') : undefined;
+
+      const firstName =
+        pickStr(metaCustomer?.firstName) ??
+        pickStr(reqCustomer?.firstName) ??
+        pickStr(rq?.firstName) ??
+        derivedFirstName;
+
+      const lastName =
+        pickStr(metaCustomer?.lastName) ??
+        pickStr(reqCustomer?.lastName) ??
+        pickStr(rq?.lastName) ??
+        derivedLastName;
 
       const email =
         pickStr(metaCustomer?.email) ??
@@ -452,14 +469,18 @@ export class CloverService {
         (isPlainObject(rq.metadata) ? pickStr(rq.metadata.phone) : undefined);
 
       const safeFirstName =
-        name ??
+        firstName ??
         (email ? email.split('@')[0] : undefined) ??
         (phone
           ? `Customer ${phone.replace(/\D/g, '').slice(-4)}`
           : undefined) ??
         'Customer';
 
-      const safeLastName = 'Customer';
+      const safeLastName = lastName ?? 'Customer';
+
+      if (!email) {
+        throw new BadRequestException('customer email is required');
+      }
 
       // ✅ 生产排查（不泄露内容）：只打“是否存在”
       this.logger.log(
@@ -471,7 +492,7 @@ export class CloverService {
           firstName: safeFirstName,
           lastName: safeLastName,
           // email 是 Clover 固定必填；如果这里是 undefined，你一定会遇到各种奇怪的支付错误
-          ...(email ? { email } : {}),
+          email,
           ...(phone ? { phoneNumber: phone } : {}),
         },
         shoppingCart: {
