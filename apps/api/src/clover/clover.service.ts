@@ -434,7 +434,10 @@ export class CloverService {
       };
 
       // ✅ 生产排查：记录本次创建 checkout 的关键参数（避免只看到 201 不知道 Clover 实际回了啥）
-      const totalCents = lineItems.reduce((sum, it) => sum + it.price * it.unitQty, 0);
+      const totalCents = lineItems.reduce(
+        (sum, it) => sum + it.price * it.unitQty,
+        0,
+      );
       this.logger.log(
         `[HCO] create checkout merchant=${this.merchantId} orderId=${orderId} locale=${locale} totalCents=${totalCents} items=${lineItems.length}`,
       );
