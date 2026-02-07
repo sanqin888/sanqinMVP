@@ -212,7 +212,7 @@ export class AdminStaffController {
       status: updated.status,
       createdAt: updated.createdAt,
       lastLoginAt: updated.sessions[0]?.createdAt ?? null,
-      name: updated.name ?? null,
+      name: [updated.firstName, updated.lastName].filter(Boolean).join(' ') || null,
     };
   }
 
