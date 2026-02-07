@@ -2,10 +2,17 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams, useParams } from "next/navigation";
-import { apiFetch } from "@/lib/api/client";
+import { ApiError, apiFetch } from "@/lib/api/client";
 import { usePersistentCart } from "@/lib/cart";
+import {
+  build3dsBrowserInfo,
+  DEFAULT_CLOVER_SDK_URL,
+  isValidCanadianPostalCode,
+  loadScript,
+  normalizeCanadianPostalCode,
+} from "@/lib/clover";
 import {
   calculateDistanceKm,
   geocodeAddress,
@@ -21,7 +28,7 @@ import {
   TAX_RATE,
   formatWithOrder,
   formatWithTotal,
-  type HostedCheckoutResponse,
+  type CardTokenPaymentResponse,
   type DeliveryTypeOption,
   type SelectedOptionSnapshot,
 } from "@/lib/order/shared";
@@ -73,6 +80,24 @@ type MemberAddressPayload =
       details?: MemberAddress[];
       data?: MemberAddress[];
     };
+
+declare global {
+  interface Window {
+    Clover?: new (key?: string) => {
+      elements: () => {
+        create: (type: string) => {
+          mount: (selector: string) => void;
+          on: (event: string, handler: (payload: any) => void) => void;
+          destroy?: () => void;
+        };
+      };
+      createToken: (payload?: Record<string, unknown>) => Promise<{
+        token?: string;
+        errors?: Array<{ message?: string }>;
+      }>;
+    };
+  }
+}
 
 const PHONE_OTP_REQUEST_URL = "/api/v1/auth/phone/send-code";
 const PHONE_OTP_VERIFY_URL = "/api/v1/auth/phone/verify-code";
@@ -300,6 +325,30 @@ const DELIVERY_OPTION_DEFINITIONS: Record<
 // 目前只开放 PRIORITY（如果将来要开放 STANDARD，改成 ["STANDARD", "PRIORITY"]）
 const DELIVERY_TYPES: DeliveryTypeOption[] = ["PRIORITY"];
 
+const buildPaymentErrorMessage = (params: {
+  code: string;
+  message: string;
+  locale: Locale;
+}) => {
+  const normalized = params.code.toLowerCase();
+  if (normalized.includes("card_declined")) {
+    return params.locale === "zh"
+      ? "银行卡被拒付，请尝试更换银行卡或其他支付方式。"
+      : "Card declined. Please try a different card or payment method.";
+  }
+  if (normalized.includes("challenge_required")) {
+    return params.locale === "zh"
+      ? "需要完成 3D Secure 验证，请稍后重试。"
+      : "3D Secure verification is required. Please try again.";
+  }
+  if (normalized.includes("insufficient_funds")) {
+    return params.locale === "zh"
+      ? "余额不足，请更换银行卡或支付方式。"
+      : "Insufficient funds. Please try another card or payment method.";
+  }
+  return params.message;
+};
+
 export default function CheckoutPage() {
   const params = useParams<{ locale?: string }>();
   const locale = (params?.locale === "zh" ? "zh" : "en") as Locale;
@@ -376,6 +425,96 @@ export default function CheckoutPage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!checkoutIntentIdRef.current) {
+      checkoutIntentIdRef.current =
+        window.crypto?.randomUUID?.() ??
+        `chk_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let cancelled = false;
+
+    const publicKey = process.env.NEXT_PUBLIC_CLOVER_PUBLIC_KEY?.trim();
+    const sdkUrl =
+      process.env.NEXT_PUBLIC_CLOVER_SDK_URL?.trim() ??
+      DEFAULT_CLOVER_SDK_URL;
+
+    if (!publicKey) {
+      setErrorMessage(
+        locale === "zh"
+          ? "支付初始化失败：缺少 Clover 公钥配置。"
+          : "Payment initialization failed: missing Clover public key.",
+      );
+      return;
+    }
+
+    const setupClover = async () => {
+      try {
+        await loadScript(sdkUrl);
+        if (cancelled) return;
+
+        if (!window.Clover) {
+          throw new Error("Clover SDK not available");
+        }
+
+        const clover = new window.Clover(publicKey);
+        const elements = clover.elements();
+
+        const cardNumber = elements.create("CARD_NUMBER");
+        const cardDate = elements.create("CARD_DATE");
+        const cardCvv = elements.create("CARD_CVV");
+
+        cardNumber.mount("#clover-card-number");
+        cardDate.mount("#clover-card-date");
+        cardCvv.mount("#clover-card-cvv");
+
+        cloverRef.current = clover;
+        cardNumberRef.current = cardNumber;
+        cardDateRef.current = cardDate;
+        cardCvvRef.current = cardCvv;
+
+        const listenComplete = (
+          element: { on: (event: string, handler: (payload: any) => void) => void },
+          setter: (next: boolean) => void,
+        ) => {
+          element.on("change", (event: any) => {
+            const isComplete = Boolean(event?.complete && !event?.error);
+            setter(isComplete);
+            if (event?.error?.message) {
+              setCardFieldError(event.error.message);
+            } else {
+              setCardFieldError(null);
+            }
+          });
+        };
+
+        listenComplete(cardNumber, setCardNumberComplete);
+        listenComplete(cardDate, setCardDateComplete);
+        listenComplete(cardCvv, setCardCvvComplete);
+
+        setCloverReady(true);
+      } catch (error) {
+        if (cancelled) return;
+        const message =
+          error instanceof Error ? error.message : "Failed to init Clover";
+        setErrorMessage(message);
+      }
+    };
+
+    setupClover();
+
+    return () => {
+      cancelled = true;
+      cardNumberRef.current?.destroy?.();
+      cardDateRef.current?.destroy?.();
+      cardCvvRef.current?.destroy?.();
+    };
+  }, [locale]);
 
   const entitlementItems = useMemo(
     () =>
@@ -612,6 +751,20 @@ export default function CheckoutPage() {
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [cardFieldError, setCardFieldError] = useState<string | null>(null);
+  const [cloverReady, setCloverReady] = useState(false);
+  const [nameOnCard, setNameOnCard] = useState("");
+  const [postalCode, setPostalCode] = useState("");
+  const [cardNumberComplete, setCardNumberComplete] = useState(false);
+  const [cardDateComplete, setCardDateComplete] = useState(false);
+  const [cardCvvComplete, setCardCvvComplete] = useState(false);
+  const cloverRef = useRef<null | { createToken: (payload?: Record<string, unknown>) => Promise<{ token?: string; errors?: Array<{ message?: string }> }> }>(
+    null,
+  );
+  const cardNumberRef = useRef<null | { destroy?: () => void }>(null);
+  const cardDateRef = useRef<null | { destroy?: () => void }>(null);
+  const cardCvvRef = useRef<null | { destroy?: () => void }>(null);
+  const checkoutIntentIdRef = useRef<string | null>(null);
   const [addressValidation, setAddressValidation] = useState<{
     distanceKm: number | null;
     isChecking: boolean;
@@ -1106,6 +1259,23 @@ export default function CheckoutPage() {
     (fulfillment === "pickup" || deliveryAddressReady) &&
     isStoreOpen &&
     !entitlementBlockingMessage;
+
+  const normalizedCardholderName = nameOnCard.trim();
+  const normalizedPostalCode = normalizeCanadianPostalCode(postalCode);
+  const isPaymentPostalValid =
+    normalizedPostalCode.length > 0 &&
+    isValidCanadianPostalCode(normalizedPostalCode);
+  const requiresPayment = totalCents > 0;
+  const canPayWithCard =
+    !requiresPayment ||
+    (cloverReady &&
+      normalizedCardholderName.length > 0 &&
+      isPaymentPostalValid &&
+      cardNumberComplete &&
+      cardDateComplete &&
+      cardCvvComplete);
+  const showPaymentPostalError =
+    postalCode.trim().length > 0 && !isPaymentPostalValid;
 
   const scheduleLabel =
     strings.scheduleOptions.find((option) => option.id === schedule)?.label ??
@@ -1844,6 +2014,14 @@ export default function CheckoutPage() {
 
   const handlePlaceOrder = async () => {
     if (!canPlaceOrder || isSubmitting) return;
+    if (requiresPayment && !canPayWithCard) {
+      setErrorMessage(
+        locale === "zh"
+          ? "请完善银行卡信息后再支付。"
+          : "Please complete the card details before paying.",
+      );
+      return;
+    }
 
     setErrorMessage(null);
     setConfirmation(null);
@@ -1907,89 +2085,80 @@ export default function CheckoutPage() {
       : null;
 
     const formattedCustomerPhone = formatCanadianPhoneForApi(customer.phone);
-    const payload = {
+    const metadata = {
       locale,
-      amountCents: totalCentsForOrder,
-      currency: HOSTED_CHECKOUT_CURRENCY,
-      returnUrlBase:
-        typeof window !== "undefined"
-          ? `${window.location.origin}/${locale}/thank-you`
-          : undefined,
-      metadata: {
-        locale,
-        fulfillment,
-        schedule,
-        customer: {
-          ...customer,
-          phone: formattedCustomerPhone,
-          address: deliveryAddressText,
-        },
-        deliveryDestination: isDeliveryFulfillment
-          ? {
-              name: formatCustomerFullName(customer),
-              phone: formattedCustomerPhone,
-              addressLine1: customer.addressLine1,
-              addressLine2: customer.addressLine2 || undefined,
-              city: customer.city,
-              province: customer.province,
-              postalCode: customer.postalCode,
-              country: DELIVERY_COUNTRY,
-              instructions: customer.notes || undefined,
-              latitude: selectedCoordinates?.latitude,
-              longitude: selectedCoordinates?.longitude,
-              placeId: selectedPlaceId ?? undefined,
-            }
-          : undefined,
-        utensils:
-          utensilsPreference === "yes"
-            ? {
-                needed: true,
-                type: utensilsType,
-                quantity:
-                  utensilsQuantity === "other"
-                    ? Number.parseInt(utensilsCustomQuantity, 10) || null
-                    : Number(utensilsQuantity),
-              }
-            : { needed: false, quantity: 0 },
-
-        // 小计相关
-        subtotalCents,
-        subtotalAfterDiscountCents: discountedSubtotalForOrder,
-        taxCents: taxCentsForOrder,
-        serviceFeeCents,
-        deliveryFeeCents: deliveryFeeCentsForOrder,
-        taxRate: TAX_RATE,
-
-        // 积分相关
-        loyaltyRedeemCents: loyaltyRedeemCentsForOrder,
-        loyaltyAvailableDiscountCents: loyaltyInfo?.availableDiscountCents ?? 0,
-        loyaltyPointsBalance: loyaltyInfo?.points ?? 0,
-        loyaltyUserStableId: loyaltyInfo?.userStableId,
-
-        coupon: appliedCoupon
-          ? {
-              couponStableId: appliedCoupon.couponStableId,
-              code: appliedCoupon.code,
-              title: appliedCoupon.title,
-              discountCents: couponDiscountCentsForOrder,
-              minSpendCents: appliedCoupon.minSpendCents,
-            }
-          : undefined,
-        selectedUserCouponId: selectedUserCouponId ?? undefined,
-
-        ...(deliveryMetadata ?? {}),
-
-        items: cartItemsWithPricing.map((cartItem) => ({
-          productStableId: cartItem.productStableId,
-          nameEn: cartItem.item.nameEn ?? cartItem.item.name,
-          nameZh: cartItem.item.nameZh ?? cartItem.item.name,
-          displayName: cartItem.item.name,
-          quantity: cartItem.quantity,
-          notes: cartItem.notes,
-          options: stripOptionSnapshots(cartItem.options),
-          priceCents: cartItem.unitPriceCents,
-        })),
+      fulfillment,
+      schedule,
+      customer: {
+        ...customer,
+        phone: formattedCustomerPhone,
+        address: deliveryAddressText,
       },
+      deliveryDestination: isDeliveryFulfillment
+        ? {
+            name: formatCustomerFullName(customer),
+            phone: formattedCustomerPhone,
+            addressLine1: customer.addressLine1,
+            addressLine2: customer.addressLine2 || undefined,
+            city: customer.city,
+            province: customer.province,
+            postalCode: customer.postalCode,
+            country: DELIVERY_COUNTRY,
+            instructions: customer.notes || undefined,
+            latitude: selectedCoordinates?.latitude,
+            longitude: selectedCoordinates?.longitude,
+            placeId: selectedPlaceId ?? undefined,
+          }
+        : undefined,
+      utensils:
+        utensilsPreference === "yes"
+          ? {
+              needed: true,
+              type: utensilsType,
+              quantity:
+                utensilsQuantity === "other"
+                  ? Number.parseInt(utensilsCustomQuantity, 10) || null
+                  : Number(utensilsQuantity),
+            }
+          : { needed: false, quantity: 0 },
+
+      // 小计相关
+      subtotalCents,
+      subtotalAfterDiscountCents: discountedSubtotalForOrder,
+      taxCents: taxCentsForOrder,
+      serviceFeeCents,
+      deliveryFeeCents: deliveryFeeCentsForOrder,
+      taxRate: TAX_RATE,
+
+      // 积分相关
+      loyaltyRedeemCents: loyaltyRedeemCentsForOrder,
+      loyaltyAvailableDiscountCents: loyaltyInfo?.availableDiscountCents ?? 0,
+      loyaltyPointsBalance: loyaltyInfo?.points ?? 0,
+      loyaltyUserStableId: loyaltyInfo?.userStableId,
+
+      coupon: appliedCoupon
+        ? {
+            couponStableId: appliedCoupon.couponStableId,
+            code: appliedCoupon.code,
+            title: appliedCoupon.title,
+            discountCents: couponDiscountCentsForOrder,
+            minSpendCents: appliedCoupon.minSpendCents,
+          }
+        : undefined,
+      selectedUserCouponId: selectedUserCouponId ?? undefined,
+
+      ...(deliveryMetadata ?? {}),
+
+      items: cartItemsWithPricing.map((cartItem) => ({
+        productStableId: cartItem.productStableId,
+        nameEn: cartItem.item.nameEn ?? cartItem.item.name,
+        nameZh: cartItem.item.nameZh ?? cartItem.item.name,
+        displayName: cartItem.item.name,
+        quantity: cartItem.quantity,
+        notes: cartItem.notes,
+        options: stripOptionSnapshots(cartItem.options),
+        priceCents: cartItem.unitPriceCents,
+      })),
     };
     const loyaltyOrderPayload = {
       fulfillmentType: fulfillment,
@@ -2032,34 +2201,113 @@ export default function CheckoutPage() {
         return;
       }
 
-      // 2️⃣ 总价 > 0：正常走 Clover Hosted Checkout
-      const { checkoutUrl, orderNumber } =
-        await apiFetch<HostedCheckoutResponse>(
-          "/clover/pay/online/hosted-checkout",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          },
+      // 2️⃣ 总价 > 0：使用 Clover iframe token 支付
+      const clover = cloverRef.current;
+      if (!clover) {
+        throw new Error(
+          locale === "zh"
+            ? "支付初始化失败，请刷新页面重试。"
+            : "Payment initialization failed. Please refresh and try again.",
         );
-
-      if (!checkoutUrl) {
-        throw new Error(strings.errors.missingCheckoutUrl);
       }
 
+      if (!normalizedCardholderName.length) {
+        throw new Error(
+          locale === "zh" ? "请填写持卡人姓名。" : "Cardholder name is required.",
+        );
+      }
+
+      if (!isPaymentPostalValid) {
+        throw new Error(
+          locale === "zh"
+            ? "请填写有效的加拿大邮编。"
+            : "Please enter a valid Canadian postal code.",
+        );
+      }
+
+      const tokenResult = await clover.createToken({
+        cardholderName: normalizedCardholderName,
+        postalCode: normalizedPostalCode,
+      });
+
+      if (!tokenResult?.token) {
+        const tokenError =
+          tokenResult?.errors?.[0]?.message ??
+          (locale === "zh"
+            ? "卡信息验证失败，请检查后重试。"
+            : "Card verification failed. Please check and try again.");
+        throw new Error(tokenError);
+      }
+
+      const browserInfo = build3dsBrowserInfo();
+      const checkoutIntentId =
+        checkoutIntentIdRef.current ??
+        (typeof window !== "undefined"
+          ? window.crypto?.randomUUID?.() ??
+            `chk_${Date.now()}_${Math.random().toString(16).slice(2)}`
+          : undefined);
+      if (checkoutIntentId) {
+        checkoutIntentIdRef.current = checkoutIntentId;
+      }
+
+      const paymentResponse = await apiFetch<CardTokenPaymentResponse>(
+        "/clover/pay/online/card-token",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            amountCents: totalCentsForOrder,
+            currency: HOSTED_CHECKOUT_CURRENCY,
+            checkoutIntentId,
+            source: tokenResult.token,
+            sourceType: "CARD",
+            cardholderName: normalizedCardholderName,
+            postalCode: normalizedPostalCode,
+            customer: {
+              firstName: customer.firstName,
+              lastName: customer.lastName,
+              email: customer.email,
+              phoneNumber: formattedCustomerPhone,
+            },
+            threeds: {
+              source: "CLOVER",
+              browserInfo,
+            },
+            metadata,
+          }),
+        },
+      );
+
       if (typeof window !== "undefined") {
-        window.location.href = checkoutUrl;
+        router.push(`/${locale}/thank-you/${paymentResponse.orderStableId}`);
       } else {
         setConfirmation({
-          orderNumber,
+          orderNumber: paymentResponse.orderNumber,
           totalCents: totalCentsForOrder,
           fulfillment,
         });
       }
     } catch (error) {
-      const message =
+      const fallback =
         error instanceof Error ? error.message : strings.errors.checkoutFailed;
-      setErrorMessage(message);
+      if (error instanceof ApiError && error.payload) {
+        const payload =
+          typeof error.payload === "object" && error.payload !== null
+            ? (error.payload as Record<string, unknown>)
+            : {};
+        const code =
+          typeof payload.code === "string" ? payload.code.toLowerCase() : "";
+        const message =
+          typeof payload.message === "string" ? payload.message : fallback;
+        const userMessage = buildPaymentErrorMessage({
+          code,
+          message,
+          locale,
+        });
+        setErrorMessage(userMessage);
+      } else {
+        setErrorMessage(fallback);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -2068,6 +2316,8 @@ export default function CheckoutPage() {
   const payButtonLabel = isSubmitting
     ? strings.processing
     : formatWithTotal(strings.payCta, formatMoney(totalCents));
+  const paymentError =
+    errorMessage ?? (requiresPayment ? cardFieldError : null);
 
   let addressDistanceMessage: DistanceMessage | null = null;
   if (isDeliveryFulfillment) {
@@ -2974,12 +3224,94 @@ export default function CheckoutPage() {
 
               <div className="space-y-2">
                 <p className="text-xs text-slate-500">{strings.paymentHint}</p>
-                {errorMessage ? (
+                {paymentError ? (
                   <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-xs text-red-600">
-                    {errorMessage}
+                    {paymentError}
                   </div>
                 ) : null}
               </div>
+
+              {requiresPayment ? (
+                <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-semibold text-slate-600">
+                    {locale === "zh" ? "银行卡信息" : "Card details"}
+                  </p>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-600">
+                      {locale === "zh" ? "持卡人姓名" : "Name on card"} *
+                    </label>
+                    <input
+                      value={nameOnCard}
+                      onChange={(event) => {
+                        setNameOnCard(event.target.value);
+                        setErrorMessage(null);
+                      }}
+                      autoComplete="cc-name"
+                      className="w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                      placeholder={
+                        locale === "zh" ? "请输入姓名" : "Full name"
+                      }
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-600">
+                      {locale === "zh" ? "卡号" : "Card number"} *
+                    </label>
+                    <div
+                      id="clover-card-number"
+                      className="rounded-2xl border border-slate-200 p-2"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-600">
+                        {locale === "zh" ? "有效期" : "MM/YY"} *
+                      </label>
+                      <div
+                        id="clover-card-date"
+                        className="rounded-2xl border border-slate-200 p-2"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-600">
+                        {locale === "zh" ? "安全码" : "CVV"} *
+                      </label>
+                      <div
+                        id="clover-card-cvv"
+                        className="rounded-2xl border border-slate-200 p-2"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-600">
+                      {locale === "zh" ? "邮编" : "Postal code"} *
+                    </label>
+                    <input
+                      value={postalCode}
+                      onChange={(event) => {
+                        setPostalCode(event.target.value);
+                        setErrorMessage(null);
+                      }}
+                      onBlur={() =>
+                        setPostalCode(normalizeCanadianPostalCode(postalCode))
+                      }
+                      autoComplete="postal-code"
+                      className="w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                      placeholder={locale === "zh" ? "A1A 1A1" : "A1A 1A1"}
+                    />
+                    {showPaymentPostalError ? (
+                      <p className="text-[11px] text-red-600">
+                        {locale === "zh"
+                          ? "请输入有效的加拿大邮编（如 A1A 1A1）。"
+                          : "Enter a valid Canadian postal code (e.g. A1A 1A1)."}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
 
               {(availableCoupons.length > 0 ||
                 appliedCoupon ||
@@ -3390,7 +3722,9 @@ export default function CheckoutPage() {
               <button
                 type="button"
                 onClick={handlePlaceOrder}
-                disabled={!canPlaceOrder || isSubmitting}
+                disabled={
+                  !canPlaceOrder || isSubmitting || (requiresPayment && !canPayWithCard)
+                }
                 className="w-full rounded-full bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition enabled:hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-emerald-200"
               >
                 {payButtonLabel}
