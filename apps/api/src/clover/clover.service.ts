@@ -422,8 +422,41 @@ export class CloverService {
       }, []);
 
       // ===== request body =====
+      // 关键：Clover 在创建 payment 时需要一个非空的“姓名”（nickname/任意名字都行）
+      const metaCustomer =
+        isPlainObject(rq.metadata) && isPlainObject(rq.metadata.customer)
+          ? (rq.metadata.customer as Record<string, unknown>)
+          : undefined;
+
+      const reqCustomer = isPlainObject(req.customer)
+        ? (req.customer as Record<string, unknown>)
+        : undefined;
+
+      const pickStr = (v: unknown): string | undefined =>
+        typeof v === 'string' && v.trim().length > 0 ? v.trim() : undefined;
+
+      const name =
+        pickStr(metaCustomer?.name) ?? pickStr(reqCustomer?.name);
+
+      const email =
+        pickStr(metaCustomer?.email) ?? pickStr(reqCustomer?.email);
+
+      const phone =
+        pickStr(metaCustomer?.phone) ?? pickStr(reqCustomer?.phone);
+
+      // ✅ 姓名兜底：避免 production 报 “Card holder name is not provided”
+      const safeName =
+        name ??
+        (email ? email.split('@')[0] : undefined) ??
+        (phone ? `Customer ${phone.replace(/\D/g, '').slice(-4)}` : undefined) ??
+        'Customer';
+
       const body = {
-        customer: isPlainObject(req.customer) ? req.customer : {},
+        customer: {
+          name: safeName,
+          ...(email ? { email } : {}),
+          ...(phone ? { phone } : {}),
+        },
         shoppingCart: {
           lineItems,
         },
@@ -431,16 +464,9 @@ export class CloverService {
           success: successUrl,
           failure: failureUrl,
         },
+        // 你自己的 metadata 仍然保留（用于你回调/对账/展示）
+        ...(isPlainObject(rq.metadata) ? { metadata: rq.metadata } : {}),
       };
-
-      // ✅ 生产排查：记录本次创建 checkout 的关键参数（避免只看到 201 不知道 Clover 实际回了啥）
-      const totalCents = lineItems.reduce(
-        (sum, it) => sum + it.price * it.unitQty,
-        0,
-      );
-      this.logger.log(
-        `[HCO] create checkout merchant=${this.merchantId} orderId=${orderId} locale=${locale} totalCents=${totalCents} items=${lineItems.length}`,
-      );
 
       const resp = await fetch(url, {
         method: 'POST',
@@ -454,12 +480,6 @@ export class CloverService {
       });
 
       const rawText = await resp.text();
-
-      // ✅ 生产排查：把 Clover 返回原始内容（截断）打出来，避免 DevTools 丢 response
-      const preview = rawText ? rawText.slice(0, 1200) : '';
-      this.logger.log(
-        `[HCO] clover response status=${resp.status} ok=${resp.ok} preview=${preview}`,
-      );
 
       // parse body (may be non-JSON)
       let parsedUnknown: unknown = undefined;
