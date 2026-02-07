@@ -110,6 +110,19 @@ export class AuthService {
     return createHmac('sha256', secret).update(code).digest('hex');
   }
 
+  private splitDisplayName(
+    raw: string | null | undefined,
+  ): { firstName?: string; lastName?: string } {
+    const trimmed = raw?.trim();
+    if (!trimmed) {
+      return { firstName: undefined, lastName: undefined };
+    }
+    const parts = trimmed.split(/\s+/);
+    const firstName = parts.shift();
+    const lastName = parts.length > 0 ? parts.join(' ') : undefined;
+    return { firstName, lastName };
+  }
+
   private isTwoFactorEnabled(params: {
     twoFactorEnabledAt: Date | null;
     twoFactorMethod: TwoFactorMethod;
@@ -343,6 +356,7 @@ export class AuthService {
     }
 
     const now = new Date();
+    const { firstName, lastName } = this.splitDisplayName(params.name);
 
     // 2) 选定要登录/绑定的 user（优先 googleSub，其次 email）
     let isNewUser = false;
@@ -363,7 +377,8 @@ export class AuthService {
             status: 'ACTIVE',
             email,
             emailVerifiedAt: emailVerified ? now : null,
-            name: params.name ?? undefined,
+            firstName: firstName ?? undefined,
+            lastName: lastName ?? undefined,
             googleSub,
             language,
           },
@@ -372,11 +387,12 @@ export class AuthService {
         return base;
       }
 
-      // 更新绑定信息（不轻易覆盖已有 email/name）
+      // 更新绑定信息（不轻易覆盖已有 email/firstName/lastName）
       const nextEmail = base.email ? undefined : email;
       const nextEmailVerified =
         base.emailVerifiedAt || !emailVerified ? undefined : now;
-      const nextName = base.name ? undefined : (params.name ?? undefined);
+      const nextFirstName = base.firstName ? undefined : firstName;
+      const nextLastName = base.lastName ? undefined : lastName;
 
       const updated = await tx.user.update({
         where: { id: base.id },
@@ -384,7 +400,8 @@ export class AuthService {
           googleSub: base.googleSub ?? googleSub,
           email: nextEmail,
           emailVerifiedAt: nextEmailVerified,
-          name: nextName,
+          firstName: nextFirstName,
+          lastName: nextLastName,
         },
       });
 
@@ -1621,6 +1638,7 @@ export class AuthService {
 
     const passwordHash = await this.hashPassword(params.password);
     const now = new Date();
+    const { firstName, lastName } = this.splitDisplayName(params.name);
 
     const user = await this.prisma.user.upsert({
       where: { email: invite.email },
@@ -1630,7 +1648,8 @@ export class AuthService {
         passwordHash,
         passwordChangedAt: now,
         emailVerifiedAt: now,
-        name: params.name ?? undefined,
+        firstName: firstName ?? undefined,
+        lastName: lastName ?? undefined,
       },
       create: {
         email: invite.email,
@@ -1639,7 +1658,8 @@ export class AuthService {
         passwordHash,
         passwordChangedAt: now,
         emailVerifiedAt: now,
-        name: params.name ?? undefined,
+        firstName: firstName ?? undefined,
+        lastName: lastName ?? undefined,
       },
     });
 
