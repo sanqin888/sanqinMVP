@@ -55,6 +55,13 @@ export type HostedCheckoutResponse = {
   orderNumber: string;
 };
 
+export type CardTokenPaymentResponse = {
+  orderStableId: string;
+  orderNumber: string;
+  paymentId: string;
+  status: string;
+};
+
 /** ===== 工具函数 ===== */
 export function formatWithTotal(tpl: string, totalFormatted: string) {
   return tpl.replaceAll("{total}", totalFormatted);
