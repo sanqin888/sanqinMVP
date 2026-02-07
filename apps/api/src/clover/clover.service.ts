@@ -1,5 +1,5 @@
 //Users/apple/sanqinMVP/apps/api/src/clover/clover.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 
 /**
  * Clover Hosted Checkout - type-safe minimal service
@@ -434,10 +434,15 @@ export class CloverService {
       const pickStr = (v: unknown): string | undefined =>
         typeof v === 'string' && v.trim().length > 0 ? v.trim() : undefined;
 
-      const name =
-        pickStr(metaCustomer?.name) ??
-        pickStr(reqCustomer?.name) ??
-        pickStr(rq?.name);
+      const firstName =
+        pickStr(metaCustomer?.firstName) ??
+        pickStr(reqCustomer?.firstName) ??
+        pickStr(rq?.firstName);
+
+      const lastName =
+        pickStr(metaCustomer?.lastName) ??
+        pickStr(reqCustomer?.lastName) ??
+        pickStr(rq?.lastName);
 
       const email =
         pickStr(metaCustomer?.email) ??
@@ -451,27 +456,23 @@ export class CloverService {
         pickStr(rq?.phone) ??
         (isPlainObject(rq.metadata) ? pickStr(rq.metadata.phone) : undefined);
 
-      const safeFirstName =
-        name ??
-        (email ? email.split('@')[0] : undefined) ??
-        (phone
-          ? `Customer ${phone.replace(/\D/g, '').slice(-4)}`
-          : undefined) ??
-        'Customer';
-
-      const safeLastName = 'Customer';
+      if (!firstName || !lastName || !email) {
+        throw new BadRequestException(
+          'customer firstName, lastName, and email are required',
+        );
+      }
 
       // ✅ 生产排查（不泄露内容）：只打“是否存在”
       this.logger.log(
-        `[HCO] customer-present first=${!!safeFirstName} last=${!!safeLastName} email=${!!email} phone=${!!phone}`,
+        `[HCO] customer-present first=${!!firstName} last=${!!lastName} email=${!!email} phone=${!!phone}`,
       );
 
       const body = {
         customer: {
-          firstName: safeFirstName,
-          lastName: safeLastName,
+          firstName,
+          lastName,
           // email 是 Clover 固定必填；如果这里是 undefined，你一定会遇到各种奇怪的支付错误
-          ...(email ? { email } : {}),
+          email,
           ...(phone ? { phoneNumber: phone } : {}),
         },
         shoppingCart: {
