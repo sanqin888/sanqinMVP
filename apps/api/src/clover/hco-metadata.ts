@@ -16,9 +16,10 @@ export type HostedCheckoutItem = {
 };
 
 export type HostedCheckoutCustomer = {
-  name: string;
+  firstName: string;
+  lastName: string;
   phone: string;
-  email?: string;
+  email: string;
   addressLine1?: string;
   addressLine2?: string;
   city?: string;
@@ -101,6 +102,9 @@ const toOptionalCents = (value: unknown): number | undefined => {
   if (typeof num !== 'number' || num < 0) return undefined;
   return Math.round(num);
 };
+
+const formatCustomerName = (customer: HostedCheckoutCustomer) =>
+  [customer.firstName, customer.lastName].filter(Boolean).join(' ').trim();
 
 const parseFulfillment = (value: unknown): 'pickup' | 'delivery' => {
   const normalized = toString(value)?.toLowerCase();
@@ -211,16 +215,20 @@ const parseCustomer = (value: unknown): HostedCheckoutCustomer => {
   if (!isPlainObject(value)) {
     throw new Error('customer is required');
   }
-  const name = toString(value.name);
+  const firstName = toString(value.firstName);
+  const lastName = toString(value.lastName);
   const phone = toString(value.phone);
   const email = toString(value.email);
-  if (!name || !phone) {
-    throw new Error('customer name and phone are required');
+  if (!firstName || !lastName || !email || !phone) {
+    throw new Error(
+      'customer firstName, lastName, email, and phone are required',
+    );
   }
   return {
-    name,
+    firstName,
+    lastName,
     phone,
-    ...(email ? { email } : {}),
+    email,
     addressLine1: toString(value.addressLine1),
     addressLine2: toString(value.addressLine2),
     city: toString(value.city),
@@ -301,7 +309,7 @@ const buildDestination = (
   }
 
   return {
-    name: customer.name,
+    name: formatCustomerName(customer),
     phone: customer.phone,
     addressLine1: customer.addressLine1!,
     addressLine2: customer.addressLine2,
@@ -336,7 +344,7 @@ export function buildOrderDtoFromMetadata(
     ...(normalizedStableId ? { orderStableId: normalizedStableId } : {}),
 
     // ⭐ 订单级联系人（pickup / delivery 都有）
-    contactName: meta.customer.name,
+    contactName: formatCustomerName(meta.customer),
     contactPhone: meta.customer.phone,
 
     // ⭐ 关键：让订单有 userStableId，这样 paid 时才会结算积分

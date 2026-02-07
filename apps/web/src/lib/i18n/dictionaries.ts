@@ -11,7 +11,9 @@ type SummaryStrings = {
   total: string;
 };
 type ContactFields = {
-  name: string;
+  firstName: string;
+  lastName: string;
+  email: string;
   phone: string;
   notes: string;
   addressLine1: string;
@@ -20,7 +22,9 @@ type ContactFields = {
   province: string;
   postalCode: string;
   country: string;
-  namePlaceholder: string;
+  firstNamePlaceholder: string;
+  lastNamePlaceholder: string;
+  emailPlaceholder: string;
   phonePlaceholder: string;
   addressLine1Placeholder: string;
   addressLine2Placeholder: string;
@@ -178,7 +182,9 @@ export const UI_STRINGS: Record<
     },
     contactInfoLabel: "Contact information",
     contactFields: {
-      name: "Name",
+      firstName: "First name",
+      lastName: "Last name",
+      email: "Email",
       phone: "Phone",
       notes: "Notes",
       addressLine1: "Address line 1",
@@ -187,7 +193,9 @@ export const UI_STRINGS: Record<
       province: "Province",
       postalCode: "Postal code",
       country: "Country",
-      namePlaceholder: "Your name",
+      firstNamePlaceholder: "First name",
+      lastNamePlaceholder: "Last name",
+      emailPlaceholder: "name@example.com",
       phonePlaceholder: "Mobile number",
       addressLine1Placeholder: "Street number + street",
       addressLine2Placeholder: "Apt / Unit / Buzz Code (optional)",
@@ -306,7 +314,9 @@ export const UI_STRINGS: Record<
     },
     contactInfoLabel: "联系方式",
     contactFields: {
-      name: "姓名",
+      firstName: "名字",
+      lastName: "姓",
+      email: "邮箱",
       phone: "电话",
       notes: "备注",
       addressLine1: "地址行 1",
@@ -315,7 +325,9 @@ export const UI_STRINGS: Record<
       province: "省份",
       postalCode: "邮编",
       country: "国家",
-      namePlaceholder: "请输入姓名",
+      firstNamePlaceholder: "请输入名字",
+      lastNamePlaceholder: "请输入姓",
+      emailPlaceholder: "请输入邮箱",
       phonePlaceholder: "手机号",
       addressLine1Placeholder: "门牌号 + 街道",
       addressLine2Placeholder: "公寓号 / 门禁码（选填）",

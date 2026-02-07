@@ -36,7 +36,8 @@ export class MembershipController {
   @Get('summary')
   async summary(
     @Req() req: AuthedRequest,
-    @Query('name') name?: string,
+    @Query('firstName') firstName?: string,
+    @Query('lastName') lastName?: string,
     @Query('email') email?: string,
     @Query('referrerEmail') referrerEmail?: string,
     @Query('birthdayMonth') birthdayMonthRaw?: string,
@@ -63,7 +64,8 @@ export class MembershipController {
 
     return this.membership.getMemberSummary({
       userStableId,
-      name: name ?? null,
+      firstName: firstName ?? null,
+      lastName: lastName ?? null,
       email: email ?? null,
       referrerEmail,
       birthdayMonth,
@@ -247,13 +249,14 @@ export class MembershipController {
     return { success: true, ...result };
   }
 
-  // ✅ 更新昵称 / 生日
+  // ✅ 更新姓名 / 生日
   @Post('profile')
   async updateProfile(
     @Req() req: AuthedRequest,
     @Body()
     body: {
-      name?: string | null;
+      firstName?: string | null;
+      lastName?: string | null;
       birthdayMonth?: number | null;
       birthdayDay?: number | null;
       language?: string | null;
@@ -279,7 +282,8 @@ export class MembershipController {
 
     const user = await this.membership.updateProfile({
       userStableId,
-      name: body.name ?? null,
+      firstName: body.firstName ?? null,
+      lastName: body.lastName ?? null,
       birthdayMonth:
         typeof body.birthdayMonth === 'number' ? body.birthdayMonth : null,
       birthdayDay:

@@ -136,7 +136,7 @@ export class AdminStaffController {
       status: user.status,
       createdAt: user.createdAt,
       lastLoginAt: user.sessions[0]?.createdAt ?? null,
-      name: user.name ?? null,
+      name: [user.firstName, user.lastName].filter(Boolean).join(' ') || null,
     }));
 
     return { staff };
@@ -212,7 +212,8 @@ export class AdminStaffController {
       status: updated.status,
       createdAt: updated.createdAt,
       lastLoginAt: updated.sessions[0]?.createdAt ?? null,
-      name: updated.name ?? null,
+      name:
+        [updated.firstName, updated.lastName].filter(Boolean).join(' ') || null,
     };
   }
 
@@ -243,7 +244,7 @@ export class AdminStaffController {
 
     const inviter = await this.prisma.user.findUnique({
       where: { id: req.user.id },
-      select: { name: true },
+      select: { firstName: true, lastName: true },
     });
 
     const { invite, token } = await this.authService.createStaffInvite({
@@ -256,7 +257,9 @@ export class AdminStaffController {
       to: invite.email,
       token,
       role: invite.role,
-      inviterName: inviter?.name,
+      inviterName: inviter
+        ? [inviter.firstName, inviter.lastName].filter(Boolean).join(' ')
+        : undefined,
       locale: body.locale,
     });
 

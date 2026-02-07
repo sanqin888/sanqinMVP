@@ -115,7 +115,8 @@ export class AdminMembersController {
     @Param('userStableId') userStableId: string,
     @Body()
     body: {
-      name?: string | null;
+      firstName?: string | null;
+      lastName?: string | null;
       email?: string | null;
       phone?: string | null;
       birthdayMonth?: number | null;

@@ -80,7 +80,8 @@ type DeviceManagementResponse = {
 
 type MemberProfile = {
   userStableId: string;
-  name?: string;
+  firstName?: string;
+  lastName?: string;
   email?: string;
   phone?: string | null;
   phoneVerified?: boolean;
@@ -113,6 +114,8 @@ type MembershipSummaryOrderDto = {
 
 type MembershipSummaryResponse = {
   userStableId: string;
+  firstName?: string | null;
+  lastName?: string | null;
   displayName: string | null;
   email: string | null;
   phone?: string | null;
@@ -275,7 +278,8 @@ export default function MembershipHomePage() {
   const [marketingError, setMarketingError] = useState<string | null>(null);
 
   // 账户信息编辑
-  const [profileName, setProfileName] = useState('');
+  const [profileFirstName, setProfileFirstName] = useState('');
+  const [profileLastName, setProfileLastName] = useState('');
   const [birthdayMonthInput, setBirthdayMonthInput] = useState('');
   const [birthdayDayInput, setBirthdayDayInput] = useState('');
   const [languagePreference, setLanguagePreference] = useState<'zh' | 'en'>(
@@ -433,9 +437,18 @@ export default function MembershipHomePage() {
             ? raw.details
             : (raw as MembershipSummaryResponse);
 
+        const fallbackDisplayName =
+          data.displayName ?? session.user?.name ?? '';
+        const fallbackParts = fallbackDisplayName.trim()
+          ? fallbackDisplayName.trim().split(/\s+/)
+          : [];
+
         setMember({
           userStableId: data.userStableId,
-          name: data.displayName ?? session.user?.name ?? undefined,
+          firstName: data.firstName ?? fallbackParts[0] ?? undefined,
+          lastName:
+            data.lastName ??
+            (fallbackParts.length > 1 ? fallbackParts.slice(1).join(' ') : undefined),
           email: data.email ?? session.user?.email ?? undefined,
           phone: data.phone ?? undefined,
           phoneVerified: data.phoneVerified ?? false,
@@ -552,7 +565,8 @@ export default function MembershipHomePage() {
 
   useEffect(() => {
     if (!member) return;
-    setProfileName(member.name ?? '');
+    setProfileFirstName(member.firstName ?? '');
+    setProfileLastName(member.lastName ?? '');
     setBirthdayMonthInput(
       member.birthdayMonth != null ? String(member.birthdayMonth) : '',
     );
@@ -565,7 +579,7 @@ export default function MembershipHomePage() {
 
   useEffect(() => {
     setProfileSaved(false);
-  }, [profileName]);
+  }, [profileFirstName, profileLastName]);
 
   useEffect(() => {
     setLanguageSaved(false);
@@ -757,14 +771,19 @@ export default function MembershipHomePage() {
 
     const payload: {
       userStableId: string;
-      name?: string | null;
+      firstName?: string | null;
+      lastName?: string | null;
       birthdayMonth?: number | null;
       birthdayDay?: number | null;
     } = { userStableId: member.userStableId };
 
-    const trimmedName = profileName.trim();
-    if (trimmedName.length > 0) {
-      payload.name = trimmedName;
+    const trimmedFirstName = profileFirstName.trim();
+    const trimmedLastName = profileLastName.trim();
+    if (trimmedFirstName.length > 0) {
+      payload.firstName = trimmedFirstName;
+    }
+    if (trimmedLastName.length > 0) {
+      payload.lastName = trimmedLastName;
     }
 
     try {
@@ -782,7 +801,8 @@ export default function MembershipHomePage() {
         success?: boolean;
         user?: {
           id?: string;
-          name?: string | null;
+          firstName?: string | null;
+          lastName?: string | null;
           birthdayMonth?: number | null;
           birthdayDay?: number | null;
         };
@@ -795,7 +815,8 @@ export default function MembershipHomePage() {
           prev
             ? {
                 ...prev,
-                name: updated.name ?? prev.name,
+                firstName: updated.firstName ?? prev.firstName,
+                lastName: updated.lastName ?? prev.lastName,
                 birthdayMonth: prev.birthdayMonth ?? null,
                 birthdayDay: prev.birthdayDay ?? null,
               }
@@ -815,7 +836,8 @@ export default function MembershipHomePage() {
     }
   }, [
     member,
-    profileName,
+    profileFirstName,
+    profileLastName,
     isZh,
   ]);
 
@@ -1743,11 +1765,13 @@ const tierProgress = (() => {
             <ProfileSection
               isZh={isZh}
               user={member}
-              profileName={profileName}
+              profileFirstName={profileFirstName}
+              profileLastName={profileLastName}
               birthdayMonthInput={birthdayMonthInput}
               birthdayDayInput={birthdayDayInput}
               languagePreference={languagePreference}
-              onProfileNameChange={setProfileName}
+              onProfileFirstNameChange={setProfileFirstName}
+              onProfileLastNameChange={setProfileLastName}
               onBirthdayMonthChange={setBirthdayMonthInput}
               onBirthdayDayChange={setBirthdayDayInput}
               onLanguagePreferenceChange={setLanguagePreference}
@@ -1869,8 +1893,10 @@ function OverviewSection({
         </h2>
         <div className="mt-3 space-y-1 text-xs text-slate-600">
           <p>
-            {isZh ? '昵称：' : 'Name: '}
-            {user.name || (isZh ? '未设置' : 'Not set')}
+            {isZh ? '姓名：' : 'Name: '}
+            {[user.firstName, user.lastName]
+              .filter(Boolean)
+              .join(' ') || (isZh ? '未设置' : 'Not set')}
           </p>
           <p>
             {isZh ? '邮箱：' : 'Email: '}
@@ -2848,11 +2874,13 @@ function DeviceManagementSection({
 function ProfileSection({
   isZh,
   user,
-  profileName,
+  profileFirstName,
+  profileLastName,
   birthdayMonthInput,
   birthdayDayInput,
   languagePreference,
-  onProfileNameChange,
+  onProfileFirstNameChange,
+  onProfileLastNameChange,
   onBirthdayMonthChange,
   onBirthdayDayChange,
   onLanguagePreferenceChange,
@@ -2902,11 +2930,13 @@ function ProfileSection({
 }: {
   isZh: boolean;
   user: MemberProfile;
-  profileName: string;
+  profileFirstName: string;
+  profileLastName: string;
   birthdayMonthInput: string;
   birthdayDayInput: string;
   languagePreference: 'zh' | 'en';
-  onProfileNameChange: (value: string) => void;
+  onProfileFirstNameChange: (value: string) => void;
+  onProfileLastNameChange: (value: string) => void;
   onBirthdayMonthChange: (value: string) => void;
   onBirthdayDayChange: (value: string) => void;
   onLanguagePreferenceChange: (value: 'zh' | 'en') => void;
@@ -2973,14 +3003,25 @@ function ProfileSection({
 
       <div className="mt-3 space-y-3 text-xs text-slate-700">
         <div>
-          <p className="text-slate-500">{isZh ? '昵称' : 'Name'}</p>
-          <div className="mt-1 flex flex-wrap items-center gap-2">
+          <p className="text-slate-500">{isZh ? '姓名' : 'Name'}</p>
+          <div className="mt-1 grid gap-2 sm:grid-cols-[minmax(160px,1fr)_minmax(160px,1fr)_auto] sm:items-center">
             <input
               type="text"
-              value={profileName}
-              onChange={(event) => onProfileNameChange(event.target.value)}
-              className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none sm:w-auto sm:min-w-[220px]"
-              placeholder={isZh ? '请输入昵称' : 'Enter your name'}
+              value={profileFirstName}
+              onChange={(event) =>
+                onProfileFirstNameChange(event.target.value)
+              }
+              className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
+              placeholder={isZh ? '请输入名字' : 'First name'}
+            />
+            <input
+              type="text"
+              value={profileLastName}
+              onChange={(event) =>
+                onProfileLastNameChange(event.target.value)
+              }
+              className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
+              placeholder={isZh ? '请输入姓' : 'Last name'}
             />
             <button
               type="button"
