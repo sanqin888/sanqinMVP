@@ -433,6 +433,12 @@ export class CloverService {
         },
       };
 
+      // ✅ 生产排查：记录本次创建 checkout 的关键参数（避免只看到 201 不知道 Clover 实际回了啥）
+      const totalCents = lineItems.reduce((sum, it) => sum + it.price * it.unitQty, 0);
+      this.logger.log(
+        `[HCO] create checkout merchant=${this.merchantId} orderId=${orderId} locale=${locale} totalCents=${totalCents} items=${lineItems.length}`,
+      );
+
       const resp = await fetch(url, {
         method: 'POST',
         headers: {
@@ -445,6 +451,12 @@ export class CloverService {
       });
 
       const rawText = await resp.text();
+
+      // ✅ 生产排查：把 Clover 返回原始内容（截断）打出来，避免 DevTools 丢 response
+      const preview = rawText ? rawText.slice(0, 1200) : '';
+      this.logger.log(
+        `[HCO] clover response status=${resp.status} ok=${resp.ok} preview=${preview}`,
+      );
 
       // parse body (may be non-JSON)
       let parsedUnknown: unknown = undefined;
