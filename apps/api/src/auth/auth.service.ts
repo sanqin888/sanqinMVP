@@ -110,9 +110,10 @@ export class AuthService {
     return createHmac('sha256', secret).update(code).digest('hex');
   }
 
-  private splitDisplayName(
-    raw: string | null | undefined,
-  ): { firstName?: string; lastName?: string } {
+  private splitDisplayName(raw: string | null | undefined): {
+    firstName?: string;
+    lastName?: string;
+  } {
     const trimmed = raw?.trim();
     if (!trimmed) {
       return { firstName: undefined, lastName: undefined };
