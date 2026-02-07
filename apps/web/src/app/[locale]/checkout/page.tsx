@@ -81,13 +81,21 @@ type MemberAddressPayload =
       data?: MemberAddress[];
     };
 
+type CloverFieldChangeEvent = {
+  complete?: boolean;
+  error?: { message?: string } | null;
+};
+
 declare global {
   interface Window {
     Clover?: new (key?: string) => {
       elements: () => {
         create: (type: string) => {
           mount: (selector: string) => void;
-          on: (event: string, handler: (payload: any) => void) => void;
+          on: (
+            event: string,
+            handler: (payload: CloverFieldChangeEvent) => void,
+          ) => void;
           destroy?: () => void;
         };
       };
@@ -479,10 +487,15 @@ export default function CheckoutPage() {
         cardCvvRef.current = cardCvv;
 
         const listenComplete = (
-          element: { on: (event: string, handler: (payload: any) => void) => void },
+          element: {
+            on: (
+              event: string,
+              handler: (payload: CloverFieldChangeEvent) => void,
+            ) => void;
+          },
           setter: (next: boolean) => void,
         ) => {
-          element.on("change", (event: any) => {
+          element.on("change", (event) => {
             const isComplete = Boolean(event?.complete && !event?.error);
             setter(isComplete);
             if (event?.error?.message) {
