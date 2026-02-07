@@ -266,7 +266,10 @@ export class CloverPayController {
     }
 
     const normalizedPostalCode = normalizeCanadianPostalCode(dto.postalCode);
-    if (!normalizedPostalCode || !isValidCanadianPostalCode(normalizedPostalCode)) {
+    if (
+      !normalizedPostalCode ||
+      !isValidCanadianPostalCode(normalizedPostalCode)
+    ) {
       throw new BadRequestException({
         code: 'INVALID_POSTAL_CODE',
         message: 'postalCode must be a valid Canadian postal code',
@@ -276,7 +279,7 @@ export class CloverPayController {
     const threeds = isPlainObject(dto.threeds) ? dto.threeds : undefined;
     const browserInfo =
       threeds && isPlainObject(threeds.browserInfo)
-        ? (threeds.browserInfo as Record<string, unknown>)
+        ? threeds.browserInfo
         : undefined;
     if (!browserInfo || typeof browserInfo.browserOrigin !== 'string') {
       throw new BadRequestException({

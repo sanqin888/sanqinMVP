@@ -412,7 +412,9 @@ export class CloverService {
       cardholderName: params.cardholderName,
       ...(params.postalCode ? { postalCode: params.postalCode } : {}),
       ...(params.threeds ? { threeds: params.threeds } : {}),
-      ...(params.referenceId ? { externalReferenceId: params.referenceId } : {}),
+      ...(params.referenceId
+        ? { externalReferenceId: params.referenceId }
+        : {}),
     };
 
     const resp = await fetch(url, {
@@ -442,7 +444,7 @@ export class CloverService {
         ? parsed.id
         : undefined;
     const status = this.normalizeStatus(
-      isPlainObject(parsed) ? parsed.result ?? parsed.status : undefined,
+      isPlainObject(parsed) ? (parsed.result ?? parsed.status) : undefined,
     );
 
     const verdict = this.interpretStatus(parsed);
