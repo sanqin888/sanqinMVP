@@ -1169,7 +1169,12 @@ export default function CheckoutPage() {
       setSelectedAddressStableId(stableId);
       setCustomer((prev) => ({
         ...prev,
-        name: selected.receiver || prev.name,
+        firstName: selected.receiver
+          ? selected.receiver.split(/\s+/)[0] ?? ""
+          : prev.firstName,
+        lastName: selected.receiver
+          ? selected.receiver.split(/\s+/).slice(1).join(" ")
+          : prev.lastName,
         phone: selected.phone
           ? stripCanadianCountryCode(selected.phone)
           : prev.phone,
