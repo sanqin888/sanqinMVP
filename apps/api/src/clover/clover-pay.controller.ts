@@ -65,18 +65,59 @@ export class CloverPayController {
       });
     }
 
+    // ✅ raw / parsed / final email (容错 + 排查)
+    const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+      !!v && typeof v === 'object' && !Array.isArray(v);
+
+    const rawEmail = (() => {
+      const meta = dto.metadata;
+      if (!isPlainObject(meta)) return undefined;
+
+      const customer = meta.customer;
+      if (!isPlainObject(customer)) return undefined;
+
+      const email = customer.email;
+      return typeof email === 'string' && email.trim().length > 0
+        ? email.trim()
+        : undefined;
+    })();
+
+    const parsedEmail = metadata.customer.email;
+    const finalEmail = parsedEmail ?? rawEmail;
+
+    // ✅ 生产排查（不泄露内容）：只打“是否存在”
+    this.logger.log(
+      `[HCO] email-present raw=${!!rawEmail} parsed=${!!parsedEmail} final=${!!finalEmail}`,
+    );
+
+    if (!finalEmail) {
+      throw new BadRequestException({
+        code: 'CUSTOMER_EMAIL_REQUIRED',
+        message: 'customer email is required for online payment',
+      });
+    }
+
     const currency = dto.currency ?? HOSTED_CHECKOUT_CURRENCY;
     const clientRequestId = buildClientRequestId();
     const orderStableId = generateStableId();
+
     const { returnUrlBase, ...dtoRest } = dto;
+
     const normalizedReturnUrlBase =
       normalizeReturnUrlBase(returnUrlBase) ??
       normalizeReturnUrlBase(dto.returnUrl);
+
     const returnUrl = normalizedReturnUrlBase
       ? `${normalizedReturnUrlBase}/${encodeURIComponent(orderStableId)}`
       : undefined;
+
+    // ✅ 强制写回 email，保证 CloverService 一定能从 rq.metadata.customer.email 取到
     const metadataWithIds = {
       ...metadata,
+      customer: {
+        ...metadata.customer,
+        email: finalEmail,
+      },
       orderStableId,
     } satisfies HostedCheckoutMetadata;
 
@@ -124,6 +165,7 @@ export class CloverPayController {
       if (!orderParam) {
         throw new BadGatewayException('orderStableId missing');
       }
+
       const checkoutUrl = `/${routeLocale}/thank-you/${encodeURIComponent(
         orderParam,
       )}`;
@@ -215,6 +257,7 @@ function interpretCheckoutFailure(reason: unknown): FailureInsight {
   const zhMessage = limitHit
     ? '银行卡支付失败：该卡今日交易次数已达到银行设定上限，请尝试使用其他银行卡或联系发卡行。'
     : '银行卡支付失败：银行拒绝了本次交易，请尝试更换银行卡或联系发卡行确认。';
+
   const enMessage = limitHit
     ? 'Card declined: this card has reached the bank’s allowed number of sales today. Please try a different card or contact your bank.'
     : 'Card declined by the issuing bank. Please try a different card or contact your bank for assistance.';
@@ -294,6 +337,7 @@ function normalizeCloverErrorPayload(
   const code = typeof error?.code === 'string' ? error.code : undefined;
   const declineCode =
     typeof error?.declineCode === 'string' ? error.declineCode : undefined;
+
   const message =
     typeof error?.message === 'string'
       ? error.message

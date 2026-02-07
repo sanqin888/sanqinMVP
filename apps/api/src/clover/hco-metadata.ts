@@ -18,6 +18,7 @@ export type HostedCheckoutItem = {
 export type HostedCheckoutCustomer = {
   name: string;
   phone: string;
+  email?: string;
   addressLine1?: string;
   addressLine2?: string;
   city?: string;
@@ -212,12 +213,14 @@ const parseCustomer = (value: unknown): HostedCheckoutCustomer => {
   }
   const name = toString(value.name);
   const phone = toString(value.phone);
+  const email = toString(value.email);
   if (!name || !phone) {
     throw new Error('customer name and phone are required');
   }
   return {
     name,
     phone,
+    ...(email ? { email } : {}),
     addressLine1: toString(value.addressLine1),
     addressLine2: toString(value.addressLine2),
     city: toString(value.city),
