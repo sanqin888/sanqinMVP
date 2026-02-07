@@ -61,6 +61,21 @@ interface CloverOrder {
   }>;
 }
 
+type CloverLineItemInput = {
+  name: string;
+  price: number;
+  unitQty: number;
+  note?: string;
+};
+
+type CloverOrderCreateResult =
+  | { ok: true; orderId: string }
+  | { ok: false; reason: string };
+
+type CloverPaymentCreateResult =
+  | { ok: true; paymentId: string; status?: string }
+  | { ok: false; reason: string; status?: string };
+
 // ===== Guards & utils =====
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === 'object' && !Array.isArray(v);
@@ -287,6 +302,171 @@ export class CloverService {
 
     const verified = await this.verifyOrderPaid(orderId);
     return { verified, orderId };
+  }
+
+  async createOrder(params: {
+    currency: string;
+    lineItems: CloverLineItemInput[];
+  }): Promise<CloverOrderCreateResult> {
+    if (!this.apiToken || !this.merchantId) {
+      return { ok: false, reason: 'missing-credentials' };
+    }
+
+    const url = `${this.apiBase}/v3/merchants/${this.merchantId}/orders`;
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${this.apiToken}`,
+      },
+      body: JSON.stringify({
+        currency: params.currency,
+      }),
+    });
+
+    const rawText = await resp.text();
+    let parsed: unknown = undefined;
+    try {
+      parsed = rawText ? JSON.parse(rawText) : undefined;
+    } catch {
+      parsed = undefined;
+    }
+
+    if (!resp.ok) {
+      const reason =
+        (isPlainObject(parsed) && typeof parsed.message === 'string'
+          ? parsed.message
+          : rawText) || `http-${resp.status}`;
+      return { ok: false, reason };
+    }
+
+    const orderId =
+      isPlainObject(parsed) && typeof parsed.id === 'string'
+        ? parsed.id
+        : undefined;
+    if (!orderId) {
+      return { ok: false, reason: 'missing-order-id' };
+    }
+
+    for (const item of params.lineItems) {
+      const itemResp = await fetch(
+        `${this.apiBase}/v3/merchants/${this.merchantId}/orders/${orderId}/line_items`,
+        {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${this.apiToken}`,
+          },
+          body: JSON.stringify({
+            name: item.name,
+            price: item.price,
+            unitQty: item.unitQty,
+            ...(item.note ? { note: item.note } : {}),
+          }),
+        },
+      );
+
+      if (!itemResp.ok) {
+        const itemText = await itemResp.text();
+        const reason = itemText || `line-item-http-${itemResp.status}`;
+        return { ok: false, reason };
+      }
+    }
+
+    return { ok: true, orderId };
+  }
+
+  async createCardPayment(params: {
+    amountCents: number;
+    currency: string;
+    source: string;
+    sourceType: string;
+    orderId: string;
+    cardholderName: string;
+    postalCode?: string;
+    threeds?: Record<string, unknown>;
+    referenceId?: string;
+  }): Promise<CloverPaymentCreateResult> {
+    if (!this.apiToken || !this.merchantId) {
+      return { ok: false, reason: 'missing-credentials' };
+    }
+
+    const url = `${this.apiBase}/v3/merchants/${this.merchantId}/payments`;
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${this.apiToken}`,
+    };
+    if (params.referenceId) {
+      headers['Idempotency-Key'] = params.referenceId;
+    }
+
+    const body = {
+      amount: params.amountCents,
+      currency: params.currency,
+      orderId: params.orderId,
+      source: params.source,
+      sourceType: params.sourceType,
+      cardholderName: params.cardholderName,
+      ...(params.postalCode ? { postalCode: params.postalCode } : {}),
+      ...(params.threeds ? { threeds: params.threeds } : {}),
+      ...(params.referenceId ? { externalReferenceId: params.referenceId } : {}),
+    };
+
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+
+    const rawText = await resp.text();
+    let parsed: unknown = undefined;
+    try {
+      parsed = rawText ? JSON.parse(rawText) : undefined;
+    } catch {
+      parsed = undefined;
+    }
+
+    if (!resp.ok) {
+      const reason =
+        (isPlainObject(parsed) && typeof parsed.message === 'string'
+          ? parsed.message
+          : rawText) || `http-${resp.status}`;
+      return { ok: false, reason };
+    }
+
+    const paymentId =
+      isPlainObject(parsed) && typeof parsed.id === 'string'
+        ? parsed.id
+        : undefined;
+    const status = this.normalizeStatus(
+      isPlainObject(parsed) ? parsed.result ?? parsed.status : undefined,
+    );
+
+    const verdict = this.interpretStatus(parsed);
+    if (verdict === false) {
+      return {
+        ok: false,
+        reason: rawText || 'payment-declined',
+        status,
+      };
+    }
+
+    if (status === 'CHALLENGE_REQUIRED') {
+      return {
+        ok: false,
+        reason: rawText || 'challenge-required',
+        status,
+      };
+    }
+
+    if (!paymentId) {
+      return { ok: false, reason: 'missing-payment-id', status };
+    }
+
+    return { ok: true, paymentId, status };
   }
 
   /**
