@@ -422,7 +422,6 @@ export class CloverService {
       }, []);
 
       // ===== request body =====
-      // 关键：Clover 在创建 payment 时需要一个非空的“姓名”（nickname/任意名字都行）
       const metaCustomer =
         isPlainObject(rq.metadata) && isPlainObject(rq.metadata.customer)
           ? rq.metadata.customer
@@ -435,14 +434,24 @@ export class CloverService {
       const pickStr = (v: unknown): string | undefined =>
         typeof v === 'string' && v.trim().length > 0 ? v.trim() : undefined;
 
-      const name = pickStr(metaCustomer?.name) ?? pickStr(reqCustomer?.name);
+      const name =
+        pickStr(metaCustomer?.name) ??
+        pickStr(reqCustomer?.name) ??
+        pickStr(rq?.name);
 
-      const email = pickStr(metaCustomer?.email) ?? pickStr(reqCustomer?.email);
+      const email =
+        pickStr(metaCustomer?.email) ??
+        pickStr(reqCustomer?.email) ??
+        pickStr(rq?.email) ??
+        (isPlainObject(rq.metadata) ? pickStr(rq.metadata.email) : undefined);
 
-      const phone = pickStr(metaCustomer?.phone) ?? pickStr(reqCustomer?.phone);
+      const phone =
+        pickStr(metaCustomer?.phone) ??
+        pickStr(reqCustomer?.phone) ??
+        pickStr(rq?.phone) ??
+        (isPlainObject(rq.metadata) ? pickStr(rq.metadata.phone) : undefined);
 
-      // ✅ 姓名兜底：避免 production 报 “Card holder name is not provided”
-      const safeName =
+      const safeFirstName =
         name ??
         (email ? email.split('@')[0] : undefined) ??
         (phone
@@ -450,11 +459,20 @@ export class CloverService {
           : undefined) ??
         'Customer';
 
+      const safeLastName = 'Customer';
+
+      // ✅ 生产排查（不泄露内容）：只打“是否存在”
+      this.logger.log(
+        `[HCO] customer-present first=${!!safeFirstName} last=${!!safeLastName} email=${!!email} phone=${!!phone}`,
+      );
+
       const body = {
         customer: {
-          name: safeName,
+          firstName: safeFirstName,
+          lastName: safeLastName,
+          // email 是 Clover 固定必填；如果这里是 undefined，你一定会遇到各种奇怪的支付错误
           ...(email ? { email } : {}),
-          ...(phone ? { phone } : {}),
+          ...(phone ? { phoneNumber: phone } : {}),
         },
         shoppingCart: {
           lineItems,
@@ -463,7 +481,6 @@ export class CloverService {
           success: successUrl,
           failure: failureUrl,
         },
-        // 你自己的 metadata 仍然保留（用于你回调/对账/展示）
         ...(isPlainObject(rq.metadata) ? { metadata: rq.metadata } : {}),
       };
 
