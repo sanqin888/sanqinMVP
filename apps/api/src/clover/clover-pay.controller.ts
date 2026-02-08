@@ -4,6 +4,8 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Headers,
+  Ip,
   Post,
 } from '@nestjs/common';
 import { AppLogger } from '../common/app-logger';
@@ -33,7 +35,11 @@ export class CloverPayController {
   ) {}
 
   @Post('pay/online/card-token')
-  async payWithCardToken(@Body() dto: CreateCardTokenPaymentDto) {
+  async payWithCardToken(
+    @Body() dto: CreateCardTokenPaymentDto,
+    @Headers('cf-connecting-ip') cfConnectingIp: string | string[] | undefined,
+    @Ip() rawIp: string,
+  ) {
     this.logger.log(
       `Incoming card-token payment request: amountCents=${dto.amountCents ?? 'N/A'}`,
     );
@@ -118,6 +124,17 @@ export class CloverPayController {
     const currency = dto.currency ?? CLOVER_PAYMENT_CURRENCY;
     const referenceId = dto.checkoutIntentId?.trim() || buildClientRequestId();
     const orderStableId = metadata.orderStableId ?? generateStableId();
+    const cfClientIp = normalizeClientIp(cfConnectingIp);
+    let clientIp = cfClientIp ?? normalizeClientIp(rawIp);
+    if (!clientIp) {
+      clientIp = '127.0.0.1';
+    }
+    const cfConnectingIpDisplay = Array.isArray(cfConnectingIp)
+      ? cfConnectingIp.join(', ')
+      : (cfConnectingIp ?? 'N/A');
+    this.logger.log(
+      `Processing payment from IP: ${clientIp} (CF: ${cfConnectingIpDisplay}, Raw: ${rawIp ?? 'N/A'})`,
+    );
 
     const metadataWithIds = {
       ...metadata,
@@ -217,6 +234,9 @@ export class CloverPayController {
         browserInfo,
       },
       referenceId,
+      description: `Order ${referenceId} - SanQ Roujiamo`,
+      email: finalEmail,
+      clientIp,
     });
 
     if (!paymentResult.ok) {
@@ -268,6 +288,24 @@ function normalizeCanadianPostalCode(value?: string): string {
     return `${cleaned.slice(0, 3)} ${cleaned.slice(3, 6)}`;
   }
   return `${cleaned.slice(0, 3)} ${cleaned.slice(3)}`;
+}
+
+function normalizeClientIp(
+  value: string | string[] | undefined,
+): string | undefined {
+  if (Array.isArray(value)) {
+    const firstValid = value.find(
+      (entry): entry is string =>
+        typeof entry === 'string' && entry.trim().length > 0,
+    );
+    return firstValid?.trim();
+  }
+
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return value.trim();
+  }
+
+  return undefined;
 }
 
 function isValidCanadianPostalCode(value: string): boolean {

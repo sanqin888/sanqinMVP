@@ -1,5 +1,6 @@
 /* apps/api/src/main.ts */
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { configureApp, getApiPrefix } from './app.bootstrap';
 
@@ -23,13 +24,14 @@ async function bootstrap(): Promise<void> {
     process.exit(1);
   }
 
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bodyParser: false, //禁用默认
     cors: {
       origin: corsOrigin ?? 'http://localhost:3000',
       credentials: true,
     },
   });
+  app.set('trust proxy', true);
 
   const prefix = getApiPrefix();
 
