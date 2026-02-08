@@ -4,6 +4,8 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Headers,
+  Ip,
   Post,
 } from '@nestjs/common';
 import { AppLogger } from '../common/app-logger';
@@ -33,7 +35,11 @@ export class CloverPayController {
   ) {}
 
   @Post('pay/online/card-token')
-  async payWithCardToken(@Body() dto: CreateCardTokenPaymentDto) {
+  async payWithCardToken(
+    @Body() dto: CreateCardTokenPaymentDto,
+    @Headers('cf-connecting-ip') cfConnectingIp: string | undefined,
+    @Ip() rawIp: string,
+  ) {
     this.logger.log(
       `Incoming card-token payment request: amountCents=${dto.amountCents ?? 'N/A'}`,
     );
@@ -118,6 +124,20 @@ export class CloverPayController {
     const currency = dto.currency ?? CLOVER_PAYMENT_CURRENCY;
     const referenceId = dto.checkoutIntentId?.trim() || buildClientRequestId();
     const orderStableId = metadata.orderStableId ?? generateStableId();
+    let clientIp = cfConnectingIp;
+    if (!clientIp) {
+      clientIp = rawIp;
+    }
+    if (Array.isArray(clientIp)) {
+      clientIp = clientIp[0];
+    }
+    clientIp = clientIp?.trim();
+    if (!clientIp) {
+      clientIp = '127.0.0.1';
+    }
+    this.logger.log(
+      `Processing payment from IP: ${clientIp} (CF: ${cfConnectingIp ?? 'N/A'}, Raw: ${rawIp ?? 'N/A'})`,
+    );
 
     const metadataWithIds = {
       ...metadata,
@@ -217,6 +237,9 @@ export class CloverPayController {
         browserInfo,
       },
       referenceId,
+      description: `Order ${referenceId} - SanQ Roujiamo`,
+      email: finalEmail,
+      clientIp,
     });
 
     if (!paymentResult.ok) {
