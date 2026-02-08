@@ -131,7 +131,7 @@ export class CloverPayController {
     }
     const cfConnectingIpDisplay = Array.isArray(cfConnectingIp)
       ? cfConnectingIp.join(', ')
-      : cfConnectingIp ?? 'N/A';
+      : (cfConnectingIp ?? 'N/A');
     this.logger.log(
       `Processing payment from IP: ${clientIp} (CF: ${cfConnectingIpDisplay}, Raw: ${rawIp ?? 'N/A'})`,
     );
