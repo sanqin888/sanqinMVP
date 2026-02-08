@@ -8,7 +8,7 @@ import {
   IsString,
   Min,
 } from 'class-validator';
-import { HOSTED_CHECKOUT_CURRENCY } from './create-hosted-checkout.dto';
+export const CLOVER_PAYMENT_CURRENCY = 'CAD' as const;
 
 export class CreateCardTokenPaymentDto {
   @IsInt()
@@ -20,7 +20,7 @@ export class CreateCardTokenPaymentDto {
     typeof value === 'string' ? value.toUpperCase() : undefined,
   )
   @IsString()
-  @IsIn([HOSTED_CHECKOUT_CURRENCY])
+  @IsIn([CLOVER_PAYMENT_CURRENCY])
   readonly currency?: string;
 
   @IsString()
