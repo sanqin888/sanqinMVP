@@ -170,6 +170,9 @@ export class CloverService {
     postalCode?: string;
     threeds?: Record<string, unknown>;
     referenceId?: string;
+    description?: string;
+    email?: string;
+    clientIp?: string;
   }): Promise<CloverPaymentCreateResult> {
     if (!this.apiToken || !this.merchantId) {
       return { ok: false, reason: 'missing-credentials' };
@@ -184,6 +187,9 @@ export class CloverService {
     if (params.referenceId) {
       headers['Idempotency-Key'] = params.referenceId;
     }
+    if (params.clientIp) {
+      headers['x-forwarded-for'] = params.clientIp;
+    }
 
     const body = {
       amount: params.amountCents,
@@ -192,6 +198,8 @@ export class CloverService {
       source: params.source,
       sourceType: params.sourceType,
       cardholderName: params.cardholderName,
+      ...(params.description ? { description: params.description } : {}),
+      ...(params.email ? { email: params.email } : {}),
       ...(params.postalCode ? { postalCode: params.postalCode } : {}),
       ...(params.threeds ? { threeds: params.threeds } : {}),
       ...(params.referenceId
