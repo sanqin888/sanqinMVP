@@ -13,7 +13,6 @@ import { OrdersModule } from './orders/orders.module';
 import { ReportsModule } from './reports/reports.module';
 import { LoyaltyModule } from './loyalty/loyalty.module';
 import { CloverModule } from './clover/clover.module';
-import { CloverWebhooksModule } from './clover/clover-webhooks.module';
 import { MembershipModule } from './membership/membership.module';
 import { PhoneVerificationModule } from './phone-verification/phone-verification.module';
 import { AuthModule } from './auth/auth.module';
@@ -54,7 +53,6 @@ const envConfigModule = configModuleFactory.forRoot({
     ReportsModule,
     LoyaltyModule,
     CloverModule,
-    CloverWebhooksModule,
     LocationModule,
     PhoneVerificationModule,
     AdminModule,
