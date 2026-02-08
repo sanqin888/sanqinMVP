@@ -94,6 +94,8 @@ services:
       dockerfile: Dockerfile.web
       args:
         - NEXT_PUBLIC_GOOGLE_MAPS_KEY=${NEXT_PUBLIC_GOOGLE_MAPS_KEY}
+        - NEXT_PUBLIC_CLOVER_PUBLIC_TOKEN=${NEXT_PUBLIC_CLOVER_PUBLIC_TOKEN}
+        - NEXT_PUBLIC_CLOVER_SDK_URL=${NEXT_PUBLIC_CLOVER_SDK_URL}
     volumes:
       - /home/ubuntu/sanq-assets/sounds:/app/apps/web/public/sounds:ro
     restart: always
@@ -104,6 +106,7 @@ services:
       NEXTAUTH_URL: "https://sanq.ca"
       NEXT_PUBLIC_GOOGLE_MAPS_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_KEY}
       NEXT_PUBLIC_CLOVER_PUBLIC_TOKEN: "6624dbc246db37ea70b3fef010ace57d"
+      NEXT_PUBLIC_CLOVER_SDK_URL: "https://checkout.clover.com/sdk.js"
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:
