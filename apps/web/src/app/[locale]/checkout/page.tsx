@@ -447,7 +447,7 @@ export default function CheckoutPage() {
     if (typeof window === "undefined") return;
     let cancelled = false;
 
-    const publicKey = process.env.NEXT_PUBLIC_CLOVER_PUBLIC_KEY?.trim();
+    const publicKey = process.env.NEXT_PUBLIC_CLOVER_PUBLIC_TOKEN?.trim();
     const sdkUrl =
       process.env.NEXT_PUBLIC_CLOVER_SDK_URL?.trim() ??
       DEFAULT_CLOVER_SDK_URL;
