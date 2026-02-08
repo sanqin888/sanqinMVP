@@ -205,6 +205,17 @@ export class CloverPayController {
       });
     }
 
+    const expectedTotalCents = lineItems.reduce(
+      (sum, item) => sum + item.price * item.unitQty,
+      0,
+    );
+    if (expectedTotalCents !== dto.amountCents) {
+      throw new BadRequestException({
+        code: 'AMOUNT_MISMATCH',
+        message: `amountCents does not match metadata total (${expectedTotalCents})`,
+      });
+    }
+
     const cloverOrder = await this.clover.createOrder({
       currency,
       lineItems,
@@ -240,6 +251,16 @@ export class CloverPayController {
     });
 
     if (!paymentResult.ok) {
+      if (paymentResult.status === 'CHALLENGE_REQUIRED') {
+        return {
+          orderStableId,
+          orderNumber: referenceId,
+          paymentId: paymentResult.paymentId ?? 'PENDING',
+          status: paymentResult.status,
+          challengeUrl: paymentResult.challengeUrl ?? null,
+        };
+      }
+
       await this.checkoutIntents.markFailed({
         intentId: intent.id,
         result: paymentResult.status ?? 'FAILED',
