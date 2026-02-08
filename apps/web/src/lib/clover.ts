@@ -31,20 +31,38 @@ type BrowserInfo = {
 };
 
 export function build3dsBrowserInfo(): BrowserInfo {
-  const nav = window.navigator;
-  const scr = window.screen;
+  const nav =
+    typeof window !== "undefined" ? window.navigator : (undefined as Navigator | undefined);
+  const scr = typeof window !== "undefined" ? window.screen : undefined;
+  const safeNumber = (value: number | undefined | null, fallback: number) =>
+    Number.isFinite(value) ? (value as number) : fallback;
+  const safeString = (value: unknown, fallback: string) =>
+    typeof value === "string" && value.trim().length > 0 ? value : fallback;
+  const timezoneOffset = (() => {
+    try {
+      return Math.abs(new Date().getTimezoneOffset());
+    } catch {
+      return 0;
+    }
+  })();
   return {
     browserAcceptHeader: "*/*",
     browserJavascriptEnabled: true,
-    browserScreenWidth: String(scr.width),
-    browserScreenHeight: String(scr.height),
-    browserUserAgent: nav.userAgent,
-    browserColorDepth: String(scr.colorDepth ?? 24),
-    browserLanguage: nav.language || "en",
+    browserScreenWidth: String(safeNumber(scr?.width, 0)),
+    browserScreenHeight: String(safeNumber(scr?.height, 0)),
+    browserUserAgent: safeString(nav?.userAgent, "unknown"),
+    browserColorDepth: String(safeNumber(scr?.colorDepth, 24)),
+    browserLanguage: safeString(
+      nav?.language || nav?.languages?.[0],
+      "en",
+    ),
     browserJavaEnabled: !!(nav as unknown as { javaEnabled?: () => boolean })
-      .javaEnabled?.(),
-    browserTZ: String(Math.abs(new Date().getTimezoneOffset())),
-    browserOrigin: window.location.origin,
+      ?.javaEnabled?.(),
+    browserTZ: String(timezoneOffset),
+    browserOrigin:
+      typeof window !== "undefined"
+        ? safeString(window.location?.origin, "unknown")
+        : "unknown",
   };
 }
 

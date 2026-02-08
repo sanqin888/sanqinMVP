@@ -109,6 +109,7 @@ declare global {
 
 const PHONE_OTP_REQUEST_URL = "/api/v1/auth/phone/send-code";
 const PHONE_OTP_VERIFY_URL = "/api/v1/auth/phone/verify-code";
+const CHECKOUT_INTENT_STORAGE_KEY = "cloverCheckoutIntentId";
 type DeliveryOptionDefinition = {
   provider: "DOORDASH" | "UBER";
   fee: number; // 仅用于显示说明，不参与实际计费
@@ -436,10 +437,25 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (!checkoutIntentIdRef.current) {
-      checkoutIntentIdRef.current =
-        window.crypto?.randomUUID?.() ??
-        `chk_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    if (checkoutIntentIdRef.current) return;
+    let storedId: string | null = null;
+    try {
+      storedId = window.sessionStorage.getItem(CHECKOUT_INTENT_STORAGE_KEY);
+    } catch {
+      storedId = null;
+    }
+    if (storedId) {
+      checkoutIntentIdRef.current = storedId;
+      return;
+    }
+    const generatedId =
+      window.crypto?.randomUUID?.() ??
+      `chk_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    checkoutIntentIdRef.current = generatedId;
+    try {
+      window.sessionStorage.setItem(CHECKOUT_INTENT_STORAGE_KEY, generatedId);
+    } catch {
+      // ignore storage failures
     }
   }, []);
 
@@ -685,6 +701,7 @@ export default function CheckoutPage() {
   const [cardNumberComplete, setCardNumberComplete] = useState(false);
   const [cardDateComplete, setCardDateComplete] = useState(false);
   const [cardCvvComplete, setCardCvvComplete] = useState(false);
+  const [challengeUrl, setChallengeUrl] = useState<string | null>(null);
   const cloverRef = useRef<null | { createToken: (payload?: Record<string, unknown>) => Promise<{ token?: string; errors?: Array<{ message?: string }> }> }>(
     null,
   );
@@ -2062,6 +2079,7 @@ export default function CheckoutPage() {
     }
 
     setErrorMessage(null);
+    setChallengeUrl(null);
     setConfirmation(null);
     setIsSubmitting(true);
 
@@ -2286,6 +2304,16 @@ export default function CheckoutPage() {
           : undefined);
       if (checkoutIntentId) {
         checkoutIntentIdRef.current = checkoutIntentId;
+        if (typeof window !== "undefined") {
+          try {
+            window.sessionStorage.setItem(
+              CHECKOUT_INTENT_STORAGE_KEY,
+              checkoutIntentId,
+            );
+          } catch {
+            // ignore storage failures
+          }
+        }
       }
 
       const paymentResponse = await apiFetch<CardTokenPaymentResponse>(
@@ -2315,6 +2343,29 @@ export default function CheckoutPage() {
           }),
         },
       );
+
+      if (paymentResponse.status === "CHALLENGE_REQUIRED") {
+        if (paymentResponse.challengeUrl) {
+          setChallengeUrl(paymentResponse.challengeUrl);
+          setErrorMessage(null);
+          return;
+        }
+        setErrorMessage(
+          locale === "zh"
+            ? "需要完成 3D Secure 验证，但未能获取验证页面，请稍后重试。"
+            : "3D Secure verification is required but the challenge page is unavailable. Please try again.",
+        );
+        return;
+      }
+
+      if (typeof window !== "undefined") {
+        try {
+          window.sessionStorage.removeItem(CHECKOUT_INTENT_STORAGE_KEY);
+        } catch {
+          // ignore storage failures
+        }
+      }
+      checkoutIntentIdRef.current = null;
 
       if (typeof window !== "undefined") {
         router.push(`/${locale}/thank-you/${paymentResponse.orderStableId}`);
@@ -3810,6 +3861,34 @@ export default function CheckoutPage() {
           </div>
         )}
       </section>
+      {challengeUrl ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
+          <div className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+              <p className="text-sm font-semibold text-slate-700">
+                {locale === "zh"
+                  ? "完成 3D Secure 验证"
+                  : "Complete 3D Secure verification"}
+              </p>
+              <button
+                type="button"
+                onClick={() => setChallengeUrl(null)}
+                className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:bg-slate-100"
+              >
+                {locale === "zh" ? "关闭" : "Close"}
+              </button>
+            </div>
+            <div className="h-[70vh] bg-white">
+              <iframe
+                title="3D Secure Challenge"
+                src={challengeUrl}
+                className="h-full w-full"
+                allow="payment *; fullscreen *"
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

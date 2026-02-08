@@ -14,7 +14,13 @@ type CloverOrderCreateResult =
 
 type CloverPaymentCreateResult =
   | { ok: true; paymentId: string; status?: string }
-  | { ok: false; reason: string; status?: string };
+  | {
+      ok: false;
+      reason: string;
+      status?: string;
+      challengeUrl?: string;
+      paymentId?: string;
+    };
 
 // ===== Guards & utils =====
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
@@ -247,10 +253,13 @@ export class CloverService {
     }
 
     if (status === 'CHALLENGE_REQUIRED') {
+      const challengeUrl = extractChallengeUrl(parsed);
       return {
         ok: false,
         reason: rawText || 'challenge-required',
         status,
+        challengeUrl,
+        paymentId,
       };
     }
 
@@ -260,4 +269,48 @@ export class CloverService {
 
     return { ok: true, paymentId, status };
   }
+}
+
+const getString = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+
+function extractChallengeUrl(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const record = payload as Record<string, unknown>;
+  const direct =
+    getString(record.redirectUrl) ??
+    getString(record.redirect_url) ??
+    getString(record.challengeUrl) ??
+    getString(record.challenge_url) ??
+    getString(record.url);
+  if (direct) return direct;
+
+  const threeDS =
+    (isPlainObject(record.threeDSecure)
+      ? record.threeDSecure
+      : isPlainObject(record.threeds)
+        ? record.threeds
+        : undefined) ?? undefined;
+
+  if (threeDS) {
+    const nested =
+      getString(threeDS.redirectUrl) ??
+      getString(threeDS.redirect_url) ??
+      getString(threeDS.challengeUrl) ??
+      getString(threeDS.challenge_url) ??
+      getString(threeDS.url);
+    if (nested) return nested;
+  }
+
+  const links = isPlainObject(record.links) ? record.links : undefined;
+  if (links) {
+    const linkUrl =
+      getString(links.challengeUrl) ??
+      getString(links.challenge_url) ??
+      getString(links.redirectUrl) ??
+      getString(links.redirect_url);
+    if (linkUrl) return linkUrl;
+  }
+
+  return undefined;
 }
