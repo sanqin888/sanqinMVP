@@ -129,8 +129,11 @@ export class CloverPayController {
     if (!clientIp) {
       clientIp = '127.0.0.1';
     }
+    const cfConnectingIpDisplay = Array.isArray(cfConnectingIp)
+      ? cfConnectingIp.join(', ')
+      : cfConnectingIp ?? 'N/A';
     this.logger.log(
-      `Processing payment from IP: ${clientIp} (CF: ${cfConnectingIp ?? 'N/A'}, Raw: ${rawIp ?? 'N/A'})`,
+      `Processing payment from IP: ${clientIp} (CF: ${cfConnectingIpDisplay}, Raw: ${rawIp ?? 'N/A'})`,
     );
 
     const metadataWithIds = {
