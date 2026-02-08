@@ -4,9 +4,12 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
   Headers,
   Ip,
+  NotFoundException,
   Post,
+  Query,
 } from '@nestjs/common';
 import { AppLogger } from '../common/app-logger';
 import { CloverService } from './clover.service';
@@ -33,6 +36,36 @@ export class CloverPayController {
     private readonly checkoutIntents: CheckoutIntentsService,
     private readonly orders: OrdersService,
   ) {}
+
+  @Get('pay/online/status')
+  async getCheckoutIntentStatus(
+    @Query('checkoutIntentId') checkoutIntentId?: string,
+  ) {
+    const referenceId = checkoutIntentId?.trim();
+    if (!referenceId) {
+      throw new BadRequestException({
+        code: 'CHECKOUT_INTENT_REQUIRED',
+        message: 'checkoutIntentId is required',
+      });
+    }
+
+    const intent = await this.checkoutIntents.findByIdentifiers({
+      referenceId,
+    });
+    if (!intent) {
+      throw new NotFoundException({
+        code: 'CHECKOUT_INTENT_NOT_FOUND',
+        message: 'checkout intent not found',
+      });
+    }
+
+    return {
+      status: intent.status,
+      result: intent.result,
+      orderStableId: intent.metadata?.orderStableId ?? null,
+      orderNumber: intent.referenceId,
+    };
+  }
 
   @Post('pay/online/card-token')
   async payWithCardToken(
