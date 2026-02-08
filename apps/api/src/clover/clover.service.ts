@@ -16,21 +16,6 @@ type CloverPaymentCreateResult =
   | { ok: true; paymentId: string; status?: string }
   | { ok: false; reason: string; status?: string };
 
-type CloverLineItemInput = {
-  name: string;
-  price: number;
-  unitQty: number;
-  note?: string;
-};
-
-type CloverOrderCreateResult =
-  | { ok: true; orderId: string }
-  | { ok: false; reason: string };
-
-type CloverPaymentCreateResult =
-  | { ok: true; paymentId: string; status?: string }
-  | { ok: false; reason: string; status?: string };
-
 // ===== Guards & utils =====
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === 'object' && !Array.isArray(v);
