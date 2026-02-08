@@ -18,7 +18,7 @@ export class CloverWebhookController {
 
   @Post()
   @HttpCode(200)
-  async handleWebhook(
+  handleWebhook(
     @Headers('clover-signature') signature: string | undefined,
     @Body() payload: unknown,
   ) {
