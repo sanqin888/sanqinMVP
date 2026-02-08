@@ -443,105 +443,6 @@ export default function CheckoutPage() {
     }
   }, []);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    let cancelled = false;
-
-    const publicKey = process.env.NEXT_PUBLIC_CLOVER_PUBLIC_TOKEN?.trim();
-    const sdkUrl =
-      process.env.NEXT_PUBLIC_CLOVER_SDK_URL?.trim() ??
-      DEFAULT_CLOVER_SDK_URL;
-
-    if (!publicKey) {
-      setErrorMessage(
-        locale === "zh"
-          ? "支付初始化失败：缺少 Clover 公钥配置。"
-          : "Payment initialization failed: missing Clover public key.",
-      );
-      return;
-    }
-
-    const setupClover = async () => {
-      try {
-        await loadScript(sdkUrl);
-        if (cancelled) return;
-
-        if (!window.Clover) {
-          throw new Error("Clover SDK not available");
-        }
-
-        const clover = new window.Clover(publicKey);
-        const elements = clover.elements();
-
-        const cardNumber = elements.create("CARD_NUMBER");
-        const cardDate = elements.create("CARD_DATE");
-        const cardCvv = elements.create("CARD_CVV");
-
-        cardNumber.mount("#clover-card-number");
-        cardDate.mount("#clover-card-date");
-        cardCvv.mount("#clover-card-cvv");
-
-        cloverRef.current = clover;
-        cardNumberRef.current = cardNumber;
-        cardDateRef.current = cardDate;
-        cardCvvRef.current = cardCvv;
-
-        const listenComplete = (
-          element: {
-            on?: (
-              event: string,
-              handler: (payload: CloverFieldChangeEvent) => void,
-            ) => void;
-            addEventListener?: (
-              event: string,
-              handler: (payload: CloverFieldChangeEvent) => void,
-            ) => void;
-          },
-          setter: (next: boolean) => void,
-        ) => {
-          const handler = (event: CloverFieldChangeEvent) => {
-            const isComplete = Boolean(event?.complete && !event?.error);
-            setter(isComplete);
-            if (event?.error?.message) {
-              setCardFieldError(event.error.message);
-            } else {
-              setCardFieldError(null);
-            }
-          };
-
-          if (typeof element.on === "function") {
-            element.on("change", handler);
-            return;
-          }
-
-          if (typeof element.addEventListener === "function") {
-            element.addEventListener("change", handler);
-          }
-        };
-
-        listenComplete(cardNumber, setCardNumberComplete);
-        listenComplete(cardDate, setCardDateComplete);
-        listenComplete(cardCvv, setCardCvvComplete);
-
-        setCloverReady(true);
-      } catch (error) {
-        if (cancelled) return;
-        const message =
-          error instanceof Error ? error.message : "Failed to init Clover";
-        setErrorMessage(message);
-      }
-    };
-
-    setupClover();
-
-    return () => {
-      cancelled = true;
-      cardNumberRef.current?.destroy?.();
-      cardDateRef.current?.destroy?.();
-      cardCvvRef.current?.destroy?.();
-    };
-  }, [locale]);
-
   const entitlementItems = useMemo(
     () =>
       buildLocalizedEntitlementItems(entitlements?.unlockedItems ?? [], locale),
@@ -1302,6 +1203,117 @@ export default function CheckoutPage() {
       cardCvvComplete);
   const showPaymentPostalError =
     postalCode.trim().length > 0 && !isPaymentPostalValid;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!requiresPayment) {
+      setCloverReady(false);
+      return;
+    }
+    let cancelled = false;
+
+    const publicKey = process.env.NEXT_PUBLIC_CLOVER_PUBLIC_TOKEN?.trim();
+    const sdkUrl =
+      process.env.NEXT_PUBLIC_CLOVER_SDK_URL?.trim() ??
+      DEFAULT_CLOVER_SDK_URL;
+
+    if (!publicKey) {
+      setErrorMessage(
+        locale === "zh"
+          ? "支付初始化失败：缺少 Clover 公钥配置。"
+          : "Payment initialization failed: missing Clover public key.",
+      );
+      return;
+    }
+
+    const setupClover = async () => {
+      try {
+        await loadScript(sdkUrl);
+        if (cancelled) return;
+
+        if (!window.Clover) {
+          throw new Error("Clover SDK not available");
+        }
+
+        const numberHost = document.getElementById("clover-card-number");
+        const dateHost = document.getElementById("clover-card-date");
+        const cvvHost = document.getElementById("clover-card-cvv");
+
+        if (!numberHost || !dateHost || !cvvHost) {
+          throw new Error("Card fields not ready");
+        }
+
+        const clover = new window.Clover(publicKey);
+        const elements = clover.elements();
+
+        const cardNumber = elements.create("CARD_NUMBER");
+        const cardDate = elements.create("CARD_DATE");
+        const cardCvv = elements.create("CARD_CVV");
+
+        cardNumber.mount("#clover-card-number");
+        cardDate.mount("#clover-card-date");
+        cardCvv.mount("#clover-card-cvv");
+
+        cloverRef.current = clover;
+        cardNumberRef.current = cardNumber;
+        cardDateRef.current = cardDate;
+        cardCvvRef.current = cardCvv;
+
+        const listenComplete = (
+          element: {
+            on?: (
+              event: string,
+              handler: (payload: CloverFieldChangeEvent) => void,
+            ) => void;
+            addEventListener?: (
+              event: string,
+              handler: (payload: CloverFieldChangeEvent) => void,
+            ) => void;
+          },
+          setter: (next: boolean) => void,
+        ) => {
+          const handler = (event: CloverFieldChangeEvent) => {
+            const isComplete = Boolean(event?.complete && !event?.error);
+            setter(isComplete);
+            if (event?.error?.message) {
+              setCardFieldError(event.error.message);
+            } else {
+              setCardFieldError(null);
+            }
+          };
+
+          if (typeof element.on === "function") {
+            element.on("change", handler);
+            return;
+          }
+
+          if (typeof element.addEventListener === "function") {
+            element.addEventListener("change", handler);
+          }
+        };
+
+        listenComplete(cardNumber, setCardNumberComplete);
+        listenComplete(cardDate, setCardDateComplete);
+        listenComplete(cardCvv, setCardCvvComplete);
+
+        setCloverReady(true);
+      } catch (error) {
+        if (cancelled) return;
+        const message =
+          error instanceof Error ? error.message : "Failed to init Clover";
+        setErrorMessage(message);
+      }
+    };
+
+    setupClover();
+
+    return () => {
+      cancelled = true;
+      cardNumberRef.current?.destroy?.();
+      cardDateRef.current?.destroy?.();
+      cardCvvRef.current?.destroy?.();
+    };
+  }, [locale, requiresPayment]);
 
   const scheduleLabel =
     strings.scheduleOptions.find((option) => option.id === schedule)?.label ??
@@ -3274,7 +3286,7 @@ export default function CheckoutPage() {
                           setErrorMessage(null);
                         }}
                         autoComplete="cc-name"
-                        className="h-9 w-full rounded-2xl border border-slate-200 bg-white px-3 py-1 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                        className="h-10 w-full rounded-2xl border border-slate-200 bg-white px-3 py-1 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
                         placeholder={
                           locale === "zh" ? "请输入姓名" : "Full name"
                         }
@@ -3287,7 +3299,7 @@ export default function CheckoutPage() {
                       </label>
                       <div
                         id="clover-card-number"
-                        className="flex h-9 items-center rounded-2xl border border-slate-200 px-3"
+                        className="flex h-10 items-center rounded-2xl border border-slate-200 bg-white px-3"
                       />
                     </div>
                   </div>
@@ -3299,7 +3311,7 @@ export default function CheckoutPage() {
                       </label>
                       <div
                         id="clover-card-date"
-                        className="flex h-9 items-center rounded-2xl border border-slate-200 px-3"
+                        className="flex h-10 items-center rounded-2xl border border-slate-200 bg-white px-3"
                       />
                     </div>
                     <div className="space-y-1">
@@ -3308,7 +3320,7 @@ export default function CheckoutPage() {
                       </label>
                       <div
                         id="clover-card-cvv"
-                        className="flex h-9 items-center rounded-2xl border border-slate-200 px-3"
+                        className="flex h-10 items-center rounded-2xl border border-slate-200 bg-white px-3"
                       />
                     </div>
                     <div className="space-y-1">
@@ -3325,7 +3337,7 @@ export default function CheckoutPage() {
                           setPostalCode(normalizeCanadianPostalCode(postalCode))
                         }
                         autoComplete="postal-code"
-                        className="h-9 w-full rounded-2xl border border-slate-200 bg-white px-3 py-1 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                        className="h-10 w-full rounded-2xl border border-slate-200 bg-white px-3 py-1 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
                         placeholder={locale === "zh" ? "A1A 1A1" : "A1A 1A1"}
                       />
                       {showPaymentPostalError ? (
