@@ -37,7 +37,7 @@ export class CloverPayController {
   @Post('pay/online/card-token')
   async payWithCardToken(
     @Body() dto: CreateCardTokenPaymentDto,
-    @Headers('cf-connecting-ip') cfConnectingIp: string | undefined,
+    @Headers('cf-connecting-ip') cfConnectingIp: string | string[] | undefined,
     @Ip() rawIp: string,
   ) {
     this.logger.log(
@@ -124,14 +124,8 @@ export class CloverPayController {
     const currency = dto.currency ?? CLOVER_PAYMENT_CURRENCY;
     const referenceId = dto.checkoutIntentId?.trim() || buildClientRequestId();
     const orderStableId = metadata.orderStableId ?? generateStableId();
-    let clientIp = cfConnectingIp;
-    if (!clientIp) {
-      clientIp = rawIp;
-    }
-    if (Array.isArray(clientIp)) {
-      clientIp = clientIp[0];
-    }
-    clientIp = clientIp?.trim();
+    const cfClientIp = normalizeClientIp(cfConnectingIp);
+    let clientIp = cfClientIp ?? normalizeClientIp(rawIp);
     if (!clientIp) {
       clientIp = '127.0.0.1';
     }
@@ -291,6 +285,24 @@ function normalizeCanadianPostalCode(value?: string): string {
     return `${cleaned.slice(0, 3)} ${cleaned.slice(3, 6)}`;
   }
   return `${cleaned.slice(0, 3)} ${cleaned.slice(3)}`;
+}
+
+function normalizeClientIp(
+  value: string | string[] | undefined,
+): string | undefined {
+  if (Array.isArray(value)) {
+    const firstValid = value.find(
+      (entry): entry is string =>
+        typeof entry === 'string' && entry.trim().length > 0,
+    );
+    return firstValid?.trim();
+  }
+
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return value.trim();
+  }
+
+  return undefined;
 }
 
 function isValidCanadianPostalCode(value: string): boolean {
