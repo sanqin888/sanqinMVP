@@ -4,11 +4,10 @@ import { CloverController } from './clover.controller';
 import { CloverPayController } from './clover-pay.controller';
 import { OrdersModule } from '../orders/orders.module';
 import { CheckoutIntentsModule } from './checkout-intents.module';
-import { CloverWebhookProcessor } from './clover-webhook.processor';
 
 @Module({
   imports: [OrdersModule, CheckoutIntentsModule],
-  providers: [CloverService, CloverWebhookProcessor],
+  providers: [CloverService],
   controllers: [CloverController, CloverPayController],
   exports: [CloverService],
 })
