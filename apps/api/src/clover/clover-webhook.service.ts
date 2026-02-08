@@ -81,7 +81,9 @@ export class CloverWebhookService {
 
     const eventRecord = event as Record<string, unknown>;
     const objectId =
-      typeof eventRecord.objectId === 'string' ? eventRecord.objectId : undefined;
+      typeof eventRecord.objectId === 'string'
+        ? eventRecord.objectId
+        : undefined;
     const type =
       typeof eventRecord.type === 'string' ? eventRecord.type : undefined;
 
@@ -96,7 +98,7 @@ export class CloverWebhookService {
     }
   }
 
-  private async handlePaymentUpdate(paymentId: string) {
+  private handlePaymentUpdate(paymentId: string): Promise<void> {
     void this.checkoutIntents;
     void this.orders;
     void this.clover;
@@ -104,5 +106,7 @@ export class CloverWebhookService {
     this.logger.log(
       `Processing payment update for ${paymentId} - Logic to be implemented`,
     );
+
+    return Promise.resolve();
   }
 }

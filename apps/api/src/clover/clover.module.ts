@@ -11,11 +11,7 @@ import { CheckoutIntentsModule } from './checkout-intents.module';
 @Module({
   imports: [ConfigModule, OrdersModule, CheckoutIntentsModule],
   providers: [CloverService, CloverWebhookService],
-  controllers: [
-    CloverController,
-    CloverPayController,
-    CloverWebhookController,
-  ],
+  controllers: [CloverController, CloverPayController, CloverWebhookController],
   exports: [CloverService],
 })
 export class CloverModule {}
