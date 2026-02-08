@@ -4,9 +4,12 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
   Headers,
   Ip,
+  NotFoundException,
   Post,
+  Query,
 } from '@nestjs/common';
 import { AppLogger } from '../common/app-logger';
 import { CloverService } from './clover.service';
@@ -33,6 +36,36 @@ export class CloverPayController {
     private readonly checkoutIntents: CheckoutIntentsService,
     private readonly orders: OrdersService,
   ) {}
+
+  @Get('pay/online/status')
+  async getCheckoutIntentStatus(
+    @Query('checkoutIntentId') checkoutIntentId?: string,
+  ) {
+    const referenceId = checkoutIntentId?.trim();
+    if (!referenceId) {
+      throw new BadRequestException({
+        code: 'CHECKOUT_INTENT_REQUIRED',
+        message: 'checkoutIntentId is required',
+      });
+    }
+
+    const intent = await this.checkoutIntents.findByIdentifiers({
+      referenceId,
+    });
+    if (!intent) {
+      throw new NotFoundException({
+        code: 'CHECKOUT_INTENT_NOT_FOUND',
+        message: 'checkout intent not found',
+      });
+    }
+
+    return {
+      status: intent.status,
+      result: intent.result,
+      orderStableId: intent.metadata?.orderStableId ?? null,
+      orderNumber: intent.referenceId,
+    };
+  }
 
   @Post('pay/online/card-token')
   async payWithCardToken(
@@ -205,6 +238,17 @@ export class CloverPayController {
       });
     }
 
+    const expectedTotalCents = lineItems.reduce(
+      (sum, item) => sum + item.price * item.unitQty,
+      0,
+    );
+    if (expectedTotalCents !== dto.amountCents) {
+      throw new BadRequestException({
+        code: 'AMOUNT_MISMATCH',
+        message: `amountCents does not match metadata total (${expectedTotalCents})`,
+      });
+    }
+
     const cloverOrder = await this.clover.createOrder({
       currency,
       lineItems,
@@ -240,6 +284,16 @@ export class CloverPayController {
     });
 
     if (!paymentResult.ok) {
+      if (paymentResult.status === 'CHALLENGE_REQUIRED') {
+        return {
+          orderStableId,
+          orderNumber: referenceId,
+          paymentId: paymentResult.paymentId ?? 'PENDING',
+          status: paymentResult.status,
+          challengeUrl: paymentResult.challengeUrl ?? null,
+        };
+      }
+
       await this.checkoutIntents.markFailed({
         intentId: intent.id,
         result: paymentResult.status ?? 'FAILED',

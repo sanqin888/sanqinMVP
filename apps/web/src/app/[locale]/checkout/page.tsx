@@ -109,6 +109,7 @@ declare global {
 
 const PHONE_OTP_REQUEST_URL = "/api/v1/auth/phone/send-code";
 const PHONE_OTP_VERIFY_URL = "/api/v1/auth/phone/verify-code";
+const CHECKOUT_INTENT_STORAGE_KEY = "cloverCheckoutIntentId";
 type DeliveryOptionDefinition = {
   provider: "DOORDASH" | "UBER";
   fee: number; // 仅用于显示说明，不参与实际计费
@@ -357,6 +358,17 @@ const buildPaymentErrorMessage = (params: {
   return params.message;
 };
 
+const shouldResetCheckoutIntent = (code: string) => {
+  const normalized = code.toLowerCase();
+  return (
+    normalized.includes("card_declined") ||
+    normalized.includes("insufficient_funds") ||
+    normalized.includes("payment_failed") ||
+    normalized.includes("processing_error") ||
+    normalized.includes("do_not_honor")
+  );
+};
+
 export default function CheckoutPage() {
   const params = useParams<{ locale?: string }>();
   const locale = (params?.locale === "zh" ? "zh" : "en") as Locale;
@@ -436,111 +448,39 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (!checkoutIntentIdRef.current) {
-      checkoutIntentIdRef.current =
-        window.crypto?.randomUUID?.() ??
-        `chk_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    if (checkoutIntentIdRef.current) return;
+    let storedId: string | null = null;
+    try {
+      storedId = window.sessionStorage.getItem(CHECKOUT_INTENT_STORAGE_KEY);
+    } catch {
+      storedId = null;
+    }
+    if (storedId) {
+      checkoutIntentIdRef.current = storedId;
+      return;
+    }
+    const generatedId =
+      window.crypto?.randomUUID?.() ??
+      `chk_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    checkoutIntentIdRef.current = generatedId;
+    try {
+      window.sessionStorage.setItem(CHECKOUT_INTENT_STORAGE_KEY, generatedId);
+    } catch {
+      // ignore storage failures
     }
   }, []);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    let cancelled = false;
-
-    const publicKey = process.env.NEXT_PUBLIC_CLOVER_PUBLIC_TOKEN?.trim();
-    const sdkUrl =
-      process.env.NEXT_PUBLIC_CLOVER_SDK_URL?.trim() ??
-      DEFAULT_CLOVER_SDK_URL;
-
-    if (!publicKey) {
-      setErrorMessage(
-        locale === "zh"
-          ? "支付初始化失败：缺少 Clover 公钥配置。"
-          : "Payment initialization failed: missing Clover public key.",
-      );
-      return;
-    }
-
-    const setupClover = async () => {
+  const clearCheckoutIntentId = useCallback(() => {
+    checkoutIntentIdRef.current = null;
+    setChallengeIntentId(null);
+    if (typeof window !== "undefined") {
       try {
-        await loadScript(sdkUrl);
-        if (cancelled) return;
-
-        if (!window.Clover) {
-          throw new Error("Clover SDK not available");
-        }
-
-        const clover = new window.Clover(publicKey);
-        const elements = clover.elements();
-
-        const cardNumber = elements.create("CARD_NUMBER");
-        const cardDate = elements.create("CARD_DATE");
-        const cardCvv = elements.create("CARD_CVV");
-
-        cardNumber.mount("#clover-card-number");
-        cardDate.mount("#clover-card-date");
-        cardCvv.mount("#clover-card-cvv");
-
-        cloverRef.current = clover;
-        cardNumberRef.current = cardNumber;
-        cardDateRef.current = cardDate;
-        cardCvvRef.current = cardCvv;
-
-        const listenComplete = (
-          element: {
-            on?: (
-              event: string,
-              handler: (payload: CloverFieldChangeEvent) => void,
-            ) => void;
-            addEventListener?: (
-              event: string,
-              handler: (payload: CloverFieldChangeEvent) => void,
-            ) => void;
-          },
-          setter: (next: boolean) => void,
-        ) => {
-          const handler = (event: CloverFieldChangeEvent) => {
-            const isComplete = Boolean(event?.complete && !event?.error);
-            setter(isComplete);
-            if (event?.error?.message) {
-              setCardFieldError(event.error.message);
-            } else {
-              setCardFieldError(null);
-            }
-          };
-
-          if (typeof element.on === "function") {
-            element.on("change", handler);
-            return;
-          }
-
-          if (typeof element.addEventListener === "function") {
-            element.addEventListener("change", handler);
-          }
-        };
-
-        listenComplete(cardNumber, setCardNumberComplete);
-        listenComplete(cardDate, setCardDateComplete);
-        listenComplete(cardCvv, setCardCvvComplete);
-
-        setCloverReady(true);
-      } catch (error) {
-        if (cancelled) return;
-        const message =
-          error instanceof Error ? error.message : "Failed to init Clover";
-        setErrorMessage(message);
+        window.sessionStorage.removeItem(CHECKOUT_INTENT_STORAGE_KEY);
+      } catch {
+        // ignore storage failures
       }
-    };
-
-    setupClover();
-
-    return () => {
-      cancelled = true;
-      cardNumberRef.current?.destroy?.();
-      cardDateRef.current?.destroy?.();
-      cardCvvRef.current?.destroy?.();
-    };
-  }, [locale]);
+    }
+  }, []);
 
   const entitlementItems = useMemo(
     () =>
@@ -777,13 +717,19 @@ export default function CheckoutPage() {
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [cardFieldError, setCardFieldError] = useState<string | null>(null);
+  const [cardNumberError, setCardNumberError] = useState<string | null>(null);
+  const [cardDateError, setCardDateError] = useState<string | null>(null);
+  const [cardCvvError, setCardCvvError] = useState<string | null>(null);
   const [cloverReady, setCloverReady] = useState(false);
   const [nameOnCard, setNameOnCard] = useState("");
   const [postalCode, setPostalCode] = useState("");
   const [cardNumberComplete, setCardNumberComplete] = useState(false);
   const [cardDateComplete, setCardDateComplete] = useState(false);
   const [cardCvvComplete, setCardCvvComplete] = useState(false);
+  const [challengeUrl, setChallengeUrl] = useState<string | null>(null);
+  const [challengeIntentId, setChallengeIntentId] = useState<string | null>(
+    null,
+  );
   const cloverRef = useRef<null | { createToken: (payload?: Record<string, unknown>) => Promise<{ token?: string; errors?: Array<{ message?: string }> }> }>(
     null,
   );
@@ -1302,6 +1248,183 @@ export default function CheckoutPage() {
       cardCvvComplete);
   const showPaymentPostalError =
     postalCode.trim().length > 0 && !isPaymentPostalValid;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!requiresPayment) {
+      setCloverReady(false);
+      return;
+    }
+    let cancelled = false;
+
+    const publicKey = process.env.NEXT_PUBLIC_CLOVER_PUBLIC_TOKEN?.trim();
+    const sdkUrl =
+      process.env.NEXT_PUBLIC_CLOVER_SDK_URL?.trim() ??
+      DEFAULT_CLOVER_SDK_URL;
+
+    if (!publicKey) {
+      setErrorMessage(
+        locale === "zh"
+          ? "支付初始化失败：缺少 Clover 公钥配置。"
+          : "Payment initialization failed: missing Clover public key.",
+      );
+      return;
+    }
+
+    const setupClover = async () => {
+      try {
+        await loadScript(sdkUrl);
+        if (cancelled) return;
+
+        if (!window.Clover) {
+          throw new Error("Clover SDK not available");
+        }
+
+        const numberHost = document.getElementById("clover-card-number");
+        const dateHost = document.getElementById("clover-card-date");
+        const cvvHost = document.getElementById("clover-card-cvv");
+
+        if (!numberHost || !dateHost || !cvvHost) {
+          throw new Error("Card fields not ready");
+        }
+
+        const clover = new window.Clover(publicKey);
+        const elements = clover.elements();
+
+        const cardNumber = elements.create("CARD_NUMBER");
+        const cardDate = elements.create("CARD_DATE");
+        const cardCvv = elements.create("CARD_CVV");
+
+        cardNumber.mount("#clover-card-number");
+        cardDate.mount("#clover-card-date");
+        cardCvv.mount("#clover-card-cvv");
+
+        cloverRef.current = clover;
+        cardNumberRef.current = cardNumber;
+        cardDateRef.current = cardDate;
+        cardCvvRef.current = cardCvv;
+
+        const listenComplete = (
+          element: {
+            on?: (
+              event: string,
+              handler: (payload: CloverFieldChangeEvent) => void,
+            ) => void;
+            addEventListener?: (
+              event: string,
+              handler: (payload: CloverFieldChangeEvent) => void,
+            ) => void;
+          },
+          setter: (next: boolean) => void,
+          setError: (next: string | null) => void,
+        ) => {
+          const handler = (event: CloverFieldChangeEvent) => {
+            const isComplete = Boolean(event?.complete && !event?.error);
+            setter(isComplete);
+            if (event?.error?.message) {
+              setError(event.error.message);
+            } else {
+              setError(null);
+            }
+          };
+
+          if (typeof element.on === "function") {
+            element.on("change", handler);
+            return;
+          }
+
+          if (typeof element.addEventListener === "function") {
+            element.addEventListener("change", handler);
+          }
+        };
+
+        listenComplete(cardNumber, setCardNumberComplete, setCardNumberError);
+        listenComplete(cardDate, setCardDateComplete, setCardDateError);
+        listenComplete(cardCvv, setCardCvvComplete, setCardCvvError);
+
+        setCloverReady(true);
+      } catch (error) {
+        if (cancelled) return;
+        const message =
+          error instanceof Error ? error.message : "Failed to init Clover";
+        setErrorMessage(message);
+      }
+    };
+
+    setupClover();
+
+    return () => {
+      cancelled = true;
+      cardNumberRef.current?.destroy?.();
+      cardDateRef.current?.destroy?.();
+      cardCvvRef.current?.destroy?.();
+    };
+  }, [locale, requiresPayment]);
+
+  useEffect(() => {
+    if (!challengeUrl || !challengeIntentId) return;
+    let cancelled = false;
+    let timeoutId: NodeJS.Timeout | null = null;
+
+    const pollStatus = async () => {
+      try {
+        const response = await apiFetch<{
+          status: string;
+          result?: string | null;
+          orderStableId?: string | null;
+        }>(
+          `/clover/pay/online/status?checkoutIntentId=${encodeURIComponent(
+            challengeIntentId,
+          )}`,
+        );
+
+        if (cancelled) return;
+
+        if (response.status === "completed" && response.orderStableId) {
+          clearCheckoutIntentId();
+          setChallengeUrl(null);
+          router.push(`/${locale}/thank-you/${response.orderStableId}`);
+          return;
+        }
+
+        if (
+          response.status === "failed" ||
+          response.status === "expired" ||
+          response.status === "processing_failed"
+        ) {
+          clearCheckoutIntentId();
+          setChallengeUrl(null);
+          setErrorMessage(
+            locale === "zh"
+              ? "3D Secure 验证未能完成，请重新尝试支付。"
+              : "3D Secure verification did not complete. Please try again.",
+          );
+          return;
+        }
+      } catch {
+        // ignore transient polling errors
+      }
+
+      if (!cancelled) {
+        timeoutId = setTimeout(pollStatus, 2500);
+      }
+    };
+
+    pollStatus();
+
+    return () => {
+      cancelled = true;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [
+    challengeIntentId,
+    challengeUrl,
+    clearCheckoutIntentId,
+    locale,
+    router,
+  ]);
 
   const scheduleLabel =
     strings.scheduleOptions.find((option) => option.id === schedule)?.label ??
@@ -2050,6 +2173,7 @@ export default function CheckoutPage() {
     }
 
     setErrorMessage(null);
+    setChallengeUrl(null);
     setConfirmation(null);
     setIsSubmitting(true);
 
@@ -2251,6 +2375,10 @@ export default function CheckoutPage() {
         );
       }
 
+      if (postalCode.trim() !== normalizedPostalCode) {
+        setPostalCode(normalizedPostalCode);
+      }
+
       const tokenResult = await clover.createToken({
         cardholderName: normalizedCardholderName,
         postalCode: normalizedPostalCode,
@@ -2274,6 +2402,16 @@ export default function CheckoutPage() {
           : undefined);
       if (checkoutIntentId) {
         checkoutIntentIdRef.current = checkoutIntentId;
+        if (typeof window !== "undefined") {
+          try {
+            window.sessionStorage.setItem(
+              CHECKOUT_INTENT_STORAGE_KEY,
+              checkoutIntentId,
+            );
+          } catch {
+            // ignore storage failures
+          }
+        }
       }
 
       const paymentResponse = await apiFetch<CardTokenPaymentResponse>(
@@ -2304,6 +2442,23 @@ export default function CheckoutPage() {
         },
       );
 
+      if (paymentResponse.status === "CHALLENGE_REQUIRED") {
+        if (paymentResponse.challengeUrl) {
+          setChallengeUrl(paymentResponse.challengeUrl);
+          setChallengeIntentId(checkoutIntentId ?? null);
+          setErrorMessage(null);
+          return;
+        }
+        setErrorMessage(
+          locale === "zh"
+            ? "需要完成 3D Secure 验证，但未能获取验证页面，请稍后重试。"
+            : "3D Secure verification is required but the challenge page is unavailable. Please try again.",
+        );
+        return;
+      }
+
+      clearCheckoutIntentId();
+
       if (typeof window !== "undefined") {
         router.push(`/${locale}/thank-you/${paymentResponse.orderStableId}`);
       } else {
@@ -2331,6 +2486,9 @@ export default function CheckoutPage() {
           locale,
         });
         setErrorMessage(userMessage);
+        if (code && shouldResetCheckoutIntent(code)) {
+          clearCheckoutIntentId();
+        }
       } else {
         setErrorMessage(fallback);
       }
@@ -2342,6 +2500,7 @@ export default function CheckoutPage() {
   const payButtonLabel = isSubmitting
     ? strings.processing
     : formatWithTotal(strings.payCta, formatMoney(totalCents));
+  const cardFieldError = cardNumberError || cardDateError || cardCvvError;
   const paymentError =
     errorMessage ?? (requiresPayment ? cardFieldError : null);
 
@@ -3274,7 +3433,7 @@ export default function CheckoutPage() {
                           setErrorMessage(null);
                         }}
                         autoComplete="cc-name"
-                        className="h-9 w-full rounded-2xl border border-slate-200 bg-white px-3 py-1 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                        className="h-10 w-full rounded-2xl border border-slate-200 bg-white px-3 py-1 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
                         placeholder={
                           locale === "zh" ? "请输入姓名" : "Full name"
                         }
@@ -3287,7 +3446,7 @@ export default function CheckoutPage() {
                       </label>
                       <div
                         id="clover-card-number"
-                        className="flex h-9 items-center rounded-2xl border border-slate-200 px-3"
+                        className="flex h-10 items-center rounded-2xl border border-slate-200 bg-white px-3"
                       />
                     </div>
                   </div>
@@ -3299,7 +3458,7 @@ export default function CheckoutPage() {
                       </label>
                       <div
                         id="clover-card-date"
-                        className="flex h-9 items-center rounded-2xl border border-slate-200 px-3"
+                        className="flex h-10 items-center rounded-2xl border border-slate-200 bg-white px-3"
                       />
                     </div>
                     <div className="space-y-1">
@@ -3308,7 +3467,7 @@ export default function CheckoutPage() {
                       </label>
                       <div
                         id="clover-card-cvv"
-                        className="flex h-9 items-center rounded-2xl border border-slate-200 px-3"
+                        className="flex h-10 items-center rounded-2xl border border-slate-200 bg-white px-3"
                       />
                     </div>
                     <div className="space-y-1">
@@ -3325,7 +3484,7 @@ export default function CheckoutPage() {
                           setPostalCode(normalizeCanadianPostalCode(postalCode))
                         }
                         autoComplete="postal-code"
-                        className="h-9 w-full rounded-2xl border border-slate-200 bg-white px-3 py-1 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                        className="h-10 w-full rounded-2xl border border-slate-200 bg-white px-3 py-1 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
                         placeholder={locale === "zh" ? "A1A 1A1" : "A1A 1A1"}
                       />
                       {showPaymentPostalError ? (
@@ -3798,6 +3957,37 @@ export default function CheckoutPage() {
           </div>
         )}
       </section>
+      {challengeUrl ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
+          <div className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+              <p className="text-sm font-semibold text-slate-700">
+                {locale === "zh"
+                  ? "完成 3D Secure 验证"
+                  : "Complete 3D Secure verification"}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setChallengeUrl(null);
+                  clearCheckoutIntentId();
+                }}
+                className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:bg-slate-100"
+              >
+                {locale === "zh" ? "关闭" : "Close"}
+              </button>
+            </div>
+            <div className="h-[70vh] bg-white">
+              <iframe
+                title="3D Secure Challenge"
+                src={challengeUrl}
+                className="h-full w-full"
+                allow="payment *; fullscreen *"
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
