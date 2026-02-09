@@ -25,19 +25,21 @@ export class CloverWebhookController {
     // 1. 特殊处理：Clover 的“验证请求” (没有签名，只有 verificationCode)
     // 注意：payload 可能是 Buffer (因为 main.ts 配置了 raw)，需要尝试解析
     let bodyJson: any = payload;
-    
+
     // 如果是 Buffer，尝试转成 JSON 对象
     if (Buffer.isBuffer(payload)) {
-        try {
-            bodyJson = JSON.parse(payload.toString('utf-8'));
-        } catch (e) {
-            // 解析失败，保持原样，后面会报错
-        }
+      try {
+        bodyJson = JSON.parse(payload.toString('utf-8'));
+      } catch (e) {
+        // 解析失败，保持原样，后面会报错
+      }
     }
 
     if (bodyJson && bodyJson.verificationCode) {
       this.logger.log(`🌟 收到 Clover 验证代码: ${bodyJson.verificationCode}`);
-      console.log(`\n>>> 请复制此代码到 Clover 后台: ${bodyJson.verificationCode} <<<\n`);
+      console.log(
+        `\n>>> 请复制此代码到 Clover 后台: ${bodyJson.verificationCode} <<<\n`,
+      );
       return { received: true }; // 直接返回 200，跳过签名验证
     }
 
