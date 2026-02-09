@@ -18,8 +18,8 @@ export class CloverWebhookController {
 
   @Post()
   @HttpCode(200)
-  async handleWebhook(
-    @Headers('clover-signature') signature: string | undefined, // 允许为空
+  handleWebhook(
+    @Headers('clover-signature') signature: string | undefined,
     @Body() payload: unknown,
   ) {
     // 1. 预处理：确保我们能拿到 JSON 对象 (哪怕 payload 是 Buffer)
@@ -71,36 +71,5 @@ export class CloverWebhookController {
     });
 
     return { received: true };
-  }
-
-  private parsePayload(payload: unknown): unknown {
-    if (Buffer.isBuffer(payload)) {
-      try {
-        return JSON.parse(payload.toString('utf-8'));
-      } catch {
-        return payload;
-      }
-    }
-
-    if (typeof payload === 'string') {
-      try {
-        return JSON.parse(payload);
-      } catch {
-        return payload;
-      }
-    }
-
-    return payload;
-  }
-
-  private hasVerificationCode(
-    body: unknown,
-  ): body is { verificationCode: string } {
-    if (!body || typeof body !== 'object') {
-      return false;
-    }
-
-    const candidate = body as { verificationCode?: unknown };
-    return typeof candidate.verificationCode === 'string';
   }
 }
