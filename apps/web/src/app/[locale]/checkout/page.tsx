@@ -2161,11 +2161,11 @@ export default function CheckoutPage() {
     }
   };
 
-// 🟢 [录视频专用版] handlePlaceOrder
+  // 🟢 [录视频专用版] handlePlaceOrder
   const handlePlaceOrder = async () => {
     // 1. 保持基本的表单验证，这样你在视频里演示“填写表单”时，如果没有填完，按钮还是灰的或者会报错，看起来很真实
     if (!canPlaceOrder || isSubmitting) return;
-    
+
     // 如果需要支付但卡信息没填全（虽然我们是假支付，但UI验证要保留）
     if (requiresPayment && !canPayWithCard) {
       setErrorMessage(
@@ -2184,13 +2184,14 @@ export default function CheckoutPage() {
     // ============================================================
     // 🎭 视觉欺骗模式 (Strategy 1) 开始
     // ============================================================
-    
+
     console.log("🎥 开始模拟支付流程 (录视频模式)...");
 
     // 模拟 2.5 秒的网络延迟，让视频看起来像是在真的处理数据
     setTimeout(() => {
       // 1. 生成一个假的订单 ID (看起来像真的 UUID)
-      const fakeOrderId =  window.crypto?.randomUUID?.() ?? "video-demo-order-id";
+      const fakeOrderId =
+        window.crypto?.randomUUID?.() ?? "video-demo-order-id";
 
       // 2. 清理本地存储 (模拟真实流程)
       clearCheckoutIntentId();
@@ -2202,15 +2203,16 @@ export default function CheckoutPage() {
 
       // 4. 结束转圈 (虽然已经跳转了)
       setIsSubmitting(false);
-      
     }, 2500); // 2.5秒延迟
 
     // 🔴 强制结束函数，不执行后面任何真实的 API 调用
-    return; 
+    return;
 
     // ============================================================
     // 🎭 视觉欺骗模式 结束 (下面的真实代码已被上面的 return 屏蔽)
     // ============================================================
+
+  };
 
   const payButtonLabel = isSubmitting
     ? strings.processing
