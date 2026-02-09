@@ -164,6 +164,33 @@ export class CheckoutIntentsService {
     });
   }
 
+  async resetForRetry(intentId: string): Promise<void> {
+    await this.prisma.checkoutIntent.updateMany({
+      where: {
+        id: intentId,
+        status: { in: ['failed', 'expired'] },
+        orderId: null,
+      },
+      data: {
+        status: 'pending',
+        result: null,
+        processedAt: null,
+      },
+    });
+  }
+
+  async updateMetadata(
+    intentId: string,
+    metadata: HostedCheckoutMetadata & Record<string, unknown>,
+  ): Promise<void> {
+    await this.prisma.checkoutIntent.update({
+      where: { id: intentId },
+      data: {
+        metadataJson: metadata as Prisma.InputJsonValue,
+      },
+    });
+  }
+
   private mapRecord(record: CheckoutIntentRecord): CheckoutIntentWithMetadata {
     const metadata = record.metadataJson as HostedCheckoutMetadata;
     return { ...record, metadata } satisfies CheckoutIntentWithMetadata;
