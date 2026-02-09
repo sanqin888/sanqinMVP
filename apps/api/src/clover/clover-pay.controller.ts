@@ -61,8 +61,8 @@ export class CloverPayController {
     if (intent.status === 'processing' && !intent.orderId) {
       const paymentMeta = extractPaymentMeta(intent.metadata);
       const chargeStatus = await this.clover.getChargeStatus({
-        paymentId: paymentMeta.lastPaymentId,
-        idempotencyKey: paymentMeta.lastIdempotencyKey,
+        paymentId: paymentMeta.lastPaymentId ?? undefined,
+        idempotencyKey: paymentMeta.lastIdempotencyKey ?? undefined,
       });
 
       if (chargeStatus.ok) {
