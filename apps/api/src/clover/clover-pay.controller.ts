@@ -211,10 +211,10 @@ export class CloverPayController {
 
     const expectedTotalCents = Math.round(
       metadata.totalCents ??
-        (metadata.subtotalCents +
+        metadata.subtotalCents +
           metadata.taxCents +
           (metadata.serviceFeeCents ?? 0) +
-          (metadata.deliveryFeeCents ?? 0)),
+          (metadata.deliveryFeeCents ?? 0),
     );
     if (expectedTotalCents !== dto.amountCents) {
       throw new BadRequestException({
