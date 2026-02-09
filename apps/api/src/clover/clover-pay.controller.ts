@@ -58,6 +58,91 @@ export class CloverPayController {
       });
     }
 
+    if (intent.status === 'processing' && !intent.orderId) {
+      const paymentMeta = extractPaymentMeta(intent.metadata);
+      const chargeStatus = await this.clover.getChargeStatus({
+        paymentId: paymentMeta.lastPaymentId ?? undefined,
+        idempotencyKey: paymentMeta.lastIdempotencyKey ?? undefined,
+      });
+
+      if (chargeStatus.ok) {
+        const normalizedStatus = chargeStatus.status?.toLowerCase();
+        const isSuccess =
+          normalizedStatus === 'succeeded' || chargeStatus.captured === true;
+        if (isSuccess) {
+          const claimed = await this.checkoutIntents.claimOrderCreation(
+            intent.id,
+          );
+          if (!claimed) {
+            return {
+              status: intent.status,
+              result: intent.result,
+              orderStableId: intent.metadata?.orderStableId ?? null,
+              orderNumber: intent.referenceId,
+            };
+          }
+
+          const orderStableId =
+            intent.metadata?.orderStableId ?? generateStableId();
+          const orderDto = buildOrderDtoFromMetadata(
+            intent.metadata,
+            orderStableId,
+          );
+          orderDto.clientRequestId = intent.referenceId;
+          const order = await this.orders.createImmediatePaid(
+            orderDto,
+            intent.referenceId,
+          );
+
+          await this.checkoutIntents.markCompleted({
+            intentId: intent.id,
+            orderId: order.id,
+            result: chargeStatus.status ?? 'SUCCESS',
+          });
+
+          return {
+            status: 'completed',
+            result: chargeStatus.status ?? 'SUCCESS',
+            orderStableId,
+            orderNumber: intent.referenceId,
+          };
+        }
+
+        if (
+          normalizedStatus &&
+          ['pending', 'requires_action', 'requires_authentication'].includes(
+            normalizedStatus,
+          )
+        ) {
+          return {
+            status: 'awaiting_authentication',
+            result: chargeStatus.status ?? intent.result,
+            orderStableId: intent.metadata?.orderStableId ?? null,
+            orderNumber: intent.referenceId,
+          };
+        }
+
+        if (
+          normalizedStatus &&
+          ['failed', 'declined', 'canceled', 'cancelled'].includes(
+            normalizedStatus,
+          )
+        ) {
+          await this.checkoutIntents.markFailed({
+            intentId: intent.id,
+            result: chargeStatus.status ?? 'FAILED',
+          });
+
+          return {
+            status: 'failed',
+            result: chargeStatus.status ?? 'FAILED',
+            orderStableId: intent.metadata?.orderStableId ?? null,
+            orderNumber: intent.referenceId,
+          };
+        }
+      }
+    }
+
     return {
       status: intent.status,
       result: intent.result,
@@ -168,15 +253,6 @@ export class CloverPayController {
       `Processing payment from IP: ${clientIp} (CF: ${cfConnectingIpDisplay}, Raw: ${rawIp ?? 'N/A'})`,
     );
 
-    const metadataWithIds = {
-      ...metadata,
-      customer: {
-        ...metadata.customer,
-        email: finalEmail,
-      },
-      orderStableId,
-    } satisfies HostedCheckoutMetadata;
-
     const existingIntent = await this.checkoutIntents.findByIdentifiers({
       referenceId,
     });
@@ -189,6 +265,33 @@ export class CloverPayController {
         status: 'COMPLETED',
       };
     }
+
+    if (
+      existingIntent &&
+      ['failed', 'expired'].includes(existingIntent.status)
+    ) {
+      await this.checkoutIntents.resetForRetry(existingIntent.id);
+    }
+
+    const existingAttempt = extractPaymentAttempt(existingIntent?.metadata);
+    const paymentAttempt =
+      existingIntent && ['failed', 'expired'].includes(existingIntent.status)
+        ? existingAttempt + 1
+        : existingAttempt > 0
+          ? existingAttempt
+          : 1;
+    const idempotencyKey = `${referenceId}_${paymentAttempt}`;
+
+    const metadataWithIds = {
+      ...metadata,
+      customer: {
+        ...metadata.customer,
+        email: finalEmail,
+      },
+      orderStableId,
+      paymentAttempt,
+      lastIdempotencyKey: idempotencyKey,
+    } satisfies HostedCheckoutMetadata & CheckoutIntentPaymentMeta;
 
     const intent =
       existingIntent ??
@@ -223,26 +326,45 @@ export class CloverPayController {
       });
     }
 
+    await this.checkoutIntents.updateMetadata(intent.id, metadataWithIds);
+
     const paymentResult = await this.clover.createCardPayment({
       amountCents: dto.amountCents,
       currency,
       source: dto.source,
       orderId: referenceId,
+      idempotencyKey,
       description: `Order ${referenceId} - Online`,
     });
 
     if (!paymentResult.ok) {
-      await this.checkoutIntents.markFailed({
-        intentId: intent.id,
-        result: paymentResult.status ?? 'FAILED',
-      });
-
       const meta = extractCloverErrorMeta(paymentResult.reason);
       const errorCode =
+        paymentResult.code?.toLowerCase() ??
         meta?.code?.toLowerCase() ??
         meta?.declineCode?.toLowerCase() ??
         paymentResult.status?.toLowerCase() ??
         'payment_failed';
+
+      if (errorCode === 'challenge_required') {
+        const updatedMetadata = {
+          ...metadataWithIds,
+          lastPaymentId: paymentResult.paymentId ?? null,
+        } satisfies HostedCheckoutMetadata & CheckoutIntentPaymentMeta;
+        await this.checkoutIntents.updateMetadata(intent.id, updatedMetadata);
+
+        return {
+          orderStableId,
+          orderNumber: referenceId,
+          status: 'CHALLENGE_REQUIRED',
+          challengeUrl: paymentResult.challengeUrl ?? null,
+        };
+      }
+
+      await this.checkoutIntents.markFailed({
+        intentId: intent.id,
+        result: paymentResult.status ?? 'FAILED',
+      });
 
       throw new BadRequestException({
         code: errorCode,
@@ -251,6 +373,11 @@ export class CloverPayController {
         declineCode: meta?.declineCode,
       });
     }
+
+    await this.checkoutIntents.updateMetadata(intent.id, {
+      ...metadataWithIds,
+      lastPaymentId: paymentResult.paymentId,
+    });
 
     const orderDto = buildOrderDtoFromMetadata(metadataWithIds, orderStableId);
     orderDto.clientRequestId = referenceId;
@@ -309,6 +436,37 @@ type CloverErrorMeta = {
   declineCode?: string;
   message?: string;
 };
+
+type CheckoutIntentPaymentMeta = {
+  paymentAttempt?: number;
+  lastIdempotencyKey?: string | null;
+  lastPaymentId?: string | null;
+};
+
+function extractPaymentMeta(
+  metadata?: HostedCheckoutMetadata | null,
+): CheckoutIntentPaymentMeta {
+  if (!metadata) return {};
+  const meta = metadata as HostedCheckoutMetadata & CheckoutIntentPaymentMeta;
+  return {
+    paymentAttempt:
+      typeof meta.paymentAttempt === 'number' && meta.paymentAttempt > 0
+        ? meta.paymentAttempt
+        : undefined,
+    lastIdempotencyKey:
+      typeof meta.lastIdempotencyKey === 'string'
+        ? meta.lastIdempotencyKey
+        : undefined,
+    lastPaymentId:
+      typeof meta.lastPaymentId === 'string' ? meta.lastPaymentId : undefined,
+  };
+}
+
+function extractPaymentAttempt(
+  metadata?: HostedCheckoutMetadata | null,
+): number {
+  return extractPaymentMeta(metadata).paymentAttempt ?? 0;
+}
 
 function extractCloverErrorMeta(reason: string): CloverErrorMeta | undefined {
   const attempts = collectReasonCandidates(reason);

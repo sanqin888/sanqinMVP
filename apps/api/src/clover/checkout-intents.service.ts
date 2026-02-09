@@ -120,7 +120,7 @@ export class CheckoutIntentsService {
     await this.prisma.checkoutIntent.updateMany({
       where: {
         id: params.intentId,
-        status: 'processing',
+        status: { in: ['processing', 'creating_order'] },
       },
       data: {
         orderId: params.orderId,
@@ -138,7 +138,7 @@ export class CheckoutIntentsService {
     await this.prisma.checkoutIntent.updateMany({
       where: {
         id: params.intentId,
-        status: { in: ['pending', 'processing'] },
+        status: { in: ['pending', 'processing', 'creating_order'] },
         orderId: null,
       },
       data: {
@@ -160,6 +160,48 @@ export class CheckoutIntentsService {
         status: 'expired',
         result: 'EXPIRED',
         processedAt: new Date(),
+      },
+    });
+  }
+
+  async resetForRetry(intentId: string): Promise<void> {
+    await this.prisma.checkoutIntent.updateMany({
+      where: {
+        id: intentId,
+        status: { in: ['failed', 'expired'] },
+        orderId: null,
+      },
+      data: {
+        status: 'pending',
+        result: null,
+        processedAt: null,
+      },
+    });
+  }
+
+  async claimOrderCreation(intentId: string): Promise<boolean> {
+    const claimed = await this.prisma.checkoutIntent.updateMany({
+      where: {
+        id: intentId,
+        status: 'processing',
+        orderId: null,
+      },
+      data: {
+        status: 'creating_order',
+      },
+    });
+
+    return claimed.count > 0;
+  }
+
+  async updateMetadata(
+    intentId: string,
+    metadata: HostedCheckoutMetadata & Record<string, unknown>,
+  ): Promise<void> {
+    await this.prisma.checkoutIntent.update({
+      where: { id: intentId },
+      data: {
+        metadataJson: metadata as Prisma.InputJsonValue,
       },
     });
   }
