@@ -41,7 +41,6 @@ exercise the Clover POS proof-of-concept endpoints:
 | `CLOVER_API_BASE_URL` | Optional. Defaults to the Clover sandbox (`https://sandbox.dev.clover.com/v3`). |
 | `CLOVER_MERCHANT_ID` | Required. Merchant identifier issued by Clover. |
 | `CLOVER_ACCESS_TOKEN` | Required. OAuth access token with permissions to read the merchant profile and orders. |
-| `CLOVER_WEBHOOK_KEY` | Required for verifying Clover webhook signatures (from Clover Developer Dashboard → Webhooks → Verification Code). |
 
 With the variables defined you can call `/clover/merchant` and `/clover/orders`
 to proxy requests to Clover.
