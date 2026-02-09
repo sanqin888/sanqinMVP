@@ -35,13 +35,9 @@ async function bootstrap(): Promise<void> {
 
   const prefix = getApiPrefix();
 
-  // 2. 【第一步】特殊处理 Clover Webhooks / sendgrid webhooks
+  // 2. 【第一步】特殊处理 sendgrid webhooks
   // 使用 express.raw 只针对这个路径解析为 Buffer，方便验签
   // 注意：必须在 express.json() 之前注册
-  app.use(
-    `/${prefix}/clover/webhook`,
-    express.raw({ type: 'application/json' }),
-  );
   app.use(`/${prefix}/webhooks/sendgrid-email`, express.raw({ type: '*/*' }));
   app.use(`/${prefix}/webhooks/twilio`, express.raw({ type: '*/*' }));
   app.use(`/${prefix}/webhooks/aws-sns`, express.raw({ type: '*/*' }));
