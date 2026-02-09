@@ -18,81 +18,58 @@ export class CloverWebhookController {
 
   @Post()
   @HttpCode(200)
-  async handleWebhook(
-    @Headers('clover-signature') signature: string | undefined, // 允许为空
+  handleWebhook(
+    @Headers('clover-signature') signature: string | undefined,
     @Body() payload: unknown,
   ) {
-    // 1. 特殊处理：Clover 的“验证请求” (没有签名，只有 verificationCode)
-    // 注意：payload 可能是 Buffer (因为 main.ts 配置了 raw)，需要尝试解析
-    const bodyJson = this.parsePayload(payload);
-
-    if (this.hasVerificationCode(bodyJson)) {
-      const { verificationCode } = bodyJson;
-      this.logger.log(`🌟 收到 Clover 验证代码: ${verificationCode}`);
-      console.log(
-        `\n>>> 请复制此代码到 Clover 后台: ${verificationCode} <<<\n`,
-      );
-      return { received: true }; // 直接返回 200，跳过签名验证
+    // 1. 预处理：确保我们能拿到 JSON 对象 (哪怕 payload 是 Buffer)
+    let bodyJson: unknown = payload;
+    if (Buffer.isBuffer(payload)) {
+      try {
+        bodyJson = JSON.parse(payload.toString('utf-8'));
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Unknown parse error';
+        this.logger.error(`Failed to parse webhook body: ${message}`);
+      }
     }
 
-    // 2. 正常处理：正式通知 (必须有签名)
+    // 2. 兼容性处理：如果 Clover 再次发送验证码 (虽然已验证，但保留此逻辑防报错)
+    if (
+      typeof bodyJson === 'object' &&
+      bodyJson !== null &&
+      'verificationCode' in bodyJson
+    ) {
+      this.logger.log('Received Clover Verification Heartbeat - OK');
+      return { received: true };
+    }
+
+    // 3. 安全检查：正式通知必须带签名
     if (!signature) {
-      this.logger.warn('Missing Clover-Signature header on payment event');
-      throw new UnauthorizedException('Missing signature');
+      this.logger.warn('Blocked unsigned webhook request');
+      throw new UnauthorizedException('Missing Clover-Signature');
     }
 
-    // 3. 验证签名
+    // 4. 核心验证：比对签名 (使用你刚配置的 CLOVER_WEBHOOK_KEY)
+    // 注意：这里必须传入原始 payload (Buffer)，否则计算出的 Hash 会不一致
     const isValid = this.webhookService.verifySignature(payload, signature);
+
     if (!isValid) {
-      this.logger.error('Invalid Clover webhook signature');
+      this.logger.error(
+        '❌ Invalid Clover webhook signature - Potential Attack',
+      );
       throw new UnauthorizedException('Invalid signature');
     }
 
-    // 4. 处理业务逻辑
-    try {
-      await this.webhookService.processPayload(bodyJson);
-    } catch (err) {
-      if (err instanceof Error) {
-        this.logger.error(
-          `Failed to process webhook: ${err.message}`,
-          err.stack,
-        );
-      } else {
-        this.logger.error(`Failed to process webhook: ${String(err)}`);
-      }
-    }
+    // 5. 验证通过：异步处理业务逻辑 (更新订单等)
+    this.logger.log('✅ Webhook Signature Verified. Processing event...');
+    void this.webhookService.processPayload(bodyJson).catch((err: unknown) => {
+      const message =
+        err instanceof Error ? err.message : 'Unknown processing error';
+      const stack = err instanceof Error ? err.stack : undefined;
+      this.logger.error(`Failed to process webhook: ${message}`, stack);
+    });
 
     return { received: true };
-  }
-
-  private parsePayload(payload: unknown): unknown {
-    if (Buffer.isBuffer(payload)) {
-      try {
-        return JSON.parse(payload.toString('utf-8'));
-      } catch {
-        return payload;
-      }
-    }
-
-    if (typeof payload === 'string') {
-      try {
-        return JSON.parse(payload);
-      } catch {
-        return payload;
-      }
-    }
-
-    return payload;
-  }
-
-  private hasVerificationCode(
-    body: unknown,
-  ): body is { verificationCode: string } {
-    if (!body || typeof body !== 'object') {
-      return false;
-    }
-
-    const candidate = body as { verificationCode?: unknown };
-    return typeof candidate.verificationCode === 'string';
   }
 }
