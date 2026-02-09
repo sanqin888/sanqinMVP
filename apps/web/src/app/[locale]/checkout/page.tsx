@@ -1248,6 +1248,27 @@ export default function CheckoutPage() {
       cardCvvComplete);
   const showPaymentPostalError =
     postalCode.trim().length > 0 && !isPaymentPostalValid;
+  const missingCardFields = useMemo(() => {
+    if (!requiresPayment || !cloverReady) return [];
+    const missing: string[] = [];
+    if (!cardNumberComplete) {
+      missing.push(locale === "zh" ? "卡号" : "card number");
+    }
+    if (!cardDateComplete) {
+      missing.push(locale === "zh" ? "有效期" : "expiry date");
+    }
+    if (!cardCvvComplete) {
+      missing.push(locale === "zh" ? "安全码" : "CVV");
+    }
+    return missing;
+  }, [
+    cardCvvComplete,
+    cardDateComplete,
+    cardNumberComplete,
+    cloverReady,
+    locale,
+    requiresPayment,
+  ]);
   const payButtonDisabledReason = useMemo(() => {
     if (isSubmitting) return null;
 
@@ -1278,6 +1299,9 @@ export default function CheckoutPage() {
           ? "支付组件加载中，请稍后。"
           : "Payment fields are loading. Please wait.";
       }
+      if (cardNumberError || cardDateError || cardCvvError) {
+        return cardNumberError ?? cardDateError ?? cardCvvError ?? null;
+      }
       if (!normalizedCardholderName) {
         return locale === "zh"
           ? "请填写持卡人姓名。"
@@ -1288,10 +1312,12 @@ export default function CheckoutPage() {
           ? "请输入有效的邮编。"
           : "Please enter a valid postal code.";
       }
-      if (!cardNumberComplete || !cardDateComplete || !cardCvvComplete) {
+      if (missingCardFields.length > 0) {
         return locale === "zh"
-          ? "请补全银行卡信息。"
-          : "Please complete the card details.";
+          ? `请补全：${missingCardFields.join("、")}（自动填充可能不会被识别）。`
+          : `Please complete: ${missingCardFields.join(
+              ", ",
+            )} (autofill may not be detected).`;
       }
     }
 
@@ -1300,8 +1326,11 @@ export default function CheckoutPage() {
     canPayWithCard,
     canPlaceOrder,
     cardCvvComplete,
+    cardCvvError,
     cardDateComplete,
+    cardDateError,
     cardNumberComplete,
+    cardNumberError,
     cloverReady,
     deliveryAddressReady,
     entitlementBlockingMessage,
@@ -1311,6 +1340,7 @@ export default function CheckoutPage() {
     isSubmitting,
     locale,
     missingContactMessage,
+    missingCardFields,
     normalizedCardholderName,
     phoneVerified,
     requiresPayment,
