@@ -18,22 +18,28 @@ export class CloverWebhookController {
 
   @Post()
   @HttpCode(200)
-  async handleWebhook(
+  handleWebhook(
     @Headers('clover-signature') signature: string | undefined,
-    @Body() payload: any,
+    @Body() payload: unknown,
   ) {
     // 1. 预处理：确保我们能拿到 JSON 对象 (哪怕 payload 是 Buffer)
-    let bodyJson: any = payload;
+    let bodyJson: unknown = payload;
     if (Buffer.isBuffer(payload)) {
       try {
         bodyJson = JSON.parse(payload.toString('utf-8'));
-      } catch (e) {
-        this.logger.error('Failed to parse webhook body');
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Unknown parse error';
+        this.logger.error(`Failed to parse webhook body: ${message}`);
       }
     }
 
     // 2. 兼容性处理：如果 Clover 再次发送验证码 (虽然已验证，但保留此逻辑防报错)
-    if (bodyJson && bodyJson.verificationCode) {
+    if (
+      typeof bodyJson === 'object' &&
+      bodyJson !== null &&
+      'verificationCode' in bodyJson
+    ) {
       this.logger.log('Received Clover Verification Heartbeat - OK');
       return { received: true };
     }
@@ -57,8 +63,11 @@ export class CloverWebhookController {
 
     // 5. 验证通过：异步处理业务逻辑 (更新订单等)
     this.logger.log('✅ Webhook Signature Verified. Processing event...');
-    void this.webhookService.processPayload(bodyJson).catch((err) => {
-      this.logger.error(`Failed to process webhook: ${err.message}`, err.stack);
+    void this.webhookService.processPayload(bodyJson).catch((err: unknown) => {
+      const message =
+        err instanceof Error ? err.message : 'Unknown processing error';
+      const stack = err instanceof Error ? err.stack : undefined;
+      this.logger.error(`Failed to process webhook: ${message}`, stack);
     });
 
     return { received: true };
