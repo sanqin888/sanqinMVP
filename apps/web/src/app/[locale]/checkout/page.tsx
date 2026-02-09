@@ -2161,12 +2161,8 @@ export default function CheckoutPage() {
     }
   };
 
-  // 🟢 [录视频专用版] handlePlaceOrder
   const handlePlaceOrder = async () => {
-    // 1. 保持基本的表单验证，这样你在视频里演示“填写表单”时，如果没有填完，按钮还是灰的或者会报错，看起来很真实
     if (!canPlaceOrder || isSubmitting) return;
-
-    // 如果需要支付但卡信息没填全（虽然我们是假支付，但UI验证要保留）
     if (requiresPayment && !canPayWithCard) {
       setErrorMessage(
         locale === "zh"
@@ -2179,38 +2175,326 @@ export default function CheckoutPage() {
     setErrorMessage(null);
     setChallengeUrl(null);
     setConfirmation(null);
-    setIsSubmitting(true); // 🟢 开始转圈圈
+    setIsSubmitting(true);
 
-    // ============================================================
-    // 🎭 视觉欺骗模式 (Strategy 1) 开始
-    // ============================================================
+    let deliveryDistanceKm: number | null = null;
 
-    console.log("🎥 开始模拟支付流程 (录视频模式)...");
+    // 先做距离校验
+    if (isDeliveryFulfillment) {
+      const validationResult = await validateDeliveryDistance();
+      if (!validationResult.success) {
+        setIsSubmitting(false);
+        return;
+      }
+      deliveryDistanceKm = validationResult.distanceKm ?? null;
+      await saveNewAddressToBook();
+    } else {
+      resetAddressValidation();
+    }
 
-    // 模拟 2.5 秒的网络延迟，让视频看起来像是在真的处理数据
-    setTimeout(() => {
-      // 1. 生成一个假的订单 ID (看起来像真的 UUID)
-      const fakeOrderId =
-        window.crypto?.randomUUID?.() ?? "video-demo-order-id";
+    // ==== 重新算一遍本单的费用（全部用“分”） ====
+    let deliveryFeeCentsForOrder = 0;
+    if (isDeliveryFulfillment && subtotalCents > 0) {
+      if (deliveryType === "STANDARD") {
+        deliveryFeeCentsForOrder = 600;
+      } else {
+        const billedKm =
+          deliveryDistanceKm !== null
+            ? Math.max(1, Math.ceil(deliveryDistanceKm))
+            : 1;
+        deliveryFeeCentsForOrder = 600 + 100 * billedKm;
+      }
+    }
 
-      // 2. 清理本地存储 (模拟真实流程)
+    const loyaltyRedeemCentsForOrder = loyaltyRedeemCents;
+    const couponDiscountCentsForOrder = couponDiscountCents;
+    const discountedSubtotalForOrder = Math.max(
+      0,
+      subtotalCents - couponDiscountCentsForOrder - loyaltyRedeemCentsForOrder,
+    );
+
+    const taxableBaseCentsForOrder =
+      discountedSubtotalForOrder +
+      (TAX_ON_DELIVERY ? deliveryFeeCentsForOrder : 0);
+    const taxCentsForOrder = Math.round(taxableBaseCentsForOrder * TAX_RATE);
+
+    const totalCentsForOrder =
+      discountedSubtotalForOrder + deliveryFeeCentsForOrder + taxCentsForOrder;
+
+    const deliveryMetadata = isDeliveryFulfillment
+      ? {
+          deliveryType,
+          deliveryProvider: selectedDeliveryDefinition.provider,
+          deliveryEtaMinutes: selectedDeliveryDefinition.eta,
+          deliveryDistanceKm:
+            deliveryDistanceKm !== null
+              ? Math.round(deliveryDistanceKm * 100) / 100
+              : undefined,
+        }
+      : null;
+
+    const formattedCustomerPhone = formatCanadianPhoneForApi(customer.phone);
+    const metadata = {
+      locale,
+      fulfillment,
+      schedule,
+      customer: {
+        ...customer,
+        phone: formattedCustomerPhone,
+        address: deliveryAddressText,
+      },
+      deliveryDestination: isDeliveryFulfillment
+        ? {
+            name: formatCustomerFullName(customer),
+            phone: formattedCustomerPhone,
+            addressLine1: customer.addressLine1,
+            addressLine2: customer.addressLine2 || undefined,
+            city: customer.city,
+            province: customer.province,
+            postalCode: customer.postalCode,
+            country: DELIVERY_COUNTRY,
+            instructions: customer.notes || undefined,
+            latitude: selectedCoordinates?.latitude,
+            longitude: selectedCoordinates?.longitude,
+            placeId: selectedPlaceId ?? undefined,
+          }
+        : undefined,
+      utensils:
+        utensilsPreference === "yes"
+          ? {
+              needed: true,
+              type: utensilsType,
+              quantity:
+                utensilsQuantity === "other"
+                  ? Number.parseInt(utensilsCustomQuantity, 10) || null
+                  : Number(utensilsQuantity),
+            }
+          : { needed: false, quantity: 0 },
+
+      // 小计相关
+      subtotalCents,
+      subtotalAfterDiscountCents: discountedSubtotalForOrder,
+      taxCents: taxCentsForOrder,
+      serviceFeeCents,
+      deliveryFeeCents: deliveryFeeCentsForOrder,
+      taxRate: TAX_RATE,
+
+      // 积分相关
+      loyaltyRedeemCents: loyaltyRedeemCentsForOrder,
+      loyaltyAvailableDiscountCents: loyaltyInfo?.availableDiscountCents ?? 0,
+      loyaltyPointsBalance: loyaltyInfo?.points ?? 0,
+      loyaltyUserStableId: loyaltyInfo?.userStableId,
+
+      coupon: appliedCoupon
+        ? {
+            couponStableId: appliedCoupon.couponStableId,
+            code: appliedCoupon.code,
+            title: appliedCoupon.title,
+            discountCents: couponDiscountCentsForOrder,
+            minSpendCents: appliedCoupon.minSpendCents,
+          }
+        : undefined,
+      selectedUserCouponId: selectedUserCouponId ?? undefined,
+
+      ...(deliveryMetadata ?? {}),
+
+      items: cartItemsWithPricing.map((cartItem) => ({
+        productStableId: cartItem.productStableId,
+        nameEn: cartItem.item.nameEn ?? cartItem.item.name,
+        nameZh: cartItem.item.nameZh ?? cartItem.item.name,
+        displayName: cartItem.item.name,
+        quantity: cartItem.quantity,
+        notes: cartItem.notes,
+        options: stripOptionSnapshots(cartItem.options),
+        priceCents: cartItem.unitPriceCents,
+      })),
+    };
+    const loyaltyOrderPayload = {
+      fulfillmentType: fulfillment,
+      deliveryType: isDeliveryFulfillment ? deliveryType : undefined,
+      deliveryDestination: isDeliveryFulfillment
+        ? {
+            name: formatCustomerFullName(customer),
+            phone: formattedCustomerPhone,
+            addressLine1: customer.addressLine1,
+            addressLine2: customer.addressLine2 || undefined,
+            city: customer.city,
+            province: customer.province,
+            postalCode: customer.postalCode,
+            country: DELIVERY_COUNTRY,
+            instructions: customer.notes || undefined,
+            latitude: selectedCoordinates?.latitude,
+            longitude: selectedCoordinates?.longitude,
+            placeId: selectedPlaceId ?? undefined,
+          }
+        : undefined,
+      items: cartItemsWithPricing.map((cartItem) => ({
+        productStableId: cartItem.productStableId,
+        qty: cartItem.quantity,
+      })),
+    };
+
+    try {
+      // 1️⃣ 纯积分订单：抵扣后总价为 0 -> 不走 Clover
+      if (totalCentsForOrder <= 0) {
+        const response = await apiFetch<LoyaltyOrderResponse>(
+          "/orders/loyalty-only",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(loyaltyOrderPayload),
+          },
+        );
+
+        router.push(`/${locale}/thank-you/${response.orderStableId}`);
+        return;
+      }
+
+      // 2️⃣ 总价 > 0：使用 Clover iframe token 支付
+      const clover = cloverRef.current;
+      if (!clover) {
+        throw new Error(
+          locale === "zh"
+            ? "支付初始化失败，请刷新页面重试。"
+            : "Payment initialization failed. Please refresh and try again.",
+        );
+      }
+
+      if (!normalizedCardholderName.length) {
+        throw new Error(
+          locale === "zh" ? "请填写持卡人姓名。" : "Cardholder name is required.",
+        );
+      }
+
+      if (!isPaymentPostalValid) {
+        throw new Error(
+          locale === "zh"
+            ? "请填写有效的加拿大邮编。"
+            : "Please enter a valid Canadian postal code.",
+        );
+      }
+
+      if (postalCode.trim() !== normalizedPostalCode) {
+        setPostalCode(normalizedPostalCode);
+      }
+
+      const tokenResult = await clover.createToken({
+        cardholderName: normalizedCardholderName,
+        postalCode: normalizedPostalCode,
+      });
+
+      if (!tokenResult?.token) {
+        const tokenError =
+          tokenResult?.errors?.[0]?.message ??
+          (locale === "zh"
+            ? "卡信息验证失败，请检查后重试。"
+            : "Card verification failed. Please check and try again.");
+        throw new Error(tokenError);
+      }
+
+      const browserInfo = build3dsBrowserInfo();
+      const checkoutIntentId =
+        checkoutIntentIdRef.current ??
+        (typeof window !== "undefined"
+          ? window.crypto?.randomUUID?.() ??
+            `chk_${Date.now()}_${Math.random().toString(16).slice(2)}`
+          : undefined);
+      if (checkoutIntentId) {
+        checkoutIntentIdRef.current = checkoutIntentId;
+        if (typeof window !== "undefined") {
+          try {
+            window.sessionStorage.setItem(
+              CHECKOUT_INTENT_STORAGE_KEY,
+              checkoutIntentId,
+            );
+          } catch {
+            // ignore storage failures
+          }
+        }
+      }
+
+      const paymentResponse = await apiFetch<CardTokenPaymentResponse>(
+        "/clover/pay/online/card-token",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            amountCents: totalCentsForOrder,
+            currency: HOSTED_CHECKOUT_CURRENCY,
+            checkoutIntentId,
+            source: tokenResult.token,
+            sourceType: "CARD",
+            cardholderName: normalizedCardholderName,
+            postalCode: normalizedPostalCode,
+            customer: {
+              firstName: customer.firstName,
+              lastName: customer.lastName,
+              email: customer.email,
+              phoneNumber: formattedCustomerPhone,
+            },
+            threeds: {
+              source: "CLOVER",
+              browserInfo,
+            },
+            metadata,
+          }),
+        },
+      );
+
+      if (paymentResponse.status === "CHALLENGE_REQUIRED") {
+        if (paymentResponse.challengeUrl) {
+          setChallengeUrl(paymentResponse.challengeUrl);
+          setChallengeIntentId(checkoutIntentId ?? null);
+          setErrorMessage(null);
+          return;
+        }
+        setErrorMessage(
+          locale === "zh"
+            ? "需要完成 3D Secure 验证，但未能获取验证页面，请稍后重试。"
+            : "3D Secure verification is required but the challenge page is unavailable. Please try again.",
+        );
+        return;
+      }
+
       clearCheckoutIntentId();
 
-      // 3. 跳转到成功页
-      // 注意：由于是假 ID，成功页加载数据可能会失败，
-      // 但你的视频只需要录到 URL 变了、页面跳转过去的那一瞬间即可停止录制。
-      router.push(`/${locale}/thank-you/${fakeOrderId}`);
-
-      // 4. 结束转圈 (虽然已经跳转了)
+      if (typeof window !== "undefined") {
+        router.push(`/${locale}/thank-you/${paymentResponse.orderStableId}`);
+      } else {
+        setConfirmation({
+          orderNumber: paymentResponse.orderNumber,
+          totalCents: totalCentsForOrder,
+          fulfillment,
+        });
+      }
+    } catch (error) {
+      const fallback =
+        error instanceof Error ? error.message : strings.errors.checkoutFailed;
+      if (error instanceof ApiError && error.payload) {
+        const payload =
+          typeof error.payload === "object" && error.payload !== null
+            ? (error.payload as Record<string, unknown>)
+            : {};
+        const code =
+          typeof payload.code === "string" ? payload.code.toLowerCase() : "";
+        const message =
+          typeof payload.message === "string" ? payload.message : fallback;
+        const userMessage = buildPaymentErrorMessage({
+          code,
+          message,
+          locale,
+        });
+        setErrorMessage(userMessage);
+        if (code && shouldResetCheckoutIntent(code)) {
+          clearCheckoutIntentId();
+        }
+      } else {
+        setErrorMessage(fallback);
+      }
+    } finally {
       setIsSubmitting(false);
-    }, 2500); // 2.5秒延迟
-
-    // 🔴 强制结束函数，不执行后面任何真实的 API 调用
-    return;
-
-    // ============================================================
-    // 🎭 视觉欺骗模式 结束 (下面的真实代码已被上面的 return 屏蔽)
-    // ============================================================
+    }
+  };
 
   };
 
