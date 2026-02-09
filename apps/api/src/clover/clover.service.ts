@@ -278,15 +278,17 @@ function pickString(
 function extractChargeRecord(
   payload: Record<string, unknown>,
 ): Record<string, unknown> | undefined {
-  if (Array.isArray(payload.data)) {
-    const first = payload.data[0];
+  const data = payload.data;
+  if (Array.isArray(data)) {
+    const first = data[0] as unknown;
     return first && typeof first === 'object'
       ? (first as Record<string, unknown>)
       : undefined;
   }
 
-  if (Array.isArray(payload.charges)) {
-    const first = payload.charges[0];
+  const charges = payload.charges;
+  if (Array.isArray(charges)) {
+    const first = charges[0] as unknown;
     return first && typeof first === 'object'
       ? (first as Record<string, unknown>)
       : undefined;
