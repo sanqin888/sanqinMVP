@@ -29,7 +29,9 @@ export class CloverWebhookController {
     if (this.hasVerificationCode(bodyJson)) {
       const { verificationCode } = bodyJson;
       this.logger.log(`🌟 收到 Clover 验证代码: ${verificationCode}`);
-      console.log(`\n>>> 请复制此代码到 Clover 后台: ${verificationCode} <<<\n`);
+      console.log(
+        `\n>>> 请复制此代码到 Clover 后台: ${verificationCode} <<<\n`,
+      );
       return { received: true }; // 直接返回 200，跳过签名验证
     }
 
@@ -51,7 +53,10 @@ export class CloverWebhookController {
       await this.webhookService.processPayload(bodyJson);
     } catch (err) {
       if (err instanceof Error) {
-        this.logger.error(`Failed to process webhook: ${err.message}`, err.stack);
+        this.logger.error(
+          `Failed to process webhook: ${err.message}`,
+          err.stack,
+        );
       } else {
         this.logger.error(`Failed to process webhook: ${String(err)}`);
       }
