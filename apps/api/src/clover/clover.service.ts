@@ -1,5 +1,6 @@
 //Users/apple/sanqinMVP/apps/api/src/clover/clover.service.ts
 import { Injectable } from '@nestjs/common';
+import { AppLogger } from '../common/app-logger';
 
 type CloverPaymentCreateResult =
   | { ok: true; paymentId: string; status?: string }
@@ -28,6 +29,7 @@ type CloverChargeStatusResult =
 // ===== Service =====
 @Injectable()
 export class CloverService {
+  private readonly logger = new AppLogger(CloverService.name);
   private readonly apiBase: string;
   private readonly apiToken: string | undefined;
 
@@ -78,6 +80,11 @@ export class CloverService {
     }
 
     if (!resp.ok) {
+      this.logger.warn(
+        `Unexpected Clover charge response keys: ${JSON.stringify(
+          safeLogKeys(parsed),
+        )}`,
+      );
       const errorDetails = extractCloverErrorDetails(parsed);
       const reason =
         errorDetails.message || errorDetails.declineCode || rawText;
@@ -150,6 +157,11 @@ export class CloverService {
     }
 
     if (!resp.ok) {
+      this.logger.warn(
+        `Unexpected Clover status response keys: ${JSON.stringify(
+          safeLogKeys(parsed),
+        )}`,
+      );
       const errorDetails = extractCloverErrorDetails(parsed);
       const reason =
         errorDetails.message || errorDetails.declineCode || rawText;
@@ -281,4 +293,17 @@ function extractChargeRecord(
   }
 
   return payload;
+}
+
+function safeLogKeys(
+  payload: Record<string, unknown> | undefined,
+): { rootKeys: string[]; errorKeys: string[] } | undefined {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const rootKeys = Object.keys(payload);
+  const errorRaw = payload.error;
+  const errorKeys =
+    errorRaw && typeof errorRaw === 'object'
+      ? Object.keys(errorRaw as Record<string, unknown>)
+      : [];
+  return { rootKeys, errorKeys };
 }

@@ -120,7 +120,7 @@ export class CheckoutIntentsService {
     await this.prisma.checkoutIntent.updateMany({
       where: {
         id: params.intentId,
-        status: 'processing',
+        status: { in: ['processing', 'creating_order'] },
       },
       data: {
         orderId: params.orderId,
@@ -138,7 +138,7 @@ export class CheckoutIntentsService {
     await this.prisma.checkoutIntent.updateMany({
       where: {
         id: params.intentId,
-        status: { in: ['pending', 'processing'] },
+        status: { in: ['pending', 'processing', 'creating_order'] },
         orderId: null,
       },
       data: {
@@ -177,6 +177,21 @@ export class CheckoutIntentsService {
         processedAt: null,
       },
     });
+  }
+
+  async claimOrderCreation(intentId: string): Promise<boolean> {
+    const claimed = await this.prisma.checkoutIntent.updateMany({
+      where: {
+        id: intentId,
+        status: 'processing',
+        orderId: null,
+      },
+      data: {
+        status: 'creating_order',
+      },
+    });
+
+    return claimed.count > 0;
   }
 
   async updateMetadata(

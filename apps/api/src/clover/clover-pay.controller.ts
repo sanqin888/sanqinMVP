@@ -70,6 +70,18 @@ export class CloverPayController {
         const isSuccess =
           normalizedStatus === 'succeeded' || chargeStatus.captured === true;
         if (isSuccess) {
+          const claimed = await this.checkoutIntents.claimOrderCreation(
+            intent.id,
+          );
+          if (!claimed) {
+            return {
+              status: intent.status,
+              result: intent.result,
+              orderStableId: intent.metadata?.orderStableId ?? null,
+              orderNumber: intent.referenceId,
+            };
+          }
+
           const orderStableId =
             intent.metadata?.orderStableId ?? generateStableId();
           const orderDto = buildOrderDtoFromMetadata(
@@ -92,6 +104,20 @@ export class CloverPayController {
             status: 'completed',
             result: chargeStatus.status ?? 'SUCCESS',
             orderStableId,
+            orderNumber: intent.referenceId,
+          };
+        }
+
+        if (
+          normalizedStatus &&
+          ['pending', 'requires_action', 'requires_authentication'].includes(
+            normalizedStatus,
+          )
+        ) {
+          return {
+            status: 'awaiting_authentication',
+            result: chargeStatus.status ?? intent.result,
+            orderStableId: intent.metadata?.orderStableId ?? null,
             orderNumber: intent.referenceId,
           };
         }
@@ -348,14 +374,14 @@ export class CloverPayController {
       });
     }
 
-    const orderDto = buildOrderDtoFromMetadata(metadataWithIds, orderStableId);
-    orderDto.clientRequestId = referenceId;
-    const order = await this.orders.createImmediatePaid(orderDto, referenceId);
-
     await this.checkoutIntents.updateMetadata(intent.id, {
       ...metadataWithIds,
       lastPaymentId: paymentResult.paymentId,
     });
+
+    const orderDto = buildOrderDtoFromMetadata(metadataWithIds, orderStableId);
+    orderDto.clientRequestId = referenceId;
+    const order = await this.orders.createImmediatePaid(orderDto, referenceId);
 
     await this.checkoutIntents.markProcessed({
       intentId: intent.id,
