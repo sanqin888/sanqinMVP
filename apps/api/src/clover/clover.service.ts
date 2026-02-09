@@ -60,15 +60,19 @@ export class CloverService {
     }
 
     if (!resp.ok) {
-      const error =
+      const cloverError =
         parsed && typeof parsed.error === 'object'
           ? (parsed.error as Record<string, unknown>)
           : undefined;
-      const message =
-        error && typeof error.message === 'string'
-          ? error.message
-          : rawText;
-      return { ok: false, reason: message || rawText };
+      const reason =
+        (cloverError && typeof cloverError.message === 'string'
+          ? cloverError.message
+          : undefined) ||
+        (cloverError && typeof cloverError.decline_code === 'string'
+          ? cloverError.decline_code
+          : undefined) ||
+        rawText;
+      return { ok: false, reason };
     }
 
     const status =
