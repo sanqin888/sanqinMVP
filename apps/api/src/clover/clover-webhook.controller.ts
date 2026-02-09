@@ -20,24 +20,16 @@ export class CloverWebhookController {
   @HttpCode(200)
   async handleWebhook(
     @Headers('clover-signature') signature: string | undefined, // 允许为空
-    @Body() payload: any,
+    @Body() payload: unknown,
   ) {
     // 1. 特殊处理：Clover 的“验证请求” (没有签名，只有 verificationCode)
     // 注意：payload 可能是 Buffer (因为 main.ts 配置了 raw)，需要尝试解析
-    let bodyJson: any = payload;
-    
-    // 如果是 Buffer，尝试转成 JSON 对象
-    if (Buffer.isBuffer(payload)) {
-        try {
-            bodyJson = JSON.parse(payload.toString('utf-8'));
-        } catch (e) {
-            // 解析失败，保持原样，后面会报错
-        }
-    }
+    const bodyJson = this.parsePayload(payload);
 
-    if (bodyJson && bodyJson.verificationCode) {
-      this.logger.log(`🌟 收到 Clover 验证代码: ${bodyJson.verificationCode}`);
-      console.log(`\n>>> 请复制此代码到 Clover 后台: ${bodyJson.verificationCode} <<<\n`);
+    if (this.hasVerificationCode(bodyJson)) {
+      const { verificationCode } = bodyJson;
+      this.logger.log(`🌟 收到 Clover 验证代码: ${verificationCode}`);
+      console.log(`\n>>> 请复制此代码到 Clover 后台: ${verificationCode} <<<\n`);
       return { received: true }; // 直接返回 200，跳过签名验证
     }
 
@@ -55,10 +47,47 @@ export class CloverWebhookController {
     }
 
     // 4. 处理业务逻辑
-    void this.webhookService.processPayload(bodyJson).catch((err) => {
-      this.logger.error(`Failed to process webhook: ${err.message}`, err.stack);
-    });
+    try {
+      await this.webhookService.processPayload(bodyJson);
+    } catch (err) {
+      if (err instanceof Error) {
+        this.logger.error(`Failed to process webhook: ${err.message}`, err.stack);
+      } else {
+        this.logger.error(`Failed to process webhook: ${String(err)}`);
+      }
+    }
 
     return { received: true };
+  }
+
+  private parsePayload(payload: unknown): unknown {
+    if (Buffer.isBuffer(payload)) {
+      try {
+        return JSON.parse(payload.toString('utf-8'));
+      } catch {
+        return payload;
+      }
+    }
+
+    if (typeof payload === 'string') {
+      try {
+        return JSON.parse(payload);
+      } catch {
+        return payload;
+      }
+    }
+
+    return payload;
+  }
+
+  private hasVerificationCode(
+    body: unknown,
+  ): body is { verificationCode: string } {
+    if (!body || typeof body !== 'object') {
+      return false;
+    }
+
+    const candidate = body as { verificationCode?: unknown };
+    return typeof candidate.verificationCode === 'string';
   }
 }
