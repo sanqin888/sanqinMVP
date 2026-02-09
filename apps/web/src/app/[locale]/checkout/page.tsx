@@ -2208,7 +2208,6 @@ export default function CheckoutPage() {
 
     const loyaltyRedeemCentsForOrder = loyaltyRedeemCents;
     const couponDiscountCentsForOrder = couponDiscountCents;
-
     const discountedSubtotalForOrder = Math.max(
       0,
       subtotalCents - couponDiscountCentsForOrder - loyaltyRedeemCentsForOrder,
@@ -3918,14 +3917,14 @@ export default function CheckoutPage() {
 
               {/* 信用卡手续费提示（仅提示，不参与金额计算） */}
               <p className="mt-1 text-center text-[11px] leading-snug text-slate-500">
-  {locale === "zh"
-    ? "可用卡种：Visa / Mastercard / Discover / 借记卡（Debit）。"
-    : "Accepted cards: Visa / Mastercard / Discover / Debit."}
+                {locale === "zh"
+                  ? "可用卡种：Visa / Mastercard / Discover / 借记卡（Debit）。"
+                  : "Accepted cards: Visa / Mastercard / Discover / Debit."}
               </p>
               <p className="mt-2 text-center text-[11px] leading-snug text-slate-500">
-  {locale === "zh"
-    ? "使用信用卡支付时，支付网络可能会额外收取不高于订单金额 2.4% 的信用卡手续费（由支付处理方/发卡行收取，我们不从中获利）。具体金额以 Clover 支付页/小票或银行账单为准。"
-    : "When paying by credit card, the payment networks may apply a surcharge of up to 2.4% of the order total (charged by the payment processor/card issuer; we do not profit from this). Please refer to the Clover checkout/receipt or your card statement for the exact amount."}
+                {locale === "zh"
+                  ? "使用信用卡支付时，支付网络可能会额外收取不高于订单金额 2.4% 的信用卡手续费（由支付处理方/发卡行收取，我们不从中获利）。具体金额以 Clover 支付页/小票或银行账单为准。"
+                  : "When paying by credit card, the payment networks may apply a surcharge of up to 2.4% of the order total (charged by the payment processor/card issuer; we do not profit from this). Please refer to the Clover checkout/receipt or your card statement for the exact amount."}
               </p>
             </div>
 

@@ -1,36 +1,18 @@
 //Users/apple/sanqinMVP/apps/api/src/clover/clover.service.ts
 import { Injectable } from '@nestjs/common';
 
-type CloverLineItemInput = {
-  name: string;
-  price: number;
-  unitQty: number;
-  note?: string;
-};
-
-type CloverOrderCreateResult =
-  | { ok: true; orderId: string }
-  | { ok: false; reason: string };
-
 type CloverPaymentCreateResult =
   | { ok: true; paymentId: string; status?: string }
   | {
       ok: false;
       reason: string;
       status?: string;
-      challengeUrl?: string;
-      paymentId?: string;
     };
-
-// ===== Guards & utils =====
-const isPlainObject = (v: unknown): v is Record<string, unknown> =>
-  !!v && typeof v === 'object' && !Array.isArray(v);
 
 // ===== Service =====
 @Injectable()
 export class CloverService {
   private readonly apiBase: string;
-  private readonly merchantId: string | undefined;
   private readonly apiToken: string | undefined;
 
   constructor() {
@@ -38,228 +20,73 @@ export class CloverService {
       (process.env.CLOVER_BASE && process.env.CLOVER_BASE.trim()) ||
       'https://api.clover.com';
 
-    this.merchantId = process.env.CLOVER_MERCHANT_ID?.trim();
     this.apiToken = process.env.CLOVER_ACCESS_TOKEN?.trim();
-  }
-
-  private normalizeStatus(value: unknown): string | undefined {
-    if (typeof value !== 'string') return undefined;
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed.toUpperCase() : undefined;
-  }
-
-  private interpretStatus(value: unknown): boolean | undefined {
-    const evaluate = (v: unknown): boolean | undefined => {
-      const normalized = this.normalizeStatus(v);
-      if (!normalized) return undefined;
-
-      const successStates = ['APPROVED', 'PAID', 'COMPLETED'];
-      const failureStates = [
-        'DECLINED',
-        'FAILED',
-        'VOID',
-        'VOIDED',
-        'CANCELLED',
-        'CANCELED',
-      ];
-
-      if (successStates.includes(normalized)) return true;
-      if (failureStates.includes(normalized)) return false;
-      return undefined;
-    };
-
-    const directVerdict = evaluate(value);
-    if (typeof directVerdict === 'boolean') return directVerdict;
-
-    if (!value || typeof value !== 'object') return undefined;
-
-    const record = value as Record<string, unknown>;
-
-    // Clover 官方字段：顶层 status
-    const statusVerdict = evaluate(record.status);
-    if (typeof statusVerdict === 'boolean') return statusVerdict;
-
-    // Clover Checkout 详情里的订单状态：order.state
-    const orderStateVerdict = isPlainObject(record.order)
-      ? evaluate(record.order.state)
-      : undefined;
-    if (typeof orderStateVerdict === 'boolean') return orderStateVerdict;
-
-    // 兼容部分接口的 result 字段（非官方首选）
-    const resultVerdict = evaluate(record.result);
-    if (typeof resultVerdict === 'boolean') return resultVerdict;
-
-    return undefined;
-  }
-
-  async createOrder(params: {
-    currency: string;
-    lineItems: CloverLineItemInput[];
-  }): Promise<CloverOrderCreateResult> {
-    if (!this.apiToken || !this.merchantId) {
-      return { ok: false, reason: 'missing-credentials' };
-    }
-
-    const url = `${this.apiBase}/v3/merchants/${this.merchantId}/orders`;
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.apiToken}`,
-      },
-      body: JSON.stringify({
-        currency: params.currency,
-      }),
-    });
-
-    const rawText = await resp.text();
-    let parsed: unknown = undefined;
-    try {
-      parsed = rawText ? JSON.parse(rawText) : undefined;
-    } catch {
-      parsed = undefined;
-    }
-
-    if (!resp.ok) {
-      const reason =
-        (isPlainObject(parsed) && typeof parsed.message === 'string'
-          ? parsed.message
-          : rawText) || `http-${resp.status}`;
-      return { ok: false, reason };
-    }
-
-    const orderId =
-      isPlainObject(parsed) && typeof parsed.id === 'string'
-        ? parsed.id
-        : undefined;
-    if (!orderId) {
-      return { ok: false, reason: 'missing-order-id' };
-    }
-
-    for (const item of params.lineItems) {
-      const itemResp = await fetch(
-        `${this.apiBase}/v3/merchants/${this.merchantId}/orders/${orderId}/line_items`,
-        {
-          method: 'POST',
-          headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${this.apiToken}`,
-          },
-          body: JSON.stringify({
-            name: item.name,
-            price: item.price,
-            unitQty: item.unitQty,
-            ...(item.note ? { note: item.note } : {}),
-          }),
-        },
-      );
-
-      if (!itemResp.ok) {
-        const itemText = await itemResp.text();
-        const reason = itemText || `line-item-http-${itemResp.status}`;
-        return { ok: false, reason };
-      }
-    }
-
-    return { ok: true, orderId };
   }
 
   async createCardPayment(params: {
     amountCents: number;
     currency: string;
     source: string;
-    sourceType: string;
     orderId: string;
-    cardholderName: string;
-    postalCode?: string;
-    threeds?: Record<string, unknown>;
-    referenceId?: string;
     description?: string;
-    email?: string;
-    clientIp?: string;
   }): Promise<CloverPaymentCreateResult> {
-    if (!this.apiToken || !this.merchantId) {
+    if (!this.apiToken) {
       return { ok: false, reason: 'missing-credentials' };
     }
 
-    const url = `${this.apiBase}/v3/merchants/${this.merchantId}/payments`;
-    const headers: Record<string, string> = {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${this.apiToken}`,
-    };
-    if (params.referenceId) {
-      headers['Idempotency-Key'] = params.referenceId;
-    }
-    if (params.clientIp) {
-      headers['x-forwarded-for'] = params.clientIp;
-    }
-
-    const body = {
-      amount: params.amountCents,
-      currency: params.currency,
-      orderId: params.orderId,
-      source: params.source,
-      sourceType: params.sourceType,
-      cardholderName: params.cardholderName,
-      ...(params.description ? { description: params.description } : {}),
-      ...(params.email ? { email: params.email } : {}),
-      ...(params.postalCode ? { postalCode: params.postalCode } : {}),
-      ...(params.threeds ? { threeds: params.threeds } : {}),
-      ...(params.referenceId
-        ? { externalReferenceId: params.referenceId }
-        : {}),
-    };
-
+    const url = `${this.apiBase}/v1/charges`;
     const resp = await fetch(url, {
       method: 'POST',
-      headers,
-      body: JSON.stringify(body),
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${this.apiToken}`,
+        'Idempotency-Key': params.orderId,
+      },
+      body: JSON.stringify({
+        amount: params.amountCents,
+        currency: params.currency.toLowerCase(),
+        source: params.source,
+        description: params.description || `Online Order ${params.orderId}`,
+      }),
     });
 
     const rawText = await resp.text();
-    let parsed: unknown = undefined;
+    let parsed: Record<string, unknown> | undefined;
     try {
-      parsed = rawText ? JSON.parse(rawText) : undefined;
+      parsed = JSON.parse(rawText) as Record<string, unknown>;
     } catch {
-      parsed = undefined;
+      return { ok: false, reason: rawText };
     }
 
     if (!resp.ok) {
+      const cloverError =
+        parsed && typeof parsed.error === 'object'
+          ? (parsed.error as Record<string, unknown>)
+          : undefined;
       const reason =
-        (isPlainObject(parsed) && typeof parsed.message === 'string'
-          ? parsed.message
-          : rawText) || `http-${resp.status}`;
+        (cloverError && typeof cloverError.message === 'string'
+          ? cloverError.message
+          : undefined) ||
+        (cloverError && typeof cloverError.decline_code === 'string'
+          ? cloverError.decline_code
+          : undefined) ||
+        rawText;
       return { ok: false, reason };
     }
 
-    const paymentId =
-      isPlainObject(parsed) && typeof parsed.id === 'string'
-        ? parsed.id
-        : undefined;
-    const status = this.normalizeStatus(
-      isPlainObject(parsed) ? (parsed.result ?? parsed.status) : undefined,
-    );
+    const status =
+      typeof parsed.status === 'string' ? parsed.status : undefined;
+    const captured =
+      typeof parsed.captured === 'boolean' ? parsed.captured : undefined;
+    const paymentId = typeof parsed.id === 'string' ? parsed.id : undefined;
 
-    const verdict = this.interpretStatus(parsed);
-    if (verdict === false) {
+    const isSuccess = status === 'succeeded' || captured === true;
+    if (!isSuccess) {
       return {
         ok: false,
-        reason: rawText || 'payment-declined',
+        reason: 'payment_not_captured',
         status,
-      };
-    }
-
-    if (status === 'CHALLENGE_REQUIRED') {
-      const challengeUrl = extractChallengeUrl(parsed);
-      return {
-        ok: false,
-        reason: rawText || 'challenge-required',
-        status,
-        challengeUrl,
-        paymentId,
       };
     }
 
@@ -269,48 +96,4 @@ export class CloverService {
 
     return { ok: true, paymentId, status };
   }
-}
-
-const getString = (value: unknown): string | undefined =>
-  typeof value === 'string' && value.trim().length > 0 ? value : undefined;
-
-function extractChallengeUrl(payload: unknown): string | undefined {
-  if (!payload || typeof payload !== 'object') return undefined;
-  const record = payload as Record<string, unknown>;
-  const direct =
-    getString(record.redirectUrl) ??
-    getString(record.redirect_url) ??
-    getString(record.challengeUrl) ??
-    getString(record.challenge_url) ??
-    getString(record.url);
-  if (direct) return direct;
-
-  const threeDS =
-    (isPlainObject(record.threeDSecure)
-      ? record.threeDSecure
-      : isPlainObject(record.threeds)
-        ? record.threeds
-        : undefined) ?? undefined;
-
-  if (threeDS) {
-    const nested =
-      getString(threeDS.redirectUrl) ??
-      getString(threeDS.redirect_url) ??
-      getString(threeDS.challengeUrl) ??
-      getString(threeDS.challenge_url) ??
-      getString(threeDS.url);
-    if (nested) return nested;
-  }
-
-  const links = isPlainObject(record.links) ? record.links : undefined;
-  if (links) {
-    const linkUrl =
-      getString(links.challengeUrl) ??
-      getString(links.challenge_url) ??
-      getString(links.redirectUrl) ??
-      getString(links.redirect_url);
-    if (linkUrl) return linkUrl;
-  }
-
-  return undefined;
 }
