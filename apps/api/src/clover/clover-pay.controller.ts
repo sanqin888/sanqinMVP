@@ -1,6 +1,5 @@
 // apps/api/src/clover/clover-pay.controller.ts
 import {
-  BadGatewayException,
   BadRequestException,
   Body,
   Controller,
@@ -210,38 +209,12 @@ export class CloverPayController {
       });
     }
 
-    const lineItems = metadata.items.map((item) => ({
-      name: item.displayName || item.nameZh || item.nameEn || 'Item',
-      price: Math.round(item.priceCents),
-      unitQty: Math.max(1, Math.round(item.quantity)),
-      ...(item.notes ? { note: item.notes } : {}),
-    }));
-    if (metadata.serviceFeeCents && metadata.serviceFeeCents > 0) {
-      lineItems.push({
-        name: 'Service fee',
-        price: Math.round(metadata.serviceFeeCents),
-        unitQty: 1,
-      });
-    }
-    if (metadata.deliveryFeeCents && metadata.deliveryFeeCents > 0) {
-      lineItems.push({
-        name: 'Delivery fee',
-        price: Math.round(metadata.deliveryFeeCents),
-        unitQty: 1,
-      });
-    }
-    if (metadata.taxCents && metadata.taxCents > 0) {
-      lineItems.push({
-        name: 'Tax',
-        price: Math.round(metadata.taxCents),
-        unitQty: 1,
-      });
-    }
-
-    const expectedTotalCents = lineItems.reduce(
-      (sum, item) => sum + item.price * item.unitQty,
-      0,
-    );
+    const expectedTotalCents =
+      metadata.totalCents ??
+      metadata.subtotalCents +
+        metadata.taxCents +
+        (metadata.serviceFeeCents ?? 0) +
+        (metadata.deliveryFeeCents ?? 0);
     if (expectedTotalCents !== dto.amountCents) {
       throw new BadRequestException({
         code: 'AMOUNT_MISMATCH',
@@ -249,51 +222,15 @@ export class CloverPayController {
       });
     }
 
-    const cloverOrder = await this.clover.createOrder({
-      currency,
-      lineItems,
-    });
-
-    if (!cloverOrder.ok) {
-      await this.checkoutIntents.markFailed({
-        intentId: intent.id,
-        result: 'ORDER_FAILED',
-      });
-      throw new BadGatewayException({
-        code: 'CLOVER_ORDER_FAILED',
-        message: `Failed to create Clover order: ${cloverOrder.reason}`,
-      });
-    }
-
     const paymentResult = await this.clover.createCardPayment({
       amountCents: dto.amountCents,
       currency,
       source: dto.source,
-      sourceType: dto.sourceType,
-      orderId: cloverOrder.orderId,
-      cardholderName: normalizedName,
-      postalCode: normalizedPostalCode,
-      threeds: {
-        ...threeds,
-        browserInfo,
-      },
-      referenceId,
-      description: `Order ${referenceId} - SanQ Roujiamo`,
-      email: finalEmail,
-      clientIp,
+      orderId: referenceId,
+      description: `Order ${referenceId} - Online`,
     });
 
     if (!paymentResult.ok) {
-      if (paymentResult.status === 'CHALLENGE_REQUIRED') {
-        return {
-          orderStableId,
-          orderNumber: referenceId,
-          paymentId: paymentResult.paymentId ?? 'PENDING',
-          status: paymentResult.status,
-          challengeUrl: paymentResult.challengeUrl ?? null,
-        };
-      }
-
       await this.checkoutIntents.markFailed({
         intentId: intent.id,
         result: paymentResult.status ?? 'FAILED',
