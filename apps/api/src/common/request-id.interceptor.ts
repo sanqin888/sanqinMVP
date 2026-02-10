@@ -64,7 +64,22 @@ export class RequestIdInterceptor implements NestInterceptor {
           },
           error: (err: unknown) => {
             const ms = Date.now() - start;
-            const status = response?.statusCode;
+            const statusFromError =
+              typeof (err as { getStatus?: unknown })?.getStatus === 'function'
+                ? ((err as { getStatus: () => number }).getStatus?.() ??
+                  undefined)
+                : undefined;
+            const status =
+              statusFromError ??
+              (typeof (err as { status?: unknown })?.status === 'number'
+                ? (err as { status: number }).status
+                : undefined) ??
+              (typeof (err as { response?: { statusCode?: unknown } })?.response
+                ?.statusCode === 'number'
+                ? (err as { response: { statusCode: number } }).response
+                    .statusCode
+                : undefined) ??
+              response?.statusCode;
             this.logger.error(
               `[reqId=${requestId}] ${method} ${url} - ${status} (${ms}ms)`,
               err instanceof Error ? err.stack : undefined,
