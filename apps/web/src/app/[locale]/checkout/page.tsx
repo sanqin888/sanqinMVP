@@ -1418,6 +1418,7 @@ export default function CheckoutPage() {
           setError: (next: string | null) => void,
         ) => {
           const handler = (ev: CloverFieldChangeEvent) => {
+            console.log("Clover field event", ev);
             const errorMessage =
               typeof ev?.error === "string"
                 ? ev.error
