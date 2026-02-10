@@ -1527,56 +1527,56 @@ useEffect(() => {
       };
 
       // === CARD_NAME ===
-      cardName.on("change", (e) => {
+      cardName.addEventListener("change", (e) => {
         const f = handleFieldEvent("CARD_NAME", e);
         setCardNameComplete(Boolean(f?.complete));
       });
-      cardName.on("blur", (e) => {
+      cardName.addEventListener("blur", (e) => {
         handleFieldEvent("CARD_NAME", e);
       });
 
       // === CARD_NUMBER ===
-      cardNumber.on("change", (e) => {
+      cardNumber.addEventListener("change", (e) => {
         const f = handleFieldEvent("CARD_NUMBER", e);
         setCardNumberComplete(Boolean(f?.complete));
         setCardNumberError(
           typeof f?.error === "string" ? f.error : f?.error?.message ?? null,
         );
       });
-      cardNumber.on("blur", (e) => {
+      cardNumber.addEventListener("blur", (e) => {
         handleFieldEvent("CARD_NUMBER", e);
       });
 
       // === CARD_DATE ===
-      cardDate.on("change", (e) => {
+      cardDate.addEventListener("change", (e) => {
         const f = handleFieldEvent("CARD_DATE", e);
         setCardDateComplete(Boolean(f?.complete));
         setCardDateError(
           typeof f?.error === "string" ? f.error : f?.error?.message ?? null,
         );
       });
-      cardDate.on("blur", (e) => {
+      cardDate.addEventListener("blur", (e) => {
         handleFieldEvent("CARD_DATE", e);
       });
 
       // === CARD_CVV ===
-      cardCvv.on("change", (e) => {
+      cardCvv.addEventListener("change", (e) => {
         const f = handleFieldEvent("CARD_CVV", e);
         setCardCvvComplete(Boolean(f?.complete));
         setCardCvvError(
           typeof f?.error === "string" ? f.error : f?.error?.message ?? null,
         );
       });
-      cardCvv.on("blur", (e) => {
+      cardCvv.addEventListener("blur", (e) => {
         handleFieldEvent("CARD_CVV", e);
       });
 
       // === CARD_POSTAL_CODE ===
-      cardPostal.on("change", (e) => {
+      cardPostal.addEventListener("change", (e) => {
         const f = handleFieldEvent("CARD_POSTAL_CODE", e);
         setCardPostalComplete(Boolean(f?.complete));
       });
-      cardPostal.on("blur", (e) => {
+      cardPostal.addEventListener("blur", (e) => {
         handleFieldEvent("CARD_POSTAL_CODE", e);
       });
 
