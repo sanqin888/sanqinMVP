@@ -192,14 +192,19 @@ export class CloverPayController {
       });
     }
 
-    const normalizedPostalCode = normalizeCanadianPostalCode(dto.postalCode);
+    const metadataPostalCode = normalizeCanadianPostalCode(
+      metadata.customer.postalCode,
+    );
+    const normalizedPostalCode =
+      normalizeCanadianPostalCode(dto.postalCode) || metadataPostalCode;
     if (
-      !normalizedPostalCode ||
-      !isValidCanadianPostalCode(normalizedPostalCode)
+      metadata.fulfillment === 'delivery' &&
+      (!normalizedPostalCode ||
+        !isValidCanadianPostalCode(normalizedPostalCode))
     ) {
       throw new BadRequestException({
         code: 'INVALID_POSTAL_CODE',
-        message: 'postalCode must be a valid Canadian postal code',
+        message: 'postalCode must be a valid Canadian postal code for delivery',
       });
     }
 
