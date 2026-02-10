@@ -333,14 +333,59 @@ export class CloverPayController {
 
     await this.checkoutIntents.updateMetadata(intent.id, metadataWithIds);
 
-    const paymentResult = await this.clover.createCardPayment({
-      amountCents: dto.amountCents,
-      currency,
-      source: dto.source,
-      orderId: referenceId,
-      idempotencyKey,
-      description: `Order ${referenceId} - Online`,
-    });
+    let paymentResult: Awaited<ReturnType<CloverService['createCardPayment']>>;
+    try {
+      paymentResult = await this.clover.createCardPayment({
+        amountCents: dto.amountCents,
+        currency,
+        source: dto.source,
+        orderId: referenceId,
+        idempotencyKey,
+        description: `Order ${referenceId} - Online`,
+      });
+    } catch (err: unknown) {
+      const response =
+        typeof err === 'object' && err !== null && 'response' in err
+          ? (err as { response?: { status?: unknown; data?: unknown } })
+              .response
+          : undefined;
+      const status =
+        typeof response?.status === 'number' ? response.status : null;
+      const data = isPlainObject(response?.data) ? response.data : null;
+      const message =
+        typeof err === 'object' && err !== null && 'message' in err
+          ? typeof (err as { message?: unknown }).message === 'string'
+            ? (err as { message: string }).message
+            : ''
+          : '';
+      const stack =
+        err instanceof Error
+          ? err.stack
+          : typeof err === 'object' && err !== null && 'stack' in err
+            ? typeof (err as { stack?: unknown }).stack === 'string'
+              ? (err as { stack: string }).stack
+              : undefined
+            : undefined;
+
+      this.logger.error(
+        `Clover upstream error: status=${status} message=${message} data=${JSON.stringify(data)}`,
+        stack,
+      );
+
+      throw new BadRequestException({
+        code: 'payment_failed',
+        message: 'Payment failed',
+        details: {
+          code: typeof data?.code === 'string' ? data.code : 'payment_failed',
+          reason:
+            (typeof data?.message === 'string' ? data.message : undefined) ??
+            (typeof data?.error === 'string' ? data.error : undefined) ??
+            message,
+          upstreamStatus: status,
+          upstream: data,
+        },
+      });
+    }
 
     if (!paymentResult.ok) {
       const meta = extractCloverErrorMeta(paymentResult.reason);
