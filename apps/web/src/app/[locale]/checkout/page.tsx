@@ -83,7 +83,8 @@ type MemberAddressPayload =
 
 type CloverFieldChangeEvent = {
   complete?: boolean;
-  error?: { message?: string } | null;
+  touched?: boolean;
+  error?: string | { message?: string } | null;
 };
 
 declare global {
@@ -1416,20 +1417,25 @@ export default function CheckoutPage() {
           setter: (next: boolean) => void,
           setError: (next: string | null) => void,
         ) => {
-          const handler = (event: CloverFieldChangeEvent) => {
-            const errorMessage = event?.error?.message ?? null;
-            const isComplete = Boolean(event?.complete) && !errorMessage;
-            setter(isComplete);
+          const handler = (ev: CloverFieldChangeEvent) => {
+            console.log("Clover field event", ev);
+            const errorMessage =
+              typeof ev?.error === "string"
+                ? ev.error
+                : ev?.error?.message ?? null;
+            const touched = Boolean(ev?.touched);
+            const complete = ev?.complete ?? touched;
+
+            setter(Boolean(complete && !errorMessage));
             setError(errorMessage);
           };
 
-          if (typeof element.on === "function") {
-            element.on("change", handler);
-            return;
-          }
-
           if (typeof element.addEventListener === "function") {
             element.addEventListener("change", handler);
+            element.addEventListener("blur", handler);
+          } else if (typeof element.on === "function") {
+            element.on("change", handler);
+            element.on("blur", handler);
           }
         };
 
