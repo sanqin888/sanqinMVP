@@ -100,7 +100,7 @@ declare global {
           destroy?: () => void;
         };
       };
-      createToken: (payload?: Record<string, unknown>) => Promise<{
+      createToken: () => Promise<{
         token?: string;
         errors?: Array<{ message?: string }>;
       }>;
@@ -741,7 +741,7 @@ export default function CheckoutPage() {
   const [cardDateError, setCardDateError] = useState<string | null>(null);
   const [cardCvvError, setCardCvvError] = useState<string | null>(null);
   const [cloverReady, setCloverReady] = useState(false);
-  const [nameOnCard, setNameOnCard] = useState("");
+  const [cardNameComplete, setCardNameComplete] = useState(false);
   const [cardNumberComplete, setCardNumberComplete] = useState(false);
   const [cardDateComplete, setCardDateComplete] = useState(false);
   const [cardCvvComplete, setCardCvvComplete] = useState(false);
@@ -750,9 +750,10 @@ export default function CheckoutPage() {
   const [challengeIntentId, setChallengeIntentId] = useState<string | null>(
     null,
   );
-  const cloverRef = useRef<null | { createToken: (payload?: Record<string, unknown>) => Promise<{ token?: string; errors?: Array<{ message?: string }> }> }>(
+  const cloverRef = useRef<null | { createToken: () => Promise<{ token?: string; errors?: Array<{ message?: string }> }> }>(
     null,
   );
+  const cardNameRef = useRef<null | { destroy?: () => void }>(null);
   const cardNumberRef = useRef<null | { destroy?: () => void }>(null);
   const cardDateRef = useRef<null | { destroy?: () => void }>(null);
   const cardCvvRef = useRef<null | { destroy?: () => void }>(null);
@@ -1253,12 +1254,11 @@ export default function CheckoutPage() {
     isStoreOpen &&
     !entitlementBlockingMessage;
 
-  const normalizedCardholderName = nameOnCard.trim();
   const requiresPayment = totalCents > 0;
   const canPayWithCard =
     !requiresPayment ||
     (cloverReady &&
-      normalizedCardholderName.length > 0 &&
+      cardNameComplete &&
       cardNumberComplete &&
       cardDateComplete &&
       cardCvvComplete &&
@@ -1297,12 +1297,8 @@ export default function CheckoutPage() {
       if (cardNumberError || cardDateError || cardCvvError) {
         return cardNumberError ?? cardDateError ?? cardCvvError ?? null;
       }
-      if (!normalizedCardholderName) {
-        return locale === "zh"
-          ? "请填写持卡人姓名。"
-          : "Please enter the cardholder name.";
-      }
       if (
+        !cardNameComplete ||
         !cardNumberComplete ||
         !cardDateComplete ||
         !cardCvvComplete ||
@@ -1320,6 +1316,7 @@ export default function CheckoutPage() {
     canPlaceOrder,
     cardCvvError,
     cardDateError,
+    cardNameComplete,
     cardNumberError,
     cloverReady,
     deliveryAddressReady,
@@ -1333,11 +1330,21 @@ export default function CheckoutPage() {
     isSubmitting,
     locale,
     missingContactMessage,
-    normalizedCardholderName,
     phoneVerified,
     requiresPayment,
     storeStatusDetail,
   ]);
+
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => {
+      if (typeof e.origin === "string" && e.origin.includes("clover.com")) {
+        console.log("[CLOVER postMessage]", e.origin, e.data);
+      }
+    };
+
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1370,29 +1377,33 @@ export default function CheckoutPage() {
           throw new Error("Clover SDK not available");
         }
 
+        const nameHost = document.getElementById("clover-card-name");
         const numberHost = document.getElementById("clover-card-number");
         const dateHost = document.getElementById("clover-card-date");
         const cvvHost = document.getElementById("clover-card-cvv");
         const postalHost = document.getElementById("clover-postal");
 
-        if (!numberHost || !dateHost || !cvvHost || !postalHost) {
+        if (!nameHost || !numberHost || !dateHost || !cvvHost || !postalHost) {
           throw new Error("Card fields not ready");
         }
 
         const clover = new window.Clover(publicKey);
         const elements = clover.elements();
 
+        const cardName = elements.create("CARD_NAME");
         const cardNumber = elements.create("CARD_NUMBER");
         const cardDate = elements.create("CARD_DATE");
         const cardCvv = elements.create("CARD_CVV");
         const cardPostal = elements.create("CARD_POSTAL_CODE");
 
+        cardName.mount("#clover-card-name");
         cardNumber.mount("#clover-card-number");
         cardDate.mount("#clover-card-date");
         cardCvv.mount("#clover-card-cvv");
         cardPostal.mount("#clover-postal");
 
         cloverRef.current = clover;
+        cardNameRef.current = cardName;
         cardNumberRef.current = cardNumber;
         cardDateRef.current = cardDate;
         cardCvvRef.current = cardCvv;
@@ -1413,6 +1424,11 @@ export default function CheckoutPage() {
 
           return event as CloverFieldChangeEvent;
         };
+
+        cardName.on("change", (event) => {
+          const fieldEvent = pickField(event, "CARD_NAME");
+          setCardNameComplete(Boolean(fieldEvent?.complete));
+        });
 
         cardNumber.on("change", (event) => {
           const fieldEvent = pickField(event, "CARD_NUMBER");
@@ -1462,6 +1478,7 @@ export default function CheckoutPage() {
 
     return () => {
       cancelled = true;
+      cardNameRef.current?.destroy?.();
       cardNumberRef.current?.destroy?.();
       cardDateRef.current?.destroy?.();
       cardCvvRef.current?.destroy?.();
@@ -2336,6 +2353,15 @@ export default function CheckoutPage() {
     totalCentsForOrder =
       discountedSubtotalForOrder + deliveryFeeCentsForOrder + taxCentsForOrder;
 
+    console.log("[PAY] computed", {
+      subtotalCents,
+      couponDiscountCentsForOrder,
+      loyaltyRedeemCentsForOrder,
+      deliveryFeeCentsForOrder,
+      taxCentsForOrder,
+      totalCentsForOrder,
+    });
+
     const deliveryMetadata = isDeliveryFulfillment
       ? {
           deliveryType,
@@ -2475,19 +2501,9 @@ export default function CheckoutPage() {
         );
       }
 
-      if (!normalizedCardholderName.length) {
-        throw new Error(
-          locale === "zh" ? "请填写持卡人姓名。" : "Cardholder name is required.",
-        );
-      }
-
-      console.log("[PAY] before createToken", {
-        normalizedCardholderName,
-      });
+      console.log("[PAY] before createToken");
       const tokenResult = await withTimeout(
-        clover.createToken({
-          cardholderName: normalizedCardholderName,
-        }),
+        clover.createToken(),
         15000,
         "clover.createToken",
       );
@@ -2534,7 +2550,7 @@ export default function CheckoutPage() {
             checkoutIntentId,
             source: tokenResult.token,
             sourceType: "CARD",
-            cardholderName: normalizedCardholderName,
+            cardholderName: formatCustomerFullName(customer),
             customer: {
               firstName: customer.firstName,
               lastName: customer.lastName,
@@ -3537,17 +3553,9 @@ export default function CheckoutPage() {
                       <label className="text-xs font-medium text-slate-600">
                         {locale === "zh" ? "持卡人姓名" : "Name on card"} *
                       </label>
-                      <input
-                        value={nameOnCard}
-                        onChange={(event) => {
-                          setNameOnCard(event.target.value);
-                          setErrorMessage(null);
-                        }}
-                        autoComplete="cc-name"
-                        className="h-10 w-full rounded-2xl border border-slate-200 bg-white px-3 py-1 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
-                        placeholder={
-                          locale === "zh" ? "请输入姓名" : "Full name"
-                        }
+                      <div
+                        id="clover-card-name"
+                        className="clover-field flex h-10 items-center rounded-2xl border border-slate-200 bg-white px-3"
                       />
                     </div>
 
