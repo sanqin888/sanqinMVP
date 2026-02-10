@@ -82,6 +82,7 @@ type MemberAddressPayload =
 type CloverFieldChangeEvent = {
   complete?: boolean;
   touched?: boolean;
+  info?: string | null;
   error?: string | { message?: string } | null;
 };
 
@@ -89,7 +90,12 @@ type CloverAggregatedFieldEvent = Record<string, CloverFieldChangeEvent>;
 
 declare global {
   interface Window {
-    Clover?: new (key?: string) => {
+    Clover?: new (
+      key?: string,
+      options?: {
+        merchantId?: string;
+      },
+    ) => {
       elements: () => {
         create: (type: string) => {
           mount: (selector: string) => void;
@@ -741,6 +747,7 @@ export default function CheckoutPage() {
   const [cardDateError, setCardDateError] = useState<string | null>(null);
   const [cardCvvError, setCardCvvError] = useState<string | null>(null);
   const [cloverReady, setCloverReady] = useState(false);
+  const [canPay, setCanPay] = useState(false);
   const [cardNameComplete, setCardNameComplete] = useState(false);
   const [cardNumberComplete, setCardNumberComplete] = useState(false);
   const [cardDateComplete, setCardDateComplete] = useState(false);
@@ -752,6 +759,9 @@ export default function CheckoutPage() {
   );
   const cloverRef = useRef<null | { createToken: () => Promise<{ token?: string; errors?: Array<{ message?: string }> }> }>(
     null,
+  );
+  const cloverFieldStateRef = useRef<Record<string, CloverFieldChangeEvent>>(
+    {},
   );
   const cardNameRef = useRef<null | { destroy?: () => void }>(null);
   const cardNumberRef = useRef<null | { destroy?: () => void }>(null);
@@ -1256,13 +1266,7 @@ export default function CheckoutPage() {
 
   const requiresPayment = totalCents > 0;
   const canPayWithCard =
-    !requiresPayment ||
-    (cloverReady &&
-      cardNameComplete &&
-      cardNumberComplete &&
-      cardDateComplete &&
-      cardCvvComplete &&
-      cardPostalComplete);
+    !requiresPayment || (cloverReady && canPay);
 
   const payButtonDisabledReason = useMemo(() => {
     if (isSubmitting) return null;
@@ -1350,11 +1354,14 @@ export default function CheckoutPage() {
     if (typeof window === "undefined") return;
     if (!requiresPayment) {
       setCloverReady(false);
+      setCanPay(false);
+      cloverFieldStateRef.current = {};
       return;
     }
     let cancelled = false;
 
     const publicKey = process.env.NEXT_PUBLIC_CLOVER_PUBLIC_TOKEN?.trim();
+    const merchantId = process.env.NEXT_PUBLIC_CLOVER_MERCHANT_ID?.trim();
     const sdkUrl =
       process.env.NEXT_PUBLIC_CLOVER_SDK_URL?.trim() ??
       DEFAULT_CLOVER_SDK_URL;
@@ -1364,6 +1371,15 @@ export default function CheckoutPage() {
         locale === "zh"
           ? "支付初始化失败：缺少 Clover 公钥配置。"
           : "Payment initialization failed: missing Clover public key.",
+      );
+      return;
+    }
+
+    if (!merchantId) {
+      setErrorMessage(
+        locale === "zh"
+          ? "支付初始化失败：缺少 Clover 商户号配置。"
+          : "Payment initialization failed: missing Clover merchant ID.",
       );
       return;
     }
@@ -1387,7 +1403,7 @@ export default function CheckoutPage() {
           throw new Error("Card fields not ready");
         }
 
-        const clover = new window.Clover(publicKey);
+        const clover = new window.Clover(publicKey, { merchantId });
         const elements = clover.elements();
 
         const cardName = elements.create("CARD_NAME");
@@ -1409,9 +1425,17 @@ export default function CheckoutPage() {
         cardCvvRef.current = cardCvv;
         cardPostalRef.current = cardPostal;
 
+        const requiredFieldKeys = [
+          "CARD_NAME",
+          "CARD_NUMBER",
+          "CARD_DATE",
+          "CARD_CVV",
+          "CARD_POSTAL_CODE",
+        ] as const;
+
         const pickField = (
           event: CloverFieldChangeEvent | CloverAggregatedFieldEvent,
-          key: string,
+          key: (typeof requiredFieldKeys)[number],
         ) => {
           if (event && typeof event === "object") {
             const aggregatedEvent = event as CloverAggregatedFieldEvent;
@@ -1425,13 +1449,50 @@ export default function CheckoutPage() {
           return event as CloverFieldChangeEvent;
         };
 
+        const isFieldPayable = (field?: CloverFieldChangeEvent) =>
+          Boolean(field?.touched) && (field?.info ?? "") === "";
+
+        const computeCanPay = (event: CloverFieldChangeEvent | CloverAggregatedFieldEvent) => {
+          const nextFieldState = { ...cloverFieldStateRef.current };
+          if (event && typeof event === "object") {
+            const aggregatedEvent = event as CloverAggregatedFieldEvent;
+            for (const fieldKey of requiredFieldKeys) {
+              const fieldEvent = aggregatedEvent[fieldKey];
+              if (fieldEvent && typeof fieldEvent === "object") {
+                nextFieldState[fieldKey] = fieldEvent;
+              }
+            }
+          }
+          cloverFieldStateRef.current = nextFieldState;
+          return requiredFieldKeys.every((fieldKey) =>
+            isFieldPayable(nextFieldState[fieldKey]),
+          );
+        };
+
+        const handleFieldEvent = (
+          fieldKey: (typeof requiredFieldKeys)[number],
+          event: CloverFieldChangeEvent | CloverAggregatedFieldEvent,
+        ) => {
+          const fieldEvent = pickField(event, fieldKey);
+          cloverFieldStateRef.current = {
+            ...cloverFieldStateRef.current,
+            [fieldKey]: fieldEvent,
+          };
+          const nextCanPay = computeCanPay(event);
+          setCanPay(nextCanPay);
+          return fieldEvent;
+        };
+
         cardName.on("change", (event) => {
-          const fieldEvent = pickField(event, "CARD_NAME");
+          const fieldEvent = handleFieldEvent("CARD_NAME", event);
           setCardNameComplete(Boolean(fieldEvent?.complete));
+        });
+        cardName.on("blur", (event) => {
+          handleFieldEvent("CARD_NAME", event);
         });
 
         cardNumber.on("change", (event) => {
-          const fieldEvent = pickField(event, "CARD_NUMBER");
+          const fieldEvent = handleFieldEvent("CARD_NUMBER", event);
           setCardNumberComplete(Boolean(fieldEvent?.complete));
           setCardNumberError(
             typeof fieldEvent?.error === "string"
@@ -1439,9 +1500,12 @@ export default function CheckoutPage() {
               : fieldEvent?.error?.message ?? null,
           );
         });
+        cardNumber.on("blur", (event) => {
+          handleFieldEvent("CARD_NUMBER", event);
+        });
 
         cardDate.on("change", (event) => {
-          const fieldEvent = pickField(event, "CARD_DATE");
+          const fieldEvent = handleFieldEvent("CARD_DATE", event);
           setCardDateComplete(Boolean(fieldEvent?.complete));
           setCardDateError(
             typeof fieldEvent?.error === "string"
@@ -1449,9 +1513,12 @@ export default function CheckoutPage() {
               : fieldEvent?.error?.message ?? null,
           );
         });
+        cardDate.on("blur", (event) => {
+          handleFieldEvent("CARD_DATE", event);
+        });
 
         cardCvv.on("change", (event) => {
-          const fieldEvent = pickField(event, "CARD_CVV");
+          const fieldEvent = handleFieldEvent("CARD_CVV", event);
           setCardCvvComplete(Boolean(fieldEvent?.complete));
           setCardCvvError(
             typeof fieldEvent?.error === "string"
@@ -1459,10 +1526,16 @@ export default function CheckoutPage() {
               : fieldEvent?.error?.message ?? null,
           );
         });
+        cardCvv.on("blur", (event) => {
+          handleFieldEvent("CARD_CVV", event);
+        });
 
         cardPostal.on("change", (event) => {
-          const fieldEvent = pickField(event, "CARD_POSTAL_CODE");
+          const fieldEvent = handleFieldEvent("CARD_POSTAL_CODE", event);
           setCardPostalComplete(Boolean(fieldEvent?.complete));
+        });
+        cardPostal.on("blur", (event) => {
+          handleFieldEvent("CARD_POSTAL_CODE", event);
         });
 
         setCloverReady(true);
@@ -1483,6 +1556,8 @@ export default function CheckoutPage() {
       cardDateRef.current?.destroy?.();
       cardCvvRef.current?.destroy?.();
       cardPostalRef.current?.destroy?.();
+      cloverFieldStateRef.current = {};
+      setCanPay(false);
     };
   }, [locale, requiresPayment]);
 
