@@ -1417,13 +1417,10 @@ export default function CheckoutPage() {
           setError: (next: string | null) => void,
         ) => {
           const handler = (event: CloverFieldChangeEvent) => {
-            const isComplete = Boolean(event?.complete && !event?.error);
+            const errorMessage = event?.error?.message ?? null;
+            const isComplete = Boolean(event?.complete) && !errorMessage;
             setter(isComplete);
-            if (event?.error?.message) {
-              setError(event.error.message);
-            } else {
-              setError(null);
-            }
+            setError(errorMessage);
           };
 
           if (typeof element.on === "function") {
