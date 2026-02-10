@@ -1402,14 +1402,13 @@ export default function CheckoutPage() {
           event: CloverFieldChangeEvent | CloverAggregatedFieldEvent,
           key: string,
         ) => {
-          if (
-            event &&
-            typeof event === "object" &&
-            key in event &&
-            event[key] &&
-            typeof event[key] === "object"
-          ) {
-            return event[key] as CloverFieldChangeEvent;
+          if (event && typeof event === "object") {
+            const aggregatedEvent = event as CloverAggregatedFieldEvent;
+            const fieldEvent = aggregatedEvent[key];
+
+            if (fieldEvent && typeof fieldEvent === "object") {
+              return fieldEvent;
+            }
           }
 
           return event as CloverFieldChangeEvent;
