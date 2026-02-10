@@ -2501,9 +2501,21 @@ useEffect(() => {
       fulfillment,
       schedule,
       customer: {
-        ...customer,
+        firstName: customer.firstName,
+        lastName: customer.lastName,
+        email: customer.email,
         phone: formattedCustomerPhone,
-        address: deliveryAddressText,
+
+        ...(isDeliveryFulfillment
+          ? {
+              addressLine1: customer.addressLine1,
+              addressLine2: customer.addressLine2 || undefined,
+              city: customer.city,
+              province: customer.province,
+              postalCode: customer.postalCode,
+              address: deliveryAddressText,
+            }
+          : {}),
       },
       deliveryDestination: isDeliveryFulfillment
         ? {
