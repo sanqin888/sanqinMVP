@@ -94,6 +94,7 @@ services:
         - NEXT_PUBLIC_GOOGLE_MAPS_KEY=${NEXT_PUBLIC_GOOGLE_MAPS_KEY}
         - NEXT_PUBLIC_CLOVER_PUBLIC_TOKEN=${NEXT_PUBLIC_CLOVER_PUBLIC_TOKEN}
         - NEXT_PUBLIC_CLOVER_SDK_URL=${NEXT_PUBLIC_CLOVER_SDK_URL}
+        - NEXT_PUBLIC_CLOVER_MERCHANT_ID=${CLOVER_MERCHANT_ID}
     volumes:
       - /home/ubuntu/sanq-assets/sounds:/app/apps/web/public/sounds:ro
     restart: always
