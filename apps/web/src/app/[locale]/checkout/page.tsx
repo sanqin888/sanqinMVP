@@ -1314,10 +1314,10 @@ export default function CheckoutPage() {
       }
       if (missingCardFields.length > 0) {
         return locale === "zh"
-          ? `请补全：${missingCardFields.join("、")}（自动填充可能不会被识别）。`
+          ? `请补全：${missingCardFields.join("、")}。`
           : `Please complete: ${missingCardFields.join(
               ", ",
-            )} (autofill may not be detected).`;
+            )}.`;
       }
     }
 
