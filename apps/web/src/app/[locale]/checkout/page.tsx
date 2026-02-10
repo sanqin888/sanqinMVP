@@ -106,9 +106,11 @@ declare global {
       elements: () => {
         create: (type: string) => {
           mount: (selector: string) => void;
-          on: (
+          addEventListener: (
             event: string,
-            handler: (payload: CloverFieldChangeEvent | CloverAggregatedFieldEvent) => void,
+            handler: (
+              payload: CloverFieldChangeEvent | CloverAggregatedFieldEvent
+            ) => void,
           ) => void;
           destroy?: () => void;
         };
