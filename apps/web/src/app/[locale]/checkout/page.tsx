@@ -1350,216 +1350,253 @@ export default function CheckoutPage() {
     return () => window.removeEventListener("message", onMsg);
   }, []);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!requiresPayment) {
-      setCloverReady(false);
-      setCanPay(false);
-      cloverFieldStateRef.current = {};
-      return;
-    }
-    let cancelled = false;
+useEffect(() => {
+  if (typeof window === "undefined") return;
 
-    const publicKey = process.env.NEXT_PUBLIC_CLOVER_PUBLIC_TOKEN?.trim();
-    const merchantId = process.env.NEXT_PUBLIC_CLOVER_MERCHANT_ID?.trim();
-    const sdkUrl =
-      process.env.NEXT_PUBLIC_CLOVER_SDK_URL?.trim() ??
-      DEFAULT_CLOVER_SDK_URL;
+  if (!requiresPayment) {
+    setCloverReady(false);
+    setCanPay(false);
+    cloverFieldStateRef.current = {};
+    return;
+  }
 
-    if (!publicKey) {
-      setErrorMessage(
-        locale === "zh"
-          ? "支付初始化失败：缺少 Clover 公钥配置。"
-          : "Payment initialization failed: missing Clover public key.",
-      );
-      return;
-    }
+  let cancelled = false;
 
-    if (!merchantId) {
-      setErrorMessage(
-        locale === "zh"
-          ? "支付初始化失败：缺少 Clover 商户号配置。"
-          : "Payment initialization failed: missing Clover merchant ID.",
-      );
-      return;
-    }
+  const publicKey = process.env.NEXT_PUBLIC_CLOVER_PUBLIC_TOKEN?.trim();
+  const merchantId = process.env.NEXT_PUBLIC_CLOVER_MERCHANT_ID?.trim();
+  const sdkUrl =
+    process.env.NEXT_PUBLIC_CLOVER_SDK_URL?.trim() ?? DEFAULT_CLOVER_SDK_URL;
 
-    const setupClover = async () => {
-      try {
-        await loadScript(sdkUrl);
-        if (cancelled) return;
+  if (!publicKey) {
+    setErrorMessage(
+      locale === "zh"
+        ? "支付初始化失败：缺少 Clover 公钥配置。"
+        : "Payment initialization failed: missing Clover public key.",
+    );
+    return;
+  }
 
-        if (!window.Clover) {
-          throw new Error("Clover SDK not available");
-        }
+  if (!merchantId) {
+    setErrorMessage(
+      locale === "zh"
+        ? "支付初始化失败：缺少 Clover 商户号配置。"
+        : "Payment initialization failed: missing Clover merchant ID.",
+    );
+    return;
+  }
 
-        const nameHost = document.getElementById("clover-card-name");
-        const numberHost = document.getElementById("clover-card-number");
-        const dateHost = document.getElementById("clover-card-date");
-        const cvvHost = document.getElementById("clover-card-cvv");
-        const postalHost = document.getElementById("clover-postal");
+  const requiredFieldKeys = [
+    "CARD_NAME",
+    "CARD_NUMBER",
+    "CARD_DATE",
+    "CARD_CVV",
+    "CARD_POSTAL_CODE",
+  ] as const;
 
-        if (!nameHost || !numberHost || !dateHost || !cvvHost || !postalHost) {
-          throw new Error("Card fields not ready");
-        }
+  type RequiredKey = (typeof requiredFieldKeys)[number];
 
-        const clover = new window.Clover(publicKey, { merchantId });
-        const elements = clover.elements();
-
-        const cardName = elements.create("CARD_NAME");
-        const cardNumber = elements.create("CARD_NUMBER");
-        const cardDate = elements.create("CARD_DATE");
-        const cardCvv = elements.create("CARD_CVV");
-        const cardPostal = elements.create("CARD_POSTAL_CODE");
-
-        cardName.mount("#clover-card-name");
-        cardNumber.mount("#clover-card-number");
-        cardDate.mount("#clover-card-date");
-        cardCvv.mount("#clover-card-cvv");
-        cardPostal.mount("#clover-postal");
-
-        cloverRef.current = clover;
-        cardNameRef.current = cardName;
-        cardNumberRef.current = cardNumber;
-        cardDateRef.current = cardDate;
-        cardCvvRef.current = cardCvv;
-        cardPostalRef.current = cardPostal;
-
-        const requiredFieldKeys = [
-          "CARD_NAME",
-          "CARD_NUMBER",
-          "CARD_DATE",
-          "CARD_CVV",
-          "CARD_POSTAL_CODE",
-        ] as const;
-
-        const pickField = (
-          event: CloverFieldChangeEvent | CloverAggregatedFieldEvent,
-          key: (typeof requiredFieldKeys)[number],
-        ) => {
-          if (event && typeof event === "object") {
-            const aggregatedEvent = event as CloverAggregatedFieldEvent;
-            const fieldEvent = aggregatedEvent[key];
-
-            if (fieldEvent && typeof fieldEvent === "object") {
-              return fieldEvent;
-            }
-          }
-
-          return event as CloverFieldChangeEvent;
-        };
-
-        const isFieldPayable = (field?: CloverFieldChangeEvent) =>
-          Boolean(field?.touched) && (field?.info ?? "") === "";
-
-        const computeCanPay = (event: CloverFieldChangeEvent | CloverAggregatedFieldEvent) => {
-          const nextFieldState = { ...cloverFieldStateRef.current };
-          if (event && typeof event === "object") {
-            const aggregatedEvent = event as CloverAggregatedFieldEvent;
-            for (const fieldKey of requiredFieldKeys) {
-              const fieldEvent = aggregatedEvent[fieldKey];
-              if (fieldEvent && typeof fieldEvent === "object") {
-                nextFieldState[fieldKey] = fieldEvent;
-              }
-            }
-          }
-          cloverFieldStateRef.current = nextFieldState;
-          return requiredFieldKeys.every((fieldKey) =>
-            isFieldPayable(nextFieldState[fieldKey]),
-          );
-        };
-
-        const handleFieldEvent = (
-          fieldKey: (typeof requiredFieldKeys)[number],
-          event: CloverFieldChangeEvent | CloverAggregatedFieldEvent,
-        ) => {
-          const fieldEvent = pickField(event, fieldKey);
-          cloverFieldStateRef.current = {
-            ...cloverFieldStateRef.current,
-            [fieldKey]: fieldEvent,
-          };
-          const nextCanPay = computeCanPay(event);
-          setCanPay(nextCanPay);
-          return fieldEvent;
-        };
-
-        cardName.on("change", (event) => {
-          const fieldEvent = handleFieldEvent("CARD_NAME", event);
-          setCardNameComplete(Boolean(fieldEvent?.complete));
-        });
-        cardName.on("blur", (event) => {
-          handleFieldEvent("CARD_NAME", event);
-        });
-
-        cardNumber.on("change", (event) => {
-          const fieldEvent = handleFieldEvent("CARD_NUMBER", event);
-          setCardNumberComplete(Boolean(fieldEvent?.complete));
-          setCardNumberError(
-            typeof fieldEvent?.error === "string"
-              ? fieldEvent.error
-              : fieldEvent?.error?.message ?? null,
-          );
-        });
-        cardNumber.on("blur", (event) => {
-          handleFieldEvent("CARD_NUMBER", event);
-        });
-
-        cardDate.on("change", (event) => {
-          const fieldEvent = handleFieldEvent("CARD_DATE", event);
-          setCardDateComplete(Boolean(fieldEvent?.complete));
-          setCardDateError(
-            typeof fieldEvent?.error === "string"
-              ? fieldEvent.error
-              : fieldEvent?.error?.message ?? null,
-          );
-        });
-        cardDate.on("blur", (event) => {
-          handleFieldEvent("CARD_DATE", event);
-        });
-
-        cardCvv.on("change", (event) => {
-          const fieldEvent = handleFieldEvent("CARD_CVV", event);
-          setCardCvvComplete(Boolean(fieldEvent?.complete));
-          setCardCvvError(
-            typeof fieldEvent?.error === "string"
-              ? fieldEvent.error
-              : fieldEvent?.error?.message ?? null,
-          );
-        });
-        cardCvv.on("blur", (event) => {
-          handleFieldEvent("CARD_CVV", event);
-        });
-
-        cardPostal.on("change", (event) => {
-          const fieldEvent = handleFieldEvent("CARD_POSTAL_CODE", event);
-          setCardPostalComplete(Boolean(fieldEvent?.complete));
-        });
-        cardPostal.on("blur", (event) => {
-          handleFieldEvent("CARD_POSTAL_CODE", event);
-        });
-
-        setCloverReady(true);
-      } catch (error) {
-        if (cancelled) return;
-        const message =
-          error instanceof Error ? error.message : "Failed to init Clover";
-        setErrorMessage(message);
+  // ✅ Clover blur 有时会包一层 { realTimeFormState: {...} }
+  const unwrapCloverEvent = (
+    event: CloverFieldChangeEvent | CloverAggregatedFieldEvent | any,
+  ): CloverFieldChangeEvent | CloverAggregatedFieldEvent => {
+    if (event && typeof event === "object") {
+      const maybe = event as any;
+      if (maybe.realTimeFormState && typeof maybe.realTimeFormState === "object") {
+        return maybe.realTimeFormState as CloverAggregatedFieldEvent;
       }
+    }
+    return event as CloverFieldChangeEvent | CloverAggregatedFieldEvent;
+  };
+
+  const getFieldFromEvent = (
+    event: CloverFieldChangeEvent | CloverAggregatedFieldEvent | any,
+    key: RequiredKey,
+  ): CloverFieldChangeEvent => {
+    const unwrapped = unwrapCloverEvent(event);
+
+    if (unwrapped && typeof unwrapped === "object") {
+      const aggregated = unwrapped as CloverAggregatedFieldEvent;
+      const fieldEvent = aggregated[key];
+      if (fieldEvent && typeof fieldEvent === "object") {
+        return fieldEvent as CloverFieldChangeEvent;
+      }
+    }
+
+    // fallback：如果 Clover 某些情况下直接给字段对象
+    return unwrapped as CloverFieldChangeEvent;
+  };
+
+  const isFieldPayable = (field?: CloverFieldChangeEvent) =>
+    Boolean(field?.touched) && (field?.info ?? "") === "";
+
+  const computeCanPay = (
+    event: CloverFieldChangeEvent | CloverAggregatedFieldEvent | any,
+  ) => {
+    const unwrapped = unwrapCloverEvent(event);
+
+    // 在现有 ref 基础上合并最新状态
+    const nextFieldState: Record<string, CloverFieldChangeEvent> = {
+      ...cloverFieldStateRef.current,
     };
 
-    setupClover();
+    if (unwrapped && typeof unwrapped === "object") {
+      const aggregated = unwrapped as CloverAggregatedFieldEvent;
+      for (const k of requiredFieldKeys) {
+        const v = aggregated[k];
+        if (v && typeof v === "object") {
+          nextFieldState[k] = v as CloverFieldChangeEvent;
+        }
+      }
+    }
 
-    return () => {
-      cancelled = true;
+    cloverFieldStateRef.current = nextFieldState;
+
+    return requiredFieldKeys.every((k) => isFieldPayable(nextFieldState[k]));
+  };
+
+  const setupClover = async () => {
+    try {
+      await loadScript(sdkUrl);
+      if (cancelled) return;
+
+      if (!window.Clover) throw new Error("Clover SDK not available");
+
+      // ✅ host 容器是否存在
+      const nameHost = document.getElementById("clover-card-name");
+      const numberHost = document.getElementById("clover-card-number");
+      const dateHost = document.getElementById("clover-card-date");
+      const cvvHost = document.getElementById("clover-card-cvv");
+      const postalHost = document.getElementById("clover-postal");
+
+      if (!nameHost || !numberHost || !dateHost || !cvvHost || !postalHost) {
+        throw new Error("Card fields not ready");
+      }
+
+      // ✅ 重新初始化前先 destroy（避免热更新/重复 mount）
       cardNameRef.current?.destroy?.();
       cardNumberRef.current?.destroy?.();
       cardDateRef.current?.destroy?.();
       cardCvvRef.current?.destroy?.();
       cardPostalRef.current?.destroy?.();
+
       cloverFieldStateRef.current = {};
       setCanPay(false);
-    };
-  }, [locale, requiresPayment]);
+
+      const clover = new window.Clover(publicKey, { merchantId });
+      const elements = clover.elements();
+
+      const cardName = elements.create("CARD_NAME");
+      const cardNumber = elements.create("CARD_NUMBER");
+      const cardDate = elements.create("CARD_DATE");
+      const cardCvv = elements.create("CARD_CVV");
+      const cardPostal = elements.create("CARD_POSTAL_CODE");
+
+      cardName.mount("#clover-card-name");
+      cardNumber.mount("#clover-card-number");
+      cardDate.mount("#clover-card-date");
+      cardCvv.mount("#clover-card-cvv");
+      cardPostal.mount("#clover-postal");
+
+      cloverRef.current = clover;
+      cardNameRef.current = cardName;
+      cardNumberRef.current = cardNumber;
+      cardDateRef.current = cardDate;
+      cardCvvRef.current = cardCvv;
+      cardPostalRef.current = cardPostal;
+
+      const handleFieldEvent = (key: RequiredKey, raw: any) => {
+        const fieldEvent = getFieldFromEvent(raw, key);
+
+        cloverFieldStateRef.current = {
+          ...cloverFieldStateRef.current,
+          [key]: fieldEvent,
+        };
+
+        // ✅ 用“整套状态（含 realTimeFormState）”计算 canPay
+        const nextCanPay = computeCanPay(raw);
+        setCanPay(nextCanPay);
+        console.log("[CLOVER] nextCanPay=", nextCanPay, cloverFieldStateRef.current);
+        return fieldEvent;
+      };
+
+      // === CARD_NAME ===
+      cardName.on("change", (e) => {
+        const f = handleFieldEvent("CARD_NAME", e);
+        setCardNameComplete(Boolean(f?.complete));
+      });
+      cardName.on("blur", (e) => {
+        handleFieldEvent("CARD_NAME", e);
+      });
+
+      // === CARD_NUMBER ===
+      cardNumber.on("change", (e) => {
+        const f = handleFieldEvent("CARD_NUMBER", e);
+        setCardNumberComplete(Boolean(f?.complete));
+        setCardNumberError(
+          typeof f?.error === "string" ? f.error : f?.error?.message ?? null,
+        );
+      });
+      cardNumber.on("blur", (e) => {
+        handleFieldEvent("CARD_NUMBER", e);
+      });
+
+      // === CARD_DATE ===
+      cardDate.on("change", (e) => {
+        const f = handleFieldEvent("CARD_DATE", e);
+        setCardDateComplete(Boolean(f?.complete));
+        setCardDateError(
+          typeof f?.error === "string" ? f.error : f?.error?.message ?? null,
+        );
+      });
+      cardDate.on("blur", (e) => {
+        handleFieldEvent("CARD_DATE", e);
+      });
+
+      // === CARD_CVV ===
+      cardCvv.on("change", (e) => {
+        const f = handleFieldEvent("CARD_CVV", e);
+        setCardCvvComplete(Boolean(f?.complete));
+        setCardCvvError(
+          typeof f?.error === "string" ? f.error : f?.error?.message ?? null,
+        );
+      });
+      cardCvv.on("blur", (e) => {
+        handleFieldEvent("CARD_CVV", e);
+      });
+
+      // === CARD_POSTAL_CODE ===
+      cardPostal.on("change", (e) => {
+        const f = handleFieldEvent("CARD_POSTAL_CODE", e);
+        setCardPostalComplete(Boolean(f?.complete));
+      });
+      cardPostal.on("blur", (e) => {
+        handleFieldEvent("CARD_POSTAL_CODE", e);
+      });
+
+      setCloverReady(true);
+    } catch (err) {
+      if (cancelled) return;
+      const message = err instanceof Error ? err.message : "Failed to init Clover";
+      setErrorMessage(message);
+      setCloverReady(false);
+      setCanPay(false);
+    }
+  };
+
+  void setupClover();
+
+  return () => {
+    cancelled = true;
+    cardNameRef.current?.destroy?.();
+    cardNumberRef.current?.destroy?.();
+    cardDateRef.current?.destroy?.();
+    cardCvvRef.current?.destroy?.();
+    cardPostalRef.current?.destroy?.();
+    cloverFieldStateRef.current = {};
+    setCanPay(false);
+    setCloverReady(false);
+  };
+}, [locale, requiresPayment]);
 
   useEffect(() => {
     if (!challengeUrl || !challengeIntentId) return;
