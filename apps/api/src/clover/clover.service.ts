@@ -77,7 +77,9 @@ export class CloverService {
         error instanceof Error && error.message.trim().length > 0
           ? error.message
           : 'Clover request failed';
-      this.logger.error(`[CloverService] charge request failed reason=${reason}`);
+      this.logger.error(
+        `[CloverService] charge request failed reason=${reason}`,
+      );
       return {
         ok: false,
         status: 'FAILED',
@@ -167,7 +169,9 @@ export class CloverService {
         error instanceof Error && error.message.trim().length > 0
           ? error.message
           : 'Clover request failed';
-      this.logger.error(`[CloverService] status request failed reason=${reason}`);
+      this.logger.error(
+        `[CloverService] status request failed reason=${reason}`,
+      );
       return {
         ok: false,
         status: 'FAILED',
