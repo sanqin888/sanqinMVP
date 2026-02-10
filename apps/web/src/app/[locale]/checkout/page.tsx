@@ -9,9 +9,7 @@ import { usePersistentCart } from "@/lib/cart";
 import {
   build3dsBrowserInfo,
   DEFAULT_CLOVER_SDK_URL,
-  isValidCanadianPostalCode,
   loadScript,
-  normalizeCanadianPostalCode,
 } from "@/lib/clover";
 import {
   calculateDistanceKm,
@@ -87,6 +85,8 @@ type CloverFieldChangeEvent = {
   error?: string | { message?: string } | null;
 };
 
+type CloverAggregatedFieldEvent = Record<string, CloverFieldChangeEvent>;
+
 declare global {
   interface Window {
     Clover?: new (key?: string) => {
@@ -95,7 +95,7 @@ declare global {
           mount: (selector: string) => void;
           on: (
             event: string,
-            handler: (payload: CloverFieldChangeEvent) => void,
+            handler: (payload: CloverFieldChangeEvent | CloverAggregatedFieldEvent) => void,
           ) => void;
           destroy?: () => void;
         };
@@ -742,10 +742,10 @@ export default function CheckoutPage() {
   const [cardCvvError, setCardCvvError] = useState<string | null>(null);
   const [cloverReady, setCloverReady] = useState(false);
   const [nameOnCard, setNameOnCard] = useState("");
-  const [postalCode, setPostalCode] = useState("");
-  const [, setCardNumberComplete] = useState(false);
-  const [, setCardDateComplete] = useState(false);
-  const [, setCardCvvComplete] = useState(false);
+  const [cardNumberComplete, setCardNumberComplete] = useState(false);
+  const [cardDateComplete, setCardDateComplete] = useState(false);
+  const [cardCvvComplete, setCardCvvComplete] = useState(false);
+  const [cardPostalComplete, setCardPostalComplete] = useState(false);
   const [challengeUrl, setChallengeUrl] = useState<string | null>(null);
   const [challengeIntentId, setChallengeIntentId] = useState<string | null>(
     null,
@@ -756,6 +756,7 @@ export default function CheckoutPage() {
   const cardNumberRef = useRef<null | { destroy?: () => void }>(null);
   const cardDateRef = useRef<null | { destroy?: () => void }>(null);
   const cardCvvRef = useRef<null | { destroy?: () => void }>(null);
+  const cardPostalRef = useRef<null | { destroy?: () => void }>(null);
   const checkoutIntentIdRef = useRef<string | null>(null);
   const [addressValidation, setAddressValidation] = useState<{
     distanceKm: number | null;
@@ -1253,18 +1254,15 @@ export default function CheckoutPage() {
     !entitlementBlockingMessage;
 
   const normalizedCardholderName = nameOnCard.trim();
-  const normalizedPostalCode = normalizeCanadianPostalCode(postalCode);
-  const isPaymentPostalValid =
-    normalizedPostalCode.length > 0 &&
-    isValidCanadianPostalCode(normalizedPostalCode);
   const requiresPayment = totalCents > 0;
   const canPayWithCard =
     !requiresPayment ||
     (cloverReady &&
       normalizedCardholderName.length > 0 &&
-      isPaymentPostalValid);
-  const showPaymentPostalError =
-    postalCode.trim().length > 0 && !isPaymentPostalValid;
+      cardNumberComplete &&
+      cardDateComplete &&
+      cardCvvComplete &&
+      cardPostalComplete);
 
   const payButtonDisabledReason = useMemo(() => {
     if (isSubmitting) return null;
@@ -1304,10 +1302,15 @@ export default function CheckoutPage() {
           ? "请填写持卡人姓名。"
           : "Please enter the cardholder name.";
       }
-      if (!isPaymentPostalValid) {
+      if (
+        !cardNumberComplete ||
+        !cardDateComplete ||
+        !cardCvvComplete ||
+        !cardPostalComplete
+      ) {
         return locale === "zh"
-          ? "请输入有效的邮编。"
-          : "Please enter a valid postal code.";
+          ? "请完整填写银行卡信息。"
+          : "Please complete all card fields.";
       }
     }
 
@@ -1322,7 +1325,10 @@ export default function CheckoutPage() {
     deliveryAddressReady,
     entitlementBlockingMessage,
     fulfillment,
-    isPaymentPostalValid,
+    cardDateComplete,
+    cardCvvComplete,
+    cardNumberComplete,
+    cardPostalComplete,
     isStoreOpen,
     isSubmitting,
     locale,
@@ -1367,8 +1373,9 @@ export default function CheckoutPage() {
         const numberHost = document.getElementById("clover-card-number");
         const dateHost = document.getElementById("clover-card-date");
         const cvvHost = document.getElementById("clover-card-cvv");
+        const postalHost = document.getElementById("clover-postal");
 
-        if (!numberHost || !dateHost || !cvvHost) {
+        if (!numberHost || !dateHost || !cvvHost || !postalHost) {
           throw new Error("Card fields not ready");
         }
 
@@ -1378,59 +1385,70 @@ export default function CheckoutPage() {
         const cardNumber = elements.create("CARD_NUMBER");
         const cardDate = elements.create("CARD_DATE");
         const cardCvv = elements.create("CARD_CVV");
+        const cardPostal = elements.create("CARD_POSTAL_CODE");
 
         cardNumber.mount("#clover-card-number");
         cardDate.mount("#clover-card-date");
         cardCvv.mount("#clover-card-cvv");
+        cardPostal.mount("#clover-postal");
 
         cloverRef.current = clover;
         cardNumberRef.current = cardNumber;
         cardDateRef.current = cardDate;
         cardCvvRef.current = cardCvv;
+        cardPostalRef.current = cardPostal;
 
-        const listenComplete = (
-          element: {
-            on?: (
-              event: string,
-              handler: (payload: CloverFieldChangeEvent) => void,
-            ) => void;
-            addEventListener?: (
-              event: string,
-              handler: (payload: CloverFieldChangeEvent) => void,
-            ) => void;
-          },
-          setter: (next: boolean) => void,
-          setError: (next: string | null) => void,
+        const pickField = (
+          event: CloverFieldChangeEvent | CloverAggregatedFieldEvent,
+          key: string,
         ) => {
-          const handler = (ev: CloverFieldChangeEvent) => {
-            console.log("Clover field event", ev);
-            const errorMessage =
-              typeof ev?.error === "string"
-                ? ev.error
-                : ev?.error?.message ?? null;
-            const touched = Boolean(ev?.touched);
-            const complete = ev?.complete ?? touched;
+          if (
+            event &&
+            typeof event === "object" &&
+            key in event &&
+            event[key] &&
+            typeof event[key] === "object"
+          ) {
+            return event[key] as CloverFieldChangeEvent;
+          }
 
-            setter(Boolean(complete && !errorMessage));
-            setError(errorMessage);
-          };
-
-          const bind = (name: string) => {
-            if (typeof element.addEventListener === "function") {
-              element.addEventListener(name, handler);
-            }
-            if (typeof element.on === "function") {
-              element.on(name, handler);
-            }
-          };
-
-          bind("change");
-          bind("blur");
+          return event as CloverFieldChangeEvent;
         };
 
-        listenComplete(cardNumber, setCardNumberComplete, setCardNumberError);
-        listenComplete(cardDate, setCardDateComplete, setCardDateError);
-        listenComplete(cardCvv, setCardCvvComplete, setCardCvvError);
+        cardNumber.on("change", (event) => {
+          const fieldEvent = pickField(event, "CARD_NUMBER");
+          setCardNumberComplete(Boolean(fieldEvent?.complete));
+          setCardNumberError(
+            typeof fieldEvent?.error === "string"
+              ? fieldEvent.error
+              : fieldEvent?.error?.message ?? null,
+          );
+        });
+
+        cardDate.on("change", (event) => {
+          const fieldEvent = pickField(event, "CARD_DATE");
+          setCardDateComplete(Boolean(fieldEvent?.complete));
+          setCardDateError(
+            typeof fieldEvent?.error === "string"
+              ? fieldEvent.error
+              : fieldEvent?.error?.message ?? null,
+          );
+        });
+
+        cardCvv.on("change", (event) => {
+          const fieldEvent = pickField(event, "CARD_CVV");
+          setCardCvvComplete(Boolean(fieldEvent?.complete));
+          setCardCvvError(
+            typeof fieldEvent?.error === "string"
+              ? fieldEvent.error
+              : fieldEvent?.error?.message ?? null,
+          );
+        });
+
+        cardPostal.on("change", (event) => {
+          const fieldEvent = pickField(event, "CARD_POSTAL_CODE");
+          setCardPostalComplete(Boolean(fieldEvent?.complete));
+        });
 
         setCloverReady(true);
       } catch (error) {
@@ -1448,6 +1466,7 @@ export default function CheckoutPage() {
       cardNumberRef.current?.destroy?.();
       cardDateRef.current?.destroy?.();
       cardCvvRef.current?.destroy?.();
+      cardPostalRef.current?.destroy?.();
     };
   }, [locale, requiresPayment]);
 
@@ -2463,26 +2482,12 @@ export default function CheckoutPage() {
         );
       }
 
-      if (!isPaymentPostalValid) {
-        throw new Error(
-          locale === "zh"
-            ? "请填写有效的加拿大邮编。"
-            : "Please enter a valid Canadian postal code.",
-        );
-      }
-
-      if (postalCode.trim() !== normalizedPostalCode) {
-        setPostalCode(normalizedPostalCode);
-      }
-
       console.log("[PAY] before createToken", {
         normalizedCardholderName,
-        normalizedPostalCode,
       });
       const tokenResult = await withTimeout(
         clover.createToken({
           cardholderName: normalizedCardholderName,
-          postalCode: normalizedPostalCode,
         }),
         15000,
         "clover.createToken",
@@ -2531,7 +2536,6 @@ export default function CheckoutPage() {
             source: tokenResult.token,
             sourceType: "CARD",
             cardholderName: normalizedCardholderName,
-            postalCode: normalizedPostalCode,
             customer: {
               firstName: customer.firstName,
               lastName: customer.lastName,
@@ -3582,26 +3586,10 @@ export default function CheckoutPage() {
                       <label className="text-xs font-medium text-slate-600">
                         {locale === "zh" ? "邮编" : "Postal code"} *
                       </label>
-                      <input
-                        value={postalCode}
-                        onChange={(event) => {
-                          setPostalCode(event.target.value);
-                          setErrorMessage(null);
-                        }}
-                        onBlur={() =>
-                          setPostalCode(normalizeCanadianPostalCode(postalCode))
-                        }
-                        autoComplete="postal-code"
-                        className="h-10 w-full rounded-2xl border border-slate-200 bg-white px-3 py-1 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
-                        placeholder={locale === "zh" ? "A1A 1A1" : "A1A 1A1"}
+                      <div
+                        id="clover-postal"
+                        className="clover-field flex h-10 items-center rounded-2xl border border-slate-200 bg-white px-3"
                       />
-                      {showPaymentPostalError ? (
-                        <p className="text-[11px] text-red-600">
-                          {locale === "zh"
-                            ? "请输入有效的加拿大邮编（如 A1A 1A1）。"
-                            : "Enter a valid Canadian postal code (e.g. A1A 1A1)."}
-                        </p>
-                      ) : null}
                     </div>
                   </div>
                 </div>
