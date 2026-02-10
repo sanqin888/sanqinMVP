@@ -724,9 +724,9 @@ export default function CheckoutPage() {
   const [cloverReady, setCloverReady] = useState(false);
   const [nameOnCard, setNameOnCard] = useState("");
   const [postalCode, setPostalCode] = useState("");
-  const [cardNumberComplete, setCardNumberComplete] = useState(false);
-  const [cardDateComplete, setCardDateComplete] = useState(false);
-  const [cardCvvComplete, setCardCvvComplete] = useState(false);
+  const [, setCardNumberComplete] = useState(false);
+  const [, setCardDateComplete] = useState(false);
+  const [, setCardCvvComplete] = useState(false);
   const [challengeUrl, setChallengeUrl] = useState<string | null>(null);
   const [challengeIntentId, setChallengeIntentId] = useState<string | null>(
     null,
@@ -1243,33 +1243,10 @@ export default function CheckoutPage() {
     !requiresPayment ||
     (cloverReady &&
       normalizedCardholderName.length > 0 &&
-      isPaymentPostalValid &&
-      cardNumberComplete &&
-      cardDateComplete &&
-      cardCvvComplete);
+      isPaymentPostalValid);
   const showPaymentPostalError =
     postalCode.trim().length > 0 && !isPaymentPostalValid;
-  const missingCardFields = useMemo(() => {
-    if (!requiresPayment || !cloverReady) return [];
-    const missing: string[] = [];
-    if (!cardNumberComplete) {
-      missing.push(locale === "zh" ? "卡号" : "card number");
-    }
-    if (!cardDateComplete) {
-      missing.push(locale === "zh" ? "有效期" : "expiry date");
-    }
-    if (!cardCvvComplete) {
-      missing.push(locale === "zh" ? "安全码" : "CVV");
-    }
-    return missing;
-  }, [
-    cardCvvComplete,
-    cardDateComplete,
-    cardNumberComplete,
-    cloverReady,
-    locale,
-    requiresPayment,
-  ]);
+
   const payButtonDisabledReason = useMemo(() => {
     if (isSubmitting) return null;
 
@@ -1313,24 +1290,14 @@ export default function CheckoutPage() {
           ? "请输入有效的邮编。"
           : "Please enter a valid postal code.";
       }
-      if (missingCardFields.length > 0) {
-        return locale === "zh"
-          ? `请补全：${missingCardFields.join("、")}。`
-          : `Please complete: ${missingCardFields.join(
-              ", ",
-            )}.`;
-      }
     }
 
     return null;
   }, [
     canPayWithCard,
     canPlaceOrder,
-    cardCvvComplete,
     cardCvvError,
-    cardDateComplete,
     cardDateError,
-    cardNumberComplete,
     cardNumberError,
     cloverReady,
     deliveryAddressReady,
@@ -1341,7 +1308,6 @@ export default function CheckoutPage() {
     isSubmitting,
     locale,
     missingContactMessage,
-    missingCardFields,
     normalizedCardholderName,
     phoneVerified,
     requiresPayment,
@@ -1418,6 +1384,7 @@ export default function CheckoutPage() {
           setError: (next: string | null) => void,
         ) => {
           const handler = (ev: CloverFieldChangeEvent) => {
+            console.log("Clover field event", ev);
             const errorMessage =
               typeof ev?.error === "string"
                 ? ev.error
@@ -1429,13 +1396,17 @@ export default function CheckoutPage() {
             setError(errorMessage);
           };
 
-          if (typeof element.addEventListener === "function") {
-            element.addEventListener("change", handler);
-            element.addEventListener("blur", handler);
-          } else if (typeof element.on === "function") {
-            element.on("change", handler);
-            element.on("blur", handler);
-          }
+          const bind = (name: string) => {
+            if (typeof element.addEventListener === "function") {
+              element.addEventListener(name, handler);
+            }
+            if (typeof element.on === "function") {
+              element.on(name, handler);
+            }
+          };
+
+          bind("change");
+          bind("blur");
         };
 
         listenComplete(cardNumber, setCardNumberComplete, setCardNumberError);
