@@ -160,6 +160,25 @@ const stripOptionSnapshots = (
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 };
 
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const id = setTimeout(
+      () => reject(new Error(`${label} timeout after ${ms}ms`)),
+      ms,
+    );
+    p.then(
+      (v) => {
+        clearTimeout(id);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(id);
+        reject(e);
+      },
+    );
+  });
+}
+
 type LoyaltyOrderResponse = {
   orderStableId: string;
   clientRequestId: string | null;
@@ -2246,7 +2265,14 @@ export default function CheckoutPage() {
     setErrorMessage(null);
     setChallengeUrl(null);
     setConfirmation(null);
+    let totalCentsForOrder = 0;
     setIsSubmitting(true);
+    console.log("[PAY] start", {
+      requiresPayment,
+      totalCentsForOrder,
+      fulfillment,
+      deliveryType,
+    });
 
     let deliveryDistanceKm: number | null = null;
 
@@ -2289,7 +2315,7 @@ export default function CheckoutPage() {
       (TAX_ON_DELIVERY ? deliveryFeeCentsForOrder : 0);
     const taxCentsForOrder = Math.round(taxableBaseCentsForOrder * TAX_RATE);
 
-    const totalCentsForOrder =
+    totalCentsForOrder =
       discountedSubtotalForOrder + deliveryFeeCentsForOrder + taxCentsForOrder;
 
     const deliveryMetadata = isDeliveryFulfillment
@@ -2449,10 +2475,19 @@ export default function CheckoutPage() {
         setPostalCode(normalizedPostalCode);
       }
 
-      const tokenResult = await clover.createToken({
-        cardholderName: normalizedCardholderName,
-        postalCode: normalizedPostalCode,
+      console.log("[PAY] before createToken", {
+        normalizedCardholderName,
+        normalizedPostalCode,
       });
+      const tokenResult = await withTimeout(
+        clover.createToken({
+          cardholderName: normalizedCardholderName,
+          postalCode: normalizedPostalCode,
+        }),
+        15000,
+        "clover.createToken",
+      );
+      console.log("[PAY] after createToken", tokenResult);
 
       if (!tokenResult?.token) {
         const tokenError =
@@ -2484,9 +2519,9 @@ export default function CheckoutPage() {
         }
       }
 
-      const paymentResponse = await apiFetch<CardTokenPaymentResponse>(
-        "/clover/pay/online/card-token",
-        {
+      console.log("[PAY] before apiFetch card-token");
+      const paymentResponse = await withTimeout(
+        apiFetch<CardTokenPaymentResponse>("/clover/pay/online/card-token", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -2509,8 +2544,11 @@ export default function CheckoutPage() {
             },
             metadata,
           }),
-        },
+        }),
+        20000,
+        "apiFetch /clover/pay/online/card-token",
       );
+      console.log("[PAY] after apiFetch card-token", paymentResponse);
 
       if (paymentResponse.status === "CHALLENGE_REQUIRED") {
         if (paymentResponse.challengeUrl) {
