@@ -55,21 +55,37 @@ export class CloverService {
 
     const url = `${this.apiBase}/v1/charges`;
     const idempotencyKey = params.idempotencyKey ?? params.orderId;
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.apiToken}`,
-        'Idempotency-Key': idempotencyKey,
-      },
-      body: JSON.stringify({
-        amount: params.amountCents,
-        currency: params.currency.toLowerCase(),
-        source: params.source,
-        description: params.description || `Online Order ${params.orderId}`,
-      }),
-    });
+    let resp: Response;
+    try {
+      resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiToken}`,
+          'Idempotency-Key': idempotencyKey,
+        },
+        body: JSON.stringify({
+          amount: params.amountCents,
+          currency: params.currency.toLowerCase(),
+          source: params.source,
+          description: params.description || `Online Order ${params.orderId}`,
+        }),
+      });
+    } catch (error) {
+      const reason =
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message
+          : 'Clover request failed';
+      this.logger.error(
+        `[CloverService] charge request failed reason=${reason}`,
+      );
+      return {
+        ok: false,
+        status: 'FAILED',
+        reason,
+      };
+    }
 
     const rawText = await resp.text();
     let parsed: Record<string, unknown> | undefined;
@@ -86,12 +102,11 @@ export class CloverService {
         )}`,
       );
       const errorDetails = extractCloverErrorDetails(parsed);
-      const reason =
-        errorDetails.message || errorDetails.declineCode || rawText;
+      const reason = stringifyReason(parsed, rawText, errorDetails.message);
       return {
         ok: false,
         reason,
-        status: errorDetails.status,
+        status: errorDetails.status ?? 'FAILED',
         code: errorDetails.code,
         challengeUrl: errorDetails.challengeUrl ?? null,
         paymentId: errorDetails.paymentId,
@@ -140,13 +155,29 @@ export class CloverService {
           idempotencyKey ?? '',
         )}`;
 
-    const resp = await fetch(url, {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${this.apiToken}`,
-      },
-    });
+    let resp: Response;
+    try {
+      resp = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${this.apiToken}`,
+        },
+      });
+    } catch (error) {
+      const reason =
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message
+          : 'Clover request failed';
+      this.logger.error(
+        `[CloverService] status request failed reason=${reason}`,
+      );
+      return {
+        ok: false,
+        status: 'FAILED',
+        reason,
+      };
+    }
 
     const rawText = await resp.text();
     let parsed: Record<string, unknown> | undefined;
@@ -163,9 +194,8 @@ export class CloverService {
         )}`,
       );
       const errorDetails = extractCloverErrorDetails(parsed);
-      const reason =
-        errorDetails.message || errorDetails.declineCode || rawText;
-      return { ok: false, reason, status: errorDetails.status };
+      const reason = stringifyReason(parsed, rawText, errorDetails.message);
+      return { ok: false, reason, status: errorDetails.status ?? 'FAILED' };
     }
 
     const record = extractChargeRecord(parsed);
@@ -308,4 +338,27 @@ function safeLogKeys(
       ? Object.keys(errorRaw as Record<string, unknown>)
       : [];
   return { rootKeys, errorKeys };
+}
+
+function stringifyReason(
+  parsed: Record<string, unknown> | undefined,
+  rawText: string,
+  fallbackMessage?: string,
+): string {
+  if (parsed) {
+    try {
+      const serialized = JSON.stringify(parsed);
+      if (serialized && serialized !== '{}') {
+        return serialized;
+      }
+    } catch {
+      // ignore serialization failure and continue fallback chain
+    }
+  }
+
+  if (typeof rawText === 'string' && rawText.trim().length > 0) {
+    return rawText;
+  }
+
+  return fallbackMessage?.trim() || 'Clover request failed';
 }

@@ -419,8 +419,11 @@ export class CloverPayController {
       throw new BadRequestException({
         code: errorCode,
         message: meta?.message ?? 'Payment failed',
-        reason: paymentResult.reason,
-        declineCode: meta?.declineCode,
+        details: {
+          code: errorCode,
+          reason: paymentResult.reason ?? '',
+          declineCode: meta?.declineCode ?? null,
+        },
       });
     }
 
