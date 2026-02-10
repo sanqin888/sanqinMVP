@@ -1248,6 +1248,104 @@ export default function CheckoutPage() {
       cardCvvComplete);
   const showPaymentPostalError =
     postalCode.trim().length > 0 && !isPaymentPostalValid;
+  const missingCardFields = useMemo(() => {
+    if (!requiresPayment || !cloverReady) return [];
+    const missing: string[] = [];
+    if (!cardNumberComplete) {
+      missing.push(locale === "zh" ? "卡号" : "card number");
+    }
+    if (!cardDateComplete) {
+      missing.push(locale === "zh" ? "有效期" : "expiry date");
+    }
+    if (!cardCvvComplete) {
+      missing.push(locale === "zh" ? "安全码" : "CVV");
+    }
+    return missing;
+  }, [
+    cardCvvComplete,
+    cardDateComplete,
+    cardNumberComplete,
+    cloverReady,
+    locale,
+    requiresPayment,
+  ]);
+  const payButtonDisabledReason = useMemo(() => {
+    if (isSubmitting) return null;
+
+    if (!canPlaceOrder) {
+      if (missingContactMessage) return missingContactMessage;
+      if (!phoneVerified) {
+        return locale === "zh"
+          ? "请先完成手机号验证。"
+          : "Please verify your phone number before placing the order.";
+      }
+      if (fulfillment === "delivery" && !deliveryAddressReady) {
+        return locale === "zh"
+          ? "请先补全外送地址信息。"
+          : "Please complete the delivery address details.";
+      }
+      if (!isStoreOpen) {
+        return storeStatusDetail ??
+          (locale === "zh"
+            ? "门店暂未开放在线下单。"
+            : "Online ordering is currently unavailable.");
+      }
+      if (entitlementBlockingMessage) return entitlementBlockingMessage;
+    }
+
+    if (requiresPayment && !canPayWithCard) {
+      if (!cloverReady) {
+        return locale === "zh"
+          ? "支付组件加载中，请稍后。"
+          : "Payment fields are loading. Please wait.";
+      }
+      if (cardNumberError || cardDateError || cardCvvError) {
+        return cardNumberError ?? cardDateError ?? cardCvvError ?? null;
+      }
+      if (!normalizedCardholderName) {
+        return locale === "zh"
+          ? "请填写持卡人姓名。"
+          : "Please enter the cardholder name.";
+      }
+      if (!isPaymentPostalValid) {
+        return locale === "zh"
+          ? "请输入有效的邮编。"
+          : "Please enter a valid postal code.";
+      }
+      if (missingCardFields.length > 0) {
+        return locale === "zh"
+          ? `请补全：${missingCardFields.join("、")}。`
+          : `Please complete: ${missingCardFields.join(
+              ", ",
+            )}.`;
+      }
+    }
+
+    return null;
+  }, [
+    canPayWithCard,
+    canPlaceOrder,
+    cardCvvComplete,
+    cardCvvError,
+    cardDateComplete,
+    cardDateError,
+    cardNumberComplete,
+    cardNumberError,
+    cloverReady,
+    deliveryAddressReady,
+    entitlementBlockingMessage,
+    fulfillment,
+    isPaymentPostalValid,
+    isStoreOpen,
+    isSubmitting,
+    locale,
+    missingContactMessage,
+    missingCardFields,
+    normalizedCardholderName,
+    phoneVerified,
+    requiresPayment,
+    storeStatusDetail,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -3914,6 +4012,11 @@ export default function CheckoutPage() {
               >
                 {payButtonLabel}
               </button>
+              {payButtonDisabledReason ? (
+                <p className="mt-2 text-center text-[11px] text-rose-600">
+                  {payButtonDisabledReason}
+                </p>
+              ) : null}
 
               {/* 信用卡手续费提示（仅提示，不参与金额计算） */}
               <p className="mt-1 text-center text-[11px] leading-snug text-slate-500">
