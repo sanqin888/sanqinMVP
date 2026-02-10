@@ -88,6 +88,13 @@ type CloverFieldChangeEvent = {
 
 type CloverAggregatedFieldEvent = Record<string, CloverFieldChangeEvent>;
 
+type CloverEventPayload =
+  | CloverFieldChangeEvent
+  | CloverAggregatedFieldEvent
+  | {
+      realTimeFormState?: CloverAggregatedFieldEvent;
+    };
+
 declare global {
   interface Window {
     Clover?: new (
@@ -1397,10 +1404,10 @@ useEffect(() => {
 
   // ✅ Clover blur 有时会包一层 { realTimeFormState: {...} }
   const unwrapCloverEvent = (
-    event: CloverFieldChangeEvent | CloverAggregatedFieldEvent | any,
+    event: CloverEventPayload | null | undefined,
   ): CloverFieldChangeEvent | CloverAggregatedFieldEvent => {
     if (event && typeof event === "object") {
-      const maybe = event as any;
+      const maybe = event as { realTimeFormState?: unknown };
       if (maybe.realTimeFormState && typeof maybe.realTimeFormState === "object") {
         return maybe.realTimeFormState as CloverAggregatedFieldEvent;
       }
@@ -1409,7 +1416,7 @@ useEffect(() => {
   };
 
   const getFieldFromEvent = (
-    event: CloverFieldChangeEvent | CloverAggregatedFieldEvent | any,
+    event: CloverEventPayload,
     key: RequiredKey,
   ): CloverFieldChangeEvent => {
     const unwrapped = unwrapCloverEvent(event);
@@ -1430,7 +1437,7 @@ useEffect(() => {
     Boolean(field?.touched) && (field?.info ?? "") === "";
 
   const computeCanPay = (
-    event: CloverFieldChangeEvent | CloverAggregatedFieldEvent | any,
+    event: CloverEventPayload,
   ) => {
     const unwrapped = unwrapCloverEvent(event);
 
@@ -1504,7 +1511,7 @@ useEffect(() => {
       cardCvvRef.current = cardCvv;
       cardPostalRef.current = cardPostal;
 
-      const handleFieldEvent = (key: RequiredKey, raw: any) => {
+      const handleFieldEvent = (key: RequiredKey, raw: CloverEventPayload) => {
         const fieldEvent = getFieldFromEvent(raw, key);
 
         cloverFieldStateRef.current = {
