@@ -2,6 +2,7 @@
 
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -192,6 +193,15 @@ type DeliveryPricingConfig = {
   enableUberDirect: boolean;
 };
 
+export type OrderPricingQuote = {
+  subtotalCents: number;
+  couponDiscountCents: number;
+  loyaltyRedeemCents: number;
+  taxCents: number;
+  deliveryFeeCents: number;
+  totalCents: number;
+};
+
 @Injectable()
 export class OrdersService {
   private readonly logger = new AppLogger(OrdersService.name);
@@ -211,6 +221,237 @@ export class OrdersService {
     private readonly notificationService: NotificationService,
     private readonly emailService: EmailService,
   ) {}
+
+  async quoteOrderPricing(dto: CreateOrderInput): Promise<OrderPricingQuote> {
+    const rawUserStableId =
+      typeof dto.userStableId === 'string' ? dto.userStableId.trim() : '';
+    const normalizedUserStableId = rawUserStableId
+      ? normalizeStableId(rawUserStableId)
+      : null;
+    if (rawUserStableId && !normalizedUserStableId) {
+      throw new BadRequestException('userStableId must be a cuid');
+    }
+
+    const userId = normalizedUserStableId
+      ? await this.loyalty.resolveUserIdByStableId(normalizedUserStableId)
+      : undefined;
+
+    const rawCouponStableId =
+      typeof dto.couponStableId === 'string' ? dto.couponStableId.trim() : '';
+    const normalizedCouponStableId = rawCouponStableId
+      ? normalizeStableId(rawCouponStableId)
+      : null;
+    if (rawCouponStableId && !normalizedCouponStableId) {
+      throw new BadRequestException('couponStableId must be a cuid');
+    }
+
+    const items = dto.items ?? [];
+    const {
+      calculatedItems,
+      calculatedSubtotal,
+      couponEligibleSubtotalCents,
+      couponEligibleLineItems,
+    } = await this.calculateLineItems(items);
+
+    const productStableIds = Array.from(
+      new Set(calculatedItems.map((item) => item.productStableId)),
+    );
+    if (normalizedCouponStableId && couponEligibleSubtotalCents <= 0) {
+      throw new BadRequestException(
+        'coupon is not available for daily special items',
+      );
+    }
+
+    const subtotalCents = calculatedSubtotal;
+    const pricingConfig = await this.getBusinessPricingConfig();
+    const deliveryRulesFallback = this.buildDeliveryFallback(pricingConfig);
+
+    const requestedPoints =
+      typeof dto.pointsToRedeem === 'number'
+        ? dto.pointsToRedeem
+        : typeof dto.redeemValueCents === 'number' &&
+            pricingConfig.redeemDollarPerPoint > 0
+          ? dto.redeemValueCents / (pricingConfig.redeemDollarPerPoint * 100)
+          : undefined;
+
+    const isDelivery =
+      dto.fulfillmentType === 'delivery' ||
+      dto.deliveryType === DeliveryType.STANDARD ||
+      dto.deliveryType === DeliveryType.PRIORITY;
+
+    let deliveryFeeCustomerCents = 0;
+    const deliveryMeta = dto.deliveryType
+      ? deliveryRulesFallback[dto.deliveryType]
+      : undefined;
+
+    if (isDelivery) {
+      const targetType = dto.deliveryType ?? DeliveryType.STANDARD;
+      const dest = dto.deliveryDestination;
+
+      if (
+        Number.isFinite(pricingConfig.storeLatitude ?? NaN) &&
+        Number.isFinite(pricingConfig.storeLongitude ?? NaN) &&
+        dest &&
+        typeof dest.latitude === 'number' &&
+        typeof dest.longitude === 'number'
+      ) {
+        const distKm = this.calculateDistanceKm(
+          pricingConfig.storeLatitude as number,
+          pricingConfig.storeLongitude as number,
+          dest.latitude,
+          dest.longitude,
+        );
+
+        deliveryFeeCustomerCents = this.calculateDynamicDeliveryFee(
+          targetType,
+          distKm,
+          pricingConfig,
+        );
+      } else {
+        if (deliveryMeta) {
+          deliveryFeeCustomerCents = deliveryMeta.feeCents;
+        } else if (typeof dto.deliveryFeeCents === 'number') {
+          deliveryFeeCustomerCents = dto.deliveryFeeCents;
+        }
+      }
+    }
+
+    const rawSelectedUserCouponId =
+      typeof dto.selectedUserCouponId === 'string'
+        ? dto.selectedUserCouponId.trim()
+        : '';
+    const selectedUserCouponId =
+      rawSelectedUserCouponId.length > 0 ? rawSelectedUserCouponId : null;
+
+    const hiddenItems = await this.prisma.menuItem.findMany({
+      where: {
+        stableId: { in: productStableIds },
+        deletedAt: null,
+        visibility: 'HIDDEN',
+      },
+      select: { stableId: true },
+    });
+    const hiddenItemStableIds = hiddenItems.map((item) => item.stableId);
+
+    if (hiddenItemStableIds.length > 0) {
+      if (!normalizedUserStableId) {
+        throw new BadRequestException(
+          'userStableId is required for hidden items',
+        );
+      }
+      if (!selectedUserCouponId) {
+        throw new BadRequestException(
+          'selectedUserCouponId is required for hidden items',
+        );
+      }
+
+      const now = new Date();
+      const userCoupon = await this.prisma.userCoupon.findFirst({
+        where: {
+          id: selectedUserCouponId,
+          userStableId: normalizedUserStableId,
+          status: 'AVAILABLE',
+          AND: [
+            {
+              OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+            },
+            {
+              coupon: {
+                isActive: true,
+                AND: [
+                  {
+                    OR: [{ startsAt: null }, { startsAt: { lte: now } }],
+                  },
+                  {
+                    OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        include: { coupon: true },
+      });
+      if (!userCoupon) {
+        throw new BadRequestException('coupon is not available');
+      }
+
+      const unlockedSet = new Set(
+        (userCoupon.coupon.unlockedItemStableIds ?? []).map((value) =>
+          value.trim(),
+        ),
+      );
+      const missing = hiddenItemStableIds.filter(
+        (stableId) => !unlockedSet.has(stableId),
+      );
+      if (missing.length > 0) {
+        throw new BadRequestException(
+          'hidden items are not unlocked by this coupon',
+        );
+      }
+
+      if (
+        userCoupon.coupon.stackingPolicy === 'EXCLUSIVE' &&
+        normalizedCouponStableId
+      ) {
+        throw new BadRequestException(
+          'coupon cannot be stacked with other coupons',
+        );
+      }
+    }
+
+    const couponInfo = await this.membership.validateCouponForOrder({
+      userId,
+      couponStableId: normalizedCouponStableId ?? undefined,
+      subtotalCents: couponEligibleSubtotalCents,
+      couponEligibleLineItems,
+    });
+
+    const couponDiscountCents = couponInfo?.discountCents ?? 0;
+    const subtotalAfterCoupon = Math.max(
+      0,
+      subtotalCents - couponDiscountCents,
+    );
+
+    let loyaltyRedeemCents = 0;
+    if (userId && typeof requestedPoints === 'number' && requestedPoints > 0) {
+      const account = await this.prisma.loyaltyAccount.findUnique({
+        where: { userId },
+        select: { pointsMicro: true },
+      });
+      const maxRedeemableCents =
+        await this.loyalty.maxRedeemableCentsFromBalance(
+          account?.pointsMicro ?? 0n,
+        );
+      const requestedRedeemCents = Math.max(
+        0,
+        Math.round(requestedPoints * pricingConfig.redeemDollarPerPoint * 100),
+      );
+      loyaltyRedeemCents = Math.min(
+        subtotalAfterCoupon,
+        maxRedeemableCents,
+        requestedRedeemCents,
+      );
+    }
+
+    const purchaseBaseCents = Math.max(
+      0,
+      subtotalAfterCoupon - loyaltyRedeemCents,
+    );
+    const taxableCents =
+      purchaseBaseCents + (isDelivery ? deliveryFeeCustomerCents : 0);
+    const taxCents = Math.round(taxableCents * pricingConfig.salesTaxRate);
+    const totalCents = purchaseBaseCents + deliveryFeeCustomerCents + taxCents;
+
+    return {
+      subtotalCents,
+      couponDiscountCents,
+      loyaltyRedeemCents,
+      taxCents,
+      deliveryFeeCents: deliveryFeeCustomerCents,
+      totalCents,
+    };
+  }
 
   private toOrderDto(order: OrderWithItems | OrderDetail): OrderDto {
     const orderStableId = order.orderStableId;
@@ -501,11 +742,49 @@ export class OrdersService {
     if (!order.contactPhone) return;
     const orderNumber = order.clientRequestId ?? order.orderStableId;
     if (!orderNumber) return;
+
+    const locale = await this.resolveOrderReadyLocale(order);
+
     await this.notificationService.notifyOrderReady({
       phone: order.contactPhone,
       orderNumber,
       name: order.contactName ?? null,
+      locale,
     });
+  }
+
+  private async resolveOrderReadyLocale(
+    order: Pick<OrderWithItems, 'id' | 'userId'>,
+  ): Promise<'zh' | 'en'> {
+    if (order.userId) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: order.userId },
+        select: { language: true },
+      });
+
+      if (user?.language === 'ZH') {
+        return 'zh';
+      }
+
+      if (user?.language === 'EN') {
+        return 'en';
+      }
+    }
+
+    const checkoutIntent = await this.prisma.checkoutIntent.findFirst({
+      where: {
+        orderId: order.id,
+        locale: { not: null },
+      },
+      select: { locale: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (checkoutIntent?.locale?.toLowerCase().startsWith('zh')) {
+      return 'zh';
+    }
+
+    return 'en';
   }
 
   private async handleOrderPaidSideEffects(order: OrderWithItems) {
@@ -1087,7 +1366,103 @@ export class OrdersService {
     dto: CreateOrderInput,
     idempotencyKey?: string,
   ): Promise<OrderDto> {
+    if (dto.channel === Channel.web) {
+      const paymentMethod = this.resolvePaymentMethod(dto);
+      if (paymentMethod === PaymentMethod.CARD) {
+        const rawCheckoutIntentId =
+          typeof dto.checkoutIntentId === 'string'
+            ? dto.checkoutIntentId.trim()
+            : '';
+        const checkoutIntentId = rawCheckoutIntentId || null;
+
+        if (!checkoutIntentId) {
+          throw new BadRequestException({
+            code: 'CHECKOUT_INTENT_REQUIRED',
+            message:
+              'checkoutIntentId is required for web card orders. Complete payment via Clover checkout before creating the order.',
+          });
+        }
+
+        const checkoutIntent = await this.prisma.checkoutIntent.findFirst({
+          where: {
+            OR: [{ referenceId: checkoutIntentId }, { id: checkoutIntentId }],
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+
+        if (!checkoutIntent) {
+          throw new BadRequestException({
+            code: 'CHECKOUT_INTENT_NOT_FOUND',
+            message: 'checkout intent not found',
+          });
+        }
+
+        if (checkoutIntent.orderId) {
+          const existingOrder = await this.prisma.order.findUnique({
+            where: { id: checkoutIntent.orderId },
+            include: { items: true },
+          });
+          if (existingOrder)
+            return this.toOrderDto(existingOrder as OrderWithItems);
+
+          throw new ConflictException({
+            code: 'ORDER_NOT_FOUND',
+            message:
+              'checkout intent is already consumed by an order that cannot be loaded',
+          });
+        }
+
+        if (
+          checkoutIntent.status !== 'completed' &&
+          checkoutIntent.status !== 'succeeded'
+        ) {
+          throw new ConflictException({
+            code: 'CHECKOUT_NOT_COMPLETED',
+            message: 'checkout intent is not completed',
+            status: checkoutIntent.status,
+          });
+        }
+
+        if (
+          checkoutIntent.expiresAt &&
+          checkoutIntent.expiresAt.getTime() < Date.now()
+        ) {
+          throw new ConflictException({
+            code: 'CHECKOUT_INTENT_EXPIRED',
+            message: 'checkout intent has expired',
+          });
+        }
+
+        idempotencyKey = idempotencyKey ?? checkoutIntent.referenceId;
+      }
+    }
+
     const order = await this.createInternal(dto, idempotencyKey);
+
+    if (
+      dto.channel === Channel.web &&
+      this.resolvePaymentMethod(dto) === PaymentMethod.CARD
+    ) {
+      const rawCheckoutIntentId =
+        typeof dto.checkoutIntentId === 'string'
+          ? dto.checkoutIntentId.trim()
+          : '';
+      const checkoutIntentId = rawCheckoutIntentId || null;
+      if (checkoutIntentId) {
+        await this.prisma.checkoutIntent.updateMany({
+          where: {
+            OR: [{ referenceId: checkoutIntentId }, { id: checkoutIntentId }],
+            status: { in: ['completed', 'succeeded'] },
+            orderId: null,
+          },
+          data: {
+            orderId: order.id,
+            processedAt: new Date(),
+          },
+        });
+      }
+    }
+
     return this.toOrderDto(order);
   }
 
@@ -1095,9 +1470,71 @@ export class OrdersService {
     dto: CreateOrderInput,
     idempotencyKey?: string,
   ): Promise<OrderWithItems> {
+    const paymentMethod = this.resolvePaymentMethod(dto);
+    const requiresCheckoutIntentVerification =
+      dto.channel === Channel.web && paymentMethod === PaymentMethod.CARD;
+
+    let verifiedCheckoutIntent: {
+      id: string;
+      referenceId: string;
+      amountCents: number;
+    } | null = null;
+
+    if (requiresCheckoutIntentVerification) {
+      const rawCheckoutIntentId =
+        typeof dto.checkoutIntentId === 'string'
+          ? dto.checkoutIntentId.trim()
+          : '';
+      const checkoutIntentId = rawCheckoutIntentId || null;
+
+      if (!checkoutIntentId) {
+        throw new BadRequestException(
+          'Missing payment proof (checkoutIntentId).',
+        );
+      }
+
+      const intent = await this.prisma.checkoutIntent.findFirst({
+        where: {
+          OR: [{ referenceId: checkoutIntentId }, { id: checkoutIntentId }],
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (!intent) {
+        throw new BadRequestException('Payment intent not found.');
+      }
+
+      if (intent.status !== 'succeeded' && intent.status !== 'completed') {
+        throw new BadRequestException(
+          `Payment not confirmed. Status: ${intent.status}`,
+        );
+      }
+
+      if (intent.expiresAt && intent.expiresAt.getTime() < Date.now()) {
+        throw new BadRequestException('Payment intent expired.');
+      }
+
+      if (intent.orderId) {
+        const existingOrder = await this.prisma.order.findUnique({
+          where: { id: intent.orderId },
+          include: { items: true },
+        });
+        if (existingOrder) {
+          return existingOrder as OrderWithItems;
+        }
+        throw new ConflictException('This payment has already been used.');
+      }
+
+      verifiedCheckoutIntent = {
+        id: intent.id,
+        referenceId: intent.referenceId,
+        amountCents: intent.amountCents,
+      };
+      idempotencyKey = idempotencyKey ?? intent.referenceId;
+    }
+
     // ✅ 你的业务前提：只在“已收款/支付成功”后才创建订单记录
     const paidAt = new Date();
-    const paymentMethod = this.resolvePaymentMethod(dto);
 
     if (
       dto.deliveryType === DeliveryType.PRIORITY &&
@@ -1477,11 +1914,40 @@ export class OrdersService {
             const totalCents =
               purchaseBaseCents + deliveryFeeCustomerCents + taxCents;
 
+            if (
+              verifiedCheckoutIntent &&
+              totalCents !== verifiedCheckoutIntent.amountCents
+            ) {
+              throw new BadRequestException(
+                `Price mismatch. order=${totalCents}, paid=${verifiedCheckoutIntent.amountCents}`,
+              );
+            }
+
             const loyaltyRedeemCents = redeemValueCents;
             const subtotalAfterDiscountCents = Math.max(
               0,
               subtotalCents - couponDiscountCents - loyaltyRedeemCents,
             );
+
+            if (verifiedCheckoutIntent) {
+              const consumeIntent = await tx.checkoutIntent.updateMany({
+                where: {
+                  id: verifiedCheckoutIntent.id,
+                  status: { in: ['succeeded', 'completed'] },
+                  orderId: null,
+                },
+                data: {
+                  orderId,
+                  processedAt: paidAt,
+                },
+              });
+
+              if (consumeIntent.count === 0) {
+                throw new ConflictException(
+                  'This payment has already been used.',
+                );
+              }
+            }
 
             const created = (await tx.order.create({
               data: {
@@ -1611,6 +2077,16 @@ export class OrdersService {
               }
             }
             this.logger.error(`Failed to dispatch delivery: ${message}`);
+
+            const provider = isStandard
+              ? DeliveryProvider.DOORDASH
+              : DeliveryProvider.UBER;
+
+            await this.notifyDeliveryDispatchFailureAlert({
+              order,
+              provider,
+              errorMessage: message,
+            });
           }
         }
 
@@ -2497,5 +2973,70 @@ export class OrdersService {
       data: updateData,
       include: { items: true },
     }) as Promise<OrderWithItems>;
+  }
+
+  private async notifyDeliveryDispatchFailureAlert(params: {
+    order: OrderWithItems;
+    provider: DeliveryProvider;
+    errorMessage: string;
+  }): Promise<void> {
+    try {
+      const admins = await this.prisma.user.findMany({
+        where: {
+          role: 'ADMIN',
+          status: 'ACTIVE',
+          phone: { not: null },
+        },
+        select: {
+          id: true,
+          phone: true,
+          language: true,
+        },
+      });
+
+      if (admins.length === 0) {
+        this.logger.warn(
+          `No admin phone found for delivery dispatch failure alert. orderStableId=${params.order.orderStableId ?? 'null'}`,
+        );
+        return;
+      }
+
+      const publicBaseUrl = (
+        process.env.PUBLIC_BASE_URL ?? 'https://sanq.ca'
+      ).replace(/\/$/, '');
+      const orderIdentifier = params.order.orderStableId ?? params.order.id;
+      const orderDetailUrl = `${publicBaseUrl}/zh/order/${orderIdentifier}`;
+
+      const result =
+        await this.notificationService.notifyDeliveryDispatchFailed({
+          recipients: admins.map((admin) => ({
+            phone: admin.phone ?? '',
+            locale: admin.language === 'ZH' ? 'zh' : 'en',
+            userId: admin.id,
+          })),
+          orderNumber:
+            params.order.clientRequestId ??
+            params.order.orderStableId ??
+            params.order.id,
+          deliveryProvider:
+            params.provider === DeliveryProvider.DOORDASH ? 'DoorDash' : 'Uber',
+          errorMessage: params.errorMessage,
+          orderDetailUrl,
+        });
+
+      if (!result.ok) {
+        this.logger.warn(
+          `Delivery dispatch failure alert sms was not delivered. orderStableId=${params.order.orderStableId ?? 'null'}`,
+        );
+      }
+    } catch (alertError: unknown) {
+      const message =
+        alertError instanceof Error
+          ? alertError.message
+          : 'unknown error while sending dispatch failure alert';
+      this.logger.error(
+        `Failed to send delivery dispatch failure alert: ${message}`,
+      );
+    }
   }
 }

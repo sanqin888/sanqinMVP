@@ -44,6 +44,10 @@ export class CreateCardTokenPaymentDto {
   @IsObject()
   readonly threeds!: Record<string, unknown>;
 
+  @IsString()
+  @IsNotEmpty()
+  readonly pricingToken!: string;
+
   @IsObject()
   readonly metadata!: Record<string, unknown>;
 

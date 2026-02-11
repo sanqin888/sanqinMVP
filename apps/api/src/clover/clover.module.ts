@@ -5,10 +5,11 @@ import { CloverController } from './clover.controller';
 import { CloverPayController } from './clover-pay.controller';
 import { OrdersModule } from '../orders/orders.module';
 import { CheckoutIntentsModule } from './checkout-intents.module';
+import { PricingTokenService } from './pricing-token.service';
 
 @Module({
   imports: [ConfigModule, OrdersModule, CheckoutIntentsModule],
-  providers: [CloverService],
+  providers: [CloverService, PricingTokenService],
   controllers: [CloverController, CloverPayController],
   exports: [CloverService],
 })
