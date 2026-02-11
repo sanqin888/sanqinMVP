@@ -26,6 +26,7 @@ export type SelectedOptionSnapshot = {
 export type CartEntry = {
   cartLineId: string;
   productStableId: string; // 对应 LocalizedMenuItem.stableId
+  dailySpecialStableId?: string;
   quantity: number;
   notes: string;
   options?: Record<string, SelectedOptionSnapshot[]>;
@@ -34,6 +35,7 @@ export type CartEntry = {
 export type LocalizedCartItem = {
   cartLineId: string;
   productStableId: string;
+  dailySpecialStableId?: string;
   quantity: number;
   notes: string;
   options?: Record<string, SelectedOptionSnapshot[]>;
