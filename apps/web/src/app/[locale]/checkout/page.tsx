@@ -3713,65 +3713,6 @@ const getFieldFromEvent = (
                 ) : null}
               </div>
 
-              {requiresPayment ? (
-                <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
-                  <p className="text-xs font-semibold text-slate-600">
-                    {locale === "zh" ? "银行卡信息" : "Card details"}
-                  </p>
-                  <div className="grid gap-3 md:grid-cols-3">
-                    <div className="space-y-1 md:col-span-1">
-                      <label className="text-xs font-medium text-slate-600">
-                        {locale === "zh" ? "持卡人姓名" : "Name on card"} *
-                      </label>
-                      <div
-                        id="clover-card-name"
-                        className="clover-field flex h-10 items-center rounded-2xl border border-slate-200 bg-white px-3"
-                      />
-                    </div>
-
-                    <div className="space-y-1 md:col-span-2">
-                      <label className="text-xs font-medium text-slate-600">
-                        {locale === "zh" ? "卡号" : "Card number"} *
-                      </label>
-                      <div
-                        id="clover-card-number"
-                        className="flex h-10 items-center rounded-2xl border border-slate-200 bg-white px-3"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid gap-3 md:grid-cols-3">
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium text-slate-600">
-                        {locale === "zh" ? "有效期" : "MM/YY"} *
-                      </label>
-                      <div
-                        id="clover-card-date"
-                        className="flex h-10 items-center rounded-2xl border border-slate-200 bg-white px-3"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium text-slate-600">
-                        {locale === "zh" ? "安全码" : "CVV"} *
-                      </label>
-                      <div
-                        id="clover-card-cvv"
-                        className="flex h-10 items-center rounded-2xl border border-slate-200 bg-white px-3"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium text-slate-600">
-                        {locale === "zh" ? "邮编" : "Postal code"} *
-                      </label>
-                      <div
-                        id="clover-postal"
-                        className="clover-field flex h-10 items-center rounded-2xl border border-slate-200 bg-white px-3"
-                      />
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
               {(availableCoupons.length > 0 ||
                 appliedCoupon ||
                 couponLoading ||
@@ -4127,6 +4068,65 @@ const getFieldFromEvent = (
                   )}
                 </div>
               )}
+
+              {requiresPayment ? (
+                <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-semibold text-slate-600">
+                    {locale === "zh" ? "银行卡信息" : "Card details"}
+                  </p>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <div className="space-y-1 md:col-span-1">
+                      <label className="text-xs font-medium text-slate-600">
+                        {locale === "zh" ? "持卡人姓名" : "Name on card"} *
+                      </label>
+                      <div
+                        id="clover-card-name"
+                        className="clover-field flex h-10 items-center rounded-2xl border border-slate-200 bg-white px-3"
+                      />
+                    </div>
+
+                    <div className="space-y-1 md:col-span-2">
+                      <label className="text-xs font-medium text-slate-600">
+                        {locale === "zh" ? "卡号" : "Card number"} *
+                      </label>
+                      <div
+                        id="clover-card-number"
+                        className="flex h-10 items-center rounded-2xl border border-slate-200 bg-white px-3"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-600">
+                        {locale === "zh" ? "有效期" : "MM/YY"} *
+                      </label>
+                      <div
+                        id="clover-card-date"
+                        className="flex h-10 items-center rounded-2xl border border-slate-200 bg-white px-3"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-600">
+                        {locale === "zh" ? "安全码" : "CVV"} *
+                      </label>
+                      <div
+                        id="clover-card-cvv"
+                        className="flex h-10 items-center rounded-2xl border border-slate-200 bg-white px-3"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-600">
+                        {locale === "zh" ? "邮编" : "Postal code"} *
+                      </label>
+                      <div
+                        id="clover-postal"
+                        className="clover-field flex h-10 items-center rounded-2xl border border-slate-200 bg-white px-3"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : null}
 
               {/* 订单金额小结 */}
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
