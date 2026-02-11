@@ -1010,17 +1010,6 @@ export default function LocalOrderPage() {
                 <p className="text-xs text-rose-500">{locale === "zh" ? "请完成所有必选项后再加入购物车。" : "Please complete all required selections before adding to cart."}</p>
               ) : null}
 
-              {selectedOptionsDetails.length > 0 ? (
-                <div className="h-30 space-y-2 overflow-y-auto rounded-2xl bg-slate-50 p-4 text-xs text-slate-500">
-                  {selectedOptionsDetails.map((option, idx) => (
-                    <div key={`${option.groupName}-${option.optionName}-${idx}`} className="flex items-center justify-between">
-                      <span>{option.groupName} · {option.optionName}</span>
-                      {option.priceDeltaCents !== 0 ? <span>{option.priceDeltaCents > 0 ? "+" : "-"}{currencyFormatter.format(Math.abs(option.priceDeltaCents) / 100)}</span> : null}
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm text-slate-600">{locale === "zh" ? "当前价格" : "Current price"}: <span className="font-semibold text-slate-900">{currencyFormatter.format((activeItem.price * 100 + optionsPriceCents) / 100)}</span></div>
                 <div className="flex items-center gap-3">
