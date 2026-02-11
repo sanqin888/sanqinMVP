@@ -1405,33 +1405,46 @@ useEffect(() => {
   ] as const;
 
   type RequiredKey = (typeof requiredFieldKeys)[number];
-  type CloverFieldKey = RequiredKey | "CARD_NAME";
+type CloverFieldKey = RequiredKey | "CARD_NAME";
 
-  const getFieldFromEvent = (
-    event: CloverEventPayload,
-    key: CloverFieldKey,
-  ): CloverFieldChangeEvent => {
-    if (event && typeof event === "object") {
-      const e = event as {
-        data?: { realTimeFormState?: unknown } | undefined;
-        realTimeFormState?: unknown;
-      };
+const getFieldFromEvent = (
+  event: CloverEventPayload,
+  key: CloverFieldKey,
+): CloverFieldChangeEvent => {
+  if (event && typeof event === "object") {
+    const e = event as {
+      data?: { realTimeFormState?: unknown } | undefined;
+      realTimeFormState?: unknown;
+      [k: string]: unknown;
+    };
 
-      const rts =
-        (e.data && typeof e.data === "object"
-          ? (e.data as { realTimeFormState?: unknown }).realTimeFormState
-          : undefined) ?? e.realTimeFormState;
-
-      if (rts && typeof rts === "object") {
-        const rec = rts as Record<string, unknown>;
-        const v = rec[key];
-        if (v && typeof v === "object") return v as CloverFieldChangeEvent;
-      }
+    // 1) wrapper: event.data.realTimeFormState
+    const rts1 = e.data?.realTimeFormState;
+    if (rts1 && typeof rts1 === "object") {
+      const rec = rts1 as Record<string, unknown>;
+      const v = rec[key];
+      if (v && typeof v === "object") return v as CloverFieldChangeEvent;
     }
 
-    // 有些 change 事件可能直接给字段对象
-    return event as unknown as CloverFieldChangeEvent;
-  };
+    // 2) wrapper: event.realTimeFormState
+    const rts2 = e.realTimeFormState;
+    if (rts2 && typeof rts2 === "object") {
+      const rec = rts2 as Record<string, unknown>;
+      const v = rec[key];
+      if (v && typeof v === "object") return v as CloverFieldChangeEvent;
+    }
+
+    // 3) direct aggregated: event[key]
+    const direct = e[key];
+    if (direct && typeof direct === "object") {
+      return direct as CloverFieldChangeEvent;
+    }
+  }
+
+  // 4) direct field object
+  return event as unknown as CloverFieldChangeEvent;
+};
+
 
   const hasError = (field?: CloverFieldChangeEvent) => {
     const err = field?.error;
