@@ -334,7 +334,9 @@ export class OrdersService {
 
     if (hiddenItemStableIds.length > 0) {
       if (!normalizedUserStableId) {
-        throw new BadRequestException('userStableId is required for hidden items');
+        throw new BadRequestException(
+          'userStableId is required for hidden items',
+        );
       }
       if (!selectedUserCouponId) {
         throw new BadRequestException(
@@ -382,14 +384,18 @@ export class OrdersService {
         (stableId) => !unlockedSet.has(stableId),
       );
       if (missing.length > 0) {
-        throw new BadRequestException('hidden items are not unlocked by this coupon');
+        throw new BadRequestException(
+          'hidden items are not unlocked by this coupon',
+        );
       }
 
       if (
         userCoupon.coupon.stackingPolicy === 'EXCLUSIVE' &&
         normalizedCouponStableId
       ) {
-        throw new BadRequestException('coupon cannot be stacked with other coupons');
+        throw new BadRequestException(
+          'coupon cannot be stacked with other coupons',
+        );
       }
     }
 
@@ -401,7 +407,10 @@ export class OrdersService {
     });
 
     const couponDiscountCents = couponInfo?.discountCents ?? 0;
-    const subtotalAfterCoupon = Math.max(0, subtotalCents - couponDiscountCents);
+    const subtotalAfterCoupon = Math.max(
+      0,
+      subtotalCents - couponDiscountCents,
+    );
 
     let loyaltyRedeemCents = 0;
     if (userId && typeof requestedPoints === 'number' && requestedPoints > 0) {
@@ -409,9 +418,10 @@ export class OrdersService {
         where: { userId },
         select: { pointsMicro: true },
       });
-      const maxRedeemableCents = await this.loyalty.maxRedeemableCentsFromBalance(
-        account?.pointsMicro ?? 0n,
-      );
+      const maxRedeemableCents =
+        await this.loyalty.maxRedeemableCentsFromBalance(
+          account?.pointsMicro ?? 0n,
+        );
       const requestedRedeemCents = Math.max(
         0,
         Math.round(requestedPoints * pricingConfig.redeemDollarPerPoint * 100),
@@ -423,8 +433,12 @@ export class OrdersService {
       );
     }
 
-    const purchaseBaseCents = Math.max(0, subtotalAfterCoupon - loyaltyRedeemCents);
-    const taxableCents = purchaseBaseCents + (isDelivery ? deliveryFeeCustomerCents : 0);
+    const purchaseBaseCents = Math.max(
+      0,
+      subtotalAfterCoupon - loyaltyRedeemCents,
+    );
+    const taxableCents =
+      purchaseBaseCents + (isDelivery ? deliveryFeeCustomerCents : 0);
     const taxCents = Math.round(taxableCents * pricingConfig.salesTaxRate);
     const totalCents = purchaseBaseCents + deliveryFeeCustomerCents + taxCents;
 
