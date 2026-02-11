@@ -192,6 +192,15 @@ type DeliveryPricingConfig = {
   enableUberDirect: boolean;
 };
 
+export type OrderPricingQuote = {
+  subtotalCents: number;
+  couponDiscountCents: number;
+  loyaltyRedeemCents: number;
+  taxCents: number;
+  deliveryFeeCents: number;
+  totalCents: number;
+};
+
 @Injectable()
 export class OrdersService {
   private readonly logger = new AppLogger(OrdersService.name);
@@ -211,6 +220,223 @@ export class OrdersService {
     private readonly notificationService: NotificationService,
     private readonly emailService: EmailService,
   ) {}
+
+  async quoteOrderPricing(dto: CreateOrderInput): Promise<OrderPricingQuote> {
+    const rawUserStableId =
+      typeof dto.userStableId === 'string' ? dto.userStableId.trim() : '';
+    const normalizedUserStableId = rawUserStableId
+      ? normalizeStableId(rawUserStableId)
+      : null;
+    if (rawUserStableId && !normalizedUserStableId) {
+      throw new BadRequestException('userStableId must be a cuid');
+    }
+
+    const userId = normalizedUserStableId
+      ? await this.loyalty.resolveUserIdByStableId(normalizedUserStableId)
+      : undefined;
+
+    const rawCouponStableId =
+      typeof dto.couponStableId === 'string' ? dto.couponStableId.trim() : '';
+    const normalizedCouponStableId = rawCouponStableId
+      ? normalizeStableId(rawCouponStableId)
+      : null;
+    if (rawCouponStableId && !normalizedCouponStableId) {
+      throw new BadRequestException('couponStableId must be a cuid');
+    }
+
+    const items = dto.items ?? [];
+    const {
+      calculatedItems,
+      calculatedSubtotal,
+      couponEligibleSubtotalCents,
+      couponEligibleLineItems,
+    } = await this.calculateLineItems(items);
+
+    const productStableIds = Array.from(
+      new Set(calculatedItems.map((item) => item.productStableId)),
+    );
+    if (normalizedCouponStableId && couponEligibleSubtotalCents <= 0) {
+      throw new BadRequestException(
+        'coupon is not available for daily special items',
+      );
+    }
+
+    const subtotalCents = calculatedSubtotal;
+    const pricingConfig = await this.getBusinessPricingConfig();
+    const deliveryRulesFallback = this.buildDeliveryFallback(pricingConfig);
+
+    const requestedPoints =
+      typeof dto.pointsToRedeem === 'number'
+        ? dto.pointsToRedeem
+        : typeof dto.redeemValueCents === 'number' &&
+            pricingConfig.redeemDollarPerPoint > 0
+          ? dto.redeemValueCents / (pricingConfig.redeemDollarPerPoint * 100)
+          : undefined;
+
+    const isDelivery =
+      dto.fulfillmentType === 'delivery' ||
+      dto.deliveryType === DeliveryType.STANDARD ||
+      dto.deliveryType === DeliveryType.PRIORITY;
+
+    let deliveryFeeCustomerCents = 0;
+    const deliveryMeta = dto.deliveryType
+      ? deliveryRulesFallback[dto.deliveryType]
+      : undefined;
+
+    if (isDelivery) {
+      const targetType = dto.deliveryType ?? DeliveryType.STANDARD;
+      const dest = dto.deliveryDestination;
+
+      if (
+        Number.isFinite(pricingConfig.storeLatitude ?? NaN) &&
+        Number.isFinite(pricingConfig.storeLongitude ?? NaN) &&
+        dest &&
+        typeof dest.latitude === 'number' &&
+        typeof dest.longitude === 'number'
+      ) {
+        const distKm = this.calculateDistanceKm(
+          pricingConfig.storeLatitude as number,
+          pricingConfig.storeLongitude as number,
+          dest.latitude,
+          dest.longitude,
+        );
+
+        deliveryFeeCustomerCents = this.calculateDynamicDeliveryFee(
+          targetType,
+          distKm,
+          pricingConfig,
+        );
+      } else {
+        if (deliveryMeta) {
+          deliveryFeeCustomerCents = deliveryMeta.feeCents;
+        } else if (typeof dto.deliveryFeeCents === 'number') {
+          deliveryFeeCustomerCents = dto.deliveryFeeCents;
+        }
+      }
+    }
+
+    const rawSelectedUserCouponId =
+      typeof dto.selectedUserCouponId === 'string'
+        ? dto.selectedUserCouponId.trim()
+        : '';
+    const selectedUserCouponId =
+      rawSelectedUserCouponId.length > 0 ? rawSelectedUserCouponId : null;
+
+    const hiddenItems = await this.prisma.menuItem.findMany({
+      where: {
+        stableId: { in: productStableIds },
+        deletedAt: null,
+        visibility: 'HIDDEN',
+      },
+      select: { stableId: true },
+    });
+    const hiddenItemStableIds = hiddenItems.map((item) => item.stableId);
+
+    if (hiddenItemStableIds.length > 0) {
+      if (!normalizedUserStableId) {
+        throw new BadRequestException('userStableId is required for hidden items');
+      }
+      if (!selectedUserCouponId) {
+        throw new BadRequestException(
+          'selectedUserCouponId is required for hidden items',
+        );
+      }
+
+      const now = new Date();
+      const userCoupon = await this.prisma.userCoupon.findFirst({
+        where: {
+          id: selectedUserCouponId,
+          userStableId: normalizedUserStableId,
+          status: 'AVAILABLE',
+          AND: [
+            {
+              OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+            },
+            {
+              coupon: {
+                isActive: true,
+                AND: [
+                  {
+                    OR: [{ startsAt: null }, { startsAt: { lte: now } }],
+                  },
+                  {
+                    OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        include: { coupon: true },
+      });
+      if (!userCoupon) {
+        throw new BadRequestException('coupon is not available');
+      }
+
+      const unlockedSet = new Set(
+        (userCoupon.coupon.unlockedItemStableIds ?? []).map((value) =>
+          value.trim(),
+        ),
+      );
+      const missing = hiddenItemStableIds.filter(
+        (stableId) => !unlockedSet.has(stableId),
+      );
+      if (missing.length > 0) {
+        throw new BadRequestException('hidden items are not unlocked by this coupon');
+      }
+
+      if (
+        userCoupon.coupon.stackingPolicy === 'EXCLUSIVE' &&
+        normalizedCouponStableId
+      ) {
+        throw new BadRequestException('coupon cannot be stacked with other coupons');
+      }
+    }
+
+    const couponInfo = await this.membership.validateCouponForOrder({
+      userId,
+      couponStableId: normalizedCouponStableId ?? undefined,
+      subtotalCents: couponEligibleSubtotalCents,
+      couponEligibleLineItems,
+    });
+
+    const couponDiscountCents = couponInfo?.discountCents ?? 0;
+    const subtotalAfterCoupon = Math.max(0, subtotalCents - couponDiscountCents);
+
+    let loyaltyRedeemCents = 0;
+    if (userId && typeof requestedPoints === 'number' && requestedPoints > 0) {
+      const account = await this.prisma.loyaltyAccount.findUnique({
+        where: { userId },
+        select: { pointsMicro: true },
+      });
+      const maxRedeemableCents = await this.loyalty.maxRedeemableCentsFromBalance(
+        account?.pointsMicro ?? 0n,
+      );
+      const requestedRedeemCents = Math.max(
+        0,
+        Math.round(requestedPoints * pricingConfig.redeemDollarPerPoint * 100),
+      );
+      loyaltyRedeemCents = Math.min(
+        subtotalAfterCoupon,
+        maxRedeemableCents,
+        requestedRedeemCents,
+      );
+    }
+
+    const purchaseBaseCents = Math.max(0, subtotalAfterCoupon - loyaltyRedeemCents);
+    const taxableCents = purchaseBaseCents + (isDelivery ? deliveryFeeCustomerCents : 0);
+    const taxCents = Math.round(taxableCents * pricingConfig.salesTaxRate);
+    const totalCents = purchaseBaseCents + deliveryFeeCustomerCents + taxCents;
+
+    return {
+      subtotalCents,
+      couponDiscountCents,
+      loyaltyRedeemCents,
+      taxCents,
+      deliveryFeeCents: deliveryFeeCustomerCents,
+      totalCents,
+    };
+  }
 
   private toOrderDto(order: OrderWithItems | OrderDetail): OrderDto {
     const orderStableId = order.orderStableId;
