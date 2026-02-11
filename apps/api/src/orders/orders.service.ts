@@ -501,11 +501,49 @@ export class OrdersService {
     if (!order.contactPhone) return;
     const orderNumber = order.clientRequestId ?? order.orderStableId;
     if (!orderNumber) return;
+
+    const locale = await this.resolveOrderReadyLocale(order);
+
     await this.notificationService.notifyOrderReady({
       phone: order.contactPhone,
       orderNumber,
       name: order.contactName ?? null,
+      locale,
     });
+  }
+
+  private async resolveOrderReadyLocale(
+    order: Pick<OrderWithItems, 'id' | 'userId'>,
+  ): Promise<'zh' | 'en'> {
+    if (order.userId) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: order.userId },
+        select: { language: true },
+      });
+
+      if (user?.language === 'ZH') {
+        return 'zh';
+      }
+
+      if (user?.language === 'EN') {
+        return 'en';
+      }
+    }
+
+    const checkoutIntent = await this.prisma.checkoutIntent.findFirst({
+      where: {
+        orderId: order.id,
+        locale: { not: null },
+      },
+      select: { locale: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (checkoutIntent?.locale?.toLowerCase().startsWith('zh')) {
+      return 'zh';
+    }
+
+    return 'en';
   }
 
   private async handleOrderPaidSideEffects(order: OrderWithItems) {
