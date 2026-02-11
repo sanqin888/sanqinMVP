@@ -6,6 +6,8 @@ import { UberDirectService } from '../deliveries/uber-direct.service';
 import { MembershipService } from '../membership/membership.service';
 import { DoorDashDriveService } from '../deliveries/doordash-drive.service';
 import { LocationService } from '../location/location.service';
+import { NotificationService } from '../notifications/notification.service';
+import { EmailService } from '../email/email.service';
 import { DeliveryType } from '@prisma/client';
 import { CreateOrderInput } from '@shared/order';
 
@@ -33,6 +35,13 @@ describe('OrdersService', () => {
     menuDailySpecial: {
       findMany: jest.Mock;
     };
+    user: {
+      findMany: jest.Mock;
+      findUnique: jest.Mock;
+    };
+    checkoutIntent: {
+      findFirst: jest.Mock;
+    };
   };
   let loyalty: {
     peekBalanceMicro: jest.Mock;
@@ -51,6 +60,11 @@ describe('OrdersService', () => {
   let uberDirect: { createDelivery: jest.Mock };
   let doorDashDrive: { createDelivery: jest.Mock };
   let locationService: { geocode: jest.Mock };
+  let notificationService: {
+    notifyOrderReady: jest.Mock;
+    notifyDeliveryDispatchFailed: jest.Mock;
+  };
+  let emailService: { sendOrderInvoice: jest.Mock };
   beforeEach(() => {
     process.env.UBER_DIRECT_ENABLED = '1';
     const demoProductId = 'c1234567890abcdefghijklmn';
@@ -129,6 +143,13 @@ describe('OrdersService', () => {
       menuDailySpecial: {
         findMany: jest.fn().mockResolvedValue([]),
       },
+      user: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findUnique: jest.fn(),
+      },
+      checkoutIntent: {
+        findFirst: jest.fn(),
+      },
     };
 
     loyalty = {
@@ -162,6 +183,15 @@ describe('OrdersService', () => {
       }),
     };
 
+    notificationService = {
+      notifyOrderReady: jest.fn(),
+      notifyDeliveryDispatchFailed: jest.fn().mockResolvedValue({ ok: true }),
+    };
+
+    emailService = {
+      sendOrderInvoice: jest.fn(),
+    };
+
     service = new OrdersService(
       prisma as unknown as PrismaService,
       loyalty as unknown as LoyaltyService,
@@ -169,6 +199,8 @@ describe('OrdersService', () => {
       uberDirect as unknown as UberDirectService,
       doorDashDrive as unknown as DoorDashDriveService,
       locationService as unknown as LocationService,
+      notificationService as unknown as NotificationService,
+      emailService as unknown as EmailService,
     );
   });
 
@@ -332,6 +364,13 @@ describe('OrdersService', () => {
     };
     prisma.order.create.mockResolvedValue(storedOrder);
     uberDirect.createDelivery.mockRejectedValue(new Error('boom'));
+    prisma.user.findMany.mockResolvedValue([
+      {
+        id: 'admin-1',
+        phone: '+14165551234',
+        language: 'ZH',
+      },
+    ]);
 
     const dto: CreateOrderInput = {
       channel: 'web',
@@ -367,5 +406,14 @@ describe('OrdersService', () => {
 
     // ✅ 说明我们确实尝试调用过 Uber Direct，只是失败了
     expect(uberDirect.createDelivery).toHaveBeenCalled();
+
+    expect(
+      notificationService.notifyDeliveryDispatchFailed,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderNumber: 'SQD2401010001',
+        deliveryProvider: 'Uber',
+      }),
+    );
   });
 });

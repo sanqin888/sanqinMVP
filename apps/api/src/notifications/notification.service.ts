@@ -188,6 +188,111 @@ export class NotificationService {
     });
   }
 
+  async notifyDeliveryDispatchFailed(params: {
+    recipients: Array<{
+      phone: string;
+      locale?: string | null;
+      userId?: string | null;
+    }>;
+    orderNumber: string;
+    deliveryProvider: string;
+    errorMessage: string;
+    orderDetailUrl: string;
+  }) {
+    const recipients = params.recipients
+      .map((recipient) => {
+        const phone = recipient.phone?.trim();
+        if (!phone) return null;
+        const locale: 'zh' | 'en' = recipient.locale
+          ?.toLowerCase()
+          .startsWith('zh')
+          ? 'zh'
+          : 'en';
+        return {
+          phone,
+          locale,
+          userId: recipient.userId ?? undefined,
+        };
+      })
+      .filter((recipient): recipient is NonNullable<typeof recipient> =>
+        Boolean(recipient),
+      );
+
+    if (recipients.length === 0) {
+      return { ok: false, reason: 'no_recipients' as const };
+    }
+
+    const uniqueRecipients = Array.from(
+      new Map(
+        recipients.map((recipient) => [recipient.phone, recipient]),
+      ).values(),
+    );
+
+    const { baseVars: zhBaseVars } =
+      await this.businessConfigService.getMessagingSnapshot('zh');
+    const { baseVars: enBaseVars } =
+      await this.businessConfigService.getMessagingSnapshot('en');
+
+    const messagesByLocale = {
+      zh: await this.templateRenderer.renderSms({
+        template: 'deliveryDispatchFailed',
+        locale: 'zh',
+        vars: {
+          ...zhBaseVars,
+          orderNumber: params.orderNumber,
+          deliveryProvider: params.deliveryProvider,
+          errorMessage: params.errorMessage,
+          orderDetailUrl: params.orderDetailUrl,
+        },
+      }),
+      en: await this.templateRenderer.renderSms({
+        template: 'deliveryDispatchFailed',
+        locale: 'en',
+        vars: {
+          ...enBaseVars,
+          orderNumber: params.orderNumber,
+          deliveryProvider: params.deliveryProvider,
+          errorMessage: params.errorMessage,
+          orderDetailUrl: params.orderDetailUrl,
+        },
+      }),
+    };
+
+    const sendResults = await Promise.allSettled(
+      uniqueRecipients.map((recipient) =>
+        this.smsService.sendSms({
+          phone: recipient.phone,
+          body: messagesByLocale[recipient.locale],
+          templateType: MessagingTemplateType.ORDER_READY,
+          locale: recipient.locale,
+          userId: recipient.userId,
+          metadata: {
+            type: 'delivery_dispatch_failed',
+            orderNumber: params.orderNumber,
+            deliveryProvider: params.deliveryProvider,
+          },
+        }),
+      ),
+    );
+
+    const sentCount = sendResults.filter(
+      (result) => result.status === 'fulfilled' && result.value.ok,
+    ).length;
+
+    const failedCount = sendResults.length - sentCount;
+    if (failedCount > 0) {
+      this.logger.warn(
+        `delivery dispatch alert sms partial failure: sent=${sentCount} failed=${failedCount}`,
+      );
+    }
+
+    return {
+      ok: sentCount > 0,
+      sentCount,
+      failedCount,
+    };
+  }
+
   async notifySubscriptionWelcome(params: { user: User }) {
     // 1. 基础检查
     if (!params.user.email || !params.user.marketingEmailOptIn) {
