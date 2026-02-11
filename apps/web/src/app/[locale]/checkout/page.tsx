@@ -1444,11 +1444,21 @@ useEffect(() => {
     return true;
   };
 
-  const isFieldPayable = (field?: CloverFieldChangeEvent) =>
-    Boolean(field?.complete) && !hasError(field);
+  const isFieldPayable = (field?: CloverFieldChangeEvent) => {
+    if (!field) return false;
+
+    // 1) 如果 Clover 给了 complete，就用 complete
+    if (typeof field.complete === "boolean") {
+      return field.complete === true && !hasError(field);
+    }
+
+    // 2) 回退：touched + info 为空 视为通过
+    const info = typeof field.info === "string" ? field.info : "";
+    return Boolean(field.touched) && info.trim().length === 0;
+  };
 
   const computeCanPay = (
-    state: Partial<Record<RequiredKey, CloverFieldChangeEvent>>,
+    state: Partial<Record<CloverFieldKey, CloverFieldChangeEvent>>,
   ) => {
     return requiredFieldKeys.every((k) => isFieldPayable(state[k]));
   };
