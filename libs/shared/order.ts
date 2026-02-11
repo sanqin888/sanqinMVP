@@ -1,17 +1,17 @@
-import { z } from 'zod';
+import { z } from "zod";
 
-export type Channel = 'web' | 'in_store' | 'ubereats';
-export type FulfillmentType = 'pickup' | 'dine_in' | 'delivery';
-export type DeliveryType = 'STANDARD' | 'PRIORITY';
-export type PaymentMethod = 'CASH' | 'CARD' | 'WECHAT_ALIPAY' | 'STORE_BALANCE';
+export type Channel = "web" | "in_store" | "ubereats";
+export type FulfillmentType = "pickup" | "dine_in" | "delivery";
+export type DeliveryType = "STANDARD" | "PRIORITY";
+export type PaymentMethod = "CASH" | "CARD" | "WECHAT_ALIPAY" | "STORE_BALANCE";
 
 export const OrderStatuses = [
-  'pending',
-  'paid',
-  'making',
-  'ready',
-  'completed',
-  'refunded',
+  "pending",
+  "paid",
+  "making",
+  "ready",
+  "completed",
+  "refunded",
 ] as const;
 export type OrderStatus = (typeof OrderStatuses)[number];
 
@@ -20,25 +20,25 @@ export const ORDER_STATUS_SEQUENCE: readonly OrderStatus[] = OrderStatuses;
 export const ORDER_STATUS_FLOW: Readonly<
   Record<OrderStatus, OrderStatus | null>
 > = {
-  pending: 'paid',
-  paid: 'making',
-  making: 'ready',
-  ready: 'completed',
+  pending: "paid",
+  paid: "making",
+  making: "ready",
+  ready: "completed",
   completed: null,
   refunded: null,
 };
 
 export const IS_ORDER_ACTIVE = (status: OrderStatus) =>
-  !['completed', 'refunded'].includes(status);
+  !["completed", "refunded"].includes(status);
 
-export const ChannelSchema = z.enum(['web', 'in_store', 'ubereats']);
-export const FulfillmentTypeSchema = z.enum(['pickup', 'dine_in', 'delivery']);
-export const DeliveryTypeSchema = z.enum(['STANDARD', 'PRIORITY']);
+export const ChannelSchema = z.enum(["web", "in_store", "ubereats"]);
+export const FulfillmentTypeSchema = z.enum(["pickup", "dine_in", "delivery"]);
+export const DeliveryTypeSchema = z.enum(["STANDARD", "PRIORITY"]);
 export const PaymentMethodSchema = z.enum([
-  'CASH',
-  'CARD',
-  'WECHAT_ALIPAY',
-  'STORE_BALANCE',
+  "CASH",
+  "CARD",
+  "WECHAT_ALIPAY",
+  "STORE_BALANCE",
 ]);
 
 export const CreateOrderItemSchema = z.object({
@@ -70,6 +70,7 @@ export const DeliveryDestinationSchema = z.object({
 
 export const CreateOrderSchema = z.object({
   userStableId: z.string().optional(),
+  checkoutIntentId: z.string().optional(),
   orderStableId: z.string().optional(),
   clientRequestId: z.string().optional(),
   pickupCode: z.string().optional(),
@@ -93,5 +94,7 @@ export const CreateOrderSchema = z.object({
 });
 
 export type CreateOrderItemInput = z.infer<typeof CreateOrderItemSchema>;
-export type DeliveryDestinationInput = z.infer<typeof DeliveryDestinationSchema>;
+export type DeliveryDestinationInput = z.infer<
+  typeof DeliveryDestinationSchema
+>;
 export type CreateOrderInput = z.infer<typeof CreateOrderSchema>;

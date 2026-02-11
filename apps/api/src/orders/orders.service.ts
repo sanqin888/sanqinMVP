@@ -2,6 +2,7 @@
 
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -1365,7 +1366,98 @@ export class OrdersService {
     dto: CreateOrderInput,
     idempotencyKey?: string,
   ): Promise<OrderDto> {
+    if (dto.channel === Channel.web) {
+      const paymentMethod = this.resolvePaymentMethod(dto);
+      if (paymentMethod === PaymentMethod.CARD) {
+        const rawCheckoutIntentId =
+          typeof dto.checkoutIntentId === 'string'
+            ? dto.checkoutIntentId.trim()
+            : '';
+        const checkoutIntentId = rawCheckoutIntentId || null;
+
+        if (!checkoutIntentId) {
+          throw new BadRequestException({
+            code: 'CHECKOUT_INTENT_REQUIRED',
+            message:
+              'checkoutIntentId is required for web card orders. Complete payment via Clover checkout before creating the order.',
+          });
+        }
+
+        const checkoutIntent = await this.prisma.checkoutIntent.findFirst({
+          where: { referenceId: checkoutIntentId },
+          orderBy: { createdAt: 'desc' },
+        });
+
+        if (!checkoutIntent) {
+          throw new BadRequestException({
+            code: 'CHECKOUT_INTENT_NOT_FOUND',
+            message: 'checkout intent not found',
+          });
+        }
+
+        if (checkoutIntent.orderId) {
+          const existingOrder = await this.prisma.order.findUnique({
+            where: { id: checkoutIntent.orderId },
+            include: { items: true },
+          });
+          if (existingOrder)
+            return this.toOrderDto(existingOrder as OrderWithItems);
+
+          throw new ConflictException({
+            code: 'ORDER_NOT_FOUND',
+            message:
+              'checkout intent is already consumed by an order that cannot be loaded',
+          });
+        }
+
+        if (checkoutIntent.status !== 'completed') {
+          throw new ConflictException({
+            code: 'CHECKOUT_NOT_COMPLETED',
+            message: 'checkout intent is not completed',
+            status: checkoutIntent.status,
+          });
+        }
+
+        if (
+          checkoutIntent.expiresAt &&
+          checkoutIntent.expiresAt.getTime() < Date.now()
+        ) {
+          throw new ConflictException({
+            code: 'CHECKOUT_INTENT_EXPIRED',
+            message: 'checkout intent has expired',
+          });
+        }
+
+        idempotencyKey = idempotencyKey ?? checkoutIntent.referenceId;
+      }
+    }
+
     const order = await this.createInternal(dto, idempotencyKey);
+
+    if (
+      dto.channel === Channel.web &&
+      this.resolvePaymentMethod(dto) === PaymentMethod.CARD
+    ) {
+      const rawCheckoutIntentId =
+        typeof dto.checkoutIntentId === 'string'
+          ? dto.checkoutIntentId.trim()
+          : '';
+      const checkoutIntentId = rawCheckoutIntentId || null;
+      if (checkoutIntentId) {
+        await this.prisma.checkoutIntent.updateMany({
+          where: {
+            referenceId: checkoutIntentId,
+            status: 'completed',
+            orderId: null,
+          },
+          data: {
+            orderId: order.id,
+            processedAt: new Date(),
+          },
+        });
+      }
+    }
+
     return this.toOrderDto(order);
   }
 
