@@ -95,7 +95,10 @@ export class CloverPayController {
       });
     }
 
-    if (intent.status === 'processing' && !intent.orderId) {
+    if (
+      ['processing', 'creating_order'].includes(intent.status) &&
+      !intent.orderId
+    ) {
       const paymentMeta = extractPaymentMeta(intent.metadata);
       const chargeStatus = await this.clover.getChargeStatus({
         paymentId: paymentMeta.lastPaymentId ?? undefined,
