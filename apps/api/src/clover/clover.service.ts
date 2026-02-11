@@ -69,11 +69,6 @@ export class CloverService {
       return typeof v === 'boolean' ? v : undefined;
     };
 
-    const nonEmpty = (s: string | undefined | null): string | undefined => {
-      const t = typeof s === 'string' ? s.trim() : '';
-      return t.length > 0 ? t : undefined;
-    };
-
     if (!this.apiToken) {
       return { ok: false, reason: 'missing-credentials' };
     }
@@ -116,24 +111,45 @@ export class CloverService {
       return { ok: false, reason, status: 'FAILED' };
     }
 
+    // ✅ fetch 成功后，一定先拿到 rawText
     const rawText = await resp.text();
 
     let parsed: Record<string, unknown>;
     try {
       const v: unknown = JSON.parse(rawText);
       if (!isRecord(v)) {
-        const reason =
-          nonEmpty(rawText) ?? 'Non-object JSON response from Clover';
+        const ct = resp.headers.get('content-type') ?? '';
+        const snippet = (rawText ?? '')
+          .slice(0, 400)
+          .replace(/\s+/g, ' ')
+          .trim();
         this.logger.error(
-          `[CloverService] charge non-object json response: ${reason}`,
+          `[CloverService] charge non-object json response: status=${resp.status} ${resp.statusText ?? ''} content-type=${ct} body_snippet="${snippet}"`,
         );
-        return { ok: false, reason };
+        return {
+          ok: false,
+          status: 'FAILED',
+          reason:
+            snippet.length > 0
+              ? `Non-object JSON from Clover: HTTP ${resp.status} ${resp.statusText ?? ''}; ${ct}; ${snippet}`
+              : `Non-object JSON from Clover: HTTP ${resp.status} ${resp.statusText ?? ''}; ${ct}`,
+        };
       }
       parsed = v;
     } catch {
-      const reason = nonEmpty(rawText) ?? 'Non-JSON response from Clover';
-      this.logger.error(`[CloverService] charge non-json response: ${reason}`);
-      return { ok: false, reason };
+      const ct = resp.headers.get('content-type') ?? '';
+      const snippet = (rawText ?? '').slice(0, 400).replace(/\s+/g, ' ').trim();
+      this.logger.error(
+        `[CloverService] charge non-json response: status=${resp.status} ${resp.statusText ?? ''} content-type=${ct} body_snippet="${snippet}"`,
+      );
+      return {
+        ok: false,
+        status: 'FAILED',
+        reason:
+          snippet.length > 0
+            ? `Non-JSON response from Clover: HTTP ${resp.status} ${resp.statusText ?? ''}; ${ct}; ${snippet}`
+            : `Non-JSON response from Clover: HTTP ${resp.status} ${resp.statusText ?? ''}; ${ct}`,
+      };
     }
 
     // HTTP 非 2xx：把 Clover 错误尽量带回来
