@@ -9,18 +9,22 @@ import { Request } from 'express';
 
 @Injectable()
 export class AdminMfaGuard implements CanActivate {
-  async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest<Request>();
-    const session = request.session;
+  canActivate(context: ExecutionContext): boolean {
+    const request = context
+      .switchToHttp()
+      .getRequest<
+        Request & { session?: { mfaVerifiedAt?: Date | string | null } }
+      >();
+    const mfaVerifiedAt = request.session?.mfaVerifiedAt;
 
     // 1. 基础检查：如果没有会话，拦截
-    if (!session) {
+    if (!request.session) {
       throw new UnauthorizedException('Session required');
     }
 
     // 2. 核心检查：POS 登录时，auth.service.ts 已经自动写入了 mfaVerifiedAt
     // 所以只要这个字段有值，就代表“已通过验证” (不论是人工输入的 OTP 还是 POS 自动豁免)
-    if (session.mfaVerifiedAt) {
+    if (mfaVerifiedAt) {
       return true; // ✅ 放行
     }
 
