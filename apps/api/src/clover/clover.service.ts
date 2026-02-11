@@ -19,6 +19,7 @@ type CloverChargeStatusResult =
       paymentId?: string;
       status?: string;
       captured?: boolean;
+      amountCents?: number;
     }
   | {
       ok: false;
@@ -308,12 +309,17 @@ export class CloverService {
       typeof record.captured === 'boolean' ? record.captured : undefined;
     const recordPaymentId =
       typeof record.id === 'string' ? record.id : undefined;
+    const amountCents =
+      typeof record.amount === 'number' && Number.isFinite(record.amount)
+        ? Math.round(record.amount)
+        : undefined;
 
     return {
       ok: true,
       status,
       captured,
       paymentId: recordPaymentId,
+      amountCents,
     };
   }
 }

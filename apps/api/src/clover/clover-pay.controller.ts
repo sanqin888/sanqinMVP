@@ -22,11 +22,12 @@ import {
   parseHostedCheckoutMetadata,
   type HostedCheckoutMetadata,
   buildOrderDtoFromMetadata,
-  resolveMetadataPayableTotalCents,
 } from './hco-metadata';
 import { OrdersService } from '../orders/orders.service';
 import { generateStableId } from '../common/utils/stable-id';
 import { buildClientRequestId } from '../common/utils/client-request-id';
+import { CreateOnlinePricingQuoteDto } from './dto/create-online-pricing-quote.dto';
+import { PricingTokenService } from './pricing-token.service';
 
 @Controller('clover')
 export class CloverPayController {
@@ -36,7 +37,41 @@ export class CloverPayController {
     private readonly clover: CloverService,
     private readonly checkoutIntents: CheckoutIntentsService,
     private readonly orders: OrdersService,
+    private readonly pricingTokens: PricingTokenService,
   ) {}
+
+  @Post('pay/online/quote')
+  async createOnlinePricingQuote(@Body() dto: CreateOnlinePricingQuoteDto) {
+    let metadata: HostedCheckoutMetadata;
+    try {
+      metadata = parseHostedCheckoutMetadata(dto.metadata);
+    } catch (error) {
+      throw new BadRequestException({
+        code: 'INVALID_CHECKOUT_METADATA',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'invalid checkout metadata payload',
+      });
+    }
+
+    const orderStableId = metadata.orderStableId ?? generateStableId();
+    const orderDto = buildOrderDtoFromMetadata(metadata, orderStableId);
+    const quote = await this.orders.quoteOrderPricing(orderDto);
+    const fingerprint = buildPricingFingerprint(orderDto);
+    const token = this.pricingTokens.issue({
+      totalCents: quote.totalCents,
+      fingerprint,
+    });
+
+    return {
+      orderStableId,
+      currency: CLOVER_PAYMENT_CURRENCY,
+      quote,
+      pricingToken: token.pricingToken,
+      pricingTokenExpiresAt: token.expiresAt,
+    };
+  }
 
   @Get('pay/online/status')
   async getCheckoutIntentStatus(
@@ -91,10 +126,49 @@ export class CloverPayController {
             orderStableId,
           );
           orderDto.clientRequestId = intent.referenceId;
+
+          const preFinalizeQuote =
+            await this.orders.quoteOrderPricing(orderDto);
+          if (preFinalizeQuote.totalCents !== intent.amountCents) {
+            await this.checkoutIntents.markFailed({
+              intentId: intent.id,
+              result: 'AMOUNT_MISMATCH',
+            });
+            throw new ConflictException({
+              code: 'FINALIZE_AMOUNT_MISMATCH',
+              message: 'server total changed after payment authorization',
+            });
+          }
+
+          if (
+            typeof chargeStatus.amountCents === 'number' &&
+            chargeStatus.amountCents !== intent.amountCents
+          ) {
+            await this.checkoutIntents.markFailed({
+              intentId: intent.id,
+              result: 'CHARGED_AMOUNT_MISMATCH',
+            });
+            throw new ConflictException({
+              code: 'CHARGED_AMOUNT_MISMATCH',
+              message: 'charged amount does not match checkout intent amount',
+            });
+          }
+
           const order = await this.orders.createImmediatePaid(
             orderDto,
             intent.referenceId,
           );
+
+          if (order.totalCents !== intent.amountCents) {
+            await this.checkoutIntents.markFailed({
+              intentId: intent.id,
+              result: 'ORDER_AMOUNT_MISMATCH',
+            });
+            throw new ConflictException({
+              code: 'ORDER_AMOUNT_MISMATCH',
+              message: 'order total does not match charged amount',
+            });
+          }
 
           await this.checkoutIntents.markCompleted({
             intentId: intent.id,
@@ -248,6 +322,27 @@ export class CloverPayController {
     const currency = dto.currency ?? CLOVER_PAYMENT_CURRENCY;
     const referenceId = dto.checkoutIntentId?.trim() || buildClientRequestId();
     const orderStableId = metadata.orderStableId ?? generateStableId();
+
+    const orderDto = buildOrderDtoFromMetadata(metadata, orderStableId);
+    orderDto.clientRequestId = referenceId;
+    const quote = await this.orders.quoteOrderPricing(orderDto);
+    const expectedTotalCents = quote.totalCents;
+    const fingerprint = buildPricingFingerprint(orderDto);
+    this.pricingTokens.verify(dto.pricingToken, {
+      expectedFingerprint: fingerprint,
+      expectedTotalCents,
+    });
+
+    if (
+      typeof dto.amountCents === 'number' &&
+      Number.isFinite(dto.amountCents) &&
+      Math.round(dto.amountCents) !== expectedTotalCents
+    ) {
+      this.logger.warn(
+        `Client sent mismatched amountCents=${dto.amountCents}, serverTotal=${expectedTotalCents}. Ignoring client amount.`,
+      );
+    }
+
     const cfClientIp = normalizeClientIp(cfConnectingIp);
     let clientIp = cfClientIp ?? normalizeClientIp(rawIp);
     if (!clientIp) {
@@ -289,14 +384,6 @@ export class CloverPayController {
           : 1;
     const idempotencyKey = `${referenceId}_${paymentAttempt}`;
 
-    const expectedTotalCents = resolveMetadataPayableTotalCents(metadata);
-    if (expectedTotalCents !== dto.amountCents) {
-      throw new BadRequestException({
-        code: 'AMOUNT_MISMATCH',
-        message: `amountCents does not match metadata total (${expectedTotalCents})`,
-      });
-    }
-
     const metadataWithIds = {
       ...metadata,
       customer: {
@@ -306,6 +393,8 @@ export class CloverPayController {
       orderStableId,
       paymentAttempt,
       lastIdempotencyKey: idempotencyKey,
+      serverQuotedTotalCents: expectedTotalCents,
+      pricingFingerprint: fingerprint,
     } satisfies HostedCheckoutMetadata & CheckoutIntentPaymentMeta;
 
     const intent =
@@ -429,9 +518,26 @@ export class CloverPayController {
       lastPaymentId: paymentResult.paymentId,
     });
 
-    const orderDto = buildOrderDtoFromMetadata(metadataWithIds, orderStableId);
-    orderDto.clientRequestId = referenceId;
-    const order = await this.orders.createImmediatePaid(orderDto, referenceId);
+    const orderForCreation = buildOrderDtoFromMetadata(
+      metadataWithIds,
+      orderStableId,
+    );
+    orderForCreation.clientRequestId = referenceId;
+    const order = await this.orders.createImmediatePaid(
+      orderForCreation,
+      referenceId,
+    );
+
+    if (order.totalCents !== expectedTotalCents) {
+      await this.checkoutIntents.markFailed({
+        intentId: intent.id,
+        result: 'ORDER_AMOUNT_MISMATCH',
+      });
+      throw new ConflictException({
+        code: 'ORDER_AMOUNT_MISMATCH',
+        message: 'order total does not match charged amount',
+      });
+    }
 
     await this.checkoutIntents.markProcessed({
       intentId: intent.id,
@@ -447,6 +553,53 @@ export class CloverPayController {
       status: paymentResult.status ?? 'SUCCESS',
     };
   }
+}
+
+function buildPricingFingerprint(
+  orderDto: ReturnType<typeof buildOrderDtoFromMetadata>,
+): string {
+  return stableStringify({
+    userStableId: orderDto.userStableId ?? null,
+    fulfillmentType: orderDto.fulfillmentType,
+    deliveryType: orderDto.deliveryType ?? null,
+    couponStableId: orderDto.couponStableId ?? null,
+    selectedUserCouponId: orderDto.selectedUserCouponId ?? null,
+    pointsToRedeem: orderDto.pointsToRedeem ?? null,
+    redeemValueCents: orderDto.redeemValueCents ?? null,
+    items: (orderDto.items ?? []).map((item) => ({
+      productStableId: item.productStableId,
+      qty: item.qty,
+      options: item.options ?? null,
+    })),
+    deliveryDestination: orderDto.deliveryDestination
+      ? {
+          addressLine1: orderDto.deliveryDestination.addressLine1,
+          addressLine2: orderDto.deliveryDestination.addressLine2 ?? null,
+          city: orderDto.deliveryDestination.city,
+          province: orderDto.deliveryDestination.province,
+          postalCode: orderDto.deliveryDestination.postalCode,
+          latitude: orderDto.deliveryDestination.latitude ?? null,
+          longitude: orderDto.deliveryDestination.longitude ?? null,
+        }
+      : null,
+  });
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(',')}]`;
+  }
+
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(
+        ([key, entry]) => `${JSON.stringify(key)}:${stableStringify(entry)}`,
+      );
+    return `{${entries.join(',')}}`;
+  }
+
+  return JSON.stringify(value);
 }
 
 function normalizeCanadianPostalCode(value?: string): string {
@@ -491,6 +644,8 @@ type CheckoutIntentPaymentMeta = {
   paymentAttempt?: number;
   lastIdempotencyKey?: string | null;
   lastPaymentId?: string | null;
+  serverQuotedTotalCents?: number;
+  pricingFingerprint?: string;
 };
 
 function extractPaymentMeta(
