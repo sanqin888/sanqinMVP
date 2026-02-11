@@ -1510,10 +1510,7 @@ export class OrdersService {
         );
       }
 
-      if (
-        intent.expiresAt &&
-        intent.expiresAt.getTime() < Date.now()
-      ) {
+      if (intent.expiresAt && intent.expiresAt.getTime() < Date.now()) {
         throw new BadRequestException('Payment intent expired.');
       }
 
@@ -1946,7 +1943,9 @@ export class OrdersService {
               });
 
               if (consumeIntent.count === 0) {
-                throw new ConflictException('This payment has already been used.');
+                throw new ConflictException(
+                  'This payment has already been used.',
+                );
               }
             }
 
