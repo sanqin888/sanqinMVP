@@ -407,6 +407,8 @@ const shouldResetCheckoutIntent = (code: string) => {
   );
 };
 
+type PayFlowState = "IDLE" | "SUBMITTING" | "PROCESSING" | "CHALLENGE" | "DONE";
+
 export default function CheckoutPage() {
   const params = useParams<{ locale?: string }>();
   const locale = (params?.locale === "zh" ? "zh" : "en") as Locale;
@@ -754,6 +756,7 @@ export default function CheckoutPage() {
     null,
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [payFlowState, setPayFlowState] = useState<PayFlowState>("IDLE");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [cardNumberError, setCardNumberError] = useState<string | null>(null);
   const [cardDateError, setCardDateError] = useState<string | null>(null);
@@ -1620,69 +1623,72 @@ const getFieldFromEvent = (
 }, [locale, requiresPayment]);
 
   useEffect(() => {
-    if (!challengeUrl || !challengeIntentId) return;
+    if (!challengeIntentId) return;
     let cancelled = false;
-    let timeoutId: NodeJS.Timeout | null = null;
 
     const pollStatus = async () => {
-      try {
-        const response = await apiFetch<{
-          status: string;
-          result?: string | null;
-          orderStableId?: string | null;
-        }>(
-          `/clover/pay/online/status?checkoutIntentId=${encodeURIComponent(
-            challengeIntentId,
-          )}`,
-        );
-
-        if (cancelled) return;
-
-        if (response.status === "completed" && response.orderStableId) {
-          clearCheckoutIntentId();
-          setChallengeUrl(null);
-          router.push(`/${locale}/thank-you/${response.orderStableId}`);
-          return;
-        }
-
-        if (
-          response.status === "failed" ||
-          response.status === "expired" ||
-          response.status === "processing_failed"
-        ) {
-          clearCheckoutIntentId();
-          setChallengeUrl(null);
-          setErrorMessage(
-            locale === "zh"
-              ? "3D Secure 验证未能完成，请重新尝试支付。"
-              : "3D Secure verification did not complete. Please try again.",
+      const startedAt = Date.now();
+      while (!cancelled && Date.now() - startedAt < 90_000) {
+        try {
+          const response = await apiFetch<{
+            status: string;
+            result?: string | null;
+            orderStableId?: string | null;
+          }>(
+            `/clover/pay/online/status?checkoutIntentId=${encodeURIComponent(
+              challengeIntentId,
+            )}`,
           );
-          return;
+
+          if (cancelled) return;
+
+          if (response.status === "completed" && response.orderStableId) {
+            clearCheckoutIntentId();
+            setChallengeUrl(null);
+            setPayFlowState("DONE");
+            router.push(`/${locale}/thank-you/${response.orderStableId}`);
+            return;
+          }
+
+          if (
+            response.status === "failed" ||
+            response.status === "expired" ||
+            response.status === "processing_failed"
+          ) {
+            clearCheckoutIntentId();
+            setChallengeUrl(null);
+            setPayFlowState("IDLE");
+            setErrorMessage(
+              locale === "zh"
+                ? "3D Secure 验证未能完成，请重新尝试支付。"
+                : "3D Secure verification did not complete. Please try again.",
+            );
+            return;
+          }
+
+          if (response.status === "awaiting_authentication") {
+            setPayFlowState("CHALLENGE");
+          } else {
+            setPayFlowState("PROCESSING");
+          }
+        } catch {
+          // ignore transient polling errors
         }
-      } catch {
-        // ignore transient polling errors
+
+        await new Promise((resolve) => setTimeout(resolve, 2000));
       }
 
       if (!cancelled) {
-        timeoutId = setTimeout(pollStatus, 2500);
+        setPayFlowState("PROCESSING");
       }
     };
 
-    pollStatus();
+    void pollStatus();
 
     return () => {
       cancelled = true;
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
     };
-  }, [
-    challengeIntentId,
-    challengeUrl,
-    clearCheckoutIntentId,
-    locale,
-    router,
-  ]);
+  }, [challengeIntentId, clearCheckoutIntentId, locale, router]);
 
   const scheduleLabel =
     strings.scheduleOptions.find((option) => option.id === schedule)?.label ??
@@ -2433,6 +2439,7 @@ const getFieldFromEvent = (
     setErrorMessage(null);
     setChallengeUrl(null);
     setConfirmation(null);
+    setPayFlowState("SUBMITTING");
     let totalCentsForOrder = 0;
     setIsSubmitting(true);
     console.log("[PAY] start", {
@@ -2448,6 +2455,7 @@ const getFieldFromEvent = (
     if (isDeliveryFulfillment) {
       const validationResult = await validateDeliveryDistance();
       if (!validationResult.success) {
+        setPayFlowState("IDLE");
         setIsSubmitting(false);
         return;
       }
@@ -2647,11 +2655,7 @@ const getFieldFromEvent = (
       }
 
       console.log("[PAY] before createToken");
-      const tokenResult = await withTimeout(
-        clover.createToken(),
-        15000,
-        "clover.createToken",
-      );
+      const tokenResult = await clover.createToken();
       console.log("[PAY] after createToken", tokenResult);
 
       if (!tokenResult?.token) {
@@ -2718,9 +2722,11 @@ const getFieldFromEvent = (
         if (paymentResponse.challengeUrl) {
           setChallengeUrl(paymentResponse.challengeUrl);
           setChallengeIntentId(checkoutIntentId ?? null);
+          setPayFlowState("CHALLENGE");
           setErrorMessage(null);
           return;
         }
+        setPayFlowState("IDLE");
         setErrorMessage(
           locale === "zh"
             ? "需要完成 3D Secure 验证，但未能获取验证页面，请稍后重试。"
@@ -2730,6 +2736,7 @@ const getFieldFromEvent = (
       }
 
       clearCheckoutIntentId();
+      setPayFlowState("DONE");
 
       if (typeof window !== "undefined") {
         router.push(`/${locale}/thank-you/${paymentResponse.orderStableId}`);
@@ -2757,11 +2764,27 @@ const getFieldFromEvent = (
           message,
           locale,
         });
+        if (code === "checkout_in_progress") {
+          const inProgressIntentId =
+            typeof payload.checkoutIntentId === "string"
+              ? payload.checkoutIntentId
+              : checkoutIntentIdRef.current;
+          setPayFlowState("PROCESSING");
+          setChallengeIntentId(inProgressIntentId ?? null);
+          setErrorMessage(
+            locale === "zh"
+              ? "订单正在处理中，请稍候，我们会自动更新支付结果。"
+              : "Your checkout is being processed. Please wait while we update the payment status.",
+          );
+          return;
+        }
+        setPayFlowState("IDLE");
         setErrorMessage(userMessage);
         if (code && shouldResetCheckoutIntent(code)) {
           clearCheckoutIntentId();
         }
       } else {
+        setPayFlowState("IDLE");
         setErrorMessage(fallback);
       }
     } finally {
@@ -4157,7 +4180,12 @@ const getFieldFromEvent = (
                 type="button"
                 onClick={handlePlaceOrder}
                 disabled={
-                  !canPlaceOrder || isSubmitting || (requiresPayment && !canPayWithCard)
+                  !canPlaceOrder ||
+                  isSubmitting ||
+                  payFlowState === "SUBMITTING" ||
+                  payFlowState === "PROCESSING" ||
+                  payFlowState === "CHALLENGE" ||
+                  (requiresPayment && !canPayWithCard)
                 }
                 className="w-full rounded-full bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition enabled:hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-emerald-200"
               >
@@ -4224,6 +4252,7 @@ const getFieldFromEvent = (
                 onClick={() => {
                   setChallengeUrl(null);
                   clearCheckoutIntentId();
+                  setPayFlowState("IDLE");
                 }}
                 className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:bg-slate-100"
               >
