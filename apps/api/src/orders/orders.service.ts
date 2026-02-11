@@ -747,16 +747,38 @@ export class OrdersService {
     if (!options || typeof options !== 'object') return [];
 
     const ids: string[] = [];
-    Object.values(options).forEach((val) => {
-      if (typeof val === 'string') {
-        ids.push(val);
-      } else if (Array.isArray(val)) {
-        val.forEach((v) => {
-          if (typeof v === 'string') ids.push(v);
-        });
+    const pushOptionId = (value: unknown) => {
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (trimmed) ids.push(trimmed);
+        return;
       }
+
+      if (!value || typeof value !== 'object') return;
+      const record = value as Record<string, unknown>;
+
+      const byId = record.id;
+      if (typeof byId === 'string' && byId.trim()) {
+        ids.push(byId.trim());
+        return;
+      }
+
+      const byStableId = record.optionStableId;
+      if (typeof byStableId === 'string' && byStableId.trim()) {
+        ids.push(byStableId.trim());
+      }
+    };
+
+    Object.entries(options).forEach(([groupKey, val]) => {
+      if (groupKey === 'notes') return;
+      if (Array.isArray(val)) {
+        val.forEach((entry) => pushOptionId(entry));
+        return;
+      }
+      pushOptionId(val);
     });
-    return ids;
+
+    return Array.from(new Set(ids));
   }
 
   private centsToRedeemMicro(

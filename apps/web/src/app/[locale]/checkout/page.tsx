@@ -2625,6 +2625,8 @@ const getFieldFromEvent = (
       items: cartItemsWithPricing.map((cartItem) => ({
         productStableId: cartItem.productStableId,
         qty: cartItem.quantity,
+        options: stripOptionSnapshots(cartItem.options),
+        notes: cartItem.notes || undefined,
       })),
     };
 
