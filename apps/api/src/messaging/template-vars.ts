@@ -46,6 +46,13 @@ export type InvoiceVars = BaseVars & {
   clientRequestId?: string;
 };
 
+export type DeliveryDispatchFailedVars = BaseVars & {
+  orderNumber: string;
+  deliveryProvider: string;
+  errorMessage: string;
+  orderDetailUrl: string;
+};
+
 export type TemplateVarsMap = {
   otp: OtpVars;
   welcome: WelcomeVars;
@@ -53,6 +60,7 @@ export type TemplateVarsMap = {
   giftGeneral: GiftIssuedVars;
   orderReady: OrderReadyVars;
   invoice: InvoiceVars;
+  deliveryDispatchFailed: DeliveryDispatchFailedVars;
 };
 
 export type TemplateName = keyof TemplateVarsMap;

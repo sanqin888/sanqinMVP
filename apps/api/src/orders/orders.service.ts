@@ -1981,6 +1981,16 @@ export class OrdersService {
               }
             }
             this.logger.error(`Failed to dispatch delivery: ${message}`);
+
+            const provider = isStandard
+              ? DeliveryProvider.DOORDASH
+              : DeliveryProvider.UBER;
+
+            await this.notifyDeliveryDispatchFailureAlert({
+              order,
+              provider,
+              errorMessage: message,
+            });
           }
         }
 
@@ -2867,5 +2877,70 @@ export class OrdersService {
       data: updateData,
       include: { items: true },
     }) as Promise<OrderWithItems>;
+  }
+
+  private async notifyDeliveryDispatchFailureAlert(params: {
+    order: OrderWithItems;
+    provider: DeliveryProvider;
+    errorMessage: string;
+  }): Promise<void> {
+    try {
+      const admins = await this.prisma.user.findMany({
+        where: {
+          role: 'ADMIN',
+          status: 'ACTIVE',
+          phone: { not: null },
+        },
+        select: {
+          id: true,
+          phone: true,
+          language: true,
+        },
+      });
+
+      if (admins.length === 0) {
+        this.logger.warn(
+          `No admin phone found for delivery dispatch failure alert. orderStableId=${params.order.orderStableId ?? 'null'}`,
+        );
+        return;
+      }
+
+      const publicBaseUrl = (
+        process.env.PUBLIC_BASE_URL ?? 'https://sanq.ca'
+      ).replace(/\/$/, '');
+      const orderIdentifier = params.order.orderStableId ?? params.order.id;
+      const orderDetailUrl = `${publicBaseUrl}/zh/order/${orderIdentifier}`;
+
+      const result =
+        await this.notificationService.notifyDeliveryDispatchFailed({
+          recipients: admins.map((admin) => ({
+            phone: admin.phone ?? '',
+            locale: admin.language === 'ZH' ? 'zh' : 'en',
+            userId: admin.id,
+          })),
+          orderNumber:
+            params.order.clientRequestId ??
+            params.order.orderStableId ??
+            params.order.id,
+          deliveryProvider:
+            params.provider === DeliveryProvider.DOORDASH ? 'DoorDash' : 'Uber',
+          errorMessage: params.errorMessage,
+          orderDetailUrl,
+        });
+
+      if (!result.ok) {
+        this.logger.warn(
+          `Delivery dispatch failure alert sms was not delivered. orderStableId=${params.order.orderStableId ?? 'null'}`,
+        );
+      }
+    } catch (alertError: unknown) {
+      const message =
+        alertError instanceof Error
+          ? alertError.message
+          : 'unknown error while sending dispatch failure alert';
+      this.logger.error(
+        `Failed to send delivery dispatch failure alert: ${message}`,
+      );
+    }
   }
 }
