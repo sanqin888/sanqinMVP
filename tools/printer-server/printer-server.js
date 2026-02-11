@@ -202,7 +202,7 @@ function buildCustomerReceiptEscPos(params) {
   chunks.push(cmd(ESC, 0x45, 0x01)); // 加粗
   chunks.push(cmd(GS, 0x21, 0x01)); // 双倍高度（字体更显眼）
   chunks.push(encLine("三秦肉夹馍"));
-  chunks.push(encLine("Qin's Traditional Rougiamo"));
+  chunks.push(encLine("SanQ Rougiamo"));
   chunks.push(cmd(GS, 0x21, 0x00)); // 恢复正常大小
   chunks.push(cmd(ESC, 0x45, 0x00)); // 取消加粗
   chunks.push(cmd(ESC, 0x61, 0x00)); // 左对齐
