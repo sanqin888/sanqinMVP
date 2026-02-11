@@ -2,6 +2,7 @@
 import {
   BadRequestException,
   Body,
+  ConflictException,
   Controller,
   Get,
   Headers,
@@ -311,9 +312,10 @@ export class CloverPayController {
 
     const claimed = await this.checkoutIntents.claimProcessing(intent.id);
     if (!claimed) {
-      throw new BadRequestException({
+      throw new ConflictException({
         code: 'CHECKOUT_IN_PROGRESS',
         message: 'checkout intent is already being processed',
+        checkoutIntentId: intent.referenceId,
       });
     }
 
