@@ -1384,7 +1384,9 @@ export class OrdersService {
         }
 
         const checkoutIntent = await this.prisma.checkoutIntent.findFirst({
-          where: { referenceId: checkoutIntentId },
+          where: {
+            OR: [{ referenceId: checkoutIntentId }, { id: checkoutIntentId }],
+          },
           orderBy: { createdAt: 'desc' },
         });
 
@@ -1410,7 +1412,10 @@ export class OrdersService {
           });
         }
 
-        if (checkoutIntent.status !== 'completed') {
+        if (
+          checkoutIntent.status !== 'completed' &&
+          checkoutIntent.status !== 'succeeded'
+        ) {
           throw new ConflictException({
             code: 'CHECKOUT_NOT_COMPLETED',
             message: 'checkout intent is not completed',
@@ -1446,8 +1451,8 @@ export class OrdersService {
       if (checkoutIntentId) {
         await this.prisma.checkoutIntent.updateMany({
           where: {
-            referenceId: checkoutIntentId,
-            status: 'completed',
+            OR: [{ referenceId: checkoutIntentId }, { id: checkoutIntentId }],
+            status: { in: ['completed', 'succeeded'] },
             orderId: null,
           },
           data: {
@@ -1465,9 +1470,74 @@ export class OrdersService {
     dto: CreateOrderInput,
     idempotencyKey?: string,
   ): Promise<OrderWithItems> {
+    const paymentMethod = this.resolvePaymentMethod(dto);
+    const requiresCheckoutIntentVerification =
+      dto.channel === Channel.web && paymentMethod === PaymentMethod.CARD;
+
+    let verifiedCheckoutIntent: {
+      id: string;
+      referenceId: string;
+      amountCents: number;
+    } | null = null;
+
+    if (requiresCheckoutIntentVerification) {
+      const rawCheckoutIntentId =
+        typeof dto.checkoutIntentId === 'string'
+          ? dto.checkoutIntentId.trim()
+          : '';
+      const checkoutIntentId = rawCheckoutIntentId || null;
+
+      if (!checkoutIntentId) {
+        throw new BadRequestException(
+          'Missing payment proof (checkoutIntentId).',
+        );
+      }
+
+      const intent = await this.prisma.checkoutIntent.findFirst({
+        where: {
+          OR: [{ referenceId: checkoutIntentId }, { id: checkoutIntentId }],
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (!intent) {
+        throw new BadRequestException('Payment intent not found.');
+      }
+
+      if (intent.status !== 'succeeded' && intent.status !== 'completed') {
+        throw new BadRequestException(
+          `Payment not confirmed. Status: ${intent.status}`,
+        );
+      }
+
+      if (
+        intent.expiresAt &&
+        intent.expiresAt.getTime() < Date.now()
+      ) {
+        throw new BadRequestException('Payment intent expired.');
+      }
+
+      if (intent.orderId) {
+        const existingOrder = await this.prisma.order.findUnique({
+          where: { id: intent.orderId },
+          include: { items: true },
+        });
+        if (existingOrder) {
+          return existingOrder as OrderWithItems;
+        }
+        throw new ConflictException('This payment has already been used.');
+      }
+
+      verifiedCheckoutIntent = {
+        id: intent.id,
+        referenceId: intent.referenceId,
+        amountCents: intent.amountCents,
+      };
+      idempotencyKey = idempotencyKey ?? intent.referenceId;
+    }
+
     // ✅ 你的业务前提：只在“已收款/支付成功”后才创建订单记录
     const paidAt = new Date();
-    const paymentMethod = this.resolvePaymentMethod(dto);
 
     if (
       dto.deliveryType === DeliveryType.PRIORITY &&
@@ -1847,11 +1917,38 @@ export class OrdersService {
             const totalCents =
               purchaseBaseCents + deliveryFeeCustomerCents + taxCents;
 
+            if (
+              verifiedCheckoutIntent &&
+              totalCents !== verifiedCheckoutIntent.amountCents
+            ) {
+              throw new BadRequestException(
+                `Price mismatch. order=${totalCents}, paid=${verifiedCheckoutIntent.amountCents}`,
+              );
+            }
+
             const loyaltyRedeemCents = redeemValueCents;
             const subtotalAfterDiscountCents = Math.max(
               0,
               subtotalCents - couponDiscountCents - loyaltyRedeemCents,
             );
+
+            if (verifiedCheckoutIntent) {
+              const consumeIntent = await tx.checkoutIntent.updateMany({
+                where: {
+                  id: verifiedCheckoutIntent.id,
+                  status: { in: ['succeeded', 'completed'] },
+                  orderId: null,
+                },
+                data: {
+                  orderId,
+                  processedAt: paidAt,
+                },
+              });
+
+              if (consumeIntent.count === 0) {
+                throw new ConflictException('This payment has already been used.');
+              }
+            }
 
             const created = (await tx.order.create({
               data: {
