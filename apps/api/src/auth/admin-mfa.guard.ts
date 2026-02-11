@@ -1,9 +1,9 @@
 // apps/api/src/auth/admin-mfa.guard.ts
-import { 
-  CanActivate, 
-  ExecutionContext, 
-  Injectable, 
-  UnauthorizedException 
+import {
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { Request } from 'express';
 
