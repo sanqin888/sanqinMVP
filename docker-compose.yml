@@ -56,7 +56,7 @@ services:
       UBER_DIRECT_STORE_POSTAL_CODE: "M2N 5M6"
       UBER_DIRECT_STORE_COUNTRY: "CA"
       CLOVER_ENV: "production"
-      CLOVER_BASE: "https://api.clover.com"
+      CLOVER_BASE: "https://scl.clover.com"
       CLOVER_MERCHANT_ID: "XC3DQ9Z7D4YJ1"
       CLOVER_ACCESS_TOKEN: ${CLOVER_ACCESS_TOKEN}
       SMS_PROVIDER: "twilio"

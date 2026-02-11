@@ -113,6 +113,24 @@ export class CloverService {
     // ✅ fetch 成功后，一定先拿到 rawText
     const rawText = await resp.text();
 
+    if (resp.status === 204) {
+      const headersObj: Record<string, string> = {};
+      resp.headers.forEach((v, k) => {
+        headersObj[k] = v;
+      });
+
+      this.logger.error(
+        `[CloverService] charge returned 204 No Content. headers=${JSON.stringify(headersObj)}`,
+      );
+
+      return {
+        ok: false,
+        status: 'FAILED',
+        code: 'CLOVER_NO_CONTENT',
+        reason: 'Clover returned 204 No Content (unexpected for charge create)',
+      };
+    }
+
     let parsed: Record<string, unknown>;
     try {
       const v: unknown = JSON.parse(rawText);
