@@ -167,7 +167,10 @@ const parseItems = (value: unknown): HostedCheckoutItem[] => {
       const displayName = toString(entry.displayName);
 
       const rawOptions = entry.options;
-      const options = isPlainObject(rawOptions) ? rawOptions : undefined;
+      const options =
+        isPlainObject(rawOptions) || Array.isArray(rawOptions)
+          ? rawOptions
+          : undefined;
 
       const item: HostedCheckoutItem = {
         productStableId,
@@ -415,6 +418,8 @@ export function buildOrderDtoFromMetadata(
 
         if (isPlainObject(item.options)) {
           Object.assign(result, item.options);
+        } else if (Array.isArray(item.options) && item.options.length > 0) {
+          result.__legacyOptions = item.options;
         }
 
         if (item.notes) {

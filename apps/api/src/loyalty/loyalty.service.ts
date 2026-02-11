@@ -940,6 +940,7 @@ export class LoyaltyService {
     orderId: string;
     sourceKey?: string;
     requestedPoints?: number;
+    requestedRedeemValueCents?: number;
     subtotalAfterCoupon: number;
   }): Promise<number> {
     const {
@@ -948,6 +949,7 @@ export class LoyaltyService {
       orderId,
       sourceKey,
       requestedPoints,
+      requestedRedeemValueCents,
       subtotalAfterCoupon,
     } = params;
     const sk =
@@ -985,12 +987,27 @@ export class LoyaltyService {
       );
     }
 
-    const redeemValueCents = this.calculateRedeemableCentsFromBalance(
-      account.pointsMicro,
-      loyaltyConfig.redeemDollarPerPoint,
-      requestedPoints,
-      subtotalAfterCoupon,
-    );
+    const redeemValueCents =
+      typeof requestedRedeemValueCents === 'number' &&
+      Number.isFinite(requestedRedeemValueCents) &&
+      requestedRedeemValueCents > 0
+        ? Math.max(
+            0,
+            Math.min(
+              Math.round(requestedRedeemValueCents),
+              this.maxRedeemableCentsFromBalanceWithRate(
+                account.pointsMicro,
+                loyaltyConfig.redeemDollarPerPoint,
+              ),
+              subtotalAfterCoupon,
+            ),
+          )
+        : this.calculateRedeemableCentsFromBalance(
+            account.pointsMicro,
+            loyaltyConfig.redeemDollarPerPoint,
+            requestedPoints,
+            subtotalAfterCoupon,
+          );
 
     if (redeemValueCents <= 0) return 0;
 

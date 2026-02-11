@@ -746,17 +746,37 @@ export class OrdersService {
   private collectOptionIds(options?: Record<string, unknown>): string[] {
     if (!options || typeof options !== 'object') return [];
 
-    const ids: string[] = [];
-    Object.values(options).forEach((val) => {
-      if (typeof val === 'string') {
-        ids.push(val);
-      } else if (Array.isArray(val)) {
-        val.forEach((v) => {
-          if (typeof v === 'string') ids.push(v);
-        });
+    const resolved = new Set<string>();
+    const walk = (value: unknown) => {
+      if (typeof value === 'string') {
+        const normalized = normalizeStableId(value);
+        if (normalized) resolved.add(normalized);
+        return;
       }
-    });
-    return ids;
+
+      if (Array.isArray(value)) {
+        value.forEach((entry) => walk(entry));
+        return;
+      }
+
+      if (!value || typeof value !== 'object') return;
+
+      const record = value as Record<string, unknown>;
+      const directId =
+        (typeof record.id === 'string' && record.id) ||
+        (typeof record.optionStableId === 'string' && record.optionStableId) ||
+        (typeof record.stableId === 'string' && record.stableId) ||
+        undefined;
+      if (directId) {
+        const normalized = normalizeStableId(directId);
+        if (normalized) resolved.add(normalized);
+      }
+
+      Object.values(record).forEach((entry) => walk(entry));
+    };
+
+    walk(options);
+    return Array.from(resolved);
   }
 
   private centsToRedeemMicro(
@@ -1167,13 +1187,16 @@ export class OrdersService {
     const pricingConfig = await this.getBusinessPricingConfig();
     const deliveryRulesFallback = this.buildDeliveryFallback(pricingConfig);
 
+    const requestedRedeemValueCents =
+      typeof dto.redeemValueCents === 'number' &&
+      Number.isFinite(dto.redeemValueCents) &&
+      dto.redeemValueCents > 0
+        ? Math.round(dto.redeemValueCents)
+        : undefined;
     const requestedPoints =
       typeof dto.pointsToRedeem === 'number'
         ? dto.pointsToRedeem
-        : typeof dto.redeemValueCents === 'number' &&
-            pricingConfig.redeemDollarPerPoint > 0
-          ? dto.redeemValueCents / (pricingConfig.redeemDollarPerPoint * 100)
-          : undefined;
+        : undefined;
 
     // —— Step 2: 配送费与税费 (动态计算 & 距离复验)
     const isDelivery =
@@ -1416,6 +1439,7 @@ export class OrdersService {
               orderId,
               sourceKey: 'ORDER',
               requestedPoints,
+              requestedRedeemValueCents,
               subtotalAfterCoupon,
             });
 
