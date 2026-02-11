@@ -42,6 +42,7 @@ export type HostedCheckoutMetadata = {
   taxCents: number;
   serviceFeeCents?: number;
   deliveryFeeCents?: number;
+  subtotalAfterDiscountCents?: number;
   totalCents?: number;
 
   taxRate?: number; // 仍然是 0.13 这种小数
@@ -265,6 +266,9 @@ export function parseHostedCheckoutMetadata(
     taxCents,
     serviceFeeCents: toOptionalCents(metadata.serviceFeeCents),
     deliveryFeeCents: toOptionalCents(metadata.deliveryFeeCents),
+    subtotalAfterDiscountCents: toOptionalCents(
+      metadata.subtotalAfterDiscountCents,
+    ),
     totalCents: toOptionalCents(metadata.totalCents),
     taxRate: toNumber(metadata.taxRate),
     deliveryType: parseDeliveryType(metadata.deliveryType),
@@ -283,6 +287,48 @@ export function parseHostedCheckoutMetadata(
     coupon: parseCoupon(input.coupon),
     selectedUserCouponId: toString(metadata.selectedUserCouponId),
   } satisfies HostedCheckoutMetadata;
+}
+
+export function resolveMetadataPayableTotalCents(
+  metadata: HostedCheckoutMetadata,
+): number {
+  const serverRecalculatedSubtotalCents = metadata.items.reduce(
+    (sum, item) => sum + item.priceCents * item.quantity,
+    0,
+  );
+
+  const couponDiscountCents = Math.min(
+    Math.max(0, metadata.coupon?.discountCents ?? 0),
+    serverRecalculatedSubtotalCents,
+  );
+  const subtotalAfterCouponCents = Math.max(
+    0,
+    serverRecalculatedSubtotalCents - couponDiscountCents,
+  );
+  const loyaltyRedeemCents = Math.min(
+    Math.max(0, metadata.loyaltyRedeemCents ?? 0),
+    subtotalAfterCouponCents,
+  );
+
+  const subtotalAfterDiscountCents = Math.max(
+    0,
+    subtotalAfterCouponCents - loyaltyRedeemCents,
+  );
+
+  const fallbackTaxCents = Math.max(0, metadata.taxCents);
+  const taxRate =
+    typeof metadata.taxRate === 'number' && Number.isFinite(metadata.taxRate)
+      ? metadata.taxRate
+      : null;
+  const recalculatedTaxCents =
+    taxRate !== null ? Math.round(subtotalAfterDiscountCents * taxRate) : null;
+
+  return Math.round(
+    subtotalAfterDiscountCents +
+      (recalculatedTaxCents ?? fallbackTaxCents) +
+      (metadata.serviceFeeCents ?? 0) +
+      (metadata.deliveryFeeCents ?? 0),
+  );
 }
 
 // ===== 把 metadata 转成 CreateOrderInput =====

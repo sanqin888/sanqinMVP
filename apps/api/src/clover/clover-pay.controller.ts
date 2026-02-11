@@ -21,6 +21,7 @@ import {
   parseHostedCheckoutMetadata,
   type HostedCheckoutMetadata,
   buildOrderDtoFromMetadata,
+  resolveMetadataPayableTotalCents,
 } from './hco-metadata';
 import { OrdersService } from '../orders/orders.service';
 import { generateStableId } from '../common/utils/stable-id';
@@ -287,6 +288,14 @@ export class CloverPayController {
           : 1;
     const idempotencyKey = `${referenceId}_${paymentAttempt}`;
 
+    const expectedTotalCents = resolveMetadataPayableTotalCents(metadata);
+    if (expectedTotalCents !== dto.amountCents) {
+      throw new BadRequestException({
+        code: 'AMOUNT_MISMATCH',
+        message: `amountCents does not match metadata total (${expectedTotalCents})`,
+      });
+    }
+
     const metadataWithIds = {
       ...metadata,
       customer: {
@@ -303,7 +312,7 @@ export class CloverPayController {
       (await this.checkoutIntents.recordIntent({
         referenceId,
         checkoutSessionId: null,
-        amountCents: dto.amountCents,
+        amountCents: expectedTotalCents,
         currency,
         locale: metadata.locale,
         metadata: metadataWithIds,
@@ -317,26 +326,12 @@ export class CloverPayController {
       });
     }
 
-    const expectedTotalCents = Math.round(
-      metadata.totalCents ??
-        metadata.subtotalCents +
-          metadata.taxCents +
-          (metadata.serviceFeeCents ?? 0) +
-          (metadata.deliveryFeeCents ?? 0),
-    );
-    if (expectedTotalCents !== dto.amountCents) {
-      throw new BadRequestException({
-        code: 'AMOUNT_MISMATCH',
-        message: `amountCents does not match metadata total (${expectedTotalCents})`,
-      });
-    }
-
     await this.checkoutIntents.updateMetadata(intent.id, metadataWithIds);
 
     let paymentResult: Awaited<ReturnType<CloverService['createCardPayment']>>;
     try {
       paymentResult = await this.clover.createCardPayment({
-        amountCents: dto.amountCents,
+        amountCents: expectedTotalCents,
         currency,
         source: dto.source,
         orderId: referenceId,
