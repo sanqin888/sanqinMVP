@@ -13,6 +13,7 @@ const os = require("os");
 const path = require("path");
 const { exec } = require("child_process");
 const iconv = require("iconv-lite");
+const Jimp = require("jimp");
 
 // === 打印机配置 ===
 // 可以通过环境变量覆盖：POS_FRONT_PRINTER / POS_KITCHEN_PRINTER
@@ -26,6 +27,7 @@ const GS = 0x1d;
 
 // 打印宽度（逻辑宽度，用于对齐和画虚线，不影响纸张本身宽度）
 const LINE_WIDTH = 32;
+const LOGO_WIDTH_DOTS = Number(process.env.POS_LOGO_WIDTH_DOTS || 576);
 
 // ========== 通用工具函数 ==========
 
@@ -74,6 +76,59 @@ function encLine(str = "") {
 // 快速构造 ESC/POS 指令 Buffer
 function cmd(...bytes) {
   return Buffer.from(bytes);
+}
+
+// PNG/JPG -> ESC/POS Raster Bit Image (GS v 0)
+async function escposRasterFromImage(filePath, targetWidthDots = LOGO_WIDTH_DOTS) {
+  const img = await Jimp.read(filePath);
+
+  // 等比缩放到目标宽度
+  img.resize(targetWidthDots, Jimp.AUTO);
+
+  // 转灰度
+  img.grayscale();
+
+  const w = img.bitmap.width;
+  const h = img.bitmap.height;
+
+  // 每行字节数（8像素=1字节）
+  const bytesPerRow = Math.ceil(w / 8);
+  const data = Buffer.alloc(bytesPerRow * h);
+
+  // 二值化阈值（越大越“黑”）
+  const threshold = Number(process.env.POS_LOGO_THRESHOLD || 160);
+
+  let offset = 0;
+  for (let y = 0; y < h; y++) {
+    for (let xByte = 0; xByte < bytesPerRow; xByte++) {
+      let b = 0;
+      for (let bit = 0; bit < 8; bit++) {
+        const x = xByte * 8 + bit;
+        let v = 255;
+        if (x < w) {
+          const rgba = Jimp.intToRGBA(img.getPixelColor(x, y));
+          v = rgba.r; // grayscale 后 r=g=b
+        }
+        // 黑点=1（阈值以下当黑）
+        if (v < threshold) b |= (0x80 >> bit);
+      }
+      data[offset++] = b;
+    }
+  }
+
+  // GS v 0
+  // xL xH = bytesPerRow（宽度按字节）
+  // yL yH = h（高度按点）
+  const xL = bytesPerRow & 0xff;
+  const xH = (bytesPerRow >> 8) & 0xff;
+  const yL = h & 0xff;
+  const yH = (h >> 8) & 0xff;
+
+  return Buffer.concat([
+    cmd(GS, 0x76, 0x30, 0x00, xL, xH, yL, yH),
+    data,
+    encLine(""),
+  ]);
 }
 
 // 将 ESC/POS 原始数据发送到指定打印机
@@ -136,7 +191,7 @@ function printEscPosTo(printerName, dataBuffer) {
 // ========== ESC/POS 小票内容生成 ==========
 
 // 顾客联
-function buildCustomerReceiptEscPos(params) {
+async function buildCustomerReceiptEscPos(params) {
   const { orderNumber, pickupCode, fulfillment, paymentMethod, snapshot } = params;
 
   const f = String(fulfillment || "").toLowerCase();
@@ -181,7 +236,24 @@ function buildCustomerReceiptEscPos(params) {
   chunks.push(cmd(ESC, 0x40)); // ESC @
 
   // ✅ 行距调紧（减少整体留白）
-  chunks.push(cmd(ESC, 0x33, 20)); // ESC 3 n
+  chunks.push(cmd(ESC, 0x33, 30));
+
+  // ==== Logo（可选） ====
+  try {
+    const logoPath =
+      process.env.POS_LOGO_PATH || path.join(__dirname, "assets", "logo.png");
+    if (fs.existsSync(logoPath)) {
+      chunks.push(cmd(ESC, 0x61, 0x01)); // 居中
+      const logoBuf = await escposRasterFromImage(logoPath, LOGO_WIDTH_DOTS);
+      chunks.push(logoBuf);
+      chunks.push(cmd(ESC, 0x61, 0x00)); // 左对齐
+      chunks.push(encLine("")); // 多给一行喘气
+    } else {
+      console.warn("[logo] 未找到 logo 文件，跳过:", logoPath);
+    }
+  } catch (e) {
+    console.warn("[logo] 打印logo失败，跳过:", e?.message || e);
+  }
 
   // ==== 取餐码（如果有的话） ====
   if (pickupCode) {
@@ -266,11 +338,9 @@ function buildCustomerReceiptEscPos(params) {
       })();
 
       if (optionLines.length > 0) {
-        chunks.push(cmd(GS, 0x21, 0x01));
         optionLines.forEach((opt) => {
           chunks.push(encLine(`  - ${opt}`));
         });
-        chunks.push(cmd(GS, 0x21, 0x00));
       }
 
       chunks.push(encLine(""));
@@ -353,6 +423,7 @@ function buildKitchenReceiptEscPos(params) {
 
   // 初始化打印机
   chunks.push(cmd(ESC, 0x40)); // ESC @
+  chunks.push(cmd(ESC, 0x33, 30));
 
   // ==== 顶部：用餐方式（大号加粗） ====
   chunks.push(cmd(ESC, 0x61, 0x01)); // 居中
@@ -545,7 +616,7 @@ app.post("/print-pos", async (req, res) => {
   }
 
   try {
-    const customerData = buildCustomerReceiptEscPos({
+    const customerData = await buildCustomerReceiptEscPos({
       locale,
       orderNumber,
       pickupCode,
