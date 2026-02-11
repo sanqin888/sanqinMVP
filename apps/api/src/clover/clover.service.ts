@@ -98,21 +98,22 @@ export class CloverService {
           description: params.description || `Online Order ${params.orderId}`,
         }),
       });
-    } catch (error) {
-      const reason =
-        error instanceof Error && error.message.trim().length > 0
-          ? error.message
-          : 'Clover request failed';
+    } catch {
+      const ct = resp.headers.get('content-type') ?? '';
+      const statusCode = resp.status;
+      const statusText = resp.statusText ?? '';
+      const snippet = (rawText ?? '').slice(0, 400).replace(/\s+/g, ' ').trim();
 
       this.logger.error(
-        `[CloverService] charge request failed reason=${reason}`,
+        `[CloverService] charge non-json response: status=${statusCode} ${statusText} content-type=${ct} body_snippet="${snippet}"`,
       );
 
-      return {
-        ok: false,
-        status: 'FAILED',
-        reason,
-      };
+      const reason =
+        snippet.length > 0
+          ? `Non-JSON response from Clover: HTTP ${statusCode} ${statusText}; ${ct}; ${snippet}`
+          : `Non-JSON response from Clover: HTTP ${statusCode} ${statusText}; ${ct}`;
+
+      return { ok: false, reason, status: 'FAILED' };
     }
 
     const rawText = await resp.text();
