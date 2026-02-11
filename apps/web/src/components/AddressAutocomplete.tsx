@@ -2,6 +2,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { loadGoogleMapsPlacesLibrary } from "@/lib/googleMaps";
 
 type AutocompleteSessionToken = {
   readonly __autocompleteSessionToken?: unique symbol;
@@ -192,28 +193,19 @@ export function AddressAutocomplete({
   useEffect(() => {
     if (typeof window === "undefined") return;
     let cancelled = false;
-    let attempts = 0;
-    let timeoutId: number | null = null;
 
-    const checkReady = () => {
-      if (cancelled) return;
-      attempts += 1;
-      if (window.google?.maps?.places) {
-        setIsReady(true);
-        return;
-      }
-      if (attempts < 20) {
-        timeoutId = window.setTimeout(checkReady, 250);
-      }
-    };
-
-    checkReady();
+    loadGoogleMapsPlacesLibrary()
+      .then(() => {
+        if (!cancelled) {
+          setIsReady(true);
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to initialize Google Maps places library", error);
+      });
 
     return () => {
       cancelled = true;
-      if (timeoutId) {
-        window.clearTimeout(timeoutId);
-      }
     };
   }, []);
 
