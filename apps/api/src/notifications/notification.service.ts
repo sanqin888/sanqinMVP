@@ -167,8 +167,9 @@ export class NotificationService {
     phone: string;
     orderNumber: string;
     name?: string | null;
+    locale?: string;
   }) {
-    const locale = 'en';
+    const locale = params.locale?.toLowerCase().startsWith('zh') ? 'zh' : 'en';
     const { baseVars } =
       await this.businessConfigService.getMessagingSnapshot(locale);
     const body = await this.templateRenderer.renderSms({
