@@ -49,12 +49,38 @@ export class CloverService {
     idempotencyKey?: string;
     description?: string;
   }): Promise<CloverPaymentCreateResult> {
+    // ---- helpers: no any, safe access ----
+    const isRecord = (v: unknown): v is Record<string, unknown> =>
+      typeof v === 'object' && v !== null;
+
+    const getString = (
+      obj: Record<string, unknown>,
+      key: string,
+    ): string | undefined => {
+      const v = obj[key];
+      return typeof v === 'string' ? v : undefined;
+    };
+
+    const getBoolean = (
+      obj: Record<string, unknown>,
+      key: string,
+    ): boolean | undefined => {
+      const v = obj[key];
+      return typeof v === 'boolean' ? v : undefined;
+    };
+
+    const nonEmpty = (s: string | undefined | null): string | undefined => {
+      const t = typeof s === 'string' ? s.trim() : '';
+      return t.length > 0 ? t : undefined;
+    };
+
     if (!this.apiToken) {
       return { ok: false, reason: 'missing-credentials' };
     }
 
     const url = `${this.apiBase}/v1/charges`;
     const idempotencyKey = params.idempotencyKey ?? params.orderId;
+
     let resp: Response;
     try {
       resp = await fetch(url, {
@@ -77,9 +103,11 @@ export class CloverService {
         error instanceof Error && error.message.trim().length > 0
           ? error.message
           : 'Clover request failed';
+
       this.logger.error(
         `[CloverService] charge request failed reason=${reason}`,
       );
+
       return {
         ok: false,
         status: 'FAILED',
@@ -88,21 +116,38 @@ export class CloverService {
     }
 
     const rawText = await resp.text();
-    let parsed: Record<string, unknown> | undefined;
+
+    let parsed: Record<string, unknown>;
     try {
-      parsed = JSON.parse(rawText) as Record<string, unknown>;
+      const v: unknown = JSON.parse(rawText);
+      if (!isRecord(v)) {
+        const reason =
+          nonEmpty(rawText) ?? 'Non-object JSON response from Clover';
+        this.logger.error(
+          `[CloverService] charge non-object json response: ${reason}`,
+        );
+        return { ok: false, reason };
+      }
+      parsed = v;
     } catch {
-      return { ok: false, reason: rawText };
+      const reason = nonEmpty(rawText) ?? 'Non-JSON response from Clover';
+      this.logger.error(`[CloverService] charge non-json response: ${reason}`);
+      return { ok: false, reason };
     }
 
+    // HTTP 非 2xx：把 Clover 错误尽量带回来
     if (!resp.ok) {
       this.logger.warn(
-        `Unexpected Clover charge response keys: ${JSON.stringify(
-          safeLogKeys(parsed),
-        )}`,
+        `Unexpected Clover charge response keys: ${JSON.stringify(safeLogKeys(parsed))}`,
       );
+
       const errorDetails = extractCloverErrorDetails(parsed);
-      const reason = stringifyReason(parsed, rawText, errorDetails.message);
+      const reason = stringifyReason(
+        parsed,
+        rawText,
+        errorDetails.message ?? 'Clover charge failed',
+      );
+
       return {
         ok: false,
         reason,
@@ -113,22 +158,42 @@ export class CloverService {
       };
     }
 
-    const status =
-      typeof parsed.status === 'string' ? parsed.status : undefined;
-    const captured =
-      typeof parsed.captured === 'boolean' ? parsed.captured : undefined;
-    const paymentId = typeof parsed.id === 'string' ? parsed.id : undefined;
+    // HTTP 2xx：但不一定已 capture/succeed
+    const status = getString(parsed, 'status');
+    const captured = getBoolean(parsed, 'captured');
+    const paymentId = getString(parsed, 'id');
 
     const isSuccess = status === 'succeeded' || captured === true;
+
     if (!isSuccess) {
+      // ✅ 关键日志：把 Clover 的 200 响应原样打出来
+      this.logger.error(
+        `[CloverService] charge 200 but not captured: status=${status ?? ''} captured=${String(
+          captured,
+        )} paymentId=${paymentId ?? ''} raw=${rawText}`,
+      );
+
+      const errorDetails = extractCloverErrorDetails(parsed);
+      const reason = stringifyReason(
+        parsed,
+        rawText,
+        errorDetails.message ?? 'payment_not_captured',
+      );
+
       return {
         ok: false,
-        reason: 'payment_not_captured',
+        reason,
         status,
+        code: errorDetails.code,
+        challengeUrl: errorDetails.challengeUrl ?? null,
+        paymentId: paymentId ?? errorDetails.paymentId,
       };
     }
 
     if (!paymentId) {
+      this.logger.error(
+        `[CloverService] charge succeeded but missing payment id raw=${rawText}`,
+      );
       return { ok: false, reason: 'missing-payment-id', status };
     }
 
