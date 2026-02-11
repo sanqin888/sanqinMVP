@@ -94,10 +94,20 @@ function hashString(input: string) {
   return (hash >>> 0).toString(36);
 }
 
-function buildCartLineId(productStableId: string, options?: CartItemOptions) {
+function buildCartLineId(
+  productStableId: string,
+  options?: CartItemOptions,
+  dailySpecialStableId?: string,
+) {
   const signature = buildOptionsSignature(options);
-  if (!signature) return productStableId;
-  return `${productStableId}::${hashString(signature)}`;
+  const specialSignature = dailySpecialStableId?.trim()
+    ? `special:${dailySpecialStableId.trim()}`
+    : "";
+  const combinedSignature = [specialSignature, signature]
+    .filter(Boolean)
+    .join("|");
+  if (!combinedSignature) return productStableId;
+  return `${productStableId}::${hashString(combinedSignature)}`;
 }
 
 function sanitizeCart(raw: unknown): CartEntry[] {
@@ -105,10 +115,18 @@ function sanitizeCart(raw: unknown): CartEntry[] {
   return raw.flatMap((entry) => {
     if (!entry || typeof entry !== "object") return [];
 
-    const { productStableId, stableId, quantity, notes, options, cartLineId } =
-      entry as Partial<CartEntry> & {
+    const {
+      productStableId,
+      stableId,
+      dailySpecialStableId,
+      quantity,
+      notes,
+      options,
+      cartLineId,
+    } = entry as Partial<CartEntry> & {
         productStableId?: unknown;
         stableId?: unknown;
+        dailySpecialStableId?: unknown;
         quantity?: unknown;
         notes?: unknown;
         options?: unknown;
@@ -127,6 +145,12 @@ function sanitizeCart(raw: unknown): CartEntry[] {
         "[cart] missing productStableId in cart entry (legacy itemId is not supported anymore)",
       );
     }
+
+    const safeDailySpecialStableId =
+      typeof dailySpecialStableId === "string" && dailySpecialStableId.trim()
+        ? dailySpecialStableId.trim()
+        : undefined;
+
 
     const numericQuantity =
       typeof quantity === "number"
@@ -148,12 +172,17 @@ function sanitizeCart(raw: unknown): CartEntry[] {
     const safeCartLineId =
       typeof cartLineId === "string" && cartLineId.length > 0
         ? cartLineId
-        : buildCartLineId(resolvedProductStableId, safeOptions);
+        : buildCartLineId(
+            resolvedProductStableId,
+            safeOptions,
+            safeDailySpecialStableId,
+          );
 
     return [
       {
         cartLineId: safeCartLineId,
         productStableId: resolvedProductStableId,
+        dailySpecialStableId: safeDailySpecialStableId,
         quantity: safeQuantity,
         notes: typeof notes === "string" ? notes : "",
         options: safeOptions,
@@ -208,9 +237,19 @@ export function usePersistentCart() {
   }, [isInitialized, items]);
 
   const addItem = useCallback(
-    (productStableId: string, options?: CartItemOptions, quantity = 1) => {
+    (
+      productStableId: string,
+      options?: CartItemOptions,
+      quantity = 1,
+      dailySpecialStableId?: string,
+    ) => {
       const normalizedOptions = normalizeOptions(options);
-      const cartLineId = buildCartLineId(productStableId, normalizedOptions);
+      const normalizedDailySpecialStableId = dailySpecialStableId?.trim() || undefined;
+      const cartLineId = buildCartLineId(
+        productStableId,
+        normalizedOptions,
+        normalizedDailySpecialStableId,
+      );
       const safeQuantity = Number.isFinite(quantity)
         ? Math.max(1, Math.floor(quantity))
         : 1;
@@ -227,12 +266,13 @@ export function usePersistentCart() {
         }
         return [
           ...prev,
-          {
-            cartLineId,
-            productStableId,
-            quantity: safeQuantity,
-            notes: "",
-            options: normalizedOptions,
+            {
+              cartLineId,
+              productStableId,
+              dailySpecialStableId: normalizedDailySpecialStableId,
+              quantity: safeQuantity,
+              notes: "",
+              options: normalizedOptions,
           },
         ];
       });

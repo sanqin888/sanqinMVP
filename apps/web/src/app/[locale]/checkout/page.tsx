@@ -38,6 +38,7 @@ import {
   type LocalizedMenuItem,
 } from "@/lib/menu/menu-transformer";
 import type {
+  DailySpecialDto,
   MenuEntitlementsResponse,
   PublicMenuResponse as PublicMenuApiResponse,
 } from "@shared/menu";
@@ -156,6 +157,11 @@ type SelectedOptionDisplay = {
   optionName: string;
   priceDeltaCents: number;
 };
+
+type DailySpecialLookupEntry = Pick<
+  DailySpecialDto,
+  "stableId" | "itemStableId" | "basePriceCents" | "effectivePriceCents" | "disallowCoupons"
+>;
 
 type CartItemWithPricing = LocalizedCartItem & {
   unitPriceCents: number;
@@ -431,6 +437,9 @@ export default function CheckoutPage() {
     LocalizedMenuItem
   > | null>(null);
   const [menuLoading, setMenuLoading] = useState(false);
+  const [dailySpecialLookup, setDailySpecialLookup] = useState<
+    Map<string, DailySpecialLookupEntry>
+  >(new Map());
   const [menuError, setMenuError] = useState<string | null>(null);
   const [cartNotice, setCartNotice] = useState<string | null>(null);
   const [entitlements, setEntitlements] =
@@ -646,11 +655,19 @@ export default function CheckoutPage() {
         });
       });
 
-      const baseUnitPriceCents = cartItem.item.effectivePriceCents;
+      const selectedSpecial = cartItem.dailySpecialStableId
+        ? dailySpecialLookup.get(cartItem.dailySpecialStableId)
+        : undefined;
+      const baseUnitPriceCents =
+        selectedSpecial?.itemStableId === cartItem.productStableId
+          ? selectedSpecial.effectivePriceCents
+          : cartItem.item.effectivePriceCents;
       const optionsUnitPriceCents = optionDeltaCents;
       const unitPriceCents = baseUnitPriceCents + optionsUnitPriceCents;
       const lineTotalCents = unitPriceCents * cartItem.quantity;
-      const isDailySpecial = Boolean(cartItem.item.activeSpecial);
+      const isDailySpecial =
+        selectedSpecial?.itemStableId === cartItem.productStableId ||
+        Boolean(cartItem.item.activeSpecial);
 
       return {
         ...cartItem,
@@ -660,10 +677,13 @@ export default function CheckoutPage() {
         lineTotalCents,
         selectedOptions,
         isDailySpecial,
-        disallowCoupons: cartItem.item.activeSpecial?.disallowCoupons ?? false,
+        disallowCoupons:
+          selectedSpecial?.itemStableId === cartItem.productStableId
+            ? selectedSpecial.disallowCoupons
+            : (cartItem.item.activeSpecial?.disallowCoupons ?? false),
       };
     });
-  }, [localizedCartItems, locale]);
+  }, [dailySpecialLookup, localizedCartItems, locale]);
 
   const requiredEntitlementItemStableIds = useMemo(() => {
     if (!publicMenuLookup) {
@@ -859,12 +879,24 @@ export default function CheckoutPage() {
             map.set(item.stableId, item);
           }
         }
+        const specialsMap = new Map<string, DailySpecialLookupEntry>();
+        for (const special of dbMenu.dailySpecials ?? []) {
+          specialsMap.set(special.stableId, {
+            stableId: special.stableId,
+            itemStableId: special.itemStableId,
+            basePriceCents: special.basePriceCents,
+            effectivePriceCents: special.effectivePriceCents,
+            disallowCoupons: special.disallowCoupons,
+          });
+        }
         setPublicMenuLookup(map);
+        setDailySpecialLookup(specialsMap);
       } catch (error) {
         console.error("Failed to load menu for checkout", error);
         if (cancelled) return;
 
         setPublicMenuLookup(new Map());
+        setDailySpecialLookup(new Map());
         setMenuError(
           locale === "zh"
             ? "菜单从服务器加载失败，如需继续下单，请先与门店确认价格与菜品。"

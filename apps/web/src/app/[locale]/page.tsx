@@ -198,6 +198,8 @@ export default function LocalOrderPage() {
     usePersistentCart();
   const [activeItem, setActiveItem] = useState<LocalizedMenuItem | null>(null);
   const [selectedQuantity, setSelectedQuantity] = useState(1);
+  const [selectedDailySpecial, setSelectedDailySpecial] =
+    useState<LocalizedDailySpecial | null>(null);
 
   // 选中的选项：Record<PathKey, OptionStableId[]>
   const [selectedOptions, setSelectedOptions] = useState<
@@ -345,6 +347,7 @@ export default function LocalOrderPage() {
     setSelectedOptions({});
     setSelectedChildOptions({});
     setSelectedQuantity(1);
+    setSelectedDailySpecial(null);
   };
 
   const handleOptionToggle = (
@@ -584,6 +587,11 @@ export default function LocalOrderPage() {
       ),
     [optionSnapshotLookup],
   );
+
+  const activeBasePriceCents =
+    selectedDailySpecial && activeItem && selectedDailySpecial.itemStableId === activeItem.stableId
+      ? selectedDailySpecial.effectivePriceCents
+      : Math.round((activeItem?.price ?? 0) * 100);
 
   const canAddToCart =
     activeItem && requiredGroupsMissing.length === 0 && menuLoading === false;
@@ -866,7 +874,7 @@ export default function LocalOrderPage() {
                                 return (
                                     <article key={special.stableId} 
                                         className={`group flex h-full flex-col justify-between rounded-3xl border border-amber-200 bg-amber-50/40 p-5 shadow-sm transition ${isTempUnavailable(item.tempUnavailableUntil) ? "cursor-not-allowed opacity-70" : "cursor-pointer hover:-translate-y-0.5 hover:shadow-md"}`}
-                                        onClick={() => { if (!isTempUnavailable(item.tempUnavailableUntil)) { setActiveItem(item); setSelectedQuantity(1); setSelectedOptions({}); setSelectedChildOptions({}); } }}
+                                        onClick={() => { if (!isTempUnavailable(item.tempUnavailableUntil)) { setActiveItem(item); setSelectedDailySpecial(special); setSelectedQuantity(1); setSelectedOptions({}); setSelectedChildOptions({}); } }}
                                     >
                                         <div className="flex items-center gap-3">
                                             {item.imageUrl && (
@@ -913,6 +921,7 @@ export default function LocalOrderPage() {
                               setSelectedQuantity(1);
                               setSelectedOptions({});
                               setSelectedChildOptions({});
+                              setSelectedDailySpecial(null);
                             }}
                           >
                             {item.imageUrl && (
@@ -1011,7 +1020,7 @@ export default function LocalOrderPage() {
               ) : null}
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="text-sm text-slate-600">{locale === "zh" ? "当前价格" : "Current price"}: <span className="font-semibold text-slate-900">{currencyFormatter.format((activeItem.price * 100 + optionsPriceCents) / 100)}</span></div>
+                <div className="text-sm text-slate-600">{locale === "zh" ? "当前价格" : "Current price"}: <span className="font-semibold text-slate-900">{currencyFormatter.format((activeBasePriceCents + optionsPriceCents) / 100)}</span></div>
                 <div className="flex items-center gap-3">
                   <div className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-1 shadow-sm">
                     <button type="button" onClick={() => setSelectedQuantity((qty) => Math.max(1, qty - 1))} disabled={selectedQuantity <= 1} className={`flex h-8 w-8 items-center justify-center rounded-full text-lg font-semibold transition ${selectedQuantity <= 1 ? "cursor-not-allowed text-slate-300" : "text-slate-600 hover:bg-slate-100"}`}>−</button>
@@ -1029,6 +1038,7 @@ export default function LocalOrderPage() {
                           ...selectedChildOptions,
                         }),
                         selectedQuantity,
+                        selectedDailySpecial?.stableId,
                       );
                       closeOptionsModal();
                     }}
