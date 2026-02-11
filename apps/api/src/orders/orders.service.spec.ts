@@ -203,6 +203,7 @@ describe('OrdersService', () => {
     const dto: CreateOrderInput = {
       channel: 'web',
       fulfillmentType: 'pickup',
+      paymentMethod: 'CASH',
       subtotalCents: 1000,
       deliveryType: DeliveryType.PRIORITY,
     };
@@ -272,6 +273,7 @@ describe('OrdersService', () => {
     const dto: CreateOrderInput = {
       channel: 'web',
       fulfillmentType: 'pickup',
+      paymentMethod: 'CASH',
       items: [{ productStableId: 'c1234567890abcdefghijklmn', qty: 1 }],
       subtotalCents: 1000,
       taxCents: 0,
@@ -334,6 +336,7 @@ describe('OrdersService', () => {
     const dto: CreateOrderInput = {
       channel: 'web',
       fulfillmentType: 'pickup',
+      paymentMethod: 'CASH',
       items: [],
       subtotalCents: 1000,
       taxCents: 0,
