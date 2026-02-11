@@ -92,6 +92,9 @@ type CloverEventPayload =
   | CloverFieldChangeEvent
   | CloverAggregatedFieldEvent
   | {
+      data?: {
+        realTimeFormState?: CloverAggregatedFieldEvent;
+      };
       realTimeFormState?: CloverAggregatedFieldEvent;
     };
 
@@ -1395,7 +1398,6 @@ useEffect(() => {
   }
 
   const requiredFieldKeys = [
-    "CARD_NAME",
     "CARD_NUMBER",
     "CARD_DATE",
     "CARD_CVV",
@@ -1403,64 +1405,52 @@ useEffect(() => {
   ] as const;
 
   type RequiredKey = (typeof requiredFieldKeys)[number];
-
-  // ✅ Clover blur 有时会包一层 { realTimeFormState: {...} }
-  const unwrapCloverEvent = (
-    event: CloverEventPayload | null | undefined,
-  ): CloverFieldChangeEvent | CloverAggregatedFieldEvent => {
-    if (event && typeof event === "object") {
-      const maybe = event as { realTimeFormState?: unknown };
-      if (maybe.realTimeFormState && typeof maybe.realTimeFormState === "object") {
-        return maybe.realTimeFormState as CloverAggregatedFieldEvent;
-      }
-    }
-    return event as CloverFieldChangeEvent | CloverAggregatedFieldEvent;
-  };
+  type CloverFieldKey = RequiredKey | "CARD_NAME";
 
   const getFieldFromEvent = (
     event: CloverEventPayload,
-    key: RequiredKey,
+    key: CloverFieldKey,
   ): CloverFieldChangeEvent => {
-    const unwrapped = unwrapCloverEvent(event);
+    if (event && typeof event === "object") {
+      const e = event as {
+        data?: { realTimeFormState?: unknown } | undefined;
+        realTimeFormState?: unknown;
+      };
 
-    if (unwrapped && typeof unwrapped === "object") {
-      const aggregated = unwrapped as CloverAggregatedFieldEvent;
-      const fieldEvent = aggregated[key];
-      if (fieldEvent && typeof fieldEvent === "object") {
-        return fieldEvent as CloverFieldChangeEvent;
+      const rts =
+        (e.data && typeof e.data === "object"
+          ? (e.data as { realTimeFormState?: unknown }).realTimeFormState
+          : undefined) ?? e.realTimeFormState;
+
+      if (rts && typeof rts === "object") {
+        const rec = rts as Record<string, unknown>;
+        const v = rec[key];
+        if (v && typeof v === "object") return v as CloverFieldChangeEvent;
       }
     }
 
-    // fallback：如果 Clover 某些情况下直接给字段对象
-    return unwrapped as CloverFieldChangeEvent;
+    // 有些 change 事件可能直接给字段对象
+    return event as unknown as CloverFieldChangeEvent;
+  };
+
+  const hasError = (field?: CloverFieldChangeEvent) => {
+    const err = field?.error;
+    if (!err) return false;
+    if (typeof err === "string") return err.trim().length > 0;
+    if (typeof err === "object" && err && "message" in err) {
+      const msg = (err as { message?: unknown }).message;
+      return typeof msg === "string" && msg.trim().length > 0;
+    }
+    return true;
   };
 
   const isFieldPayable = (field?: CloverFieldChangeEvent) =>
-    Boolean(field?.touched) && (field?.info ?? "") === "";
+    Boolean(field?.complete) && !hasError(field);
 
   const computeCanPay = (
-    event: CloverEventPayload,
+    state: Partial<Record<RequiredKey, CloverFieldChangeEvent>>,
   ) => {
-    const unwrapped = unwrapCloverEvent(event);
-
-    // 在现有 ref 基础上合并最新状态
-    const nextFieldState: Record<string, CloverFieldChangeEvent> = {
-      ...cloverFieldStateRef.current,
-    };
-
-    if (unwrapped && typeof unwrapped === "object") {
-      const aggregated = unwrapped as CloverAggregatedFieldEvent;
-      for (const k of requiredFieldKeys) {
-        const v = aggregated[k];
-        if (v && typeof v === "object") {
-          nextFieldState[k] = v as CloverFieldChangeEvent;
-        }
-      }
-    }
-
-    cloverFieldStateRef.current = nextFieldState;
-
-    return requiredFieldKeys.every((k) => isFieldPayable(nextFieldState[k]));
+    return requiredFieldKeys.every((k) => isFieldPayable(state[k]));
   };
 
   const setupClover = async () => {
@@ -1513,7 +1503,7 @@ useEffect(() => {
       cardCvvRef.current = cardCvv;
       cardPostalRef.current = cardPostal;
 
-      const handleFieldEvent = (key: RequiredKey, raw: CloverEventPayload) => {
+      const handleFieldEvent = (key: CloverFieldKey, raw: CloverEventPayload) => {
         const fieldEvent = getFieldFromEvent(raw, key);
 
         cloverFieldStateRef.current = {
@@ -1521,8 +1511,7 @@ useEffect(() => {
           [key]: fieldEvent,
         };
 
-        // ✅ 用“整套状态（含 realTimeFormState）”计算 canPay
-        const nextCanPay = computeCanPay(raw);
+        const nextCanPay = computeCanPay(cloverFieldStateRef.current);
         setCanPay(nextCanPay);
         console.log("[CLOVER] nextCanPay=", nextCanPay, cloverFieldStateRef.current);
         return fieldEvent;
