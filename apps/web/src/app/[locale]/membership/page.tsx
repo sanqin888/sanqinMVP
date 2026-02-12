@@ -3415,8 +3415,8 @@ function ProfileSection({
           <div className="mt-2 flex items-center justify-between">
             <p className="text-[11px] text-slate-500">
               {isZh
-                ? '勾选后，我们会不定期发送新品、优惠活动等邮件给你。'
-                : 'If enabled, we may send you occasional updates about new items and promotions.'}
+                ? '勾选后，我们会不定期发送新品、优惠活动等邮件给你。勾选即表示你同意接收营销邮件，并可随时退订。我们将按《隐私政策》保护你的信息。'
+                : 'Tick this box and we’ll occasionally email you new items and special offers. By subscribing, you agree to receive marketing emails, and you can unsubscribe at any time. We will protect your information in accordance with our Privacy Policy.'}
             </p>
             <button
               type="button"
