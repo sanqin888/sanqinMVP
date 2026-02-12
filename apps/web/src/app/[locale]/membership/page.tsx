@@ -2623,10 +2623,42 @@ function CouponsSection({
     expired: 'bg-rose-100 text-rose-700',
   };
 
+  const statusOrder: CouponStatus[] = ['active', 'used', 'expired'];
+  const [selectedStatus, setSelectedStatus] = useState<CouponStatus>('active');
+
+  const couponsByStatus = statusOrder.reduce<Record<CouponStatus, Coupon[]>>(
+    (acc, status) => {
+      acc[status] = [];
+      return acc;
+    },
+    { active: [], used: [], expired: [] },
+  );
+
+  coupons.forEach((coupon) => {
+    const status = coupon.status ?? 'active';
+    couponsByStatus[status].push(coupon);
+  });
+
+  const currentCoupons = couponsByStatus[selectedStatus];
+
+  const mergedCurrentCoupons = currentCoupons.reduce<
+    Array<{ coupon: Coupon; count: number }>
+  >((acc, coupon) => {
+    const existing = acc.find((item) => item.coupon.title === coupon.title);
+
+    if (existing) {
+      existing.count += 1;
+      return acc;
+    }
+
+    acc.push({ coupon, count: 1 });
+    return acc;
+  }, []);
+
   return (
     <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
       <h2 className="mb-3 text-sm font-medium text-slate-900">
-        {isZh ? '优惠卷' : 'Coupons'}
+        {isZh ? '优惠券' : 'Coupons'}
       </h2>
 
       {loading && (
@@ -2639,8 +2671,31 @@ function CouponsSection({
         <p className="text-[11px] text-red-600">{error}</p>
       )}
 
+      {!loading && coupons.length > 0 && (
+        <div className="mb-3 flex flex-wrap gap-2">
+          {statusOrder.map((status) => {
+            const isActive = status === selectedStatus;
+
+            return (
+              <button
+                key={status}
+                type="button"
+                onClick={() => setSelectedStatus(status)}
+                className={`rounded-full border px-3 py-1 text-[11px] font-medium transition ${
+                  isActive
+                    ? 'border-slate-900 bg-slate-900 text-white'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900'
+                }`}
+              >
+                {statusLabel[status]} ({couponsByStatus[status].length})
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <div className="space-y-3 text-xs text-slate-700">
-        {coupons.map((coupon) => {
+        {mergedCurrentCoupons.map(({ coupon, count }) => {
           const status = coupon.status ?? 'active';
 
           return (
@@ -2651,7 +2706,7 @@ function CouponsSection({
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">
-                    {coupon.title}
+                    {coupon.title} *{count}
                   </p>
                   <p className="text-[11px] text-slate-500">{coupon.source}</p>
                 </div>
@@ -2696,6 +2751,12 @@ function CouponsSection({
         {coupons.length === 0 && !loading && (
           <p className="text-xs text-slate-500">
             {isZh ? '暂无可用优惠券。' : 'No coupons available right now.'}
+          </p>
+        )}
+
+        {coupons.length > 0 && mergedCurrentCoupons.length === 0 && !loading && (
+          <p className="text-xs text-slate-500">
+            {isZh ? '该分类暂无优惠券。' : 'No coupons in this category yet.'}
           </p>
         )}
       </div>
