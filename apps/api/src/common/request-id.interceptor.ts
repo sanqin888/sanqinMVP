@@ -14,6 +14,10 @@ import { runWithLogContext } from './log-context';
 @Injectable()
 export class RequestIdInterceptor implements NestInterceptor {
   private readonly logger = new Logger(RequestIdInterceptor.name);
+  private readonly quietPaths = [
+    '/api/v1/pos/orders/board',
+    '/api/v1/public/store-status',
+  ];
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     // 只处理 HTTP 请求
@@ -50,12 +54,19 @@ export class RequestIdInterceptor implements NestInterceptor {
     }
 
     const { method, url } = request;
+    const requestPath = request.originalUrl ?? url;
+    const shouldSkipInfoLog = this.quietPaths.some((path) =>
+      requestPath.startsWith(path),
+    );
 
     // 3) runWithLogContext：把 requestId 写入 AsyncLocalStorage
     return runWithLogContext({ requestId }, () =>
       next.handle().pipe(
         tap({
           next: () => {
+            if (shouldSkipInfoLog) {
+              return;
+            }
             const ms = Date.now() - start;
             const status = response?.statusCode;
             this.logger.log(
