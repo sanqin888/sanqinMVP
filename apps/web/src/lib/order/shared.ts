@@ -58,8 +58,8 @@ export type HostedCheckoutResponse = {
 };
 
 export type CardTokenPaymentResponse = {
-  orderStableId: string;
-  orderNumber: string;
+  orderStableId?: string;
+  orderNumber?: string;
   paymentId?: string;
   status: string;
   challengeUrl?: string | null;

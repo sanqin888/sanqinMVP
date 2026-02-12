@@ -839,6 +839,7 @@ export default function CheckoutPage() {
   const [challengeIntentId, setChallengeIntentId] = useState<string | null>(
     null,
   );
+  const [checkoutStatusPollTick, setCheckoutStatusPollTick] = useState(0);
   const cloverRef = useRef<null | { createToken: () => Promise<{ token?: string; errors?: Array<{ message?: string }> }> }>(
     null,
   );
@@ -1767,7 +1768,19 @@ const getFieldFromEvent = (
     return () => {
       cancelled = true;
     };
-  }, [challengeIntentId, clearCheckoutIntentId, locale, router]);
+  }, [
+    challengeIntentId,
+    checkoutStatusPollTick,
+    clearCheckoutIntentId,
+    locale,
+    router,
+  ]);
+
+  const startCheckoutStatusPolling = useCallback((intentId: string | null) => {
+    if (!intentId) return;
+    setChallengeIntentId(intentId);
+    setCheckoutStatusPollTick((prev) => prev + 1);
+  }, []);
 
   const scheduleLabel =
     strings.scheduleOptions.find((option) => option.id === schedule)?.label ??
@@ -2817,7 +2830,7 @@ const getFieldFromEvent = (
       if (paymentResponse.status === "CHALLENGE_REQUIRED") {
         if (paymentResponse.challengeUrl) {
           setChallengeUrl(paymentResponse.challengeUrl);
-          setChallengeIntentId(checkoutIntentId ?? null);
+          startCheckoutStatusPolling(checkoutIntentId ?? null);
           setPayFlowState("CHALLENGE");
           setErrorMessage(null);
           return;
@@ -2831,6 +2844,46 @@ const getFieldFromEvent = (
         return;
       }
 
+      const normalizedPaymentStatus = paymentResponse.status
+        ?.toString()
+        .toLowerCase();
+      if (
+        checkoutIntentId &&
+        ["processing", "pending", "requires_action", "requires_authentication"].includes(
+          normalizedPaymentStatus,
+        )
+      ) {
+        setPayFlowState("PROCESSING");
+        setChallengeUrl(null);
+        setErrorMessage(
+          locale === "zh"
+            ? "支付正在处理中，请稍候，我们会自动更新支付结果。"
+            : "Payment is processing. Please wait while we update the result.",
+        );
+        startCheckoutStatusPolling(checkoutIntentId);
+        return;
+      }
+
+      if (!paymentResponse.orderStableId) {
+        if (checkoutIntentId) {
+          setPayFlowState("PROCESSING");
+          setChallengeUrl(null);
+          setErrorMessage(
+            locale === "zh"
+              ? "支付处理中，请稍候，我们会自动刷新订单状态。"
+              : "Payment is still processing. We'll refresh your order status automatically.",
+          );
+          startCheckoutStatusPolling(checkoutIntentId);
+          return;
+        }
+
+        throw new Error(
+          locale === "zh"
+            ? "支付状态未知，请稍后在订单页面确认。"
+            : "Payment status is unknown. Please verify from your orders shortly.",
+        );
+      }
+
       clearCheckoutIntentId();
       setPayFlowState("DONE");
 
@@ -2838,7 +2891,7 @@ const getFieldFromEvent = (
         router.push(`/${locale}/thank-you/${paymentResponse.orderStableId}`);
       } else {
         setConfirmation({
-          orderNumber: paymentResponse.orderNumber,
+          orderNumber: paymentResponse.orderNumber ?? paymentResponse.orderStableId,
           totalCents: totalCentsForOrder,
           fulfillment,
         });
@@ -2866,7 +2919,7 @@ const getFieldFromEvent = (
               ? payload.checkoutIntentId
               : checkoutIntentIdRef.current;
           setPayFlowState("PROCESSING");
-          setChallengeIntentId(inProgressIntentId ?? null);
+          startCheckoutStatusPolling(inProgressIntentId ?? null);
           setErrorMessage(
             locale === "zh"
               ? "订单正在处理中，请稍候，我们会自动更新支付结果。"
