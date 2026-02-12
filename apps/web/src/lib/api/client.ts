@@ -88,8 +88,10 @@ export async function apiFetch<T>(
     payload = { code: response.ok ? 'OK' : 'ERROR', message: text };
   }
 
-  // 401/403：按当前路径分流到 admin / pos 登录
-  if (response.status === 401 || response.status === 403) {
+  // 仅在明确“未登录/会话失效(401)”时跳转登录页。
+  // 403 常见于“已登录但权限不足”，例如 staff 访问 admin-only 接口，
+  // 这种情况不应该被当作登出处理。
+  if (response.status === 401) {
     if (typeof window !== 'undefined') {
       const pathname = window.location.pathname;
       const locale = pathname.split('/')[1];
