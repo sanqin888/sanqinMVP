@@ -24,6 +24,7 @@ export class AdminBusinessController {
    * - 节假日
    */
   @Get('config')
+  @Roles('ADMIN', 'STAFF')
   async getConfig(): Promise<BusinessConfigResponse> {
     return this.service.getConfig();
   }
