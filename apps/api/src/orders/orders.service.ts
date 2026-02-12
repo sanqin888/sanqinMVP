@@ -1563,7 +1563,16 @@ export class OrdersService {
         throw new BadRequestException('Payment intent not found.');
       }
 
-      if (intent.status !== 'succeeded' && intent.status !== 'completed') {
+      const confirmedIntentStatuses = [
+        'succeeded',
+        'completed',
+        // Clover card-token flow may claim the checkout intent before order
+        // creation, which moves it into a transient processing state.
+        'processing',
+        'creating_order',
+      ];
+
+      if (!confirmedIntentStatuses.includes(intent.status)) {
         throw new BadRequestException(
           `Payment not confirmed. Status: ${intent.status}`,
         );
@@ -1992,7 +2001,14 @@ export class OrdersService {
               const consumeIntent = await tx.checkoutIntent.updateMany({
                 where: {
                   id: verifiedCheckoutIntent.id,
-                  status: { in: ['succeeded', 'completed'] },
+                  status: {
+                    in: [
+                      'succeeded',
+                      'completed',
+                      'processing',
+                      'creating_order',
+                    ],
+                  },
                   orderId: null,
                 },
                 data: {
