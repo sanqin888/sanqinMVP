@@ -7,19 +7,40 @@ import {
 import { Consumer } from 'sqs-consumer';
 import { SQSClient } from '@aws-sdk/client-sqs';
 import { LoyaltyService } from './loyalty.service';
+import { OrderEventsBus } from '../messaging/order-events.bus';
 
 @Injectable()
 export class LoyaltyEventProcessor implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(LoyaltyEventProcessor.name);
   private consumer?: Consumer;
 
-  constructor(private readonly loyaltyService: LoyaltyService) {}
+  private readonly onOrderPaidVerified = async (payload: {
+    orderId: string;
+    userId?: string;
+    amountCents?: number;
+    redeemValueCents?: number;
+  }) => {
+    await this.handleOrderPaid({
+      orderId: payload.orderId,
+      userId: payload.userId,
+      amountCents: payload.amountCents,
+      redeemValueCents: payload.redeemValueCents,
+      source: 'order-events-bus',
+    });
+  };
+
+  constructor(
+    private readonly loyaltyService: LoyaltyService,
+    private readonly orderEventsBus: OrderEventsBus,
+  ) {}
 
   onModuleInit() {
+    this.orderEventsBus.onOrderPaidVerified(this.onOrderPaidVerified);
+
     const queueUrl = process.env.LOYALTY_SQS_QUEUE_URL;
     if (!queueUrl) {
       this.logger.warn(
-        'LOYALTY_SQS_QUEUE_URL not found, Loyalty processor disabled.',
+        'LOYALTY_SQS_QUEUE_URL not found, Loyalty SQS consumer disabled.',
       );
       return;
     }
@@ -55,6 +76,7 @@ export class LoyaltyEventProcessor implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleDestroy() {
+    this.orderEventsBus.offOrderPaidVerified(this.onOrderPaidVerified);
     if (this.consumer) {
       this.consumer.stop();
     }
@@ -92,18 +114,40 @@ export class LoyaltyEventProcessor implements OnModuleInit, OnModuleDestroy {
 
     // 业务路由：只处理 ORDER_PAID
     if (eventPayload.event === 'ORDER_PAID') {
-      const { orderId, userId, amountCents, redeemValueCents } = eventPayload;
-
-      this.logger.log(
-        `Processing ORDER_PAID for order=${orderId}, user=${userId}`,
-      );
-
-      await this.loyaltyService.settleOnPaid({
-        orderId: orderId ?? '',
-        userId,
-        subtotalCents: amountCents ?? 0,
-        redeemValueCents: redeemValueCents ?? 0,
+      await this.handleOrderPaid({
+        orderId: eventPayload.orderId,
+        userId: eventPayload.userId,
+        amountCents: eventPayload.amountCents,
+        redeemValueCents: eventPayload.redeemValueCents,
+        source: 'sqs',
       });
     }
+  }
+
+  private async handleOrderPaid(params: {
+    orderId?: string;
+    userId?: string;
+    amountCents?: number;
+    redeemValueCents?: number;
+    source: 'sqs' | 'order-events-bus';
+  }) {
+    const orderId = params.orderId?.trim();
+    if (!orderId) {
+      this.logger.warn(
+        `[Loyalty] Ignore ORDER_PAID from ${params.source}: missing orderId`,
+      );
+      return;
+    }
+
+    this.logger.log(
+      `[Loyalty] Processing ORDER_PAID from ${params.source} for order=${orderId}, user=${params.userId ?? 'N/A'}`,
+    );
+
+    await this.loyaltyService.settleOnPaid({
+      orderId,
+      userId: params.userId,
+      subtotalCents: params.amountCents ?? 0,
+      redeemValueCents: params.redeemValueCents ?? 0,
+    });
   }
 }
