@@ -40,6 +40,11 @@ type LoyaltyConfig = {
   tierMultipliers: Record<Tier, number>;
 };
 
+type OrderForLoyaltySettlement = Pick<
+  Prisma.OrderGetPayload<Record<string, never>>,
+  'id' | 'userId' | 'subtotalCents' | 'loyaltyRedeemCents'
+>;
+
 function computeTierFromLifetime(
   lifetimeSpendCents: number,
   thresholds: LoyaltyConfig['tierThresholdCents'],
@@ -334,6 +339,51 @@ export class LoyaltyService {
         lifetimeSpendCents: true,
       },
     });
+  }
+
+  async grantPointsForOrder(
+    order: OrderForLoyaltySettlement,
+  ): Promise<{ pointsEarned: number }> {
+    const existingEarn = await this.prisma.loyaltyLedger.findUnique({
+      where: {
+        orderId_type_sourceKey: {
+          orderId: order.id,
+          type: LoyaltyEntryType.EARN_ON_PURCHASE,
+          sourceKey: LEDGER_SOURCE_ORDER,
+        },
+      },
+      select: { deltaMicro: true },
+    });
+
+    if (existingEarn) {
+      return {
+        pointsEarned: Number(existingEarn.deltaMicro) / Number(MICRO_PER_POINT),
+      };
+    }
+
+    await this.settleOnPaid({
+      orderId: order.id,
+      userId: order.userId ?? undefined,
+      subtotalCents: order.subtotalCents ?? 0,
+      redeemValueCents: order.loyaltyRedeemCents ?? 0,
+    });
+
+    const earnedLedger = await this.prisma.loyaltyLedger.findUnique({
+      where: {
+        orderId_type_sourceKey: {
+          orderId: order.id,
+          type: LoyaltyEntryType.EARN_ON_PURCHASE,
+          sourceKey: LEDGER_SOURCE_ORDER,
+        },
+      },
+      select: { deltaMicro: true },
+    });
+
+    return {
+      pointsEarned: earnedLedger
+        ? Number(earnedLedger.deltaMicro) / Number(MICRO_PER_POINT)
+        : 0,
+    };
   }
 
   /** 只读：返回当前余额 micro */
