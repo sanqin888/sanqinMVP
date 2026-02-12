@@ -8,7 +8,7 @@ import { DoorDashDriveService } from '../deliveries/doordash-drive.service';
 import { LocationService } from '../location/location.service';
 import { NotificationService } from '../notifications/notification.service';
 import { EmailService } from '../email/email.service';
-import { OrderEventsBus } from './order-events.bus';
+import { OrderEventsBus } from '../messaging/order-events.bus';
 import { DeliveryType } from '@prisma/client';
 import { CreateOrderInput } from '@shared/order';
 
@@ -66,10 +66,13 @@ describe('OrdersService', () => {
     notifyDeliveryDispatchFailed: jest.Mock;
   };
   let emailService: { sendOrderInvoice: jest.Mock };
-  let orderEventsBus: {
-    emitOrderAccepted: jest.Mock;
-    emitOrderPaidVerified: jest.Mock;
-  };
+  let orderEventsBus: OrderEventsBus;
+  let emitOrderAccepted: jest.SpiedFunction<
+    OrderEventsBus['emitOrderAccepted']
+  >;
+  let emitOrderPaidVerified: jest.SpiedFunction<
+    OrderEventsBus['emitOrderPaidVerified']
+  >;
   beforeEach(() => {
     process.env.UBER_DIRECT_ENABLED = '1';
     const demoProductId = 'c1234567890abcdefghijklmn';
@@ -197,10 +200,13 @@ describe('OrdersService', () => {
       sendOrderInvoice: jest.fn(),
     };
 
-    orderEventsBus = {
-      emitOrderAccepted: jest.fn(),
-      emitOrderPaidVerified: jest.fn(),
-    };
+    orderEventsBus = new OrderEventsBus();
+    emitOrderAccepted = jest
+      .spyOn(orderEventsBus, 'emitOrderAccepted')
+      .mockImplementation(() => undefined);
+    emitOrderPaidVerified = jest
+      .spyOn(orderEventsBus, 'emitOrderPaidVerified')
+      .mockImplementation(() => undefined);
 
     service = new OrdersService(
       prisma as unknown as PrismaService,
@@ -211,7 +217,7 @@ describe('OrdersService', () => {
       locationService as unknown as LocationService,
       notificationService as unknown as NotificationService,
       emailService as unknown as EmailService,
-      orderEventsBus as unknown as OrderEventsBus,
+      orderEventsBus,
     );
   });
 
@@ -275,6 +281,7 @@ describe('OrdersService', () => {
 
       // ✅ 因为没有 deliveryDestination，不会调 Uber Direct
       expect(uberDirect.createDelivery).not.toHaveBeenCalled();
+      expect(emitOrderAccepted).not.toHaveBeenCalled();
     });
   });
 
@@ -333,7 +340,7 @@ describe('OrdersService', () => {
     };
 
     return service.create(dto).then(() => {
-      expect(orderEventsBus.emitOrderPaidVerified).toHaveBeenCalledWith(
+      expect(emitOrderPaidVerified).toHaveBeenCalledWith(
         expect.objectContaining({
           orderId: 'order-1',
           amountCents: 1000,
@@ -401,13 +408,15 @@ describe('OrdersService', () => {
     // ✅ 不会删除订单
     expect(prisma.order.delete).not.toHaveBeenCalled();
 
-    expect(orderEventsBus.emitOrderPaidVerified).toHaveBeenCalledWith(
+    expect(emitOrderPaidVerified).toHaveBeenCalledWith(
       expect.objectContaining({
         orderId: 'order-err',
         amountCents: 1000,
         redeemValueCents: 0,
       }),
     );
-    expect(notificationService.notifyDeliveryDispatchFailed).not.toHaveBeenCalled();
+    expect(
+      notificationService.notifyDeliveryDispatchFailed,
+    ).not.toHaveBeenCalled();
   });
 });
