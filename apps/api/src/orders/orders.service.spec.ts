@@ -460,17 +460,17 @@ describe('OrdersService', () => {
       totalCents: 1130,
     };
 
-    const order = await service.createImmediatePaid(dto, 'ref-1');
+    await expect(
+      service.createImmediatePaid(dto, 'ref-1'),
+    ).resolves.toMatchObject({
+      orderStableId: 'cord-processing-intent',
+    });
 
-    expect(order.orderStableId).toBe('cord-processing-intent');
-    expect(prisma.checkoutIntent.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          status: expect.objectContaining({
-            in: expect.arrayContaining(['processing', 'creating_order']),
-          }),
-        }),
-      }),
+    expect(prisma.checkoutIntent.updateMany).toHaveBeenCalled();
+    const [firstUpdateManyCall] = prisma.checkoutIntent.updateMany.mock
+      .calls as Array<[{ where?: { status?: { in?: string[] } } }]>;
+    expect(firstUpdateManyCall[0].where?.status?.in).toEqual(
+      expect.arrayContaining(['processing', 'creating_order']),
     );
   });
 });
