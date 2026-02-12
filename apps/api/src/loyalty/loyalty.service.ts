@@ -40,7 +40,10 @@ type LoyaltyConfig = {
   tierMultipliers: Record<Tier, number>;
 };
 
-type OrderWithUser = Prisma.OrderGetPayload<{ include: { user: true } }>;
+type OrderForLoyaltySettlement = Pick<
+  Prisma.OrderGetPayload<Record<string, never>>,
+  'id' | 'userId' | 'subtotalCents' | 'loyaltyRedeemCents'
+>;
 
 function computeTierFromLifetime(
   lifetimeSpendCents: number,
@@ -339,7 +342,7 @@ export class LoyaltyService {
   }
 
   async grantPointsForOrder(
-    order: OrderWithUser,
+    order: OrderForLoyaltySettlement,
   ): Promise<{ pointsEarned: number }> {
     const existingEarn = await this.prisma.loyaltyLedger.findUnique({
       where: {
