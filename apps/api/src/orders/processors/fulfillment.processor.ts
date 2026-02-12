@@ -12,6 +12,7 @@ import {
   UberDirectDropoffDetails,
   UberDirectService,
 } from '../../deliveries/uber-direct.service';
+import { PrintPosPayloadService } from '../print-pos-payload.service';
 
 @Injectable()
 export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
@@ -99,8 +100,8 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
 
     const order = await this.prisma.order.findUnique({
       where: { id: payload.orderId },
-      include: {
-        items: true,
+      select: {
+        orderStableId: true,
       },
     });
 
@@ -109,8 +110,13 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    const printPayload = await this.printPosPayloadService.getByStableId(
+      order.orderStableId,
+      'zh',
+    );
+
     const storeId = process.env.STORE_ID || 'default_store';
-    this.posGateway.sendPrintJob(storeId, order);
+    this.posGateway.sendPrintJob(storeId, printPayload);
   };
 
   constructor(
@@ -118,6 +124,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly uberDirect: UberDirectService,
     private readonly posGateway: PosGateway,
+    private readonly printPosPayloadService: PrintPosPayloadService,
   ) {}
 
   onModuleInit() {

@@ -27,12 +27,16 @@ import { OrderAmendmentType, PaymentMethod } from '@prisma/client';
 import type { OrderDto } from '../orders/dto/order.dto';
 import type { PrintPosPayloadDto } from './dto/print-pos-payload.dto';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
+import { PrintPosPayloadService } from '../orders/print-pos-payload.service';
 
 @Controller('pos/orders')
 @UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
 @Roles('ADMIN', 'STAFF')
 export class PosOrdersController {
-  constructor(private readonly orders: OrdersService) {}
+  constructor(
+    private readonly orders: OrdersService,
+    private readonly printPosPayloadService: PrintPosPayloadService,
+  ) {}
 
   @Post()
   @HttpCode(201)
@@ -93,7 +97,7 @@ export class PosOrdersController {
     @Param('orderStableId', StableIdPipe) orderStableId: string,
     @Query('locale') locale?: string,
   ): Promise<PrintPosPayloadDto> {
-    return this.orders.getPrintPayloadByStableId(orderStableId, locale);
+    return this.printPosPayloadService.getByStableId(orderStableId, locale);
   }
 
   @Patch(':orderStableId/status')

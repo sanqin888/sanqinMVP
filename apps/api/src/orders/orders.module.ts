@@ -13,6 +13,7 @@ import { EmailModule } from '../email/email.module';
 import { MessagingModule } from '../messaging/messaging.module';
 import { NotificationProcessor } from './processors/notification.processor';
 import { FulfillmentProcessor } from './processors/fulfillment.processor';
+import { PrintPosPayloadService } from './print-pos-payload.service';
 
 @Module({
   imports: [
@@ -27,7 +28,12 @@ import { FulfillmentProcessor } from './processors/fulfillment.processor';
     MessagingModule,
   ],
   controllers: [OrdersController],
-  providers: [OrdersService, NotificationProcessor, FulfillmentProcessor],
-  exports: [OrdersService],
+  providers: [
+    OrdersService,
+    PrintPosPayloadService,
+    NotificationProcessor,
+    FulfillmentProcessor,
+  ],
+  exports: [OrdersService, PrintPosPayloadService],
 })
 export class OrdersModule {}

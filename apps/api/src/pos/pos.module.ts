@@ -6,11 +6,13 @@ import { PosSummaryService } from './pos-summary.service';
 import { AuthModule } from '../auth/auth.module';
 import { RolesGuard } from '../auth/roles.guard';
 import { PosDeviceModule } from './pos-device.module'; // 引入新模块
+import { OrdersModule } from '../orders/orders.module';
 
 @Module({
   imports: [
     AuthModule,
     PosDeviceModule, // 引入基础设备模块
+    OrdersModule,
   ],
   controllers: [
     PosSummaryController,
