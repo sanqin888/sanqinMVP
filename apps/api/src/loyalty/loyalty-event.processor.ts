@@ -64,5 +64,16 @@ export class LoyaltyEventProcessor {
       );
       // 积分失败通常不需要抛出异常阻断流程，记录错误即可，后续可人工补录
     }
+
+    this.logger.log(
+      `[Loyalty] Processing ORDER_PAID from ${params.source} for order=${orderId}, user=${params.userId ?? 'N/A'}`,
+    );
+
+    await this.loyaltyService.settleOnPaid({
+      orderId,
+      userId: params.userId,
+      subtotalCents: params.amountCents ?? 0,
+      redeemValueCents: params.redeemValueCents ?? 0,
+    });
   }
 }
