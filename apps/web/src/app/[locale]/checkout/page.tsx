@@ -1904,10 +1904,18 @@ const getFieldFromEvent = (
       setPhoneVerificationStep("codeSent");
     } catch (err) {
       console.error(err);
+      const errMessage = err instanceof Error ? err.message.toLowerCase() : "";
+      const isDailyLimitReached = errMessage.includes(
+        "too many requests in a day",
+      );
       setPhoneVerificationError(
-        locale === "zh"
-          ? "验证码发送失败，请稍后重试。"
-          : "Failed to send verification code. Please try again.",
+        isDailyLimitReached
+          ? locale === "zh"
+            ? "今日验证码发送次数已达上限，请更换手机号再试。"
+            : "Daily verification code request limit reached. Please try again with another phone number."
+          : locale === "zh"
+            ? "验证码发送失败，请稍后重试。"
+            : "Failed to send verification code. Please try again.",
       );
     } finally {
       setPhoneVerificationLoading(false);
