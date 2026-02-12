@@ -1,4 +1,10 @@
-import { DeliveryProvider, FulfillmentType, Prisma } from '@prisma/client';
+import {
+  Channel,
+  DeliveryProvider,
+  FulfillmentType,
+  PaymentMethod,
+  Prisma,
+} from '@prisma/client';
 import {
   Injectable,
   Logger,
@@ -12,6 +18,8 @@ import {
   UberDirectDropoffDetails,
   UberDirectService,
 } from '../../deliveries/uber-direct.service';
+import type { PrintPosPayloadDto } from '../../pos/dto/print-pos-payload.dto';
+import type { OrderItemOptionsSnapshot } from '../order-item-options';
 
 @Injectable()
 export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
@@ -99,8 +107,32 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
 
     const order = await this.prisma.order.findUnique({
       where: { id: payload.orderId },
-      include: {
-        items: true,
+      select: {
+        orderStableId: true,
+        clientRequestId: true,
+        pickupCode: true,
+        fulfillmentType: true,
+        paymentMethod: true,
+        channel: true,
+        subtotalCents: true,
+        taxCents: true,
+        totalCents: true,
+        couponDiscountCents: true,
+        loyaltyRedeemCents: true,
+        deliveryFeeCents: true,
+        deliveryCostCents: true,
+        deliverySubsidyCents: true,
+        items: {
+          select: {
+            productStableId: true,
+            nameZh: true,
+            nameEn: true,
+            displayName: true,
+            qty: true,
+            unitPriceCents: true,
+            optionsJson: true,
+          },
+        },
       },
     });
 
@@ -110,7 +142,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
     }
 
     const storeId = process.env.STORE_ID || 'default_store';
-    this.posGateway.sendPrintJob(storeId, order);
+    this.posGateway.sendPrintJob(storeId, this.toPrintPosPayload(order));
   };
 
   constructor(
@@ -187,5 +219,84 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
     const parsed = new Date(pickupTime);
     if (Number.isNaN(parsed.getTime())) return undefined;
     return parsed;
+  }
+
+  private toPrintPosPayload(order: {
+    orderStableId: string;
+    clientRequestId: string | null;
+    pickupCode: string | null;
+    fulfillmentType: FulfillmentType;
+    paymentMethod: PaymentMethod;
+    channel: Channel;
+    subtotalCents: number | null;
+    taxCents: number | null;
+    totalCents: number | null;
+    couponDiscountCents: number | null;
+    loyaltyRedeemCents: number | null;
+    deliveryFeeCents: number | null;
+    deliveryCostCents: number | null;
+    deliverySubsidyCents: number | null;
+    items: Array<{
+      productStableId: string;
+      nameZh: string | null;
+      nameEn: string | null;
+      displayName: string | null;
+      qty: number;
+      unitPriceCents: number | null;
+      optionsJson: Prisma.JsonValue | null;
+    }>;
+  }): PrintPosPayloadDto {
+    const paymentMethod = (() => {
+      switch (order.paymentMethod) {
+        case PaymentMethod.CASH:
+          return 'cash';
+        case PaymentMethod.CARD:
+          return 'card';
+        case PaymentMethod.WECHAT_ALIPAY:
+          return 'wechat_alipay';
+        case PaymentMethod.STORE_BALANCE:
+          return 'store_balance';
+        default:
+          return order.channel === Channel.in_store ? 'cash' : 'card';
+      }
+    })();
+
+    const deliveryFeeCents = order.deliveryFeeCents ?? 0;
+    const deliveryCostCents = order.deliveryCostCents ?? 0;
+    const deliverySubsidyCentsRaw = order.deliverySubsidyCents;
+    const deliverySubsidyCents =
+      typeof deliverySubsidyCentsRaw === 'number' &&
+      Number.isFinite(deliverySubsidyCentsRaw)
+        ? Math.max(0, Math.round(deliverySubsidyCentsRaw))
+        : Math.max(0, deliveryCostCents - deliveryFeeCents);
+
+    return {
+      locale: 'zh',
+      orderNumber: order.clientRequestId ?? order.orderStableId,
+      pickupCode: order.pickupCode,
+      fulfillment: order.fulfillmentType,
+      paymentMethod,
+      snapshot: {
+        items: order.items.map((item) => ({
+          productStableId: item.productStableId,
+          nameZh: item.nameZh,
+          nameEn: item.nameEn,
+          displayName: item.displayName,
+          quantity: item.qty,
+          lineTotalCents: (item.unitPriceCents ?? 0) * item.qty,
+          options: Array.isArray(item.optionsJson)
+            ? (item.optionsJson as OrderItemOptionsSnapshot)
+            : null,
+        })),
+        subtotalCents: order.subtotalCents ?? 0,
+        taxCents: order.taxCents ?? 0,
+        totalCents: order.totalCents ?? 0,
+        discountCents:
+          (order.couponDiscountCents ?? 0) + (order.loyaltyRedeemCents ?? 0),
+        deliveryFeeCents,
+        deliveryCostCents,
+        deliverySubsidyCents,
+      },
+    };
   }
 }
