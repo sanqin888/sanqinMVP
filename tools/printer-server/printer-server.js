@@ -13,7 +13,7 @@ const os = require("os");
 const path = require("path");
 const { exec } = require("child_process");
 const iconv = require("iconv-lite");
-const Jimp = require("jimp");
+const { Jimp } = require("jimp");
 const io = require('socket.io-client');
 require('dotenv').config();
 // === 打印机配置 ===
@@ -237,24 +237,7 @@ async function buildCustomerReceiptEscPos(params) {
   chunks.push(cmd(ESC, 0x40)); // ESC @
 
   // ✅ 行距调紧（减少整体留白）
-  chunks.push(cmd(ESC, 0x33, 30));
-
-  // ==== Logo（可选） ====
-  try {
-    const logoPath =
-      process.env.POS_LOGO_PATH || path.join(__dirname, "assets", "logo.png");
-    if (fs.existsSync(logoPath)) {
-      chunks.push(cmd(ESC, 0x61, 0x01)); // 居中
-      const logoBuf = await escposRasterFromImage(logoPath, LOGO_WIDTH_DOTS);
-      chunks.push(logoBuf);
-      chunks.push(cmd(ESC, 0x61, 0x00)); // 左对齐
-      chunks.push(encLine("")); // 多给一行喘气
-    } else {
-      console.warn("[logo] 未找到 logo 文件，跳过:", logoPath);
-    }
-  } catch (e) {
-    console.warn("[logo] 打印logo失败，跳过:", e?.message || e);
-  }
+  chunks.push(cmd(ESC, 0x33, 36));
 
   // ==== 取餐码（如果有的话） ====
   if (pickupCode) {
@@ -276,8 +259,27 @@ async function buildCustomerReceiptEscPos(params) {
   chunks.push(cmd(GS, 0x21, 0x01)); // 双倍高度（字体更显眼）
   chunks.push(encLine("三秦肉夹馍"));
   chunks.push(encLine("SanQ Rougiamo"));
+  chunks.push(encLine("www.sanq.ca"));
   chunks.push(cmd(GS, 0x21, 0x00)); // 恢复正常大小
   chunks.push(cmd(ESC, 0x45, 0x00)); // 取消加粗
+
+  // ==== Logo（可选） ====
+  try {
+    const logoPath =
+      process.env.POS_LOGO_PATH || path.join(__dirname, "assets", "logo.png");
+    if (fs.existsSync(logoPath)) {
+      chunks.push(cmd(ESC, 0x61, 0x01)); // 居中
+      const logoBuf = await escposRasterFromImage(logoPath, LOGO_WIDTH_DOTS);
+      chunks.push(logoBuf);
+      chunks.push(cmd(ESC, 0x61, 0x00)); // 左对齐
+      chunks.push(encLine("")); // 多给一行喘气
+    } else {
+      console.warn("[logo] 未找到 logo 文件，跳过:", logoPath);
+    }
+  } catch (e) {
+    console.warn("[logo] 打印logo失败，跳过:", e?.message || e);
+  }
+  chunks.push(encLine("扫码访问 Review Us"));
   chunks.push(cmd(ESC, 0x61, 0x00)); // 左对齐
   chunks.push(encLine(makeLine("-")));
 

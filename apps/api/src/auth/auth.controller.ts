@@ -94,7 +94,15 @@ const buildMembershipReferrerRedirect = (
   const localeMatch = safeNext.match(/^\/(zh|en)(?:\/|$)/);
   const localePrefix = localeMatch ? `/${localeMatch[1]}` : '';
   const params = new URLSearchParams({ next: safeNext, source });
-  return `${localePrefix}/membership/referrer?${params.toString()}`;
+  return `${localePrefix}/membership/info?${params.toString()}`;
+};
+
+const buildMembershipTwoFactorRedirect = (next: string): string => {
+  const safeNext = normalizeNextPath(next);
+  const localeMatch = safeNext.match(/^\/(zh|en)(?:\/|$)/);
+  const localePrefix = localeMatch ? `/${localeMatch[1]}` : '';
+  const params = new URLSearchParams({ next: safeNext });
+  return `${localePrefix}/membership/2fa?${params.toString()}`;
 };
 
 // 辅助函数：统一获取 Cookie 配置
@@ -169,10 +177,9 @@ export class AuthController {
       ? buildMembershipReferrerRedirect(next, 'google')
       : next;
     if (result.requiresTwoFactor) {
-      const params = new URLSearchParams({ next: redirectTarget });
       return res.redirect(
         302,
-        `${webBaseUrl}/membership/2fa?${params.toString()}`,
+        `${webBaseUrl}${buildMembershipTwoFactorRedirect(redirectTarget)}`,
       );
     }
 
