@@ -6,7 +6,6 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { PublishCommand, SNSClient } from '@aws-sdk/client-sns';
 import * as crypto from 'crypto';
 import { AppLogger } from '../common/app-logger';
 import { normalizeEmail } from '../common/utils/email';
@@ -207,10 +206,6 @@ export type OrderPricingQuote = {
 export class OrdersService {
   private readonly logger = new AppLogger(OrdersService.name);
   private readonly CLIENT_REQUEST_ID_RE = CLIENT_REQUEST_ID_RE;
-  private readonly snsClient = new SNSClient({
-    region: process.env.AWS_REGION,
-  });
-  private readonly snsTopicArn = process.env.SNS_TOPIC_ARN;
   private readonly printTopicArn = process.env.PRINT_SNS_TOPIC_ARN;
 
   constructor(
@@ -823,32 +818,15 @@ export class OrdersService {
       metadata: checkoutIntent?.metadataJson,
     });
 
-    if (!this.snsTopicArn) {
-      this.logger.warn(
-        `SNS_TOPIC_ARN not configured, skipping ORDER_PAID publish for order ${order.id}`,
-      );
-      return;
-    }
+    this.orderEventsBus.emitOrderPaidVerified({
+      orderId: order.id,
+      userId: order.userId ?? undefined,
+      amountCents: netSubtotalForRewards,
+      redeemValueCents: order.loyaltyRedeemCents ?? 0,
+      pickupTime,
+    });
 
-    try {
-      await this.snsClient.send(
-        new PublishCommand({
-          TopicArn: this.snsTopicArn,
-          Message: JSON.stringify({
-            event: 'ORDER_PAID',
-            orderId: order.id,
-            userId: order.userId,
-            amountCents: netSubtotalForRewards,
-            redeemValueCents: order.loyaltyRedeemCents ?? 0,
-            timestamp: new Date().toISOString(),
-            pickupTime,
-          }),
-        }),
-      );
-      this.logger.log(`Published ORDER_PAID event for order ${order.id}`);
-    } catch (error) {
-      this.logger.error(`Failed to publish SNS: ${String(error)}`);
-    }
+    this.logger.log(`Emitted order.paid.verified for order ${order.id}`);
   }
 
   private computePickupTimeFromCheckoutMetadata(params: {
@@ -2117,57 +2095,6 @@ export class OrdersService {
 
         if (order.status === 'paid') {
           void this.handleOrderPaidSideEffects(order);
-        }
-
-        // === 派送逻辑 (DoorDash / Uber) ===
-        const isStandard = dto.deliveryType === DeliveryType.STANDARD;
-        const isPriority = dto.deliveryType === DeliveryType.PRIORITY;
-        const dest = dto.deliveryDestination;
-
-        if (dest && (isStandard || isPriority)) {
-          const dropoff = this.normalizeDropoff(dest);
-          const doordashEnabled = pricingConfig.enableDoorDash;
-          const uberEnabled = pricingConfig.enableUberDirect;
-
-          try {
-            if (isStandard && doordashEnabled) {
-              return await this.dispatchStandardDeliveryWithDoorDash(
-                order,
-                dropoff,
-              );
-            }
-            if (isPriority && uberEnabled) {
-              const businessConfig = await this.ensureBusinessConfig();
-              const pickup = this.buildUberPickupOverride(businessConfig);
-              return await this.dispatchPriorityDelivery(
-                order,
-                dropoff,
-                pickup,
-              );
-            }
-          } catch (error: unknown) {
-            let message = 'unknown';
-            if (error instanceof Error) message = error.message;
-            else if (typeof error === 'string') message = error;
-            else {
-              try {
-                message = JSON.stringify(error);
-              } catch {
-                message = '[unserializable error]';
-              }
-            }
-            this.logger.error(`Failed to dispatch delivery: ${message}`);
-
-            const provider = isStandard
-              ? DeliveryProvider.DOORDASH
-              : DeliveryProvider.UBER;
-
-            await this.notifyDeliveryDispatchFailureAlert({
-              order,
-              provider,
-              errorMessage: message,
-            });
-          }
         }
 
         return order;

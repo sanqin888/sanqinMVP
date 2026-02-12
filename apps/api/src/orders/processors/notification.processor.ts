@@ -4,10 +4,13 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
+import { Channel, PaymentMethod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { OrderEventsBus } from '../../messaging/order-events.bus';
-import { OrdersService } from '../orders.service';
 import { normalizeEmail } from '../../common/utils/email';
+import { EmailService } from '../../email/email.service';
+import type { OrderItemOptionsSnapshot } from '../order-item-options';
+import type { PrintPosPayloadDto } from '../../pos/dto/print-pos-payload.dto';
 
 @Injectable()
 export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
@@ -21,7 +24,31 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
       select: {
         id: true,
         orderStableId: true,
+        clientRequestId: true,
         userId: true,
+        paymentMethod: true,
+        channel: true,
+        fulfillmentType: true,
+        pickupCode: true,
+        subtotalCents: true,
+        taxCents: true,
+        totalCents: true,
+        couponDiscountCents: true,
+        loyaltyRedeemCents: true,
+        deliveryFeeCents: true,
+        deliveryCostCents: true,
+        deliverySubsidyCents: true,
+        items: {
+          select: {
+            productStableId: true,
+            nameZh: true,
+            nameEn: true,
+            displayName: true,
+            qty: true,
+            unitPriceCents: true,
+            optionsJson: true,
+          },
+        },
       },
     });
 
@@ -48,9 +75,51 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      await this.ordersService.sendInvoice({
-        orderStableId: order.orderStableId,
-        email,
+      const discountCents =
+        (order.couponDiscountCents ?? 0) + (order.loyaltyRedeemCents ?? 0);
+      const orderNumber = order.clientRequestId ?? order.orderStableId;
+      const printPayload: PrintPosPayloadDto = {
+        locale: 'zh',
+        orderNumber,
+        pickupCode: order.pickupCode,
+        fulfillment: order.fulfillmentType,
+        paymentMethod:
+          order.paymentMethod === PaymentMethod.CASH
+            ? 'cash'
+            : order.paymentMethod === PaymentMethod.CARD
+              ? 'card'
+              : order.paymentMethod === PaymentMethod.WECHAT_ALIPAY
+                ? 'wechat_alipay'
+                : order.paymentMethod === PaymentMethod.STORE_BALANCE
+                  ? 'store_balance'
+                  : order.channel === Channel.in_store
+                    ? 'cash'
+                    : 'card',
+        snapshot: {
+          items: order.items.map((item) => ({
+            productStableId: item.productStableId,
+            nameZh: item.nameZh,
+            nameEn: item.nameEn,
+            displayName: item.displayName,
+            quantity: item.qty,
+            lineTotalCents: (item.unitPriceCents ?? 0) * item.qty,
+            options: Array.isArray(item.optionsJson)
+              ? (item.optionsJson as OrderItemOptionsSnapshot)
+              : null,
+          })),
+          subtotalCents: order.subtotalCents ?? 0,
+          taxCents: order.taxCents ?? 0,
+          totalCents: order.totalCents ?? 0,
+          discountCents,
+          deliveryFeeCents: order.deliveryFeeCents ?? 0,
+          deliveryCostCents: order.deliveryCostCents ?? 0,
+          deliverySubsidyCents: order.deliverySubsidyCents ?? 0,
+        },
+      };
+
+      await this.emailService.sendOrderInvoice({
+        to: email,
+        payload: printPayload,
       });
       this.logger.log(`[Notification] Invoice email sent: ${payload.orderId}`);
     } catch (error) {
@@ -65,7 +134,7 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly events: OrderEventsBus,
     private readonly prisma: PrismaService,
-    private readonly ordersService: OrdersService,
+    private readonly emailService: EmailService,
   ) {}
 
   onModuleInit() {
