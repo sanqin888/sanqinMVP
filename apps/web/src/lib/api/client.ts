@@ -24,6 +24,12 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === 'object';
 }
 
+function isOperationStatusPayload(v: unknown): v is { ok: boolean; error?: string } {
+  if (!isRecord(v) || typeof v.ok !== 'boolean') return false;
+  if (v.error !== undefined && typeof v.error !== 'string') return false;
+  return true;
+}
+
 function isEnvelopeLike(v: unknown): v is ApiResponseEnvelope<unknown> {
   return isRecord(v) && typeof (v as Record<string, unknown>).code === 'string';
 }
@@ -121,6 +127,14 @@ export async function apiFetch<T>(
   const data = isEnvelopeLike(payload)
     ? (payload as ApiResponseEnvelope<unknown>).details
     : payload;
+
+  if (isOperationStatusPayload(data) && !data.ok) {
+    throw new ApiError(
+      `${data.error || 'API operation failed'} ${response.status} (${init.method ?? 'GET'} ${url})`,
+      response.status,
+      payload,
+    );
+  }
 
   if (parser) {
     return parser.parse(data);
