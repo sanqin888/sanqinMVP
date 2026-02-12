@@ -42,6 +42,9 @@ COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
 COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
 
+# 预热 Prisma Studio 依赖的 query engine，避免运行时首次下载失败
+RUN cd /app/apps/api && npx prisma --version
+
 EXPOSE 4000
 
 CMD ["node", "apps/api/dist/main.js"]
