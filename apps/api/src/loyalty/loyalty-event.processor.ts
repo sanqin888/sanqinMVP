@@ -36,7 +36,12 @@ export class LoyaltyEventProcessor {
       // 注意：Prisma 的 findUnique 很重要
       const order = await this.prisma.order.findUnique({
         where: { id: orderId },
-        include: { user: true },
+        select: {
+          id: true,
+          userId: true,
+          subtotalCents: true,
+          loyaltyRedeemCents: true,
+        },
       });
 
       if (!order) {
