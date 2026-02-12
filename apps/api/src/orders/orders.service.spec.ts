@@ -42,6 +42,7 @@ describe('OrdersService', () => {
     };
     checkoutIntent: {
       findFirst: jest.Mock;
+      updateMany: jest.Mock;
     };
   };
   let loyalty: {
@@ -157,6 +158,7 @@ describe('OrdersService', () => {
       },
       checkoutIntent: {
         findFirst: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
     };
 
@@ -418,5 +420,57 @@ describe('OrdersService', () => {
     expect(
       notificationService.notifyDeliveryDispatchFailed,
     ).not.toHaveBeenCalled();
+  });
+
+  it('allows createImmediatePaid with a processing checkout intent from clover flow', async () => {
+    prisma.checkoutIntent.findFirst.mockResolvedValue({
+      id: 'intent-1',
+      referenceId: 'ref-1',
+      amountCents: 1130,
+      status: 'processing',
+      expiresAt: new Date(Date.now() + 60_000),
+      orderId: null,
+      createdAt: new Date(),
+    });
+
+    prisma.order.create.mockResolvedValue({
+      id: 'order-processing-intent',
+      orderStableId: 'cord-processing-intent',
+      status: 'paid',
+      channel: 'web',
+      fulfillmentType: 'pickup',
+      createdAt: new Date('2024-01-01T00:00:00.000Z'),
+      paidAt: new Date('2024-01-01T00:00:00.000Z'),
+      subtotalCents: 1000,
+      taxCents: 130,
+      totalCents: 1130,
+      pickupCode: '4321',
+      clientRequestId: 'ref-1',
+      items: [],
+    });
+
+    const dto: CreateOrderInput = {
+      channel: 'web',
+      fulfillmentType: 'pickup',
+      paymentMethod: 'CARD',
+      checkoutIntentId: 'ref-1',
+      items: [{ productStableId: 'c1234567890abcdefghijklmn', qty: 1 }],
+      subtotalCents: 1000,
+      taxCents: 130,
+      totalCents: 1130,
+    };
+
+    await expect(
+      service.createImmediatePaid(dto, 'ref-1'),
+    ).resolves.toMatchObject({
+      orderStableId: 'cord-processing-intent',
+    });
+
+    expect(prisma.checkoutIntent.updateMany).toHaveBeenCalled();
+    const [firstUpdateManyCall] = prisma.checkoutIntent.updateMany.mock
+      .calls as Array<[{ where?: { status?: { in?: string[] } } }]>;
+    expect(firstUpdateManyCall[0].where?.status?.in).toEqual(
+      expect.arrayContaining(['processing', 'creating_order']),
+    );
   });
 });
