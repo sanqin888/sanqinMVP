@@ -13,7 +13,6 @@ import { EmailModule } from '../email/email.module';
 import { MessagingModule } from '../messaging/messaging.module';
 import { NotificationProcessor } from './processors/notification.processor';
 import { FulfillmentProcessor } from './processors/fulfillment.processor';
-import { LoyaltyProcessor } from './processors/loyalty.processor';
 
 @Module({
   imports: [
@@ -28,12 +27,7 @@ import { LoyaltyProcessor } from './processors/loyalty.processor';
     MessagingModule,
   ],
   controllers: [OrdersController],
-  providers: [
-    OrdersService,
-    NotificationProcessor,
-    FulfillmentProcessor,
-    LoyaltyProcessor,
-  ],
+  providers: [OrdersService, NotificationProcessor, FulfillmentProcessor],
   exports: [OrdersService],
 })
 export class OrdersModule {}
