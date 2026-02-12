@@ -158,7 +158,10 @@ export class CloverPayController {
           }
 
           const order = await this.orders.createImmediatePaid(
-            orderDto,
+            {
+              ...orderDto,
+              checkoutIntentId: intent.referenceId,
+            },
             intent.referenceId,
           );
 
@@ -526,6 +529,7 @@ export class CloverPayController {
       orderStableId,
     );
     orderForCreation.clientRequestId = referenceId;
+    orderForCreation.checkoutIntentId = intent.referenceId;
     const order = await this.orders.createImmediatePaid(
       orderForCreation,
       referenceId,
