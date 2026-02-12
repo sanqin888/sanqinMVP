@@ -208,6 +208,16 @@ type LoyaltyOrderResponse = {
   clientRequestId: string | null;
 };
 
+type OnlinePricingQuoteResponse = {
+  orderStableId: string;
+  currency: string;
+  quote: {
+    totalCents: number;
+  };
+  pricingToken: string;
+  pricingTokenExpiresAt: string;
+};
+
 type StoreStatusRuleSource =
   | "REGULAR_HOURS"
   | "HOLIDAY"
@@ -2722,14 +2732,25 @@ const getFieldFromEvent = (
         }
       }
 
+      const quoteResponse = await withTimeout(
+        apiFetch<OnlinePricingQuoteResponse>("/clover/pay/online/quote", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ metadata }),
+        }),
+        15000,
+        "apiFetch /clover/pay/online/quote",
+      );
+
       console.log("[PAY] before apiFetch card-token");
       const paymentResponse = await withTimeout(
         apiFetch<CardTokenPaymentResponse>("/clover/pay/online/card-token", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            amountCents: totalCentsForOrder,
-            currency: HOSTED_CHECKOUT_CURRENCY,
+            amountCents: quoteResponse.quote.totalCents,
+            currency: quoteResponse.currency || HOSTED_CHECKOUT_CURRENCY,
+            pricingToken: quoteResponse.pricingToken,
             checkoutIntentId,
             source: tokenResult.token,
             sourceType: "CARD",
