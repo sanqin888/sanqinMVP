@@ -99,6 +99,43 @@ type CloverEventPayload =
       realTimeFormState?: CloverAggregatedFieldEvent;
     };
 
+type ApiEnvelope<T> = {
+  code?: string;
+  message?: string;
+  details?: T;
+};
+
+type OperationStatusPayload = {
+  ok?: boolean;
+  error?: string;
+};
+
+async function assertOperationResult(response: Response): Promise<void> {
+  const payload = (await response.json().catch(() => null)) as
+    | ApiEnvelope<OperationStatusPayload>
+    | OperationStatusPayload
+    | null;
+
+  const details =
+    payload && typeof payload === "object" && "code" in payload
+      ? (payload as ApiEnvelope<OperationStatusPayload>).details
+      : (payload as OperationStatusPayload | null);
+
+  if (!response.ok) {
+    const message =
+      details?.error ||
+      (payload && typeof payload === "object" && "message" in payload
+        ? (payload as ApiEnvelope<OperationStatusPayload>).message
+        : undefined) ||
+      `request failed (${response.status})`;
+    throw new Error(message);
+  }
+
+  if (details && typeof details.ok === "boolean" && !details.ok) {
+    throw new Error(details.error || "request failed");
+  }
+}
+
 declare global {
   interface Window {
     Clover?: new (
@@ -1852,9 +1889,7 @@ const getFieldFromEvent = (
         }),
       });
 
-      if (!res.ok) {
-        throw new Error(`Request failed with status ${res.status}`);
-      }
+      await assertOperationResult(res);
 
       setPhoneVerificationStep("codeSent");
     } catch (err) {
@@ -1895,9 +1930,7 @@ const getFieldFromEvent = (
         }),
       });
 
-      if (!res.ok) {
-        throw new Error(`Verify failed with status ${res.status}`);
-      }
+      await assertOperationResult(res);
 
       // ✅ 验证成功：允许下单
       setPhoneVerified(true);
