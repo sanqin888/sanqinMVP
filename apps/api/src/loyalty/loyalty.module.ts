@@ -2,12 +2,13 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { PosDeviceModule } from '../pos/pos-device.module';
+import { MessagingModule } from '../messaging/messaging.module';
 import { LoyaltyService } from './loyalty.service';
 import { LoyaltyController } from './loyalty.controller';
 import { LoyaltyEventProcessor } from './loyalty-event.processor';
 
 @Module({
-  imports: [PrismaModule, PosDeviceModule],
+  imports: [PrismaModule, PosDeviceModule, MessagingModule],
   providers: [LoyaltyService, LoyaltyEventProcessor],
   controllers: [LoyaltyController],
   exports: [LoyaltyService],

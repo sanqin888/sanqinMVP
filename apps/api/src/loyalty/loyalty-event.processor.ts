@@ -1,153 +1,63 @@
-import {
-  Injectable,
-  Logger,
-  OnModuleDestroy,
-  OnModuleInit,
-} from '@nestjs/common';
-import { Consumer } from 'sqs-consumer';
-import { SQSClient } from '@aws-sdk/client-sqs';
+import { Injectable, Logger } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import { LoyaltyService } from './loyalty.service';
-import { OrderEventsBus } from '../messaging/order-events.bus';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
-export class LoyaltyEventProcessor implements OnModuleInit, OnModuleDestroy {
+export class LoyaltyEventProcessor {
   private readonly logger = new Logger(LoyaltyEventProcessor.name);
-  private consumer?: Consumer;
-
-  private readonly onOrderPaidVerified = async (payload: {
-    orderId: string;
-    userId?: string;
-    amountCents?: number;
-    redeemValueCents?: number;
-  }) => {
-    await this.handleOrderPaid({
-      orderId: payload.orderId,
-      userId: payload.userId,
-      amountCents: payload.amountCents,
-      redeemValueCents: payload.redeemValueCents,
-      source: 'order-events-bus',
-    });
-  };
 
   constructor(
     private readonly loyaltyService: LoyaltyService,
-    private readonly orderEventsBus: OrderEventsBus,
+    private readonly prisma: PrismaService,
   ) {}
 
-  onModuleInit() {
-    this.orderEventsBus.onOrderPaidVerified(this.onOrderPaidVerified);
-
-    const queueUrl = process.env.LOYALTY_SQS_QUEUE_URL;
-    if (!queueUrl) {
-      this.logger.warn(
-        'LOYALTY_SQS_QUEUE_URL not found, Loyalty SQS consumer disabled.',
-      );
-      return;
-    }
-
-    this.consumer = Consumer.create({
-      queueUrl,
-      sqs: new SQSClient({ region: process.env.AWS_REGION }),
-      handleMessage: async (message) => {
-        try {
-          await this.processMessage(message);
-        } catch (error) {
-          this.logger.error(
-            `Failed to process loyalty event: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
-          throw error;
-        }
-        return message;
-      },
-    });
-
-    this.consumer.on('error', (err) => {
-      this.logger.error(`SQS Consumer Error: ${err.message}`);
-    });
-
-    this.consumer.on('processing_error', (err) => {
-      this.logger.error(`SQS Processing Error: ${err.message}`);
-    });
-
-    this.consumer.start();
-    this.logger.log(`Loyalty SQS Consumer started listening on ${queueUrl}`);
-  }
-
-  onModuleDestroy() {
-    this.orderEventsBus.offOrderPaidVerified(this.onOrderPaidVerified);
-    if (this.consumer) {
-      this.consumer.stop();
-    }
-  }
-
-  /**
-   * 解析 SQS 消息 (Raw Mode)
-   * 因为开启了 Raw Message Delivery，sqsMessage.Body 直接就是我们要的业务 JSON
-   */
-  private async processMessage(sqsMessage: { Body?: string }) {
-    if (!sqsMessage.Body) return;
-
-    let eventPayload: {
-      event?: string;
-      orderId?: string;
-      userId?: string;
-      amountCents?: number;
-      redeemValueCents?: number;
-    };
-    try {
-      // ✅ 只需要解析这一层，没有信封了
-      eventPayload = JSON.parse(sqsMessage.Body) as {
-        event?: string;
-        orderId?: string;
-        userId?: string;
-        amountCents?: number;
-        redeemValueCents?: number;
-      };
-    } catch {
-      this.logger.warn(`Invalid JSON in SQS body: ${sqsMessage.Body}`);
-      return;
-    }
-
-    this.logger.log(`Received Event: ${JSON.stringify(eventPayload)}`);
-
-    // 业务路由：只处理 ORDER_PAID
-    if (eventPayload.event === 'ORDER_PAID') {
-      await this.handleOrderPaid({
-        orderId: eventPayload.orderId,
-        userId: eventPayload.userId,
-        amountCents: eventPayload.amountCents,
-        redeemValueCents: eventPayload.redeemValueCents,
-        source: 'sqs',
-      });
-    }
-  }
-
-  private async handleOrderPaid(params: {
-    orderId?: string;
+  // ✅ 监听统一的支付成功事件
+  @OnEvent('order.paid.verified')
+  async handleOrderPaid(payload: {
+    orderId: string;
     userId?: string;
-    amountCents?: number;
-    redeemValueCents?: number;
-    source: 'sqs' | 'order-events-bus';
+    amountCents: number;
   }) {
-    const orderId = params.orderId?.trim();
-    if (!orderId) {
-      this.logger.warn(
-        `[Loyalty] Ignore ORDER_PAID from ${params.source}: missing orderId`,
+    const { orderId, userId } = payload;
+
+    this.logger.log(`[Loyalty] Processing points for order: ${orderId}`);
+
+    // 1. 基础校验：如果没有用户ID，通常无法积分 (除非你有手机号积分逻辑)
+    if (!userId) {
+      this.logger.debug(
+        `[Loyalty] Skipped order ${orderId}: No userId linked.`,
       );
       return;
     }
 
-    this.logger.log(
-      `[Loyalty] Processing ORDER_PAID from ${params.source} for order=${orderId}, user=${params.userId ?? 'N/A'}`,
-    );
+    try {
+      // 2. 查单 (为了确保订单状态正确，且防止重复处理)
+      // 注意：Prisma 的 findUnique 很重要
+      const order = await this.prisma.order.findUnique({
+        where: { id: orderId },
+        include: { user: true },
+      });
 
-    await this.loyaltyService.settleOnPaid({
-      orderId,
-      userId: params.userId,
-      subtotalCents: params.amountCents ?? 0,
-      redeemValueCents: params.redeemValueCents ?? 0,
-    });
+      if (!order) {
+        this.logger.warn(`[Loyalty] Order not found: ${orderId}`);
+        return;
+      }
+
+      // 3. 调用积分服务计算并入账
+      // 假设你的 LoyaltyService 有一个 grantPointsForOrder 方法
+      // 如果没有，你需要根据你的业务逻辑调用相应的方法，例如 addPoints
+      const result = await this.loyaltyService.grantPointsForOrder(order);
+
+      this.logger.log(
+        `[Loyalty] Points granted for ${orderId}: ${result.pointsEarned} pts`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `[Loyalty] Failed to process loyalty for ${orderId}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      // 积分失败通常不需要抛出异常阻断流程，记录错误即可，后续可人工补录
+    }
   }
 }
