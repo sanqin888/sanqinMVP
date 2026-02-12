@@ -6,6 +6,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { OrderEventsBus } from '../../messaging/order-events.bus';
+import { PosGateway } from '../../pos/pos.gateway';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   UberDirectDropoffDetails,
@@ -91,16 +92,32 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
     }
   };
 
-  private readonly onAccepted = (payload: { orderId: string }) => {
+  private readonly onAccepted = async (payload: { orderId: string }) => {
     this.logger.log(
-      `[Fulfillment] Order accepted: ${payload.orderId}. (Printing pending Phase 2)`,
+      `[Fulfillment] Order accepted: ${payload.orderId}. Triggering POS print.`,
     );
+
+    const order = await this.prisma.order.findUnique({
+      where: { id: payload.orderId },
+      include: {
+        items: true,
+      },
+    });
+
+    if (!order) {
+      this.logger.warn(`[Fulfillment] Order not found: ${payload.orderId}`);
+      return;
+    }
+
+    const storeId = process.env.STORE_ID || 'default_store';
+    this.posGateway.sendPrintJob(storeId, order);
   };
 
   constructor(
     private readonly events: OrderEventsBus,
     private readonly prisma: PrismaService,
     private readonly uberDirect: UberDirectService,
+    private readonly posGateway: PosGateway,
   ) {}
 
   onModuleInit() {
