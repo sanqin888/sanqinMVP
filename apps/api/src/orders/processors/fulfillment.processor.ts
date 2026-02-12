@@ -47,10 +47,13 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
     const checkoutIntent = await this.prisma.checkoutIntent.findFirst({
       where: { orderId: order.id },
       orderBy: { createdAt: 'desc' },
-      select: { metadata: true },
+      select: { metadataJson: true },
     });
 
-    const destination = this.extractDropoff(checkoutIntent?.metadata, order);
+    const destination = this.extractDropoff(
+      checkoutIntent?.metadataJson ?? null,
+      order,
+    );
     if (!destination) {
       this.logger.warn(
         `[Fulfillment] Skip Uber dispatch, missing dropoff: ${payload.orderId}`,

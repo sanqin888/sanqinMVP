@@ -815,12 +815,12 @@ export class OrdersService {
     const checkoutIntent = await this.prisma.checkoutIntent.findFirst({
       where: { orderId: order.id },
       orderBy: { createdAt: 'desc' },
-      select: { metadata: true },
+      select: { metadataJson: true },
     });
 
     const pickupTime = this.computePickupTimeFromCheckoutMetadata({
       acceptedAt: order.paidAt,
-      metadata: checkoutIntent?.metadata,
+      metadata: checkoutIntent?.metadataJson,
     });
 
     if (!this.snsTopicArn) {
