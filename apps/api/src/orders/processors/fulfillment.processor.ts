@@ -18,8 +18,7 @@ import {
   UberDirectDropoffDetails,
   UberDirectService,
 } from '../../deliveries/uber-direct.service';
-import type { PrintPosPayloadDto } from '../../pos/dto/print-pos-payload.dto';
-import type { OrderItemOptionsSnapshot } from '../order-item-options';
+import { PrintPosPayloadService } from '../print-pos-payload.service';
 
 @Injectable()
 export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
@@ -109,30 +108,6 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       where: { id: payload.orderId },
       select: {
         orderStableId: true,
-        clientRequestId: true,
-        pickupCode: true,
-        fulfillmentType: true,
-        paymentMethod: true,
-        channel: true,
-        subtotalCents: true,
-        taxCents: true,
-        totalCents: true,
-        couponDiscountCents: true,
-        loyaltyRedeemCents: true,
-        deliveryFeeCents: true,
-        deliveryCostCents: true,
-        deliverySubsidyCents: true,
-        items: {
-          select: {
-            productStableId: true,
-            nameZh: true,
-            nameEn: true,
-            displayName: true,
-            qty: true,
-            unitPriceCents: true,
-            optionsJson: true,
-          },
-        },
       },
     });
 
@@ -141,8 +116,13 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    const printPayload = await this.printPosPayloadService.getByStableId(
+      order.orderStableId,
+      'zh',
+    );
+
     const storeId = process.env.STORE_ID || 'default_store';
-    this.posGateway.sendPrintJob(storeId, this.toPrintPosPayload(order));
+    this.posGateway.sendPrintJob(storeId, printPayload);
   };
 
   constructor(
@@ -150,6 +130,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly uberDirect: UberDirectService,
     private readonly posGateway: PosGateway,
+    private readonly printPosPayloadService: PrintPosPayloadService,
   ) {}
 
   onModuleInit() {
