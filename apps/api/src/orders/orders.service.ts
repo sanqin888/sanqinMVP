@@ -6,7 +6,6 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { PublishCommand, SNSClient } from '@aws-sdk/client-sns';
 import * as crypto from 'crypto';
 import { AppLogger } from '../common/app-logger';
 import { normalizeEmail } from '../common/utils/email';
@@ -63,8 +62,9 @@ import {
 import { LocationService } from '../location/location.service';
 import { NotificationService } from '../notifications/notification.service';
 import { EmailService } from '../email/email.service';
+import { OrderEventsBus } from '../messaging/order-events.bus';
 import type { OrderDto, OrderItemDto } from './dto/order.dto';
-import type { PrintPosPayloadDto } from '../pos/dto/print-pos-payload.dto';
+import { PrintPosPayloadService } from './print-pos-payload.service';
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 type OrderItemSnapshot = Prisma.OrderItemGetPayload<{
@@ -206,10 +206,7 @@ export type OrderPricingQuote = {
 export class OrdersService {
   private readonly logger = new AppLogger(OrdersService.name);
   private readonly CLIENT_REQUEST_ID_RE = CLIENT_REQUEST_ID_RE;
-  private readonly snsClient = new SNSClient({
-    region: process.env.AWS_REGION,
-  });
-  private readonly snsTopicArn = process.env.SNS_TOPIC_ARN;
+  private readonly printTopicArn = process.env.PRINT_SNS_TOPIC_ARN;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -220,6 +217,8 @@ export class OrdersService {
     private readonly locationService: LocationService,
     private readonly notificationService: NotificationService,
     private readonly emailService: EmailService,
+    private readonly orderEventsBus: OrderEventsBus,
+    private readonly printPosPayloadService: PrintPosPayloadService,
   ) {}
 
   async quoteOrderPricing(dto: CreateOrderInput): Promise<OrderPricingQuote> {
@@ -705,6 +704,12 @@ export class OrdersService {
       void this.loyalty.rollbackOnRefund(updated.id);
     } else if (next === 'ready') {
       void this.notifyOrderReady(updated);
+    } else if (next === 'making' && updated.orderStableId) {
+      this.logger.log(`Event Emitted: order.accepted -> ${updated.id}`);
+      this.orderEventsBus.emitOrderAccepted({
+        orderId: updated.id,
+        stableId: updated.orderStableId,
+      });
     }
     return updated;
   }
@@ -803,32 +808,86 @@ export class OrdersService {
       });
     }
 
-    if (!this.snsTopicArn) {
-      this.logger.warn(
-        `SNS_TOPIC_ARN not configured, skipping ORDER_PAID publish for order ${order.id}`,
-      );
-      return;
+    const checkoutIntent = await this.prisma.checkoutIntent.findFirst({
+      where: { orderId: order.id },
+      orderBy: { createdAt: 'desc' },
+      select: { metadataJson: true },
+    });
+
+    const pickupTime = this.computePickupTimeFromCheckoutMetadata({
+      acceptedAt: order.paidAt,
+      metadata: checkoutIntent?.metadataJson,
+    });
+
+    this.orderEventsBus.emitOrderPaidVerified({
+      orderId: order.id,
+      userId: order.userId ?? undefined,
+      amountCents: netSubtotalForRewards,
+      redeemValueCents: order.loyaltyRedeemCents ?? 0,
+      pickupTime,
+    });
+
+    this.logger.log(`Emitted order.paid.verified for order ${order.id}`);
+  }
+
+  private computePickupTimeFromCheckoutMetadata(params: {
+    acceptedAt: Date;
+    metadata: unknown;
+  }): string | undefined {
+    const prepMinutes = this.extractPrepMinutes(params.metadata);
+    if (typeof prepMinutes !== 'number' || prepMinutes <= 0) {
+      return undefined;
     }
 
-    try {
-      await this.snsClient.send(
-        new PublishCommand({
-          TopicArn: this.snsTopicArn,
-          Message: JSON.stringify({
-            event: 'ORDER_PAID',
-            orderId: order.id,
-            userId: order.userId,
-            amountCents: netSubtotalForRewards,
-            redeemValueCents: order.loyaltyRedeemCents ?? 0,
-            timestamp: new Date().toISOString(),
-          }),
-        }),
-      );
-      this.logger.log(`Published ORDER_PAID event for order ${order.id}`);
-    } catch (error) {
-      this.logger.error(`Failed to publish SNS: ${String(error)}`);
+    const pickupAt = new Date(
+      params.acceptedAt.getTime() + prepMinutes * 60_000,
+    );
+    if (Number.isNaN(pickupAt.getTime())) {
+      return undefined;
     }
+
+    return pickupAt.toISOString();
   }
+
+  private extractPrepMinutes(metadata: unknown): number | undefined {
+    const root = this.asRecord(metadata);
+    const estimate = this.asRecord(root?.estimated);
+
+    return this.normalizeMinutes(
+      this.asNumber(root?.prepMinutes) ??
+        this.asNumber(root?.estimatedPrepMinutes) ??
+        this.asNumber(root?.prepareMinutes) ??
+        this.asNumber(root?.estimatedReadyMinutes) ??
+        this.asNumber(estimate?.prepMinutes) ??
+        this.asNumber(estimate?.estimatedPrepMinutes),
+    );
+  }
+
+  private normalizeMinutes(value: number | undefined): number | undefined {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+    if (value <= 0) return undefined;
+    return Math.max(1, Math.round(value));
+  }
+
+  private asRecord(value: unknown): Record<string, unknown> | undefined {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : undefined;
+  }
+
+  private asNumber(value: unknown): number | undefined {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === 'string' && value.trim().length > 0) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+    return undefined;
+  }
+
   /**
    * ✅ 统一推断订单 paymentMethod
    * - POS：建议必传；没传就降级为 CASH 并打 warn（避免静默错账）
@@ -2039,57 +2098,6 @@ export class OrdersService {
           void this.handleOrderPaidSideEffects(order);
         }
 
-        // === 派送逻辑 (DoorDash / Uber) ===
-        const isStandard = dto.deliveryType === DeliveryType.STANDARD;
-        const isPriority = dto.deliveryType === DeliveryType.PRIORITY;
-        const dest = dto.deliveryDestination;
-
-        if (dest && (isStandard || isPriority)) {
-          const dropoff = this.normalizeDropoff(dest);
-          const doordashEnabled = pricingConfig.enableDoorDash;
-          const uberEnabled = pricingConfig.enableUberDirect;
-
-          try {
-            if (isStandard && doordashEnabled) {
-              return await this.dispatchStandardDeliveryWithDoorDash(
-                order,
-                dropoff,
-              );
-            }
-            if (isPriority && uberEnabled) {
-              const businessConfig = await this.ensureBusinessConfig();
-              const pickup = this.buildUberPickupOverride(businessConfig);
-              return await this.dispatchPriorityDelivery(
-                order,
-                dropoff,
-                pickup,
-              );
-            }
-          } catch (error: unknown) {
-            let message = 'unknown';
-            if (error instanceof Error) message = error.message;
-            else if (typeof error === 'string') message = error;
-            else {
-              try {
-                message = JSON.stringify(error);
-              } catch {
-                message = '[unserializable error]';
-              }
-            }
-            this.logger.error(`Failed to dispatch delivery: ${message}`);
-
-            const provider = isStandard
-              ? DeliveryProvider.DOORDASH
-              : DeliveryProvider.UBER;
-
-            await this.notifyDeliveryDispatchFailureAlert({
-              order,
-              provider,
-              errorMessage: message,
-            });
-          }
-        }
-
         return order;
       } catch (e: unknown) {
         const uniqueTargets = this.getUniqueViolationTargets(e);
@@ -2261,81 +2269,6 @@ export class OrdersService {
     };
   }
 
-  async getPrintPayloadByStableId(
-    orderStableId: string,
-    locale?: string,
-  ): Promise<PrintPosPayloadDto> {
-    const order = (await this.prisma.order.findUnique({
-      where: { orderStableId: orderStableId.trim() },
-      include: { items: true },
-    })) as OrderWithItems | null;
-
-    if (!order) throw new NotFoundException('order not found');
-
-    const orderNumber = order.clientRequestId ?? order.orderStableId;
-    const deliveryFeeCents = order.deliveryFeeCents ?? 0;
-    const deliveryCostCents = order.deliveryCostCents ?? 0;
-    const deliverySubsidyCentsRaw = order.deliverySubsidyCents;
-    const deliverySubsidyCents =
-      typeof deliverySubsidyCentsRaw === 'number' &&
-      Number.isFinite(deliverySubsidyCentsRaw)
-        ? Math.max(0, Math.round(deliverySubsidyCentsRaw))
-        : Math.max(0, deliveryCostCents - deliveryFeeCents);
-
-    const items = order.items.map((item) => {
-      const options = Array.isArray(item.optionsJson)
-        ? (item.optionsJson as OrderItemOptionsSnapshot)
-        : null;
-      const unitPriceCents = item.unitPriceCents ?? 0;
-
-      return {
-        productStableId: item.productStableId,
-        nameZh: item.nameZh ?? null,
-        nameEn: item.nameEn ?? null,
-        displayName: item.displayName ?? null,
-        quantity: item.qty,
-        lineTotalCents: unitPriceCents * item.qty,
-        options,
-      };
-    });
-
-    const discountCents =
-      (order.couponDiscountCents ?? 0) + (order.loyaltyRedeemCents ?? 0);
-
-    const paymentMethod = (() => {
-      switch (order.paymentMethod) {
-        case PaymentMethod.CASH:
-          return 'cash';
-        case PaymentMethod.CARD:
-          return 'card';
-        case PaymentMethod.WECHAT_ALIPAY:
-          return 'wechat_alipay';
-        case PaymentMethod.STORE_BALANCE:
-          return 'store_balance';
-        default:
-          return order.channel === Channel.in_store ? 'cash' : 'card';
-      }
-    })();
-
-    return {
-      locale: locale ?? 'zh',
-      orderNumber,
-      pickupCode: order.pickupCode ?? null,
-      fulfillment: order.fulfillmentType,
-      paymentMethod,
-      snapshot: {
-        items,
-        subtotalCents: order.subtotalCents ?? 0,
-        taxCents: order.taxCents ?? 0,
-        totalCents: order.totalCents ?? 0,
-        discountCents,
-        deliveryFeeCents,
-        deliveryCostCents,
-        deliverySubsidyCents,
-      },
-    };
-  }
-
   async getPublicOrderSummary(orderStableId: string): Promise<OrderSummaryDto> {
     const value = (orderStableId ?? '').trim();
     if (!value) throw new NotFoundException('order not found');
@@ -2420,7 +2353,7 @@ export class OrdersService {
       throw new BadRequestException('invalid_email');
     }
 
-    const payload = await this.getPrintPayloadByStableId(
+    const payload = await this.printPosPayloadService.getByStableId(
       params.orderStableId,
       params.locale,
     );

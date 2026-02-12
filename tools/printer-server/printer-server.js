@@ -14,7 +14,8 @@ const path = require("path");
 const { exec } = require("child_process");
 const iconv = require("iconv-lite");
 const Jimp = require("jimp");
-
+const io = require('socket.io-client');
+require('dotenv').config();
 // === 打印机配置 ===
 // 可以通过环境变量覆盖：POS_FRONT_PRINTER / POS_KITCHEN_PRINTER
 // 注意：这里的名字建议用“打印机共享名”，例如 POS80、KITCHEN 等
@@ -660,3 +661,81 @@ app.listen(PORT, () => {
   console.log("Front printer logical name:", FRONT_PRINTER || "(system default)");
   console.log("Kitchen printer logical name:", KITCHEN_PRINTER || "(same as front)");
 });
+
+// ============================================================
+// 🚀 云端自动接单模块 (Cloud Auto-Print)
+// ============================================================
+
+const API_URL = process.env.API_URL || 'http://localhost:3000';
+const STORE_ID = process.env.STORE_ID;
+
+if (STORE_ID) {
+  console.log(`\n☁️  正在连接云端 POS 网关...`);
+  console.log(`   目标: ${API_URL}/pos`);
+  console.log(`   门店: ${STORE_ID}\n`);
+
+  const socket = io(`${API_URL}/pos`, {
+    transports: ['websocket'],
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 5000,
+  });
+
+  socket.on('connect', () => {
+    console.log(`✅ [Cloud] 已连接到服务器! Socket ID: ${socket.id}`);
+    socket.emit('joinStore', { storeId: STORE_ID });
+  });
+
+  socket.on('disconnect', (reason) => {
+    console.warn(`❌ [Cloud] 连接断开: ${reason}`);
+  });
+
+  // 核心：监听云端指令
+  socket.on('PRINT_JOB', async (formattedPayload) => {
+    // 这里的 formattedPayload 已经是后端 PrintPosPayloadService 生成好的完美格式
+    // 直接包含 { orderNumber, snapshot: { ... } }
+    
+    const orderId = formattedPayload.orderNumber || 'Unknown';
+    console.log(`\n🖨️  [Cloud] 收到打印任务: ${orderId}`);
+
+    try {
+      // 1. 生成前台小票数据
+      // buildCustomerReceiptEscPos 是你现有的函数，直接传 payload 即可
+      const customerBuffer = await buildCustomerReceiptEscPos(formattedPayload);
+
+      // 2. 生成后厨切单数据
+      // buildKitchenReceiptEscPos 是你现有的函数
+      const kitchenBuffer = buildKitchenReceiptEscPos(formattedPayload);
+
+      // ==========================================
+      // 🖨️ 任务 A: 前台打印机 (Customer Receipt)
+      // ==========================================
+      const frontPrinterName = process.env.POS_FRONT_PRINTER || "POS80";
+      if (frontPrinterName) {
+        console.log(`➡️  前台打印 -> ${frontPrinterName}`);
+        await printEscPosTo(frontPrinterName, customerBuffer);
+      } else {
+        console.warn(`⚠️  未配置前台打印机 (POS_FRONT_PRINTER)`);
+      }
+
+      // ==========================================
+      // 👨‍🍳 任务 B: 后厨打印机 (Kitchen Ticket)
+      // ==========================================
+      const kitchenPrinterName = process.env.POS_KITCHEN_PRINTER;
+      if (kitchenPrinterName) {
+        console.log(`➡️  后厨打印 -> ${kitchenPrinterName}`);
+        await printEscPosTo(kitchenPrinterName, kitchenBuffer);
+      } else {
+        console.log(`ℹ️  未配置后厨打印机 (POS_KITCHEN_PRINTER)，跳过。`);
+      }
+
+      console.log(`✅ [Cloud] 打印流程结束`);
+
+    } catch (err) {
+      console.error(`❌ [Cloud] 打印失败:`, err);
+    }
+  });
+
+} else {
+  console.warn(`⚠️  [Cloud] 未配置 STORE_ID，云端自动接单功能未启动。`);
+}

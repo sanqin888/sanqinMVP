@@ -63,7 +63,7 @@ export class AwsSnsWebhookController {
     }
 
     if (webhookEventId && type === 'Notification') {
-      await this.service.recordDeliveryEvent(snsPayload, webhookEventId);
+      await this.service.recordNotificationEvent(snsPayload, webhookEventId);
     }
 
     return res.status(HttpStatus.OK).send('ok');
