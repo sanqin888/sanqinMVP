@@ -18,6 +18,8 @@ import {
   UberDirectDropoffDetails,
   UberDirectService,
 } from '../../deliveries/uber-direct.service';
+import type { PrintPosPayloadDto } from '../../pos/dto/print-pos-payload.dto';
+import type { OrderItemOptionsSnapshot } from '../order-item-options';
 import { PrintPosPayloadService } from '../print-pos-payload.service';
 
 @Injectable()
@@ -202,6 +204,14 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
     return parsed;
   }
 
+  private parseOrderItemOptions(
+    optionsJson: Prisma.JsonValue | null,
+  ): OrderItemOptionsSnapshot | null {
+    return Array.isArray(optionsJson)
+      ? (optionsJson as OrderItemOptionsSnapshot)
+      : null;
+  }
+
   private toPrintPosPayload(order: {
     orderStableId: string;
     clientRequestId: string | null;
@@ -265,9 +275,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
           displayName: item.displayName,
           quantity: item.qty,
           lineTotalCents: (item.unitPriceCents ?? 0) * item.qty,
-          options: Array.isArray(item.optionsJson)
-            ? (item.optionsJson as OrderItemOptionsSnapshot)
-            : null,
+          options: this.parseOrderItemOptions(item.optionsJson),
         })),
         subtotalCents: order.subtotalCents ?? 0,
         taxCents: order.taxCents ?? 0,

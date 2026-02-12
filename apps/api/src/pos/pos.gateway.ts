@@ -30,7 +30,7 @@ export class PosGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     const roomName = `store:${payload.storeId}`;
-    client.join(roomName);
+    void client.join(roomName);
     this.logger.log(`Client ${client.id} joined room: ${roomName}`);
     client.emit('joined', { room: roomName });
   }
