@@ -8,6 +8,7 @@ import { DoorDashDriveService } from '../deliveries/doordash-drive.service';
 import { LocationService } from '../location/location.service';
 import { NotificationService } from '../notifications/notification.service';
 import { EmailService } from '../email/email.service';
+import { OrderEventsBus } from './order-events.bus';
 import { DeliveryType } from '@prisma/client';
 import { CreateOrderInput } from '@shared/order';
 
@@ -65,6 +66,10 @@ describe('OrdersService', () => {
     notifyDeliveryDispatchFailed: jest.Mock;
   };
   let emailService: { sendOrderInvoice: jest.Mock };
+  let orderEventsBus: {
+    emitOrderAccepted: jest.Mock;
+    emitOrderPaidVerified: jest.Mock;
+  };
   beforeEach(() => {
     process.env.UBER_DIRECT_ENABLED = '1';
     const demoProductId = 'c1234567890abcdefghijklmn';
@@ -192,6 +197,11 @@ describe('OrdersService', () => {
       sendOrderInvoice: jest.fn(),
     };
 
+    orderEventsBus = {
+      emitOrderAccepted: jest.fn(),
+      emitOrderPaidVerified: jest.fn(),
+    };
+
     service = new OrdersService(
       prisma as unknown as PrismaService,
       loyalty as unknown as LoyaltyService,
@@ -201,6 +211,7 @@ describe('OrdersService', () => {
       locationService as unknown as LocationService,
       notificationService as unknown as NotificationService,
       emailService as unknown as EmailService,
+      orderEventsBus as unknown as OrderEventsBus,
     );
   });
 
@@ -267,7 +278,7 @@ describe('OrdersService', () => {
     });
   });
 
-  it('dispatches Uber Direct for priority orders', () => {
+  it('emits paid-verified event for priority orders', () => {
     const storedOrder = {
       id: 'order-1',
       orderStableId: 'cord-1',
@@ -322,31 +333,18 @@ describe('OrdersService', () => {
     };
 
     return service.create(dto).then(() => {
-      // ✅ 确认调用过 Uber Direct
-      expect(uberDirect.createDelivery).toHaveBeenCalled();
-
-      // ✅ 把 createDelivery 强类型成带参数列表的 jest.Mock，再去读 mock.calls
-      const mockFn = uberDirect.createDelivery as jest.Mock<
-        Promise<unknown>,
-        [
-          {
-            orderRef: string;
-            destination: { postalCode: string };
-          },
-        ]
-      >;
-
-      const [firstCallArg] = mockFn.mock.calls;
-      const deliveryPayload = firstCallArg?.[0];
-
-      expect(deliveryPayload).toBeDefined();
-      expect(deliveryPayload?.orderRef).toBe('req-1');
-      expect(deliveryPayload?.destination.postalCode).toBe('M3J 0L9');
-      expect(prisma.order.update).toHaveBeenCalled();
+      expect(orderEventsBus.emitOrderPaidVerified).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderId: 'order-1',
+          amountCents: 1000,
+          redeemValueCents: 0,
+        }),
+      );
+      expect(uberDirect.createDelivery).not.toHaveBeenCalled();
     });
   });
 
-  it('keeps the order when Uber Direct fails', async () => {
+  it('keeps the order and still emits event when dispatch path errors are irrelevant', async () => {
     const storedOrder = {
       id: 'order-err',
       orderStableId: 'cord-err',
@@ -363,7 +361,6 @@ describe('OrdersService', () => {
       items: [],
     };
     prisma.order.create.mockResolvedValue(storedOrder);
-    uberDirect.createDelivery.mockRejectedValue(new Error('boom'));
     prisma.user.findMany.mockResolvedValue([
       {
         id: 'admin-1',
@@ -404,16 +401,13 @@ describe('OrdersService', () => {
     // ✅ 不会删除订单
     expect(prisma.order.delete).not.toHaveBeenCalled();
 
-    // ✅ 说明我们确实尝试调用过 Uber Direct，只是失败了
-    expect(uberDirect.createDelivery).toHaveBeenCalled();
-
-    expect(
-      notificationService.notifyDeliveryDispatchFailed,
-    ).toHaveBeenCalledWith(
+    expect(orderEventsBus.emitOrderPaidVerified).toHaveBeenCalledWith(
       expect.objectContaining({
-        orderNumber: 'SQD2401010001',
-        deliveryProvider: 'Uber',
+        orderId: 'order-err',
+        amountCents: 1000,
+        redeemValueCents: 0,
       }),
     );
+    expect(notificationService.notifyDeliveryDispatchFailed).not.toHaveBeenCalled();
   });
 });
