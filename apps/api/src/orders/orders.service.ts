@@ -210,6 +210,7 @@ export class OrdersService {
     region: process.env.AWS_REGION,
   });
   private readonly snsTopicArn = process.env.SNS_TOPIC_ARN;
+  private readonly printTopicArn = process.env.PRINT_SNS_TOPIC_ARN;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -2431,6 +2432,242 @@ export class OrdersService {
     });
 
     return { ok: true };
+  }
+
+  async processOrderPaidVerified(params: {
+    orderId: string;
+    pickupTime?: string;
+    userId?: string;
+  }): Promise<void> {
+    const order = (await this.prisma.order.findUnique({
+      where: { id: params.orderId },
+      include: { items: true },
+    })) as OrderWithItems | null;
+
+    if (!order) {
+      this.logger.warn(
+        `ORDER_PAID async task skipped: order ${params.orderId} not found`,
+      );
+      return;
+    }
+
+    await this.tryDispatchUberDelivery(order, params.pickupTime);
+    await this.trySendOrderPaidEmail(order);
+    await this.tryPublishPrintTask(order);
+  }
+
+  private async tryDispatchUberDelivery(
+    order: OrderWithItems,
+    pickupTime?: string,
+  ): Promise<void> {
+    if (order.fulfillmentType !== FulfillmentType.delivery) {
+      return;
+    }
+
+    if (order.externalDeliveryId) {
+      this.logger.log(
+        `ORDER_PAID async dispatch skipped: order ${order.id} already has externalDeliveryId`,
+      );
+      return;
+    }
+
+    const checkoutIntent = await this.prisma.checkoutIntent.findFirst({
+      where: { orderId: order.id },
+      orderBy: { createdAt: 'desc' },
+      select: { metadata: true },
+    });
+
+    const destination = this.extractUberDropoffFromMetadata(
+      checkoutIntent?.metadata,
+      order,
+    );
+    if (!destination) {
+      this.logger.warn(
+        `ORDER_PAID async dispatch skipped: missing delivery destination for order ${order.id}`,
+      );
+      return;
+    }
+
+    try {
+      const pickup = this.buildUberPickupOverride(
+        await this.ensureBusinessConfig(),
+      );
+      const response = await this.uberDirect.createDelivery({
+        orderRef: order.clientRequestId ?? order.orderStableId,
+        pickupCode: order.pickupCode ?? undefined,
+        reference: order.clientRequestId ?? order.orderStableId,
+        totalCents: order.totalCents ?? 0,
+        items: order.items.map((item) => ({
+          name: item.displayName || item.productStableId,
+          quantity: item.qty,
+          priceCents: item.unitPriceCents ?? undefined,
+        })),
+        destination,
+        pickup,
+      });
+
+      const deliveryCostCents =
+        typeof response.deliveryCostCents === 'number'
+          ? Math.max(0, Math.round(response.deliveryCostCents))
+          : null;
+
+      await this.prisma.order.update({
+        where: { id: order.id },
+        data: {
+          deliveryProvider: DeliveryProvider.UBER,
+          externalDeliveryId: response.deliveryId,
+          ...(deliveryCostCents !== null
+            ? {
+                deliveryCostCents,
+                deliverySubsidyCents: Math.max(
+                  0,
+                  deliveryCostCents - Math.max(0, order.deliveryFeeCents ?? 0),
+                ),
+              }
+            : {}),
+        },
+      });
+
+      this.logger.log(
+        `ORDER_PAID async dispatch success: order=${order.id} deliveryId=${response.deliveryId} pickupTime=${pickupTime ?? 'n/a'}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `ORDER_PAID async dispatch failed for order ${order.id}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  private async trySendOrderPaidEmail(order: OrderWithItems): Promise<void> {
+    const checkoutIntent = await this.prisma.checkoutIntent.findFirst({
+      where: { orderId: order.id },
+      orderBy: { createdAt: 'desc' },
+      select: { metadata: true, locale: true },
+    });
+
+    const emailFromMetadata = this.extractCustomerEmailFromMetadata(
+      checkoutIntent?.metadata,
+    );
+    const emailFromUser = order.userId
+      ? (
+          await this.prisma.user.findUnique({
+            where: { id: order.userId },
+            select: { email: true },
+          })
+        )?.email
+      : undefined;
+    const targetEmail = normalizeEmail(emailFromMetadata ?? emailFromUser);
+
+    if (!targetEmail || !order.orderStableId) {
+      this.logger.warn(
+        `ORDER_PAID async email skipped: missing email/orderStableId for order ${order.id}`,
+      );
+      return;
+    }
+
+    try {
+      await this.sendInvoice({
+        orderStableId: order.orderStableId,
+        email: targetEmail,
+        locale: checkoutIntent?.locale ?? undefined,
+      });
+      this.logger.log(`ORDER_PAID async email sent for order ${order.id}`);
+    } catch (error) {
+      this.logger.error(
+        `ORDER_PAID async email failed for order ${order.id}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  private async tryPublishPrintTask(order: OrderWithItems): Promise<void> {
+    if (!this.printTopicArn) {
+      this.logger.warn(
+        `PRINT_SNS_TOPIC_ARN not configured, skipping print task for order ${order.id}`,
+      );
+      return;
+    }
+
+    try {
+      await this.snsClient.send(
+        new PublishCommand({
+          TopicArn: this.printTopicArn,
+          Message: JSON.stringify({
+            event: 'ORDER_PRINT_REQUESTED',
+            orderId: order.id,
+            orderStableId: order.orderStableId,
+            timestamp: new Date().toISOString(),
+          }),
+        }),
+      );
+      this.logger.log(`ORDER_PAID async print task published for ${order.id}`);
+    } catch (error) {
+      this.logger.error(
+        `ORDER_PAID async print task failed for order ${order.id}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  private extractUberDropoffFromMetadata(
+    metadata: Prisma.JsonValue | null | undefined,
+    order: OrderWithItems,
+  ): UberDirectDropoffDetails | null {
+    const root = this.asRecord(metadata);
+    const customer = this.asRecord(root?.customer);
+    if (!customer) return null;
+
+    const addressLine1 = this.asString(customer.addressLine1);
+    const city = this.asString(customer.city);
+    const province = this.asString(customer.province);
+    const postalCode = this.asString(customer.postalCode);
+    const phone = this.asString(customer.phone) ?? order.contactPhone ?? '';
+
+    if (!addressLine1 || !city || !province || !postalCode || !phone) {
+      return null;
+    }
+
+    const firstName = this.asString(customer.firstName) ?? '';
+    const lastName = this.asString(customer.lastName) ?? '';
+
+    return {
+      name:
+        [firstName, lastName].filter(Boolean).join(' ') ||
+        order.contactName ||
+        'Customer',
+      phone,
+      addressLine1,
+      addressLine2: this.asString(customer.addressLine2),
+      city,
+      province,
+      postalCode,
+      country: this.asString(customer.country) ?? 'Canada',
+      instructions: this.asString(customer.notes),
+    };
+  }
+
+  private extractCustomerEmailFromMetadata(
+    metadata: Prisma.JsonValue | null | undefined,
+  ): string | undefined {
+    const root = this.asRecord(metadata);
+    const customer = this.asRecord(root?.customer);
+    return this.asString(customer?.email);
+  }
+
+  private asRecord(value: unknown): Record<string, unknown> | undefined {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : undefined;
+  }
+
+  private asString(value: unknown): string | undefined {
+    if (typeof value !== 'string') return undefined;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
   }
 
   async updateStatus(

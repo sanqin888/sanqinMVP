@@ -11,6 +11,7 @@ import { LocationModule } from '../location/location.module';
 import { NotificationModule } from '../notifications/notification.module';
 import { EmailModule } from '../email/email.module';
 import { MessagingModule } from '../messaging/messaging.module';
+import { OrderEventListener } from './listeners/order-event.listener';
 
 @Module({
   imports: [
@@ -25,7 +26,7 @@ import { MessagingModule } from '../messaging/messaging.module';
     MessagingModule,
   ],
   controllers: [OrdersController],
-  providers: [OrdersService],
+  providers: [OrdersService, OrderEventListener],
   exports: [OrdersService],
 })
 export class OrdersModule {}

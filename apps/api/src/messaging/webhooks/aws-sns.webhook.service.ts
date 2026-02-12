@@ -8,6 +8,7 @@ import {
 import { createVerify, createHash } from 'crypto';
 import https from 'https';
 import { PrismaService } from '../../prisma/prisma.service';
+import { OrderEventsBus } from '../order-events.bus';
 
 type SnsMessage = {
   Type?: string;
@@ -30,6 +31,7 @@ type OrderPaidEvent = {
   amountCents?: number;
   redeemValueCents?: number;
   timestamp?: string | number;
+  pickupTime?: string;
 };
 
 @Injectable()
@@ -37,7 +39,10 @@ export class AwsSnsWebhookService {
   private readonly logger = new Logger(AwsSnsWebhookService.name);
   private readonly certCache = new Map<string, string>();
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly orderEventsBus: OrderEventsBus,
+  ) {}
 
   async verifySignature(payload: SnsMessage): Promise<boolean> {
     if (!payload.Signature || !payload.SigningCertURL) {
@@ -201,6 +206,17 @@ export class AwsSnsWebhookService {
         : null;
     const idempotencyKey = `order-paid:${payload.orderId}`;
 
+    const existing = await this.prisma.messagingWebhookEvent.findUnique({
+      where: { idempotencyKey },
+      select: { id: true },
+    });
+    if (existing) {
+      this.logger.log(
+        `Idempotent skip: Order ${payload.orderId} already processed.`,
+      );
+      return;
+    }
+
     try {
       await this.prisma.messagingWebhookEvent.create({
         data: {
@@ -242,6 +258,12 @@ export class AwsSnsWebhookService {
     });
 
     this.logger.log(`Recorded ORDER_PAID event for order ${payload.orderId}`);
+    this.logger.log(`Dispatching async tasks for Order ${payload.orderId}`);
+    this.orderEventsBus.emitOrderPaidVerified({
+      orderId: payload.orderId,
+      pickupTime: payload.pickupTime,
+      userId: payload.userId,
+    });
   }
 
   private async createWebhookEvent(params: {
