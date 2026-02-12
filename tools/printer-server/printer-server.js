@@ -666,15 +666,14 @@ app.listen(PORT, () => {
 // 🚀 云端自动接单模块 (Cloud Auto-Print)
 // ============================================================
 
-const API_URL = process.env.API_URL || 'http://localhost:3000'; // 你的 NestJS 地址
-const STORE_ID = process.env.STORE_ID; // 必须与后端 .env 一致
+const API_URL = process.env.API_URL || 'http://localhost:3000';
+const STORE_ID = process.env.STORE_ID;
 
 if (STORE_ID) {
   console.log(`\n☁️  正在连接云端 POS 网关...`);
   console.log(`   目标: ${API_URL}/pos`);
   console.log(`   门店: ${STORE_ID}\n`);
 
-  // 连接到 /pos 命名空间
   const socket = io(`${API_URL}/pos`, {
     transports: ['websocket'],
     reconnection: true,
@@ -682,117 +681,58 @@ if (STORE_ID) {
     reconnectionDelay: 5000,
   });
 
-  // 1. 连接成功
   socket.on('connect', () => {
     console.log(`✅ [Cloud] 已连接到服务器! Socket ID: ${socket.id}`);
-    // 立即加入门店房间
     socket.emit('joinStore', { storeId: STORE_ID });
   });
 
-  // 2. 连接断开
   socket.on('disconnect', (reason) => {
     console.warn(`❌ [Cloud] 连接断开: ${reason}`);
   });
 
-  // 3. 监听打印任务 (核心修改版)
-  socket.on('PRINT_JOB', async (backendOrder) => {
-    // 打印日志方便调试
-    const orderId = backendOrder.clientRequestId || backendOrder.orderStableId || backendOrder.id;
-    console.log(`\n🖨️  [Cloud] 收到新订单: ${orderId}`);
+  // 核心：监听云端指令
+  socket.on('PRINT_JOB', async (formattedPayload) => {
+    // 这里的 formattedPayload 已经是后端 PrintPosPayloadService 生成好的完美格式
+    // 直接包含 { orderNumber, snapshot: { ... } }
+    
+    const orderId = formattedPayload.orderNumber || 'Unknown';
+    console.log(`\n🖨️  [Cloud] 收到打印任务: ${orderId}`);
 
     try {
-      // ============================================================
-      // 🛠️ 步骤 1: 数据适配 (Adapter)
-      // 将后端 Prisma 数据转换为打印函数期待的 "Legacy Frontend" 格式
-      // ============================================================
-      
-      // 处理选项 (Options) 的辅助函数
-      const resolveOptions = (optionsJson) => {
-        if (!optionsJson) return [];
-        if (Array.isArray(optionsJson)) {
-          // 如果是数组，可能是字符串数组或对象数组
-          return optionsJson.map(opt => {
-            if (typeof opt === 'string') return opt;
-            return opt.name || opt.label || JSON.stringify(opt);
-          });
-        }
-        return [];
-      };
+      // 1. 生成前台小票数据
+      // buildCustomerReceiptEscPos 是你现有的函数，直接传 payload 即可
+      const customerBuffer = await buildCustomerReceiptEscPos(formattedPayload);
 
-      const legacyPayload = {
-        // 1. 基础字段映射
-        orderNumber: orderId,
-        pickupCode: backendOrder.pickupCode,
-        fulfillment: backendOrder.fulfillmentType, 
-        paymentMethod: backendOrder.paymentMethod, 
-        
-        // 2. 构造 snapshot 对象 (你的打印函数完全依赖这个)
-        snapshot: {
-          // 金额字段 (直接透传后端的 Cents，你的 money() 函数会除以 100)
-          totalCents: backendOrder.totalCents, 
-          subtotalCents: backendOrder.subtotalCents,
-          taxCents: backendOrder.taxCents,
-          discountCents: backendOrder.couponDiscountCents || 0,
-          deliveryFeeCents: backendOrder.deliveryFeeCents || 0,
-          deliveryCostCents: backendOrder.deliveryCostCents,
-          deliverySubsidyCents: backendOrder.deliverySubsidyCents,
-          tipCents: backendOrder.tipCents || 0,
-          
-          // 积分 (如果有)
-          loyalty: {
-             pointsRedeemed: backendOrder.loyaltyRedeemCents ? backendOrder.loyaltyRedeemCents / 100 : 0,
-             // pointsEarned: 后端暂未透传，可留空
-          },
-          
-          // 商品列表映射
-          items: (backendOrder.items || []).map(item => ({
-            // 名称映射：优先用中文名，没有则用 displayName
-            nameZh: item.nameZh || item.displayName, 
-            nameEn: item.nameEn,
-            // 数量
-            quantity: item.qty,
-            // 行总价 = 单价 * 数量 (你的函数用的是 lineTotalCents)
-            lineTotalCents: (item.unitPriceCents || 0) * (item.qty || 1), 
-            // 选项/配料
-            options: resolveOptions(item.optionsJson) 
-          })),
-        }
-      };
+      // 2. 生成后厨切单数据
+      // buildKitchenReceiptEscPos 是你现有的函数
+      const kitchenBuffer = buildKitchenReceiptEscPos(formattedPayload);
 
-      // ============================================================
-      // 🖨️ 步骤 2: 前台打印 (收银小票)
-      // ============================================================
+      // ==========================================
+      // 🖨️ 任务 A: 前台打印机 (Customer Receipt)
+      // ==========================================
       const frontPrinterName = process.env.POS_FRONT_PRINTER || "POS80";
-      
       if (frontPrinterName) {
-        console.log(`➡️  正在发送前台收据 -> ${frontPrinterName}`);
-        // 调用你已有的函数生成 Buffer
-        const receiptBuffer = await buildCustomerReceiptEscPos(legacyPayload);
-        await printEscPosTo(frontPrinterName, receiptBuffer);
+        console.log(`➡️  前台打印 -> ${frontPrinterName}`);
+        await printEscPosTo(frontPrinterName, customerBuffer);
       } else {
         console.warn(`⚠️  未配置前台打印机 (POS_FRONT_PRINTER)`);
       }
 
-      // ============================================================
-      // 👨‍🍳 步骤 3: 后厨打印 (厨房切单)
-      // ============================================================
+      // ==========================================
+      // 👨‍🍳 任务 B: 后厨打印机 (Kitchen Ticket)
+      // ==========================================
       const kitchenPrinterName = process.env.POS_KITCHEN_PRINTER;
-      
       if (kitchenPrinterName) {
-        console.log(`➡️  正在发送后厨切单 -> ${kitchenPrinterName}`);
-        
-        // 调用你已有的后厨函数生成 Buffer
-        const kitchenBuffer = buildKitchenReceiptEscPos(legacyPayload);
+        console.log(`➡️  后厨打印 -> ${kitchenPrinterName}`);
         await printEscPosTo(kitchenPrinterName, kitchenBuffer);
-        
       } else {
         console.log(`ℹ️  未配置后厨打印机 (POS_KITCHEN_PRINTER)，跳过。`);
       }
 
-      console.log(`✅ [Cloud] 打印任务全部完成`);
+      console.log(`✅ [Cloud] 打印流程结束`);
 
     } catch (err) {
-      console.error(`❌ [Cloud] 打印处理失败:`, err);
+      console.error(`❌ [Cloud] 打印失败:`, err);
     }
   });
 
