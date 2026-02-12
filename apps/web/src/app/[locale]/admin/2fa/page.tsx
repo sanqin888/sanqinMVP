@@ -17,6 +17,24 @@ type SessionPayload = {
   requiresTwoFactor?: boolean;
 };
 
+type OperationStatusPayload = {
+  ok?: boolean;
+  error?: string;
+};
+
+function readOperationFailure(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const envelope = payload as ApiEnvelope<OperationStatusPayload>;
+  const details =
+    "code" in envelope ? (envelope.details ?? null) : (payload as OperationStatusPayload);
+
+  if (details && typeof details.ok === "boolean" && !details.ok) {
+    return details.error ?? null;
+  }
+
+  return null;
+}
+
 function unwrapEnvelope<T>(payload: unknown): T | null {
   if (!payload || typeof payload !== "object") return null;
   if ("code" in payload) {
@@ -74,12 +92,14 @@ export default function AdminTwoFactorPage() {
         method: "POST",
         credentials: "include",
       });
-      if (!res.ok) {
-        const payload = await res.json().catch(() => null);
+      const payload = await res.json().catch(() => null);
+      const operationError = readOperationFailure(payload);
+      if (!res.ok || operationError) {
         const messageText =
-          typeof payload?.message === "string"
+          operationError ??
+          (typeof payload?.message === "string"
             ? payload.message
-            : `发送失败 (${res.status})`;
+            : `发送失败 (${res.status})`);
         throw new Error(messageText);
       }
       setMessage(`验证码已发送到${methodLabel}。`);
@@ -103,12 +123,14 @@ export default function AdminTwoFactorPage() {
         body: JSON.stringify({ code }),
         credentials: "include",
       });
-      if (!res.ok) {
-        const payload = await res.json().catch(() => null);
+      const payload = await res.json().catch(() => null);
+      const operationError = readOperationFailure(payload);
+      if (!res.ok || operationError) {
         const messageText =
-          typeof payload?.message === "string"
+          operationError ??
+          (typeof payload?.message === "string"
             ? payload.message
-            : `验证失败 (${res.status})`;
+            : `验证失败 (${res.status})`);
         throw new Error(messageText);
       }
       router.push(`/${locale}/admin`);

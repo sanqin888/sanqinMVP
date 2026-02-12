@@ -99,6 +99,43 @@ type CloverEventPayload =
       realTimeFormState?: CloverAggregatedFieldEvent;
     };
 
+type ApiEnvelope<T> = {
+  code?: string;
+  message?: string;
+  details?: T;
+};
+
+type OperationStatusPayload = {
+  ok?: boolean;
+  error?: string;
+};
+
+async function assertOperationResult(response: Response): Promise<void> {
+  const payload = (await response.json().catch(() => null)) as
+    | ApiEnvelope<OperationStatusPayload>
+    | OperationStatusPayload
+    | null;
+
+  const details =
+    payload && typeof payload === "object" && "code" in payload
+      ? (payload as ApiEnvelope<OperationStatusPayload>).details
+      : (payload as OperationStatusPayload | null);
+
+  if (!response.ok) {
+    const message =
+      details?.error ||
+      (payload && typeof payload === "object" && "message" in payload
+        ? (payload as ApiEnvelope<OperationStatusPayload>).message
+        : undefined) ||
+      `request failed (${response.status})`;
+    throw new Error(message);
+  }
+
+  if (details && typeof details.ok === "boolean" && !details.ok) {
+    throw new Error(details.error || "request failed");
+  }
+}
+
 declare global {
   interface Window {
     Clover?: new (
@@ -206,6 +243,16 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 type LoyaltyOrderResponse = {
   orderStableId: string;
   clientRequestId: string | null;
+};
+
+type OnlinePricingQuoteResponse = {
+  orderStableId: string;
+  currency: string;
+  quote: {
+    totalCents: number;
+  };
+  pricingToken: string;
+  pricingTokenExpiresAt: string;
 };
 
 type StoreStatusRuleSource =
@@ -1852,9 +1899,7 @@ const getFieldFromEvent = (
         }),
       });
 
-      if (!res.ok) {
-        throw new Error(`Request failed with status ${res.status}`);
-      }
+      await assertOperationResult(res);
 
       setPhoneVerificationStep("codeSent");
     } catch (err) {
@@ -1895,9 +1940,7 @@ const getFieldFromEvent = (
         }),
       });
 
-      if (!res.ok) {
-        throw new Error(`Verify failed with status ${res.status}`);
-      }
+      await assertOperationResult(res);
 
       // ✅ 验证成功：允许下单
       setPhoneVerified(true);
@@ -2722,14 +2765,25 @@ const getFieldFromEvent = (
         }
       }
 
+      const quoteResponse = await withTimeout(
+        apiFetch<OnlinePricingQuoteResponse>("/clover/pay/online/quote", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ metadata }),
+        }),
+        15000,
+        "apiFetch /clover/pay/online/quote",
+      );
+
       console.log("[PAY] before apiFetch card-token");
       const paymentResponse = await withTimeout(
         apiFetch<CardTokenPaymentResponse>("/clover/pay/online/card-token", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            amountCents: totalCentsForOrder,
-            currency: HOSTED_CHECKOUT_CURRENCY,
+            amountCents: quoteResponse.quote.totalCents,
+            currency: quoteResponse.currency || HOSTED_CHECKOUT_CURRENCY,
+            pricingToken: quoteResponse.pricingToken,
             checkoutIntentId,
             source: tokenResult.token,
             sourceType: "CARD",
