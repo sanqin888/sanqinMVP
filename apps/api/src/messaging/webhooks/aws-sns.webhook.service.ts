@@ -8,6 +8,7 @@ import {
 import { createVerify, createHash } from 'crypto';
 import https from 'https';
 import { PrismaService } from '../../prisma/prisma.service';
+import { OrderEventsBus } from '../order-events.bus';
 
 type SnsMessage = {
   Type?: string;
@@ -23,12 +24,25 @@ type SnsMessage = {
   Token?: string;
 };
 
+type OrderPaidEvent = {
+  event: 'ORDER_PAID';
+  orderId: string;
+  userId?: string;
+  amountCents?: number;
+  redeemValueCents?: number;
+  timestamp?: string | number;
+  pickupTime?: string;
+};
+
 @Injectable()
 export class AwsSnsWebhookService {
   private readonly logger = new Logger(AwsSnsWebhookService.name);
   private readonly certCache = new Map<string, string>();
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly orderEventsBus: OrderEventsBus,
+  ) {}
 
   async verifySignature(payload: SnsMessage): Promise<boolean> {
     if (!payload.Signature || !payload.SigningCertURL) {
@@ -115,9 +129,23 @@ export class AwsSnsWebhookService {
     });
   }
 
-  async recordDeliveryEvent(payload: SnsMessage, webhookEventId?: string) {
+  async recordNotificationEvent(payload: SnsMessage, webhookEventId?: string) {
     if (!payload.Message) return;
     const parsed = parseJson(payload.Message);
+
+    if (isOrderPaidEvent(parsed)) {
+      await this.recordOrderPaidEvent(parsed, webhookEventId);
+      return;
+    }
+
+    await this.recordDeliveryEvent(payload, parsed, webhookEventId);
+  }
+
+  private async recordDeliveryEvent(
+    payload: SnsMessage,
+    parsed: Record<string, unknown> | null,
+    webhookEventId?: string,
+  ) {
     const channel = resolveChannel(parsed);
     const provider =
       channel === MessagingChannel.SMS
@@ -165,6 +193,79 @@ export class AwsSnsWebhookService {
         data: { statusLatest: mappedStatus },
       });
     }
+  }
+
+  private async recordOrderPaidEvent(
+    payload: OrderPaidEvent,
+    webhookEventId?: string,
+  ) {
+    const occurredAt =
+      typeof payload.timestamp === 'string' ||
+      typeof payload.timestamp === 'number'
+        ? new Date(payload.timestamp)
+        : null;
+    const idempotencyKey = `order-paid:${payload.orderId}`;
+
+    const existing = await this.prisma.messagingWebhookEvent.findUnique({
+      where: { idempotencyKey },
+      select: { id: true },
+    });
+    if (existing) {
+      this.logger.log(
+        `Idempotent skip: Order ${payload.orderId} already processed.`,
+      );
+      return;
+    }
+
+    try {
+      await this.prisma.messagingWebhookEvent.create({
+        data: {
+          idempotencyKey,
+          channel: MessagingChannel.EMAIL,
+          provider: MessagingProvider.AWS_SES,
+          eventKind: 'ORDER_PAID',
+          paramsJson: payload as Prisma.InputJsonValue,
+          providerMessageId: payload.orderId,
+          occurredAt:
+            occurredAt && !Number.isNaN(occurredAt.getTime())
+              ? occurredAt
+              : null,
+        },
+      });
+    } catch (error) {
+      if (this.isUniqueConstraintError(error)) {
+        this.logger.warn(
+          `Duplicate ORDER_PAID event ignored for order ${payload.orderId}`,
+        );
+        return;
+      }
+      throw error;
+    }
+
+    await this.prisma.messagingDeliveryEvent.create({
+      data: {
+        sendId: null,
+        webhookEventId: webhookEventId ?? null,
+        channel: MessagingChannel.EMAIL,
+        provider: MessagingProvider.AWS_SES,
+        eventType: 'ORDER_PAID',
+        providerMessageId: payload.orderId,
+        status: 'ORDER_PAID',
+        occurredAt:
+          occurredAt && !Number.isNaN(occurredAt.getTime()) ? occurredAt : null,
+        payload: payload as Prisma.InputJsonValue,
+      },
+    });
+
+    this.logger.log(`Recorded ORDER_PAID event for order ${payload.orderId}`);
+    this.logger.log(`Dispatching async tasks for Order ${payload.orderId}`);
+    this.orderEventsBus.emitOrderPaidVerified({
+      orderId: payload.orderId,
+      pickupTime: payload.pickupTime,
+      userId: payload.userId,
+      amountCents: payload.amountCents,
+      redeemValueCents: payload.redeemValueCents,
+    });
   }
 
   private async createWebhookEvent(params: {
@@ -396,4 +497,15 @@ const mapSnsStatus = (eventType: string): MessagingSendStatus | undefined => {
   if (key.includes('fail') || key.includes('reject'))
     return MessagingSendStatus.FAILED;
   return undefined;
+};
+
+const isOrderPaidEvent = (
+  payload: Record<string, unknown> | null,
+): payload is OrderPaidEvent => {
+  return (
+    !!payload &&
+    payload.event === 'ORDER_PAID' &&
+    typeof payload.orderId === 'string' &&
+    payload.orderId.trim().length > 0
+  );
 };
