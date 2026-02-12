@@ -18,8 +18,10 @@ export class LoyaltyEventProcessor {
     orderId: string;
     userId?: string;
     amountCents: number;
+    redeemValueCents?: number;
+    source?: string;
   }) {
-    const { orderId, userId } = payload;
+    const { orderId, userId, amountCents, redeemValueCents, source } = payload;
 
     this.logger.log(`[Loyalty] Processing points for order: ${orderId}`);
 
@@ -66,14 +68,14 @@ export class LoyaltyEventProcessor {
     }
 
     this.logger.log(
-      `[Loyalty] Processing ORDER_PAID from ${params.source} for order=${orderId}, user=${params.userId ?? 'N/A'}`,
+      `[Loyalty] Processing ORDER_PAID from ${source ?? 'unknown'} for order=${orderId}, user=${userId ?? 'N/A'}`,
     );
 
     await this.loyaltyService.settleOnPaid({
       orderId,
-      userId: params.userId,
-      subtotalCents: params.amountCents ?? 0,
-      redeemValueCents: params.redeemValueCents ?? 0,
+      userId,
+      subtotalCents: amountCents,
+      redeemValueCents: redeemValueCents ?? 0,
     });
   }
 }
