@@ -20,6 +20,7 @@ services:
       DATABASE_URL: "postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/sanqin_db"
       PORT: 4000
       TZ: "America/Toronto"
+      STORE_ID: "4750_Yonge_Street"
       COOKIE_SIGNING_SECRET: ${COOKIE_SIGNING_SECRET}
       JWT_SECRET: ${JWT_SECRET}
       WEB_BASE_URL: "https://sanq.ca"
