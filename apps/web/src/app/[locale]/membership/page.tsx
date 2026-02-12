@@ -1002,15 +1002,29 @@ export default function MembershipHomePage() {
       });
     } catch (err) {
       console.error(err);
-      setPhoneEnrollError(
-        isZh
-          ? '验证码发送失败，请稍后再试。'
-          : 'Failed to send code. Please try again.',
-      );
+      const message = readApiErrorMessage(err);
+      if (message === 'phone already in use') {
+        setPhoneEnrollError(
+          isZh ? '该手机号已被其他账户绑定。' : 'That phone is already in use.',
+        );
+      } else {
+        setPhoneEnrollError(
+          isZh
+            ? '验证码发送失败，请稍后再试。'
+            : 'Failed to send code. Please try again.',
+        );
+      }
     } finally {
       setPhoneEnrollSending(false);
     }
-  }, [phoneEnrollInput, isZh, session?.user?.mfaVerifiedAt, router, locale]);
+  }, [
+    phoneEnrollInput,
+    isZh,
+    readApiErrorMessage,
+    session?.user?.mfaVerifiedAt,
+    router,
+    locale,
+  ]);
 
   const handleVerifyPhoneEnroll = useCallback(async () => {
     if (!session?.user?.mfaVerifiedAt) {
@@ -1055,15 +1069,30 @@ export default function MembershipHomePage() {
       setPhoneEnrollVisible(false);
     } catch (err) {
       console.error(err);
-      setPhoneEnrollError(
-        isZh
-          ? '验证码无效或已过期。'
-          : 'The code is invalid or expired.',
-      );
+      const message = readApiErrorMessage(err);
+      if (message === 'phone already in use') {
+        setPhoneEnrollError(
+          isZh ? '该手机号已被其他账户绑定。' : 'That phone is already in use.',
+        );
+      } else {
+        setPhoneEnrollError(
+          isZh
+            ? '验证码无效或已过期。'
+            : 'The code is invalid or expired.',
+        );
+      }
     } finally {
       setPhoneEnrollVerifying(false);
     }
-  }, [phoneEnrollInput, phoneEnrollCode, isZh, session?.user?.mfaVerifiedAt, router, locale]);
+  }, [
+    phoneEnrollInput,
+    phoneEnrollCode,
+    isZh,
+    readApiErrorMessage,
+    session?.user?.mfaVerifiedAt,
+    router,
+    locale,
+  ]);
 
   const handleEmailEnrollInputChange = useCallback((value: string) => {
     setEmailEnrollInput(value);
