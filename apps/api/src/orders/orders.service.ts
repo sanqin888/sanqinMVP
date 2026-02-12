@@ -804,6 +804,17 @@ export class OrdersService {
       });
     }
 
+    const checkoutIntent = await this.prisma.checkoutIntent.findFirst({
+      where: { orderId: order.id },
+      orderBy: { createdAt: 'desc' },
+      select: { metadata: true },
+    });
+
+    const pickupTime = this.computePickupTimeFromCheckoutMetadata({
+      acceptedAt: order.paidAt,
+      metadata: checkoutIntent?.metadata,
+    });
+
     if (!this.snsTopicArn) {
       this.logger.warn(
         `SNS_TOPIC_ARN not configured, skipping ORDER_PAID publish for order ${order.id}`,
@@ -822,6 +833,7 @@ export class OrdersService {
             amountCents: netSubtotalForRewards,
             redeemValueCents: order.loyaltyRedeemCents ?? 0,
             timestamp: new Date().toISOString(),
+            pickupTime,
           }),
         }),
       );
@@ -2504,6 +2516,7 @@ export class OrdersService {
         })),
         destination,
         pickup,
+        pickupReadyAt: this.parsePickupTime(pickupTime),
       });
 
       const deliveryCostCents =
@@ -2614,7 +2627,7 @@ export class OrdersService {
   }
 
   private extractUberDropoffFromMetadata(
-    metadata: Prisma.JsonValue | null | undefined,
+    metadata: unknown,
     order: OrderWithItems,
   ): UberDirectDropoffDetails | null {
     const root = this.asRecord(metadata);
@@ -2651,7 +2664,7 @@ export class OrdersService {
   }
 
   private extractCustomerEmailFromMetadata(
-    metadata: Prisma.JsonValue | null | undefined,
+    metadata: unknown,
   ): string | undefined {
     const root = this.asRecord(metadata);
     const customer = this.asRecord(root?.customer);
@@ -2668,6 +2681,65 @@ export class OrdersService {
     if (typeof value !== 'string') return undefined;
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : undefined;
+  }
+
+  private computePickupTimeFromCheckoutMetadata(params: {
+    acceptedAt: Date;
+    metadata: unknown;
+  }): string | undefined {
+    const prepMinutes = this.extractPrepMinutes(params.metadata);
+    if (typeof prepMinutes !== 'number' || prepMinutes <= 0) {
+      return undefined;
+    }
+
+    const pickupAt = new Date(
+      params.acceptedAt.getTime() + prepMinutes * 60_000,
+    );
+    if (Number.isNaN(pickupAt.getTime())) {
+      return undefined;
+    }
+
+    return pickupAt.toISOString();
+  }
+
+  private extractPrepMinutes(metadata: unknown): number | undefined {
+    const root = this.asRecord(metadata);
+    const estimate = this.asRecord(root?.estimated);
+
+    return this.normalizeMinutes(
+      this.asNumber(root?.prepMinutes) ??
+        this.asNumber(root?.estimatedPrepMinutes) ??
+        this.asNumber(root?.prepareMinutes) ??
+        this.asNumber(root?.estimatedReadyMinutes) ??
+        this.asNumber(estimate?.prepMinutes) ??
+        this.asNumber(estimate?.estimatedPrepMinutes),
+    );
+  }
+
+  private normalizeMinutes(value: number | undefined): number | undefined {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+    if (value <= 0) return undefined;
+    return Math.max(1, Math.round(value));
+  }
+
+  private asNumber(value: unknown): number | undefined {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === 'string' && value.trim().length > 0) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+    return undefined;
+  }
+
+  private parsePickupTime(pickupTime?: string): Date | undefined {
+    if (!pickupTime) return undefined;
+    const parsed = new Date(pickupTime);
+    if (Number.isNaN(parsed.getTime())) return undefined;
+    return parsed;
   }
 
   async updateStatus(
