@@ -11,6 +11,9 @@ import { LocationModule } from '../location/location.module';
 import { NotificationModule } from '../notifications/notification.module';
 import { EmailModule } from '../email/email.module';
 import { MessagingModule } from '../messaging/messaging.module';
+import { NotificationProcessor } from './processors/notification.processor';
+import { FulfillmentProcessor } from './processors/fulfillment.processor';
+import { LoyaltyProcessor } from './processors/loyalty.processor';
 
 @Module({
   imports: [
@@ -25,7 +28,12 @@ import { MessagingModule } from '../messaging/messaging.module';
     MessagingModule,
   ],
   controllers: [OrdersController],
-  providers: [OrdersService],
+  providers: [
+    OrdersService,
+    NotificationProcessor,
+    FulfillmentProcessor,
+    LoyaltyProcessor,
+  ],
   exports: [OrdersService],
 })
 export class OrdersModule {}

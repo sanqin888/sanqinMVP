@@ -66,6 +66,7 @@ export interface UberDirectDeliveryOptions {
   items: UberDirectManifestItem[];
   destination: UberDirectDropoffDetails;
   pickup?: UberDirectPickupDetails;
+  pickupReadyAt?: Date;
 }
 
 /**
@@ -403,7 +404,9 @@ export class UberDirectService {
         typeof destination.tipCents === 'number'
           ? Math.max(0, destination.tipCents)
           : undefined,
-      pickup_ready: this.isoFromNow(this.pickupReadyMinutes),
+      pickup_ready: options.pickupReadyAt
+        ? options.pickupReadyAt.toISOString()
+        : this.isoFromNow(this.pickupReadyMinutes),
       pickup_deadline: this.isoFromNow(this.pickupDeadlineMinutes),
       dropoff_ready: this.isoFromNow(this.dropoffReadyMinutes),
       dropoff_deadline: this.isoFromNow(this.dropoffDeadlineMinutes),
