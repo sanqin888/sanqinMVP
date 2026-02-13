@@ -81,55 +81,72 @@ function cmd(...bytes) {
 
 // PNG/JPG -> ESC/POS Raster Bit Image (GS v 0)
 async function escposRasterFromImage(filePath, targetWidthDots = LOGO_WIDTH_DOTS) {
-  const img = await Jimp.read(filePath);
+  try {
+    // 1. 读取图片
+    const img = await Jimp.read(filePath);
 
-  // 等比缩放到目标宽度
-  img.resize(targetWidthDots, Jimp.AUTO);
+    // 2. ⚠️【核心修复】计算高度并使用对象传参 (适配 Jimp v1.6.0+)
+    // 旧版: img.resize(w, -1) 
+    // 新版: img.resize({ w: w }) 或者需要显式计算高度
+    const srcW = img.width;   // v1 直接用属性，不再是 bitmap.width
+    const srcH = img.height;
+    const aspect = srcH / srcW;
+    const targetHeight = Math.round(targetWidthDots * aspect);
 
-  // 转灰度
-  img.grayscale();
+    // 执行缩放 (注意：v1 里的操作可能是异步的，建议 await)
+    await img.resize({ w: targetWidthDots, h: targetHeight });
 
-  const w = img.bitmap.width;
-  const h = img.bitmap.height;
+    // 3. 转灰度
+    await img.greyscale();
 
-  // 每行字节数（8像素=1字节）
-  const bytesPerRow = Math.ceil(w / 8);
-  const data = Buffer.alloc(bytesPerRow * h);
+    const w = img.width;
+    const h = img.height;
 
-  // 二值化阈值（越大越“黑”）
-  const threshold = Number(process.env.POS_LOGO_THRESHOLD || 160);
+    // 每行字节数（8像素=1字节）
+    const bytesPerRow = Math.ceil(w / 8);
+    const data = Buffer.alloc(bytesPerRow * h);
 
-  let offset = 0;
-  for (let y = 0; y < h; y++) {
-    for (let xByte = 0; xByte < bytesPerRow; xByte++) {
-      let b = 0;
-      for (let bit = 0; bit < 8; bit++) {
-        const x = xByte * 8 + bit;
-        let v = 255;
-        if (x < w) {
-          const rgba = Jimp.intToRGBA(img.getPixelColor(x, y));
-          v = rgba.r; // grayscale 后 r=g=b
+    // 二值化阈值（越大越“黑”）
+    const threshold = Number(process.env.POS_LOGO_THRESHOLD || 160);
+
+    let offset = 0;
+    for (let y = 0; y < h; y++) {
+      for (let xByte = 0; xByte < bytesPerRow; xByte++) {
+        let b = 0;
+        for (let bit = 0; bit < 8; bit++) {
+          const x = xByte * 8 + bit;
+          let v = 255;
+          if (x < w) {
+            // ⚠️【核心修复】手动位运算获取颜色 (因为 Jimp.intToRGBA 已移除)
+            const color = img.getPixelColor(x, y);
+            // Jimp 颜色是 0xRRGGBBAA，我们取 R 即可 (灰度图 R=G=B)
+            const r = (color >> 24) & 0xff; 
+            v = r;
+          }
+          // 黑点=1（阈值以下当黑）
+          if (v < threshold) b |= (0x80 >> bit);
         }
-        // 黑点=1（阈值以下当黑）
-        if (v < threshold) b |= (0x80 >> bit);
+        data[offset++] = b;
       }
-      data[offset++] = b;
     }
+
+    // GS v 0 协议头
+    const xL = bytesPerRow & 0xff;
+    const xH = (bytesPerRow >> 8) & 0xff;
+    const yL = h & 0xff;
+    const yH = (h >> 8) & 0xff;
+
+    return Buffer.concat([
+      cmd(GS, 0x76, 0x30, 0x00, xL, xH, yL, yH),
+      data,
+      encLine(""),
+    ]);
+  } catch (err) {
+    // 打印更详细的错误信息
+    const msg = err.issues ? JSON.stringify(err.issues, null, 2) : err.message;
+    console.warn(`⚠️ [Logo] 处理图片失败 (${filePath}):`, msg);
+    return Buffer.alloc(0); // 失败返回空，不阻断打印
   }
-
-  // GS v 0
-  // xL xH = bytesPerRow（宽度按字节）
-  // yL yH = h（高度按点）
-  const xL = bytesPerRow & 0xff;
-  const xH = (bytesPerRow >> 8) & 0xff;
-  const yL = h & 0xff;
-  const yH = (h >> 8) & 0xff;
-
-  return Buffer.concat([
-    cmd(GS, 0x76, 0x30, 0x00, xL, xH, yL, yH),
-    data,
-    encLine(""),
-  ]);
 }
 
 // 将 ESC/POS 原始数据发送到指定打印机
