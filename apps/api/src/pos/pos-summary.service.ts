@@ -34,6 +34,11 @@ export type PosDailySummaryResponse = {
     count: number;
     amountCents: number; // ✅ 修改定义：这里将存储“实际收款金额”
   }>;
+  breakdownByChannel: Array<{
+    channel: 'in_store' | 'web';
+    count: number;
+    amountCents: number;
+  }>;
   orders: Array<{
     orderStableId: string;
     clientRequestId: string | null;
@@ -227,6 +232,10 @@ export class PosSummaryService {
           { fulfillmentType: 'dine_in', count: 0, amountCents: 0 },
           { fulfillmentType: 'delivery', count: 0, amountCents: 0 },
         ],
+        breakdownByChannel: [
+          { channel: 'in_store', count: 0, amountCents: 0 },
+          { channel: 'web', count: 0, amountCents: 0 },
+        ],
         orders: [],
       };
     }
@@ -354,6 +363,12 @@ export class PosSummaryService {
       { count: number; amountCents: number }
     >(fulfillBuckets.map((f) => [f, { count: 0, amountCents: 0 }]));
 
+    const channelBuckets: Array<'in_store' | 'web'> = ['in_store', 'web'];
+    const cMap = new Map<
+      'in_store' | 'web',
+      { count: number; amountCents: number }
+    >(channelBuckets.map((c) => [c, { count: 0, amountCents: 0 }]));
+
     for (const r of rows) {
       const p = payMap.get(r.payment) ?? payMap.get('store_balance')!;
       p.count += 1;
@@ -364,6 +379,11 @@ export class PosSummaryService {
         f.count += 1;
         f.amountCents += r.netCents;
       }
+
+      const c = r.channel === 'in_store' ? 'in_store' : 'web';
+      const hit = cMap.get(c)!;
+      hit.count += 1;
+      hit.amountCents += r.netCents;
     }
 
     return {
@@ -388,6 +408,11 @@ export class PosSummaryService {
         fulfillmentType: f,
         count: fMap.get(f)!.count,
         amountCents: fMap.get(f)!.amountCents,
+      })),
+      breakdownByChannel: channelBuckets.map((c) => ({
+        channel: c,
+        count: cMap.get(c)!.count,
+        amountCents: cMap.get(c)!.amountCents,
       })),
       orders: rows,
     };

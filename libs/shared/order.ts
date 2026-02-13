@@ -52,9 +52,11 @@ export const CreateOrderItemSchema = z.object({
 });
 
 export const DeliveryDestinationSchema = z.object({
+  addressStableId: z.string().optional(),
   name: z.string(),
   phone: z.string(),
   addressLine1: z.string(),
+  placeId: z.string().optional(),
   addressLine2: z.string().optional(),
   city: z.string(),
   province: z.string(),

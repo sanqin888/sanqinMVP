@@ -12,9 +12,24 @@ type CheckoutIntentRecord = CheckoutIntent & {
   metadataJson: Prisma.JsonValue;
 };
 
+const PENDING_TTL_MINUTES = 20;
+
 @Injectable()
 export class CheckoutIntentsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private buildPendingExpiryDate(from = Date.now()): Date {
+    return new Date(from + PENDING_TTL_MINUTES * 60 * 1000);
+  }
+
+  private isPendingExpired(record: CheckoutIntentRecord): boolean {
+    return (
+      record.status === 'pending' &&
+      record.orderId === null &&
+      !!record.expiresAt &&
+      record.expiresAt.getTime() < Date.now()
+    );
+  }
 
   async recordIntent(params: {
     referenceId: string;
@@ -24,7 +39,7 @@ export class CheckoutIntentsService {
     locale?: string;
     metadata: HostedCheckoutMetadata;
   }): Promise<CheckoutIntentWithMetadata> {
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+    const expiresAt = this.buildPendingExpiryDate();
     const data = {
       referenceId: params.referenceId,
       checkoutSessionId: params.checkoutSessionId ?? null,
@@ -76,7 +91,22 @@ export class CheckoutIntentsService {
       })) as CheckoutIntentRecord | null;
     }
 
-    return record ? this.mapRecord(record) : null;
+    if (!record) {
+      return null;
+    }
+
+    if (this.isPendingExpired(record)) {
+      await this.markExpired(record.id);
+      const refreshed = (await this.prisma.checkoutIntent.findUnique({
+        where: { id: record.id },
+      })) as CheckoutIntentRecord | null;
+      if (!refreshed) {
+        return null;
+      }
+      return this.mapRecord(refreshed);
+    }
+
+    return this.mapRecord(record);
   }
 
   async markProcessed(params: {
@@ -175,6 +205,7 @@ export class CheckoutIntentsService {
         status: 'pending',
         result: null,
         processedAt: null,
+        expiresAt: this.buildPendingExpiryDate(),
       },
     });
   }

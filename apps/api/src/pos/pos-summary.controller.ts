@@ -41,6 +41,7 @@ export class PosSummaryController {
     @Query('timeMin') timeMin: string,
     @Query('timeMax') timeMax: string,
     @Query('storeId') storeId?: string,
+    @Query('breakdownType') breakdownType?: 'payment' | 'channel',
     @Query('fulfillmentType') fulfillmentType?: string,
     @Query('status') statusBucket?: string,
     @Query('payment') paymentBucket?: string,
@@ -55,7 +56,10 @@ export class PosSummaryController {
 
     this.posGateway.sendPrintSummary(
       storeId ?? process.env.STORE_ID ?? 'default_store',
-      data,
+      {
+        ...data,
+        breakdownType,
+      },
     );
 
     return { success: true };

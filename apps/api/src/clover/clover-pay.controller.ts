@@ -580,11 +580,13 @@ function buildPricingFingerprint(
     })),
     deliveryDestination: orderDto.deliveryDestination
       ? {
+          addressStableId: orderDto.deliveryDestination.addressStableId ?? null,
           addressLine1: orderDto.deliveryDestination.addressLine1,
           addressLine2: orderDto.deliveryDestination.addressLine2 ?? null,
           city: orderDto.deliveryDestination.city,
           province: orderDto.deliveryDestination.province,
           postalCode: orderDto.deliveryDestination.postalCode,
+          placeId: orderDto.deliveryDestination.placeId ?? null,
           latitude: orderDto.deliveryDestination.latitude ?? null,
           longitude: orderDto.deliveryDestination.longitude ?? null,
         }

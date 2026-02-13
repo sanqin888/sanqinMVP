@@ -162,7 +162,7 @@ async function escposRasterFromImage(filePath, targetWidthDots = LOGO_WIDTH_DOTS
   } catch (err) {
     // 打印更详细的错误信息
     const msg = err.issues ? JSON.stringify(err.issues, null, 2) : err.message;
-    console.warn(`⚠️ [Logo] 处理图片失败 (${filePath}):`, msg);
+    console.warn(`[Logo] Picture cannot be processed. (${filePath}):`, msg);
     return Buffer.alloc(0); // 失败返回空，不阻断打印
   }
 }
@@ -201,7 +201,7 @@ function printEscPosTo(printerName, dataBuffer) {
         cmdStr = `cmd /C type "${tmpFile}" > PRN`;
       }
 
-      console.log("[printEscPosTo] 执行命令:", cmdStr);
+      console.log("[printEscPosTo] command:", cmdStr);
 
       exec(cmdStr, (error, stdout, stderr) => {
         // 打印完删除临时文件
@@ -214,10 +214,10 @@ function printEscPosTo(printerName, dataBuffer) {
         }
 
         if (stderr) {
-          console.warn("[printEscPosTo] 打印命令 stderr:", stderr.toString().trim());
+          console.warn("[printEscPosTo] Print command stderr:", stderr.toString().trim());
         }
 
-        console.log("[printEscPosTo] 打印命令 stdout:", (stdout || "").toString().trim());
+        console.log("[printEscPosTo] Print command stdout:", (stdout || "").toString().trim());
         resolve();
       });
     });
@@ -309,10 +309,10 @@ async function buildCustomerReceiptEscPos(params) {
       chunks.push(encLine("扫码访问 Review Us"));
       chunks.push(cmd(ESC, 0x61, 0x00)); // 左对齐
     } else {
-      console.warn("[logo] 未找到 logo 文件，跳过:", logoPath);
+      console.warn("[logo] No logo picture found，pass:", logoPath);
     }
   } catch (e) {
-    console.warn("[logo] 打印logo失败，跳过:", e?.message || e);
+    console.warn("[logo] Print logo failed，pass:", e?.message || e);
   }
   chunks.push(cmd(ESC, 0x61, 0x00)); // 左对齐
   chunks.push(encLine(makeLine("-")));
@@ -510,8 +510,25 @@ function buildKitchenReceiptEscPos(params) {
 
 // ✅ 构建汇总小票函数
 function buildSummaryReceiptEscPos(params) {
-  const { date, totals, breakdownType, breakdownItems } = params;
+  const {
+    date,
+    totals,
+    breakdownType,
+    breakdownItems,
+    breakdownByPayment,
+    breakdownByFulfillment,
+    breakdownByChannel,
+  } = params;
   const chunks = [];
+
+  const resolvedBreakdownType = breakdownType === "payment" ? "payment" : "channel";
+  const resolvedBreakdownItems = Array.isArray(breakdownItems)
+    ? breakdownItems
+    : resolvedBreakdownType === "payment"
+      ? breakdownByPayment
+      : Array.isArray(breakdownByChannel)
+        ? breakdownByChannel
+        : breakdownByFulfillment;
 
   chunks.push(cmd(ESC, 0x40)); // Init
   chunks.push(cmd(ESC, 0x33, 20)); // 行间距
@@ -530,10 +547,14 @@ function buildSummaryReceiptEscPos(params) {
   }
   chunks.push(encLine(makeLine("-")));
 
-  if (Array.isArray(breakdownItems)) {
+  if (Array.isArray(resolvedBreakdownItems)) {
     chunks.push(cmd(ESC, 0x45, 0x01)); // Bold
     chunks.push(
-      encLine(breakdownType === "payment" ? "按支付方式汇总 (By Payment)" : "按渠道汇总 (By Channel)")
+      encLine(
+        resolvedBreakdownType === "payment"
+          ? "按支付方式汇总 (By Payment)"
+          : "按渠道汇总 (By Channel)"
+      )
     );
     chunks.push(cmd(ESC, 0x45, 0x00));
     chunks.push(encLine("(金额: 实际收款 - 不含税)"));
@@ -542,8 +563,28 @@ function buildSummaryReceiptEscPos(params) {
     chunks.push(encLine(padRight("类别", 14) + padLeft("单数", 6) + padLeft("金额", 12)));
     chunks.push(encLine(makeLine(".")));
 
-    breakdownItems.forEach((item) => {
-      const label = item.label || item.payment || item.fulfillmentType || "Unknown";
+    resolvedBreakdownItems.forEach((item) => {
+      let label = item.label || item.payment || item.channel || item.fulfillmentType || "Unknown";
+      if (!item.label && resolvedBreakdownType === "payment") {
+        const paymentLabelMap = {
+          cash: "现金 CASH",
+          card: "刷卡 CARD",
+          online: "线上 ONLINE",
+          store_balance: "储值 STORE BAL",
+        };
+        label = paymentLabelMap[item.payment] || label;
+      }
+      if (!item.label && resolvedBreakdownType === "channel") {
+        const channelLabelMap = {
+          in_store: "门店 IN STORE",
+          web: "网站 WEBSITE",
+          ubereats: "网站 WEBSITE",
+          dine_in: "堂食 DINE IN",
+          pickup: "自取 PICKUP",
+          delivery: "配送 DELIVERY",
+        };
+        label = channelLabelMap[item.channel || item.fulfillmentType] || label;
+      }
       chunks.push(encLine(label));
 
       const countStr = String(item.count);
@@ -559,21 +600,26 @@ function buildSummaryReceiptEscPos(params) {
     chunks.push(encLine("今日总计 (Totals)"));
     chunks.push(cmd(ESC, 0x45, 0x00));
 
-    const printRow = (label, valCents) => {
+    const printMoneyRow = (label, valCents) => {
       const l = padRight(label, 20);
       const v = padLeft(money(valCents), LINE_WIDTH - 20);
       chunks.push(encLine(l + v));
     };
 
-    // 注意：orders 不是 cents，但你原逻辑就是这么打印的（保持不改）
-    printRow("总单量 Orders", totals.orders);
-    printRow("销售额(不含税) Sales", totals.salesCents);
+    const printCountRow = (label, count) => {
+      const l = padRight(label, 20);
+      const v = padLeft(String(count ?? 0), LINE_WIDTH - 20);
+      chunks.push(encLine(l + v));
+    };
+
+    printCountRow("总单量 Orders", totals.orders);
+    printMoneyRow("销售额(不含税) Sales", totals.salesCents);
 
     chunks.push(encLine(makeLine("-")));
 
-    printRow("合计税费 Tax", totals.taxCents);
-    printRow("合计配送费 D.Fee", totals.deliveryFeeCents || 0);
-    printRow("合计Uber费用 UberCost", totals.deliveryCostCents || 0);
+    printMoneyRow("合计税费 Tax", totals.taxCents);
+    printMoneyRow("合计配送费 D.Fee", totals.deliveryFeeCents || 0);
+    printMoneyRow("合计Uber费用 UberCost", totals.deliveryCostCents || 0);
 
     chunks.push(encLine(makeLine("=")));
 
@@ -619,7 +665,7 @@ app.get("/ping", (req, res) => {
 // 汇总打印接口
 app.post("/print-summary", async (req, res) => {
   const payload = req.body;
-  console.log("[/print-summary] 收到打印请求");
+  console.log("[/print-summary] Received print task");
   try {
     const dataBuffer = buildSummaryReceiptEscPos(payload);
     await printEscPosTo(FRONT_PRINTER, dataBuffer);
@@ -630,76 +676,9 @@ app.post("/print-summary", async (req, res) => {
   }
 });
 
-// 主打印接口
-app.post("/print-pos", async (req, res) => {
-  const payload = req.body;
-  const { locale, orderNumber, pickupCode, fulfillment, paymentMethod, snapshot, targets } = payload || {};
-
-  console.log(
-    "[/print-pos] 收到打印请求:",
-    JSON.stringify(
-      {
-        orderNumber,
-        pickupCode,
-        fulfillment,
-        paymentMethod,
-        itemCount: snapshot?.items?.length ?? 0,
-      },
-      null,
-      2
-    )
-  );
-
-  if (!snapshot || !Array.isArray(snapshot.items)) {
-    console.error("[/print-pos] 缺少 snapshot.items");
-    return res.status(400).json({ error: "Missing snapshot.items in payload" });
-  }
-
-  try {
-    const customerData = await buildCustomerReceiptEscPos({
-      locale,
-      orderNumber,
-      pickupCode,
-      fulfillment,
-      paymentMethod,
-      snapshot,
-    });
-
-    const kitchenData = buildKitchenReceiptEscPos({
-      locale,
-      orderNumber,
-      fulfillment,
-      snapshot,
-    });
-
-    const targetCustomer = targets?.customer ?? true;
-    const targetKitchen = targets?.kitchen ?? true;
-    const tasks = [];
-
-    if (targetCustomer) {
-      tasks.push(printEscPosTo(FRONT_PRINTER, customerData));
-    }
-    if (targetKitchen) {
-      tasks.push(printEscPosTo(KITCHEN_PRINTER, kitchenData));
-    }
-
-    await Promise.all(tasks);
-
-    console.log("[/print-pos] 已发送 ESC/POS 数据到打印机");
-    res.json({ ok: true });
-  } catch (err) {
-    console.error("[/print-pos] 打印过程中出错:", err);
-    res.status(500).json({ error: String(err) });
-  }
-});
-
-const PORT = process.env.POS_PRINTER_PORT || 19191;
-
-app.listen(PORT, () => {
-  console.log(`POS ESC/POS printer server listening on http://127.0.0.1:${PORT}`);
-  console.log("Front printer logical name:", FRONT_PRINTER || "(system default)");
-  console.log("Kitchen printer logical name:", KITCHEN_PRINTER || "(same as front)");
-});
+// 仅保留一个简单的探活接口，方便查看服务是否存活
+app.get("/", (req, res) => res.send("Printer Server is Running (Cloud Mode)"));
+app.listen(19191, () => console.log("Local server is running, this is for health check."));
 
 // ============================================================
 // 🚀 云端自动接单模块 (Cloud Auto-Print)
@@ -709,9 +688,9 @@ const API_URL = process.env.API_URL || 'http://localhost:3000';
 const STORE_ID = process.env.STORE_ID;
 
 if (STORE_ID) {
-  console.log(`\n☁️  正在连接云端 POS 网关...`);
-  console.log(`   目标: ${API_URL}/pos`);
-  console.log(`   门店: ${STORE_ID}\n`);
+  console.log(`Connecting POS DNS...`);
+  console.log(`Target: ${API_URL}/pos`);
+  console.log(`Store: ${STORE_ID}\n`);
 
   const socket = io(`${API_URL}/pos`, {
     transports: ['websocket'],
@@ -721,12 +700,12 @@ if (STORE_ID) {
   });
 
   socket.on('connect', () => {
-    console.log(`✅ [Cloud] 已连接到服务器! Socket ID: ${socket.id}`);
+    console.log(`[Cloud] Connected! Socket ID: ${socket.id}`);
     socket.emit('joinStore', { storeId: STORE_ID });
   });
 
-  socket.on('disconnect', (reason) => {
-    console.warn(`❌ [Cloud] 连接断开: ${reason}`);
+  socket.on('Disconnect', (reason) => {
+    console.warn(`[Cloud] Disconnect: ${reason}`);
   });
 
   // 核心：监听云端指令
@@ -737,8 +716,7 @@ if (STORE_ID) {
     const orderId = formattedPayload.orderNumber || 'Unknown';
     const targetCustomer = formattedPayload?.targets?.customer ?? true;
     const targetKitchen = formattedPayload?.targets?.kitchen ?? true;
-    console.log(`
-🖨️  [Cloud] 收到打印任务: ${orderId}`);
+    console.log(`[Cloud] 收到打印任务: ${orderId}`);
 
     try {
       // ==========================================
@@ -748,10 +726,10 @@ if (STORE_ID) {
         const customerBuffer = await buildCustomerReceiptEscPos(formattedPayload);
         const frontPrinterName = process.env.POS_FRONT_PRINTER || "POS80";
         if (frontPrinterName) {
-          console.log(`➡️  前台打印 -> ${frontPrinterName}`);
+          console.log(`Cashier Print -> ${frontPrinterName}`);
           await printEscPosTo(frontPrinterName, customerBuffer);
         } else {
-          console.warn(`⚠️  未配置前台打印机 (POS_FRONT_PRINTER)`);
+          console.warn(`No cashier printer found (POS_FRONT_PRINTER)`);
         }
       }
 
@@ -762,36 +740,36 @@ if (STORE_ID) {
         const kitchenBuffer = buildKitchenReceiptEscPos(formattedPayload);
         const kitchenPrinterName = process.env.POS_KITCHEN_PRINTER;
         if (kitchenPrinterName) {
-          console.log(`➡️  后厨打印 -> ${kitchenPrinterName}`);
+          console.log(`kitchen print -> ${kitchenPrinterName}`);
           await printEscPosTo(kitchenPrinterName, kitchenBuffer);
         } else {
-          console.log(`ℹ️  未配置后厨打印机 (POS_KITCHEN_PRINTER)，跳过。`);
+          console.log(`No kitchen printer found (POS_KITCHEN_PRINTER)，pass。`);
         }
       }
 
-      console.log(`✅ [Cloud] 打印流程结束`);
+      console.log(` [Cloud] Print workflow over`);
     } catch (err) {
-      console.error(`❌ [Cloud] 打印失败:`, err);
+      console.error(`[Cloud] Failed print:`, err);
     }
   });
 
 
   socket.on('PRINT_SUMMARY', async (summaryData) => {
-    console.log(`\n📊 [Cloud] 收到当日小结打印任务`);
+    console.log(`\n [Cloud] Received print task ”Daily Summary“`);
 
     try {
       const buffer = buildSummaryReceiptEscPos(summaryData);
 
       const printerName = process.env.POS_FRONT_PRINTER || "POS80";
-      console.log(`➡️  正在打印小结 -> ${printerName}`);
+      console.log(`Printing ”Daily Summary“ -> ${printerName}`);
       await printEscPosTo(printerName, buffer);
 
-      console.log('✅ 小结打印完成');
+      console.log('Print ”Daily Summary“ completed');
     } catch (err) {
-      console.error('❌ 小结打印失败:', err);
+      console.error('Failed print ”Daily Summary“:', err);
     }
   });
 
 } else {
-  console.warn(`⚠️  [Cloud] 未配置 STORE_ID，云端自动接单功能未启动。`);
+  console.warn(`[Cloud] No STORE_ID Found，cloud print server stop。`);
 }

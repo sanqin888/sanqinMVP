@@ -67,6 +67,17 @@ export type HostedCheckoutMetadata = {
   };
 
   selectedUserCouponId?: string;
+
+  deliveryDestination?: {
+    addressStableId?: string;
+    addressLine1?: string;
+    addressLine2?: string;
+    city?: string;
+    province?: string;
+    postalCode?: string;
+    country?: string;
+    placeId?: string;
+  };
 };
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
@@ -212,6 +223,25 @@ const parseCoupon = (
   };
 };
 
+const parseDeliveryDestination = (
+  value: unknown,
+): HostedCheckoutMetadata['deliveryDestination'] | undefined => {
+  if (!isPlainObject(value)) return undefined;
+
+  return {
+    addressStableId:
+      normalizeStableId(toString(value.addressStableId ?? value.stableId)) ??
+      undefined,
+    addressLine1: toString(value.addressLine1),
+    addressLine2: toString(value.addressLine2),
+    city: toString(value.city),
+    province: toString(value.province),
+    postalCode: toString(value.postalCode),
+    country: toString(value.country),
+    placeId: toString(value.placeId),
+  };
+};
+
 const parseCustomer = (value: unknown): HostedCheckoutCustomer => {
   if (!isPlainObject(value)) {
     throw new Error('customer is required');
@@ -286,6 +316,7 @@ export function parseHostedCheckoutMetadata(
       normalizeStableId(toString(input.loyaltyUserStableId)) ?? undefined,
     coupon: parseCoupon(input.coupon),
     selectedUserCouponId: toString(metadata.selectedUserCouponId),
+    deliveryDestination: parseDeliveryDestination(metadata.deliveryDestination),
   } satisfies HostedCheckoutMetadata;
 }
 
@@ -340,12 +371,15 @@ const buildDestination = (
   if (meta.fulfillment !== 'delivery') return undefined;
 
   const { customer } = meta;
-  const requiredFields = [
-    customer.addressLine1,
-    customer.city,
-    customer.province,
-    customer.postalCode,
-  ];
+  const source = meta.deliveryDestination;
+  const addressLine1 = source?.addressLine1 ?? customer.addressLine1;
+  const addressLine2 = source?.addressLine2 ?? customer.addressLine2;
+  const city = source?.city ?? customer.city;
+  const province = source?.province ?? customer.province;
+  const postalCode = source?.postalCode ?? customer.postalCode;
+  const country = source?.country ?? customer.country;
+
+  const requiredFields = [addressLine1, city, province, postalCode];
 
   const missingRequired = requiredFields.some((field) => !field);
 
@@ -355,14 +389,18 @@ const buildDestination = (
   }
 
   return {
+    ...(source?.addressStableId
+      ? { addressStableId: source.addressStableId }
+      : {}),
     name: formatCustomerName(customer),
     phone: customer.phone,
-    addressLine1: customer.addressLine1!,
-    addressLine2: customer.addressLine2,
-    city: customer.city!,
-    province: customer.province!,
-    postalCode: customer.postalCode!,
-    country: customer.country ?? 'Canada',
+    addressLine1: addressLine1!,
+    ...(addressLine2 ? { addressLine2 } : {}),
+    city: city!,
+    province: province!,
+    postalCode: postalCode!,
+    country: country ?? 'Canada',
+    ...(source?.placeId ? { placeId: source.placeId } : {}),
     instructions: customer.notes,
     notes: customer.notes,
   };
