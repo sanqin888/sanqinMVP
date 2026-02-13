@@ -11,6 +11,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import { OrderEventsBus } from '../../messaging/order-events.bus';
 import { PosGateway } from '../../pos/pos.gateway';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -143,6 +144,21 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
   onModuleDestroy() {
     this.events.offOrderPaidVerified(this.onPaid);
     this.events.offOrderAccepted(this.onAccepted);
+  }
+
+  @OnEvent('order.reprint')
+  async handleOrderReprint(payload: { orderStableId: string }) {
+    this.logger.log(
+      `[Fulfillment] Order reprint requested: ${payload.orderStableId}. Triggering POS print.`,
+    );
+
+    const printPayload = await this.printPosPayloadService.getByStableId(
+      payload.orderStableId,
+      'zh',
+    );
+
+    const storeId = process.env.STORE_ID || 'default_store';
+    this.posGateway.sendPrintJob(storeId, printPayload);
   }
 
   private extractDropoff(

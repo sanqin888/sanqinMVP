@@ -13,14 +13,13 @@ import {
   buildLocalizedMenuFromDb,
   type PublicMenuCategory,
 } from "@/lib/menu/menu-transformer";
-import { apiFetch } from "@/lib/api/client";
 import {
   advanceOrder,
   createOrderAmendment,
   fetchRecentOrders,
+  printOrderCloud,
   updateOrderStatus,
 } from "@/lib/api/pos";
-import type { PosDisplaySnapshot } from "@/lib/pos-display";
 import type { CreateOrderAmendmentInput } from "@/lib/api/pos";
 import { parseBackendDate, ymdInTimeZone } from "@/lib/time/tz";
 
@@ -429,109 +428,6 @@ type SwapSelection = {
   options: Record<string, string[]>;
   quantity: number;
 };
-
-type PosPrintRequest = {
-  locale: Locale;
-  orderNumber: string;
-  pickupCode?: string | null;
-  fulfillment: "pickup" | "dine_in";
-  paymentMethod: "cash" | "card" | "wechat_alipay";
-  snapshot: PosDisplaySnapshot;
-  targets?: {
-    customer?: boolean;
-    kitchen?: boolean;
-  };
-};
-
-function statusTone(status: OrderStatusKey): string {
-  switch (status) {
-    case "paid":
-      return "bg-emerald-500/15 text-emerald-100 border-emerald-400/40";
-    case "pending":
-      return "bg-amber-500/15 text-amber-100 border-amber-400/40";
-    case "making":
-      return "bg-indigo-500/15 text-indigo-100 border-indigo-400/40";
-    case "ready":
-      return "bg-sky-500/15 text-sky-100 border-sky-400/40";
-    case "completed":
-      return "bg-emerald-500/15 text-emerald-100 border-emerald-400/40";
-    case "refunded":
-      return "bg-rose-500/15 text-rose-100 border-rose-400/40";
-    default:
-      return "bg-slate-700 text-slate-200 border-slate-500";
-  }
-}
-
-function formatMoney(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
-
-function formatOrderTime(value: string, locale: Locale, timeZone?: string): string {
-  const date = parseBackendDate(value);
-  if (Number.isNaN(date.getTime())) return "--";
-
-  const opts: Intl.DateTimeFormatOptions = {
-    hour: "2-digit",
-    minute: "2-digit",
-  };
-  if (timeZone) opts.timeZone = timeZone;
-
-  return date.toLocaleTimeString(locale === "zh" ? "zh-CN" : "en-US", opts);
-}
-
-
-function mapPaymentMethod(order: BackendOrder): PaymentMethodKey {
-  if (order.channel === "in_store") return "cash";
-  return "card";
-}
-
-function pickItemName(item: BackendOrderItem, locale: Locale): string {
-  const display = item.displayName?.trim() ?? "";
-  const nameEn = item.nameEn?.trim() ?? "";
-  const nameZh = item.nameZh?.trim() ?? "";
-
-  if (locale === "zh") {
-    return nameZh || display || nameEn || item.productStableId;
-  }
-  return nameEn || display || nameZh || item.productStableId;
-}
-
-function calcOptionDeltaCents(
-  item: PublicMenuCategory["items"][number],
-  options: Record<string, string[]>,
-): number {
-  let optionDeltaCents = 0;
-  (item.optionGroups ?? []).forEach((group) => {
-    const selected = options[group.templateGroupStableId] ?? [];
-    group.options.forEach((option) => {
-      if (selected.includes(option.optionStableId)) {
-        optionDeltaCents += option.priceDeltaCents;
-      }
-    });
-  });
-  return optionDeltaCents;
-}
-
-function calcSwapTotalCents(selection: SwapSelection | null): number {
-  if (!selection) return 0;
-  const unitPriceCents =
-    Math.round(selection.item.price * 100) +
-    calcOptionDeltaCents(selection.item, selection.options);
-  return unitPriceCents * selection.quantity;
-}
-
-function sendPosPrintRequest(payload: PosPrintRequest): Promise<void> {
-  return fetch("http://127.0.0.1:19191/print-pos", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-    keepalive: true,
-  })
-    .then(() => undefined)
-    .catch((err) => {
-      console.error("Failed to send POS print request:", err);
-    });
-}
 
 type ActionSummary = {
   baseTotal: number;
@@ -1521,120 +1417,9 @@ const handleSubmit = () => {
         ),
       );
 
-      // 6) 打印（保留你原逻辑）
-      const printAfterAction = async () => {
-        if (selectedAction !== "void_item" && selectedAction !== "swap_item") {
-          return;
-        }
-
-        const fulfillment: PosPrintRequest["fulfillment"] =
-          selectedOrder.type === "dine_in" ? "dine_in" : "pickup";
-
-        const paymentMethod: PosPrintRequest["paymentMethod"] =
-          selectedOrder.paymentMethod === "cash"
-            ? "cash"
-            : selectedOrder.paymentMethod === "card"
-              ? "card"
-              : "wechat_alipay";
-
-        const remainingItems: PosDisplaySnapshot["items"] = selectedOrder.items
-          .filter((item) => !selectedItemIds.includes(item.stableId))
-          .map((item) => ({
-            stableId: item.stableId,
-            nameZh: item.nameZh ?? item.displayName ?? item.name,
-            nameEn: item.nameEn ?? item.displayName ?? item.name,
-            quantity: item.qty,
-            unitPriceCents: item.unitPriceCents,
-            lineTotalCents: item.totalCents,
-          }));
-
-        if (selectedAction === "swap_item" && swapSelection) {
-          const unitPriceCents =
-            Math.round(swapSelection.item.price * 100) +
-            calcOptionDeltaCents(swapSelection.item, swapSelection.options);
-
-          remainingItems.push({
-            stableId: swapSelection.item.stableId,
-            nameZh:
-              swapSelection.item.nameZh ??
-              swapSelection.item.nameEn ??
-              swapSelection.item.name,
-            nameEn: swapSelection.item.nameEn ?? swapSelection.item.name,
-            quantity: swapSelection.quantity,
-            unitPriceCents,
-            lineTotalCents: unitPriceCents * swapSelection.quantity,
-            options: swapSelection.options,
-          });
-        }
-
-        const nextSnapshot: PosDisplaySnapshot = {
-          items: remainingItems,
-          subtotalCents: summary.newSubtotal,
-          discountCents: summary.newDiscount,
-          taxCents: summary.newTax,
-          totalCents: summary.newTotalCents,
-        };
-
-        const baseSubtotal = selectedOrder.subtotalCents;
-        const baseDiscount = selectedOrder.discountCents;
-        const baseAfterDiscount = Math.max(
-          0,
-          selectedOrder.subtotalAfterDiscountCents,
-        );
-        const baseTax = selectedOrder.taxCents;
-        const baseTaxRate =
-          baseAfterDiscount > 0 ? baseTax / baseAfterDiscount : 0;
-
-        const removedCents = selectedItems.reduce(
-          (sum, item) => sum + item.totalCents,
-          0,
-        );
-
-        const voidDiscount =
-          baseSubtotal > 0
-            ? Math.round((baseDiscount * removedCents) / baseSubtotal)
-            : 0;
-        const voidAfterDiscount = Math.max(0, removedCents - voidDiscount);
-        const voidTax = Math.round(voidAfterDiscount * baseTaxRate);
-
-        const voidSnapshot: PosDisplaySnapshot = {
-          items: selectedItems.map((item) => ({
-            stableId: item.stableId,
-            nameZh: `退菜 ${item.nameZh ?? item.displayName ?? item.name}`,
-            nameEn: `VOID ${item.nameEn ?? item.displayName ?? item.name}`,
-            quantity: item.qty,
-            unitPriceCents: item.unitPriceCents,
-            lineTotalCents: item.totalCents,
-          })),
-          subtotalCents: removedCents,
-          discountCents: voidDiscount,
-          taxCents: voidTax,
-          totalCents: voidAfterDiscount + voidTax,
-        };
-
-        const basePayload = {
-          locale,
-          orderNumber: selectedOrder.clientRequestId ?? selectedOrder.stableId,
-          pickupCode: selectedOrder.pickupCode,
-          fulfillment,
-          paymentMethod,
-        };
-
-        await sendPosPrintRequest({
-          ...basePayload,
-          snapshot: nextSnapshot,
-        });
-
-        if (selectedItems.length > 0) {
-          await sendPosPrintRequest({
-            ...basePayload,
-            snapshot: voidSnapshot,
-            targets: { kitchen: true, customer: false },
-          });
-        }
-      };
-
-      await printAfterAction();
+      if (selectedAction === "void_item" || selectedAction === "swap_item") {
+        await printOrderCloud(selectedOrder.stableId);
+      }
 
       showToast(copy.actionSuccess, "success");
       completeReset();
@@ -1672,39 +1457,15 @@ const handleSubmit = () => {
 
   const handlePrintReceipt = useCallback(async () => {
     if (!selectedOrder) return;
-    const fulfillment: PosPrintRequest["fulfillment"] =
-      selectedOrder.type === "dine_in" ? "dine_in" : "pickup";
-    const paymentMethod: PosPrintRequest["paymentMethod"] =
-      selectedOrder.paymentMethod === "cash"
-        ? "cash"
-        : selectedOrder.paymentMethod === "card"
-          ? "card"
-          : "wechat_alipay";
-    const snapshot: PosDisplaySnapshot = {
-      items: selectedOrder.items.map((item) => ({
-        stableId: item.stableId,
-        nameZh: item.nameZh ?? item.displayName ?? item.name,
-        nameEn: item.nameEn ?? item.displayName ?? item.name,
-        quantity: item.qty,
-        unitPriceCents: item.unitPriceCents,
-        lineTotalCents: item.totalCents,
-      })),
-      subtotalCents: selectedOrder.subtotalCents,
-      discountCents: selectedOrder.discountCents,
-      taxCents: selectedOrder.taxCents,
-      totalCents: selectedOrder.amountCents,
-    };
 
-    await sendPosPrintRequest({
-      locale,
-      orderNumber: selectedOrder.clientRequestId ?? selectedOrder.stableId,
-      pickupCode: selectedOrder.pickupCode,
-      fulfillment,
-      paymentMethod,
-      snapshot,
-      targets: { customer: true, kitchen: false },
-    });
-  }, [locale, selectedOrder]);
+    try {
+      await printOrderCloud(selectedOrder.stableId);
+      showToast(copy.actionSuccess, "success");
+    } catch (error) {
+      console.error("Failed to send cloud print request:", error);
+      showToast(copy.advanceFailed, "error");
+    }
+  }, [copy.actionSuccess, copy.advanceFailed, selectedOrder, showToast]);
 
   const advanceLabel = useMemo(() => {
     if (!selectedOrder) return copy.advanceStatus;
