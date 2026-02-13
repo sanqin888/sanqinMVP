@@ -106,3 +106,18 @@ export async function createOrderAmendment<T = unknown>(
     body: JSON.stringify(payload),
   });
 }
+
+// POS: 云端打印订单
+export async function printOrderCloud<T = unknown>(stableId: string) {
+  return apiFetch<T>(`/pos/orders/${enc(stableId)}/print`, {
+    method: 'POST',
+  });
+}
+
+// POS: 云端打印当日小结
+export async function printSummaryCloud<T = unknown>(params: Record<string, string>) {
+  const qs = new URLSearchParams(params).toString();
+  return apiFetch<T>(`/pos/summary/print?${qs}`, {
+    method: 'POST',
+  });
+}

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import type { Locale } from "@/lib/i18n/locales";
 import { apiFetch } from "@/lib/api/client";
+import { printSummaryCloud } from "@/lib/api/pos";
 import { parseBackendDate, ymdInTimeZone } from "@/lib/time/tz";
 
 type BusinessConfigLite = { timezone: string };
@@ -278,20 +279,6 @@ function labelPayment(locale: Locale, v: string) {
   return v;
 }
 
-// 辅助函数：调用打印服务
-async function sendPrintSummaryRequest(payload: unknown) {
-  try {
-    await fetch("http://127.0.0.1:19191/print-summary", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-  } catch (err) {
-    console.error("Failed to print summary:", err);
-    alert("连接打印机失败 (Port 19191)，请检查插件是否运行。");
-  }
-}
-
 export default function PosDailySummaryPage() {
   const params = useParams<{ locale?: string }>();
   const locale: Locale = params?.locale === "zh" ? "zh" : "en";
@@ -472,22 +459,29 @@ export default function PosDailySummaryPage() {
   };
 
   // ✅ 执行真实打印
-  const handleConfirmPrint = () => {
+  const handleConfirmPrint = async () => {
     if (!data || !previewType) return;
 
-    // 不再传递 timeRange，而是传递 date
-    const dateStr = getFormattedDateStr();
 
-    const payload = {
-      locale,
-      date: dateStr, // 新字段
-      totals: data.totals,
-      breakdownType: previewType,
-      breakdownItems: previewType === 'payment' ? data.breakdownByPayment : data.breakdownByFulfillment,
-    };
+    try {
+      setLoading(true);
+      const params: Record<string, string> = {
+        timeMin: data.timeMin,
+        timeMax: data.timeMax,
+      };
 
-    sendPrintSummaryRequest(payload);
-    setIsPrintDialogOpen(false);
+      if (filters.channel) params.fulfillmentType = filters.channel;
+      if (filters.status) params.status = filters.status;
+      if (filters.payment) params.payment = filters.payment;
+
+      await printSummaryCloud(params);
+      setIsPrintDialogOpen(false);
+    } catch (err) {
+      console.error("Failed to print summary via cloud:", err);
+      alert("打印失败，请稍后重试。");
+    } finally {
+      setLoading(false);
+    }
   };
 
   // ✅ 渲染预览卡片内容

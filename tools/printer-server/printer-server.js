@@ -738,6 +738,23 @@ if (STORE_ID) {
     }
   });
 
+
+  socket.on('PRINT_SUMMARY', async (summaryData) => {
+    console.log(`\n📊 [Cloud] 收到当日小结打印任务`);
+
+    try {
+      const buffer = buildSummaryReceiptEscPos(summaryData);
+
+      const printerName = process.env.POS_FRONT_PRINTER || "POS80";
+      console.log(`➡️  正在打印小结 -> ${printerName}`);
+      await printEscPosTo(printerName, buffer);
+
+      console.log('✅ 小结打印完成');
+    } catch (err) {
+      console.error('❌ 小结打印失败:', err);
+    }
+  });
+
 } else {
   console.warn(`⚠️  [Cloud] 未配置 STORE_ID，云端自动接单功能未启动。`);
 }
