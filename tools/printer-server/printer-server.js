@@ -28,7 +28,7 @@ const GS = 0x1d;
 
 // 打印宽度（逻辑宽度，用于对齐和画虚线，不影响纸张本身宽度）
 const LINE_WIDTH = 32;
-const LOGO_WIDTH_DOTS = Number(process.env.POS_LOGO_WIDTH_DOTS || 576);
+const LOGO_WIDTH_DOTS = Number(process.env.POS_LOGO_WIDTH_DOTS || 192);
 
 // ========== 通用工具函数 ==========
 
@@ -272,7 +272,7 @@ async function buildCustomerReceiptEscPos(params) {
   chunks.push(cmd(ESC, 0x40)); // ESC @
 
   // ✅ 行距调紧（减少整体留白）
-  chunks.push(cmd(ESC, 0x33, 36));
+  chunks.push(cmd(ESC, 0x33, 42));
 
   // ==== 取餐码（如果有的话） ====
   if (pickupCode) {
@@ -315,6 +315,7 @@ async function buildCustomerReceiptEscPos(params) {
     console.warn("[logo] 打印logo失败，跳过:", e?.message || e);
   }
   chunks.push(encLine("扫码访问 Review Us"));
+
   chunks.push(cmd(ESC, 0x61, 0x00)); // 左对齐
   chunks.push(encLine(makeLine("-")));
 
