@@ -58,6 +58,9 @@ export type OrderDto = {
 
   loyaltyRedeemCents: number;
 
+  balancePaidCents?: number;
+  pointsEarned?: number;
+
   createdAt: string; // ISO
   paidAt: string | null; // ISO
 
