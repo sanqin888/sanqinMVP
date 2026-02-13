@@ -4,6 +4,7 @@
 import { use, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ApiError, apiFetch } from '@/lib/api/client';
+import { fetchOrderById } from '@/lib/api/pos';
 import { isStableId } from '@shared/menu';
 import { ORDER_STATUS_SEQUENCE, OrderStatus } from '@shared/order';
 import type {
@@ -14,7 +15,6 @@ import type { Locale } from '@/lib/i18n/locales';
 import type { OrderItemOptionsSnapshot } from '@/lib/order/order-item-options';
 
 type FullOrderItem = {
-  id: string;
   productStableId: string;
   displayName: string | null;
   nameEn: string | null;
@@ -25,7 +25,6 @@ type FullOrderItem = {
 };
 
 type FullOrder = {
-  id: string;
   status: OrderStatus;
   channel: string;
   paymentMethod: string | null;
@@ -45,6 +44,8 @@ type FullOrder = {
   items: FullOrderItem[];
   loyaltyRedeemCents: number | null;
   subtotalAfterDiscountCents: number | null;
+  balancePaidCents?: number | null;
+  pointsEarned?: number | null;
   couponStableId: string | null;
   couponDiscountCents: number | null;
   couponCodeSnapshot: string | null;
@@ -78,6 +79,8 @@ type PublicSummary = {
   loyaltyRedeemCents?: number | null;
   couponDiscountCents?: number | null;
   subtotalAfterDiscountCents?: number | null;
+  balancePaidCents?: number | null;
+  pointsEarned?: number | null;
   lineItems: PublicSummaryItem[];
 };
 
@@ -161,6 +164,18 @@ export default function OrderDetailPage({ params }: PageProps) {
           setError(apiError?.message ?? '订单详情加载失败');
           setLoading(false);
           return;
+        }
+
+        try {
+          const posOrder = await fetchOrderById<FullOrder>(orderId);
+          if (!cancelled) {
+            setOrder(posOrder);
+            setIsFullDetail(true);
+            setLoading(false);
+            return;
+          }
+        } catch {
+          // fallthrough to public summary
         }
 
         try {
@@ -335,6 +350,21 @@ export default function OrderDetailPage({ params }: PageProps) {
       </li>
     )}
 
+    {typeof order.balancePaidCents === "number" && order.balancePaidCents > 0 && (
+      <li>
+        余额支付：
+        <span className="text-indigo-700">
+          -${(order.balancePaidCents / 100).toFixed(2)}
+        </span>
+      </li>
+    )}
+
+    {typeof order.pointsEarned === "number" && order.pointsEarned !== 0 && (
+      <li>
+        积分赚取：
+        <span className="text-sky-700">+{order.pointsEarned.toFixed(2)} pts</span>
+      </li>
+    )}
     <li>税额：${(order.taxCents / 100).toFixed(2)}</li>
     {typeof order.deliveryFeeCents === "number" &&
       order.deliveryFeeCents > 0 && (
@@ -458,12 +488,35 @@ export default function OrderDetailPage({ params }: PageProps) {
               </div>
             </>
           ) : summaryOrder ? (
-            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+            <div className="space-y-3 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
               <p>
                 {isZh
                   ? `已展示公开摘要（${summaryOrder.itemCount} 件商品）`
                   : `Public summary only (${summaryOrder.itemCount} items)`}
               </p>
+              <ul className="space-y-2 text-sm text-gray-700">
+                {summaryOrder.lineItems.map((item, idx) => {
+                  const itemKey = `${item.productStableId}-${idx}`;
+                  const displayName =
+                    item.nameZh || item.nameEn || item.name || item.productStableId;
+                  return (
+                    <li key={itemKey} className="rounded border border-slate-200 bg-white px-3 py-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="font-medium text-gray-900">{displayName}</div>
+                          <div className="text-xs text-gray-500 break-all">{item.productStableId}</div>
+                        </div>
+                        <div className="text-right text-sm text-gray-700">
+                          <div>×{item.quantity}</div>
+                          <div className="text-xs text-gray-500">单价：${(item.unitPriceCents / 100).toFixed(2)}</div>
+                        </div>
+                      </div>
+                      <div className="mt-1 text-xs text-gray-600">小计：${(item.totalPriceCents / 100).toFixed(2)}</div>
+                      {renderOptions(item.optionsJson)}
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
           ) : null}
 
