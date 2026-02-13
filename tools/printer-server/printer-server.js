@@ -471,8 +471,12 @@ function buildKitchenReceiptEscPos(params) {
       chunks.push(cmd(ESC, 0x45, 0x01)); // 加粗
       chunks.push(cmd(GS, 0x21, 0x11)); // 双倍高度
 
-      if (nameZh) chunks.push(encLine(`${qty}  ${nameZh}`));
-      if (nameEn) chunks.push(encLine(`${qty}  ${nameEn}`));
+      if (nameZh) {
+        chunks.push(encLine(`${qty}  ${nameZh}`));
+        if (nameEn) chunks.push(encLine(`   ${nameEn}`));
+      } else if (nameEn) {
+        chunks.push(encLine(`${qty}  ${nameEn}`));
+      }
 
       chunks.push(cmd(GS, 0x21, 0x00));
       chunks.push(cmd(ESC, 0x45, 0x00));
