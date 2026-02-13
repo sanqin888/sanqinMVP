@@ -529,9 +529,21 @@ export class OrdersService {
     balancePaidCents: number;
     pointsEarned: number;
   }> {
+    const order = await this.prisma.order.findUnique({
+      where: { orderStableId },
+      select: { id: true },
+    });
+
+    if (!order) {
+      return {
+        balancePaidCents: 0,
+        pointsEarned: 0,
+      };
+    }
+
     const ledgers = await this.prisma.loyaltyLedger.findMany({
       where: {
-        order: { orderStableId },
+        orderId: order.id,
         OR: [
           { target: 'BALANCE', type: 'REDEEM_ON_ORDER' },
           {
