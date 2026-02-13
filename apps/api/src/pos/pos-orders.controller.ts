@@ -104,10 +104,16 @@ export class PosOrdersController {
 
   @Post(':orderStableId/print')
   @HttpCode(200)
-  reprint(@Param('orderStableId', StableIdPipe) orderStableId: string) {
+  reprint(
+    @Param('orderStableId', StableIdPipe) orderStableId: string,
+    @Body() body?: { targets?: { customer?: boolean; kitchen?: boolean } },
+  ) {
     this.eventEmitter.emit('order.reprint', {
       orderStableId,
-      targets: { customer: true, kitchen: false },
+      targets: {
+        customer: body?.targets?.customer ?? true,
+        kitchen: body?.targets?.kitchen ?? false,
+      },
     });
     return { success: true };
   }

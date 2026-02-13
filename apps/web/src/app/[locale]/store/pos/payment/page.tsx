@@ -6,7 +6,7 @@ import { useRouter, useParams } from "next/navigation";
 import { TAX_RATE } from "@/lib/order/shared";
 import type { Locale } from "@/lib/i18n/locales";
 import { ApiError, apiFetch } from "@/lib/api/client";
-import { advanceOrder } from "@/lib/api/pos";
+import { advanceOrder, printOrderCloud } from "@/lib/api/pos";
 import {
   POS_DISPLAY_CHANNEL,
   POS_DISPLAY_STORAGE_KEY,
@@ -61,48 +61,6 @@ type MemberDetailResponse = {
     lifetimeSpendCents: MemberLookupResponse["lifetimeSpendCents"];
   };
 };
-
-type PrintPosPayload = {
-  locale: Locale;
-  orderNumber: string;
-  pickupCode: string | null;
-  fulfillment: FulfillmentType | "delivery";
-  paymentMethod: PaymentMethod;
-  snapshot: PosDisplaySnapshot & {
-    deliveryFeeCents: number;
-    deliveryCostCents: number;
-    deliverySubsidyCents: number;
-    discountCents: number;
-  };
-};
-
-const PRINTER_BASE_URL =
-  process.env.NEXT_PUBLIC_POS_PRINTER_BASE_URL ?? "http://127.0.0.1:19191";
-
-async function sendPosPrintPayload(
-  orderStableId: string,
-  locale: Locale,
-): Promise<void> {
-  try {
-    const payload = await apiFetch<PrintPosPayload>(
-      `/pos/orders/${encodeURIComponent(orderStableId)}/print-payload?locale=${encodeURIComponent(
-        locale,
-      )}`,
-    );
-
-    await fetch(`${PRINTER_BASE_URL}/print-pos`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...payload,
-        targets: { customer: true, kitchen: true },
-      }),
-      keepalive: true,
-    });
-  } catch (err) {
-    console.error("Failed to send POS print request:", err);
-  }
-}
 
 // ✅ 本地支付方式状态类型
 type LocalPaymentMethod = "cash" | "card" | "wechat_alipay" | "store_balance";
@@ -655,7 +613,7 @@ const loyaltyRedeemCents = redeemCents;
       });
 
       if (typeof window !== "undefined" && order.orderStableId) {
-        void sendPosPrintPayload(order.orderStableId, locale);
+        void printOrderCloud(order.orderStableId, { customer: true, kitchen: true });
         try { window.localStorage.removeItem(POS_DISPLAY_STORAGE_KEY); } catch {}
       }
 
