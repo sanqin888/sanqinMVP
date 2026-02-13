@@ -79,6 +79,24 @@ function cmd(...bytes) {
   return Buffer.from(bytes);
 }
 
+function getOptionLines(item) {
+  if (!item || typeof item !== "object") return [];
+  if (!Array.isArray(item.options)) return [];
+
+  return item.options.flatMap((group) => {
+    if (!group || typeof group !== "object") return [];
+
+    const choices = Array.isArray(group.choices) ? group.choices : [];
+    return choices
+      .map((choice) => {
+        if (!choice || typeof choice !== "object") return "";
+        const name = choice.nameZh || choice.nameEn || choice.displayName || "";
+        return typeof name === "string" ? name.trim() : "";
+      })
+      .filter(Boolean);
+  });
+}
+
 // PNG/JPG -> ESC/POS Raster Bit Image (GS v 0)
 async function escposRasterFromImage(filePath, targetWidthDots = LOGO_WIDTH_DOTS) {
   try {
@@ -342,20 +360,7 @@ async function buildCustomerReceiptEscPos(params) {
       chunks.push(encLine(qtyPadded + pricePadded));
 
       // 选项
-      const optionLines = (() => {
-        if (Array.isArray(item.options)) {
-          return item.options
-            .map((x) => (typeof x === "string" ? x.trim() : ""))
-            .filter(Boolean);
-        }
-        if (typeof item.optionsText === "string" && item.optionsText.trim()) {
-          return item.optionsText
-            .split("\n")
-            .map((s) => s.trim())
-            .filter(Boolean);
-        }
-        return [];
-      })();
+      const optionLines = getOptionLines(item);
 
       if (optionLines.length > 0) {
         optionLines.forEach((opt) => {
@@ -472,6 +477,14 @@ function buildKitchenReceiptEscPos(params) {
 
       chunks.push(cmd(GS, 0x21, 0x00));
       chunks.push(cmd(ESC, 0x45, 0x00));
+
+      const optionLines = getOptionLines(item);
+      if (optionLines.length > 0) {
+        optionLines.forEach((opt) => {
+          chunks.push(encLine(`  - ${opt}`));
+        });
+      }
+
       chunks.push(encLine(""));
     });
   }
