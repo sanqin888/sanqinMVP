@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Locale } from "@/lib/i18n/locales";
 import { apiFetch } from "@/lib/api/client";
-import { advanceOrder } from "@/lib/api/pos";
+import { advanceOrder, printOrderCloud } from "@/lib/api/pos";
 import { parseBackendDateMs } from "@/lib/time/tz";
 
 const ALARM_LOOP_SRC = "/sounds/pos-alarm-loop.mp3";
@@ -18,31 +18,6 @@ type BoardOrderItem = {
   unitPriceCents?: number | null;
 };
 
-type PrintPosPayload = {
-  locale: Locale;
-  orderNumber: string;
-  pickupCode: string | null;
-  fulfillment: "pickup" | "dine_in" | "delivery";
-  paymentMethod: "cash" | "card" | "wechat_alipay";
-  snapshot: {
-    items: Array<{
-      productStableId: string;
-      nameZh: string | null;
-      nameEn: string | null;
-      displayName: string | null;
-      quantity: number;
-      lineTotalCents: number;
-      options: unknown | null;
-    }>;
-    subtotalCents: number;
-    taxCents: number;
-    totalCents: number;
-    discountCents: number;
-    deliveryFeeCents: number;
-    deliveryCostCents: number;
-    deliverySubsidyCents: number;
-  };
-};
 
 type BoardOrder = {
   orderStableId: string; // ✅ 非空
@@ -346,44 +321,26 @@ export function StoreBoardWidget(props: { locale: Locale }) {
     hadPersistedRef.current = Object.keys(map).length > 0;
   }, []);
 
-  const printerBaseUrl =
-    process.env.NEXT_PUBLIC_POS_PRINTER_BASE_URL ?? "http://127.0.0.1:19191";
-
-  const sendPrintPayload = useCallback(
-    async (
-      orderStableId: string,
-      targets: { customer?: boolean; kitchen?: boolean },
-    ) => {
+  const handlePrintFront = useCallback(
+    async (orderStableId: string) => {
       try {
-        const payload = await apiFetch<PrintPosPayload>(
-          `/pos/orders/${encodeURIComponent(orderStableId)}/print-payload?locale=${encodeURIComponent(
-            locale,
-          )}`,
-        );
-
-        await fetch(`${printerBaseUrl}/print-pos`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...payload, targets }),
-          keepalive: true,
-        });
+        await printOrderCloud(orderStableId, { customer: true, kitchen: false });
       } catch (error) {
-        console.error("Failed to print POS receipt:", error);
+        console.error("Failed to print front receipt via cloud:", error);
       }
     },
-    [locale, printerBaseUrl],
-  );
-
-  const handlePrintFront = useCallback(
-    (orderStableId: string) =>
-      sendPrintPayload(orderStableId, { customer: true, kitchen: false }),
-    [sendPrintPayload],
+    [],
   );
 
   const handlePrintKitchen = useCallback(
-    (orderStableId: string) =>
-      sendPrintPayload(orderStableId, { customer: false, kitchen: true }),
-    [sendPrintPayload],
+    async (orderStableId: string) => {
+      try {
+        await printOrderCloud(orderStableId, { customer: false, kitchen: true });
+      } catch (error) {
+        console.error("Failed to print kitchen ticket via cloud:", error);
+      }
+    },
+    [],
   );
 
   const fetchOrdersAndProcess = useCallback(async () => {
@@ -449,24 +406,15 @@ export function StoreBoardWidget(props: { locale: Locale }) {
 
   const handleAdvance = useCallback(
     async (orderStableId: string) => {
-      const order = orders.find((item) => item.orderStableId === orderStableId);
-      const shouldPrintOnAccept =
-        order?.channel === "web" && order.status === "paid";
       try {
         await advanceOrder(orderStableId);
-        if (shouldPrintOnAccept) {
-          await sendPrintPayload(orderStableId, {
-            customer: true,
-            kitchen: true,
-          });
-        }
         await fetchOrdersAndProcess();
       } catch (error) {
         console.error("Failed to advance order:", error);
         alert(isZh ? "推进订单状态失败，请稍后重试。" : "Failed to update order status.");
       }
     },
-    [fetchOrdersAndProcess, isZh, orders, sendPrintPayload],
+    [fetchOrdersAndProcess, isZh],
   );
 
   // 轮询（✅ exhaustive-deps 通过）
