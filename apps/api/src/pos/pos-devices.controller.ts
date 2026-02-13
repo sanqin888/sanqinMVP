@@ -3,7 +3,7 @@ import { Body, Controller, Post, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { PosDeviceService } from './pos-device.service';
 import {
-  POS_DEVICE_COOKIE_MAX_AGE_DAYS,
+  POS_DEVICE_COOKIE_MAX_AGE_MS,
   POS_DEVICE_ID_COOKIE,
   POS_DEVICE_KEY_COOKIE,
 } from './pos-device.constants';
@@ -25,13 +25,15 @@ export class PosDevicesController {
       userAgent: typeof userAgent === 'string' ? userAgent : undefined,
     });
 
-    const maxAge = POS_DEVICE_COOKIE_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+    const maxAge = POS_DEVICE_COOKIE_MAX_AGE_MS;
     const isProd = process.env.NODE_ENV === 'production';
+    const expires = new Date(Date.now() + maxAge);
     const cookieOptions = {
       httpOnly: true,
       secure: isProd,
       sameSite: 'lax' as const,
       maxAge,
+      expires,
       path: '/',
       domain: isProd ? '.sanq.ca' : undefined,
     };
