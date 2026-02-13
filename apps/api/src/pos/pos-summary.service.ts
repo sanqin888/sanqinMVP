@@ -364,9 +364,10 @@ export class PosSummaryService {
     >(fulfillBuckets.map((f) => [f, { count: 0, amountCents: 0 }]));
 
     const channelBuckets: Array<'in_store' | 'web'> = ['in_store', 'web'];
-    const cMap = new Map<'in_store' | 'web', { count: number; amountCents: number }>(
-      channelBuckets.map((c) => [c, { count: 0, amountCents: 0 }]),
-    );
+    const cMap = new Map<
+      'in_store' | 'web',
+      { count: number; amountCents: number }
+    >(channelBuckets.map((c) => [c, { count: 0, amountCents: 0 }]));
 
     for (const r of rows) {
       const p = payMap.get(r.payment) ?? payMap.get('store_balance')!;
