@@ -223,7 +223,6 @@ const parseCoupon = (
   };
 };
 
-
 const parseDeliveryDestination = (
   value: unknown,
 ): HostedCheckoutMetadata['deliveryDestination'] | undefined => {
@@ -390,7 +389,9 @@ const buildDestination = (
   }
 
   return {
-    ...(source?.addressStableId ? { addressStableId: source.addressStableId } : {}),
+    ...(source?.addressStableId
+      ? { addressStableId: source.addressStableId }
+      : {}),
     name: formatCustomerName(customer),
     phone: customer.phone,
     addressLine1: addressLine1!,

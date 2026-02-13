@@ -289,7 +289,8 @@ export class OrdersService {
 
       if (dest) {
         const hasCoords =
-          typeof dest.latitude === 'number' && typeof dest.longitude === 'number';
+          typeof dest.latitude === 'number' &&
+          typeof dest.longitude === 'number';
         if (!hasCoords && (dest.addressLine1 || dest.addressLine2)) {
           const fullAddr = [
             dest.addressLine1,
@@ -1074,7 +1075,6 @@ export class OrdersService {
       },
     };
   }
-
 
   private async resolveTrustedDeliveryDestination(
     dto: CreateOrderInput,
