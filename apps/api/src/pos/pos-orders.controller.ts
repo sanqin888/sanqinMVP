@@ -105,7 +105,10 @@ export class PosOrdersController {
   @Post(':orderStableId/print')
   @HttpCode(200)
   reprint(@Param('orderStableId', StableIdPipe) orderStableId: string) {
-    this.eventEmitter.emit('order.reprint', { orderStableId });
+    this.eventEmitter.emit('order.reprint', {
+      orderStableId,
+      targets: { customer: true, kitchen: false },
+    });
     return { success: true };
   }
 
