@@ -285,7 +285,28 @@ export class OrdersService {
 
     if (isDelivery) {
       const targetType = dto.deliveryType ?? DeliveryType.STANDARD;
-      const dest = dto.deliveryDestination;
+      const dest = await this.resolveTrustedDeliveryDestination(dto, userId);
+
+      if (dest) {
+        const hasCoords =
+          typeof dest.latitude === 'number' && typeof dest.longitude === 'number';
+        if (!hasCoords && (dest.addressLine1 || dest.addressLine2)) {
+          const fullAddr = [
+            dest.addressLine1,
+            dest.addressLine2,
+            dest.city,
+            dest.province,
+            dest.postalCode,
+          ]
+            .filter(Boolean)
+            .join(', ');
+          const coords = await this.locationService.geocode(fullAddr);
+          if (coords) {
+            dest.latitude = coords.latitude;
+            dest.longitude = coords.longitude;
+          }
+        }
+      }
 
       if (
         Number.isFinite(pricingConfig.storeLatitude ?? NaN) &&
@@ -309,8 +330,6 @@ export class OrdersService {
       } else {
         if (deliveryMeta) {
           deliveryFeeCustomerCents = deliveryMeta.feeCents;
-        } else if (typeof dto.deliveryFeeCents === 'number') {
-          deliveryFeeCustomerCents = dto.deliveryFeeCents;
         }
       }
     }
@@ -1056,6 +1075,76 @@ export class OrdersService {
     };
   }
 
+
+  private async resolveTrustedDeliveryDestination(
+    dto: CreateOrderInput,
+    userId?: string,
+  ): Promise<DeliveryDestinationInput | undefined> {
+    const dest = dto.deliveryDestination;
+    if (!dest) return undefined;
+
+    const addressStableId =
+      typeof dest.addressStableId === 'string'
+        ? normalizeStableId(dest.addressStableId)
+        : null;
+
+    if (addressStableId && userId) {
+      const saved = await this.prisma.userAddress.findFirst({
+        where: {
+          userId,
+          addressStableId,
+        },
+        select: {
+          addressLine1: true,
+          addressLine2: true,
+          city: true,
+          province: true,
+          postalCode: true,
+          placeId: true,
+          latitude: true,
+          longitude: true,
+        },
+      });
+
+      if (!saved) {
+        throw new BadRequestException('selected address does not exist');
+      }
+
+      const merged: DeliveryDestinationInput = {
+        ...dest,
+        addressStableId,
+        addressLine1: saved.addressLine1,
+        ...(saved.addressLine2 ? { addressLine2: saved.addressLine2 } : {}),
+        city: saved.city,
+        province: saved.province,
+        postalCode: saved.postalCode,
+        ...(saved.placeId ? { placeId: saved.placeId } : {}),
+      };
+
+      if (
+        typeof saved.latitude === 'number' &&
+        typeof saved.longitude === 'number'
+      ) {
+        merged.latitude = saved.latitude;
+        merged.longitude = saved.longitude;
+      } else {
+        delete merged.latitude;
+        delete merged.longitude;
+      }
+
+      return merged;
+    }
+
+    const sanitized: DeliveryDestinationInput = {
+      ...dest,
+    };
+
+    delete sanitized.latitude;
+    delete sanitized.longitude;
+
+    return sanitized;
+  }
+
   // --- 核心逻辑 1: 距离计算 (Haversine Formula) ---
   private calculateDistanceKm(
     lat1: number,
@@ -1751,6 +1840,14 @@ export class OrdersService {
       dto.deliveryType === DeliveryType.STANDARD ||
       dto.deliveryType === DeliveryType.PRIORITY;
 
+    const trustedDestination = await this.resolveTrustedDeliveryDestination(
+      dto,
+      userId,
+    );
+    if (trustedDestination) {
+      dto.deliveryDestination = trustedDestination;
+    }
+
     if (isDelivery && dto.deliveryDestination) {
       const dest = dto.deliveryDestination;
       const hasCoords =
@@ -1834,8 +1931,6 @@ export class OrdersService {
 
         if (deliveryMeta) {
           deliveryFeeCustomerCents = deliveryMeta.feeCents;
-        } else if (typeof dto.deliveryFeeCents === 'number') {
-          deliveryFeeCustomerCents = dto.deliveryFeeCents;
         }
       }
     }
