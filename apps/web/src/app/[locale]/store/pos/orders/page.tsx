@@ -21,6 +21,7 @@ import {
   updateOrderStatus,
 } from "@/lib/api/pos";
 import type { CreateOrderAmendmentInput } from "@/lib/api/pos";
+import { apiFetch } from "@/lib/api/client";
 import { parseBackendDate, ymdInTimeZone } from "@/lib/time/tz";
 
 const COPY = {
@@ -278,9 +279,84 @@ const COPY = {
   },
 } as const;
 
+function formatMoney(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+function calcOptionDeltaCents(
+  item: SwapSelection["item"],
+  selectedOptions: Record<string, string[]>,
+): number {
+  return (item.optionGroups ?? []).reduce((groupSum, group) => {
+    const selected = selectedOptions[group.templateGroupStableId] ?? [];
+    if (selected.length === 0) return groupSum;
+    const optionSum = group.options
+      .filter((option) => selected.includes(option.optionStableId))
+      .reduce((sum, option) => sum + option.priceDeltaCents, 0);
+    return groupSum + optionSum;
+  }, 0);
+}
+
+function calcSwapTotalCents(selection: SwapSelection | null): number {
+  if (!selection) return 0;
+  const unitPriceCents =
+    Math.round(selection.item.price * 100) +
+    calcOptionDeltaCents(selection.item, selection.options);
+  return unitPriceCents * selection.quantity;
+}
+
 type OrderStatusKey = keyof (typeof COPY)["zh"]["status"];
 type ActionKey = keyof (typeof COPY)["zh"]["actionLabels"];
 type PaymentMethodKey = keyof (typeof COPY)["zh"]["paymentMethod"];
+
+function pickItemName(
+  item: Pick<BackendOrderItem, "displayName" | "nameEn" | "nameZh" | "productStableId">,
+  locale: Locale,
+): string {
+  const display = item.displayName?.trim() ?? "";
+  const en = item.nameEn?.trim() ?? "";
+  const zh = item.nameZh?.trim() ?? "";
+  return locale === "zh"
+    ? zh || display || en || item.productStableId
+    : en || display || zh || item.productStableId;
+}
+
+function formatOrderTime(value: string, locale: Locale, timeZone: string): string {
+  const date = parseBackendDate(value);
+  return new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-CA", {
+    timeZone,
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
+function mapPaymentMethod(order: BackendOrder): PaymentMethodKey {
+  const raw = (order as { paymentMethod?: string | null }).paymentMethod;
+  if (raw === "cash" || raw === "card") return raw;
+  return order.channel === "in_store" ? "cash" : "card";
+}
+
+function statusTone(status: OrderStatusKey): string {
+  switch (status) {
+    case "pending":
+      return "border-amber-400/40 bg-amber-500/10 text-amber-100";
+    case "paid":
+      return "border-blue-400/40 bg-blue-500/10 text-blue-100";
+    case "making":
+      return "border-violet-400/40 bg-violet-500/10 text-violet-100";
+    case "ready":
+      return "border-cyan-400/40 bg-cyan-500/10 text-cyan-100";
+    case "completed":
+      return "border-emerald-400/40 bg-emerald-500/10 text-emerald-100";
+    case "refunded":
+      return "border-rose-400/40 bg-rose-500/10 text-rose-100";
+    default:
+      return "border-slate-600 bg-slate-700/40 text-slate-100";
+  }
+}
 
 type OrderFilters = {
   time: "all" | "today";
@@ -934,7 +1010,7 @@ const mapOrder = useCallback(
 
         setStoreTimezone(tz);
 
-        const mapped = data.map((order) => mapOrder(order, tz));
+        const mapped = data.map((order: BackendOrder) => mapOrder(order, tz));
         setOrders(mapped);
       } catch (error) {
         if (!cancelled) {
