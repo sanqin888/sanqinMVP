@@ -1,26 +1,73 @@
+import { PrismaService } from '../prisma/prisma.service';
+import { HostedCheckoutMetadata } from './hco-metadata';
 import { CheckoutIntentsService } from './checkout-intents.service';
+
+type CheckoutIntentRecord = {
+  id: string;
+  referenceId: string;
+  status?: string;
+  orderId?: string | null;
+  expiresAt?: Date | null;
+  metadataJson: HostedCheckoutMetadata;
+};
+
+type CreateIntentArgs = { data: { expiresAt: Date } & Record<string, unknown> };
+type FindFirstArgs = {
+  where: { referenceId: string };
+  orderBy: { createdAt: 'desc' };
+};
+type FindUniqueArgs = { where: { id?: string; checkoutSessionId?: string } };
+type UpdateManyArgs = {
+  where: Record<string, unknown>;
+  data: Record<string, unknown>;
+};
+
+type PrismaMock = {
+  checkoutIntent: {
+    create: jest.Mock<Promise<CheckoutIntentRecord>, [CreateIntentArgs]>;
+    upsert: jest.Mock<Promise<CheckoutIntentRecord>, [Record<string, unknown>]>;
+    findUnique: jest.Mock<
+      Promise<CheckoutIntentRecord | null>,
+      [FindUniqueArgs]
+    >;
+    findFirst: jest.Mock<Promise<CheckoutIntentRecord | null>, [FindFirstArgs]>;
+    updateMany: jest.Mock<Promise<{ count: number }>, [UpdateManyArgs]>;
+  };
+};
 
 describe('CheckoutIntentsService', () => {
   const createService = () => {
-    const prisma = {
+    const prisma: PrismaMock = {
       checkoutIntent: {
-        create: jest.fn(),
-        upsert: jest.fn(),
-        findUnique: jest.fn(),
-        findFirst: jest.fn(),
-        updateMany: jest.fn(),
+        create: jest.fn<Promise<CheckoutIntentRecord>, [CreateIntentArgs]>(),
+        upsert: jest.fn<
+          Promise<CheckoutIntentRecord>,
+          [Record<string, unknown>]
+        >(),
+        findUnique: jest.fn<
+          Promise<CheckoutIntentRecord | null>,
+          [FindUniqueArgs]
+        >(),
+        findFirst: jest.fn<
+          Promise<CheckoutIntentRecord | null>,
+          [FindFirstArgs]
+        >(),
+        updateMany: jest.fn<Promise<{ count: number }>, [UpdateManyArgs]>(),
       },
-    } as any;
+    };
 
-    const service = new CheckoutIntentsService(prisma);
+    const service = new CheckoutIntentsService(
+      prisma as unknown as PrismaService,
+    );
+
     return { prisma, service };
   };
 
-  const baseMetadata = {
+  const baseMetadata: HostedCheckoutMetadata = {
     locale: 'en',
     customer: { email: 'a@test.com' },
     items: [],
-  } as any;
+  };
 
   afterEach(() => {
     jest.restoreAllMocks();
@@ -44,8 +91,11 @@ describe('CheckoutIntentsService', () => {
       metadata: baseMetadata,
     });
 
-    const call = prisma.checkoutIntent.create.mock.calls[0][0];
-    expect(call.data.expiresAt.toISOString()).toBe('2026-01-01T00:20:00.000Z');
+    const createArgs = prisma.checkoutIntent.create.mock.calls[0]?.[0];
+
+    expect(createArgs?.data.expiresAt.toISOString()).toBe(
+      '2026-01-01T00:20:00.000Z',
+    );
   });
 
   it('marks pending intent as expired when fetching an overdue intent', async () => {
@@ -70,30 +120,35 @@ describe('CheckoutIntentsService', () => {
       metadataJson: baseMetadata,
     });
 
-    const result = await service.findByIdentifiers({ referenceId: 'ref-1' });
+    await expect(
+      service.findByIdentifiers({ referenceId: 'ref-1' }),
+    ).resolves.toMatchObject({ status: 'expired' });
 
-    expect(prisma.checkoutIntent.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ id: 'intent-1', status: 'pending' }),
-        data: expect.objectContaining({ status: 'expired', result: 'EXPIRED' }),
-      }),
-    );
-    expect(result?.status).toBe('expired');
+    const updateManyArgs = prisma.checkoutIntent.updateMany.mock.calls[0]?.[0];
+
+    expect(updateManyArgs?.where).toMatchObject({
+      id: 'intent-1',
+      status: 'pending',
+    });
+    expect(updateManyArgs?.data).toMatchObject({
+      status: 'expired',
+      result: 'EXPIRED',
+    });
   });
 
   it('renews expiresAt when resetting an expired intent for retry', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
     const { prisma, service } = createService();
 
+    prisma.checkoutIntent.updateMany.mockResolvedValue({ count: 1 });
+
     await service.resetForRetry('intent-1');
 
-    expect(prisma.checkoutIntent.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          status: 'pending',
-          expiresAt: new Date('2026-01-01T00:20:00.000Z'),
-        }),
-      }),
-    );
+    const updateManyArgs = prisma.checkoutIntent.updateMany.mock.calls[0]?.[0];
+
+    expect(updateManyArgs?.data).toMatchObject({
+      status: 'pending',
+      expiresAt: new Date('2026-01-01T00:20:00.000Z'),
+    });
   });
 });
