@@ -40,4 +40,10 @@ export class PosGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.logger.log(`🚀 Sending PRINT_JOB to ${roomName}`);
     this.server.to(roomName).emit('PRINT_JOB', data);
   }
+
+  sendPrintSummary(storeId: string, data: unknown) {
+    const roomName = `store:${storeId}`;
+    this.logger.log(`🚀 Sending PRINT_SUMMARY to ${roomName}`);
+    this.server.to(roomName).emit('PRINT_SUMMARY', data);
+  }
 }
