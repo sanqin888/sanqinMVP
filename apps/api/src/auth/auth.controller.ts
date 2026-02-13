@@ -15,7 +15,7 @@ import { SessionAuthGuard, SESSION_COOKIE_NAME } from './session-auth.guard';
 import {
   POS_DEVICE_ID_COOKIE,
   POS_DEVICE_KEY_COOKIE,
-  POS_DEVICE_COOKIE_MAX_AGE_DAYS,
+  POS_DEVICE_COOKIE_MAX_AGE_MS,
 } from '../pos/pos-device.constants';
 import { TRUSTED_DEVICE_COOKIE } from './trusted-device.constants';
 import { MfaGuard } from './mfa.guard';
@@ -106,7 +106,7 @@ const buildMembershipTwoFactorRedirect = (next: string): string => {
 };
 
 // 辅助函数：统一获取 Cookie 配置
-const getCookieOptions = (maxAge?: number) => {
+const getCookieOptions = (maxAge?: number, expires?: Date) => {
   const isProd = process.env.NODE_ENV === 'production';
   return {
     httpOnly: true,
@@ -117,6 +117,7 @@ const getCookieOptions = (maxAge?: number) => {
     // ✅ 关键修改：生产环境下设置 domain 为 .sanq.ca，让 Cookie 在主域和子域间共享
     domain: isProd ? '.sanq.ca' : undefined,
     maxAge,
+    expires,
   };
 };
 
@@ -250,17 +251,18 @@ export class AuthController {
 
     // ✅ 仅当 purpose=pos 且设备已通过后端校验后，才下发设备 cookie
     if (purpose === 'pos' && deviceStableId && deviceKey) {
-      const deviceMaxAge = POS_DEVICE_COOKIE_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+      const deviceMaxAge = POS_DEVICE_COOKIE_MAX_AGE_MS;
+      const deviceExpiresAt = new Date(Date.now() + deviceMaxAge);
 
       res.cookie(
         POS_DEVICE_ID_COOKIE,
         deviceStableId,
-        getCookieOptions(deviceMaxAge),
+        getCookieOptions(deviceMaxAge, deviceExpiresAt),
       );
       res.cookie(
         POS_DEVICE_KEY_COOKIE,
         deviceKey,
-        getCookieOptions(deviceMaxAge),
+        getCookieOptions(deviceMaxAge, deviceExpiresAt),
       );
     }
 
