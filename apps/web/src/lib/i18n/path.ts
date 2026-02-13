@@ -20,11 +20,12 @@ export function localeAlternates(current: Locale) {
   for (const l of LOCALES) {
     languages[l === "zh" ? "zh-Hans" : "en"] = `/${l}`;
   }
+  languages["x-default"] = "/en";
+
   return {
     alternates: {
       languages,
       canonical: `/${current}`,
-      canonicalUrl: `/${current}`,
     },
   };
 }

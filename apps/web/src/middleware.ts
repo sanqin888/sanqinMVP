@@ -8,6 +8,9 @@ const POS_DEVICE_KEY_COOKIE = "posDeviceKey";
 const LOCALES = ["zh", "en"] as const;
 type Locale = (typeof LOCALES)[number];
 
+const SEO_BOT_UA_RE =
+  /(googlebot|bingbot|yandexbot|baiduspider|duckduckbot|slurp|facebookexternalhit|twitterbot|linkedinbot)/i;
+
 function pickFromAcceptLanguage(accept: string | null): Locale {
   if (!accept) return "en";
   // 只要优先里出现 zh，即选 zh；否则 en
@@ -16,6 +19,11 @@ function pickFromAcceptLanguage(accept: string | null): Locale {
 
 function startsWithLocale(pathname: string): pathname is `/${Locale}${string}` {
   return /^\/(zh|en)(\/|$)/.test(pathname);
+}
+
+function isSeoCrawler(userAgent: string | null): boolean {
+  if (!userAgent) return false;
+  return SEO_BOT_UA_RE.test(userAgent);
 }
 
 function ensureCookie(res: NextResponse, locale: Locale) {
@@ -101,8 +109,13 @@ export async function middleware(req: NextRequest) {
 
   // 无前缀：决定语言并 308 到 /{locale}{path}
   const cookieLocale = (req.cookies.get("locale")?.value as Locale) || null;
+  const seoBot = isSeoCrawler(req.headers.get("user-agent"));
   const acceptLocale = pickFromAcceptLanguage(req.headers.get("accept-language"));
-  const locale: Locale = cookieLocale && LOCALES.includes(cookieLocale) ? cookieLocale : acceptLocale;
+  const locale: Locale = seoBot
+    ? "en"
+    : cookieLocale && LOCALES.includes(cookieLocale)
+      ? cookieLocale
+      : acceptLocale;
 
   const url = req.nextUrl.clone();
   url.pathname = `/${locale}${pathname}`;
