@@ -153,12 +153,14 @@ export class MembershipController {
     });
 
     const maxAge = trustedDevice.expiresAt.getTime() - Date.now();
+    const isProd = process.env.NODE_ENV === 'production';
     res.cookie(TRUSTED_DEVICE_COOKIE, trustedDevice.token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isProd,
       sameSite: 'lax',
       maxAge,
       path: '/',
+      domain: isProd ? '.sanq.ca' : undefined,
     });
 
     return { success: true, trustedDevice };

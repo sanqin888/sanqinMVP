@@ -574,9 +574,13 @@ export class AuthController {
     ]);
 
     // 清除 Cookie 时也必须带上 domain，否则无法清除带 domain 的 cookie
+    const isProd = process.env.NODE_ENV === 'production';
     const clearOptions = {
       path: '/',
-      domain: process.env.NODE_ENV === 'production' ? '.sanq.ca' : undefined,
+      domain: isProd ? '.sanq.ca' : undefined,
+      secure: isProd,
+      sameSite: 'lax' as const,
+      httpOnly: true,
     };
 
     res.clearCookie(POS_DEVICE_ID_COOKIE, clearOptions);
