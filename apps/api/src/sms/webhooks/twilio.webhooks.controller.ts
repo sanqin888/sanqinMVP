@@ -9,6 +9,7 @@ import {
 } from '@prisma/client';
 import { createHash } from 'crypto';
 import twilio from 'twilio';
+import { AppLogger } from '../../common/app-logger';
 import { PrismaService } from '../../prisma/prisma.service';
 
 const resolveRemoteIp = (req: Request): string =>
@@ -43,6 +44,8 @@ function parseTwilioFormBody(req: Request): {
 
 @Controller('webhooks/twilio')
 export class TwilioWebhooksController {
+  private readonly logger = new AppLogger(TwilioWebhooksController.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   // ✅ 入站短信（包含用户回复/STOP/HELP/START）
@@ -68,7 +71,6 @@ export class TwilioWebhooksController {
 
     const from = params.From;
     const to = params.To;
-    const text = params.Body;
     const sid = params.MessageSid;
 
     await this.recordWebhookEvent({
@@ -86,7 +88,9 @@ export class TwilioWebhooksController {
       fromAddressNorm: normalizePhone(from),
     });
 
-    console.log('[twilio inbound sms]', { sid, from, to, text });
+    this.logger.log(
+      `[twilio inbound sms] sid=${sid ?? 'unknown'} from=${maskPhone(from)} to=${maskPhone(to)} bodyLength=${params.Body?.length ?? 0}`,
+    );
 
     // 不自动回复：返回空 TwiML
     res
@@ -168,14 +172,9 @@ export class TwilioWebhooksController {
       }
     }
 
-    console.log('[twilio sms status]', {
-      messageSid: params.MessageSid,
-      status: params.MessageStatus, // queued/sent/delivered/failed/undelivered
-      to: params.To,
-      from: params.From,
-      errorCode: params.ErrorCode,
-      errorMessage: params.ErrorMessage,
-    });
+    this.logger.log(
+      `[twilio sms status] sid=${params.MessageSid ?? 'unknown'} status=${params.MessageStatus ?? 'unknown'} to=${maskPhone(params.To)} from=${maskPhone(params.From)} errorCode=${params.ErrorCode ?? 'none'}`,
+    );
 
     res.send('ok');
   }
@@ -316,6 +315,15 @@ export class TwilioWebhooksController {
   private fingerprint(input: string): string {
     return createHash('sha256').update(input).digest('hex').slice(0, 32);
   }
+}
+
+function maskPhone(phone: string | undefined): string {
+  if (!phone) return 'unknown';
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length <= 4) return '***';
+
+  const visible = digits.slice(-4);
+  return `***${visible}`;
 }
 
 type TwilioValidator = {

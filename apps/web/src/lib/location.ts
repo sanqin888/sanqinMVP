@@ -109,8 +109,6 @@ export async function geocodeAddress(
   }
 
   const raw = await res.json();
-  // 看看真实返回长啥样（你可以之后把这行删掉）
-  console.log("[geocodeAddress] raw response:", raw);
 
   // 一些全局响应包装可能是：
   // { code: "SUCCESS", message: "", data: { latitude, longitude } }
