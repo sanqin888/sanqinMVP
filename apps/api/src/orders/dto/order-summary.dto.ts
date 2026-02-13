@@ -31,6 +31,8 @@ export type OrderSummaryDto = {
   loyaltyRedeemCents?: number | null;
   couponDiscountCents?: number | null;
   subtotalAfterDiscountCents?: number | null;
+  balancePaidCents?: number;
+  pointsEarned?: number;
 
   lineItems: OrderSummaryLineItemDto[];
 };

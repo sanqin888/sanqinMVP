@@ -28,7 +28,7 @@ const GS = 0x1d;
 
 // 打印宽度（逻辑宽度，用于对齐和画虚线，不影响纸张本身宽度）
 const LINE_WIDTH = 32;
-const LOGO_WIDTH_DOTS = Number(process.env.POS_LOGO_WIDTH_DOTS || 576);
+const LOGO_WIDTH_DOTS = Number(process.env.POS_LOGO_WIDTH_DOTS || 192);
 
 // ========== 通用工具函数 ==========
 
@@ -79,57 +79,92 @@ function cmd(...bytes) {
   return Buffer.from(bytes);
 }
 
+function getOptionLines(item) {
+  if (!item || typeof item !== "object") return [];
+  if (!Array.isArray(item.options)) return [];
+
+  return item.options.flatMap((group) => {
+    if (!group || typeof group !== "object") return [];
+
+    const choices = Array.isArray(group.choices) ? group.choices : [];
+    return choices
+      .map((choice) => {
+        if (!choice || typeof choice !== "object") return "";
+        const name = choice.nameZh || choice.nameEn || choice.displayName || "";
+        return typeof name === "string" ? name.trim() : "";
+      })
+      .filter(Boolean);
+  });
+}
+
 // PNG/JPG -> ESC/POS Raster Bit Image (GS v 0)
 async function escposRasterFromImage(filePath, targetWidthDots = LOGO_WIDTH_DOTS) {
-  const img = await Jimp.read(filePath);
+  try {
+    // 1. 读取图片
+    const img = await Jimp.read(filePath);
 
-  // 等比缩放到目标宽度
-  img.resize(targetWidthDots, Jimp.AUTO);
+    // 2. ⚠️【核心修复】计算高度并使用对象传参 (适配 Jimp v1.6.0+)
+    // 旧版: img.resize(w, -1) 
+    // 新版: img.resize({ w: w }) 或者需要显式计算高度
+    const srcW = img.width;   // v1 直接用属性，不再是 bitmap.width
+    const srcH = img.height;
+    const aspect = srcH / srcW;
+    const targetHeight = Math.round(targetWidthDots * aspect);
 
-  // 转灰度
-  img.grayscale();
+    // 执行缩放 (注意：v1 里的操作可能是异步的，建议 await)
+    await img.resize({ w: targetWidthDots, h: targetHeight });
 
-  const w = img.bitmap.width;
-  const h = img.bitmap.height;
+    // 3. 转灰度
+    await img.greyscale();
 
-  // 每行字节数（8像素=1字节）
-  const bytesPerRow = Math.ceil(w / 8);
-  const data = Buffer.alloc(bytesPerRow * h);
+    const w = img.width;
+    const h = img.height;
 
-  // 二值化阈值（越大越“黑”）
-  const threshold = Number(process.env.POS_LOGO_THRESHOLD || 160);
+    // 每行字节数（8像素=1字节）
+    const bytesPerRow = Math.ceil(w / 8);
+    const data = Buffer.alloc(bytesPerRow * h);
 
-  let offset = 0;
-  for (let y = 0; y < h; y++) {
-    for (let xByte = 0; xByte < bytesPerRow; xByte++) {
-      let b = 0;
-      for (let bit = 0; bit < 8; bit++) {
-        const x = xByte * 8 + bit;
-        let v = 255;
-        if (x < w) {
-          const rgba = Jimp.intToRGBA(img.getPixelColor(x, y));
-          v = rgba.r; // grayscale 后 r=g=b
+    // 二值化阈值（越大越“黑”）
+    const threshold = Number(process.env.POS_LOGO_THRESHOLD || 160);
+
+    let offset = 0;
+    for (let y = 0; y < h; y++) {
+      for (let xByte = 0; xByte < bytesPerRow; xByte++) {
+        let b = 0;
+        for (let bit = 0; bit < 8; bit++) {
+          const x = xByte * 8 + bit;
+          let v = 255;
+          if (x < w) {
+            // ⚠️【核心修复】手动位运算获取颜色 (因为 Jimp.intToRGBA 已移除)
+            const color = img.getPixelColor(x, y);
+            // Jimp 颜色是 0xRRGGBBAA，我们取 R 即可 (灰度图 R=G=B)
+            const r = (color >> 24) & 0xff; 
+            v = r;
+          }
+          // 黑点=1（阈值以下当黑）
+          if (v < threshold) b |= (0x80 >> bit);
         }
-        // 黑点=1（阈值以下当黑）
-        if (v < threshold) b |= (0x80 >> bit);
+        data[offset++] = b;
       }
-      data[offset++] = b;
     }
+
+    // GS v 0 协议头
+    const xL = bytesPerRow & 0xff;
+    const xH = (bytesPerRow >> 8) & 0xff;
+    const yL = h & 0xff;
+    const yH = (h >> 8) & 0xff;
+
+    return Buffer.concat([
+      cmd(GS, 0x76, 0x30, 0x00, xL, xH, yL, yH),
+      data,
+      encLine(""),
+    ]);
+  } catch (err) {
+    // 打印更详细的错误信息
+    const msg = err.issues ? JSON.stringify(err.issues, null, 2) : err.message;
+    console.warn(`⚠️ [Logo] 处理图片失败 (${filePath}):`, msg);
+    return Buffer.alloc(0); // 失败返回空，不阻断打印
   }
-
-  // GS v 0
-  // xL xH = bytesPerRow（宽度按字节）
-  // yL yH = h（高度按点）
-  const xL = bytesPerRow & 0xff;
-  const xH = (bytesPerRow >> 8) & 0xff;
-  const yL = h & 0xff;
-  const yH = (h >> 8) & 0xff;
-
-  return Buffer.concat([
-    cmd(GS, 0x76, 0x30, 0x00, xL, xH, yL, yH),
-    data,
-    encLine(""),
-  ]);
 }
 
 // 将 ESC/POS 原始数据发送到指定打印机
@@ -237,7 +272,7 @@ async function buildCustomerReceiptEscPos(params) {
   chunks.push(cmd(ESC, 0x40)); // ESC @
 
   // ✅ 行距调紧（减少整体留白）
-  chunks.push(cmd(ESC, 0x33, 36));
+  chunks.push(cmd(ESC, 0x33, 42));
 
   // ==== 取餐码（如果有的话） ====
   if (pickupCode) {
@@ -271,15 +306,14 @@ async function buildCustomerReceiptEscPos(params) {
       chunks.push(cmd(ESC, 0x61, 0x01)); // 居中
       const logoBuf = await escposRasterFromImage(logoPath, LOGO_WIDTH_DOTS);
       chunks.push(logoBuf);
+      chunks.push(encLine("扫码访问 Review Us"));
       chunks.push(cmd(ESC, 0x61, 0x00)); // 左对齐
-      chunks.push(encLine("")); // 多给一行喘气
     } else {
       console.warn("[logo] 未找到 logo 文件，跳过:", logoPath);
     }
   } catch (e) {
     console.warn("[logo] 打印logo失败，跳过:", e?.message || e);
   }
-  chunks.push(encLine("扫码访问 Review Us"));
   chunks.push(cmd(ESC, 0x61, 0x00)); // 左对齐
   chunks.push(encLine(makeLine("-")));
 
@@ -325,20 +359,7 @@ async function buildCustomerReceiptEscPos(params) {
       chunks.push(encLine(qtyPadded + pricePadded));
 
       // 选项
-      const optionLines = (() => {
-        if (Array.isArray(item.options)) {
-          return item.options
-            .map((x) => (typeof x === "string" ? x.trim() : ""))
-            .filter(Boolean);
-        }
-        if (typeof item.optionsText === "string" && item.optionsText.trim()) {
-          return item.optionsText
-            .split("\n")
-            .map((s) => s.trim())
-            .filter(Boolean);
-        }
-        return [];
-      })();
+      const optionLines = getOptionLines(item);
 
       if (optionLines.length > 0) {
         optionLines.forEach((opt) => {
@@ -381,10 +402,10 @@ async function buildCustomerReceiptEscPos(params) {
     chunks.push(encLine(`配送费(顾客) Delivery Fee: ${money(deliveryFee)}`));
 
     if (deliveryCost === null) {
-      chunks.push(encLine(`平台运费成本 Delivery Cost: (pending)`));
+      chunks.push(encLine(`Uber平台运费  Uber Delivery Cost: (pending)`));
       chunks.push(encLine(`本单补贴 Subsidy: (pending)`));
     } else {
-      chunks.push(encLine(`平台运费成本 Delivery Cost: ${money(deliveryCost)}`));
+      chunks.push(encLine(`Uber平台运费  Uber Delivery Cost: ${money(deliveryCost)}`));
       chunks.push(encLine(`本单补贴 Subsidy: ${money(deliverySubsidy ?? 0)}`));
     }
   }
@@ -450,11 +471,27 @@ function buildKitchenReceiptEscPos(params) {
       chunks.push(cmd(ESC, 0x45, 0x01)); // 加粗
       chunks.push(cmd(GS, 0x21, 0x11)); // 双倍高度
 
-      if (nameZh) chunks.push(encLine(`${qty}  ${nameZh}`));
-      if (nameEn) chunks.push(encLine(`${qty}  ${nameEn}`));
+      if (nameZh) {
+        chunks.push(encLine(`${qty}  ${nameZh}`));
+        if (nameEn) chunks.push(encLine(`   ${nameEn}`));
+      } else if (nameEn) {
+        chunks.push(encLine(`${qty}  ${nameEn}`));
+      }
 
       chunks.push(cmd(GS, 0x21, 0x00));
       chunks.push(cmd(ESC, 0x45, 0x00));
+
+      const optionLines = getOptionLines(item);
+      if (optionLines.length > 0) {
+        chunks.push(cmd(ESC, 0x45, 0x01)); // 加粗
+        chunks.push(cmd(GS, 0x21, 0x01)); // 比菜名略小（双高、非双宽）
+        optionLines.forEach((opt) => {
+          chunks.push(encLine(`  - ${opt}`));
+        });
+        chunks.push(cmd(GS, 0x21, 0x00));
+        chunks.push(cmd(ESC, 0x45, 0x00));
+      }
+
       chunks.push(encLine(""));
     });
   }
@@ -696,43 +733,43 @@ if (STORE_ID) {
   socket.on('PRINT_JOB', async (formattedPayload) => {
     // 这里的 formattedPayload 已经是后端 PrintPosPayloadService 生成好的完美格式
     // 直接包含 { orderNumber, snapshot: { ... } }
-    
+
     const orderId = formattedPayload.orderNumber || 'Unknown';
-    console.log(`\n🖨️  [Cloud] 收到打印任务: ${orderId}`);
+    const targetCustomer = formattedPayload?.targets?.customer ?? true;
+    const targetKitchen = formattedPayload?.targets?.kitchen ?? true;
+    console.log(`
+🖨️  [Cloud] 收到打印任务: ${orderId}`);
 
     try {
-      // 1. 生成前台小票数据
-      // buildCustomerReceiptEscPos 是你现有的函数，直接传 payload 即可
-      const customerBuffer = await buildCustomerReceiptEscPos(formattedPayload);
-
-      // 2. 生成后厨切单数据
-      // buildKitchenReceiptEscPos 是你现有的函数
-      const kitchenBuffer = buildKitchenReceiptEscPos(formattedPayload);
-
       // ==========================================
       // 🖨️ 任务 A: 前台打印机 (Customer Receipt)
       // ==========================================
-      const frontPrinterName = process.env.POS_FRONT_PRINTER || "POS80";
-      if (frontPrinterName) {
-        console.log(`➡️  前台打印 -> ${frontPrinterName}`);
-        await printEscPosTo(frontPrinterName, customerBuffer);
-      } else {
-        console.warn(`⚠️  未配置前台打印机 (POS_FRONT_PRINTER)`);
+      if (targetCustomer) {
+        const customerBuffer = await buildCustomerReceiptEscPos(formattedPayload);
+        const frontPrinterName = process.env.POS_FRONT_PRINTER || "POS80";
+        if (frontPrinterName) {
+          console.log(`➡️  前台打印 -> ${frontPrinterName}`);
+          await printEscPosTo(frontPrinterName, customerBuffer);
+        } else {
+          console.warn(`⚠️  未配置前台打印机 (POS_FRONT_PRINTER)`);
+        }
       }
 
       // ==========================================
       // 👨‍🍳 任务 B: 后厨打印机 (Kitchen Ticket)
       // ==========================================
-      const kitchenPrinterName = process.env.POS_KITCHEN_PRINTER;
-      if (kitchenPrinterName) {
-        console.log(`➡️  后厨打印 -> ${kitchenPrinterName}`);
-        await printEscPosTo(kitchenPrinterName, kitchenBuffer);
-      } else {
-        console.log(`ℹ️  未配置后厨打印机 (POS_KITCHEN_PRINTER)，跳过。`);
+      if (targetKitchen) {
+        const kitchenBuffer = buildKitchenReceiptEscPos(formattedPayload);
+        const kitchenPrinterName = process.env.POS_KITCHEN_PRINTER;
+        if (kitchenPrinterName) {
+          console.log(`➡️  后厨打印 -> ${kitchenPrinterName}`);
+          await printEscPosTo(kitchenPrinterName, kitchenBuffer);
+        } else {
+          console.log(`ℹ️  未配置后厨打印机 (POS_KITCHEN_PRINTER)，跳过。`);
+        }
       }
 
       console.log(`✅ [Cloud] 打印流程结束`);
-
     } catch (err) {
       console.error(`❌ [Cloud] 打印失败:`, err);
     }

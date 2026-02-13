@@ -524,6 +524,49 @@ export class OrdersService {
       items,
     };
   }
+
+  private async getLoyaltyUsageByOrderStableId(orderStableId: string): Promise<{
+    balancePaidCents: number;
+    pointsEarned: number;
+  }> {
+    const order = await this.prisma.order.findUnique({
+      where: { orderStableId },
+      select: { id: true },
+    });
+
+    if (!order) {
+      return {
+        balancePaidCents: 0,
+        pointsEarned: 0,
+      };
+    }
+
+    const ledgers = await this.prisma.loyaltyLedger.findMany({
+      where: {
+        orderId: order.id,
+        OR: [
+          { target: 'BALANCE', type: 'REDEEM_ON_ORDER' },
+          {
+            target: 'POINTS',
+            type: { in: ['EARN_ON_PURCHASE', 'AMEND_EARN_ADJUST'] },
+          },
+        ],
+      },
+      select: { target: true, deltaMicro: true },
+    });
+
+    const balanceMicroUsed = ledgers
+      .filter((entry) => entry.target === 'BALANCE' && entry.deltaMicro < 0n)
+      .reduce((sum, entry) => sum + -entry.deltaMicro, 0n);
+    const pointsEarnedMicro = ledgers
+      .filter((entry) => entry.target === 'POINTS')
+      .reduce((sum, entry) => sum + entry.deltaMicro, 0n);
+
+    return {
+      balancePaidCents: Number(balanceMicroUsed) / 10_000,
+      pointsEarned: Number(pointsEarnedMicro) / 1_000_000,
+    };
+  }
   private isClientRequestId(value: unknown): value is string {
     return typeof value === 'string' && this.CLIENT_REQUEST_ID_RE.test(value);
   }
@@ -2259,7 +2302,13 @@ export class OrdersService {
     })) as OrderDetail | null;
 
     if (!order) throw new NotFoundException('order not found');
-    return this.toOrderDto(order);
+    const loyaltyUsage = await this.getLoyaltyUsageByOrderStableId(
+      order.orderStableId,
+    );
+    return {
+      ...this.toOrderDto(order),
+      ...loyaltyUsage,
+    };
   }
 
   async getByStableIdWithOwner(
@@ -2279,8 +2328,14 @@ export class OrdersService {
           })
         )?.userStableId ?? null)
       : null;
+    const loyaltyUsage = await this.getLoyaltyUsageByOrderStableId(
+      order.orderStableId,
+    );
     return {
-      order: this.toOrderDto(order),
+      order: {
+        ...this.toOrderDto(order),
+        ...loyaltyUsage,
+      },
       ownerUserStableId,
     };
   }
@@ -2347,6 +2402,11 @@ export class OrdersService {
       deliveryFeeCents,
       discountCents,
       totalCents: order.totalCents ?? 0,
+      loyaltyRedeemCents: order.loyaltyRedeemCents ?? 0,
+      couponDiscountCents: order.couponDiscountCents ?? 0,
+      subtotalAfterDiscountCents:
+        order.subtotalAfterDiscountCents ?? subtotalCents,
+      ...(await this.getLoyaltyUsageByOrderStableId(order.orderStableId)),
       lineItems,
     };
   }
