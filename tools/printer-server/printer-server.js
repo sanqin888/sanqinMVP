@@ -402,10 +402,10 @@ async function buildCustomerReceiptEscPos(params) {
     chunks.push(encLine(`配送费(顾客) Delivery Fee: ${money(deliveryFee)}`));
 
     if (deliveryCost === null) {
-      chunks.push(encLine(`平台运费成本 Delivery Cost: (pending)`));
+      chunks.push(encLine(`Uber平台运费  Uber Delivery Cost: (pending)`));
       chunks.push(encLine(`本单补贴 Subsidy: (pending)`));
     } else {
-      chunks.push(encLine(`平台运费成本 Delivery Cost: ${money(deliveryCost)}`));
+      chunks.push(encLine(`Uber平台运费  Uber Delivery Cost: ${money(deliveryCost)}`));
       chunks.push(encLine(`本单补贴 Subsidy: ${money(deliverySubsidy ?? 0)}`));
     }
   }
