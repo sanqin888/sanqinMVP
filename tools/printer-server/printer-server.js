@@ -510,8 +510,25 @@ function buildKitchenReceiptEscPos(params) {
 
 // ✅ 构建汇总小票函数
 function buildSummaryReceiptEscPos(params) {
-  const { date, totals, breakdownType, breakdownItems } = params;
+  const {
+    date,
+    totals,
+    breakdownType,
+    breakdownItems,
+    breakdownByPayment,
+    breakdownByFulfillment,
+    breakdownByChannel,
+  } = params;
   const chunks = [];
+
+  const resolvedBreakdownType = breakdownType === "payment" ? "payment" : "channel";
+  const resolvedBreakdownItems = Array.isArray(breakdownItems)
+    ? breakdownItems
+    : resolvedBreakdownType === "payment"
+      ? breakdownByPayment
+      : Array.isArray(breakdownByChannel)
+        ? breakdownByChannel
+        : breakdownByFulfillment;
 
   chunks.push(cmd(ESC, 0x40)); // Init
   chunks.push(cmd(ESC, 0x33, 20)); // 行间距
@@ -530,10 +547,14 @@ function buildSummaryReceiptEscPos(params) {
   }
   chunks.push(encLine(makeLine("-")));
 
-  if (Array.isArray(breakdownItems)) {
+  if (Array.isArray(resolvedBreakdownItems)) {
     chunks.push(cmd(ESC, 0x45, 0x01)); // Bold
     chunks.push(
-      encLine(breakdownType === "payment" ? "按支付方式汇总 (By Payment)" : "按渠道汇总 (By Channel)")
+      encLine(
+        resolvedBreakdownType === "payment"
+          ? "按支付方式汇总 (By Payment)"
+          : "按渠道汇总 (By Channel)"
+      )
     );
     chunks.push(cmd(ESC, 0x45, 0x00));
     chunks.push(encLine("(金额: 实际收款 - 不含税)"));
@@ -542,8 +563,28 @@ function buildSummaryReceiptEscPos(params) {
     chunks.push(encLine(padRight("类别", 14) + padLeft("单数", 6) + padLeft("金额", 12)));
     chunks.push(encLine(makeLine(".")));
 
-    breakdownItems.forEach((item) => {
-      const label = item.label || item.payment || item.fulfillmentType || "Unknown";
+    resolvedBreakdownItems.forEach((item) => {
+      let label = item.label || item.payment || item.channel || item.fulfillmentType || "Unknown";
+      if (!item.label && resolvedBreakdownType === "payment") {
+        const paymentLabelMap = {
+          cash: "现金 CASH",
+          card: "刷卡 CARD",
+          online: "线上 ONLINE",
+          store_balance: "储值 STORE BAL",
+        };
+        label = paymentLabelMap[item.payment] || label;
+      }
+      if (!item.label && resolvedBreakdownType === "channel") {
+        const channelLabelMap = {
+          in_store: "门店 IN STORE",
+          web: "网站 WEBSITE",
+          ubereats: "网站 WEBSITE",
+          dine_in: "堂食 DINE IN",
+          pickup: "自取 PICKUP",
+          delivery: "配送 DELIVERY",
+        };
+        label = channelLabelMap[item.channel || item.fulfillmentType] || label;
+      }
       chunks.push(encLine(label));
 
       const countStr = String(item.count);
@@ -559,21 +600,26 @@ function buildSummaryReceiptEscPos(params) {
     chunks.push(encLine("今日总计 (Totals)"));
     chunks.push(cmd(ESC, 0x45, 0x00));
 
-    const printRow = (label, valCents) => {
+    const printMoneyRow = (label, valCents) => {
       const l = padRight(label, 20);
       const v = padLeft(money(valCents), LINE_WIDTH - 20);
       chunks.push(encLine(l + v));
     };
 
-    // 注意：orders 不是 cents，但你原逻辑就是这么打印的（保持不改）
-    printRow("总单量 Orders", totals.orders);
-    printRow("销售额(不含税) Sales", totals.salesCents);
+    const printCountRow = (label, count) => {
+      const l = padRight(label, 20);
+      const v = padLeft(String(count ?? 0), LINE_WIDTH - 20);
+      chunks.push(encLine(l + v));
+    };
+
+    printCountRow("总单量 Orders", totals.orders);
+    printMoneyRow("销售额(不含税) Sales", totals.salesCents);
 
     chunks.push(encLine(makeLine("-")));
 
-    printRow("合计税费 Tax", totals.taxCents);
-    printRow("合计配送费 D.Fee", totals.deliveryFeeCents || 0);
-    printRow("合计Uber费用 UberCost", totals.deliveryCostCents || 0);
+    printMoneyRow("合计税费 Tax", totals.taxCents);
+    printMoneyRow("合计配送费 D.Fee", totals.deliveryFeeCents || 0);
+    printMoneyRow("合计Uber费用 UberCost", totals.deliveryCostCents || 0);
 
     chunks.push(encLine(makeLine("=")));
 

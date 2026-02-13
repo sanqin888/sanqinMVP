@@ -100,7 +100,7 @@ const COPY = {
 type FilterState = {
   dateStart: string; // YYYY-MM-DD
   dateEnd: string;   // YYYY-MM-DD
-  channel: string;   // pickup|dine_in|delivery
+  channel: string;   // in_store|web
   status: string;    // paid|refunded|void
   payment: string;   // cash|card|online|store_balance
 };
@@ -108,7 +108,7 @@ type FilterState = {
 type OrderRow = {
   orderStableId: string;
   date: string;
-  channel: string; // fulfillmentType
+  channel: string; // channel
   status: string;  // statusBucket
   payment: string; // payment bucket
   amountCents: number; // total
@@ -135,6 +135,11 @@ type PosDailySummaryResponse = {
   }>;
   breakdownByFulfillment: Array<{
     fulfillmentType: "pickup" | "dine_in" | "delivery";
+    count: number;
+    amountCents: number;
+  }>;
+  breakdownByChannel: Array<{
+    channel: "in_store" | "web";
     count: number;
     amountCents: number;
   }>;
@@ -271,6 +276,12 @@ function labelFulfillment(locale: Locale, v: string) {
   return v;
 }
 
+function labelChannel(locale: Locale, v: string) {
+  if (v === "in_store") return locale === "zh" ? "门店" : "In-store";
+  if (v === "web") return locale === "zh" ? "网站" : "Website";
+  return v;
+}
+
 function labelPayment(locale: Locale, v: string) {
   if (v === "cash") return locale === "zh" ? "现金" : "Cash";
   if (v === "card") return locale === "zh" ? "信用卡/借记卡" : "Card";
@@ -385,7 +396,7 @@ export default function PosDailySummaryPage() {
           timeZone: storeTimezone || "UTC",
         });
       })(),
-      channel: o.fulfillmentType,
+      channel: o.channel,
       status: o.statusBucket,
       payment: o.payment,
       amountCents: o.netCents,
@@ -423,13 +434,12 @@ export default function PosDailySummaryPage() {
 
   const channelBreakdown = useMemo(() => {
     const base = [
-      { key: "dine_in", label: labelFulfillment(locale, "dine_in"), count: 0, amountCents: 0 },
-      { key: "pickup", label: labelFulfillment(locale, "pickup"), count: 0, amountCents: 0 },
-      { key: "delivery", label: labelFulfillment(locale, "delivery"), count: 0, amountCents: 0 },
+      { key: "in_store", label: labelChannel(locale, "in_store"), count: 0, amountCents: 0 },
+      { key: "web", label: labelChannel(locale, "web"), count: 0, amountCents: 0 },
     ];
     const map = new Map(base.map((x) => [x.key, x]));
-    for (const item of data?.breakdownByFulfillment ?? []) {
-      const hit = map.get(item.fulfillmentType);
+    for (const item of data?.breakdownByChannel ?? []) {
+      const hit = map.get(item.channel);
       if (!hit) continue;
       hit.count += item.count;
       hit.amountCents += item.amountCents;
@@ -468,6 +478,7 @@ export default function PosDailySummaryPage() {
       const params: Record<string, string> = {
         timeMin: data.timeMin,
         timeMax: data.timeMax,
+        breakdownType: previewType,
       };
 
       if (filters.channel) params.fulfillmentType = filters.channel;
