@@ -75,6 +75,10 @@ class LoyaltyOrderItemDto {
 }
 
 class DeliveryDestinationDto {
+  @IsOptional()
+  @IsString()
+  addressStableId?: string;
+
   @IsString()
   name!: string;
 
@@ -83,6 +87,10 @@ class DeliveryDestinationDto {
 
   @IsString()
   addressLine1!: string;
+
+  @IsOptional()
+  @IsString()
+  placeId?: string;
 
   @IsOptional()
   @IsString()

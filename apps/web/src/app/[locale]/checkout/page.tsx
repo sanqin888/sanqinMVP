@@ -2644,8 +2644,7 @@ const getFieldFromEvent = (
             postalCode: customer.postalCode,
             country: DELIVERY_COUNTRY,
             instructions: customer.notes || undefined,
-            latitude: selectedCoordinates?.latitude,
-            longitude: selectedCoordinates?.longitude,
+            addressStableId: selectedAddressStableId ?? undefined,
             placeId: selectedPlaceId ?? undefined,
           }
         : undefined,
@@ -2713,8 +2712,7 @@ const getFieldFromEvent = (
             postalCode: customer.postalCode,
             country: DELIVERY_COUNTRY,
             instructions: customer.notes || undefined,
-            latitude: selectedCoordinates?.latitude,
-            longitude: selectedCoordinates?.longitude,
+            addressStableId: selectedAddressStableId ?? undefined,
             placeId: selectedPlaceId ?? undefined,
           }
         : undefined,
