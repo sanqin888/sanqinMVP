@@ -306,16 +306,14 @@ async function buildCustomerReceiptEscPos(params) {
       chunks.push(cmd(ESC, 0x61, 0x01)); // 居中
       const logoBuf = await escposRasterFromImage(logoPath, LOGO_WIDTH_DOTS);
       chunks.push(logoBuf);
+      chunks.push(encLine("扫码访问 Review Us"));
       chunks.push(cmd(ESC, 0x61, 0x00)); // 左对齐
-      chunks.push(encLine("")); // 多给一行喘气
     } else {
       console.warn("[logo] 未找到 logo 文件，跳过:", logoPath);
     }
   } catch (e) {
     console.warn("[logo] 打印logo失败，跳过:", e?.message || e);
   }
-  chunks.push(encLine("扫码访问 Review Us"));
-
   chunks.push(cmd(ESC, 0x61, 0x00)); // 左对齐
   chunks.push(encLine(makeLine("-")));
 
@@ -481,9 +479,13 @@ function buildKitchenReceiptEscPos(params) {
 
       const optionLines = getOptionLines(item);
       if (optionLines.length > 0) {
+        chunks.push(cmd(ESC, 0x45, 0x01)); // 加粗
+        chunks.push(cmd(GS, 0x21, 0x01)); // 比菜名略小（双高、非双宽）
         optionLines.forEach((opt) => {
           chunks.push(encLine(`  - ${opt}`));
         });
+        chunks.push(cmd(GS, 0x21, 0x00));
+        chunks.push(cmd(ESC, 0x45, 0x00));
       }
 
       chunks.push(encLine(""));
@@ -727,43 +729,43 @@ if (STORE_ID) {
   socket.on('PRINT_JOB', async (formattedPayload) => {
     // 这里的 formattedPayload 已经是后端 PrintPosPayloadService 生成好的完美格式
     // 直接包含 { orderNumber, snapshot: { ... } }
-    
+
     const orderId = formattedPayload.orderNumber || 'Unknown';
-    console.log(`\n🖨️  [Cloud] 收到打印任务: ${orderId}`);
+    const targetCustomer = formattedPayload?.targets?.customer ?? true;
+    const targetKitchen = formattedPayload?.targets?.kitchen ?? true;
+    console.log(`
+🖨️  [Cloud] 收到打印任务: ${orderId}`);
 
     try {
-      // 1. 生成前台小票数据
-      // buildCustomerReceiptEscPos 是你现有的函数，直接传 payload 即可
-      const customerBuffer = await buildCustomerReceiptEscPos(formattedPayload);
-
-      // 2. 生成后厨切单数据
-      // buildKitchenReceiptEscPos 是你现有的函数
-      const kitchenBuffer = buildKitchenReceiptEscPos(formattedPayload);
-
       // ==========================================
       // 🖨️ 任务 A: 前台打印机 (Customer Receipt)
       // ==========================================
-      const frontPrinterName = process.env.POS_FRONT_PRINTER || "POS80";
-      if (frontPrinterName) {
-        console.log(`➡️  前台打印 -> ${frontPrinterName}`);
-        await printEscPosTo(frontPrinterName, customerBuffer);
-      } else {
-        console.warn(`⚠️  未配置前台打印机 (POS_FRONT_PRINTER)`);
+      if (targetCustomer) {
+        const customerBuffer = await buildCustomerReceiptEscPos(formattedPayload);
+        const frontPrinterName = process.env.POS_FRONT_PRINTER || "POS80";
+        if (frontPrinterName) {
+          console.log(`➡️  前台打印 -> ${frontPrinterName}`);
+          await printEscPosTo(frontPrinterName, customerBuffer);
+        } else {
+          console.warn(`⚠️  未配置前台打印机 (POS_FRONT_PRINTER)`);
+        }
       }
 
       // ==========================================
       // 👨‍🍳 任务 B: 后厨打印机 (Kitchen Ticket)
       // ==========================================
-      const kitchenPrinterName = process.env.POS_KITCHEN_PRINTER;
-      if (kitchenPrinterName) {
-        console.log(`➡️  后厨打印 -> ${kitchenPrinterName}`);
-        await printEscPosTo(kitchenPrinterName, kitchenBuffer);
-      } else {
-        console.log(`ℹ️  未配置后厨打印机 (POS_KITCHEN_PRINTER)，跳过。`);
+      if (targetKitchen) {
+        const kitchenBuffer = buildKitchenReceiptEscPos(formattedPayload);
+        const kitchenPrinterName = process.env.POS_KITCHEN_PRINTER;
+        if (kitchenPrinterName) {
+          console.log(`➡️  后厨打印 -> ${kitchenPrinterName}`);
+          await printEscPosTo(kitchenPrinterName, kitchenBuffer);
+        } else {
+          console.log(`ℹ️  未配置后厨打印机 (POS_KITCHEN_PRINTER)，跳过。`);
+        }
       }
 
       console.log(`✅ [Cloud] 打印流程结束`);
-
     } catch (err) {
       console.error(`❌ [Cloud] 打印失败:`, err);
     }

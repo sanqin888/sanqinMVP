@@ -147,7 +147,10 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
   }
 
   @OnEvent('order.reprint')
-  async handleOrderReprint(payload: { orderStableId: string }) {
+  async handleOrderReprint(payload: {
+    orderStableId: string;
+    targets?: { customer?: boolean; kitchen?: boolean };
+  }) {
     this.logger.log(
       `[Fulfillment] Order reprint requested: ${payload.orderStableId}. Triggering POS print.`,
     );
@@ -158,7 +161,10 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
     );
 
     const storeId = process.env.STORE_ID || 'default_store';
-    this.posGateway.sendPrintJob(storeId, printPayload);
+    this.posGateway.sendPrintJob(storeId, {
+      ...printPayload,
+      ...(payload.targets ? { targets: payload.targets } : {}),
+    });
   }
 
   private extractDropoff(
