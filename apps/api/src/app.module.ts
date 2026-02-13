@@ -4,6 +4,7 @@ import { Module, type DynamicModule } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { LocationModule } from './location/location.module';
 import { ConfigModule, type ConfigModuleOptions } from '@nestjs/config';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -46,6 +47,7 @@ const envConfigModule = configModuleFactory.forRoot({
     EmailModule,
     SmsModule,
     NotificationModule,
+    EventEmitterModule.forRoot(),
     AuthModule,
     OrdersModule,
     PosModule,
