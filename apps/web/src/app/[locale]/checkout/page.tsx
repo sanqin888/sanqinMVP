@@ -3853,11 +3853,6 @@ const getFieldFromEvent = (
 
               <div className="space-y-2">
                 <p className="text-xs text-slate-500">{strings.paymentHint}</p>
-                {paymentError ? (
-                  <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-xs text-red-600">
-                    {paymentError}
-                  </div>
-                ) : null}
               </div>
 
               {(availableCoupons.length > 0 ||
@@ -4356,6 +4351,17 @@ const getFieldFromEvent = (
                 <p className="mt-2 text-center text-[11px] text-rose-600">
                   {payButtonDisabledReason}
                 </p>
+              ) : null}
+              {paymentError ? (
+                <div
+                  className={`mt-2 rounded-2xl border p-3 text-xs ${
+                    payFlowState === "PROCESSING"
+                      ? "border-slate-200 bg-slate-50 text-slate-600"
+                      : "border-red-200 bg-red-50 text-red-600"
+                  }`}
+                >
+                  {paymentError}
+                </div>
               ) : null}
             </div>
 
