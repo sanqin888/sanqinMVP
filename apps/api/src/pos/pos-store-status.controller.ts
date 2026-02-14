@@ -1,4 +1,11 @@
-import { Body, Controller, Get, HttpCode, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -26,10 +33,15 @@ export class PosStoreStatusController {
     },
   ) {
     const durationMinutes =
-      typeof body.durationMinutes === 'number' ? Math.floor(body.durationMinutes) : undefined;
+      typeof body.durationMinutes === 'number'
+        ? Math.floor(body.durationMinutes)
+        : undefined;
     const untilTomorrow = body.untilTomorrow === true;
 
-    return this.service.pauseCustomerOrdering({ durationMinutes, untilTomorrow });
+    return this.service.pauseCustomerOrdering({
+      durationMinutes,
+      untilTomorrow,
+    });
   }
 
   @Post('resume')

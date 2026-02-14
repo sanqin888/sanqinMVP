@@ -12,7 +12,9 @@ function parseAutoPauseReason(reason: string | null | undefined): {
 
   const payload = reason.slice(AUTO_UNTIL_PREFIX.length);
   const splitIndex = payload.indexOf('|');
-  const autoResumeAt = (splitIndex >= 0 ? payload.slice(0, splitIndex) : payload).trim();
+  const autoResumeAt = (
+    splitIndex >= 0 ? payload.slice(0, splitIndex) : payload
+  ).trim();
   const displayReasonRaw = splitIndex >= 0 ? payload.slice(splitIndex + 1) : '';
   const displayReason = displayReasonRaw.trim() || null;
 
@@ -20,7 +22,10 @@ function parseAutoPauseReason(reason: string | null | undefined): {
   return { autoResumeAt, displayReason };
 }
 
-function buildAutoPauseReason(autoResumeAt: string, displayReason?: string | null): string {
+function buildAutoPauseReason(
+  autoResumeAt: string,
+  displayReason?: string | null,
+): string {
   const suffix = displayReason?.trim() ? `|${displayReason.trim()}` : '|';
   return `${AUTO_UNTIL_PREFIX}${autoResumeAt}${suffix}`;
 }
@@ -69,7 +74,10 @@ export class PosStoreStatusService {
     };
   }
 
-  async pauseCustomerOrdering(input: { durationMinutes?: number; untilTomorrow?: boolean }) {
+  async pauseCustomerOrdering(input: {
+    durationMinutes?: number;
+    untilTomorrow?: boolean;
+  }) {
     const config = await this.ensureConfig();
     const timezone = config.timezone || 'America/Toronto';
     const nowInStoreTz = DateTime.now().setZone(timezone);
@@ -80,12 +88,17 @@ export class PosStoreStatusService {
     } else {
       const durationMinutes = input.durationMinutes;
       if (!durationMinutes || durationMinutes <= 0) {
-        throw new BadRequestException('durationMinutes must be a positive integer');
+        throw new BadRequestException(
+          'durationMinutes must be a positive integer',
+        );
       }
       autoResumeAt = nowInStoreTz.plus({ minutes: durationMinutes });
     }
 
-    const autoResumeAtIso = autoResumeAt.toISO({ includeOffset: true, suppressMilliseconds: true });
+    const autoResumeAtIso = autoResumeAt.toISO({
+      includeOffset: true,
+      suppressMilliseconds: true,
+    });
     if (!autoResumeAtIso) {
       throw new BadRequestException('Failed to calculate auto-resume time');
     }
