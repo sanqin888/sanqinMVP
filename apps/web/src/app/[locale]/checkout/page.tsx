@@ -1624,6 +1624,12 @@ useEffect(() => {
       cardPostal.mount("#clover-postal");
 
       if (applePayHost) {
+        const applePayConfig = {
+          amount: (totalCents / 100).toFixed(2),
+          currency: HOSTED_CHECKOUT_CURRENCY,
+          country: "CA",
+        };
+
         try {
           console.log("[AP] start");
           applePayHost.innerHTML = "";
