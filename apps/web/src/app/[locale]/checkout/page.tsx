@@ -148,7 +148,7 @@ declare global {
         create: (
           type: string,
           options?: {
-            amount?: string;
+            amount?: number;
             currency?: string;
             country?: string;
           },
@@ -1370,7 +1370,7 @@ export default function CheckoutPage() {
 
   const requiresPayment = totalCents > 0;
   const canPayWithCard =
-    !requiresPayment || (cloverReady && canPay);
+    !requiresPayment || (cloverReady && (canPay || applePayMounted));
 
   const payButtonDisabledReason = useMemo(() => {
     if (isSubmitting) return null;
@@ -1405,13 +1405,13 @@ export default function CheckoutPage() {
       if (cardNumberError || cardDateError || cardCvvError) {
         return cardNumberError ?? cardDateError ?? cardCvvError ?? null;
       }
-      if (
+      if (!applePayMounted && (
         !cardNameComplete ||
         !cardNumberComplete ||
         !cardDateComplete ||
         !cardCvvComplete ||
         !cardPostalComplete
-      ) {
+      )) {
         return locale === "zh"
           ? "请完整填写银行卡信息。"
           : "Please complete all card fields.";
@@ -1420,6 +1420,7 @@ export default function CheckoutPage() {
 
     return null;
   }, [
+    applePayMounted,
     canPayWithCard,
     canPlaceOrder,
     cardCvvError,
@@ -1624,19 +1625,13 @@ useEffect(() => {
       cardPostal.mount("#clover-postal");
 
       if (applePayHost) {
-        const applePayConfig = {
-          amount: (totalCents / 100).toFixed(2),
-          currency: HOSTED_CHECKOUT_CURRENCY,
-          country: "CA",
-        };
-
         try {
           console.log("[AP] start");
           applePayHost.innerHTML = "";
 
           applePay = elements.create("PAYMENT_REQUEST_BUTTON_APPLE_PAY", {
-            amount: "100",
-            currency: "CAD",
+            amount: Math.max(0, Math.round(totalCents)),
+            currency: HOSTED_CHECKOUT_CURRENCY,
             country: "CA",
           });
 
