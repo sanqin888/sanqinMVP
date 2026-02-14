@@ -1497,7 +1497,7 @@ useEffect(() => {
   ] as const;
 
   type RequiredKey = (typeof requiredFieldKeys)[number];
-  type CloverFieldKey = RequiredKey | "CARD_NAME" | "APPLE_PAY";
+  type CloverFieldKey = RequiredKey | "CARD_NAME" | "PAYMENT_REQUEST_BUTTON_APPLE_PAY";
 
   const getFieldFromEvent = (
     event: CloverEventPayload,
@@ -1565,7 +1565,7 @@ useEffect(() => {
     state: Partial<Record<CloverFieldKey, CloverFieldChangeEvent>>,
   ) => {
     const cardFieldsReady = requiredFieldKeys.every((k) => isFieldPayable(state[k]));
-    const applePayReady = isFieldPayable(state.APPLE_PAY);
+    const applePayReady = isFieldPayable(state.PAYMENT_REQUEST_BUTTON_APPLE_PAY);
     return cardFieldsReady || applePayReady;
   };
 
@@ -1631,20 +1631,21 @@ useEffect(() => {
         };
 
         try {
-          applePay = elements.create("APPLE_PAY", applePayConfig);
-          applePay.mount("#clover-apple-pay");
-          setApplePayMounted(true);
-        } catch (applePayError) {
-          console.warn("[CLOVER] Apple Pay mount with amount config failed", applePayError);
+          console.log("[AP] start");
+          applePayHost.innerHTML = "";
 
-          try {
-            applePay = elements.create("APPLE_PAY");
-            applePay.mount("#clover-apple-pay");
-            setApplePayMounted(true);
-          } catch (fallbackError) {
-            setApplePayMounted(false);
-            console.warn("[CLOVER] Apple Pay mount skipped", fallbackError);
-          }
+          applePay = elements.create("PAYMENT_REQUEST_BUTTON_APPLE_PAY", {
+            amount: "100",
+            currency: "CAD",
+            country: "CA",
+          });
+
+          applePay.mount("#clover-apple-pay");
+          setApplePayMounted(applePayHost.children.length > 0);
+          console.log("[AP] mounted children=", applePayHost.children.length);
+        } catch (applePayError) {
+          setApplePayMounted(false);
+          console.error("[AP] error", applePayError);
         }
       }
 
@@ -1726,10 +1727,10 @@ useEffect(() => {
 
       // === APPLE_PAY ===
       applePay?.addEventListener("change", (e) => {
-        handleFieldEvent("APPLE_PAY", e);
+        handleFieldEvent("PAYMENT_REQUEST_BUTTON_APPLE_PAY", e);
       });
       applePay?.addEventListener("blur", (e) => {
-        handleFieldEvent("APPLE_PAY", e);
+        handleFieldEvent("PAYMENT_REQUEST_BUTTON_APPLE_PAY", e);
       });
 
       setCloverReady(true);
