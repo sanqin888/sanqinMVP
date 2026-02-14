@@ -1628,16 +1628,13 @@ useEffect(() => {
           console.error("[AP] start");
           applePayHost.innerHTML = "";
 
-          const button = elements.create("paymentRequestButton", {
-            paymentRequest: {
-              country: "CA",
-              currency: "CAD",
-              total: { label: "SANQ", amount: 100 },
-            },
-          }) as { mount: (selector: string) => void; destroy?: () => void };
+          applePay = elements.create("APPLE_PAY", {
+            amount: "100",
+            currency: "CAD",
+            country: "CA",
+          });
 
-          button.mount("#clover-apple-pay");
-          applePay = button;
+          applePay.mount("#clover-apple-pay");
           setApplePayMounted(applePayHost.children.length > 0);
           console.error("[AP] mounted children=", applePayHost.children.length);
         } catch (applePayError) {
