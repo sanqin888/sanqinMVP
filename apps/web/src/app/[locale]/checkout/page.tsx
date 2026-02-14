@@ -148,7 +148,7 @@ declare global {
         create: (
           type: string,
           options?: {
-            amount?: string;
+            amount?: number;
             currency?: string;
             country?: string;
           },
