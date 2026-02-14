@@ -45,7 +45,9 @@ export class PosOrdersController {
   @UsePipes(new ZodValidationPipe(CreateOrderSchema))
   async create(@Body() dto: CreateOrderInput): Promise<OrderDto> {
     if (dto.channel !== 'in_store' && dto.channel !== 'ubereats') {
-      throw new BadRequestException('POS orders must use channel=in_store|ubereats');
+      throw new BadRequestException(
+        'POS orders must use channel=in_store|ubereats',
+      );
     }
     if (!dto.paymentMethod) {
       throw new BadRequestException('POS orders must provide paymentMethod');
