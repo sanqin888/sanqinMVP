@@ -13,6 +13,12 @@ import {
 import { TAX_RATE } from "@/lib/order/shared";
 import { apiFetch } from "@/lib/api/client";
 import {
+  fetchPosCustomerOrderingStatus,
+  pauseCustomerOrderingFromPos,
+  resumeCustomerOrderingFromPos,
+  type PosCustomerOrderingStatus,
+} from "@/lib/api/pos";
+import {
   POS_DISPLAY_STORAGE_KEY,
   clearPosDisplaySnapshot,
   type PosDisplaySnapshot,
@@ -78,8 +84,8 @@ const STRINGS = {
     errorGeneric: "下单失败，请稍后重试。",
     optionDialogTitle: "选择餐品选项",
     optionDialogSubtitle: "完成所有必选项后可加入本单。",
-    storeStatusOpen: "营业中",
-    storeStatusClosed: "暂停接单",
+    storeStatusOpen: "顾客端营业中",
+    storeStatusClosed: "顾客端暂停接单",
     storeStatusHoliday: "节假日休息",
     storeStatusTemporaryClosed: "当前门店已暂停接单。",
     storeStatusClosedBySchedule: "当前不在营业时间内，暂时不支持新建订单。",
@@ -90,6 +96,11 @@ const STRINGS = {
     orderManage: "订单管理",
     summary: "当日小结",
     memberManage: "会员管理",
+    pauseActionLabel: "暂停顾客端接单",
+    resumeActionLabel: "恢复顾客端营业",
+    pausing: "设置中…",
+    resuming: "恢复中…",
+    autoResumeAtPrefix: "自动恢复时间：",
   },
   en: {
     title: "Store POS",
@@ -121,8 +132,8 @@ const STRINGS = {
     errorGeneric: "Failed to place order. Please try again.",
     optionDialogTitle: "Choose item options",
     optionDialogSubtitle: "Finish required options before adding to order.",
-    storeStatusOpen: "Open for orders",
-    storeStatusClosed: "Paused",
+    storeStatusOpen: "Customer ordering: on",
+    storeStatusClosed: "Customer ordering: paused",
     storeStatusHoliday: "Closed for holiday",
     storeStatusTemporaryClosed:
       "The store is temporarily not accepting new orders.",
@@ -136,6 +147,11 @@ const STRINGS = {
     orderManage: "Order management",
     summary: "Daily summary",
     memberManage: "Member management",
+    pauseActionLabel: "Pause customer ordering",
+    resumeActionLabel: "Resume customer ordering",
+    pausing: "Updating…",
+    resuming: "Resuming…",
+    autoResumeAtPrefix: "Auto resume at: ",
   },
 } as const;
 
@@ -165,6 +181,11 @@ export default function StorePosPage() {
   const [storeStatus, setStoreStatus] = useState<StoreStatus | null>(null);
   const [storeStatusLoading, setStoreStatusLoading] = useState(false);
   const [storeStatusError, setStoreStatusError] = useState<string | null>(null);
+  const [customerOrderingStatus, setCustomerOrderingStatus] =
+    useState<PosCustomerOrderingStatus | null>(null);
+  const [customerStatusLoading, setCustomerStatusLoading] = useState(false);
+  const [customerStatusSaving, setCustomerStatusSaving] = useState(false);
+  const [showPauseMenu, setShowPauseMenu] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -202,10 +223,14 @@ export default function StorePosPage() {
     async function loadStatus() {
       try {
         setStoreStatusLoading(true);
+        setCustomerStatusLoading(true);
         setStoreStatusError(null);
         const data = await apiFetch<StoreStatus>("/public/store-status");
         if (cancelled) return;
         setStoreStatus(data);
+        const customerStatus = await fetchPosCustomerOrderingStatus();
+        if (cancelled) return;
+        setCustomerOrderingStatus(customerStatus);
       } catch (error) {
         console.error("Failed to load store status", error);
         if (cancelled) return;
@@ -217,6 +242,7 @@ export default function StorePosPage() {
       } finally {
         if (!cancelled) {
           setStoreStatusLoading(false);
+          setCustomerStatusLoading(false);
         }
       }
     }
@@ -231,46 +257,16 @@ export default function StorePosPage() {
     };
   }, [isZh]);
 
-  const isStoreOpen = storeStatus?.isOpen ?? true;
+  const isCustomerPaused = customerOrderingStatus?.isTemporarilyClosed ?? false;
 
   let storeStatusDetail: string | null = null;
-  if (storeStatus && !isStoreOpen) {
-    if (
-      storeStatus.ruleSource === "TEMPORARY_CLOSE" &&
-      storeStatus.isTemporarilyClosed
-    ) {
-      if (storeStatus.temporaryCloseReason?.trim()) {
-        storeStatusDetail = isZh
-          ? `当前门店暂停接单：${storeStatus.temporaryCloseReason}`
-          : `The store is temporarily not accepting orders: ${storeStatus.temporaryCloseReason}`;
-      } else {
-        storeStatusDetail = isZh
-          ? t.storeStatusTemporaryClosed
-          : t.storeStatusTemporaryClosed;
-      }
-    } else if (storeStatus.ruleSource === "HOLIDAY") {
-      const holidayName =
-        storeStatus.today?.holidayName || (isZh ? "节假日" : "holiday");
+  if (storeStatus && isCustomerPaused) {
+    if (storeStatus.temporaryCloseReason?.trim()) {
       storeStatusDetail = isZh
-        ? `${holidayName}休息，今日不接新订单。`
-        : `Closed today for ${holidayName}.`;
+        ? `当前顾客端暂停接单：${storeStatus.temporaryCloseReason}`
+        : `Customer ordering is paused: ${storeStatus.temporaryCloseReason}`;
     } else {
-      storeStatusDetail = isZh
-        ? t.storeStatusClosedBySchedule
-        : t.storeStatusClosedBySchedule;
-    }
-
-    if (storeStatus.nextOpenAt) {
-      const formatted = formatStoreTime(
-        storeStatus.nextOpenAt,
-        storeStatus.timezone,
-        isZh ? "zh" : "en",
-      );
-      storeStatusDetail +=
-        (storeStatusDetail ? " " : "") +
-        (isZh
-          ? `${t.storeStatusNextOpenPrefix}${formatted}`
-          : `${t.storeStatusNextOpenPrefix}${formatted}`);
+      storeStatusDetail = t.storeStatusTemporaryClosed;
     }
   }
 
@@ -510,9 +506,47 @@ export default function StorePosPage() {
   }, [cartWithDetails, subtotalCents, taxCents, totalCents]);
 
   const handlePlaceOrder = () => {
-    if (!hasItems || !isStoreOpen) return;
+    if (!hasItems) return;
     setIsPlacing(true);
     router.push(`/${locale}/store/pos/payment`);
+  };
+
+  const pauseOptions: Array<{ label: string; payload: { durationMinutes?: number; untilTomorrow?: boolean } }> = [
+    { label: isZh ? "15分钟" : "15 min", payload: { durationMinutes: 15 } },
+    { label: isZh ? "30分钟" : "30 min", payload: { durationMinutes: 30 } },
+    { label: isZh ? "1小时" : "1 hour", payload: { durationMinutes: 60 } },
+    { label: isZh ? "2小时" : "2 hours", payload: { durationMinutes: 120 } },
+    { label: isZh ? "3小时" : "3 hours", payload: { durationMinutes: 180 } },
+    { label: isZh ? "至明天" : "Until tomorrow", payload: { untilTomorrow: true } },
+  ];
+
+  const handlePauseCustomerOrdering = async (payload: {
+    durationMinutes?: number;
+    untilTomorrow?: boolean;
+  }) => {
+    try {
+      setCustomerStatusSaving(true);
+      const data = await pauseCustomerOrderingFromPos(payload);
+      setCustomerOrderingStatus(data);
+      setShowPauseMenu(false);
+    } catch (error) {
+      console.error("Failed to pause customer ordering", error);
+    } finally {
+      setCustomerStatusSaving(false);
+    }
+  };
+
+  const handleResumeCustomerOrdering = async () => {
+    try {
+      setCustomerStatusSaving(true);
+      const data = await resumeCustomerOrderingFromPos();
+      setCustomerOrderingStatus(data);
+      setShowPauseMenu(false);
+    } catch (error) {
+      console.error("Failed to resume customer ordering", error);
+    } finally {
+      setCustomerStatusSaving(false);
+    }
   };
 
   return (
@@ -529,6 +563,16 @@ export default function StorePosPage() {
           {storeStatusError && (
             <p className="mt-1 max-w-xl text-[11px] text-amber-300">
               {storeStatusError}
+            </p>
+          )}
+          {isCustomerPaused && customerOrderingStatus?.autoResumeAt && (
+            <p className="mt-1 max-w-xl text-[11px] text-amber-200">
+              {t.autoResumeAtPrefix}
+              {formatStoreTime(
+                customerOrderingStatus.autoResumeAt,
+                storeStatus?.timezone ?? "America/Toronto",
+                isZh ? "zh" : "en",
+              )}
             </p>
           )}
         </div>
@@ -557,20 +601,52 @@ export default function StorePosPage() {
           >
             {t.orderManage}
           </Link>
-          {storeStatusLoading ? (
+          {storeStatusLoading || customerStatusLoading ? (
             <span className="rounded-full border border-slate-600 bg-slate-800 px-6 py-2 text-base font-semibold text-slate-200">
               {t.storeStatusLoading}
             </span>
           ) : (
-            <span
-              className={`rounded-full border px-6 py-2 text-base font-semibold ${
-                isStoreOpen
-                  ? "border-emerald-400/60 bg-emerald-500/10 text-emerald-200"
-                  : "border-rose-400/60 bg-rose-500/10 text-rose-200"
-              }`}
-            >
-              {isStoreOpen ? t.storeStatusOpen : t.storeStatusClosed}
-            </span>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  if (isCustomerPaused) {
+                    void handleResumeCustomerOrdering();
+                  } else {
+                    setShowPauseMenu((prev) => !prev);
+                  }
+                }}
+                disabled={customerStatusSaving}
+                className={`rounded-full border px-6 py-2 text-base font-semibold ${
+                  isCustomerPaused
+                    ? "border-rose-400/60 bg-rose-500/10 text-rose-200"
+                    : "border-emerald-400/60 bg-emerald-500/10 text-emerald-200"
+                } ${customerStatusSaving ? "opacity-70" : ""}`}
+              >
+                {customerStatusSaving
+                  ? isCustomerPaused
+                    ? t.resuming
+                    : t.pausing
+                  : isCustomerPaused
+                    ? t.storeStatusClosed
+                    : t.storeStatusOpen}
+              </button>
+              {!isCustomerPaused && showPauseMenu && (
+                <div className="absolute right-0 z-30 mt-2 w-52 rounded-2xl border border-slate-600 bg-slate-800 p-2 shadow-xl">
+                  <div className="px-2 py-1 text-xs text-slate-300">{t.pauseActionLabel}</div>
+                  {pauseOptions.map((option) => (
+                    <button
+                      key={option.label}
+                      type="button"
+                      onClick={() => void handlePauseCustomerOrdering(option.payload)}
+                      className="block w-full rounded-xl px-3 py-2 text-left text-sm text-slate-100 hover:bg-slate-700"
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </div>
       </header>
@@ -788,10 +864,10 @@ export default function StorePosPage() {
             </button>
             <button
               type="button"
-              disabled={!hasItems || isPlacing || !isStoreOpen}
+              disabled={!hasItems || isPlacing}
               onClick={handlePlaceOrder}
               className={`flex-[1.5] h-12 rounded-2xl text-sm font-semibold ${
-                !hasItems || isPlacing || !isStoreOpen
+                !hasItems || isPlacing
                   ? "bg-slate-500 text-slate-200"
                   : "bg-emerald-500 text-slate-900 hover:bg-emerald-400"
               }`}

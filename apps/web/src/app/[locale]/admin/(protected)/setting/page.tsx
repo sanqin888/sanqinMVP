@@ -729,8 +729,8 @@ setHolidays(
         </h2>
         <p className="text-xs text-slate-600">
           {isZh
-            ? '这里的“暂停接单”会作用于网页下单和门店 POS。'
-            : 'This temporary close toggle applies to both web ordering and in-store POS.'}
+            ? '这里的“暂停接单”仅作用于顾客端点单，POS 端点餐不受影响。'
+            : 'This temporary close toggle only affects customer ordering. POS ordering is not affected.'}
         </p>
 
         <div className="mt-2 flex items-center gap-3">
