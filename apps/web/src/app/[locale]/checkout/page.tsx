@@ -148,7 +148,7 @@ declare global {
         create: (
           type: string,
           options?: {
-            amount?: string;
+            amount?: number;
             currency?: string;
             country?: string;
           },
@@ -1630,7 +1630,7 @@ useEffect(() => {
           applePayHost.innerHTML = "";
 
           applePay = elements.create("PAYMENT_REQUEST_BUTTON_APPLE_PAY", {
-            amount: String(Math.max(0, Math.round(totalCents))),
+            amount: Math.max(0, Math.round(totalCents)),
             currency: HOSTED_CHECKOUT_CURRENCY,
             country: "CA",
           });
