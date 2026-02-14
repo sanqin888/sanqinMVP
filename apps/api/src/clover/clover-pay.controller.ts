@@ -8,6 +8,8 @@ import {
   Headers,
   Ip,
   NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
   Post,
   Query,
 } from '@nestjs/common';
@@ -30,8 +32,9 @@ import { CreateOnlinePricingQuoteDto } from './dto/create-online-pricing-quote.d
 import { PricingTokenService } from './pricing-token.service';
 
 @Controller('clover')
-export class CloverPayController {
+export class CloverPayController implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new AppLogger(CloverPayController.name);
+  private reconcileTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly clover: CloverService,
@@ -95,6 +98,51 @@ export class CloverPayController {
       });
     }
 
+    return this.reconcileIntent(intent);
+  }
+
+
+  onModuleInit() {
+    this.reconcileTimer = setInterval(() => {
+      void this.reconcilePendingIntents();
+    }, 5000);
+  }
+
+  onModuleDestroy() {
+    if (this.reconcileTimer) {
+      clearInterval(this.reconcileTimer);
+      this.reconcileTimer = null;
+    }
+  }
+
+  private async reconcilePendingIntents(): Promise<void> {
+    try {
+      const intents = await this.checkoutIntents.listUnresolvedForReconciliation(10);
+      for (const intent of intents) {
+        try {
+          await this.reconcileIntent(intent);
+        } catch (error) {
+          this.logger.warn(
+            `checkout intent reconcile failed id=${intent.id} ref=${intent.referenceId}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+    } catch (error) {
+      this.logger.warn(
+        `checkout intent reconcile loop failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  private async reconcileIntent(intent: {
+    id: string;
+    status: string;
+    result: string | null;
+    orderId: string | null;
+    metadata: HostedCheckoutMetadata;
+    amountCents: number;
+    referenceId: string;
+  }) {
     if (
       ['processing', 'creating_order'].includes(intent.status) &&
       !intent.orderId
@@ -110,9 +158,10 @@ export class CloverPayController {
         const isSuccess =
           normalizedStatus === 'succeeded' || chargeStatus.captured === true;
         if (isSuccess) {
-          const claimed = await this.checkoutIntents.claimOrderCreation(
-            intent.id,
-          );
+          const claimed =
+            intent.status === 'creating_order'
+              ? true
+              : await this.checkoutIntents.claimOrderCreation(intent.id);
           if (!claimed) {
             return {
               status: intent.status,
