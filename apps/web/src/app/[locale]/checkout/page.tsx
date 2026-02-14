@@ -837,6 +837,7 @@ export default function CheckoutPage() {
   const [cardCvvError, setCardCvvError] = useState<string | null>(null);
   const [cloverReady, setCloverReady] = useState(false);
   const [canPay, setCanPay] = useState(false);
+  const [applePayMounted, setApplePayMounted] = useState(false);
   const [cardNameComplete, setCardNameComplete] = useState(false);
   const [cardNumberComplete, setCardNumberComplete] = useState(false);
   const [cardDateComplete, setCardDateComplete] = useState(false);
@@ -1597,6 +1598,7 @@ useEffect(() => {
 
       cloverFieldStateRef.current = {};
       setCanPay(false);
+      setApplePayMounted(false);
 
       const clover = new window.Clover(publicKey, { merchantId });
       const elements = clover.elements();
@@ -1622,15 +1624,27 @@ useEffect(() => {
       cardPostal.mount("#clover-postal");
 
       if (applePayHost) {
+        const applePayConfig = {
+          amount: (totalCents / 100).toFixed(2),
+          currency: HOSTED_CHECKOUT_CURRENCY,
+          country: "CA",
+        };
+
         try {
-          applePay = elements.create("APPLE_PAY", {
-            amount: (totalCents / 100).toFixed(2),
-            currency: HOSTED_CHECKOUT_CURRENCY,
-            country: "CA",
-          });
+          applePay = elements.create("APPLE_PAY", applePayConfig);
           applePay.mount("#clover-apple-pay");
+          setApplePayMounted(true);
         } catch (applePayError) {
-          console.warn("[CLOVER] Apple Pay mount skipped", applePayError);
+          console.warn("[CLOVER] Apple Pay mount with amount config failed", applePayError);
+
+          try {
+            applePay = elements.create("APPLE_PAY");
+            applePay.mount("#clover-apple-pay");
+            setApplePayMounted(true);
+          } catch (fallbackError) {
+            setApplePayMounted(false);
+            console.warn("[CLOVER] Apple Pay mount skipped", fallbackError);
+          }
         }
       }
 
@@ -1720,6 +1734,7 @@ useEffect(() => {
 
       setCloverReady(true);
     } catch (err) {
+      setApplePayMounted(false);
       if (cancelled) return;
       const message = err instanceof Error ? err.message : "Failed to init Clover";
       setErrorMessage(message);
@@ -1741,6 +1756,7 @@ useEffect(() => {
     cloverFieldStateRef.current = {};
     setCanPay(false);
     setCloverReady(false);
+    setApplePayMounted(false);
   };
 }, [locale, requiresPayment, totalCents]);
 
@@ -4260,6 +4276,13 @@ useEffect(() => {
                     id="clover-apple-pay"
                     className="min-h-10 rounded-2xl border border-slate-200 bg-white"
                   />
+                  {!applePayMounted ? (
+                    <p className="text-[11px] text-slate-500">
+                      {locale === "zh"
+                        ? "Apple Pay 当前不可用，请改用银行卡填写支付。"
+                        : "Apple Pay is currently unavailable. Please pay with card fields below."}
+                    </p>
+                  ) : null}
 
                   <p className="text-xs font-semibold text-slate-600">
                     {locale === "zh" ? "银行卡信息" : "Card details"}

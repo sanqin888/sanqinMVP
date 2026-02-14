@@ -15,6 +15,7 @@ import {
 import type { PaymentMethod } from "@/lib/api/pos";
 
 type FulfillmentType = "pickup" | "dine_in";
+type PosOrderChannel = "in_store" | "ubereats";
 type BusinessConfigLite = {
   wechatAlipayExchangeRate: number;
   earnPtPerDollar: number;
@@ -63,7 +64,7 @@ type MemberDetailResponse = {
 };
 
 // ✅ 本地支付方式状态类型
-type LocalPaymentMethod = "cash" | "card" | "wechat_alipay" | "store_balance";
+type LocalPaymentMethod = "cash" | "card" | "wechat_alipay" | "store_balance" | "ubereats";
 
 const STRINGS: Record<
   Locale,
@@ -77,11 +78,13 @@ const STRINGS: Record<
     fulfillmentLabel: string;
     pickup: string;
     dineIn: string;
+    uberEatsChannel: string;
     paymentLabel: string;
     payCash: string;
     payCard: string;
     payWeChatAlipay: string;
     payStoreBalance: string;
+    payUberEats: string;
     balanceInsufficient: string;
     balancePaymentLabel: string;
     balancePaymentHint: string;
@@ -130,11 +133,13 @@ const STRINGS: Record<
     fulfillmentLabel: "用餐方式",
     pickup: "外带",
     dineIn: "堂食",
+    uberEatsChannel: "UberEats",
     paymentLabel: "付款方式",
     payCash: "现金",
     payCard: "银行卡",
     payWeChatAlipay: "微信或支付宝",
     payStoreBalance: "储值余额",
+    payUberEats: "UberEats",
     balanceInsufficient: "余额不足以全额支付",
     balancePaymentLabel: "余额支付",
     balancePaymentHint: "请先选择会员后使用余额支付。",
@@ -182,11 +187,13 @@ const STRINGS: Record<
     fulfillmentLabel: "Dining",
     pickup: "Pickup",
     dineIn: "Dine-in",
+    uberEatsChannel: "UberEats",
     paymentLabel: "Payment method",
     payCash: "Cash",
     payCard: "Card",
     payWeChatAlipay: "WeChat / Alipay",
     payStoreBalance: "Store Balance",
+    payUberEats: "UberEats",
     balanceInsufficient: "Insufficient balance for full payment",
     balancePaymentLabel: "Balance payment",
     balancePaymentHint: "Select a member to pay with stored balance.",
@@ -249,7 +256,8 @@ export default function StorePosPaymentPage() {
   const [snapshot, setSnapshot] = useState<PosDisplaySnapshot | null>(null);
   const [loadingSnapshot, setLoadingSnapshot] = useState(true);
   const [fulfillment, setFulfillment] = useState<FulfillmentType | null>(null);
-  
+  const [orderChannel, setOrderChannel] = useState<PosOrderChannel>("in_store");
+
   const [paymentMethod, setPaymentMethod] = useState<LocalPaymentMethod>("cash");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -399,6 +407,16 @@ const loyaltyRedeemCents = redeemCents;
         setPaymentMethod('cash');
     }
   }, [isFullyPaidByBalance, paymentMethod]);
+
+  useEffect(() => {
+    if (orderChannel === "ubereats" && paymentMethod !== "ubereats") {
+      setPaymentMethod("ubereats");
+      return;
+    }
+    if (orderChannel === "in_store" && paymentMethod === "ubereats") {
+      setPaymentMethod("cash");
+    }
+  }, [orderChannel, paymentMethod]);
 
   // ✅ 新增：计算余额是否充足
   const isBalanceSufficient = useMemo(() => {
@@ -587,9 +605,10 @@ const loyaltyRedeemCents = redeemCents;
       if (paymentMethod === "card") apiPaymentMethod = "CARD";
       else if (paymentMethod === "wechat_alipay") apiPaymentMethod = "WECHAT_ALIPAY";
       else if (paymentMethod === "store_balance") apiPaymentMethod = "STORE_BALANCE";
+      else if (paymentMethod === "ubereats") apiPaymentMethod = "UBEREATS";
 
       const body = {
-        channel: "in_store" as const,
+        channel: orderChannel,
         fulfillmentType: fulfillment,
         // 这里传原始小计，后端会重算，但我们要在 DTO 扩展支持部分支付
         subtotalCents: computedSnapshot.subtotalCents,
@@ -721,9 +740,10 @@ const loyaltyRedeemCents = redeemCents;
             {/* 用餐方式 */}
             <div>
               <h2 className="text-sm font-semibold mb-2">{t.fulfillmentLabel}</h2>
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <button type="button" onClick={() => setFulfillment("pickup")} className={`h-10 rounded-2xl border font-medium ${fulfillment === "pickup" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.pickup}</button>
-                <button type="button" onClick={() => setFulfillment("dine_in")} className={`h-10 rounded-2xl border font-medium ${fulfillment === "dine_in" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.dineIn}</button>
+              <div className="grid grid-cols-3 gap-2 text-sm">
+                <button type="button" onClick={() => { setOrderChannel("in_store"); setFulfillment("pickup"); }} className={`h-10 rounded-2xl border font-medium ${fulfillment === "pickup" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.pickup}</button>
+                <button type="button" onClick={() => { setOrderChannel("in_store"); setFulfillment("dine_in"); }} className={`h-10 rounded-2xl border font-medium ${fulfillment === "dine_in" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.dineIn}</button>
+                <button type="button" onClick={() => { setOrderChannel("ubereats"); setFulfillment("pickup"); }} className={`h-10 rounded-2xl border font-medium ${orderChannel === "ubereats" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.uberEatsChannel}</button>
               </div>
             </div>
 
@@ -810,14 +830,14 @@ const loyaltyRedeemCents = redeemCents;
             <div>
               <h2 className="text-sm font-semibold mb-2">{t.paymentLabel}</h2>
               <div className="grid grid-cols-2 gap-2 text-sm">
-                <button onClick={() => setPaymentMethod("cash")} className={`h-12 rounded-2xl border font-medium ${paymentMethod === "cash" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.payCash}</button>
-                <button onClick={() => setPaymentMethod("card")} className={`h-12 rounded-2xl border font-medium ${paymentMethod === "card" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.payCard}</button>
-                <button onClick={() => setPaymentMethod("wechat_alipay")} className={`h-12 rounded-2xl border font-medium ${paymentMethod === "wechat_alipay" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.payWeChatAlipay}</button>
+                <button disabled={orderChannel === "ubereats"} onClick={() => setPaymentMethod("cash")} className={`h-12 rounded-2xl border font-medium ${paymentMethod === "cash" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.payCash}</button>
+                <button disabled={orderChannel === "ubereats"} onClick={() => setPaymentMethod("card")} className={`h-12 rounded-2xl border font-medium ${paymentMethod === "card" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.payCard}</button>
+                <button disabled={orderChannel === "ubereats"} onClick={() => setPaymentMethod("wechat_alipay")} className={`h-12 rounded-2xl border font-medium ${paymentMethod === "wechat_alipay" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.payWeChatAlipay}</button>
                 
                 {/* 储值余额支付按钮 */}
                 <button 
                     onClick={handleSelectStoreBalancePayment} 
-                    disabled={!memberInfo || !isBalanceSufficientForFullPayment}
+                    disabled={orderChannel === "ubereats" || !memberInfo || !isBalanceSufficientForFullPayment}
                     className={`h-12 rounded-2xl border font-medium flex flex-col items-center justify-center leading-tight
                         ${paymentMethod === "store_balance" 
                             ? "border-emerald-400 bg-emerald-500 text-slate-900" 
@@ -833,7 +853,7 @@ const loyaltyRedeemCents = redeemCents;
                 </button>
                 
                 {/* ✅ 新增：储值余额支付按钮 */}
-                {memberInfo && (memberInfo.balance ?? 0) > 0 && (
+                {orderChannel !== "ubereats" && memberInfo && (memberInfo.balance ?? 0) > 0 && (
                   <button
                     type="button"
                     onClick={() => setPaymentMethod("store_balance")}
@@ -850,6 +870,7 @@ const loyaltyRedeemCents = redeemCents;
                     </span>
                   </button>
                 )}
+                <button disabled={orderChannel !== "ubereats"} onClick={() => setPaymentMethod("ubereats")} className={`h-12 rounded-2xl border font-medium ${paymentMethod === "ubereats" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-500"}`}>{t.payUberEats}</button>
               </div>
             </div>
 
