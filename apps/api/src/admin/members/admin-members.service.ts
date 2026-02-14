@@ -84,6 +84,12 @@ type MemberListParams = {
   pageSize?: string;
 };
 
+type TopPurchasedItem = {
+  productStableId: string;
+  displayName: string;
+  purchaseCount: number;
+};
+
 @Injectable()
 export class AdminMembersService {
   constructor(
@@ -567,6 +573,58 @@ export class AdminMembersService {
         fulfillmentType: order.fulfillmentType,
         deliveryType: order.deliveryType,
       })),
+    };
+  }
+
+  async listTopPurchasedItems(userStableId: string, limitRaw?: string) {
+    const user = await this.getUserByStableId(userStableId);
+    const parsedLimit = limitRaw ? Number.parseInt(limitRaw, 10) : 10;
+    const limit = Number.isFinite(parsedLimit)
+      ? Math.max(1, Math.min(parsedLimit, 50))
+      : 10;
+
+    const items = await this.prisma.orderItem.findMany({
+      where: {
+        order: {
+          userId: user.id,
+          status: { in: ['paid', 'making', 'ready', 'completed'] },
+        },
+      },
+      select: {
+        productStableId: true,
+        qty: true,
+        displayName: true,
+        nameZh: true,
+        nameEn: true,
+      },
+    });
+
+    const byProduct = new Map<string, TopPurchasedItem>();
+    for (const item of items) {
+      const fallbackName =
+        item.displayName?.trim() ||
+        item.nameZh?.trim() ||
+        item.nameEn?.trim() ||
+        item.productStableId;
+      const existing = byProduct.get(item.productStableId);
+      if (existing) {
+        existing.purchaseCount += item.qty;
+        if (existing.displayName === existing.productStableId) {
+          existing.displayName = fallbackName;
+        }
+      } else {
+        byProduct.set(item.productStableId, {
+          productStableId: item.productStableId,
+          displayName: fallbackName,
+          purchaseCount: item.qty,
+        });
+      }
+    }
+
+    return {
+      items: Array.from(byProduct.values())
+        .sort((a, b) => b.purchaseCount - a.purchaseCount)
+        .slice(0, limit),
     };
   }
 

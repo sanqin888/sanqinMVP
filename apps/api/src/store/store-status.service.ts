@@ -5,6 +5,7 @@ import type { BusinessConfig } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppLogger } from '../common/app-logger';
 import { DateTime } from 'luxon';
+import { parseAutoPauseReason } from '../pos/pos-store-status.service';
 
 export type StoreStatus = {
   isOpenBySchedule: boolean;
@@ -108,7 +109,29 @@ export class StoreStatusService {
         minutesSinceMidnight < closeMinutes;
     }
 
-    const isTemporarilyClosed = !!config.isTemporarilyClosed;
+    let isTemporarilyClosed = !!config.isTemporarilyClosed;
+    let temporaryCloseReason = config.temporaryCloseReason ?? null;
+
+    if (isTemporarilyClosed) {
+      const parsedAutoPause = parseAutoPauseReason(config.temporaryCloseReason);
+      if (parsedAutoPause) {
+        const resumeAt = DateTime.fromISO(parsedAutoPause.autoResumeAt);
+        if (resumeAt.isValid && resumeAt <= nowZ) {
+          await this.prisma.businessConfig.update({
+            where: { id: 1 },
+            data: {
+              isTemporarilyClosed: false,
+              temporaryCloseReason: null,
+            },
+          });
+          isTemporarilyClosed = false;
+          temporaryCloseReason = null;
+        } else {
+          temporaryCloseReason = parsedAutoPause.displayReason;
+        }
+      }
+    }
+
     const isOpen = isOpenBySchedule && !isTemporarilyClosed;
 
     if (isTemporarilyClosed) {
@@ -128,7 +151,7 @@ export class StoreStatusService {
     return {
       isOpenBySchedule,
       isTemporarilyClosed,
-      temporaryCloseReason: config.temporaryCloseReason ?? null,
+      temporaryCloseReason,
       publicNotice: config.publicNotice ?? null,
       publicNoticeEn: config.publicNoticeEn ?? null,
       isOpen,

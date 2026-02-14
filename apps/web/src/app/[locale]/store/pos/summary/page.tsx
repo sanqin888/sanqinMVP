@@ -100,7 +100,7 @@ const COPY = {
 type FilterState = {
   dateStart: string; // YYYY-MM-DD
   dateEnd: string;   // YYYY-MM-DD
-  channel: string;   // in_store|web
+  channel: string;   // in_store|web|ubereats
   status: string;    // paid|refunded|void
   payment: string;   // cash|card|online|store_balance
 };
@@ -129,7 +129,7 @@ type PosDailySummaryResponse = {
     deliveryCostCents: number;
   };
   breakdownByPayment: Array<{
-    payment: "cash" | "card" | "online" | "store_balance";
+    payment: "cash" | "card" | "online" | "store_balance" | "ubereats";
     count: number;
     amountCents: number;
   }>;
@@ -139,7 +139,7 @@ type PosDailySummaryResponse = {
     amountCents: number;
   }>;
   breakdownByChannel: Array<{
-    channel: "in_store" | "web";
+    channel: "in_store" | "web" | "ubereats";
     count: number;
     amountCents: number;
   }>;
@@ -154,7 +154,7 @@ type PosDailySummaryResponse = {
     status: "pending" | "paid" | "making" | "ready" | "completed" | "refunded";
     statusBucket: "paid" | "refunded" | "void";
 
-    payment: "cash" | "card" | "online" | "store_balance";
+    payment: "cash" | "card" | "online" | "store_balance" | "ubereats";
 
     totalCents: number;
     taxCents: number;
@@ -279,6 +279,7 @@ function labelFulfillment(locale: Locale, v: string) {
 function labelChannel(locale: Locale, v: string) {
   if (v === "in_store") return locale === "zh" ? "门店" : "In-store";
   if (v === "web") return locale === "zh" ? "网站" : "Website";
+  if (v === "ubereats") return "UberEats";
   return v;
 }
 
@@ -287,6 +288,7 @@ function labelPayment(locale: Locale, v: string) {
   if (v === "card") return locale === "zh" ? "信用卡/借记卡" : "Card";
   if (v === "online") return locale === "zh" ? "在线支付" : "Online";
   if (v === "store_balance") return locale === "zh" ? "储值余额" : "Store balance";
+  if (v === "ubereats") return "UberEats";
   return v;
 }
 
@@ -422,10 +424,11 @@ export default function PosDailySummaryPage() {
       { key: "card", label: labelPayment(locale, "card"), count: 0, amountCents: 0 },
       { key: "online", label: labelPayment(locale, "online"), count: 0, amountCents: 0 },
       { key: "store_balance", label: labelPayment(locale, "store_balance"), count: 0, amountCents: 0 },
+      { key: "ubereats", label: labelPayment(locale, "ubereats"), count: 0, amountCents: 0 },
     ];
     const map = new Map(base.map((x) => [x.key, x]));
     for (const item of data?.breakdownByPayment ?? []) {
-      const hit = map.get(item.payment) ?? map.get("store_balance")!;
+      const hit = map.get(item.payment) ?? map.get("ubereats")!;
       hit.count += item.count;
       hit.amountCents += item.amountCents;
     }
@@ -436,6 +439,7 @@ export default function PosDailySummaryPage() {
     const base = [
       { key: "in_store", label: labelChannel(locale, "in_store"), count: 0, amountCents: 0 },
       { key: "web", label: labelChannel(locale, "web"), count: 0, amountCents: 0 },
+      { key: "ubereats", label: labelChannel(locale, "ubereats"), count: 0, amountCents: 0 },
     ];
     const map = new Map(base.map((x) => [x.key, x]));
     for (const item of data?.breakdownByChannel ?? []) {

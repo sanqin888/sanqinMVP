@@ -82,7 +82,7 @@ export type CreateOrderAmendmentType =
   | 'ADDITIONAL_CHARGE';
 
 // ✅ 直接对齐后端枚举（无需映射）
-export type PaymentMethod = 'CASH' | 'CARD' | 'WECHAT_ALIPAY' | 'STORE_BALANCE';
+export type PaymentMethod = 'CASH' | 'CARD' | 'WECHAT_ALIPAY' | 'STORE_BALANCE' | 'UBEREATS';
 
 export type CreateOrderAmendmentInput = {
   type: CreateOrderAmendmentType;
@@ -123,6 +123,33 @@ export async function printOrderCloud<T = unknown>(
 export async function printSummaryCloud<T = unknown>(params: Record<string, string>) {
   const qs = new URLSearchParams(params).toString();
   return apiFetch<T>(`/pos/summary/print?${qs}`, {
+    method: 'POST',
+  });
+}
+
+
+export type PosCustomerOrderingStatus = {
+  isTemporarilyClosed: boolean;
+  autoResumeAt: string | null;
+};
+
+export async function fetchPosCustomerOrderingStatus() {
+  return apiFetch<PosCustomerOrderingStatus>('/pos/store-status');
+}
+
+export async function pauseCustomerOrderingFromPos(payload: {
+  durationMinutes?: number;
+  untilTomorrow?: boolean;
+}) {
+  return apiFetch<PosCustomerOrderingStatus>('/pos/store-status/pause', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function resumeCustomerOrderingFromPos() {
+  return apiFetch<PosCustomerOrderingStatus>('/pos/store-status/resume', {
     method: 'POST',
   });
 }
