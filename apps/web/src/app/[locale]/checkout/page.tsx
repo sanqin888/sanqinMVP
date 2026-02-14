@@ -1497,7 +1497,7 @@ useEffect(() => {
   ] as const;
 
   type RequiredKey = (typeof requiredFieldKeys)[number];
-  type CloverFieldKey = RequiredKey | "CARD_NAME" | "APPLE_PAY";
+  type CloverFieldKey = RequiredKey | "CARD_NAME" | "PAYMENT_REQUEST_BUTTON_APPLE_PAY";
 
   const getFieldFromEvent = (
     event: CloverEventPayload,
@@ -1565,7 +1565,7 @@ useEffect(() => {
     state: Partial<Record<CloverFieldKey, CloverFieldChangeEvent>>,
   ) => {
     const cardFieldsReady = requiredFieldKeys.every((k) => isFieldPayable(state[k]));
-    const applePayReady = isFieldPayable(state.APPLE_PAY);
+    const applePayReady = isFieldPayable(state.PAYMENT_REQUEST_BUTTON_APPLE_PAY);
     return cardFieldsReady || applePayReady;
   };
 
@@ -1625,10 +1625,10 @@ useEffect(() => {
 
       if (applePayHost) {
         try {
-          console.error("[AP] start");
+          console.log("[AP] start");
           applePayHost.innerHTML = "";
 
-          applePay = elements.create("APPLE_PAY", {
+          applePay = elements.create("PAYMENT_REQUEST_BUTTON_APPLE_PAY", {
             amount: "100",
             currency: "CAD",
             country: "CA",
@@ -1636,7 +1636,7 @@ useEffect(() => {
 
           applePay.mount("#clover-apple-pay");
           setApplePayMounted(applePayHost.children.length > 0);
-          console.error("[AP] mounted children=", applePayHost.children.length);
+          console.log("[AP] mounted children=", applePayHost.children.length);
         } catch (applePayError) {
           setApplePayMounted(false);
           console.error("[AP] error", applePayError);
@@ -1721,10 +1721,10 @@ useEffect(() => {
 
       // === APPLE_PAY ===
       applePay?.addEventListener("change", (e) => {
-        handleFieldEvent("APPLE_PAY", e);
+        handleFieldEvent("PAYMENT_REQUEST_BUTTON_APPLE_PAY", e);
       });
       applePay?.addEventListener("blur", (e) => {
-        handleFieldEvent("APPLE_PAY", e);
+        handleFieldEvent("PAYMENT_REQUEST_BUTTON_APPLE_PAY", e);
       });
 
       setCloverReady(true);
