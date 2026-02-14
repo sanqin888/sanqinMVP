@@ -1624,27 +1624,25 @@ useEffect(() => {
       cardPostal.mount("#clover-postal");
 
       if (applePayHost) {
-        const applePayConfig = {
-          amount: (totalCents / 100).toFixed(2),
-          currency: HOSTED_CHECKOUT_CURRENCY,
-          country: "CA",
-        };
-
         try {
-          applePay = elements.create("APPLE_PAY", applePayConfig);
-          applePay.mount("#clover-apple-pay");
-          setApplePayMounted(true);
-        } catch (applePayError) {
-          console.warn("[CLOVER] Apple Pay mount with amount config failed", applePayError);
+          console.error("[AP] start");
+          applePayHost.innerHTML = "";
 
-          try {
-            applePay = elements.create("APPLE_PAY");
-            applePay.mount("#clover-apple-pay");
-            setApplePayMounted(true);
-          } catch (fallbackError) {
-            setApplePayMounted(false);
-            console.warn("[CLOVER] Apple Pay mount skipped", fallbackError);
-          }
+          const button = elements.create("paymentRequestButton", {
+            paymentRequest: {
+              country: "CA",
+              currency: "CAD",
+              total: { label: "SANQ", amount: 100 },
+            },
+          }) as { mount: (selector: string) => void; destroy?: () => void };
+
+          button.mount("#clover-apple-pay");
+          applePay = button;
+          setApplePayMounted(applePayHost.children.length > 0);
+          console.error("[AP] mounted children=", applePayHost.children.length);
+        } catch (applePayError) {
+          setApplePayMounted(false);
+          console.error("[AP] error", applePayError);
         }
       }
 
