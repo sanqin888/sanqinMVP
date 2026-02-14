@@ -851,6 +851,7 @@ export default function CheckoutPage() {
   const cardDateRef = useRef<null | { destroy?: () => void }>(null);
   const cardCvvRef = useRef<null | { destroy?: () => void }>(null);
   const cardPostalRef = useRef<null | { destroy?: () => void }>(null);
+  const applePayRef = useRef<null | { destroy?: () => void }>(null);
   const checkoutIntentIdRef = useRef<string | null>(null);
   const [addressValidation, setAddressValidation] = useState<{
     distanceKm: number | null;
@@ -1488,46 +1489,45 @@ useEffect(() => {
   ] as const;
 
   type RequiredKey = (typeof requiredFieldKeys)[number];
-type CloverFieldKey = RequiredKey | "CARD_NAME";
+  type CloverFieldKey = RequiredKey | "CARD_NAME" | "APPLE_PAY";
 
-const getFieldFromEvent = (
-  event: CloverEventPayload,
-  key: CloverFieldKey,
-): CloverFieldChangeEvent => {
-  if (event && typeof event === "object") {
-    const e = event as {
-      data?: { realTimeFormState?: unknown } | undefined;
-      realTimeFormState?: unknown;
-      [k: string]: unknown;
-    };
+  const getFieldFromEvent = (
+    event: CloverEventPayload,
+    key: CloverFieldKey,
+  ): CloverFieldChangeEvent => {
+    if (event && typeof event === "object") {
+      const e = event as {
+        data?: { realTimeFormState?: unknown } | undefined;
+        realTimeFormState?: unknown;
+        [k: string]: unknown;
+      };
 
-    // 1) wrapper: event.data.realTimeFormState
-    const rts1 = e.data?.realTimeFormState;
-    if (rts1 && typeof rts1 === "object") {
-      const rec = rts1 as Record<string, unknown>;
-      const v = rec[key];
-      if (v && typeof v === "object") return v as CloverFieldChangeEvent;
+      // 1) wrapper: event.data.realTimeFormState
+      const rts1 = e.data?.realTimeFormState;
+      if (rts1 && typeof rts1 === "object") {
+        const rec = rts1 as Record<string, unknown>;
+        const v = rec[key];
+        if (v && typeof v === "object") return v as CloverFieldChangeEvent;
+      }
+
+      // 2) wrapper: event.realTimeFormState
+      const rts2 = e.realTimeFormState;
+      if (rts2 && typeof rts2 === "object") {
+        const rec = rts2 as Record<string, unknown>;
+        const v = rec[key];
+        if (v && typeof v === "object") return v as CloverFieldChangeEvent;
+      }
+
+      // 3) direct aggregated: event[key]
+      const direct = e[key];
+      if (direct && typeof direct === "object") {
+        return direct as CloverFieldChangeEvent;
+      }
     }
 
-    // 2) wrapper: event.realTimeFormState
-    const rts2 = e.realTimeFormState;
-    if (rts2 && typeof rts2 === "object") {
-      const rec = rts2 as Record<string, unknown>;
-      const v = rec[key];
-      if (v && typeof v === "object") return v as CloverFieldChangeEvent;
-    }
-
-    // 3) direct aggregated: event[key]
-    const direct = e[key];
-    if (direct && typeof direct === "object") {
-      return direct as CloverFieldChangeEvent;
-    }
-  }
-
-  // 4) direct field object
-  return event as unknown as CloverFieldChangeEvent;
-};
-
+    // 4) direct field object
+    return event as unknown as CloverFieldChangeEvent;
+  };
 
   const hasError = (field?: CloverFieldChangeEvent) => {
     const err = field?.error;
@@ -1556,7 +1556,9 @@ const getFieldFromEvent = (
   const computeCanPay = (
     state: Partial<Record<CloverFieldKey, CloverFieldChangeEvent>>,
   ) => {
-    return requiredFieldKeys.every((k) => isFieldPayable(state[k]));
+    const cardFieldsReady = requiredFieldKeys.every((k) => isFieldPayable(state[k]));
+    const applePayReady = isFieldPayable(state.APPLE_PAY);
+    return cardFieldsReady || applePayReady;
   };
 
   const setupClover = async () => {
@@ -1572,6 +1574,7 @@ const getFieldFromEvent = (
       const dateHost = document.getElementById("clover-card-date");
       const cvvHost = document.getElementById("clover-card-cvv");
       const postalHost = document.getElementById("clover-postal");
+      const applePayHost = document.getElementById("clover-apple-pay");
 
       if (!nameHost || !numberHost || !dateHost || !cvvHost || !postalHost) {
         throw new Error("Card fields not ready");
@@ -1583,6 +1586,7 @@ const getFieldFromEvent = (
       cardDateRef.current?.destroy?.();
       cardCvvRef.current?.destroy?.();
       cardPostalRef.current?.destroy?.();
+      applePayRef.current?.destroy?.();
 
       cloverFieldStateRef.current = {};
       setCanPay(false);
@@ -1595,6 +1599,14 @@ const getFieldFromEvent = (
       const cardDate = elements.create("CARD_DATE");
       const cardCvv = elements.create("CARD_CVV");
       const cardPostal = elements.create("CARD_POSTAL_CODE");
+      let applePay: null | {
+        mount: (selector: string) => void;
+        addEventListener: (
+          event: string,
+          handler: (payload: CloverFieldChangeEvent | CloverAggregatedFieldEvent) => void,
+        ) => void;
+        destroy?: () => void;
+      } = null;
 
       cardName.mount("#clover-card-name");
       cardNumber.mount("#clover-card-number");
@@ -1602,12 +1614,22 @@ const getFieldFromEvent = (
       cardCvv.mount("#clover-card-cvv");
       cardPostal.mount("#clover-postal");
 
+      if (applePayHost) {
+        try {
+          applePay = elements.create("APPLE_PAY");
+          applePay.mount("#clover-apple-pay");
+        } catch (applePayError) {
+          console.warn("[CLOVER] Apple Pay mount skipped", applePayError);
+        }
+      }
+
       cloverRef.current = clover;
       cardNameRef.current = cardName;
       cardNumberRef.current = cardNumber;
       cardDateRef.current = cardDate;
       cardCvvRef.current = cardCvv;
       cardPostalRef.current = cardPostal;
+      applePayRef.current = applePay;
 
       const handleFieldEvent = (key: CloverFieldKey, raw: CloverEventPayload) => {
         const fieldEvent = getFieldFromEvent(raw, key);
@@ -1677,6 +1699,14 @@ const getFieldFromEvent = (
         handleFieldEvent("CARD_POSTAL_CODE", e);
       });
 
+      // === APPLE_PAY ===
+      applePay?.addEventListener("change", (e) => {
+        handleFieldEvent("APPLE_PAY", e);
+      });
+      applePay?.addEventListener("blur", (e) => {
+        handleFieldEvent("APPLE_PAY", e);
+      });
+
       setCloverReady(true);
     } catch (err) {
       if (cancelled) return;
@@ -1696,6 +1726,7 @@ const getFieldFromEvent = (
     cardDateRef.current?.destroy?.();
     cardCvvRef.current?.destroy?.();
     cardPostalRef.current?.destroy?.();
+    applePayRef.current?.destroy?.();
     cloverFieldStateRef.current = {};
     setCanPay(false);
     setCloverReady(false);
@@ -4212,6 +4243,14 @@ const getFieldFromEvent = (
               {requiresPayment ? (
                 <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
                   <p className="text-xs font-semibold text-slate-600">
+                    {locale === "zh" ? "苹果支付" : "Apple Pay"}
+                  </p>
+                  <div
+                    id="clover-apple-pay"
+                    className="min-h-10 rounded-2xl border border-slate-200 bg-white"
+                  />
+
+                  <p className="text-xs font-semibold text-slate-600">
                     {locale === "zh" ? "银行卡信息" : "Card details"}
                   </p>
                   <div className="grid gap-3 md:grid-cols-3">
@@ -4273,6 +4312,11 @@ const getFieldFromEvent = (
                 {locale === "zh"
                   ? "可用卡种：Visa / Mastercard / Discover / 借记卡（Debit）。"
                   : "Accepted cards: Visa / Mastercard / Discover / Debit."}
+              </p>
+              <p className="mt-2 text-center text-[11px] leading-snug text-slate-500">
+                {locale === "zh"
+                  ? "如要使用苹果支付，请使用苹果设备和 Safari 浏览器。"
+                  : "To use Apple Pay, please use an Apple device and the Safari browser."}
               </p>
               <p className="mt-2 text-center text-[11px] leading-snug text-slate-500">
                 {locale === "zh"
