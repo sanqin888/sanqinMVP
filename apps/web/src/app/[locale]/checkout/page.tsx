@@ -1630,7 +1630,7 @@ useEffect(() => {
           applePayHost.innerHTML = "";
 
           applePay = elements.create("PAYMENT_REQUEST_BUTTON_APPLE_PAY", {
-            amount: Math.max(0, Math.round(totalCents)),
+            amount: String(Math.max(0, Math.round(totalCents))),
             currency: HOSTED_CHECKOUT_CURRENCY,
             country: "CA",
           });
