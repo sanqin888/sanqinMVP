@@ -237,6 +237,21 @@ export class CheckoutIntentsService {
     });
   }
 
+  async listUnresolvedForReconciliation(
+    limit = 20,
+  ): Promise<CheckoutIntentWithMetadata[]> {
+    const records = (await this.prisma.checkoutIntent.findMany({
+      where: {
+        status: { in: ['processing', 'creating_order'] },
+        orderId: null,
+      },
+      orderBy: { createdAt: 'asc' },
+      take: limit,
+    })) as CheckoutIntentRecord[];
+
+    return records.map((record) => this.mapRecord(record));
+  }
+
   private mapRecord(record: CheckoutIntentRecord): CheckoutIntentWithMetadata {
     const metadata = record.metadataJson as HostedCheckoutMetadata;
     return { ...record, metadata } satisfies CheckoutIntentWithMetadata;
