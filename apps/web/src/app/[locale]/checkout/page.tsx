@@ -4276,6 +4276,11 @@ const getFieldFromEvent = (
               </p>
               <p className="mt-2 text-center text-[11px] leading-snug text-slate-500">
                 {locale === "zh"
+                  ? "如要使用苹果支付，请使用苹果设备和 Safari 浏览器。"
+                  : "To use Apple Pay, please use an Apple device and the Safari browser."}
+              </p>
+              <p className="mt-2 text-center text-[11px] leading-snug text-slate-500">
+                {locale === "zh"
                   ? "使用信用卡支付时，支付网络可能会额外收取不高于订单金额 2.4% 的信用卡手续费（由支付处理方/发卡行收取，我们不从中获利）。具体金额以 Clover 支付页/小票或银行账单为准。"
                   : "When paying by credit card, the payment networks may apply a surcharge of up to 2.4% of the order total (charged by the payment processor/card issuer; we do not profit from this). Please refer to the Clover checkout/receipt or your card statement for the exact amount."}
               </p>
