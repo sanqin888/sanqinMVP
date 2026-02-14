@@ -101,7 +101,6 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     return this.reconcileIntent(intent);
   }
 
-
   onModuleInit() {
     this.reconcileTimer = setInterval(() => {
       void this.reconcilePendingIntents();
@@ -117,7 +116,8 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
 
   private async reconcilePendingIntents(): Promise<void> {
     try {
-      const intents = await this.checkoutIntents.listUnresolvedForReconciliation(10);
+      const intents =
+        await this.checkoutIntents.listUnresolvedForReconciliation(10);
       for (const intent of intents) {
         try {
           await this.reconcileIntent(intent);

@@ -237,9 +237,9 @@ export class CheckoutIntentsService {
     });
   }
 
-  async listUnresolvedForReconciliation(limit = 20): Promise<
-    CheckoutIntentWithMetadata[]
-  > {
+  async listUnresolvedForReconciliation(
+    limit = 20,
+  ): Promise<CheckoutIntentWithMetadata[]> {
     const records = (await this.prisma.checkoutIntent.findMany({
       where: {
         status: { in: ['processing', 'creating_order'] },
