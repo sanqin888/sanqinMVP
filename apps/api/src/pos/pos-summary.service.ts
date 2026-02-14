@@ -8,7 +8,12 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
-export type PosPaymentBucket = 'cash' | 'card' | 'online' | 'store_balance';
+export type PosPaymentBucket =
+  | 'cash'
+  | 'card'
+  | 'online'
+  | 'store_balance'
+  | 'ubereats';
 export type PosStatusBucket = 'paid' | 'refunded' | 'void';
 
 export type PosDailySummaryResponse = {
@@ -35,7 +40,7 @@ export type PosDailySummaryResponse = {
     amountCents: number; // ✅ 修改定义：这里将存储“实际收款金额”
   }>;
   breakdownByChannel: Array<{
-    channel: 'in_store' | 'web';
+    channel: 'in_store' | 'web' | 'ubereats';
     count: number;
     amountCents: number;
   }>;
@@ -141,14 +146,15 @@ export class PosSummaryService {
 
   /**
    * ✅ 统一 payment bucket：
-   * - web / ubereats：归 online
-   * - in_store：看 paymentMethod（CASH/CARD/WECHAT_ALIPAY/STORE_BALANCE）
+   * - web：归 online
+   * - ubereats：归 ubereats
+   * - in_store：看 paymentMethod（CASH/CARD/WECHAT_ALIPAY/STORE_BALANCE/UBEREATS）
    */
   private computePaymentBucket(
     o: Pick<OrderLite, 'channel' | 'paymentMethod'>,
   ): PosPaymentBucket {
     if (o.channel === Channel.web) return 'online';
-    if (o.channel === Channel.ubereats) return 'online';
+    if (o.channel === Channel.ubereats) return 'ubereats';
 
     switch (o.paymentMethod) {
       case PaymentMethod.CASH:
@@ -159,6 +165,8 @@ export class PosSummaryService {
         return 'cash';
       case PaymentMethod.STORE_BALANCE:
         return 'store_balance';
+      case PaymentMethod.UBEREATS:
+        return 'ubereats';
       default:
         return 'store_balance';
     }
@@ -226,6 +234,7 @@ export class PosSummaryService {
           { payment: 'card', count: 0, amountCents: 0 },
           { payment: 'online', count: 0, amountCents: 0 },
           { payment: 'store_balance', count: 0, amountCents: 0 },
+          { payment: 'ubereats', count: 0, amountCents: 0 },
         ],
         breakdownByFulfillment: [
           { fulfillmentType: 'pickup', count: 0, amountCents: 0 },
@@ -235,6 +244,7 @@ export class PosSummaryService {
         breakdownByChannel: [
           { channel: 'in_store', count: 0, amountCents: 0 },
           { channel: 'web', count: 0, amountCents: 0 },
+          { channel: 'ubereats', count: 0, amountCents: 0 },
         ],
         orders: [],
       };
@@ -347,6 +357,7 @@ export class PosSummaryService {
       'card',
       'online',
       'store_balance',
+      'ubereats',
     ];
     const payMap = new Map<
       PosPaymentBucket,
@@ -363,9 +374,13 @@ export class PosSummaryService {
       { count: number; amountCents: number }
     >(fulfillBuckets.map((f) => [f, { count: 0, amountCents: 0 }]));
 
-    const channelBuckets: Array<'in_store' | 'web'> = ['in_store', 'web'];
+    const channelBuckets: Array<'in_store' | 'web' | 'ubereats'> = [
+      'in_store',
+      'web',
+      'ubereats',
+    ];
     const cMap = new Map<
-      'in_store' | 'web',
+      'in_store' | 'web' | 'ubereats',
       { count: number; amountCents: number }
     >(channelBuckets.map((c) => [c, { count: 0, amountCents: 0 }]));
 
@@ -380,7 +395,12 @@ export class PosSummaryService {
         f.amountCents += r.netCents;
       }
 
-      const c = r.channel === 'in_store' ? 'in_store' : 'web';
+      const c =
+        r.channel === 'in_store'
+          ? 'in_store'
+          : r.channel === 'ubereats'
+            ? 'ubereats'
+            : 'web';
       const hit = cMap.get(c)!;
       hit.count += 1;
       hit.amountCents += r.netCents;

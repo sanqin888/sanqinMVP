@@ -961,7 +961,7 @@ export class OrdersService {
     if (dto.paymentMethod) return dto.paymentMethod;
 
     if (dto.channel === Channel.web) return PaymentMethod.CARD;
-    if (dto.channel === Channel.ubereats) return PaymentMethod.CARD;
+    if (dto.channel === Channel.ubereats) return PaymentMethod.UBEREATS;
 
     // Channel.in_store 但没传：兜底现金，同时留日志方便你排查 POS 漏传
     this.logger.warn(

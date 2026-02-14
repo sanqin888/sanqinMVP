@@ -44,13 +44,16 @@ export class PosOrdersController {
   @HttpCode(201)
   @UsePipes(new ZodValidationPipe(CreateOrderSchema))
   async create(@Body() dto: CreateOrderInput): Promise<OrderDto> {
-    // 强制 POS 只能创建 in_store 订单（避免 public create 被滥用）
-    if (dto.channel !== 'in_store') {
-      throw new BadRequestException('POS orders must use channel=in_store');
+    if (dto.channel !== 'in_store' && dto.channel !== 'ubereats') {
+      throw new BadRequestException('POS orders must use channel=in_store|ubereats');
     }
-    // 你也可以进一步强制 paymentMethod 必传，避免错账
     if (!dto.paymentMethod) {
       throw new BadRequestException('POS orders must provide paymentMethod');
+    }
+    if (dto.channel === 'ubereats' && dto.paymentMethod !== 'UBEREATS') {
+      throw new BadRequestException(
+        'UberEats channel orders must use paymentMethod=UBEREATS',
+      );
     }
     return this.orders.create(dto);
   }
