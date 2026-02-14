@@ -70,6 +70,12 @@ type OrderEntry = {
   deliveryType: string | null;
 };
 
+type TopPurchasedItem = {
+  productStableId: string;
+  displayName: string;
+  purchaseCount: number;
+};
+
 type LoyaltyConfigDto = {
   earnPtPerDollar: number;
   redeemDollarPerPoint: number;
@@ -212,6 +218,7 @@ export default function AdminMembersPage() {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [memberDetail, setMemberDetail] = useState<MemberDetail | null>(null);
   const [memberOrders, setMemberOrders] = useState<OrderEntry[]>([]);
+  const [memberTopItems, setMemberTopItems] = useState<TopPurchasedItem[]>([]);
   const [memberPointsLedger, setMemberPointsLedger] = useState<LedgerEntry[]>([]);
   const [memberBalanceLedger, setMemberBalanceLedger] = useState<LedgerEntry[]>([]);
   const [ledgerTab, setLedgerTab] = useState<"POINTS" | "BALANCE">("POINTS");
@@ -289,6 +296,7 @@ export default function AdminMembersPage() {
     if (!selectedMemberId) {
       setMemberDetail(null);
       setMemberOrders([]);
+      setMemberTopItems([]);
       setMemberPointsLedger([]);
       setMemberBalanceLedger([]);
       setDetailError(null);
@@ -303,7 +311,7 @@ export default function AdminMembersPage() {
       setDetailLoading(true);
       setDetailError(null);
       try {
-        const [detail, pointsLedger, balanceLedger, orders] = await Promise.all([
+        const [detail, pointsLedger, balanceLedger, orders, topItems] = await Promise.all([
           apiFetch<MemberDetail>(`/admin/members/${selectedMemberId}`),
           apiFetch<LedgerEntry[] | { entries: LedgerEntry[] }>(
             `/admin/members/${selectedMemberId}/loyalty-ledger?limit=50&target=POINTS`,
@@ -312,16 +320,19 @@ export default function AdminMembersPage() {
             `/admin/members/${selectedMemberId}/loyalty-ledger?limit=50&target=BALANCE`,
           ),
           apiFetch<OrderEntry[] | { orders: OrderEntry[] }>(`/admin/members/${selectedMemberId}/orders?limit=50`),
+          apiFetch<TopPurchasedItem[] | { items: TopPurchasedItem[] }>(`/admin/members/${selectedMemberId}/top-items?limit=10`),
         ]);
 
         if (cancelled) return;
         const normalizedPointsLedger = Array.isArray(pointsLedger) ? pointsLedger : pointsLedger?.entries ?? [];
         const normalizedBalanceLedger = Array.isArray(balanceLedger) ? balanceLedger : balanceLedger?.entries ?? [];
         const normalizedOrders = Array.isArray(orders) ? orders : orders?.orders ?? [];
+        const normalizedTopItems = Array.isArray(topItems) ? topItems : topItems?.items ?? [];
         setMemberDetail(detail);
         setMemberPointsLedger(normalizedPointsLedger);
         setMemberBalanceLedger(normalizedBalanceLedger);
         setMemberOrders(normalizedOrders);
+        setMemberTopItems(normalizedTopItems);
       } catch (error) {
         console.error(error);
         if (!cancelled) {
@@ -330,6 +341,7 @@ export default function AdminMembersPage() {
           setMemberPointsLedger([]);
           setMemberBalanceLedger([]);
           setMemberOrders([]);
+          setMemberTopItems([]);
         }
       } finally {
         if (!cancelled) setDetailLoading(false);
@@ -869,6 +881,40 @@ export default function AdminMembersPage() {
               </div>
 
               <div className="space-y-6">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold">{isZh ? "购买最多菜品（Top 10）" : "Top purchased dishes (Top 10)"}</h4>
+                    <span className="text-xs text-slate-400">{isZh ? "按购买数量从多到少" : "Sorted by purchase count"}</span>
+                  </div>
+                  <div className="mt-2 overflow-x-auto rounded-md border border-slate-200">
+                    <table className="min-w-[360px] w-full text-xs">
+                      <thead className="bg-slate-50 text-left text-slate-400">
+                        <tr>
+                          <th className="px-3 py-2">#</th>
+                          <th className="px-3 py-2">{isZh ? "菜品" : "Dish"}</th>
+                          <th className="px-3 py-2">{isZh ? "购买数量" : "Purchases"}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {memberTopItems.map((item, index) => (
+                          <tr key={item.productStableId} className="border-t border-slate-100">
+                            <td className="px-3 py-2 text-slate-500">{index + 1}</td>
+                            <td className="px-3 py-2 text-slate-700">{item.displayName}</td>
+                            <td className="px-3 py-2 text-slate-700">{item.purchaseCount}</td>
+                          </tr>
+                        ))}
+                        {memberTopItems.length === 0 && (
+                          <tr>
+                            <td colSpan={3} className="px-3 py-4 text-center text-slate-400">
+                              {isZh ? "暂无购买菜品记录。" : "No purchased dish records yet."}
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
                 <div>
                   <h4 className="text-sm font-semibold">{isZh ? "历史消费记录" : "Order history"}</h4>
                   <div className="mt-2 overflow-x-auto rounded-md border border-slate-200">

@@ -65,6 +65,14 @@ export class AdminMembersController {
     return this.service.listOrders(userStableId, limitRaw);
   }
 
+  @Get(':userStableId/top-items')
+  async listTopPurchasedItems(
+    @Param('userStableId') userStableId: string,
+    @Query('limit') limitRaw?: string,
+  ) {
+    return this.service.listTopPurchasedItems(userStableId, limitRaw);
+  }
+
   @Get(':userStableId/coupons')
   async listCoupons(@Param('userStableId') userStableId: string) {
     return this.service.listCoupons(userStableId);
