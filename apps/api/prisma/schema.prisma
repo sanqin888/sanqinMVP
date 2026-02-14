@@ -923,6 +923,7 @@ enum PaymentMethod {
   CARD
   WECHAT_ALIPAY
   STORE_BALANCE
+  UBEREATS
 }
 
 enum OrderAmendmentItemAction {
