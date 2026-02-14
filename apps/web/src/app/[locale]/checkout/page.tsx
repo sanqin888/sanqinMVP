@@ -145,7 +145,14 @@ declare global {
       },
     ) => {
       elements: () => {
-        create: (type: string) => {
+        create: (
+          type: string,
+          options?: {
+            amount?: string;
+            currency?: string;
+            country?: string;
+          },
+        ) => {
           mount: (selector: string) => void;
           addEventListener: (
             event: string,
@@ -1616,7 +1623,11 @@ useEffect(() => {
 
       if (applePayHost) {
         try {
-          applePay = elements.create("APPLE_PAY");
+          applePay = elements.create("APPLE_PAY", {
+            amount: (totalCents / 100).toFixed(2),
+            currency: HOSTED_CHECKOUT_CURRENCY,
+            country: "CA",
+          });
           applePay.mount("#clover-apple-pay");
         } catch (applePayError) {
           console.warn("[CLOVER] Apple Pay mount skipped", applePayError);
@@ -1731,7 +1742,7 @@ useEffect(() => {
     setCanPay(false);
     setCloverReady(false);
   };
-}, [locale, requiresPayment]);
+}, [locale, requiresPayment, totalCents]);
 
   useEffect(() => {
     if (!challengeIntentId) return;

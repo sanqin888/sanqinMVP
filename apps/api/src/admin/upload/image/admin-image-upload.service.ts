@@ -93,6 +93,44 @@ export class AdminImageUploadService {
       .map((name) => `/uploads/images/${name}`);
   }
 
+  async deleteLocalImageByUrl(imageUrl: string): Promise<void> {
+    const trimmed = imageUrl.trim();
+    if (!trimmed) {
+      throw new BadRequestException('imageUrl is required');
+    }
+
+    const normalized = trimmed.split('?')[0].split('#')[0];
+    const expectedPrefix = '/uploads/images/';
+
+    if (!normalized.startsWith(expectedPrefix)) {
+      throw new BadRequestException('Invalid image url.');
+    }
+
+    const fileName = normalized.slice(expectedPrefix.length);
+    if (!fileName || fileName.includes('/') || fileName.includes('\\')) {
+      throw new BadRequestException('Invalid image filename.');
+    }
+
+    const ext = path.extname(fileName).toLowerCase();
+    if (!this.allowedExtensions.has(ext)) {
+      throw new BadRequestException('Unsupported file extension.');
+    }
+
+    const uploadDir = path.join(process.cwd(), 'uploads', 'images');
+    const targetPath = path.join(uploadDir, fileName);
+
+    try {
+      await fs.promises.unlink(targetPath);
+      this.logger.log(`Image deleted: ${normalized}`);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT') {
+        return;
+      }
+      throw error;
+    }
+  }
+
   private detectImageType(buffer: Buffer): string | null {
     if (buffer.length < 12) {
       return null;

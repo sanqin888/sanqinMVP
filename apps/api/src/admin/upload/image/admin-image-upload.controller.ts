@@ -3,8 +3,11 @@
 import {
   BadRequestException,
   Controller,
+  Delete,
   Get,
+  HttpCode,
   Post,
+  Query,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -50,5 +53,15 @@ export class AdminImageUploadController {
   async listImages(): Promise<{ images: string[] }> {
     const images = await this.service.listLocalImages();
     return { images };
+  }
+
+  @Delete('image')
+  @HttpCode(204)
+  async deleteImage(@Query('url') imageUrl?: string): Promise<void> {
+    if (!imageUrl) {
+      throw new BadRequestException('url is required');
+    }
+
+    await this.service.deleteLocalImageByUrl(imageUrl);
   }
 }
