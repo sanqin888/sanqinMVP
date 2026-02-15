@@ -1628,6 +1628,18 @@ useEffect(() => {
 if (applePayHost) {
   try {
     applePayHost.innerHTML = "";
+   
+    const logAny = (name: string) => (e: any) =>
+  console.log(`[AP EVENT] ${name}`, e?.detail ?? e);
+
+const names = [
+  "paymentMethod",
+  "payment-method",
+  "clover:paymentMethod",
+  "clover:payment-method",
+];
+
+names.forEach((n) => window.addEventListener(n, logAny(n)));
 
     // 1) 必须创建 applePaymentRequest（amount 是 cents）
     const applePayRequest = clover.createApplePaymentRequest({
@@ -1635,6 +1647,8 @@ if (applePayHost) {
       countryCode: "CA",
       currencyCode: "CAD",
     });
+
+    console.log("[AP] totalCents=", totalCents);
 
     // 2) 必须传 sessionIdentifier
     // 先用 merchantId 试（很多账户其实就是这个）
@@ -1675,6 +1689,8 @@ if (applePayHost) {
       cardCvvRef.current = cardCvv;
       cardPostalRef.current = cardPostal;
       applePayRef.current = applePay;
+      cleanupRef.current?.();
+      cleanupRef.current = undefined;
 
       const handleFieldEvent = (key: CloverFieldKey, raw: CloverEventPayload) => {
         const fieldEvent = getFieldFromEvent(raw, key);
@@ -1773,6 +1789,8 @@ if (applePayHost) {
     cardCvvRef.current?.destroy?.();
     cardPostalRef.current?.destroy?.();
     applePayRef.current?.destroy?.();
+    cleanupRef.current?.();
+    cleanupRef.current = undefined;
     cloverFieldStateRef.current = {};
     setCanPay(false);
     setCloverReady(false);
