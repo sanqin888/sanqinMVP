@@ -1629,8 +1629,13 @@ if (applePayHost) {
   try {
     applePayHost.innerHTML = "";
    
-    const logAny = (name: string) => (e: any) =>
-  console.log(`[AP EVENT] ${name}`, e?.detail ?? e);
+    const logAny = (name: string) => (event: Event) => {
+      const detail =
+        event instanceof CustomEvent
+          ? event.detail
+          : undefined;
+      console.log(`[AP EVENT] ${name}`, detail ?? event);
+    };
 
 const names = [
   "paymentMethod",
@@ -1661,8 +1666,9 @@ names.forEach((n) => window.addEventListener(n, logAny(n)));
     });
 
     // 4) 监听 Clover 的 paymentMethod 事件（不是 message）
-    const onPaymentMethod = (event: any) => {
-      console.log("[paymentMethod]", event?.detail);
+    const onPaymentMethod = (event: Event) => {
+      const detail = event instanceof CustomEvent ? event.detail : undefined;
+      console.log("[paymentMethod]", detail);
       // event.detail 里会给 tokenRecieved.id（Clover token）
       // 你拿到 token 后再调用你后端去完成支付/下单
     };
