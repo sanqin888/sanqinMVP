@@ -152,6 +152,7 @@ export class AdminMembersController {
     @Param('userStableId') userStableId: string,
     @Body()
     body: {
+      email?: string;
       phone?: string;
       locale?: string;
     },
@@ -164,6 +165,7 @@ export class AdminMembersController {
     @Param('userStableId') userStableId: string,
     @Body()
     body: {
+      email?: string;
       phone?: string;
       code?: string;
     },
