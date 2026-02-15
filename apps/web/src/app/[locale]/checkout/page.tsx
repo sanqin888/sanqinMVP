@@ -1636,8 +1636,24 @@ useEffect(() => {
           });
 
           applePay.mount("#clover-apple-pay");
-          setApplePayMounted(applePayHost.children.length > 0);
-          console.log("[AP] mounted children=", applePayHost.children.length);
+
+          const syncApplePayMountedState = () => {
+            const hasMountedNode =
+              applePayHost.children.length > 0 ||
+              applePayHost.querySelector("iframe, button, [role='button']") !== null;
+            setApplePayMounted(hasMountedNode);
+            console.log("[AP] mounted children=", applePayHost.children.length, {
+              hasMountedNode,
+            });
+            return hasMountedNode;
+          };
+
+          if (!syncApplePayMountedState()) {
+            window.setTimeout(() => {
+              if (cancelled) return;
+              syncApplePayMountedState();
+            }, 180);
+          }
         } catch (applePayError) {
           setApplePayMounted(false);
           console.error("[AP] error", applePayError);
@@ -4270,7 +4286,9 @@ useEffect(() => {
                   </p>
                   <div
                     id="clover-apple-pay"
-                    className="min-h-10 rounded-2xl border border-slate-200 bg-white"
+                    className={`rounded-2xl border border-slate-200 bg-white ${
+                      applePayMounted ? "min-h-0" : "min-h-10"
+                    }`}
                   />
                   {!applePayMounted ? (
                     <p className="text-[11px] text-slate-500">
