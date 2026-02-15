@@ -4,6 +4,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { LoyaltyModule } from '../../loyalty/loyalty.module';
 import { MembershipModule } from '../../membership/membership.module';
 import { PhoneVerificationModule } from '../../phone-verification/phone-verification.module';
+import { EmailModule } from '../../email/email.module';
 import { AdminMembersController } from './admin-members.controller';
 import { AdminMembersService } from './admin-members.service';
 
@@ -13,6 +14,7 @@ import { AdminMembersService } from './admin-members.service';
     LoyaltyModule,
     MembershipModule,
     PhoneVerificationModule,
+    EmailModule,
   ],
   controllers: [AdminMembersController],
   providers: [AdminMembersService],

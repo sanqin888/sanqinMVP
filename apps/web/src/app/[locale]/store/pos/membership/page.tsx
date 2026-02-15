@@ -83,8 +83,8 @@ const COPY = {
       wechatAlipayConverted: "微信/支付宝折算金额",
       sendCode: "发送验证码",
       verifyCode: "验证",
-      codeLabel: "手机验证码",
-      codePlaceholder: "输入短信验证码",
+      codeLabel: "验证码",
+      codePlaceholder: "输入邮箱或短信验证码",
       verified: "已验证",
       confirmRecharge: "确认充值",
     },
@@ -174,8 +174,8 @@ const COPY = {
       wechatAlipayConverted: "WeChat/Alipay converted total",
       sendCode: "Send code",
       verifyCode: "Verify",
-      codeLabel: "SMS code",
-      codePlaceholder: "Enter code",
+      codeLabel: "Verification code",
+      codePlaceholder: "Enter email or SMS code",
       verified: "Verified",
       confirmRecharge: "Confirm recharge",
     },
@@ -1092,7 +1092,10 @@ export default function PosMembershipPage() {
                   <button
                     type="button"
                     onClick={() => void handleSendCode()}
-                    disabled={!memberDetail?.phone || rechargeSubmitting}
+                    disabled={
+                      (!memberDetail?.email && !memberDetail?.phone) ||
+                      rechargeSubmitting
+                    }
                     className="rounded-full border border-slate-600 bg-slate-800 px-3 py-2 text-xs text-slate-200 disabled:opacity-50"
                   >
                     {copy.modal.sendCode}
