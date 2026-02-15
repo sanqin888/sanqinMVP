@@ -1630,14 +1630,29 @@ useEffect(() => {
           applePayHost.innerHTML = "";
 
           applePay = elements.create("PAYMENT_REQUEST_BUTTON_APPLE_PAY", {
-            amount: Math.max(0, Math.round(totalCents)),
             currency: HOSTED_CHECKOUT_CURRENCY,
             country: "CA",
           });
 
           applePay.mount("#clover-apple-pay");
-          setApplePayMounted(applePayHost.children.length > 0);
-          console.log("[AP] mounted children=", applePayHost.children.length);
+          console.log("[AP] host html", applePayHost.innerHTML)
+
+          const syncApplePayMountedState = () => {
+            const hasMountedNode =
+              applePayHost.children.length > 0 ||
+              applePayHost.querySelector("iframe, button, [role='button']") !== null;
+            setApplePayMounted(hasMountedNode);
+            return hasMountedNode;
+          };
+
+          let tries = 0;
+          const timer = window.setInterval(() => {
+            if (cancelled) return window.clearInterval(timer);
+            tries += 1;
+            if (syncApplePayMountedState() || tries >= 12) {
+              window.clearInterval(timer);
+            }
+          }, 200);
         } catch (applePayError) {
           setApplePayMounted(false);
           console.error("[AP] error", applePayError);
@@ -4269,9 +4284,9 @@ useEffect(() => {
                     {locale === "zh" ? "苹果支付" : "Apple Pay"}
                   </p>
                   <div
-                    id="clover-apple-pay"
-                    className="min-h-10 rounded-2xl border border-slate-200 bg-white"
-                  />
+  id="clover-apple-pay"
+  className="rounded-2xl border border-slate-200 bg-white h-12 flex items-center justify-center overflow-hidden"
+/>
                   {!applePayMounted ? (
                     <p className="text-[11px] text-slate-500">
                       {locale === "zh"
