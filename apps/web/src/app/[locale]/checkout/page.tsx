@@ -105,6 +105,32 @@ type CloverApplePaymentRequest = {
   currencyCode: string;
 };
 
+type CloverElementInstance = {
+  mount: (selector: string) => void;
+  addEventListener: (
+    event: string,
+    handler: (payload: CloverFieldChangeEvent | CloverAggregatedFieldEvent) => void,
+  ) => void;
+  destroy?: () => void;
+};
+
+type CloverInstance = {
+  elements: () => {
+    create: (
+      type: string,
+      options?: Record<string, unknown>,
+    ) => CloverElementInstance;
+  };
+  createApplePaymentRequest: (
+    request: CloverApplePaymentRequest,
+  ) => CloverApplePaymentRequest;
+  updateApplePaymentRequest: (request: CloverApplePaymentRequest) => void;
+  createToken: () => Promise<{
+    token?: string;
+    errors?: Array<{ message?: string }>;
+  }>;
+};
+
 type ApiEnvelope<T> = {
   code?: string;
   message?: string;
@@ -149,30 +175,7 @@ declare global {
       options?: {
         merchantId?: string;
       },
-    ) => {
-      elements: () => {
-        create: (
-          type: string,
-          options?: Record<string, unknown>,
-        ) => {
-          mount: (selector: string) => void;
-          addEventListener: (
-            event: string,
-            handler: (
-              payload: CloverFieldChangeEvent | CloverAggregatedFieldEvent
-            ) => void,
-          ) => void;
-          destroy?: () => void;
-        };
-      };
-      createApplePaymentRequest: (
-        request: CloverApplePaymentRequest,
-      ) => CloverApplePaymentRequest;
-      createToken: () => Promise<{
-        token?: string;
-        errors?: Array<{ message?: string }>;
-      }>;
-    };
+    ) => CloverInstance;
   }
 }
 
@@ -853,9 +856,7 @@ export default function CheckoutPage() {
     null,
   );
   const [checkoutStatusPollTick, setCheckoutStatusPollTick] = useState(0);
-  const cloverRef = useRef<null | { createToken: () => Promise<{ token?: string; errors?: Array<{ message?: string }> }> }>(
-    null,
-  );
+  const cloverRef = useRef<CloverInstance | null>(null);
   const cloverFieldStateRef = useRef<Record<string, CloverFieldChangeEvent>>(
     {},
   );
@@ -864,7 +865,10 @@ export default function CheckoutPage() {
   const cardDateRef = useRef<null | { destroy?: () => void }>(null);
   const cardCvvRef = useRef<null | { destroy?: () => void }>(null);
   const cardPostalRef = useRef<null | { destroy?: () => void }>(null);
-  const applePayRef = useRef<null | { destroy?: () => void }>(null);
+  const applePayRef = useRef<CloverElementInstance | null>(null);
+  const applePayTokenRef = useRef<string | null>(null);
+  const applePaySessionActiveRef = useRef(false);
+  const applePaySessionTimerRef = useRef<number | null>(null);
   const cleanupRef = useRef<undefined | (() => void)>(undefined);
   const checkoutIntentIdRef = useRef<string | null>(null);
   const [addressValidation, setAddressValidation] = useState<{
@@ -1465,6 +1469,23 @@ useEffect(() => {
   if (typeof window === "undefined") return;
 
   if (!requiresPayment) {
+    cleanupRef.current?.();
+    cleanupRef.current = undefined;
+    cardNameRef.current?.destroy?.();
+    cardNumberRef.current?.destroy?.();
+    cardDateRef.current?.destroy?.();
+    cardCvvRef.current?.destroy?.();
+    cardPostalRef.current?.destroy?.();
+    applePayRef.current?.destroy?.();
+    applePayRef.current = null;
+    applePayTokenRef.current = null;
+    if (applePaySessionTimerRef.current !== null) {
+      window.clearTimeout(applePaySessionTimerRef.current);
+      applePaySessionTimerRef.current = null;
+    }
+    applePaySessionActiveRef.current = false;
+    cloverRef.current = null;
+    setApplePayMounted(false);
     setCloverReady(false);
     setCanPay(false);
     cloverFieldStateRef.current = {};
@@ -1517,7 +1538,6 @@ useEffect(() => {
         [k: string]: unknown;
       };
 
-      // 1) wrapper: event.data.realTimeFormState
       const rts1 = e.data?.realTimeFormState;
       if (rts1 && typeof rts1 === "object") {
         const rec = rts1 as Record<string, unknown>;
@@ -1525,7 +1545,6 @@ useEffect(() => {
         if (v && typeof v === "object") return v as CloverFieldChangeEvent;
       }
 
-      // 2) wrapper: event.realTimeFormState
       const rts2 = e.realTimeFormState;
       if (rts2 && typeof rts2 === "object") {
         const rec = rts2 as Record<string, unknown>;
@@ -1533,14 +1552,12 @@ useEffect(() => {
         if (v && typeof v === "object") return v as CloverFieldChangeEvent;
       }
 
-      // 3) direct aggregated: event[key]
       const direct = e[key];
       if (direct && typeof direct === "object") {
         return direct as CloverFieldChangeEvent;
       }
     }
 
-    // 4) direct field object
     return event as unknown as CloverFieldChangeEvent;
   };
 
@@ -1557,13 +1574,9 @@ useEffect(() => {
 
   const isFieldPayable = (field?: CloverFieldChangeEvent) => {
     if (!field) return false;
-
-    // 1) 如果 Clover 给了 complete，就用 complete
     if (typeof field.complete === "boolean") {
       return field.complete === true && !hasError(field);
     }
-
-    // 2) 回退：touched + info 为空 视为通过
     const info = typeof field.info === "string" ? field.info : "";
     return Boolean(field.touched) && info.trim().length === 0;
   };
@@ -1583,25 +1596,33 @@ useEffect(() => {
 
       if (!window.Clover) throw new Error("Clover SDK not available");
 
-      // ✅ host 容器是否存在
       const nameHost = document.getElementById("clover-card-name");
       const numberHost = document.getElementById("clover-card-number");
       const dateHost = document.getElementById("clover-card-date");
       const cvvHost = document.getElementById("clover-card-cvv");
       const postalHost = document.getElementById("clover-postal");
-      const applePayHost = document.getElementById("clover-apple-pay");
 
       if (!nameHost || !numberHost || !dateHost || !cvvHost || !postalHost) {
         throw new Error("Card fields not ready");
       }
 
-      // ✅ 重新初始化前先 destroy（避免热更新/重复 mount）
+      cleanupRef.current?.();
+      cleanupRef.current = undefined;
+
       cardNameRef.current?.destroy?.();
       cardNumberRef.current?.destroy?.();
       cardDateRef.current?.destroy?.();
       cardCvvRef.current?.destroy?.();
       cardPostalRef.current?.destroy?.();
       applePayRef.current?.destroy?.();
+      applePayRef.current = null;
+      applePayTokenRef.current = null;
+
+      if (applePaySessionTimerRef.current !== null) {
+        window.clearTimeout(applePaySessionTimerRef.current);
+        applePaySessionTimerRef.current = null;
+      }
+      applePaySessionActiveRef.current = false;
 
       cloverFieldStateRef.current = {};
       setCanPay(false);
@@ -1615,14 +1636,6 @@ useEffect(() => {
       const cardDate = elements.create("CARD_DATE");
       const cardCvv = elements.create("CARD_CVV");
       const cardPostal = elements.create("CARD_POSTAL_CODE");
-      let applePay: null | {
-        mount: (selector: string) => void;
-        addEventListener: (
-          event: string,
-          handler: (payload: CloverFieldChangeEvent | CloverAggregatedFieldEvent) => void,
-        ) => void;
-        destroy?: () => void;
-      } = null;
 
       cardName.mount("#clover-card-name");
       cardNumber.mount("#clover-card-number");
@@ -1630,79 +1643,13 @@ useEffect(() => {
       cardCvv.mount("#clover-card-cvv");
       cardPostal.mount("#clover-postal");
 
-      // ✅ APPLE PAY
-if (applePayHost) {
-  try {
-    applePayHost.innerHTML = "";
-   
-    const logAny = (name: string) => (event: Event) => {
-      const detail =
-        event instanceof CustomEvent
-          ? event.detail
-          : undefined;
-      console.log(`[AP EVENT] ${name}`, detail ?? event);
-    };
-
-const names = [
-  "paymentMethod",
-  "payment-method",
-  "clover:paymentMethod",
-  "clover:payment-method",
-];
-
-names.forEach((n) => window.addEventListener(n, logAny(n)));
-
-    // 1) 必须创建 applePaymentRequest（amount 是 cents）
-    const applePayRequest = clover.createApplePaymentRequest({
-      amount: totalCents,        // ✅ 你 useEffect 依赖里已经有 totalCents
-      countryCode: "CA",
-      currencyCode: "CAD",
-    });
-
-    console.log("[AP] totalCents=", totalCents);
-
-    // 2) 必须传 sessionIdentifier
-    // 先用 merchantId 试（很多账户其实就是这个）
-    const sessionIdentifier = merchantId;
-
-    // 3) 创建按钮
-    applePay = elements.create("PAYMENT_REQUEST_BUTTON_APPLE_PAY", {
-      applePaymentRequest: applePayRequest,
-      sessionIdentifier,
-    });
-
-    // 4) 监听 Clover 的 paymentMethod 事件（不是 message）
-    const onPaymentMethod = (event: Event) => {
-      const detail = event instanceof CustomEvent ? event.detail : undefined;
-      console.log("[paymentMethod]", detail);
-      // event.detail 里会给 tokenRecieved.id（Clover token）
-      // 你拿到 token 后再调用你后端去完成支付/下单
-    };
-    window.addEventListener("paymentMethod", onPaymentMethod);
-
-    // 5) mount
-    applePay.mount("#clover-apple-pay");
-
-    // 6) 清理
-    const prevCleanup = cleanupRef.current;
-    cleanupRef.current = () => {
-      prevCleanup?.();
-      window.removeEventListener("paymentMethod", onPaymentMethod);
-    };
-  } catch (e) {
-    console.error("[AP] error", e);
-  }
-}
-
       cloverRef.current = clover;
       cardNameRef.current = cardName;
       cardNumberRef.current = cardNumber;
       cardDateRef.current = cardDate;
       cardCvvRef.current = cardCvv;
       cardPostalRef.current = cardPostal;
-      applePayRef.current = applePay;
-      cleanupRef.current?.();
-      cleanupRef.current = undefined;
+      applePayRef.current = null;
 
       const handleFieldEvent = (key: CloverFieldKey, raw: CloverEventPayload) => {
         const fieldEvent = getFieldFromEvent(raw, key);
@@ -1714,11 +1661,9 @@ names.forEach((n) => window.addEventListener(n, logAny(n)));
 
         const nextCanPay = computeCanPay(cloverFieldStateRef.current);
         setCanPay(nextCanPay);
-        console.log("[CLOVER] nextCanPay=", nextCanPay, cloverFieldStateRef.current);
         return fieldEvent;
       };
 
-      // === CARD_NAME ===
       cardName.addEventListener("change", (e) => {
         const f = handleFieldEvent("CARD_NAME", e);
         setCardNameComplete(Boolean(f?.complete));
@@ -1727,7 +1672,6 @@ names.forEach((n) => window.addEventListener(n, logAny(n)));
         handleFieldEvent("CARD_NAME", e);
       });
 
-      // === CARD_NUMBER ===
       cardNumber.addEventListener("change", (e) => {
         const f = handleFieldEvent("CARD_NUMBER", e);
         setCardNumberComplete(Boolean(f?.complete));
@@ -1739,7 +1683,6 @@ names.forEach((n) => window.addEventListener(n, logAny(n)));
         handleFieldEvent("CARD_NUMBER", e);
       });
 
-      // === CARD_DATE ===
       cardDate.addEventListener("change", (e) => {
         const f = handleFieldEvent("CARD_DATE", e);
         setCardDateComplete(Boolean(f?.complete));
@@ -1751,7 +1694,6 @@ names.forEach((n) => window.addEventListener(n, logAny(n)));
         handleFieldEvent("CARD_DATE", e);
       });
 
-      // === CARD_CVV ===
       cardCvv.addEventListener("change", (e) => {
         const f = handleFieldEvent("CARD_CVV", e);
         setCardCvvComplete(Boolean(f?.complete));
@@ -1763,7 +1705,6 @@ names.forEach((n) => window.addEventListener(n, logAny(n)));
         handleFieldEvent("CARD_CVV", e);
       });
 
-      // === CARD_POSTAL_CODE ===
       cardPostal.addEventListener("change", (e) => {
         const f = handleFieldEvent("CARD_POSTAL_CODE", e);
         setCardPostalComplete(Boolean(f?.complete));
@@ -1772,20 +1713,12 @@ names.forEach((n) => window.addEventListener(n, logAny(n)));
         handleFieldEvent("CARD_POSTAL_CODE", e);
       });
 
-      // === APPLE_PAY ===
-      applePay?.addEventListener("change", (e) => {
-        handleFieldEvent("PAYMENT_REQUEST_BUTTON_APPLE_PAY", e);
-      });
-      applePay?.addEventListener("blur", (e) => {
-        handleFieldEvent("PAYMENT_REQUEST_BUTTON_APPLE_PAY", e);
-      });
-
       setCloverReady(true);
     } catch (err) {
-      setApplePayMounted(false);
       if (cancelled) return;
       const message = err instanceof Error ? err.message : "Failed to init Clover";
       setErrorMessage(message);
+      setApplePayMounted(false);
       setCloverReady(false);
       setCanPay(false);
     }
@@ -1795,20 +1728,193 @@ names.forEach((n) => window.addEventListener(n, logAny(n)));
 
   return () => {
     cancelled = true;
+    cleanupRef.current?.();
+    cleanupRef.current = undefined;
     cardNameRef.current?.destroy?.();
     cardNumberRef.current?.destroy?.();
     cardDateRef.current?.destroy?.();
     cardCvvRef.current?.destroy?.();
     cardPostalRef.current?.destroy?.();
     applePayRef.current?.destroy?.();
-    cleanupRef.current?.();
-    cleanupRef.current = undefined;
+    applePayRef.current = null;
+    applePayTokenRef.current = null;
+    if (applePaySessionTimerRef.current !== null) {
+      window.clearTimeout(applePaySessionTimerRef.current);
+      applePaySessionTimerRef.current = null;
+    }
+    applePaySessionActiveRef.current = false;
     cloverFieldStateRef.current = {};
+    cloverRef.current = null;
     setCanPay(false);
     setCloverReady(false);
     setApplePayMounted(false);
   };
-}, [locale, requiresPayment, totalCents]);
+}, [locale, requiresPayment]);
+
+useEffect(() => {
+  if (typeof window === "undefined") return;
+  if (!requiresPayment || !cloverReady) return;
+  if (applePaySessionActiveRef.current) return;
+
+  const clover = cloverRef.current;
+  if (!clover) return;
+
+  const merchantId = process.env.NEXT_PUBLIC_CLOVER_MERCHANT_ID?.trim();
+  if (!merchantId) return;
+
+  const debounceId = window.setTimeout(() => {
+    if (applePaySessionActiveRef.current) return;
+
+    const latestClover = cloverRef.current;
+    if (!latestClover) return;
+
+    try {
+      latestClover.updateApplePaymentRequest({
+        amount: totalCents,
+        countryCode: "CA",
+        currencyCode: "CAD",
+      });
+
+      if (applePayRef.current) {
+        setApplePayMounted(true);
+        return;
+      }
+
+      const applePayHost = document.getElementById("clover-apple-pay");
+      if (!applePayHost) {
+        setApplePayMounted(false);
+        return;
+      }
+
+      const elements = latestClover.elements();
+      const applePayRequest = latestClover.createApplePaymentRequest({
+        amount: totalCents,
+        countryCode: "CA",
+        currencyCode: "CAD",
+      });
+
+      const applePay = elements.create("PAYMENT_REQUEST_BUTTON_APPLE_PAY", {
+        applePaymentRequest: applePayRequest,
+        sessionIdentifier: merchantId,
+      });
+
+      const clearSessionLock = () => {
+        applePaySessionActiveRef.current = false;
+        if (applePaySessionTimerRef.current !== null) {
+          window.clearTimeout(applePaySessionTimerRef.current);
+          applePaySessionTimerRef.current = null;
+        }
+      };
+
+      const setSessionLock = () => {
+        applePaySessionActiveRef.current = true;
+        if (applePaySessionTimerRef.current !== null) {
+          window.clearTimeout(applePaySessionTimerRef.current);
+        }
+        applePaySessionTimerRef.current = window.setTimeout(() => {
+          applePaySessionActiveRef.current = false;
+          applePaySessionTimerRef.current = null;
+        }, 60_000);
+      };
+
+      const onHostInteraction = () => {
+        setSessionLock();
+      };
+
+      const onPaymentMethod = (event: Event) => {
+        const detail = event instanceof CustomEvent ? event.detail : undefined;
+        console.log("[paymentMethod]", detail);
+
+        const tokenFromEvent =
+          (typeof detail === "object" &&
+          detail &&
+          "tokenRecieved" in detail &&
+          typeof (detail as { tokenRecieved?: { id?: unknown } }).tokenRecieved
+            ?.id === "string"
+            ? (detail as { tokenRecieved: { id: string } }).tokenRecieved.id
+            : undefined) ??
+          (typeof detail === "object" &&
+          detail &&
+          "tokenReceived" in detail &&
+          typeof (detail as { tokenReceived?: { id?: unknown } }).tokenReceived
+            ?.id === "string"
+            ? (detail as { tokenReceived: { id: string } }).tokenReceived.id
+            : undefined) ??
+          (typeof detail === "object" &&
+          detail &&
+          "token" in detail &&
+          typeof (detail as { token?: unknown }).token === "string"
+            ? (detail as { token: string }).token
+            : undefined);
+
+        if (tokenFromEvent) {
+          applePayTokenRef.current = tokenFromEvent;
+        }
+
+        clearSessionLock();
+      };
+
+      const onPaymentMethodEnd = (event: Event) => {
+        const detail = event instanceof CustomEvent ? event.detail : undefined;
+        console.log("[paymentMethodEnd]", detail);
+
+        const normalized =
+          typeof detail === "object" && detail
+            ? Object.values(detail as Record<string, unknown>)
+                .join(" ")
+                .toLowerCase()
+            : "";
+        const cancelled =
+          normalized.includes("session_cancelled") ||
+          normalized.includes("session_canceled") ||
+          normalized.includes("cancel");
+
+        if (cancelled) {
+          applePayTokenRef.current = null;
+          setErrorMessage(
+            locale === "zh"
+              ? "Apple Pay 已取消，请重新发起支付。"
+              : "Apple Pay session was cancelled. Please try again.",
+          );
+          setPayFlowState("IDLE");
+          setIsSubmitting(false);
+        }
+
+        clearSessionLock();
+      };
+
+      applePayHost.innerHTML = "";
+      applePay.mount("#clover-apple-pay");
+      applePayRef.current = applePay;
+      setApplePayMounted(true);
+
+      window.addEventListener("paymentMethod", onPaymentMethod);
+      window.addEventListener("paymentMethodEnd", onPaymentMethodEnd);
+      applePayHost.addEventListener("pointerdown", onHostInteraction);
+      applePayHost.addEventListener("keydown", onHostInteraction);
+
+      const previousCleanup = cleanupRef.current;
+      cleanupRef.current = () => {
+        previousCleanup?.();
+        clearSessionLock();
+        window.removeEventListener("paymentMethod", onPaymentMethod);
+        window.removeEventListener("paymentMethodEnd", onPaymentMethodEnd);
+        applePayHost.removeEventListener("pointerdown", onHostInteraction);
+        applePayHost.removeEventListener("keydown", onHostInteraction);
+      };
+    } catch (error) {
+      console.error("[AP] update/mount error", error);
+      applePayRef.current?.destroy?.();
+      applePayRef.current = null;
+      applePayTokenRef.current = null;
+      setApplePayMounted(false);
+    }
+  }, 350);
+
+  return () => {
+    window.clearTimeout(debounceId);
+  };
+}, [cloverReady, locale, requiresPayment, totalCents]);
 
   useEffect(() => {
     if (!challengeIntentId) return;
@@ -2858,18 +2964,24 @@ names.forEach((n) => window.addEventListener(n, logAny(n)));
         );
       }
 
-      console.log("[PAY] before createToken");
-      const tokenResult = await clover.createToken();
-      console.log("[PAY] after createToken", tokenResult);
+      let sourceToken = applePayTokenRef.current;
+      if (!sourceToken) {
+        console.log("[PAY] before createToken");
+        const tokenResult = await clover.createToken();
+        console.log("[PAY] after createToken", tokenResult);
 
-      if (!tokenResult?.token) {
-        const tokenError =
-          tokenResult?.errors?.[0]?.message ??
-          (locale === "zh"
-            ? "卡信息验证失败，请检查后重试。"
-            : "Card verification failed. Please check and try again.");
-        throw new Error(tokenError);
+        if (!tokenResult?.token) {
+          const tokenError =
+            tokenResult?.errors?.[0]?.message ??
+            (locale === "zh"
+              ? "卡信息验证失败，请检查后重试。"
+              : "Card verification failed. Please check and try again.");
+          throw new Error(tokenError);
+        }
+        sourceToken = tokenResult.token;
       }
+
+      applePayTokenRef.current = null;
 
       const browserInfo = build3dsBrowserInfo();
       const checkoutIntentId =
@@ -2912,7 +3024,7 @@ names.forEach((n) => window.addEventListener(n, logAny(n)));
             currency: quoteResponse.currency || HOSTED_CHECKOUT_CURRENCY,
             pricingToken: quoteResponse.pricingToken,
             checkoutIntentId,
-            source: tokenResult.token,
+            source: sourceToken,
             sourceType: "CARD",
             cardholderName: formatCustomerFullName(customer),
             customer: {
