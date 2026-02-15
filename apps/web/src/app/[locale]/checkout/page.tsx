@@ -4520,7 +4520,9 @@ useEffect(() => {
 
               <button
                 type="button"
-                onClick={handlePlaceOrder}
+                onClick={() => {
+                  void handlePlaceOrder();
+                }}
                 disabled={
                   !canPlaceOrder ||
                   isSubmitting ||
