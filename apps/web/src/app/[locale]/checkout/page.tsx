@@ -4285,11 +4285,9 @@ useEffect(() => {
                     {locale === "zh" ? "苹果支付" : "Apple Pay"}
                   </p>
                   <div
-                    id="clover-apple-pay"
-                    className={`rounded-2xl border border-slate-200 bg-white ${
-                      applePayMounted ? "min-h-0" : "min-h-10"
-                    }`}
-                  />
+  id="clover-apple-pay"
+  className="rounded-2xl border border-slate-200 bg-white h-12 flex items-center justify-center overflow-hidden"
+/>
                   {!applePayMounted ? (
                     <p className="text-[11px] text-slate-500">
                       {locale === "zh"
