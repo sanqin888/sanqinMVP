@@ -866,6 +866,7 @@ export default function CheckoutPage() {
   const cardCvvRef = useRef<null | { destroy?: () => void }>(null);
   const cardPostalRef = useRef<null | { destroy?: () => void }>(null);
   const applePayRef = useRef<CloverElementInstance | null>(null);
+  const applePayTokenRef = useRef<string | null>(null);
   const applePaySessionActiveRef = useRef(false);
   const applePaySessionTimerRef = useRef<number | null>(null);
   const cleanupRef = useRef<undefined | (() => void)>(undefined);
@@ -1477,6 +1478,7 @@ useEffect(() => {
     cardPostalRef.current?.destroy?.();
     applePayRef.current?.destroy?.();
     applePayRef.current = null;
+    applePayTokenRef.current = null;
     if (applePaySessionTimerRef.current !== null) {
       window.clearTimeout(applePaySessionTimerRef.current);
       applePaySessionTimerRef.current = null;
@@ -1614,6 +1616,7 @@ useEffect(() => {
       cardPostalRef.current?.destroy?.();
       applePayRef.current?.destroy?.();
       applePayRef.current = null;
+      applePayTokenRef.current = null;
 
       if (applePaySessionTimerRef.current !== null) {
         window.clearTimeout(applePaySessionTimerRef.current);
@@ -1734,6 +1737,7 @@ useEffect(() => {
     cardPostalRef.current?.destroy?.();
     applePayRef.current?.destroy?.();
     applePayRef.current = null;
+    applePayTokenRef.current = null;
     if (applePaySessionTimerRef.current !== null) {
       window.clearTimeout(applePaySessionTimerRef.current);
       applePaySessionTimerRef.current = null;
@@ -1820,6 +1824,62 @@ useEffect(() => {
       const onPaymentMethod = (event: Event) => {
         const detail = event instanceof CustomEvent ? event.detail : undefined;
         console.log("[paymentMethod]", detail);
+
+        const tokenFromEvent =
+          (typeof detail === "object" &&
+          detail &&
+          "tokenRecieved" in detail &&
+          typeof (detail as { tokenRecieved?: { id?: unknown } }).tokenRecieved
+            ?.id === "string"
+            ? (detail as { tokenRecieved: { id: string } }).tokenRecieved.id
+            : undefined) ??
+          (typeof detail === "object" &&
+          detail &&
+          "tokenReceived" in detail &&
+          typeof (detail as { tokenReceived?: { id?: unknown } }).tokenReceived
+            ?.id === "string"
+            ? (detail as { tokenReceived: { id: string } }).tokenReceived.id
+            : undefined) ??
+          (typeof detail === "object" &&
+          detail &&
+          "token" in detail &&
+          typeof (detail as { token?: unknown }).token === "string"
+            ? (detail as { token: string }).token
+            : undefined);
+
+        if (tokenFromEvent) {
+          applePayTokenRef.current = tokenFromEvent;
+        }
+
+        clearSessionLock();
+      };
+
+      const onPaymentMethodEnd = (event: Event) => {
+        const detail = event instanceof CustomEvent ? event.detail : undefined;
+        console.log("[paymentMethodEnd]", detail);
+
+        const normalized =
+          typeof detail === "object" && detail
+            ? Object.values(detail as Record<string, unknown>)
+                .join(" ")
+                .toLowerCase()
+            : "";
+        const cancelled =
+          normalized.includes("session_cancelled") ||
+          normalized.includes("session_canceled") ||
+          normalized.includes("cancel");
+
+        if (cancelled) {
+          applePayTokenRef.current = null;
+          setErrorMessage(
+            locale === "zh"
+              ? "Apple Pay 已取消，请重新发起支付。"
+              : "Apple Pay session was cancelled. Please try again.",
+          );
+          setPayFlowState("IDLE");
+          setIsSubmitting(false);
+        }
+
         clearSessionLock();
       };
 
@@ -1829,6 +1889,7 @@ useEffect(() => {
       setApplePayMounted(true);
 
       window.addEventListener("paymentMethod", onPaymentMethod);
+      window.addEventListener("paymentMethodEnd", onPaymentMethodEnd);
       applePayHost.addEventListener("pointerdown", onHostInteraction);
       applePayHost.addEventListener("keydown", onHostInteraction);
 
@@ -1837,6 +1898,7 @@ useEffect(() => {
         previousCleanup?.();
         clearSessionLock();
         window.removeEventListener("paymentMethod", onPaymentMethod);
+        window.removeEventListener("paymentMethodEnd", onPaymentMethodEnd);
         applePayHost.removeEventListener("pointerdown", onHostInteraction);
         applePayHost.removeEventListener("keydown", onHostInteraction);
       };
@@ -1844,6 +1906,7 @@ useEffect(() => {
       console.error("[AP] update/mount error", error);
       applePayRef.current?.destroy?.();
       applePayRef.current = null;
+      applePayTokenRef.current = null;
       setApplePayMounted(false);
     }
   }, 350);
@@ -1851,7 +1914,7 @@ useEffect(() => {
   return () => {
     window.clearTimeout(debounceId);
   };
-}, [cloverReady, requiresPayment, totalCents]);
+}, [cloverReady, locale, requiresPayment, totalCents]);
 
   useEffect(() => {
     if (!challengeIntentId) return;
@@ -2901,18 +2964,24 @@ useEffect(() => {
         );
       }
 
-      console.log("[PAY] before createToken");
-      const tokenResult = await clover.createToken();
-      console.log("[PAY] after createToken", tokenResult);
+      let sourceToken = applePayTokenRef.current;
+      if (!sourceToken) {
+        console.log("[PAY] before createToken");
+        const tokenResult = await clover.createToken();
+        console.log("[PAY] after createToken", tokenResult);
 
-      if (!tokenResult?.token) {
-        const tokenError =
-          tokenResult?.errors?.[0]?.message ??
-          (locale === "zh"
-            ? "卡信息验证失败，请检查后重试。"
-            : "Card verification failed. Please check and try again.");
-        throw new Error(tokenError);
+        if (!tokenResult?.token) {
+          const tokenError =
+            tokenResult?.errors?.[0]?.message ??
+            (locale === "zh"
+              ? "卡信息验证失败，请检查后重试。"
+              : "Card verification failed. Please check and try again.");
+          throw new Error(tokenError);
+        }
+        sourceToken = tokenResult.token;
       }
+
+      applePayTokenRef.current = null;
 
       const browserInfo = build3dsBrowserInfo();
       const checkoutIntentId =
@@ -2955,7 +3024,7 @@ useEffect(() => {
             currency: quoteResponse.currency || HOSTED_CHECKOUT_CURRENCY,
             pricingToken: quoteResponse.pricingToken,
             checkoutIntentId,
-            source: tokenResult.token,
+            source: sourceToken,
             sourceType: "CARD",
             cardholderName: formatCustomerFullName(customer),
             customer: {
