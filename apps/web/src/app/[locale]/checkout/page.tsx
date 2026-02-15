@@ -99,6 +99,12 @@ type CloverEventPayload =
       realTimeFormState?: CloverAggregatedFieldEvent;
     };
 
+type CloverApplePaymentRequest = {
+  amount: number;
+  countryCode: string;
+  currencyCode: string;
+};
+
 type ApiEnvelope<T> = {
   code?: string;
   message?: string;
@@ -147,11 +153,7 @@ declare global {
       elements: () => {
         create: (
           type: string,
-          options?: {
-            amount?: number;
-            currency?: string;
-            country?: string;
-          },
+          options?: Record<string, unknown>,
         ) => {
           mount: (selector: string) => void;
           addEventListener: (
@@ -163,6 +165,9 @@ declare global {
           destroy?: () => void;
         };
       };
+      createApplePaymentRequest: (
+        request: CloverApplePaymentRequest,
+      ) => CloverApplePaymentRequest;
       createToken: () => Promise<{
         token?: string;
         errors?: Array<{ message?: string }>;
@@ -860,6 +865,7 @@ export default function CheckoutPage() {
   const cardCvvRef = useRef<null | { destroy?: () => void }>(null);
   const cardPostalRef = useRef<null | { destroy?: () => void }>(null);
   const applePayRef = useRef<null | { destroy?: () => void }>(null);
+  const cleanupRef = useRef<undefined | (() => void)>(undefined);
   const checkoutIntentIdRef = useRef<string | null>(null);
   const [addressValidation, setAddressValidation] = useState<{
     distanceKm: number | null;
