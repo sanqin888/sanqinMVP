@@ -1638,22 +1638,21 @@ useEffect(() => {
           console.log("[AP] host html", applePayHost.innerHTML)
 
           const syncApplePayMountedState = () => {
-  const hasMountedNode =
-    applePayHost.children.length > 0 ||
-    applePayHost.querySelector("iframe, button, [role='button']") !== null;
-  setApplePayMounted(hasMountedNode);
-  return hasMountedNode;
-};
+            const hasMountedNode =
+              applePayHost.children.length > 0 ||
+              applePayHost.querySelector("iframe, button, [role='button']") !== null;
+            setApplePayMounted(hasMountedNode);
+            return hasMountedNode;
+          };
 
-let tries = 0;
-const timer = window.setInterval(() => {
-  if (cancelled) return window.clearInterval(timer);
-  tries += 1;
-  if (syncApplePayMountedState() || tries >= 12) {
-    window.clearInterval(timer);
-  }
-}, 200);
-          }
+          let tries = 0;
+          const timer = window.setInterval(() => {
+            if (cancelled) return window.clearInterval(timer);
+            tries += 1;
+            if (syncApplePayMountedState() || tries >= 12) {
+              window.clearInterval(timer);
+            }
+          }, 200);
         } catch (applePayError) {
           setApplePayMounted(false);
           console.error("[AP] error", applePayError);

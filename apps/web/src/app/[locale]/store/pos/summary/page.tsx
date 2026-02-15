@@ -269,13 +269,6 @@ function toCsv(rows: OrderRow[]): string {
   return [header, ...lines].join("\n");
 }
 
-function labelFulfillment(locale: Locale, v: string) {
-  if (v === "dine_in") return locale === "zh" ? "堂食" : "Dine-in";
-  if (v === "pickup") return locale === "zh" ? "自取" : "Pickup";
-  if (v === "delivery") return locale === "zh" ? "外卖" : "Delivery";
-  return v;
-}
-
 function labelChannel(locale: Locale, v: string) {
   if (v === "in_store") return locale === "zh" ? "门店" : "In-store";
   if (v === "web") return locale === "zh" ? "网站" : "Website";
