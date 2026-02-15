@@ -99,6 +99,12 @@ type CloverEventPayload =
       realTimeFormState?: CloverAggregatedFieldEvent;
     };
 
+type CloverApplePaymentRequest = {
+  amount: number;
+  countryCode: string;
+  currencyCode: string;
+};
+
 type ApiEnvelope<T> = {
   code?: string;
   message?: string;
@@ -147,11 +153,7 @@ declare global {
       elements: () => {
         create: (
           type: string,
-          options?: {
-            amount?: number;
-            currency?: string;
-            country?: string;
-          },
+          options?: Record<string, unknown>,
         ) => {
           mount: (selector: string) => void;
           addEventListener: (
@@ -163,6 +165,9 @@ declare global {
           destroy?: () => void;
         };
       };
+      createApplePaymentRequest: (
+        request: CloverApplePaymentRequest,
+      ) => CloverApplePaymentRequest;
       createToken: () => Promise<{
         token?: string;
         errors?: Array<{ message?: string }>;
@@ -860,6 +865,7 @@ export default function CheckoutPage() {
   const cardCvvRef = useRef<null | { destroy?: () => void }>(null);
   const cardPostalRef = useRef<null | { destroy?: () => void }>(null);
   const applePayRef = useRef<null | { destroy?: () => void }>(null);
+  const cleanupRef = useRef<undefined | (() => void)>(undefined);
   const checkoutIntentIdRef = useRef<string | null>(null);
   const [addressValidation, setAddressValidation] = useState<{
     distanceKm: number | null;
@@ -1624,40 +1630,69 @@ useEffect(() => {
       cardCvv.mount("#clover-card-cvv");
       cardPostal.mount("#clover-postal");
 
-      if (applePayHost) {
-        try {
-          console.log("[AP] start");
-          applePayHost.innerHTML = "";
+      // ✅ APPLE PAY
+if (applePayHost) {
+  try {
+    applePayHost.innerHTML = "";
+   
+    const logAny = (name: string) => (event: Event) => {
+      const detail =
+        event instanceof CustomEvent
+          ? event.detail
+          : undefined;
+      console.log(`[AP EVENT] ${name}`, detail ?? event);
+    };
 
-          applePay = elements.create("PAYMENT_REQUEST_BUTTON_APPLE_PAY", {
-            currency: HOSTED_CHECKOUT_CURRENCY,
-            country: "CA",
-          });
+const names = [
+  "paymentMethod",
+  "payment-method",
+  "clover:paymentMethod",
+  "clover:payment-method",
+];
 
-          applePay.mount("#clover-apple-pay");
-          console.log("[AP] host html", applePayHost.innerHTML)
+names.forEach((n) => window.addEventListener(n, logAny(n)));
 
-          const syncApplePayMountedState = () => {
-            const hasMountedNode =
-              applePayHost.children.length > 0 ||
-              applePayHost.querySelector("iframe, button, [role='button']") !== null;
-            setApplePayMounted(hasMountedNode);
-            return hasMountedNode;
-          };
+    // 1) 必须创建 applePaymentRequest（amount 是 cents）
+    const applePayRequest = clover.createApplePaymentRequest({
+      amount: totalCents,        // ✅ 你 useEffect 依赖里已经有 totalCents
+      countryCode: "CA",
+      currencyCode: "CAD",
+    });
 
-          let tries = 0;
-          const timer = window.setInterval(() => {
-            if (cancelled) return window.clearInterval(timer);
-            tries += 1;
-            if (syncApplePayMountedState() || tries >= 12) {
-              window.clearInterval(timer);
-            }
-          }, 200);
-        } catch (applePayError) {
-          setApplePayMounted(false);
-          console.error("[AP] error", applePayError);
-        }
-      }
+    console.log("[AP] totalCents=", totalCents);
+
+    // 2) 必须传 sessionIdentifier
+    // 先用 merchantId 试（很多账户其实就是这个）
+    const sessionIdentifier = merchantId;
+
+    // 3) 创建按钮
+    applePay = elements.create("PAYMENT_REQUEST_BUTTON_APPLE_PAY", {
+      applePaymentRequest: applePayRequest,
+      sessionIdentifier,
+    });
+
+    // 4) 监听 Clover 的 paymentMethod 事件（不是 message）
+    const onPaymentMethod = (event: Event) => {
+      const detail = event instanceof CustomEvent ? event.detail : undefined;
+      console.log("[paymentMethod]", detail);
+      // event.detail 里会给 tokenRecieved.id（Clover token）
+      // 你拿到 token 后再调用你后端去完成支付/下单
+    };
+    window.addEventListener("paymentMethod", onPaymentMethod);
+
+    // 5) mount
+    applePay.mount("#clover-apple-pay");
+
+    // 6) 清理
+    const prevCleanup = cleanupRef.current;
+    cleanupRef.current = () => {
+      prevCleanup?.();
+      window.removeEventListener("paymentMethod", onPaymentMethod);
+    };
+  } catch (e) {
+    console.error("[AP] error", e);
+  }
+}
 
       cloverRef.current = clover;
       cardNameRef.current = cardName;
@@ -1666,6 +1701,8 @@ useEffect(() => {
       cardCvvRef.current = cardCvv;
       cardPostalRef.current = cardPostal;
       applePayRef.current = applePay;
+      cleanupRef.current?.();
+      cleanupRef.current = undefined;
 
       const handleFieldEvent = (key: CloverFieldKey, raw: CloverEventPayload) => {
         const fieldEvent = getFieldFromEvent(raw, key);
@@ -1764,6 +1801,8 @@ useEffect(() => {
     cardCvvRef.current?.destroy?.();
     cardPostalRef.current?.destroy?.();
     applePayRef.current?.destroy?.();
+    cleanupRef.current?.();
+    cleanupRef.current = undefined;
     cloverFieldStateRef.current = {};
     setCanPay(false);
     setCloverReady(false);
