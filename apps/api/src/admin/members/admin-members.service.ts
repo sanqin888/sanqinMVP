@@ -153,14 +153,12 @@ export class AdminMembersService {
     inputPhone?: string;
   }):
     | {
-        channel: MessagingChannel.EMAIL;
-        type: AuthChallengeType.EMAIL_VERIFY;
+        kind: 'EMAIL';
         addressNorm: string;
         addressRaw: string;
       }
     | {
-        channel: MessagingChannel.SMS;
-        type: AuthChallengeType.PHONE_VERIFY;
+        kind: 'SMS';
         addressNorm: string;
         addressRaw: string;
       } {
@@ -170,12 +168,14 @@ export class AdminMembersService {
     const normalizedUser = normalizePhone(params.userPhone);
 
     if (normalizedUserEmail) {
-      if (normalizedInputEmail && normalizedInputEmail !== normalizedUserEmail) {
+      if (
+        normalizedInputEmail &&
+        normalizedInputEmail !== normalizedUserEmail
+      ) {
         throw new BadRequestException('email does not match member profile');
       }
       return {
-        channel: MessagingChannel.EMAIL,
-        type: AuthChallengeType.EMAIL_VERIFY,
+        kind: 'EMAIL',
         addressNorm: normalizedUserEmail,
         addressRaw: params.userEmail ?? normalizedUserEmail,
       };
@@ -189,8 +189,7 @@ export class AdminMembersService {
         ? normalizedInput
         : `+${normalizedInput}`;
       return {
-        channel: MessagingChannel.SMS,
-        type: AuthChallengeType.PHONE_VERIFY,
+        kind: 'SMS',
         addressNorm,
         addressRaw: params.inputPhone ?? normalizedInput,
       };
@@ -201,8 +200,7 @@ export class AdminMembersService {
         ? normalizedUser
         : `+${normalizedUser}`;
       return {
-        channel: MessagingChannel.SMS,
-        type: AuthChallengeType.PHONE_VERIFY,
+        kind: 'SMS',
         addressNorm,
         addressRaw: params.userPhone ?? normalizedUser,
       };
@@ -933,16 +931,16 @@ export class AdminMembersService {
       inputPhone: body.phone,
     });
 
-    if (contact.channel === MessagingChannel.EMAIL) {
+    if (contact.kind === 'EMAIL') {
       const code = this.generateVerificationCode();
       const now = new Date();
       const expiresAt = new Date(now.getTime() + 10 * 60 * 1000);
       const challenge = await this.prisma.authChallenge.create({
         data: {
           userId: user.id,
-          type: contact.type,
+          type: AuthChallengeType.EMAIL_VERIFY,
           status: AuthChallengeStatus.PENDING,
-          channel: contact.channel,
+          channel: MessagingChannel.EMAIL,
           addressNorm: contact.addressNorm,
           addressRaw: contact.addressRaw,
           codeHash: this.hashCode(code),
@@ -1007,12 +1005,12 @@ export class AdminMembersService {
       inputPhone: body.phone,
     });
 
-    if (contact.channel === MessagingChannel.EMAIL) {
+    if (contact.kind === 'EMAIL') {
       const now = new Date();
       const latest = await this.prisma.authChallenge.findFirst({
         where: {
-          type: contact.type,
-          channel: contact.channel,
+          type: AuthChallengeType.EMAIL_VERIFY,
+          channel: MessagingChannel.EMAIL,
           addressNorm: contact.addressNorm,
           purpose: POS_RECHARGE_PURPOSE,
           status: AuthChallengeStatus.PENDING,
@@ -1065,9 +1063,9 @@ export class AdminMembersService {
         this.prisma.authChallenge.create({
           data: {
             userId: user.id,
-            type: contact.type,
+            type: AuthChallengeType.EMAIL_VERIFY,
             status: AuthChallengeStatus.PENDING,
-            channel: contact.channel,
+            channel: MessagingChannel.EMAIL,
             addressNorm: contact.addressNorm,
             addressRaw: contact.addressRaw,
             tokenHash,
@@ -1124,8 +1122,14 @@ export class AdminMembersService {
     const record = await this.prisma.authChallenge.findFirst({
       where: {
         tokenHash,
-        type: contact.type,
-        channel: contact.channel,
+        type:
+          contact.kind === 'EMAIL'
+            ? AuthChallengeType.EMAIL_VERIFY
+            : AuthChallengeType.PHONE_VERIFY,
+        channel:
+          contact.kind === 'EMAIL'
+            ? MessagingChannel.EMAIL
+            : MessagingChannel.SMS,
         purpose: POS_RECHARGE_PURPOSE,
         status: AuthChallengeStatus.PENDING,
         addressNorm: contact.addressNorm,
