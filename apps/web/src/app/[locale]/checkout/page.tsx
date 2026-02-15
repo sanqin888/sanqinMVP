@@ -2653,14 +2653,28 @@ useEffect(() => {
     }
   };
 
-  const handlePlaceOrder = async () => {
-    if (!canPlaceOrder || isSubmitting) return;
+  const handlePlaceOrder = async (options?: { fromApplePay?: boolean }) => {
+    const strictApplePay = options?.fromApplePay === true;
+
+    if (!canPlaceOrder || isSubmitting) {
+      if (strictApplePay) {
+        throw new Error(
+          locale === "zh"
+            ? "当前订单不可提交，请检查联系信息与配送信息。"
+            : "Order cannot be submitted yet. Please complete contact and delivery details.",
+        );
+      }
+      return;
+    }
     if (requiresPayment && !canPayWithCard) {
-      setErrorMessage(
+      const message =
         locale === "zh"
           ? "请完善银行卡信息后再支付。"
-          : "Please complete the card details before paying.",
-      );
+          : "Please complete the card details before paying.";
+      setErrorMessage(message);
+      if (strictApplePay) {
+        throw new Error(message);
+      }
       return;
     }
 
@@ -2685,6 +2699,13 @@ useEffect(() => {
       if (!validationResult.success) {
         setPayFlowState("IDLE");
         setIsSubmitting(false);
+        if (strictApplePay) {
+          throw new Error(
+            locale === "zh"
+              ? "配送地址校验失败，请检查后重试。"
+              : "Delivery address validation failed. Please check and try again.",
+          );
+        }
         return;
       }
       deliveryDistanceKm = validationResult.distanceKm ?? null;
@@ -2972,11 +2993,14 @@ useEffect(() => {
           return;
         }
         setPayFlowState("IDLE");
-        setErrorMessage(
+        const message =
           locale === "zh"
             ? "需要完成 3D Secure 验证，但未能获取验证页面，请稍后重试。"
-            : "3D Secure verification is required but the challenge page is unavailable. Please try again.",
-        );
+            : "3D Secure verification is required but the challenge page is unavailable. Please try again.";
+        setErrorMessage(message);
+        if (strictApplePay) {
+          throw new Error(message);
+        }
         return;
       }
 
@@ -3072,12 +3096,16 @@ useEffect(() => {
         setPayFlowState("IDLE");
         setErrorMessage(fallback);
       }
+
+      if (strictApplePay) {
+        throw (error instanceof Error ? error : new Error(fallback));
+      }
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  placeOrderRef.current = handlePlaceOrder;
+  placeOrderRef.current = async () => handlePlaceOrder({ fromApplePay: true });
 
   const payButtonLabel = isSubmitting
     ? strings.processing
