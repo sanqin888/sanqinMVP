@@ -1624,40 +1624,49 @@ useEffect(() => {
       cardCvv.mount("#clover-card-cvv");
       cardPostal.mount("#clover-postal");
 
-      if (applePayHost) {
-        try {
-          console.log("[AP] start");
-          applePayHost.innerHTML = "";
+      // ✅ APPLE PAY
+if (applePayHost) {
+  try {
+    applePayHost.innerHTML = "";
 
-          applePay = elements.create("PAYMENT_REQUEST_BUTTON_APPLE_PAY", {
-            currency: HOSTED_CHECKOUT_CURRENCY,
-            country: "CA",
-          });
+    // 1) 必须创建 applePaymentRequest（amount 是 cents）
+    const applePayRequest = clover.createApplePaymentRequest({
+      amount: totalCents,        // ✅ 你 useEffect 依赖里已经有 totalCents
+      countryCode: "CA",
+      currencyCode: "CAD",
+    });
 
-          applePay.mount("#clover-apple-pay");
-          console.log("[AP] host html", applePayHost.innerHTML)
+    // 2) 必须传 sessionIdentifier
+    // 先用 merchantId 试（很多账户其实就是这个）
+    const sessionIdentifier = merchantId;
 
-          const syncApplePayMountedState = () => {
-            const hasMountedNode =
-              applePayHost.children.length > 0 ||
-              applePayHost.querySelector("iframe, button, [role='button']") !== null;
-            setApplePayMounted(hasMountedNode);
-            return hasMountedNode;
-          };
+    // 3) 创建按钮
+    applePay = elements.create("PAYMENT_REQUEST_BUTTON_APPLE_PAY", {
+      applePaymentRequest: applePayRequest,
+      sessionIdentifier,
+    });
 
-          let tries = 0;
-          const timer = window.setInterval(() => {
-            if (cancelled) return window.clearInterval(timer);
-            tries += 1;
-            if (syncApplePayMountedState() || tries >= 12) {
-              window.clearInterval(timer);
-            }
-          }, 200);
-        } catch (applePayError) {
-          setApplePayMounted(false);
-          console.error("[AP] error", applePayError);
-        }
-      }
+    // 4) 监听 Clover 的 paymentMethod 事件（不是 message）
+    const onPaymentMethod = (event: any) => {
+      console.log("[paymentMethod]", event?.detail);
+      // event.detail 里会给 tokenRecieved.id（Clover token）
+      // 你拿到 token 后再调用你后端去完成支付/下单
+    };
+    window.addEventListener("paymentMethod", onPaymentMethod);
+
+    // 5) mount
+    applePay.mount("#clover-apple-pay");
+
+    // 6) 清理
+    const prevCleanup = cleanupRef.current;
+    cleanupRef.current = () => {
+      prevCleanup?.();
+      window.removeEventListener("paymentMethod", onPaymentMethod);
+    };
+  } catch (e) {
+    console.error("[AP] error", e);
+  }
+}
 
       cloverRef.current = clover;
       cardNameRef.current = cardName;
