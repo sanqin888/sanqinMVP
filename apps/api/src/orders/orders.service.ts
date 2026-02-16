@@ -2389,11 +2389,21 @@ export class OrdersService {
     channelIn?: Array<'web' | 'in_store' | 'ubereats'>;
     limit?: number;
     sinceMinutes?: number;
+    requireItems?: boolean;
   }): Promise<OrderDto[]> {
-    const { statusIn, channelIn, limit = 50, sinceMinutes = 24 * 60 } = params;
+    const {
+      statusIn,
+      channelIn,
+      limit = 50,
+      sinceMinutes = 24 * 60,
+      requireItems = true,
+    } = params;
     const where: Prisma.OrderWhereInput = {};
     if (statusIn && statusIn.length > 0) where.status = { in: statusIn };
     if (channelIn && channelIn.length > 0) where.channel = { in: channelIn };
+    if (requireItems) {
+      where.items = { some: {} };
+    }
     if (sinceMinutes > 0) {
       const since = new Date(Date.now() - sinceMinutes * 60 * 1000);
       where.createdAt = { gte: since };
