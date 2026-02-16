@@ -206,6 +206,10 @@ function safeParseCreatedAtMs(createdAt: string): number {
   return Number.isFinite(ms) ? ms : Date.now();
 }
 
+function shouldShowOnBoard(order: BoardOrder): boolean {
+  return Array.isArray(order.items) && order.items.length > 0;
+}
+
 export default function StoreBoardPage() {
   const params = useParams();
   const locale = (params?.locale as Locale) ?? "zh";
@@ -242,15 +246,16 @@ export default function StoreBoardPage() {
 
   const fetchOrdersAndProcess = useCallback(async () => {
     const data = await apiFetch<BoardOrder[]>(query);
+    const visibleOrders = data.filter(shouldShowOnBoard);
 
-    setOrders(data);
+    setOrders(visibleOrders);
 
     const processedSet = processedSetRef.current;
     const processedMap = processedRef.current;
 
     // ✅ 首次拉取：只做 baseline（标记为已处理），避免“打开/刷新页面就把历史订单全再打印一次”
     if (!hasBootstrappedRef.current) {
-      for (const o of data) {
+      for (const o of visibleOrders) {
         const sid = o.orderStableId;
         processedSet.add(sid);
         if (!processedMap[sid]) {
@@ -263,7 +268,9 @@ export default function StoreBoardPage() {
     }
 
     // ✅ 增量：只对“新的 stableId”进行自动打印
-    const newOrders = data.filter((o) => !processedSet.has(o.orderStableId));
+    const newOrders = visibleOrders.filter(
+      (o) => !processedSet.has(o.orderStableId),
+    );
 
     if (newOrders.length > 0) {
       for (const o of newOrders) {

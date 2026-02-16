@@ -16,6 +16,7 @@ export function ImageLibraryModal({
   const [images, setImages] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingUrl, setDeletingUrl] = useState<string | null>(null);
+  const [downloadingUrl, setDownloadingUrl] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -54,6 +55,67 @@ export function ImageLibraryModal({
       setDeleteError(error instanceof Error ? error.message : isZh ? '删除失败' : 'Delete failed');
     } finally {
       setDeletingUrl(null);
+    }
+  }
+
+  function getDefaultFileName(url: string): string {
+    try {
+      const parsedUrl = new URL(url, window.location.origin);
+      const rawName = parsedUrl.pathname.split('/').pop();
+      if (!rawName) return 'image';
+      return decodeURIComponent(rawName) || 'image';
+    } catch {
+      return 'image';
+    }
+  }
+
+  async function handleDownload(url: string): Promise<void> {
+    setDeleteError(null);
+    setDownloadingUrl(url);
+    const defaultFileName = getDefaultFileName(url);
+
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(isZh ? '图片下载失败' : 'Failed to download image');
+      }
+
+      const blob = await response.blob();
+
+      const saveFilePicker = (
+        window as Window & {
+          showSaveFilePicker?: (options?: { suggestedName?: string }) => Promise<{
+            createWritable: () => Promise<{
+              write: (data: Blob) => Promise<void>;
+              close: () => Promise<void>;
+            }>;
+          }>;
+        }
+      ).showSaveFilePicker;
+
+      if (saveFilePicker) {
+        const fileHandle = await saveFilePicker({ suggestedName: defaultFileName });
+        const writable = await fileHandle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        return;
+      }
+
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = defaultFileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      const isAbort = error instanceof DOMException && error.name === 'AbortError';
+      if (!isAbort) {
+        setDeleteError(error instanceof Error ? error.message : isZh ? '下载失败' : 'Download failed');
+      }
+    } finally {
+      setDownloadingUrl(null);
     }
   }
 
@@ -100,6 +162,19 @@ export function ImageLibraryModal({
                   fill
                   sizes="(max-width: 640px) 33vw, (max-width: 768px) 25vw, 20vw"
                 />
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void handleDownload(url);
+                  }}
+                  disabled={downloadingUrl === url}
+                  className="absolute left-2 top-2 z-10 rounded-md bg-black/60 px-2 py-1 text-xs font-medium text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
+                  aria-label={isZh ? '下载图片' : 'Download image'}
+                  title={isZh ? '下载图片' : 'Download image'}
+                >
+                  {downloadingUrl === url ? (isZh ? '下载中…' : 'Downloading...') : isZh ? '下载' : 'Download'}
+                </button>
                 <button
                   type="button"
                   onClick={(e) => {
