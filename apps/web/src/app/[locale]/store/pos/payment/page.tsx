@@ -92,6 +92,7 @@ const STRINGS: Record<
     balancePaymentAvailable: string;
     balancePaymentAfter: string;
     back: string;
+    backKeepItems: string;
     confirm: string;
     confirming: string;
     tip: string;
@@ -148,6 +149,7 @@ const STRINGS: Record<
     balancePaymentAvailable: "可用余额",
     balancePaymentAfter: "预计结算后余额",
     back: "返回点单",
+    backKeepItems: "保留菜品返回点单",
     confirm: "确认收款并生成订单",
     confirming: "处理中…",
     tip: "请在确认顾客完成支付后，再点击“确认收款并生成订单”。",
@@ -203,6 +205,7 @@ const STRINGS: Record<
     balancePaymentAvailable: "Available balance",
     balancePaymentAfter: "Estimated balance after",
     back: "Back to POS",
+    backKeepItems: "Back to POS (keep items)",
     confirm: "Confirm payment & create order",
     confirming: "Saving…",
     tip: "Only tap “Confirm payment & create order” after the customer has finished paying.",
@@ -599,7 +602,14 @@ const loyaltyRedeemCents = redeemCents;
     if (paymentMethod === "store_balance") setPaymentMethod("cash");
   };
 
-  const handleBack = () => router.push(`/${locale}/store/pos`);
+  const handleBackKeepItems = () => router.push(`/${locale}/store/pos`);
+
+  const handleBack = () => {
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(POS_DISPLAY_STORAGE_KEY);
+    }
+    router.push(`/${locale}/store/pos`);
+  };
 
   // 点击 MAX 填充积分
   const handleMaxPoints = () => {
@@ -948,6 +958,7 @@ const loyaltyRedeemCents = redeemCents;
           </div>
 
           <div className="mt-auto pt-4 flex gap-3">
+            <button onClick={handleBackKeepItems} className="flex-1 h-12 rounded-2xl border border-blue-500/60 text-sm font-medium text-blue-100 hover:bg-blue-500/10">{t.backKeepItems}</button>
             <button onClick={handleBack} className="flex-1 h-12 rounded-2xl border border-slate-600 text-sm font-medium text-slate-100 hover:bg-slate-700">{t.back}</button>
             <button disabled={!hasItems || submitting || !snapshot || !fulfillment} onClick={handleConfirm} className="flex-[2] h-12 rounded-2xl text-sm font-bold bg-emerald-500 text-slate-900 hover:bg-emerald-400 disabled:opacity-50 disabled:bg-slate-600 disabled:text-slate-400">
               {submitting ? t.confirming : t.confirm}

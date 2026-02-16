@@ -10,6 +10,7 @@ export type PosDisplayItem = {
   nameEn: string;
   quantity: number;
   unitPriceCents: number;
+  customUnitPriceCents?: number;
   lineTotalCents: number;
   options?: Record<string, string[]>;
 };
