@@ -1090,6 +1090,7 @@ export class LoyaltyService {
     pointsCredited: number;
     bonusPoints: number;
     referralPointsCredited: number;
+    storeBalance: number;
     pointsBalance: number;
     tierBefore: Tier;
     tierAfter: Tier;
@@ -1152,7 +1153,8 @@ export class LoyaltyService {
           pointsCredited: Number(existedTopup.deltaMicro) / 1_000_000,
           bonusPoints: bonus,
           referralPointsCredited: 0,
-          pointsBalance: Number(existedTopup.balanceAfterMicro) / 1_000_000, // 这里可能只返回了本金余额，前端展示可能需要调整
+          storeBalance: Number(acc.balanceMicro) / 1_000_000,
+          pointsBalance: Number(acc.pointsMicro) / 1_000_000,
           tierBefore: acc.tier as Tier,
           tierAfter: acc.tier as Tier,
           lifetimeSpendCentsBefore: acc.lifetimeSpendCents,
@@ -1317,8 +1319,8 @@ export class LoyaltyService {
         pointsCredited: pts,
         bonusPoints: bonus,
         referralPointsCredited: referralPtsCredited,
-        // 返回总资产供前端展示 (余额 + 积分)
-        pointsBalance: (Number(newBalance) + Number(newPoints)) / 1_000_000,
+        storeBalance: Number(newBalance) / 1_000_000,
+        pointsBalance: Number(newPoints) / 1_000_000,
         tierBefore,
         tierAfter,
         lifetimeSpendCentsBefore,
