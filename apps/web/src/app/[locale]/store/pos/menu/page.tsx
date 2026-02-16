@@ -89,6 +89,14 @@ type SectionKey = keyof typeof COPY.en.sections;
 
 const SECTION_ORDER: SectionKey[] = ['items', 'options', 'off'];
 
+function getLocalizedName(
+  locale: Locale,
+  nameEn: string,
+  nameZh?: string | null,
+): string {
+  return locale === 'zh' ? nameZh ?? nameEn : nameEn;
+}
+
 function getAvailabilityLabel(
   isAvailable: boolean,
   tempUnavailableUntil: string | null,
@@ -155,6 +163,8 @@ export default function PosMenuManagementPage() {
   const [templates, setTemplates] = useState<TemplateGroupFullDto[]>([]);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<SectionKey>('items');
+  const [expandedCategoryIds, setExpandedCategoryIds] = useState<Set<string>>(new Set());
+  const [expandedTemplateGroupIds, setExpandedTemplateGroupIds] = useState<Set<string>>(new Set());
 
   async function load(): Promise<void> {
     setLoading(true);
@@ -257,6 +267,42 @@ export default function PosMenuManagementPage() {
     [sortedTemplates],
   );
 
+  useEffect(() => {
+    setExpandedCategoryIds((prev) => {
+      const validIds = new Set(sortedCategories.map((category) => category.stableId));
+      const next = new Set(Array.from(prev).filter((id) => validIds.has(id)));
+      if (next.size === prev.size) return prev;
+      return next;
+    });
+  }, [sortedCategories]);
+
+  useEffect(() => {
+    setExpandedTemplateGroupIds((prev) => {
+      const validIds = new Set(sortedTemplates.map((group) => group.templateGroupStableId));
+      const next = new Set(Array.from(prev).filter((id) => validIds.has(id)));
+      if (next.size === prev.size) return prev;
+      return next;
+    });
+  }, [sortedTemplates]);
+
+  function toggleCategory(categoryStableId: string) {
+    setExpandedCategoryIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(categoryStableId)) next.delete(categoryStableId);
+      else next.add(categoryStableId);
+      return next;
+    });
+  }
+
+  function toggleTemplateGroup(templateGroupStableId: string) {
+    setExpandedTemplateGroupIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(templateGroupStableId)) next.delete(templateGroupStableId);
+      else next.add(templateGroupStableId);
+      return next;
+    });
+  }
+
   return (
     <main className="min-h-screen bg-slate-900 text-slate-50">
       <div className="mx-auto max-w-6xl px-6 py-10">
@@ -312,51 +358,64 @@ export default function PosMenuManagementPage() {
                   <div className="mt-4 space-y-4">
                     {sortedCategories.map((category) => (
                       <div key={category.stableId} className="space-y-3">
-                        <h3 className="text-sm font-semibold text-slate-200">
-                          {safeLocale === 'zh'
-                            ? category.nameZh ?? category.nameEn
-                            : category.nameEn}
-                        </h3>
-                        <div className="space-y-3">
-                          {category.items
-                            .slice()
-                            .sort((a, b) => a.sortOrder - b.sortOrder)
-                            .map((item) => {
-                              const label = getAvailabilityLabel(
-                                item.isAvailable,
-                                item.tempUnavailableUntil,
-                                copy.status,
-                              );
-                              const isSaving = savingKey === `item-${item.stableId}`;
-                              return (
-                                <div
-                                  key={item.stableId}
-                                  className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-700 bg-slate-900/50 px-4 py-3"
-                                >
-                                  <div>
-                                    <div className="text-sm font-semibold">
-                                      {safeLocale === 'zh'
-                                        ? item.nameZh ?? item.nameEn
-                                        : item.nameEn}
+                        <button
+                          type="button"
+                          onClick={() => toggleCategory(category.stableId)}
+                          className="flex w-full items-center justify-between rounded-2xl border border-slate-700 bg-slate-900/50 px-4 py-3 text-left"
+                        >
+                          <div>
+                            <h3 className="text-sm font-semibold text-slate-200">
+                              {getLocalizedName(safeLocale, category.nameEn, category.nameZh)}
+                            </h3>
+                            <p className="mt-1 text-xs text-slate-400">{category.items.length}</p>
+                          </div>
+                          <span className="text-xs text-slate-300">
+                            {expandedCategoryIds.has(category.stableId) ? '▲' : '▼'}
+                          </span>
+                        </button>
+
+                        {expandedCategoryIds.has(category.stableId) && (
+                          <div className="space-y-3">
+                            {category.items
+                              .slice()
+                              .sort((a, b) => a.sortOrder - b.sortOrder)
+                              .map((item) => {
+                                const label = getAvailabilityLabel(
+                                  item.isAvailable,
+                                  item.tempUnavailableUntil,
+                                  copy.status,
+                                );
+                                const isSaving = savingKey === `item-${item.stableId}`;
+                                return (
+                                  <div
+                                    key={item.stableId}
+                                    className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-700 bg-slate-900/50 px-4 py-3"
+                                  >
+                                    <div>
+                                      <div className="text-sm font-semibold">
+                                        {getLocalizedName(safeLocale, item.nameEn, item.nameZh)}
+                                      </div>
+                                      <span
+                                        className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-xs ${statusTone(
+                                          label,
+                                          copy.status,
+                                        )}`}
+                                      >
+                                        {label}
+                                      </span>
                                     </div>
-                                    <span
-                                      className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-xs ${statusTone(
-                                        label,
-                                        copy.status,
-                                      )}`}
-                                    >
-                                      {label}
-                                    </span>
+                                    <AvailabilityActions
+                                      labels={copy.actions}
+                                      disabled={isSaving}
+                                      onSet={(mode) =>
+                                        void setItemAvailability(item.stableId, mode)
+                                      }
+                                    />
                                   </div>
-                                  <AvailabilityActions
-                                    labels={copy.actions}
-                                    disabled={isSaving}
-                                    onSet={(mode) => void setItemAvailability(item.stableId, mode)}
-                                  />
-                                </div>
-                              );
-                            })}
-                        </div>
+                                );
+                              })}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -373,54 +432,64 @@ export default function PosMenuManagementPage() {
                   <div className="mt-4 space-y-4">
                     {sortedTemplates.map((group) => (
                       <div key={group.templateGroupStableId} className="space-y-3">
-                        <h3 className="text-sm font-semibold text-slate-200">
-                          {safeLocale === 'zh'
-                            ? group.nameZh ?? group.nameEn
-                            : group.nameEn}
-                        </h3>
-                        {(group.options ?? []).length === 0 ? (
-                          <p className="text-sm text-slate-400">{copy.empty}</p>
-                        ) : (
-                          <div className="space-y-3">
-                            {group.options.map((option: OptionChoiceDto) => {
-                              const label = getAvailabilityLabel(
-                                option.isAvailable,
-                                option.tempUnavailableUntil,
-                                copy.status,
-                              );
-                              const isSaving = savingKey === `option-${option.optionStableId}`;
-                              return (
-                                <div
-                                  key={option.optionStableId}
-                                  className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-700 bg-slate-900/50 px-4 py-3"
-                                >
-                                  <div>
-                                    <div className="text-sm font-semibold">
-                                      {safeLocale === 'zh'
-                                        ? option.nameZh ?? option.nameEn
-                                        : option.nameEn}
-                                    </div>
-                                    <span
-                                      className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-xs ${statusTone(
-                                        label,
-                                        copy.status,
-                                      )}`}
-                                    >
-                                      {label}
-                                    </span>
-                                  </div>
-                                  <AvailabilityActions
-                                    labels={copy.actions}
-                                    disabled={isSaving}
-                                    onSet={(mode) =>
-                                      void setOptionAvailability(option.optionStableId, mode)
-                                    }
-                                  />
-                                </div>
-                              );
-                            })}
+                        <button
+                          type="button"
+                          onClick={() => toggleTemplateGroup(group.templateGroupStableId)}
+                          className="flex w-full items-center justify-between rounded-2xl border border-slate-700 bg-slate-900/50 px-4 py-3 text-left"
+                        >
+                          <div>
+                            <h3 className="text-sm font-semibold text-slate-200">
+                              {getLocalizedName(safeLocale, group.nameEn, group.nameZh)}
+                            </h3>
+                            <p className="mt-1 text-xs text-slate-400">{(group.options ?? []).length}</p>
                           </div>
-                        )}
+                          <span className="text-xs text-slate-300">
+                            {expandedTemplateGroupIds.has(group.templateGroupStableId) ? '▲' : '▼'}
+                          </span>
+                        </button>
+
+                        {expandedTemplateGroupIds.has(group.templateGroupStableId) &&
+                          ((group.options ?? []).length === 0 ? (
+                            <p className="text-sm text-slate-400">{copy.empty}</p>
+                          ) : (
+                            <div className="space-y-3">
+                              {group.options.map((option: OptionChoiceDto) => {
+                                const label = getAvailabilityLabel(
+                                  option.isAvailable,
+                                  option.tempUnavailableUntil,
+                                  copy.status,
+                                );
+                                const isSaving = savingKey === `option-${option.optionStableId}`;
+                                return (
+                                  <div
+                                    key={option.optionStableId}
+                                    className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-700 bg-slate-900/50 px-4 py-3"
+                                  >
+                                    <div>
+                                      <div className="text-sm font-semibold">
+                                        {getLocalizedName(safeLocale, option.nameEn, option.nameZh)}
+                                      </div>
+                                      <span
+                                        className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-xs ${statusTone(
+                                          label,
+                                          copy.status,
+                                        )}`}
+                                      >
+                                        {label}
+                                      </span>
+                                    </div>
+                                    <AvailabilityActions
+                                      labels={copy.actions}
+                                      disabled={isSaving}
+                                      onSet={(mode) =>
+                                        void setOptionAvailability(option.optionStableId, mode)
+                                      }
+                                    />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ))}
                       </div>
                     ))}
                   </div>
