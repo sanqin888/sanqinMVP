@@ -457,11 +457,10 @@ export default function PosMembershipPage() {
     return () => window.clearTimeout(handle);
   }, [copy.errors.searchFailed, searchPhone]);
 
-  const totalRechargePoints = useMemo(() => {
-    const base = Number.parseFloat(rechargeAmount) || 0;
+  const rechargeBonusPoints = useMemo(() => {
     const bonus = Number.parseFloat(rechargeBonus) || 0;
-    return Math.round(base + bonus);
-  }, [rechargeAmount, rechargeBonus]);
+    return bonus > 0 ? Math.round(bonus) : 0;
+  }, [rechargeBonus]);
 
   const rechargeAmountValue = useMemo(() => {
     const base = Number.parseFloat(rechargeAmount) || 0;
@@ -564,7 +563,7 @@ export default function PosMembershipPage() {
   const handleConfirmRecharge = async () => {
     if (
       !selectedMemberId ||
-      totalRechargePoints <= 0 ||
+      rechargeAmountValue <= 0 ||
       !rechargeVerificationToken
     )
       return;
@@ -1116,7 +1115,12 @@ export default function PosMembershipPage() {
                 <p className="text-xs text-rose-300">{rechargeError}</p>
               )}
               <div className="rounded-2xl border border-slate-700 bg-slate-800 px-4 py-3 text-xs text-slate-300">
-                {copy.pointsBalance}: {formatPoints(totalRechargePoints, locale)}
+                <p>
+                  {copy.walletBalance}: {formatBalance(rechargeAmountValue, locale)}
+                </p>
+                <p className="mt-1">
+                  {copy.pointsBalance}: {formatPoints(rechargeBonusPoints, locale)}
+                </p>
               </div>
               {rechargeConvertedAmount != null && (
                 <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-100">
@@ -1140,7 +1144,7 @@ export default function PosMembershipPage() {
                   rechargeSubmitting ||
                   rechargeStep !== "verified" ||
                   !rechargeVerificationToken ||
-                  totalRechargePoints <= 0
+                  rechargeAmountValue <= 0
                 }
                 className="rounded-full border border-emerald-400/70 bg-emerald-500/10 px-4 py-2 text-xs font-semibold text-emerald-200 disabled:opacity-50"
               >
