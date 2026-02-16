@@ -169,6 +169,25 @@ async function assertOperationResult(response: Response): Promise<void> {
   }
 }
 
+function toSafeErrorLog(error: unknown): Record<string, unknown> {
+  if (error instanceof ApiError) {
+    return {
+      name: error.name,
+      message: error.message,
+      status: error.status,
+    };
+  }
+
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+    };
+  }
+
+  return { message: String(error) };
+}
+
 declare global {
   interface Window {
     Clover?: new (
@@ -959,7 +978,7 @@ export default function CheckoutPage() {
         setPublicMenuLookup(map);
         setDailySpecialLookup(specialsMap);
       } catch (error) {
-        console.error("Failed to load menu for checkout", error);
+        console.error("Failed to load menu for checkout", toSafeErrorLog(error));
         if (cancelled) return;
 
         setPublicMenuLookup(new Map());
@@ -1003,7 +1022,7 @@ export default function CheckoutPage() {
         setEntitlements(data);
         setEntitlementsError(null);
       } catch (error) {
-        console.error("Failed to load entitlements", error);
+        console.error("Failed to load entitlements", toSafeErrorLog(error));
         if (cancelled) return;
         setEntitlements(null);
         setEntitlementsError(
@@ -1034,7 +1053,7 @@ export default function CheckoutPage() {
         if (cancelled) return;
         setStoreStatus(data);
       } catch (error) {
-        console.error("Failed to load store status", error);
+        console.error("Failed to load store status", toSafeErrorLog(error));
         if (cancelled) return;
         setStoreStatusError(
           locale === "zh"
@@ -1459,17 +1478,6 @@ export default function CheckoutPage() {
     storeStatusDetail,
   ]);
 
-  useEffect(() => {
-    const onMsg = (e: MessageEvent) => {
-      if (typeof e.origin === "string" && e.origin.includes("clover.com")) {
-        console.log("[CLOVER postMessage]", e.origin, e.data);
-      }
-    };
-
-    window.addEventListener("message", onMsg);
-    return () => window.removeEventListener("message", onMsg);
-  }, []);
-
 useEffect(() => {
   if (typeof window === "undefined") return;
 
@@ -1781,7 +1789,7 @@ useEffect(() => {
 
       setApplePayMounted(Boolean(applePayRef.current));
     } catch (error) {
-      console.error("[AP] update/mount error", error);
+      console.error("[AP] update/mount error", toSafeErrorLog(error));
       applePayRef.current?.destroy?.();
       applePayRef.current = null;
       applePayTokenRef.current = null;
@@ -1823,7 +1831,7 @@ useEffect(() => {
       await placeOrderRef.current();
       cloverRef.current?.updateApplePaymentStatus("success");
     } catch (error) {
-      console.error("[AP] paymentMethod error", error);
+      console.error("[AP] paymentMethod error", toSafeErrorLog(error));
       cloverRef.current?.updateApplePaymentStatus("failed");
     }
   };
@@ -2048,7 +2056,7 @@ useEffect(() => {
 
       setPhoneVerificationStep("codeSent");
     } catch (err) {
-      console.error(err);
+      console.error("Unexpected checkout error", toSafeErrorLog(err));
       const errMessage = err instanceof Error ? err.message.toLowerCase() : "";
       const isDailyLimitReached = errMessage.includes(
         "too many requests in a day",
@@ -2099,7 +2107,7 @@ useEffect(() => {
       setPhoneVerified(true);
       setPhoneVerificationStep("verified");
     } catch (err) {
-      console.error(err);
+      console.error("Unexpected checkout error", toSafeErrorLog(err));
       setPhoneVerificationError(
         locale === "zh"
           ? "验证码验证失败，请检查后重试。"
@@ -2266,7 +2274,7 @@ useEffect(() => {
         if (err instanceof DOMException && err.name === "AbortError") {
           return;
         }
-        console.error(err);
+        console.error("Unexpected checkout error", toSafeErrorLog(err));
         setLoyaltyError(
           locale === "zh"
             ? "积分信息加载失败，暂时无法使用积分抵扣。"
@@ -2319,7 +2327,7 @@ useEffect(() => {
         if (error instanceof DOMException && error.name === "AbortError") {
           return;
         }
-        console.error("Failed to load member addresses", error);
+        console.error("Failed to load member addresses", toSafeErrorLog(error));
         setMemberAddresses([]);
         setSelectedAddressStableId(null);
       }
@@ -2386,7 +2394,7 @@ useEffect(() => {
         if (err instanceof DOMException && err.name === "AbortError") {
           return;
         }
-        console.error(err);
+        console.error("Unexpected checkout error", toSafeErrorLog(err));
         setCouponError(
           locale === "zh"
             ? "可用优惠券加载失败，暂时无法使用优惠券。"
@@ -2647,9 +2655,8 @@ useEffect(() => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      console.log("New address auto-saved to address book");
     } catch (error) {
-      console.error("Failed to auto-save address", error);
+      console.error("Failed to auto-save address", toSafeErrorLog(error));
     }
   };
 
@@ -2684,13 +2691,6 @@ useEffect(() => {
     setPayFlowState("SUBMITTING");
     let totalCentsForOrder = 0;
     setIsSubmitting(true);
-    console.log("[PAY] start", {
-      requiresPayment,
-      totalCentsForOrder,
-      fulfillment,
-      deliveryType,
-    });
-
     let deliveryDistanceKm: number | null = null;
 
     // 先做距离校验
@@ -2742,15 +2742,6 @@ useEffect(() => {
 
     totalCentsForOrder =
       discountedSubtotalForOrder + deliveryFeeCentsForOrder + taxCentsForOrder;
-
-    console.log("[PAY] computed", {
-      subtotalCents,
-      couponDiscountCentsForOrder,
-      loyaltyRedeemCentsForOrder,
-      deliveryFeeCentsForOrder,
-      taxCentsForOrder,
-      totalCentsForOrder,
-    });
 
     const deliveryMetadata = isDeliveryFulfillment
       ? {
@@ -2905,9 +2896,7 @@ useEffect(() => {
 
       let sourceToken = applePayTokenRef.current;
       if (!sourceToken) {
-        console.log("[PAY] before createToken");
         const tokenResult = await clover.createToken();
-        console.log("[PAY] after createToken", tokenResult);
 
         if (!tokenResult?.token) {
           const tokenError =
@@ -2953,7 +2942,6 @@ useEffect(() => {
         "apiFetch /clover/pay/online/quote",
       );
 
-      console.log("[PAY] before apiFetch card-token");
       const paymentResponse = await withTimeout(
         apiFetch<CardTokenPaymentResponse>("/clover/pay/online/card-token", {
           method: "POST",
@@ -2982,8 +2970,6 @@ useEffect(() => {
         20000,
         "apiFetch /clover/pay/online/card-token",
       );
-      console.log("[PAY] after apiFetch card-token", paymentResponse);
-
       if (paymentResponse.status === "CHALLENGE_REQUIRED") {
         if (paymentResponse.challengeUrl) {
           setChallengeUrl(paymentResponse.challengeUrl);
@@ -4073,47 +4059,44 @@ useEffect(() => {
 
                   {appliedCoupon ? (
                     <div className="mt-2 rounded-xl border border-amber-200 bg-white px-3 py-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">
-                            {appliedCoupon.title}
-                          </p>
-                          <p className="text-[11px] text-slate-500">
-                            {appliedCoupon.code}
-                          </p>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">
+                          {appliedCoupon.title}
+                        </p>
+                      </div>
+
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-600">
+                          <span className="font-semibold text-amber-700">
+                            {locale === "zh" ? "立减 " : "Save "}
+                            {formatMoney(couponDiscountCents)}
+                          </span>
+                          {appliedCoupon.minSpendCents ? (
+                            <span
+                              className={
+                                couponEligibleSubtotalCents >=
+                                (appliedCoupon.minSpendCents ?? 0)
+                                  ? "text-emerald-700"
+                                  : "text-red-600"
+                              }
+                            >
+                              {locale === "zh"
+                                ? `满 ${formatMoney(
+                                    appliedCoupon.minSpendCents,
+                                  )} 可用`
+                                : `Min spend ${formatMoney(
+                                    appliedCoupon.minSpendCents,
+                                  )}.`}
+                            </span>
+                          ) : null}
                         </div>
                         <button
                           type="button"
                           onClick={handleRemoveCoupon}
-                          className="shrink-0 rounded-full border border-slate-300 px-3 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-100"
+                          className="shrink-0 whitespace-nowrap rounded-full border border-slate-300 px-3 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-100"
                         >
                           {locale === "zh" ? "取消使用" : "Remove"}
                         </button>
-                      </div>
-
-                      <div className="mt-2 flex items-center justify-between text-[11px] text-slate-600">
-                        <span className="font-semibold text-amber-700">
-                          {locale === "zh" ? "立减 " : "Save "}
-                          {formatMoney(couponDiscountCents)}
-                        </span>
-                        {appliedCoupon.minSpendCents ? (
-                          <span
-                            className={
-                              couponEligibleSubtotalCents >=
-                              (appliedCoupon.minSpendCents ?? 0)
-                                ? "text-emerald-700"
-                                : "text-red-600"
-                            }
-                          >
-                            {locale === "zh"
-                              ? `满 ${formatMoney(
-                                  appliedCoupon.minSpendCents,
-                                )} 可用`
-                              : `Min spend ${formatMoney(
-                                  appliedCoupon.minSpendCents,
-                                )}.`}
-                          </span>
-                        ) : null}
                       </div>
                     </div>
                   ) : (

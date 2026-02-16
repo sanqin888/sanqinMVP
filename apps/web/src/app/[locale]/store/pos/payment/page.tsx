@@ -6,6 +6,7 @@ import { useRouter, useParams } from "next/navigation";
 import { TAX_RATE } from "@/lib/order/shared";
 import type { Locale } from "@/lib/i18n/locales";
 import { ApiError, apiFetch } from "@/lib/api/client";
+import type { PublicMenuResponse as PublicMenuApiResponse } from "@shared/menu";
 import { advanceOrder, printOrderCloud } from "@/lib/api/pos";
 import {
   POS_DISPLAY_CHANNEL,
@@ -91,6 +92,7 @@ const STRINGS: Record<
     balancePaymentAvailable: string;
     balancePaymentAfter: string;
     back: string;
+    backKeepItems: string;
     confirm: string;
     confirming: string;
     tip: string;
@@ -121,6 +123,7 @@ const STRINGS: Record<
     useBalanceLabel: string; // [新增]
     useBalanceHint: string; // [新增]
     max: string; // [新增]
+    mixedPaymentHint: string;
   }
 > = {
   zh: {
@@ -146,6 +149,7 @@ const STRINGS: Record<
     balancePaymentAvailable: "可用余额",
     balancePaymentAfter: "预计结算后余额",
     back: "返回点单",
+    backKeepItems: "保留菜品返回点单",
     confirm: "确认收款并生成订单",
     confirming: "处理中…",
     tip: "请在确认顾客完成支付后，再点击“确认收款并生成订单”。",
@@ -176,6 +180,7 @@ const STRINGS: Record<
     useBalanceLabel: "使用余额",
     useBalanceHint: "输入金额",
     max: "MAX",
+    mixedPaymentHint: "余额抵扣后，请选择剩余金额的支付方式。",
   },
   en: {
     title: "Store POS · Payment",
@@ -200,6 +205,7 @@ const STRINGS: Record<
     balancePaymentAvailable: "Available balance",
     balancePaymentAfter: "Estimated balance after",
     back: "Back to POS",
+    backKeepItems: "Back to POS (keep items)",
     confirm: "Confirm payment & create order",
     confirming: "Saving…",
     tip: "Only tap “Confirm payment & create order” after the customer has finished paying.",
@@ -231,6 +237,7 @@ const STRINGS: Record<
     useBalanceLabel: "Use Balance",
     useBalanceHint: "Amount",
     max: "MAX",
+    mixedPaymentHint: "After balance deduction, choose how to pay the remaining amount.",
   },
 };
 
@@ -247,6 +254,11 @@ function roundUpToFiveCents(cents: number): number {
   return Math.ceil(cents / 5) * 5;
 }
 
+function formatSignedMoney(cents: number): string {
+  const sign = cents >= 0 ? "+" : "-";
+  return `${sign}${formatMoney(Math.abs(cents))}`;
+}
+
 export default function StorePosPaymentPage() {
   const router = useRouter();
   const params = useParams<{ locale?: string }>();
@@ -254,6 +266,7 @@ export default function StorePosPaymentPage() {
   const t = STRINGS[locale];
 
   const [snapshot, setSnapshot] = useState<PosDisplaySnapshot | null>(null);
+  const [menuCategories, setMenuCategories] = useState<PublicMenuApiResponse["categories"]>([]);
   const [loadingSnapshot, setLoadingSnapshot] = useState(true);
   const [fulfillment, setFulfillment] = useState<FulfillmentType | null>(null);
   const [orderChannel, setOrderChannel] = useState<PosOrderChannel>("in_store");
@@ -300,6 +313,19 @@ export default function StorePosPaymentPage() {
 
   useEffect(() => {
     let active = true;
+    apiFetch<PublicMenuApiResponse>("/menu/public")
+      .then((menu) => {
+        if (!active) return;
+        setMenuCategories(Array.isArray(menu.categories) ? menu.categories : []);
+      })
+      .catch((err) => console.warn("Failed to load menu for option labels:", err));
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
     apiFetch<BusinessConfigLite>("/admin/business/config")
       .then((config) => {
         if (!active) return;
@@ -317,6 +343,30 @@ export default function StorePosPaymentPage() {
       .catch((err) => console.warn("Failed to load exchange rate config:", err));
     return () => { active = false; };
   }, []);
+
+  const optionMetaMap = useMemo(() => {
+    const map = new Map<string, {
+      optionNameZh: string | null;
+      optionNameEn: string;
+      priceDeltaCents: number;
+    }>();
+
+    for (const category of menuCategories) {
+      for (const item of category.items) {
+        for (const group of item.optionGroups ?? []) {
+          for (const option of group.options ?? []) {
+            map.set(`${group.templateGroupStableId}::${option.optionStableId}`, {
+              optionNameZh: option.nameZh,
+              optionNameEn: option.nameEn,
+              priceDeltaCents: option.priceDeltaCents,
+            });
+          }
+        }
+      }
+    }
+
+    return map;
+  }, [menuCategories]);
 
   const hasItems = !!snapshot && Array.isArray(snapshot.items) && snapshot.items.length > 0;
 
@@ -398,12 +448,12 @@ const loyaltyRedeemCents = redeemCents;
     return balanceCents >= totalAfterPointsCents;
   }, [memberInfo, totalAfterPointsCents]);
 
-  // 如果剩余应付为0，自动切换到余额支付模式（视觉上）
+  // 如果是全额余额支付，自动切换到余额支付方式。
   useEffect(() => {
     if (isFullyPaidByBalance && paymentMethod !== 'store_balance') {
       setPaymentMethod('store_balance');
     } else if (!isFullyPaidByBalance && paymentMethod === 'store_balance') {
-        // 如果不再是全额支付（例如修改了输入），切回现金
+        // 若变成混合支付，默认改为现金，可继续切换为银行卡/微信支付宝。
         setPaymentMethod('cash');
     }
   }, [isFullyPaidByBalance, paymentMethod]);
@@ -417,14 +467,6 @@ const loyaltyRedeemCents = redeemCents;
       setPaymentMethod("cash");
     }
   }, [orderChannel, paymentMethod]);
-
-  // ✅ 新增：计算余额是否充足
-  const isBalanceSufficient = useMemo(() => {
-    if (paymentMethod !== 'store_balance') return true;
-    if (!memberInfo) return false;
-    const balanceCents = (memberInfo.balance ?? 0) * 100;
-    return balanceCents >= totalAfterPointsCents;
-  }, [paymentMethod, memberInfo, totalAfterPointsCents]);
 
   const computedSnapshot = useMemo(() => {
     if (!snapshot) return null;
@@ -482,8 +524,36 @@ const loyaltyRedeemCents = redeemCents;
       : null;
 
   // 余额计算
-  const currentMemberBalanceCents = memberInfo ? Math.round((memberInfo.balance ?? 0) * 100) : 0;
-  const balanceRemainingAfterOrder = Math.max(0, currentMemberBalanceCents - balanceToUseCents);
+  const balanceRemainingAfterOrder = Math.max(
+    0,
+    (memberInfo ? Math.round((memberInfo.balance ?? 0) * 100) : 0) - balanceToUseCents,
+  );
+
+  const resolveSelectedOptions = useCallback((item: PosDisplaySnapshot["items"][number]) => {
+    if (!item.options) return [];
+
+    const lines: Array<{ optionName: string; priceDeltaCents: number }> = [];
+
+    Object.entries(item.options).forEach(([groupStableId, optionStableIds]) => {
+      optionStableIds.forEach((optionStableId) => {
+        const meta = optionMetaMap.get(`${groupStableId}::${optionStableId}`);
+        if (meta) {
+          lines.push({
+            optionName: locale === "zh" ? meta.optionNameZh ?? meta.optionNameEn : meta.optionNameEn,
+            priceDeltaCents: meta.priceDeltaCents,
+          });
+          return;
+        }
+
+        lines.push({
+          optionName: optionStableId.slice(-6),
+          priceDeltaCents: 0,
+        });
+      });
+    });
+
+    return lines;
+  }, [locale, optionMetaMap]);
 
   const handleMemberLookup = async () => {
     if (!memberPhone.trim()) {
@@ -532,7 +602,14 @@ const loyaltyRedeemCents = redeemCents;
     if (paymentMethod === "store_balance") setPaymentMethod("cash");
   };
 
-  const handleBack = () => router.push(`/${locale}/store/pos`);
+  const handleBackKeepItems = () => router.push(`/${locale}/store/pos`);
+
+  const handleBack = () => {
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(POS_DISPLAY_STORAGE_KEY);
+    }
+    router.push(`/${locale}/store/pos`);
+  };
 
   // 点击 MAX 填充积分
   const handleMaxPoints = () => {
@@ -575,14 +652,14 @@ const loyaltyRedeemCents = redeemCents;
       return;
     }
 
-    // ✅ 余额支付前置校验
+    // 余额支付前置校验
     if (paymentMethod === 'store_balance') {
         if (!memberInfo) {
             setError(t.memberNotFound);
             setSubmitting(false);
             return;
         }
-        if (!isBalanceSufficient) {
+        if (!isBalanceSufficientForFullPayment) {
             setError(t.balanceInsufficient);
             setSubmitting(false);
             return;
@@ -602,10 +679,15 @@ const loyaltyRedeemCents = redeemCents;
 
       // ✅ 映射 PaymentMethod
       let apiPaymentMethod: PaymentMethod = "CASH";
-      if (paymentMethod === "card") apiPaymentMethod = "CARD";
-      else if (paymentMethod === "wechat_alipay") apiPaymentMethod = "WECHAT_ALIPAY";
-      else if (paymentMethod === "store_balance") apiPaymentMethod = "STORE_BALANCE";
-      else if (paymentMethod === "ubereats") apiPaymentMethod = "UBEREATS";
+      if (orderChannel === "ubereats") {
+        apiPaymentMethod = "UBEREATS";
+      } else if (isFullyPaidByBalance) {
+        apiPaymentMethod = "STORE_BALANCE";
+      } else if (paymentMethod === "card") {
+        apiPaymentMethod = "CARD";
+      } else if (paymentMethod === "wechat_alipay") {
+        apiPaymentMethod = "WECHAT_ALIPAY";
+      }
 
       const body = {
         channel: orderChannel,
@@ -686,15 +768,30 @@ const loyaltyRedeemCents = redeemCents;
           ) : (
             <>
               <ul className="space-y-2 max-h-72 overflow-auto pr-1">
-                {snapshot.items.map((item) => (
+                {snapshot.items.map((item) => {
+                  const selectedOptions = resolveSelectedOptions(item);
+                  return (
                   <li key={item.lineId ?? `${item.stableId}-${item.unitPriceCents}-${item.quantity}`} className="rounded-2xl bg-slate-900/60 px-3 py-2 flex justify-between gap-2">
                     <div className="flex-1">
                       <div className="text-sm font-medium">{locale === "zh" ? item.nameZh : item.nameEn}</div>
                       <div className="text-xs text-slate-400">×{item.quantity}</div>
+                      {selectedOptions.length > 0 && (
+                        <ul className="mt-1 space-y-0.5 text-[11px] text-slate-400">
+                          {selectedOptions.map((selected, idx) => (
+                            <li key={`${item.lineId ?? item.stableId}-${selected.optionName}-${idx}`} className="flex items-start justify-between gap-2">
+                              <span className="truncate">{selected.optionName}</span>
+                              <span className="whitespace-nowrap text-slate-500">
+                                {formatSignedMoney(selected.priceDeltaCents)}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
                     <div className="text-sm font-semibold">{formatMoney(item.lineTotalCents)}</div>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
               <div className="mt-4 border-t border-slate-700 pt-3 space-y-1 text-sm">
                 <div className="flex justify-between">
@@ -829,6 +926,7 @@ const loyaltyRedeemCents = redeemCents;
             {/* 付款方式 */}
             <div>
               <h2 className="text-sm font-semibold mb-2">{t.paymentLabel}</h2>
+              <p className="mb-2 text-xs text-slate-400">{t.mixedPaymentHint}</p>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <button disabled={orderChannel === "ubereats"} onClick={() => setPaymentMethod("cash")} className={`h-12 rounded-2xl border font-medium ${paymentMethod === "cash" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.payCash}</button>
                 <button disabled={orderChannel === "ubereats"} onClick={() => setPaymentMethod("card")} className={`h-12 rounded-2xl border font-medium ${paymentMethod === "card" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.payCard}</button>
@@ -852,24 +950,6 @@ const loyaltyRedeemCents = redeemCents;
                     )}
                 </button>
                 
-                {/* ✅ 新增：储值余额支付按钮 */}
-                {orderChannel !== "ubereats" && memberInfo && (memberInfo.balance ?? 0) > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod("store_balance")}
-                    className={`h-10 rounded-2xl border font-medium flex justify-between px-4 items-center ${
-                      paymentMethod === "store_balance"
-                        ? "border-emerald-400 bg-emerald-500 text-slate-900"
-                        : "border-slate-600 bg-slate-900 text-slate-100"
-                    }`}
-                  >
-                    <span>{t.payStoreBalance}</span>
-                    <span className="text-xs opacity-80">
-                       {/* 显示当前余额 */}
-                       {formatMoney((memberInfo.balance ?? 0) * 100)}
-                    </span>
-                  </button>
-                )}
                 <button disabled={orderChannel !== "ubereats"} onClick={() => setPaymentMethod("ubereats")} className={`h-12 rounded-2xl border font-medium ${paymentMethod === "ubereats" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-500"}`}>{t.payUberEats}</button>
               </div>
             </div>
@@ -878,6 +958,7 @@ const loyaltyRedeemCents = redeemCents;
           </div>
 
           <div className="mt-auto pt-4 flex gap-3">
+            <button onClick={handleBackKeepItems} className="flex-1 h-12 rounded-2xl border border-blue-500/60 text-sm font-medium text-blue-100 hover:bg-blue-500/10">{t.backKeepItems}</button>
             <button onClick={handleBack} className="flex-1 h-12 rounded-2xl border border-slate-600 text-sm font-medium text-slate-100 hover:bg-slate-700">{t.back}</button>
             <button disabled={!hasItems || submitting || !snapshot || !fulfillment} onClick={handleConfirm} className="flex-[2] h-12 rounded-2xl text-sm font-bold bg-emerald-500 text-slate-900 hover:bg-emerald-400 disabled:opacity-50 disabled:bg-slate-600 disabled:text-slate-400">
               {submitting ? t.confirming : t.confirm}

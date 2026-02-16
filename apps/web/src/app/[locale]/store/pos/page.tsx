@@ -30,6 +30,7 @@ type PosCartEntry = {
   lineId: string;
   stableId: string;
   quantity: number;
+  customUnitPriceCents?: number;
   options?: Record<string, string[]>;
 };
 
@@ -73,6 +74,7 @@ const STRINGS = {
     tapToAdd: "点击添加",
     chooseOptions: "请选择必选项",
     addToCart: "加入本单",
+    priceLabel: "价格",
     optionsRequired: "请先选择所有必选项",
     optionLimit: (min: number, max: number | null) =>
       max === null || max === min
@@ -121,6 +123,7 @@ const STRINGS = {
     tapToAdd: "Tap to add",
     chooseOptions: "Select required options",
     addToCart: "Add to order",
+    priceLabel: "Price",
     optionsRequired: "Please complete required options",
     optionLimit: (min: number, max: number | null) =>
       max === null || max === min
@@ -258,6 +261,24 @@ export default function StorePosPage() {
   }, [isZh]);
 
   const isCustomerPaused = customerOrderingStatus?.isTemporarilyClosed ?? false;
+  const isStoreOpenNow = storeStatus?.isOpen ?? false;
+  const isCustomerOrderingOpen = !isCustomerPaused && isStoreOpenNow;
+
+  const customerStatusLabel = (() => {
+    if (isCustomerPaused) {
+      return t.storeStatusClosed;
+    }
+
+    if (isStoreOpenNow) {
+      return t.storeStatusOpen;
+    }
+
+    if (storeStatus?.today?.isHoliday) {
+      return t.storeStatusHoliday;
+    }
+
+    return t.storeStatusClosedBySchedule;
+  })();
 
   let storeStatusDetail: string | null = null;
   if (storeStatus && isCustomerPaused) {
@@ -294,12 +315,16 @@ export default function StorePosPage() {
           });
         }
         const unitPriceCents = Math.round(item.price * 100) + optionDeltaCents;
+        const effectiveUnitPriceCents =
+          typeof entry.customUnitPriceCents === "number"
+            ? entry.customUnitPriceCents
+            : unitPriceCents;
 
         return {
           ...entry,
           item,
-          unitPriceCents,
-          lineTotalCents: unitPriceCents * entry.quantity,
+          unitPriceCents: effectiveUnitPriceCents,
+          lineTotalCents: effectiveUnitPriceCents * entry.quantity,
         };
       })
       .filter((x): x is NonNullable<typeof x> => Boolean(x));
@@ -322,24 +347,30 @@ export default function StorePosPage() {
     return cat ? cat.items : [];
   }, [menuCategories, activeCategoryId]);
 
-  const addItem = (itemId: string) => {
-    setCart((prev) => {
-      const existing = prev.find((e) => e.stableId === itemId && !e.options);
-      if (existing) {
-        return prev.map((e) =>
-          e.lineId === existing.lineId ? { ...e, quantity: e.quantity + 1 } : e,
-        );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(POS_DISPLAY_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as PosDisplaySnapshot;
+      const restoredItems = (parsed.items ?? []).map((item) => ({
+        lineId: item.lineId ?? `line-${Date.now()}-${Math.random()}`,
+        stableId: item.stableId,
+        quantity: item.quantity,
+        customUnitPriceCents:
+          typeof item.customUnitPriceCents === "number"
+            ? item.customUnitPriceCents
+            : item.unitPriceCents,
+        options: item.options,
+      }));
+      if (restoredItems.length > 0) {
+        setCart(restoredItems);
       }
-      return [
-        ...prev,
-        {
-          lineId: `line-${Date.now()}-${Math.random()}`,
-          stableId: itemId,
-          quantity: 1,
-        },
-      ];
-    });
-  };
+    } catch (err) {
+      console.warn("Failed to restore POS cart snapshot:", err);
+    }
+  }, []);
 
   const clearCart = () => {
     setCart([]);
@@ -350,6 +381,8 @@ export default function StorePosPage() {
     item: PublicMenuCategory["items"][number];
     selected: Record<string, string[]>;
     quantity: number;
+    customUnitPriceCents: number;
+    priceInput: string;
   } | null>(null);
 
   const closeDialog = () => {
@@ -357,10 +390,30 @@ export default function StorePosPage() {
   };
 
   const openOptionDialog = (item: PublicMenuCategory["items"][number]) => {
+    const defaultUnitPriceCents = Math.round(item.price * 100);
     setActiveItem({
       item,
       selected: {},
       quantity: 1,
+      customUnitPriceCents: defaultUnitPriceCents,
+      priceInput: (defaultUnitPriceCents / 100).toFixed(2),
+    });
+  };
+
+  const updateActiveItemPrice = (raw: string) => {
+    setActiveItem((prev) => {
+      if (!prev) return prev;
+      const next = raw.replace(/[^\d.]/g, "");
+      const parsed = Number(next);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        return { ...prev, priceInput: next };
+      }
+
+      return {
+        ...prev,
+        priceInput: next,
+        customUnitPriceCents: Math.round(parsed * 100),
+      };
     });
   };
 
@@ -466,6 +519,7 @@ export default function StorePosPage() {
         lineId,
         stableId: activeItem.item.stableId,
         quantity: activeItem.quantity,
+        customUnitPriceCents: activeItem.customUnitPriceCents,
         options: activeItem.selected,
       },
     ]);
@@ -483,6 +537,7 @@ export default function StorePosPage() {
         nameEn: entry.item.nameEn,
         quantity: entry.quantity,
         unitPriceCents: entry.unitPriceCents,
+        customUnitPriceCents: entry.customUnitPriceCents,
         lineTotalCents: entry.lineTotalCents,
         options: entry.options,
       })),
@@ -618,18 +673,16 @@ export default function StorePosPage() {
                 }}
                 disabled={customerStatusSaving}
                 className={`rounded-full border px-6 py-2 text-base font-semibold ${
-                  isCustomerPaused
-                    ? "border-rose-400/60 bg-rose-500/10 text-rose-200"
-                    : "border-emerald-400/60 bg-emerald-500/10 text-emerald-200"
+                  isCustomerOrderingOpen
+                    ? "border-emerald-400/60 bg-emerald-500/10 text-emerald-200"
+                    : "border-rose-400/60 bg-rose-500/10 text-rose-200"
                 } ${customerStatusSaving ? "opacity-70" : ""}`}
               >
                 {customerStatusSaving
                   ? isCustomerPaused
                     ? t.resuming
                     : t.pausing
-                  : isCustomerPaused
-                    ? t.storeStatusClosed
-                    : t.storeStatusOpen}
+                  : customerStatusLabel}
               </button>
               {!isCustomerPaused && showPauseMenu && (
                 <div className="absolute right-0 z-30 mt-2 w-52 rounded-2xl border border-slate-600 bg-slate-800 p-2 shadow-xl">
@@ -693,20 +746,12 @@ export default function StorePosPage() {
                     role="button"
                     tabIndex={0}
                     onClick={() => {
-                      if (item.optionGroups && item.optionGroups.length > 0) {
-                        openOptionDialog(item);
-                      } else {
-                        addItem(item.stableId);
-                      }
+                      openOptionDialog(item);
                     }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
-                        if (item.optionGroups && item.optionGroups.length > 0) {
-                          openOptionDialog(item);
-                        } else {
-                          addItem(item.stableId);
-                        }
+                        openOptionDialog(item);
                       }
                     }}
                     className="flex flex-col justify-between rounded-3xl bg-slate-800 hover:bg-slate-700 active:scale-[0.99] transition-transform p-3 text-left"
@@ -1125,6 +1170,16 @@ export default function StorePosPage() {
                   </button>
                 </div>
               </div>
+              <label className="flex items-center gap-2 text-sm text-slate-300">
+                <span>{t.priceLabel}</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={activeItem.priceInput}
+                  onChange={(e) => updateActiveItemPrice(e.target.value)}
+                  className="h-11 w-28 rounded-2xl border border-slate-600 bg-slate-800 px-3 text-right text-sm text-slate-100"
+                />
+              </label>
               <button
                 type="button"
                 disabled={!canAddToCart}

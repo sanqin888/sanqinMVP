@@ -146,7 +146,7 @@ export default function LocalOrderPage() {
         setEntitlements(null);
         setEntitlementsError(
           locale === "zh"
-            ? "专享套餐加载失败，请稍后重试。"
+            ? "专享优惠加载失败，请稍后重试。"
             : "Failed to load member exclusives. Please try again later.",
         );
       }
@@ -225,7 +225,7 @@ export default function LocalOrderPage() {
     return [
       {
         stableId: "exclusive-combos",
-        name: locale === "zh" ? "专享套餐" : "Exclusive combos",
+        name: locale === "zh" ? "专享优惠" : "Exclusive offers",
         items: entitlementItems,
       },
       ...menu,

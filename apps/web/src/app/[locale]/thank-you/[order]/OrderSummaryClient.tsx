@@ -210,7 +210,6 @@ export function OrderSummaryClient({ orderStableId, locale }: Props) {
         // 如果你的 apiFetch 返回 status，你需要相应调整判断逻辑
         if (attempts < MAX_ATTEMPTS) {
           attempts++;
-          console.log(`Order not found, retrying... (${attempts}/${MAX_ATTEMPTS})`);
           setTimeout(fetchOrder, RETRY_INTERVAL_MS);
         } else {
           // 超过最大重试次数，彻底放弃

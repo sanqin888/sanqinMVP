@@ -354,7 +354,9 @@ export class NotificationService {
       await this.businessConfigService.getMessagingSnapshot(locale);
     const claimUrl = `${process.env.PUBLIC_BASE_URL}/${locale}/membership`;
     const giftName =
-      program.tittleCh ?? program.tittleEn ?? program.programStableId;
+      locale === 'zh'
+        ? (program.tittleCh ?? program.tittleEn ?? program.programStableId)
+        : (program.tittleEn ?? program.tittleCh ?? program.programStableId);
     const userName =
       this.formatUserName(user) ||
       (locale === 'zh' ? '亲爱的顾客' : 'Dear Customer');
