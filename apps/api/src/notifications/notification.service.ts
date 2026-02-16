@@ -355,8 +355,8 @@ export class NotificationService {
     const claimUrl = `${process.env.PUBLIC_BASE_URL}/${locale}/membership`;
     const giftName =
       locale === 'zh'
-        ? program.tittleCh ?? program.tittleEn ?? program.programStableId
-        : program.tittleEn ?? program.tittleCh ?? program.programStableId;
+        ? (program.tittleCh ?? program.tittleEn ?? program.programStableId)
+        : (program.tittleEn ?? program.tittleCh ?? program.programStableId);
     const userName =
       this.formatUserName(user) ||
       (locale === 'zh' ? '亲爱的顾客' : 'Dear Customer');
