@@ -626,17 +626,6 @@ const loyaltyRedeemCents = redeemCents;
     setUseBalanceInput((maxAllowed / 100).toFixed(2));
   };
 
-  // 底部直接点击“储值余额支付”
-  const handleSelectStoreBalancePayment = () => {
-    if (!memberInfo) return;
-    if (isBalanceSufficientForFullPayment) {
-        // 如果余额充足，直接填满
-        setUseBalanceInput((totalAfterPointsCents / 100).toFixed(2));
-        setPaymentMethod("store_balance");
-    } 
-    // 如果余额不足，不做操作（UI上按钮置灰），强迫用户使用 Input 框的 MAX
-  };
-
   const handleConfirm = async () => {
     setError(null);
     setSubmitting(true);
@@ -773,8 +762,10 @@ const loyaltyRedeemCents = redeemCents;
                   return (
                   <li key={item.lineId ?? `${item.stableId}-${item.unitPriceCents}-${item.quantity}`} className="rounded-2xl bg-slate-900/60 px-3 py-2 flex justify-between gap-2">
                     <div className="flex-1">
-                      <div className="text-sm font-medium">{locale === "zh" ? item.nameZh : item.nameEn}</div>
-                      <div className="text-xs text-slate-400">×{item.quantity}</div>
+                      <div className="flex items-center gap-2 text-sm font-medium">
+                        <span>{locale === "zh" ? item.nameZh : item.nameEn}</span>
+                        <span className="text-xs text-slate-400">×{item.quantity}</span>
+                      </div>
                       {selectedOptions.length > 0 && (
                         <ul className="mt-1 space-y-0.5 text-[11px] text-slate-400">
                           {selectedOptions.map((selected, idx) => (
@@ -931,24 +922,6 @@ const loyaltyRedeemCents = redeemCents;
                 <button disabled={orderChannel === "ubereats"} onClick={() => setPaymentMethod("cash")} className={`h-12 rounded-2xl border font-medium ${paymentMethod === "cash" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.payCash}</button>
                 <button disabled={orderChannel === "ubereats"} onClick={() => setPaymentMethod("card")} className={`h-12 rounded-2xl border font-medium ${paymentMethod === "card" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.payCard}</button>
                 <button disabled={orderChannel === "ubereats"} onClick={() => setPaymentMethod("wechat_alipay")} className={`h-12 rounded-2xl border font-medium ${paymentMethod === "wechat_alipay" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.payWeChatAlipay}</button>
-                
-                {/* 储值余额支付按钮 */}
-                <button 
-                    onClick={handleSelectStoreBalancePayment} 
-                    disabled={orderChannel === "ubereats" || !memberInfo || !isBalanceSufficientForFullPayment}
-                    className={`h-12 rounded-2xl border font-medium flex flex-col items-center justify-center leading-tight
-                        ${paymentMethod === "store_balance" 
-                            ? "border-emerald-400 bg-emerald-500 text-slate-900" 
-                            : (!memberInfo || !isBalanceSufficientForFullPayment)
-                                ? "border-slate-700 bg-slate-800 text-slate-600 cursor-not-allowed"
-                                : "border-blue-500/50 bg-blue-900/20 text-blue-200 hover:bg-blue-900/40"
-                        }`}
-                >
-                    <span>{t.payStoreBalance}</span>
-                    {memberInfo && !isBalanceSufficientForFullPayment && (
-                        <span className="text-[10px] opacity-70 scale-90">{t.balanceInsufficient}</span>
-                    )}
-                </button>
                 
                 <button disabled={orderChannel !== "ubereats"} onClick={() => setPaymentMethod("ubereats")} className={`h-12 rounded-2xl border font-medium ${paymentMethod === "ubereats" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-500"}`}>{t.payUberEats}</button>
               </div>
