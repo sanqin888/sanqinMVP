@@ -1291,7 +1291,10 @@ export class OrdersService {
   /**
    * 🛡️ 安全核心：服务端重算商品价格
    */
-  private async calculateLineItems(itemsDto: OrderItemInput[]): Promise<{
+  private async calculateLineItems(
+    itemsDto: OrderItemInput[],
+    options?: { allowCustomUnitPrice?: boolean },
+  ): Promise<{
     calculatedItems: Prisma.OrderItemCreateWithoutOrderInput[];
     calculatedSubtotal: number;
     couponEligibleSubtotalCents: number;
@@ -1313,6 +1316,7 @@ export class OrdersService {
       };
     });
 
+    const allowCustomUnitPrice = options?.allowCustomUnitPrice === true;
     const productIds = normalizedItems.map((i) => i.normalizedProductId);
     const allChoiceIds: string[] = [];
 
@@ -1514,7 +1518,20 @@ export class OrdersService {
         }))
         .sort((a, b) => a.sortOrder - b.sortOrder);
 
-      const unitPriceCents = baseUnitPriceCents + optionsUnitPriceCents;
+      const submittedCustomUnitPriceCents =
+        allowCustomUnitPrice &&
+        typeof itemDto.unitPrice === 'number' &&
+        Number.isFinite(itemDto.unitPrice) &&
+        itemDto.unitPrice >= 0
+          ? Math.round(itemDto.unitPrice * 100)
+          : null;
+      const unitPriceCents =
+        submittedCustomUnitPriceCents ??
+        baseUnitPriceCents + optionsUnitPriceCents;
+      const effectiveBaseUnitPriceCents =
+        submittedCustomUnitPriceCents === null
+          ? baseUnitPriceCents
+          : Math.max(0, unitPriceCents - optionsUnitPriceCents);
       const lineTotal = unitPriceCents * itemDto.qty;
       calculatedSubtotal += lineTotal;
       if (!activeSpecial?.disallowCoupons) {
@@ -1535,7 +1552,7 @@ export class OrdersService {
         nameEn: product.nameEn,
         nameZh: product.nameZh,
         unitPriceCents,
-        baseUnitPriceCents,
+        baseUnitPriceCents: effectiveBaseUnitPriceCents,
         optionsUnitPriceCents,
         isDailySpecialApplied: Boolean(activeSpecial),
         dailySpecialStableId: activeSpecial?.stableId ?? null,
@@ -1812,7 +1829,9 @@ export class OrdersService {
       calculatedSubtotal,
       couponEligibleSubtotalCents,
       couponEligibleLineItems,
-    } = await this.calculateLineItems(items);
+    } = await this.calculateLineItems(items, {
+      allowCustomUnitPrice: dto.channel === Channel.in_store,
+    });
     const productStableIds = Array.from(
       new Set(calculatedItems.map((item) => item.productStableId)),
     );
