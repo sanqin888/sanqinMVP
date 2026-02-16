@@ -261,6 +261,24 @@ export default function StorePosPage() {
   }, [isZh]);
 
   const isCustomerPaused = customerOrderingStatus?.isTemporarilyClosed ?? false;
+  const isStoreOpenNow = storeStatus?.isOpen ?? false;
+  const isCustomerOrderingOpen = !isCustomerPaused && isStoreOpenNow;
+
+  const customerStatusLabel = (() => {
+    if (isCustomerPaused) {
+      return t.storeStatusClosed;
+    }
+
+    if (isStoreOpenNow) {
+      return t.storeStatusOpen;
+    }
+
+    if (storeStatus?.today?.isHoliday) {
+      return t.storeStatusHoliday;
+    }
+
+    return t.storeStatusClosedBySchedule;
+  })();
 
   let storeStatusDetail: string | null = null;
   if (storeStatus && isCustomerPaused) {
@@ -655,18 +673,16 @@ export default function StorePosPage() {
                 }}
                 disabled={customerStatusSaving}
                 className={`rounded-full border px-6 py-2 text-base font-semibold ${
-                  isCustomerPaused
-                    ? "border-rose-400/60 bg-rose-500/10 text-rose-200"
-                    : "border-emerald-400/60 bg-emerald-500/10 text-emerald-200"
+                  isCustomerOrderingOpen
+                    ? "border-emerald-400/60 bg-emerald-500/10 text-emerald-200"
+                    : "border-rose-400/60 bg-rose-500/10 text-rose-200"
                 } ${customerStatusSaving ? "opacity-70" : ""}`}
               >
                 {customerStatusSaving
                   ? isCustomerPaused
                     ? t.resuming
                     : t.pausing
-                  : isCustomerPaused
-                    ? t.storeStatusClosed
-                    : t.storeStatusOpen}
+                  : customerStatusLabel}
               </button>
               {!isCustomerPaused && showPauseMenu && (
                 <div className="absolute right-0 z-30 mt-2 w-52 rounded-2xl border border-slate-600 bg-slate-800 p-2 shadow-xl">
