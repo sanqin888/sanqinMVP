@@ -150,6 +150,10 @@ function safeParseCreatedAtMs(createdAt: string): number {
   return Number.isFinite(ms) ? ms : Date.now();
 }
 
+function shouldShowOnBoard(order: BoardOrder): boolean {
+  return Array.isArray(order.items) && order.items.length > 0;
+}
+
 function readProcessedMap(): ProcessedMap {
   if (typeof window === "undefined") return {};
   try {
@@ -345,7 +349,8 @@ export function StoreBoardWidget(props: { locale: Locale }) {
 
   const fetchOrdersAndProcess = useCallback(async () => {
     const data = await apiFetch<BoardOrder[]>(query);
-    setOrders(data);
+    const visibleOrders = data.filter(shouldShowOnBoard);
+    setOrders(visibleOrders);
 
     const processedSet = processedSetRef.current;
     const processedMap = processedRef.current;
@@ -357,7 +362,7 @@ export function StoreBoardWidget(props: { locale: Locale }) {
       hasBootstrappedRef.current = true;
 
       if (!hadPersistedRef.current) {
-        for (const o of data) {
+        for (const o of visibleOrders) {
           const sid = o.orderStableId;
           processedSet.add(sid);
           if (!processedMap[sid]) processedMap[sid] = safeParseCreatedAtMs(o.createdAt);
@@ -368,7 +373,9 @@ export function StoreBoardWidget(props: { locale: Locale }) {
       // hadPersistedRef = true：继续走下面正常 newOrders 逻辑（补打漏单）
     }
 
-    const newOrders = data.filter((o) => !processedSet.has(o.orderStableId));
+    const newOrders = visibleOrders.filter(
+      (o) => !processedSet.has(o.orderStableId),
+    );
     if (newOrders.length === 0) return;
 
     markNewOrders(newOrders.map((o) => o.orderStableId));
