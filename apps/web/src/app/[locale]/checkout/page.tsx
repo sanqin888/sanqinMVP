@@ -4073,47 +4073,44 @@ useEffect(() => {
 
                   {appliedCoupon ? (
                     <div className="mt-2 rounded-xl border border-amber-200 bg-white px-3 py-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">
-                            {appliedCoupon.title}
-                          </p>
-                          <p className="text-[11px] text-slate-500">
-                            {appliedCoupon.code}
-                          </p>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">
+                          {appliedCoupon.title}
+                        </p>
+                      </div>
+
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-600">
+                          <span className="font-semibold text-amber-700">
+                            {locale === "zh" ? "立减 " : "Save "}
+                            {formatMoney(couponDiscountCents)}
+                          </span>
+                          {appliedCoupon.minSpendCents ? (
+                            <span
+                              className={
+                                couponEligibleSubtotalCents >=
+                                (appliedCoupon.minSpendCents ?? 0)
+                                  ? "text-emerald-700"
+                                  : "text-red-600"
+                              }
+                            >
+                              {locale === "zh"
+                                ? `满 ${formatMoney(
+                                    appliedCoupon.minSpendCents,
+                                  )} 可用`
+                                : `Min spend ${formatMoney(
+                                    appliedCoupon.minSpendCents,
+                                  )}.`}
+                            </span>
+                          ) : null}
                         </div>
                         <button
                           type="button"
                           onClick={handleRemoveCoupon}
-                          className="shrink-0 rounded-full border border-slate-300 px-3 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-100"
+                          className="shrink-0 whitespace-nowrap rounded-full border border-slate-300 px-3 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-100"
                         >
                           {locale === "zh" ? "取消使用" : "Remove"}
                         </button>
-                      </div>
-
-                      <div className="mt-2 flex items-center justify-between text-[11px] text-slate-600">
-                        <span className="font-semibold text-amber-700">
-                          {locale === "zh" ? "立减 " : "Save "}
-                          {formatMoney(couponDiscountCents)}
-                        </span>
-                        {appliedCoupon.minSpendCents ? (
-                          <span
-                            className={
-                              couponEligibleSubtotalCents >=
-                              (appliedCoupon.minSpendCents ?? 0)
-                                ? "text-emerald-700"
-                                : "text-red-600"
-                            }
-                          >
-                            {locale === "zh"
-                              ? `满 ${formatMoney(
-                                  appliedCoupon.minSpendCents,
-                                )} 可用`
-                              : `Min spend ${formatMoney(
-                                  appliedCoupon.minSpendCents,
-                                )}.`}
-                          </span>
-                        ) : null}
                       </div>
                     </div>
                   ) : (
