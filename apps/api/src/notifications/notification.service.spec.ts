@@ -10,10 +10,17 @@ jest.mock('@prisma/client', () => ({
   },
 }));
 
+type SmsRenderInput = {
+  locale: string;
+  vars: {
+    giftName: string;
+  };
+};
+
 describe('NotificationService.notifyCouponIssued', () => {
   const templateRenderer = {
     renderEmail: jest.fn(),
-    renderSms: jest.fn(),
+    renderSms: jest.fn<Promise<string>, [SmsRenderInput]>(),
   };
   const emailService = {
     sendEmail: jest.fn(),
@@ -64,10 +71,10 @@ describe('NotificationService.notifyCouponIssued', () => {
     expect(templateRenderer.renderSms).toHaveBeenCalledWith(
       expect.objectContaining({
         locale: 'en',
-        vars: expect.objectContaining({
-          giftName: 'Welcome Gift',
-        }),
       }),
     );
+
+    const [payload] = templateRenderer.renderSms.mock.calls[0];
+    expect(payload.vars.giftName).toBe('Welcome Gift');
   });
 });
