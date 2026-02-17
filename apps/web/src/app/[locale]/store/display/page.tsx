@@ -142,21 +142,30 @@ export default function StoreDisplayPage() {
                       item.lineId ??
                       `${item.stableId}-${item.unitPriceCents}-${item.quantity}`
                     }
-                    className="grid grid-cols-4 px-6 py-4 text-3xl border-b border-slate-800 last:border-b-0"
+                    className="border-b border-slate-800 px-6 py-4 text-3xl last:border-b-0"
                   >
-                    <div className="pr-4">
-                      <div>{item.nameZh}</div>
-                      <div>{item.nameEn}</div>
+                    <div className="grid grid-cols-4">
+                      <div className="pr-4">
+                        <div>{item.nameZh}</div>
+                        <div>{item.nameEn}</div>
+                      </div>
+                      <div className="text-center font-semibold">*{item.quantity}</div>
+                      <div className="text-right">{formatMoney(item.unitPriceCents)}</div>
+                      <div className="text-right font-bold">{formatMoney(item.lineTotalCents)}</div>
                     </div>
-                    <div className="text-center font-semibold">
-                      {item.quantity}
-                    </div>
-                    <div className="text-right">
-                      {formatMoney(item.unitPriceCents)}
-                    </div>
-                    <div className="text-right font-bold">
-                      {formatMoney(item.lineTotalCents)}
-                    </div>
+                    {(item.optionLines ?? []).length > 0 && (
+                      <div className="mt-2 space-y-1 text-lg text-slate-300">
+                        {(item.optionLines ?? []).map((optionLine, idx) => (
+                          <div key={`${item.lineId ?? item.stableId}-${idx}`} className="grid grid-cols-4">
+                            <div className="col-span-2 pr-4 text-slate-400">{optionLine.label}</div>
+                            <div className="text-right col-span-2">
+                              {optionLine.priceCents >= 0 ? "+" : "-"}
+                              {formatMoney(Math.abs(optionLine.priceCents))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
