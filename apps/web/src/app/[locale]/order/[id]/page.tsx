@@ -227,6 +227,15 @@ export default function OrderDetailPage({ params }: PageProps) {
   const fullOrder = isFullDetail ? (order as FullOrder) : null;
   const summaryOrder = !isFullDetail ? (order as PublicSummary) : null;
   const paymentLabel = formatPaymentMethod(fullOrder?.paymentMethod ?? null, isZh);
+  const manualDiscountCents = useMemo(() => {
+    const subtotal = order?.subtotalCents ?? 0;
+    const subtotalAfterDiscount = order?.subtotalAfterDiscountCents;
+    if (typeof subtotalAfterDiscount !== 'number') return 0;
+    const totalDiscount = Math.max(0, subtotal - subtotalAfterDiscount);
+    const couponDiscount = Math.max(0, order?.couponDiscountCents ?? 0);
+    const loyaltyDiscount = Math.max(0, order?.loyaltyRedeemCents ?? 0);
+    return Math.max(0, totalDiscount - couponDiscount - loyaltyDiscount);
+  }, [order]);
 
   const renderOptions = (
     rawOptions: FullOrderItem['optionsJson'] | PublicSummaryItem['optionsJson'],
@@ -343,6 +352,13 @@ export default function OrderDetailPage({ params }: PageProps) {
         <span className="text-amber-700">
           -${(order.couponDiscountCents / 100).toFixed(2)}
         </span>
+      </li>
+    )}
+
+    {manualDiscountCents > 0 && (
+      <li>
+        {isZh ? '折扣/优惠：' : 'Discount:'}
+        <span className="text-amber-700">-${(manualDiscountCents / 100).toFixed(2)}</span>
       </li>
     )}
 

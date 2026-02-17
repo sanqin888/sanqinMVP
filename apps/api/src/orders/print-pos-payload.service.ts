@@ -48,8 +48,10 @@ export class PrintPosPayloadService {
       };
     });
 
-    const discountCents =
-      (order.couponDiscountCents ?? 0) + (order.loyaltyRedeemCents ?? 0);
+    const discountCents = Math.max(
+      0,
+      (order.subtotalCents ?? 0) - (order.subtotalAfterDiscountCents ?? order.subtotalCents ?? 0),
+    );
     const surcharge = await this.getOrderCreditCardSurcharge(order);
     const creditCardSurchargeCents = surcharge?.cents ?? 0;
 

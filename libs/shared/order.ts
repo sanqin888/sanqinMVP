@@ -92,6 +92,7 @@ export const CreateOrderSchema = z.object({
   pointsToRedeem: z.number().min(0).optional(),
   redeemValueCents: z.number().int().min(0).optional(),
   balanceUsedCents: z.number().int().min(0).optional(),
+  discountCents: z.number().int().min(0).optional(),
   subtotalCents: z.number().int().min(0).optional(),
   taxCents: z.number().int().min(0).optional(),
   totalCents: z.number().int().min(0).optional(),

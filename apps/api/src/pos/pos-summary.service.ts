@@ -87,6 +87,7 @@ type OrderLite = {
   fulfillmentType: FulfillmentType;
   status: string;
   subtotalCents: number;
+  subtotalAfterDiscountCents: number;
   totalCents: number;
   taxCents: number;
   deliveryFeeCents: number;
@@ -205,6 +206,7 @@ export class PosSummaryService {
         fulfillmentType: true,
         status: true,
         subtotalCents: true,
+        subtotalAfterDiscountCents: true,
         totalCents: true,
         taxCents: true,
         deliveryFeeCents: true,
@@ -286,11 +288,12 @@ export class PosSummaryService {
         additionalChargeCents: 0,
       };
 
-      const loyaltyRedeemCents = this.cents(o.loyaltyRedeemCents);
-      const couponDiscountCents = this.cents(o.couponDiscountCents);
-      const discountCentsForOrder = loyaltyRedeemCents + couponDiscountCents;
+      const discountCentsForOrder = Math.max(
+        0,
+        this.cents(o.subtotalCents) - this.cents(o.subtotalAfterDiscountCents),
+      );
       const salesCentsForOrder =
-        this.cents(o.subtotalCents) - couponDiscountCents - loyaltyRedeemCents;
+        this.cents(o.subtotalCents) - discountCentsForOrder;
       const deliveryFeeCents = this.cents(o.deliveryFeeCents);
       const deliveryCostCents = this.cents(o.deliveryCostCents);
 
