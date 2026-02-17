@@ -666,17 +666,26 @@ export default function CheckoutPage() {
   }, [entitlementItems, publicMenuLookup]);
 
   useEffect(() => {
-    if (!menuLookup || items.length === 0) return;
+    if (!menuLookup || !publicMenuLookup || menuLoading || items.length === 0) {
+      return;
+    }
     const allowed = new Set(menuLookup.keys());
     const invalid = items.filter((item) => !allowed.has(item.productStableId));
     if (invalid.length === 0) return;
     removeItemsByStableId(invalid.map((item) => item.productStableId));
     setCartNotice(
       locale === "zh"
-        ? "部分需持券套餐已从购物车移除。"
+        ? "部分需持券餐品已从购物车移除。"
         : "Some coupon-only items were removed from your cart.",
     );
-  }, [items, locale, menuLookup, removeItemsByStableId]);
+  }, [
+    items,
+    locale,
+    menuLoading,
+    menuLookup,
+    publicMenuLookup,
+    removeItemsByStableId,
+  ]);
 
   const localizedCartItems = useMemo<LocalizedCartItem[]>(() => {
     if (!menuLookup) return [];
