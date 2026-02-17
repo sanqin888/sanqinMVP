@@ -379,7 +379,10 @@ export class CloverService {
         if (!entry || typeof entry !== 'object') continue;
         const charge = entry as Record<string, unknown>;
         if (charge.type !== 'CREDIT_SURCHARGE') continue;
-        if (typeof charge.amount === 'number' && Number.isFinite(charge.amount)) {
+        if (
+          typeof charge.amount === 'number' &&
+          Number.isFinite(charge.amount)
+        ) {
           surchargeAmount += Math.max(0, Math.round(charge.amount));
         }
         if (
