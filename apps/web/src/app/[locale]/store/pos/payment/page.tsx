@@ -7,7 +7,7 @@ import { TAX_RATE } from "@/lib/order/shared";
 import type { Locale } from "@/lib/i18n/locales";
 import { ApiError, apiFetch } from "@/lib/api/client";
 import type { PublicMenuResponse as PublicMenuApiResponse } from "@shared/menu";
-import { advanceOrder, printOrderCloud } from "@/lib/api/pos";
+import { advanceOrder } from "@/lib/api/pos";
 import {
   POS_DISPLAY_CHANNEL,
   POS_DISPLAY_STORAGE_KEY,
@@ -703,7 +703,6 @@ const loyaltyRedeemCents = redeemCents;
       });
 
       if (typeof window !== "undefined" && order.orderStableId) {
-        void printOrderCloud(order.orderStableId, { customer: true, kitchen: true });
         try { window.localStorage.removeItem(POS_DISPLAY_STORAGE_KEY); } catch {}
       }
 
