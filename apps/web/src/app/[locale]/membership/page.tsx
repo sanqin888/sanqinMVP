@@ -2067,17 +2067,17 @@ function OverviewSection({
               (isZh ? "未设置" : "Not set")}
           </p>
           <p>
-            {isZh ? "邮箱：" : "Email: "}
-            {user.email || (isZh ? "未绑定" : "Not linked")}
+            {isZh ? "账户：" : "Account: "}
+            {user.email || user.phone || (isZh ? "未绑定" : "Not linked")}
           </p>
           <p>
             {isZh ? "当前积分：" : "Current points: "}
             <span className="font-medium text-slate-900">{user.points}</span>
           </p>
           <p>
-            {isZh ? "可抵扣金额：" : "Available discount: "}
+            {isZh ? "储值余额：" : "Store balance: "}
             <span className="font-medium text-slate-900">
-              {formatCurrency(user.availableDiscountCents)}
+              {formatBalanceAmount(user.balance)}
             </span>
           </p>
         </div>

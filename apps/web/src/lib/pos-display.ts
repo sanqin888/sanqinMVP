@@ -15,6 +15,8 @@ export type PosDisplayItem = {
   options?: Record<string, string[]>;
   optionLines?: Array<{
     label: string;
+    labelZh?: string;
+    labelEn?: string;
     priceCents: number;
   }>;
 };
