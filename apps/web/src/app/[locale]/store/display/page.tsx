@@ -157,7 +157,12 @@ export default function StoreDisplayPage() {
                       <div className="mt-2 space-y-1 text-lg text-slate-300">
                         {(item.optionLines ?? []).map((optionLine, idx) => (
                           <div key={`${item.lineId ?? item.stableId}-${idx}`} className="grid grid-cols-4">
-                            <div className="col-span-2 pr-4 text-slate-400">{optionLine.label}</div>
+                            <div className="col-span-2 pr-4 text-slate-400">
+                              <span>{optionLine.labelZh ?? optionLine.label}</span>
+                              <span className="ml-2 text-slate-500">
+                                {optionLine.labelEn ?? optionLine.label}
+                              </span>
+                            </div>
                             <div className="text-right col-span-2">
                               {optionLine.priceCents >= 0 ? "+" : "-"}
                               {formatMoney(Math.abs(optionLine.priceCents))}
