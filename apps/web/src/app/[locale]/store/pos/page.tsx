@@ -34,6 +34,11 @@ type PosCartEntry = {
   options?: Record<string, string[]>;
 };
 
+type SelectedOptionLine = {
+  label: string;
+  priceCents: number;
+};
+
 type StoreStatusRuleSource =
   | "REGULAR_HOURS"
   | "HOLIDAY"
@@ -302,15 +307,19 @@ export default function StorePosPage() {
         const item = allMenuItems.find((i) => i.stableId === entry.stableId);
         if (!item) return null;
 
+        const selectedOptionLines: SelectedOptionLine[] = [];
         let optionDeltaCents = 0;
         if (entry.options) {
           (item.optionGroups ?? []).forEach((group) => {
             const selected = entry.options?.[group.templateGroupStableId] ?? [];
             if (selected.length === 0) return;
             group.options.forEach((option) => {
-              if (selected.includes(option.optionStableId)) {
-                optionDeltaCents += option.priceDeltaCents;
-              }
+              if (!selected.includes(option.optionStableId)) return;
+              optionDeltaCents += option.priceDeltaCents;
+              selectedOptionLines.push({
+                label: locale === "zh" && option.nameZh ? option.nameZh : option.nameEn,
+                priceCents: option.priceDeltaCents,
+              });
             });
           });
         }
@@ -323,12 +332,13 @@ export default function StorePosPage() {
         return {
           ...entry,
           item,
+          optionLines: selectedOptionLines,
           unitPriceCents: effectiveUnitPriceCents,
           lineTotalCents: effectiveUnitPriceCents * entry.quantity,
         };
       })
       .filter((x): x is NonNullable<typeof x> => Boolean(x));
-  }, [cart, allMenuItems]);
+  }, [cart, allMenuItems, locale]);
 
   const subtotalCents = useMemo(
     () => cartWithDetails.reduce((sum, item) => sum + item.lineTotalCents, 0),
@@ -381,40 +391,60 @@ export default function StorePosPage() {
     item: PublicMenuCategory["items"][number];
     selected: Record<string, string[]>;
     quantity: number;
-    customUnitPriceCents: number;
-    priceInput: string;
   } | null>(null);
+  const [editingLineId, setEditingLineId] = useState<string | null>(null);
 
   const closeDialog = () => {
     setActiveItem(null);
   };
 
   const openOptionDialog = (item: PublicMenuCategory["items"][number]) => {
-    const defaultUnitPriceCents = Math.round(item.price * 100);
     setActiveItem({
       item,
       selected: {},
       quantity: 1,
-      customUnitPriceCents: defaultUnitPriceCents,
-      priceInput: (defaultUnitPriceCents / 100).toFixed(2),
     });
   };
 
-  const updateActiveItemPrice = (raw: string) => {
-    setActiveItem((prev) => {
-      if (!prev) return prev;
-      const next = raw.replace(/[^\d.]/g, "");
-      const parsed = Number(next);
-      if (!Number.isFinite(parsed) || parsed < 0) {
-        return { ...prev, priceInput: next };
-      }
+  const updateCartLinePrice = (lineId: string, raw: string) => {
+    const normalized = raw.replace(/[^\d.]/g, "");
+    const parsed = Number(normalized);
+    if (!Number.isFinite(parsed) || parsed < 0) return;
+    setCart((prev) =>
+      prev.map((entry) =>
+        entry.lineId === lineId
+          ? { ...entry, customUnitPriceCents: Math.round(parsed * 100) }
+          : entry,
+      ),
+    );
+  };
 
-      return {
-        ...prev,
-        priceInput: next,
-        customUnitPriceCents: Math.round(parsed * 100),
-      };
-    });
+  const appendKeypadValue = (key: string) => {
+    if (!editingLineId) return;
+    setCart((prev) =>
+      prev.map((entry) => {
+        if (entry.lineId !== editingLineId) return entry;
+        const currentCents = entry.customUnitPriceCents ?? 0;
+
+        if (key === "clear") {
+          return { ...entry, customUnitPriceCents: 0 };
+        }
+        if (key === "back") {
+          return { ...entry, customUnitPriceCents: Math.floor(currentCents / 10) };
+        }
+        if (key === "00") {
+          return { ...entry, customUnitPriceCents: currentCents * 100 };
+        }
+
+        const digit = Number(key);
+        if (!Number.isInteger(digit) || digit < 0 || digit > 9) return entry;
+
+        return {
+          ...entry,
+          customUnitPriceCents: currentCents * 10 + digit,
+        };
+      }),
+    );
   };
 
   // ✅ 核心修复：更新选项选择逻辑，支持父子级互斥和级联取消
@@ -513,13 +543,24 @@ export default function StorePosPage() {
   const addActiveItemToCart = () => {
     if (!activeItem || !canAddToCart) return;
     const lineId = `line-${Date.now()}-${Math.random()}`;
+    const optionDeltaCents = (activeItem.item.optionGroups ?? []).reduce((sum, group) => {
+      const selected = activeItem.selected[group.templateGroupStableId] ?? [];
+      return (
+        sum +
+        group.options
+          .filter((option) => selected.includes(option.optionStableId))
+          .reduce((groupSum, option) => groupSum + option.priceDeltaCents, 0)
+      );
+    }, 0);
+    const unitPriceCents = Math.round(activeItem.item.price * 100) + optionDeltaCents;
+
     setCart((prev) => [
       ...prev,
       {
         lineId,
         stableId: activeItem.item.stableId,
         quantity: activeItem.quantity,
-        customUnitPriceCents: activeItem.customUnitPriceCents,
+        customUnitPriceCents: unitPriceCents,
         options: activeItem.selected,
       },
     ]);
@@ -540,6 +581,7 @@ export default function StorePosPage() {
         customUnitPriceCents: entry.customUnitPriceCents,
         lineTotalCents: entry.lineTotalCents,
         options: entry.options,
+        optionLines: entry.optionLines,
       })),
       subtotalCents,
       taxCents,
@@ -746,11 +788,37 @@ export default function StorePosPage() {
                     role="button"
                     tabIndex={0}
                     onClick={() => {
+                      if (!item.optionGroups || item.optionGroups.length === 0) {
+                        const lineId = `line-${Date.now()}-${Math.random()}`;
+                        setCart((prev) => [
+                          ...prev,
+                          {
+                            lineId,
+                            stableId: item.stableId,
+                            quantity: 1,
+                            customUnitPriceCents: Math.round(item.price * 100),
+                          },
+                        ]);
+                        return;
+                      }
                       openOptionDialog(item);
                     }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
+                        if (!item.optionGroups || item.optionGroups.length === 0) {
+                          const lineId = `line-${Date.now()}-${Math.random()}`;
+                          setCart((prev) => [
+                            ...prev,
+                            {
+                              lineId,
+                              stableId: item.stableId,
+                              quantity: 1,
+                              customUnitPriceCents: Math.round(item.price * 100),
+                            },
+                          ]);
+                          return;
+                        }
                         openOptionDialog(item);
                       }
                     }}
@@ -798,47 +866,43 @@ export default function StorePosPage() {
             ) : (
               <ul className="space-y-2">
                 {cartWithDetails.map((item) => (
-                  <li
-                    key={item.lineId}
-                    className="flex items-center justify-between gap-2 rounded-2xl bg-slate-900/60 px-3 py-2"
-                  >
-                    <div className="flex-1">
-                      <div className="text-sm font-medium">
-                        {item.item.name}
-                      </div>
-                      {item.options && Object.keys(item.options).length > 0 && (
-                        <div className="mt-1 space-y-1 text-xs text-slate-400">
-                          {(item.item.optionGroups ?? []).map((group) => {
-                            const selected =
-                              item.options?.[group.templateGroupStableId] ?? [];
-                            if (selected.length === 0) return null;
-                            const groupName =
-                              locale === "zh" && group.template.nameZh
-                                ? group.template.nameZh
-                                : group.template.nameEn;
-                            const optionLabels = group.options
-                              .filter((opt) =>
-                                selected.includes(opt.optionStableId),
-                              )
-                              .map((opt) =>
-                                locale === "zh" && opt.nameZh
-                                  ? opt.nameZh
-                                  : opt.nameEn,
-                              )
-                              .join(", ");
-                            return (
-                              <div key={group.templateGroupStableId}>
-                                {groupName}: {optionLabels}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                      <div className="text-xs text-slate-400">
-                        {t.qtyLabel}: {item.quantity}
+                  <li key={item.lineId} className="rounded-2xl bg-slate-900/60 px-3 py-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex-1 text-sm font-medium">
+                        <span>{item.item.name}</span>
+                        <span className="mx-2 text-xs text-slate-400">*{item.quantity}</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={(item.unitPriceCents / 100).toFixed(2)}
+                          onFocus={() => setEditingLineId(item.lineId)}
+                          onBlur={() =>
+                            setEditingLineId((prev) => (prev === item.lineId ? null : prev))
+                          }
+                          onChange={(e) => updateCartLinePrice(item.lineId, e.target.value)}
+                          className="h-8 w-24 rounded-xl border border-slate-600 bg-slate-800 px-2 text-right text-sm text-slate-100"
+                        />
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+
+                    {item.optionLines.length > 0 && (
+                      <div className="mt-1 space-y-1 pl-1">
+                        {item.optionLines.map((optionLine, idx) => (
+                          <div
+                            key={`${item.lineId}-${optionLine.label}-${idx}`}
+                            className="flex items-center justify-between text-xs text-slate-400"
+                          >
+                            <span>{optionLine.label}</span>
+                            <span>
+                              {optionLine.priceCents >= 0 ? "+" : "-"}
+                              {formatMoney(Math.abs(optionLine.priceCents))}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="mt-2 flex items-center justify-end gap-2">
                       <button
                         type="button"
                         onClick={() => {
@@ -874,9 +938,6 @@ export default function StorePosPage() {
                       >
                         +
                       </button>
-                    </div>
-                    <div className="w-20 text-right text-sm font-semibold">
-                      {formatMoney(item.lineTotalCents)}
                     </div>
                   </li>
                 ))}
@@ -1170,16 +1231,6 @@ export default function StorePosPage() {
                   </button>
                 </div>
               </div>
-              <label className="flex items-center gap-2 text-sm text-slate-300">
-                <span>{t.priceLabel}</span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={activeItem.priceInput}
-                  onChange={(e) => updateActiveItemPrice(e.target.value)}
-                  className="h-11 w-28 rounded-2xl border border-slate-600 bg-slate-800 px-3 text-right text-sm text-slate-100"
-                />
-              </label>
               <button
                 type="button"
                 disabled={!canAddToCart}
@@ -1194,6 +1245,30 @@ export default function StorePosPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {editingLineId && (
+        <div className="fixed bottom-6 left-6 z-50 grid grid-cols-3 gap-2 rounded-2xl border border-slate-700 bg-slate-900/95 p-3 shadow-2xl">
+          {["1", "2", "3", "4", "5", "6", "7", "8", "9", "00", "0", "back"].map((key) => (
+            <button
+              key={key}
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => appendKeypadValue(key)}
+              className="h-12 w-12 rounded-xl bg-slate-800 text-base font-semibold text-slate-100 hover:bg-slate-700"
+            >
+              {key === "back" ? "⌫" : key}
+            </button>
+          ))}
+          <button
+            type="button"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => appendKeypadValue("clear")}
+            className="col-span-3 h-11 rounded-xl bg-rose-500/20 text-sm font-semibold text-rose-200 hover:bg-rose-500/30"
+          >
+            {isZh ? "清空价格" : "Clear price"}
+          </button>
         </div>
       )}
     </main>
