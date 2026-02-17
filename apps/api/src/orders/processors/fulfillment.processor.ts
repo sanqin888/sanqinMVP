@@ -302,6 +302,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
         subtotalCents: order.subtotalCents ?? 0,
         taxCents: order.taxCents ?? 0,
         totalCents: order.totalCents ?? 0,
+        creditCardSurchargeCents: 0,
         discountCents:
           (order.couponDiscountCents ?? 0) + (order.loyaltyRedeemCents ?? 0),
         deliveryFeeCents,

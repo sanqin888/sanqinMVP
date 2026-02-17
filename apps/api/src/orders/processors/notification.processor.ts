@@ -110,6 +110,7 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
           subtotalCents: order.subtotalCents ?? 0,
           taxCents: order.taxCents ?? 0,
           totalCents: order.totalCents ?? 0,
+          creditCardSurchargeCents: 0,
           discountCents,
           deliveryFeeCents: order.deliveryFeeCents ?? 0,
           deliveryCostCents: order.deliveryCostCents ?? 0,

@@ -68,6 +68,9 @@ export type HostedCheckoutMetadata = {
 
   selectedUserCouponId?: string;
 
+  creditCardSurchargeCents?: number;
+  creditCardSurchargeRate?: number;
+
   deliveryDestination?: {
     addressStableId?: string;
     addressLine1?: string;
