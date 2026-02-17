@@ -20,6 +20,8 @@ type CloverChargeStatusResult =
       status?: string;
       captured?: boolean;
       amountCents?: number;
+      creditSurchargeCents?: number;
+      creditSurchargeRate?: number;
     }
   | {
       ok: false;
@@ -33,6 +35,7 @@ export class CloverService {
   private readonly logger = new AppLogger(CloverService.name);
   private readonly apiBase: string;
   private readonly apiToken: string | undefined;
+  private readonly merchantId: string | undefined;
 
   constructor() {
     this.apiBase =
@@ -40,6 +43,7 @@ export class CloverService {
       'https://api.clover.com';
 
     this.apiToken = process.env.CLOVER_ACCESS_TOKEN?.trim();
+    this.merchantId = process.env.CLOVER_MERCHANT_ID?.trim();
   }
 
   async createCardPayment(params: {
@@ -314,13 +318,90 @@ export class CloverService {
         ? Math.round(record.amount)
         : undefined;
 
+    const surcharge = recordPaymentId
+      ? await this.getCreditCardSurcharge(recordPaymentId)
+      : undefined;
+
     return {
       ok: true,
       status,
       captured,
       paymentId: recordPaymentId,
       amountCents,
+      creditSurchargeCents: surcharge?.amountCents,
+      creditSurchargeRate: surcharge?.rate,
     };
+  }
+
+  private async getCreditCardSurcharge(paymentId: string): Promise<
+    | {
+        amountCents: number;
+        rate?: number;
+      }
+    | undefined
+  > {
+    if (!this.apiToken || !this.merchantId) return undefined;
+
+    const url = `${this.apiBase}/v3/merchants/${encodeURIComponent(this.merchantId)}/payments/${encodeURIComponent(paymentId)}?expand=additionalCharges`;
+    try {
+      const resp = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${this.apiToken}`,
+        },
+      });
+
+      if (!resp.ok) {
+        return undefined;
+      }
+
+      const payload = (await resp.json()) as unknown;
+      if (!payload || typeof payload !== 'object') {
+        return undefined;
+      }
+
+      const root = payload as Record<string, unknown>;
+      const additionalCharges = root.additionalCharges;
+      if (!additionalCharges || typeof additionalCharges !== 'object') {
+        return undefined;
+      }
+
+      const elements = (additionalCharges as Record<string, unknown>).elements;
+      if (!Array.isArray(elements)) {
+        return undefined;
+      }
+
+      let surchargeAmount = 0;
+      let surchargeRate: number | undefined;
+
+      for (const entry of elements) {
+        if (!entry || typeof entry !== 'object') continue;
+        const charge = entry as Record<string, unknown>;
+        if (charge.type !== 'CREDIT_SURCHARGE') continue;
+        if (typeof charge.amount === 'number' && Number.isFinite(charge.amount)) {
+          surchargeAmount += Math.max(0, Math.round(charge.amount));
+        }
+        if (
+          typeof charge.rate === 'number' &&
+          Number.isFinite(charge.rate) &&
+          charge.rate >= 0
+        ) {
+          surchargeRate = Math.round(charge.rate);
+        }
+      }
+
+      if (surchargeAmount <= 0) {
+        return undefined;
+      }
+
+      return {
+        amountCents: surchargeAmount,
+        rate: surchargeRate,
+      };
+    } catch {
+      return undefined;
+    }
   }
 }
 

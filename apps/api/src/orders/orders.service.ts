@@ -2484,6 +2484,8 @@ export class OrdersService {
     const deliveryFeeCents = order.deliveryFeeCents ?? 0;
     const discountCents =
       (order.loyaltyRedeemCents ?? 0) + (order.couponDiscountCents ?? 0);
+    const creditCardSurcharge = await this.getOrderCreditCardSurcharge(order);
+    const creditCardSurchargeCents = creditCardSurcharge?.cents ?? 0;
 
     let itemCount = 0;
     const lineItems = order.items.map((item) => {
@@ -2525,14 +2527,52 @@ export class OrdersService {
       taxCents,
       deliveryFeeCents,
       discountCents,
-      totalCents: order.totalCents ?? 0,
+      totalCents: (order.totalCents ?? 0) + creditCardSurchargeCents,
       loyaltyRedeemCents: order.loyaltyRedeemCents ?? 0,
       couponDiscountCents: order.couponDiscountCents ?? 0,
+      creditCardSurchargeCents,
+      creditCardSurchargeRate: creditCardSurcharge?.rate,
       subtotalAfterDiscountCents:
         order.subtotalAfterDiscountCents ?? subtotalCents,
       ...(await this.getLoyaltyUsageByOrderStableId(order.orderStableId)),
       lineItems,
     };
+  }
+
+  private async getOrderCreditCardSurcharge(order: {
+    clientRequestId?: string | null;
+    paymentMethod?: PaymentMethod | null;
+  }): Promise<{ cents: number; rate?: number } | null> {
+    if (!order.clientRequestId || order.paymentMethod !== PaymentMethod.CARD) {
+      return null;
+    }
+
+    const intent = await this.prisma.checkoutIntent.findFirst({
+      where: { referenceId: order.clientRequestId },
+      orderBy: { createdAt: 'desc' },
+      select: { metadataJson: true },
+    });
+
+    const metadata =
+      intent?.metadataJson && typeof intent.metadataJson === 'object'
+        ? (intent.metadataJson as Record<string, unknown>)
+        : null;
+
+    if (!metadata) return null;
+
+    const centsRaw = metadata.creditCardSurchargeCents;
+    const rateRaw = metadata.creditCardSurchargeRate;
+    const cents =
+      typeof centsRaw === 'number' && Number.isFinite(centsRaw)
+        ? Math.max(0, Math.round(centsRaw))
+        : 0;
+    const rate =
+      typeof rateRaw === 'number' && Number.isFinite(rateRaw) && rateRaw >= 0
+        ? Math.round(rateRaw)
+        : undefined;
+
+    if (cents <= 0) return null;
+    return { cents, rate };
   }
 
   async sendInvoiceEmail(params: {

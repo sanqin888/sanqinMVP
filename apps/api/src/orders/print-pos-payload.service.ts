@@ -50,6 +50,8 @@ export class PrintPosPayloadService {
 
     const discountCents =
       (order.couponDiscountCents ?? 0) + (order.loyaltyRedeemCents ?? 0);
+    const surcharge = await this.getOrderCreditCardSurcharge(order);
+    const creditCardSurchargeCents = surcharge?.cents ?? 0;
 
     const paymentMethod = (() => {
       switch (order.paymentMethod) {
@@ -77,11 +79,40 @@ export class PrintPosPayloadService {
         subtotalCents: order.subtotalCents ?? 0,
         taxCents: order.taxCents ?? 0,
         totalCents: order.totalCents ?? 0,
+        creditCardSurchargeCents,
         discountCents,
         deliveryFeeCents,
         deliveryCostCents,
         deliverySubsidyCents,
       },
     };
+  }
+
+  private async getOrderCreditCardSurcharge(order: {
+    clientRequestId?: string | null;
+    paymentMethod?: PaymentMethod | null;
+  }): Promise<{ cents: number } | null> {
+    if (!order.clientRequestId || order.paymentMethod !== PaymentMethod.CARD) {
+      return null;
+    }
+
+    const intent = await this.prisma.checkoutIntent.findFirst({
+      where: { referenceId: order.clientRequestId },
+      orderBy: { createdAt: 'desc' },
+      select: { metadataJson: true },
+    });
+
+    const metadata =
+      intent?.metadataJson && typeof intent.metadataJson === 'object'
+        ? (intent.metadataJson as Record<string, unknown>)
+        : null;
+
+    const raw = metadata?.creditCardSurchargeCents;
+    const cents =
+      typeof raw === 'number' && Number.isFinite(raw)
+        ? Math.max(0, Math.round(raw))
+        : 0;
+
+    return cents > 0 ? { cents } : null;
   }
 }

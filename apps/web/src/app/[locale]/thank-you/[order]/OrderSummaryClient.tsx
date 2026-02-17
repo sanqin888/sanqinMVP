@@ -28,6 +28,7 @@ type OrderSummaryResponse = {
   deliveryFeeCents: number;
   discountCents: number;
   totalCents: number;
+  creditCardSurchargeCents?: number;
   lineItems: OrderSummaryLineItem[];
   loyaltyRedeemCents?: number | null;
   subtotalAfterDiscountCents?: number | null;
@@ -51,6 +52,7 @@ const LABELS: Record<
     subtotal: string;
     deliveryFee: string;
     tax: string;
+    creditCardSurcharge: string;
     discount: string;
     total: string;
     loading: string;
@@ -63,6 +65,7 @@ const LABELS: Record<
     subtotal: "Subtotal",
     deliveryFee: "Delivery fee",
     tax: "Tax",
+    creditCardSurcharge: "Credit card surcharge",
     discount: "Discount",
     total: "Total",
     loading: "Loading your order summary…",
@@ -74,6 +77,7 @@ const LABELS: Record<
     subtotal: "小计",
     deliveryFee: "配送费",
     tax: "税费",
+    creditCardSurcharge: "信用卡附加费",
     discount: "优惠/积分抵扣",
     total: "合计",
     loading: "正在加载订单小结…",
@@ -353,6 +357,13 @@ export function OrderSummaryClient({ orderStableId, locale }: Props) {
                 <div className="flex items-center justify-between">
                   <span>{labels.deliveryFee}</span>
                   <span>{centsToMoney(data.deliveryFeeCents)}</span>
+                </div>
+              )}
+
+              {(data.creditCardSurchargeCents ?? 0) > 0 && (
+                <div className="flex items-center justify-between">
+                  <span>{labels.creditCardSurcharge}</span>
+                  <span>{centsToMoney(data.creditCardSurchargeCents ?? 0)}</span>
                 </div>
               )}
 
