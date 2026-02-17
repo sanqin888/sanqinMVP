@@ -244,6 +244,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
     subtotalCents: number | null;
     taxCents: number | null;
     totalCents: number | null;
+    subtotalAfterDiscountCents: number | null;
     couponDiscountCents: number | null;
     loyaltyRedeemCents: number | null;
     deliveryFeeCents: number | null;
@@ -303,8 +304,11 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
         taxCents: order.taxCents ?? 0,
         totalCents: order.totalCents ?? 0,
         creditCardSurchargeCents: 0,
-        discountCents:
-          (order.couponDiscountCents ?? 0) + (order.loyaltyRedeemCents ?? 0),
+        discountCents: Math.max(
+          0,
+          (order.subtotalCents ?? 0) -
+            (order.subtotalAfterDiscountCents ?? order.subtotalCents ?? 0),
+        ),
         deliveryFeeCents,
         deliveryCostCents,
         deliverySubsidyCents,

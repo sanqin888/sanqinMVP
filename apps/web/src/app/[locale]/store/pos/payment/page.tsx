@@ -719,6 +719,7 @@ const loyaltyRedeemCents = redeemCents;
         userStableId: memberInfo?.userStableId ?? undefined,
         pointsToRedeem: pointsToRedeem > 0 ? pointsToRedeem : undefined,
         balanceUsedCents: balanceToUseCents > 0 ? balanceToUseCents : undefined, // [新增]
+        discountCents: discountCents > 0 ? discountCents : undefined,
         contactPhone: memberInfo?.phone ?? undefined,
       };
 
