@@ -13,6 +13,10 @@ export type PosDisplayItem = {
   customUnitPriceCents?: number;
   lineTotalCents: number;
   options?: Record<string, string[]>;
+  optionLines?: Array<{
+    label: string;
+    priceCents: number;
+  }>;
 };
 
 export type PosDisplaySnapshot = {
