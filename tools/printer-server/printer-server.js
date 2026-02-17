@@ -79,7 +79,7 @@ function cmd(...bytes) {
   return Buffer.from(bytes);
 }
 
-function getOptionLines(item) {
+function getOptionLines(item, { includeEnglish = false } = {}) {
   if (!item || typeof item !== "object") return [];
   if (!Array.isArray(item.options)) return [];
 
@@ -90,8 +90,20 @@ function getOptionLines(item) {
     return choices
       .map((choice) => {
         if (!choice || typeof choice !== "object") return "";
-        const name = choice.nameZh || choice.nameEn || choice.displayName || "";
-        return typeof name === "string" ? name.trim() : "";
+        const nameZh =
+          typeof choice.nameZh === "string" ? choice.nameZh.trim() : "";
+        const nameEn =
+          typeof choice.nameEn === "string" ? choice.nameEn.trim() : "";
+
+        if (includeEnglish && nameZh && nameEn) return `${nameZh} ${nameEn}`;
+        if (nameZh) return nameZh;
+        if (includeEnglish && nameEn) return nameEn;
+
+        if (!includeEnglish) return "";
+
+        const displayName =
+          typeof choice.displayName === "string" ? choice.displayName.trim() : "";
+        return displayName;
       })
       .filter(Boolean);
   });
@@ -359,7 +371,7 @@ async function buildCustomerReceiptEscPos(params) {
       chunks.push(encLine(qtyPadded + pricePadded));
 
       // 选项
-      const optionLines = getOptionLines(item);
+      const optionLines = getOptionLines(item, { includeEnglish: true });
 
       if (optionLines.length > 0) {
         optionLines.forEach((opt) => {
@@ -465,7 +477,6 @@ function buildKitchenReceiptEscPos(params) {
   if (Array.isArray(snapshot.items)) {
     snapshot.items.forEach((item) => {
       const nameZh = item.nameZh || "";
-      const nameEn = item.nameEn || "";
       const qty = item.quantity ?? 0;
 
       chunks.push(cmd(ESC, 0x45, 0x01)); // 加粗
@@ -473,15 +484,12 @@ function buildKitchenReceiptEscPos(params) {
 
       if (nameZh) {
         chunks.push(encLine(`${qty}  ${nameZh}`));
-        if (nameEn) chunks.push(encLine(`   ${nameEn}`));
-      } else if (nameEn) {
-        chunks.push(encLine(`${qty}  ${nameEn}`));
       }
 
       chunks.push(cmd(GS, 0x21, 0x00));
       chunks.push(cmd(ESC, 0x45, 0x00));
 
-      const optionLines = getOptionLines(item);
+      const optionLines = getOptionLines(item, { includeEnglish: false });
       if (optionLines.length > 0) {
         chunks.push(cmd(ESC, 0x45, 0x01)); // 加粗
         chunks.push(cmd(GS, 0x21, 0x01)); // 比菜名略小（双高、非双宽）
