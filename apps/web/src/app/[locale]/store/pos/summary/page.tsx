@@ -383,7 +383,7 @@ export default function PosDailySummaryPage() {
     if (!data) return [];
     return data.orders.map((o) => ({
       orderStableId: o.orderStableId,
-      clientRequestId: o.clientRequestId ?? "--",
+      clientRequestId: o.clientRequestId ?? o.orderStableId,
       date: (() => {
         const d = parseBackendDate(o.createdAt);
         if (Number.isNaN(d.getTime())) return "--";
