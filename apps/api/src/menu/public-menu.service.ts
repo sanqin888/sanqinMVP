@@ -111,6 +111,14 @@ export class PublicMenuService {
       }
     });
 
+    const availablePublicItemStableIds = new Set(
+      (categories ?? []).flatMap((cat) =>
+        (cat.items ?? [])
+          .filter((item) => item.isAvailable)
+          .map((item) => item.stableId),
+      ),
+    );
+
     const result: PublicMenuCategoryDto[] = (categories ?? []).map((cat) => {
       const categoryStableId = cat.stableId;
 
@@ -143,6 +151,12 @@ export class PublicMenuService {
                   // options.deletedAt 已在 Prisma where 过滤，但保留一层防御式过滤
                   if ((opt as { deletedAt?: Date | null }).deletedAt)
                     return false;
+                  if (
+                    opt.targetItemStableId &&
+                    !availablePublicItemStableIds.has(opt.targetItemStableId)
+                  ) {
+                    return false;
+                  }
                   return opt.isAvailable;
                 })
                 .map((opt) => ({
