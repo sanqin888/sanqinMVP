@@ -36,6 +36,8 @@ type PosCartEntry = {
 
 type SelectedOptionLine = {
   label: string;
+  labelZh: string;
+  labelEn: string;
   priceCents: number;
 };
 
@@ -317,7 +319,9 @@ export default function StorePosPage() {
               if (!selected.includes(option.optionStableId)) return;
               optionDeltaCents += option.priceDeltaCents;
               selectedOptionLines.push({
-                label: locale === "zh" && option.nameZh ? option.nameZh : option.nameEn,
+                label: option.nameZh ?? option.nameEn,
+                labelZh: option.nameZh ?? option.nameEn,
+                labelEn: option.nameEn,
                 priceCents: option.priceDeltaCents,
               });
             });
@@ -338,7 +342,7 @@ export default function StorePosPage() {
         };
       })
       .filter((x): x is NonNullable<typeof x> => Boolean(x));
-  }, [cart, allMenuItems, locale]);
+  }, [cart, allMenuItems]);
 
   const subtotalCents = useMemo(
     () => cartWithDetails.reduce((sum, item) => sum + item.lineTotalCents, 0),
@@ -748,7 +752,7 @@ export default function StorePosPage() {
 
       <section className="flex gap-4 p-4 h-[calc(100vh-4rem)]">
         {/* 左侧：菜单（大按钮） */}
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="relative flex-1 flex flex-col min-w-0">
           <div className="flex gap-2 mb-3">
             <button
               type="button"
@@ -851,6 +855,35 @@ export default function StorePosPage() {
                 );
               })}
             </div>
+          {editingLineId && (
+            <div className="pointer-events-auto absolute bottom-4 left-4 z-20 w-[22rem] rounded-2xl border border-slate-600 bg-slate-900/95 p-3 shadow-2xl">
+              <div className="mb-2 text-xs text-slate-300">
+                {isZh ? "价格快捷输入" : "Quick price keypad"}
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                {["1", "2", "3", "4", "5", "6", "7", "8", "9", "00", "0", "back"].map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => appendKeypadValue(key)}
+                    className="h-16 rounded-xl bg-slate-800 text-xl font-semibold text-slate-100 hover:bg-slate-700"
+                  >
+                    {key === "back" ? "⌫" : key}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => appendKeypadValue("clear")}
+                  className="col-span-3 h-14 rounded-xl bg-rose-500/20 text-base font-semibold text-rose-200 hover:bg-rose-500/30"
+                >
+                  {isZh ? "清空价格" : "Clear price"}
+                </button>
+              </div>
+            </div>
+          )}
+
           </div>
         </div>
 
@@ -889,10 +922,10 @@ export default function StorePosPage() {
                       <div className="mt-1 space-y-1 pl-1">
                         {item.optionLines.map((optionLine, idx) => (
                           <div
-                            key={`${item.lineId}-${optionLine.label}-${idx}`}
+                            key={`${item.lineId}-${optionLine.labelZh}-${optionLine.labelEn}-${idx}`}
                             className="flex items-center justify-between text-xs text-slate-400"
                           >
-                            <span>{optionLine.label}</span>
+                            <span>{isZh ? optionLine.labelZh : optionLine.labelEn}</span>
                             <span>
                               {optionLine.priceCents >= 0 ? "+" : "-"}
                               {formatMoney(Math.abs(optionLine.priceCents))}
@@ -944,6 +977,7 @@ export default function StorePosPage() {
               </ul>
             )}
           </div>
+
 
           <div className="mt-4 border-t border-slate-700 pt-3 space-y-1 text-sm">
             <div className="flex justify-between">
@@ -1248,29 +1282,6 @@ export default function StorePosPage() {
         </div>
       )}
 
-      {editingLineId && (
-        <div className="fixed bottom-6 left-6 z-50 grid grid-cols-3 gap-2 rounded-2xl border border-slate-700 bg-slate-900/95 p-3 shadow-2xl">
-          {["1", "2", "3", "4", "5", "6", "7", "8", "9", "00", "0", "back"].map((key) => (
-            <button
-              key={key}
-              type="button"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => appendKeypadValue(key)}
-              className="h-12 w-12 rounded-xl bg-slate-800 text-base font-semibold text-slate-100 hover:bg-slate-700"
-            >
-              {key === "back" ? "⌫" : key}
-            </button>
-          ))}
-          <button
-            type="button"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => appendKeypadValue("clear")}
-            className="col-span-3 h-11 rounded-xl bg-rose-500/20 text-sm font-semibold text-rose-200 hover:bg-rose-500/30"
-          >
-            {isZh ? "清空价格" : "Clear price"}
-          </button>
-        </div>
-      )}
     </main>
   );
 }
