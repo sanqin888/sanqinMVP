@@ -125,6 +125,14 @@ export function buildLocalizedMenuFromDb(
     .filter((c) => c.isActive)
     .sort((a, b) => a.sortOrder - b.sortOrder);
 
+  const availablePublicItemStableIds = new Set(
+    activeCategories.flatMap((category) =>
+      (category.items ?? [])
+        .filter((item) => item.visibility === "PUBLIC" && item.isAvailable)
+        .map((item) => item.stableId),
+    ),
+  );
+
   return activeCategories.map<PublicMenuCategory>((c) => {
     const localizedName = isZh && c.nameZh ? c.nameZh : c.nameEn;
 
@@ -152,7 +160,12 @@ export function buildLocalizedMenuFromDb(
             const templateOptions =
               g.options ?? templateMap.get(g.templateGroupStableId)?.options ?? [];
             const options = templateOptions
-              .filter((o) => o.isAvailable)
+              .filter(
+                (o) =>
+                  o.isAvailable &&
+                  (!o.targetItemStableId ||
+                    availablePublicItemStableIds.has(o.targetItemStableId)),
+              )
               .sort((a, b) => a.sortOrder - b.sortOrder);
 
             return {
