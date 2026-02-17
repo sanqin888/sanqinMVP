@@ -1,35 +1,64 @@
 //Users/apple/sanqinMVP/apps/web/src/app/[locale]/membership/page.tsx
-'use client';
+"use client";
 
-import Link from 'next/link';
-import { useEffect, useState, useCallback } from 'react';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import type { Locale } from '@/lib/i18n/locales';
-import { signOut, useSession } from '@/lib/auth-session';
-import { ApiError, apiFetch } from '@/lib/api/client';
+import Link from "next/link";
+import { useEffect, useState, useCallback } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import type { Locale } from "@/lib/i18n/locales";
+import { signOut, useSession } from "@/lib/auth-session";
+import { ApiError, apiFetch } from "@/lib/api/client";
+import { usePersistentCart } from "@/lib/cart";
 import {
   formatCanadianPhoneForApi,
   isValidCanadianPhone,
   normalizeCanadianPhoneInput,
   stripCanadianCountryCode,
-} from '@/lib/phone';
-import { DELIVERY_RADIUS_KM, STORE_COORDINATES } from '@/lib/location';
+} from "@/lib/phone";
+import { DELIVERY_RADIUS_KM, STORE_COORDINATES } from "@/lib/location";
 import {
   AddressAutocomplete,
   extractAddressParts,
-} from '@/components/AddressAutocomplete';
+} from "@/components/AddressAutocomplete";
 
-type MemberTier = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM';
+type MemberTier = "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
 
 type OrderStatus =
-  | 'pending'
-  | 'paid'
-  | 'making'
-  | 'ready'
-  | 'completed'
-  | 'refunded';
+  | "pending"
+  | "paid"
+  | "making"
+  | "ready"
+  | "completed"
+  | "refunded";
 
-type DeliveryType = 'pickup' | 'delivery';
+type DeliveryType = "pickup" | "delivery";
+
+type OrderHistoryItemOption = {
+  stableId: string;
+  templateGroupStableId: string;
+  nameEn: string;
+  nameZh: string | null;
+  priceDeltaCents: number;
+  sortOrder: number;
+};
+
+type OrderHistoryItemOptionGroup = {
+  templateGroupStableId: string;
+  nameEn: string;
+  nameZh: string | null;
+  minSelect: number;
+  maxSelect: number | null;
+  sortOrder: number;
+  choices: OrderHistoryItemOption[];
+};
+
+type OrderHistoryItem = {
+  productStableId: string;
+  quantity: number;
+  displayName: string | null;
+  nameEn: string | null;
+  nameZh: string | null;
+  options: OrderHistoryItemOptionGroup[];
+};
 
 type OrderHistory = {
   orderStableId: string;
@@ -39,9 +68,10 @@ type OrderHistory = {
   status: OrderStatus;
   items: number;
   deliveryType: DeliveryType;
+  lineItems: OrderHistoryItem[];
 };
 
-type CouponStatus = 'active' | 'used' | 'expired';
+type CouponStatus = "active" | "used" | "expired";
 
 type Coupon = {
   couponStableId: string;
@@ -86,11 +116,11 @@ type MemberProfile = {
   phone?: string | null;
   phoneVerified?: boolean;
   twoFactorEnabledAt?: string | null;
-  twoFactorMethod?: 'OFF' | 'SMS';
+  twoFactorMethod?: "OFF" | "SMS";
   birthdayMonth?: number | null;
   birthdayDay?: number | null;
   referrerEmail?: string | null;
-  language?: 'zh' | 'en';
+  language?: "zh" | "en";
   tier: MemberTier;
   points: number;
   balance: number;
@@ -98,8 +128,8 @@ type MemberProfile = {
   lifetimeSpendCents?: number;
 };
 
-type ApiFulfillmentType = 'pickup' | 'dine_in' | 'delivery';
-type ApiDeliveryType = 'STANDARD' | 'PRIORITY' | null;
+type ApiFulfillmentType = "pickup" | "dine_in" | "delivery";
+type ApiDeliveryType = "STANDARD" | "PRIORITY" | null;
 
 type MembershipSummaryOrderDto = {
   orderStableId: string;
@@ -110,6 +140,7 @@ type MembershipSummaryOrderDto = {
   status: OrderStatus;
   fulfillmentType: ApiFulfillmentType;
   deliveryType: ApiDeliveryType;
+  items?: OrderHistoryItem[];
 };
 
 type MembershipSummaryResponse = {
@@ -121,7 +152,7 @@ type MembershipSummaryResponse = {
   phone?: string | null;
   phoneVerified?: boolean;
   twoFactorEnabledAt?: string | null;
-  twoFactorMethod?: 'OFF' | 'SMS';
+  twoFactorMethod?: "OFF" | "SMS";
   tier: MemberTier;
   points: number;
   balance: number;
@@ -131,7 +162,7 @@ type MembershipSummaryResponse = {
   birthdayMonth?: number | null;
   birthdayDay?: number | null;
   referrerEmail?: string | null;
-  language?: 'zh' | 'en';
+  language?: "zh" | "en";
   recentOrders: MembershipSummaryOrderDto[];
 };
 
@@ -146,14 +177,14 @@ type MembershipSummaryApiEnvelope =
 // ====== 积分流水类型 ======
 
 type LoyaltyEntryType =
-  | 'EARN_ON_PURCHASE'
-  | 'REDEEM_ON_ORDER'
-  | 'REFUND_REVERSE_EARN'
-  | 'REFUND_RETURN_REDEEM'
-  | 'TOPUP_PURCHASED'
-  | 'ADJUSTMENT_MANUAL';
+  | "EARN_ON_PURCHASE"
+  | "REDEEM_ON_ORDER"
+  | "REFUND_REVERSE_EARN"
+  | "REFUND_RETURN_REDEEM"
+  | "TOPUP_PURCHASED"
+  | "ADJUSTMENT_MANUAL";
 
-type LoyaltyTarget = 'POINTS' | 'BALANCE';
+type LoyaltyTarget = "POINTS" | "BALANCE";
 
 type LoyaltyEntry = {
   ledgerId: string;
@@ -184,7 +215,7 @@ type MemberAddress = {
 };
 
 const formatPostalCodeInput = (value: string) => {
-  const sanitized = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const sanitized = value.toUpperCase().replace(/[^A-Z0-9]/g, "");
   if (sanitized.length <= 3) {
     return sanitized;
   }
@@ -192,32 +223,34 @@ const formatPostalCodeInput = (value: string) => {
 };
 
 const formatMemberAddress = (address: MemberAddress): string => {
-  const cityProvince = [address.city, address.province].filter(Boolean).join(', ');
+  const cityProvince = [address.city, address.province]
+    .filter(Boolean)
+    .join(", ");
   const segments = [
     address.addressLine1,
     address.addressLine2,
     cityProvince,
     address.postalCode,
   ].filter(Boolean);
-  return segments.join(', ');
+  return segments.join(", ");
 };
 
 function formatOrderStatus(status: OrderStatus, isZh: boolean): string {
   const zh: Record<OrderStatus, string> = {
-    pending: '待支付',
-    paid: '已支付',
-    making: '制作中',
-    ready: '待取餐',
-    completed: '已完成',
-    refunded: '已退款',
+    pending: "待支付",
+    paid: "已支付",
+    making: "制作中",
+    ready: "待取餐",
+    completed: "已完成",
+    refunded: "已退款",
   };
   const en: Record<OrderStatus, string> = {
-    pending: 'Pending',
-    paid: 'Paid',
-    making: 'In progress',
-    ready: 'Ready',
-    completed: 'Completed',
-    refunded: 'Refunded',
+    pending: "Pending",
+    paid: "Paid",
+    making: "In progress",
+    ready: "Ready",
+    completed: "Completed",
+    refunded: "Refunded",
   };
   return isZh ? zh[status] : en[status];
 }
@@ -233,13 +266,13 @@ function formatBalanceAmount(amount: number): string {
 function formatDateTime(value: string, isZh: boolean): string {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString(isZh ? 'zh-CN' : 'en-US');
+  return parsed.toLocaleString(isZh ? "zh-CN" : "en-US");
 }
 
-function getBrowserLanguagePreference(): 'zh' | 'en' {
-  if (typeof navigator === 'undefined') return 'en';
-  const primary = navigator.languages?.[0] ?? navigator.language ?? '';
-  return primary.toLowerCase().startsWith('zh') ? 'zh' : 'en';
+function getBrowserLanguagePreference(): "zh" | "en" {
+  if (typeof navigator === "undefined") return "en";
+  const primary = navigator.languages?.[0] ?? navigator.language ?? "";
+  return primary.toLowerCase().startsWith("zh") ? "zh" : "en";
 }
 
 export default function MembershipHomePage() {
@@ -247,26 +280,28 @@ export default function MembershipHomePage() {
   const { locale } = useParams<{ locale: Locale }>();
   const searchParams = useSearchParams();
   const { data: session, status } = useSession();
-  const isZh = locale === 'zh';
-  const [browserLanguagePreference] = useState<'zh' | 'en'>(() =>
+  const isZh = locale === "zh";
+  const [browserLanguagePreference] = useState<"zh" | "en">(() =>
     getBrowserLanguagePreference(),
   );
 
   const [activeTab, setActiveTab] = useState<
-    | 'overview'
-    | 'orders'
-    | 'points'
-    | 'balance'
-    | 'addresses'
-    | 'coupons'
-    | 'devices'
-    | 'profile'
-  >('overview');
+    | "overview"
+    | "orders"
+    | "points"
+    | "balance"
+    | "addresses"
+    | "coupons"
+    | "devices"
+    | "profile"
+  >("overview");
 
   const [member, setMember] = useState<MemberProfile | null>(null);
   const [orders, setOrders] = useState<OrderHistory[]>([]);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [reorderMessage, setReorderMessage] = useState<string | null>(null);
+  const { addItem } = usePersistentCart();
 
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [couponLoading, setCouponLoading] = useState(false);
@@ -278,11 +313,11 @@ export default function MembershipHomePage() {
   const [marketingError, setMarketingError] = useState<string | null>(null);
 
   // 账户信息编辑
-  const [profileFirstName, setProfileFirstName] = useState('');
-  const [profileLastName, setProfileLastName] = useState('');
-  const [birthdayMonthInput, setBirthdayMonthInput] = useState('');
-  const [birthdayDayInput, setBirthdayDayInput] = useState('');
-  const [languagePreference, setLanguagePreference] = useState<'zh' | 'en'>(
+  const [profileFirstName, setProfileFirstName] = useState("");
+  const [profileLastName, setProfileLastName] = useState("");
+  const [birthdayMonthInput, setBirthdayMonthInput] = useState("");
+  const [birthdayDayInput, setBirthdayDayInput] = useState("");
+  const [languagePreference, setLanguagePreference] = useState<"zh" | "en">(
     browserLanguagePreference,
   );
   const [languageSaving, setLanguageSaving] = useState(false);
@@ -294,15 +329,15 @@ export default function MembershipHomePage() {
   const [birthdaySaving, setBirthdaySaving] = useState(false);
   const [birthdayError, setBirthdayError] = useState<string | null>(null);
   const [birthdaySaved, setBirthdaySaved] = useState(false);
-  const [phoneEnrollInput, setPhoneEnrollInput] = useState('');
-  const [phoneEnrollCode, setPhoneEnrollCode] = useState('');
+  const [phoneEnrollInput, setPhoneEnrollInput] = useState("");
+  const [phoneEnrollCode, setPhoneEnrollCode] = useState("");
   const [phoneEnrollSending, setPhoneEnrollSending] = useState(false);
   const [phoneEnrollVerifying, setPhoneEnrollVerifying] = useState(false);
   const [phoneEnrollError, setPhoneEnrollError] = useState<string | null>(null);
   const [phoneEnrollVisible, setPhoneEnrollVisible] = useState(false);
 
-  const [emailEnrollInput, setEmailEnrollInput] = useState('');
-  const [emailEnrollCode, setEmailEnrollCode] = useState('');
+  const [emailEnrollInput, setEmailEnrollInput] = useState("");
+  const [emailEnrollCode, setEmailEnrollCode] = useState("");
   const [emailEnrollSending, setEmailEnrollSending] = useState(false);
   const [emailEnrollVerifying, setEmailEnrollVerifying] = useState(false);
   const [emailEnrollError, setEmailEnrollError] = useState<string | null>(null);
@@ -312,18 +347,18 @@ export default function MembershipHomePage() {
 
   const isValidEmail = useCallback((value: string) => {
     const trimmed = value.trim();
-    return trimmed.includes('@');
+    return trimmed.includes("@");
   }, []);
 
   const readApiErrorMessage = useCallback((error: unknown) => {
     if (!(error instanceof ApiError)) return null;
     const payload = error.payload;
-    if (!payload || typeof payload !== 'object') return null;
+    if (!payload || typeof payload !== "object") return null;
     const maybe = payload as { message?: string | string[] };
     if (Array.isArray(maybe.message)) {
-      return maybe.message.join(', ');
+      return maybe.message.join(", ");
     }
-    if (typeof maybe.message === 'string') {
+    if (typeof maybe.message === "string") {
       return maybe.message;
     }
     return null;
@@ -362,20 +397,20 @@ export default function MembershipHomePage() {
 
   // 未登录时跳回登录页
   useEffect(() => {
-    if (status === 'unauthenticated') {
+    if (status === "unauthenticated") {
       router.replace(`/${locale}/membership/login`);
     }
   }, [status, router, locale]);
 
   useEffect(() => {
-    if (status === 'authenticated' && !session?.user?.mfaVerifiedAt) {
+    if (status === "authenticated" && !session?.user?.mfaVerifiedAt) {
       router.replace(`/${locale}/membership/2fa`);
     }
   }, [status, session?.user?.mfaVerifiedAt, router, locale]);
 
   // 拉取会员概要信息（积分 + 最近订单 + 营销订阅）
   useEffect(() => {
-    if (status !== 'authenticated' || !session?.user) return;
+    if (status !== "authenticated" || !session?.user) return;
 
     const controller = new AbortController();
 
@@ -383,12 +418,12 @@ export default function MembershipHomePage() {
       try {
         setSummaryLoading(true);
         setSummaryError(null);
-        const res = await fetch('/api/v1/membership/summary', {
+        const res = await fetch("/api/v1/membership/summary", {
           signal: controller.signal,
         });
 
         if (!res.ok) {
-          let errorMessage = '';
+          let errorMessage = "";
           try {
             const errorBody = (await res.json()) as { message?: string };
             if (errorBody?.message) {
@@ -402,20 +437,20 @@ export default function MembershipHomePage() {
               }
             } catch (readError) {
               console.warn(
-                'Failed to read membership summary error response',
+                "Failed to read membership summary error response",
                 readError,
               );
             }
           }
 
-          console.warn('Membership summary request failed', {
+          console.warn("Membership summary request failed", {
             status: res.status,
             message: errorMessage,
           });
           setSummaryError(
             isZh
-              ? '加载会员信息失败，请稍后再试'
-              : 'Failed to load membership info. Please try again later.',
+              ? "加载会员信息失败，请稍后再试"
+              : "Failed to load membership info. Please try again later.",
           );
           return;
         }
@@ -424,21 +459,21 @@ export default function MembershipHomePage() {
         try {
           raw = (await res.json()) as MembershipSummaryApiEnvelope;
         } catch (error) {
-          console.error('Failed to parse membership summary response', error);
+          console.error("Failed to parse membership summary response", error);
           setSummaryError(
             isZh
-              ? '加载会员信息失败，请稍后再试'
-              : 'Failed to load membership info. Please try again later.',
+              ? "加载会员信息失败，请稍后再试"
+              : "Failed to load membership info. Please try again later.",
           );
           return;
         }
         const data =
-          'details' in raw && raw.details
+          "details" in raw && raw.details
             ? raw.details
             : (raw as MembershipSummaryResponse);
 
         const fallbackDisplayName =
-          data.displayName ?? session.user?.name ?? '';
+          data.displayName ?? session.user?.name ?? "";
         const fallbackParts = fallbackDisplayName.trim()
           ? fallbackDisplayName.trim().split(/\s+/)
           : [];
@@ -448,12 +483,14 @@ export default function MembershipHomePage() {
           firstName: data.firstName ?? fallbackParts[0] ?? undefined,
           lastName:
             data.lastName ??
-            (fallbackParts.length > 1 ? fallbackParts.slice(1).join(' ') : undefined),
+            (fallbackParts.length > 1
+              ? fallbackParts.slice(1).join(" ")
+              : undefined),
           email: data.email ?? session.user?.email ?? undefined,
           phone: data.phone ?? undefined,
           phoneVerified: data.phoneVerified ?? false,
           twoFactorEnabledAt: data.twoFactorEnabledAt ?? null,
-          twoFactorMethod: data.twoFactorMethod ?? 'OFF',
+          twoFactorMethod: data.twoFactorMethod ?? "OFF",
           birthdayMonth: data.birthdayMonth ?? null,
           birthdayDay: data.birthdayDay ?? null,
           referrerEmail: data.referrerEmail ?? null,
@@ -466,7 +503,7 @@ export default function MembershipHomePage() {
         });
 
         setMarketingOptIn(
-          typeof data.marketingEmailOptIn === 'boolean'
+          typeof data.marketingEmailOptIn === "boolean"
             ? data.marketingEmailOptIn
             : false,
         );
@@ -479,19 +516,23 @@ export default function MembershipHomePage() {
             createdAt: new Date(o.createdAt).toLocaleString(),
             totalCents: o.totalCents,
             status: o.status,
-            items: 0,
-            deliveryType: o.fulfillmentType === "delivery" ? "delivery" : "pickup",
+            items:
+              o.items?.reduce((sum, item) => sum + (item.quantity ?? 0), 0) ??
+              0,
+            deliveryType:
+              o.fulfillmentType === "delivery" ? "delivery" : "pickup",
+            lineItems: o.items ?? [],
           })),
         );
       } catch (err: unknown) {
-        if (err instanceof DOMException && err.name === 'AbortError') {
+        if (err instanceof DOMException && err.name === "AbortError") {
           return;
         }
         console.error(err);
         setSummaryError(
           isZh
-            ? '加载会员信息失败，请稍后再试'
-            : 'Failed to load membership info. Please try again later.',
+            ? "加载会员信息失败，请稍后再试"
+            : "Failed to load membership info. Please try again later.",
         );
       } finally {
         setSummaryLoading(false);
@@ -520,8 +561,8 @@ export default function MembershipHomePage() {
         setCouponError(null);
 
         const params = new URLSearchParams([
-          ['userStableId', member.userStableId],
-          ['locale', isZh ? 'zh' : 'en'],
+          ["userStableId", member.userStableId],
+          ["locale", isZh ? "zh" : "en"],
         ]);
         const res = await fetch(
           `/api/v1/membership/coupons?${params.toString()}`,
@@ -546,13 +587,13 @@ export default function MembershipHomePage() {
 
         setCoupons(list);
       } catch (err) {
-        if (err instanceof DOMException && err.name === 'AbortError') return;
+        if (err instanceof DOMException && err.name === "AbortError") return;
         console.error(err);
         setCoupons([]);
         setCouponError(
           isZh
-            ? '优惠券加载失败，请稍后再试。'
-            : 'Failed to load coupons. Please try again later.',
+            ? "优惠券加载失败，请稍后再试。"
+            : "Failed to load coupons. Please try again later.",
         );
       } finally {
         setCouponLoading(false);
@@ -565,13 +606,13 @@ export default function MembershipHomePage() {
 
   useEffect(() => {
     if (!member) return;
-    setProfileFirstName(member.firstName ?? '');
-    setProfileLastName(member.lastName ?? '');
+    setProfileFirstName(member.firstName ?? "");
+    setProfileLastName(member.lastName ?? "");
     setBirthdayMonthInput(
-      member.birthdayMonth != null ? String(member.birthdayMonth) : '',
+      member.birthdayMonth != null ? String(member.birthdayMonth) : "",
     );
     setBirthdayDayInput(
-      member.birthdayDay != null ? String(member.birthdayDay) : '',
+      member.birthdayDay != null ? String(member.birthdayDay) : "",
     );
     setLanguagePreference(member.language ?? browserLanguagePreference);
     setProfileSaved(false);
@@ -592,8 +633,8 @@ export default function MembershipHomePage() {
 
   useEffect(() => {
     if (member?.phoneVerified) {
-      setPhoneEnrollInput('');
-      setPhoneEnrollCode('');
+      setPhoneEnrollInput("");
+      setPhoneEnrollCode("");
       setPhoneEnrollError(null);
     }
   }, [member?.phoneVerified]);
@@ -601,8 +642,8 @@ export default function MembershipHomePage() {
   // 拉取积分/余额流水：首次切到“积分/余额”tab 且已登录时加载一次
   useEffect(() => {
     if (
-      (activeTab !== 'points' && activeTab !== 'balance') ||
-      status !== 'authenticated' ||
+      (activeTab !== "points" && activeTab !== "balance") ||
+      status !== "authenticated" ||
       !session?.user ||
       loyaltyLoadedOnce ||
       loyaltyLoading
@@ -620,7 +661,7 @@ export default function MembershipHomePage() {
 
         const params = new URLSearchParams({
           userStableId,
-          limit: '100',
+          limit: "100",
         });
 
         const res = await fetch(
@@ -635,7 +676,7 @@ export default function MembershipHomePage() {
 
         let entries: LoyaltyEntry[] = [];
 
-        if (raw && typeof raw === 'object') {
+        if (raw && typeof raw === "object") {
           const maybe = raw as {
             entries?: LoyaltyEntry[];
             details?: { entries?: LoyaltyEntry[] };
@@ -654,8 +695,8 @@ export default function MembershipHomePage() {
         console.error(err);
         setLoyaltyError(
           isZh
-            ? '加载积分流水失败，请稍后再试'
-            : 'Failed to load points history. Please try again later.',
+            ? "加载积分流水失败，请稍后再试"
+            : "Failed to load points history. Please try again later.",
         );
       } finally {
         setLoyaltyLoading(false);
@@ -664,14 +705,7 @@ export default function MembershipHomePage() {
     };
 
     void loadLedger();
-  }, [
-    activeTab,
-    status,
-    session,
-    loyaltyLoadedOnce,
-    loyaltyLoading,
-    isZh,
-  ]);
+  }, [activeTab, status, session, loyaltyLoadedOnce, loyaltyLoading, isZh]);
 
   const handleMarketingToggle = useCallback(
     async (next: boolean) => {
@@ -684,8 +718,8 @@ export default function MembershipHomePage() {
       if (next && !member.email) {
         setMarketingError(
           isZh
-            ? '请先绑定邮箱后再开启订阅。'
-            : 'Please link an email before enabling subscriptions.',
+            ? "请先绑定邮箱后再开启订阅。"
+            : "Please link an email before enabling subscriptions.",
         );
         setEmailEnrollVisible(true);
         setMarketingOptInPending(true);
@@ -696,9 +730,9 @@ export default function MembershipHomePage() {
       setMarketingError(null);
 
       try {
-        const res = await fetch('/api/v1/membership/marketing-consent', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        const res = await fetch("/api/v1/membership/marketing-consent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             userStableId: member.userStableId,
             marketingEmailOptIn: next,
@@ -710,14 +744,14 @@ export default function MembershipHomePage() {
           try {
             const data = (await res.json()) as { message?: string | string[] };
             if (Array.isArray(data.message)) {
-              errorMessage = data.message.join(', ');
-            } else if (typeof data.message === 'string') {
+              errorMessage = data.message.join(", ");
+            } else if (typeof data.message === "string") {
               errorMessage = data.message;
             }
           } catch (parseError) {
             console.error(parseError);
           }
-          if (errorMessage === 'email_not_linked') {
+          if (errorMessage === "email_not_linked") {
             throw new Error(errorMessage);
           }
           throw new Error(`Failed with status ${res.status}`);
@@ -726,19 +760,19 @@ export default function MembershipHomePage() {
         setMarketingOptIn(next);
       } catch (err) {
         console.error(err);
-        if (err instanceof Error && err.message === 'email_not_linked') {
+        if (err instanceof Error && err.message === "email_not_linked") {
           setEmailEnrollVisible(true);
           setMarketingOptInPending(true);
           setMarketingError(
             isZh
-              ? '请先绑定邮箱后再开启订阅。'
-              : 'Please link an email before enabling subscriptions.',
+              ? "请先绑定邮箱后再开启订阅。"
+              : "Please link an email before enabling subscriptions.",
           );
         } else {
           setMarketingError(
             isZh
-              ? '更新订阅偏好失败，请稍后再试。'
-              : 'Failed to update email preference. Please try again later.',
+              ? "更新订阅偏好失败，请稍后再试。"
+              : "Failed to update email preference. Please try again later.",
           );
         }
       } finally {
@@ -787,9 +821,9 @@ export default function MembershipHomePage() {
     }
 
     try {
-      const res = await fetch('/api/v1/membership/profile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/v1/membership/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
@@ -828,18 +862,13 @@ export default function MembershipHomePage() {
       console.error(err);
       setProfileError(
         isZh
-          ? '保存失败，请稍后再试。'
-          : 'Failed to save. Please try again later.',
+          ? "保存失败，请稍后再试。"
+          : "Failed to save. Please try again later.",
       );
     } finally {
       setProfileSaving(false);
     }
-  }, [
-    member,
-    profileFirstName,
-    profileLastName,
-    isZh,
-  ]);
+  }, [member, profileFirstName, profileLastName, isZh]);
 
   const handleLanguageSave = useCallback(async () => {
     if (!member) return;
@@ -848,9 +877,9 @@ export default function MembershipHomePage() {
     setLanguageSaved(false);
 
     try {
-      const res = await fetch('/api/v1/membership/profile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/v1/membership/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           language: languagePreference,
         }),
@@ -863,7 +892,7 @@ export default function MembershipHomePage() {
       const raw = (await res.json()) as {
         success?: boolean;
         user?: {
-          language?: 'zh' | 'en';
+          language?: "zh" | "en";
         };
       };
 
@@ -885,8 +914,8 @@ export default function MembershipHomePage() {
       console.error(err);
       setLanguageError(
         isZh
-          ? '语言偏好保存失败，请稍后再试。'
-          : 'Failed to save language preference. Please try again later.',
+          ? "语言偏好保存失败，请稍后再试。"
+          : "Failed to save language preference. Please try again later.",
       );
     } finally {
       setLanguageSaving(false);
@@ -914,16 +943,16 @@ export default function MembershipHomePage() {
       setBirthdaySaving(false);
       setBirthdayError(
         isZh
-          ? '生日格式不正确，请填写 1-12 月和 1-31 日。'
-          : 'Invalid birthday. Please enter month 1-12 and day 1-31.',
+          ? "生日格式不正确，请填写 1-12 月和 1-31 日。"
+          : "Invalid birthday. Please enter month 1-12 and day 1-31.",
       );
       return;
     }
 
     try {
-      const res = await fetch('/api/v1/membership/profile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/v1/membership/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           birthdayMonth: parsedMonth,
           birthdayDay: parsedDay,
@@ -951,8 +980,7 @@ export default function MembershipHomePage() {
                 ...prev,
                 birthdayMonth:
                   updated.birthdayMonth ?? prev.birthdayMonth ?? null,
-                birthdayDay:
-                  updated.birthdayDay ?? prev.birthdayDay ?? null,
+                birthdayDay: updated.birthdayDay ?? prev.birthdayDay ?? null,
               }
             : prev,
         );
@@ -962,8 +990,8 @@ export default function MembershipHomePage() {
       console.error(err);
       setBirthdayError(
         isZh
-          ? '生日保存失败，请稍后再试。'
-          : 'Failed to save birthday. Please try again later.',
+          ? "生日保存失败，请稍后再试。"
+          : "Failed to save birthday. Please try again later.",
       );
     } finally {
       setBirthdaySaving(false);
@@ -974,8 +1002,8 @@ export default function MembershipHomePage() {
     if (!session?.user?.mfaVerifiedAt) {
       setPhoneEnrollError(
         isZh
-          ? '请先完成二次验证后再更换手机号。'
-          : 'Complete 2FA before changing your phone number.',
+          ? "请先完成二次验证后再更换手机号。"
+          : "Complete 2FA before changing your phone number.",
       );
       router.push(`/${locale}/membership/2fa`);
       return;
@@ -984,8 +1012,8 @@ export default function MembershipHomePage() {
     if (!isValidCanadianPhone(phoneEnrollInput)) {
       setPhoneEnrollError(
         isZh
-          ? '请输入有效的加拿大手机号。'
-          : 'Please enter a valid Canadian phone number.',
+          ? "请输入有效的加拿大手机号。"
+          : "Please enter a valid Canadian phone number.",
       );
       return;
     }
@@ -993,9 +1021,9 @@ export default function MembershipHomePage() {
     try {
       setPhoneEnrollSending(true);
       setPhoneEnrollError(null);
-      await apiFetch('/auth/phone/enroll/request', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      await apiFetch("/auth/phone/enroll/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           phone: formatCanadianPhoneForApi(phoneEnrollInput),
         }),
@@ -1003,15 +1031,15 @@ export default function MembershipHomePage() {
     } catch (err) {
       console.error(err);
       const message = readApiErrorMessage(err);
-      if (message === 'phone already in use') {
+      if (message === "phone already in use") {
         setPhoneEnrollError(
-          isZh ? '该手机号已被其他账户绑定。' : 'That phone is already in use.',
+          isZh ? "该手机号已被其他账户绑定。" : "That phone is already in use.",
         );
       } else {
         setPhoneEnrollError(
           isZh
-            ? '验证码发送失败，请稍后再试。'
-            : 'Failed to send code. Please try again.',
+            ? "验证码发送失败，请稍后再试。"
+            : "Failed to send code. Please try again.",
         );
       }
     } finally {
@@ -1030,8 +1058,8 @@ export default function MembershipHomePage() {
     if (!session?.user?.mfaVerifiedAt) {
       setPhoneEnrollError(
         isZh
-          ? '请先完成二次验证后再更换手机号。'
-          : 'Complete 2FA before changing your phone number.',
+          ? "请先完成二次验证后再更换手机号。"
+          : "Complete 2FA before changing your phone number.",
       );
       router.push(`/${locale}/membership/2fa`);
       return;
@@ -1039,7 +1067,7 @@ export default function MembershipHomePage() {
 
     if (!isValidCanadianPhone(phoneEnrollInput) || !phoneEnrollCode.trim()) {
       setPhoneEnrollError(
-        isZh ? '请输入有效的加拿大手机号和验证码。' : 'Enter phone and code.',
+        isZh ? "请输入有效的加拿大手机号和验证码。" : "Enter phone and code.",
       );
       return;
     }
@@ -1047,9 +1075,9 @@ export default function MembershipHomePage() {
     try {
       setPhoneEnrollVerifying(true);
       setPhoneEnrollError(null);
-      await apiFetch('/auth/phone/enroll/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      await apiFetch("/auth/phone/enroll/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           phone: formatCanadianPhoneForApi(phoneEnrollInput),
           code: phoneEnrollCode.trim(),
@@ -1065,20 +1093,18 @@ export default function MembershipHomePage() {
             }
           : prev,
       );
-      setPhoneEnrollCode('');
+      setPhoneEnrollCode("");
       setPhoneEnrollVisible(false);
     } catch (err) {
       console.error(err);
       const message = readApiErrorMessage(err);
-      if (message === 'phone already in use') {
+      if (message === "phone already in use") {
         setPhoneEnrollError(
-          isZh ? '该手机号已被其他账户绑定。' : 'That phone is already in use.',
+          isZh ? "该手机号已被其他账户绑定。" : "That phone is already in use.",
         );
       } else {
         setPhoneEnrollError(
-          isZh
-            ? '验证码无效或已过期。'
-            : 'The code is invalid or expired.',
+          isZh ? "验证码无效或已过期。" : "The code is invalid or expired.",
         );
       }
     } finally {
@@ -1094,26 +1120,32 @@ export default function MembershipHomePage() {
     locale,
   ]);
 
-  const handleEmailEnrollInputChange = useCallback((value: string) => {
-    setEmailEnrollInput(value);
-    if (emailEnrollError) {
-      setEmailEnrollError(null);
-    }
-  }, [emailEnrollError]);
+  const handleEmailEnrollInputChange = useCallback(
+    (value: string) => {
+      setEmailEnrollInput(value);
+      if (emailEnrollError) {
+        setEmailEnrollError(null);
+      }
+    },
+    [emailEnrollError],
+  );
 
-  const handleEmailEnrollCodeChange = useCallback((value: string) => {
-    setEmailEnrollCode(value);
-    if (emailEnrollError) {
-      setEmailEnrollError(null);
-    }
-  }, [emailEnrollError]);
+  const handleEmailEnrollCodeChange = useCallback(
+    (value: string) => {
+      setEmailEnrollCode(value);
+      if (emailEnrollError) {
+        setEmailEnrollError(null);
+      }
+    },
+    [emailEnrollError],
+  );
 
   const handleRequestEmailEnroll = useCallback(async () => {
     if (!session?.user?.mfaVerifiedAt) {
       setEmailEnrollError(
         isZh
-          ? '请先完成二次验证后再更换邮箱。'
-          : 'Complete 2FA before changing your email.',
+          ? "请先完成二次验证后再更换邮箱。"
+          : "Complete 2FA before changing your email.",
       );
       router.push(`/${locale}/membership/2fa`);
       return;
@@ -1121,7 +1153,7 @@ export default function MembershipHomePage() {
 
     if (!isValidEmail(emailEnrollInput)) {
       setEmailEnrollError(
-        isZh ? '请输入有效的邮箱地址。' : 'Please enter a valid email.',
+        isZh ? "请输入有效的邮箱地址。" : "Please enter a valid email.",
       );
       return;
     }
@@ -1130,26 +1162,26 @@ export default function MembershipHomePage() {
       setEmailEnrollSending(true);
       setEmailEnrollError(null);
       setEmailEnrollSent(false);
-      await apiFetch('/membership/email/verification/request', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      await apiFetch("/membership/email/verification/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: emailEnrollInput.trim() }),
       });
       setEmailEnrollSent(true);
     } catch (err) {
       console.error(err);
       const message = readApiErrorMessage(err);
-      if (message === 'email_in_use') {
+      if (message === "email_in_use") {
         setEmailEnrollError(
-          isZh ? '该邮箱已被使用。' : 'That email is already in use.',
+          isZh ? "该邮箱已被使用。" : "That email is already in use.",
         );
-      } else if (message === 'invalid_email') {
+      } else if (message === "invalid_email") {
         setEmailEnrollError(
-          isZh ? '请输入有效的邮箱地址。' : 'Please enter a valid email.',
+          isZh ? "请输入有效的邮箱地址。" : "Please enter a valid email.",
         );
       } else {
         setEmailEnrollError(
-          isZh ? '验证码发送失败，请稍后再试。' : 'Failed to send code.',
+          isZh ? "验证码发送失败，请稍后再试。" : "Failed to send code.",
         );
       }
     } finally {
@@ -1169,15 +1201,15 @@ export default function MembershipHomePage() {
     if (!session?.user?.mfaVerifiedAt) {
       setEmailEnrollError(
         isZh
-          ? '请先完成二次验证后再更换邮箱。'
-          : 'Complete 2FA before changing your email.',
+          ? "请先完成二次验证后再更换邮箱。"
+          : "Complete 2FA before changing your email.",
       );
       router.push(`/${locale}/membership/2fa`);
       return;
     }
 
     if (!emailEnrollCode.trim()) {
-      setEmailEnrollError(isZh ? '请输入验证码。' : 'Enter the code.');
+      setEmailEnrollError(isZh ? "请输入验证码。" : "Enter the code.");
       return;
     }
 
@@ -1186,9 +1218,9 @@ export default function MembershipHomePage() {
       setEmailEnrollError(null);
       const result = await apiFetch<{
         email?: string | null;
-      }>('/membership/email/verification/confirm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      }>("/membership/email/verification/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: emailEnrollCode.trim() }),
       });
 
@@ -1202,21 +1234,21 @@ export default function MembershipHomePage() {
             : prev,
         );
       }
-      setEmailEnrollCode('');
+      setEmailEnrollCode("");
       setEmailEnrollSent(false);
       setEmailEnrollVisible(false);
     } catch (err) {
       console.error(err);
       const message = readApiErrorMessage(err);
-      if (message === 'token_expired' || message === 'token_not_found') {
+      if (message === "token_expired" || message === "token_not_found") {
         setEmailEnrollError(
-          isZh ? '验证码无效或已过期。' : 'The code is invalid or expired.',
+          isZh ? "验证码无效或已过期。" : "The code is invalid or expired.",
         );
-      } else if (message === 'code_required') {
-        setEmailEnrollError(isZh ? '请输入验证码。' : 'Enter the code.');
+      } else if (message === "code_required") {
+        setEmailEnrollError(isZh ? "请输入验证码。" : "Enter the code.");
       } else {
         setEmailEnrollError(
-          isZh ? '验证失败，请稍后再试。' : 'Verification failed.',
+          isZh ? "验证失败，请稍后再试。" : "Verification failed.",
         );
       }
     } finally {
@@ -1247,14 +1279,14 @@ export default function MembershipHomePage() {
       try {
         setTwoFactorSaving(true);
         setTwoFactorError(null);
-        const endpoint = enable ? '/auth/2fa/enable' : '/auth/2fa/disable';
-        await apiFetch(endpoint, { method: 'POST' });
+        const endpoint = enable ? "/auth/2fa/enable" : "/auth/2fa/disable";
+        await apiFetch(endpoint, { method: "POST" });
         setMember((prev) =>
           prev
             ? {
                 ...prev,
                 twoFactorEnabledAt: enable ? new Date().toISOString() : null,
-                twoFactorMethod: enable ? 'SMS' : 'OFF',
+                twoFactorMethod: enable ? "SMS" : "OFF",
               }
             : prev,
         );
@@ -1262,8 +1294,8 @@ export default function MembershipHomePage() {
         console.error(err);
         setTwoFactorError(
           isZh
-            ? '操作失败，请稍后再试。'
-            : 'Failed to update 2FA setting. Please try again.',
+            ? "操作失败，请稍后再试。"
+            : "Failed to update 2FA setting. Please try again.",
         );
       } finally {
         setTwoFactorSaving(false);
@@ -1274,29 +1306,34 @@ export default function MembershipHomePage() {
 
   // ⭐ 新增：如果注册时勾选了“营销邮件”，第一次进入会员中心时自动帮他开关一次
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
     if (!member?.userStableId) return;
-    if (marketingOptIn === null) return;      // 还没从后端拿到数据
-    if (marketingSaving) return;             // 正在提交就先不动
+    if (marketingOptIn === null) return; // 还没从后端拿到数据
+    if (marketingSaving) return; // 正在提交就先不动
 
     try {
       const flag = window.localStorage.getItem(
-        'sanqin_marketing_optin_initial',
+        "sanqin_marketing_optin_initial",
       );
       // 只有在当前还是 false 且 flag=1 时，自动打开一次
-      if (flag === '1' && marketingOptIn === false) {
+      if (flag === "1" && marketingOptIn === false) {
         void handleMarketingToggle(true);
-        window.localStorage.removeItem('sanqin_marketing_optin_initial');
+        window.localStorage.removeItem("sanqin_marketing_optin_initial");
       }
     } catch (e) {
       console.error(
-        'Failed to apply initial marketing opt-in from localStorage',
+        "Failed to apply initial marketing opt-in from localStorage",
         e,
       );
     }
-  }, [member?.userStableId, marketingOptIn, marketingSaving, handleMarketingToggle]);
+  }, [
+    member?.userStableId,
+    marketingOptIn,
+    marketingSaving,
+    handleMarketingToggle,
+  ]);
 
-  const isLoading = status === 'loading' || summaryLoading;
+  const isLoading = status === "loading" || summaryLoading;
 
   const loadAddresses = useCallback(async () => {
     if (!member?.userStableId) return;
@@ -1312,9 +1349,9 @@ export default function MembershipHomePage() {
       );
       setAddresses(list ?? []);
     } catch (error) {
-      console.error('Failed to load addresses', error);
+      console.error("Failed to load addresses", error);
       setAddressesError(
-        isZh ? '地址加载失败，请稍后再试。' : 'Failed to load addresses.',
+        isZh ? "地址加载失败，请稍后再试。" : "Failed to load addresses.",
       );
       setAddresses([]);
     } finally {
@@ -1330,21 +1367,21 @@ export default function MembershipHomePage() {
     async (address: MemberAddress, setDefault: boolean) => {
       if (!member?.userStableId) return;
       try {
-        await apiFetch<{ success: boolean }>('/membership/addresses', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        await apiFetch<{ success: boolean }>("/membership/addresses", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             userStableId: member.userStableId,
             label: address.label,
             receiver: address.receiver,
-            phone: address.phone ?? '',
+            phone: address.phone ?? "",
             addressLine1: address.addressLine1,
-            addressLine2: address.addressLine2 ?? '',
-            remark: address.remark ?? '',
+            addressLine2: address.addressLine2 ?? "",
+            remark: address.remark ?? "",
             city: address.city,
             province: address.province,
             postalCode: address.postalCode,
-            placeId: address.placeId ?? '',
+            placeId: address.placeId ?? "",
             latitude: address.latitude ?? null,
             longitude: address.longitude ?? null,
             isDefault: setDefault,
@@ -1352,9 +1389,9 @@ export default function MembershipHomePage() {
         });
         await loadAddresses();
       } catch (error) {
-        console.error('Failed to add address', error);
+        console.error("Failed to add address", error);
         setAddressesError(
-          isZh ? '地址保存失败，请稍后再试。' : 'Failed to save address.',
+          isZh ? "地址保存失败，请稍后再试。" : "Failed to save address.",
         );
       }
     },
@@ -1365,22 +1402,22 @@ export default function MembershipHomePage() {
     async (address: MemberAddress, setDefault: boolean) => {
       if (!member?.userStableId) return;
       try {
-        await apiFetch<{ success: boolean }>('/membership/addresses', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+        await apiFetch<{ success: boolean }>("/membership/addresses", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             userStableId: member.userStableId,
             addressStableId: address.addressStableId,
             label: address.label,
             receiver: address.receiver,
-            phone: address.phone ?? '',
+            phone: address.phone ?? "",
             addressLine1: address.addressLine1,
-            addressLine2: address.addressLine2 ?? '',
-            remark: address.remark ?? '',
+            addressLine2: address.addressLine2 ?? "",
+            remark: address.remark ?? "",
             city: address.city,
             province: address.province,
             postalCode: address.postalCode,
-            placeId: address.placeId ?? '',
+            placeId: address.placeId ?? "",
             latitude: address.latitude ?? null,
             longitude: address.longitude ?? null,
             isDefault: setDefault,
@@ -1388,9 +1425,9 @@ export default function MembershipHomePage() {
         });
         await loadAddresses();
       } catch (error) {
-        console.error('Failed to update address', error);
+        console.error("Failed to update address", error);
         setAddressesError(
-          isZh ? '地址更新失败，请稍后再试。' : 'Failed to update address.',
+          isZh ? "地址更新失败，请稍后再试。" : "Failed to update address.",
         );
       }
     },
@@ -1407,13 +1444,13 @@ export default function MembershipHomePage() {
         });
         await apiFetch<{ success: boolean }>(
           `/membership/addresses?${params.toString()}`,
-          { method: 'DELETE' },
+          { method: "DELETE" },
         );
         await loadAddresses();
       } catch (error) {
-        console.error('Failed to delete address', error);
+        console.error("Failed to delete address", error);
         setAddressesError(
-          isZh ? '地址删除失败，请稍后再试。' : 'Failed to delete address.',
+          isZh ? "地址删除失败，请稍后再试。" : "Failed to delete address.",
         );
       }
     },
@@ -1424,9 +1461,9 @@ export default function MembershipHomePage() {
     async (addressStableId: string) => {
       if (!member?.userStableId) return;
       try {
-        await apiFetch<{ success: boolean }>('/membership/addresses/default', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        await apiFetch<{ success: boolean }>("/membership/addresses/default", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             userStableId: member.userStableId,
             addressStableId,
@@ -1434,9 +1471,11 @@ export default function MembershipHomePage() {
         });
         await loadAddresses();
       } catch (error) {
-        console.error('Failed to set default address', error);
+        console.error("Failed to set default address", error);
         setAddressesError(
-          isZh ? '默认地址设置失败，请稍后再试。' : 'Failed to set default address.',
+          isZh
+            ? "默认地址设置失败，请稍后再试。"
+            : "Failed to set default address.",
         );
       }
     },
@@ -1448,15 +1487,15 @@ export default function MembershipHomePage() {
       setDevicesLoading(true);
       setDevicesError(null);
       const data = await apiFetch<DeviceManagementResponse>(
-        '/membership/devices',
+        "/membership/devices",
       );
       setDeviceSessions(data?.sessions ?? []);
       setTrustedDevices(data?.trustedDevices ?? []);
       setDevicesLoadedOnce(true);
     } catch (error) {
-      console.error('Failed to load device management', error);
+      console.error("Failed to load device management", error);
       setDevicesError(
-        isZh ? '设备信息加载失败，请稍后再试。' : 'Failed to load devices.',
+        isZh ? "设备信息加载失败，请稍后再试。" : "Failed to load devices.",
       );
       setDeviceSessions([]);
       setTrustedDevices([]);
@@ -1467,7 +1506,7 @@ export default function MembershipHomePage() {
   }, [isZh]);
 
   useEffect(() => {
-    if (activeTab !== 'devices') return;
+    if (activeTab !== "devices") return;
     if (devicesLoadedOnce || devicesLoading) return;
     void loadDevices();
   }, [activeTab, devicesLoadedOnce, devicesLoading, loadDevices]);
@@ -1477,15 +1516,15 @@ export default function MembershipHomePage() {
       try {
         await apiFetch<{ success: boolean }>(
           `/membership/devices/sessions/${sessionId}`,
-          { method: 'DELETE' },
+          { method: "DELETE" },
         );
         await loadDevices();
       } catch (error) {
-        console.error('Failed to revoke session', error);
+        console.error("Failed to revoke session", error);
         setDevicesError(
           isZh
-            ? '登录设备移除失败，请稍后再试。'
-            : 'Failed to remove login device.',
+            ? "登录设备移除失败，请稍后再试。"
+            : "Failed to remove login device.",
         );
       }
     },
@@ -1497,15 +1536,15 @@ export default function MembershipHomePage() {
       try {
         await apiFetch<{ success: boolean }>(
           `/membership/devices/trusted/${deviceId}`,
-          { method: 'DELETE' },
+          { method: "DELETE" },
         );
         await loadDevices();
       } catch (error) {
-        console.error('Failed to revoke trusted device', error);
+        console.error("Failed to revoke trusted device", error);
         setDevicesError(
           isZh
-            ? '授信设备移除失败，请稍后再试。'
-            : 'Failed to remove trusted device.',
+            ? "授信设备移除失败，请稍后再试。"
+            : "Failed to remove trusted device.",
         );
       }
     },
@@ -1517,8 +1556,8 @@ export default function MembershipHomePage() {
       try {
         setTrustingSessionId(session.sessionId);
         await apiFetch<{ success: boolean }>(`/membership/devices/trusted`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             sessionId: session.sessionId,
             label: session.deviceInfo ?? undefined,
@@ -1526,11 +1565,9 @@ export default function MembershipHomePage() {
         });
         await loadDevices();
       } catch (error) {
-        console.error('Failed to trust device', error);
+        console.error("Failed to trust device", error);
         setDevicesError(
-          isZh
-            ? '授信设备添加失败，请稍后再试。'
-            : 'Failed to trust device.',
+          isZh ? "授信设备添加失败，请稍后再试。" : "Failed to trust device.",
         );
       } finally {
         setTrustingSessionId(null);
@@ -1542,52 +1579,83 @@ export default function MembershipHomePage() {
   const tierDisplay =
     member &&
     {
-      BRONZE: isZh ? '青铜会员' : 'Bronze',
-      SILVER: isZh ? '白银会员' : 'Silver',
-      GOLD: isZh ? '黄金会员' : 'Gold',
-      PLATINUM: isZh ? '铂金会员' : 'Platinum',
+      BRONZE: isZh ? "青铜会员" : "Bronze",
+      SILVER: isZh ? "白银会员" : "Silver",
+      GOLD: isZh ? "黄金会员" : "Gold",
+      PLATINUM: isZh ? "铂金会员" : "Platinum",
     }[member.tier];
 
-const THRESHOLD = {
-  BRONZE: 0,
-  SILVER: 1000 * 100,
-  GOLD: 10000 * 100,
-  PLATINUM: 30000 * 100,
-} as const;
+  const THRESHOLD = {
+    BRONZE: 0,
+    SILVER: 1000 * 100,
+    GOLD: 10000 * 100,
+    PLATINUM: 30000 * 100,
+  } as const;
 
-function nextTier(t: MemberTier): MemberTier | null {
-  if (t === 'BRONZE') return 'SILVER';
-  if (t === 'SILVER') return 'GOLD';
-  if (t === 'GOLD') return 'PLATINUM';
-  return null;
-}
+  function nextTier(t: MemberTier): MemberTier | null {
+    if (t === "BRONZE") return "SILVER";
+    if (t === "SILVER") return "GOLD";
+    if (t === "GOLD") return "PLATINUM";
+    return null;
+  }
 
-const tierProgress = (() => {
-  if (!member) return 0;
-  const cur = member.lifetimeSpendCents ?? 0;
-  const t = member.tier;
-  const nt = nextTier(t);
-  if (!nt) return 100; // PLATINUM 顶级
-  const base = THRESHOLD[t];
-  const next = THRESHOLD[nt];
-  if (next <= base) return 100;
-  return Math.max(0, Math.min(((cur - base) / (next - base)) * 100, 100));
-})();
+  const tierProgress = (() => {
+    if (!member) return 0;
+    const cur = member.lifetimeSpendCents ?? 0;
+    const t = member.tier;
+    const nt = nextTier(t);
+    if (!nt) return 100; // PLATINUM 顶级
+    const base = THRESHOLD[t];
+    const next = THRESHOLD[nt];
+    if (next <= base) return 100;
+    return Math.max(0, Math.min(((cur - base) / (next - base)) * 100, 100));
+  })();
 
   const tabs: { key: typeof activeTab; label: string }[] = [
-    { key: 'overview', label: isZh ? '总览' : 'Overview' },
-    { key: 'orders', label: isZh ? '订单' : 'Orders' },
-    { key: 'points', label: isZh ? '积分' : 'Points' },
-    { key: 'balance', label: isZh ? '余额' : 'Balance' },
-    { key: 'addresses', label: isZh ? '地址' : 'Addresses' },
-    { key: 'coupons', label: isZh ? '优惠卷' : 'Coupons' },
-    { key: 'devices', label: isZh ? '设备管理' : 'Devices' },
-    { key: 'profile', label: isZh ? '账户' : 'Account' },
+    { key: "overview", label: isZh ? "总览" : "Overview" },
+    { key: "orders", label: isZh ? "订单" : "Orders" },
+    { key: "points", label: isZh ? "积分" : "Points" },
+    { key: "balance", label: isZh ? "余额" : "Balance" },
+    { key: "addresses", label: isZh ? "地址" : "Addresses" },
+    { key: "coupons", label: isZh ? "优惠卷" : "Coupons" },
+    { key: "devices", label: isZh ? "设备管理" : "Devices" },
+    { key: "profile", label: isZh ? "账户" : "Account" },
   ];
 
   function handleLogout() {
     void signOut().then(() => router.push(`/${locale}`));
   }
+
+  const handleReorderItem = useCallback(
+    (item: OrderHistoryItem) => {
+      const options = item.options.reduce<
+        Record<string, { id: string; name: string; priceDeltaCents?: number }[]>
+      >((acc, group) => {
+        const selectedChoices = (group.choices ?? []).map((choice) => ({
+          id: choice.stableId,
+          name: isZh ? (choice.nameZh ?? choice.nameEn) : choice.nameEn,
+          priceDeltaCents: choice.priceDeltaCents,
+        }));
+        if (selectedChoices.length > 0) {
+          acc[group.templateGroupStableId] = selectedChoices;
+        }
+        return acc;
+      }, {});
+
+      addItem(
+        item.productStableId,
+        Object.keys(options).length > 0 ? options : undefined,
+        1,
+      );
+      setReorderMessage(
+        isZh
+          ? "已加入购物车，可前往结算。"
+          : "Added to cart. You can checkout now.",
+      );
+      window.setTimeout(() => setReorderMessage(null), 1800);
+    },
+    [addItem, isZh],
+  );
 
   // 状态控制渲染
   if (isLoading) {
@@ -1595,13 +1663,13 @@ const tierProgress = (() => {
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <p className="text-sm text-slate-500">
           {summaryError ??
-            (isZh ? '加载会员信息中…' : 'Loading membership info…')}
+            (isZh ? "加载会员信息中…" : "Loading membership info…")}
         </p>
       </div>
     );
   }
 
-  if (status === 'unauthenticated') {
+  if (status === "unauthenticated") {
     // useEffect 会把人重定向到登录页，这里先不渲染内容
     return null;
   }
@@ -1611,7 +1679,7 @@ const tierProgress = (() => {
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <p className="text-sm text-slate-500">
           {summaryError ??
-            (isZh ? '未能获取会员信息' : 'Unable to load membership info')}
+            (isZh ? "未能获取会员信息" : "Unable to load membership info")}
         </p>
       </div>
     );
@@ -1625,16 +1693,16 @@ const tierProgress = (() => {
             href={`/${locale}`}
             className="text-sm text-slate-600 hover:text-slate-900"
           >
-            ← {isZh ? '返回首页' : 'Back to home'}
+            ← {isZh ? "返回首页" : "Back to home"}
           </Link>
           <div className="text-sm font-medium text-slate-900">
-            {isZh ? '会员中心' : 'Member Center'}
+            {isZh ? "会员中心" : "Member Center"}
           </div>
           <button
             onClick={handleLogout}
             className="text-xs text-slate-500 hover:text-slate-900"
           >
-            {isZh ? '退出登录' : 'Log out'}
+            {isZh ? "退出登录" : "Log out"}
           </button>
         </div>
       </header>
@@ -1645,24 +1713,24 @@ const tierProgress = (() => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs uppercase tracking-wide text-slate-300">
-                {isZh ? '当前会员等级' : 'Current tier'}
+                {isZh ? "当前会员等级" : "Current tier"}
               </p>
               <p className="mt-1 text-xl font-semibold">{tierDisplay}</p>
               <p className="mt-2 text-xs text-slate-300">
                 {member.email
-                  ? `${isZh ? '登录邮箱：' : 'Email: '}${member.email}`
+                  ? `${isZh ? "登录邮箱：" : "Email: "}${member.email}`
                   : isZh
-                    ? '登录邮箱未识别'
-                    : 'Email not available'}
+                    ? "登录邮箱未识别"
+                    : "Email not available"}
               </p>
             </div>
             <div className="text-right">
               <p className="text-xs uppercase tracking-wide text-slate-300">
-                {isZh ? '积分' : 'Points'}
+                {isZh ? "积分" : "Points"}
               </p>
               <p className="mt-1 text-2xl font-semibold">{member.points}</p>
               <p className="mt-2 text-xs uppercase tracking-wide text-slate-300">
-                {isZh ? '储值余额' : 'Store balance'}
+                {isZh ? "储值余额" : "Store balance"}
               </p>
               <p className="mt-1 text-base font-semibold text-emerald-200">
                 {formatBalanceAmount(member.balance)}
@@ -1681,7 +1749,7 @@ const tierProgress = (() => {
 
           <div className="mt-4">
             <div className="flex items-center justify-between text-[11px] text-slate-300">
-              <span>{isZh ? '升级进度' : 'Progress to next tier'}</span>
+              <span>{isZh ? "升级进度" : "Progress to next tier"}</span>
               <span>{tierProgress.toFixed(0)}%</span>
             </div>
             <div className="mt-1 h-1.5 w-full rounded-full bg-slate-700">
@@ -1702,8 +1770,8 @@ const tierProgress = (() => {
               onClick={() => setActiveTab(tab.key)}
               className={`whitespace-nowrap rounded-full px-3 py-1 ${
                 activeTab === tab.key
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100'
+                  ? "bg-slate-900 text-white"
+                  : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100"
               }`}
             >
               {tab.label}
@@ -1713,24 +1781,32 @@ const tierProgress = (() => {
 
         {/* 对应内容区域 */}
         <div className="space-y-4">
-          {activeTab === 'overview' && (
+          {reorderMessage && (
+            <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+              {reorderMessage}
+            </p>
+          )}
+
+          {activeTab === "overview" && (
             <OverviewSection
               isZh={isZh}
               user={member}
               latestOrder={orders[0]}
               locale={locale as Locale}
+              onReorderItem={handleReorderItem}
             />
           )}
 
-          {activeTab === 'orders' && (
+          {activeTab === "orders" && (
             <OrdersSection
               isZh={isZh}
               orders={orders}
               locale={locale as Locale}
+              onReorderItem={handleReorderItem}
             />
           )}
 
-          {activeTab === 'points' && (
+          {activeTab === "points" && (
             <PointsSection
               isZh={isZh}
               entries={loyaltyEntries}
@@ -1741,7 +1817,7 @@ const tierProgress = (() => {
             />
           )}
 
-          {activeTab === 'balance' && (
+          {activeTab === "balance" && (
             <BalanceSection
               isZh={isZh}
               entries={loyaltyEntries}
@@ -1752,7 +1828,7 @@ const tierProgress = (() => {
             />
           )}
 
-          {activeTab === 'addresses' && (
+          {activeTab === "addresses" && (
             <AddressesSection
               isZh={isZh}
               addresses={addresses}
@@ -1765,7 +1841,7 @@ const tierProgress = (() => {
             />
           )}
 
-          {activeTab === 'coupons' && (
+          {activeTab === "coupons" && (
             <CouponsSection
               isZh={isZh}
               coupons={coupons}
@@ -1774,7 +1850,7 @@ const tierProgress = (() => {
             />
           )}
 
-          {activeTab === 'devices' && (
+          {activeTab === "devices" && (
             <DeviceManagementSection
               isZh={isZh}
               sessions={deviceSessions}
@@ -1790,7 +1866,7 @@ const tierProgress = (() => {
             />
           )}
 
-          {activeTab === 'profile' && (
+          {activeTab === "profile" && (
             <ProfileSection
               isZh={isZh}
               user={member}
@@ -1847,7 +1923,7 @@ const tierProgress = (() => {
               marketingError={marketingError}
               onToggleMarketing={handleMarketingToggle}
               locale={locale as Locale}
-           />
+            />
           )}
         </div>
       </main>
@@ -1857,88 +1933,149 @@ const tierProgress = (() => {
 
 /* ===== 子组件 ===== */
 
+function OrderLineItems({
+  isZh,
+  order,
+  onReorderItem,
+}: {
+  isZh: boolean;
+  order: OrderHistory;
+  onReorderItem: (item: OrderHistoryItem) => void;
+}) {
+  if (order.lineItems.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-2 space-y-1">
+      {order.lineItems.map((item, index) => {
+        const itemName =
+          (isZh ? item.nameZh : item.nameEn) ??
+          item.displayName ??
+          item.productStableId;
+        const optionLabels = item.options.flatMap((group) =>
+          group.choices.map((choice) =>
+            isZh ? (choice.nameZh ?? choice.nameEn) : choice.nameEn,
+          ),
+        );
+
+        return (
+          <div
+            key={`${order.orderStableId}-${item.productStableId}-${index}`}
+            className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[11px] text-slate-700">
+                {item.quantity} ×{" "}
+                <span className="font-medium text-slate-900">{itemName}</span>
+              </p>
+              <button
+                type="button"
+                onClick={() => onReorderItem(item)}
+                className="rounded-md border border-amber-300 px-2 py-0.5 text-[11px] font-medium text-amber-700 hover:bg-amber-50"
+              >
+                {isZh ? "复购" : "Reorder"}
+              </button>
+            </div>
+            {optionLabels.length > 0 && (
+              <p className="mt-1 text-[11px] text-slate-500">
+                {isZh ? "选项：" : "Options: "}
+                {optionLabels.join(" / ")}
+              </p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function OverviewSection({
   isZh,
   user,
   latestOrder,
   locale,
+  onReorderItem,
 }: {
   isZh: boolean;
   user: MemberProfile;
   latestOrder?: OrderHistory;
   locale: Locale;
+  onReorderItem: (item: OrderHistoryItem) => void;
 }) {
   return (
     <section className="grid gap-4 md:grid-cols-2">
       <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
         <h2 className="text-sm font-medium text-slate-900">
-          {isZh ? '最近订单' : 'Latest order'}
+          {isZh ? "最近订单" : "Latest order"}
         </h2>
         {latestOrder ? (
           <div className="mt-3 space-y-1 text-xs text-slate-600">
             <p>
-              {isZh ? '订单号：' : 'Order ID: '}
+              {isZh ? "订单号：" : "Order ID: "}
               <span className="font-mono text-slate-900">
                 {latestOrder.orderNumber}
               </span>
             </p>
             <p>
-              {isZh ? '下单时间：' : 'Created at: '}
+              {isZh ? "下单时间：" : "Created at: "}
               {latestOrder.createdAt}
             </p>
             <p>
-              {isZh ? '金额：' : 'Total: '}
+              {isZh ? "金额：" : "Total: "}
               <span className="font-medium text-slate-900">
                 {formatCurrency(latestOrder.totalCents)}
               </span>
             </p>
             <p>
-              {isZh ? '状态：' : 'Status: '}{' '}
+              {isZh ? "状态：" : "Status: "}{" "}
               <span className="font-medium text-slate-900">
                 {formatOrderStatus(latestOrder.status, isZh)}
               </span>
             </p>
+            <OrderLineItems
+              isZh={isZh}
+              order={latestOrder}
+              onReorderItem={onReorderItem}
+            />
             <p className="mt-2">
               <Link
                 href={`/${locale}/order/${latestOrder.orderStableId}`}
                 className="text-[11px] font-medium text-amber-600 hover:underline"
               >
-                {isZh ? '查看订单详情' : 'View order details'}
+                {isZh ? "查看订单详情" : "View order details"}
               </Link>
             </p>
           </div>
         ) : (
           <p className="mt-3 text-xs text-slate-500">
             {isZh
-              ? '还没有订单，快去下单吧。'
-              : 'No orders yet. Place your first order!'}
+              ? "还没有订单，快去下单吧。"
+              : "No orders yet. Place your first order!"}
           </p>
         )}
       </div>
 
       <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
         <h2 className="text-sm font-medium text-slate-900">
-          {isZh ? '账户小结' : 'Account summary'}
+          {isZh ? "账户小结" : "Account summary"}
         </h2>
         <div className="mt-3 space-y-1 text-xs text-slate-600">
           <p>
-            {isZh ? '姓名：' : 'Name: '}
-            {[user.firstName, user.lastName]
-              .filter(Boolean)
-              .join(' ') || (isZh ? '未设置' : 'Not set')}
+            {isZh ? "姓名：" : "Name: "}
+            {[user.firstName, user.lastName].filter(Boolean).join(" ") ||
+              (isZh ? "未设置" : "Not set")}
           </p>
           <p>
-            {isZh ? '邮箱：' : 'Email: '}
-            {user.email || (isZh ? '未绑定' : 'Not linked')}
+            {isZh ? "邮箱：" : "Email: "}
+            {user.email || (isZh ? "未绑定" : "Not linked")}
           </p>
           <p>
-            {isZh ? '当前积分：' : 'Current points: '}
-            <span className="font-medium text-slate-900">
-              {user.points}
-            </span>
+            {isZh ? "当前积分：" : "Current points: "}
+            <span className="font-medium text-slate-900">{user.points}</span>
           </p>
           <p>
-            {isZh ? '可抵扣金额：' : 'Available discount: '}
+            {isZh ? "可抵扣金额：" : "Available discount: "}
             <span className="font-medium text-slate-900">
               {formatCurrency(user.availableDiscountCents)}
             </span>
@@ -1953,55 +2090,69 @@ function OrdersSection({
   isZh,
   orders,
   locale,
+  onReorderItem,
 }: {
   isZh: boolean;
   orders: OrderHistory[];
   locale: Locale;
+  onReorderItem: (item: OrderHistoryItem) => void;
 }) {
   return (
     <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium text-slate-900">
-          {isZh ? '订单记录' : 'Order history'}
+          {isZh ? "订单记录" : "Order history"}
         </h2>
       </div>
 
       <div className="mt-3 divide-y divide-slate-100 text-xs text-slate-700">
         {orders.map((order, index) => (
-          <Link
+          <div
             key={`${order.orderStableId}-${order.createdAt}-${index}`}
-            href={`/${locale}/order/${order.orderStableId}`}
-            className="flex items-center justify-between py-3 hover:bg-slate-50 rounded-lg px-2 -mx-2"
+            className="py-3"
           >
-            <div>
-              <p className="font-mono text-slate-900">{order.orderNumber}</p>
-              <p className="mt-1 text-[11px] text-slate-500">
-                {order.createdAt}
-              </p>
+            <div className="flex items-center justify-between rounded-lg px-2">
+              <div>
+                <p className="font-mono text-slate-900">{order.orderNumber}</p>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  {order.createdAt}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="font-medium text-slate-900">
+                  {formatCurrency(order.totalCents)}
+                </p>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  {formatOrderStatus(order.status, isZh)}
+                </p>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  {isZh
+                    ? order.deliveryType === "delivery"
+                      ? "外送"
+                      : "自取"
+                    : order.deliveryType === "delivery"
+                      ? "Delivery"
+                      : "Pickup"}
+                </p>
+              </div>
             </div>
-            <div className="text-right">
-              <p className="font-medium text-slate-900">
-                {formatCurrency(order.totalCents)}
-              </p>
-              <p className="mt-1 text-[11px] text-slate-500">
-                {formatOrderStatus(order.status, isZh)}
-              </p>
-              <p className="mt-1 text-[11px] text-slate-500">
-                {isZh
-                  ? order.deliveryType === 'delivery'
-                    ? '外送'
-                    : '自取'
-                  : order.deliveryType === 'delivery'
-                    ? 'Delivery'
-                    : 'Pickup'}
-              </p>
-            </div>
-          </Link>
+            <OrderLineItems
+              isZh={isZh}
+              order={order}
+              onReorderItem={onReorderItem}
+            />
+            <Link
+              href={`/${locale}/order/${order.orderStableId}`}
+              className="mt-2 inline-block px-2 text-[11px] font-medium text-amber-600 hover:underline"
+            >
+              {isZh ? "查看订单详情" : "View order details"}
+            </Link>
+          </div>
         ))}
 
         {orders.length === 0 && (
           <p className="py-4 text-xs text-slate-500">
-            {isZh ? '暂无订单记录。' : 'No orders yet.'}
+            {isZh ? "暂无订单记录。" : "No orders yet."}
           </p>
         )}
       </div>
@@ -2025,27 +2176,27 @@ function PointsSection({
   loadedOnce: boolean;
 }) {
   const typeLabel: Record<LoyaltyEntryType, string> = {
-    EARN_ON_PURCHASE: isZh ? '消费赚取' : 'Earn on purchase',
-    REDEEM_ON_ORDER: isZh ? '下单抵扣' : 'Redeem on order',
-    REFUND_REVERSE_EARN: isZh ? '退款扣回' : 'Reverse earn on refund',
-    REFUND_RETURN_REDEEM: isZh ? '退款退回抵扣' : 'Return redeemed on refund',
-    TOPUP_PURCHASED: isZh ? '储值充值' : 'Top-up purchased',
-    ADJUSTMENT_MANUAL: isZh ? '人工调整' : 'Manual adjustment',
+    EARN_ON_PURCHASE: isZh ? "消费赚取" : "Earn on purchase",
+    REDEEM_ON_ORDER: isZh ? "下单抵扣" : "Redeem on order",
+    REFUND_REVERSE_EARN: isZh ? "退款扣回" : "Reverse earn on refund",
+    REFUND_RETURN_REDEEM: isZh ? "退款退回抵扣" : "Return redeemed on refund",
+    TOPUP_PURCHASED: isZh ? "储值充值" : "Top-up purchased",
+    ADJUSTMENT_MANUAL: isZh ? "人工调整" : "Manual adjustment",
   };
 
   const pointsEntries = entries.filter(
-    (entry) => (entry.target ?? 'POINTS') === 'POINTS',
+    (entry) => (entry.target ?? "POINTS") === "POINTS",
   );
 
   return (
     <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
       <h2 className="text-sm font-medium text-slate-900">
-        {isZh ? '积分流水' : 'Points history'}
+        {isZh ? "积分流水" : "Points history"}
       </h2>
 
       {loading && !loadedOnce && (
         <p className="mt-3 text-xs text-slate-500">
-          {isZh ? '加载中…' : 'Loading…'}
+          {isZh ? "加载中…" : "Loading…"}
         </p>
       )}
 
@@ -2055,7 +2206,7 @@ function PointsSection({
 
       {loadedOnce && !error && pointsEntries.length === 0 && (
         <p className="mt-3 text-xs text-slate-500">
-          {isZh ? '暂无积分记录。' : 'No points records yet.'}
+          {isZh ? "暂无积分记录。" : "No points records yet."}
         </p>
       )}
 
@@ -2085,7 +2236,8 @@ function PointsSection({
                         href={`/${locale}/order/${entry.orderStableId}`}
                         className="text-amber-600 hover:underline"
                       >
-                        {isZh ? '关联订单' : 'Related order'}: {entry.orderStableId}
+                        {isZh ? "关联订单" : "Related order"}:{" "}
+                        {entry.orderStableId}
                       </Link>
                     </p>
                   )}
@@ -2094,15 +2246,15 @@ function PointsSection({
                   <p
                     className={`font-semibold ${
                       entry.deltaPoints >= 0
-                        ? 'text-emerald-600'
-                        : 'text-rose-600'
+                        ? "text-emerald-600"
+                        : "text-rose-600"
                     }`}
                   >
-                    {entry.deltaPoints >= 0 ? '+' : ''}
+                    {entry.deltaPoints >= 0 ? "+" : ""}
                     {entry.deltaPoints.toFixed(2)} pt
                   </p>
                   <p className="mt-1 text-[11px] text-slate-500">
-                    {isZh ? '余额：' : 'Balance: '}
+                    {isZh ? "余额：" : "Balance: "}
                     {entry.balanceAfterPoints.toFixed(2)} pt
                   </p>
                 </div>
@@ -2131,27 +2283,27 @@ function BalanceSection({
   loadedOnce: boolean;
 }) {
   const typeLabel: Record<LoyaltyEntryType, string> = {
-    EARN_ON_PURCHASE: isZh ? '消费赚取' : 'Earn on purchase',
-    REDEEM_ON_ORDER: isZh ? '下单抵扣' : 'Redeem on order',
-    REFUND_REVERSE_EARN: isZh ? '退款扣回' : 'Reverse earn on refund',
-    REFUND_RETURN_REDEEM: isZh ? '退款退回抵扣' : 'Return redeemed on refund',
-    TOPUP_PURCHASED: isZh ? '储值充值' : 'Top-up purchased',
-    ADJUSTMENT_MANUAL: isZh ? '人工调整' : 'Manual adjustment',
+    EARN_ON_PURCHASE: isZh ? "消费赚取" : "Earn on purchase",
+    REDEEM_ON_ORDER: isZh ? "下单抵扣" : "Redeem on order",
+    REFUND_REVERSE_EARN: isZh ? "退款扣回" : "Reverse earn on refund",
+    REFUND_RETURN_REDEEM: isZh ? "退款退回抵扣" : "Return redeemed on refund",
+    TOPUP_PURCHASED: isZh ? "储值充值" : "Top-up purchased",
+    ADJUSTMENT_MANUAL: isZh ? "人工调整" : "Manual adjustment",
   };
 
   const balanceEntries = entries.filter(
-    (entry) => (entry.target ?? 'POINTS') === 'BALANCE',
+    (entry) => (entry.target ?? "POINTS") === "BALANCE",
   );
 
   return (
     <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
       <h2 className="text-sm font-medium text-slate-900">
-        {isZh ? '余额流水' : 'Balance history'}
+        {isZh ? "余额流水" : "Balance history"}
       </h2>
 
       {loading && !loadedOnce && (
         <p className="mt-3 text-xs text-slate-500">
-          {isZh ? '加载中…' : 'Loading…'}
+          {isZh ? "加载中…" : "Loading…"}
         </p>
       )}
 
@@ -2161,62 +2313,64 @@ function BalanceSection({
 
       {loadedOnce && !error && balanceEntries.length === 0 && (
         <p className="mt-3 text-xs text-slate-500">
-          {isZh ? '暂无余额记录。' : 'No balance records yet.'}
+          {isZh ? "暂无余额记录。" : "No balance records yet."}
         </p>
       )}
 
       {loadedOnce && !error && balanceEntries.length > 0 && (
         <div className="mt-3 divide-y divide-slate-100 text-xs text-slate-700">
           {balanceEntries.map((entry, index) => {
-            const deltaAmount = formatBalanceAmount(Math.abs(entry.deltaPoints));
+            const deltaAmount = formatBalanceAmount(
+              Math.abs(entry.deltaPoints),
+            );
             return (
-            <div
-              key={`${entry.ledgerId}-${entry.createdAt}-${index}`}
-              className="py-2"
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-slate-900">
-                    {typeLabel[entry.type]}
-                  </p>
-                  <p className="mt-1 text-[11px] text-slate-500">
-                    {new Date(entry.createdAt).toLocaleString()}
-                  </p>
-                  {entry.note && (
+              <div
+                key={`${entry.ledgerId}-${entry.createdAt}-${index}`}
+                className="py-2"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-slate-900">
+                      {typeLabel[entry.type]}
+                    </p>
                     <p className="mt-1 text-[11px] text-slate-500">
-                      {entry.note}
+                      {new Date(entry.createdAt).toLocaleString()}
                     </p>
-                  )}
-                  {entry.orderStableId && (
-                    <p className="mt-1 text-[11px]">
-                      <Link
-                        href={`/${locale}/order/${entry.orderStableId}`}
-                        className="text-amber-600 hover:underline"
-                      >
-                        {isZh ? '关联订单' : 'Related order'}:{' '}
-                        {entry.orderStableId}
-                      </Link>
+                    {entry.note && (
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        {entry.note}
+                      </p>
+                    )}
+                    {entry.orderStableId && (
+                      <p className="mt-1 text-[11px]">
+                        <Link
+                          href={`/${locale}/order/${entry.orderStableId}`}
+                          className="text-amber-600 hover:underline"
+                        >
+                          {isZh ? "关联订单" : "Related order"}:{" "}
+                          {entry.orderStableId}
+                        </Link>
+                      </p>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <p
+                      className={`font-semibold ${
+                        entry.deltaPoints >= 0
+                          ? "text-emerald-600"
+                          : "text-rose-600"
+                      }`}
+                    >
+                      {entry.deltaPoints >= 0 ? "+" : "-"}
+                      {deltaAmount}
                     </p>
-                  )}
-                </div>
-                <div className="text-right">
-                  <p
-                    className={`font-semibold ${
-                      entry.deltaPoints >= 0
-                        ? 'text-emerald-600'
-                        : 'text-rose-600'
-                    }`}
-                  >
-                    {entry.deltaPoints >= 0 ? '+' : '-'}
-                    {deltaAmount}
-                  </p>
-                  <p className="mt-1 text-[11px] text-slate-500">
-                    {isZh ? '余额：' : 'Balance: '}
-                    {formatBalanceAmount(entry.balanceAfterPoints)}
-                  </p>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      {isZh ? "余额：" : "Balance: "}
+                      {formatBalanceAmount(entry.balanceAfterPoints)}
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
             );
           })}
         </div>
@@ -2244,15 +2398,15 @@ function AddressesSection({
   onDeleteAddress: (addressStableId: string) => void;
   onSetDefault: (addressStableId: string) => void;
 }) {
-  const [label, setLabel] = useState('');
-  const [receiver, setReceiver] = useState('');
-  const [phone, setPhone] = useState('');
-  const [addressLine1, setAddressLine1] = useState('');
-  const [addressLine2, setAddressLine2] = useState('');
-  const [remark, setRemark] = useState('');
-  const [city, setCity] = useState('');
-  const [province, setProvince] = useState('');
-  const [postalCode, setPostalCode] = useState('');
+  const [label, setLabel] = useState("");
+  const [receiver, setReceiver] = useState("");
+  const [phone, setPhone] = useState("");
+  const [addressLine1, setAddressLine1] = useState("");
+  const [addressLine2, setAddressLine2] = useState("");
+  const [remark, setRemark] = useState("");
+  const [city, setCity] = useState("");
+  const [province, setProvince] = useState("");
+  const [postalCode, setPostalCode] = useState("");
   const [placeId, setPlaceId] = useState<string | null>(null);
   const [coordinates, setCoordinates] = useState<{
     latitude: number;
@@ -2267,15 +2421,15 @@ function AddressesSection({
   const isEditingDefault = !!editingAddress?.isDefault;
 
   const resetForm = () => {
-    setLabel('');
-    setReceiver('');
-    setPhone('');
-    setAddressLine1('');
-    setAddressLine2('');
-    setRemark('');
-    setCity('');
-    setProvince('');
-    setPostalCode('');
+    setLabel("");
+    setReceiver("");
+    setPhone("");
+    setAddressLine1("");
+    setAddressLine2("");
+    setRemark("");
+    setCity("");
+    setProvince("");
+    setPostalCode("");
     setPlaceId(null);
     setCoordinates(null);
     setSetAsDefault(false);
@@ -2298,7 +2452,9 @@ function AddressesSection({
       !trimmedPostal
     ) {
       setFormError(
-        isZh ? '请填写完整地址与联系人信息。' : 'Please complete the address details.',
+        isZh
+          ? "请填写完整地址与联系人信息。"
+          : "Please complete the address details.",
       );
       return;
     }
@@ -2306,16 +2462,16 @@ function AddressesSection({
     if (phone && !isValidCanadianPhone(phone)) {
       setFormError(
         isZh
-          ? '请输入有效的加拿大手机号。'
-          : 'Please enter a valid Canadian phone number.',
+          ? "请输入有效的加拿大手机号。"
+          : "Please enter a valid Canadian phone number.",
       );
       return;
     }
 
-    const fallbackLabel = isZh ? '地址' : 'Address';
-    const formattedPhone = phone ? formatCanadianPhoneForApi(phone) : '';
+    const fallbackLabel = isZh ? "地址" : "Address";
+    const formattedPhone = phone ? formatCanadianPhoneForApi(phone) : "";
     const address: MemberAddress = {
-      addressStableId: editingId ?? '',
+      addressStableId: editingId ?? "",
       label: label.trim() || fallbackLabel,
       receiver: trimmedReceiver,
       phone: formattedPhone,
@@ -2344,15 +2500,15 @@ function AddressesSection({
     setReceiver(address.receiver);
     setPhone(stripCanadianCountryCode(address.phone));
     setAddressLine1(address.addressLine1);
-    setAddressLine2(address.addressLine2 ?? '');
-    setRemark(address.remark ?? '');
+    setAddressLine2(address.addressLine2 ?? "");
+    setRemark(address.remark ?? "");
     setCity(address.city);
     setProvince(address.province);
     setPostalCode(address.postalCode);
     setPlaceId(address.placeId ?? null);
     if (
-      typeof address.latitude === 'number' &&
-      typeof address.longitude === 'number'
+      typeof address.latitude === "number" &&
+      typeof address.longitude === "number"
     ) {
       setCoordinates({
         latitude: address.latitude,
@@ -2370,13 +2526,13 @@ function AddressesSection({
     <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-medium text-slate-900">
-          {isZh ? '收货地址' : 'Delivery addresses'}
+          {isZh ? "收货地址" : "Delivery addresses"}
         </h2>
       </div>
 
       {loading && (
         <p className="mb-3 text-xs text-slate-500">
-          {isZh ? '地址加载中…' : 'Loading addresses…'}
+          {isZh ? "地址加载中…" : "Loading addresses…"}
         </p>
       )}
       {error && <p className="mb-3 text-xs text-rose-600">{error}</p>}
@@ -2385,22 +2541,22 @@ function AddressesSection({
         <p className="mb-2 text-[11px] font-medium text-slate-500">
           {editingId
             ? isZh
-              ? '编辑地址'
-              : 'Edit address'
+              ? "编辑地址"
+              : "Edit address"
             : isZh
-              ? '新增地址'
-              : 'Add a new address'}
+              ? "新增地址"
+              : "Add a new address"}
         </p>
         <div className="grid gap-2 sm:grid-cols-2">
           <input
             className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
-            placeholder={isZh ? '地址标签（例如：家）' : 'Label (e.g. Home)'}
+            placeholder={isZh ? "地址标签（例如：家）" : "Label (e.g. Home)"}
             value={label}
             onChange={(event) => setLabel(event.target.value)}
           />
           <input
             className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
-            placeholder={isZh ? '收件人姓名' : 'Receiver name'}
+            placeholder={isZh ? "收件人姓名" : "Receiver name"}
             value={receiver}
             onChange={(event) => setReceiver(event.target.value)}
           />
@@ -2408,7 +2564,7 @@ function AddressesSection({
             <span className="mr-2 text-[10px] text-slate-500">+1</span>
             <input
               className="w-full border-0 p-0 text-xs text-slate-900 focus:outline-none"
-              placeholder={isZh ? '联系电话' : 'Phone number'}
+              placeholder={isZh ? "联系电话" : "Phone number"}
               value={phone}
               inputMode="numeric"
               onChange={(event) =>
@@ -2451,7 +2607,7 @@ function AddressesSection({
                 setCoordinates(null);
               }
             }}
-            placeholder={isZh ? '地址行 1' : 'Address line 1'}
+            placeholder={isZh ? "地址行 1" : "Address line 1"}
             containerClassName="relative"
             inputClassName="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"
             suggestionListClassName="absolute z-50 mt-1 w-full rounded-lg border border-slate-200 bg-white py-1 text-xs shadow-lg"
@@ -2467,31 +2623,35 @@ function AddressesSection({
           />
           <input
             className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
-            placeholder={isZh ? '地址行 2（可选）' : 'Address line 2 (optional)'}
+            placeholder={
+              isZh ? "地址行 2（可选）" : "Address line 2 (optional)"
+            }
             value={addressLine2}
             onChange={(event) => setAddressLine2(event.target.value)}
           />
           <input
             className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
-            placeholder={isZh ? '备注（如 Buzz Code）' : 'Remark (e.g. Buzz Code)'}
+            placeholder={
+              isZh ? "备注（如 Buzz Code）" : "Remark (e.g. Buzz Code)"
+            }
             value={remark}
             onChange={(event) => setRemark(event.target.value)}
           />
           <input
             className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
-            placeholder={isZh ? '城市' : 'City'}
+            placeholder={isZh ? "城市" : "City"}
             value={city}
             onChange={(event) => setCity(event.target.value)}
           />
           <input
             className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
-            placeholder={isZh ? '省份/州' : 'Province/State'}
+            placeholder={isZh ? "省份/州" : "Province/State"}
             value={province}
             onChange={(event) => setProvince(event.target.value)}
           />
           <input
             className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
-            placeholder={isZh ? '邮编' : 'Postal code'}
+            placeholder={isZh ? "邮编" : "Postal code"}
             value={postalCode}
             onChange={(event) => setPostalCode(event.target.value)}
           />
@@ -2503,9 +2663,11 @@ function AddressesSection({
             disabled={isEditingDefault}
             onChange={(event) => setSetAsDefault(event.target.checked)}
           />
-          {isZh ? '设为默认地址' : 'Set as default'}
+          {isZh ? "设为默认地址" : "Set as default"}
         </label>
-        {formError && <p className="mt-2 text-[11px] text-rose-600">{formError}</p>}
+        {formError && (
+          <p className="mt-2 text-[11px] text-rose-600">{formError}</p>
+        )}
         <div className="mt-3 flex items-center gap-2">
           <button
             type="button"
@@ -2514,11 +2676,11 @@ function AddressesSection({
           >
             {editingId
               ? isZh
-                ? '保存修改'
-                : 'Save changes'
+                ? "保存修改"
+                : "Save changes"
               : isZh
-                ? '保存地址'
-                : 'Save address'}
+                ? "保存地址"
+                : "Save address"}
           </button>
           {editingId && (
             <button
@@ -2526,7 +2688,7 @@ function AddressesSection({
               className="inline-flex items-center justify-center rounded-full border border-slate-300 px-4 py-2 text-[11px] font-medium text-slate-600 hover:text-slate-900"
               onClick={resetForm}
             >
-              {isZh ? '取消编辑' : 'Cancel'}
+              {isZh ? "取消编辑" : "Cancel"}
             </button>
           )}
         </div>
@@ -2539,13 +2701,11 @@ function AddressesSection({
             className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
           >
             <div className="flex items-center justify-between">
-              <div className="font-medium text-slate-900">
-                {addr.label}
-              </div>
+              <div className="font-medium text-slate-900">{addr.label}</div>
               <div className="flex items-center gap-2">
                 {addr.isDefault && (
                   <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] text-white">
-                    {isZh ? '默认' : 'Default'}
+                    {isZh ? "默认" : "Default"}
                   </span>
                 )}
                 {!addr.isDefault && (
@@ -2554,7 +2714,7 @@ function AddressesSection({
                     className="text-[10px] text-slate-500 hover:text-slate-900"
                     onClick={() => onSetDefault(addr.addressStableId)}
                   >
-                    {isZh ? '设为默认' : 'Set default'}
+                    {isZh ? "设为默认" : "Set default"}
                   </button>
                 )}
               </div>
@@ -2562,12 +2722,10 @@ function AddressesSection({
             <p className="mt-1">
               {addr.receiver} · {addr.phone}
             </p>
-            <p className="mt-1 text-slate-600">
-              {formatMemberAddress(addr)}
-            </p>
+            <p className="mt-1 text-slate-600">{formatMemberAddress(addr)}</p>
             {addr.remark && (
               <p className="mt-1 text-slate-500">
-                {isZh ? '备注：' : 'Remark: '}
+                {isZh ? "备注：" : "Remark: "}
                 {addr.remark}
               </p>
             )}
@@ -2577,14 +2735,14 @@ function AddressesSection({
                 className="hover:text-slate-900"
                 onClick={() => startEdit(addr)}
               >
-                {isZh ? '编辑' : 'Edit'}
+                {isZh ? "编辑" : "Edit"}
               </button>
               <button
                 type="button"
                 className="hover:text-rose-600"
                 onClick={() => onDeleteAddress(addr.addressStableId)}
               >
-                {isZh ? '删除' : 'Delete'}
+                {isZh ? "删除" : "Delete"}
               </button>
             </div>
           </div>
@@ -2592,7 +2750,7 @@ function AddressesSection({
 
         {addresses.length === 0 && (
           <p className="text-xs text-slate-500">
-            {isZh ? '暂无保存地址。' : 'No saved addresses.'}
+            {isZh ? "暂无保存地址。" : "No saved addresses."}
           </p>
         )}
       </div>
@@ -2612,19 +2770,19 @@ function CouponsSection({
   error: string | null;
 }) {
   const statusLabel: Record<CouponStatus, string> = {
-    active: isZh ? '可使用' : 'Available',
-    used: isZh ? '已使用' : 'Used',
-    expired: isZh ? '已过期' : 'Expired',
+    active: isZh ? "可使用" : "Available",
+    used: isZh ? "已使用" : "Used",
+    expired: isZh ? "已过期" : "Expired",
   };
 
   const statusColor: Record<CouponStatus, string> = {
-    active: 'bg-emerald-100 text-emerald-800',
-    used: 'bg-slate-100 text-slate-600',
-    expired: 'bg-rose-100 text-rose-700',
+    active: "bg-emerald-100 text-emerald-800",
+    used: "bg-slate-100 text-slate-600",
+    expired: "bg-rose-100 text-rose-700",
   };
 
-  const statusOrder: CouponStatus[] = ['active', 'used', 'expired'];
-  const [selectedStatus, setSelectedStatus] = useState<CouponStatus>('active');
+  const statusOrder: CouponStatus[] = ["active", "used", "expired"];
+  const [selectedStatus, setSelectedStatus] = useState<CouponStatus>("active");
 
   const couponsByStatus = statusOrder.reduce<Record<CouponStatus, Coupon[]>>(
     (acc, status) => {
@@ -2635,7 +2793,7 @@ function CouponsSection({
   );
 
   coupons.forEach((coupon) => {
-    const status = coupon.status ?? 'active';
+    const status = coupon.status ?? "active";
     couponsByStatus[status].push(coupon);
   });
 
@@ -2658,18 +2816,16 @@ function CouponsSection({
   return (
     <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
       <h2 className="mb-3 text-sm font-medium text-slate-900">
-        {isZh ? '优惠券' : 'Coupons'}
+        {isZh ? "优惠券" : "Coupons"}
       </h2>
 
       {loading && (
         <p className="text-xs text-slate-500">
-          {isZh ? '优惠券加载中…' : 'Loading coupons…'}
+          {isZh ? "优惠券加载中…" : "Loading coupons…"}
         </p>
       )}
 
-      {error && (
-        <p className="text-[11px] text-red-600">{error}</p>
-      )}
+      {error && <p className="text-[11px] text-red-600">{error}</p>}
 
       {!loading && coupons.length > 0 && (
         <div className="mb-3 flex flex-wrap gap-2">
@@ -2683,8 +2839,8 @@ function CouponsSection({
                 onClick={() => setSelectedStatus(status)}
                 className={`rounded-full border px-3 py-1 text-[11px] font-medium transition ${
                   isActive
-                    ? 'border-slate-900 bg-slate-900 text-white'
-                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900'
+                    ? "border-slate-900 bg-slate-900 text-white"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900"
                 }`}
               >
                 {statusLabel[status]} ({couponsByStatus[status].length})
@@ -2696,7 +2852,7 @@ function CouponsSection({
 
       <div className="space-y-3 text-xs text-slate-700">
         {mergedCurrentCoupons.map(({ coupon, count }) => {
-          const status = coupon.status ?? 'active';
+          const status = coupon.status ?? "active";
 
           return (
             <div
@@ -2722,14 +2878,14 @@ function CouponsSection({
               <div className="mt-2 flex items-end justify-between">
                 <div>
                   <p className="text-lg font-bold text-amber-700">
-                    {isZh ? '立减 ' : 'Save '}
+                    {isZh ? "立减 " : "Save "}
                     {formatCurrency(coupon.discountCents)}
                   </p>
                   {coupon.minSpendCents && (
                     <p className="text-[11px] text-slate-500">
-                      {isZh ? '满 ' : 'Min spend '}
+                      {isZh ? "满 " : "Min spend "}
                       {formatCurrency(coupon.minSpendCents)}
-                      {isZh ? ' 可用' : ' to use'}
+                      {isZh ? " 可用" : " to use"}
                     </p>
                   )}
                 </div>
@@ -2739,8 +2895,8 @@ function CouponsSection({
                     {coupon.expiresAt
                       ? new Date(coupon.expiresAt).toLocaleDateString()
                       : isZh
-                        ? '无有效期'
-                        : 'No expiry'}
+                        ? "无有效期"
+                        : "No expiry"}
                   </p>
                 </div>
               </div>
@@ -2750,15 +2906,17 @@ function CouponsSection({
 
         {coupons.length === 0 && !loading && (
           <p className="text-xs text-slate-500">
-            {isZh ? '暂无可用优惠券。' : 'No coupons available right now.'}
+            {isZh ? "暂无可用优惠券。" : "No coupons available right now."}
           </p>
         )}
 
-        {coupons.length > 0 && mergedCurrentCoupons.length === 0 && !loading && (
-          <p className="text-xs text-slate-500">
-            {isZh ? '该分类暂无优惠券。' : 'No coupons in this category yet.'}
-          </p>
-        )}
+        {coupons.length > 0 &&
+          mergedCurrentCoupons.length === 0 &&
+          !loading && (
+            <p className="text-xs text-slate-500">
+              {isZh ? "该分类暂无优惠券。" : "No coupons in this category yet."}
+            </p>
+          )}
       </div>
     </section>
   );
@@ -2793,7 +2951,7 @@ function DeviceManagementSection({
     <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium text-slate-900">
-          {isZh ? '设备管理' : 'Device management'}
+          {isZh ? "设备管理" : "Device management"}
         </h2>
         <button
           type="button"
@@ -2801,18 +2959,18 @@ function DeviceManagementSection({
           disabled={loading}
           className="text-[11px] text-slate-500 hover:text-slate-900 disabled:cursor-not-allowed"
         >
-          {isZh ? '刷新' : 'Refresh'}
+          {isZh ? "刷新" : "Refresh"}
         </button>
       </div>
       <p className="mt-2 text-[11px] text-slate-500">
         {isZh
-          ? '管理已登录设备与授信设备，及时移除异常登录。'
-          : 'Review signed-in devices and trusted devices, and remove anything unexpected.'}
+          ? "管理已登录设备与授信设备，及时移除异常登录。"
+          : "Review signed-in devices and trusted devices, and remove anything unexpected."}
       </p>
 
       {loading && !loadedOnce && (
         <p className="mt-3 text-xs text-slate-500">
-          {isZh ? '设备信息加载中…' : 'Loading devices…'}
+          {isZh ? "设备信息加载中…" : "Loading devices…"}
         </p>
       )}
 
@@ -2824,10 +2982,10 @@ function DeviceManagementSection({
         <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-semibold text-slate-900">
-              {isZh ? '登录设备' : 'Signed-in devices'}
+              {isZh ? "登录设备" : "Signed-in devices"}
             </h3>
             <span className="text-[10px] text-slate-400">
-              {isZh ? '最多显示 20 条' : 'Up to 20 items'}
+              {isZh ? "最多显示 20 条" : "Up to 20 items"}
             </span>
           </div>
           <div className="mt-2 space-y-2 text-xs text-slate-600">
@@ -2840,31 +2998,30 @@ function DeviceManagementSection({
                   <div>
                     <p className="text-[11px] font-medium text-slate-900">
                       {session.deviceInfo ||
-                        (isZh ? '未知设备' : 'Unknown device')}
+                        (isZh ? "未知设备" : "Unknown device")}
                     </p>
                     <p className="mt-1 text-[10px] text-slate-500">
-                      {isZh ? '登录时间：' : 'Signed in: '}
+                      {isZh ? "登录时间：" : "Signed in: "}
                       {formatDateTime(session.createdAt, isZh)}
                     </p>
                     <p className="mt-1 text-[10px] text-slate-500">
-                      {isZh ? '登录地点：' : 'Location: '}
-                      {session.loginLocation ||
-                        (isZh ? '未知地点' : 'Unknown')}
+                      {isZh ? "登录地点：" : "Location: "}
+                      {session.loginLocation || (isZh ? "未知地点" : "Unknown")}
                     </p>
                     <p className="mt-1 text-[10px] text-slate-500">
-                      {isZh ? '到期时间：' : 'Expires: '}
+                      {isZh ? "到期时间：" : "Expires: "}
                       {formatDateTime(session.expiresAt, isZh)}
                     </p>
                     {session.mfaVerifiedAt && (
                       <p className="mt-1 text-[10px] text-emerald-600">
-                        {isZh ? '已完成双重验证' : 'MFA verified'}
+                        {isZh ? "已完成双重验证" : "MFA verified"}
                       </p>
                     )}
                   </div>
                   <div className="flex flex-col items-end gap-2">
                     {session.isCurrent && (
                       <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] text-emerald-700">
-                        {isZh ? '当前设备' : 'Current'}
+                        {isZh ? "当前设备" : "Current"}
                       </span>
                     )}
                     {session.isCurrent && (
@@ -2876,11 +3033,11 @@ function DeviceManagementSection({
                       >
                         {trustingSessionId === session.sessionId
                           ? isZh
-                            ? '授信中…'
-                            : 'Trusting…'
+                            ? "授信中…"
+                            : "Trusting…"
                           : isZh
-                            ? '设为授信设备'
-                            : 'Trust device'}
+                            ? "设为授信设备"
+                            : "Trust device"}
                       </button>
                     )}
                     <button
@@ -2888,7 +3045,7 @@ function DeviceManagementSection({
                       className="text-[10px] text-rose-600 hover:text-rose-700"
                       onClick={() => onRevokeSession(session.sessionId)}
                     >
-                      {isZh ? '退出设备' : 'Sign out'}
+                      {isZh ? "退出设备" : "Sign out"}
                     </button>
                   </div>
                 </div>
@@ -2897,7 +3054,7 @@ function DeviceManagementSection({
 
             {sessions.length === 0 && (
               <p className="text-[11px] text-slate-500">
-                {isZh ? '暂无登录设备记录。' : 'No devices found.'}
+                {isZh ? "暂无登录设备记录。" : "No devices found."}
               </p>
             )}
           </div>
@@ -2906,10 +3063,10 @@ function DeviceManagementSection({
         <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-semibold text-slate-900">
-              {isZh ? '授信设备' : 'Trusted devices'}
+              {isZh ? "授信设备" : "Trusted devices"}
             </h3>
             <span className="text-[10px] text-slate-400">
-              {isZh ? '用于免二次验证' : 'Skip MFA when trusted'}
+              {isZh ? "用于免二次验证" : "Skip MFA when trusted"}
             </span>
           </div>
           <div className="mt-2 space-y-2 text-xs text-slate-600">
@@ -2921,20 +3078,20 @@ function DeviceManagementSection({
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <p className="text-[11px] font-medium text-slate-900">
-                      {device.label || (isZh ? '已授信设备' : 'Trusted device')}
+                      {device.label || (isZh ? "已授信设备" : "Trusted device")}
                     </p>
                     <p className="mt-1 text-[10px] text-slate-500">
-                      {isZh ? '授信时间：' : 'Trusted: '}
+                      {isZh ? "授信时间：" : "Trusted: "}
                       {formatDateTime(device.createdAt, isZh)}
                     </p>
                     {device.lastSeenAt && (
                       <p className="mt-1 text-[10px] text-slate-500">
-                        {isZh ? '最近使用：' : 'Last used: '}
+                        {isZh ? "最近使用：" : "Last used: "}
                         {formatDateTime(device.lastSeenAt, isZh)}
                       </p>
                     )}
                     <p className="mt-1 text-[10px] text-slate-500">
-                      {isZh ? '到期时间：' : 'Expires: '}
+                      {isZh ? "到期时间：" : "Expires: "}
                       {formatDateTime(device.expiresAt, isZh)}
                     </p>
                   </div>
@@ -2943,7 +3100,7 @@ function DeviceManagementSection({
                     className="text-[10px] text-rose-600 hover:text-rose-700"
                     onClick={() => onRevokeTrustedDevice(device.id)}
                   >
-                    {isZh ? '移除' : 'Remove'}
+                    {isZh ? "移除" : "Remove"}
                   </button>
                 </div>
               </div>
@@ -2951,7 +3108,7 @@ function DeviceManagementSection({
 
             {trustedDevices.length === 0 && (
               <p className="text-[11px] text-slate-500">
-                {isZh ? '暂无授信设备。' : 'No trusted devices.'}
+                {isZh ? "暂无授信设备。" : "No trusted devices."}
               </p>
             )}
           </div>
@@ -3024,12 +3181,12 @@ function ProfileSection({
   profileLastName: string;
   birthdayMonthInput: string;
   birthdayDayInput: string;
-  languagePreference: 'zh' | 'en';
+  languagePreference: "zh" | "en";
   onProfileFirstNameChange: (value: string) => void;
   onProfileLastNameChange: (value: string) => void;
   onBirthdayMonthChange: (value: string) => void;
   onBirthdayDayChange: (value: string) => void;
-  onLanguagePreferenceChange: (value: 'zh' | 'en') => void;
+  onLanguagePreferenceChange: (value: "zh" | "en") => void;
   profileSaving: boolean;
   profileError: string | null;
   profileSaved: boolean;
@@ -3075,10 +3232,9 @@ function ProfileSection({
   locale: Locale;
 }) {
   const effectiveOptIn = !!marketingOptIn;
-  const hasBirthday =
-    user.birthdayMonth != null && user.birthdayDay != null;
+  const hasBirthday = user.birthdayMonth != null && user.birthdayDay != null;
   const twoFactorEnabled =
-    !!user.twoFactorEnabledAt && user.twoFactorMethod === 'SMS';
+    !!user.twoFactorEnabledAt && user.twoFactorMethod === "SMS";
   const birthdayDisplay = hasBirthday
     ? isZh
       ? `${user.birthdayMonth}月${user.birthdayDay}日`
@@ -3088,30 +3244,26 @@ function ProfileSection({
   return (
     <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
       <h2 className="text-sm font-medium text-slate-900">
-        {isZh ? '账户信息' : 'Account info'}
+        {isZh ? "账户信息" : "Account info"}
       </h2>
 
       <div className="mt-3 space-y-3 text-xs text-slate-700">
         <div>
-          <p className="text-slate-500">{isZh ? '姓名' : 'Name'}</p>
+          <p className="text-slate-500">{isZh ? "姓名" : "Name"}</p>
           <div className="mt-1 grid gap-2 sm:grid-cols-[minmax(160px,1fr)_minmax(160px,1fr)_auto] sm:items-center">
             <input
               type="text"
               value={profileFirstName}
-              onChange={(event) =>
-                onProfileFirstNameChange(event.target.value)
-              }
+              onChange={(event) => onProfileFirstNameChange(event.target.value)}
               className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
-              placeholder={isZh ? '请输入名字' : 'First name'}
+              placeholder={isZh ? "请输入名字" : "First name"}
             />
             <input
               type="text"
               value={profileLastName}
-              onChange={(event) =>
-                onProfileLastNameChange(event.target.value)
-              }
+              onChange={(event) => onProfileLastNameChange(event.target.value)}
               className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
-              placeholder={isZh ? '请输入姓' : 'Last name'}
+              placeholder={isZh ? "请输入姓" : "Last name"}
             />
             <button
               type="button"
@@ -3121,26 +3273,26 @@ function ProfileSection({
             >
               {profileSaving
                 ? isZh
-                  ? '保存中...'
-                  : 'Saving...'
+                  ? "保存中..."
+                  : "Saving..."
                 : isZh
-                  ? '保存'
-                  : 'Save'}
+                  ? "保存"
+                  : "Save"}
             </button>
             {profileSaved && !profileSaving && (
               <span className="text-[11px] text-emerald-600">
-                {isZh ? '已保存' : 'Saved'}
+                {isZh ? "已保存" : "Saved"}
               </span>
             )}
           </div>
         </div>
         <div>
-          <p className="text-slate-500">{isZh ? '生日' : 'Birthday'}</p>
+          <p className="text-slate-500">{isZh ? "生日" : "Birthday"}</p>
           {hasBirthday ? (
             <p className="mt-0.5 text-slate-900">
               {birthdayDisplay}
               <span className="ml-2 text-[11px] text-slate-400">
-                {isZh ? '已设置，无法修改' : 'Locked once set'}
+                {isZh ? "已设置，无法修改" : "Locked once set"}
               </span>
             </p>
           ) : (
@@ -3150,22 +3302,18 @@ function ProfileSection({
                 min={1}
                 max={12}
                 value={birthdayMonthInput}
-                onChange={(event) =>
-                  onBirthdayMonthChange(event.target.value)
-                }
+                onChange={(event) => onBirthdayMonthChange(event.target.value)}
                 className="w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-900 focus:border-slate-400 focus:outline-none"
-                placeholder={isZh ? '月' : 'MM'}
+                placeholder={isZh ? "月" : "MM"}
               />
               <input
                 type="number"
                 min={1}
                 max={31}
                 value={birthdayDayInput}
-                onChange={(event) =>
-                  onBirthdayDayChange(event.target.value)
-                }
+                onChange={(event) => onBirthdayDayChange(event.target.value)}
                 className="w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-900 focus:border-slate-400 focus:outline-none"
-                placeholder={isZh ? '日' : 'DD'}
+                placeholder={isZh ? "日" : "DD"}
               />
               <button
                 type="button"
@@ -3175,33 +3323,33 @@ function ProfileSection({
               >
                 {birthdaySaving
                   ? isZh
-                    ? '保存中...'
-                    : 'Saving...'
+                    ? "保存中..."
+                    : "Saving..."
                   : isZh
-                    ? '保存生日'
-                    : 'Save birthday'}
+                    ? "保存生日"
+                    : "Save birthday"}
               </button>
               <span className="text-[11px] text-slate-400">
-                {isZh ? '填写后不可修改' : 'Once saved, cannot change'}
+                {isZh ? "填写后不可修改" : "Once saved, cannot change"}
               </span>
             </div>
           )}
           {birthdaySaved && !birthdaySaving && (
             <span className="mt-1 block text-[11px] text-emerald-600">
-              {isZh ? '生日已保存' : 'Birthday saved'}
+              {isZh ? "生日已保存" : "Birthday saved"}
             </span>
           )}
         </div>
         <div>
-          <p className="text-slate-500">{isZh ? '邮箱' : 'Email'}</p>
+          <p className="text-slate-500">{isZh ? "邮箱" : "Email"}</p>
           <p className="mt-0.5 text-slate-900">
-            {user.email || (isZh ? '未绑定' : 'Not linked')}
+            {user.email || (isZh ? "未绑定" : "Not linked")}
           </p>
           {user.email && (
             <p className="mt-1 text-[11px] text-slate-500">
               {isZh
-                ? '更换邮箱需先通过二次验证（2FA）。'
-                : 'Changing email requires a completed 2FA check.'}
+                ? "更换邮箱需先通过二次验证（2FA）。"
+                : "Changing email requires a completed 2FA check."}
             </p>
           )}
           <button
@@ -3211,22 +3359,22 @@ function ProfileSection({
           >
             {user.email
               ? isZh
-                ? '更换邮箱'
-                : 'Change email'
+                ? "更换邮箱"
+                : "Change email"
               : isZh
-                ? '绑定邮箱'
-                : 'Link email'}
+                ? "绑定邮箱"
+                : "Link email"}
           </button>
           {emailEnrollVisible && (
             <div className="mt-2 space-y-2 rounded-xl border border-slate-100 bg-slate-50 p-3">
               <p className="text-[11px] font-medium text-slate-700">
                 {user.email
                   ? isZh
-                    ? '更换邮箱需邮箱验证码确认。'
-                    : 'Confirm your new email with a verification code.'
+                    ? "更换邮箱需邮箱验证码确认。"
+                    : "Confirm your new email with a verification code."
                   : isZh
-                    ? '绑定邮箱后可开启订阅'
-                    : 'Link an email to enable subscriptions'}
+                    ? "绑定邮箱后可开启订阅"
+                    : "Link an email to enable subscriptions"}
               </p>
               <div className="flex items-center rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus-within:ring-1 focus-within:ring-slate-400">
                 <input
@@ -3235,7 +3383,7 @@ function ProfileSection({
                   onChange={(event) =>
                     onEmailEnrollInputChange(event.target.value)
                   }
-                  placeholder={isZh ? '请输入邮箱地址' : 'Enter your email'}
+                  placeholder={isZh ? "请输入邮箱地址" : "Enter your email"}
                   className="w-full border-0 p-0 text-xs text-slate-900 focus:outline-none"
                 />
               </div>
@@ -3246,7 +3394,7 @@ function ProfileSection({
                   onChange={(event) =>
                     onEmailEnrollCodeChange(event.target.value)
                   }
-                  placeholder={isZh ? '验证码' : 'Code'}
+                  placeholder={isZh ? "验证码" : "Code"}
                   className="w-24 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-slate-400 focus:outline-none"
                 />
                 <button
@@ -3257,11 +3405,11 @@ function ProfileSection({
                 >
                   {emailEnrollSending
                     ? isZh
-                      ? '发送中...'
-                      : 'Sending...'
+                      ? "发送中..."
+                      : "Sending..."
                     : isZh
-                      ? '发送验证码'
-                      : 'Send code'}
+                      ? "发送验证码"
+                      : "Send code"}
                 </button>
                 <button
                   type="button"
@@ -3271,42 +3419,42 @@ function ProfileSection({
                 >
                   {emailEnrollVerifying
                     ? isZh
-                      ? '验证中...'
-                      : 'Verifying...'
+                      ? "验证中..."
+                      : "Verifying..."
                     : isZh
-                      ? '完成绑定'
-                      : 'Verify'}
+                      ? "完成绑定"
+                      : "Verify"}
                 </button>
               </div>
               {emailEnrollSent && (
                 <p className="text-[11px] text-emerald-600">
-                  {isZh ? '验证码已发送，请查收邮箱。' : 'Code sent. Check your email.'}
+                  {isZh
+                    ? "验证码已发送，请查收邮箱。"
+                    : "Code sent. Check your email."}
                 </p>
               )}
               {emailEnrollError && (
-                <p className="text-[11px] text-rose-500">
-                  {emailEnrollError}
-                </p>
+                <p className="text-[11px] text-rose-500">{emailEnrollError}</p>
               )}
             </div>
           )}
         </div>
         <div>
           <p className="text-slate-500">
-            {isZh ? '语言偏好' : 'Language preference'}
+            {isZh ? "语言偏好" : "Language preference"}
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <select
               value={languagePreference}
               onChange={(event) =>
                 onLanguagePreferenceChange(
-                  event.target.value === 'zh' ? 'zh' : 'en',
+                  event.target.value === "zh" ? "zh" : "en",
                 )
               }
               className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-slate-400 focus:outline-none"
             >
-              <option value="zh">{isZh ? '中文' : 'Chinese'}</option>
-              <option value="en">{isZh ? '英文' : 'English'}</option>
+              <option value="zh">{isZh ? "中文" : "Chinese"}</option>
+              <option value="en">{isZh ? "英文" : "English"}</option>
             </select>
             <button
               type="button"
@@ -3316,64 +3464,60 @@ function ProfileSection({
             >
               {languageSaving
                 ? isZh
-                  ? '保存中...'
-                  : 'Saving...'
+                  ? "保存中..."
+                  : "Saving..."
                 : isZh
-                  ? '保存'
-                  : 'Save'}
+                  ? "保存"
+                  : "Save"}
             </button>
             {languageSaved && !languageSaving && (
               <span className="text-[11px] text-emerald-600">
-                {isZh ? '已保存' : 'Saved'}
+                {isZh ? "已保存" : "Saved"}
               </span>
             )}
           </div>
           <p className="mt-1 text-[11px] text-slate-400">
             {isZh
-              ? '短信、邮件将按照此语言发送。'
-              : 'SMS and emails will follow this language.'}
+              ? "短信、邮件将按照此语言发送。"
+              : "SMS and emails will follow this language."}
           </p>
           {languageError && (
-            <p className="mt-1 text-[11px] text-rose-500">
-              {languageError}
-            </p>
+            <p className="mt-1 text-[11px] text-rose-500">{languageError}</p>
           )}
         </div>
         {user.referrerEmail ? (
           <div>
             <p className="text-slate-500">
-              {isZh ? '推荐人邮箱' : 'Referrer email'}
+              {isZh ? "推荐人邮箱" : "Referrer email"}
             </p>
-            <p className="mt-0.5 text-slate-900">
-              {user.referrerEmail}
-            </p>
+            <p className="mt-0.5 text-slate-900">{user.referrerEmail}</p>
           </div>
         ) : null}
         <div>
-          <p className="text-slate-500">{isZh ? '安全设置' : 'Security'}</p>
+          <p className="text-slate-500">{isZh ? "安全设置" : "Security"}</p>
           <div className="mt-2 rounded-xl border border-slate-100 bg-slate-50 p-3">
             <p className="text-[11px] font-medium text-slate-700">
-              {isZh ? '手机号绑定' : 'Phone verification'}
+              {isZh ? "手机号绑定" : "Phone verification"}
             </p>
             {user.phoneVerified ? (
               <div className="mt-2">
                 <p className="text-xs text-slate-900">
-                  {user.phone}{' '}
+                  {user.phone}{" "}
                   <span className="ml-2 text-[11px] text-emerald-600">
-                    {isZh ? '已验证' : 'Verified'}
+                    {isZh ? "已验证" : "Verified"}
                   </span>
                 </p>
                 <p className="mt-1 text-[11px] text-slate-500">
                   {isZh
-                    ? '更换手机号需先通过二次验证（2FA）。'
-                    : 'Changing phone requires a completed 2FA check.'}
+                    ? "更换手机号需先通过二次验证（2FA）。"
+                    : "Changing phone requires a completed 2FA check."}
                 </p>
                 <button
                   type="button"
                   onClick={onOpenPhoneEnroll}
                   className="mt-2 inline-flex items-center rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
                 >
-                  {isZh ? '更换手机号' : 'Change phone'}
+                  {isZh ? "更换手机号" : "Change phone"}
                 </button>
               </div>
             ) : null}
@@ -3390,7 +3534,7 @@ function ProfileSection({
                       onPhoneEnrollInputChange(event.target.value)
                     }
                     placeholder={
-                      isZh ? '请输入手机号' : 'Enter your phone number'
+                      isZh ? "请输入手机号" : "Enter your phone number"
                     }
                     className="w-full border-0 p-0 text-xs text-slate-900 focus:outline-none"
                   />
@@ -3402,7 +3546,7 @@ function ProfileSection({
                     onChange={(event) =>
                       onPhoneEnrollCodeChange(event.target.value)
                     }
-                    placeholder={isZh ? '验证码' : 'Code'}
+                    placeholder={isZh ? "验证码" : "Code"}
                     className="w-24 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-slate-400 focus:outline-none"
                   />
                   <button
@@ -3413,11 +3557,11 @@ function ProfileSection({
                   >
                     {phoneEnrollSending
                       ? isZh
-                        ? '发送中...'
-                        : 'Sending...'
+                        ? "发送中..."
+                        : "Sending..."
                       : isZh
-                        ? '发送验证码'
-                        : 'Send code'}
+                        ? "发送验证码"
+                        : "Send code"}
                   </button>
                   <button
                     type="button"
@@ -3427,11 +3571,11 @@ function ProfileSection({
                   >
                     {phoneEnrollVerifying
                       ? isZh
-                        ? '验证中...'
-                        : 'Verifying...'
+                        ? "验证中..."
+                        : "Verifying..."
                       : isZh
-                        ? '完成绑定'
-                        : 'Verify'}
+                        ? "完成绑定"
+                        : "Verify"}
                   </button>
                 </div>
                 {phoneEnrollError && (
@@ -3444,40 +3588,40 @@ function ProfileSection({
 
             <div className="mt-4 border-t border-slate-200 pt-3">
               <p className="text-[11px] font-medium text-slate-700">
-                {isZh ? '短信二次验证 (2FA)' : 'SMS two-factor (2FA)'}
+                {isZh ? "短信二次验证 (2FA)" : "SMS two-factor (2FA)"}
               </p>
               <p className="mt-1 text-[11px] text-slate-500">
                 {isZh
-                  ? '登录或敏感操作时需要短信验证码。'
-                  : 'Require SMS codes for sign-ins and sensitive actions.'}
+                  ? "登录或敏感操作时需要短信验证码。"
+                  : "Require SMS codes for sign-ins and sensitive actions."}
               </p>
               <button
                 type="button"
                 onClick={() => onToggleTwoFactor(!twoFactorEnabled)}
-                disabled={twoFactorSaving || (!user.phoneVerified && !twoFactorEnabled)}
+                disabled={
+                  twoFactorSaving || (!user.phoneVerified && !twoFactorEnabled)
+                }
                 className={`mt-2 inline-flex items-center rounded-full px-3 py-1 text-[11px] font-medium ${
                   twoFactorEnabled
-                    ? 'bg-emerald-100 text-emerald-700'
-                    : 'bg-slate-200 text-slate-700'
-                } ${twoFactorSaving ? 'opacity-60' : ''}`}
+                    ? "bg-emerald-100 text-emerald-700"
+                    : "bg-slate-200 text-slate-700"
+                } ${twoFactorSaving ? "opacity-60" : ""}`}
               >
                 {twoFactorSaving
                   ? isZh
-                    ? '更新中...'
-                    : 'Updating...'
+                    ? "更新中..."
+                    : "Updating..."
                   : twoFactorEnabled
                     ? isZh
-                      ? '关闭 2FA'
-                      : 'Disable 2FA'
+                      ? "关闭 2FA"
+                      : "Disable 2FA"
                     : isZh
-                      ? '开启 2FA'
-                      : 'Enable 2FA'}
+                      ? "开启 2FA"
+                      : "Enable 2FA"}
               </button>
               {!user.phoneVerified && !twoFactorEnabled && (
                 <p className="mt-1 text-[11px] text-slate-500">
-                  {isZh
-                    ? '请先完成手机号验证。'
-                    : 'Verify your phone first.'}
+                  {isZh ? "请先完成手机号验证。" : "Verify your phone first."}
                 </p>
               )}
               {twoFactorError && (
@@ -3490,55 +3634,55 @@ function ProfileSection({
         </div>
         <div>
           <p className="text-slate-500">
-            {isZh ? '会员编号（Stable ID）' : 'Member ID (Stable ID)'}
+            {isZh ? "会员编号（Stable ID）" : "Member ID (Stable ID)"}
           </p>
           <p className="mt-0.5 break-all font-mono text-[11px] text-slate-900">
-            {user.userStableId || (isZh ? '未识别' : 'Not available')}
+            {user.userStableId || (isZh ? "未识别" : "Not available")}
           </p>
         </div>
 
         {/* 营销邮件订阅开关 */}
         <div className="mt-4 border-t border-slate-100 pt-3">
           <p className="text-slate-500">
-            {isZh ? '营销邮件订阅' : 'Marketing emails'}
+            {isZh ? "营销邮件订阅" : "Marketing emails"}
           </p>
           <div className="mt-2 flex items-center justify-between">
             <p className="text-[11px] text-slate-500">
               {isZh
-                ? '勾选后，我们会不定期发送新品、优惠活动等邮件给你。勾选即表示你同意接收营销邮件，并可随时退订。我们将按《隐私政策》保护你的信息。'
-                : 'Tick this box and we’ll occasionally email you new items and special offers. By subscribing, you agree to receive marketing emails, and you can unsubscribe at any time. We will protect your information in accordance with our Privacy Policy.'}
+                ? "勾选后，我们会不定期发送新品、优惠活动等邮件给你。勾选即表示你同意接收营销邮件，并可随时退订。我们将按《隐私政策》保护你的信息。"
+                : "Tick this box and we’ll occasionally email you new items and special offers. By subscribing, you agree to receive marketing emails, and you can unsubscribe at any time. We will protect your information in accordance with our Privacy Policy."}
             </p>
             <button
               type="button"
               disabled={marketingSaving}
               onClick={() => onToggleMarketing(!effectiveOptIn)}
               className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${
-                effectiveOptIn ? 'bg-emerald-500' : 'bg-slate-300'
-              } ${marketingSaving ? 'opacity-60' : ''}`}
+                effectiveOptIn ? "bg-emerald-500" : "bg-slate-300"
+              } ${marketingSaving ? "opacity-60" : ""}`}
             >
               <span
                 className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
-                  effectiveOptIn ? 'translate-x-4' : 'translate-x-1'
+                  effectiveOptIn ? "translate-x-4" : "translate-x-1"
                 }`}
               />
             </button>
           </div>
           {!user.email && (
             <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500">
-              <span>{isZh ? '开启前需先绑定邮箱。' : 'Link an email first.'}</span>
+              <span>
+                {isZh ? "开启前需先绑定邮箱。" : "Link an email first."}
+              </span>
               <button
                 type="button"
                 onClick={onOpenEmailEnroll}
                 className="text-amber-600 hover:underline"
               >
-                {isZh ? '去绑定' : 'Bind now'}
+                {isZh ? "去绑定" : "Bind now"}
               </button>
             </div>
           )}
           {marketingError && (
-            <p className="mt-1 text-[11px] text-rose-500">
-              {marketingError}
-            </p>
+            <p className="mt-1 text-[11px] text-rose-500">{marketingError}</p>
           )}
         </div>
         {profileError && (
@@ -3551,25 +3695,25 @@ function ProfileSection({
         {/* 会员规则入口 */}
         <div className="mt-4 border-t border-slate-100 pt-3">
           <p className="text-slate-500">
-            {isZh ? '会员规则' : 'Membership rules'}
+            {isZh ? "会员规则" : "Membership rules"}
           </p>
           <p className="mt-1 text-[11px] text-slate-500">
             {isZh
-              ? '查看积分如何累积、抵扣、退款时如何处理等详细说明。'
-              : 'See details on how points are earned, redeemed, and adjusted on refunds.'}
+              ? "查看积分如何累积、抵扣、退款时如何处理等详细说明。"
+              : "See details on how points are earned, redeemed, and adjusted on refunds."}
           </p>
           <Link
             href={`/${locale}/membership/rules`}
             className="mt-2 inline-flex items-center rounded-full bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
           >
-            {isZh ? '查看会员规则' : 'View membership rules'}
+            {isZh ? "查看会员规则" : "View membership rules"}
           </Link>
         </div>
 
         <p className="mt-3 text-[11px] text-slate-500">
           {isZh
-            ? '积分可在结算页直接抵扣餐品小计；不定期发送的优惠券会通过邮件发给你，请注意查收。'
-            : 'Points can be applied at checkout to reduce the food subtotal. Additional promo coupons will occasionally be sent via email.'}
+            ? "积分可在结算页直接抵扣餐品小计；不定期发送的优惠券会通过邮件发给你，请注意查收。"
+            : "Points can be applied at checkout to reduce the food subtotal. Additional promo coupons will occasionally be sent via email."}
         </p>
       </div>
     </section>

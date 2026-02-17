@@ -23,6 +23,7 @@ import { LoyaltyService } from '../loyalty/loyalty.service';
 import { CouponProgramTriggerService } from '../coupons/coupon-program-trigger.service';
 import { EmailVerificationService } from '../email/email-verification.service';
 import { NotificationService } from '../notifications/notification.service';
+import type { OrderItemOptionsSnapshot } from '../orders/order-item-options';
 
 const MICRO_PER_POINT = 1_000_000;
 const createStableId = (prefix: string): string => {
@@ -186,6 +187,81 @@ export class MembershipService {
     );
 
     return matchingSubtotal;
+  }
+
+  private parseOrderItemOptionsSnapshot(
+    raw: unknown,
+  ): OrderItemOptionsSnapshot {
+    if (!Array.isArray(raw)) return [];
+
+    return raw.flatMap((group) => {
+      if (!group || typeof group !== 'object') return [];
+      const groupRecord = group as Record<string, unknown>;
+      const templateGroupStableId =
+        typeof groupRecord.templateGroupStableId === 'string'
+          ? groupRecord.templateGroupStableId
+          : '';
+      if (!templateGroupStableId) return [];
+
+      const choicesRaw = Array.isArray(groupRecord.choices)
+        ? groupRecord.choices
+        : [];
+      const choices = choicesRaw.flatMap((choice) => {
+        if (!choice || typeof choice !== 'object') return [];
+        const choiceRecord = choice as Record<string, unknown>;
+        const stableId =
+          typeof choiceRecord.stableId === 'string'
+            ? choiceRecord.stableId
+            : '';
+        if (!stableId) return [];
+
+        return [
+          {
+            stableId,
+            templateGroupStableId,
+            nameEn:
+              typeof choiceRecord.nameEn === 'string'
+                ? choiceRecord.nameEn
+                : '',
+            nameZh:
+              typeof choiceRecord.nameZh === 'string'
+                ? choiceRecord.nameZh
+                : null,
+            priceDeltaCents:
+              typeof choiceRecord.priceDeltaCents === 'number'
+                ? choiceRecord.priceDeltaCents
+                : 0,
+            sortOrder:
+              typeof choiceRecord.sortOrder === 'number'
+                ? choiceRecord.sortOrder
+                : 0,
+          },
+        ];
+      });
+
+      return [
+        {
+          templateGroupStableId,
+          nameEn:
+            typeof groupRecord.nameEn === 'string' ? groupRecord.nameEn : '',
+          nameZh:
+            typeof groupRecord.nameZh === 'string' ? groupRecord.nameZh : null,
+          minSelect:
+            typeof groupRecord.minSelect === 'number'
+              ? groupRecord.minSelect
+              : 0,
+          maxSelect:
+            typeof groupRecord.maxSelect === 'number'
+              ? groupRecord.maxSelect
+              : null,
+          sortOrder:
+            typeof groupRecord.sortOrder === 'number'
+              ? groupRecord.sortOrder
+              : 0,
+          choices,
+        },
+      ];
+    });
   }
 
   /** 如果带了 phone + verificationToken，就尝试把手机号绑定到 User 上 */
@@ -524,6 +600,16 @@ export class MembershipService {
         status: true,
         fulfillmentType: true,
         deliveryType: true,
+        items: {
+          select: {
+            productStableId: true,
+            qty: true,
+            displayName: true,
+            nameEn: true,
+            nameZh: true,
+            optionsJson: true,
+          },
+        },
       },
     });
 
@@ -559,6 +645,14 @@ export class MembershipService {
         status: o.status,
         fulfillmentType: o.fulfillmentType,
         deliveryType: o.deliveryType,
+        items: o.items.map((item) => ({
+          productStableId: item.productStableId,
+          quantity: item.qty,
+          displayName: item.displayName,
+          nameEn: item.nameEn,
+          nameZh: item.nameZh,
+          options: this.parseOrderItemOptionsSnapshot(item.optionsJson),
+        })),
       })),
     };
   }
