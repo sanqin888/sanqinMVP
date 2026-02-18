@@ -385,10 +385,30 @@ export default function StorePosPaymentPage() {
 
   const hasItems = !!snapshot && Array.isArray(snapshot.items) && snapshot.items.length > 0;
 
-  const baseSubtotalCents = useMemo(() => {
-    if (!snapshot?.items?.length) return 0;
-    return snapshot.items.reduce((sum, item) => sum + item.lineTotalCents, 0);
+  const normalizedSnapshotItems = useMemo(() => {
+    if (!snapshot?.items?.length) return [];
+
+    return snapshot.items.map((item) => {
+      const normalizedQty = Number.isFinite(item.quantity) && item.quantity > 0
+        ? item.quantity
+        : 1;
+      const normalizedUnitPriceCents = Number.isFinite(item.unitPriceCents)
+        ? item.unitPriceCents
+        : 0;
+
+      return {
+        ...item,
+        quantity: normalizedQty,
+        unitPriceCents: normalizedUnitPriceCents,
+        lineTotalCents: normalizedUnitPriceCents * normalizedQty,
+      };
+    });
   }, [snapshot]);
+
+  const baseSubtotalCents = useMemo(() => {
+    if (!normalizedSnapshotItems.length) return 0;
+    return normalizedSnapshotItems.reduce((sum, item) => sum + item.lineTotalCents, 0);
+  }, [normalizedSnapshotItems]);
 
   const discountCents = useMemo(() => {
     if (baseSubtotalCents <= 0 || !discountOption) return 0;
@@ -498,6 +518,7 @@ const loyaltyRedeemCents = redeemCents;
     if (!snapshot) return null;
     return {
       ...snapshot,
+      items: normalizedSnapshotItems,
       subtotalCents: discountedSubtotalCents,
       discountCents,
       taxCents,
@@ -522,6 +543,7 @@ const loyaltyRedeemCents = redeemCents;
     pointsEarned,
     pointsToRedeem,
     snapshot,
+    normalizedSnapshotItems,
     taxCents,
     finalDisplayTotalCents,
   ]);
@@ -682,7 +704,7 @@ const loyaltyRedeemCents = redeemCents;
     }
 
     try {
-      const itemsPayload = snapshot.items.map((item) => ({
+      const itemsPayload = normalizedSnapshotItems.map((item) => ({
         productStableId: item.stableId,
         qty: item.quantity,
         unitPrice: item.unitPriceCents / 100,
@@ -783,7 +805,7 @@ const loyaltyRedeemCents = redeemCents;
           ) : (
             <>
               <ul className="space-y-2 max-h-72 overflow-auto pr-1">
-                {snapshot.items.map((item) => {
+                {normalizedSnapshotItems.map((item) => {
                   const selectedOptions = resolveSelectedOptions(item);
                   return (
                   <li key={item.lineId ?? `${item.stableId}-${item.unitPriceCents}-${item.quantity}`} className="rounded-2xl bg-slate-900/60 px-3 py-2 flex justify-between gap-2">
