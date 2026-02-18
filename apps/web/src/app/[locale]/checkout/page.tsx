@@ -188,6 +188,18 @@ function toSafeErrorLog(error: unknown): Record<string, unknown> {
   return { message: String(error) };
 }
 
+function isIosStandaloneWebApp(): boolean {
+  if (typeof window === "undefined") return false;
+
+  const nav = window.navigator as Navigator & { standalone?: boolean };
+  const isiOS = /iphone|ipad|ipod/i.test(nav.userAgent);
+  const isStandalone =
+    window.matchMedia?.("(display-mode: standalone)").matches === true ||
+    nav.standalone === true;
+
+  return isiOS && isStandalone;
+}
+
 declare global {
   interface Window {
     Clover?: new (
@@ -839,12 +851,19 @@ export default function CheckoutPage() {
   const [cardCvvError, setCardCvvError] = useState<string | null>(null);
   const [cloverReady, setCloverReady] = useState(false);
   const [canPay, setCanPay] = useState(false);
+  const [isIosStandalone, setIsIosStandalone] = useState(false);
+  const [showIosStandaloneCloverHint, setShowIosStandaloneCloverHint] =
+    useState(false);
   const [applePayMounted, setApplePayMounted] = useState(false);
   const [cardNameComplete, setCardNameComplete] = useState(false);
   const [cardNumberComplete, setCardNumberComplete] = useState(false);
   const [cardDateComplete, setCardDateComplete] = useState(false);
   const [cardCvvComplete, setCardCvvComplete] = useState(false);
   const [cardPostalComplete, setCardPostalComplete] = useState(false);
+
+  useEffect(() => {
+    setIsIosStandalone(isIosStandaloneWebApp());
+  }, []);
   const [challengeUrl, setChallengeUrl] = useState<string | null>(null);
   const [challengeIntentId, setChallengeIntentId] = useState<string | null>(
     null,
@@ -1455,6 +1474,7 @@ useEffect(() => {
     setApplePayMounted(false);
     setCloverReady(false);
     setCanPay(false);
+    setShowIosStandaloneCloverHint(false);
     cloverFieldStateRef.current = {};
     return;
   }
@@ -1467,6 +1487,7 @@ useEffect(() => {
     process.env.NEXT_PUBLIC_CLOVER_SDK_URL?.trim() ?? DEFAULT_CLOVER_SDK_URL;
 
   if (!publicKey) {
+    setShowIosStandaloneCloverHint(false);
     setErrorMessage(
       locale === "zh"
         ? "支付初始化失败：缺少 Clover 公钥配置。"
@@ -1476,6 +1497,7 @@ useEffect(() => {
   }
 
   if (!merchantId) {
+    setShowIosStandaloneCloverHint(false);
     setErrorMessage(
       locale === "zh"
         ? "支付初始化失败：缺少 Clover 商户号配置。"
@@ -1589,6 +1611,7 @@ useEffect(() => {
       cloverFieldStateRef.current = {};
       setCanPay(false);
       setApplePayMounted(false);
+      setShowIosStandaloneCloverHint(false);
 
       const clover = new window.Clover(publicKey, { merchantId });
       const elements = clover.elements();
@@ -1699,7 +1722,17 @@ useEffect(() => {
     } catch (err) {
       if (cancelled) return;
       const message = err instanceof Error ? err.message : "Failed to init Clover";
-      setErrorMessage(message);
+      if (isIosStandalone) {
+        setShowIosStandaloneCloverHint(true);
+        setErrorMessage(
+          locale === "zh"
+            ? "当前是 iPhone 主屏幕模式（独立窗口），Clover 支付组件可能无法加载。请点击“在 Safari 中打开”继续支付。"
+            : "You are using iPhone home-screen mode (standalone app), where Clover payment fields may fail to load. Please open this page in Safari to continue payment.",
+        );
+      } else {
+        setShowIosStandaloneCloverHint(false);
+        setErrorMessage(message);
+      }
       setApplePayMounted(false);
       setCloverReady(false);
       setCanPay(false);
@@ -1726,7 +1759,7 @@ useEffect(() => {
     setCloverReady(false);
     setApplePayMounted(false);
   };
-}, [locale, requiresPayment]);
+}, [isIosStandalone, locale, requiresPayment]);
 
 useEffect(() => {
   if (typeof window === "undefined") return;
@@ -4256,6 +4289,38 @@ useEffect(() => {
 
               {requiresPayment ? (
                 <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
+                  {showIosStandaloneCloverHint ? (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                      <p>
+                        {locale === "zh"
+                          ? "从 iPhone 主屏幕图标进入时，银行卡输入框可能无法加载。"
+                          : "When opened from an iPhone home-screen icon, card fields may fail to load."}
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (typeof window === "undefined") return;
+                            window.location.reload();
+                          }}
+                          className="rounded-full border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                        >
+                          {locale === "zh" ? "刷新页面重试" : "Refresh and retry"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (typeof window === "undefined") return;
+                            window.open(window.location.href, "_blank", "noopener,noreferrer");
+                          }}
+                          className="rounded-full border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                        >
+                          {locale === "zh" ? "在 Safari 中打开" : "Open in Safari"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
                   <p className="text-xs font-semibold text-slate-600">
                     {locale === "zh" ? "苹果支付" : "Apple Pay"}
                   </p>
@@ -4426,6 +4491,20 @@ useEffect(() => {
                   }`}
                 >
                   {paymentError}
+                  {requiresPayment ? (
+                    <div className="mt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (typeof window === "undefined") return;
+                          window.location.reload();
+                        }}
+                        className="rounded-full border border-current px-3 py-1 text-[11px] font-semibold"
+                      >
+                        {locale === "zh" ? "刷新页面重试支付模块" : "Refresh to retry payment module"}
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </div>

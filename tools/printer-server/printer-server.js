@@ -388,18 +388,10 @@ async function buildCustomerReceiptEscPos(params) {
   const discount = snapshot.discountCents ?? 0;
   const tax = snapshot.taxCents ?? 0;
   const total = snapshot.totalCents ?? 0;
+  const creditCardSurcharge = snapshot.creditCardSurchargeCents ?? 0;
   const loyalty = snapshot.loyalty || {};
 
   const deliveryFee = snapshot.deliveryFeeCents ?? 0;
-  const deliveryCost =
-    typeof snapshot.deliveryCostCents === "number" ? snapshot.deliveryCostCents : null;
-
-  const deliverySubsidy =
-    typeof snapshot.deliverySubsidyCents === "number"
-      ? snapshot.deliverySubsidyCents
-      : typeof deliveryCost === "number"
-      ? Math.max(0, deliveryCost - deliveryFee)
-      : null;
 
   chunks.push(encLine(makeLine("-")));
   chunks.push(encLine(`小计 Subtotal: ${money(subtotal)}`));
@@ -410,16 +402,12 @@ async function buildCustomerReceiptEscPos(params) {
     chunks.push(encLine(`积分抵扣 Points: -${loyalty.pointsRedeemed.toFixed(2)} pt`));
   }
 
-  if (isDelivery || deliveryFee > 0 || deliveryCost !== null) {
+  if (isDelivery || deliveryFee > 0) {
     chunks.push(encLine(`配送费(顾客) Delivery Fee: ${money(deliveryFee)}`));
+  }
 
-    if (deliveryCost === null) {
-      chunks.push(encLine(`Uber平台运费  Uber Delivery Cost: (pending)`));
-      chunks.push(encLine(`本单补贴 Subsidy: (pending)`));
-    } else {
-      chunks.push(encLine(`Uber平台运费  Uber Delivery Cost: ${money(deliveryCost)}`));
-      chunks.push(encLine(`本单补贴 Subsidy: ${money(deliverySubsidy ?? 0)}`));
-    }
+  if (creditCardSurcharge > 0) {
+    chunks.push(encLine(`信用卡附加费 Card Surcharge: ${money(creditCardSurcharge)}`));
   }
 
   chunks.push(encLine(`税费(HST) Tax: ${money(tax)}`));
