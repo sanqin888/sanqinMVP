@@ -425,6 +425,17 @@ export default function StorePosPaymentPage() {
     return Math.min(Math.round(val * 100), baseSubtotalCents);
   }, [baseSubtotalCents, discountOption, otherDiscountInput]);
 
+  const appendDiscountKeypadValue = useCallback((key: string) => {
+    setOtherDiscountInput((prev) => {
+      if (key === "clear") return "";
+      if (key === "back") return prev.slice(0, -1);
+
+      const candidate = `${prev}${key}`;
+      if (!/^\d*(\.\d{0,2})?$/.test(candidate)) return prev;
+      return candidate;
+    });
+  }, []);
+
   const discountedSubtotalCents = Math.max(0, baseSubtotalCents - discountCents);
 
   // --- 积分逻辑 ---
@@ -973,7 +984,7 @@ const loyaltyRedeemCents = redeemCents;
             </div>
 
             {/* 折扣/优惠 */}
-            <div>
+            <div className="relative">
               <h2 className="text-sm font-semibold mb-2">{t.discountTitle}</h2>
               <div className="rounded-2xl border border-slate-600 bg-slate-900/40 p-3 space-y-3">
                 <div className="grid grid-cols-4 gap-2 text-sm">
@@ -1006,6 +1017,33 @@ const loyaltyRedeemCents = redeemCents;
                   <span>-{formatMoney(discountCents)}</span>
                 </div>
               </div>
+
+              {discountOption === "other" && (
+                <div className="pointer-events-auto absolute right-full top-7 mr-3 z-20 w-[16rem] rounded-2xl border border-slate-600 bg-slate-900/95 p-3 shadow-2xl">
+                  <div className="mb-2 text-xs text-slate-300">{t.discountOtherHint}</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "back"].map((key) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => appendDiscountKeypadValue(key)}
+                        className="h-12 rounded-xl bg-slate-800 text-lg font-semibold text-slate-100 hover:bg-slate-700"
+                      >
+                        {key === "back" ? "⌫" : key}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => appendDiscountKeypadValue("clear")}
+                      className="col-span-3 h-10 rounded-xl bg-rose-500/20 text-sm font-semibold text-rose-200 hover:bg-rose-500/30"
+                    >
+                      {isZh ? "清空金额" : "Clear amount"}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* 付款方式 */}
