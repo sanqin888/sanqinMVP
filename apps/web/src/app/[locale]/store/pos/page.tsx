@@ -1,7 +1,7 @@
 // apps/web/src/app/[locale]/store/pos/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
 import type { Locale } from "@/lib/i18n/locales";
@@ -303,30 +303,110 @@ export default function StorePosPage() {
     [menuCategories],
   );
 
+  const menuItemMap = useMemo(
+    () => new Map(allMenuItems.map((item) => [item.stableId, item])),
+    [allMenuItems],
+  );
+
+  const menuItemMapByName = useMemo(() => {
+    const map = new Map<string, PublicMenuCategory["items"][number]>();
+    allMenuItems.forEach((item) => {
+      const names = [item.name, item.nameEn, item.nameZh]
+        .filter((name): name is string => Boolean(name?.trim()))
+        .map((name) => name.trim());
+      names.forEach((name) => map.set(name, item));
+    });
+    return map;
+  }, [allMenuItems]);
+
+  const resolveLinkedItem = useCallback(
+    (option: OptionChoiceDto) => {
+      if (option.targetItemStableId) {
+        const byId = menuItemMap.get(option.targetItemStableId);
+        if (byId) return byId;
+      }
+
+      const nameKey = locale === "zh" && option.nameZh ? option.nameZh : option.nameEn;
+      if (nameKey) {
+        const byName = menuItemMapByName.get(nameKey.trim());
+        if (byName) return byName;
+      }
+
+      return undefined;
+    },
+    [locale, menuItemMap, menuItemMapByName],
+  );
+
+  const buildGroupSegment = useCallback(
+    (group: PublicMenuCategory["items"][number]["optionGroups"][number], index: number) =>
+      group.bindingStableId ?? `${group.templateGroupStableId}-${index}`,
+    [],
+  );
+
+  const buildPathKey = useCallback((segments: string[]) => segments.join("__"), []);
+
+  const collectSelectedOptionLines = useCallback(
+    (
+      item: PublicMenuCategory["items"][number],
+      selected: Record<string, string[]>,
+      basePath: string[],
+      visited: Set<string>,
+    ): SelectedOptionLine[] => {
+      const lines: SelectedOptionLine[] = [];
+      (item.optionGroups ?? []).forEach((group, groupIndex) => {
+        const groupPath = [...basePath, buildGroupSegment(group, groupIndex)];
+        const groupKey = buildPathKey(groupPath);
+        if (visited.has(groupKey)) return;
+        visited.add(groupKey);
+
+        const selectedIds = selected[groupKey] ?? [];
+        if (selectedIds.length === 0) return;
+
+        selectedIds.forEach((optionId) => {
+          const option = group.options.find((opt) => opt.optionStableId === optionId);
+          if (!option) return;
+          lines.push({
+            label: option.nameZh ?? option.nameEn,
+            labelZh: option.nameZh ?? option.nameEn,
+            labelEn: option.nameEn,
+            priceCents: option.priceDeltaCents,
+          });
+
+          const linkedItem = resolveLinkedItem(option);
+          if (!linkedItem?.optionGroups?.length) return;
+          lines.push(
+            ...collectSelectedOptionLines(
+              linkedItem,
+              selected,
+              [...groupPath, `option-${option.optionStableId}`],
+              visited,
+            ),
+          );
+        });
+      });
+      return lines;
+    },
+    [buildGroupSegment, buildPathKey, resolveLinkedItem],
+  );
+
   const cartWithDetails = useMemo(() => {
     return cart
       .map((entry) => {
         const item = allMenuItems.find((i) => i.stableId === entry.stableId);
         if (!item) return null;
 
-        const selectedOptionLines: SelectedOptionLine[] = [];
-        let optionDeltaCents = 0;
-        if (entry.options) {
-          (item.optionGroups ?? []).forEach((group) => {
-            const selected = entry.options?.[group.templateGroupStableId] ?? [];
-            if (selected.length === 0) return;
-            group.options.forEach((option) => {
-              if (!selected.includes(option.optionStableId)) return;
-              optionDeltaCents += option.priceDeltaCents;
-              selectedOptionLines.push({
-                label: option.nameZh ?? option.nameEn,
-                labelZh: option.nameZh ?? option.nameEn,
-                labelEn: option.nameEn,
-                priceCents: option.priceDeltaCents,
-              });
-            });
-          });
-        }
+        const selectedOptionLines = entry.options
+          ? collectSelectedOptionLines(
+              item,
+              entry.options,
+              ["root", item.stableId],
+              new Set<string>(),
+            )
+          : [];
+        const optionDeltaCents = selectedOptionLines.reduce(
+          (sum, line) => sum + line.priceCents,
+          0,
+        );
         const unitPriceCents = Math.round(item.price * 100) + optionDeltaCents;
         const effectiveUnitPriceCents =
           typeof entry.customUnitPriceCents === "number"
@@ -342,7 +422,7 @@ export default function StorePosPage() {
         };
       })
       .filter((x): x is NonNullable<typeof x> => Boolean(x));
-  }, [cart, allMenuItems]);
+  }, [cart, allMenuItems, collectSelectedOptionLines]);
 
   const subtotalCents = useMemo(
     () => cartWithDetails.reduce((sum, item) => sum + item.lineTotalCents, 0),
@@ -535,26 +615,72 @@ export default function StorePosPage() {
     });
   };
 
+  const activeOptionGroups = useMemo(() => {
+    if (!activeItem) return [] as Array<{
+      group: NonNullable<PublicMenuCategory["items"][number]["optionGroups"]>[number];
+      key: string;
+      path: string[];
+    }>;
+
+    const collect = (
+      item: PublicMenuCategory["items"][number],
+      basePath: string[],
+      visited: Set<string>,
+    ) => {
+      const collected: Array<{
+        group: NonNullable<PublicMenuCategory["items"][number]["optionGroups"]>[number];
+        key: string;
+        path: string[];
+      }> = [];
+
+      (item.optionGroups ?? []).forEach((group, groupIndex) => {
+        const groupPath = [...basePath, buildGroupSegment(group, groupIndex)];
+        const groupKey = buildPathKey(groupPath);
+        if (visited.has(groupKey)) return;
+        visited.add(groupKey);
+
+        collected.push({ group, key: groupKey, path: groupPath });
+
+        const selectedIds = activeItem.selected[groupKey] ?? [];
+        if (selectedIds.length === 0) return;
+
+        selectedIds.forEach((optionId) => {
+          const option = group.options.find((opt) => opt.optionStableId === optionId);
+          if (!option) return;
+          const linkedItem = resolveLinkedItem(option);
+          if (!linkedItem?.optionGroups?.length) return;
+          collected.push(
+            ...collect(
+              linkedItem,
+              [...groupPath, `option-${option.optionStableId}`],
+              visited,
+            ),
+          );
+        });
+      });
+
+      return collected;
+    };
+
+    return collect(activeItem.item, ["root", activeItem.item.stableId], new Set<string>());
+  }, [activeItem, buildGroupSegment, buildPathKey, resolveLinkedItem]);
+
   const requiredGroupsMissing =
-    activeItem?.item.optionGroups?.filter((group) => {
+    activeOptionGroups.filter(({ group, key }) => {
       if (group.minSelect <= 0) return false;
-      const selectedCount =
-        activeItem.selected[group.templateGroupStableId]?.length ?? 0;
+      const selectedCount = activeItem?.selected[key]?.length ?? 0;
       return selectedCount < group.minSelect;
-    }) ?? [];
+    });
   const canAddToCart = Boolean(activeItem) && requiredGroupsMissing.length === 0;
 
   const addActiveItemToCart = () => {
     if (!activeItem || !canAddToCart) return;
     const lineId = `line-${Date.now()}-${Math.random()}`;
-    const optionDeltaCents = (activeItem.item.optionGroups ?? []).reduce((sum, group) => {
-      const selected = activeItem.selected[group.templateGroupStableId] ?? [];
-      return (
-        sum +
-        group.options
-          .filter((option) => selected.includes(option.optionStableId))
-          .reduce((groupSum, option) => groupSum + option.priceDeltaCents, 0)
-      );
+    const optionDeltaCents = activeOptionGroups.reduce((sum, { group, key }) => {
+      const selected = activeItem.selected[key] ?? [];
+      return sum + group.options
+        .filter((option) => selected.includes(option.optionStableId))
+        .reduce((groupSum, option) => groupSum + option.priceDeltaCents, 0);
     }, 0);
     const unitPriceCents = Math.round(activeItem.item.price * 100) + optionDeltaCents;
 
@@ -1072,19 +1198,18 @@ export default function StorePosPage() {
             </div>
 
             <div className="mt-4 space-y-4 max-h-[60vh] overflow-auto pr-1">
-              {(activeItem.item.optionGroups ?? []).map((group) => {
+              {activeOptionGroups.map(({ group, key }) => {
                 const groupName =
                   locale === "zh" && group.template.nameZh
                     ? group.template.nameZh
                     : group.template.nameEn;
-                const selection =
-                  activeItem.selected[group.templateGroupStableId] ?? [];
+                const selection = activeItem.selected[key] ?? [];
                 const minSelect = group.minSelect ?? 0;
                 const maxSelect = group.maxSelect ?? null;
 
                 return (
                   <div
-                    key={group.templateGroupStableId}
+                    key={key}
                     className="rounded-2xl border border-slate-700 bg-slate-800/70 p-4"
                   >
                     <div className="flex items-center justify-between">
@@ -1147,7 +1272,7 @@ export default function StorePosPage() {
                                 type="button"
                                 onClick={() =>
                                   updateOptionSelection(
-                                    group.templateGroupStableId,
+                                    key,
                                     parentOption.optionStableId,
                                     maxSelect,
                                     group.options, // 👈 传入完整选项列表
@@ -1191,7 +1316,7 @@ export default function StorePosPage() {
                                         type="button"
                                         onClick={() =>
                                           updateOptionSelection(
-                                            group.templateGroupStableId,
+                                            key,
                                             child.optionStableId,
                                             maxSelect,
                                             group.options,
