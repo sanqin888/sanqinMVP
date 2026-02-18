@@ -44,6 +44,18 @@ type BeforeInstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
 };
 
+function isIosDevice() {
+  if (typeof navigator === "undefined") return false;
+
+  return /iphone|ipad|ipod/i.test(navigator.userAgent);
+}
+
+function isInStandaloneMode() {
+  if (typeof window === "undefined") return false;
+
+  return window.matchMedia?.("(display-mode: standalone)").matches ?? false;
+}
+
 export default function LocalOrderPage() {
   const params = useParams<{ locale?: string }>();
   const locale = (params?.locale === "zh" ? "zh" : "en") as Locale;
@@ -77,8 +89,12 @@ export default function LocalOrderPage() {
   const [installPromptEvent, setInstallPromptEvent] =
     useState<BeforeInstallPromptEvent | null>(null);
   const [installFeedback, setInstallFeedback] = useState<string | null>(null);
+  const [isIosInstallHintVisible, setIsIosInstallHintVisible] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
 
   useEffect(() => {
+    setIsStandalone(isInStandaloneMode());
+
     const handleBeforeInstallPrompt = (event: Event) => {
       event.preventDefault();
       setInstallPromptEvent(event as BeforeInstallPromptEvent);
@@ -88,10 +104,18 @@ export default function LocalOrderPage() {
     const handleAppInstalled = () => {
       setInstallPromptEvent(null);
       setInstallFeedback(strings.installAppAdded);
+      setIsStandalone(true);
+    };
+
+    const handleDisplayModeChange = () => {
+      setIsStandalone(isInStandaloneMode());
     };
 
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
     window.addEventListener("appinstalled", handleAppInstalled);
+    window
+      .matchMedia("(display-mode: standalone)")
+      .addEventListener("change", handleDisplayModeChange);
 
     return () => {
       window.removeEventListener(
@@ -99,10 +123,19 @@ export default function LocalOrderPage() {
         handleBeforeInstallPrompt,
       );
       window.removeEventListener("appinstalled", handleAppInstalled);
+      window
+        .matchMedia("(display-mode: standalone)")
+        .removeEventListener("change", handleDisplayModeChange);
     };
   }, [strings.installAppAdded]);
 
   const handleInstallApp = useCallback(async () => {
+    if (isIosDevice()) {
+      setIsIosInstallHintVisible(true);
+      setInstallFeedback(null);
+      return;
+    }
+
     if (!installPromptEvent) {
       setInstallFeedback(strings.installAppUnavailable);
       return;
@@ -117,6 +150,8 @@ export default function LocalOrderPage() {
 
     setInstallPromptEvent(null);
   }, [installPromptEvent, strings.installAppAdded, strings.installAppUnavailable]);
+
+  const shouldShowInstallButton = !isStandalone && (Boolean(installPromptEvent) || isIosDevice());
 
   useEffect(() => {
     let cancelled = false;
@@ -891,12 +926,15 @@ export default function LocalOrderPage() {
                 <button type="button" onClick={handleLogout} className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50">{logoutLabel}</button>
               ) : null}
               <Link href={checkoutHref} className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50">{strings.cartTitle}</Link>
-              {installPromptEvent ? (
+              {shouldShowInstallButton ? (
                 <button type="button" onClick={() => void handleInstallApp()} className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50">{strings.installApp}</button>
               ) : null}
             </div>
             {installFeedback ? (
               <p className="text-xs text-emerald-600">{installFeedback}</p>
+            ) : null}
+            {isIosInstallHintVisible ? (
+              <p className="text-xs text-slate-500">{strings.installAppIosHint}</p>
             ) : null}
           </div>
           <div className="hidden lg:block lg:w-[220px]" />

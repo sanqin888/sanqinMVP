@@ -9,6 +9,15 @@ export const metadata: Metadata = {
   title: "SanQ Rougamo",
   description:
     "SanQ Rougamo online ordering experience with Clover checkout integration.",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    title: "SanQ Rougamo",
+    statusBarStyle: "default",
+    capable: true,
+  },
+  formatDetection: {
+    telephone: false,
+  },
 };
 
 // 服务器端检测语言：优先 Cookie('locale')，否则看 Accept-Language
