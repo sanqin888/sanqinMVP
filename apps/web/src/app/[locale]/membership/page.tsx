@@ -3643,20 +3643,15 @@ function ProfileSection({
 
         {/* 营销邮件订阅开关 */}
         <div className="mt-4 border-t border-slate-100 pt-3">
-          <p className="text-slate-500">
-            {isZh ? "营销邮件订阅" : "Marketing emails"}
-          </p>
-          <div className="mt-2 flex items-center justify-between">
-            <p className="text-[11px] text-slate-500">
-              {isZh
-                ? "勾选后，我们会不定期发送新品、优惠活动等邮件给你。勾选即表示你同意接收营销邮件，并可随时退订。我们将按《隐私政策》保护你的信息。"
-                : "Tick this box and we’ll occasionally email you new items and special offers. By subscribing, you agree to receive marketing emails, and you can unsubscribe at any time. We will protect your information in accordance with our Privacy Policy."}
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-slate-500">
+              {isZh ? "营销邮件订阅" : "Marketing emails"}
             </p>
             <button
               type="button"
               disabled={marketingSaving}
               onClick={() => onToggleMarketing(!effectiveOptIn)}
-              className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${
+              className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition ${
                 effectiveOptIn ? "bg-emerald-500" : "bg-slate-300"
               } ${marketingSaving ? "opacity-60" : ""}`}
             >
@@ -3666,6 +3661,13 @@ function ProfileSection({
                 }`}
               />
             </button>
+          </div>
+          <div className="mt-2">
+            <p className="text-[11px] text-slate-500">
+              {isZh
+                ? "勾选后，我们会不定期发送新品、优惠活动等邮件给你。勾选即表示你同意接收营销邮件，并可随时退订。我们将按《隐私政策》保护你的信息。"
+                : "Tick this box and we’ll occasionally email you new items and special offers. By subscribing, you agree to receive marketing emails, and you can unsubscribe at any time. We will protect your information in accordance with our Privacy Policy."}
+            </p>
           </div>
           {!user.email && (
             <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500">
