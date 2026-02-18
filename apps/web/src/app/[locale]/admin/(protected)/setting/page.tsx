@@ -67,7 +67,6 @@ type BusinessConfigDto = {
   tierThresholdSilver: number;
   tierThresholdGold: number;
   tierThresholdPlatinum: number;
-  enableDoorDash: boolean;
   enableUberDirect: boolean;
   holidays: HolidayApiDto[];
 };
@@ -440,9 +439,6 @@ const handleTimeChange = (
     setConfig((prev) => (prev ? { ...prev, timezone: value } : prev));
   };
 
-  const handleDoorDashToggle = (checked: boolean) => {
-    setConfig((prev) => (prev ? { ...prev, enableDoorDash: checked } : prev));
-  };
 
   const handleUberToggle = (checked: boolean) => {
     setConfig((prev) => (prev ? { ...prev, enableUberDirect: checked } : prev));
@@ -633,7 +629,6 @@ await apiFetch('/admin/business/hours', {
           tierThresholdSilver: config.tierThresholdSilver,
           tierThresholdGold: config.tierThresholdGold,
           tierThresholdPlatinum: config.tierThresholdPlatinum,
-          enableDoorDash: config.enableDoorDash,
           enableUberDirect: config.enableUberDirect,
         }),
       });
@@ -1077,31 +1072,17 @@ setHolidays(
             : 'Disable a provider to stop dispatching orders to it.'}
         </p>
 
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <label className="inline-flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={config.enableDoorDash}
-              onChange={(e) => handleDoorDashToggle(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-emerald-600"
-            />
-            <span className="text-slate-800">
-              {isZh ? '启用 DoorDash' : 'Enable DoorDash'}
-            </span>
-          </label>
-
-          <label className="inline-flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={config.enableUberDirect}
-              onChange={(e) => handleUberToggle(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-emerald-600"
-            />
-            <span className="text-slate-800">
-              {isZh ? '启用 Uber Direct' : 'Enable Uber Direct'}
-            </span>
-          </label>
-        </div>
+        <label className="inline-flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={config.enableUberDirect}
+            onChange={(e) => handleUberToggle(e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300 text-emerald-600"
+          />
+          <span className="text-slate-800">
+            {isZh ? '启用 Uber Direct' : 'Enable Uber Direct'}
+          </span>
+        </label>
       </section>
 
       {/* 消息与品牌展示设置 */}

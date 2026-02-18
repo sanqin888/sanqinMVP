@@ -4,13 +4,13 @@ import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { UberDirectService } from '../deliveries/uber-direct.service';
 import { MembershipService } from '../membership/membership.service';
-import { DoorDashDriveService } from '../deliveries/doordash-drive.service';
 import { LocationService } from '../location/location.service';
 import { NotificationService } from '../notifications/notification.service';
 import { EmailService } from '../email/email.service';
 import { OrderEventsBus } from '../messaging/order-events.bus';
 import { DeliveryType } from '@prisma/client';
 import { CreateOrderInput } from '@shared/order';
+import type { PrintPosPayloadService } from './print-pos-payload.service';
 
 describe('OrdersService', () => {
   let service: OrdersService;
@@ -60,7 +60,6 @@ describe('OrdersService', () => {
     markCouponUsedForOrder: jest.Mock;
   };
   let uberDirect: { createDelivery: jest.Mock };
-  let doorDashDrive: { createDelivery: jest.Mock };
   let locationService: { geocode: jest.Mock };
   let notificationService: {
     notifyOrderReady: jest.Mock;
@@ -68,6 +67,7 @@ describe('OrdersService', () => {
   };
   let emailService: { sendOrderInvoice: jest.Mock };
   let orderEventsBus: OrderEventsBus;
+  let printPosPayloadService: { getByStableId: jest.Mock };
   let emitOrderAccepted: jest.SpiedFunction<
     OrderEventsBus['emitOrderAccepted']
   >;
@@ -182,10 +182,6 @@ describe('OrdersService', () => {
       createDelivery: jest.fn(),
     };
 
-    doorDashDrive = {
-      createDelivery: jest.fn(),
-    };
-
     locationService = {
       geocode: jest.fn().mockResolvedValue({
         latitude: 43.6532,
@@ -203,6 +199,9 @@ describe('OrdersService', () => {
     };
 
     orderEventsBus = new OrderEventsBus();
+    printPosPayloadService = {
+      getByStableId: jest.fn(),
+    };
     emitOrderAccepted = jest
       .spyOn(orderEventsBus, 'emitOrderAccepted')
       .mockImplementation(() => undefined);
@@ -215,11 +214,11 @@ describe('OrdersService', () => {
       loyalty as unknown as LoyaltyService,
       membership as unknown as MembershipService,
       uberDirect as unknown as UberDirectService,
-      doorDashDrive as unknown as DoorDashDriveService,
       locationService as unknown as LocationService,
       notificationService as unknown as NotificationService,
       emailService as unknown as EmailService,
       orderEventsBus,
+      printPosPayloadService as unknown as PrintPosPayloadService,
     );
   });
 

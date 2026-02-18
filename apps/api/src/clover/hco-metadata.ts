@@ -142,8 +142,6 @@ const parseDeliveryProvider = (
 ): DeliveryProvider | undefined => {
   const normalized = toString(value)?.toUpperCase();
   if (normalized === DeliveryProvider.UBER) return DeliveryProvider.UBER;
-  if (normalized === DeliveryProvider.DOORDASH)
-    return DeliveryProvider.DOORDASH;
   return undefined;
 };
 
