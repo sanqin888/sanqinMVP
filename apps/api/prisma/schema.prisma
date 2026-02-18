@@ -27,7 +27,6 @@ enum DeliveryType {
 }
 
 enum DeliveryProvider {
-  DOORDASH
   UBER
 }
 
@@ -749,7 +748,6 @@ model BusinessConfig {
   tierThresholdSilver       Int      @default(100000)
   tierThresholdGold         Int      @default(1000000)
   tierThresholdPlatinum     Int      @default(3000000)
-  enableDoorDash            Boolean  @default(true)
   enableUberDirect          Boolean  @default(true)
 }
 
