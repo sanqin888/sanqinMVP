@@ -1,4 +1,4 @@
-import { AuthChallengeStatus } from '@prisma/client';
+import { AuthChallengeStatus, Prisma } from '@prisma/client';
 import { DataRetentionService } from './data-retention.service';
 
 type DeleteManyArgs = { where: Record<string, unknown> };
@@ -99,14 +99,14 @@ describe('DataRetentionService', () => {
         createdAt: { lt: new Date('2026-01-19T00:00:00.000Z') },
         OR: [
           { rawBody: { not: null } },
-          { headersJson: { not: null } },
-          { paramsJson: { not: null } },
+          { headersJson: { not: Prisma.AnyNull } },
+          { paramsJson: { not: Prisma.AnyNull } },
         ],
       },
       data: {
         rawBody: null,
-        headersJson: null,
-        paramsJson: null,
+        headersJson: Prisma.DbNull,
+        paramsJson: Prisma.DbNull,
       },
     });
 
