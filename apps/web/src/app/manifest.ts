@@ -2,9 +2,9 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "SanQ Rougamo",
+    name: "SanQ Roujiamo",
     short_name: "SanQ",
-    description: "SanQ Rougamo online ordering experience.",
+    description: "SanQ Roujiamo online ordering experience.",
     start_url: "/zh",
     display: "standalone",
     background_color: "#ffffff",
