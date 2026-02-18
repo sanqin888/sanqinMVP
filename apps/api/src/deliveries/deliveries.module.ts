@@ -2,11 +2,10 @@
 import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { UberDirectService } from './uber-direct.service';
-import { DoorDashDriveService } from './doordash-drive.service';
 
 @Module({
   imports: [HttpModule],
-  providers: [UberDirectService, DoorDashDriveService],
-  exports: [UberDirectService, DoorDashDriveService],
+  providers: [UberDirectService],
+  exports: [UberDirectService],
 })
 export class DeliveriesModule {}

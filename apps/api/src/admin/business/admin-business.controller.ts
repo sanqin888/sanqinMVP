@@ -73,7 +73,6 @@ export class AdminBusinessController {
       tierThresholdSilver?: number;
       tierThresholdGold?: number;
       tierThresholdPlatinum?: number;
-      enableDoorDash?: boolean;
       enableUberDirect?: boolean;
     },
   ): Promise<BusinessConfigResponse> {
@@ -119,7 +118,6 @@ export class AdminBusinessController {
       tierThresholdSilver?: number;
       tierThresholdGold?: number;
       tierThresholdPlatinum?: number;
-      enableDoorDash?: boolean;
       enableUberDirect?: boolean;
     },
   ): Promise<BusinessConfigResponse> {

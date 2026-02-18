@@ -41,10 +41,6 @@ import {
   UberDirectService,
 } from '../deliveries/uber-direct.service';
 import {
-  DoorDashDeliveryResult,
-  DoorDashDriveService,
-} from '../deliveries/doordash-drive.service';
-import {
   buildClientRequestId,
   CLIENT_REQUEST_ID_RE,
 } from '../common/utils/client-request-id';
@@ -189,7 +185,6 @@ type DeliveryPricingConfig = {
   storeLatitude: number | null;
   storeLongitude: number | null;
   redeemDollarPerPoint: number;
-  enableDoorDash: boolean;
   enableUberDirect: boolean;
 };
 
@@ -213,7 +208,6 @@ export class OrdersService {
     private readonly loyalty: LoyaltyService,
     private readonly membership: MembershipService,
     private readonly uberDirect: UberDirectService,
-    private readonly doorDashDrive: DoorDashDriveService,
     private readonly locationService: LocationService,
     private readonly notificationService: NotificationService,
     private readonly emailService: EmailService,
@@ -284,7 +278,7 @@ export class OrdersService {
       : undefined;
 
     if (isDelivery) {
-      const targetType = dto.deliveryType ?? DeliveryType.STANDARD;
+      const targetType = dto.deliveryType ?? DeliveryType.PRIORITY;
       const dest = await this.resolveTrustedDeliveryDestination(dto, userId);
 
       if (dest) {
@@ -691,7 +685,7 @@ export class OrdersService {
     return found;
   }
 
-  // ✅ 第三方 webhook/internal：如你确实需要用 DoorDash/Uber 回调的 orderId 来反查
+  // ✅ 第三方 webhook/internal：如你确实需要用 Uber 回调的 orderId 来反查
   //    这里不允许 UUID，只允许 clientRequestId 或 orderStableId（二者都不含 '-'）
   private async resolveInternalOrderIdByExternalRefOrThrow(
     externalRef: string,
@@ -756,7 +750,12 @@ export class OrdersService {
   ): Promise<OrderWithItems> {
     const current = await this.prisma.order.findUnique({
       where: { id },
-      select: { status: true, paidAt: true, makingAt: true },
+      select: {
+        status: true,
+        paidAt: true,
+        makingAt: true,
+        fulfillmentType: true,
+      },
     });
     if (!current) throw new NotFoundException('order not found');
 
@@ -831,6 +830,13 @@ export class OrdersService {
   }
 
   private async notifyOrderReady(order: OrderWithItems) {
+    if (order.fulfillmentType === FulfillmentType.delivery) {
+      this.logger.log(
+        `[notifyOrderReady] Skip ready notification for delivery order: ${order.id}`,
+      );
+      return;
+    }
+
     if (!order.contactPhone) return;
     const orderNumber = order.clientRequestId ?? order.orderStableId;
     if (!orderNumber) return;
@@ -1054,10 +1060,6 @@ export class OrdersService {
       existing.redeemDollarPerPoint > 0
         ? existing.redeemDollarPerPoint
         : DEFAULT_REDEEM_DOLLAR_PER_POINT;
-    const enableDoorDash =
-      typeof existing.enableDoorDash === 'boolean'
-        ? existing.enableDoorDash
-        : true;
     const enableUberDirect =
       typeof existing.enableUberDirect === 'boolean'
         ? existing.enableUberDirect
@@ -1072,7 +1074,6 @@ export class OrdersService {
       storeLatitude,
       storeLongitude,
       redeemDollarPerPoint,
-      enableDoorDash,
       enableUberDirect,
     };
   }
@@ -1085,9 +1086,9 @@ export class OrdersService {
   > {
     return {
       [DeliveryType.STANDARD]: {
-        provider: DeliveryProvider.DOORDASH,
+        provider: DeliveryProvider.UBER,
         feeCents: pricingConfig.deliveryBaseFeeCents,
-        etaRange: [45, 60],
+        etaRange: [35, 50],
       },
       [DeliveryType.PRIORITY]: {
         provider: DeliveryProvider.UBER,
@@ -1936,7 +1937,7 @@ export class OrdersService {
       : undefined;
 
     if (isDelivery) {
-      const targetType = dto.deliveryType ?? DeliveryType.STANDARD;
+      const targetType = dto.deliveryType ?? DeliveryType.PRIORITY;
       const dest = dto.deliveryDestination;
 
       // 只有当 店铺坐标 和 客户坐标 都存在时，才能动态计算
@@ -2380,7 +2381,7 @@ export class OrdersService {
 
     const normalizedDeliveryType =
       fulfillmentType === FulfillmentType.delivery
-        ? (deliveryType ?? DeliveryType.STANDARD)
+        ? (deliveryType ?? DeliveryType.PRIORITY)
         : undefined;
 
     const dto: CreateOrderInput = {
@@ -2574,7 +2575,7 @@ export class OrdersService {
     clientRequestId?: string | null;
     paymentMethod?: PaymentMethod | null;
   }): Promise<{ cents: number; rate?: number } | null> {
-    if (!order.clientRequestId || order.paymentMethod !== PaymentMethod.CARD) {
+    if (!order.clientRequestId) {
       return null;
     }
 
@@ -3056,49 +3057,6 @@ export class OrdersService {
     return parts.length ? `[${parts.join(' ')}] ` : '';
   }
 
-  private async dispatchStandardDeliveryWithDoorDash(
-    order: OrderWithItems,
-    destination: UberDirectDropoffDetails,
-  ): Promise<OrderWithItems> {
-    // ✅ 第三方识别：优先 clientRequestId；给人看：SQ 单号
-    const thirdPartyOrderRef = order.clientRequestId;
-    if (!thirdPartyOrderRef) {
-      throw new BadRequestException('clientRequestId required for delivery');
-    }
-    const humanRef = order.clientRequestId ?? order.orderStableId ?? '';
-
-    const response: DoorDashDeliveryResult =
-      await this.doorDashDrive.createDelivery({
-        orderRef: thirdPartyOrderRef, // ✅ 外发：优先 clientRequestId
-        pickupCode: order.pickupCode ?? undefined,
-        reference: humanRef, // ✅ 仅用于人类识别（SQYYMMDD####）
-        totalCents: order.totalCents ?? 0,
-        items: order.items.map((item) => ({
-          name: item.displayName || item.productStableId,
-          quantity: item.qty,
-          priceCents: item.unitPriceCents ?? undefined,
-        })),
-        destination,
-      });
-
-    const updateData: Prisma.OrderUpdateInput = {
-      externalDeliveryId: response.deliveryId,
-    };
-
-    if (typeof response.deliveryCostCents === 'number') {
-      const cost = Math.max(0, Math.round(response.deliveryCostCents));
-      updateData.deliveryCostCents = cost;
-
-      const fee = Math.max(0, order.deliveryFeeCents ?? 0);
-      updateData.deliverySubsidyCents = Math.max(0, cost - fee);
-    }
-    return this.prisma.order.update({
-      where: { id: order.id }, // ✅ 内部写库仍用 UUID
-      data: updateData,
-      include: { items: true },
-    }) as Promise<OrderWithItems>;
-  }
-
   private async dispatchPriorityDelivery(
     order: OrderWithItems,
     destination: UberDirectDropoffDetails,
@@ -3223,7 +3181,9 @@ export class OrdersService {
             params.order.orderStableId ??
             params.order.id,
           deliveryProvider:
-            params.provider === DeliveryProvider.DOORDASH ? 'DoorDash' : 'Uber',
+            params.provider === DeliveryProvider.UBER
+              ? 'Uber'
+              : String(params.provider),
           errorMessage: params.errorMessage,
           orderDetailUrl,
         });
