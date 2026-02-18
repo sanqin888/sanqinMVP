@@ -240,6 +240,7 @@ export class EmailService {
             subtotal: '小计',
             discount: '优惠',
             deliveryFee: '配送费',
+            creditCardSurcharge: '信用卡附加费',
             tax: '税费',
             total: '合计',
             storeInfo: '门店信息',
@@ -254,6 +255,7 @@ export class EmailService {
             subtotal: 'Subtotal',
             discount: 'Discount',
             deliveryFee: 'Delivery fee',
+            creditCardSurcharge: 'Credit card surcharge',
             tax: 'Tax',
             total: 'Total',
             storeInfo: 'Store information',
@@ -339,13 +341,25 @@ export class EmailService {
         value: this.formatCurrency(payload.snapshot.deliveryFeeCents, locale),
       });
     }
+    if (payload.snapshot.creditCardSurchargeCents > 0) {
+      rows.push({
+        label: labels.creditCardSurcharge,
+        value: this.formatCurrency(
+          payload.snapshot.creditCardSurchargeCents,
+          locale,
+        ),
+      });
+    }
     rows.push({
       label: labels.tax,
       value: this.formatCurrency(payload.snapshot.taxCents, locale),
     });
     rows.push({
       label: labels.total,
-      value: this.formatCurrency(payload.snapshot.totalCents, locale),
+      value: this.formatCurrency(
+        payload.snapshot.totalCents + payload.snapshot.creditCardSurchargeCents,
+        locale,
+      ),
       highlight: true,
     });
 
@@ -452,6 +466,7 @@ export class EmailService {
             subtotal: '小计',
             discount: '优惠',
             deliveryFee: '配送费',
+            creditCardSurcharge: '信用卡附加费',
             tax: '税费',
             total: '合计',
           }
@@ -462,6 +477,7 @@ export class EmailService {
             subtotal: 'Subtotal',
             discount: 'Discount',
             deliveryFee: 'Delivery fee',
+            creditCardSurcharge: 'Credit card surcharge',
             tax: 'Tax',
             total: 'Total',
           };
@@ -531,6 +547,14 @@ export class EmailService {
         )}`,
       );
     }
+    if (payload.snapshot.creditCardSurchargeCents > 0) {
+      totalLines.push(
+        `${labels.creditCardSurcharge}: ${this.formatCurrency(
+          payload.snapshot.creditCardSurchargeCents,
+          locale,
+        )}`,
+      );
+    }
     totalLines.push(
       `${labels.tax}: ${this.formatCurrency(
         payload.snapshot.taxCents,
@@ -539,7 +563,7 @@ export class EmailService {
     );
     totalLines.push(
       `${labels.total}: ${this.formatCurrency(
-        payload.snapshot.totalCents,
+        payload.snapshot.totalCents + payload.snapshot.creditCardSurchargeCents,
         locale,
       )}`,
     );

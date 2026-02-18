@@ -23,6 +23,7 @@ type PrintPosOrderSnapshot = {
   subtotalCents: number;
   taxCents: number;
   totalCents: number;
+  creditCardSurchargeCents: number;
   discountCents: number;
   deliveryFeeCents: number;
   deliveryCostCents: number;

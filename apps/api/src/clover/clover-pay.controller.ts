@@ -194,7 +194,11 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
 
           if (
             typeof chargeStatus.amountCents === 'number' &&
-            chargeStatus.amountCents !== intent.amountCents
+            ![
+              chargeStatus.amountCents,
+              chargeStatus.amountCents -
+                Math.max(0, chargeStatus.creditSurchargeCents ?? 0),
+            ].includes(intent.amountCents)
           ) {
             await this.checkoutIntents.markFailed({
               intentId: intent.id,
@@ -203,6 +207,14 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
             throw new ConflictException({
               code: 'CHARGED_AMOUNT_MISMATCH',
               message: 'charged amount does not match checkout intent amount',
+            });
+          }
+
+          if ((chargeStatus.creditSurchargeCents ?? 0) > 0) {
+            await this.checkoutIntents.updateMetadata(intent.id, {
+              ...intent.metadata,
+              creditCardSurchargeCents: chargeStatus.creditSurchargeCents,
+              creditCardSurchargeRate: chargeStatus.creditSurchargeRate,
             });
           }
 
@@ -568,9 +580,23 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       });
     }
 
+    const chargeStatus = await this.clover.getChargeStatus({
+      paymentId: paymentResult.paymentId,
+      idempotencyKey,
+    });
+
+    const surchargeMeta =
+      chargeStatus.ok && (chargeStatus.creditSurchargeCents ?? 0) > 0
+        ? {
+            creditCardSurchargeCents: chargeStatus.creditSurchargeCents,
+            creditCardSurchargeRate: chargeStatus.creditSurchargeRate,
+          }
+        : {};
+
     await this.checkoutIntents.updateMetadata(intent.id, {
       ...metadataWithIds,
       lastPaymentId: paymentResult.paymentId,
+      ...surchargeMeta,
     });
 
     const orderForCreation = buildOrderDtoFromMetadata(
@@ -704,6 +730,8 @@ type CheckoutIntentPaymentMeta = {
   lastPaymentId?: string | null;
   serverQuotedTotalCents?: number;
   pricingFingerprint?: string;
+  creditCardSurchargeCents?: number;
+  creditCardSurchargeRate?: number;
 };
 
 function extractPaymentMeta(
@@ -722,6 +750,18 @@ function extractPaymentMeta(
         : undefined,
     lastPaymentId:
       typeof meta.lastPaymentId === 'string' ? meta.lastPaymentId : undefined,
+    creditCardSurchargeCents:
+      typeof meta.creditCardSurchargeCents === 'number' &&
+      Number.isFinite(meta.creditCardSurchargeCents) &&
+      meta.creditCardSurchargeCents > 0
+        ? Math.round(meta.creditCardSurchargeCents)
+        : undefined,
+    creditCardSurchargeRate:
+      typeof meta.creditCardSurchargeRate === 'number' &&
+      Number.isFinite(meta.creditCardSurchargeRate) &&
+      meta.creditCardSurchargeRate >= 0
+        ? Math.round(meta.creditCardSurchargeRate)
+        : undefined,
   };
 }
 

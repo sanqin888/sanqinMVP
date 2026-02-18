@@ -426,10 +426,14 @@ export class OrdersService {
       couponEligibleLineItems,
     });
 
+    const posDiscountCents = Math.min(
+      subtotalCents,
+      Math.max(0, Math.round(dto.discountCents ?? 0)),
+    );
     const couponDiscountCents = couponInfo?.discountCents ?? 0;
     const subtotalAfterCoupon = Math.max(
       0,
-      subtotalCents - couponDiscountCents,
+      subtotalCents - posDiscountCents - couponDiscountCents,
     );
 
     let loyaltyRedeemCents = 0;
@@ -470,6 +474,26 @@ export class OrdersService {
       deliveryFeeCents: deliveryFeeCustomerCents,
       totalCents,
     };
+  }
+
+  private getTotalDiscountCents(order: {
+    subtotalCents?: number | null;
+    subtotalAfterDiscountCents?: number | null;
+    couponDiscountCents?: number | null;
+    loyaltyRedeemCents?: number | null;
+  }): number {
+    const subtotalCents = order.subtotalCents ?? 0;
+    const subtotalAfterDiscountCents = order.subtotalAfterDiscountCents;
+    if (
+      typeof subtotalAfterDiscountCents === 'number' &&
+      Number.isFinite(subtotalAfterDiscountCents)
+    ) {
+      return Math.max(0, subtotalCents - subtotalAfterDiscountCents);
+    }
+    return Math.max(
+      0,
+      (order.couponDiscountCents ?? 0) + (order.loyaltyRedeemCents ?? 0),
+    );
   }
 
   private toOrderDto(order: OrderWithItems | OrderDetail): OrderDto {
@@ -2088,10 +2112,14 @@ export class OrdersService {
               { tx },
             );
 
+            const posDiscountCents = Math.min(
+              subtotalCents,
+              Math.max(0, Math.round(dto.discountCents ?? 0)),
+            );
             const couponDiscountCents = couponInfo?.discountCents ?? 0;
             const subtotalAfterCoupon = Math.max(
               0,
-              subtotalCents - couponDiscountCents,
+              subtotalCents - posDiscountCents - couponDiscountCents,
             );
 
             const redeemValueCents = await this.loyalty.reserveRedeemForOrder({
@@ -2125,7 +2153,7 @@ export class OrdersService {
               });
             }
 
-            // 税基计算：(小计 - 优惠券 - 积分) + 配送费
+            // 税基计算：(小计 - POS优惠 - 优惠券 - 积分) + 配送费
             const purchaseBaseCents = Math.max(
               0,
               subtotalAfterCoupon - redeemValueCents,
@@ -2151,7 +2179,10 @@ export class OrdersService {
             const loyaltyRedeemCents = redeemValueCents;
             const subtotalAfterDiscountCents = Math.max(
               0,
-              subtotalCents - couponDiscountCents - loyaltyRedeemCents,
+              subtotalCents -
+                posDiscountCents -
+                couponDiscountCents -
+                loyaltyRedeemCents,
             );
 
             if (verifiedCheckoutIntent) {
@@ -2482,8 +2513,9 @@ export class OrdersService {
     const subtotalCents = order.subtotalCents ?? 0;
     const taxCents = order.taxCents ?? 0;
     const deliveryFeeCents = order.deliveryFeeCents ?? 0;
-    const discountCents =
-      (order.loyaltyRedeemCents ?? 0) + (order.couponDiscountCents ?? 0);
+    const discountCents = this.getTotalDiscountCents(order);
+    const creditCardSurcharge = await this.getOrderCreditCardSurcharge(order);
+    const creditCardSurchargeCents = creditCardSurcharge?.cents ?? 0;
 
     let itemCount = 0;
     const lineItems = order.items.map((item) => {
@@ -2525,14 +2557,52 @@ export class OrdersService {
       taxCents,
       deliveryFeeCents,
       discountCents,
-      totalCents: order.totalCents ?? 0,
+      totalCents: (order.totalCents ?? 0) + creditCardSurchargeCents,
       loyaltyRedeemCents: order.loyaltyRedeemCents ?? 0,
       couponDiscountCents: order.couponDiscountCents ?? 0,
+      creditCardSurchargeCents,
+      creditCardSurchargeRate: creditCardSurcharge?.rate,
       subtotalAfterDiscountCents:
         order.subtotalAfterDiscountCents ?? subtotalCents,
       ...(await this.getLoyaltyUsageByOrderStableId(order.orderStableId)),
       lineItems,
     };
+  }
+
+  private async getOrderCreditCardSurcharge(order: {
+    clientRequestId?: string | null;
+    paymentMethod?: PaymentMethod | null;
+  }): Promise<{ cents: number; rate?: number } | null> {
+    if (!order.clientRequestId || order.paymentMethod !== PaymentMethod.CARD) {
+      return null;
+    }
+
+    const intent = await this.prisma.checkoutIntent.findFirst({
+      where: { referenceId: order.clientRequestId },
+      orderBy: { createdAt: 'desc' },
+      select: { metadataJson: true },
+    });
+
+    const metadata =
+      intent?.metadataJson && typeof intent.metadataJson === 'object'
+        ? (intent.metadataJson as Record<string, unknown>)
+        : null;
+
+    if (!metadata) return null;
+
+    const centsRaw = metadata.creditCardSurchargeCents;
+    const rateRaw = metadata.creditCardSurchargeRate;
+    const cents =
+      typeof centsRaw === 'number' && Number.isFinite(centsRaw)
+        ? Math.max(0, Math.round(centsRaw))
+        : 0;
+    const rate =
+      typeof rateRaw === 'number' && Number.isFinite(rateRaw) && rateRaw >= 0
+        ? Math.round(rateRaw)
+        : undefined;
+
+    if (cents <= 0) return null;
+    return { cents, rate };
   }
 
   async sendInvoiceEmail(params: {

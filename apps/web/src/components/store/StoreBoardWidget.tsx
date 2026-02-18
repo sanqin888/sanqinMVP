@@ -201,7 +201,7 @@ export function StoreBoardWidget(props: { locale: Locale }) {
     [],
   );
 
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const [orders, setOrders] = useState<BoardOrder[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(false);
@@ -216,6 +216,7 @@ export function StoreBoardWidget(props: { locale: Locale }) {
   const hasBootstrappedRef = useRef(false);
   const hadPersistedRef = useRef(false);
   const inactivityTimerRef = useRef<number | null>(null);
+  const boardPanelRef = useRef<HTMLDivElement | null>(null);
   const highlightTimersRef = useRef<Record<string, number>>({});
   const alarmAudioRef = useRef<HTMLAudioElement | null>(null);
   const alarmPlayingRef = useRef(false);
@@ -257,12 +258,12 @@ export function StoreBoardWidget(props: { locale: Locale }) {
     return () => window.clearTimeout(timer);
   }, [pop]);
 
-  const scheduleAutoCollapse = useCallback(() => {
+  const scheduleAutoExpand = useCallback(() => {
     if (inactivityTimerRef.current) {
       window.clearTimeout(inactivityTimerRef.current);
     }
     inactivityTimerRef.current = window.setTimeout(() => {
-      setOpen(false);
+      setOpen((prev) => (prev ? prev : true));
     }, 30000);
   }, []);
 
@@ -393,7 +394,6 @@ export function StoreBoardWidget(props: { locale: Locale }) {
       setOpen(true);
       setFlash(true);
       setPop(true);
-      scheduleAutoCollapse();
 
       const n = newWebPaid.length;
       stopAlarmLoop();
@@ -406,7 +406,6 @@ export function StoreBoardWidget(props: { locale: Locale }) {
     t,
     locale,
     markNewOrders,
-    scheduleAutoCollapse,
     startAlarmLoop,
     stopAlarmLoop,
   ]);
@@ -460,14 +459,37 @@ export function StoreBoardWidget(props: { locale: Locale }) {
   }, [webPaidCount, startAlarmLoop, stopAlarmLoop]);
 
   useEffect(() => {
-    if (!open) {
-      if (inactivityTimerRef.current) {
-        window.clearTimeout(inactivityTimerRef.current);
+    scheduleAutoExpand();
+
+    const handleActivity = () => {
+      scheduleAutoExpand();
+    };
+
+    const handlePointerDown = (event: PointerEvent) => {
+      handleActivity();
+      if (!open) return;
+      const panel = boardPanelRef.current;
+      const target = event.target;
+      if (!panel || !(target instanceof Node)) return;
+      if (!panel.contains(target)) {
+        setOpen(false);
       }
-      return;
-    }
-    scheduleAutoCollapse();
-  }, [open, scheduleAutoCollapse]);
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("mousemove", handleActivity);
+    window.addEventListener("wheel", handleActivity, { passive: true });
+    window.addEventListener("keydown", handleActivity);
+    window.addEventListener("touchstart", handleActivity, { passive: true });
+
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("mousemove", handleActivity);
+      window.removeEventListener("wheel", handleActivity);
+      window.removeEventListener("keydown", handleActivity);
+      window.removeEventListener("touchstart", handleActivity);
+    };
+  }, [open, scheduleAutoExpand]);
 
   useEffect(() => {
     return () => {
@@ -481,11 +503,6 @@ export function StoreBoardWidget(props: { locale: Locale }) {
     };
   }, []);
 
-  const handleUserActivity = useCallback(() => {
-    if (!open) return;
-    scheduleAutoCollapse();
-  }, [open, scheduleAutoCollapse]);
-
   return (
     <div className="fixed bottom-4 right-4 z-30 pointer-events-none">
       {!open && (
@@ -493,7 +510,7 @@ export function StoreBoardWidget(props: { locale: Locale }) {
           type="button"
           onClick={() => {
             setOpen(true);
-            scheduleAutoCollapse();
+            scheduleAutoExpand();
           }}
           className={[
             "pointer-events-auto rounded-full border text-slate-100 px-4 py-2 shadow-lg transition",
@@ -515,16 +532,13 @@ export function StoreBoardWidget(props: { locale: Locale }) {
 
       {open && (
         <div
+          ref={boardPanelRef}
           className={[
             "pointer-events-auto w-[420px] max-w-[calc(100vw-2rem)] h-[640px] max-h-[calc(100vh-2rem)]",
             "rounded-2xl border bg-slate-900/95 shadow-2xl overflow-hidden transition-transform duration-300",
             flash ? "border-amber-400/70 ring-2 ring-amber-400/40" : "border-slate-700",
             pop ? "scale-[1.03]" : "scale-100",
           ].join(" ")}
-          onMouseMove={handleUserActivity}
-          onWheel={handleUserActivity}
-          onKeyDown={handleUserActivity}
-          onTouchStart={handleUserActivity}
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
             <div>
