@@ -1854,7 +1854,8 @@ export class OrdersService {
       couponEligibleSubtotalCents,
       couponEligibleLineItems,
     } = await this.calculateLineItems(items, {
-      allowCustomUnitPrice: dto.channel === Channel.in_store,
+      allowCustomUnitPrice:
+        dto.channel === Channel.in_store || dto.channel === Channel.ubereats,
     });
     const productStableIds = Array.from(
       new Set(calculatedItems.map((item) => item.productStableId)),
