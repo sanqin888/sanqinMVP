@@ -4021,7 +4021,7 @@ useEffect(() => {
                 couponLoading ||
                 couponError) && (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-slate-800">
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="space-y-2">
                     <div>
                       <p className="font-semibold">
                         {locale === "zh" ? "优惠券" : "Coupons"}
@@ -4041,27 +4041,6 @@ useEffect(() => {
                               ? "特价商品不参与优惠券，本单无法使用优惠券"
                               : "Daily specials are excluded from coupons. Coupons are unavailable for this order."}
                         </p>
-                      ) : null}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {couponLoading && (
-                        <span className="text-[11px] text-slate-500">
-                          {locale === "zh" ? "加载中…" : "Loading…"}
-                        </span>
-                      )}
-                      {!appliedCoupon ? (
-                        <button
-                          type="button"
-                          onClick={() => setCouponModalOpen(true)}
-                          disabled={availableCoupons.length === 0}
-                          className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-medium ${
-                            availableCoupons.length > 0
-                              ? "border border-amber-300 text-amber-700 hover:bg-amber-100"
-                              : "border border-slate-200 text-slate-400"
-                          }`}
-                        >
-                          {locale === "zh" ? "选择优惠券" : "Choose coupon"}
-                        </button>
                       ) : null}
                     </div>
                   </div>
@@ -4109,15 +4088,37 @@ useEffect(() => {
                       </div>
                     </div>
                   ) : (
-                    <p className="mt-2 text-[11px] text-slate-600">
-                      {availableCoupons.length > 0
-                        ? locale === "zh"
-                          ? `可选优惠券 ${applicableCoupons.length}/${availableCoupons.length}`
-                          : `${applicableCoupons.length}/${availableCoupons.length} coupons eligible`
-                        : locale === "zh"
-                          ? "暂无可用优惠券。"
-                          : "No coupons available."}
-                    </p>
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <p className="text-[11px] text-slate-600">
+                        {availableCoupons.length > 0
+                          ? locale === "zh"
+                            ? `可选优惠券 ${applicableCoupons.length}/${availableCoupons.length}`
+                            : `${applicableCoupons.length}/${availableCoupons.length} coupons eligible`
+                          : locale === "zh"
+                            ? "暂无可用优惠券。"
+                            : "No coupons available."}
+                      </p>
+
+                      <div className="flex shrink-0 items-center gap-2">
+                        {couponLoading && (
+                          <span className="text-[11px] text-slate-500">
+                            {locale === "zh" ? "加载中…" : "Loading…"}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setCouponModalOpen(true)}
+                          disabled={availableCoupons.length === 0}
+                          className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-medium ${
+                            availableCoupons.length > 0
+                              ? "border border-amber-300 text-amber-700 hover:bg-amber-100"
+                              : "border border-slate-200 text-slate-400"
+                          }`}
+                        >
+                          {locale === "zh" ? "选择优惠券" : "Choose coupon"}
+                        </button>
+                      </div>
+                    </div>
                   )}
 
                   {couponModalOpen ? (
