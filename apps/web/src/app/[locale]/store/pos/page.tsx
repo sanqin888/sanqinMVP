@@ -338,7 +338,12 @@ export default function StorePosPage() {
   );
 
   const buildGroupSegment = useCallback(
-    (group: PublicMenuCategory["items"][number]["optionGroups"][number], index: number) =>
+    (
+      group: NonNullable<
+        PublicMenuCategory["items"][number]["optionGroups"]
+      >[number],
+      index: number,
+    ) =>
       group.bindingStableId ?? `${group.templateGroupStableId}-${index}`,
     [],
   );
