@@ -392,9 +392,11 @@ export default function StorePosPaymentPage() {
       const normalizedQty = Number.isFinite(item.quantity) && item.quantity > 0
         ? item.quantity
         : 1;
-      const normalizedUnitPriceCents = Number.isFinite(item.unitPriceCents)
-        ? item.unitPriceCents
-        : 0;
+      const normalizedUnitPriceCents = Number.isFinite(item.customUnitPriceCents)
+        ? item.customUnitPriceCents
+        : Number.isFinite(item.unitPriceCents)
+          ? item.unitPriceCents
+          : 0;
 
       return {
         ...item,
