@@ -1039,7 +1039,7 @@ const loyaltyRedeemCents = redeemCents;
                       onClick={() => appendDiscountKeypadValue("clear")}
                       className="col-span-3 h-10 rounded-xl bg-rose-500/20 text-sm font-semibold text-rose-200 hover:bg-rose-500/30"
                     >
-                      {isZh ? "清空金额" : "Clear amount"}
+                      {locale === "zh" ? "清空金额" : "Clear amount"}
                     </button>
                   </div>
                 </div>
