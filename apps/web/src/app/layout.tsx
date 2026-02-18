@@ -10,6 +10,15 @@ export const metadata: Metadata = {
   description:
     "SanQ Roujiamo online ordering experience with Clover checkout integration.",
   manifest: "/manifest.webmanifest",
+  icons: {
+    apple: [
+      {
+        url: "/images/icon-180.png",
+        sizes: "180x180",
+        type: "image/png",
+      },
+    ],
+  },
   appleWebApp: {
     title: "SanQ Roujiamo",
     statusBarStyle: "default",
