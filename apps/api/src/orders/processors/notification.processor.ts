@@ -33,6 +33,7 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
         subtotalCents: true,
         taxCents: true,
         totalCents: true,
+        subtotalAfterDiscountCents: true,
         couponDiscountCents: true,
         loyaltyRedeemCents: true,
         deliveryFeeCents: true,
@@ -75,8 +76,11 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      const discountCents =
-        (order.couponDiscountCents ?? 0) + (order.loyaltyRedeemCents ?? 0);
+      const discountCents = Math.max(
+        0,
+        (order.subtotalCents ?? 0) -
+          (order.subtotalAfterDiscountCents ?? order.subtotalCents ?? 0),
+      );
       const orderNumber = order.clientRequestId ?? order.orderStableId;
       const printPayload: PrintPosPayloadDto = {
         locale: 'zh',
