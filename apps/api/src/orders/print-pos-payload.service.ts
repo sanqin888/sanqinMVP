@@ -81,7 +81,7 @@ export class PrintPosPayloadService {
         items,
         subtotalCents: order.subtotalCents ?? 0,
         taxCents: order.taxCents ?? 0,
-        totalCents: order.totalCents ?? 0,
+        totalCents: (order.totalCents ?? 0) + creditCardSurchargeCents,
         creditCardSurchargeCents,
         discountCents,
         deliveryFeeCents,
@@ -95,7 +95,7 @@ export class PrintPosPayloadService {
     clientRequestId?: string | null;
     paymentMethod?: PaymentMethod | null;
   }): Promise<{ cents: number } | null> {
-    if (!order.clientRequestId || order.paymentMethod !== PaymentMethod.CARD) {
+    if (!order.clientRequestId) {
       return null;
     }
 
