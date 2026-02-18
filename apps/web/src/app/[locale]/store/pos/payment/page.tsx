@@ -389,14 +389,16 @@ export default function StorePosPaymentPage() {
     if (!snapshot?.items?.length) return [];
 
     return snapshot.items.map((item) => {
-      const normalizedQty = Number.isFinite(item.quantity) && item.quantity > 0
-        ? item.quantity
-        : 1;
-      const normalizedUnitPriceCents = Number.isFinite(item.customUnitPriceCents)
-        ? item.customUnitPriceCents
-        : Number.isFinite(item.unitPriceCents)
-          ? item.unitPriceCents
-          : 0;
+      const normalizedQty: number =
+        typeof item.quantity === "number" && Number.isFinite(item.quantity) && item.quantity > 0
+          ? item.quantity
+          : 1;
+      const normalizedUnitPriceCents: number =
+        typeof item.customUnitPriceCents === "number" && Number.isFinite(item.customUnitPriceCents)
+          ? item.customUnitPriceCents
+          : typeof item.unitPriceCents === "number" && Number.isFinite(item.unitPriceCents)
+            ? item.unitPriceCents
+            : 0;
 
       return {
         ...item,
