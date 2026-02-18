@@ -2574,7 +2574,7 @@ export class OrdersService {
     clientRequestId?: string | null;
     paymentMethod?: PaymentMethod | null;
   }): Promise<{ cents: number; rate?: number } | null> {
-    if (!order.clientRequestId || order.paymentMethod !== PaymentMethod.CARD) {
+    if (!order.clientRequestId) {
       return null;
     }
 
