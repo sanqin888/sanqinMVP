@@ -1,8 +1,8 @@
 //Users/apple/sanqinMVP/apps/api/src/clover/clover.controller.ts
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 
-type MarkPaidDto = { orderId: string };
-type GetOrderParam = { id: string };
+type MarkPaidDto = { clientRequestId: string };
+type GetOrderParam = { clientRequestId: string };
 type StatusQuery = { ref?: string };
 
 @Controller('clover')
@@ -11,14 +11,19 @@ export class CloverController {
 
   @Post('mark-paid')
   markPaid(@Body() dto: MarkPaidDto) {
-    const { orderId } = dto;
-    return { ok: true as const, markedPaid: true as const, orderId };
+    const { clientRequestId } = dto;
+    return {
+      ok: true as const,
+      markedPaid: true as const,
+      clientRequestId,
+      orderNumber: clientRequestId,
+    };
   }
 
-  @Get('orders/:id')
+  @Get('orders/:clientRequestId')
   getOrder(@Param() params: GetOrderParam) {
-    const { id } = params;
-    return { id };
+    const { clientRequestId } = params;
+    return { clientRequestId, orderNumber: clientRequestId };
   }
 
   @Get('status')

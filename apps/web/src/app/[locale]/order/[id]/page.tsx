@@ -25,6 +25,7 @@ type FullOrderItem = {
 };
 
 type FullOrder = {
+  orderStableId?: string;
   status: OrderStatus;
   channel: string;
   paymentMethod: string | null;
@@ -226,6 +227,15 @@ export default function OrderDetailPage({ params }: PageProps) {
   const fullOrder = isFullDetail ? (order as FullOrder) : null;
   const summaryOrder = !isFullDetail ? (order as PublicSummary) : null;
   const paymentLabel = formatPaymentMethod(fullOrder?.paymentMethod ?? null, isZh);
+  const manualDiscountCents = useMemo(() => {
+    const subtotal = order?.subtotalCents ?? 0;
+    const subtotalAfterDiscount = order?.subtotalAfterDiscountCents;
+    if (typeof subtotalAfterDiscount !== 'number') return 0;
+    const totalDiscount = Math.max(0, subtotal - subtotalAfterDiscount);
+    const couponDiscount = Math.max(0, order?.couponDiscountCents ?? 0);
+    const loyaltyDiscount = Math.max(0, order?.loyaltyRedeemCents ?? 0);
+    return Math.max(0, totalDiscount - couponDiscount - loyaltyDiscount);
+  }, [order]);
 
   const renderOptions = (
     rawOptions: FullOrderItem['optionsJson'] | PublicSummaryItem['optionsJson'],
@@ -278,14 +288,14 @@ export default function OrderDetailPage({ params }: PageProps) {
 <div className="flex items-center justify-between">
   <div>
     <h1 className="text-2xl font-semibold">{isZh ? '订单详情' : 'Order details'}</h1>
-    <p className="text-sm text-gray-500 break-all">ID: {orderId}</p>
   </div>
   <button
     type="button"
-    className="text-sm text-blue-600 hover:underline"
+    className="flex min-w-[3rem] flex-col items-center justify-center text-sm leading-tight text-blue-600 hover:underline"
     onClick={handleBack}
   >
-    ← {isZh ? '返回' : 'Back'}
+    <span aria-hidden="true">←</span>
+    <span>{isZh ? '返回' : 'Back'}</span>
   </button>
 </div>
 
@@ -298,17 +308,12 @@ export default function OrderDetailPage({ params }: PageProps) {
             <span className="rounded bg-gray-900 px-2 py-1 text-xs font-medium uppercase tracking-wide text-white">
               {formatOrderStatus(order.status, isZh)}
             </span>
-            {isFullDetail && fullOrder?.clientRequestId ? (
-              <span className="text-sm text-gray-600">
-                {isZh ? '订单编号：' : 'Order Number: '}
-                {fullOrder.clientRequestId}
-              </span>
-            ) : summaryOrder?.orderNumber ? (
-              <span className="text-sm text-gray-600">
-                {isZh ? '订单编号：' : 'Order Number: '}
-                {summaryOrder.orderNumber}
-              </span>
-            ) : null}
+            <span className="text-sm text-gray-600">
+              {isZh ? '订单编号：' : 'Order Number: '}
+              {isFullDetail
+                ? fullOrder?.clientRequestId ?? fullOrder?.orderStableId ?? orderId
+                : summaryOrder?.orderNumber ?? summaryOrder?.orderStableId ?? orderId}
+            </span>
             <span className="text-sm text-gray-600">
               {isZh ? '履约方式：' : 'Fulfillment: '}
               {order.fulfillmentType}
@@ -347,6 +352,13 @@ export default function OrderDetailPage({ params }: PageProps) {
         <span className="text-amber-700">
           -${(order.couponDiscountCents / 100).toFixed(2)}
         </span>
+      </li>
+    )}
+
+    {manualDiscountCents > 0 && (
+      <li>
+        {isZh ? '折扣/优惠：' : 'Discount:'}
+        <span className="text-amber-700">-${(manualDiscountCents / 100).toFixed(2)}</span>
       </li>
     )}
 
@@ -520,8 +532,8 @@ export default function OrderDetailPage({ params }: PageProps) {
             </div>
           ) : null}
 
-          <div className="text-xs text-gray-500">
-            深链规范：<code className="rounded bg-gray-100 px-1 py-0.5">sanqin://order/{orderId}</code>
+          <div className="text-xs text-gray-500 break-words">
+            深链规范：<code className="rounded bg-gray-100 px-1 py-0.5 break-all whitespace-normal">sanqin://order/{orderId}</code>
           </div>
         </section>
       )}

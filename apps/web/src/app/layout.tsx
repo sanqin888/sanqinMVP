@@ -6,9 +6,9 @@ import type { Locale } from "@/lib/i18n/locales";
 import { AuthProvider } from "./providers";
 
 export const metadata: Metadata = {
-  title: "SanQ Rougamo",
+  title: "SanQ Roujiamo",
   description:
-    "SanQ Rougamo online ordering experience with Clover checkout integration.",
+    "SanQ Roujiamo online ordering experience with Clover checkout integration.",
   manifest: "/manifest.webmanifest",
   icons: {
     apple: [
@@ -20,7 +20,7 @@ export const metadata: Metadata = {
     ],
   },
   appleWebApp: {
-    title: "SanQ Rougamo",
+    title: "SanQ Roujiamo",
     statusBarStyle: "default",
     capable: true,
   },

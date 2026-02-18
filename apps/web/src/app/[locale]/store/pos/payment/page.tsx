@@ -66,6 +66,7 @@ type MemberDetailResponse = {
 
 // ✅ 本地支付方式状态类型
 type LocalPaymentMethod = "cash" | "card" | "wechat_alipay" | "store_balance" | "ubereats";
+type DiscountOption = "5" | "10" | "15" | "other";
 
 const STRINGS: Record<
   Locale,
@@ -124,6 +125,10 @@ const STRINGS: Record<
     useBalanceHint: string; // [新增]
     max: string; // [新增]
     mixedPaymentHint: string;
+    discountTitle: string;
+    discountOther: string;
+    discountOtherHint: string;
+    discountApplied: string;
   }
 > = {
   zh: {
@@ -181,6 +186,10 @@ const STRINGS: Record<
     useBalanceHint: "输入金额",
     max: "MAX",
     mixedPaymentHint: "余额抵扣后，请选择剩余金额的支付方式。",
+    discountTitle: "折扣 / 优惠",
+    discountOther: "其他金额",
+    discountOtherHint: "输入优惠金额",
+    discountApplied: "折扣优惠",
   },
   en: {
     title: "Store POS · Payment",
@@ -238,6 +247,10 @@ const STRINGS: Record<
     useBalanceHint: "Amount",
     max: "MAX",
     mixedPaymentHint: "After balance deduction, choose how to pay the remaining amount.",
+    discountTitle: "Discount",
+    discountOther: "Other",
+    discountOtherHint: "Enter discount amount",
+    discountApplied: "Discount",
   },
 };
 
@@ -290,6 +303,8 @@ export default function StorePosPaymentPage() {
 
   const [redeemPointsInput, setRedeemPointsInput] = useState("");
   const [useBalanceInput, setUseBalanceInput] = useState(""); // [新增] 部分余额支付输入
+  const [discountOption, setDiscountOption] = useState<DiscountOption | null>(null);
+  const [otherDiscountInput, setOtherDiscountInput] = useState("");
 
   const [successInfo, setSuccessInfo] = useState<{
     orderNumber: string;
@@ -370,14 +385,49 @@ export default function StorePosPaymentPage() {
 
   const hasItems = !!snapshot && Array.isArray(snapshot.items) && snapshot.items.length > 0;
 
-  const baseSubtotalCents = useMemo(() => {
-    if (!snapshot?.items?.length) return 0;
-    return snapshot.items.reduce((sum, item) => sum + item.lineTotalCents, 0);
+  const normalizedSnapshotItems = useMemo(() => {
+    if (!snapshot?.items?.length) return [];
+
+    return snapshot.items.map((item) => {
+      const normalizedQty: number =
+        typeof item.quantity === "number" && Number.isFinite(item.quantity) && item.quantity > 0
+          ? item.quantity
+          : 1;
+      const normalizedUnitPriceCents: number =
+        typeof item.customUnitPriceCents === "number" && Number.isFinite(item.customUnitPriceCents)
+          ? item.customUnitPriceCents
+          : typeof item.unitPriceCents === "number" && Number.isFinite(item.unitPriceCents)
+            ? item.unitPriceCents
+            : 0;
+
+      return {
+        ...item,
+        quantity: normalizedQty,
+        unitPriceCents: normalizedUnitPriceCents,
+        lineTotalCents: normalizedUnitPriceCents * normalizedQty,
+      };
+    });
   }, [snapshot]);
 
+  const baseSubtotalCents = useMemo(() => {
+    if (!normalizedSnapshotItems.length) return 0;
+    return normalizedSnapshotItems.reduce((sum, item) => sum + item.lineTotalCents, 0);
+  }, [normalizedSnapshotItems]);
+
+  const discountCents = useMemo(() => {
+    if (baseSubtotalCents <= 0 || !discountOption) return 0;
+    if (discountOption === "5") return Math.round(baseSubtotalCents * 0.05);
+    if (discountOption === "10") return Math.round(baseSubtotalCents * 0.1);
+    if (discountOption === "15") return Math.round(baseSubtotalCents * 0.15);
+
+    const val = Number(otherDiscountInput);
+    if (!Number.isFinite(val) || val <= 0) return 0;
+    return Math.min(Math.round(val * 100), baseSubtotalCents);
+  }, [baseSubtotalCents, discountOption, otherDiscountInput]);
+
+  const discountedSubtotalCents = Math.max(0, baseSubtotalCents - discountCents);
+
   // --- 积分逻辑 ---
-const discountCents = 0;
-const discountedSubtotalCents = baseSubtotalCents;
 
 const maxRedeemableCentsForOrder = useMemo(() => {
   if (!memberInfo) return 0;
@@ -472,6 +522,7 @@ const loyaltyRedeemCents = redeemCents;
     if (!snapshot) return null;
     return {
       ...snapshot,
+      items: normalizedSnapshotItems,
       subtotalCents: discountedSubtotalCents,
       discountCents,
       taxCents,
@@ -496,6 +547,7 @@ const loyaltyRedeemCents = redeemCents;
     pointsEarned,
     pointsToRedeem,
     snapshot,
+    normalizedSnapshotItems,
     taxCents,
     finalDisplayTotalCents,
   ]);
@@ -656,7 +708,7 @@ const loyaltyRedeemCents = redeemCents;
     }
 
     try {
-      const itemsPayload = snapshot.items.map((item) => ({
+      const itemsPayload = normalizedSnapshotItems.map((item) => ({
         productStableId: item.stableId,
         qty: item.quantity,
         unitPrice: item.unitPriceCents / 100,
@@ -693,6 +745,7 @@ const loyaltyRedeemCents = redeemCents;
         userStableId: memberInfo?.userStableId ?? undefined,
         pointsToRedeem: pointsToRedeem > 0 ? pointsToRedeem : undefined,
         balanceUsedCents: balanceToUseCents > 0 ? balanceToUseCents : undefined, // [新增]
+        discountCents: discountCents > 0 ? discountCents : undefined,
         contactPhone: memberInfo?.phone ?? undefined,
       };
 
@@ -756,7 +809,7 @@ const loyaltyRedeemCents = redeemCents;
           ) : (
             <>
               <ul className="space-y-2 max-h-72 overflow-auto pr-1">
-                {snapshot.items.map((item) => {
+                {normalizedSnapshotItems.map((item) => {
                   const selectedOptions = resolveSelectedOptions(item);
                   return (
                   <li key={item.lineId ?? `${item.stableId}-${item.unitPriceCents}-${item.quantity}`} className="rounded-2xl bg-slate-900/60 px-3 py-2 flex justify-between gap-2">
@@ -789,6 +842,12 @@ const loyaltyRedeemCents = redeemCents;
                   <span>{formatMoney(summarySubtotalCents)}</span>
                 </div>
                 {/* 积分抵扣展示 */}
+                {discountCents > 0 && (
+                  <div className="flex justify-between text-amber-200">
+                    <span className="text-slate-300">{t.discountApplied}</span>
+                    <span>-{formatMoney(discountCents)}</span>
+                  </div>
+                )}
                 {summaryLoyaltyRedeemCents > 0 && (
                   <div className="flex justify-between text-emerald-200">
                     <span className="text-slate-300">{t.memberRedeemLabel}</span>
@@ -910,6 +969,42 @@ const loyaltyRedeemCents = redeemCents;
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* 折扣/优惠 */}
+            <div>
+              <h2 className="text-sm font-semibold mb-2">{t.discountTitle}</h2>
+              <div className="rounded-2xl border border-slate-600 bg-slate-900/40 p-3 space-y-3">
+                <div className="grid grid-cols-4 gap-2 text-sm">
+                  {(["5", "10", "15", "other"] as const).map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => setDiscountOption(opt)}
+                      className={`h-10 rounded-xl border font-medium ${discountOption === opt ? "border-amber-300 bg-amber-400 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}
+                    >
+                      {opt === "other" ? t.discountOther : `${opt}%`}
+                    </button>
+                  ))}
+                </div>
+
+                {discountOption === "other" && (
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={otherDiscountInput}
+                    onChange={(e) => setOtherDiscountInput(e.target.value)}
+                    placeholder={t.discountOtherHint}
+                    className="h-10 w-full rounded-xl border border-slate-600 bg-slate-900 px-3 text-sm text-slate-100 placeholder:text-slate-500"
+                  />
+                )}
+
+                <div className="flex justify-between text-xs text-amber-200">
+                  <span>{t.discountApplied}</span>
+                  <span>-{formatMoney(discountCents)}</span>
+                </div>
               </div>
             </div>
 

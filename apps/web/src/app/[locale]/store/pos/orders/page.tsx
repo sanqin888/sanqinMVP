@@ -1739,7 +1739,7 @@ const handleSubmit = () => {
               >
                 <div>
                 <div className="text-sm font-semibold">
-                  {order.clientRequestId ?? "--"}
+                  {order.clientRequestId ?? order.stableId}
                 </div>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
                     <span className="rounded-full border border-slate-600 px-2 py-0.5">
@@ -1789,7 +1789,7 @@ const handleSubmit = () => {
                     {copy.orderNumberLabel}
                   </div>
                   <div className="text-2xl font-semibold">
-                    {selectedOrder.clientRequestId ?? "--"}
+                    {selectedOrder.clientRequestId ?? selectedOrder.stableId}
                   </div>
                   <div className="mt-1 text-[11px] text-slate-400">
                     {copy.stableIdLabel}: {selectedOrder.stableId}
