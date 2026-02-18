@@ -96,6 +96,10 @@ export const UI_STRINGS: Record<
     orderSteps: OrderStep[];
     languageSwitch: string;
     cartTitle: string;
+    installApp: string;
+    installAppUnavailable: string;
+    installAppAdded: string;
+    installAppIosHint: string;
     floatingCartLabel: string;
     limitedDaily: string;
     addToCart: string;
@@ -153,6 +157,11 @@ export const UI_STRINGS: Record<
     ],
     languageSwitch: "Language",
     cartTitle: "Cart",
+    installApp: "Add to Home Screen",
+    installAppUnavailable: "Installation isn't available on this device yet.",
+    installAppAdded: "App added to your home screen.",
+    installAppIosHint:
+      "In Safari: tap Share, then choose 'Add to Home Screen'.",
     floatingCartLabel: "Cart",
     limitedDaily: "Limited daily supply",
     addToCart: "Add to cart",
@@ -285,6 +294,10 @@ export const UI_STRINGS: Record<
     ],
     languageSwitch: "语言",
     cartTitle: "购物车",
+    installApp: "收藏到主屏",
+    installAppUnavailable: "当前设备暂不支持直接安装。",
+    installAppAdded: "已添加到主屏幕。",
+    installAppIosHint: "iPhone 请在 Safari 中点击“分享”后选择“添加到主屏幕”。",
     floatingCartLabel: "购物车",
     limitedDaily: "每日限量",
     addToCart: "加入购物车",
