@@ -34,6 +34,14 @@ function ensureCookie(res: NextResponse, locale: Locale) {
   });
 }
 
+function ensureLocaleCookieIfNeeded(req: NextRequest, res: NextResponse, locale: Locale) {
+  const currentLocale = req.cookies.get("locale")?.value;
+  if (currentLocale === locale) {
+    return;
+  }
+  ensureCookie(res, locale);
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
   // 跳过静态资源与 API
@@ -55,7 +63,7 @@ export async function middleware(req: NextRequest) {
       // 放行登录页
       if (pathname.startsWith(`/${locale}/store/pos/login`)) {
         const res = NextResponse.next();
-        ensureCookie(res, locale);
+        ensureLocaleCookieIfNeeded(req, res, locale);
         return res;
       }
 
@@ -66,7 +74,7 @@ export async function middleware(req: NextRequest) {
         url.pathname = `/${locale}/store/pos/login`;
         url.search = "";
         const res = NextResponse.redirect(url);
-        ensureCookie(res, locale);
+        ensureLocaleCookieIfNeeded(req, res, locale);
         return res;
       }
 
@@ -78,7 +86,7 @@ export async function middleware(req: NextRequest) {
         url.pathname = `/${locale}/store/pos/login`;
         url.search = "needDevice=1";
         const res = NextResponse.redirect(url);
-        ensureCookie(res, locale);
+        ensureLocaleCookieIfNeeded(req, res, locale);
         return res;
       }
     }
@@ -88,7 +96,7 @@ export async function middleware(req: NextRequest) {
         pathname.startsWith(`/${locale}/admin/accept-invite`)
       ) {
         const res = NextResponse.next();
-        ensureCookie(res, locale);
+        ensureLocaleCookieIfNeeded(req, res, locale);
         return res;
       }
       const sessionId = req.cookies.get(SESSION_COOKIE_NAME)?.value;
@@ -97,13 +105,13 @@ export async function middleware(req: NextRequest) {
         url.pathname = `/${locale}/admin/login`;
         url.search = "";
         const res = NextResponse.redirect(url);
-        ensureCookie(res, locale);
+        ensureLocaleCookieIfNeeded(req, res, locale);
         return res;
       }
     }
 
     const res = NextResponse.next();
-    ensureCookie(res, locale);
+    ensureLocaleCookieIfNeeded(req, res, locale);
     return res;
   }
 
@@ -123,7 +131,7 @@ export async function middleware(req: NextRequest) {
   url.search = search;
 
   const res = NextResponse.redirect(url, { status: 308 });
-  ensureCookie(res, locale);
+  ensureLocaleCookieIfNeeded(req, res, locale);
   return res;
 }
 
