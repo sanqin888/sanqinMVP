@@ -222,7 +222,7 @@ type DeliveryOptionDefinition = {
 };
 
 type DeliveryOptionDisplay = {
-  type: DeliveryTypeOption;
+  type: "UBER";
   /** 展示给用户看的配送费（单位：分） */
   fee: number;
   eta: [number, number];
@@ -429,30 +429,14 @@ const formatPostalCodeInput = (value: string) => {
 const isPostalCodeValid = (value: string) =>
   POSTAL_CODE_PATTERN.test(value.trim().toUpperCase());
 
-const DELIVERY_OPTION_DEFINITIONS: Record<
-  DeliveryTypeOption,
-  DeliveryOptionDefinition
-> = {
-  PRIORITY: {
-    provider: "UBER",
-    fee: 6,
-    eta: [25, 35],
-    labels: {
-      en: {
-        title: "Uber delivery",
-        description:
-          "Delivery range ≤ 10 km, fulfilled by Uber. Fee: $6 base + $1 per km. ETA 25–35 minutes.",
-      },
-      zh: {
-        title: "Uber 配送",
-        description:
-          "配送范围 ≤ 10 km，由 Uber 提供配送服务，配送费：$6 起步 + 每公里 $1，预计送达时间 25–35 分钟。",
-      },
-    },
-  },
+const UBER_DELIVERY_OPTION: DeliveryOptionDisplay = {
+  type: "UBER",
+  fee: 6,
+  eta: [25, 35],
+  provider: "UBER",
+  title: "",
+  description: "",
 };
-
-const DELIVERY_TYPES: DeliveryTypeOption[] = ["PRIORITY"];
 
 const buildPaymentErrorMessage = (params: {
   code: string;
@@ -807,8 +791,7 @@ export default function CheckoutPage() {
   const [fulfillment, setFulfillment] = useState<"pickup" | "delivery">(
     "pickup",
   );
-  const [deliveryType, setDeliveryType] =
-    useState<DeliveryTypeOption>("PRIORITY");
+  const [deliveryType] = useState<DeliveryTypeOption>("PRIORITY");
   const [schedule] = useState<ScheduleSlot>("asap");
   const [customer, setCustomer] = useState<CustomerInfo>({
     firstName: "",
@@ -1116,41 +1099,28 @@ export default function CheckoutPage() {
   const isDeliveryFulfillment = fulfillment === "delivery";
 
   // 用于计费的“公里数”：不足 1km 按 1km，向上取整
-  const billedDistanceForPriorityKm =
-    isDeliveryFulfillment &&
-    deliveryType === "PRIORITY" &&
-    addressValidation.distanceKm !== null
+  const billedDistanceKm =
+    isDeliveryFulfillment && addressValidation.distanceKm !== null
       ? Math.max(1, Math.ceil(addressValidation.distanceKm))
-      : isDeliveryFulfillment && deliveryType === "PRIORITY"
-        ? 1 // 还没算出距离时，优先配送按 1km 起步展示
+      : isDeliveryFulfillment
+        ? 1
         : 0;
 
-  // UI 展示用的配送选项（standard 固定 $6；priority = $6 + $1/km）——都转换成“分”
-  const deliveryOptions: DeliveryOptionDisplay[] = DELIVERY_TYPES.map(
-    (type) => {
-      const definition = DELIVERY_OPTION_DEFINITIONS[type];
-      const localized = definition.labels[locale];
-
-      let feeCents = 0;
-      if (isDeliveryFulfillment && subtotalCents > 0) {
-        if (type === "STANDARD") {
-          feeCents = 600;
-        } else {
-          // PRIORITY：$6 + $1/km
-          feeCents = 600 + 100 * billedDistanceForPriorityKm;
-        }
-      }
-
-      return {
-        type,
-        fee: feeCents,
-        eta: definition.eta,
-        provider: definition.provider,
-        title: localized.title,
-        description: localized.description,
-      };
+  // 仅保留 Uber 配送（$6 + $1/km）
+  const deliveryOptions: DeliveryOptionDisplay[] = [
+    {
+      ...UBER_DELIVERY_OPTION,
+      fee:
+        isDeliveryFulfillment && subtotalCents > 0
+          ? 600 + 100 * billedDistanceKm
+          : 0,
+      title: locale === "zh" ? "Uber 配送" : "Uber delivery",
+      description:
+        locale === "zh"
+          ? "配送范围 ≤ 10 km，由 Uber 提供配送服务，配送费：$6 起步 + 每公里 $1，预计送达时间 25–35 分钟。"
+          : "Delivery range ≤ 10 km, fulfilled by Uber. Fee: $6 base + $1 per km. ETA 25–35 minutes.",
     },
-  );
+  ];
 
   const resetAddressValidation = useCallback(
     () =>
@@ -1193,15 +1163,13 @@ export default function CheckoutPage() {
     [radiusLabel],
   );
 
-  const selectedDeliveryDefinition = DELIVERY_OPTION_DEFINITIONS[deliveryType];
+  const selectedDeliveryDefinition = deliveryOptions[0];
 
   // 这里和上面的 deliveryOptions 保持同一套规则（单位：分）
   const deliveryFeeCents =
     !isDeliveryFulfillment || subtotalCents <= 0
       ? 0
-      : deliveryType === "STANDARD"
-        ? 600
-        : 600 + 100 * billedDistanceForPriorityKm;
+      : 600 + 100 * billedDistanceKm;
 
   // === 积分抵扣相关计算 ===
 
@@ -2531,9 +2499,7 @@ useEffect(() => {
   }, [memberPhone, memberPhoneVerified, customer.phone]);
 
   // 带可选 override 类型的距离校验
-  const validateDeliveryDistance = useCallback(
-    async (overrideDeliveryType?: DeliveryTypeOption) => {
-      const effectiveType = overrideDeliveryType ?? deliveryType;
+  const validateDeliveryDistance = useCallback(async () => {
 
       setAddressValidation({ distanceKm: null, isChecking: true, error: null });
 
@@ -2560,31 +2526,13 @@ useEffect(() => {
 
         const distanceKm = calculateDistanceKm(STORE_COORDINATES, coordinates);
 
-        // 标准配送：限制在 DELIVERY_RADIUS_KM 以内
-        if (effectiveType === "STANDARD" && distanceKm > DELIVERY_RADIUS_KM) {
-          const distanceLabel = formatDistanceValue(distanceKm);
-          const message = applyDistanceTemplate(
-            strings.deliveryDistance.outsideRange,
-            distanceLabel,
-          );
-          setAddressValidation({
-            distanceKm,
-            isChecking: false,
-            error: message,
-          });
-          return { success: false } as const;
-        }
-
-        // 优先闪送：最大 PRIORITY_MAX_RADIUS_KM
-        if (
-          effectiveType === "PRIORITY" &&
-          distanceKm > PRIORITY_MAX_RADIUS_KM
-        ) {
+        // Uber 配送：最大 DELIVERY_RADIUS_KM
+        if (distanceKm > PRIORITY_MAX_RADIUS_KM) {
           const distanceLabel = formatDistanceValue(distanceKm);
           const message =
             locale === "zh"
-              ? `当前地址距离门店约 ${distanceLabel}，超出优先闪送最大范围（${PRIORITY_MAX_RADIUS_KM} km）。`
-              : `This address is about ${distanceLabel} away from the store, which exceeds the maximum ${PRIORITY_MAX_RADIUS_KM} km range for priority delivery.`;
+              ? `当前地址距离门店约 ${distanceLabel}，超出 Uber 配送最大范围（${PRIORITY_MAX_RADIUS_KM} km）。`
+              : `This address is about ${distanceLabel} away from the store, which exceeds the maximum ${PRIORITY_MAX_RADIUS_KM} km range for Uber delivery.`;
 
           setAddressValidation({
             distanceKm,
@@ -2611,17 +2559,14 @@ useEffect(() => {
       }
     },
     [
-      applyDistanceTemplate,
       customer.city,
       customer.province,
       deliveryAddressText,
-      deliveryType,
       formatDistanceValue,
       locale,
       selectedCoordinates,
       strings.deliveryDistance.failed,
       strings.deliveryDistance.notFound,
-      strings.deliveryDistance.outsideRange,
     ],
   );
 
@@ -2741,15 +2686,9 @@ useEffect(() => {
     // ==== 重新算一遍本单的费用（全部用“分”） ====
     let deliveryFeeCentsForOrder = 0;
     if (isDeliveryFulfillment && subtotalCents > 0) {
-      if (deliveryType === "STANDARD") {
-        deliveryFeeCentsForOrder = 600;
-      } else {
-        const billedKm =
-          deliveryDistanceKm !== null
-            ? Math.max(1, Math.ceil(deliveryDistanceKm))
-            : 1;
-        deliveryFeeCentsForOrder = 600 + 100 * billedKm;
-      }
+      const billedKm =
+        deliveryDistanceKm !== null ? Math.max(1, Math.ceil(deliveryDistanceKm)) : 1;
+      deliveryFeeCentsForOrder = 600 + 100 * billedKm;
     }
 
     const loyaltyRedeemCentsForOrder = loyaltyRedeemCents;
@@ -3127,14 +3066,10 @@ useEffect(() => {
   let addressDistanceMessage: DistanceMessage | null = null;
   if (isDeliveryFulfillment) {
     if (!hasDeliveryAddressInputs) {
-      if (deliveryType === "STANDARD") {
-        addressDistanceMessage = {
-          text: applyDistanceTemplate(strings.deliveryDistance.restriction),
-          tone: "muted",
-        };
-      } else {
-        addressDistanceMessage = null;
-      }
+      addressDistanceMessage = {
+        text: applyDistanceTemplate(strings.deliveryDistance.restriction),
+        tone: "muted",
+      };
     } else if (addressValidation.isChecking) {
       addressDistanceMessage = {
         text: strings.deliveryDistance.checking,
@@ -3148,25 +3083,16 @@ useEffect(() => {
     } else if (addressValidation.distanceKm !== null) {
       const distanceLabel = formatDistanceValue(addressValidation.distanceKm);
 
-      if (deliveryType === "STANDARD") {
-        const template = addressWithinRadius
-          ? strings.deliveryDistance.withinRange
-          : strings.deliveryDistance.outsideRange;
-
-        const tone: DistanceMessage["tone"] = addressWithinRadius
-          ? "success"
-          : "error";
-
+      if (!addressWithinRadius) {
         addressDistanceMessage = {
-          text: applyDistanceTemplate(template, distanceLabel),
-          tone,
+          text: applyDistanceTemplate(strings.deliveryDistance.outsideRange, distanceLabel),
+          tone: "error",
         };
-      } else if (deliveryType === "PRIORITY") {
+      } else {
         const text =
           locale === "zh"
-            ? `当前地址距离门店约 ${distanceLabel}，优先闪送配送费会按该距离自动计算。`
-            : `This address is about ${distanceLabel} away from the store. Priority delivery fee will be calculated based on this distance.`;
-
+            ? `当前地址距离门店约 ${distanceLabel}，Uber 配送费会按该距离自动计算。`
+            : `This address is about ${distanceLabel} away from the store. Uber delivery fee will be calculated based on this distance.`;
         addressDistanceMessage = {
           text,
           tone: "info",
@@ -3588,28 +3514,11 @@ useEffect(() => {
                     <h3 className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
                       {strings.deliveryOptionsLabel}
                     </h3>
-                    <div className="grid gap-3 md:grid-cols-2">
+                    <div className="grid gap-3 md:grid-cols-1">
                       {deliveryOptions.map((option) => (
-                        <button
+                        <div
                           key={option.type}
-                          type="button"
-                          onClick={() => {
-                            setDeliveryType(option.type);
-
-                            if (
-                              isDeliveryFulfillment &&
-                              hasDeliveryAddressInputs &&
-                              !addressValidation.isChecking
-                            ) {
-                              void validateDeliveryDistance(option.type);
-                            }
-                          }}
-                          className={`text-left rounded-2xl border p-4 transition ${
-                            deliveryType === option.type
-                              ? "border-emerald-500 bg-emerald-50 shadow-sm"
-                              : "border-slate-200 bg-white hover:border-slate-300"
-                          }`}
-                          aria-pressed={deliveryType === option.type}
+                          className="text-left rounded-2xl border border-emerald-500 bg-emerald-50 p-4 shadow-sm"
                         >
                           <p className="text-sm font-semibold text-slate-900">
                             {option.title}
@@ -3623,15 +3532,11 @@ useEffect(() => {
                             </span>
                             <span className="text-xs uppercase tracking-wide text-slate-500">
                               {locale === "zh"
-                                ? option.type === "STANDARD"
-                                  ? "固定配送费"
-                                  : "起步价$6 + 每公里$1距离计费"
-                                : option.type === "STANDARD"
-                                  ? "Flat fee"
-                                  : "Base fee $6 + $1 per km"}
+                                ? "起步价$6 + 每公里$1距离计费"
+                                : "Base fee $6 + $1 per km"}
                             </span>
                           </div>
-                        </button>
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -3990,10 +3895,7 @@ useEffect(() => {
                     >
                       {showPostalCodeError
                         ? strings.contactFields.postalCodeError
-                        : deliveryType === "STANDARD"
-                          ? strings.contactFields.postalCodeHint
-                          : ""}{" "}
-                      {/* 优先闪送时不显示“只支持 5km 内外送”这句 */}
+                        : strings.contactFields.postalCodeHint}{" "}
                     </p>
                     {addressDistanceMessage ? (
                       <p
