@@ -36,8 +36,8 @@ export default function RefundPage({
         </h1>
         <p className="text-xs text-slate-500">
           {isZh
-            ? "本政策适用于通过本网站提交并完成支付的订单。店内点餐或第三方平台（如 Uber Eats、DoorDash 等）下单，可能适用其各自的退款规则。"
-            : "This policy applies to orders placed and paid for through this website. In-store orders or those placed through third-party platforms (such as Uber Eats or DoorDash) may be subject to their own refund rules."}
+            ? "本政策适用于通过本网站提交并完成支付的订单。店内点餐或第三方平台（如 Uber Eats 等）下单，可能适用其各自的退款规则。"
+            : "This policy applies to orders placed and paid for through this website. In-store orders or those placed through third-party platforms (such as Uber Eats) may be subject to their own refund rules."}
         </p>
       </header>
 
@@ -94,7 +94,7 @@ export default function RefundPage({
           </li>
           <li>
             {isZh
-              ? "如通过第三方平台下单（如 Uber Eats、DoorDash 等），请首先通过对应平台发起问题反馈或退款申请，我们会配合平台核实。"
+              ? "如通过第三方平台下单（如 Uber Eats 等），请首先通过对应平台发起问题反馈或退款申请，我们会配合平台核实。"
               : "For orders placed via third-party platforms, please initiate your complaint or refund request directly through that platform. We will cooperate with the platform’s process."}
           </li>
         </ul>

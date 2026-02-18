@@ -203,7 +203,7 @@ const PHONE_OTP_REQUEST_URL = "/api/v1/auth/phone/send-code";
 const PHONE_OTP_VERIFY_URL = "/api/v1/auth/phone/verify-code";
 const CHECKOUT_INTENT_STORAGE_KEY = "cloverCheckoutIntentId";
 type DeliveryOptionDefinition = {
-  provider: "DOORDASH" | "UBER";
+  provider: "UBER";
   fee: number; // 仅用于显示说明，不参与实际计费
   eta: [number, number];
   labels: Record<Locale, { title: string; description: string }>;
@@ -421,23 +421,6 @@ const DELIVERY_OPTION_DEFINITIONS: Record<
   DeliveryTypeOption,
   DeliveryOptionDefinition
 > = {
-  STANDARD: {
-    provider: "DOORDASH",
-    fee: 6,
-    eta: [45, 60],
-    labels: {
-      en: {
-        title: "Standard delivery",
-        description:
-          "Delivery range ≤ 10 km, fulfilled by DoorDash. ETA 45–60 minutes.",
-      },
-      zh: {
-        title: "标准配送",
-        description:
-          "配送范围 ≤ 10 km，由 DoorDash 提供配送服务，预计送达时间 45–60 分钟。",
-      },
-    },
-  },
   PRIORITY: {
     provider: "UBER",
     fee: 6,
@@ -457,7 +440,6 @@ const DELIVERY_OPTION_DEFINITIONS: Record<
   },
 };
 
-// 目前只开放 PRIORITY（如果将来要开放 STANDARD，改成 ["STANDARD", "PRIORITY"]）
 const DELIVERY_TYPES: DeliveryTypeOption[] = ["PRIORITY"];
 
 const buildPaymentErrorMessage = (params: {
