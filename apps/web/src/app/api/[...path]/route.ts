@@ -18,6 +18,12 @@ const HOP_BY_HOP = new Set([
   'content-length', 'host', 'accept-encoding',
 ]);
 
+function shouldEnableEdgeCache(req: NextRequest, path: string[]): boolean {
+  if (!['GET', 'HEAD'].includes(req.method)) return false;
+  const normalizedPath = path.join('/').toLowerCase();
+  return normalizedPath === 'v1/menu/public' || normalizedPath.startsWith('v1/menu/public/');
+}
+
 function buildUpstreamUrl(req: NextRequest, parts: string[]) {
   // 你的后端有全局 /api/v1 前缀
   const base = `${UPSTREAM}/api`;
@@ -92,6 +98,11 @@ async function proxy(req: NextRequest, ctx: ParamsPromise) {
     if (key === 'set-cookie') return;
     resHeaders.set(k, v);
   });
+
+  if (shouldEnableEdgeCache(req, path)) {
+    // 为公开菜单接口增加边缘缓存，减少源站与动态代理压力
+    resHeaders.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=60');
+  }
 
   return new NextResponse(res.body, {
     status: res.status,
