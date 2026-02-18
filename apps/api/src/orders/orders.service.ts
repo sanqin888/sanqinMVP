@@ -750,7 +750,12 @@ export class OrdersService {
   ): Promise<OrderWithItems> {
     const current = await this.prisma.order.findUnique({
       where: { id },
-      select: { status: true, paidAt: true, makingAt: true },
+      select: {
+        status: true,
+        paidAt: true,
+        makingAt: true,
+        fulfillmentType: true,
+      },
     });
     if (!current) throw new NotFoundException('order not found');
 
@@ -825,6 +830,13 @@ export class OrdersService {
   }
 
   private async notifyOrderReady(order: OrderWithItems) {
+    if (order.fulfillmentType === FulfillmentType.delivery) {
+      this.logger.log(
+        `[notifyOrderReady] Skip ready notification for delivery order: ${order.id}`,
+      );
+      return;
+    }
+
     if (!order.contactPhone) return;
     const orderNumber = order.clientRequestId ?? order.orderStableId;
     if (!orderNumber) return;

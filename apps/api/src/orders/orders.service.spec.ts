@@ -222,6 +222,61 @@ describe('OrdersService', () => {
     );
   });
 
+  it('sends order-ready SMS when pickup order is marked ready', async () => {
+    prisma.order.findUnique.mockResolvedValue({
+      status: 'making',
+      paidAt: new Date('2024-01-01T00:00:00.000Z'),
+      makingAt: new Date('2024-01-01T00:05:00.000Z'),
+      fulfillmentType: 'pickup',
+    });
+    prisma.order.update.mockResolvedValue({
+      id: 'order-pickup-ready',
+      orderStableId: 'cordpickupready001',
+      clientRequestId: null,
+      contactPhone: '+14165550000',
+      contactName: 'Test',
+      userId: null,
+      fulfillmentType: 'pickup',
+      items: [],
+    });
+    prisma.checkoutIntent.findFirst.mockResolvedValue({ locale: 'en' });
+
+    await service.updateStatusInternal(
+      '11111111-1111-1111-1111-111111111111',
+      'ready',
+    );
+    await Promise.resolve();
+
+    expect(notificationService.notifyOrderReady).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not send order-ready SMS when delivery order is marked ready', async () => {
+    prisma.order.findUnique.mockResolvedValue({
+      status: 'making',
+      paidAt: new Date('2024-01-01T00:00:00.000Z'),
+      makingAt: new Date('2024-01-01T00:05:00.000Z'),
+      fulfillmentType: 'delivery',
+    });
+    prisma.order.update.mockResolvedValue({
+      id: 'order-delivery-ready',
+      orderStableId: 'corddeliveryready001',
+      clientRequestId: null,
+      contactPhone: '+14165550000',
+      contactName: 'Test',
+      userId: null,
+      fulfillmentType: 'delivery',
+      items: [],
+    });
+
+    await service.updateStatusInternal(
+      '22222222-2222-2222-2222-222222222222',
+      'ready',
+    );
+    await Promise.resolve();
+
+    expect(notificationService.notifyOrderReady).not.toHaveBeenCalled();
+  });
+
   it('propagates NotFoundException when the order is missing during update', async () => {
     prisma.order.findUnique.mockResolvedValue(null);
     await expect(
