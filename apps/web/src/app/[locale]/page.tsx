@@ -39,6 +39,11 @@ type StoreStatus = {
   };
 };
 
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+};
+
 export default function LocalOrderPage() {
   const params = useParams<{ locale?: string }>();
   const locale = (params?.locale === "zh" ? "zh" : "en") as Locale;
@@ -69,6 +74,49 @@ export default function LocalOrderPage() {
   const [storeStatus, setStoreStatus] = useState<StoreStatus | null>(null);
   const [storeStatusLoading, setStoreStatusLoading] = useState(true);
   const [storeStatusError, setStoreStatusError] = useState<string | null>(null);
+  const [installPromptEvent, setInstallPromptEvent] =
+    useState<BeforeInstallPromptEvent | null>(null);
+  const [installFeedback, setInstallFeedback] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPromptEvent(event as BeforeInstallPromptEvent);
+      setInstallFeedback(null);
+    };
+
+    const handleAppInstalled = () => {
+      setInstallPromptEvent(null);
+      setInstallFeedback(strings.installAppAdded);
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("appinstalled", handleAppInstalled);
+
+    return () => {
+      window.removeEventListener(
+        "beforeinstallprompt",
+        handleBeforeInstallPrompt,
+      );
+      window.removeEventListener("appinstalled", handleAppInstalled);
+    };
+  }, [strings.installAppAdded]);
+
+  const handleInstallApp = useCallback(async () => {
+    if (!installPromptEvent) {
+      setInstallFeedback(strings.installAppUnavailable);
+      return;
+    }
+
+    await installPromptEvent.prompt();
+    const { outcome } = await installPromptEvent.userChoice;
+
+    if (outcome === "accepted") {
+      setInstallFeedback(strings.installAppAdded);
+    }
+
+    setInstallPromptEvent(null);
+  }, [installPromptEvent, strings.installAppAdded, strings.installAppUnavailable]);
 
   useEffect(() => {
     let cancelled = false;
@@ -843,7 +891,13 @@ export default function LocalOrderPage() {
                 <button type="button" onClick={handleLogout} className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50">{logoutLabel}</button>
               ) : null}
               <Link href={checkoutHref} className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50">{strings.cartTitle}</Link>
+              {installPromptEvent ? (
+                <button type="button" onClick={() => void handleInstallApp()} className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50">{strings.installApp}</button>
+              ) : null}
             </div>
+            {installFeedback ? (
+              <p className="text-xs text-emerald-600">{installFeedback}</p>
+            ) : null}
           </div>
           <div className="hidden lg:block lg:w-[220px]" />
         </div>
