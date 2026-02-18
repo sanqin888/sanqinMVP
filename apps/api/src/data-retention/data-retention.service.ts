@@ -4,7 +4,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import { AuthChallengeStatus } from '@prisma/client';
+import { AuthChallengeStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 type CleanupStats = {
@@ -127,14 +127,14 @@ export class DataRetentionService implements OnModuleInit, OnModuleDestroy {
               createdAt: { lt: threshold30d },
               OR: [
                 { rawBody: { not: null } },
-                { headersJson: { not: null } },
-                { paramsJson: { not: null } },
+                { headersJson: { not: Prisma.AnyNull } },
+                { paramsJson: { not: Prisma.AnyNull } },
               ],
             },
             data: {
               rawBody: null,
-              headersJson: null,
-              paramsJson: null,
+              headersJson: Prisma.DbNull,
+              paramsJson: Prisma.DbNull,
             },
           })
         ).count;
