@@ -7,6 +7,7 @@ import { localeAlternates } from "@/lib/i18n/path";
 import Link from "next/link";
 import LocaleSwitcher from "@/components/LocaleSwitcher";
 import Image from "next/image";
+import AnalyticsConsentControls from "@/components/AnalyticsConsentControls";
 
 export const dynamicParams = false;
 
@@ -88,7 +89,10 @@ export default async function I18nLayout({
               {isZh ? "联系我们" : "Contact us"}
             </Link>
           </div>
-          <div className="text-xs text-gray-400">© {year} San Qin. All rights reserved.</div>
+          <div className="flex flex-col items-start gap-2 sm:items-end">
+            <AnalyticsConsentControls locale={locale as "zh" | "en"} />
+            <div className="text-xs text-gray-400">© {year} San Qin. All rights reserved.</div>
+          </div>
         </div>
       </footer>
     </div>

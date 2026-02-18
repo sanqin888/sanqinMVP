@@ -28,6 +28,7 @@ import type {
 import { usePersistentCart } from "@/lib/cart";
 import { apiFetch } from "@/lib/api/client";
 import { signOut, useSession } from "@/lib/auth-session";
+import { trackClientEvent } from "@/lib/analytics";
 
 type StoreStatus = {
   publicNotice: string | null;
@@ -93,18 +94,25 @@ export default function LocalOrderPage() {
   const [isStandalone, setIsStandalone] = useState(false);
 
   useEffect(() => {
+    trackClientEvent("customer_home_viewed", {
+      locale,
+      entry: isInStandaloneMode() ? "standalone" : "browser",
+    });
+
     setIsStandalone(isInStandaloneMode());
 
     const handleBeforeInstallPrompt = (event: Event) => {
       event.preventDefault();
       setInstallPromptEvent(event as BeforeInstallPromptEvent);
       setInstallFeedback(null);
+      trackClientEvent("pwa_beforeinstallprompt_fired", { locale });
     };
 
     const handleAppInstalled = () => {
       setInstallPromptEvent(null);
       setInstallFeedback(strings.installAppAdded);
       setIsStandalone(true);
+      trackClientEvent("pwa_appinstalled", { locale });
     };
 
     const handleDisplayModeChange = () => {
@@ -127,29 +135,46 @@ export default function LocalOrderPage() {
         .matchMedia("(display-mode: standalone)")
         .removeEventListener("change", handleDisplayModeChange);
     };
-  }, [strings.installAppAdded]);
+  }, [locale, strings.installAppAdded]);
 
   const handleInstallApp = useCallback(async () => {
     if (isIosDevice()) {
+      trackClientEvent("pwa_install_button_clicked", {
+        locale,
+        channel: "ios_hint",
+      });
       setIsIosInstallHintVisible(true);
       setInstallFeedback(null);
       return;
     }
 
     if (!installPromptEvent) {
+      trackClientEvent("pwa_install_button_clicked", {
+        locale,
+        channel: "prompt_unavailable",
+      });
       setInstallFeedback(strings.installAppUnavailable);
       return;
     }
 
+    trackClientEvent("pwa_install_button_clicked", {
+      locale,
+      channel: "browser_prompt",
+    });
+
     await installPromptEvent.prompt();
     const { outcome } = await installPromptEvent.userChoice;
+    trackClientEvent("pwa_install_prompt_result", {
+      locale,
+      outcome,
+    });
 
     if (outcome === "accepted") {
       setInstallFeedback(strings.installAppAdded);
     }
 
     setInstallPromptEvent(null);
-  }, [installPromptEvent, strings.installAppAdded, strings.installAppUnavailable]);
+  }, [installPromptEvent, locale, strings.installAppAdded, strings.installAppUnavailable]);
 
   const shouldShowInstallButton = !isStandalone && (Boolean(installPromptEvent) || isIosDevice());
 
@@ -925,7 +950,7 @@ export default function LocalOrderPage() {
               {isMemberLoggedIn ? (
                 <button type="button" onClick={handleLogout} className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50">{logoutLabel}</button>
               ) : null}
-              <Link href={checkoutHref} className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50">{strings.cartTitle}</Link>
+              <Link href={checkoutHref} onClick={() => trackClientEvent("customer_home_checkout_clicked", { locale, source: "hero" })} className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50">{strings.cartTitle}</Link>
               {shouldShowInstallButton ? (
                 <button type="button" onClick={() => void handleInstallApp()} className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50">{strings.installApp}</button>
               ) : null}
@@ -966,7 +991,7 @@ export default function LocalOrderPage() {
                                 return (
                                     <article key={special.stableId} 
                                         className={`group flex h-full flex-col justify-between rounded-3xl border border-amber-200 bg-amber-50/40 p-5 shadow-sm transition ${isTempUnavailable(item.tempUnavailableUntil) ? "cursor-not-allowed opacity-70" : "cursor-pointer hover:-translate-y-0.5 hover:shadow-md"}`}
-                                        onClick={() => { if (!isTempUnavailable(item.tempUnavailableUntil)) { setActiveItem(item); setSelectedDailySpecial(special); setSelectedQuantity(1); setSelectedOptions({}); setSelectedChildOptions({}); } }}
+                                        onClick={() => { if (!isTempUnavailable(item.tempUnavailableUntil)) { trackClientEvent("customer_home_item_opened", { locale, itemStableId: item.stableId, source: "daily_special", specialStableId: special.stableId }); setActiveItem(item); setSelectedDailySpecial(special); setSelectedQuantity(1); setSelectedOptions({}); setSelectedChildOptions({}); } }}
                                     >
                                         <div className="flex items-center gap-3">
                                             {item.imageUrl && (
@@ -1009,6 +1034,11 @@ export default function LocalOrderPage() {
                             className={`group flex h-full flex-col justify-between rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition ${isTempUnavailable(item.tempUnavailableUntil) ? "cursor-not-allowed opacity-70" : "cursor-pointer hover:-translate-y-0.5 hover:shadow-md"}`}
                             onClick={() => {
                               if (isTempUnavailable(item.tempUnavailableUntil)) return;
+                              trackClientEvent("customer_home_item_opened", {
+                                locale,
+                                itemStableId: item.stableId,
+                                source: "menu",
+                              });
                               setActiveItem(item);
                               setSelectedQuantity(1);
                               setSelectedOptions({});
@@ -1123,6 +1153,13 @@ export default function LocalOrderPage() {
                     type="button"
                     onClick={() => {
                       if (!activeItem || !canAddToCart) return;
+                      trackClientEvent("customer_home_add_to_cart", {
+                        locale,
+                        itemStableId: activeItem.stableId,
+                        quantity: selectedQuantity,
+                        hasDailySpecial: Boolean(selectedDailySpecial),
+                        selectedOptionCount: selectedOptionsDetails.length,
+                      });
                       addItem(
                         activeItem.stableId,
                         buildOptionSnapshots({
@@ -1147,7 +1184,7 @@ export default function LocalOrderPage() {
       ) : null}
 
       {/* 浮动购物车入口 */}
-      <Link href={checkoutHref} className="fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-full bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-xl transition hover:bg-slate-700">
+      <Link href={checkoutHref} onClick={() => trackClientEvent("customer_home_checkout_clicked", { locale, source: "floating" })} className="fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-full bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-xl transition hover:bg-slate-700">
         <span>{strings.floatingCartLabel}</span>
         <span className="grid h-8 w-8 place-items-center rounded-full bg-white text-sm font-semibold text-slate-900">{totalQuantity}</span>
       </Link>

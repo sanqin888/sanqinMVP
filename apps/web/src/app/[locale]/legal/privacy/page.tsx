@@ -179,6 +179,30 @@ export default function PrivacyPage({
             : "We may update this Privacy Policy from time to time. For significant changes, we will notify you through this website or other reasonable means. By continuing to use this website or the membership services, you agree to the updated policy."}
         </p>
       </section>
+
+
+      <section className="space-y-2">
+        <h2 className="text-base font-semibold">
+          {isZh ? "7. Cookie 与分析追踪说明（适用于加拿大）" : "7. Cookies & analytics tracking (Canada)"}
+        </h2>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>
+            {isZh
+              ? "我们会在网站中使用本地存储与类似技术记录您对分析追踪的选择。"
+              : "We use local storage and similar technologies to remember your analytics tracking choices."}
+          </li>
+          <li>
+            {isZh
+              ? "在您同意后，我们才会启用用于改进服务体验的分析事件（例如页面访问、加购与结账点击）。"
+              : "After your consent, we enable analytics events used to improve service experience (such as page views, add-to-cart, and checkout clicks)."}
+          </li>
+          <li>
+            {isZh
+              ? "您可通过页脚“隐私偏好”随时修改或撤回同意；撤回后将停止新的分析事件收集。"
+              : "You can change or withdraw consent at any time via “Privacy preferences” in the footer; after withdrawal, new analytics event collection will stop."}
+          </li>
+        </ul>
+      </section>
     </div>
   );
 }
