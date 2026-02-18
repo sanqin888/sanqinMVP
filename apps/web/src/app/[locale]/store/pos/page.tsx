@@ -454,13 +454,18 @@ export default function StorePosPage() {
       if (!raw) return;
       const parsed = JSON.parse(raw) as PosDisplaySnapshot;
       const restoredItems = (parsed.items ?? []).map((item) => ({
+        quantity:
+          Number.isFinite(item.quantity) && item.quantity > 0
+            ? item.quantity
+            : 1,
         lineId: item.lineId ?? `line-${Date.now()}-${Math.random()}`,
         stableId: item.stableId,
-        quantity: item.quantity,
         customUnitPriceCents:
           typeof item.customUnitPriceCents === "number"
             ? item.customUnitPriceCents
-            : item.unitPriceCents,
+            : typeof item.unitPriceCents === "number"
+              ? item.unitPriceCents
+              : Math.round((item.lineTotalCents ?? 0) / Math.max(item.quantity ?? 1, 1)),
         options: item.options,
       }));
       if (restoredItems.length > 0) {
