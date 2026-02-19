@@ -8,6 +8,7 @@ import cookieParser from 'cookie-parser';
 import * as express from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getUploadsRootDir } from './common/utils/uploads-path';
 
 async function bootstrap(): Promise<void> {
   // 1. 禁用 NestJS 默认的 bodyParser
@@ -66,7 +67,7 @@ async function bootstrap(): Promise<void> {
   app.use(cookieParser(cookieSecret || 'dev-fallback-secret-key'));
 
   // 6. 处理图片上传目录
-  const uploadsDir = path.resolve(process.cwd(), 'uploads');
+  const uploadsDir = getUploadsRootDir();
   if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
     console.log(`Created uploads directory at: ${uploadsDir}`);

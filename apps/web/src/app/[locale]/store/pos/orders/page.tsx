@@ -505,6 +505,12 @@ type SwapSelection = {
   quantity: number;
 };
 
+function compareOrderCreatedAtAsc(a: OrderRecord, b: OrderRecord) {
+  const aTime = parseBackendDate(a.createdAt).getTime();
+  const bTime = parseBackendDate(b.createdAt).getTime();
+  return aTime - bTime;
+}
+
 type ActionSummary = {
   baseTotal: number;
   baseSubtotal: number;
@@ -1080,43 +1086,45 @@ const mapOrder = useCallback(
   );
 
   const filteredOrders = useMemo(() => {
-    return orders.filter((order) => {
-      if (filters.time === "today") {
-        const orderDate = parseBackendDate(order.createdAt);
-        const now = new Date();
+    return orders
+      .filter((order) => {
+        if (filters.time === "today") {
+          const orderDate = parseBackendDate(order.createdAt);
+          const now = new Date();
 
-        const tz = storeTimezone || "UTC";
-        const orderYmd = ymdInTimeZone(orderDate, tz);
-        const nowYmd = ymdInTimeZone(now, tz);
+          const tz = storeTimezone || "UTC";
+          const orderYmd = ymdInTimeZone(orderDate, tz);
+          const nowYmd = ymdInTimeZone(now, tz);
 
-        if (orderYmd !== nowYmd) return false;
-      }
-      if (
-        filters.statuses.length > 0 &&
-        !filters.statuses.includes(order.status)
-      ) {
-        return false;
-      }
-      if (
-        filters.channels.length > 0 &&
-        !filters.channels.includes(order.channel)
-      ) {
-        return false;
-      }
-      if (
-        filters.fulfillments.length > 0 &&
-        !filters.fulfillments.includes(order.type)
-      ) {
-        return false;
-      }
-      if (
-        filters.minTotalCents !== null &&
-        order.amountCents < filters.minTotalCents
-      ) {
-        return false;
-      }
-      return true;
-    });
+          if (orderYmd !== nowYmd) return false;
+        }
+        if (
+          filters.statuses.length > 0 &&
+          !filters.statuses.includes(order.status)
+        ) {
+          return false;
+        }
+        if (
+          filters.channels.length > 0 &&
+          !filters.channels.includes(order.channel)
+        ) {
+          return false;
+        }
+        if (
+          filters.fulfillments.length > 0 &&
+          !filters.fulfillments.includes(order.type)
+        ) {
+          return false;
+        }
+        if (
+          filters.minTotalCents !== null &&
+          order.amountCents < filters.minTotalCents
+        ) {
+          return false;
+        }
+        return true;
+      })
+      .sort(compareOrderCreatedAtAsc);
   }, [filters, orders, storeTimezone]);
 
   const summary = useMemo(() => {

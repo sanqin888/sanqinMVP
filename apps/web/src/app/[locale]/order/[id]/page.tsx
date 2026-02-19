@@ -254,10 +254,10 @@ export default function OrderDetailPage({ params }: PageProps) {
 
     return (
       <div className="mt-2 space-y-1 text-xs text-gray-600">
-        {rawOptions.map((group) => (
-          <div key={group.templateGroupStableId}>
+        {rawOptions.map((group, index) => (
+          <div key={`${group.templateGroupStableId}-${index}`}>
             <div className="font-medium text-gray-700">
-              {group.nameZh ?? group.nameEn}
+              {isZh ? (group.nameZh ?? group.nameEn) : group.nameEn}
             </div>
             <ul className="ml-4 mt-1 list-disc space-y-0.5 text-[11px] text-gray-600">
               {group.choices.map((choice) => (
@@ -266,7 +266,7 @@ export default function OrderDetailPage({ params }: PageProps) {
                   className="flex items-center justify-between gap-2"
                 >
                   <span className="break-words">
-                    {choice.nameZh ?? choice.nameEn}
+                    {isZh ? (choice.nameZh ?? choice.nameEn) : choice.nameEn}
                   </span>
                   {choice.priceDeltaCents !== 0 && (
                     <span className="whitespace-nowrap text-gray-500">
@@ -459,11 +459,9 @@ export default function OrderDetailPage({ params }: PageProps) {
                         : null;
                     const lineTotal =
                       unitPrice !== null ? unitPrice * item.qty : null;
-                    const displayName =
-                      item.displayName ||
-                      item.nameZh ||
-                      item.nameEn ||
-                      item.productStableId;
+                    const displayName = isZh
+                      ? item.nameZh || item.displayName || item.nameEn || item.productStableId
+                      : item.nameEn || item.displayName || item.nameZh || item.productStableId;
 
                     const itemKey = `${item.productStableId ?? displayName ?? 'item'}-${idx}`;
 
@@ -509,8 +507,9 @@ export default function OrderDetailPage({ params }: PageProps) {
               <ul className="space-y-2 text-sm text-gray-700">
                 {summaryOrder.lineItems.map((item, idx) => {
                   const itemKey = `${item.productStableId}-${idx}`;
-                  const displayName =
-                    item.nameZh || item.nameEn || item.name || item.productStableId;
+                  const displayName = isZh
+                    ? item.nameZh || item.name || item.nameEn || item.productStableId
+                    : item.nameEn || item.name || item.nameZh || item.productStableId;
                   return (
                     <li key={itemKey} className="rounded border border-slate-200 bg-white px-3 py-2">
                       <div className="flex items-center justify-between gap-3">
