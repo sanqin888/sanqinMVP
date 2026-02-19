@@ -3,6 +3,7 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getUploadsImagesDir } from '../../../common/utils/uploads-path';
 
 type UploadedFile = {
   originalname: string;
@@ -33,7 +34,7 @@ export class AdminImageUploadService {
    */
   async saveFileToLocal(file: UploadedFile): Promise<string> {
     // 你可以按自己的目录调整
-    const uploadDir = path.join(process.cwd(), 'uploads', 'images');
+    const uploadDir = getUploadsImagesDir();
 
     await fs.promises.mkdir(uploadDir, { recursive: true });
 
@@ -71,7 +72,7 @@ export class AdminImageUploadService {
   }
 
   async listLocalImages(): Promise<string[]> {
-    const uploadDir = path.join(process.cwd(), 'uploads', 'images');
+    const uploadDir = getUploadsImagesDir();
 
     let entries: fs.Dirent[] = [];
     try {
@@ -116,7 +117,7 @@ export class AdminImageUploadService {
       throw new BadRequestException('Unsupported file extension.');
     }
 
-    const uploadDir = path.join(process.cwd(), 'uploads', 'images');
+    const uploadDir = getUploadsImagesDir();
     const targetPath = path.join(uploadDir, fileName);
 
     try {
