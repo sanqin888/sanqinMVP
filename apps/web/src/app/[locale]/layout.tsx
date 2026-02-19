@@ -56,6 +56,7 @@ export default async function I18nLayout({
             src="/images/sanqinLOGO.png"
             alt="Logo"
             fill
+            sizes="64px"
             className="object-contain"
           />
         </div>
