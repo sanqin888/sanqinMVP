@@ -547,6 +547,5 @@ const DELIVERY_TYPE_LABELS: Record<DeliveryTypeOption, string> = {
 };
 
 const DELIVERY_PROVIDER_LABELS: Record<DeliveryProviderOption, string> = {
-  DOORDASH: 'DoorDash',
   UBER: 'Uber',
 };

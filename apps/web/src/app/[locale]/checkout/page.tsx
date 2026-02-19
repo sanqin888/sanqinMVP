@@ -201,6 +201,18 @@ function toSafeErrorLog(error: unknown): Record<string, unknown> {
   return { message: String(error) };
 }
 
+function isIosStandaloneWebApp(): boolean {
+  if (typeof window === "undefined") return false;
+
+  const nav = window.navigator as Navigator & { standalone?: boolean };
+  const isiOS = /iphone|ipad|ipod/i.test(nav.userAgent);
+  const isStandalone =
+    window.matchMedia?.("(display-mode: standalone)").matches === true ||
+    nav.standalone === true;
+
+  return isiOS && isStandalone;
+}
+
 declare global {
   interface Window {
     Clover?: new (
@@ -216,14 +228,14 @@ const PHONE_OTP_REQUEST_URL = "/api/v1/auth/phone/send-code";
 const PHONE_OTP_VERIFY_URL = "/api/v1/auth/phone/verify-code";
 const CHECKOUT_INTENT_STORAGE_KEY = "cloverCheckoutIntentId";
 type DeliveryOptionDefinition = {
-  provider: "DOORDASH" | "UBER";
+  provider: "UBER";
   fee: number; // 仅用于显示说明，不参与实际计费
   eta: [number, number];
   labels: Record<Locale, { title: string; description: string }>;
 };
 
 type DeliveryOptionDisplay = {
-  type: DeliveryTypeOption;
+  type: "UBER";
   /** 展示给用户看的配送费（单位：分） */
   fee: number;
   eta: [number, number];
@@ -434,48 +446,14 @@ const formatPostalCodeInput = (value: string) => {
 const isPostalCodeValid = (value: string) =>
   POSTAL_CODE_PATTERN.test(value.trim().toUpperCase());
 
-const DELIVERY_OPTION_DEFINITIONS: Record<
-  DeliveryTypeOption,
-  DeliveryOptionDefinition
-> = {
-  STANDARD: {
-    provider: "DOORDASH",
-    fee: 6,
-    eta: [45, 60],
-    labels: {
-      en: {
-        title: "Standard delivery",
-        description:
-          "Delivery range ≤ 10 km, fulfilled by DoorDash. ETA 45–60 minutes.",
-      },
-      zh: {
-        title: "标准配送",
-        description:
-          "配送范围 ≤ 10 km，由 DoorDash 提供配送服务，预计送达时间 45–60 分钟。",
-      },
-    },
-  },
-  PRIORITY: {
-    provider: "UBER",
-    fee: 6,
-    eta: [25, 35],
-    labels: {
-      en: {
-        title: "Uber delivery",
-        description:
-          "Delivery range ≤ 10 km, fulfilled by Uber. Fee: $6 base + $1 per km. ETA 25–35 minutes.",
-      },
-      zh: {
-        title: "Uber 配送",
-        description:
-          "配送范围 ≤ 10 km，由 Uber 提供配送服务，配送费：$6 起步 + 每公里 $1，预计送达时间 25–35 分钟。",
-      },
-    },
-  },
+const UBER_DELIVERY_OPTION: DeliveryOptionDisplay = {
+  type: "UBER",
+  fee: 6,
+  eta: [25, 35],
+  provider: "UBER",
+  title: "",
+  description: "",
 };
-
-// 目前只开放 PRIORITY（如果将来要开放 STANDARD，改成 ["STANDARD", "PRIORITY"]）
-const DELIVERY_TYPES: DeliveryTypeOption[] = ["PRIORITY"];
 
 const buildPaymentErrorMessage = (params: {
   code: string;
@@ -830,8 +808,7 @@ export default function CheckoutPage() {
   const [fulfillment, setFulfillment] = useState<"pickup" | "delivery">(
     "pickup",
   );
-  const [deliveryType, setDeliveryType] =
-    useState<DeliveryTypeOption>("PRIORITY");
+  const [deliveryType] = useState<DeliveryTypeOption>("PRIORITY");
   const [schedule] = useState<ScheduleSlot>("asap");
   const [customer, setCustomer] = useState<CustomerInfo>({
     firstName: "",
@@ -891,6 +868,9 @@ export default function CheckoutPage() {
   const [cardCvvError, setCardCvvError] = useState<string | null>(null);
   const [cloverReady, setCloverReady] = useState(false);
   const [canPay, setCanPay] = useState(false);
+  const [isIosStandalone, setIsIosStandalone] = useState(false);
+  const [showIosStandaloneCloverHint, setShowIosStandaloneCloverHint] =
+    useState(false);
   const [applePayMounted, setApplePayMounted] = useState(false);
   const [googlePayMounted, setGooglePayMounted] = useState(false);
   const [cardNameComplete, setCardNameComplete] = useState(false);
@@ -898,6 +878,10 @@ export default function CheckoutPage() {
   const [cardDateComplete, setCardDateComplete] = useState(false);
   const [cardCvvComplete, setCardCvvComplete] = useState(false);
   const [cardPostalComplete, setCardPostalComplete] = useState(false);
+
+  useEffect(() => {
+    setIsIosStandalone(isIosStandaloneWebApp());
+  }, []);
   const [challengeUrl, setChallengeUrl] = useState<string | null>(null);
   const [challengeIntentId, setChallengeIntentId] = useState<string | null>(
     null,
@@ -1137,41 +1121,28 @@ export default function CheckoutPage() {
   const isDeliveryFulfillment = fulfillment === "delivery";
 
   // 用于计费的“公里数”：不足 1km 按 1km，向上取整
-  const billedDistanceForPriorityKm =
-    isDeliveryFulfillment &&
-    deliveryType === "PRIORITY" &&
-    addressValidation.distanceKm !== null
+  const billedDistanceKm =
+    isDeliveryFulfillment && addressValidation.distanceKm !== null
       ? Math.max(1, Math.ceil(addressValidation.distanceKm))
-      : isDeliveryFulfillment && deliveryType === "PRIORITY"
-        ? 1 // 还没算出距离时，优先配送按 1km 起步展示
+      : isDeliveryFulfillment
+        ? 1
         : 0;
 
-  // UI 展示用的配送选项（standard 固定 $6；priority = $6 + $1/km）——都转换成“分”
-  const deliveryOptions: DeliveryOptionDisplay[] = DELIVERY_TYPES.map(
-    (type) => {
-      const definition = DELIVERY_OPTION_DEFINITIONS[type];
-      const localized = definition.labels[locale];
-
-      let feeCents = 0;
-      if (isDeliveryFulfillment && subtotalCents > 0) {
-        if (type === "STANDARD") {
-          feeCents = 600;
-        } else {
-          // PRIORITY：$6 + $1/km
-          feeCents = 600 + 100 * billedDistanceForPriorityKm;
-        }
-      }
-
-      return {
-        type,
-        fee: feeCents,
-        eta: definition.eta,
-        provider: definition.provider,
-        title: localized.title,
-        description: localized.description,
-      };
+  // 仅保留 Uber 配送（$6 + $1/km）
+  const deliveryOptions: DeliveryOptionDisplay[] = [
+    {
+      ...UBER_DELIVERY_OPTION,
+      fee:
+        isDeliveryFulfillment && subtotalCents > 0
+          ? 600 + 100 * billedDistanceKm
+          : 0,
+      title: locale === "zh" ? "Uber 配送" : "Uber delivery",
+      description:
+        locale === "zh"
+          ? "配送范围 ≤ 10 km，由 Uber 提供配送服务，配送费：$6 起步 + 每公里 $1，预计送达时间 25–35 分钟。"
+          : "Delivery range ≤ 10 km, fulfilled by Uber. Fee: $6 base + $1 per km. ETA 25–35 minutes.",
     },
-  );
+  ];
 
   const resetAddressValidation = useCallback(
     () =>
@@ -1214,15 +1185,13 @@ export default function CheckoutPage() {
     [radiusLabel],
   );
 
-  const selectedDeliveryDefinition = DELIVERY_OPTION_DEFINITIONS[deliveryType];
+  const selectedDeliveryDefinition = deliveryOptions[0];
 
   // 这里和上面的 deliveryOptions 保持同一套规则（单位：分）
   const deliveryFeeCents =
     !isDeliveryFulfillment || subtotalCents <= 0
       ? 0
-      : deliveryType === "STANDARD"
-        ? 600
-        : 600 + 100 * billedDistanceForPriorityKm;
+      : 600 + 100 * billedDistanceKm;
 
   // === 积分抵扣相关计算 ===
 
@@ -1876,12 +1845,52 @@ export default function CheckoutPage() {
       const latestClover = cloverRef.current;
       if (!latestClover) return;
 
-      try {
-        latestClover.updateApplePaymentRequest({
-          amount: totalCents,
-          countryCode: "CA",
-          currencyCode: "CAD",
-        });
+      setCloverReady(true);
+    } catch (err) {
+      if (cancelled) return;
+      const message = err instanceof Error ? err.message : "Failed to init Clover";
+      if (isIosStandalone) {
+        setShowIosStandaloneCloverHint(true);
+        setErrorMessage(
+          locale === "zh"
+            ? "当前是 iPhone 主屏幕模式（独立窗口），Clover 支付组件可能无法加载。请尝试刷新本页或在“在 Safari 中打开”继续支付。"
+            : "You are using iPhone home-screen mode (standalone app), where Clover payment fields may fail to load. Please try to refresh this page or open in Safari to continue payment.",
+        );
+      } else {
+        setShowIosStandaloneCloverHint(false);
+        setErrorMessage(message);
+      }
+      setApplePayMounted(false);
+      setCloverReady(false);
+      setCanPay(false);
+    }
+  };
+
+  void setupClover();
+
+  return () => {
+    cancelled = true;
+    cleanupRef.current?.();
+    cleanupRef.current = undefined;
+    cardNameRef.current?.destroy?.();
+    cardNumberRef.current?.destroy?.();
+    cardDateRef.current?.destroy?.();
+    cardCvvRef.current?.destroy?.();
+    cardPostalRef.current?.destroy?.();
+    applePayRef.current?.destroy?.();
+    applePayRef.current = null;
+    applePayTokenRef.current = null;
+    cloverFieldStateRef.current = {};
+    cloverRef.current = null;
+    setCanPay(false);
+    setCloverReady(false);
+    setApplePayMounted(false);
+  };
+}, [isIosStandalone, locale, requiresPayment]);
+
+useEffect(() => {
+  if (typeof window === "undefined") return;
+  if (!requiresPayment || !cloverReady) return;
 
         if (typeof latestClover.updateGooglePaymentRequest === "function") {
           latestClover.updateGooglePaymentRequest({
@@ -2619,9 +2628,7 @@ export default function CheckoutPage() {
   }, [memberPhone, memberPhoneVerified, customer.phone]);
 
   // 带可选 override 类型的距离校验
-  const validateDeliveryDistance = useCallback(
-    async (overrideDeliveryType?: DeliveryTypeOption) => {
-      const effectiveType = overrideDeliveryType ?? deliveryType;
+  const validateDeliveryDistance = useCallback(async () => {
 
       setAddressValidation({ distanceKm: null, isChecking: true, error: null });
 
@@ -2648,31 +2655,13 @@ export default function CheckoutPage() {
 
         const distanceKm = calculateDistanceKm(STORE_COORDINATES, coordinates);
 
-        // 标准配送：限制在 DELIVERY_RADIUS_KM 以内
-        if (effectiveType === "STANDARD" && distanceKm > DELIVERY_RADIUS_KM) {
-          const distanceLabel = formatDistanceValue(distanceKm);
-          const message = applyDistanceTemplate(
-            strings.deliveryDistance.outsideRange,
-            distanceLabel,
-          );
-          setAddressValidation({
-            distanceKm,
-            isChecking: false,
-            error: message,
-          });
-          return { success: false } as const;
-        }
-
-        // 优先闪送：最大 PRIORITY_MAX_RADIUS_KM
-        if (
-          effectiveType === "PRIORITY" &&
-          distanceKm > PRIORITY_MAX_RADIUS_KM
-        ) {
+        // Uber 配送：最大 DELIVERY_RADIUS_KM
+        if (distanceKm > PRIORITY_MAX_RADIUS_KM) {
           const distanceLabel = formatDistanceValue(distanceKm);
           const message =
             locale === "zh"
-              ? `当前地址距离门店约 ${distanceLabel}，超出优先闪送最大范围（${PRIORITY_MAX_RADIUS_KM} km）。`
-              : `This address is about ${distanceLabel} away from the store, which exceeds the maximum ${PRIORITY_MAX_RADIUS_KM} km range for priority delivery.`;
+              ? `当前地址距离门店约 ${distanceLabel}，超出 Uber 配送最大范围（${PRIORITY_MAX_RADIUS_KM} km）。`
+              : `This address is about ${distanceLabel} away from the store, which exceeds the maximum ${PRIORITY_MAX_RADIUS_KM} km range for Uber delivery.`;
 
           setAddressValidation({
             distanceKm,
@@ -2699,17 +2688,14 @@ export default function CheckoutPage() {
       }
     },
     [
-      applyDistanceTemplate,
       customer.city,
       customer.province,
       deliveryAddressText,
-      deliveryType,
       formatDistanceValue,
       locale,
       selectedCoordinates,
       strings.deliveryDistance.failed,
       strings.deliveryDistance.notFound,
-      strings.deliveryDistance.outsideRange,
     ],
   );
 
@@ -2829,15 +2815,9 @@ export default function CheckoutPage() {
     // ==== 重新算一遍本单的费用（全部用“分”） ====
     let deliveryFeeCentsForOrder = 0;
     if (isDeliveryFulfillment && subtotalCents > 0) {
-      if (deliveryType === "STANDARD") {
-        deliveryFeeCentsForOrder = 600;
-      } else {
-        const billedKm =
-          deliveryDistanceKm !== null
-            ? Math.max(1, Math.ceil(deliveryDistanceKm))
-            : 1;
-        deliveryFeeCentsForOrder = 600 + 100 * billedKm;
-      }
+      const billedKm =
+        deliveryDistanceKm !== null ? Math.max(1, Math.ceil(deliveryDistanceKm)) : 1;
+      deliveryFeeCentsForOrder = 600 + 100 * billedKm;
     }
 
     const loyaltyRedeemCentsForOrder = loyaltyRedeemCents;
@@ -3219,14 +3199,10 @@ export default function CheckoutPage() {
   let addressDistanceMessage: DistanceMessage | null = null;
   if (isDeliveryFulfillment) {
     if (!hasDeliveryAddressInputs) {
-      if (deliveryType === "STANDARD") {
-        addressDistanceMessage = {
-          text: applyDistanceTemplate(strings.deliveryDistance.restriction),
-          tone: "muted",
-        };
-      } else {
-        addressDistanceMessage = null;
-      }
+      addressDistanceMessage = {
+        text: applyDistanceTemplate(strings.deliveryDistance.restriction),
+        tone: "muted",
+      };
     } else if (addressValidation.isChecking) {
       addressDistanceMessage = {
         text: strings.deliveryDistance.checking,
@@ -3240,25 +3216,16 @@ export default function CheckoutPage() {
     } else if (addressValidation.distanceKm !== null) {
       const distanceLabel = formatDistanceValue(addressValidation.distanceKm);
 
-      if (deliveryType === "STANDARD") {
-        const template = addressWithinRadius
-          ? strings.deliveryDistance.withinRange
-          : strings.deliveryDistance.outsideRange;
-
-        const tone: DistanceMessage["tone"] = addressWithinRadius
-          ? "success"
-          : "error";
-
+      if (!addressWithinRadius) {
         addressDistanceMessage = {
-          text: applyDistanceTemplate(template, distanceLabel),
-          tone,
+          text: applyDistanceTemplate(strings.deliveryDistance.outsideRange, distanceLabel),
+          tone: "error",
         };
-      } else if (deliveryType === "PRIORITY") {
+      } else {
         const text =
           locale === "zh"
-            ? `当前地址距离门店约 ${distanceLabel}，优先闪送配送费会按该距离自动计算。`
-            : `This address is about ${distanceLabel} away from the store. Priority delivery fee will be calculated based on this distance.`;
-
+            ? `当前地址距离门店约 ${distanceLabel}，Uber 配送费会按该距离自动计算。`
+            : `This address is about ${distanceLabel} away from the store. Uber delivery fee will be calculated based on this distance.`;
         addressDistanceMessage = {
           text,
           tone: "info",
@@ -3680,28 +3647,11 @@ export default function CheckoutPage() {
                     <h3 className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
                       {strings.deliveryOptionsLabel}
                     </h3>
-                    <div className="grid gap-3 md:grid-cols-2">
+                    <div className="grid gap-3 md:grid-cols-1">
                       {deliveryOptions.map((option) => (
-                        <button
+                        <div
                           key={option.type}
-                          type="button"
-                          onClick={() => {
-                            setDeliveryType(option.type);
-
-                            if (
-                              isDeliveryFulfillment &&
-                              hasDeliveryAddressInputs &&
-                              !addressValidation.isChecking
-                            ) {
-                              void validateDeliveryDistance(option.type);
-                            }
-                          }}
-                          className={`text-left rounded-2xl border p-4 transition ${
-                            deliveryType === option.type
-                              ? "border-emerald-500 bg-emerald-50 shadow-sm"
-                              : "border-slate-200 bg-white hover:border-slate-300"
-                          }`}
-                          aria-pressed={deliveryType === option.type}
+                          className="text-left rounded-2xl border border-emerald-500 bg-emerald-50 p-4 shadow-sm"
                         >
                           <p className="text-sm font-semibold text-slate-900">
                             {option.title}
@@ -3715,15 +3665,11 @@ export default function CheckoutPage() {
                             </span>
                             <span className="text-xs uppercase tracking-wide text-slate-500">
                               {locale === "zh"
-                                ? option.type === "STANDARD"
-                                  ? "固定配送费"
-                                  : "起步价$6 + 每公里$1距离计费"
-                                : option.type === "STANDARD"
-                                  ? "Flat fee"
-                                  : "Base fee $6 + $1 per km"}
+                                ? "起步价$6 + 每公里$1距离计费"
+                                : "Base fee $6 + $1 per km"}
                             </span>
                           </div>
-                        </button>
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -4082,10 +4028,7 @@ export default function CheckoutPage() {
                     >
                       {showPostalCodeError
                         ? strings.contactFields.postalCodeError
-                        : deliveryType === "STANDARD"
-                          ? strings.contactFields.postalCodeHint
-                          : ""}{" "}
-                      {/* 优先闪送时不显示“只支持 5km 内外送”这句 */}
+                        : strings.contactFields.postalCodeHint}{" "}
                     </p>
                     {addressDistanceMessage ? (
                       <p
@@ -4479,6 +4422,38 @@ export default function CheckoutPage() {
 
               {requiresPayment ? (
                 <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
+                  {showIosStandaloneCloverHint ? (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                      <p>
+                        {locale === "zh"
+                          ? "从 iPhone 主屏幕图标进入时，银行卡输入框可能无法加载。"
+                          : "When opened from an iPhone home-screen icon, card fields may fail to load."}
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (typeof window === "undefined") return;
+                            window.location.reload();
+                          }}
+                          className="rounded-full border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                        >
+                          {locale === "zh" ? "刷新页面重试" : "Refresh and retry"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (typeof window === "undefined") return;
+                            window.open(window.location.href, "_blank", "noopener,noreferrer");
+                          }}
+                          className="rounded-full border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                        >
+                          {locale === "zh" ? "在 Safari 中打开" : "Open in Safari"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
                   <p className="text-xs font-semibold text-slate-600">
                     {locale === "zh" ? "苹果支付" : "Apple Pay"}
                   </p>
@@ -4664,6 +4639,20 @@ export default function CheckoutPage() {
                   }`}
                 >
                   {paymentError}
+                  {requiresPayment ? (
+                    <div className="mt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (typeof window === "undefined") return;
+                          window.location.reload();
+                        }}
+                        className="rounded-full border border-current px-3 py-1 text-[11px] font-semibold"
+                      >
+                        {locale === "zh" ? "刷新页面重试支付模块" : "Refresh to retry payment module"}
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </div>

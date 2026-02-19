@@ -58,7 +58,6 @@ export type BusinessConfigResponse = {
   tierThresholdSilver: number;
   tierThresholdGold: number;
   tierThresholdPlatinum: number;
-  enableDoorDash: boolean;
   enableUberDirect: boolean;
   hours: DayConfigDto[];
   holidays: HolidayDto[];
@@ -122,7 +121,6 @@ export class AdminBusinessService {
       tierThresholdSilver: config.tierThresholdSilver,
       tierThresholdGold: config.tierThresholdGold,
       tierThresholdPlatinum: config.tierThresholdPlatinum,
-      enableDoorDash: config.enableDoorDash,
       enableUberDirect: config.enableUberDirect,
       hours: hours.map((h) => ({
         weekday: h.weekday,
@@ -279,7 +277,6 @@ export class AdminBusinessService {
       tierThresholdSilver,
       tierThresholdGold,
       tierThresholdPlatinum,
-      enableDoorDash,
       enableUberDirect,
     } = payload as {
       timezone?: unknown;
@@ -319,7 +316,6 @@ export class AdminBusinessService {
       tierThresholdSilver?: unknown;
       tierThresholdGold?: unknown;
       tierThresholdPlatinum?: unknown;
-      enableDoorDash?: unknown;
       enableUberDirect?: unknown;
     };
 
@@ -583,13 +579,6 @@ export class AdminBusinessService {
         'tierThresholdPlatinum',
         tierThresholdPlatinum,
       );
-    }
-
-    if (enableDoorDash !== undefined) {
-      if (typeof enableDoorDash !== 'boolean') {
-        throw new BadRequestException('enableDoorDash must be a boolean');
-      }
-      updates.enableDoorDash = enableDoorDash;
     }
 
     if (enableUberDirect !== undefined) {

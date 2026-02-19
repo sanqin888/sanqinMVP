@@ -57,7 +57,6 @@ export default async function I18nLayout({
             alt="Logo"
             fill
             className="object-contain"
-            priority
           />
         </div>
           {isZh ? "三秦肉夹馍" : "SanQ Roujiamo"}

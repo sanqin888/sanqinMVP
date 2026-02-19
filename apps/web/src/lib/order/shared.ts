@@ -43,7 +43,7 @@ export type LocalizedCartItem = {
 };
 
 export type DeliveryTypeOption = "STANDARD" | "PRIORITY";
-export type DeliveryProviderOption = "DOORDASH" | "UBER";
+export type DeliveryProviderOption = "UBER";
 
 export type ConfirmationState = {
   orderNumber: string;
