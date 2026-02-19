@@ -132,7 +132,7 @@ export class AuthService {
   }
 
   private isAdminRole(role?: UserRole | null): boolean {
-    return role === 'ADMIN' || role === 'STAFF';
+    return role === 'ADMIN' || role === 'STAFF' || role === 'ACCOUNTANT';
   }
 
   private normalizeLanguage(
@@ -467,7 +467,11 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    if (user.role !== 'ADMIN' && user.role !== 'STAFF') {
+    if (
+      user.role !== 'ADMIN' &&
+      user.role !== 'STAFF' &&
+      user.role !== 'ACCOUNTANT'
+    ) {
       throw new ForbiddenException('Insufficient role');
     }
 
@@ -1453,7 +1457,11 @@ export class AuthService {
       throw new BadRequestException('email is required');
     }
 
-    if (params.role !== 'ADMIN' && params.role !== 'STAFF') {
+    if (
+      params.role !== 'ADMIN' &&
+      params.role !== 'STAFF' &&
+      params.role !== 'ACCOUNTANT'
+    ) {
       throw new BadRequestException('invalid role');
     }
 

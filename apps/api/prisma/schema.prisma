@@ -127,6 +127,21 @@ enum UserRole {
   CUSTOMER
   STAFF
   ADMIN
+  ACCOUNTANT
+}
+
+enum AccountingTxType {
+  INCOME
+  EXPENSE
+  ADJUSTMENT
+}
+
+enum AccountingSourceType {
+  ORDER
+  MANUAL
+  UBER
+  FANTUAN
+  OTHER
 }
 
 enum UserLanguage {
@@ -897,6 +912,64 @@ model MenuItemOptionGroup {
 
   @@unique([itemId, templateGroupId])
   @@index([itemId, sortOrder])
+}
+
+model AccountingCategory {
+  id          String              @id @default(uuid()) @db.Uuid
+  name        String
+  type        AccountingTxType
+  parentId    String?             @db.Uuid
+  isActive    Boolean             @default(true)
+  sortOrder   Int                 @default(0)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  parent      AccountingCategory? @relation("AccountingCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children    AccountingCategory[] @relation("AccountingCategoryTree")
+  transactions AccountingTransaction[]
+
+  @@index([parentId])
+  @@index([type, isActive, sortOrder])
+  @@unique([name, type])
+}
+
+model AccountingTransaction {
+  id              String               @id @default(uuid()) @db.Uuid
+  txStableId      String               @unique @default(cuid())
+  type            AccountingTxType
+  source          AccountingSourceType
+  amountCents     Int
+  currency        String               @default("CAD")
+  occurredAt      DateTime
+  categoryId      String               @db.Uuid
+  orderId         String?
+  counterparty    String?
+  memo            String?
+  attachmentUrls  String[]             @default([])
+  createdByUserId String
+  updatedByUserId String
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  deletedAt       DateTime?
+  category        AccountingCategory   @relation(fields: [categoryId], references: [id])
+
+  @@index([occurredAt])
+  @@index([categoryId, occurredAt])
+  @@index([source, occurredAt])
+  @@index([deletedAt])
+}
+
+model AccountingAuditLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  action         String
+  entityType     String
+  entityId       String
+  beforeJson     Json?
+  afterJson      Json?
+  operatorUserId String
+  createdAt      DateTime @default(now())
+
+  @@index([entityType, entityId, createdAt])
+  @@index([operatorUserId, createdAt])
 }
 
 enum OrderStatus {

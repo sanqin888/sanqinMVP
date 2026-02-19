@@ -74,7 +74,7 @@ export default async function AdminLayout({
   const session = await fetchAdminSession();
   const role = session?.role;
 
-  if (role !== 'ADMIN' && role !== 'STAFF') {
+  if (role !== 'ADMIN' && role !== 'STAFF' && role !== 'ACCOUNTANT') {
     redirect(`/${safeLocale}/admin/login`);
   }
 
