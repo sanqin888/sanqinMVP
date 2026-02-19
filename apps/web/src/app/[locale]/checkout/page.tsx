@@ -1546,7 +1546,7 @@ export default function CheckoutPage() {
       | RequiredKey
       | "CARD_NAME"
       | "PAYMENT_REQUEST_BUTTON_APPLE_PAY"
-      | "PAYMENT_REQUEST_BUTTON_GOOGLE_PAY";
+      | "PAYMENT_REQUEST_BUTTON";
 
     const getFieldFromEvent = (
       event: CloverEventPayload,
@@ -1612,7 +1612,7 @@ export default function CheckoutPage() {
         state.PAYMENT_REQUEST_BUTTON_APPLE_PAY,
       );
       const googlePayReady = isFieldPayable(
-        state.PAYMENT_REQUEST_BUTTON_GOOGLE_PAY,
+        state.PAYMENT_REQUEST_BUTTON,
       );
       return cardFieldsReady || applePayReady || googlePayReady;
     };
@@ -1699,7 +1699,7 @@ export default function CheckoutPage() {
               countryCode: "CA",
               currencyCode: "CAD",
             });
-            googlePay = elements.create("PAYMENT_REQUEST_BUTTON_GOOGLE_PAY", {
+            googlePay = elements.create("PAYMENT_REQUEST_BUTTON", {
               googlePaymentRequest: googlePayRequest,
             });
             googlePayHost.innerHTML = "";
