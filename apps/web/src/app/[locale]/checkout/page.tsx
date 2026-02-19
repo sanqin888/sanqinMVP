@@ -1838,59 +1838,16 @@ export default function CheckoutPage() {
     if (typeof window === "undefined") return;
     if (!requiresPayment || !cloverReady) return;
 
-    const clover = cloverRef.current;
-    if (!clover) return;
-
     const debounceId = window.setTimeout(() => {
       const latestClover = cloverRef.current;
       if (!latestClover) return;
 
-      setCloverReady(true);
-    } catch (err) {
-      if (cancelled) return;
-      const message = err instanceof Error ? err.message : "Failed to init Clover";
-      if (isIosStandalone) {
-        setShowIosStandaloneCloverHint(true);
-        setErrorMessage(
-          locale === "zh"
-            ? "当前是 iPhone 主屏幕模式（独立窗口），Clover 支付组件可能无法加载。请尝试刷新本页或在“在 Safari 中打开”继续支付。"
-            : "You are using iPhone home-screen mode (standalone app), where Clover payment fields may fail to load. Please try to refresh this page or open in Safari to continue payment.",
-        );
-      } else {
-        setShowIosStandaloneCloverHint(false);
-        setErrorMessage(message);
-      }
-      setApplePayMounted(false);
-      setCloverReady(false);
-      setCanPay(false);
-    }
-  };
-
-  void setupClover();
-
-  return () => {
-    cancelled = true;
-    cleanupRef.current?.();
-    cleanupRef.current = undefined;
-    cardNameRef.current?.destroy?.();
-    cardNumberRef.current?.destroy?.();
-    cardDateRef.current?.destroy?.();
-    cardCvvRef.current?.destroy?.();
-    cardPostalRef.current?.destroy?.();
-    applePayRef.current?.destroy?.();
-    applePayRef.current = null;
-    applePayTokenRef.current = null;
-    cloverFieldStateRef.current = {};
-    cloverRef.current = null;
-    setCanPay(false);
-    setCloverReady(false);
-    setApplePayMounted(false);
-  };
-}, [isIosStandalone, locale, requiresPayment]);
-
-useEffect(() => {
-  if (typeof window === "undefined") return;
-  if (!requiresPayment || !cloverReady) return;
+      try {
+        latestClover.updateApplePaymentRequest({
+          amount: totalCents,
+          countryCode: "CA",
+          currencyCode: "CAD",
+        });
 
         if (typeof latestClover.updateGooglePaymentRequest === "function") {
           latestClover.updateGooglePaymentRequest({
