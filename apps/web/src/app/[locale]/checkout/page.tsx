@@ -43,6 +43,7 @@ import type {
   PublicMenuResponse as PublicMenuApiResponse,
 } from "@shared/menu";
 import { useSession } from "@/lib/auth-session";
+import { trackClientEvent } from "@/lib/analytics";
 import { formatStoreTime } from "@/lib/time/tz";
 import {
   formatCanadianPhoneForApi,
@@ -597,6 +598,27 @@ export default function CheckoutPage() {
       }
     }
   }, []);
+
+  const handleFloatingRefresh = useCallback(() => {
+    trackClientEvent("customer_checkout_refresh_clicked", {
+      locale,
+      source: "floating",
+    });
+    window.location.reload();
+  }, [locale]);
+
+  const handleFloatingBack = useCallback(() => {
+    trackClientEvent("customer_checkout_back_clicked", {
+      locale,
+      source: "floating",
+    });
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+      return;
+    }
+    router.push(orderHref);
+  }, [locale, orderHref, router]);
+
 
   const entitlementItems = useMemo(
     () =>
@@ -4685,6 +4707,25 @@ export default function CheckoutPage() {
           </div>
         )}
       </section>
+      <div className="fixed bottom-6 left-6 z-50 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={handleFloatingBack}
+          className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-xl ring-1 ring-slate-200 transition hover:bg-slate-100"
+        >
+          <span aria-hidden="true">←</span>
+          <span>{locale === "zh" ? "返回" : "Back"}</span>
+        </button>
+        <button
+          type="button"
+          onClick={handleFloatingRefresh}
+          className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-xl ring-1 ring-slate-200 transition hover:bg-slate-100"
+        >
+          <span aria-hidden="true">↻</span>
+          <span>{locale === "zh" ? "刷新" : "Refresh"}</span>
+        </button>
+      </div>
+
       {challengeUrl ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
           <div className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-xl">
