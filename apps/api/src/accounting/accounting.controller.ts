@@ -80,7 +80,10 @@ export class AccountingController {
     @Param('txStableId') txStableId: string,
     @Req() req: Request & { user?: { id?: string } },
   ) {
-    return this.accountingService.deleteTx(txStableId, req.user?.id ?? 'unknown');
+    return this.accountingService.deleteTx(
+      txStableId,
+      req.user?.id ?? 'unknown',
+    );
   }
 
   @Get('report/pnl')
@@ -109,7 +112,10 @@ export class AccountingController {
 
     const ts = new Date().toISOString().slice(0, 10);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="accounting-transactions-${ts}.csv"`);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="accounting-transactions-${ts}.csv"`,
+    );
     return res.send(csv);
   }
 

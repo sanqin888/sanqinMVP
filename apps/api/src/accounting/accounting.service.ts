@@ -1,9 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
-  AccountingSourceType,
-  AccountingTxType,
-  Prisma,
-} from '@prisma/client';
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { AccountingSourceType, AccountingTxType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 type TxFilters = {
@@ -31,7 +31,10 @@ type UpsertTxDto = {
 export class AccountingService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private parseDate(raw: string | undefined, endOfDay = false): Date | undefined {
+  private parseDate(
+    raw: string | undefined,
+    endOfDay = false,
+  ): Date | undefined {
     if (!raw) return undefined;
     const date = new Date(raw);
     if (Number.isNaN(date.getTime())) {
@@ -47,7 +50,9 @@ export class AccountingService {
     return date;
   }
 
-  private buildWhere(filters: TxFilters): Prisma.AccountingTransactionWhereInput {
+  private buildWhere(
+    filters: TxFilters,
+  ): Prisma.AccountingTransactionWhereInput {
     const fromDate = this.parseDate(filters.from);
     const toDate = this.parseDate(filters.to, true);
 
@@ -187,7 +192,11 @@ export class AccountingService {
     });
   }
 
-  async updateTx(txStableId: string, payload: UpsertTxDto, operatorUserId: string) {
+  async updateTx(
+    txStableId: string,
+    payload: UpsertTxDto,
+    operatorUserId: string,
+  ) {
     const existing = await this.prisma.accountingTransaction.findUnique({
       where: { txStableId },
     });
@@ -281,20 +290,39 @@ export class AccountingService {
       const year = date.getUTCFullYear();
       const month = date.getUTCMonth() + 1;
       if (groupBy === 'year') return `${year}`;
-      if (groupBy === 'quarter') return `${year}-Q${Math.floor((month - 1) / 3) + 1}`;
+      if (groupBy === 'quarter')
+        return `${year}-Q${Math.floor((month - 1) / 3) + 1}`;
       return `${year}-${month.toString().padStart(2, '0')}`;
     };
 
-    const periods = new Map<string, { income: number; expense: number; adjustment: number }>();
-    const categories = new Map<string, { categoryId: string; categoryName: string; type: AccountingTxType; amountCents: number }>();
+    const periods = new Map<
+      string,
+      { income: number; expense: number; adjustment: number }
+    >();
+    const categories = new Map<
+      string,
+      {
+        categoryId: string;
+        categoryName: string;
+        type: AccountingTxType;
+        amountCents: number;
+      }
+    >();
     const sources = new Map<AccountingSourceType, number>();
 
     for (const row of rows) {
       const bucket = getBucket(row.occurredAt);
-      const period = periods.get(bucket) ?? { income: 0, expense: 0, adjustment: 0 };
-      if (row.type === AccountingTxType.INCOME) period.income += row.amountCents;
-      if (row.type === AccountingTxType.EXPENSE) period.expense += row.amountCents;
-      if (row.type === AccountingTxType.ADJUSTMENT) period.adjustment += row.amountCents;
+      const period = periods.get(bucket) ?? {
+        income: 0,
+        expense: 0,
+        adjustment: 0,
+      };
+      if (row.type === AccountingTxType.INCOME)
+        period.income += row.amountCents;
+      if (row.type === AccountingTxType.EXPENSE)
+        period.expense += row.amountCents;
+      if (row.type === AccountingTxType.ADJUSTMENT)
+        period.adjustment += row.amountCents;
       periods.set(bucket, period);
 
       const categoryKey = row.categoryId;
@@ -339,8 +367,13 @@ export class AccountingService {
           adjustmentCents: val.adjustment,
           netProfitCents: val.income - val.expense + val.adjustment,
         })),
-      byCategory: Array.from(categories.values()).sort((a, b) => b.amountCents - a.amountCents),
-      bySource: Array.from(sources.entries()).map(([source, amountCents]) => ({ source, amountCents })),
+      byCategory: Array.from(categories.values()).sort(
+        (a, b) => b.amountCents - a.amountCents,
+      ),
+      bySource: Array.from(sources.entries()).map(([source, amountCents]) => ({
+        source,
+        amountCents,
+      })),
     };
   }
 
