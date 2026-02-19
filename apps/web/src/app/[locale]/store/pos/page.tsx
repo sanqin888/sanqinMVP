@@ -61,6 +61,71 @@ type StoreStatus = {
   };
 };
 
+
+type PosStatusSocketClient = {
+  on: (event: string, handler: (payload: PosCustomerOrderingStatus) => void) => void;
+  off: (event: string, handler: (payload: PosCustomerOrderingStatus) => void) => void;
+  disconnect: () => void;
+};
+
+type SocketIoBrowserGlobal = {
+  io: (
+    uri: string,
+    options?: {
+      path?: string;
+      withCredentials?: boolean;
+      transports?: Array<"websocket" | "polling">;
+    },
+  ) => PosStatusSocketClient;
+};
+
+const POS_CUSTOMER_ORDERING_STATUS_UPDATED_EVENT =
+  "CUSTOMER_ORDERING_STATUS_UPDATED";
+
+async function loadSocketIoFromCdn(): Promise<SocketIoBrowserGlobal["io"] | null> {
+  if (typeof window === "undefined") return null;
+
+  const existing = (window as typeof window & { io?: SocketIoBrowserGlobal["io"] }).io;
+  if (typeof existing === "function") {
+    return existing;
+  }
+
+  const scriptId = "pos-socket-io-cdn";
+  const existingScript = document.getElementById(scriptId) as HTMLScriptElement | null;
+
+  await new Promise<void>((resolve, reject) => {
+    if (existingScript) {
+      if ((window as typeof window & { io?: SocketIoBrowserGlobal["io"] }).io) {
+        resolve();
+        return;
+      }
+      existingScript.addEventListener("load", () => resolve(), { once: true });
+      existingScript.addEventListener(
+        "error",
+        () => reject(new Error("Failed to load Socket.IO client script")),
+        { once: true },
+      );
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.id = scriptId;
+    script.src = "https://cdn.socket.io/4.8.1/socket.io.min.js";
+    script.async = true;
+    script.crossOrigin = "anonymous";
+    script.addEventListener("load", () => resolve(), { once: true });
+    script.addEventListener(
+      "error",
+      () => reject(new Error("Failed to load Socket.IO client script")),
+      { once: true },
+    );
+    document.head.appendChild(script);
+  });
+
+  const io = (window as typeof window & { io?: SocketIoBrowserGlobal["io"] }).io;
+  return typeof io === "function" ? io : null;
+}
+
 const STRINGS = {
   zh: {
     title: "门店点单 · POS",
@@ -230,17 +295,13 @@ export default function StorePosPage() {
   useEffect(() => {
     let cancelled = false;
 
-    async function loadStatus() {
+    async function loadStoreStatus() {
       try {
         setStoreStatusLoading(true);
-        setCustomerStatusLoading(true);
         setStoreStatusError(null);
         const data = await apiFetch<StoreStatus>("/public/store-status");
         if (cancelled) return;
         setStoreStatus(data);
-        const customerStatus = await fetchPosCustomerOrderingStatus();
-        if (cancelled) return;
-        setCustomerOrderingStatus(customerStatus);
       } catch (error) {
         console.error("Failed to load store status", error);
         if (cancelled) return;
@@ -252,20 +313,68 @@ export default function StorePosPage() {
       } finally {
         if (!cancelled) {
           setStoreStatusLoading(false);
-          setCustomerStatusLoading(false);
         }
       }
     }
 
-    void loadStatus();
+    void loadStoreStatus();
 
-    const intervalId = window.setInterval(loadStatus, 60_000);
+    const intervalId = window.setInterval(loadStoreStatus, 60_000);
 
     return () => {
       cancelled = true;
       window.clearInterval(intervalId);
     };
   }, [isZh]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let socket: PosStatusSocketClient | null = null;
+
+    async function startStatusPush() {
+      try {
+        setCustomerStatusLoading(true);
+        const initialStatus = await fetchPosCustomerOrderingStatus();
+        if (cancelled) return;
+        setCustomerOrderingStatus(initialStatus);
+      } catch (error) {
+        console.error("Failed to load initial customer ordering status", error);
+      } finally {
+        if (!cancelled) {
+          setCustomerStatusLoading(false);
+        }
+      }
+
+      try {
+        const io = await loadSocketIoFromCdn();
+        if (cancelled || !io) return;
+
+        socket = io(`${window.location.origin}/pos`, {
+          path: "/socket.io",
+          withCredentials: true,
+          transports: ["websocket", "polling"],
+        });
+
+        const handleStatusUpdated = (payload: PosCustomerOrderingStatus) => {
+          if (cancelled) return;
+          setCustomerOrderingStatus(payload);
+        };
+
+        socket.on(POS_CUSTOMER_ORDERING_STATUS_UPDATED_EVENT, handleStatusUpdated);
+      } catch (error) {
+        console.error("Failed to subscribe customer ordering status push", error);
+      }
+    }
+
+    void startStatusPush();
+
+    return () => {
+      cancelled = true;
+      if (socket) {
+        socket.disconnect();
+      }
+    };
+  }, []);
 
   const isCustomerPaused = customerOrderingStatus?.isTemporarilyClosed ?? false;
   const isStoreOpenNow = storeStatus?.isOpen ?? false;

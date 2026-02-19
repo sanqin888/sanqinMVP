@@ -241,7 +241,7 @@ export function OrderSummaryClient({ orderStableId, locale }: Props) {
           <div className="text-sm text-slate-500 mb-2">
             {locale === "zh" ? "订单编号" : "Order number"}
           </div>
-          <div className="break-all text-xl font-extrabold leading-tight sm:text-3xl sm:leading-normal sm:tracking-wider">
+          <div className="break-all text-lg font-extrabold leading-tight sm:text-2xl sm:leading-normal sm:tracking-wider">
             {data.orderNumber}
           </div>
           {data.orderNumber.length >= 4 ? (

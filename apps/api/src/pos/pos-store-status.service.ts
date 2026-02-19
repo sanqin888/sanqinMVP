@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import { PrismaService } from '../prisma/prisma.service';
+import { PosGateway } from './pos.gateway';
 
 const AUTO_UNTIL_PREFIX = '__AUTO_UNTIL__:';
 
@@ -32,7 +33,10 @@ function buildAutoPauseReason(
 
 @Injectable()
 export class PosStoreStatusService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly posGateway: PosGateway,
+  ) {}
 
   async getCustomerOrderingStatus() {
     const config = await this.ensureConfig();
@@ -62,10 +66,13 @@ export class PosStoreStatusService {
         },
       });
 
-      return {
+      const status = {
         isTemporarilyClosed: false,
         autoResumeAt: null,
       };
+      this.posGateway.publishCustomerOrderingStatusUpdate(status);
+
+      return status;
     }
 
     return {
@@ -111,10 +118,14 @@ export class PosStoreStatusService {
       },
     });
 
-    return {
+    const status = {
       isTemporarilyClosed: updated.isTemporarilyClosed,
       autoResumeAt: autoResumeAtIso,
     };
+
+    this.posGateway.publishCustomerOrderingStatusUpdate(status);
+
+    return status;
   }
 
   async resumeCustomerOrdering() {
@@ -126,10 +137,14 @@ export class PosStoreStatusService {
       },
     });
 
-    return {
+    const status = {
       isTemporarilyClosed: updated.isTemporarilyClosed,
       autoResumeAt: null,
     };
+
+    this.posGateway.publishCustomerOrderingStatusUpdate(status);
+
+    return status;
   }
 
   private async ensureConfig() {

@@ -17,6 +17,7 @@ export class RequestIdInterceptor implements NestInterceptor {
   private readonly quietPaths = [
     '/api/v1/pos/orders/board',
     '/api/v1/public/store-status',
+    '/api/v1/pos/store-status',
   ];
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
