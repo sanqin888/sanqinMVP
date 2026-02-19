@@ -2,7 +2,7 @@
 'use client';
 
 import { use, useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ApiError, apiFetch } from '@/lib/api/client';
 import { fetchOrderById } from '@/lib/api/pos';
 import { isStableId } from '@shared/menu';
@@ -132,6 +132,8 @@ export default function OrderDetailPage({ params }: PageProps) {
   const locale = (localeRaw ?? 'en') as Locale;
   const isZh = locale === 'zh';
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isPosSource = searchParams.get('source') === 'pos';
   const [order, setOrder] = useState<FullOrder | PublicSummary | null>(null);
   const [isFullDetail, setIsFullDetail] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -152,7 +154,9 @@ export default function OrderDetailPage({ params }: PageProps) {
       }
       try {
         setError(null);
-        const data = await apiFetch<FullOrder>(`/orders/${orderId}`);
+        const data = isPosSource
+          ? await fetchOrderById<FullOrder>(orderId)
+          : await apiFetch<FullOrder>(`/orders/${orderId}`);
         if (!cancelled) {
           setOrder(data);
           setIsFullDetail(true);
@@ -205,7 +209,7 @@ export default function OrderDetailPage({ params }: PageProps) {
     return () => {
       cancelled = true;
     };
-  }, [isZh, orderId]);
+  }, [isPosSource, isZh, orderId]);
 
   useEffect(() => {
     setCanGoBack(window.history.length > 1);

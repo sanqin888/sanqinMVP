@@ -1805,7 +1805,7 @@ const handleSubmit = () => {
                 </div>
                 <div className="flex flex-col items-end gap-2">
                   <Link
-                    href={`/${locale}/order/${selectedOrder.stableId}`}
+                    href={`/${locale}/order/${selectedOrder.stableId}?source=pos`}
                     className="rounded-md border border-slate-500 bg-slate-900/40 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-slate-800/60"
                   >
                     {copy.orderDetailAction}
