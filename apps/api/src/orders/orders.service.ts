@@ -1384,12 +1384,10 @@ export class OrdersService {
       Map<string, OptionChoiceContext>
     >();
 
-    for (const product of dbProducts) {
-      productMap.set(product.id, product);
-      productMap.set(product.stableId, product);
-
-      const optionLookup = new Map<string, OptionChoiceContext>();
-
+    const addProductOptionChoices = (
+      optionLookup: Map<string, OptionChoiceContext>,
+      product: MenuItemWithOptions,
+    ) => {
       for (const link of product.optionGroups ?? []) {
         if (!link.isEnabled || !link.templateGroup) continue;
         const templateGroup = link.templateGroup;
@@ -1414,10 +1412,54 @@ export class OrdersService {
           });
         });
       }
+    };
+
+    for (const product of dbProducts) {
+      productMap.set(product.id, product);
+      productMap.set(product.stableId, product);
+
+      const optionLookup = new Map<string, OptionChoiceContext>();
+      addProductOptionChoices(optionLookup, product);
 
       choiceLookupByProductId.set(product.id, optionLookup);
       choiceLookupByProductId.set(product.stableId, optionLookup);
     }
+
+    const linkedProductByStableId = new Map<
+      string,
+      MenuItemWithOptions | null
+    >();
+    const ensureLinkedProductByStableId = async (
+      stableId: string,
+    ): Promise<MenuItemWithOptions | null> => {
+      if (linkedProductByStableId.has(stableId)) {
+        return linkedProductByStableId.get(stableId) ?? null;
+      }
+
+      const linkedProduct = await this.prisma.menuItem.findFirst({
+        where: {
+          stableId,
+          deletedAt: null,
+        },
+        include: {
+          optionGroups: {
+            where: { isEnabled: true },
+            include: {
+              templateGroup: {
+                include: {
+                  options: {
+                    where: { deletedAt: null },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      linkedProductByStableId.set(stableId, linkedProduct);
+      return linkedProduct;
+    };
 
     const businessConfig = await this.ensureBusinessConfig();
     const now = resolveStoreNow(businessConfig.timezone);
@@ -1473,19 +1515,55 @@ export class OrdersService {
         );
       }
 
-      const optionLookup =
+      const selectedOptionIds = Array.from(
+        new Set(this.collectOptionIds(itemDto.options)),
+      );
+
+      const baseOptionLookup =
         choiceLookupByProductId.get(itemDto.normalizedProductId) ??
         new Map<string, OptionChoiceContext>();
+      const optionLookup = new Map(baseOptionLookup);
+
+      const processedSelectedOptionIds = new Set<string>();
+      const expandedTargetItems = new Set<string>();
+      const pendingSelectedOptionIds = [...selectedOptionIds];
+
+      while (pendingSelectedOptionIds.length > 0) {
+        const optionId = pendingSelectedOptionIds.pop();
+        if (!optionId || processedSelectedOptionIds.has(optionId)) continue;
+        processedSelectedOptionIds.add(optionId);
+
+        const context = optionLookup.get(optionId);
+        if (!context) continue;
+
+        const targetItemStableId = context.choice.targetItemStableId?.trim();
+        if (
+          !targetItemStableId ||
+          expandedTargetItems.has(targetItemStableId)
+        ) {
+          continue;
+        }
+
+        expandedTargetItems.add(targetItemStableId);
+        const linkedProduct =
+          await ensureLinkedProductByStableId(targetItemStableId);
+        if (!linkedProduct) continue;
+
+        addProductOptionChoices(optionLookup, linkedProduct);
+
+        selectedOptionIds.forEach((selectedId) => {
+          if (!processedSelectedOptionIds.has(selectedId)) {
+            pendingSelectedOptionIds.push(selectedId);
+          }
+        });
+      }
+
       const activeSpecial =
         activeSpecialsByItemStableId.get(product.stableId) ?? null;
       const baseUnitPriceCents = activeSpecial
         ? resolveEffectivePriceCents(product.basePriceCents, activeSpecial)
         : product.basePriceCents;
       let optionsUnitPriceCents = 0;
-
-      const selectedOptionIds = Array.from(
-        new Set(this.collectOptionIds(itemDto.options)),
-      );
 
       const optionGroupSnapshots = new Map<
         string,
