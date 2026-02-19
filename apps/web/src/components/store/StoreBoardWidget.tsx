@@ -350,7 +350,9 @@ export function StoreBoardWidget(props: { locale: Locale }) {
 
   const fetchOrdersAndProcess = useCallback(async () => {
     const data = await apiFetch<BoardOrder[]>(query);
-    const visibleOrders = data.filter(shouldShowOnBoard);
+    const visibleOrders = data
+      .filter(shouldShowOnBoard)
+      .sort((a, b) => safeParseCreatedAtMs(a.createdAt) - safeParseCreatedAtMs(b.createdAt));
     setOrders(visibleOrders);
 
     const processedSet = processedSetRef.current;
