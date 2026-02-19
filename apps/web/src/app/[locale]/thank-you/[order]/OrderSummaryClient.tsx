@@ -125,8 +125,8 @@ export function OrderSummaryClient({ orderStableId, locale }: Props) {
 
     return (
       <ul className="mt-1 space-y-0.5 text-[11px] text-slate-500">
-        {options.map((group) => (
-          <li key={group.templateGroupStableId}>
+        {options.map((group, index) => (
+          <li key={`${group.templateGroupStableId}-${index}`}>
             <div className="font-medium text-slate-700">
               {resolveOptionLabel(group.nameZh, group.nameEn)}
             </div>
@@ -300,9 +300,9 @@ export function OrderSummaryClient({ orderStableId, locale }: Props) {
                     <div className="min-w-0">
                       <p className="truncate font-medium text-slate-900">
                         {resolveItemName(item)}
-                      </p>
-                      <p className="mt-0.5 text-[11px] text-slate-500">
-                        × {item.quantity}
+                        <span className="ml-2 text-[11px] text-slate-500">
+                          × {item.quantity}
+                        </span>
                       </p>
                       {renderOptions(item.optionsJson)}
                     </div>

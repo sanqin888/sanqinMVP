@@ -1238,42 +1238,50 @@ export class OrdersService {
     return undefined;
   }
 
-  private collectOptionIds(options?: Record<string, unknown>): string[] {
+  private collectOptionSelectionRefs(
+    options?: Record<string, unknown>,
+  ): Array<{ optionId: string; groupKey?: string; sequence: number }> {
     if (!options || typeof options !== 'object') return [];
 
-    const ids: string[] = [];
-    const pushOptionId = (value: unknown) => {
+    const refs: Array<{
+      optionId: string;
+      groupKey?: string;
+      sequence: number;
+    }> = [];
+    const seen = new Set<string>();
+    let sequence = 0;
+
+    const pushOptionId = (value: unknown, groupKey?: string) => {
+      let optionId: string | null = null;
+
       if (typeof value === 'string') {
-        const trimmed = value.trim();
-        if (trimmed) ids.push(trimmed);
-        return;
+        optionId = value.trim();
+      } else if (value && typeof value === 'object') {
+        const record = value as Record<string, unknown>;
+        const byId = record.id;
+        const byStableId = record.optionStableId;
+        if (typeof byId === 'string' && byId.trim()) {
+          optionId = byId.trim();
+        } else if (typeof byStableId === 'string' && byStableId.trim()) {
+          optionId = byStableId.trim();
+        }
       }
 
-      if (!value || typeof value !== 'object') return;
-      const record = value as Record<string, unknown>;
-
-      const byId = record.id;
-      if (typeof byId === 'string' && byId.trim()) {
-        ids.push(byId.trim());
-        return;
-      }
-
-      const byStableId = record.optionStableId;
-      if (typeof byStableId === 'string' && byStableId.trim()) {
-        ids.push(byStableId.trim());
-      }
+      if (!optionId || seen.has(optionId)) return;
+      seen.add(optionId);
+      refs.push({ optionId, groupKey, sequence: sequence++ });
     };
 
     Object.entries(options).forEach(([groupKey, val]) => {
       if (groupKey === 'notes') return;
       if (Array.isArray(val)) {
-        val.forEach((entry) => pushOptionId(entry));
+        val.forEach((entry) => pushOptionId(entry, groupKey));
         return;
       }
-      pushOptionId(val);
+      pushOptionId(val, groupKey);
     });
 
-    return Array.from(new Set(ids));
+    return refs;
   }
 
   private centsToRedeemMicro(
@@ -1515,8 +1523,12 @@ export class OrdersService {
         );
       }
 
-      const selectedOptionIds = Array.from(
-        new Set(this.collectOptionIds(itemDto.options)),
+      const selectedOptionRefs = this.collectOptionSelectionRefs(
+        itemDto.options,
+      );
+      const selectedOptionIds = selectedOptionRefs.map((it) => it.optionId);
+      const selectedOptionRefMap = new Map(
+        selectedOptionRefs.map((it) => [it.optionId, it]),
       );
 
       const baseOptionLookup =
@@ -1567,7 +1579,7 @@ export class OrdersService {
 
       const optionGroupSnapshots = new Map<
         string,
-        OrderItemOptionGroupSnapshot
+        OrderItemOptionGroupSnapshot & { sequence: number }
       >();
 
       for (const optionId of selectedOptionIds) {
@@ -1580,9 +1592,13 @@ export class OrdersService {
 
         optionsUnitPriceCents += context.choice.priceDeltaCents;
         const templateGroupStableId = context.group.stableId;
+        const selectedRef = selectedOptionRefMap.get(optionId);
+        const snapshotKey = selectedRef?.groupKey
+          ? `${templateGroupStableId}::${selectedRef.groupKey}`
+          : templateGroupStableId;
 
         const groupSnapshot =
-          optionGroupSnapshots.get(templateGroupStableId) ??
+          optionGroupSnapshots.get(snapshotKey) ??
           ({
             templateGroupStableId,
             nameEn: context.group.nameEn,
@@ -1597,8 +1613,12 @@ export class OrdersService {
               typeof context.link?.sortOrder === 'number'
                 ? context.link.sortOrder
                 : (context.group.sortOrder ?? 0),
+            sequence:
+              typeof selectedRef?.sequence === 'number'
+                ? selectedRef.sequence
+                : Number.MAX_SAFE_INTEGER,
             choices: [] as OrderItemOptionChoiceSnapshot[],
-          } satisfies OrderItemOptionGroupSnapshot);
+          } satisfies OrderItemOptionGroupSnapshot & { sequence: number });
 
         groupSnapshot.choices.push({
           stableId: context.choice.stableId,
@@ -1606,10 +1626,13 @@ export class OrdersService {
           nameEn: context.choice.nameEn,
           nameZh: context.choice.nameZh ?? null,
           priceDeltaCents: context.choice.priceDeltaCents,
-          sortOrder: context.choice.sortOrder ?? 0,
+          sortOrder:
+            typeof selectedRef?.sequence === 'number'
+              ? selectedRef.sequence
+              : (context.choice.sortOrder ?? 0),
         });
 
-        optionGroupSnapshots.set(templateGroupStableId, groupSnapshot);
+        optionGroupSnapshots.set(snapshotKey, groupSnapshot);
       }
 
       const optionsSnapshot: OrderItemOptionsSnapshot = Array.from(
@@ -1619,7 +1642,15 @@ export class OrdersService {
           ...group,
           choices: [...group.choices].sort((a, b) => a.sortOrder - b.sortOrder),
         }))
-        .sort((a, b) => a.sortOrder - b.sortOrder);
+        .sort((a, b) => {
+          if (a.sequence !== b.sequence) return a.sequence - b.sequence;
+          return a.sortOrder - b.sortOrder;
+        })
+        .map((group) => {
+          const { sequence, ...rest } = group;
+          void sequence;
+          return rest;
+        });
 
       const submittedCustomUnitPriceCents =
         allowCustomUnitPrice &&
