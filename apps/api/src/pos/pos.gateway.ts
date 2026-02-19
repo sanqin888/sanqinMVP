@@ -8,6 +8,9 @@ import {
 import { Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 
+export const POS_CUSTOMER_ORDERING_STATUS_UPDATED_EVENT =
+  'CUSTOMER_ORDERING_STATUS_UPDATED';
+
 @WebSocketGateway({ namespace: 'pos', cors: { origin: '*' } })
 export class PosGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
@@ -45,5 +48,13 @@ export class PosGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const roomName = `store:${storeId}`;
     this.logger.log(`🚀 Sending PRINT_SUMMARY to ${roomName}`);
     this.server.to(roomName).emit('PRINT_SUMMARY', data);
+  }
+
+  publishCustomerOrderingStatusUpdate(data: {
+    isTemporarilyClosed: boolean;
+    autoResumeAt: string | null;
+  }) {
+    this.logger.log('📣 Broadcasting CUSTOMER_ORDERING_STATUS_UPDATED');
+    this.server.emit(POS_CUSTOMER_ORDERING_STATUS_UPDATED_EVENT, data);
   }
 }
