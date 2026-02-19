@@ -27,6 +27,7 @@ import { EmailModule } from './email/email.module';
 import { SmsModule } from './sms/sms.module';
 import { NotificationModule } from './notifications/notification.module';
 import { DataRetentionModule } from './data-retention/data-retention.module';
+import { AccountingModule } from './accounting/accounting.module';
 
 const configModuleFactory: {
   forRoot(options: ConfigModuleOptions): DynamicModule;
@@ -49,6 +50,7 @@ const envConfigModule = configModuleFactory.forRoot({
     SmsModule,
     NotificationModule,
     DataRetentionModule,
+    AccountingModule,
     EventEmitterModule.forRoot(),
     AuthModule,
     OrdersModule,
