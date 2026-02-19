@@ -176,6 +176,7 @@ export default function LocalOrderPage() {
     setInstallPromptEvent(null);
   }, [installPromptEvent, locale, strings.installAppAdded, strings.installAppUnavailable]);
 
+
   const shouldShowInstallButton = !isStandalone && (Boolean(installPromptEvent) || isIosDevice());
 
   useEffect(() => {
@@ -1188,6 +1189,7 @@ export default function LocalOrderPage() {
         <span>{strings.floatingCartLabel}</span>
         <span className="grid h-8 w-8 place-items-center rounded-full bg-white text-sm font-semibold text-slate-900">{totalQuantity}</span>
       </Link>
+
     </div>
   );
 }
