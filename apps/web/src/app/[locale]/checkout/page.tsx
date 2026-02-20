@@ -204,6 +204,27 @@ function isIosStandaloneWebApp(): boolean {
   return isiOS && isStandalone;
 }
 
+function shouldShowCheckoutFloatingActions(): boolean {
+  if (typeof window === "undefined") return false;
+
+  const nav = window.navigator as Navigator & { standalone?: boolean };
+  const userAgent = nav.userAgent.toLowerCase();
+  const isMobileDevice =
+    /iphone|ipad|ipod|android/.test(userAgent) || nav.maxTouchPoints > 1;
+
+  if (!isMobileDevice) return false;
+
+  // iOS 主屏图标启动场景
+  if (nav.standalone === true) return true;
+
+  // Android 主屏图标启动常见场景：standalone + android-app:// referrer
+  const isStandaloneDisplayMode =
+    window.matchMedia?.("(display-mode: standalone)").matches === true;
+  const isAndroidIconReferrer = document.referrer.startsWith("android-app://");
+
+  return isStandaloneDisplayMode && isAndroidIconReferrer;
+}
+
 declare global {
   interface Window {
     Clover?: new (
@@ -883,6 +904,7 @@ export default function CheckoutPage() {
   const [isIosStandalone, setIsIosStandalone] = useState(false);
   const [showIosStandaloneCloverHint, setShowIosStandaloneCloverHint] =
     useState(false);
+  const [showFloatingActions, setShowFloatingActions] = useState(false);
   const [applePayMounted, setApplePayMounted] = useState(false);
   const [googlePayMounted, setGooglePayMounted] = useState(false);
   const [cardNameComplete, setCardNameComplete] = useState(false);
@@ -893,6 +915,32 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     setIsIosStandalone(isIosStandaloneWebApp());
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const updateFloatingActionsVisibility = () => {
+      setShowFloatingActions(shouldShowCheckoutFloatingActions());
+    };
+
+    updateFloatingActionsVisibility();
+
+    const displayModeMediaQuery = window.matchMedia?.(
+      "(display-mode: standalone)",
+    );
+
+    displayModeMediaQuery?.addEventListener(
+      "change",
+      updateFloatingActionsVisibility,
+    );
+
+    return () => {
+      displayModeMediaQuery?.removeEventListener(
+        "change",
+        updateFloatingActionsVisibility,
+      );
+    };
   }, []);
   const [challengeUrl, setChallengeUrl] = useState<string | null>(null);
   const [challengeIntentId, setChallengeIntentId] = useState<string | null>(
@@ -4707,24 +4755,26 @@ export default function CheckoutPage() {
           </div>
         )}
       </section>
-      <div className="fixed bottom-6 left-6 z-50 flex items-center gap-3">
-        <button
-          type="button"
-          onClick={handleFloatingBack}
-          className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-xl ring-1 ring-slate-200 transition hover:bg-slate-100"
-        >
-          <span aria-hidden="true">←</span>
-          <span>{locale === "zh" ? "返回" : "Back"}</span>
-        </button>
-        <button
-          type="button"
-          onClick={handleFloatingRefresh}
-          className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-xl ring-1 ring-slate-200 transition hover:bg-slate-100"
-        >
-          <span aria-hidden="true">↻</span>
-          <span>{locale === "zh" ? "刷新" : "Refresh"}</span>
-        </button>
-      </div>
+      {showFloatingActions ? (
+        <div className="fixed bottom-6 left-6 z-50 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleFloatingBack}
+            className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-xl ring-1 ring-slate-200 transition hover:bg-slate-100"
+          >
+            <span aria-hidden="true">←</span>
+            <span>{locale === "zh" ? "返回" : "Back"}</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleFloatingRefresh}
+            className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-xl ring-1 ring-slate-200 transition hover:bg-slate-100"
+          >
+            <span aria-hidden="true">↻</span>
+            <span>{locale === "zh" ? "刷新" : "Refresh"}</span>
+          </button>
+        </div>
+      ) : null}
 
       {challengeUrl ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
