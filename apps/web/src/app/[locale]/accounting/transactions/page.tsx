@@ -19,6 +19,7 @@ type Tx = {
   orderId?: string | null;
   memo?: string | null;
   attachmentUrls?: string[];
+  updatedAt: string;
 };
 
 type PeriodClose = {
@@ -43,6 +44,7 @@ export default function TransactionsPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingUpdatedAt, setEditingUpdatedAt] = useState<string | null>(null);
   const [closedMonths, setClosedMonths] = useState<Set<string>>(new Set());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -105,10 +107,16 @@ export default function TransactionsPage() {
     setIsSubmitting(true);
     try {
       if (editingId) {
+        if (!editingUpdatedAt) {
+          throw new Error('缺少并发版本，请刷新后重试');
+        }
         await apiFetch(`/accounting/tx/${editingId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
+          body: JSON.stringify({
+            ...payload,
+            lastKnownUpdatedAt: editingUpdatedAt,
+          }),
         });
       } else {
         await apiFetch('/accounting/tx', {
@@ -120,6 +128,7 @@ export default function TransactionsPage() {
 
       setForm(initialForm);
       setEditingId(null);
+      setEditingUpdatedAt(null);
       await load();
     } finally {
       setIsSubmitting(false);
@@ -267,6 +276,7 @@ export default function TransactionsPage() {
             const last = rows[0];
             if (!last) return;
             setEditingId(null);
+            setEditingUpdatedAt(null);
             setForm({
               type: last.type,
               source: last.source,
@@ -281,6 +291,7 @@ export default function TransactionsPage() {
           {editingId ? (
             <button type="button" className="rounded border border-slate-300 px-4 py-2" onClick={() => {
               setEditingId(null);
+              setEditingUpdatedAt(null);
               setForm(initialForm);
             }}>取消编辑</button>
           ) : null}
@@ -335,6 +346,7 @@ export default function TransactionsPage() {
                       <div className="flex gap-2">
                         <button disabled={!editable} className="text-blue-600 hover:underline disabled:text-slate-300" onClick={() => {
                           setEditingId(row.txStableId);
+                          setEditingUpdatedAt(row.updatedAt);
                           setForm({
                             type: row.type,
                             source: row.source,

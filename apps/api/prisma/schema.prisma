@@ -575,6 +575,7 @@ model LoyaltyAccount {
   balanceMicro       BigInt          @default(0) // 余额池 (充值本金)
   tier               LoyaltyTier     @default(BRONZE)
   createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
   id                 String          @id @default(uuid()) @db.Uuid
   lifetimeSpendCents Int             @default(0)
   ledger             LoyaltyLedger[]
@@ -981,6 +982,7 @@ model AccountingTransaction {
   updatedByUserId String
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
+  version         Int                  @default(1)
   deletedAt       DateTime?
   category        AccountingCategory   @relation(fields: [categoryId], references: [id])
   account         AccountingAccount?   @relation("AccountingTxAccount", fields: [accountId], references: [id])
