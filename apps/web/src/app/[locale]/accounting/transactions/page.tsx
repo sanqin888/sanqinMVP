@@ -44,6 +44,9 @@ export default function TransactionsPage() {
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [closedMonths, setClosedMonths] = useState<Set<string>>(new Set());
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [tx, cats] = await Promise.all([
@@ -85,6 +88,8 @@ export default function TransactionsPage() {
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isSubmitting) return;
+
     const payload = {
       ...form,
       amountCents: Number(form.amountCents),
@@ -92,28 +97,61 @@ export default function TransactionsPage() {
       memo: form.memo || null,
       occurredAt: form.occurredAt,
       attachmentUrls: form.attachmentUrlsText
-        .split(/\n|,/) 
+        .split(/\n|,/)
         .map((item) => item.trim())
         .filter(Boolean),
     };
 
-    if (editingId) {
-      await apiFetch(`/accounting/tx/${editingId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-    } else {
-      await apiFetch('/accounting/tx', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-    }
+    setIsSubmitting(true);
+    try {
+      if (editingId) {
+        await apiFetch(`/accounting/tx/${editingId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        await apiFetch('/accounting/tx', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      }
 
-    setForm(initialForm);
-    setEditingId(null);
-    await load();
+      setForm(initialForm);
+      setEditingId(null);
+      await load();
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function uploadAttachment(file: File) {
+    setUploadError(null);
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await apiFetch<{ url: string }>('/admin/upload/image', {
+        method: 'POST',
+        body: formData,
+      });
+
+      setForm((prev) => {
+        const urls = prev.attachmentUrlsText
+          .split(/\n|,/)
+          .map((item) => item.trim())
+          .filter(Boolean);
+        return {
+          ...prev,
+          attachmentUrlsText: [...urls, res.url].join('\n'),
+        };
+      });
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsUploading(false);
+    }
   }
 
   async function onDelete(txStableId: string) {
@@ -157,11 +195,73 @@ export default function TransactionsPage() {
         <input className="rounded border px-3 py-2" type="date" value={form.occurredAt} onChange={(e) => setForm((s) => ({ ...s, occurredAt: e.target.value }))} />
         <input className="rounded border px-3 py-2" placeholder="orderStableId (source=ORDER 必填)" value={form.orderId} onChange={(e) => setForm((s) => ({ ...s, orderId: e.target.value }))} />
         <input className="rounded border px-3 py-2 md:col-span-2" placeholder="备注" value={form.memo} onChange={(e) => setForm((s) => ({ ...s, memo: e.target.value }))} />
-        <textarea className="rounded border px-3 py-2 md:col-span-2" rows={2} placeholder="附件 URL（逗号或换行分隔）" value={form.attachmentUrlsText} onChange={(e) => setForm((s) => ({ ...s, attachmentUrlsText: e.target.value }))} />
+        <div className="md:col-span-2 space-y-2 rounded border border-dashed border-slate-300 bg-slate-50 p-3">
+          <p className="text-sm text-slate-600">上传凭证附件（支持拖拽或点击上传）</p>
+          <label className="inline-flex cursor-pointer items-center rounded border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-100">
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              disabled={isUploading || isSubmitting}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                void uploadAttachment(file);
+                e.currentTarget.value = '';
+              }}
+            />
+            {isUploading ? '上传中…' : '选择图片'}
+          </label>
+          <div
+            className="rounded border border-slate-200 bg-white p-3 text-sm text-slate-500"
+            onDragOver={(e) => {
+              e.preventDefault();
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (isUploading || isSubmitting) return;
+              const file = e.dataTransfer.files?.[0];
+              if (!file) return;
+              void uploadAttachment(file);
+            }}
+          >
+            将图片拖拽到此区域以上传
+          </div>
+          {uploadError ? <p className="text-sm text-red-600">上传失败：{uploadError}</p> : null}
+          {form.attachmentUrlsText ? (
+            <div className="space-y-1 rounded border border-slate-200 bg-white p-3">
+              {form.attachmentUrlsText
+                .split(/\n|,/)
+                .map((item) => item.trim())
+                .filter(Boolean)
+                .map((url) => (
+                  <div key={url} className="flex items-center justify-between gap-2 text-sm">
+                    <a className="truncate text-blue-600 hover:underline" href={url} target="_blank" rel="noreferrer">{url}</a>
+                    <button
+                      type="button"
+                      className="text-red-600 hover:underline"
+                      onClick={() => {
+                        setForm((prev) => ({
+                          ...prev,
+                          attachmentUrlsText: prev.attachmentUrlsText
+                            .split(/\n|,/)
+                            .map((item) => item.trim())
+                            .filter((item) => item && item !== url)
+                            .join('\n'),
+                        }));
+                      }}
+                    >
+                      移除
+                    </button>
+                  </div>
+                ))}
+            </div>
+          ) : null}
+        </div>
 
         <div className="md:col-span-2 flex flex-wrap gap-2">
-          <button className="rounded bg-slate-900 px-4 py-2 text-white" type="submit">
-            {editingId ? '更新流水' : '新增流水'}
+          <button className="rounded bg-slate-900 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-60" type="submit" disabled={isSubmitting || isUploading}>
+            {isSubmitting ? '提交中…' : editingId ? '更新流水' : '新增流水'}
           </button>
           <button type="button" className="rounded border border-slate-300 px-4 py-2" onClick={() => {
             const last = rows[0];
