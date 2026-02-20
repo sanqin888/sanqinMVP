@@ -9,6 +9,7 @@ import {
   Query,
   Req,
   Res,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -45,12 +46,23 @@ type TxBody = {
 export class AccountingController {
   constructor(private readonly accountingService: AccountingService) {}
 
+  private requireOperatorUserId(req: Request & { user?: { id?: string } }) {
+    const operatorUserId = req.user?.id?.trim();
+    if (!operatorUserId) {
+      throw new UnauthorizedException('operator user id is required');
+    }
+    return operatorUserId;
+  }
+
   @Post('tx')
   async createTx(
     @Body() body: TxBody,
     @Req() req: Request & { user?: { id?: string } },
   ) {
-    return this.accountingService.createTx(body, req.user?.id ?? 'unknown');
+    return this.accountingService.createTx(
+      body,
+      this.requireOperatorUserId(req),
+    );
   }
 
   @Get('tx')
@@ -79,7 +91,7 @@ export class AccountingController {
     return this.accountingService.updateTx(
       txStableId,
       body,
-      req.user?.id ?? 'unknown',
+      this.requireOperatorUserId(req),
     );
   }
 
@@ -90,7 +102,7 @@ export class AccountingController {
   ) {
     return this.accountingService.deleteTx(
       txStableId,
-      req.user?.id ?? 'unknown',
+      this.requireOperatorUserId(req),
     );
   }
 
@@ -101,7 +113,7 @@ export class AccountingController {
   ) {
     return this.accountingService.closeMonth(
       periodKey,
-      req.user?.id ?? 'unknown',
+      this.requireOperatorUserId(req),
     );
   }
 
@@ -136,7 +148,7 @@ export class AccountingController {
   ) {
     return this.accountingService.autoAccrueOrderRevenue(
       body,
-      req.user?.id ?? 'unknown',
+      this.requireOperatorUserId(req),
     );
   }
 
@@ -232,7 +244,7 @@ export class AccountingController {
   ) {
     const csv = await this.accountingService.exportTxCsv(
       { from, to, categoryId, source, keyword },
-      req.user?.id ?? 'unknown',
+      this.requireOperatorUserId(req),
     );
 
     const ts = new Date().toISOString().slice(0, 10);
@@ -256,7 +268,7 @@ export class AccountingController {
     const csv = await this.accountingService.exportPnlTemplate(
       template,
       { from, to, groupBy },
-      req.user?.id ?? 'unknown',
+      this.requireOperatorUserId(req),
     );
 
     const ts = new Date().toISOString().slice(0, 10);
@@ -280,7 +292,7 @@ export class AccountingController {
     const pdfBuffer = await this.accountingService.exportPnlPdf(
       template,
       { from, to, groupBy },
-      req.user?.id ?? 'unknown',
+      this.requireOperatorUserId(req),
     );
 
     const ts = new Date().toISOString().slice(0, 10);

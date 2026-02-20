@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { DateTime } from 'luxon';
 import {
   AccountingSourceType,
   AccountingTxType,
@@ -57,7 +58,19 @@ type AutoAccrualDto = {
 
 @Injectable()
 export class AccountingService {
+  private static readonly DEFAULT_BUSINESS_TIMEZONE = 'America/Toronto';
+
   constructor(private readonly prisma: PrismaService) {}
+
+  private async getBusinessTimezone(): Promise<string> {
+    const config = await this.prisma.businessConfig.findUnique({
+      where: { id: 1 },
+      select: { timezone: true },
+    });
+    return (
+      config?.timezone?.trim() || AccountingService.DEFAULT_BUSINESS_TIMEZONE
+    );
+  }
 
   private parseDate(
     raw: string | undefined,
@@ -78,21 +91,36 @@ export class AccountingService {
     return date;
   }
 
-  private toPeriodKey(date: Date): string {
-    const year = date.getUTCFullYear();
-    const month = `${date.getUTCMonth() + 1}`.padStart(2, '0');
+  private toPeriodKey(date: Date, timezone: string): string {
+    const zoned = DateTime.fromJSDate(date, { zone: timezone });
+    if (!zoned.isValid) {
+      throw new BadRequestException(
+        `Invalid occurredAt for timezone ${timezone}`,
+      );
+    }
+    const year = zoned.year;
+    const month = `${zoned.month}`.padStart(2, '0');
     return `${year}-${month}`;
   }
 
-  private monthBounds(periodKey: string) {
+  private monthBounds(periodKey: string, timezone: string) {
     const parsed = /^(\d{4})-(\d{2})$/.exec(periodKey);
     if (!parsed) {
       throw new BadRequestException('periodKey must use YYYY-MM format');
     }
     const year = Number(parsed[1]);
-    const month = Number(parsed[2]) - 1;
-    const startAt = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
-    const endAt = new Date(Date.UTC(year, month + 1, 0, 23, 59, 59, 999));
+    const month = Number(parsed[2]);
+    const start = DateTime.fromObject(
+      { year, month, day: 1, hour: 0, minute: 0, second: 0, millisecond: 0 },
+      { zone: timezone },
+    );
+    if (!start.isValid) {
+      throw new BadRequestException(`Invalid periodKey: ${periodKey}`);
+    }
+
+    const end = start.endOf('month');
+    const startAt = start.toUTC().toJSDate();
+    const endAt = end.toUTC().toJSDate();
     return { startAt, endAt };
   }
 
@@ -100,7 +128,8 @@ export class AccountingService {
     occurredAt: Date,
     type: AccountingTxType,
   ) {
-    const periodKey = this.toPeriodKey(occurredAt);
+    const timezone = await this.getBusinessTimezone();
+    const periodKey = this.toPeriodKey(occurredAt, timezone);
     const closed = await this.prisma.accountingPeriodClose.findUnique({
       where: {
         periodType_periodKey: {
@@ -178,6 +207,11 @@ export class AccountingService {
   private async validatePayload(payload: UpsertTxDto) {
     if (!Number.isInteger(payload.amountCents)) {
       throw new BadRequestException('amountCents must be an integer');
+    }
+    if (payload.amountCents < 0) {
+      throw new BadRequestException(
+        'amountCents must be greater than or equal to 0',
+      );
     }
 
     const occurredAt = this.parseDate(payload.occurredAt);
@@ -438,7 +472,8 @@ export class AccountingService {
   }
 
   async closeMonth(periodKey: string, operatorUserId: string) {
-    const { startAt, endAt } = this.monthBounds(periodKey);
+    const timezone = await this.getBusinessTimezone();
+    const { startAt, endAt } = this.monthBounds(periodKey, timezone);
 
     const close = await this.prisma.accountingPeriodClose.upsert({
       where: {
@@ -490,6 +525,7 @@ export class AccountingService {
     groupBy?: 'month' | 'quarter' | 'year';
   }) {
     const groupBy = query.groupBy ?? 'month';
+    const timezone = await this.getBusinessTimezone();
     const rows = await this.prisma.accountingTransaction.findMany({
       where: this.buildWhere({ from: query.from, to: query.to }),
       select: {
@@ -512,8 +548,14 @@ export class AccountingService {
     });
 
     const getBucket = (date: Date) => {
-      const year = date.getUTCFullYear();
-      const month = date.getUTCMonth() + 1;
+      const zoned = DateTime.fromJSDate(date, { zone: timezone });
+      if (!zoned.isValid) {
+        throw new BadRequestException(
+          `Invalid occurredAt for timezone ${timezone}`,
+        );
+      }
+      const year = zoned.year;
+      const month = zoned.month;
       if (groupBy === 'year') return `${year}`;
       if (groupBy === 'quarter')
         return `${year}-Q${Math.floor((month - 1) / 3) + 1}`;
@@ -566,7 +608,7 @@ export class AccountingService {
 
       sources.set(row.source, (sources.get(row.source) ?? 0) + row.amountCents);
 
-      const monthKey = this.toPeriodKey(row.occurredAt);
+      const monthKey = this.toPeriodKey(row.occurredAt, timezone);
       const monthNet =
         row.type === AccountingTxType.INCOME
           ? row.amountCents
@@ -612,24 +654,17 @@ export class AccountingService {
     }
 
     const now = new Date();
-    const currentMonth = this.toPeriodKey(now);
-    const lastMonthDate = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1),
-    );
-    const lastMonth = this.toPeriodKey(lastMonthDate);
-    const currentQuarterStart = new Date(
-      Date.UTC(now.getUTCFullYear(), Math.floor(now.getUTCMonth() / 3) * 3, 1),
-    );
+    const nowInTimezone = DateTime.fromJSDate(now, { zone: timezone });
+    if (!nowInTimezone.isValid) {
+      throw new BadRequestException(`Invalid now for timezone ${timezone}`);
+    }
+    const currentMonth = this.toPeriodKey(now, timezone);
+    const lastMonth = `${nowInTimezone
+      .minus({ months: 1 })
+      .toFormat('yyyy-MM')}`;
+    const currentQuarterStart = nowInTimezone.startOf('quarter');
     const quarterMonths = [0, 1, 2].map((offset) =>
-      this.toPeriodKey(
-        new Date(
-          Date.UTC(
-            currentQuarterStart.getUTCFullYear(),
-            currentQuarterStart.getUTCMonth() + offset,
-            1,
-          ),
-        ),
-      ),
+      currentQuarterStart.plus({ months: offset }).toFormat('yyyy-MM'),
     );
 
     const periodRows = Array.from(periods.entries())
