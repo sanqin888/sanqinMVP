@@ -4,7 +4,15 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { AccountingSourceType, AccountingTxType, Prisma } from '@prisma/client';
+import {
+  AccountingSourceType,
+  AccountingTxType,
+  Prisma,
+  SettlementPlatform,
+  OrderStatus,
+  Channel,
+  PaymentMethod,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 type TxFilters = {
@@ -30,10 +38,21 @@ type UpsertTxDto = {
   currency?: string;
   occurredAt: string;
   categoryId: string;
+  accountId?: string | null;
+  toAccountId?: string | null;
   orderId?: string | null;
+  idempotencyKey?: string | null;
+  externalRef?: string | null;
   counterparty?: string | null;
   memo?: string | null;
   attachmentUrls?: string[];
+};
+
+type AutoAccrualDto = {
+  date: string;
+  categoryId: string;
+  accountId?: string;
+  mode?: 'DAILY' | 'PER_ORDER';
 };
 
 @Injectable()
@@ -174,8 +193,34 @@ export class AccountingService {
       throw new BadRequestException('categoryId is invalid');
     }
 
-    if (payload.type !== category.type) {
+    if (payload.type !== AccountingTxType.TRANSFER && payload.type !== category.type) {
       throw new BadRequestException('type must match category type');
+    }
+
+    const accountId = payload.accountId?.trim() || null;
+    const toAccountId = payload.toAccountId?.trim() || null;
+    const [fromAccount, targetAccount] = await Promise.all([
+      accountId
+        ? this.prisma.accountingAccount.findUnique({ where: { id: accountId }, select: { id: true, currency: true, isActive: true } })
+        : Promise.resolve(null),
+      toAccountId
+        ? this.prisma.accountingAccount.findUnique({ where: { id: toAccountId }, select: { id: true, currency: true, isActive: true } })
+        : Promise.resolve(null),
+    ]);
+
+    if (accountId && (!fromAccount || !fromAccount.isActive)) {
+      throw new BadRequestException('accountId is invalid');
+    }
+    if (toAccountId && (!targetAccount || !targetAccount.isActive)) {
+      throw new BadRequestException('toAccountId is invalid');
+    }
+
+    if (payload.type === AccountingTxType.TRANSFER) {
+      if (!accountId || !toAccountId || accountId === toAccountId) {
+        throw new BadRequestException('TRANSFER requires different accountId and toAccountId');
+      }
+    } else if (toAccountId) {
+      throw new BadRequestException('toAccountId is only allowed for TRANSFER');
     }
 
     const normalizedOrderId = payload.orderId?.trim() || null;
@@ -192,10 +237,15 @@ export class AccountingService {
       }
     }
 
+    const currency = payload.currency?.trim().toUpperCase() || fromAccount?.currency || targetAccount?.currency || 'CAD';
     return {
       occurredAt,
       orderId: normalizedOrderId,
-      currency: payload.currency?.trim().toUpperCase() || 'CAD',
+      accountId,
+      toAccountId,
+      currency,
+      idempotencyKey: payload.idempotencyKey?.trim() || null,
+      externalRef: payload.externalRef?.trim() || null,
     };
   }
 
@@ -225,6 +275,18 @@ export class AccountingService {
     const normalized = await this.validatePayload(payload);
     await this.assertEditableForPeriod(normalized.occurredAt, payload.type);
 
+    if (normalized.idempotencyKey) {
+      const existing = await this.prisma.accountingTransaction.findUnique({
+        where: { idempotencyKey: normalized.idempotencyKey },
+        include: {
+          category: { select: { id: true, name: true, type: true } },
+        },
+      });
+      if (existing) {
+        return existing;
+      }
+    }
+
     const created = await this.prisma.accountingTransaction.create({
       data: {
         type: payload.type,
@@ -233,7 +295,11 @@ export class AccountingService {
         currency: normalized.currency,
         occurredAt: normalized.occurredAt,
         categoryId: payload.categoryId,
+        accountId: normalized.accountId,
+        toAccountId: normalized.toAccountId,
         orderId: normalized.orderId,
+        idempotencyKey: normalized.idempotencyKey,
+        externalRef: normalized.externalRef,
         counterparty: payload.counterparty?.trim() || null,
         memo: payload.memo?.trim() || null,
         attachmentUrls: payload.attachmentUrls ?? [],
@@ -242,6 +308,8 @@ export class AccountingService {
       },
       include: {
         category: { select: { id: true, name: true, type: true } },
+        account: { select: { id: true, name: true, type: true } },
+        toAccount: { select: { id: true, name: true, type: true } },
       },
     });
 
@@ -263,6 +331,8 @@ export class AccountingService {
         category: {
           select: { id: true, name: true, type: true, parentId: true },
         },
+        account: { select: { id: true, name: true, type: true } },
+        toAccount: { select: { id: true, name: true, type: true } },
       },
       orderBy: [{ occurredAt: 'desc' }, { createdAt: 'desc' }],
     });
@@ -293,7 +363,11 @@ export class AccountingService {
         currency: normalized.currency,
         occurredAt: normalized.occurredAt,
         categoryId: payload.categoryId,
+        accountId: normalized.accountId,
+        toAccountId: normalized.toAccountId,
         orderId: normalized.orderId,
+        idempotencyKey: normalized.idempotencyKey,
+        externalRef: normalized.externalRef,
         counterparty: payload.counterparty?.trim() || null,
         memo: payload.memo?.trim() || null,
         attachmentUrls: payload.attachmentUrls ?? [],
@@ -301,6 +375,8 @@ export class AccountingService {
       },
       include: {
         category: { select: { id: true, name: true, type: true } },
+        account: { select: { id: true, name: true, type: true } },
+        toAccount: { select: { id: true, name: true, type: true } },
       },
     });
 
@@ -431,7 +507,7 @@ export class AccountingService {
 
     const periods = new Map<
       string,
-      { income: number; expense: number; adjustment: number }
+      { income: number; expense: number; adjustment: number; transfer: number }
     >();
     const categories = new Map<
       string,
@@ -451,6 +527,7 @@ export class AccountingService {
         income: 0,
         expense: 0,
         adjustment: 0,
+        transfer: 0,
       };
       if (row.type === AccountingTxType.INCOME)
         period.income += row.amountCents;
@@ -458,6 +535,8 @@ export class AccountingService {
         period.expense += row.amountCents;
       if (row.type === AccountingTxType.ADJUSTMENT)
         period.adjustment += row.amountCents;
+      if (row.type === AccountingTxType.TRANSFER)
+        period.transfer += row.amountCents;
       periods.set(bucket, period);
 
       const categoryKey = row.categoryId;
@@ -478,7 +557,9 @@ export class AccountingService {
           ? row.amountCents
           : row.type === AccountingTxType.EXPENSE
             ? -row.amountCents
-            : row.amountCents;
+            : row.type === AccountingTxType.ADJUSTMENT
+              ? row.amountCents
+              : 0;
       monthNetMap.set(monthKey, (monthNetMap.get(monthKey) ?? 0) + monthNet);
     }
 
@@ -487,9 +568,10 @@ export class AccountingService {
         acc.income += item.income;
         acc.expense += item.expense;
         acc.adjustment += item.adjustment;
+        acc.transfer += item.transfer;
         return acc;
       },
-      { income: 0, expense: 0, adjustment: 0 },
+      { income: 0, expense: 0, adjustment: 0, transfer: 0 },
     );
 
     const categoryNodeMap = new Map(
@@ -542,6 +624,7 @@ export class AccountingService {
         incomeCents: val.income,
         expenseCents: val.expense,
         adjustmentCents: val.adjustment,
+        transferCents: val.transfer,
         netProfitCents: val.income - val.expense + val.adjustment,
         isClosed: false,
       }));
@@ -569,6 +652,7 @@ export class AccountingService {
         incomeCents: totals.income,
         expenseCents: totals.expense,
         adjustmentCents: totals.adjustment,
+        transferCents: totals.transfer,
         netProfitCents: totals.income - totals.expense + totals.adjustment,
       },
       periods: markedPeriods,
@@ -608,6 +692,8 @@ export class AccountingService {
       where: this.buildWhere(filters),
       include: {
         category: { select: { name: true } },
+        account: { select: { name: true } },
+        toAccount: { select: { name: true } },
       },
       orderBy: [{ occurredAt: 'desc' }, { createdAt: 'desc' }],
     });
@@ -640,6 +726,8 @@ export class AccountingService {
       'currency',
       'occurredAt',
       'category',
+      'account',
+      'toAccount',
       'orderId',
       'counterparty',
       'memo',
@@ -656,6 +744,8 @@ export class AccountingService {
         row.currency,
         row.occurredAt.toISOString(),
         row.category?.name ?? '',
+        row.account?.name ?? '',
+        row.toAccount?.name ?? '',
         row.orderId,
         row.counterparty,
         row.memo,
@@ -855,6 +945,352 @@ export class AccountingService {
     });
 
     return Buffer.from(pdf, 'utf8');
+  }
+
+  async autoAccrueOrderRevenue(payload: AutoAccrualDto, operatorUserId: string) {
+    const runDate = this.parseDate(payload.date);
+    if (!runDate) throw new BadRequestException('date is required');
+    const startAt = new Date(runDate);
+    startAt.setHours(0, 0, 0, 0);
+    const endAt = new Date(runDate);
+    endAt.setHours(23, 59, 59, 999);
+
+    const category = await this.prisma.accountingCategory.findUnique({
+      where: { id: payload.categoryId },
+      select: { id: true, type: true, isActive: true },
+    });
+    if (!category || !category.isActive || category.type !== AccountingTxType.INCOME) {
+      throw new BadRequestException('categoryId must be an active INCOME category');
+    }
+
+    const mode = payload.mode ?? 'DAILY';
+    const orders = await this.prisma.order.findMany({
+      where: {
+        paidAt: { gte: startAt, lte: endAt },
+        status: { in: [OrderStatus.paid, OrderStatus.making, OrderStatus.ready, OrderStatus.completed] },
+      },
+      select: {
+        orderStableId: true,
+        totalCents: true,
+        paidAt: true,
+        channel: true,
+        paymentMethod: true,
+      },
+      orderBy: { paidAt: 'asc' },
+    });
+
+    if (!orders.length) {
+      return { mode, date: payload.date, created: 0, skipped: 0, amountCents: 0 };
+    }
+
+    if (mode === 'DAILY') {
+      const idempotencyKey = `AUTO_ORDER_DAILY:${payload.date}`;
+      const existing = await this.prisma.accountingTransaction.findUnique({ where: { idempotencyKey } });
+      if (existing) {
+        return { mode, date: payload.date, created: 0, skipped: orders.length, amountCents: 0 };
+      }
+      const amountCents = orders.reduce((sum, item) => sum + item.totalCents, 0);
+      await this.createTx(
+        {
+          type: AccountingTxType.INCOME,
+          source: AccountingSourceType.ORDER,
+          amountCents,
+          occurredAt: startAt.toISOString(),
+          categoryId: payload.categoryId,
+          accountId: payload.accountId,
+          orderId: orders[0].orderStableId,
+          idempotencyKey,
+          memo: `自动入账 ${payload.date}（${orders.length} 单）`,
+        },
+        operatorUserId,
+      );
+      return { mode, date: payload.date, created: 1, skipped: 0, amountCents, orderCount: orders.length };
+    }
+
+    let created = 0;
+    let skipped = 0;
+    let amountCents = 0;
+    for (const order of orders) {
+      const idempotencyKey = `AUTO_ORDER:${order.orderStableId}`;
+      const source =
+        order.paymentMethod === PaymentMethod.UBEREATS || order.channel === Channel.ubereats
+          ? AccountingSourceType.UBER
+          : AccountingSourceType.ORDER;
+      const existing = await this.prisma.accountingTransaction.findUnique({ where: { idempotencyKey } });
+      if (existing) {
+        skipped += 1;
+        continue;
+      }
+      await this.createTx(
+        {
+          type: AccountingTxType.INCOME,
+          source,
+          amountCents: order.totalCents,
+          occurredAt: order.paidAt.toISOString(),
+          categoryId: payload.categoryId,
+          accountId: payload.accountId,
+          orderId: order.orderStableId,
+          idempotencyKey,
+          memo: `订单自动入账 ${order.orderStableId}`,
+        },
+        operatorUserId,
+      );
+      created += 1;
+      amountCents += order.totalCents;
+    }
+    return { mode, date: payload.date, created, skipped, amountCents, orderCount: orders.length };
+  }
+
+  async importPlatformSettlementCsv(payload: {
+    platform: SettlementPlatform;
+    csv: string;
+    importBatchId?: string;
+  }) {
+    const importBatchId = payload.importBatchId?.trim() || `BATCH-${Date.now()}`;
+    const lines = payload.csv
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (lines.length <= 1) {
+      throw new BadRequestException('csv must include header and data rows');
+    }
+
+    const [headerLine, ...dataLines] = lines;
+    const headers = headerLine.split(',').map((h) => h.trim().toLowerCase());
+    const col = (name: string) => headers.indexOf(name);
+    const orderIdCol = col('orderid');
+    const grossCol = col('grosscents');
+    const commissionCol = col('commissioncents');
+    const netCol = col('netcents');
+    const payoutAtCol = col('payoutat');
+    if ([orderIdCol, grossCol, commissionCol, netCol, payoutAtCol].some((v) => v < 0)) {
+      throw new BadRequestException('csv header must contain orderId,grossCents,commissionCents,netCents,payoutAt');
+    }
+
+    const data = dataLines.map((line, index) => {
+      const cols = line.split(',').map((x) => x.trim());
+      const payoutAt = new Date(cols[payoutAtCol]);
+      if (Number.isNaN(payoutAt.getTime())) {
+        throw new BadRequestException(`invalid payoutAt at line ${index + 2}`);
+      }
+      return {
+        platform: payload.platform,
+        importBatchId,
+        externalRowId: `${index + 1}`,
+        orderId: cols[orderIdCol] || null,
+        grossCents: Number(cols[grossCol]),
+        commissionCents: Number(cols[commissionCol]),
+        netCents: Number(cols[netCol]),
+        payoutAt,
+        rawPayload: { line },
+      };
+    });
+
+    await this.prisma.platformSettlementRecord.createMany({ data, skipDuplicates: true });
+    return { importBatchId, count: data.length };
+  }
+
+  async reconcilePlatform(platform: SettlementPlatform, from?: string, to?: string) {
+    const fromDate = this.parseDate(from);
+    const toDate = this.parseDate(to, true);
+    const settlements = await this.prisma.platformSettlementRecord.findMany({
+      where: {
+        platform,
+        ...(fromDate || toDate
+          ? {
+              payoutAt: {
+                ...(fromDate ? { gte: fromDate } : {}),
+                ...(toDate ? { lte: toDate } : {}),
+              },
+            }
+          : {}),
+      },
+      orderBy: { payoutAt: 'asc' },
+    });
+
+    const orderIds = settlements.map((s) => s.orderId).filter((x): x is string => Boolean(x));
+    const txRows = orderIds.length
+      ? await this.prisma.accountingTransaction.findMany({
+          where: { orderId: { in: orderIds }, deletedAt: null },
+          select: { orderId: true, amountCents: true, source: true },
+        })
+      : [];
+    const txMap = new Map(txRows.map((row) => [row.orderId as string, row]));
+
+    const diffs = settlements.flatMap((item) => {
+      const issues: Array<{ type: string; orderId: string | null; message: string }> = [];
+      const tx = item.orderId ? txMap.get(item.orderId) : undefined;
+      if (!item.orderId || !tx) {
+        issues.push({ type: '缺单', orderId: item.orderId, message: '平台结算存在，但未找到订单收入分录' });
+      } else if (tx.amountCents !== item.grossCents) {
+        issues.push({
+          type: '金额差',
+          orderId: item.orderId,
+          message: `订单收入=${tx.amountCents}, 平台毛收入=${item.grossCents}`,
+        });
+      }
+      if (item.netCents < 0) {
+        issues.push({ type: '退款未同步', orderId: item.orderId, message: '平台净额为负，需确认退款分录' });
+      }
+      return issues;
+    });
+
+    return {
+      platform,
+      from: from ?? null,
+      to: to ?? null,
+      settlementCount: settlements.length,
+      diffCount: diffs.length,
+      diffs,
+    };
+  }
+
+  async createAccount(payload: { name: string; type: 'CASH' | 'BANK' | 'PLATFORM_WALLET'; currency?: string }) {
+    return this.prisma.accountingAccount.create({
+      data: {
+        name: payload.name.trim(),
+        type: payload.type,
+        currency: payload.currency?.trim().toUpperCase() || 'CAD',
+      },
+    });
+  }
+
+  async listAccounts() {
+    return this.prisma.accountingAccount.findMany({
+      where: { isActive: true },
+      orderBy: [{ type: 'asc' }, { name: 'asc' }],
+    });
+  }
+
+  async accountBalanceReport(from?: string, to?: string) {
+    const fromDate = this.parseDate(from);
+    const toDate = this.parseDate(to, true);
+    const txRows = await this.prisma.accountingTransaction.findMany({
+      where: {
+        deletedAt: null,
+        ...(fromDate || toDate
+          ? {
+              occurredAt: {
+                ...(fromDate ? { gte: fromDate } : {}),
+                ...(toDate ? { lte: toDate } : {}),
+              },
+            }
+          : {}),
+      },
+      include: {
+        account: { select: { id: true, name: true, type: true } },
+        toAccount: { select: { id: true, name: true, type: true } },
+      },
+    });
+
+    const summary = new Map<string, { accountId: string; accountName: string; inflowCents: number; outflowCents: number; balanceChangeCents: number }>();
+    const upsert = (id: string, name: string) => {
+      const existing = summary.get(id) ?? { accountId: id, accountName: name, inflowCents: 0, outflowCents: 0, balanceChangeCents: 0 };
+      summary.set(id, existing);
+      return existing;
+    };
+
+    for (const row of txRows) {
+      if (row.type === AccountingTxType.TRANSFER) {
+        if (row.account) {
+          const item = upsert(row.account.id, row.account.name);
+          item.outflowCents += row.amountCents;
+          item.balanceChangeCents -= row.amountCents;
+        }
+        if (row.toAccount) {
+          const item = upsert(row.toAccount.id, row.toAccount.name);
+          item.inflowCents += row.amountCents;
+          item.balanceChangeCents += row.amountCents;
+        }
+        continue;
+      }
+      if (!row.account) continue;
+      const item = upsert(row.account.id, row.account.name);
+      if (row.type === AccountingTxType.EXPENSE) {
+        item.outflowCents += row.amountCents;
+        item.balanceChangeCents -= row.amountCents;
+      } else {
+        item.inflowCents += row.amountCents;
+        item.balanceChangeCents += row.amountCents;
+      }
+    }
+
+    return Array.from(summary.values()).sort((a, b) => b.balanceChangeCents - a.balanceChangeCents);
+  }
+
+  async annualReport(year: number) {
+    const startAt = new Date(Date.UTC(year, 0, 1, 0, 0, 0, 0));
+    const endAt = new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999));
+    const report = await this.pnlReport({ from: startAt.toISOString(), to: endAt.toISOString(), groupBy: 'quarter' });
+    return { year, quarters: report.periods, summary: report.summary };
+  }
+
+  async cashflowOverview(query: { from?: string; to?: string }) {
+    const fromDate = this.parseDate(query.from);
+    const toDate = this.parseDate(query.to, true);
+    const txRows = await this.prisma.accountingTransaction.findMany({
+      where: {
+        deletedAt: null,
+        ...(fromDate || toDate
+          ? {
+              occurredAt: {
+                ...(fromDate ? { gte: fromDate } : {}),
+                ...(toDate ? { lte: toDate } : {}),
+              },
+            }
+          : {}),
+      },
+      select: { amountCents: true, type: true, category: { select: { name: true } } },
+    });
+
+    let operating = 0;
+    let investing = 0;
+    let financing = 0;
+    for (const row of txRows) {
+      const name = row.category?.name ?? '';
+      const sign = row.type === AccountingTxType.EXPENSE ? -1 : 1;
+      if (/投资|invest/i.test(name)) investing += row.amountCents * sign;
+      else if (/融资|loan|equity/i.test(name)) financing += row.amountCents * sign;
+      else if (row.type !== AccountingTxType.TRANSFER) operating += row.amountCents * sign;
+    }
+    return {
+      from: query.from ?? null,
+      to: query.to ?? null,
+      operatingCents: operating,
+      investingCents: investing,
+      financingCents: financing,
+      netCashflowCents: operating + investing + financing,
+    };
+  }
+
+  async dimensionSlice(query: { from?: string; to?: string }) {
+    const fromDate = this.parseDate(query.from);
+    const toDate = this.parseDate(query.to, true);
+    const orders = await this.prisma.order.findMany({
+      where: {
+        paidAt: {
+          ...(fromDate ? { gte: fromDate } : {}),
+          ...(toDate ? { lte: toDate } : {}),
+        },
+      },
+      select: {
+        totalCents: true,
+        channel: true,
+        paymentMethod: true,
+      },
+    });
+    const byChannel = new Map<string, number>();
+    const byPayment = new Map<string, number>();
+    for (const item of orders) {
+      byChannel.set(item.channel, (byChannel.get(item.channel) ?? 0) + item.totalCents);
+      byPayment.set(item.paymentMethod, (byPayment.get(item.paymentMethod) ?? 0) + item.totalCents);
+    }
+    return {
+      from: query.from ?? null,
+      to: query.to ?? null,
+      byChannel: Array.from(byChannel.entries()).map(([key, amountCents]) => ({ key, amountCents })),
+      byPaymentMethod: Array.from(byPayment.entries()).map(([key, amountCents]) => ({ key, amountCents })),
+    };
   }
 
   async listAuditLogs(filters: AuditLogFilters) {
