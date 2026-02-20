@@ -39,6 +39,7 @@ type TxBody = {
   counterparty?: string | null;
   memo?: string | null;
   attachmentUrls?: string[];
+  lastKnownUpdatedAt?: string;
 };
 
 @Controller('accounting')

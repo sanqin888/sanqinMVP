@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -50,6 +51,7 @@ type UpsertTxDto = {
   counterparty?: string | null;
   memo?: string | null;
   attachmentUrls?: string[];
+  lastKnownUpdatedAt?: string;
 };
 
 type AutoAccrualDto = {
@@ -406,6 +408,15 @@ export class AccountingService {
     payload: UpsertTxDto,
     operatorUserId: string,
   ) {
+    const lastKnownUpdatedAt = payload.lastKnownUpdatedAt?.trim();
+    if (!lastKnownUpdatedAt) {
+      throw new BadRequestException('lastKnownUpdatedAt is required');
+    }
+    const expectedUpdatedAt = this.parseDate(lastKnownUpdatedAt);
+    if (!expectedUpdatedAt) {
+      throw new BadRequestException('Invalid lastKnownUpdatedAt');
+    }
+
     const existing = await this.prisma.accountingTransaction.findUnique({
       where: { txStableId },
     });
@@ -417,8 +428,12 @@ export class AccountingService {
     await this.assertEditableForPeriod(existing.occurredAt, existing.type);
     await this.assertEditableForPeriod(normalized.occurredAt, payload.type);
 
-    const updated = await this.prisma.accountingTransaction.update({
-      where: { txStableId },
+    const updateResult = await this.prisma.accountingTransaction.updateMany({
+      where: {
+        txStableId,
+        deletedAt: null,
+        updatedAt: expectedUpdatedAt,
+      },
       data: {
         type: payload.type,
         source: payload.source,
@@ -435,13 +450,28 @@ export class AccountingService {
         memo: payload.memo?.trim() || null,
         attachmentUrls: payload.attachmentUrls ?? [],
         updatedByUserId: operatorUserId,
+        version: { increment: 1 },
       },
+    });
+
+    if (updateResult.count === 0) {
+      throw new ConflictException(
+        'Transaction has been modified by another operation, please refresh and retry',
+      );
+    }
+
+    const updated = await this.prisma.accountingTransaction.findUnique({
+      where: { txStableId },
       include: {
         category: { select: { id: true, name: true, type: true } },
         account: { select: { id: true, name: true, type: true } },
         toAccount: { select: { id: true, name: true, type: true } },
       },
     });
+
+    if (!updated) {
+      throw new NotFoundException('Transaction not found');
+    }
 
     await this.createAuditLog({
       action: 'UPDATE',
@@ -470,6 +500,7 @@ export class AccountingService {
       data: {
         deletedAt: new Date(),
         updatedByUserId: operatorUserId,
+        version: { increment: 1 },
       },
     });
 
