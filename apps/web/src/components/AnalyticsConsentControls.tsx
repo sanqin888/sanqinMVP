@@ -7,6 +7,7 @@ import {
   setAnalyticsConsent,
   type AnalyticsConsentStatus,
 } from "@/lib/analytics-consent";
+import { useSession } from "@/lib/auth-session";
 
 type Props = {
   locale: "zh" | "en";
@@ -14,17 +15,27 @@ type Props = {
 
 export default function AnalyticsConsentControls({ locale }: Props) {
   const isZh = locale === "zh";
+  const { data: session } = useSession();
+  const consentSubjectKey = session?.user?.userStableId ?? undefined;
   const [status, setStatus] = useState<AnalyticsConsentStatus>("unset");
+  const [hydrated, setHydrated] = useState(false);
   const [isManageOpen, setIsManageOpen] = useState(false);
 
   useEffect(() => {
-    setStatus(getAnalyticsConsentStatus());
-    return onAnalyticsConsentChange((nextStatus) => {
-      setStatus(nextStatus);
-    });
-  }, []);
+    setStatus(getAnalyticsConsentStatus(consentSubjectKey));
+    setHydrated(true);
 
-  const showBanner = status === "unset";
+    return onAnalyticsConsentChange((nextStatus) => {
+      if (nextStatus !== "unset") {
+        setStatus(nextStatus);
+        return;
+      }
+
+      setStatus(getAnalyticsConsentStatus(consentSubjectKey));
+    });
+  }, [consentSubjectKey]);
+
+  const showBanner = hydrated && status === "unset";
 
   return (
     <>
@@ -39,14 +50,14 @@ export default function AnalyticsConsentControls({ locale }: Props) {
             <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
-                onClick={() => setAnalyticsConsent("rejected")}
+                onClick={() => setAnalyticsConsent("rejected", consentSubjectKey)}
                 className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
               >
                 {isZh ? "拒绝" : "Reject"}
               </button>
               <button
                 type="button"
-                onClick={() => setAnalyticsConsent("accepted")}
+                onClick={() => setAnalyticsConsent("accepted", consentSubjectKey)}
                 className="rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-700"
               >
                 {isZh ? "同意" : "Accept"}
@@ -75,14 +86,14 @@ export default function AnalyticsConsentControls({ locale }: Props) {
         <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
           <button
             type="button"
-            onClick={() => setAnalyticsConsent("accepted")}
+            onClick={() => setAnalyticsConsent("accepted", consentSubjectKey)}
             className="rounded-full border border-slate-300 px-3 py-1 transition hover:bg-slate-100"
           >
             {isZh ? "允许分析" : "Allow analytics"}
           </button>
           <button
             type="button"
-            onClick={() => setAnalyticsConsent("rejected")}
+            onClick={() => setAnalyticsConsent("rejected", consentSubjectKey)}
             className="rounded-full border border-slate-300 px-3 py-1 transition hover:bg-slate-100"
           >
             {isZh ? "关闭分析" : "Disable analytics"}
