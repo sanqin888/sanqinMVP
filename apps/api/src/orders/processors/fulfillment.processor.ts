@@ -111,11 +111,19 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       where: { id: payload.orderId },
       select: {
         orderStableId: true,
+        channel: true,
       },
     });
 
     if (!order) {
       this.logger.warn(`[Fulfillment] Order not found: ${payload.orderId}`);
+      return;
+    }
+
+    if (order.channel === Channel.in_store) {
+      this.logger.log(
+        `[Fulfillment] Skip accepted auto print for in_store order: ${payload.orderId}`,
+      );
       return;
     }
 
@@ -150,6 +158,8 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
   async handleOrderReprint(payload: {
     orderStableId: string;
     targets?: { customer?: boolean; kitchen?: boolean };
+    cashReceivedCents?: number;
+    cashChangeCents?: number;
   }) {
     this.logger.log(
       `[Fulfillment] Order reprint requested: ${payload.orderStableId}. Triggering POS print.`,
@@ -164,6 +174,12 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
     this.posGateway.sendPrintJob(storeId, {
       ...printPayload,
       ...(payload.targets ? { targets: payload.targets } : {}),
+      ...(typeof payload.cashReceivedCents === 'number'
+        ? { cashReceivedCents: payload.cashReceivedCents }
+        : {}),
+      ...(typeof payload.cashChangeCents === 'number'
+        ? { cashChangeCents: payload.cashChangeCents }
+        : {}),
     });
   }
 
