@@ -20,6 +20,9 @@ describe('DataRetentionService', () => {
       messagingDeliveryEvent: {
         deleteMany: jest.fn().mockReturnValue(withCount(8)),
       },
+      messagingSend: {
+        deleteMany: jest.fn().mockReturnValue(withCount(9)),
+      },
     };
 
     const prisma = {
@@ -49,6 +52,7 @@ describe('DataRetentionService', () => {
       webhookEventsPayloadTrimmed: 6,
       webhookEventsDeleted: 7,
       deliveryEventsDeleted: 8,
+      messagingSendsDeleted: 9,
     });
 
     expect(tx.userSession.deleteMany).toHaveBeenCalledWith({
@@ -121,6 +125,12 @@ describe('DataRetentionService', () => {
         createdAt: { lt: new Date('2025-08-22T00:00:00.000Z') },
       },
     });
+
+    expect(tx.messagingSend.deleteMany).toHaveBeenCalledWith({
+      where: {
+        createdAt: { lt: new Date('2024-02-19T00:00:00.000Z') },
+      },
+    });
   });
 
   it('skips run when one cleanup is already in progress', async () => {
@@ -140,6 +150,7 @@ describe('DataRetentionService', () => {
               webhookEventsPayloadTrimmed: 0,
               webhookEventsDeleted: 0,
               deliveryEventsDeleted: 0,
+              messagingSendsDeleted: 0,
             });
         }),
     );
