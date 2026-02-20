@@ -74,13 +74,10 @@ export default async function AdminLayout({
   const session = await fetchAdminSession();
   const role = session?.role;
 
-  if (role !== 'ADMIN' && role !== 'STAFF') {
+  if (role !== 'ADMIN' && role !== 'STAFF' && role !== 'ACCOUNTANT') {
     redirect(`/${safeLocale}/admin/login`);
   }
 
-  if (session?.requiresTwoFactor) {
-    redirect(`/${safeLocale}/admin/2fa`);
-  }
 
   return <AdminLayoutClient locale={safeLocale}>{children}</AdminLayoutClient>;
 }

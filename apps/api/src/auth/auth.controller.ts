@@ -238,10 +238,7 @@ export class AuthController {
       trustedDeviceToken,
     });
 
-    const isAdminLogin = purpose === 'admin';
-    const maxAge = isAdminLogin
-      ? undefined
-      : result.session.expiresAt.getTime() - Date.now();
+    const maxAge = result.session.expiresAt.getTime() - Date.now();
 
     res.cookie(
       SESSION_COOKIE_NAME,
@@ -541,7 +538,10 @@ export class AuthController {
     const twoFactorEnabled =
       !!user.twoFactorEnabledAt && user.twoFactorMethod === 'SMS';
     const mfaVerifiedAt = req.session?.mfaVerifiedAt ?? null;
-    const isAdminRole = user.role === 'ADMIN' || user.role === 'STAFF';
+    const isAdminRole =
+      user.role === 'ADMIN' ||
+      user.role === 'STAFF' ||
+      user.role === 'ACCOUNTANT';
     const requiresTwoFactor = isAdminRole
       ? !mfaVerifiedAt
       : twoFactorEnabled && !mfaVerifiedAt;

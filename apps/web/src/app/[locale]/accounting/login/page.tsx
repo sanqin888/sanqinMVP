@@ -1,8 +1,7 @@
-// apps/web/src/app/[locale]/admin/login/page.tsx
 "use client";
 
 import { useMemo, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import type { Locale } from "@/lib/i18n/locales";
 
 type ApiEnvelope<T> = {
@@ -12,7 +11,6 @@ type ApiEnvelope<T> = {
 };
 
 type LoginPayload = {
-  requiresTwoFactor?: boolean;
   role?: string;
 };
 
@@ -25,23 +23,17 @@ function unwrapEnvelope<T>(payload: unknown): T | null {
   return payload as T;
 }
 
-export default function AdminLoginPage() {
+export default function AccountingLoginPage() {
   const params = useParams();
-  const searchParams = useSearchParams();
   const locale =
     typeof params?.locale === "string" && (params.locale === "zh" || params.locale === "en")
       ? (params.locale as Locale)
       : "en";
 
-  const nextPath = useMemo(() => {
-    const value = searchParams?.get("next") ?? "";
-    return value.startsWith("/") ? value : null;
-  }, [searchParams]);
-
   const googleCallbackUrl = useMemo(() => {
-    const callback = nextPath ?? `/${locale}/admin`;
+    const callback = `/${locale}/accounting/dashboard`;
     return `/api/v1/auth/oauth/google/start?callbackUrl=${encodeURIComponent(callback)}&language=${locale}`;
-  }, [locale, nextPath]);
+  }, [locale]);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -61,8 +53,10 @@ export default function AdminLoginPage() {
         credentials: "include",
       });
 
+      const payload = await res.json().catch(() => null);
+      const data = unwrapEnvelope<LoginPayload>(payload);
+
       if (!res.ok) {
-        const payload = await res.json().catch(() => null);
         const message =
           typeof payload?.message === "string"
             ? payload.message
@@ -70,16 +64,11 @@ export default function AdminLoginPage() {
         throw new Error(message);
       }
 
-      const payload = await res.json().catch(() => null);
-      const data = unwrapEnvelope<LoginPayload>(payload);
-
-      if (nextPath) {
-        window.location.href = nextPath;
-        return;
+      if (data?.role !== "ACCOUNTANT" && data?.role !== "ADMIN") {
+        throw new Error("当前账号没有财务系统权限");
       }
 
-      const redirectPath = data?.role === "ACCOUNTANT" ? `/${locale}/accounting/dashboard` : `/${locale}/admin`;
-      window.location.href = redirectPath;
+      window.location.href = `/${locale}/accounting/dashboard`;
     } catch (err) {
       const message = err instanceof Error ? err.message : "登录失败";
       setError(message);
@@ -91,7 +80,7 @@ export default function AdminLoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
       <div className="w-full max-w-md rounded-2xl border bg-white p-6 shadow-sm">
-        <h1 className="text-xl font-semibold text-slate-900">后台登录</h1>
+        <h1 className="text-xl font-semibold text-slate-900">财务系统登录</h1>
         <p className="mt-2 text-sm text-slate-500">支持账号密码和 Google OAuth 双登录。</p>
 
         <a
@@ -116,7 +105,7 @@ export default function AdminLoginPage() {
               required
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              placeholder="admin@example.com"
+              placeholder="accounting@example.com"
             />
           </label>
 
