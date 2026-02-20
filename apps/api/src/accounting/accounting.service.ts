@@ -193,7 +193,10 @@ export class AccountingService {
       throw new BadRequestException('categoryId is invalid');
     }
 
-    if (payload.type !== AccountingTxType.TRANSFER && payload.type !== category.type) {
+    if (
+      payload.type !== AccountingTxType.TRANSFER &&
+      payload.type !== category.type
+    ) {
       throw new BadRequestException('type must match category type');
     }
 
@@ -201,10 +204,16 @@ export class AccountingService {
     const toAccountId = payload.toAccountId?.trim() || null;
     const [fromAccount, targetAccount] = await Promise.all([
       accountId
-        ? this.prisma.accountingAccount.findUnique({ where: { id: accountId }, select: { id: true, currency: true, isActive: true } })
+        ? this.prisma.accountingAccount.findUnique({
+            where: { id: accountId },
+            select: { id: true, currency: true, isActive: true },
+          })
         : Promise.resolve(null),
       toAccountId
-        ? this.prisma.accountingAccount.findUnique({ where: { id: toAccountId }, select: { id: true, currency: true, isActive: true } })
+        ? this.prisma.accountingAccount.findUnique({
+            where: { id: toAccountId },
+            select: { id: true, currency: true, isActive: true },
+          })
         : Promise.resolve(null),
     ]);
 
@@ -217,7 +226,9 @@ export class AccountingService {
 
     if (payload.type === AccountingTxType.TRANSFER) {
       if (!accountId || !toAccountId || accountId === toAccountId) {
-        throw new BadRequestException('TRANSFER requires different accountId and toAccountId');
+        throw new BadRequestException(
+          'TRANSFER requires different accountId and toAccountId',
+        );
       }
     } else if (toAccountId) {
       throw new BadRequestException('toAccountId is only allowed for TRANSFER');
@@ -237,7 +248,11 @@ export class AccountingService {
       }
     }
 
-    const currency = payload.currency?.trim().toUpperCase() || fromAccount?.currency || targetAccount?.currency || 'CAD';
+    const currency =
+      payload.currency?.trim().toUpperCase() ||
+      fromAccount?.currency ||
+      targetAccount?.currency ||
+      'CAD';
     return {
       occurredAt,
       orderId: normalizedOrderId,
@@ -947,7 +962,10 @@ export class AccountingService {
     return Buffer.from(pdf, 'utf8');
   }
 
-  async autoAccrueOrderRevenue(payload: AutoAccrualDto, operatorUserId: string) {
+  async autoAccrueOrderRevenue(
+    payload: AutoAccrualDto,
+    operatorUserId: string,
+  ) {
     const runDate = this.parseDate(payload.date);
     if (!runDate) throw new BadRequestException('date is required');
     const startAt = new Date(runDate);
@@ -959,15 +977,28 @@ export class AccountingService {
       where: { id: payload.categoryId },
       select: { id: true, type: true, isActive: true },
     });
-    if (!category || !category.isActive || category.type !== AccountingTxType.INCOME) {
-      throw new BadRequestException('categoryId must be an active INCOME category');
+    if (
+      !category ||
+      !category.isActive ||
+      category.type !== AccountingTxType.INCOME
+    ) {
+      throw new BadRequestException(
+        'categoryId must be an active INCOME category',
+      );
     }
 
     const mode = payload.mode ?? 'DAILY';
     const orders = await this.prisma.order.findMany({
       where: {
         paidAt: { gte: startAt, lte: endAt },
-        status: { in: [OrderStatus.paid, OrderStatus.making, OrderStatus.ready, OrderStatus.completed] },
+        status: {
+          in: [
+            OrderStatus.paid,
+            OrderStatus.making,
+            OrderStatus.ready,
+            OrderStatus.completed,
+          ],
+        },
       },
       select: {
         orderStableId: true,
@@ -980,16 +1011,33 @@ export class AccountingService {
     });
 
     if (!orders.length) {
-      return { mode, date: payload.date, created: 0, skipped: 0, amountCents: 0 };
+      return {
+        mode,
+        date: payload.date,
+        created: 0,
+        skipped: 0,
+        amountCents: 0,
+      };
     }
 
     if (mode === 'DAILY') {
       const idempotencyKey = `AUTO_ORDER_DAILY:${payload.date}`;
-      const existing = await this.prisma.accountingTransaction.findUnique({ where: { idempotencyKey } });
+      const existing = await this.prisma.accountingTransaction.findUnique({
+        where: { idempotencyKey },
+      });
       if (existing) {
-        return { mode, date: payload.date, created: 0, skipped: orders.length, amountCents: 0 };
+        return {
+          mode,
+          date: payload.date,
+          created: 0,
+          skipped: orders.length,
+          amountCents: 0,
+        };
       }
-      const amountCents = orders.reduce((sum, item) => sum + item.totalCents, 0);
+      const amountCents = orders.reduce(
+        (sum, item) => sum + item.totalCents,
+        0,
+      );
       await this.createTx(
         {
           type: AccountingTxType.INCOME,
@@ -1004,7 +1052,14 @@ export class AccountingService {
         },
         operatorUserId,
       );
-      return { mode, date: payload.date, created: 1, skipped: 0, amountCents, orderCount: orders.length };
+      return {
+        mode,
+        date: payload.date,
+        created: 1,
+        skipped: 0,
+        amountCents,
+        orderCount: orders.length,
+      };
     }
 
     let created = 0;
@@ -1013,10 +1068,13 @@ export class AccountingService {
     for (const order of orders) {
       const idempotencyKey = `AUTO_ORDER:${order.orderStableId}`;
       const source =
-        order.paymentMethod === PaymentMethod.UBEREATS || order.channel === Channel.ubereats
+        order.paymentMethod === PaymentMethod.UBEREATS ||
+        order.channel === Channel.ubereats
           ? AccountingSourceType.UBER
           : AccountingSourceType.ORDER;
-      const existing = await this.prisma.accountingTransaction.findUnique({ where: { idempotencyKey } });
+      const existing = await this.prisma.accountingTransaction.findUnique({
+        where: { idempotencyKey },
+      });
       if (existing) {
         skipped += 1;
         continue;
@@ -1038,7 +1096,14 @@ export class AccountingService {
       created += 1;
       amountCents += order.totalCents;
     }
-    return { mode, date: payload.date, created, skipped, amountCents, orderCount: orders.length };
+    return {
+      mode,
+      date: payload.date,
+      created,
+      skipped,
+      amountCents,
+      orderCount: orders.length,
+    };
   }
 
   async importPlatformSettlementCsv(payload: {
@@ -1046,7 +1111,8 @@ export class AccountingService {
     csv: string;
     importBatchId?: string;
   }) {
-    const importBatchId = payload.importBatchId?.trim() || `BATCH-${Date.now()}`;
+    const importBatchId =
+      payload.importBatchId?.trim() || `BATCH-${Date.now()}`;
     const lines = payload.csv
       .split(/\r?\n/)
       .map((line) => line.trim())
@@ -1063,8 +1129,14 @@ export class AccountingService {
     const commissionCol = col('commissioncents');
     const netCol = col('netcents');
     const payoutAtCol = col('payoutat');
-    if ([orderIdCol, grossCol, commissionCol, netCol, payoutAtCol].some((v) => v < 0)) {
-      throw new BadRequestException('csv header must contain orderId,grossCents,commissionCents,netCents,payoutAt');
+    if (
+      [orderIdCol, grossCol, commissionCol, netCol, payoutAtCol].some(
+        (v) => v < 0,
+      )
+    ) {
+      throw new BadRequestException(
+        'csv header must contain orderId,grossCents,commissionCents,netCents,payoutAt',
+      );
     }
 
     const data = dataLines.map((line, index) => {
@@ -1086,11 +1158,18 @@ export class AccountingService {
       };
     });
 
-    await this.prisma.platformSettlementRecord.createMany({ data, skipDuplicates: true });
+    await this.prisma.platformSettlementRecord.createMany({
+      data,
+      skipDuplicates: true,
+    });
     return { importBatchId, count: data.length };
   }
 
-  async reconcilePlatform(platform: SettlementPlatform, from?: string, to?: string) {
+  async reconcilePlatform(
+    platform: SettlementPlatform,
+    from?: string,
+    to?: string,
+  ) {
     const fromDate = this.parseDate(from);
     const toDate = this.parseDate(to, true);
     const settlements = await this.prisma.platformSettlementRecord.findMany({
@@ -1108,7 +1187,9 @@ export class AccountingService {
       orderBy: { payoutAt: 'asc' },
     });
 
-    const orderIds = settlements.map((s) => s.orderId).filter((x): x is string => Boolean(x));
+    const orderIds = settlements
+      .map((s) => s.orderId)
+      .filter((x): x is string => Boolean(x));
     const txRows = orderIds.length
       ? await this.prisma.accountingTransaction.findMany({
           where: { orderId: { in: orderIds }, deletedAt: null },
@@ -1118,10 +1199,18 @@ export class AccountingService {
     const txMap = new Map(txRows.map((row) => [row.orderId as string, row]));
 
     const diffs = settlements.flatMap((item) => {
-      const issues: Array<{ type: string; orderId: string | null; message: string }> = [];
+      const issues: Array<{
+        type: string;
+        orderId: string | null;
+        message: string;
+      }> = [];
       const tx = item.orderId ? txMap.get(item.orderId) : undefined;
       if (!item.orderId || !tx) {
-        issues.push({ type: '缺单', orderId: item.orderId, message: '平台结算存在，但未找到订单收入分录' });
+        issues.push({
+          type: '缺单',
+          orderId: item.orderId,
+          message: '平台结算存在，但未找到订单收入分录',
+        });
       } else if (tx.amountCents !== item.grossCents) {
         issues.push({
           type: '金额差',
@@ -1130,7 +1219,11 @@ export class AccountingService {
         });
       }
       if (item.netCents < 0) {
-        issues.push({ type: '退款未同步', orderId: item.orderId, message: '平台净额为负，需确认退款分录' });
+        issues.push({
+          type: '退款未同步',
+          orderId: item.orderId,
+          message: '平台净额为负，需确认退款分录',
+        });
       }
       return issues;
     });
@@ -1145,7 +1238,11 @@ export class AccountingService {
     };
   }
 
-  async createAccount(payload: { name: string; type: 'CASH' | 'BANK' | 'PLATFORM_WALLET'; currency?: string }) {
+  async createAccount(payload: {
+    name: string;
+    type: 'CASH' | 'BANK' | 'PLATFORM_WALLET';
+    currency?: string;
+  }) {
     return this.prisma.accountingAccount.create({
       data: {
         name: payload.name.trim(),
@@ -1183,9 +1280,24 @@ export class AccountingService {
       },
     });
 
-    const summary = new Map<string, { accountId: string; accountName: string; inflowCents: number; outflowCents: number; balanceChangeCents: number }>();
+    const summary = new Map<
+      string,
+      {
+        accountId: string;
+        accountName: string;
+        inflowCents: number;
+        outflowCents: number;
+        balanceChangeCents: number;
+      }
+    >();
     const upsert = (id: string, name: string) => {
-      const existing = summary.get(id) ?? { accountId: id, accountName: name, inflowCents: 0, outflowCents: 0, balanceChangeCents: 0 };
+      const existing = summary.get(id) ?? {
+        accountId: id,
+        accountName: name,
+        inflowCents: 0,
+        outflowCents: 0,
+        balanceChangeCents: 0,
+      };
       summary.set(id, existing);
       return existing;
     };
@@ -1215,13 +1327,19 @@ export class AccountingService {
       }
     }
 
-    return Array.from(summary.values()).sort((a, b) => b.balanceChangeCents - a.balanceChangeCents);
+    return Array.from(summary.values()).sort(
+      (a, b) => b.balanceChangeCents - a.balanceChangeCents,
+    );
   }
 
   async annualReport(year: number) {
     const startAt = new Date(Date.UTC(year, 0, 1, 0, 0, 0, 0));
     const endAt = new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999));
-    const report = await this.pnlReport({ from: startAt.toISOString(), to: endAt.toISOString(), groupBy: 'quarter' });
+    const report = await this.pnlReport({
+      from: startAt.toISOString(),
+      to: endAt.toISOString(),
+      groupBy: 'quarter',
+    });
     return { year, quarters: report.periods, summary: report.summary };
   }
 
@@ -1240,7 +1358,11 @@ export class AccountingService {
             }
           : {}),
       },
-      select: { amountCents: true, type: true, category: { select: { name: true } } },
+      select: {
+        amountCents: true,
+        type: true,
+        category: { select: { name: true } },
+      },
     });
 
     let operating = 0;
@@ -1250,8 +1372,10 @@ export class AccountingService {
       const name = row.category?.name ?? '';
       const sign = row.type === AccountingTxType.EXPENSE ? -1 : 1;
       if (/投资|invest/i.test(name)) investing += row.amountCents * sign;
-      else if (/融资|loan|equity/i.test(name)) financing += row.amountCents * sign;
-      else if (row.type !== AccountingTxType.TRANSFER) operating += row.amountCents * sign;
+      else if (/融资|loan|equity/i.test(name))
+        financing += row.amountCents * sign;
+      else if (row.type !== AccountingTxType.TRANSFER)
+        operating += row.amountCents * sign;
     }
     return {
       from: query.from ?? null,
@@ -1282,14 +1406,25 @@ export class AccountingService {
     const byChannel = new Map<string, number>();
     const byPayment = new Map<string, number>();
     for (const item of orders) {
-      byChannel.set(item.channel, (byChannel.get(item.channel) ?? 0) + item.totalCents);
-      byPayment.set(item.paymentMethod, (byPayment.get(item.paymentMethod) ?? 0) + item.totalCents);
+      byChannel.set(
+        item.channel,
+        (byChannel.get(item.channel) ?? 0) + item.totalCents,
+      );
+      byPayment.set(
+        item.paymentMethod,
+        (byPayment.get(item.paymentMethod) ?? 0) + item.totalCents,
+      );
     }
     return {
       from: query.from ?? null,
       to: query.to ?? null,
-      byChannel: Array.from(byChannel.entries()).map(([key, amountCents]) => ({ key, amountCents })),
-      byPaymentMethod: Array.from(byPayment.entries()).map(([key, amountCents]) => ({ key, amountCents })),
+      byChannel: Array.from(byChannel.entries()).map(([key, amountCents]) => ({
+        key,
+        amountCents,
+      })),
+      byPaymentMethod: Array.from(byPayment.entries()).map(
+        ([key, amountCents]) => ({ key, amountCents }),
+      ),
     };
   }
 

@@ -11,7 +11,11 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
-import { AccountingSourceType, AccountingTxType, SettlementPlatform } from '@prisma/client';
+import {
+  AccountingSourceType,
+  AccountingTxType,
+  SettlementPlatform,
+} from '@prisma/client';
 import type { Request, Response } from 'express';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -119,11 +123,10 @@ export class AccountingController {
     return this.accountingService.pnlReport({ from, to, groupBy });
   }
 
-
-
   @Post('automation/order-accrual')
   async autoAccrueOrderRevenue(
-    @Body() body: {
+    @Body()
+    body: {
       date: string;
       categoryId: string;
       accountId?: string;
@@ -139,7 +142,8 @@ export class AccountingController {
 
   @Post('reconciliation/platform/import-csv')
   async importSettlementCsv(
-    @Body() body: {
+    @Body()
+    body: {
       platform: SettlementPlatform;
       csv: string;
       importBatchId?: string;
@@ -159,7 +163,12 @@ export class AccountingController {
 
   @Post('accounts')
   async createAccount(
-    @Body() body: { name: string; type: 'CASH' | 'BANK' | 'PLATFORM_WALLET'; currency?: string },
+    @Body()
+    body: {
+      name: string;
+      type: 'CASH' | 'BANK' | 'PLATFORM_WALLET';
+      currency?: string;
+    },
   ) {
     return this.accountingService.createAccount(body);
   }
@@ -177,7 +186,6 @@ export class AccountingController {
     return this.accountingService.accountBalanceReport(from, to);
   }
 
-
   @Get('report/annual/:year')
   async annualReport(@Param('year') year: string) {
     return this.accountingService.annualReport(Number(year));
@@ -192,10 +200,7 @@ export class AccountingController {
   }
 
   @Get('report/slice')
-  async dimensionSlice(
-    @Query('from') from?: string,
-    @Query('to') to?: string,
-  ) {
+  async dimensionSlice(@Query('from') from?: string, @Query('to') to?: string) {
     return this.accountingService.dimensionSlice({ from, to });
   }
   @Get('audit-logs')
