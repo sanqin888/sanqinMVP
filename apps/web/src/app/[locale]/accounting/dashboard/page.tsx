@@ -34,9 +34,7 @@ export default function AccountingDashboardPage() {
     const to = now.toISOString().slice(0, 10);
 
     void apiFetch<Pnl>(`/accounting/report/pnl?from=${from}&to=${to}&groupBy=month`).then(setPnl);
-    void apiFetch<Tx[]>('/accounting/tx?from=' + from + '&to=' + to).then((rows) =>
-      setRecent(rows.slice(0, 8)),
-    );
+    void apiFetch<Tx[]>(`/accounting/tx?from=${from}&to=${to}&limit=8`).then(setRecent);
   }, []);
 
   const cards = useMemo(() => {

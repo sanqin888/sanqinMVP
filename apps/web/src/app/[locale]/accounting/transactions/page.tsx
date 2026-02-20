@@ -47,7 +47,7 @@ export default function TransactionsPage() {
 
   const load = useCallback(async () => {
     const [tx, cats] = await Promise.all([
-      apiFetch<Tx[]>('/accounting/tx'),
+      apiFetch<Tx[]>('/accounting/tx?limit=50'),
       apiFetch<Category[]>('/accounting/categories'),
     ]);
     setRows(tx);
