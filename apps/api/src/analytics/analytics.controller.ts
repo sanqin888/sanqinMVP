@@ -15,7 +15,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 
 type AnalyticsIngestEventDto = {
-  event?: string;
+  event: string;
   payload?: Record<string, unknown>;
   ts?: number;
 };
