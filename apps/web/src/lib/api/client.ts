@@ -96,9 +96,18 @@ export async function apiFetch<T>(
       const pathname = window.location.pathname;
       const locale = pathname.split('/')[1];
       const safeLocale = locale === 'zh' || locale === 'en' ? locale : 'en';
+      const message =
+        isRecord(payload) && typeof payload.message === 'string'
+          ? payload.message
+          : '';
 
-      if (pathname.includes('/admin')) {
-        window.location.href = `/${safeLocale}/admin/login`;
+      if (pathname.includes('/admin') || pathname.includes('/accounting')) {
+        if (message.includes('Admin MFA required')) {
+          window.location.href = `/${safeLocale}/admin/2fa`;
+        } else {
+          const next = encodeURIComponent(pathname);
+          window.location.href = `/${safeLocale}/admin/login?next=${next}`;
+        }
       } else if (pathname.includes('/store/pos')) {
         window.location.href = `/${safeLocale}/store/pos/login`;
       }

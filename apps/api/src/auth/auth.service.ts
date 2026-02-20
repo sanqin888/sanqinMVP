@@ -413,17 +413,21 @@ export class AuthService {
       throw new ForbiddenException('User disabled');
     }
 
+    const requiresActionMfa = this.isAdminRole(user.role);
     const isTrusted =
+      !requiresActionMfa &&
       params.trustedDeviceToken &&
       (await this.findTrustedDevice({
         userId: user.id,
         token: params.trustedDeviceToken,
       }));
     const requiresTwoFactor =
+      !requiresActionMfa &&
       this.isTwoFactorEnabled({
         twoFactorEnabledAt: user.twoFactorEnabledAt,
         twoFactorMethod: user.twoFactorMethod,
-      }) && !isTrusted;
+      }) &&
+      !isTrusted;
 
     await this.clearDeviceSessions({
       userId: user.id,
@@ -435,7 +439,7 @@ export class AuthService {
       userId: user.id,
       deviceInfo: params.deviceInfo,
       loginLocation: params.loginLocation,
-      mfaVerifiedAt: requiresTwoFactor ? null : now,
+      mfaVerifiedAt: requiresActionMfa || requiresTwoFactor ? null : now,
     });
 
     //新增：如果是新用户，发送欢迎通知
@@ -516,24 +520,25 @@ export class AuthService {
     const now = new Date();
     const isAdminLogin = params.purpose === 'admin';
     const isPosLogin = params.purpose === 'pos';
+    const requiresActionMfa = isAdminLogin;
 
     const isTrusted =
-      !isAdminLogin &&
+      !requiresActionMfa &&
       params.trustedDeviceToken &&
       (await this.findTrustedDevice({
         userId: user.id,
         token: params.trustedDeviceToken,
       }));
 
-    // 如果是 POS 登录，我们认为设备校验通过等同于通过了 MFA，不需要额外的短信验证
-    const requiresTwoFactor = isAdminLogin
-      ? true
-      : !isPosLogin && //如果是 POS 登录，直接跳过 2FA 检查 (requiresTwoFactor = false)
-        this.isTwoFactorEnabled({
-          twoFactorEnabledAt: user.twoFactorEnabledAt,
-          twoFactorMethod: user.twoFactorMethod,
-        }) &&
-        !isTrusted;
+    // 管理后台改为“关键操作再做 2FA”：登录阶段不强制跳到 2FA 页面。
+    const requiresTwoFactor =
+      !requiresActionMfa &&
+      !isPosLogin &&
+      this.isTwoFactorEnabled({
+        twoFactorEnabledAt: user.twoFactorEnabledAt,
+        twoFactorMethod: user.twoFactorMethod,
+      }) &&
+      !isTrusted;
 
     await this.clearDeviceSessions({
       userId: user.id,
@@ -541,13 +546,11 @@ export class AuthService {
       loginLocation: params.loginLocation,
     });
 
-    // 因为 requiresTwoFactor 变成了 false，这里就会写入 now()，
-    // 从而让 AdminMfaGuard 认为该 Session 已通过验证。
     const session = await this.createSession({
       userId: user.id,
       deviceInfo: params.deviceInfo,
       loginLocation: params.loginLocation,
-      mfaVerifiedAt: requiresTwoFactor ? null : now,
+      mfaVerifiedAt: requiresActionMfa || requiresTwoFactor ? null : now,
     });
 
     return { user, session, requiresTwoFactor };

@@ -17,7 +17,6 @@ export default function AdminLayoutClient({
 }: AdminLayoutClientProps) {
   const pathname = usePathname();
 
-  // ✅ 选项管理页路由（如不同请改这里）
   const optionsHref = `/${locale}/admin/menu/options`;
 
   const navItems = [
@@ -35,15 +34,34 @@ export default function AdminLayoutClient({
   ];
 
   function isActive(href: string): boolean {
-    // 总览只在完全匹配时高亮，否则 /admin 会把所有子路由都“吃掉”
     if (href === `/${locale}/admin`) return pathname === href;
     return pathname.startsWith(href);
+  }
+
+  async function handleLogout() {
+    try {
+      await fetch('/api/v1/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } finally {
+      window.location.href = `/${locale}/admin/login`;
+    }
   }
 
   return (
     <div className="min-h-screen flex">
       <aside className="w-60 border-r p-4 flex flex-col gap-2">
-        <div className="font-bold text-lg mb-4">Sanqin 后台</div>
+        <div className="mb-4 flex items-center justify-between">
+          <div className="font-bold text-lg">Sanqin 后台</div>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100"
+          >
+            退出登录
+          </button>
+        </div>
 
         {navItems.map((item) => (
           <Link
