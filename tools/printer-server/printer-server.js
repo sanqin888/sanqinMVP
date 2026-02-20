@@ -388,6 +388,12 @@ async function buildCustomerReceiptEscPos(params) {
   const discount = snapshot.discountCents ?? 0;
   const tax = snapshot.taxCents ?? 0;
   const total = snapshot.totalCents ?? 0;
+  const cashReceivedCents = Number.isFinite(params.cashReceivedCents)
+    ? Math.max(0, Math.round(params.cashReceivedCents))
+    : 0;
+  const cashChangeCents = Number.isFinite(params.cashChangeCents)
+    ? Math.max(0, Math.round(params.cashChangeCents))
+    : 0;
   const creditCardSurcharge = snapshot.creditCardSurchargeCents ?? 0;
   const loyalty = snapshot.loyalty || {};
 
@@ -412,6 +418,12 @@ async function buildCustomerReceiptEscPos(params) {
 
   chunks.push(encLine(`税费(HST) Tax: ${money(tax)}`));
   chunks.push(encLine(`合计 Total:   ${money(total)}`));
+  if (cashReceivedCents > 0) {
+    chunks.push(encLine(`实收 Paid:    ${money(cashReceivedCents)}`));
+  }
+  if (cashChangeCents > 0) {
+    chunks.push(encLine(`找零 Change:  ${money(cashChangeCents)}`));
+  }
 
   if (typeof loyalty.pointsEarned === "number" && loyalty.pointsEarned > 0) {
     chunks.push(encLine(`本单新增积分 Earned: +${loyalty.pointsEarned.toFixed(2)} pt`));

@@ -329,7 +329,9 @@ export function StoreBoardWidget(props: { locale: Locale }) {
   const handlePrintFront = useCallback(
     async (orderStableId: string) => {
       try {
-        await printOrderCloud(orderStableId, { customer: true, kitchen: false });
+        await printOrderCloud(orderStableId, {
+          targets: { customer: true, kitchen: false },
+        });
       } catch (error) {
         console.error("Failed to print front receipt via cloud:", error);
       }
@@ -340,7 +342,9 @@ export function StoreBoardWidget(props: { locale: Locale }) {
   const handlePrintKitchen = useCallback(
     async (orderStableId: string) => {
       try {
-        await printOrderCloud(orderStableId, { customer: false, kitchen: true });
+        await printOrderCloud(orderStableId, {
+          targets: { customer: false, kitchen: true },
+        });
       } catch (error) {
         console.error("Failed to print kitchen ticket via cloud:", error);
       }

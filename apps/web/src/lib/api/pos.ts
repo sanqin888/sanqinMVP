@@ -110,12 +110,16 @@ export async function createOrderAmendment<T = unknown>(
 // POS: 云端打印订单
 export async function printOrderCloud<T = unknown>(
   stableId: string,
-  targets?: { customer?: boolean; kitchen?: boolean },
+  payload?: {
+    targets?: { customer?: boolean; kitchen?: boolean };
+    cashReceivedCents?: number;
+    cashChangeCents?: number;
+  },
 ) {
   return apiFetch<T>(`/pos/orders/${enc(stableId)}/print`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(targets ? { targets } : {}),
+    body: JSON.stringify(payload ?? {}),
   });
 }
 
