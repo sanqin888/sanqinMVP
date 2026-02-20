@@ -57,12 +57,9 @@ export default async function AccountingLayout({
   const role = session?.role;
 
   if (role !== 'ADMIN' && role !== 'ACCOUNTANT') {
-    redirect(`/${safeLocale}/admin/login`);
+    redirect(`/${safeLocale}/accounting/login`);
   }
 
-  if (session?.requiresTwoFactor) {
-    redirect(`/${safeLocale}/admin/2fa`);
-  }
 
   const nav = [
     { href: `/${safeLocale}/accounting/dashboard`, label: '财务看板' },
