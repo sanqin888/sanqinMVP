@@ -1041,6 +1041,22 @@ model AccountingPeriodClose {
   @@index([periodType, closedAt])
 }
 
+model AnalyticsEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  eventName String
+  source    String   @default("web")
+  locale    String?
+  path      String?
+  userAgent String?
+  ipAddress String?
+  payload   Json?
+  occurredAt DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@index([eventName, occurredAt])
+  @@index([occurredAt])
+}
+
 enum OrderStatus {
   pending
   paid
