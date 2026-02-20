@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -12,6 +13,14 @@ type TxFilters = {
   categoryId?: string;
   source?: AccountingSourceType;
   keyword?: string;
+};
+
+type AuditLogFilters = {
+  entityType?: string;
+  entityId?: string;
+  operatorUserId?: string;
+  from?: string;
+  to?: string;
 };
 
 type UpsertTxDto = {
@@ -50,6 +59,47 @@ export class AccountingService {
     return date;
   }
 
+  private toPeriodKey(date: Date): string {
+    const year = date.getUTCFullYear();
+    const month = `${date.getUTCMonth() + 1}`.padStart(2, '0');
+    return `${year}-${month}`;
+  }
+
+  private monthBounds(periodKey: string) {
+    const parsed = /^(\d{4})-(\d{2})$/.exec(periodKey);
+    if (!parsed) {
+      throw new BadRequestException('periodKey must use YYYY-MM format');
+    }
+    const year = Number(parsed[1]);
+    const month = Number(parsed[2]) - 1;
+    const startAt = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
+    const endAt = new Date(Date.UTC(year, month + 1, 0, 23, 59, 59, 999));
+    return { startAt, endAt };
+  }
+
+  private async assertEditableForPeriod(
+    occurredAt: Date,
+    type: AccountingTxType,
+  ) {
+    const periodKey = this.toPeriodKey(occurredAt);
+    const closed = await this.prisma.accountingPeriodClose.findUnique({
+      where: {
+        periodType_periodKey: {
+          periodType: 'MONTH',
+          periodKey,
+        },
+      },
+      select: { id: true },
+    });
+
+    if (!closed) return;
+    if (type !== AccountingTxType.ADJUSTMENT) {
+      throw new ForbiddenException(
+        `期间 ${periodKey} 已锁账，仅允许新增或维护 ADJUSTMENT 分录。`,
+      );
+    }
+  }
+
   private buildWhere(
     filters: TxFilters,
   ): Prisma.AccountingTransactionWhereInput {
@@ -78,6 +128,29 @@ export class AccountingService {
               { txStableId: { contains: keyword, mode: 'insensitive' } },
               { orderId: { contains: keyword, mode: 'insensitive' } },
             ],
+          }
+        : {}),
+    };
+  }
+
+  private buildAuditWhere(
+    filters: AuditLogFilters,
+  ): Prisma.AccountingAuditLogWhereInput {
+    const fromDate = this.parseDate(filters.from);
+    const toDate = this.parseDate(filters.to, true);
+
+    return {
+      ...(filters.entityType ? { entityType: filters.entityType } : {}),
+      ...(filters.entityId ? { entityId: filters.entityId } : {}),
+      ...(filters.operatorUserId
+        ? { operatorUserId: filters.operatorUserId }
+        : {}),
+      ...(fromDate || toDate
+        ? {
+            createdAt: {
+              ...(fromDate ? { gte: fromDate } : {}),
+              ...(toDate ? { lte: toDate } : {}),
+            },
           }
         : {}),
     };
@@ -150,6 +223,7 @@ export class AccountingService {
 
   async createTx(payload: UpsertTxDto, operatorUserId: string) {
     const normalized = await this.validatePayload(payload);
+    await this.assertEditableForPeriod(normalized.occurredAt, payload.type);
 
     const created = await this.prisma.accountingTransaction.create({
       data: {
@@ -186,7 +260,9 @@ export class AccountingService {
     return this.prisma.accountingTransaction.findMany({
       where: this.buildWhere(filters),
       include: {
-        category: { select: { id: true, name: true, type: true } },
+        category: {
+          select: { id: true, name: true, type: true, parentId: true },
+        },
       },
       orderBy: [{ occurredAt: 'desc' }, { createdAt: 'desc' }],
     });
@@ -205,6 +281,8 @@ export class AccountingService {
     }
 
     const normalized = await this.validatePayload(payload);
+    await this.assertEditableForPeriod(existing.occurredAt, existing.type);
+    await this.assertEditableForPeriod(normalized.occurredAt, payload.type);
 
     const updated = await this.prisma.accountingTransaction.update({
       where: { txStableId },
@@ -246,6 +324,8 @@ export class AccountingService {
       throw new NotFoundException('Transaction not found');
     }
 
+    await this.assertEditableForPeriod(existing.occurredAt, existing.type);
+
     const deleted = await this.prisma.accountingTransaction.update({
       where: { txStableId },
       data: {
@@ -266,6 +346,53 @@ export class AccountingService {
     return { ok: true };
   }
 
+  async closeMonth(periodKey: string, operatorUserId: string) {
+    const { startAt, endAt } = this.monthBounds(periodKey);
+
+    const close = await this.prisma.accountingPeriodClose.upsert({
+      where: {
+        periodType_periodKey: {
+          periodType: 'MONTH',
+          periodKey,
+        },
+      },
+      create: {
+        periodType: 'MONTH',
+        periodKey,
+        startAt,
+        endAt,
+        closedByUserId: operatorUserId,
+      },
+      update: {
+        startAt,
+        endAt,
+        closedByUserId: operatorUserId,
+        closedAt: new Date(),
+      },
+    });
+
+    await this.createAuditLog({
+      action: 'PERIOD_CLOSE',
+      entityType: 'ACCOUNTING_PERIOD',
+      entityId: periodKey,
+      operatorUserId,
+      afterJson: close as unknown as Prisma.InputJsonValue,
+    });
+
+    return close;
+  }
+
+  async listPeriodCloseStatus(periodKeys?: string[]) {
+    const rows = await this.prisma.accountingPeriodClose.findMany({
+      where: {
+        periodType: 'MONTH',
+        ...(periodKeys?.length ? { periodKey: { in: periodKeys } } : {}),
+      },
+      orderBy: { periodKey: 'asc' },
+    });
+    return rows;
+  }
+
   async pnlReport(query: {
     from?: string;
     to?: string;
@@ -281,9 +408,16 @@ export class AccountingService {
         amountCents: true,
         occurredAt: true,
         categoryId: true,
-        category: { select: { name: true, type: true } },
+        category: {
+          select: { id: true, name: true, type: true, parentId: true },
+        },
       },
       orderBy: { occurredAt: 'asc' },
+    });
+
+    const categoriesMeta = await this.prisma.accountingCategory.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true, type: true, parentId: true },
     });
 
     const getBucket = (date: Date) => {
@@ -309,6 +443,7 @@ export class AccountingService {
       }
     >();
     const sources = new Map<AccountingSourceType, number>();
+    const monthNetMap = new Map<string, number>();
 
     for (const row of rows) {
       const bucket = getBucket(row.occurredAt);
@@ -336,6 +471,15 @@ export class AccountingService {
       categories.set(categoryKey, cat);
 
       sources.set(row.source, (sources.get(row.source) ?? 0) + row.amountCents);
+
+      const monthKey = this.toPeriodKey(row.occurredAt);
+      const monthNet =
+        row.type === AccountingTxType.INCOME
+          ? row.amountCents
+          : row.type === AccountingTxType.EXPENSE
+            ? -row.amountCents
+            : row.amountCents;
+      monthNetMap.set(monthKey, (monthNetMap.get(monthKey) ?? 0) + monthNet);
     }
 
     const totals = Array.from(periods.values()).reduce(
@@ -348,6 +492,75 @@ export class AccountingService {
       { income: 0, expense: 0, adjustment: 0 },
     );
 
+    const categoryNodeMap = new Map(
+      categoriesMeta.map((item) => [
+        item.id,
+        {
+          categoryId: item.id,
+          categoryName: item.name,
+          type: item.type,
+          parentId: item.parentId,
+          amountCents: categories.get(item.id)?.amountCents ?? 0,
+        },
+      ]),
+    );
+    for (const node of categoryNodeMap.values()) {
+      let parentId = node.parentId;
+      while (parentId) {
+        const parent = categoryNodeMap.get(parentId);
+        if (!parent) break;
+        parent.amountCents += node.amountCents;
+        parentId = parent.parentId;
+      }
+    }
+
+    const now = new Date();
+    const currentMonth = this.toPeriodKey(now);
+    const lastMonthDate = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1),
+    );
+    const lastMonth = this.toPeriodKey(lastMonthDate);
+    const currentQuarterStart = new Date(
+      Date.UTC(now.getUTCFullYear(), Math.floor(now.getUTCMonth() / 3) * 3, 1),
+    );
+    const quarterMonths = [0, 1, 2].map((offset) =>
+      this.toPeriodKey(
+        new Date(
+          Date.UTC(
+            currentQuarterStart.getUTCFullYear(),
+            currentQuarterStart.getUTCMonth() + offset,
+            1,
+          ),
+        ),
+      ),
+    );
+
+    const periodRows = Array.from(periods.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([period, val]) => ({
+        period,
+        incomeCents: val.income,
+        expenseCents: val.expense,
+        adjustmentCents: val.adjustment,
+        netProfitCents: val.income - val.expense + val.adjustment,
+        isClosed: false,
+      }));
+
+    const monthPeriods = periodRows
+      .map((item) => item.period)
+      .filter((item) => /^\d{4}-\d{2}$/.test(item));
+    const closeMap = new Map(
+      (await this.listPeriodCloseStatus(monthPeriods)).map((row) => [
+        row.periodKey,
+        row,
+      ]),
+    );
+
+    const markedPeriods = periodRows.map((item) => ({
+      ...item,
+      isClosed: closeMap.has(item.period),
+    }));
+
     return {
       groupBy,
       from: query.from ?? null,
@@ -358,22 +571,35 @@ export class AccountingService {
         adjustmentCents: totals.adjustment,
         netProfitCents: totals.income - totals.expense + totals.adjustment,
       },
-      periods: Array.from(periods.entries())
-        .sort((a, b) => a[0].localeCompare(b[0]))
-        .map(([period, val]) => ({
-          period,
-          incomeCents: val.income,
-          expenseCents: val.expense,
-          adjustmentCents: val.adjustment,
-          netProfitCents: val.income - val.expense + val.adjustment,
-        })),
+      periods: markedPeriods,
       byCategory: Array.from(categories.values()).sort(
         (a, b) => b.amountCents - a.amountCents,
       ),
+      byCategoryTree: Array.from(categoryNodeMap.values())
+        .sort((a, b) => b.amountCents - a.amountCents)
+        .map((item) => ({
+          categoryId: item.categoryId,
+          categoryName: item.categoryName,
+          type: item.type,
+          parentId: item.parentId,
+          amountCents: item.amountCents,
+        })),
       bySource: Array.from(sources.entries()).map(([source, amountCents]) => ({
         source,
         amountCents,
       })),
+      trends: {
+        currentMonthNetCents: monthNetMap.get(currentMonth) ?? 0,
+        lastMonthNetCents: monthNetMap.get(lastMonth) ?? 0,
+        quarterToDateNetCents: quarterMonths.reduce(
+          (sum, month) => sum + (monthNetMap.get(month) ?? 0),
+          0,
+        ),
+      },
+      closeStatus: {
+        currentMonth: closeMap.has(currentMonth),
+        lastMonth: closeMap.has(lastMonth),
+      },
     };
   }
 
@@ -441,6 +667,202 @@ export class AccountingService {
     );
 
     return [header.join(','), ...lines].join('\n');
+  }
+
+  async exportPnlTemplate(
+    template: 'MANAGEMENT' | 'BOSS',
+    query: {
+      from?: string;
+      to?: string;
+      groupBy?: 'month' | 'quarter' | 'year';
+    },
+    operatorUserId: string,
+  ) {
+    const report = await this.pnlReport(query);
+
+    const escapeCsv = (val: string | number | null | undefined) => {
+      if (val === null || val === undefined) return '';
+      const str = String(val);
+      if (/[",\n]/.test(str)) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    const formatMoney = (cents: number) => (cents / 100).toFixed(2);
+
+    const lines: string[] = [];
+    if (template === 'MANAGEMENT') {
+      lines.push(
+        [
+          'period',
+          'income',
+          'expense',
+          'adjustment',
+          'netProfit',
+          'isClosed',
+        ].join(','),
+      );
+      for (const row of report.periods) {
+        lines.push(
+          [
+            row.period,
+            formatMoney(row.incomeCents),
+            formatMoney(row.expenseCents),
+            formatMoney(row.adjustmentCents),
+            formatMoney(row.netProfitCents),
+            row.isClosed ? 'CLOSED' : 'OPEN',
+          ]
+            .map(escapeCsv)
+            .join(','),
+        );
+      }
+      lines.push('');
+      lines.push(['category', 'type', 'amount'].join(','));
+      for (const row of report.byCategoryTree) {
+        lines.push(
+          [row.categoryName, row.type, formatMoney(row.amountCents)]
+            .map(escapeCsv)
+            .join(','),
+        );
+      }
+    } else {
+      lines.push(['metric', 'amount'].join(','));
+      lines.push(
+        ['收入', formatMoney(report.summary.incomeCents)]
+          .map(escapeCsv)
+          .join(','),
+      );
+      lines.push(
+        ['费用', formatMoney(report.summary.expenseCents)]
+          .map(escapeCsv)
+          .join(','),
+      );
+      lines.push(
+        ['调整', formatMoney(report.summary.adjustmentCents)]
+          .map(escapeCsv)
+          .join(','),
+      );
+      lines.push(
+        ['净利润', formatMoney(report.summary.netProfitCents)]
+          .map(escapeCsv)
+          .join(','),
+      );
+      lines.push(
+        ['本月净利润', formatMoney(report.trends.currentMonthNetCents)]
+          .map(escapeCsv)
+          .join(','),
+      );
+      lines.push(
+        ['上月净利润', formatMoney(report.trends.lastMonthNetCents)]
+          .map(escapeCsv)
+          .join(','),
+      );
+      lines.push(
+        ['季度累计净利润', formatMoney(report.trends.quarterToDateNetCents)]
+          .map(escapeCsv)
+          .join(','),
+      );
+    }
+
+    await this.createAuditLog({
+      action: 'EXPORT_TEMPLATE',
+      entityType: 'ACCOUNTING_REPORT',
+      entityId: template,
+      operatorUserId,
+      afterJson: { template, query } as Prisma.JsonObject,
+    });
+
+    return lines.join('\n');
+  }
+
+  async exportPnlPdf(
+    template: 'MANAGEMENT' | 'BOSS',
+    query: {
+      from?: string;
+      to?: string;
+      groupBy?: 'month' | 'quarter' | 'year';
+    },
+    operatorUserId: string,
+  ) {
+    const report = await this.pnlReport(query);
+    const formatMoney = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+    const textLines =
+      template === 'MANAGEMENT'
+        ? [
+            `模板: 管理版（明细）`,
+            `收入: ${formatMoney(report.summary.incomeCents)}`,
+            `费用: ${formatMoney(report.summary.expenseCents)}`,
+            `调整: ${formatMoney(report.summary.adjustmentCents)}`,
+            `净利润: ${formatMoney(report.summary.netProfitCents)}`,
+            ...report.periods
+              .slice(0, 12)
+              .map(
+                (item) =>
+                  `${item.period} | ${formatMoney(item.netProfitCents)} | ${item.isClosed ? '已锁账' : '未锁账'}`,
+              ),
+          ]
+        : [
+            `模板: 老板版（摘要）`,
+            `净利润: ${formatMoney(report.summary.netProfitCents)}`,
+            `本月: ${formatMoney(report.trends.currentMonthNetCents)}`,
+            `上月: ${formatMoney(report.trends.lastMonthNetCents)}`,
+            `季度累计: ${formatMoney(report.trends.quarterToDateNetCents)}`,
+          ];
+
+    const objects: string[] = [];
+    const escapedText = textLines
+      .map(
+        (line, index) =>
+          `${50} ${780 - index * 22} Td (${line.replace(/[()\\]/g, '\\$&')}) Tj`,
+      )
+      .join(' T* ');
+    const contentStream = `BT /F1 12 Tf ${escapedText} ET`;
+
+    objects.push('1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj');
+    objects.push('2 0 obj << /Type /Pages /Count 1 /Kids [3 0 R] >> endobj');
+    objects.push(
+      '3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj',
+    );
+    objects.push(
+      '4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj',
+    );
+    objects.push(
+      `5 0 obj << /Length ${contentStream.length} >> stream\n${contentStream}\nendstream endobj`,
+    );
+
+    let pdf = '%PDF-1.4\n';
+    const xref: number[] = [0];
+    for (const object of objects) {
+      xref.push(pdf.length);
+      pdf += `${object}\n`;
+    }
+    const xrefOffset = pdf.length;
+    pdf += `xref\n0 ${xref.length}\n`;
+    pdf += '0000000000 65535 f \n';
+    for (let i = 1; i < xref.length; i += 1) {
+      pdf += `${String(xref[i]).padStart(10, '0')} 00000 n \n`;
+    }
+    pdf += `trailer << /Size ${xref.length} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+
+    await this.createAuditLog({
+      action: 'EXPORT_PDF',
+      entityType: 'ACCOUNTING_REPORT',
+      entityId: template,
+      operatorUserId,
+      afterJson: { template, query } as Prisma.JsonObject,
+    });
+
+    return Buffer.from(pdf, 'utf8');
+  }
+
+  async listAuditLogs(filters: AuditLogFilters) {
+    return this.prisma.accountingAuditLog.findMany({
+      where: this.buildAuditWhere(filters),
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
   }
 
   async listCategories() {

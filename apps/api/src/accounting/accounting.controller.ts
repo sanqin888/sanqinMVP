@@ -86,6 +86,26 @@ export class AccountingController {
     );
   }
 
+  @Post('period-close/month/:periodKey')
+  async closeMonth(
+    @Param('periodKey') periodKey: string,
+    @Req() req: Request & { user?: { id?: string } },
+  ) {
+    return this.accountingService.closeMonth(
+      periodKey,
+      req.user?.id ?? 'unknown',
+    );
+  }
+
+  @Get('period-close/month')
+  async listMonthCloseStatus(@Query('periodKeys') periodKeys?: string) {
+    const keys = periodKeys
+      ?.split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+    return this.accountingService.listPeriodCloseStatus(keys);
+  }
+
   @Get('report/pnl')
   async getPnlReport(
     @Query('from') from?: string,
@@ -93,6 +113,23 @@ export class AccountingController {
     @Query('groupBy') groupBy?: 'month' | 'quarter' | 'year',
   ) {
     return this.accountingService.pnlReport({ from, to, groupBy });
+  }
+
+  @Get('audit-logs')
+  async listAuditLogs(
+    @Query('entityType') entityType?: string,
+    @Query('entityId') entityId?: string,
+    @Query('operatorUserId') operatorUserId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.accountingService.listAuditLogs({
+      entityType,
+      entityId,
+      operatorUserId,
+      from,
+      to,
+    });
   }
 
   @Get('export/tx.csv')
@@ -117,6 +154,54 @@ export class AccountingController {
       `attachment; filename="accounting-transactions-${ts}.csv"`,
     );
     return res.send(csv);
+  }
+
+  @Get('export/report.csv')
+  async exportReportCsv(
+    @Query('template') template: 'MANAGEMENT' | 'BOSS' = 'MANAGEMENT',
+    @Query('from') from: string | undefined,
+    @Query('to') to: string | undefined,
+    @Query('groupBy') groupBy: 'month' | 'quarter' | 'year' | undefined,
+    @Req() req: Request & { user?: { id?: string } },
+    @Res() res: Response,
+  ) {
+    const csv = await this.accountingService.exportPnlTemplate(
+      template,
+      { from, to, groupBy },
+      req.user?.id ?? 'unknown',
+    );
+
+    const ts = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="accounting-report-${template.toLowerCase()}-${ts}.csv"`,
+    );
+    return res.send(csv);
+  }
+
+  @Get('export/report.pdf')
+  async exportReportPdf(
+    @Query('template') template: 'MANAGEMENT' | 'BOSS' = 'MANAGEMENT',
+    @Query('from') from: string | undefined,
+    @Query('to') to: string | undefined,
+    @Query('groupBy') groupBy: 'month' | 'quarter' | 'year' | undefined,
+    @Req() req: Request & { user?: { id?: string } },
+    @Res() res: Response,
+  ) {
+    const pdfBuffer = await this.accountingService.exportPnlPdf(
+      template,
+      { from, to, groupBy },
+      req.user?.id ?? 'unknown',
+    );
+
+    const ts = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="accounting-report-${template.toLowerCase()}-${ts}.pdf"`,
+    );
+    return res.send(pdfBuffer);
   }
 
   @Get('categories')

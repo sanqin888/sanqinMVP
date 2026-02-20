@@ -972,6 +972,19 @@ model AccountingAuditLog {
   @@index([operatorUserId, createdAt])
 }
 
+model AccountingPeriodClose {
+  id             String   @id @default(uuid()) @db.Uuid
+  periodType     String   @default("MONTH")
+  periodKey      String
+  startAt        DateTime
+  endAt          DateTime
+  closedByUserId String
+  closedAt       DateTime @default(now())
+
+  @@unique([periodType, periodKey])
+  @@index([periodType, closedAt])
+}
+
 enum OrderStatus {
   pending
   paid

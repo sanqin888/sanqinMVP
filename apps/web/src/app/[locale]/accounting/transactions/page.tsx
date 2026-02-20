@@ -18,6 +18,11 @@ type Tx = {
   categoryId: string;
   orderId?: string | null;
   memo?: string | null;
+  attachmentUrls?: string[];
+};
+
+type PeriodClose = {
+  periodKey: string;
 };
 
 const initialForm = {
@@ -28,13 +33,17 @@ const initialForm = {
   categoryId: '',
   orderId: '',
   memo: '',
+  attachmentUrlsText: '',
 };
+
+const toMonthKey = (date: string) => date.slice(0, 7);
 
 export default function TransactionsPage() {
   const [rows, setRows] = useState<Tx[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [closedMonths, setClosedMonths] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     const [tx, cats] = await Promise.all([
@@ -43,6 +52,17 @@ export default function TransactionsPage() {
     ]);
     setRows(tx);
     setCategories(cats);
+
+    const months = Array.from(new Set(tx.map((item) => toMonthKey(item.occurredAt)).filter(Boolean)));
+    if (months.length) {
+      const closeRows = await apiFetch<PeriodClose[]>(
+        `/accounting/period-close/month?periodKeys=${encodeURIComponent(months.join(','))}`,
+      );
+      setClosedMonths(new Set(closeRows.map((item) => item.periodKey)));
+    } else {
+      setClosedMonths(new Set());
+    }
+
     if (!form.categoryId && cats[0]) {
       setForm((prev) => ({ ...prev, categoryId: cats[0].id }));
     }
@@ -71,6 +91,10 @@ export default function TransactionsPage() {
       orderId: form.orderId || null,
       memo: form.memo || null,
       occurredAt: form.occurredAt,
+      attachmentUrls: form.attachmentUrlsText
+        .split(/\n|,/) 
+        .map((item) => item.trim())
+        .filter(Boolean),
     };
 
     if (editingId) {
@@ -97,6 +121,12 @@ export default function TransactionsPage() {
     await apiFetch(`/accounting/tx/${txStableId}`, { method: 'DELETE' });
     await load();
   }
+
+  const canEditRow = (row: Tx) => {
+    const isClosed = closedMonths.has(toMonthKey(row.occurredAt));
+    if (!isClosed) return true;
+    return row.type === 'ADJUSTMENT';
+  };
 
   return (
     <div className="space-y-6">
@@ -127,10 +157,34 @@ export default function TransactionsPage() {
         <input className="rounded border px-3 py-2" type="date" value={form.occurredAt} onChange={(e) => setForm((s) => ({ ...s, occurredAt: e.target.value }))} />
         <input className="rounded border px-3 py-2" placeholder="orderStableId (source=ORDER 必填)" value={form.orderId} onChange={(e) => setForm((s) => ({ ...s, orderId: e.target.value }))} />
         <input className="rounded border px-3 py-2 md:col-span-2" placeholder="备注" value={form.memo} onChange={(e) => setForm((s) => ({ ...s, memo: e.target.value }))} />
+        <textarea className="rounded border px-3 py-2 md:col-span-2" rows={2} placeholder="附件 URL（逗号或换行分隔）" value={form.attachmentUrlsText} onChange={(e) => setForm((s) => ({ ...s, attachmentUrlsText: e.target.value }))} />
 
-        <button className="rounded bg-slate-900 px-4 py-2 text-white md:col-span-2" type="submit">
-          {editingId ? '更新流水' : '新增流水'}
-        </button>
+        <div className="md:col-span-2 flex flex-wrap gap-2">
+          <button className="rounded bg-slate-900 px-4 py-2 text-white" type="submit">
+            {editingId ? '更新流水' : '新增流水'}
+          </button>
+          <button type="button" className="rounded border border-slate-300 px-4 py-2" onClick={() => {
+            const last = rows[0];
+            if (!last) return;
+            setEditingId(null);
+            setForm({
+              type: last.type,
+              source: last.source,
+              amountCents: last.amountCents,
+              occurredAt: new Date().toISOString().slice(0, 10),
+              categoryId: last.categoryId,
+              orderId: last.orderId ?? '',
+              memo: last.memo ?? '',
+              attachmentUrlsText: (last.attachmentUrls ?? []).join('\n'),
+            });
+          }}>复制上一条</button>
+          {editingId ? (
+            <button type="button" className="rounded border border-slate-300 px-4 py-2" onClick={() => {
+              setEditingId(null);
+              setForm(initialForm);
+            }}>取消编辑</button>
+          ) : null}
+        </div>
       </form>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -149,36 +203,55 @@ export default function TransactionsPage() {
                 <th className="px-2 py-2">来源</th>
                 <th className="px-2 py-2">金额</th>
                 <th className="px-2 py-2">备注</th>
+                <th className="px-2 py-2">附件</th>
+                <th className="px-2 py-2">状态</th>
                 <th className="px-2 py-2">操作</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
-                <tr key={row.txStableId} className="border-b last:border-0">
-                  <td className="px-2 py-2">{new Date(row.occurredAt).toLocaleDateString()}</td>
-                  <td className="px-2 py-2">{row.type}</td>
-                  <td className="px-2 py-2">{row.source}</td>
-                  <td className="px-2 py-2">${(row.amountCents / 100).toFixed(2)}</td>
-                  <td className="px-2 py-2">{row.memo ?? '-'}</td>
-                  <td className="px-2 py-2">
-                    <div className="flex gap-2">
-                      <button className="text-blue-600 hover:underline" onClick={() => {
-                        setEditingId(row.txStableId);
-                        setForm({
-                          type: row.type,
-                          source: row.source,
-                          amountCents: row.amountCents,
-                          occurredAt: row.occurredAt.slice(0, 10),
-                          categoryId: row.categoryId,
-                          orderId: row.orderId ?? '',
-                          memo: row.memo ?? '',
-                        });
-                      }}>编辑</button>
-                      <button className="text-red-600 hover:underline" onClick={() => void onDelete(row.txStableId)}>删除</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {rows.map((row) => {
+                const monthClosed = closedMonths.has(toMonthKey(row.occurredAt));
+                const editable = canEditRow(row);
+                return (
+                  <tr key={row.txStableId} className="border-b last:border-0">
+                    <td className="px-2 py-2">{new Date(row.occurredAt).toLocaleDateString()}</td>
+                    <td className="px-2 py-2">{row.type}</td>
+                    <td className="px-2 py-2">{row.source}</td>
+                    <td className="px-2 py-2">${(row.amountCents / 100).toFixed(2)}</td>
+                    <td className="px-2 py-2">{row.memo ?? '-'}</td>
+                    <td className="px-2 py-2">
+                      <div className="space-y-1">
+                        {(row.attachmentUrls ?? []).slice(0, 2).map((url) => (
+                          <div key={url}>
+                            <a className="text-blue-600 hover:underline" href={url} target="_blank" rel="noreferrer">预览附件</a>
+                            {url.match(/\.(png|jpe?g|gif|webp)$/i) ? <img src={url} alt="附件预览" className="mt-1 h-10 w-10 rounded object-cover" /> : null}
+                          </div>
+                        ))}
+                        {(row.attachmentUrls ?? []).length === 0 ? '-' : null}
+                      </div>
+                    </td>
+                    <td className="px-2 py-2">{monthClosed ? '已锁账' : '未锁账'}</td>
+                    <td className="px-2 py-2">
+                      <div className="flex gap-2">
+                        <button disabled={!editable} className="text-blue-600 hover:underline disabled:text-slate-300" onClick={() => {
+                          setEditingId(row.txStableId);
+                          setForm({
+                            type: row.type,
+                            source: row.source,
+                            amountCents: row.amountCents,
+                            occurredAt: row.occurredAt.slice(0, 10),
+                            categoryId: row.categoryId,
+                            orderId: row.orderId ?? '',
+                            memo: row.memo ?? '',
+                            attachmentUrlsText: (row.attachmentUrls ?? []).join('\n'),
+                          });
+                        }}>编辑</button>
+                        <button disabled={!editable} className="text-red-600 hover:underline disabled:text-slate-300" onClick={() => void onDelete(row.txStableId)}>删除</button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
