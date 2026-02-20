@@ -16,6 +16,7 @@ type CleanupStats = {
   webhookEventsPayloadTrimmed: number;
   webhookEventsDeleted: number;
   deliveryEventsDeleted: number;
+  messagingSendsDeleted: number;
 };
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -30,6 +31,10 @@ export class DataRetentionService implements OnModuleInit, OnModuleDestroy {
   private readonly inviteUsedRetentionDays = this.readIntFromEnv(
     'DATA_RETENTION_INVITE_USED_DAYS',
     90,
+  );
+  private readonly messagingSendRetentionDays = this.readIntFromEnv(
+    'DATA_RETENTION_MESSAGING_SEND_DAYS',
+    730,
   );
 
   private intervalId?: NodeJS.Timeout;
@@ -67,6 +72,9 @@ export class DataRetentionService implements OnModuleInit, OnModuleDestroy {
       const threshold180d = new Date(now.getTime() - 180 * ONE_DAY_MS);
       const thresholdInviteUsed = new Date(
         now.getTime() - this.inviteUsedRetentionDays * ONE_DAY_MS,
+      );
+      const thresholdMessagingSend = new Date(
+        now.getTime() - this.messagingSendRetentionDays * ONE_DAY_MS,
       );
 
       const stats = await this.prisma.$transaction(async (tx) => {
@@ -155,6 +163,14 @@ export class DataRetentionService implements OnModuleInit, OnModuleDestroy {
           })
         ).count;
 
+        const messagingSendsDeleted = (
+          await tx.messagingSend.deleteMany({
+            where: {
+              createdAt: { lt: thresholdMessagingSend },
+            },
+          })
+        ).count;
+
         return {
           userSessionsDeleted,
           trustedDevicesDeleted,
@@ -164,6 +180,7 @@ export class DataRetentionService implements OnModuleInit, OnModuleDestroy {
           webhookEventsPayloadTrimmed,
           webhookEventsDeleted,
           deliveryEventsDeleted,
+          messagingSendsDeleted,
         };
       });
 
@@ -178,6 +195,7 @@ export class DataRetentionService implements OnModuleInit, OnModuleDestroy {
           `webhookPayloadsTrimmed=${stats.webhookEventsPayloadTrimmed}`,
           `webhookEvents=${stats.webhookEventsDeleted}`,
           `deliveryEvents=${stats.deliveryEventsDeleted}`,
+          `messagingSends=${stats.messagingSendsDeleted}`,
         ].join(' | '),
       );
 
