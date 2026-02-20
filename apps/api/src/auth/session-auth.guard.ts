@@ -54,7 +54,9 @@ export class SessionAuthGuard implements CanActivate {
       };
 
       const isAdminSession =
-        session.user?.role === 'ADMIN' || session.user?.role === 'STAFF';
+        session.user?.role === 'ADMIN' ||
+        session.user?.role === 'STAFF' ||
+        session.user?.role === 'ACCOUNTANT';
       const maxAge = session.expiresAt.getTime() - Date.now();
 
       // ✅ 2. 下发 Session Cookie (带签名)

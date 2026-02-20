@@ -541,7 +541,10 @@ export class AuthController {
     const twoFactorEnabled =
       !!user.twoFactorEnabledAt && user.twoFactorMethod === 'SMS';
     const mfaVerifiedAt = req.session?.mfaVerifiedAt ?? null;
-    const isAdminRole = user.role === 'ADMIN' || user.role === 'STAFF';
+    const isAdminRole =
+      user.role === 'ADMIN' ||
+      user.role === 'STAFF' ||
+      user.role === 'ACCOUNTANT';
     const requiresTwoFactor = isAdminRole
       ? !mfaVerifiedAt
       : twoFactorEnabled && !mfaVerifiedAt;
