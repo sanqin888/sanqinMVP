@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -46,6 +47,20 @@ type TxBody = {
 export class AccountingController {
   constructor(private readonly accountingService: AccountingService) {}
 
+  private parseNonNegativeNumber(
+    raw: string | undefined,
+    fieldName: string,
+  ): number | undefined {
+    if (raw == null || raw === '') return undefined;
+    const value = Number(raw);
+    if (!Number.isInteger(value) || value < 0) {
+      throw new BadRequestException(
+        `${fieldName} must be a non-negative integer`,
+      );
+    }
+    return value;
+  }
+
   private requireOperatorUserId(req: Request & { user?: { id?: string } }) {
     const operatorUserId = req.user?.id?.trim();
     if (!operatorUserId) {
@@ -72,6 +87,9 @@ export class AccountingController {
     @Query('categoryId') categoryId?: string,
     @Query('source') source?: AccountingSourceType,
     @Query('keyword') keyword?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('cursor') cursor?: string,
   ) {
     return this.accountingService.listTx({
       from,
@@ -79,6 +97,9 @@ export class AccountingController {
       categoryId,
       source,
       keyword,
+      limit: this.parseNonNegativeNumber(limit, 'limit'),
+      offset: this.parseNonNegativeNumber(offset, 'offset'),
+      cursor,
     });
   }
 

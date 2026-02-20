@@ -22,6 +22,9 @@ type TxFilters = {
   categoryId?: string;
   source?: AccountingSourceType;
   keyword?: string;
+  limit?: number;
+  offset?: number;
+  cursor?: string;
 };
 
 type AuditLogFilters = {
@@ -374,6 +377,9 @@ export class AccountingService {
   }
 
   async listTx(filters: TxFilters) {
+    const normalizedLimit = Math.min(Math.max(filters.limit ?? 50, 1), 200);
+    const normalizedOffset = Math.max(filters.offset ?? 0, 0);
+
     return this.prisma.accountingTransaction.findMany({
       where: this.buildWhere(filters),
       include: {
@@ -383,6 +389,14 @@ export class AccountingService {
         account: { select: { id: true, name: true, type: true } },
         toAccount: { select: { id: true, name: true, type: true } },
       },
+      ...(filters.cursor
+        ? {
+            cursor: { txStableId: filters.cursor },
+            skip: 1,
+          }
+        : {}),
+      skip: normalizedOffset,
+      take: normalizedLimit,
       orderBy: [{ occurredAt: 'desc' }, { createdAt: 'desc' }],
     });
   }
