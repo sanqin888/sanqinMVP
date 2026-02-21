@@ -19,18 +19,17 @@ type CloverElementInstance = {
   destroy?: () => void;
 };
 
+type CloverConstructor = new (
+  key?: string,
+  options?: { merchantId?: string },
+) => CloverInstance;
+
 type CloverInstance = {
   elements: () => {
     create: (type: string, options?: Record<string, unknown>) => CloverElementInstance;
   };
   updateGooglePaymentStatus?: (status: "success" | "failed") => void;
 };
-
-declare global {
-  interface Window {
-    Clover?: new (key?: string, options?: { merchantId?: string }) => CloverInstance;
-  }
-}
 
 type GooglePayCtx = {
   locale: Locale;
@@ -143,7 +142,8 @@ export default function GooglePayWalletPage() {
       try {
         await loadScript(sdkUrl);
         if (cancelled) return;
-        if (!window.Clover) throw new Error("Clover SDK not available");
+        const Clover = (window as Window & { Clover?: CloverConstructor }).Clover;
+        if (!Clover) throw new Error("Clover SDK not available");
 
         const host = document.getElementById("clover-google-pay");
         if (!host) throw new Error("Google Pay host not ready");
@@ -153,7 +153,7 @@ export default function GooglePayWalletPage() {
         cloverGoogleRef.current = null;
         submittedTokenRef.current = null;
 
-        const cloverGoogle = new window.Clover(publicKey, { merchantId });
+        const cloverGoogle = new Clover(publicKey, { merchantId });
         cloverGoogleRef.current = cloverGoogle;
 
         const gp = cloverGoogle.elements().create("PAYMENT_REQUEST_BUTTON", {
