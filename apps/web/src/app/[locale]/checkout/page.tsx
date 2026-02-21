@@ -110,10 +110,9 @@ type CloverElementInstance = {
   mount: (selector: string) => void;
   addEventListener: (
     event: string,
-    handler: (
-      payload: CloverFieldChangeEvent | CloverAggregatedFieldEvent,
-    ) => void,
+    handler: (payload: unknown) => void,
   ) => void;
+  removeEventListener?: (event: string, handler: (payload: unknown) => void) => void;
   destroy?: () => void;
 };
 
@@ -1703,7 +1702,7 @@ export default function CheckoutPage() {
         setApplePayMounted(false);
         setApplePayListenerReady(false);
 
-        const attachApplePayListeners = () => {
+        const attachApplePayListeners = (applePay: CloverElementInstance) => {
           const getWalletTokenFromDetail = (detail: unknown) => {
             if (!detail || typeof detail !== "object") return null;
 
@@ -1742,20 +1741,21 @@ export default function CheckoutPage() {
             // noop: reserved for session timeout/cancel handling.
           };
 
+          applePay.addEventListener("paymentMethod", onPaymentMethod);
+          applePay.addEventListener("paymentMethodEnd", onPaymentMethodEnd);
+
+          // 兼容 Clover 历史版本：某些版本会把支付事件派发到 window。
           window.addEventListener("paymentMethod", onPaymentMethod);
           window.addEventListener("paymentMethodEnd", onPaymentMethodEnd);
           setApplePayListenerReady(true);
 
           return () => {
+            applePay.removeEventListener?.("paymentMethod", onPaymentMethod);
+            applePay.removeEventListener?.("paymentMethodEnd", onPaymentMethodEnd);
             window.removeEventListener("paymentMethod", onPaymentMethod);
             window.removeEventListener("paymentMethodEnd", onPaymentMethodEnd);
             setApplePayListenerReady(false);
           };
-        };
-
-        const removeApplePayListeners = attachApplePayListeners();
-        cleanupRef.current = () => {
-          removeApplePayListeners?.();
         };
 
         const clover = new window.Clover(publicKey, { merchantId });
@@ -1793,6 +1793,11 @@ export default function CheckoutPage() {
         });
         applePayHost.innerHTML = "";
         applePay.mount("#clover-apple-pay");
+
+        const removeApplePayListeners = attachApplePayListeners(applePay);
+        cleanupRef.current = () => {
+          removeApplePayListeners?.();
+        };
 
         cloverRef.current = clover;
         cloverAppleRef.current = cloverApple;
