@@ -193,10 +193,10 @@ const STRINGS: Record<
     mixedPaymentHint: "余额抵扣后，请选择剩余金额的支付方式。",
     discountTitle: "折扣 / 优惠",
     discountOther: "其他金额",
-    discountOtherHint: "输入优惠金额",
+    discountOtherHint: "输入优惠金额（分）",
     discountApplied: "折扣优惠",
     cashDialogTitle: "现金收款",
-    cashDialogAmountLabel: "收款金额",
+    cashDialogAmountLabel: "收款金额（分）",
     cashDialogCancel: "取消",
     cashDialogConfirm: "确认",
     cashDialogInvalid: "收款金额不能小于合计金额",
@@ -259,10 +259,10 @@ const STRINGS: Record<
     mixedPaymentHint: "After balance deduction, choose how to pay the remaining amount.",
     discountTitle: "Discount",
     discountOther: "Other",
-    discountOtherHint: "Enter discount amount",
+    discountOtherHint: "Enter discount amount (cents)",
     discountApplied: "Discount",
     cashDialogTitle: "Cash collection",
-    cashDialogAmountLabel: "Amount received",
+    cashDialogAmountLabel: "Amount received (cents)",
     cashDialogCancel: "Cancel",
     cashDialogConfirm: "Confirm",
     cashDialogInvalid: "Amount received cannot be less than total",
@@ -285,6 +285,12 @@ function roundUpToFiveCents(cents: number): number {
 function formatSignedMoney(cents: number): string {
   const sign = cents >= 0 ? "+" : "-";
   return `${sign}${formatMoney(Math.abs(cents))}`;
+}
+
+function parseCentInput(value: string): number {
+  const digitsOnly = value.replace(/\D/g, "");
+  if (!digitsOnly) return 0;
+  return Number(digitsOnly);
 }
 
 export default function StorePosPaymentPage() {
@@ -440,9 +446,9 @@ export default function StorePosPaymentPage() {
     if (discountOption === "10") return Math.round(baseSubtotalCents * 0.1);
     if (discountOption === "15") return Math.round(baseSubtotalCents * 0.15);
 
-    const val = Number(otherDiscountInput);
-    if (!Number.isFinite(val) || val <= 0) return 0;
-    return Math.min(Math.round(val * 100), baseSubtotalCents);
+    const cents = parseCentInput(otherDiscountInput);
+    if (!Number.isFinite(cents) || cents <= 0) return 0;
+    return Math.min(cents, baseSubtotalCents);
   }, [baseSubtotalCents, discountOption, otherDiscountInput]);
 
   const appendDiscountKeypadValue = useCallback((key: string) => {
@@ -450,9 +456,8 @@ export default function StorePosPaymentPage() {
       if (key === "clear") return "";
       if (key === "back") return prev.slice(0, -1);
 
-      const candidate = `${prev}${key}`;
-      if (!/^\d*(\.\d{0,2})?$/.test(candidate)) return prev;
-      return candidate;
+      if (!/^\d+$/.test(key)) return prev;
+      return `${prev}${key}`;
     });
   }, []);
 
@@ -835,7 +840,7 @@ const loyaltyRedeemCents = redeemCents;
   const handleConfirm = async () => {
     if (paymentMethod === "cash" && orderChannel === "in_store") {
       setCashDialogError(null);
-      setCashReceivedInput((summaryTotalCents / 100).toFixed(2));
+      setCashReceivedInput(String(summaryTotalCents));
       setCashDialogOpen(true);
       return;
     }
@@ -843,12 +848,11 @@ const loyaltyRedeemCents = redeemCents;
   };
 
   const handleConfirmCashDialog = async () => {
-    const received = Number(cashReceivedInput);
-    if (!Number.isFinite(received) || received <= 0) {
+    const cashReceivedCents = parseCentInput(cashReceivedInput);
+    if (!Number.isFinite(cashReceivedCents) || cashReceivedCents <= 0) {
       setCashDialogError(t.cashDialogInvalid);
       return;
     }
-    const cashReceivedCents = Math.round(received * 100);
     if (cashReceivedCents < summaryTotalCents) {
       setCashDialogError(t.cashDialogInvalid);
       return;
@@ -1077,11 +1081,10 @@ const loyaltyRedeemCents = redeemCents;
 
                 {discountOption === "other" && (
                   <input
-                    type="number"
-                    min="0"
-                    step="0.01"
+                    type="text"
+                    inputMode="numeric"
                     value={otherDiscountInput}
-                    onChange={(e) => setOtherDiscountInput(e.target.value)}
+                    onChange={(e) => setOtherDiscountInput(e.target.value.replace(/\D/g, ""))}
                     placeholder={t.discountOtherHint}
                     className="h-10 w-full rounded-xl border border-slate-600 bg-slate-900 px-3 text-sm text-slate-100 placeholder:text-slate-500"
                   />
@@ -1097,7 +1100,7 @@ const loyaltyRedeemCents = redeemCents;
                 <div ref={discountKeypadRef} className="pointer-events-auto absolute right-full top-7 mr-3 z-20 w-[16rem] rounded-2xl border border-slate-600 bg-slate-900/95 p-3 shadow-2xl">
                   <div className="mb-2 text-xs text-slate-300">{t.discountOtherHint}</div>
                   <div className="grid grid-cols-3 gap-2">
-                    {["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "back"].map((key) => (
+                    {["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "00", "back"].map((key) => (
                       <button
                         key={key}
                         type="button"
@@ -1173,16 +1176,44 @@ const loyaltyRedeemCents = redeemCents;
             <p className="mt-2 text-sm text-slate-300">{t.total}: {formatMoney(summaryTotalCents)}</p>
             <label className="mt-4 block text-xs text-slate-400">{t.cashDialogAmountLabel}</label>
             <input
-              type="number"
-              min="0"
-              step="0.01"
+              type="text"
+              inputMode="numeric"
               value={cashReceivedInput}
               onChange={(e) => {
-                setCashReceivedInput(e.target.value);
+                setCashReceivedInput(e.target.value.replace(/\D/g, ""));
                 setCashDialogError(null);
               }}
               className="mt-2 h-11 w-full rounded-xl border border-slate-600 bg-slate-800 px-3 text-base text-white"
             />
+            <p className="mt-2 text-xs text-slate-400">{t.cashDialogAmountLabel}: {formatMoney(parseCentInput(cashReceivedInput))}</p>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              {["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "00", "back"].map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => {
+                    setCashDialogError(null);
+                    setCashReceivedInput((prev) => {
+                      if (key === "back") return prev.slice(0, -1);
+                      return `${prev}${key}`;
+                    });
+                  }}
+                  className="h-11 rounded-xl bg-slate-800 text-base font-semibold text-slate-100 hover:bg-slate-700"
+                >
+                  {key === "back" ? "⌫" : key}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => {
+                  setCashReceivedInput("");
+                  setCashDialogError(null);
+                }}
+                className="col-span-3 h-10 rounded-xl bg-rose-500/20 text-sm font-semibold text-rose-200 hover:bg-rose-500/30"
+              >
+                {locale === "zh" ? "清空金额" : "Clear amount"}
+              </button>
+            </div>
             {cashDialogError && <p className="mt-2 text-xs text-rose-300">{cashDialogError}</p>}
             <div className="mt-4 flex gap-2">
               <button
