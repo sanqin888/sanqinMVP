@@ -1753,11 +1753,6 @@ export default function CheckoutPage() {
           };
         };
 
-        const removeApplePayListeners = attachApplePayListeners();
-        cleanupRef.current = () => {
-          removeApplePayListeners?.();
-        };
-
         const clover = new window.Clover(publicKey, { merchantId });
         const elements = clover.elements();
 
@@ -1793,6 +1788,11 @@ export default function CheckoutPage() {
         });
         applePayHost.innerHTML = "";
         applePay.mount("#clover-apple-pay");
+
+        const removeApplePayListeners = attachApplePayListeners();
+        cleanupRef.current = () => {
+          removeApplePayListeners?.();
+        };
 
         cloverRef.current = clover;
         cloverAppleRef.current = cloverApple;
