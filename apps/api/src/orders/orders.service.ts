@@ -2869,8 +2869,10 @@ export class OrdersService {
         include: { items: true },
       });
       if (!order) throw new NotFoundException('order not found');
-      if (order.status !== 'paid') {
-        throw new BadRequestException('only paid order can be amended');
+      if (!['paid', 'making', 'ready', 'completed'].includes(order.status)) {
+        throw new BadRequestException(
+          'only paid/fulfilled order can be amended',
+        );
       }
 
       const amendment = await tx.orderAmendment.create({
