@@ -59,7 +59,8 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     }
 
     const checkoutIntentId =
-      typeof dto.checkoutIntentId === 'string' && dto.checkoutIntentId.trim().length > 0
+      typeof dto.checkoutIntentId === 'string' &&
+      dto.checkoutIntentId.trim().length > 0
         ? dto.checkoutIntentId.trim()
         : buildClientRequestId();
 

@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '@/lib/api/client';
 
@@ -335,7 +336,16 @@ export default function TransactionsPage() {
                         {(row.attachmentUrls ?? []).slice(0, 2).map((url) => (
                           <div key={url}>
                             <a className="text-blue-600 hover:underline" href={url} target="_blank" rel="noreferrer">预览附件</a>
-                            {url.match(/\.(png|jpe?g|gif|webp)$/i) ? <img src={url} alt="附件预览" className="mt-1 h-10 w-10 rounded object-cover" /> : null}
+                            {url.match(/\.(png|jpe?g|gif|webp)$/i) ? (
+                              <Image
+                                src={url}
+                                alt="附件预览"
+                                width={40}
+                                height={40}
+                                className="mt-1 h-10 w-10 rounded object-cover"
+                                unoptimized
+                              />
+                            ) : null}
                           </div>
                         ))}
                         {(row.attachmentUrls ?? []).length === 0 ? '-' : null}
