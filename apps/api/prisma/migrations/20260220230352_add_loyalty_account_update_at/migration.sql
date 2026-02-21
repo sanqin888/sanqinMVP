@@ -22,18 +22,17 @@ ALTER TABLE "LoyaltyAccount"
 
 -- CreateTable
 CREATE TABLE "AnalyticsEvent" (
-    "id" UUID NOT NULL,
-    "eventName" TEXT NOT NULL,
-    "source" TEXT NOT NULL DEFAULT 'web',
-    "locale" TEXT,
-    "path" TEXT,
-    "userAgent" TEXT,
-    "ipAddress" TEXT,
-    "payload" JSONB,
-    "occurredAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "AnalyticsEvent_pkey" PRIMARY KEY ("id")
+  "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+  "eventName" TEXT NOT NULL,
+  "source" TEXT NOT NULL DEFAULT 'web',
+  "locale" TEXT,
+  "path" TEXT,
+  "userAgent" TEXT,
+  "ipAddress" TEXT,
+  "payload" JSONB,
+  "occurredAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "AnalyticsEvent_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex

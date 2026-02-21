@@ -1963,8 +1963,8 @@ export default function CheckoutPage() {
           currencyCode: "CAD",
         });
 
-        googlePayRef.current?.destroy?.();
-        googlePayRef.current = mountGooglePayButton(latestClover.elements());
+        // googlePayRef.current?.destroy?.();
+        // googlePayRef.current = mountGooglePayButton(latestClover.elements());
 
         setApplePayMounted(Boolean(applePayRef.current));
         setGooglePayMounted(Boolean(googlePayRef.current));
