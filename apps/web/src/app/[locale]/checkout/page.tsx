@@ -1794,7 +1794,7 @@ export default function CheckoutPage() {
         applePayHost.innerHTML = "";
         applePay.mount("#clover-apple-pay");
 
-        const removeApplePayListeners = attachApplePayListeners(applePay);
+        const removeApplePayListeners = attachApplePayListeners();
         cleanupRef.current = () => {
           removeApplePayListeners?.();
         };
