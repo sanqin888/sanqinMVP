@@ -111,7 +111,12 @@ export class PosOrdersController {
   @HttpCode(200)
   reprint(
     @Param('orderStableId', StableIdPipe) orderStableId: string,
-    @Body() body?: { targets?: { customer?: boolean; kitchen?: boolean } },
+    @Body()
+    body?: {
+      targets?: { customer?: boolean; kitchen?: boolean };
+      cashReceivedCents?: number;
+      cashChangeCents?: number;
+    },
   ) {
     this.eventEmitter.emit('order.reprint', {
       orderStableId,
@@ -119,6 +124,12 @@ export class PosOrdersController {
         customer: body?.targets?.customer ?? true,
         kitchen: body?.targets?.kitchen ?? false,
       },
+      ...(typeof body?.cashReceivedCents === 'number'
+        ? { cashReceivedCents: Math.max(0, Math.round(body.cashReceivedCents)) }
+        : {}),
+      ...(typeof body?.cashChangeCents === 'number'
+        ? { cashChangeCents: Math.max(0, Math.round(body.cashChangeCents)) }
+        : {}),
     });
     return { success: true };
   }

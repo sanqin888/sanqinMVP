@@ -57,18 +57,15 @@ export default async function AccountingLayout({
   const role = session?.role;
 
   if (role !== 'ADMIN' && role !== 'ACCOUNTANT') {
-    redirect(`/${safeLocale}/admin/login`);
+    redirect(`/${safeLocale}/accounting/login`);
   }
 
-  if (session?.requiresTwoFactor) {
-    redirect(`/${safeLocale}/admin/2fa`);
-  }
 
   const nav = [
     { href: `/${safeLocale}/accounting/dashboard`, label: '财务看板' },
     { href: `/${safeLocale}/accounting/transactions`, label: '流水管理' },
     { href: `/${safeLocale}/accounting/reports`, label: 'P&L 报表' },
-    { href: `/${safeLocale}/admin`, label: '返回后台首页' },
+    { href: `/${safeLocale}/accounting/audit-logs`, label: '审计日志' },
   ];
 
   return (

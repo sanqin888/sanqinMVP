@@ -134,6 +134,13 @@ enum AccountingTxType {
   INCOME
   EXPENSE
   ADJUSTMENT
+  TRANSFER
+}
+
+enum AccountingAccountType {
+  CASH
+  BANK
+  PLATFORM_WALLET
 }
 
 enum AccountingSourceType {
@@ -142,6 +149,11 @@ enum AccountingSourceType {
   UBER
   FANTUAN
   OTHER
+}
+
+enum SettlementPlatform {
+  UBER_EATS
+  FANTUAN
 }
 
 enum UserLanguage {
@@ -563,6 +575,7 @@ model LoyaltyAccount {
   balanceMicro       BigInt          @default(0) // 余额池 (充值本金)
   tier               LoyaltyTier     @default(BRONZE)
   createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
   id                 String          @id @default(uuid()) @db.Uuid
   lifetimeSpendCents Int             @default(0)
   ledger             LoyaltyLedger[]
@@ -932,6 +945,22 @@ model AccountingCategory {
   @@unique([name, type])
 }
 
+model AccountingAccount {
+  id             String                 @id @default(uuid()) @db.Uuid
+  accountStableId String                @unique @default(cuid())
+  name           String
+  type           AccountingAccountType
+  currency       String                 @default("CAD")
+  isActive       Boolean                @default(true)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  outgoingTx     AccountingTransaction[] @relation("AccountingTxAccount")
+  incomingTx     AccountingTransaction[] @relation("AccountingTxToAccount")
+
+  @@unique([name, type])
+  @@index([type, isActive])
+}
+
 model AccountingTransaction {
   id              String               @id @default(uuid()) @db.Uuid
   txStableId      String               @unique @default(cuid())
@@ -941,7 +970,11 @@ model AccountingTransaction {
   currency        String               @default("CAD")
   occurredAt      DateTime
   categoryId      String               @db.Uuid
+  accountId       String?              @db.Uuid
+  toAccountId     String?              @db.Uuid
   orderId         String?
+  idempotencyKey  String?              @unique
+  externalRef     String?
   counterparty    String?
   memo            String?
   attachmentUrls  String[]             @default([])
@@ -949,13 +982,38 @@ model AccountingTransaction {
   updatedByUserId String
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
+  version         Int                  @default(1)
   deletedAt       DateTime?
   category        AccountingCategory   @relation(fields: [categoryId], references: [id])
+  account         AccountingAccount?   @relation("AccountingTxAccount", fields: [accountId], references: [id])
+  toAccount       AccountingAccount?   @relation("AccountingTxToAccount", fields: [toAccountId], references: [id])
 
   @@index([occurredAt])
   @@index([categoryId, occurredAt])
   @@index([source, occurredAt])
+  @@index([accountId, occurredAt])
+  @@index([toAccountId, occurredAt])
   @@index([deletedAt])
+}
+
+model PlatformSettlementRecord {
+  id               String           @id @default(uuid()) @db.Uuid
+  settlementStableId String         @unique @default(cuid())
+  platform         SettlementPlatform
+  importBatchId    String
+  externalRowId    String?
+  orderId          String?
+  grossCents       Int
+  commissionCents  Int
+  netCents         Int
+  payoutAt         DateTime
+  rawPayload       Json?
+  createdAt        DateTime         @default(now())
+
+  @@index([platform, payoutAt])
+  @@index([orderId])
+  @@index([importBatchId])
+  @@unique([platform, importBatchId, externalRowId])
 }
 
 model AccountingAuditLog {
@@ -970,6 +1028,35 @@ model AccountingAuditLog {
 
   @@index([entityType, entityId, createdAt])
   @@index([operatorUserId, createdAt])
+}
+
+model AccountingPeriodClose {
+  id             String   @id @default(uuid()) @db.Uuid
+  periodType     String   @default("MONTH")
+  periodKey      String
+  startAt        DateTime
+  endAt          DateTime
+  closedByUserId String
+  closedAt       DateTime @default(now())
+
+  @@unique([periodType, periodKey])
+  @@index([periodType, closedAt])
+}
+
+model AnalyticsEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  eventName String
+  source    String   @default("web")
+  locale    String?
+  path      String?
+  userAgent String?
+  ipAddress String?
+  payload   Json?
+  occurredAt DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@index([eventName, occurredAt])
+  @@index([occurredAt])
 }
 
 enum OrderStatus {

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -9,9 +10,14 @@ import {
   Query,
   Req,
   Res,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
-import { AccountingSourceType, AccountingTxType } from '@prisma/client';
+import {
+  AccountingSourceType,
+  AccountingTxType,
+  SettlementPlatform,
+} from '@prisma/client';
 import type { Request, Response } from 'express';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -25,10 +31,15 @@ type TxBody = {
   currency?: string;
   occurredAt: string;
   categoryId: string;
+  accountId?: string | null;
+  toAccountId?: string | null;
   orderId?: string | null;
+  idempotencyKey?: string | null;
+  externalRef?: string | null;
   counterparty?: string | null;
   memo?: string | null;
   attachmentUrls?: string[];
+  lastKnownUpdatedAt?: string;
 };
 
 @Controller('accounting')
@@ -37,12 +48,37 @@ type TxBody = {
 export class AccountingController {
   constructor(private readonly accountingService: AccountingService) {}
 
+  private parseNonNegativeNumber(
+    raw: string | undefined,
+    fieldName: string,
+  ): number | undefined {
+    if (raw == null || raw === '') return undefined;
+    const value = Number(raw);
+    if (!Number.isInteger(value) || value < 0) {
+      throw new BadRequestException(
+        `${fieldName} must be a non-negative integer`,
+      );
+    }
+    return value;
+  }
+
+  private requireOperatorUserId(req: Request & { user?: { id?: string } }) {
+    const operatorUserId = req.user?.id?.trim();
+    if (!operatorUserId) {
+      throw new UnauthorizedException('operator user id is required');
+    }
+    return operatorUserId;
+  }
+
   @Post('tx')
   async createTx(
     @Body() body: TxBody,
     @Req() req: Request & { user?: { id?: string } },
   ) {
-    return this.accountingService.createTx(body, req.user?.id ?? 'unknown');
+    return this.accountingService.createTx(
+      body,
+      this.requireOperatorUserId(req),
+    );
   }
 
   @Get('tx')
@@ -52,6 +88,9 @@ export class AccountingController {
     @Query('categoryId') categoryId?: string,
     @Query('source') source?: AccountingSourceType,
     @Query('keyword') keyword?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('cursor') cursor?: string,
   ) {
     return this.accountingService.listTx({
       from,
@@ -59,6 +98,9 @@ export class AccountingController {
       categoryId,
       source,
       keyword,
+      limit: this.parseNonNegativeNumber(limit, 'limit'),
+      offset: this.parseNonNegativeNumber(offset, 'offset'),
+      cursor,
     });
   }
 
@@ -71,7 +113,7 @@ export class AccountingController {
     return this.accountingService.updateTx(
       txStableId,
       body,
-      req.user?.id ?? 'unknown',
+      this.requireOperatorUserId(req),
     );
   }
 
@@ -82,8 +124,28 @@ export class AccountingController {
   ) {
     return this.accountingService.deleteTx(
       txStableId,
-      req.user?.id ?? 'unknown',
+      this.requireOperatorUserId(req),
     );
+  }
+
+  @Post('period-close/month/:periodKey')
+  async closeMonth(
+    @Param('periodKey') periodKey: string,
+    @Req() req: Request & { user?: { id?: string } },
+  ) {
+    return this.accountingService.closeMonth(
+      periodKey,
+      this.requireOperatorUserId(req),
+    );
+  }
+
+  @Get('period-close/month')
+  async listMonthCloseStatus(@Query('periodKeys') periodKeys?: string) {
+    const keys = periodKeys
+      ?.split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+    return this.accountingService.listPeriodCloseStatus(keys);
   }
 
   @Get('report/pnl')
@@ -93,6 +155,103 @@ export class AccountingController {
     @Query('groupBy') groupBy?: 'month' | 'quarter' | 'year',
   ) {
     return this.accountingService.pnlReport({ from, to, groupBy });
+  }
+
+  @Post('automation/order-accrual')
+  async autoAccrueOrderRevenue(
+    @Body()
+    body: {
+      date: string;
+      categoryId: string;
+      accountId?: string;
+      mode?: 'DAILY' | 'PER_ORDER';
+    },
+    @Req() req: Request & { user?: { id?: string } },
+  ) {
+    return this.accountingService.autoAccrueOrderRevenue(
+      body,
+      this.requireOperatorUserId(req),
+    );
+  }
+
+  @Post('reconciliation/platform/import-csv')
+  async importSettlementCsv(
+    @Body()
+    body: {
+      platform: SettlementPlatform;
+      csv: string;
+      importBatchId?: string;
+    },
+  ) {
+    return this.accountingService.importPlatformSettlementCsv(body);
+  }
+
+  @Get('reconciliation/platform/:platform')
+  async reconcilePlatform(
+    @Param('platform') platform: SettlementPlatform,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.accountingService.reconcilePlatform(platform, from, to);
+  }
+
+  @Post('accounts')
+  async createAccount(
+    @Body()
+    body: {
+      name: string;
+      type: 'CASH' | 'BANK' | 'PLATFORM_WALLET';
+      currency?: string;
+    },
+  ) {
+    return this.accountingService.createAccount(body);
+  }
+
+  @Get('accounts')
+  async listAccounts() {
+    return this.accountingService.listAccounts();
+  }
+
+  @Get('report/account-balance')
+  async accountBalanceReport(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.accountingService.accountBalanceReport(from, to);
+  }
+
+  @Get('report/annual/:year')
+  async annualReport(@Param('year') year: string) {
+    return this.accountingService.annualReport(Number(year));
+  }
+
+  @Get('report/cashflow')
+  async cashflowOverview(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.accountingService.cashflowOverview({ from, to });
+  }
+
+  @Get('report/slice')
+  async dimensionSlice(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.accountingService.dimensionSlice({ from, to });
+  }
+  @Get('audit-logs')
+  async listAuditLogs(
+    @Query('entityType') entityType?: string,
+    @Query('entityId') entityId?: string,
+    @Query('operatorUserId') operatorUserId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.accountingService.listAuditLogs({
+      entityType,
+      entityId,
+      operatorUserId,
+      from,
+      to,
+    });
   }
 
   @Get('export/tx.csv')
@@ -107,7 +266,7 @@ export class AccountingController {
   ) {
     const csv = await this.accountingService.exportTxCsv(
       { from, to, categoryId, source, keyword },
-      req.user?.id ?? 'unknown',
+      this.requireOperatorUserId(req),
     );
 
     const ts = new Date().toISOString().slice(0, 10);
@@ -117,6 +276,54 @@ export class AccountingController {
       `attachment; filename="accounting-transactions-${ts}.csv"`,
     );
     return res.send(csv);
+  }
+
+  @Get('export/report.csv')
+  async exportReportCsv(
+    @Query('template') template: 'MANAGEMENT' | 'BOSS' = 'MANAGEMENT',
+    @Query('from') from: string | undefined,
+    @Query('to') to: string | undefined,
+    @Query('groupBy') groupBy: 'month' | 'quarter' | 'year' | undefined,
+    @Req() req: Request & { user?: { id?: string } },
+    @Res() res: Response,
+  ) {
+    const csv = await this.accountingService.exportPnlTemplate(
+      template,
+      { from, to, groupBy },
+      this.requireOperatorUserId(req),
+    );
+
+    const ts = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="accounting-report-${template.toLowerCase()}-${ts}.csv"`,
+    );
+    return res.send(csv);
+  }
+
+  @Get('export/report.pdf')
+  async exportReportPdf(
+    @Query('template') template: 'MANAGEMENT' | 'BOSS' = 'MANAGEMENT',
+    @Query('from') from: string | undefined,
+    @Query('to') to: string | undefined,
+    @Query('groupBy') groupBy: 'month' | 'quarter' | 'year' | undefined,
+    @Req() req: Request & { user?: { id?: string } },
+    @Res() res: Response,
+  ) {
+    const pdfBuffer = await this.accountingService.exportPnlPdf(
+      template,
+      { from, to, groupBy },
+      this.requireOperatorUserId(req),
+    );
+
+    const ts = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="accounting-report-${template.toLowerCase()}-${ts}.pdf"`,
+    );
+    return res.send(pdfBuffer);
   }
 
   @Get('categories')

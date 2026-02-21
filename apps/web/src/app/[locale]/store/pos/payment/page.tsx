@@ -1,13 +1,13 @@
 // apps/web/src/app/[locale]/store/pos/payment/page.tsx
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { TAX_RATE } from "@/lib/order/shared";
 import type { Locale } from "@/lib/i18n/locales";
 import { ApiError, apiFetch } from "@/lib/api/client";
 import type { PublicMenuResponse as PublicMenuApiResponse } from "@shared/menu";
-import { advanceOrder } from "@/lib/api/pos";
+import { advanceOrder, printOrderCloud } from "@/lib/api/pos";
 import {
   POS_DISPLAY_CHANNEL,
   POS_DISPLAY_STORAGE_KEY,
@@ -129,6 +129,11 @@ const STRINGS: Record<
     discountOther: string;
     discountOtherHint: string;
     discountApplied: string;
+    cashDialogTitle: string;
+    cashDialogAmountLabel: string;
+    cashDialogCancel: string;
+    cashDialogConfirm: string;
+    cashDialogInvalid: string;
   }
 > = {
   zh: {
@@ -190,6 +195,11 @@ const STRINGS: Record<
     discountOther: "其他金额",
     discountOtherHint: "输入优惠金额",
     discountApplied: "折扣优惠",
+    cashDialogTitle: "现金收款",
+    cashDialogAmountLabel: "收款金额",
+    cashDialogCancel: "取消",
+    cashDialogConfirm: "确认",
+    cashDialogInvalid: "收款金额不能小于合计金额",
   },
   en: {
     title: "Store POS · Payment",
@@ -251,6 +261,11 @@ const STRINGS: Record<
     discountOther: "Other",
     discountOtherHint: "Enter discount amount",
     discountApplied: "Discount",
+    cashDialogTitle: "Cash collection",
+    cashDialogAmountLabel: "Amount received",
+    cashDialogCancel: "Cancel",
+    cashDialogConfirm: "Confirm",
+    cashDialogInvalid: "Amount received cannot be less than total",
   },
 };
 
@@ -305,6 +320,11 @@ export default function StorePosPaymentPage() {
   const [useBalanceInput, setUseBalanceInput] = useState(""); // [新增] 部分余额支付输入
   const [discountOption, setDiscountOption] = useState<DiscountOption | null>(null);
   const [otherDiscountInput, setOtherDiscountInput] = useState("");
+  const [showOtherDiscountKeypad, setShowOtherDiscountKeypad] = useState(false);
+  const [cashDialogOpen, setCashDialogOpen] = useState(false);
+  const [cashReceivedInput, setCashReceivedInput] = useState("");
+  const [cashDialogError, setCashDialogError] = useState<string | null>(null);
+  const discountKeypadRef = useRef<HTMLDivElement | null>(null);
 
   const [successInfo, setSuccessInfo] = useState<{
     orderNumber: string;
@@ -435,6 +455,17 @@ export default function StorePosPaymentPage() {
       return candidate;
     });
   }, []);
+
+  useEffect(() => {
+    if (!showOtherDiscountKeypad) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!discountKeypadRef.current?.contains(event.target as Node)) {
+        setShowOtherDiscountKeypad(false);
+      }
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [showOtherDiscountKeypad]);
 
   const discountedSubtotalCents = Math.max(0, baseSubtotalCents - discountCents);
 
@@ -689,7 +720,7 @@ const loyaltyRedeemCents = redeemCents;
     setUseBalanceInput((maxAllowed / 100).toFixed(2));
   };
 
-  const handleConfirm = async () => {
+  const submitOrder = async (cashMeta?: { cashReceivedCents: number; cashChangeCents: number }) => {
     setError(null);
     setSubmitting(true);
 
@@ -776,6 +807,21 @@ const loyaltyRedeemCents = redeemCents;
       });
 
       if (order.orderStableId) {
+        if (orderChannel === "in_store") {
+          try {
+            await printOrderCloud(order.orderStableId, {
+              targets: { customer: true, kitchen: true },
+              ...(cashMeta
+                ? {
+                    cashReceivedCents: cashMeta.cashReceivedCents,
+                    cashChangeCents: cashMeta.cashChangeCents,
+                  }
+                : {}),
+            });
+          } catch (e) {
+            console.warn("Failed to trigger POS print:", e);
+          }
+        }
         try { await advanceOrder(order.orderStableId); } catch (e) { console.warn(e); }
       }
     } catch (err) {
@@ -784,6 +830,32 @@ const loyaltyRedeemCents = redeemCents;
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleConfirm = async () => {
+    if (paymentMethod === "cash" && orderChannel === "in_store") {
+      setCashDialogError(null);
+      setCashReceivedInput((summaryTotalCents / 100).toFixed(2));
+      setCashDialogOpen(true);
+      return;
+    }
+    await submitOrder();
+  };
+
+  const handleConfirmCashDialog = async () => {
+    const received = Number(cashReceivedInput);
+    if (!Number.isFinite(received) || received <= 0) {
+      setCashDialogError(t.cashDialogInvalid);
+      return;
+    }
+    const cashReceivedCents = Math.round(received * 100);
+    if (cashReceivedCents < summaryTotalCents) {
+      setCashDialogError(t.cashDialogInvalid);
+      return;
+    }
+    const cashChangeCents = Math.max(0, cashReceivedCents - summaryTotalCents);
+    setCashDialogOpen(false);
+    await submitOrder({ cashReceivedCents, cashChangeCents });
   };
 
   const handleCloseSuccess = useCallback(() => {
@@ -992,7 +1064,10 @@ const loyaltyRedeemCents = redeemCents;
                     <button
                       key={opt}
                       type="button"
-                      onClick={() => setDiscountOption(opt)}
+                      onClick={() => {
+                        setDiscountOption(opt);
+                        setShowOtherDiscountKeypad(opt === "other");
+                      }}
                       className={`h-10 rounded-xl border font-medium ${discountOption === opt ? "border-amber-300 bg-amber-400 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}
                     >
                       {opt === "other" ? t.discountOther : `${opt}%`}
@@ -1018,8 +1093,8 @@ const loyaltyRedeemCents = redeemCents;
                 </div>
               </div>
 
-              {discountOption === "other" && (
-                <div className="pointer-events-auto absolute right-full top-7 mr-3 z-20 w-[16rem] rounded-2xl border border-slate-600 bg-slate-900/95 p-3 shadow-2xl">
+              {discountOption === "other" && showOtherDiscountKeypad && (
+                <div ref={discountKeypadRef} className="pointer-events-auto absolute right-full top-7 mr-3 z-20 w-[16rem] rounded-2xl border border-slate-600 bg-slate-900/95 p-3 shadow-2xl">
                   <div className="mb-2 text-xs text-slate-300">{t.discountOtherHint}</div>
                   <div className="grid grid-cols-3 gap-2">
                     {["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "back"].map((key) => (
@@ -1087,6 +1162,44 @@ const loyaltyRedeemCents = redeemCents;
               )}
             </div>
             <button onClick={handleCloseSuccess} className="w-full h-12 rounded-2xl bg-slate-100 text-slate-900 font-bold hover:bg-white transition-colors">{t.close}</button>
+          </div>
+        </div>
+      )}
+
+      {cashDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4">
+          <div className="w-full max-w-sm rounded-3xl border border-slate-600 bg-slate-900 p-5 shadow-2xl">
+            <h3 className="text-lg font-semibold text-white">{t.cashDialogTitle}</h3>
+            <p className="mt-2 text-sm text-slate-300">{t.total}: {formatMoney(summaryTotalCents)}</p>
+            <label className="mt-4 block text-xs text-slate-400">{t.cashDialogAmountLabel}</label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={cashReceivedInput}
+              onChange={(e) => {
+                setCashReceivedInput(e.target.value);
+                setCashDialogError(null);
+              }}
+              className="mt-2 h-11 w-full rounded-xl border border-slate-600 bg-slate-800 px-3 text-base text-white"
+            />
+            {cashDialogError && <p className="mt-2 text-xs text-rose-300">{cashDialogError}</p>}
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setCashDialogOpen(false)}
+                className="h-10 flex-1 rounded-xl border border-slate-600 text-sm text-slate-100"
+              >
+                {t.cashDialogCancel}
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmCashDialog}
+                className="h-10 flex-1 rounded-xl bg-emerald-500 text-sm font-semibold text-slate-900"
+              >
+                {t.cashDialogConfirm}
+              </button>
+            </div>
           </div>
         </div>
       )}

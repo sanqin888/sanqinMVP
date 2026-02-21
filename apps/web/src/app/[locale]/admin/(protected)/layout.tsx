@@ -78,9 +78,6 @@ export default async function AdminLayout({
     redirect(`/${safeLocale}/admin/login`);
   }
 
-  if (session?.requiresTwoFactor) {
-    redirect(`/${safeLocale}/admin/2fa`);
-  }
 
   return <AdminLayoutClient locale={safeLocale}>{children}</AdminLayoutClient>;
 }
