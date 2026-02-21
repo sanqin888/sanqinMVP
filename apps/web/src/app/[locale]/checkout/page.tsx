@@ -1855,7 +1855,7 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (!requiresPayment || !cloverReady) return;
+    if (!requiresPayment) return;
 
     const id = window.setTimeout(() => {
       try {
@@ -1867,7 +1867,7 @@ export default function CheckoutPage() {
       } catch (error) {
         console.error("[AP] update error", toSafeErrorLog(error));
       }
-    }, 350);
+    }, 600);
 
     return () => window.clearTimeout(id);
   }, [requiresPayment, cloverReady, totalCents]);
