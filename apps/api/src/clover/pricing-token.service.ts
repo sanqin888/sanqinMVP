@@ -10,13 +10,18 @@ type PricingTokenPayload = {
   exp: number;
   totalCents: number;
   fingerprint: string;
+  checkoutIntentId: string;
 };
 
 @Injectable()
 export class PricingTokenService {
   private readonly ttlSeconds = 10 * 60;
 
-  issue(params: { totalCents: number; fingerprint: string }): {
+  issue(params: {
+    totalCents: number;
+    fingerprint: string;
+    checkoutIntentId: string;
+  }): {
     pricingToken: string;
     expiresAt: string;
   } {
@@ -26,6 +31,7 @@ export class PricingTokenService {
       exp: now + this.ttlSeconds,
       totalCents: params.totalCents,
       fingerprint: params.fingerprint,
+      checkoutIntentId: params.checkoutIntentId,
     };
     const body = b64url(JSON.stringify(payload));
     const sig = this.sign(body);
@@ -37,7 +43,11 @@ export class PricingTokenService {
 
   verify(
     token: string,
-    params: { expectedFingerprint: string; expectedTotalCents: number },
+    params: {
+      expectedFingerprint: string;
+      expectedTotalCents: number;
+      expectedCheckoutIntentId: string;
+    },
   ): PricingTokenPayload {
     const raw = token.trim();
     const [body, sig] = raw.split('.');
@@ -75,6 +85,12 @@ export class PricingTokenService {
     if (payload.totalCents !== params.expectedTotalCents) {
       throw new UnauthorizedException(
         'pricingToken amount does not match server quote',
+      );
+    }
+
+    if (payload.checkoutIntentId !== params.expectedCheckoutIntentId) {
+      throw new UnauthorizedException(
+        'pricingToken checkoutIntentId does not match request',
       );
     }
 

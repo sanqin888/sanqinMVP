@@ -58,13 +58,20 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       });
     }
 
+    const checkoutIntentId =
+      typeof dto.checkoutIntentId === 'string' && dto.checkoutIntentId.trim().length > 0
+        ? dto.checkoutIntentId.trim()
+        : buildClientRequestId();
+
     const orderStableId = metadata.orderStableId ?? generateStableId();
     const orderDto = buildOrderDtoFromMetadata(metadata, orderStableId);
+    orderDto.clientRequestId = checkoutIntentId;
     const quote = await this.orders.quoteOrderPricing(orderDto);
     const fingerprint = buildPricingFingerprint(orderDto);
     const token = this.pricingTokens.issue({
       totalCents: quote.totalCents,
       fingerprint,
+      checkoutIntentId,
     });
 
     return {
@@ -73,6 +80,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       quote,
       pricingToken: token.pricingToken,
       pricingTokenExpiresAt: token.expiresAt,
+      checkoutIntentId,
     };
   }
 
@@ -398,6 +406,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     this.pricingTokens.verify(dto.pricingToken, {
       expectedFingerprint: fingerprint,
       expectedTotalCents,
+      expectedCheckoutIntentId: referenceId,
     });
 
     if (
@@ -405,9 +414,10 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       Number.isFinite(dto.amountCents) &&
       Math.round(dto.amountCents) !== expectedTotalCents
     ) {
-      this.logger.warn(
-        `Client sent mismatched amountCents=${dto.amountCents}, serverTotal=${expectedTotalCents}. Ignoring client amount.`,
-      );
+      throw new BadRequestException({
+        code: 'AMOUNT_MISMATCH',
+        message: 'amountCents does not match pricing quote',
+      });
     }
 
     const cfClientIp = normalizeClientIp(cfConnectingIp);

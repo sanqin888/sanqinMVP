@@ -129,7 +129,6 @@ type CloverInstance = {
   ) => CloverApplePaymentRequest;
   updateApplePaymentRequest: (request: CloverApplePaymentRequest) => void;
   updateApplePaymentStatus: (status: "success" | "failed") => void;
-  updateGooglePaymentStatus?: (status: "success" | "failed") => void;
   createToken: () => Promise<{
     token?: string;
     errors?: Array<{ message?: string }>;
@@ -192,18 +191,6 @@ function toSafeErrorLog(error: unknown): Record<string, unknown> {
   return { message: String(error) };
 }
 
-function isIosStandaloneWebApp(): boolean {
-  if (typeof window === "undefined") return false;
-
-  const nav = window.navigator as Navigator & { standalone?: boolean };
-  const isiOS = /iphone|ipad|ipod/i.test(nav.userAgent);
-  const isStandalone =
-    window.matchMedia?.("(display-mode: standalone)").matches === true ||
-    nav.standalone === true;
-
-  return isiOS && isStandalone;
-}
-
 function shouldShowCheckoutFloatingActions(): boolean {
   if (typeof window === "undefined") return false;
 
@@ -239,6 +226,18 @@ declare global {
 const PHONE_OTP_REQUEST_URL = "/api/v1/auth/phone/send-code";
 const PHONE_OTP_VERIFY_URL = "/api/v1/auth/phone/verify-code";
 const CHECKOUT_INTENT_STORAGE_KEY = "cloverCheckoutIntentId";
+const GOOGLE_PAY_CTX_KEY = "sanq_google_pay_ctx_v1";
+
+type GooglePayCtx = {
+  locale: Locale;
+  checkoutIntentId: string;
+  pricingToken: string;
+  pricingTokenExpiresAt: string;
+  currency: string;
+  totalCents: number;
+  metadata: Record<string, unknown>;
+};
+
 type DeliveryOptionDefinition = {
   provider: "UBER";
   fee: number; // 仅用于显示说明，不参与实际计费
@@ -329,6 +328,7 @@ type OnlinePricingQuoteResponse = {
   };
   pricingToken: string;
   pricingTokenExpiresAt: string;
+  checkoutIntentId?: string;
 };
 
 type StoreStatusRuleSource =
@@ -901,21 +901,14 @@ export default function CheckoutPage() {
   const [cardCvvError, setCardCvvError] = useState<string | null>(null);
   const [cloverReady, setCloverReady] = useState(false);
   const [canPay, setCanPay] = useState(false);
-  const [isIosStandalone, setIsIosStandalone] = useState(false);
-  const [showIosStandaloneCloverHint, setShowIosStandaloneCloverHint] =
-    useState(false);
+  const [showIosStandaloneCloverHint] = useState(false);
   const [showFloatingActions, setShowFloatingActions] = useState(false);
   const [applePayMounted, setApplePayMounted] = useState(false);
-  const [googlePayMounted, setGooglePayMounted] = useState(false);
   const [cardNameComplete, setCardNameComplete] = useState(false);
   const [cardNumberComplete, setCardNumberComplete] = useState(false);
   const [cardDateComplete, setCardDateComplete] = useState(false);
   const [cardCvvComplete, setCardCvvComplete] = useState(false);
   const [cardPostalComplete, setCardPostalComplete] = useState(false);
-
-  useEffect(() => {
-    setIsIosStandalone(isIosStandaloneWebApp());
-  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -949,7 +942,6 @@ export default function CheckoutPage() {
   const [checkoutStatusPollTick, setCheckoutStatusPollTick] = useState(0);
   const cloverRef = useRef<CloverInstance | null>(null);
   const cloverAppleRef = useRef<CloverInstance | null>(null);
-  const cloverGoogleRef = useRef<CloverInstance | null>(null);
   const cloverFieldStateRef = useRef<Record<string, CloverFieldChangeEvent>>(
     {},
   );
@@ -959,7 +951,6 @@ export default function CheckoutPage() {
   const cardCvvRef = useRef<null | { destroy?: () => void }>(null);
   const cardPostalRef = useRef<null | { destroy?: () => void }>(null);
   const applePayRef = useRef<CloverElementInstance | null>(null);
-  const googlePayRef = useRef<CloverElementInstance | null>(null);
   const walletPayTokenRef = useRef<string | null>(null);
   const walletPaySubmittedTokenRef = useRef<string | null>(null);
   const cleanupRef = useRef<undefined | (() => void)>(undefined);
@@ -1002,81 +993,6 @@ export default function CheckoutPage() {
   const [couponLoading, setCouponLoading] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
 
-  const mountGooglePayButton = useCallback(
-    (elements: ReturnType<CloverInstance["elements"]>) => {
-      const googlePayHost = document.getElementById("clover-google-pay");
-      if (!googlePayHost) {
-        setGooglePayMounted(false);
-        return null;
-      }
-
-      let googlePay: CloverElementInstance | null = null;
-
-      try {
-        const paymentReqData = {
-          total: {
-            label: "Total",
-            amount: totalCentsRef.current,
-          },
-          options: {
-            button: {
-              buttonType: "short",
-            },
-          },
-        };
-
-        googlePay = elements.create("PAYMENT_REQUEST_BUTTON", {
-          paymentReqData,
-        });
-
-        googlePayHost.innerHTML = "";
-        googlePay.mount("#clover-google-pay");
-        googlePay.addEventListener("paymentMethod", (e) => {
-          const detail =
-            typeof e === "object" && e && "detail" in e
-              ? (e as { detail?: Record<string, unknown> }).detail
-              : undefined;
-          const token =
-            (typeof detail === "object" &&
-            detail &&
-            "tokenReceived" in detail &&
-            typeof (detail as { tokenReceived?: { id?: unknown } })
-              .tokenReceived?.id === "string"
-              ? (detail as { tokenReceived: { id: string } }).tokenReceived.id
-              : undefined) ??
-            (typeof detail === "object" &&
-            detail &&
-            "tokenRecieved" in detail &&
-            typeof (detail as { tokenRecieved?: { id?: unknown } })
-              .tokenRecieved?.id === "string"
-              ? (detail as { tokenRecieved: { id: string } }).tokenRecieved.id
-              : undefined) ??
-            (typeof detail === "object" &&
-            detail &&
-            "token" in detail &&
-            typeof (detail as { token?: { id?: unknown } }).token?.id ===
-              "string"
-              ? (detail as { token: { id: string } }).token.id
-              : undefined);
-
-          if (!token || walletPaySubmittedTokenRef.current === token) return;
-
-          walletPayTokenRef.current = token;
-          walletPaySubmittedTokenRef.current = token;
-          void placeOrderRef.current();
-        });
-
-        setGooglePayMounted(true);
-        return googlePay;
-      } catch (error) {
-        console.error("[GP] mount error", toSafeErrorLog(error));
-        googlePay?.destroy?.();
-        setGooglePayMounted(false);
-        return null;
-      }
-    },
-    [],
-  );
   const [utensilsPreference, setUtensilsPreference] = useState<"yes" | "no">(
     "no",
   );
@@ -1544,7 +1460,7 @@ export default function CheckoutPage() {
   const requiresPayment = totalCents > 0;
   const canPayWithCard =
     !requiresPayment ||
-    (cloverReady && (canPay || applePayMounted || googlePayMounted));
+    (cloverReady && (canPay || applePayMounted));
 
   const payButtonDisabledReason = useMemo(() => {
     if (isSubmitting) return null;
@@ -1583,7 +1499,6 @@ export default function CheckoutPage() {
       }
       if (
         !applePayMounted &&
-        !googlePayMounted &&
         (!cardNameComplete ||
           !cardNumberComplete ||
           !cardDateComplete ||
@@ -1599,7 +1514,6 @@ export default function CheckoutPage() {
     return null;
   }, [
     applePayMounted,
-    googlePayMounted,
     canPayWithCard,
     canPlaceOrder,
     cardCvvError,
@@ -1636,15 +1550,11 @@ export default function CheckoutPage() {
       cardPostalRef.current?.destroy?.();
       applePayRef.current?.destroy?.();
       applePayRef.current = null;
-      googlePayRef.current?.destroy?.();
-      googlePayRef.current = null;
       walletPayTokenRef.current = null;
       walletPaySubmittedTokenRef.current = null;
       cloverRef.current = null;
       cloverAppleRef.current = null;
-      cloverGoogleRef.current = null;
       setApplePayMounted(false);
-      setGooglePayMounted(false);
       setCloverReady(false);
       setCanPay(false);
       cloverFieldStateRef.current = {};
@@ -1688,7 +1598,6 @@ export default function CheckoutPage() {
       | RequiredKey
       | "CARD_NAME"
       | "PAYMENT_REQUEST_BUTTON_APPLE_PAY"
-      | "PAYMENT_REQUEST_BUTTON";
 
     const getFieldFromEvent = (
       event: CloverEventPayload,
@@ -1753,10 +1662,7 @@ export default function CheckoutPage() {
       const applePayReady = isFieldPayable(
         state.PAYMENT_REQUEST_BUTTON_APPLE_PAY,
       );
-      const googlePayReady = isFieldPayable(
-        state.PAYMENT_REQUEST_BUTTON,
-      );
-      return cardFieldsReady || applePayReady || googlePayReady;
+      return cardFieldsReady || applePayReady;
     };
 
     const setupClover = async () => {
@@ -1786,18 +1692,14 @@ export default function CheckoutPage() {
         cardPostalRef.current?.destroy?.();
         applePayRef.current?.destroy?.();
         applePayRef.current = null;
-        googlePayRef.current?.destroy?.();
-        googlePayRef.current = null;
         walletPayTokenRef.current = null;
         walletPaySubmittedTokenRef.current = null;
         cloverAppleRef.current = null;
-        cloverGoogleRef.current = null;
-
+  
         cloverFieldStateRef.current = {};
         setCanPay(false);
         setApplePayMounted(false);
-        setGooglePayMounted(false);
-
+  
         const clover = new window.Clover(publicKey, { merchantId });
         const elements = clover.elements();
 
@@ -1834,19 +1736,14 @@ export default function CheckoutPage() {
         applePayHost.innerHTML = "";
         applePay.mount("#clover-apple-pay");
 
-        const cloverGoogle = new window.Clover(publicKey, { merchantId });
-        const googlePay = mountGooglePayButton(cloverGoogle.elements());
-
         cloverRef.current = clover;
         cloverAppleRef.current = cloverApple;
-        cloverGoogleRef.current = cloverGoogle;
         cardNameRef.current = cardName;
         cardNumberRef.current = cardNumber;
         cardDateRef.current = cardDate;
         cardCvvRef.current = cardCvv;
         cardPostalRef.current = cardPostal;
         applePayRef.current = applePay;
-        googlePayRef.current = googlePay;
         setApplePayMounted(true);
 
         const handleFieldEvent = (
@@ -1927,7 +1824,6 @@ export default function CheckoutPage() {
           err instanceof Error ? err.message : "Failed to init Clover";
         setErrorMessage(message);
         setApplePayMounted(false);
-        setGooglePayMounted(false);
         setCloverReady(false);
         setCanPay(false);
       }
@@ -1946,61 +1842,35 @@ export default function CheckoutPage() {
       cardPostalRef.current?.destroy?.();
       applePayRef.current?.destroy?.();
       applePayRef.current = null;
-      googlePayRef.current?.destroy?.();
-      googlePayRef.current = null;
       walletPayTokenRef.current = null;
       walletPaySubmittedTokenRef.current = null;
       cloverFieldStateRef.current = {};
       cloverRef.current = null;
       cloverAppleRef.current = null;
-      cloverGoogleRef.current = null;
       setCanPay(false);
       setCloverReady(false);
       setApplePayMounted(false);
-      setGooglePayMounted(false);
     };
-  }, [locale, mountGooglePayButton, requiresPayment]);
+  }, [locale, requiresPayment]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (!requiresPayment) return;
+    if (!requiresPayment || !cloverReady) return;
 
-    const debounceId = window.setTimeout(() => {
+    const id = window.setTimeout(() => {
       try {
         cloverAppleRef.current?.updateApplePaymentRequest({
           amount: totalCents,
           countryCode: "CA",
           currencyCode: "CAD",
         });
-        setApplePayMounted(Boolean(applePayRef.current));
       } catch (error) {
         console.error("[AP] update error", toSafeErrorLog(error));
-        applePayRef.current?.destroy?.();
-        applePayRef.current = null;
-        setApplePayMounted(false);
       }
+    }, 350);
 
-      try {
-        const cloverGoogle = cloverGoogleRef.current;
-        if (cloverGoogle) {
-          googlePayRef.current?.destroy?.();
-          googlePayRef.current = mountGooglePayButton(cloverGoogle.elements());
-          setGooglePayMounted(Boolean(googlePayRef.current));
-        }
-      } catch (error) {
-        console.error("[GP] rebuild error", toSafeErrorLog(error));
-        googlePayRef.current?.destroy?.();
-        googlePayRef.current = null;
-        walletPayTokenRef.current = null;
-        walletPaySubmittedTokenRef.current = null;
-        setGooglePayMounted(false);
-      }
-    }, 600);
-
-    return () => {
-      window.clearTimeout(debounceId);
-    };
-  }, [mountGooglePayButton, requiresPayment, totalCents]);
+    return () => window.clearTimeout(id);
+  }, [requiresPayment, cloverReady, totalCents]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2032,11 +1902,9 @@ export default function CheckoutPage() {
       try {
         await placeOrderRef.current();
         cloverAppleRef.current?.updateApplePaymentStatus("success");
-        cloverGoogleRef.current?.updateGooglePaymentStatus?.("success");
       } catch (error) {
-        console.error("[AP/GP] paymentMethod error", toSafeErrorLog(error));
+        console.error("[AP] paymentMethod error", toSafeErrorLog(error));
         cloverAppleRef.current?.updateApplePaymentStatus("failed");
-        cloverGoogleRef.current?.updateGooglePaymentStatus?.("failed");
       }
     };
 
@@ -2843,6 +2711,98 @@ export default function CheckoutPage() {
     }
   };
 
+  const startGooglePayFlow = async () => {
+    if (!canPlaceOrder || isSubmitting) return;
+
+    setErrorMessage(null);
+    setIsSubmitting(true);
+
+    try {
+      const formattedCustomerPhone = formatCanadianPhoneForApi(customer.phone);
+      const checkoutIntentId =
+        checkoutIntentIdRef.current ??
+        (window.crypto?.randomUUID?.() ??
+          `chk_${Date.now()}_${Math.random().toString(16).slice(2)}`);
+      checkoutIntentIdRef.current = checkoutIntentId;
+
+      const metadata = {
+        locale,
+        fulfillment,
+        schedule,
+        customer: {
+          firstName: customer.firstName,
+          lastName: customer.lastName,
+          email: customer.email,
+          phone: formattedCustomerPhone,
+          ...(isDeliveryFulfillment
+            ? {
+                addressLine1: customer.addressLine1,
+                addressLine2: customer.addressLine2 || undefined,
+                city: customer.city,
+                province: customer.province,
+                postalCode: customer.postalCode,
+                address: deliveryAddressText,
+              }
+            : {}),
+        },
+        deliveryDestination: isDeliveryFulfillment
+          ? {
+              name: formatCustomerFullName(customer),
+              phone: formattedCustomerPhone,
+              addressLine1: customer.addressLine1,
+              addressLine2: customer.addressLine2 || undefined,
+              city: customer.city,
+              province: customer.province,
+              postalCode: customer.postalCode,
+              country: DELIVERY_COUNTRY,
+              instructions: customer.notes || undefined,
+              addressStableId: selectedAddressStableId ?? undefined,
+              placeId: selectedPlaceId ?? undefined,
+            }
+          : undefined,
+        items: cartItemsWithPricing.map((cartItem) => ({
+          productStableId: cartItem.productStableId,
+          quantity: cartItem.quantity,
+          notes: cartItem.notes,
+          options: stripOptionSnapshots(cartItem.options),
+          priceCents: cartItem.unitPriceCents,
+        })),
+      };
+
+      const quote = await withTimeout(
+        apiFetch<OnlinePricingQuoteResponse>("/clover/pay/online/quote", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ metadata, checkoutIntentId }),
+        }),
+        15000,
+        "apiFetch /clover/pay/online/quote",
+      );
+
+      const ctx: GooglePayCtx = {
+        locale,
+        checkoutIntentId: quote.checkoutIntentId || checkoutIntentId,
+        pricingToken: quote.pricingToken,
+        pricingTokenExpiresAt: quote.pricingTokenExpiresAt,
+        currency: quote.currency || HOSTED_CHECKOUT_CURRENCY,
+        totalCents: quote.quote.totalCents,
+        metadata,
+      };
+
+      window.sessionStorage.setItem(GOOGLE_PAY_CTX_KEY, JSON.stringify(ctx));
+      router.push(`/${locale}/wallet/google-pay`);
+    } catch (error) {
+      console.error("[GP] start flow error", toSafeErrorLog(error));
+      setErrorMessage(
+        locale === "zh"
+          ? "Google Pay 初始化失败，请稍后重试。"
+          : "Failed to start Google Pay. Please try again.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handlePlaceOrder = async (options?: { fromApplePay?: boolean }) => {
     const strictApplePay = options?.fromApplePay === true;
 
@@ -3114,7 +3074,7 @@ export default function CheckoutPage() {
         apiFetch<OnlinePricingQuoteResponse>("/clover/pay/online/quote", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ metadata }),
+          body: JSON.stringify({ metadata, checkoutIntentId }),
         }),
         15000,
         "apiFetch /clover/pay/online/quote",
@@ -4558,17 +4518,19 @@ export default function CheckoutPage() {
                   <p className="text-xs font-semibold text-slate-600">
                     {locale === "zh" ? "Google Pay" : "Google Pay"}
                   </p>
-                  <div
-                    id="clover-google-pay"
-                    className="rounded-2xl border border-slate-200 bg-white h-12 flex items-center justify-center overflow-hidden"
-                  />
-                  {!googlePayMounted ? (
-                    <p className="text-[11px] text-slate-500">
-                      {locale === "zh"
-                        ? "Google Pay 当前不可用，请改用 Apple Pay 或银行卡填写支付。"
-                        : "Google Pay is currently unavailable. Please pay with Apple Pay or card fields below."}
-                    </p>
-                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => void startGooglePayFlow()}
+                    disabled={!canPlaceOrder || isSubmitting || !requiresPayment}
+                    className="w-full rounded-full border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    {locale === "zh" ? "使用 Google Pay 支付" : "Pay with Google Pay"}
+                  </button>
+                  <p className="mt-2 text-[11px] text-slate-500">
+                    {locale === "zh"
+                      ? "Google Pay 将在新页面打开，金额会与当前优惠/积分一致。"
+                      : "Google Pay will open on a new page with the updated total."}
+                  </p>
 
                   <p className="text-xs font-semibold text-slate-600">
                     {locale === "zh" ? "银行卡信息" : "Card details"}
