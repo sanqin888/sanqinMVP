@@ -948,6 +948,8 @@ export default function CheckoutPage() {
   );
   const [checkoutStatusPollTick, setCheckoutStatusPollTick] = useState(0);
   const cloverRef = useRef<CloverInstance | null>(null);
+  const cloverAppleRef = useRef<CloverInstance | null>(null);
+  const cloverGoogleRef = useRef<CloverInstance | null>(null);
   const cloverFieldStateRef = useRef<Record<string, CloverFieldChangeEvent>>(
     {},
   );
@@ -1639,6 +1641,8 @@ export default function CheckoutPage() {
       walletPayTokenRef.current = null;
       walletPaySubmittedTokenRef.current = null;
       cloverRef.current = null;
+      cloverAppleRef.current = null;
+      cloverGoogleRef.current = null;
       setApplePayMounted(false);
       setGooglePayMounted(false);
       setCloverReady(false);
@@ -1786,6 +1790,8 @@ export default function CheckoutPage() {
         googlePayRef.current = null;
         walletPayTokenRef.current = null;
         walletPaySubmittedTokenRef.current = null;
+        cloverAppleRef.current = null;
+        cloverGoogleRef.current = null;
 
         cloverFieldStateRef.current = {};
         setCanPay(false);
@@ -1814,21 +1820,26 @@ export default function CheckoutPage() {
 
         const sessionIdentifier = merchantId;
 
-        const applePayRequest = clover.createApplePaymentRequest({
+        const cloverApple = new window.Clover(publicKey, { merchantId });
+        const appleElements = cloverApple.elements();
+        const applePayRequest = cloverApple.createApplePaymentRequest({
           amount: totalCentsRef.current,
           countryCode: "CA",
           currencyCode: "CAD",
         });
-        const applePay = elements.create("PAYMENT_REQUEST_BUTTON_APPLE_PAY", {
+        const applePay = appleElements.create("PAYMENT_REQUEST_BUTTON_APPLE_PAY", {
           applePaymentRequest: applePayRequest,
           sessionIdentifier,
         });
         applePayHost.innerHTML = "";
         applePay.mount("#clover-apple-pay");
 
-        const googlePay = mountGooglePayButton(elements);
+        const cloverGoogle = new window.Clover(publicKey, { merchantId });
+        const googlePay = mountGooglePayButton(cloverGoogle.elements());
 
         cloverRef.current = clover;
+        cloverAppleRef.current = cloverApple;
+        cloverGoogleRef.current = cloverGoogle;
         cardNameRef.current = cardName;
         cardNumberRef.current = cardNumber;
         cardDateRef.current = cardDate;
@@ -1941,6 +1952,8 @@ export default function CheckoutPage() {
       walletPaySubmittedTokenRef.current = null;
       cloverFieldStateRef.current = {};
       cloverRef.current = null;
+      cloverAppleRef.current = null;
+      cloverGoogleRef.current = null;
       setCanPay(false);
       setCloverReady(false);
       setApplePayMounted(false);
@@ -1950,41 +1963,44 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (!requiresPayment || !cloverReady) return;
+    if (!requiresPayment) return;
 
     const debounceId = window.setTimeout(() => {
-      const latestClover = cloverRef.current;
-      if (!latestClover) return;
-
       try {
-        latestClover.updateApplePaymentRequest({
+        cloverAppleRef.current?.updateApplePaymentRequest({
           amount: totalCents,
           countryCode: "CA",
           currencyCode: "CAD",
         });
-
-        // googlePayRef.current?.destroy?.();
-        // googlePayRef.current = mountGooglePayButton(latestClover.elements());
-
         setApplePayMounted(Boolean(applePayRef.current));
-        setGooglePayMounted(Boolean(googlePayRef.current));
       } catch (error) {
-        console.error("[AP/GP] update/mount error", toSafeErrorLog(error));
+        console.error("[AP] update error", toSafeErrorLog(error));
         applePayRef.current?.destroy?.();
         applePayRef.current = null;
+        setApplePayMounted(false);
+      }
+
+      try {
+        const cloverGoogle = cloverGoogleRef.current;
+        if (cloverGoogle) {
+          googlePayRef.current?.destroy?.();
+          googlePayRef.current = mountGooglePayButton(cloverGoogle.elements());
+          setGooglePayMounted(Boolean(googlePayRef.current));
+        }
+      } catch (error) {
+        console.error("[GP] rebuild error", toSafeErrorLog(error));
         googlePayRef.current?.destroy?.();
         googlePayRef.current = null;
         walletPayTokenRef.current = null;
         walletPaySubmittedTokenRef.current = null;
-        setApplePayMounted(false);
         setGooglePayMounted(false);
       }
-    }, 350);
+    }, 600);
 
     return () => {
       window.clearTimeout(debounceId);
     };
-  }, [cloverReady, locale, mountGooglePayButton, requiresPayment, totalCents]);
+  }, [mountGooglePayButton, requiresPayment, totalCents]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2015,12 +2031,12 @@ export default function CheckoutPage() {
 
       try {
         await placeOrderRef.current();
-        cloverRef.current?.updateApplePaymentStatus("success");
-        cloverRef.current?.updateGooglePaymentStatus?.("success");
+        cloverAppleRef.current?.updateApplePaymentStatus("success");
+        cloverGoogleRef.current?.updateGooglePaymentStatus?.("success");
       } catch (error) {
         console.error("[AP/GP] paymentMethod error", toSafeErrorLog(error));
-        cloverRef.current?.updateApplePaymentStatus("failed");
-        cloverRef.current?.updateGooglePaymentStatus?.("failed");
+        cloverAppleRef.current?.updateApplePaymentStatus("failed");
+        cloverGoogleRef.current?.updateGooglePaymentStatus?.("failed");
       }
     };
 
