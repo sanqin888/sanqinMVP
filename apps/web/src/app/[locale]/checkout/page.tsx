@@ -904,6 +904,7 @@ export default function CheckoutPage() {
   const [showIosStandaloneCloverHint] = useState(false);
   const [showFloatingActions, setShowFloatingActions] = useState(false);
   const [applePayMounted, setApplePayMounted] = useState(false);
+  const [applePayListenerReady, setApplePayListenerReady] = useState(false);
   const [cardNameComplete, setCardNameComplete] = useState(false);
   const [cardNumberComplete, setCardNumberComplete] = useState(false);
   const [cardDateComplete, setCardDateComplete] = useState(false);
@@ -1460,7 +1461,7 @@ export default function CheckoutPage() {
   const requiresPayment = totalCents > 0;
   const canPayWithCard =
     !requiresPayment ||
-    (cloverReady && (canPay || applePayMounted));
+    (cloverReady && (canPay || (applePayMounted && applePayListenerReady)));
 
   const payButtonDisabledReason = useMemo(() => {
     if (isSubmitting) return null;
@@ -1555,6 +1556,7 @@ export default function CheckoutPage() {
       cloverRef.current = null;
       cloverAppleRef.current = null;
       setApplePayMounted(false);
+      setApplePayListenerReady(false);
       setCloverReady(false);
       setCanPay(false);
       cloverFieldStateRef.current = {};
@@ -1699,7 +1701,63 @@ export default function CheckoutPage() {
         cloverFieldStateRef.current = {};
         setCanPay(false);
         setApplePayMounted(false);
-  
+        setApplePayListenerReady(false);
+
+        const attachApplePayListeners = () => {
+          const getWalletTokenFromDetail = (detail: unknown) => {
+            if (!detail || typeof detail !== "object") return null;
+
+            // Clover 文档示例里历史上出现过 `tokenRecieved`（拼写错误），
+            // 实际接入中有商户环境会带这个字段，因此这里同时兼容两种写法。
+            const maybeTokenRecieved = (detail as { tokenRecieved?: { id?: unknown } })
+              .tokenRecieved?.id;
+            if (typeof maybeTokenRecieved === "string") return maybeTokenRecieved;
+
+            const maybeTokenReceived = (detail as { tokenReceived?: { id?: unknown } })
+              .tokenReceived?.id;
+            return typeof maybeTokenReceived === "string" ? maybeTokenReceived : null;
+          };
+
+          const onPaymentMethod = async (event: Event) => {
+            const detail = event instanceof CustomEvent ? event.detail : undefined;
+            const tokenFromEvent = getWalletTokenFromDetail(detail);
+
+            if (!tokenFromEvent) return;
+            if (walletPaySubmittedTokenRef.current === tokenFromEvent) return;
+
+            walletPayTokenRef.current = tokenFromEvent;
+            walletPaySubmittedTokenRef.current = tokenFromEvent;
+
+            try {
+              await placeOrderRef.current();
+              cloverAppleRef.current?.updateApplePaymentStatus("success");
+            } catch (error) {
+              console.error("[AP] paymentMethod error", toSafeErrorLog(error));
+              cloverAppleRef.current?.updateApplePaymentStatus("failed");
+              walletPaySubmittedTokenRef.current = null;
+            }
+          };
+
+          const onPaymentMethodEnd = () => {
+            // noop: reserved for session timeout/cancel handling.
+          };
+
+          window.addEventListener("paymentMethod", onPaymentMethod);
+          window.addEventListener("paymentMethodEnd", onPaymentMethodEnd);
+          setApplePayListenerReady(true);
+
+          return () => {
+            window.removeEventListener("paymentMethod", onPaymentMethod);
+            window.removeEventListener("paymentMethodEnd", onPaymentMethodEnd);
+            setApplePayListenerReady(false);
+          };
+        };
+
+        const removeApplePayListeners = attachApplePayListeners();
+        cleanupRef.current = () => {
+          removeApplePayListeners?.();
+        };
+
         const clover = new window.Clover(publicKey, { merchantId });
         const elements = clover.elements();
 
@@ -1824,6 +1882,7 @@ export default function CheckoutPage() {
           err instanceof Error ? err.message : "Failed to init Clover";
         setErrorMessage(message);
         setApplePayMounted(false);
+        setApplePayListenerReady(false);
         setCloverReady(false);
         setCanPay(false);
       }
@@ -1850,6 +1909,7 @@ export default function CheckoutPage() {
       setCanPay(false);
       setCloverReady(false);
       setApplePayMounted(false);
+      setApplePayListenerReady(false);
     };
   }, [locale, requiresPayment]);
 
@@ -1871,48 +1931,6 @@ export default function CheckoutPage() {
 
     return () => window.clearTimeout(id);
   }, [requiresPayment, cloverReady, totalCents]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!requiresPayment || !cloverReady) return;
-
-    const onPaymentMethod = async (event: Event) => {
-      const detail = event instanceof CustomEvent ? event.detail : undefined;
-      const tokenFromEvent =
-        (typeof detail === "object" &&
-        detail &&
-        "tokenRecieved" in detail &&
-        typeof (detail as { tokenRecieved?: { id?: unknown } }).tokenRecieved
-          ?.id === "string"
-          ? (detail as { tokenRecieved: { id: string } }).tokenRecieved.id
-          : undefined) ??
-        (typeof detail === "object" &&
-        detail &&
-        "tokenReceived" in detail &&
-        typeof (detail as { tokenReceived?: { id?: unknown } }).tokenReceived
-          ?.id === "string"
-          ? (detail as { tokenReceived: { id: string } }).tokenReceived.id
-          : undefined);
-
-      if (!tokenFromEvent) return;
-      if (walletPaySubmittedTokenRef.current === tokenFromEvent) return;
-      walletPayTokenRef.current = tokenFromEvent;
-      walletPaySubmittedTokenRef.current = tokenFromEvent;
-
-      try {
-        await placeOrderRef.current();
-        cloverAppleRef.current?.updateApplePaymentStatus("success");
-      } catch (error) {
-        console.error("[AP] paymentMethod error", toSafeErrorLog(error));
-        cloverAppleRef.current?.updateApplePaymentStatus("failed");
-      }
-    };
-
-    window.addEventListener("paymentMethod", onPaymentMethod);
-    return () => {
-      window.removeEventListener("paymentMethod", onPaymentMethod);
-    };
-  }, [cloverReady, requiresPayment]);
 
   useEffect(() => {
     if (!challengeIntentId) return;
