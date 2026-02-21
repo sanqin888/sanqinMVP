@@ -101,6 +101,14 @@ const COPY = {
     refundFailed: "退款失败，请稍后重试。",
     reasonLabel: "操作原因",
     reasonPlaceholder: "请输入原因（必填）",
+    methodLabel: "退款/新支付方式",
+    methodPlaceholder: "请选择退款或新付款方式",
+    methodOptions: {
+      CASH: "现金",
+      CARD: "银行卡",
+      WECHAT_ALIPAY: "微信/支付宝",
+      STORE_BALANCE: "储值余额",
+    },
     reasonPresets: ["顾客取消", "商品售罄", "操作失误", "支付方式调整"],
     itemSelectTitle: "选择退/换菜品",
     itemSelectHint: "退菜/换菜必须勾选对应菜品。",
@@ -225,6 +233,14 @@ const COPY = {
     refundFailed: "Refund failed. Please retry.",
     reasonLabel: "Reason",
     reasonPlaceholder: "Enter reason (required)",
+    methodLabel: "Refund / New payment method",
+    methodPlaceholder: "Select refund or new payment method",
+    methodOptions: {
+      CASH: "Cash",
+      CARD: "Card",
+      WECHAT_ALIPAY: "WeChat / Alipay",
+      STORE_BALANCE: "Store balance",
+    },
     reasonPresets: [
       "Customer cancellation",
       "Item out of stock",
@@ -308,6 +324,17 @@ function calcSwapTotalCents(selection: SwapSelection | null): number {
 type OrderStatusKey = keyof (typeof COPY)["zh"]["status"];
 type ActionKey = keyof (typeof COPY)["zh"]["actionLabels"];
 type PaymentMethodKey = keyof (typeof COPY)["zh"]["paymentMethod"];
+type AmendmentPaymentMethod = Exclude<
+  NonNullable<CreateOrderAmendmentInput["paymentMethod"]>,
+  "UBEREATS"
+>;
+
+const PAYMENT_METHOD_OPTIONS: AmendmentPaymentMethod[] = [
+  "CASH",
+  "CARD",
+  "WECHAT_ALIPAY",
+  "STORE_BALANCE",
+];
 
 function pickItemName(
   item: Pick<BackendOrderItem, "displayName" | "nameEn" | "nameZh" | "productStableId">,
@@ -337,6 +364,10 @@ function mapPaymentMethod(order: BackendOrder): PaymentMethodKey {
   const raw = (order as { paymentMethod?: string | null }).paymentMethod;
   if (raw === "cash" || raw === "card") return raw;
   return order.channel === "in_store" ? "cash" : "card";
+}
+
+function defaultAmendmentPaymentMethod(order: OrderRecord): AmendmentPaymentMethod {
+  return order.paymentMethod === "cash" ? "CASH" : "CARD";
 }
 
 function statusTone(status: OrderStatusKey): string {
@@ -538,6 +569,9 @@ type ActionContentProps = {
   selectedItemIds: string[];
   onToggleItem: (id: string) => void;
   summary: ActionSummary | null;
+  selectedPaymentMethod: AmendmentPaymentMethod | null;
+  onPaymentMethodChange: (value: AmendmentPaymentMethod) => void;
+  shouldShowPaymentMethodPicker: boolean;
   canSubmit: boolean;
   onSubmit: () => void;
   isSubmitting: boolean;
@@ -557,6 +591,9 @@ function ActionContent({
   selectedItemIds,
   onToggleItem,
   summary,
+  selectedPaymentMethod,
+  onPaymentMethodChange,
+  shouldShowPaymentMethodPicker,
   canSubmit,
   onSubmit,
   isSubmitting,
@@ -757,6 +794,31 @@ function ActionContent({
             </div>
           )}
 
+
+          {shouldShowPaymentMethodPicker && (
+            <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-3 text-xs text-slate-200">
+              <label className="text-[11px] font-semibold uppercase text-slate-400">
+                {copy.methodLabel}
+              </label>
+              <select
+                value={selectedPaymentMethod ?? ""}
+                onChange={(event) =>
+                  onPaymentMethodChange(event.target.value as AmendmentPaymentMethod)
+                }
+                className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs text-slate-100 focus:border-emerald-400 focus:outline-none"
+              >
+                <option value="" disabled>
+                  {copy.methodPlaceholder}
+                </option>
+                {PAYMENT_METHOD_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {copy.methodOptions[option]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-3 text-xs text-slate-200">
             <label className="text-[11px] font-semibold uppercase text-slate-400">
               {copy.reasonLabel}
@@ -892,6 +954,8 @@ export default function PosOrdersPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedAction, setSelectedAction] = useState<ActionKey | null>(null);
   const [reason, setReason] = useState("");
+  const [selectedPaymentMethod, setSelectedPaymentMethod] =
+    useState<AmendmentPaymentMethod | null>(null);
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAdvancing, setIsAdvancing] = useState(false);
@@ -1085,6 +1149,14 @@ const mapOrder = useCallback(
     [orders, selectedId],
   );
 
+  useEffect(() => {
+    if (!selectedOrder) {
+      setSelectedPaymentMethod(null);
+      return;
+    }
+    setSelectedPaymentMethod(defaultAmendmentPaymentMethod(selectedOrder));
+  }, [selectedOrder]);
+
   const filteredOrders = useMemo(() => {
     return orders
       .filter((order) => {
@@ -1265,6 +1337,9 @@ const mapOrder = useCallback(
 
   const handleSelectAction = (action: ActionKey) => {
     setSelectedAction(action);
+    if (selectedOrder) {
+      setSelectedPaymentMethod(defaultAmendmentPaymentMethod(selectedOrder));
+    }
     if (action !== "void_item" && action !== "swap_item") {
       setSelectedItemIds([]);
       setSwapSelection(null);
@@ -1289,11 +1364,18 @@ const mapOrder = useCallback(
     [selectedOrder?.status],
   );
 
+  const shouldShowPaymentMethodPicker =
+    selectedAction === "retender" ||
+    selectedAction === "full_refund" ||
+    ((selectedAction === "void_item" || selectedAction === "swap_item") &&
+      (summary?.refundCents ?? 0) > 0);
+
   const canSubmit =
     Boolean(selectedAction) &&
     reason.trim().length > 0 &&
     (!showItemSelection || selectedItemIds.length > 0) &&
     (selectedAction !== "swap_item" || Boolean(swapSelection)) &&
+    (!shouldShowPaymentMethodPicker || Boolean(selectedPaymentMethod)) &&
     (selectedAction ? !isActionDisabled(selectedAction) : false);
 
   const openSwapItemDialog = (
@@ -1374,6 +1456,7 @@ const handleSubmit = () => {
     setSelectedId(null);
     setSelectedAction(null);
     setReason("");
+    setSelectedPaymentMethod(null);
     setSelectedItemIds([]);
     setSwapSelection(null);
     setSwapActiveItem(null);
@@ -1483,7 +1566,7 @@ const handleSubmit = () => {
       const payload: CreateOrderAmendmentInput = {
         type: amendmentType,
         reason: reason.trim(),
-        paymentMethod: null,
+        paymentMethod: shouldShowPaymentMethodPicker ? selectedPaymentMethod : null,
         refundGrossCents,
         additionalChargeCents,
         items,
@@ -1859,6 +1942,9 @@ const handleSubmit = () => {
                 selectedItemIds={selectedItemIds}
                 onToggleItem={handleToggleItem}
                 summary={summary}
+                selectedPaymentMethod={selectedPaymentMethod}
+                onPaymentMethodChange={setSelectedPaymentMethod}
+                shouldShowPaymentMethodPicker={shouldShowPaymentMethodPicker}
                 canSubmit={canSubmit}
                 onSubmit={handleSubmit}
                 isSubmitting={isSubmitting}
