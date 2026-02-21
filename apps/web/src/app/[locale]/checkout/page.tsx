@@ -2775,9 +2775,29 @@ export default function CheckoutPage() {
               country: DELIVERY_COUNTRY,
               instructions: customer.notes || undefined,
               addressStableId: selectedAddressStableId ?? undefined,
-              placeId: selectedPlaceId ?? undefined,
+            placeId: selectedPlaceId ?? undefined,
+          }
+          : undefined,
+        subtotalCents,
+        subtotalAfterDiscountCents: effectiveSubtotalCents,
+        taxCents,
+        serviceFeeCents,
+        deliveryFeeCents,
+        taxRate: TAX_RATE,
+        loyaltyRedeemCents,
+        loyaltyAvailableDiscountCents: loyaltyInfo?.availableDiscountCents ?? 0,
+        loyaltyPointsBalance: loyaltyInfo?.points ?? 0,
+        loyaltyUserStableId: loyaltyInfo?.userStableId,
+        coupon: appliedCoupon
+          ? {
+              couponStableId: appliedCoupon.couponStableId,
+              code: appliedCoupon.code,
+              title: appliedCoupon.title,
+              discountCents: couponDiscountCents,
+              minSpendCents: appliedCoupon.minSpendCents,
             }
           : undefined,
+        selectedUserCouponId: selectedUserCouponId ?? undefined,
         items: cartItemsWithPricing.map((cartItem) => ({
           productStableId: cartItem.productStableId,
           quantity: cartItem.quantity,
