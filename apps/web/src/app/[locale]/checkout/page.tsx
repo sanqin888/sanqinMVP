@@ -88,18 +88,6 @@ type CloverFieldChangeEvent = {
   error?: string | { message?: string } | null;
 };
 
-type CloverAggregatedFieldEvent = Record<string, CloverFieldChangeEvent>;
-
-type CloverEventPayload =
-  | CloverFieldChangeEvent
-  | CloverAggregatedFieldEvent
-  | {
-      data?: {
-        realTimeFormState?: CloverAggregatedFieldEvent;
-      };
-      realTimeFormState?: CloverAggregatedFieldEvent;
-    };
-
 type CloverApplePaymentRequest = {
   amount: number;
   countryCode: string;
@@ -110,10 +98,9 @@ type CloverElementInstance = {
   mount: (selector: string) => void;
   addEventListener: (
     event: string,
-    handler: (
-      payload: CloverFieldChangeEvent | CloverAggregatedFieldEvent,
-    ) => void,
+    handler: (payload: unknown) => void,
   ) => void;
+  removeEventListener?: (event: string, handler: (payload: unknown) => void) => void;
   destroy?: () => void;
 };
 
@@ -1602,7 +1589,7 @@ export default function CheckoutPage() {
       | "PAYMENT_REQUEST_BUTTON_APPLE_PAY"
 
     const getFieldFromEvent = (
-      event: CloverEventPayload,
+      event: unknown,
       key: CloverFieldKey,
     ): CloverFieldChangeEvent => {
       if (event && typeof event === "object") {
@@ -1703,7 +1690,7 @@ export default function CheckoutPage() {
         setApplePayMounted(false);
         setApplePayListenerReady(false);
 
-        const attachApplePayListeners = () => {
+        const attachApplePayListeners = (applePay: CloverElementInstance) => {
           const getWalletTokenFromDetail = (detail: unknown) => {
             if (!detail || typeof detail !== "object") return null;
 
@@ -1718,8 +1705,18 @@ export default function CheckoutPage() {
             return typeof maybeTokenReceived === "string" ? maybeTokenReceived : null;
           };
 
-          const onPaymentMethod = async (event: Event) => {
-            const detail = event instanceof CustomEvent ? event.detail : undefined;
+          const resolvePaymentMethodDetail = (payload: unknown) => {
+            if (payload instanceof CustomEvent) return payload.detail;
+
+            if (payload && typeof payload === "object" && "detail" in payload) {
+              return (payload as { detail?: unknown }).detail;
+            }
+
+            return payload;
+          };
+
+          const processPaymentMethod = async (payload: unknown) => {
+            const detail = resolvePaymentMethodDetail(payload);
             const tokenFromEvent = getWalletTokenFromDetail(detail);
 
             if (!tokenFromEvent) return;
@@ -1738,24 +1735,33 @@ export default function CheckoutPage() {
             }
           };
 
+          const onApplePayPaymentMethod = (payload: unknown) => {
+            void processPaymentMethod(payload);
+          };
+
+          const onWindowPaymentMethod = (event: Event) => {
+            void processPaymentMethod(event);
+          };
+
           const onPaymentMethodEnd = () => {
             // noop: reserved for session timeout/cancel handling.
           };
 
-          window.addEventListener("paymentMethod", onPaymentMethod);
+          applePay.addEventListener("paymentMethod", onApplePayPaymentMethod);
+          applePay.addEventListener("paymentMethodEnd", onPaymentMethodEnd);
+
+          // 兼容 Clover 历史版本：某些版本会把支付事件派发到 window。
+          window.addEventListener("paymentMethod", onWindowPaymentMethod);
           window.addEventListener("paymentMethodEnd", onPaymentMethodEnd);
           setApplePayListenerReady(true);
 
           return () => {
-            window.removeEventListener("paymentMethod", onPaymentMethod);
+            applePay.removeEventListener?.("paymentMethod", onApplePayPaymentMethod);
+            applePay.removeEventListener?.("paymentMethodEnd", onPaymentMethodEnd);
+            window.removeEventListener("paymentMethod", onWindowPaymentMethod);
             window.removeEventListener("paymentMethodEnd", onPaymentMethodEnd);
             setApplePayListenerReady(false);
           };
-        };
-
-        const removeApplePayListeners = attachApplePayListeners();
-        cleanupRef.current = () => {
-          removeApplePayListeners?.();
         };
 
         const clover = new window.Clover(publicKey, { merchantId });
@@ -1794,6 +1800,11 @@ export default function CheckoutPage() {
         applePayHost.innerHTML = "";
         applePay.mount("#clover-apple-pay");
 
+        const removeApplePayListeners = attachApplePayListeners(applePay);
+        cleanupRef.current = () => {
+          removeApplePayListeners?.();
+        };
+
         cloverRef.current = clover;
         cloverAppleRef.current = cloverApple;
         cardNameRef.current = cardName;
@@ -1806,7 +1817,7 @@ export default function CheckoutPage() {
 
         const handleFieldEvent = (
           key: CloverFieldKey,
-          raw: CloverEventPayload,
+          raw: unknown,
         ) => {
           const fieldEvent = getFieldFromEvent(raw, key);
 
