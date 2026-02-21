@@ -1690,7 +1690,7 @@ export default function CheckoutPage() {
         setApplePayMounted(false);
         setApplePayListenerReady(false);
 
-        const attachApplePayListeners = (applePay: CloverElementInstance) => {
+        const attachApplePayWindowListeners = (cloverApple: CloverInstance) => {
           const getWalletTokenFromDetail = (detail: unknown) => {
             if (!detail || typeof detail !== "object") return null;
 
@@ -1715,49 +1715,37 @@ export default function CheckoutPage() {
             return payload;
           };
 
-          const processPaymentMethod = async (payload: unknown) => {
-            const detail = resolvePaymentMethodDetail(payload);
-            const tokenFromEvent = getWalletTokenFromDetail(detail);
-
-            if (!tokenFromEvent) return;
-            if (walletPaySubmittedTokenRef.current === tokenFromEvent) return;
-
-            walletPayTokenRef.current = tokenFromEvent;
-            walletPaySubmittedTokenRef.current = tokenFromEvent;
-
-            try {
-              await placeOrderRef.current();
-              cloverAppleRef.current?.updateApplePaymentStatus("success");
-            } catch (error) {
-              console.error("[AP] paymentMethod error", toSafeErrorLog(error));
-              cloverAppleRef.current?.updateApplePaymentStatus("failed");
-              walletPaySubmittedTokenRef.current = null;
-            }
-          };
-
-          const onApplePayPaymentMethod = (payload: unknown) => {
-            void processPaymentMethod(payload);
-          };
-
           const onWindowPaymentMethod = (event: Event) => {
-            void processPaymentMethod(event);
+            void (async () => {
+              const detail = resolvePaymentMethodDetail(event);
+              const tokenFromEvent = getWalletTokenFromDetail(detail);
+
+              if (!tokenFromEvent) return;
+              if (walletPaySubmittedTokenRef.current === tokenFromEvent) return;
+
+              walletPayTokenRef.current = tokenFromEvent;
+              walletPaySubmittedTokenRef.current = tokenFromEvent;
+
+              try {
+                await placeOrderRef.current();
+                cloverApple.updateApplePaymentStatus("success");
+              } catch (error) {
+                console.error("[AP] paymentMethod error", toSafeErrorLog(error));
+                cloverApple.updateApplePaymentStatus("failed");
+                walletPaySubmittedTokenRef.current = null;
+              }
+            })();
           };
 
           const onPaymentMethodEnd = () => {
             // noop: reserved for session timeout/cancel handling.
           };
 
-          applePay.addEventListener("paymentMethod", onApplePayPaymentMethod);
-          applePay.addEventListener("paymentMethodEnd", onPaymentMethodEnd);
-
-          // 兼容 Clover 历史版本：某些版本会把支付事件派发到 window。
           window.addEventListener("paymentMethod", onWindowPaymentMethod);
           window.addEventListener("paymentMethodEnd", onPaymentMethodEnd);
           setApplePayListenerReady(true);
 
           return () => {
-            applePay.removeEventListener?.("paymentMethod", onApplePayPaymentMethod);
-            applePay.removeEventListener?.("paymentMethodEnd", onPaymentMethodEnd);
             window.removeEventListener("paymentMethod", onWindowPaymentMethod);
             window.removeEventListener("paymentMethodEnd", onPaymentMethodEnd);
             setApplePayListenerReady(false);
@@ -1784,9 +1772,12 @@ export default function CheckoutPage() {
           throw new Error("Apple Pay host not ready");
         }
 
-        const sessionIdentifier = merchantId;
+        const applePaySessionIdentifier =
+          process.env.NEXT_PUBLIC_CLOVER_APPLE_PAY_SESSION_IDENTIFIER?.trim() ||
+          merchantId;
 
         const cloverApple = new window.Clover(publicKey, { merchantId });
+        const removeApplePayWindowListeners = attachApplePayWindowListeners(cloverApple);
         const appleElements = cloverApple.elements();
         const applePayRequest = cloverApple.createApplePaymentRequest({
           amount: totalCentsRef.current,
@@ -1795,14 +1786,13 @@ export default function CheckoutPage() {
         });
         const applePay = appleElements.create("PAYMENT_REQUEST_BUTTON_APPLE_PAY", {
           applePaymentRequest: applePayRequest,
-          sessionIdentifier,
+          sessionIdentifier: applePaySessionIdentifier,
         });
         applePayHost.innerHTML = "";
         applePay.mount("#clover-apple-pay");
 
-        const removeApplePayListeners = attachApplePayListeners(applePay);
         cleanupRef.current = () => {
-          removeApplePayListeners?.();
+          removeApplePayWindowListeners?.();
         };
 
         cloverRef.current = clover;
@@ -4552,10 +4542,24 @@ export default function CheckoutPage() {
                   <p className="text-xs font-semibold text-slate-600">
                     {locale === "zh" ? "苹果支付" : "Apple Pay"}
                   </p>
-                  <div
-                    id="clover-apple-pay"
-                    className="rounded-2xl border border-slate-200 bg-white h-12 flex items-center justify-center overflow-hidden"
-                  />
+                  <div className="relative">
+                    <div
+                      id="clover-apple-pay"
+                      className="rounded-2xl border border-slate-200 bg-white h-12 flex items-center justify-center overflow-hidden"
+                    />
+                    {(!canPlaceOrder || isSubmitting || !requiresPayment) && (
+                      <button
+                        type="button"
+                        aria-label={locale === "zh" ? "Apple Pay 当前不可点击" : "Apple Pay is currently disabled"}
+                        onClick={() => {
+                          if (payButtonDisabledReason) {
+                            setErrorMessage(payButtonDisabledReason);
+                          }
+                        }}
+                        className="absolute inset-0 z-10 cursor-not-allowed rounded-2xl bg-transparent"
+                      />
+                    )}
+                  </div>
                   {!applePayMounted ? (
                     <p className="text-[11px] text-slate-500">
                       {locale === "zh"
