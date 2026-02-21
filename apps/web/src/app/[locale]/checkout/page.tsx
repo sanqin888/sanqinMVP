@@ -1737,14 +1737,6 @@ export default function CheckoutPage() {
             })();
           };
 
-          const onApplePayPaymentMethod = (payload: unknown) => {
-            void processPaymentMethod(payload);
-          };
-
-          const onWindowPaymentMethod = (event: Event) => {
-            void processPaymentMethod(event);
-          };
-
           const onPaymentMethodEnd = () => {
             // noop: reserved for session timeout/cancel handling.
           };
