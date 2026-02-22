@@ -1734,8 +1734,9 @@ export default function CheckoutPage() {
             })();
           };
 
-          const onPaymentMethodEnd = () => {
-            // noop: reserved for session timeout/cancel handling.
+          const onPaymentMethodEnd = (event: Event) => {
+            const detail = resolvePaymentMethodDetail(event);
+            console.warn("[AP] paymentMethodEnd", detail);
           };
 
           window.addEventListener("paymentMethod", onWindowPaymentMethod);
@@ -1774,18 +1775,29 @@ export default function CheckoutPage() {
           merchantId;
 
         const removeApplePayWindowListeners = attachApplePayWindowListeners(clover);
-        const appleElements = clover.elements();
-        const applePayRequest = clover.createApplePaymentRequest({
-          amount: totalCentsRef.current,
-          countryCode: "CA",
-          currencyCode: "CAD",
-        });
-        const applePay = appleElements.create("PAYMENT_REQUEST_BUTTON_APPLE_PAY", {
-          applePaymentRequest: applePayRequest,
-          sessionIdentifier: applePaySessionIdentifier,
-        });
         applePayHost.innerHTML = "";
-        applePay.mount("#clover-apple-pay");
+
+        if (totalCents > 0) {
+          const appleElements = clover.elements();
+          const applePayRequest = clover.createApplePaymentRequest({
+            amount: totalCents,
+            countryCode: "CA",
+            currencyCode: "CAD",
+          });
+          const applePay = appleElements.create("PAYMENT_REQUEST_BUTTON_APPLE_PAY", {
+            applePaymentRequest: applePayRequest,
+            sessionIdentifier: applePaySessionIdentifier,
+          });
+          applePay.mount("#clover-apple-pay");
+          applePayRef.current = applePay;
+          setApplePayMounted(true);
+        } else {
+          applePayRef.current = null;
+          setApplePayMounted(false);
+          console.warn("[AP] skip Apple Pay init because totalCents <= 0", {
+            totalCents,
+          });
+        }
 
         cleanupRef.current = () => {
           removeApplePayWindowListeners?.();
@@ -1797,9 +1809,6 @@ export default function CheckoutPage() {
         cardDateRef.current = cardDate;
         cardCvvRef.current = cardCvv;
         cardPostalRef.current = cardPostal;
-        applePayRef.current = applePay;
-        setApplePayMounted(true);
-
         const handleFieldEvent = (
           key: CloverFieldKey,
           raw: unknown,
@@ -1906,7 +1915,7 @@ export default function CheckoutPage() {
       setApplePayMounted(false);
       setApplePayListenerReady(false);
     };
-  }, [locale, requiresPayment]);
+  }, [locale, requiresPayment, totalCents]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
