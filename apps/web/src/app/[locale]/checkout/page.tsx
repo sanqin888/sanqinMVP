@@ -1736,7 +1736,7 @@ export default function CheckoutPage() {
 
           const onPaymentMethodEnd = (event: Event) => {
             const detail = resolvePaymentMethodDetail(event);
-            console.warn("[AP] paymentMethodEnd", detail);
+            console.log("[AP] paymentMethodEnd", detail);
           };
 
           window.addEventListener("paymentMethod", onWindowPaymentMethod);
