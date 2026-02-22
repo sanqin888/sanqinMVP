@@ -94,6 +94,10 @@ type CloverApplePaymentRequest = {
   currencyCode: string;
 };
 
+type ApplePaySessionLike = {
+  canMakePayments?: () => boolean;
+};
+
 type CloverElementInstance = {
   mount: (selector: string) => void;
   addEventListener: (
@@ -207,6 +211,7 @@ declare global {
         merchantId?: string;
       },
     ) => CloverInstance;
+    ApplePaySession?: ApplePaySessionLike;
   }
 }
 
@@ -912,6 +917,7 @@ export default function CheckoutPage() {
       el.id = "__debug_log";
       el.style.cssText =
         "position:fixed;bottom:0;left:0;right:0;max-height:40vh;overflow:auto;background:#000;color:#0f0;z-index:999999;padding:8px;font-size:12px;white-space:pre-wrap;";
+      el.style.pointerEvents = "none";
       document.body.appendChild(el);
     }
 
@@ -938,6 +944,10 @@ ${nextLine}`;
   useEffect(() => {
     if (typeof window === "undefined") return;
     logToScreen({ boot: Date.now(), ua: navigator.userAgent });
+    logToScreen({
+      applePaySession: !!window.ApplePaySession,
+      canMakePayments: window.ApplePaySession?.canMakePayments?.() ?? null,
+    });
   }, [logToScreen]);
 
   useEffect(() => {
