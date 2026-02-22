@@ -929,7 +929,6 @@ export default function CheckoutPage() {
   );
   const [checkoutStatusPollTick, setCheckoutStatusPollTick] = useState(0);
   const cloverRef = useRef<CloverInstance | null>(null);
-  const cloverAppleRef = useRef<CloverInstance | null>(null);
   const cloverFieldStateRef = useRef<Record<string, CloverFieldChangeEvent>>(
     {},
   );
@@ -1541,7 +1540,6 @@ export default function CheckoutPage() {
       walletPayTokenRef.current = null;
       walletPaySubmittedTokenRef.current = null;
       cloverRef.current = null;
-      cloverAppleRef.current = null;
       setApplePayMounted(false);
       setApplePayListenerReady(false);
       setCloverReady(false);
@@ -1683,14 +1681,13 @@ export default function CheckoutPage() {
         applePayRef.current = null;
         walletPayTokenRef.current = null;
         walletPaySubmittedTokenRef.current = null;
-        cloverAppleRef.current = null;
-  
+
         cloverFieldStateRef.current = {};
         setCanPay(false);
         setApplePayMounted(false);
         setApplePayListenerReady(false);
 
-        const attachApplePayWindowListeners = (cloverApple: CloverInstance) => {
+        const attachApplePayWindowListeners = (cloverInstance: CloverInstance) => {
           const getWalletTokenFromDetail = (detail: unknown) => {
             if (!detail || typeof detail !== "object") return null;
 
@@ -1728,10 +1725,10 @@ export default function CheckoutPage() {
 
               try {
                 await placeOrderRef.current();
-                cloverApple.updateApplePaymentStatus("success");
+                cloverInstance.updateApplePaymentStatus("success");
               } catch (error) {
                 console.error("[AP] paymentMethod error", toSafeErrorLog(error));
-                cloverApple.updateApplePaymentStatus("failed");
+                cloverInstance.updateApplePaymentStatus("failed");
                 walletPaySubmittedTokenRef.current = null;
               }
             })();
@@ -1776,10 +1773,9 @@ export default function CheckoutPage() {
           process.env.NEXT_PUBLIC_CLOVER_APPLE_PAY_SESSION_IDENTIFIER?.trim() ||
           merchantId;
 
-        const cloverApple = new window.Clover(publicKey, { merchantId });
-        const removeApplePayWindowListeners = attachApplePayWindowListeners(cloverApple);
-        const appleElements = cloverApple.elements();
-        const applePayRequest = cloverApple.createApplePaymentRequest({
+        const removeApplePayWindowListeners = attachApplePayWindowListeners(clover);
+        const appleElements = clover.elements();
+        const applePayRequest = clover.createApplePaymentRequest({
           amount: totalCentsRef.current,
           countryCode: "CA",
           currencyCode: "CAD",
@@ -1796,7 +1792,6 @@ export default function CheckoutPage() {
         };
 
         cloverRef.current = clover;
-        cloverAppleRef.current = cloverApple;
         cardNameRef.current = cardName;
         cardNumberRef.current = cardNumber;
         cardDateRef.current = cardDate;
@@ -1906,7 +1901,6 @@ export default function CheckoutPage() {
       walletPaySubmittedTokenRef.current = null;
       cloverFieldStateRef.current = {};
       cloverRef.current = null;
-      cloverAppleRef.current = null;
       setCanPay(false);
       setCloverReady(false);
       setApplePayMounted(false);
@@ -1920,7 +1914,7 @@ export default function CheckoutPage() {
 
     const id = window.setTimeout(() => {
       try {
-        cloverAppleRef.current?.updateApplePaymentRequest({
+        cloverRef.current?.updateApplePaymentRequest({
           amount: totalCents,
           countryCode: "CA",
           currencyCode: "CAD",
@@ -1928,7 +1922,7 @@ export default function CheckoutPage() {
       } catch (error) {
         console.error("[AP] update error", toSafeErrorLog(error));
       }
-    }, 600);
+    }, 250);
 
     return () => window.clearTimeout(id);
   }, [requiresPayment, cloverReady, totalCents]);
