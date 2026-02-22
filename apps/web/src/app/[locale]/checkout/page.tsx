@@ -898,6 +898,11 @@ export default function CheckoutPage() {
   const [cardCvvComplete, setCardCvvComplete] = useState(false);
   const [cardPostalComplete, setCardPostalComplete] = useState(false);
 
+  console.log("[AP][boot] checkout page loaded", {
+    t: Date.now(),
+    href: typeof window !== "undefined" ? window.location.href : "ssr",
+  });
+
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -1688,6 +1693,12 @@ export default function CheckoutPage() {
         setApplePayListenerReady(false);
 
         const attachApplePayWindowListeners = (cloverInstance: CloverInstance) => {
+          const listenerInstanceId = Math.random().toString(16).slice(2);
+          console.log("[AP] attach listeners", {
+            listenerInstanceId,
+            t: Date.now(),
+          });
+
           const getWalletTokenFromDetail = (detail: unknown) => {
             if (!detail || typeof detail !== "object") return null;
 
@@ -1713,6 +1724,11 @@ export default function CheckoutPage() {
           };
 
           const onWindowPaymentMethod = (event: Event) => {
+            console.log("[AP] paymentMethod event received", {
+              listenerInstanceId,
+              event,
+            });
+
             void (async () => {
               const detail = resolvePaymentMethodDetail(event);
               const tokenFromEvent = getWalletTokenFromDetail(detail);
@@ -1736,14 +1752,27 @@ export default function CheckoutPage() {
 
           const onPaymentMethodEnd = (event: Event) => {
             const detail = resolvePaymentMethodDetail(event);
+<<<<<<< codex/debug-apple-pay-crash-on-paymentmethodend
+            console.log("[AP] paymentMethodEnd received", {
+              listenerInstanceId,
+              detail,
+              event,
+            });
+=======
             console.log("[AP] paymentMethodEnd", detail);
+>>>>>>> dev
           };
 
           window.addEventListener("paymentMethod", onWindowPaymentMethod);
           window.addEventListener("paymentMethodEnd", onPaymentMethodEnd);
           setApplePayListenerReady(true);
+          console.log("[AP] listenerReady=true", { listenerInstanceId });
 
           return () => {
+            console.log("[AP] detach listeners", {
+              listenerInstanceId,
+              t: Date.now(),
+            });
             window.removeEventListener("paymentMethod", onWindowPaymentMethod);
             window.removeEventListener("paymentMethodEnd", onPaymentMethodEnd);
             setApplePayListenerReady(false);
@@ -1935,6 +1964,36 @@ export default function CheckoutPage() {
 
     return () => window.clearTimeout(id);
   }, [requiresPayment, cloverReady, totalCents]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const onClickCapture = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      console.log("[AP] click capture", {
+        tag: target?.tagName,
+        id: target?.id,
+        cls: target?.className,
+      });
+    };
+
+    window.addEventListener("click", onClickCapture, true);
+    return () => window.removeEventListener("click", onClickCapture, true);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const onMessage = (event: MessageEvent) => {
+      console.log("[AP] window message", {
+        origin: event.origin,
+        data: event.data,
+      });
+    };
+
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
 
   useEffect(() => {
     if (!challengeIntentId) return;
