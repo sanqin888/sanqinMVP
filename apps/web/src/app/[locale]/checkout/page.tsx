@@ -1928,7 +1928,7 @@ export default function CheckoutPage() {
       } catch (error) {
         console.error("[AP] update error", toSafeErrorLog(error));
       }
-    }, 600);
+    }, 250);
 
     return () => window.clearTimeout(id);
   }, [requiresPayment, cloverReady, totalCents]);
