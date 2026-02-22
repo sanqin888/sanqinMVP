@@ -49,6 +49,10 @@ const COPY = {
     paymentMethod: {
       cash: "现金",
       card: "银行卡",
+      wechat_alipay: "微信/支付宝",
+      store_balance: "储值余额",
+      ubereats: "UberEats",
+      unknown: "未知",
     },
     status: {
       paid: "已支付",
@@ -181,6 +185,10 @@ const COPY = {
     paymentMethod: {
       cash: "Cash",
       card: "Card",
+      wechat_alipay: "WeChat / Alipay",
+      store_balance: "Store balance",
+      ubereats: "UberEats",
+      unknown: "Unknown",
     },
     status: {
       paid: "Paid",
@@ -362,8 +370,23 @@ function formatOrderTime(value: string, locale: Locale, timeZone: string): strin
 
 function mapPaymentMethod(order: BackendOrder): PaymentMethodKey {
   const raw = (order as { paymentMethod?: string | null }).paymentMethod;
-  if (raw === "cash" || raw === "card") return raw;
-  return order.channel === "in_store" ? "cash" : "card";
+  const normalized = raw?.toUpperCase();
+  switch (normalized) {
+    case "CASH":
+      return "cash";
+    case "CARD":
+      return "card";
+    case "WECHAT_ALIPAY":
+      return "wechat_alipay";
+    case "STORE_BALANCE":
+      return "store_balance";
+    case "UBEREATS":
+      return "ubereats";
+    default:
+      if (order.channel === "ubereats") return "ubereats";
+      if (order.channel === "in_store") return "unknown";
+      return "card";
+  }
 }
 
 function defaultAmendmentPaymentMethod(order: OrderRecord): AmendmentPaymentMethod {
