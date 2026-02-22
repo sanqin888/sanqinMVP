@@ -898,10 +898,47 @@ export default function CheckoutPage() {
   const [cardCvvComplete, setCardCvvComplete] = useState(false);
   const [cardPostalComplete, setCardPostalComplete] = useState(false);
 
-  console.log("[AP][boot] checkout page loaded", {
+  const debug =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("debug") === "1";
+
+  const logToScreen = useCallback((msg: unknown) => {
+    if (typeof window === "undefined") return;
+    if (!debug) return;
+
+    let el = document.getElementById("__debug_log") as HTMLPreElement | null;
+    if (!el) {
+      el = document.createElement("pre");
+      el.id = "__debug_log";
+      el.style.cssText =
+        "position:fixed;bottom:0;left:0;right:0;max-height:40vh;overflow:auto;background:#000;color:#0f0;z-index:999999;padding:8px;font-size:12px;white-space:pre-wrap;";
+      document.body.appendChild(el);
+    }
+
+    const nextLine =
+      typeof msg === "string"
+        ? msg
+        : (() => {
+            try {
+              return JSON.stringify(msg);
+            } catch {
+              return String(msg);
+            }
+          })();
+
+    el.textContent = `${el.textContent ?? ""}
+${nextLine}`;
+  }, [debug]);
+
+  console.error("[AP][boot] checkout page loaded", {
     t: Date.now(),
     href: typeof window !== "undefined" ? window.location.href : "ssr",
   });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    logToScreen({ boot: Date.now(), ua: navigator.userAgent });
+  }, [logToScreen]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1694,7 +1731,12 @@ export default function CheckoutPage() {
 
         const attachApplePayWindowListeners = (cloverInstance: CloverInstance) => {
           const listenerInstanceId = Math.random().toString(16).slice(2);
-          console.log("[AP] attach listeners", {
+          console.error("[AP] attach listeners", {
+            listenerInstanceId,
+            t: Date.now(),
+          });
+          logToScreen({
+            tag: "attach_listeners",
             listenerInstanceId,
             t: Date.now(),
           });
@@ -1724,9 +1766,14 @@ export default function CheckoutPage() {
           };
 
           const onWindowPaymentMethod = (event: Event) => {
-            console.log("[AP] paymentMethod event received", {
+            console.error("[AP] paymentMethod event received", {
               listenerInstanceId,
               event,
+            });
+            logToScreen({
+              tag: "paymentMethod",
+              listenerInstanceId,
+              type: event.type,
             });
 
             void (async () => {
@@ -1752,20 +1799,32 @@ export default function CheckoutPage() {
 
           const onPaymentMethodEnd = (event: Event) => {
             const detail = resolvePaymentMethodDetail(event);
-            console.log("[AP] paymentMethodEnd received", {
+            console.error("[AP] paymentMethodEnd received", {
               listenerInstanceId,
               detail,
               event,
+            });
+            logToScreen({
+              tag: "paymentMethodEnd",
+              listenerInstanceId,
+              detail,
+              type: event.type,
             });
           };
 
           window.addEventListener("paymentMethod", onWindowPaymentMethod);
           window.addEventListener("paymentMethodEnd", onPaymentMethodEnd);
           setApplePayListenerReady(true);
-          console.log("[AP] listenerReady=true", { listenerInstanceId });
+          console.error("[AP] listenerReady=true", { listenerInstanceId });
+          logToScreen({ tag: "listenerReady", listenerInstanceId });
 
           return () => {
-            console.log("[AP] detach listeners", {
+            console.error("[AP] detach listeners", {
+              listenerInstanceId,
+              t: Date.now(),
+            });
+            logToScreen({
+              tag: "detach_listeners",
               listenerInstanceId,
               t: Date.now(),
             });
@@ -1940,7 +1999,7 @@ export default function CheckoutPage() {
       setApplePayMounted(false);
       setApplePayListenerReady(false);
     };
-  }, [locale, requiresPayment, totalCents]);
+  }, [locale, logToScreen, requiresPayment, totalCents]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1966,30 +2025,36 @@ export default function CheckoutPage() {
 
     const onClickCapture = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
-      console.log("[AP] click capture", {
+      console.error("[AP] click capture", {
         tag: target?.tagName,
         id: target?.id,
         cls: target?.className,
+      });
+      logToScreen({
+        tag: "click_capture",
+        targetTag: target?.tagName,
+        targetId: target?.id,
       });
     };
 
     window.addEventListener("click", onClickCapture, true);
     return () => window.removeEventListener("click", onClickCapture, true);
-  }, []);
+  }, [logToScreen]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     const onMessage = (event: MessageEvent) => {
-      console.log("[AP] window message", {
+      console.error("[AP] window message", {
         origin: event.origin,
         data: event.data,
       });
+      logToScreen({ msgFrom: event.origin, data: event.data });
     };
 
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, []);
+  }, [logToScreen]);
 
   useEffect(() => {
     if (!challengeIntentId) return;
