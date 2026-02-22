@@ -2889,9 +2889,8 @@ function CouponsSection({
                     </p>
                   )}
                 </div>
-                <div className="text-right text-[11px] font-mono text-slate-500">
-                  <p>{coupon.code}</p>
-                  <p className="mt-0.5">
+                <div className="text-right text-[11px] text-slate-500">
+                  <p>
                     {coupon.expiresAt
                       ? new Date(coupon.expiresAt).toLocaleDateString()
                       : isZh
