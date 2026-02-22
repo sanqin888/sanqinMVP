@@ -1752,15 +1752,11 @@ export default function CheckoutPage() {
 
           const onPaymentMethodEnd = (event: Event) => {
             const detail = resolvePaymentMethodDetail(event);
-<<<<<<< codex/debug-apple-pay-crash-on-paymentmethodend
             console.log("[AP] paymentMethodEnd received", {
               listenerInstanceId,
               detail,
               event,
             });
-=======
-            console.log("[AP] paymentMethodEnd", detail);
->>>>>>> dev
           };
 
           window.addEventListener("paymentMethod", onWindowPaymentMethod);
