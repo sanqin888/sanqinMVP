@@ -3050,6 +3050,13 @@ export class OrdersService {
         },
       });
 
+      if (paymentMethod !== null) {
+        await tx.order.update({
+          where: { id: internalOrderId },
+          data: { paymentMethod },
+        });
+      }
+
       // 5) 返回最新 order
       return (await tx.order.findUnique({
         where: { id: internalOrderId },
