@@ -932,8 +932,8 @@ export default function CheckoutPage() {
             }
           })();
 
-    el.textContent = `${el.textContent ?? ""}
-${nextLine}`;
+    el.textContent += `\n${nextLine}`;
+    el.scrollTop = el.scrollHeight;
   }, [debug]);
 
   console.error("[AP][boot] checkout page loaded", {
