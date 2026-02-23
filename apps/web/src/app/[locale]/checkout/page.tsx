@@ -944,9 +944,9 @@ export default function CheckoutPage() {
             }
           })();
 
-    el.textContent += `\n${nextLine}`;
-    el.scrollTop = el.scrollHeight;
-  }, [debug, ensureDebugEl]);
+    el.textContent = `${el.textContent ?? ""}
+${nextLine}`;
+  }, [debug]);
 
   console.error("[AP][boot] checkout page loaded", {
     t: Date.now(),
@@ -956,9 +956,18 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     logToScreen({ boot: Date.now(), ua: navigator.userAgent });
+    const applePaySession = (
+      window as Window & {
+        ApplePaySession?: {
+          canMakePayments?: () => boolean;
+        };
+      }
+    ).ApplePaySession;
+
     logToScreen({
-      applePaySession: !!window.ApplePaySession,
-      canMakePayments: window.ApplePaySession?.canMakePayments?.() ?? null,
+      tag: "applepay_env",
+      applePaySession: typeof applePaySession !== "undefined",
+      canMakePayments: applePaySession?.canMakePayments?.() ?? null,
     });
   }, [logToScreen]);
 
