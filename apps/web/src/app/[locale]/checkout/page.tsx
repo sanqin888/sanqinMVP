@@ -907,19 +907,31 @@ export default function CheckoutPage() {
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("debug") === "1";
 
-  const logToScreen = useCallback((msg: unknown) => {
-    if (typeof window === "undefined") return;
-    if (!debug) return;
-
+  const ensureDebugEl = useCallback(() => {
     let el = document.getElementById("__debug_log") as HTMLPreElement | null;
     if (!el) {
       el = document.createElement("pre");
       el.id = "__debug_log";
       el.style.cssText =
-        "position:fixed;bottom:0;left:0;right:0;max-height:40vh;overflow:auto;background:#000;color:#0f0;z-index:999999;padding:8px;font-size:12px;white-space:pre-wrap;";
-      el.style.pointerEvents = "none";
+        "position:fixed;bottom:0;left:0;right:0;max-height:40vh;overflow:auto;" +
+        "background:#000;color:#0f0;z-index:999999;padding:8px;font-size:12px;" +
+        "white-space:pre-wrap;word-break:break-word;" +
+        "pointer-events:none;opacity:0.85;";
+      el.addEventListener("dblclick", () => {
+        const now = el!.style.pointerEvents;
+        el!.style.pointerEvents = now === "none" ? "auto" : "none";
+        el!.style.opacity = el!.style.pointerEvents === "auto" ? "1" : "0.85";
+      });
       document.body.appendChild(el);
     }
+    return el;
+  }, []);
+
+  const logToScreen = useCallback((msg: unknown) => {
+    if (typeof window === "undefined") return;
+    if (!debug) return;
+
+    const el = ensureDebugEl();
 
     const nextLine =
       typeof msg === "string"
@@ -934,7 +946,7 @@ export default function CheckoutPage() {
 
     el.textContent += `\n${nextLine}`;
     el.scrollTop = el.scrollHeight;
-  }, [debug]);
+  }, [debug, ensureDebugEl]);
 
   console.error("[AP][boot] checkout page loaded", {
     t: Date.now(),
