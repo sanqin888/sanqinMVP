@@ -94,6 +94,10 @@ type CloverApplePaymentRequest = {
   currencyCode: string;
 };
 
+type ApplePaySessionLike = {
+  canMakePayments?: () => boolean;
+};
+
 type CloverElementInstance = {
   mount: (selector: string) => void;
   addEventListener: (
@@ -207,6 +211,7 @@ declare global {
         merchantId?: string;
       },
     ) => CloverInstance;
+    ApplePaySession?: ApplePaySessionLike;
   }
 }
 

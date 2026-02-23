@@ -329,6 +329,7 @@ export default function StorePosPaymentPage() {
   const [showOtherDiscountKeypad, setShowOtherDiscountKeypad] = useState(false);
   const [cashDialogOpen, setCashDialogOpen] = useState(false);
   const [cashReceivedInput, setCashReceivedInput] = useState("");
+  const [cashDialogPrefilled, setCashDialogPrefilled] = useState(false);
   const [cashDialogError, setCashDialogError] = useState<string | null>(null);
   const discountKeypadRef = useRef<HTMLDivElement | null>(null);
 
@@ -841,6 +842,7 @@ const loyaltyRedeemCents = redeemCents;
     if (paymentMethod === "cash" && orderChannel === "in_store") {
       setCashDialogError(null);
       setCashReceivedInput(String(summaryTotalCents));
+      setCashDialogPrefilled(true);
       setCashDialogOpen(true);
       return;
     }
@@ -859,7 +861,29 @@ const loyaltyRedeemCents = redeemCents;
     }
     const cashChangeCents = Math.max(0, cashReceivedCents - summaryTotalCents);
     setCashDialogOpen(false);
+    setCashDialogPrefilled(false);
     await submitOrder({ cashReceivedCents, cashChangeCents });
+  };
+
+  const handleCashDialogKeypadInput = (key: string) => {
+    setCashDialogError(null);
+    if (key === "back") {
+      if (cashDialogPrefilled) {
+        setCashReceivedInput("");
+        setCashDialogPrefilled(false);
+        return;
+      }
+      setCashReceivedInput((prev) => prev.slice(0, -1));
+      return;
+    }
+
+    if (cashDialogPrefilled) {
+      setCashReceivedInput(key);
+      setCashDialogPrefilled(false);
+      return;
+    }
+
+    setCashReceivedInput((prev) => `${prev}${key}`);
   };
 
   const handleCloseSuccess = useCallback(() => {
@@ -1181,6 +1205,7 @@ const loyaltyRedeemCents = redeemCents;
               value={cashReceivedInput}
               onChange={(e) => {
                 setCashReceivedInput(e.target.value.replace(/\D/g, ""));
+                setCashDialogPrefilled(false);
                 setCashDialogError(null);
               }}
               className="mt-2 h-11 w-full rounded-xl border border-slate-600 bg-slate-800 px-3 text-base text-white"
@@ -1191,13 +1216,7 @@ const loyaltyRedeemCents = redeemCents;
                 <button
                   key={key}
                   type="button"
-                  onClick={() => {
-                    setCashDialogError(null);
-                    setCashReceivedInput((prev) => {
-                      if (key === "back") return prev.slice(0, -1);
-                      return `${prev}${key}`;
-                    });
-                  }}
+                  onClick={() => handleCashDialogKeypadInput(key)}
                   className="h-11 rounded-xl bg-slate-800 text-base font-semibold text-slate-100 hover:bg-slate-700"
                 >
                   {key === "back" ? "⌫" : key}
@@ -1207,6 +1226,7 @@ const loyaltyRedeemCents = redeemCents;
                 type="button"
                 onClick={() => {
                   setCashReceivedInput("");
+                  setCashDialogPrefilled(false);
                   setCashDialogError(null);
                 }}
                 className="col-span-3 h-10 rounded-xl bg-rose-500/20 text-sm font-semibold text-rose-200 hover:bg-rose-500/30"
@@ -1218,7 +1238,7 @@ const loyaltyRedeemCents = redeemCents;
             <div className="mt-4 flex gap-2">
               <button
                 type="button"
-                onClick={() => setCashDialogOpen(false)}
+                onClick={() => { setCashDialogOpen(false); setCashDialogPrefilled(false); }}
                 className="h-10 flex-1 rounded-xl border border-slate-600 text-sm text-slate-100"
               >
                 {t.cashDialogCancel}

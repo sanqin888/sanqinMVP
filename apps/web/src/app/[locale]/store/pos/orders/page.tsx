@@ -389,9 +389,6 @@ function mapPaymentMethod(order: BackendOrder): PaymentMethodKey {
   }
 }
 
-function defaultAmendmentPaymentMethod(order: OrderRecord): AmendmentPaymentMethod {
-  return order.paymentMethod === "cash" ? "CASH" : "CARD";
-}
 
 function statusTone(status: OrderStatusKey): string {
   switch (status) {
@@ -818,30 +815,6 @@ function ActionContent({
           )}
 
 
-          {shouldShowPaymentMethodPicker && (
-            <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-3 text-xs text-slate-200">
-              <label className="text-[11px] font-semibold uppercase text-slate-400">
-                {copy.methodLabel}
-              </label>
-              <select
-                value={selectedPaymentMethod ?? ""}
-                onChange={(event) =>
-                  onPaymentMethodChange(event.target.value as AmendmentPaymentMethod)
-                }
-                className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs text-slate-100 focus:border-emerald-400 focus:outline-none"
-              >
-                <option value="" disabled>
-                  {copy.methodPlaceholder}
-                </option>
-                {PAYMENT_METHOD_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {copy.methodOptions[option]}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
           <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-3 text-xs text-slate-200">
             <label className="text-[11px] font-semibold uppercase text-slate-400">
               {copy.reasonLabel}
@@ -865,6 +838,31 @@ function ActionContent({
               className="mt-2 min-h-[72px] w-full resize-none rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs text-slate-100 focus:border-emerald-400 focus:outline-none"
             />
           </div>
+
+
+          {shouldShowPaymentMethodPicker && (
+            <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-3 text-xs text-slate-200">
+              <label className="text-[11px] font-semibold uppercase text-slate-400">
+                {copy.methodLabel}
+              </label>
+              <select
+                value={selectedPaymentMethod ?? ""}
+                onChange={(event) =>
+                  onPaymentMethodChange(event.target.value as AmendmentPaymentMethod)
+                }
+                className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs text-slate-100 focus:border-emerald-400 focus:outline-none"
+              >
+                <option value="" disabled>
+                  {copy.methodPlaceholder}
+                </option>
+                {PAYMENT_METHOD_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {copy.methodOptions[option]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-3 text-xs text-slate-200">
             <div className="text-[11px] font-semibold uppercase text-slate-400">
@@ -1173,12 +1171,8 @@ const mapOrder = useCallback(
   );
 
   useEffect(() => {
-    if (!selectedOrder) {
-      setSelectedPaymentMethod(null);
-      return;
-    }
-    setSelectedPaymentMethod(defaultAmendmentPaymentMethod(selectedOrder));
-  }, [selectedOrder]);
+    setSelectedPaymentMethod(null);
+  }, [selectedOrder, selectedAction]);
 
   const filteredOrders = useMemo(() => {
     return orders
@@ -1360,9 +1354,6 @@ const mapOrder = useCallback(
 
   const handleSelectAction = (action: ActionKey) => {
     setSelectedAction(action);
-    if (selectedOrder) {
-      setSelectedPaymentMethod(defaultAmendmentPaymentMethod(selectedOrder));
-    }
     if (action !== "void_item" && action !== "swap_item") {
       setSelectedItemIds([]);
       setSwapSelection(null);

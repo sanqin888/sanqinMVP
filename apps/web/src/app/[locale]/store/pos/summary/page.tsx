@@ -34,6 +34,7 @@ const COPY = {
       cancel: "返回修改",
     },
     exportCsv: "导出 CSV",
+    selectDate: "选择日期",
     filters: {
       title: "订单筛选",
       dateStart: "开始日期",
@@ -76,6 +77,7 @@ const COPY = {
       cancel: "Back",
     },
     exportCsv: "Export CSV",
+    selectDate: "Select date",
     filters: {
       title: "Order filters",
       dateStart: "Start date",
@@ -290,13 +292,14 @@ export default function PosDailySummaryPage() {
   const locale: Locale = params?.locale === "zh" ? "zh" : "en";
   const copy = COPY[locale];
 
-  const [filters] = useState<FilterState>({
+  const [filters, setFilters] = useState<FilterState>({
     dateStart: "",
     dateEnd: "",
     channel: "",
     status: "",
     payment: "",
   });
+  const [selectedSummaryDate, setSelectedSummaryDate] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -324,6 +327,9 @@ export default function PosDailySummaryPage() {
         cfg?.timezone?.trim() ||
         (Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
       setStoreTimezone(tz);
+      const todayYmd = ymdInTimeZone(new Date(), tz);
+      setSelectedSummaryDate(todayYmd);
+      setFilters((prev) => ({ ...prev, dateStart: todayYmd, dateEnd: todayYmd }));
     })();
     return () => {
       cancelled = true;
@@ -582,6 +588,19 @@ export default function PosDailySummaryPage() {
           ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2 rounded-full border border-slate-600 bg-slate-800 px-3 py-1 text-xs text-slate-200">
+            <span>{copy.selectDate}</span>
+            <input
+              type="date"
+              value={selectedSummaryDate}
+              onChange={(event) => {
+                const nextDate = event.target.value;
+                setSelectedSummaryDate(nextDate);
+                setFilters((prev) => ({ ...prev, dateStart: nextDate, dateEnd: nextDate }));
+              }}
+              className="rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-xs text-slate-100"
+            />
+          </label>
           <Link
             href={`/${locale}/store/pos`}
             className="rounded-full border border-slate-600 bg-slate-800 px-3 py-1 text-xs font-medium text-slate-100 hover:border-slate-400 hover:text-white"
