@@ -911,15 +911,27 @@ export default function CheckoutPage() {
     if (typeof window === "undefined") return;
     if (!debug) return;
 
-    let el = document.getElementById("__debug_log") as HTMLPreElement | null;
-    if (!el) {
-      el = document.createElement("pre");
-      el.id = "__debug_log";
-      el.style.cssText =
-        "position:fixed;bottom:0;left:0;right:0;max-height:40vh;overflow:auto;background:#000;color:#0f0;z-index:999999;padding:8px;font-size:12px;white-space:pre-wrap;";
-      el.style.pointerEvents = "none";
-      document.body.appendChild(el);
-    }
+    const ensureDebugEl = () => {
+      let el = document.getElementById("__debug_log") as HTMLPreElement | null;
+      if (!el) {
+        el = document.createElement("pre");
+        el.id = "__debug_log";
+        el.style.cssText =
+          "position:fixed;bottom:0;left:0;right:0;max-height:40vh;overflow:auto;" +
+          "background:#000;color:#0f0;z-index:999999;padding:8px;font-size:12px;" +
+          "white-space:pre-wrap;word-break:break-word;" +
+          "pointer-events:none;opacity:0.85;";
+        el.addEventListener("dblclick", () => {
+          const now = el!.style.pointerEvents;
+          el!.style.pointerEvents = now === "none" ? "auto" : "none";
+          el!.style.opacity = el!.style.pointerEvents === "auto" ? "1" : "0.85";
+        });
+        document.body.appendChild(el);
+      }
+      return el;
+    };
+
+    const el = ensureDebugEl();
 
     const nextLine =
       typeof msg === "string"
@@ -932,8 +944,8 @@ export default function CheckoutPage() {
             }
           })();
 
-    el.textContent = `${el.textContent ?? ""}
-${nextLine}`;
+    el.textContent += `\n${nextLine}`;
+    el.scrollTop = el.scrollHeight;
   }, [debug]);
 
   console.error("[AP][boot] checkout page loaded", {
