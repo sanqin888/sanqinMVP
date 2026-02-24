@@ -1885,9 +1885,7 @@ ${nextLine}`;
           throw new Error("Apple Pay host not ready");
         }
 
-        const applePaySessionIdentifier =
-          process.env.NEXT_PUBLIC_CLOVER_APPLE_PAY_SESSION_IDENTIFIER?.trim() ||
-          merchantId;
+        const applePaySessionIdentifier = merchantId;
 
         const removeApplePayWindowListeners = attachApplePayWindowListeners(clover);
         applePayHost.innerHTML = "";
