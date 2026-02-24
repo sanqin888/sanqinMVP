@@ -650,6 +650,15 @@ export default function StorePosPage() {
     );
   };
 
+  const handlePriceInputFocus = (lineId: string) => {
+    setEditingLineId(lineId);
+    setCart((prev) =>
+      prev.map((entry) =>
+        entry.lineId === lineId ? { ...entry, customUnitPriceCents: 0 } : entry,
+      ),
+    );
+  };
+
   // ✅ 核心修复：更新选项选择逻辑，支持父子级互斥和级联取消
   const updateOptionSelection = (
     groupId: string,
@@ -1153,7 +1162,7 @@ export default function StorePosPage() {
                           type="text"
                           inputMode="decimal"
                           value={(item.unitPriceCents / 100).toFixed(2)}
-                          onFocus={() => setEditingLineId(item.lineId)}
+                          onFocus={() => handlePriceInputFocus(item.lineId)}
                           onBlur={() =>
                             setEditingLineId((prev) => (prev === item.lineId ? null : prev))
                           }
