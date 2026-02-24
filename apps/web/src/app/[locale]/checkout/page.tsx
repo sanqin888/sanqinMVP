@@ -2086,6 +2086,26 @@ ${nextLine}`;
   }, [logToScreen]);
 
   useEffect(() => {
+    if (!debug || typeof window === "undefined") return;
+
+    const onErr = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLScriptElement || target instanceof HTMLIFrameElement)) {
+        return;
+      }
+
+      logToScreen({
+        tag: "resource_error",
+        el: target.tagName,
+        src: target.src || target.getAttribute("src"),
+      });
+    };
+
+    window.addEventListener("error", onErr, true);
+    return () => window.removeEventListener("error", onErr, true);
+  }, [debug, logToScreen]);
+
+  useEffect(() => {
     if (!challengeIntentId) return;
     let cancelled = false;
 
