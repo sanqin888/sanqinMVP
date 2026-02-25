@@ -1887,6 +1887,13 @@ ${nextLine}`;
 
         const applePaySessionIdentifier = merchantId;
 
+        logToScreen({
+          tag: "clover_ids",
+          merchantIdTail: merchantId?.slice(-6),
+          publicKeyTail: publicKey?.slice(-6),
+          sessionIdTail: applePaySessionIdentifier?.slice(-6),
+        });
+
         const removeApplePayWindowListeners = attachApplePayWindowListeners(clover);
         applePayHost.innerHTML = "";
 
