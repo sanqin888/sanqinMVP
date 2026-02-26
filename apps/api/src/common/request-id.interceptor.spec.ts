@@ -97,7 +97,9 @@ describe('RequestIdInterceptor', () => {
     runIntercept('POST', '/api/v1/clover/pay/online/quote', 201);
 
     expect(loggerLogSpy).toHaveBeenCalledWith(
-      expect.stringContaining('POST /api/v1/clover/pay/online/quote - 201 (301ms)'),
+      expect.stringContaining(
+        'POST /api/v1/clover/pay/online/quote - 201 (301ms)',
+      ),
     );
   });
 });
