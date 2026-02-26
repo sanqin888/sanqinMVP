@@ -1,9 +1,14 @@
+import { Logger } from '@nestjs/common';
 import { AuthChallengeStatus, Prisma } from '@prisma/client';
 import { DataRetentionService } from './data-retention.service';
 
 type DeleteManyArgs = { where: Record<string, unknown> };
 
 describe('DataRetentionService', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   const withCount = (count: number) => Promise.resolve({ count });
 
   function createService() {
@@ -169,5 +174,41 @@ describe('DataRetentionService', () => {
     prisma.$transaction.mockRejectedValueOnce(new Error('boom'));
 
     await expect(service.runCleanup()).resolves.toBeNull();
+  });
+
+  it('logs cleanup summary when records are cleaned', async () => {
+    const { service } = createService();
+    const loggerLogSpy = jest
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation(() => undefined);
+
+    await service.runCleanup();
+
+    expect(loggerLogSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Retention cleanup finished'),
+    );
+  });
+
+  it('does not log cleanup summary when no records were cleaned', async () => {
+    const { service, tx } = createService();
+    tx.userSession.deleteMany.mockReturnValueOnce(withCount(0));
+    tx.trustedDevice.deleteMany.mockReturnValueOnce(withCount(0));
+    tx.authChallenge.deleteMany.mockReturnValueOnce(withCount(0));
+    tx.userInvite.deleteMany.mockReturnValueOnce(withCount(0));
+    tx.checkoutIntent.deleteMany.mockReturnValueOnce(withCount(0));
+    tx.messagingWebhookEvent.updateMany.mockReturnValueOnce(withCount(0));
+    tx.messagingWebhookEvent.deleteMany.mockReturnValueOnce(withCount(0));
+    tx.messagingDeliveryEvent.deleteMany.mockReturnValueOnce(withCount(0));
+    tx.messagingSend.deleteMany.mockReturnValueOnce(withCount(0));
+
+    const loggerLogSpy = jest
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation(() => undefined);
+
+    await service.runCleanup();
+
+    expect(loggerLogSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining('Retention cleanup finished'),
+    );
   });
 });

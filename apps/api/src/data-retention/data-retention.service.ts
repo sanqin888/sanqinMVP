@@ -184,20 +184,27 @@ export class DataRetentionService implements OnModuleInit, OnModuleDestroy {
         };
       });
 
-      this.logger.log(
-        [
-          `Retention cleanup finished`,
-          `sessions=${stats.userSessionsDeleted}`,
-          `devices=${stats.trustedDevicesDeleted}`,
-          `challenges=${stats.authChallengesDeleted}`,
-          `invites=${stats.userInvitesDeleted}`,
-          `checkoutIntents=${stats.checkoutIntentsDeleted}`,
-          `webhookPayloadsTrimmed=${stats.webhookEventsPayloadTrimmed}`,
-          `webhookEvents=${stats.webhookEventsDeleted}`,
-          `deliveryEvents=${stats.deliveryEventsDeleted}`,
-          `messagingSends=${stats.messagingSendsDeleted}`,
-        ].join(' | '),
+      const totalDeletedOrTrimmed = Object.values(stats).reduce(
+        (sum, count) => sum + count,
+        0,
       );
+
+      if (totalDeletedOrTrimmed > 0) {
+        this.logger.log(
+          [
+            `Retention cleanup finished`,
+            `sessions=${stats.userSessionsDeleted}`,
+            `devices=${stats.trustedDevicesDeleted}`,
+            `challenges=${stats.authChallengesDeleted}`,
+            `invites=${stats.userInvitesDeleted}`,
+            `checkoutIntents=${stats.checkoutIntentsDeleted}`,
+            `webhookPayloadsTrimmed=${stats.webhookEventsPayloadTrimmed}`,
+            `webhookEvents=${stats.webhookEventsDeleted}`,
+            `deliveryEvents=${stats.deliveryEventsDeleted}`,
+            `messagingSends=${stats.messagingSendsDeleted}`,
+          ].join(' | '),
+        );
+      }
 
       return stats;
     } catch (error) {

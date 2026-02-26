@@ -19,6 +19,17 @@ export class RequestIdInterceptor implements NestInterceptor {
     '/api/v1/public/store-status',
     '/api/v1/pos/store-status',
   ];
+  private readonly debugPaths = [
+    '/api/v1/auth/me',
+    '/api/v1/menu/public',
+    '/api/v1/promotions/entitlements',
+    '/api/v1/membership/summary',
+    '/api/v1/membership/addresses',
+    '/api/v1/membership/coupons',
+    '/api/v1/orders/prep-time',
+  ];
+  private readonly analyticsEventsPath = '/api/v1/analytics/events';
+  private readonly cloverOnlineQuotePath = '/api/v1/clover/pay/online/quote';
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     // 只处理 HTTP 请求
@@ -56,8 +67,9 @@ export class RequestIdInterceptor implements NestInterceptor {
 
     const { method, url } = request;
     const requestPath = request.originalUrl ?? url;
+    const requestPathWithoutQuery = requestPath.split('?')[0];
     const shouldSkipInfoLog = this.quietPaths.some((path) =>
-      requestPath.startsWith(path),
+      requestPathWithoutQuery.startsWith(path),
     );
 
     // 3) runWithLogContext：把 requestId 写入 AsyncLocalStorage
@@ -68,11 +80,39 @@ export class RequestIdInterceptor implements NestInterceptor {
             if (shouldSkipInfoLog) {
               return;
             }
+
             const ms = Date.now() - start;
             const status = response?.statusCode;
-            this.logger.log(
-              `[reqId=${requestId}] ${method} ${url} - ${status} (${ms}ms)`,
-            );
+            const logMessage = `[reqId=${requestId}] ${method} ${url} - ${status} (${ms}ms)`;
+
+            if (
+              method === 'POST' &&
+              requestPathWithoutQuery === this.analyticsEventsPath &&
+              status === 201
+            ) {
+              return;
+            }
+
+            if (
+              method === 'POST' &&
+              requestPathWithoutQuery === this.cloverOnlineQuotePath &&
+              ms <= 200
+            ) {
+              return;
+            }
+
+            const shouldUseDebugLog =
+              method === 'GET' &&
+              this.debugPaths.some((path) =>
+                requestPathWithoutQuery.startsWith(path),
+              );
+
+            if (shouldUseDebugLog) {
+              this.logger.debug(logMessage);
+              return;
+            }
+
+            this.logger.log(logMessage);
           },
           error: (err: unknown) => {
             const ms = Date.now() - start;
