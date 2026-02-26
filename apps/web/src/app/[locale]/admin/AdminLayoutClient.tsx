@@ -30,6 +30,7 @@ export default function AdminLayoutClient({
     { href: `/${locale}/admin/staff`, labelZh: '员工管理' },
     { href: `/${locale}/admin/pos-devices`, labelZh: 'POS 设备管理' },
     { href: `/${locale}/admin/reports`, labelZh: '报表页' },
+    { href: `/${locale}/admin/analytics`, labelZh: '埋点分析' },
     { href: `/${locale}/accounting/dashboard`, labelZh: '财务系统' },
   ];
 
