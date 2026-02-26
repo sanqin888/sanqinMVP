@@ -214,6 +214,8 @@ declare global {
 const PHONE_OTP_REQUEST_URL = "/api/v1/auth/phone/send-code";
 const PHONE_OTP_VERIFY_URL = "/api/v1/auth/phone/verify-code";
 const CHECKOUT_INTENT_STORAGE_KEY = "cloverCheckoutIntentId";
+const GOOGLE_PAY_CTX_KEY = "sanq_google_pay_ctx_v1";
+const GOOGLE_PAY_INTENT_STORAGE_KEY = "sanq_google_pay_intent_v1";
 type DeliveryOptionDefinition = {
   provider: "UBER";
   fee: number; // 仅用于显示说明，不参与实际计费
@@ -300,6 +302,16 @@ type OnlinePricingQuoteResponse = {
   };
   pricingToken: string;
   pricingTokenExpiresAt: string;
+};
+
+type GooglePaySessionContext = {
+  locale: Locale;
+  checkoutIntentId: string;
+  pricingToken: string;
+  pricingTokenExpiresAt: string;
+  currency: string;
+  totalCents: number;
+  metadata: Record<string, unknown>;
 };
 
 type StoreStatusRuleSource =
@@ -844,6 +856,7 @@ export default function CheckoutPage() {
     null,
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRedirectingToGooglePay, setIsRedirectingToGooglePay] = useState(false);
   const [payFlowState, setPayFlowState] = useState<PayFlowState>("IDLE");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [cardNumberError, setCardNumberError] = useState<string | null>(null);
@@ -1456,8 +1469,199 @@ export default function CheckoutPage() {
     storeStatusDetail,
   ]);
 
-useEffect(() => {
-  if (typeof window === "undefined") return;
+  const buildCheckoutMetadata = useCallback((): Record<string, unknown> => {
+    const formattedCustomerPhone = formatCanadianPhoneForApi(customer.phone);
+
+    return {
+      locale,
+      fulfillment,
+      schedule,
+      customer: {
+        firstName: customer.firstName,
+        lastName: customer.lastName,
+        email: customer.email,
+        phone: formattedCustomerPhone,
+        ...(fulfillment === "delivery"
+          ? {
+              addressLine1: customer.addressLine1,
+              addressLine2: customer.addressLine2 || undefined,
+              city: customer.city,
+              province: customer.province,
+              postalCode: customer.postalCode,
+              address: formatDeliveryAddress(customer),
+            }
+          : {}),
+      },
+      deliveryDestination:
+        fulfillment === "delivery"
+          ? {
+              name: formatCustomerFullName(customer),
+              phone: formattedCustomerPhone,
+              addressLine1: customer.addressLine1,
+              addressLine2: customer.addressLine2 || undefined,
+              city: customer.city,
+              province: customer.province,
+              postalCode: customer.postalCode,
+              country: DELIVERY_COUNTRY,
+              instructions: customer.notes || undefined,
+              addressStableId: selectedAddressStableId ?? undefined,
+              placeId: selectedPlaceId ?? undefined,
+            }
+          : undefined,
+      utensils:
+        utensilsPreference === "yes"
+          ? {
+              needed: true,
+              type: utensilsType,
+              quantity:
+                utensilsQuantity === "other"
+                  ? Number.parseInt(utensilsCustomQuantity, 10) || null
+                  : Number(utensilsQuantity),
+            }
+          : { needed: false, quantity: 0 },
+      subtotalCents,
+      subtotalAfterDiscountCents: effectiveSubtotalCents,
+      taxCents,
+      serviceFeeCents,
+      deliveryFeeCents,
+      taxRate: TAX_RATE,
+      loyaltyRedeemCents,
+      loyaltyAvailableDiscountCents: loyaltyInfo?.availableDiscountCents ?? 0,
+      loyaltyPointsBalance: loyaltyInfo?.points ?? 0,
+      loyaltyUserStableId: loyaltyInfo?.userStableId,
+      coupon: appliedCoupon
+        ? {
+            couponStableId: appliedCoupon.couponStableId,
+            code: appliedCoupon.code,
+            title: appliedCoupon.title,
+            discountCents: couponDiscountCents,
+            minSpendCents: appliedCoupon.minSpendCents,
+          }
+        : undefined,
+      selectedUserCouponId: selectedUserCouponId ?? undefined,
+      items: cartItemsWithPricing.map((cartItem) => ({
+        productStableId: cartItem.productStableId,
+        nameEn: cartItem.item.nameEn ?? cartItem.item.name,
+        nameZh: cartItem.item.nameZh ?? cartItem.item.name,
+        displayName: cartItem.item.name,
+        quantity: cartItem.quantity,
+        notes: cartItem.notes,
+        options: stripOptionSnapshots(cartItem.options),
+        priceCents: cartItem.unitPriceCents,
+      })),
+    };
+  }, [
+    appliedCoupon,
+    cartItemsWithPricing,
+    couponDiscountCents,
+    customer,
+    deliveryFeeCents,
+    effectiveSubtotalCents,
+    fulfillment,
+    locale,
+    loyaltyInfo,
+    loyaltyRedeemCents,
+    schedule,
+    selectedAddressStableId,
+    selectedUserCouponId,
+    selectedPlaceId,
+    serviceFeeCents,
+    subtotalCents,
+    taxCents,
+    utensilsCustomQuantity,
+    utensilsPreference,
+    utensilsQuantity,
+    utensilsType,
+  ]);
+
+  const handleGooglePayCheckout = useCallback(async () => {
+    if (!canPlaceOrder || !requiresPayment || isSubmitting || isRedirectingToGooglePay) {
+      return;
+    }
+
+    try {
+      setErrorMessage(null);
+      setIsRedirectingToGooglePay(true);
+
+      const metadata = buildCheckoutMetadata();
+      const checkoutIntentId =
+        checkoutIntentIdRef.current ??
+        (typeof window !== "undefined"
+          ? window.crypto?.randomUUID?.() ??
+            `chk_${Date.now()}_${Math.random().toString(16).slice(2)}`
+          : undefined);
+
+      if (!checkoutIntentId) {
+        throw new Error(locale === "zh" ? "无法创建支付会话，请重试。" : "Unable to create payment session. Please retry.");
+      }
+
+      if (typeof window !== "undefined") {
+        try {
+          window.sessionStorage.setItem(
+            GOOGLE_PAY_INTENT_STORAGE_KEY,
+            checkoutIntentId,
+          );
+        } catch {
+          // ignore storage failures
+        }
+      }
+
+      const quoteResponse = await withTimeout(
+        apiFetch<OnlinePricingQuoteResponse>("/clover/pay/online/quote", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ metadata }),
+        }),
+        15000,
+        "apiFetch /clover/pay/online/quote",
+      );
+
+      const googlePayContext: GooglePaySessionContext = {
+        locale,
+        checkoutIntentId,
+        pricingToken: quoteResponse.pricingToken,
+        pricingTokenExpiresAt: quoteResponse.pricingTokenExpiresAt,
+        currency: quoteResponse.currency || HOSTED_CHECKOUT_CURRENCY,
+        totalCents: quoteResponse.quote.totalCents,
+        metadata,
+      };
+
+      if (typeof window === "undefined") return;
+      try {
+        window.sessionStorage.setItem(
+          GOOGLE_PAY_CTX_KEY,
+          JSON.stringify(googlePayContext),
+        );
+      } catch {
+        throw new Error(
+          locale === "zh"
+            ? "无法保存 Google Pay 会话，请检查浏览器存储设置后重试。"
+            : "Unable to save Google Pay session. Please check browser storage settings and retry.",
+        );
+      }
+      router.push(`/${locale}/wallet/google-pay`);
+    } catch (error) {
+      console.error("[checkout] google pay redirect failed", toSafeErrorLog(error));
+      setErrorMessage(
+        locale === "zh"
+          ? "Google Pay 会话创建失败，请稍后重试。"
+          : "Failed to start Google Pay. Please try again.",
+      );
+    } finally {
+      setIsRedirectingToGooglePay(false);
+    }
+  }, [
+    buildCheckoutMetadata,
+    canPlaceOrder,
+    isRedirectingToGooglePay,
+    isSubmitting,
+    locale,
+    requiresPayment,
+    router,
+  ]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
 
   if (!requiresPayment) {
     cleanupRef.current?.();
@@ -4324,6 +4528,11 @@ useEffect(() => {
                   <p className="text-xs font-semibold text-slate-600">
                     {locale === "zh" ? "苹果支付" : "Apple Pay"}
                   </p>
+                  <p className="text-[11px] text-slate-500">
+                    {locale === "zh"
+                      ? "如遇到 Apple Pay 支付页异常闪退，请刷新本页面后再次点击。"
+                      : "If the Apple Pay sheet closes unexpectedly, please refresh this page and try again."}
+                  </p>
                   <div
   id="clover-apple-pay"
   className="rounded-2xl border border-slate-200 bg-white h-12 flex items-center justify-center overflow-hidden"
@@ -4335,6 +4544,31 @@ useEffect(() => {
                         : "Apple Pay is currently unavailable. Please pay with card fields below."}
                     </p>
                   ) : null}
+
+                  <p className="text-xs font-semibold text-slate-600">
+                    {locale === "zh" ? "Google 支付" : "Google Pay"}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void handleGooglePayCheckout();
+                    }}
+                    disabled={
+                      !canPlaceOrder ||
+                      !requiresPayment ||
+                      isSubmitting ||
+                      isRedirectingToGooglePay
+                    }
+                    className="w-full rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isRedirectingToGooglePay
+                      ? locale === "zh"
+                        ? "正在跳转 Google Pay…"
+                        : "Redirecting to Google Pay…"
+                      : locale === "zh"
+                        ? "使用 Google Pay"
+                        : "Use Google Pay"}
+                  </button>
 
                   <p className="text-xs font-semibold text-slate-600">
                     {locale === "zh" ? "银行卡信息" : "Card details"}
