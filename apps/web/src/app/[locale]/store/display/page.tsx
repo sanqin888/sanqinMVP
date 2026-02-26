@@ -104,22 +104,22 @@ export default function StoreDisplayPage() {
   const loyalty = snapshot?.loyalty;
 
   return (
-    <main className="min-h-screen bg-slate-900 text-slate-50 flex flex-col items-center">
-      <header className="w-full max-w-6xl px-8 py-6">
-        <h1 className="text-3xl font-semibold tracking-wide">
+    <main className="h-screen overflow-hidden bg-slate-900 text-slate-50 flex flex-col items-center">
+      <header className="w-full max-w-6xl px-6 py-4">
+        <h1 className="text-2xl font-semibold tracking-wide">
           顾客显示屏 · Customer Display
         </h1>
-        <p className="mt-2 text-xl text-slate-300">
+        <p className="mt-1 text-base text-slate-300">
           请确认收银员为您选定的菜品与金额。Please review the items and totals
           selected by the cashier.
         </p>
       </header>
 
-      <section className="w-full max-w-6xl flex-1 flex flex-col px-8 pb-8">
+      <section className="w-full max-w-6xl flex-1 min-h-0 flex flex-col px-6 pb-4">
         {items.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center text-center">
-            <h2 className="text-5xl font-semibold mb-4">欢迎光临 · Welcome</h2>
-            <p className="text-2xl text-slate-300 max-w-3xl">
+            <h2 className="text-4xl font-semibold mb-3">欢迎光临 · Welcome</h2>
+            <p className="text-xl text-slate-300 max-w-3xl">
               点餐过程中，收银员为您选择的菜品、数量和金额会实时显示在此屏幕上。
               While the cashier is helping you, your items and totals will
               appear here in real time.
@@ -128,38 +128,38 @@ export default function StoreDisplayPage() {
         ) : (
           <>
             {/* 上方：菜品列表 */}
-            <div className="flex-1 rounded-3xl bg-slate-800/80 border border-slate-700 overflow-hidden">
-              <div className="grid grid-cols-4 text-2xl font-semibold px-6 py-4 border-b border-slate-700">
+            <div className="flex-1 min-h-0 rounded-2xl bg-slate-800/80 border border-slate-700 overflow-hidden">
+              <div className="grid grid-cols-4 text-lg font-semibold px-4 py-3 border-b border-slate-700">
                 <div className="text-left">菜品 Item</div>
                 <div className="text-center">数量 Qty</div>
                 <div className="text-right">单价 Price</div>
                 <div className="text-right">小计 Subtotal</div>
               </div>
-              <div className="max-h-[60vh] overflow-auto">
+              <div className="h-full overflow-hidden">
                 {items.map((item) => (
                   <div
                     key={
                       item.lineId ??
                       `${item.stableId}-${item.unitPriceCents}-${item.quantity}`
                     }
-                    className="border-b border-slate-800 px-6 py-4 text-3xl last:border-b-0"
+                    className="border-b border-slate-800 px-4 py-2 text-xl last:border-b-0"
                   >
                     <div className="grid grid-cols-4">
-                      <div className="pr-4">
-                        <div>{item.nameZh}</div>
-                        <div>{item.nameEn}</div>
+                      <div className="pr-3 leading-tight">
+                        <div className="truncate">{item.nameZh}</div>
+                        <div className="truncate text-slate-300">{item.nameEn}</div>
                       </div>
                       <div className="text-center font-semibold">*{item.quantity}</div>
                       <div className="text-right">{formatMoney(item.unitPriceCents)}</div>
                       <div className="text-right font-bold">{formatMoney(item.lineTotalCents)}</div>
                     </div>
                     {(item.optionLines ?? []).length > 0 && (
-                      <div className="mt-2 space-y-1 text-lg text-slate-300">
+                      <div className="mt-1 space-y-0.5 text-sm text-slate-300 leading-tight">
                         {(item.optionLines ?? []).map((optionLine, idx) => (
                           <div key={`${item.lineId ?? item.stableId}-${idx}`} className="grid grid-cols-4">
-                            <div className="col-span-2 pr-4 text-slate-400">
-                              <span>{optionLine.labelZh ?? optionLine.label}</span>
-                              <span className="ml-2 text-slate-500">
+                            <div className="col-span-2 pr-4 text-slate-400 truncate">
+                              <span className="truncate">{optionLine.labelZh ?? optionLine.label}</span>
+                              <span className="ml-2 text-slate-500 truncate">
                                 {optionLine.labelEn ?? optionLine.label}
                               </span>
                             </div>
@@ -177,27 +177,27 @@ export default function StoreDisplayPage() {
             </div>
 
             {/* 下方：金额汇总 */}
-            <div className="mt-4 rounded-3xl bg-slate-900/80 border border-slate-700 px-6 py-4 text-3xl">
+            <div className="mt-3 rounded-2xl bg-slate-900/80 border border-slate-700 px-4 py-3 text-xl leading-tight">
               <div className="flex justify-between">
                 <span>小计 Subtotal</span>
                 <span>{formatMoney(subtotalCents)}</span>
               </div>
               {discountCents > 0 && (
-                <div className="flex justify-between mt-2 text-emerald-300">
+                <div className="flex justify-between mt-1 text-emerald-300">
                   <span>折扣 Discount</span>
                   <span>-{formatMoney(discountCents)}</span>
                 </div>
               )}
-              <div className="flex justify-between mt-2">
+              <div className="flex justify-between mt-1">
                 <span>税费 Tax</span>
                 <span>{formatMoney(taxCents)}</span>
               </div>
-              <div className="flex justify-between mt-4 text-4xl font-bold">
+              <div className="flex justify-between mt-2 text-3xl font-bold">
                 <span>合计 Total</span>
                 <span>{formatMoney(totalCents)}</span>
               </div>
               {loyalty && (
-                <div className="mt-6 space-y-2 text-2xl text-emerald-200">
+                <div className="mt-3 space-y-1 text-base text-emerald-200">
                   {typeof loyalty.pointsRedeemed === "number" &&
                     loyalty.pointsRedeemed > 0 && (
                       <div className="flex justify-between">
