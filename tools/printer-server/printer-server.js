@@ -94,16 +94,26 @@ function getOptionLines(item, { includeEnglish = false } = {}) {
           typeof choice.nameZh === "string" ? choice.nameZh.trim() : "";
         const nameEn =
           typeof choice.nameEn === "string" ? choice.nameEn.trim() : "";
+        const priceDeltaCents =
+          typeof choice.priceDeltaCents === "number" && Number.isFinite(choice.priceDeltaCents)
+            ? Math.round(choice.priceDeltaCents)
+            : 0;
 
-        if (includeEnglish && nameZh && nameEn) return `${nameZh} ${nameEn}`;
-        if (nameZh) return nameZh;
-        if (includeEnglish && nameEn) return nameEn;
+        const priceSuffix =
+          priceDeltaCents !== 0
+            ? ` (${priceDeltaCents > 0 ? "+" : "-"}${money(Math.abs(priceDeltaCents))})`
+            : "";
+
+        if (includeEnglish && nameZh && nameEn) return `${nameZh} ${nameEn}${priceSuffix}`;
+        if (nameZh) return `${nameZh}${priceSuffix}`;
+        if (includeEnglish && nameEn) return `${nameEn}${priceSuffix}`;
 
         if (!includeEnglish) return "";
 
         const displayName =
           typeof choice.displayName === "string" ? choice.displayName.trim() : "";
-        return displayName;
+        if (!displayName) return "";
+        return `${displayName}${priceSuffix}`;
       })
       .filter(Boolean);
   });
