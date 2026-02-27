@@ -24,6 +24,18 @@ export class UberEatsController {
     return 'Authorized. You can close this window. (ok)';
   }
 
+    // Uber/平台可达性探测：GET
+  @Get("webhook")
+  health(@Res() res: Response) {
+    return res.status(200).json({ ok: true });
+  }
+
+  // 可达性探测：HEAD
+  @Head("webhook")
+  head(@Res() res: Response) {
+    return res.sendStatus(200);
+  }
+
   @Post('webhook')
   @HttpCode(200)
   webhook(@Req() req: Request) {
