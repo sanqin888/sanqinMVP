@@ -79,7 +79,7 @@ function cmd(...bytes) {
   return Buffer.from(bytes);
 }
 
-function getOptionLines(item, { includeEnglish = false } = {}) {
+function getOptionLines(item, { includeEnglish = false, includePrice = true } = {}) {
   if (!item || typeof item !== "object") return [];
   if (!Array.isArray(item.options)) return [];
 
@@ -100,7 +100,7 @@ function getOptionLines(item, { includeEnglish = false } = {}) {
             : 0;
 
         const priceSuffix =
-          priceDeltaCents !== 0
+          includePrice && priceDeltaCents !== 0
             ? ` (${priceDeltaCents > 0 ? "+" : "-"}${money(Math.abs(priceDeltaCents))})`
             : "";
 
@@ -499,7 +499,10 @@ function buildKitchenReceiptEscPos(params) {
       chunks.push(cmd(GS, 0x21, 0x00));
       chunks.push(cmd(ESC, 0x45, 0x00));
 
-      const optionLines = getOptionLines(item, { includeEnglish: false });
+      const optionLines = getOptionLines(item, {
+        includeEnglish: false,
+        includePrice: false,
+      });
       if (optionLines.length > 0) {
         chunks.push(cmd(ESC, 0x45, 0x01)); // 加粗
         chunks.push(cmd(GS, 0x21, 0x01)); // 比菜名略小（双高、非双宽）
