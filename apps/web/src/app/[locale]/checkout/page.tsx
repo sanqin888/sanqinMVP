@@ -200,6 +200,16 @@ function isIosStandaloneWebApp(): boolean {
   return isiOS && isStandalone;
 }
 
+function isStandaloneWebApp(): boolean {
+  if (typeof window === "undefined") return false;
+
+  const nav = window.navigator as Navigator & { standalone?: boolean };
+  return (
+    window.matchMedia?.("(display-mode: standalone)").matches === true ||
+    nav.standalone === true
+  );
+}
+
 declare global {
   interface Window {
     Clover?: new (
@@ -865,6 +875,7 @@ export default function CheckoutPage() {
   const [cloverReady, setCloverReady] = useState(false);
   const [canPay, setCanPay] = useState(false);
   const [isIosStandalone, setIsIosStandalone] = useState(false);
+  const [isPwaStandalone, setIsPwaStandalone] = useState(false);
   const [showIosStandaloneCloverHint, setShowIosStandaloneCloverHint] =
     useState(false);
   const [applePayMounted, setApplePayMounted] = useState(false);
@@ -876,6 +887,19 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     setIsIosStandalone(isIosStandaloneWebApp());
+    setIsPwaStandalone(isStandaloneWebApp());
+
+    const mediaQuery = window.matchMedia?.("(display-mode: standalone)");
+    if (!mediaQuery) return;
+
+    const handleDisplayModeChange = () => {
+      setIsPwaStandalone(isStandaloneWebApp());
+    };
+
+    mediaQuery.addEventListener("change", handleDisplayModeChange);
+    return () => {
+      mediaQuery.removeEventListener("change", handleDisplayModeChange);
+    };
   }, []);
   const [challengeUrl, setChallengeUrl] = useState<string | null>(null);
   const [challengeIntentId, setChallengeIntentId] = useState<string | null>(
@@ -4526,7 +4550,9 @@ useEffect(() => {
                   ) : null}
 
                   <p className="text-xs font-semibold text-slate-600">
-                    {locale === "zh" ? "苹果支付" : "Apple Pay"}
+                    {locale === "zh"
+                      ? "苹果支付（如遇到Apple Pay支付页异常闪退，请刷新本页面后再次点击）"
+                      : "Apple Pay (If the Apple Pay page closes unexpectedly, refresh this page and tap again.)"}
                   </p>
                   <div
   id="clover-apple-pay"
@@ -4540,6 +4566,31 @@ useEffect(() => {
                     </p>
                   ) : null}
 
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void handleGooglePayCheckout();
+                    }}
+                    disabled={
+                      !canPlaceOrder ||
+                      !requiresPayment ||
+                      isSubmitting ||
+                      isRedirectingToGooglePay
+                    }
+                    className="w-full rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isRedirectingToGooglePay
+                      ? locale === "zh"
+                        ? "正在跳转 Google Pay…"
+                        : "Redirecting to Google Pay…"
+                      : locale === "zh"
+                        ? "使用 Google Pay"
+                        : "Use Google Pay"}
+                  </button>
+
+                  <p className="text-xs font-semibold text-slate-600">
+                    {locale === "zh" ? "google 支付" : "Google Pay"}
+                  </p>
                   <button
                     type="button"
                     onClick={() => {
@@ -4793,6 +4844,34 @@ useEffect(() => {
               />
             </div>
           </div>
+        </div>
+      ) : null}
+      {isPwaStandalone ? (
+        <div className="fixed bottom-4 left-4 z-40 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof window === "undefined") return;
+              if (window.history.length > 1) {
+                router.back();
+                return;
+              }
+              router.replace(`/${locale}`);
+            }}
+            className="rounded-full border border-slate-200 bg-white/95 px-4 py-2 text-xs font-semibold text-slate-700 shadow-lg backdrop-blur transition hover:bg-slate-100"
+          >
+            {locale === "zh" ? "返回" : "Back"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof window === "undefined") return;
+              window.location.reload();
+            }}
+            className="rounded-full border border-slate-200 bg-white/95 px-4 py-2 text-xs font-semibold text-slate-700 shadow-lg backdrop-blur transition hover:bg-slate-100"
+          >
+            {locale === "zh" ? "刷新" : "Refresh"}
+          </button>
         </div>
       ) : null}
     </div>

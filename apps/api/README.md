@@ -85,6 +85,77 @@ curl -X POST "http://localhost:4000/api/v1/orders" \
 Successful requests respond with the order payload containing
 `externalDeliveryId`, allowing you to verify the Uber Direct reference ID.
 
+## 埋点数据（AnalyticsEvent）查看与分析
+
+当前前端埋点会写入 API 的 `AnalyticsEvent` 表，并提供受权限保护的查询接口。
+
+### 1) 先确认数据是否成功入库
+
+- 数据写入接口：`POST /api/v1/analytics/events`。
+- 数据查询接口：`GET /api/v1/analytics/events`（仅 `ADMIN`，需要已登录；不要求 MFA）。
+
+示例（查看最新 20 条）：
+
+```bash
+curl "http://localhost:4000/api/v1/analytics/events?limit=20" \
+  -H "Cookie: <你的登录会话cookie>"
+```
+
+按事件名筛选（例如 `checkout_click`）：
+
+```bash
+curl "http://localhost:4000/api/v1/analytics/events?limit=50&event=checkout_click" \
+  -H "Cookie: <你的登录会话cookie>"
+```
+
+### 2) 直接用 SQL 看库里的埋点
+
+```sql
+-- 最近 100 条事件
+SELECT
+  "id",
+  "eventName",
+  "path",
+  "locale",
+  "payload",
+  "occurredAt"
+FROM "AnalyticsEvent"
+ORDER BY "occurredAt" DESC
+LIMIT 100;
+
+-- 各事件近 7 天总量
+SELECT
+  "eventName",
+  COUNT(*) AS total
+FROM "AnalyticsEvent"
+WHERE "occurredAt" >= NOW() - INTERVAL '7 days'
+GROUP BY "eventName"
+ORDER BY total DESC;
+
+-- 近 7 天按天趋势
+SELECT
+  DATE_TRUNC('day', "occurredAt") AS day,
+  "eventName",
+  COUNT(*) AS total
+FROM "AnalyticsEvent"
+WHERE "occurredAt" >= NOW() - INTERVAL '7 days'
+GROUP BY 1, 2
+ORDER BY day DESC, total DESC;
+```
+
+### 3) 如果看不到数据，优先排查这几项
+
+1. 用户是否同意分析追踪（前端有 consent 控制，拒绝后不会继续发送新埋点）。
+2. API 是否返回 `accepted > 0`（写入成功条数）。
+3. 是否已创建 `AnalyticsEvent` 表（若缺表，API 会返回 `AnalyticsEvent table is missing. Please run Prisma migration first.`）。
+4. 查询账号是否为 `ADMIN` 且已登录（否则无法调用 `GET /analytics/events`）。
+
+### 4) 推荐的分析口径（起步版）
+
+- 漏斗：`page_view -> add_to_cart -> checkout_click -> order_success`。
+- 维度：`path`、`locale`、日期。
+- 指标：事件总量、去重会话数（后续可在 payload 增加 sessionId）、关键步骤转化率。
+
 ## Compile and run the project
 
 ```bash

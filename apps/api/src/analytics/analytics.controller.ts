@@ -10,7 +10,6 @@ import {
 } from '@nestjs/common';
 import { AnalyticsService } from './analytics.service';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
-import { AdminMfaGuard } from '../auth/admin-mfa.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 
@@ -50,8 +49,8 @@ export class AnalyticsController {
   }
 
   @Get('events')
-  @UseGuards(SessionAuthGuard, AdminMfaGuard, RolesGuard)
-  @Roles('ADMIN', 'STAFF', 'ACCOUNTANT')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   async listEvents(
     @Query('limit') limit?: string,
     @Query('event') event?: string,
