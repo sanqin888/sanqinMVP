@@ -1,13 +1,15 @@
 import {
   Controller,
   Get,
+  Head,
   Header,
   HttpCode,
   Post,
   Query,
+  Res,
   Req,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { AppLogger } from '../../common/app-logger';
 
 @Controller('integrations/ubereats')
@@ -22,6 +24,18 @@ export class UberEatsController {
     );
 
     return 'Authorized. You can close this window. (ok)';
+  }
+
+  // Uber/平台可达性探测：GET
+  @Get('webhook')
+  health(@Res() res: Response) {
+    return res.status(200).json({ ok: true });
+  }
+
+  // 可达性探测：HEAD
+  @Head('webhook')
+  head(@Res() res: Response) {
+    return res.sendStatus(200);
   }
 
   @Post('webhook')
