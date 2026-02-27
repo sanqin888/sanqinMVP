@@ -200,6 +200,26 @@ function isIosStandaloneWebApp(): boolean {
   return isiOS && isStandalone;
 }
 
+function isStandaloneWebApp(): boolean {
+  if (typeof window === "undefined") return false;
+
+  const nav = window.navigator as Navigator & { standalone?: boolean };
+  return (
+    window.matchMedia?.("(display-mode: standalone)").matches === true ||
+    nav.standalone === true
+  );
+}
+
+function canRenderApplePayButton(): boolean {
+  if (typeof window === "undefined") return false;
+
+  const ua = window.navigator.userAgent;
+  const isAppleDevice = /iphone|ipad|ipod|macintosh/i.test(ua);
+  const isSafari = /safari/i.test(ua) && !/chrome|crios|edg|opr|android/i.test(ua);
+
+  return isAppleDevice && isSafari;
+}
+
 declare global {
   interface Window {
     Clover?: new (
@@ -865,6 +885,7 @@ export default function CheckoutPage() {
   const [cloverReady, setCloverReady] = useState(false);
   const [canPay, setCanPay] = useState(false);
   const [isIosStandalone, setIsIosStandalone] = useState(false);
+  const [isPwaStandalone, setIsPwaStandalone] = useState(false);
   const [showIosStandaloneCloverHint, setShowIosStandaloneCloverHint] =
     useState(false);
   const [applePayMounted, setApplePayMounted] = useState(false);
@@ -876,6 +897,19 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     setIsIosStandalone(isIosStandaloneWebApp());
+    setIsPwaStandalone(isStandaloneWebApp());
+
+    const mediaQuery = window.matchMedia?.("(display-mode: standalone)");
+    if (!mediaQuery) return;
+
+    const handleDisplayModeChange = () => {
+      setIsPwaStandalone(isStandaloneWebApp());
+    };
+
+    mediaQuery.addEventListener("change", handleDisplayModeChange);
+    return () => {
+      mediaQuery.removeEventListener("change", handleDisplayModeChange);
+    };
   }, []);
   const [challengeUrl, setChallengeUrl] = useState<string | null>(null);
   const [challengeIntentId, setChallengeIntentId] = useState<string | null>(
@@ -1836,20 +1870,7 @@ export default function CheckoutPage() {
       if (!applePayHost) {
         throw new Error("Apple Pay host not ready");
       }
-
-      const sessionIdentifier = merchantId;
-
-      const applePayRequest = clover.createApplePaymentRequest({
-        amount: totalCentsRef.current,
-        countryCode: "CA",
-        currencyCode: "CAD",
-      });
-      const applePay = elements.create("PAYMENT_REQUEST_BUTTON_APPLE_PAY", {
-        applePaymentRequest: applePayRequest,
-        sessionIdentifier,
-      });
       applePayHost.innerHTML = "";
-      applePay.mount("#clover-apple-pay");
 
       cloverRef.current = clover;
       cardNameRef.current = cardName;
@@ -1857,8 +1878,23 @@ export default function CheckoutPage() {
       cardDateRef.current = cardDate;
       cardCvvRef.current = cardCvv;
       cardPostalRef.current = cardPostal;
-      applePayRef.current = applePay;
-      setApplePayMounted(true);
+
+      if (canRenderApplePayButton()) {
+        const sessionIdentifier = merchantId;
+
+        const applePayRequest = clover.createApplePaymentRequest({
+          amount: totalCentsRef.current,
+          countryCode: "CA",
+          currencyCode: "CAD",
+        });
+        const applePay = elements.create("PAYMENT_REQUEST_BUTTON_APPLE_PAY", {
+          applePaymentRequest: applePayRequest,
+          sessionIdentifier,
+        });
+        applePay.mount("#clover-apple-pay");
+        applePayRef.current = applePay;
+        setApplePayMounted(true);
+      }
 
       const handleFieldEvent = (key: CloverFieldKey, raw: CloverEventPayload) => {
         const fieldEvent = getFieldFromEvent(raw, key);
@@ -4526,7 +4562,9 @@ useEffect(() => {
                   ) : null}
 
                   <p className="text-xs font-semibold text-slate-600">
-                    {locale === "zh" ? "苹果支付" : "Apple Pay"}
+                    {locale === "zh"
+                      ? "电子支付（如遇到Apple Pay支付页异常闪退，请刷新本页面后再次点击）"
+                      : "Electronic payment (If the Apple Pay page closes unexpectedly, refresh this page and tap again.)"}
                   </p>
                   <div
   id="clover-apple-pay"
@@ -4793,6 +4831,34 @@ useEffect(() => {
               />
             </div>
           </div>
+        </div>
+      ) : null}
+      {isPwaStandalone ? (
+        <div className="fixed bottom-4 left-4 z-40 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof window === "undefined") return;
+              if (window.history.length > 1) {
+                router.back();
+                return;
+              }
+              router.replace(`/${locale}`);
+            }}
+            className="rounded-full border border-slate-200 bg-white/95 px-4 py-2 text-xs font-semibold text-slate-700 shadow-lg backdrop-blur transition hover:bg-slate-100"
+          >
+            {locale === "zh" ? "返回" : "Back"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof window === "undefined") return;
+              window.location.reload();
+            }}
+            className="rounded-full border border-slate-200 bg-white/95 px-4 py-2 text-xs font-semibold text-slate-700 shadow-lg backdrop-blur transition hover:bg-slate-100"
+          >
+            {locale === "zh" ? "刷新" : "Refresh"}
+          </button>
         </div>
       ) : null}
     </div>
