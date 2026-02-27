@@ -4552,7 +4552,7 @@ useEffect(() => {
                   <p className="text-xs font-semibold text-slate-600">
                     {locale === "zh"
                       ? "电子支付（如遇到Apple Pay支付页异常闪退，请刷新本页面后再次点击）"
-                      : "Apple Pay (If the Apple Pay page closes unexpectedly, refresh this page and tap again.)"}
+                      : "Electronic payment (If the Apple Pay page closes unexpectedly, refresh this page and tap again.)"}
                   </p>
                   <div
   id="clover-apple-pay"
