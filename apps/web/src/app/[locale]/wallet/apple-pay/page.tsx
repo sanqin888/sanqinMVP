@@ -249,7 +249,7 @@ export default function ApplePayWalletPage() {
         ) : ctx ? (
           <>
             <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-              <p>{locale === "zh" ? "应付金额" : "Amount due (locked)"}</p>
+              <p>{locale === "zh" ? "应付金额" : "Amount due"}</p>
               <p className="mt-1 text-lg font-semibold text-slate-900">{currencyFormatter.format(ctx.totalCents / 100).replace(/^CA\$\s?/, "$")}</p>
               <p className={`mt-2 text-xs font-semibold ${sessionExpired ? "text-rose-600" : "text-slate-600"}`}>
                 {locale === "zh" ? "支付会话剩余时间" : "Session time left"}：{formatRemaining(remainingMs)}
