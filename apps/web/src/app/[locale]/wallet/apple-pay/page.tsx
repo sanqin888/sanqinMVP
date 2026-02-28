@@ -249,7 +249,7 @@ export default function ApplePayWalletPage() {
         ) : ctx ? (
           <>
             <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-              <p>{locale === "zh" ? "应付金额（已锁定）" : "Amount due (locked)"}</p>
+              <p>{locale === "zh" ? "应付金额" : "Amount due (locked)"}</p>
               <p className="mt-1 text-lg font-semibold text-slate-900">{currencyFormatter.format(ctx.totalCents / 100).replace(/^CA\$\s?/, "$")}</p>
               <p className={`mt-2 text-xs font-semibold ${sessionExpired ? "text-rose-600" : "text-slate-600"}`}>
                 {locale === "zh" ? "支付会话剩余时间" : "Session time left"}：{formatRemaining(remainingMs)}
@@ -266,7 +266,7 @@ export default function ApplePayWalletPage() {
         ) : null}
 
         <button type="button" className="mt-6 w-full rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" onClick={() => router.replace(`/${locale}/checkout`)}>
-          {locale === "zh" ? "返回结算页修改订单" : "Back to checkout"}
+          {locale === "zh" ? "返回结算页" : "Back to checkout"}
         </button>
       </div>
     </main>
