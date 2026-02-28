@@ -111,6 +111,9 @@ const STRINGS = {
     terminal: "终态",
     reprintFront: "重打前台",
     printKitchen: "后厨小票",
+    autoAccept: "自动接单",
+    autoAcceptOn: "已开启",
+    autoAcceptOff: "已关闭",
     voiceOne: "有一个新的线上订单。",
     voiceMany: (n: number) => `有 ${n} 个新的线上订单。`,
   },
@@ -127,6 +130,9 @@ const STRINGS = {
     terminal: "Terminal",
     reprintFront: "Reprint front",
     printKitchen: "Kitchen",
+    autoAccept: "Auto accept",
+    autoAcceptOn: "On",
+    autoAcceptOff: "Off",
     voiceOne: "New online order.",
     voiceMany: (n: number) => `${n} new online orders.`,
   },
@@ -142,6 +148,7 @@ const NEXT_STATUS: Record<BoardOrder["status"], BoardOrder["status"] | null> = {
 
 // ✅ 刷新不重复打印：localStorage 持久化（按 stableId）
 const PRINTED_STORAGE_KEY = "sanqin:storeBoard:processedStableIds:v2";
+const AUTO_ACCEPT_STORAGE_KEY = "sanqin:storeBoard:autoAcceptEnabled:v1";
 const PRINTED_TTL_MS = 12 * 60 * 60 * 1000; // 12h
 type ProcessedMap = Record<string, number>; // stableId -> timestamp(ms)
 
@@ -152,6 +159,10 @@ function safeParseCreatedAtMs(createdAt: string): number {
 
 function shouldShowOnBoard(order: BoardOrder): boolean {
   return Array.isArray(order.items) && order.items.length > 0;
+}
+
+function isAutoAcceptCandidate(order: BoardOrder): boolean {
+  return (order.channel === "web" || order.channel === "ubereats") && order.status === "paid";
 }
 
 function readProcessedMap(): ProcessedMap {
@@ -205,6 +216,7 @@ export function StoreBoardWidget(props: { locale: Locale }) {
   const [orders, setOrders] = useState<BoardOrder[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(false);
+  const [autoAcceptEnabled, setAutoAcceptEnabled] = useState(true);
 
   // ✅ 增强1：新 web 订单到达时，高亮闪烁（并自动展开）
   const [flash, setFlash] = useState(false);
@@ -221,9 +233,9 @@ export function StoreBoardWidget(props: { locale: Locale }) {
   const alarmAudioRef = useRef<HTMLAudioElement | null>(null);
   const alarmPlayingRef = useRef(false);
 
-  // ✅ 增强2：待接单数（只统计 web + paid）
-  const webPaidCount = useMemo(
-    () => orders.filter((o) => o.channel === "web" && o.status === "paid").length,
+  // ✅ 增强2：待接单数（统计线上渠道：web + ubereats，且 paid）
+  const pendingAcceptCount = useMemo(
+    () => orders.filter((o) => isAutoAcceptCandidate(o)).length,
     [orders],
   );
 
@@ -326,6 +338,18 @@ export function StoreBoardWidget(props: { locale: Locale }) {
     hadPersistedRef.current = Object.keys(map).length > 0;
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = window.localStorage.getItem(AUTO_ACCEPT_STORAGE_KEY);
+    if (raw === "0") {
+      setAutoAcceptEnabled(false);
+      return;
+    }
+    if (raw === "1") {
+      setAutoAcceptEnabled(true);
+    }
+  }, []);
+
   const handlePrintFront = useCallback(
     async (orderStableId: string) => {
       try {
@@ -394,20 +418,34 @@ export function StoreBoardWidget(props: { locale: Locale }) {
     }
     writeProcessedMap(processedMap);
 
-    const newWebPaid = newOrders.filter((o) => o.channel === "web" && o.status === "paid");
-    if (newWebPaid.length > 0) {
+    const newOnlinePaid = newOrders.filter((o) => isAutoAcceptCandidate(o));
+    if (newOnlinePaid.length > 0) {
       // ✅ 增强1：自动弹开 + 闪一下
       setOpen(true);
       setFlash(true);
       setPop(true);
 
-      const n = newWebPaid.length;
+      const n = newOnlinePaid.length;
       stopAlarmLoop();
       speak(n === 1 ? t.voiceOne : t.voiceMany(n), locale, () => {
         void startAlarmLoop();
       });
+
+      if (autoAcceptEnabled) {
+        for (const order of newOnlinePaid) {
+          try {
+            await advanceOrder(order.orderStableId);
+            await printOrderCloud(order.orderStableId, {
+              targets: { customer: true, kitchen: true },
+            });
+          } catch (error) {
+            console.error("Failed to auto-accept order:", order.orderStableId, error);
+          }
+        }
+      }
     }
   }, [
+    autoAcceptEnabled,
     query,
     t,
     locale,
@@ -457,12 +495,12 @@ export function StoreBoardWidget(props: { locale: Locale }) {
   }, [fetchOrdersAndProcess]);
 
   useEffect(() => {
-    if (webPaidCount > 0) {
+    if (pendingAcceptCount > 0) {
       void startAlarmLoop();
     } else {
       stopAlarmLoop();
     }
-  }, [webPaidCount, startAlarmLoop, stopAlarmLoop]);
+  }, [pendingAcceptCount, startAlarmLoop, stopAlarmLoop]);
 
   useEffect(() => {
     scheduleAutoExpand();
@@ -527,10 +565,10 @@ export function StoreBoardWidget(props: { locale: Locale }) {
           <span className="font-semibold">{t.title}</span>
           <span className="ml-2 text-slate-300 text-sm">· {activeCount}</span>
 
-          {webPaidCount > 0 && (
+          {pendingAcceptCount > 0 && (
             <span className="ml-2 inline-flex items-center gap-1 rounded-full border border-rose-400/60 bg-rose-500/15 px-2 py-0.5 text-xs font-semibold text-rose-200">
               <span className="text-[10px] leading-none">●</span>
-              <span>{webPaidCount}</span>
+              <span>{pendingAcceptCount}</span>
             </span>
           )}
         </button>
@@ -551,10 +589,10 @@ export function StoreBoardWidget(props: { locale: Locale }) {
               <div className="flex items-center gap-2">
                 <div className="text-base font-semibold text-slate-100">{t.title}</div>
 
-                {webPaidCount > 0 && (
+                {pendingAcceptCount > 0 && (
                   <span className="inline-flex items-center gap-1 rounded-full border border-rose-400/60 bg-rose-500/15 px-2 py-0.5 text-xs font-semibold text-rose-200">
                     <span className="text-[10px] leading-none">●</span>
-                    <span>{webPaidCount}</span>
+                    <span>{pendingAcceptCount}</span>
                   </span>
                 )}
               </div>
@@ -565,6 +603,37 @@ export function StoreBoardWidget(props: { locale: Locale }) {
             </div>
 
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={autoAcceptEnabled}
+                onClick={() => {
+                  const next = !autoAcceptEnabled;
+                  setAutoAcceptEnabled(next);
+                  if (typeof window !== "undefined") {
+                    window.localStorage.setItem(AUTO_ACCEPT_STORAGE_KEY, next ? "1" : "0");
+                  }
+                }}
+                className="rounded-full border border-slate-700 bg-slate-950/40 px-2 py-1 text-xs text-slate-100 transition hover:bg-slate-800/50"
+              >
+                <span className="mr-2">{t.autoAccept}</span>
+                <span
+                  className={[
+                    "relative inline-flex h-5 w-9 items-center rounded-full transition",
+                    autoAcceptEnabled ? "bg-emerald-500" : "bg-slate-600",
+                  ].join(" ")}
+                >
+                  <span
+                    className={[
+                      "inline-block h-4 w-4 transform rounded-full bg-white transition",
+                      autoAcceptEnabled ? "translate-x-4" : "translate-x-0.5",
+                    ].join(" ")}
+                  />
+                </span>
+                <span className="ml-2 text-slate-300">
+                  {autoAcceptEnabled ? t.autoAcceptOn : t.autoAcceptOff}
+                </span>
+              </button>
               <button
                 type="button"
                 onClick={async () => {
