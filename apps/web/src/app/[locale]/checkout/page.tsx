@@ -3809,8 +3809,8 @@ export default function CheckoutPage() {
                 <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
                   <p className="text-xs font-semibold text-slate-600">
                     {locale === "zh"
-                      ? "请选择支付方式并在下一页完成支付（金额将锁定并以服务端校验为准）。"
-                      : "Choose a payment method to complete payment on the next page (amount will be locked and server-verified)."}
+                      ? "请选择支付方式并在下一页完成支付。"
+                      : "Choose a payment method to complete payment on the next page."}
                   </p>
                   {/* 信用卡手续费提示（仅提示，不参与金额计算） */}
                   <p className="text-center text-[11px] leading-snug text-slate-500">
