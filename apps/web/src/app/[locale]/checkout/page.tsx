@@ -3815,7 +3815,7 @@ export default function CheckoutPage() {
                   {/* 信用卡手续费提示（仅提示，不参与金额计算） */}
                   <p className="text-center text-[11px] leading-snug text-slate-500">
                     {locale === "zh"
-                      ? "可用卡种：Visa / Mastercard / Discover / Debit。"
+                      ? "可用卡种：Visa / Mastercard / Discover / 借记卡（Debit）。"
                       : "Accepted cards: Visa / Mastercard / Discover / Debit."}
                   </p>
                   <p className="text-center text-[11px] leading-snug text-slate-500">

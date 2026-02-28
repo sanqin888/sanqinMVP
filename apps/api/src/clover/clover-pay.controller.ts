@@ -45,7 +45,6 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     private readonly pricingTokens: PricingTokenService,
   ) {}
 
-
   @Post('pay/online/session')
   async createPaymentSession(@Body() dto: CreatePaymentSessionDto) {
     let metadata: HostedCheckoutMetadata;
@@ -169,10 +168,15 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       checkoutIntentId: intent.referenceId,
     });
 
+    const resolvedMethod =
+      typeof paymentMethod === 'string'
+        ? paymentMethod
+        : typeof metadata.paymentMethod === 'string'
+          ? metadata.paymentMethod
+          : 'unknown';
+
     this.logger.debug(
-      `[session.fetch] ok sessionId=${id} method=${String(
-        paymentMethod ?? metadata.paymentMethod ?? 'unknown',
-      )} intent=${intent.referenceId} total=${quote.totalCents}`,
+      `[session.fetch] ok sessionId=${id} method=${resolvedMethod} intent=${intent.referenceId} total=${quote.totalCents}`,
     );
 
     return {
@@ -180,7 +184,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       paymentMethod:
         typeof metadata.paymentMethod === 'string'
           ? metadata.paymentMethod
-          : paymentMethod ?? null,
+          : (paymentMethod ?? null),
       checkoutIntentId: intent.referenceId,
       orderStableId,
       currency: intent.currency ?? CLOVER_PAYMENT_CURRENCY,
@@ -458,7 +462,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     @Ip() rawIp: string,
   ) {
     this.logger.debug(
-      `[payment.request] card-token received amount=${dto.amountCents ?? 'N/A'} checkoutIntentId=${dto.checkoutIntentId ?? 'N/A'}` ,
+      `[payment.request] card-token received amount=${dto.amountCents ?? 'N/A'} checkoutIntentId=${dto.checkoutIntentId ?? 'N/A'}`,
     );
 
     if (!dto.metadata) {
@@ -731,7 +735,9 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
         } satisfies HostedCheckoutMetadata & CheckoutIntentPaymentMeta;
         await this.checkoutIntents.updateMetadata(intent.id, updatedMetadata);
 
-        this.logger.debug(`[payment.3ds] challenge_required intent=${referenceId}`);
+        this.logger.debug(
+          `[payment.3ds] challenge_required intent=${referenceId}`,
+        );
         return {
           orderStableId,
           orderNumber: referenceId,
