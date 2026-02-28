@@ -51,41 +51,6 @@ function buildPaymentErrorMessage(locale: Locale, error: unknown) {
   return locale === "zh" ? "Google Pay 支付失败，请返回结算页重试。" : "Google Pay failed. Please go back and try again.";
 }
 
-
-function buildPaymentErrorMessage(locale: Locale, error: unknown) {
-  if (error instanceof ApiError && error.payload && typeof error.payload === "object") {
-    const payload = error.payload as Record<string, unknown>;
-    const code = typeof payload.code === "string" ? payload.code : "";
-    if (code === "AMOUNT_MISMATCH" || code === "pricing_token_amount_mismatch") {
-      return locale === "zh"
-        ? "订单金额已变更，请返回结算页重新确认后再支付。"
-        : "Order amount changed. Please return to checkout and confirm again.";
-    }
-    if (typeof payload.message === "string" && payload.message.trim()) {
-      return payload.message;
-    }
-  }
-  return locale === "zh"
-    ? "Google Pay 支付失败，请返回结算页重试。"
-    : "Google Pay failed. Please go back and try again.";
-}
-
-
-function getRemainingMs(expiresAtIso?: string): number {
-  if (!expiresAtIso) return 0;
-  const expiresAt = Date.parse(expiresAtIso);
-  if (!Number.isFinite(expiresAt)) return 0;
-  return Math.max(0, expiresAt - Date.now());
-}
-
-function formatRemaining(remainingMs: number): string {
-  const totalSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes.toString().padStart(2, "0")}:${seconds
-    .toString()
-    .padStart(2, "0")}`;
-}
 export default function GooglePayWalletPage() {
   const params = useParams<{ locale?: string }>();
   const searchParams = useSearchParams();
