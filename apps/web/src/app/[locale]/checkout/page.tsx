@@ -4587,32 +4587,6 @@ useEffect(() => {
                         ? "使用 Google Pay"
                         : "Use Google Pay"}
                   </button>
-
-                  <p className="text-xs font-semibold text-slate-600">
-                    {locale === "zh" ? "google 支付" : "Google Pay"}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void handleGooglePayCheckout();
-                    }}
-                    disabled={
-                      !canPlaceOrder ||
-                      !requiresPayment ||
-                      isSubmitting ||
-                      isRedirectingToGooglePay
-                    }
-                    className="w-full rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {isRedirectingToGooglePay
-                      ? locale === "zh"
-                        ? "正在跳转 Google Pay…"
-                        : "Redirecting to Google Pay…"
-                      : locale === "zh"
-                        ? "使用 Google Pay"
-                        : "Use Google Pay"}
-                  </button>
-
                   <p className="text-xs font-semibold text-slate-600">
                     {locale === "zh" ? "银行卡信息" : "Card details"}
                   </p>

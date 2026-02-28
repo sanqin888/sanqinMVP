@@ -105,6 +105,7 @@ const STRINGS: Record<
     close: string;
     orderLabel: string;
     pickupCodeLabel: string;
+    cashChangeLabel: string;
     memberLabel: string;
     memberPhone: string;
     memberLookup: string;
@@ -171,6 +172,7 @@ const STRINGS: Record<
     close: "完成",
     orderLabel: "订单号：",
     pickupCodeLabel: "取餐码：",
+    cashChangeLabel: "找零金额：",
     memberLabel: "会员手机号",
     memberPhone: "输入会员手机号",
     memberLookup: "确认会员",
@@ -237,6 +239,7 @@ const STRINGS: Record<
     close: "Done",
     orderLabel: "Order:",
     pickupCodeLabel: "Pickup code:",
+    cashChangeLabel: "Change:",
     memberLabel: "Member phone",
     memberPhone: "Enter member phone",
     memberLookup: "Confirm member",
@@ -336,6 +339,7 @@ export default function StorePosPaymentPage() {
   const [successInfo, setSuccessInfo] = useState<{
     orderNumber: string;
     pickupCode?: string | null;
+    cashChangeCents?: number;
   } | null>(null);
 
   // 从 localStorage 读取 POS 界面保存的订单快照
@@ -810,6 +814,7 @@ const loyaltyRedeemCents = redeemCents;
       setSuccessInfo({
         orderNumber: order.orderNumber ?? order.orderStableId,
         pickupCode: order.pickupCode ?? null,
+        cashChangeCents: cashMeta?.cashChangeCents ?? 0,
       });
 
       if (order.orderStableId) {
@@ -893,7 +898,8 @@ const loyaltyRedeemCents = redeemCents;
 
   useEffect(() => {
     if (!successInfo) return;
-    const timer = window.setTimeout(() => handleCloseSuccess(), 2000);
+    const modalDurationMs = successInfo.cashChangeCents && successInfo.cashChangeCents > 0 ? 5000 : 2000;
+    const timer = window.setTimeout(() => handleCloseSuccess(), modalDurationMs);
     return () => window.clearTimeout(timer);
   }, [handleCloseSuccess, successInfo]);
 
@@ -1185,6 +1191,14 @@ const loyaltyRedeemCents = redeemCents;
                 <>
                     <div className="text-slate-400 text-sm mt-4">{t.pickupCodeLabel}</div>
                     <div className="text-4xl font-bold text-yellow-400">{successInfo.pickupCode}</div>
+                </>
+              )}
+              {successInfo.cashChangeCents && successInfo.cashChangeCents > 0 && (
+                <>
+                  <div className="text-slate-400 text-sm mt-4">{t.cashChangeLabel}</div>
+                  <div className="text-2xl font-bold text-emerald-300">
+                    {formatMoney(successInfo.cashChangeCents)}
+                  </div>
                 </>
               )}
             </div>
