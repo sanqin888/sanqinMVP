@@ -12,6 +12,7 @@ import {
   OnModuleInit,
   Post,
   Query,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { AppLogger } from '../common/app-logger';
 import { CloverService } from './clover.service';
@@ -404,11 +405,31 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     const quote = await this.orders.quoteOrderPricing(orderDto);
     const expectedTotalCents = quote.totalCents;
     const fingerprint = buildPricingFingerprint(orderDto);
-    this.pricingTokens.verify(dto.pricingToken, {
-      expectedFingerprint: fingerprint,
-      expectedTotalCents,
-      expectedCheckoutIntentId: referenceId,
+
+    const existingIntent = await this.checkoutIntents.findByIdentifiers({
+      referenceId,
     });
+
+    try {
+      this.pricingTokens.verify(dto.pricingToken, {
+        expectedFingerprint: fingerprint,
+        expectedTotalCents,
+        expectedCheckoutIntentId: referenceId,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message.toLowerCase() : String(error);
+      if (message.includes('pricingtoken is expired')) {
+        if (existingIntent && existingIntent.orderId === null) {
+          await this.checkoutIntents.markExpired(existingIntent.id);
+        }
+        throw new UnauthorizedException({
+          code: 'PAYMENT_SESSION_EXPIRED',
+          message: 'payment session expired, please requote from checkout',
+        });
+      }
+      throw error;
+    }
 
     if (
       typeof dto.amountCents === 'number' &&
@@ -432,10 +453,6 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     this.logger.log(
       `Processing payment from IP: ${clientIp} (CF: ${cfConnectingIpDisplay}, Raw: ${rawIp ?? 'N/A'})`,
     );
-
-    const existingIntent = await this.checkoutIntents.findByIdentifiers({
-      referenceId,
-    });
 
     if (existingIntent?.orderId) {
       return {

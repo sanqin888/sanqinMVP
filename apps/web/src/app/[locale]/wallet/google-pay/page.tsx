@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { apiFetch } from "@/lib/api/client";
+import { ApiError, apiFetch } from "@/lib/api/client";
 import { build3dsBrowserInfo, DEFAULT_CLOVER_SDK_URL, loadScript } from "@/lib/clover";
 import type { Locale } from "@/lib/i18n/locales";
 import {
@@ -32,6 +32,7 @@ type CloverInstance = {
 };
 
 type GooglePayCtx = {
+  paymentMethod?: "APPLE_PAY" | "GOOGLE_PAY" | "CARD";
   locale: Locale;
   checkoutIntentId: string;
   pricingToken: string;
@@ -64,6 +65,41 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   });
 }
 
+
+function buildPaymentErrorMessage(locale: Locale, error: unknown) {
+  if (error instanceof ApiError && error.payload && typeof error.payload === "object") {
+    const payload = error.payload as Record<string, unknown>;
+    const code = typeof payload.code === "string" ? payload.code : "";
+    if (code === "AMOUNT_MISMATCH" || code === "pricing_token_amount_mismatch") {
+      return locale === "zh"
+        ? "订单金额已变更，请返回结算页重新确认后再支付。"
+        : "Order amount changed. Please return to checkout and confirm again.";
+    }
+    if (typeof payload.message === "string" && payload.message.trim()) {
+      return payload.message;
+    }
+  }
+  return locale === "zh"
+    ? "Google Pay 支付失败，请返回结算页重试。"
+    : "Google Pay failed. Please go back and try again.";
+}
+
+
+function getRemainingMs(expiresAtIso?: string): number {
+  if (!expiresAtIso) return 0;
+  const expiresAt = Date.parse(expiresAtIso);
+  if (!Number.isFinite(expiresAt)) return 0;
+  return Math.max(0, expiresAt - Date.now());
+}
+
+function formatRemaining(remainingMs: number): string {
+  const totalSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes.toString().padStart(2, "0")}:${seconds
+    .toString()
+    .padStart(2, "0")}`;
+}
 export default function GooglePayWalletPage() {
   const params = useParams<{ locale?: string }>();
   const locale = (params?.locale === "zh" ? "zh" : "en") as Locale;
@@ -72,6 +108,8 @@ export default function GooglePayWalletPage() {
   const [ctx, setCtx] = useState<GooglePayCtx | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [remainingMs, setRemainingMs] = useState(0);
+  const sessionExpired = remainingMs <= 0 && !loading && Boolean(ctx);
 
   const cloverGoogleRef = useRef<CloverInstance | null>(null);
   const googlePayRef = useRef<CloverElementInstance | null>(null);
@@ -111,7 +149,17 @@ export default function GooglePayWalletPage() {
         setLoading(false);
         return;
       }
+      if (parsed.paymentMethod && parsed.paymentMethod !== "GOOGLE_PAY") {
+        setError(
+          locale === "zh"
+            ? "支付方式不匹配，请返回结算页重新选择。"
+            : "Payment method mismatch. Please go back and choose again.",
+        );
+        setLoading(false);
+        return;
+      }
       setCtx(parsed);
+      setRemainingMs(getRemainingMs(parsed.pricingTokenExpiresAt));
       setLoading(false);
     } catch (readError) {
       console.error("[GP] ctx parse error", toSafeErrorLog(readError));
@@ -123,6 +171,18 @@ export default function GooglePayWalletPage() {
       setLoading(false);
     }
   }, [locale]);
+
+  useEffect(() => {
+    if (!ctx) return;
+    const tick = () => {
+      setRemainingMs(getRemainingMs(ctx.pricingTokenExpiresAt));
+    };
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => {
+      window.clearInterval(id);
+    };
+  }, [ctx]);
 
   useEffect(() => {
     if (!ctx) return;
@@ -179,6 +239,14 @@ export default function GooglePayWalletPage() {
             (detail?.token as { id?: string } | undefined)?.id;
 
           if (!token) return;
+          if (sessionExpired) {
+            setError(
+              locale === "zh"
+                ? "支付会话已过期，请返回结算页重新发起支付。"
+                : "Payment session expired. Please go back to checkout and restart payment.",
+            );
+            return;
+          }
           if (submittedTokenRef.current === token) return;
           submittedTokenRef.current = token;
           setError(null);
@@ -228,11 +296,7 @@ export default function GooglePayWalletPage() {
           } catch (payError) {
             console.error("[GP] pay error", toSafeErrorLog(payError));
             cloverGoogleRef.current?.updateGooglePaymentStatus?.("failed");
-            setError(
-              locale === "zh"
-                ? "Google Pay 支付失败，请返回结算页重试。"
-                : "Google Pay failed. Please go back and try again.",
-            );
+            setError(buildPaymentErrorMessage(locale, payError));
             submittedTokenRef.current = null;
           }
         });
@@ -255,7 +319,7 @@ export default function GooglePayWalletPage() {
       cloverGoogleRef.current = null;
       submittedTokenRef.current = null;
     };
-  }, [ctx, locale, router]);
+  }, [ctx, locale, router, sessionExpired]);
 
   if (loading) {
     return (
@@ -284,13 +348,25 @@ export default function GooglePayWalletPage() {
               ? "金额已按优惠券/积分/配送费/税重新计算。"
               : "Total reflects coupons/points/delivery/tax."}
           </p>
+          <p className={`mt-2 text-xs font-semibold ${sessionExpired ? "text-rose-600" : "text-slate-600"}`}>
+            {locale === "zh" ? "支付会话剩余时间" : "Session time left"}：
+            {formatRemaining(remainingMs)}
+          </p>
         </div>
       ) : null}
 
-      <div
-        id="clover-google-pay"
-        className="h-12 overflow-hidden rounded-2xl border border-slate-200 bg-white"
-      />
+      {sessionExpired ? (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+          {locale === "zh"
+            ? "支付会话已过期，请返回结算页重新发起支付。"
+            : "Payment session expired. Please go back to checkout and restart payment."}
+        </div>
+      ) : (
+        <div
+          id="clover-google-pay"
+          className="h-12 overflow-hidden rounded-2xl border border-slate-200 bg-white"
+        />
+      )}
 
       {error ? (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
