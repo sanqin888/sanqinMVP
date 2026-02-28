@@ -51,14 +51,6 @@ function buildPaymentErrorMessage(locale: Locale, error: unknown) {
   return locale === "zh" ? "Google Pay 支付失败，请返回结算页重试。" : "Google Pay failed. Please go back and try again.";
 }
 
-function formatRemaining(remainingMs: number): string {
-  const totalSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes.toString().padStart(2, "0")}:${seconds
-    .toString()
-    .padStart(2, "0")}`;
-}
 export default function GooglePayWalletPage() {
   const params = useParams<{ locale?: string }>();
   const searchParams = useSearchParams();
