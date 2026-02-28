@@ -143,9 +143,6 @@ function isStandaloneWebApp(): boolean {
 const PHONE_OTP_REQUEST_URL = "/api/v1/auth/phone/send-code";
 const PHONE_OTP_VERIFY_URL = "/api/v1/auth/phone/verify-code";
 const CHECKOUT_INTENT_STORAGE_KEY = "cloverCheckoutIntentId";
-const GOOGLE_PAY_CTX_KEY = "sanq_google_pay_ctx_v1";
-const APPLE_PAY_CTX_KEY = "sanq_apple_pay_ctx_v1";
-const CARD_PAY_CTX_KEY = "sanq_card_pay_ctx_v1";
 const GOOGLE_PAY_INTENT_STORAGE_KEY = "sanq_google_pay_intent_v1";
 type DeliveryOptionDefinition = {
   provider: "UBER";
@@ -225,16 +222,6 @@ type LoyaltyOrderResponse = {
   clientRequestId: string | null;
 };
 
-type OnlinePricingQuoteResponse = {
-  orderStableId: string;
-  currency: string;
-  quote: {
-    totalCents: number;
-  };
-  pricingToken: string;
-  pricingTokenExpiresAt: string;
-};
-
 type GooglePaySessionContext = {
   locale: Locale;
   checkoutIntentId: string;
@@ -247,6 +234,17 @@ type GooglePaySessionContext = {
 
 type PaymentMethodSessionContext = GooglePaySessionContext & {
   paymentMethod: "APPLE_PAY" | "GOOGLE_PAY" | "CARD";
+};
+
+type PaymentSessionResponse = {
+  sessionId: string;
+  paymentMethod: "APPLE_PAY" | "GOOGLE_PAY" | "CARD";
+  checkoutIntentId: string;
+  orderStableId: string;
+  currency: string;
+  quote: { totalCents: number };
+  pricingToken: string;
+  pricingTokenExpiresAt: string;
 };
 
 type StoreStatusRuleSource =
@@ -1488,27 +1486,26 @@ export default function CheckoutPage() {
       }
 
       const quoteResponse = await withTimeout(
-        apiFetch<OnlinePricingQuoteResponse>("/clover/pay/online/quote", {
+        apiFetch<PaymentSessionResponse>("/clover/pay/online/session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ metadata, checkoutIntentId }),
+          body: JSON.stringify({ metadata, checkoutIntentId, paymentMethod }),
         }),
         15000,
         "apiFetch /clover/pay/online/quote",
       );
 
-      const sessionContext: PaymentMethodSessionContext = {
-        locale,
-        checkoutIntentId,
-        pricingToken: quoteResponse.pricingToken,
-        pricingTokenExpiresAt: quoteResponse.pricingTokenExpiresAt,
-        currency: quoteResponse.currency || HOSTED_CHECKOUT_CURRENCY,
-        totalCents: quoteResponse.quote.totalCents,
-        metadata,
-        paymentMethod,
-      };
+      if (quoteResponse.checkoutIntentId !== checkoutIntentId) {
+        console.debug("[checkout][session] intent id adjusted by server", {
+          from: checkoutIntentId,
+          to: quoteResponse.checkoutIntentId,
+        });
+      }
 
-      return sessionContext;
+      return {
+        sessionId: quoteResponse.sessionId,
+        checkoutIntentId: quoteResponse.checkoutIntentId,
+      };
     },
     [buildCheckoutMetadata, locale],
   );
@@ -1516,7 +1513,6 @@ export default function CheckoutPage() {
   const redirectToPayment = useCallback(
     async (params: {
       paymentMethod: PaymentMethodSessionContext["paymentMethod"];
-      contextKey: string;
       path: string;
       setRedirecting: (value: boolean) => void;
       startFailedMessageZh: string;
@@ -1524,7 +1520,6 @@ export default function CheckoutPage() {
     }) => {
       const {
         paymentMethod,
-        contextKey,
         path,
         setRedirecting,
         startFailedMessageZh,
@@ -1546,23 +1541,13 @@ export default function CheckoutPage() {
         setErrorMessage(null);
         setRedirecting(true);
 
-        const sessionContext = await createPaymentSession(paymentMethod);
-
-        if (typeof window === "undefined") return;
-        try {
-          window.sessionStorage.setItem(
-            contextKey,
-            JSON.stringify(sessionContext),
-          );
-        } catch {
-          throw new Error(
-            locale === "zh"
-              ? "无法保存支付会话，请检查浏览器存储设置后重试。"
-              : "Unable to save payment session. Please check browser storage settings and retry.",
-          );
-        }
-
-        router.push(`/${locale}${path}`);
+        const session = await createPaymentSession(paymentMethod);
+        console.debug("[checkout][session] created", {
+          paymentMethod,
+          sessionId: session.sessionId,
+          checkoutIntentId: session.checkoutIntentId,
+        });
+        router.push(`/${locale}${path}?sessionId=${encodeURIComponent(session.sessionId)}`);
       } catch (error) {
         console.error("[checkout] payment redirect failed", toSafeErrorLog(error));
         setErrorMessage(locale === "zh" ? startFailedMessageZh : startFailedMessageEn);
@@ -1586,7 +1571,6 @@ export default function CheckoutPage() {
   const handleGooglePayCheckout = useCallback(async () => {
     await redirectToPayment({
       paymentMethod: "GOOGLE_PAY",
-      contextKey: GOOGLE_PAY_CTX_KEY,
       path: "/wallet/google-pay",
       setRedirecting: setIsRedirectingToGooglePay,
       startFailedMessageZh: "Google Pay 会话创建失败，请稍后重试。",
@@ -1597,7 +1581,6 @@ export default function CheckoutPage() {
   const handleApplePayCheckout = useCallback(async () => {
     await redirectToPayment({
       paymentMethod: "APPLE_PAY",
-      contextKey: APPLE_PAY_CTX_KEY,
       path: "/wallet/apple-pay",
       setRedirecting: setIsRedirectingToApplePay,
       startFailedMessageZh: "Apple Pay 会话创建失败，请稍后重试。",
@@ -1608,7 +1591,6 @@ export default function CheckoutPage() {
   const handleCardPayCheckout = useCallback(async () => {
     await redirectToPayment({
       paymentMethod: "CARD",
-      contextKey: CARD_PAY_CTX_KEY,
       path: "/wallet/card-pay",
       setRedirecting: setIsRedirectingToCardPay,
       startFailedMessageZh: "银行卡支付会话创建失败，请稍后重试。",
@@ -3827,13 +3809,13 @@ export default function CheckoutPage() {
                 <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
                   <p className="text-xs font-semibold text-slate-600">
                     {locale === "zh"
-                      ? "请选择支付方式并在下一页完成支付（金额将锁定并以服务端校验为准）。"
-                      : "Choose a payment method to complete payment on the next page (amount will be locked and server-verified)."}
+                      ? "请选择支付方式并在下一页完成支付。"
+                      : "Choose a payment method to complete payment on the next page."}
                   </p>
                   {/* 信用卡手续费提示（仅提示，不参与金额计算） */}
                   <p className="text-center text-[11px] leading-snug text-slate-500">
                     {locale === "zh"
-                      ? "可用卡种：Visa / Mastercard / Discover / 借记卡（Debit）。"
+                      ? "可用卡种：Visa / Mastercard / Discover / Debit。"
                       : "Accepted cards: Visa / Mastercard / Discover / Debit."}
                   </p>
                   <p className="text-center text-[11px] leading-snug text-slate-500">
