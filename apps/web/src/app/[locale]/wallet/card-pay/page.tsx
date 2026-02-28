@@ -62,13 +62,11 @@ export default function CardPayWalletPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [canPay, setCanPay] = useState(false);
   const [remainingMs, setRemainingMs] = useState(0);
   const sessionExpired = remainingMs <= 0 && !loading && Boolean(ctx);
 
   const cloverRef = useRef<CloverInstance | null>(null);
   const fieldRefs = useRef<CloverElementInstance[]>([]);
-  const fieldStateRef = useRef<Record<string, { complete?: boolean; error?: string | { message?: string } | null }>>({});
 
   const currencyFormatter = useMemo(() => new Intl.NumberFormat(locale === "zh" ? "zh-Hans-CA" : "en-CA", { style: "currency", currency: HOSTED_CHECKOUT_CURRENCY, minimumFractionDigits: 2, maximumFractionDigits: 2 }), [locale]);
 
@@ -126,8 +124,6 @@ export default function CardPayWalletPage() {
 
         fieldRefs.current.forEach((f) => f.destroy?.());
         fieldRefs.current = [];
-        fieldStateRef.current = {};
-        setCanPay(false);
 
         const clover = new Clover(publicKey, { merchantId });
         cloverRef.current = clover;
@@ -141,24 +137,6 @@ export default function CardPayWalletPage() {
         cvv.mount("#clover-card-cvv");
         fieldRefs.current = [name, number, date, cvv];
 
-        const requiredKeys = ["CARD_NUMBER", "CARD_DATE", "CARD_CVV"];
-        const updateState = (key: string, payload: unknown) => {
-          const event = (payload && typeof payload === "object" ? payload : {}) as { complete?: boolean; error?: string | { message?: string } | null };
-          fieldStateRef.current[key] = { complete: event.complete, error: event.error ?? null };
-          const ready = requiredKeys.every((k) => {
-            const item = fieldStateRef.current[k];
-            if (!item?.complete) return false;
-            if (!item.error) return true;
-            if (typeof item.error === "string") return item.error.trim().length === 0;
-            return !(typeof item.error?.message === "string" && item.error.message.trim().length > 0);
-          });
-          setCanPay(ready);
-        };
-
-        name.addEventListener("change", (e) => updateState("CARD_NAME", e));
-        number.addEventListener("change", (e) => updateState("CARD_NUMBER", e));
-        date.addEventListener("change", (e) => updateState("CARD_DATE", e));
-        cvv.addEventListener("change", (e) => updateState("CARD_CVV", e));
       } catch (err) {
         console.error("[CARD][session] init error", toSafeErrorLog(err));
         setError(locale === "zh" ? "银行卡支付初始化失败，请返回结算页重试。" : "Failed to initialize card payment. Please go back and try again.");
@@ -170,14 +148,12 @@ export default function CardPayWalletPage() {
       cancelled = true;
       fieldRefs.current.forEach((f) => f.destroy?.());
       fieldRefs.current = [];
-      fieldStateRef.current = {};
       cloverRef.current = null;
-      setCanPay(false);
     };
   }, [ctx, locale]);
 
   const handlePay = async () => {
-    if (!ctx || !cloverRef.current || submitting || !canPay || sessionExpired) {
+    if (!ctx || !cloverRef.current || submitting || sessionExpired) {
       if (sessionExpired) setError(locale === "zh" ? "支付会话已过期，请返回结算页重新发起支付。" : "Payment session expired. Please go back to checkout and restart payment.");
       return;
     }
@@ -229,7 +205,7 @@ export default function CardPayWalletPage() {
         ) : ctx ? (
           <>
             <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-              <p>{locale === "zh" ? "应付金额（已锁定）" : "Amount due (locked)"}</p>
+              <p>{locale === "zh" ? "应付金额" : "Amount due"}</p>
               <p className="mt-1 text-lg font-semibold text-slate-900">{currencyFormatter.format(ctx.totalCents / 100).replace(/^CA\$\s?/, "$")}</p>
               <p className={`mt-2 text-xs font-semibold ${sessionExpired ? "text-rose-600" : "text-slate-600"}`}>{locale === "zh" ? "支付会话剩余时间" : "Session time left"}：{formatRemaining(remainingMs)}</p>
             </div>
@@ -245,14 +221,14 @@ export default function CardPayWalletPage() {
 
             {sessionExpired ? <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">{locale === "zh" ? "支付会话已过期，请返回结算页重新发起支付。" : "Payment session expired. Please go back to checkout and restart payment."}</div> : null}
 
-            <button type="button" className="mt-5 w-full rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition enabled:hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-emerald-200" onClick={() => void handlePay()} disabled={submitting || !canPay || sessionExpired}>
+            <button type="button" className="mt-5 w-full rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition enabled:hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-emerald-200" onClick={() => void handlePay()} disabled={submitting || sessionExpired}>
               {submitting ? (locale === "zh" ? "支付处理中…" : "Processing...") : (locale === "zh" ? "确认并支付" : "Pay now")}
             </button>
           </>
         ) : null}
 
         <button type="button" className="mt-4 w-full rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" onClick={() => router.replace(`/${locale}/checkout`)}>
-          {locale === "zh" ? "返回结算页修改订单" : "Back to checkout"}
+          {locale === "zh" ? "返回结算页" : "Back to checkout"}
         </button>
       </div>
     </main>
