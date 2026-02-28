@@ -122,8 +122,7 @@ export default function CardPayWalletPage() {
         const numberHost = document.getElementById("clover-card-number");
         const dateHost = document.getElementById("clover-card-date");
         const cvvHost = document.getElementById("clover-card-cvv");
-        const postalHost = document.getElementById("clover-postal");
-        if (!nameHost || !numberHost || !dateHost || !cvvHost || !postalHost) throw new Error("Card fields not ready");
+        if (!nameHost || !numberHost || !dateHost || !cvvHost) throw new Error("Card fields not ready");
 
         fieldRefs.current.forEach((f) => f.destroy?.());
         fieldRefs.current = [];
@@ -136,15 +135,13 @@ export default function CardPayWalletPage() {
         const number = clover.elements().create("CARD_NUMBER");
         const date = clover.elements().create("CARD_DATE");
         const cvv = clover.elements().create("CARD_CVV");
-        const postal = clover.elements().create("CARD_POSTAL_CODE");
         name.mount("#clover-card-name");
         number.mount("#clover-card-number");
         date.mount("#clover-card-date");
         cvv.mount("#clover-card-cvv");
-        postal.mount("#clover-postal");
-        fieldRefs.current = [name, number, date, cvv, postal];
+        fieldRefs.current = [name, number, date, cvv];
 
-        const requiredKeys = ["CARD_NUMBER", "CARD_DATE", "CARD_CVV", "CARD_POSTAL_CODE"];
+        const requiredKeys = ["CARD_NUMBER", "CARD_DATE", "CARD_CVV"];
         const updateState = (key: string, payload: unknown) => {
           const event = (payload && typeof payload === "object" ? payload : {}) as { complete?: boolean; error?: string | { message?: string } | null };
           fieldStateRef.current[key] = { complete: event.complete, error: event.error ?? null };
@@ -162,7 +159,6 @@ export default function CardPayWalletPage() {
         number.addEventListener("change", (e) => updateState("CARD_NUMBER", e));
         date.addEventListener("change", (e) => updateState("CARD_DATE", e));
         cvv.addEventListener("change", (e) => updateState("CARD_CVV", e));
-        postal.addEventListener("change", (e) => updateState("CARD_POSTAL_CODE", e));
       } catch (err) {
         console.error("[CARD][session] init error", toSafeErrorLog(err));
         setError(locale === "zh" ? "银行卡支付初始化失败，请返回结算页重试。" : "Failed to initialize card payment. Please go back and try again.");
@@ -242,10 +238,9 @@ export default function CardPayWalletPage() {
               <div className="space-y-1 md:col-span-1"><label className="text-xs font-medium text-slate-600">{locale === "zh" ? "持卡人姓名" : "Name on card"} *</label><div id="clover-card-name" className="flex h-10 items-center rounded-2xl border border-slate-200 bg-white px-3" /></div>
               <div className="space-y-1 md:col-span-2"><label className="text-xs font-medium text-slate-600">{locale === "zh" ? "卡号" : "Card number"} *</label><div id="clover-card-number" className="flex h-10 items-center rounded-2xl border border-slate-200 bg-white px-3" /></div>
             </div>
-            <div className="mt-3 grid gap-3 md:grid-cols-3">
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
               <div className="space-y-1"><label className="text-xs font-medium text-slate-600">{locale === "zh" ? "有效期" : "MM/YY"} *</label><div id="clover-card-date" className="flex h-10 items-center rounded-2xl border border-slate-200 bg-white px-3" /></div>
               <div className="space-y-1"><label className="text-xs font-medium text-slate-600">{locale === "zh" ? "安全码" : "CVV"} *</label><div id="clover-card-cvv" className="flex h-10 items-center rounded-2xl border border-slate-200 bg-white px-3" /></div>
-              <div className="space-y-1"><label className="text-xs font-medium text-slate-600">{locale === "zh" ? "邮编" : "Postal code"} *</label><div id="clover-postal" className="flex h-10 items-center rounded-2xl border border-slate-200 bg-white px-3" /></div>
             </div>
 
             {sessionExpired ? <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">{locale === "zh" ? "支付会话已过期，请返回结算页重新发起支付。" : "Payment session expired. Please go back to checkout and restart payment."}</div> : null}
