@@ -12,6 +12,7 @@ import {
   OnModuleInit,
   Post,
   Query,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { AppLogger } from '../common/app-logger';
 import { CloverService } from './clover.service';
@@ -29,6 +30,7 @@ import { OrdersService } from '../orders/orders.service';
 import { generateStableId } from '../common/utils/stable-id';
 import { buildClientRequestId } from '../common/utils/client-request-id';
 import { CreateOnlinePricingQuoteDto } from './dto/create-online-pricing-quote.dto';
+import { CreatePaymentSessionDto } from './dto/create-payment-session.dto';
 import { PricingTokenService } from './pricing-token.service';
 
 @Controller('clover')
@@ -42,6 +44,156 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     private readonly orders: OrdersService,
     private readonly pricingTokens: PricingTokenService,
   ) {}
+
+  @Post('pay/online/session')
+  async createPaymentSession(@Body() dto: CreatePaymentSessionDto) {
+    let metadata: HostedCheckoutMetadata;
+    try {
+      metadata = parseHostedCheckoutMetadata(dto.metadata);
+    } catch (error) {
+      throw new BadRequestException({
+        code: 'INVALID_CHECKOUT_METADATA',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'invalid checkout metadata payload',
+      });
+    }
+
+    const checkoutIntentId =
+      typeof dto.checkoutIntentId === 'string' &&
+      dto.checkoutIntentId.trim().length > 0
+        ? dto.checkoutIntentId.trim()
+        : buildClientRequestId();
+
+    const orderStableId = metadata.orderStableId ?? generateStableId();
+    const orderDto = buildOrderDtoFromMetadata(metadata, orderStableId);
+    orderDto.clientRequestId = checkoutIntentId;
+    const quote = await this.orders.quoteOrderPricing(orderDto);
+    const fingerprint = buildPricingFingerprint(orderDto);
+    const token = this.pricingTokens.issue({
+      totalCents: quote.totalCents,
+      fingerprint,
+      checkoutIntentId,
+    });
+
+    const sessionId = generateStableId();
+    const metadataWithSession = {
+      ...metadata,
+      orderStableId,
+      paymentMethod: dto.paymentMethod,
+      paymentSessionId: sessionId,
+      paymentSessionCreatedAt: new Date().toISOString(),
+    } as HostedCheckoutMetadata & Record<string, unknown>;
+
+    await this.checkoutIntents.recordIntent({
+      referenceId: checkoutIntentId,
+      checkoutSessionId: sessionId,
+      amountCents: quote.totalCents,
+      currency: CLOVER_PAYMENT_CURRENCY,
+      locale: metadata.locale,
+      metadata: metadataWithSession as HostedCheckoutMetadata,
+    });
+
+    this.logger.debug(
+      `[session.create] ok sessionId=${sessionId} method=${dto.paymentMethod} intent=${checkoutIntentId} total=${quote.totalCents}`,
+    );
+
+    return {
+      sessionId,
+      paymentMethod: dto.paymentMethod,
+      checkoutIntentId,
+      orderStableId,
+      currency: CLOVER_PAYMENT_CURRENCY,
+      quote,
+      pricingToken: token.pricingToken,
+      pricingTokenExpiresAt: token.expiresAt,
+    };
+  }
+
+  @Get('pay/online/session')
+  async getPaymentSession(
+    @Query('sessionId') sessionId?: string,
+    @Query('paymentMethod') paymentMethod?: 'APPLE_PAY' | 'GOOGLE_PAY' | 'CARD',
+  ) {
+    const id = sessionId?.trim();
+    if (!id) {
+      throw new BadRequestException({
+        code: 'PAYMENT_SESSION_REQUIRED',
+        message: 'sessionId is required',
+      });
+    }
+
+    const intent = await this.checkoutIntents.findByIdentifiers({
+      checkoutSessionId: id,
+    });
+
+    if (!intent) {
+      throw new NotFoundException({
+        code: 'PAYMENT_SESSION_NOT_FOUND',
+        message: 'payment session not found',
+      });
+    }
+
+    if (intent.status === 'expired') {
+      throw new UnauthorizedException({
+        code: 'PAYMENT_SESSION_EXPIRED',
+        message: 'payment session expired, please requote from checkout',
+      });
+    }
+
+    const metadata = intent.metadata as HostedCheckoutMetadata &
+      Record<string, unknown>;
+
+    if (
+      paymentMethod &&
+      typeof metadata.paymentMethod === 'string' &&
+      metadata.paymentMethod !== paymentMethod
+    ) {
+      throw new BadRequestException({
+        code: 'PAYMENT_METHOD_MISMATCH',
+        message: 'payment method does not match the session',
+      });
+    }
+
+    const orderStableId = metadata.orderStableId ?? generateStableId();
+    const orderDto = buildOrderDtoFromMetadata(metadata, orderStableId);
+    orderDto.clientRequestId = intent.referenceId;
+
+    const quote = await this.orders.quoteOrderPricing(orderDto);
+    const fingerprint = buildPricingFingerprint(orderDto);
+    const token = this.pricingTokens.issue({
+      totalCents: quote.totalCents,
+      fingerprint,
+      checkoutIntentId: intent.referenceId,
+    });
+
+    const resolvedMethod =
+      typeof paymentMethod === 'string'
+        ? paymentMethod
+        : typeof metadata.paymentMethod === 'string'
+          ? metadata.paymentMethod
+          : 'unknown';
+
+    this.logger.debug(
+      `[session.fetch] ok sessionId=${id} method=${resolvedMethod} intent=${intent.referenceId} total=${quote.totalCents}`,
+    );
+
+    return {
+      sessionId: id,
+      paymentMethod:
+        typeof metadata.paymentMethod === 'string'
+          ? metadata.paymentMethod
+          : (paymentMethod ?? null),
+      checkoutIntentId: intent.referenceId,
+      orderStableId,
+      currency: intent.currency ?? CLOVER_PAYMENT_CURRENCY,
+      quote,
+      pricingToken: token.pricingToken,
+      pricingTokenExpiresAt: token.expiresAt,
+      metadata,
+    };
+  }
 
   @Post('pay/online/quote')
   async createOnlinePricingQuote(@Body() dto: CreateOnlinePricingQuoteDto) {
@@ -309,8 +461,8 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     @Headers('cf-connecting-ip') cfConnectingIp: string | string[] | undefined,
     @Ip() rawIp: string,
   ) {
-    this.logger.log(
-      `Incoming card-token payment request: amountCents=${dto.amountCents ?? 'N/A'}`,
+    this.logger.debug(
+      `[payment.request] card-token received amount=${dto.amountCents ?? 'N/A'} checkoutIntentId=${dto.checkoutIntentId ?? 'N/A'}`,
     );
 
     if (!dto.metadata) {
@@ -404,11 +556,31 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     const quote = await this.orders.quoteOrderPricing(orderDto);
     const expectedTotalCents = quote.totalCents;
     const fingerprint = buildPricingFingerprint(orderDto);
-    this.pricingTokens.verify(dto.pricingToken, {
-      expectedFingerprint: fingerprint,
-      expectedTotalCents,
-      expectedCheckoutIntentId: referenceId,
+
+    const existingIntent = await this.checkoutIntents.findByIdentifiers({
+      referenceId,
     });
+
+    try {
+      this.pricingTokens.verify(dto.pricingToken, {
+        expectedFingerprint: fingerprint,
+        expectedTotalCents,
+        expectedCheckoutIntentId: referenceId,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message.toLowerCase() : String(error);
+      if (message.includes('pricingtoken is expired')) {
+        if (existingIntent && existingIntent.orderId === null) {
+          await this.checkoutIntents.markExpired(existingIntent.id);
+        }
+        throw new UnauthorizedException({
+          code: 'PAYMENT_SESSION_EXPIRED',
+          message: 'payment session expired, please requote from checkout',
+        });
+      }
+      throw error;
+    }
 
     if (
       typeof dto.amountCents === 'number' &&
@@ -432,10 +604,6 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     this.logger.log(
       `Processing payment from IP: ${clientIp} (CF: ${cfConnectingIpDisplay}, Raw: ${rawIp ?? 'N/A'})`,
     );
-
-    const existingIntent = await this.checkoutIntents.findByIdentifiers({
-      referenceId,
-    });
 
     if (existingIntent?.orderId) {
       return {
@@ -567,6 +735,9 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
         } satisfies HostedCheckoutMetadata & CheckoutIntentPaymentMeta;
         await this.checkoutIntents.updateMetadata(intent.id, updatedMetadata);
 
+        this.logger.debug(
+          `[payment.3ds] challenge_required intent=${referenceId}`,
+        );
         return {
           orderStableId,
           orderNumber: referenceId,
@@ -638,6 +809,10 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       status: 'completed',
       result: paymentResult.status ?? 'SUCCESS',
     });
+
+    this.logger.debug(
+      `[payment.complete] intent=${referenceId} order=${orderStableId} status=${paymentResult.status ?? 'SUCCESS'}`,
+    );
 
     return {
       orderStableId,

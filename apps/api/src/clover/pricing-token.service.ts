@@ -15,7 +15,7 @@ type PricingTokenPayload = {
 
 @Injectable()
 export class PricingTokenService {
-  private readonly ttlSeconds = 10 * 60;
+  private readonly ttlSeconds = 15 * 60;
 
   issue(params: {
     totalCents: number;
