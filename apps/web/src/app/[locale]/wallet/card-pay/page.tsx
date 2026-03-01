@@ -34,7 +34,7 @@ type CloverElementInstance = { mount: (selector: string) => void; addEventListen
 type CloverTokenResult = { token?: string; errors?: Array<{ message?: string }> };
 type CloverInstance = { elements: () => { create: (type: string, options?: Record<string, unknown>) => CloverElementInstance }; createToken: () => Promise<CloverTokenResult> };
 type CloverConstructor = new (key?: string, options?: { merchantId?: string }) => CloverInstance;
-type CardFieldKey = "name" | "number" | "date" | "cvv";
+type CardFieldKey = "CARD_NAME" | "CARD_NUMBER" | "CARD_DATE" | "CARD_CVV" | "CARD_POSTAL_CODE";
 
 function toSafeErrorLog(error: unknown) { if (error instanceof ApiError) return { name: error.name, message: error.message, status: error.status }; if (error instanceof Error) return { name: error.name, message: error.message }; return { message: String(error) }; }
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> { return new Promise((resolve, reject) => { const id = setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms); p.then((value) => { clearTimeout(id); resolve(value); }, (error) => { clearTimeout(id); reject(error); }); }); }
@@ -76,6 +76,19 @@ function extractFieldEventState(payload: unknown): { complete?: boolean; error?:
   return { complete, error };
 }
 
+function getFieldFromEvent(raw: unknown, key: CardFieldKey): Record<string, unknown> {
+  if (!raw || typeof raw !== "object") return {};
+  const event = raw as Record<string, unknown>;
+  const data = event.data && typeof event.data === "object" ? (event.data as Record<string, unknown>) : undefined;
+  const fromDataState = data?.realTimeFormState && typeof data.realTimeFormState === "object" ? (data.realTimeFormState as Record<string, unknown>)[key] : undefined;
+  if (fromDataState && typeof fromDataState === "object") return fromDataState as Record<string, unknown>;
+  const fromState = event.realTimeFormState && typeof event.realTimeFormState === "object" ? (event.realTimeFormState as Record<string, unknown>)[key] : undefined;
+  if (fromState && typeof fromState === "object") return fromState as Record<string, unknown>;
+  const fromKey = event[key];
+  if (fromKey && typeof fromKey === "object") return fromKey as Record<string, unknown>;
+  return event;
+}
+
 export default function CardPayWalletPage() {
   const params = useParams<{ locale?: string }>();
   const searchParams = useSearchParams();
@@ -88,14 +101,16 @@ export default function CardPayWalletPage() {
   const [submitting, setSubmitting] = useState(false);
   const [postalCode, setPostalCode] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<CardFieldKey, string>>>({});
-  const [fieldCompletion, setFieldCompletion] = useState<Record<CardFieldKey, boolean>>({ name: false, number: false, date: false, cvv: false });
+  const [fieldCompletion, setFieldCompletion] = useState<Record<CardFieldKey, boolean>>({ CARD_NAME: false, CARD_NUMBER: false, CARD_DATE: false, CARD_CVV: false, CARD_POSTAL_CODE: false });
   const [remainingMs, setRemainingMs] = useState(0);
   const sessionExpired = remainingMs <= 0 && !loading && Boolean(ctx);
   const isDelivery = ctx?.metadata && typeof ctx.metadata === "object" && "fulfillment" in ctx.metadata ? ctx.metadata.fulfillment === "delivery" : false;
   const normalizedPostalCode = postalCode.replace(/\s+/g, "").toUpperCase();
-  const postalCodeValid = !isDelivery || /^[A-Z]\d[A-Z]\d[A-Z]\d$/.test(normalizedPostalCode);
+  const postalCodeComplete = fieldCompletion.CARD_POSTAL_CODE;
+  const postalCodeValid = !isDelivery || postalCodeComplete;
   const hasFieldError = Object.values(fieldErrors).some((v) => Boolean(v));
-  const canSubmit = !submitting && !sessionExpired && Object.values(fieldCompletion).every(Boolean) && !hasFieldError && postalCodeValid;
+  const baseCardComplete = fieldCompletion.CARD_NAME && fieldCompletion.CARD_NUMBER && fieldCompletion.CARD_DATE && fieldCompletion.CARD_CVV;
+  const canSubmit = !submitting && !sessionExpired && baseCardComplete && (!isDelivery || postalCodeComplete) && !hasFieldError && postalCodeValid;
 
   const cloverRef = useRef<CloverInstance | null>(null);
   const fieldRefs = useRef<CloverElementInstance[]>([]);
@@ -113,6 +128,8 @@ export default function CardPayWalletPage() {
         if (cancelled) return;
         setCtx({ sessionId: data.sessionId, paymentMethod: (data.paymentMethod as PaymentCtx["paymentMethod"]) ?? "CARD", locale, checkoutIntentId: data.checkoutIntentId, pricingToken: data.pricingToken, pricingTokenExpiresAt: data.pricingTokenExpiresAt, currency: data.currency || HOSTED_CHECKOUT_CURRENCY, totalCents: data.quote.totalCents, metadata: data.metadata });
         setPostalCode("");
+        setFieldErrors({});
+        setFieldCompletion({ CARD_NAME: false, CARD_NUMBER: false, CARD_DATE: false, CARD_CVV: false, CARD_POSTAL_CODE: false });
         setRemainingMs(getRemainingMs(data.pricingTokenExpiresAt));
         setLoading(false);
       } catch (err) {
@@ -153,7 +170,8 @@ export default function CardPayWalletPage() {
         const numberHost = document.getElementById("clover-card-number");
         const dateHost = document.getElementById("clover-card-date");
         const cvvHost = document.getElementById("clover-card-cvv");
-        if (!nameHost || !numberHost || !dateHost || !cvvHost) throw new Error("Card fields not ready");
+        const postalCodeHost = document.getElementById("clover-card-postal-code");
+        if (!nameHost || !numberHost || !dateHost || !cvvHost || !postalCodeHost) throw new Error("Card fields not ready");
 
         fieldRefs.current.forEach((f) => f.destroy?.());
         fieldRefs.current = [];
@@ -164,31 +182,41 @@ export default function CardPayWalletPage() {
         const number = clover.elements().create("CARD_NUMBER");
         const date = clover.elements().create("CARD_DATE");
         const cvv = clover.elements().create("CARD_CVV");
+        const postalCode = clover.elements().create("CARD_POSTAL_CODE");
 
         const bindFieldListener = (field: CloverElementInstance, key: CardFieldKey) => {
-          field.addEventListener("change", (payload) => {
-            const next = extractFieldEventState(payload);
-            if (typeof next.complete === "boolean") {
-              setFieldCompletion((prev) => ({ ...prev, [key]: next.complete ?? false }));
+          const syncState = (payload: unknown) => {
+            const fieldPayload = getFieldFromEvent(payload, key);
+            const next = extractFieldEventState(fieldPayload);
+            setFieldCompletion((prev) => ({ ...prev, [key]: typeof next.complete === "boolean" ? next.complete : prev[key] }));
+            setFieldErrors((prev) => ({ ...prev, [key]: typeof next.error === "string" ? next.error : "" }));
+
+            if (key === "CARD_POSTAL_CODE") {
+              const info = fieldPayload.info;
+              if (typeof info === "string") setPostalCode(info);
+              else if (info && typeof info === "object" && "value" in info && typeof (info as Record<string, unknown>).value === "string") {
+                setPostalCode((info as { value: string }).value);
+              } else if (typeof fieldPayload.value === "string") {
+                setPostalCode(fieldPayload.value);
+              }
             }
-            if (typeof next.error === "string") {
-              setFieldErrors((prev) => ({ ...prev, [key]: next.error }));
-            } else if (next.complete) {
-              setFieldErrors((prev) => ({ ...prev, [key]: "" }));
-            }
-          });
+          };
+          field.addEventListener("change", syncState);
+          field.addEventListener("blur", syncState);
         };
 
-        bindFieldListener(name, "name");
-        bindFieldListener(number, "number");
-        bindFieldListener(date, "date");
-        bindFieldListener(cvv, "cvv");
+        bindFieldListener(name, "CARD_NAME");
+        bindFieldListener(number, "CARD_NUMBER");
+        bindFieldListener(date, "CARD_DATE");
+        bindFieldListener(cvv, "CARD_CVV");
+        bindFieldListener(postalCode, "CARD_POSTAL_CODE");
 
         name.mount("#clover-card-name");
         number.mount("#clover-card-number");
         date.mount("#clover-card-date");
         cvv.mount("#clover-card-cvv");
-        fieldRefs.current = [name, number, date, cvv];
+        postalCode.mount("#clover-card-postal-code");
+        fieldRefs.current = [name, number, date, cvv, postalCode];
 
       } catch (err) {
         console.error("[CARD][session] init error", toSafeErrorLog(err));
@@ -289,14 +317,7 @@ export default function CardPayWalletPage() {
               <label className="text-xs font-medium text-slate-600">
                 {locale === "zh" ? "邮编" : "Postal code"}{isDelivery ? " *" : ""}
               </label>
-              <input
-                value={postalCode}
-                onChange={(event) => setPostalCode(event.target.value)}
-                autoComplete="postal-code"
-                inputMode="text"
-                placeholder={locale === "zh" ? "例如 A1A 1A1" : "e.g. A1A 1A1"}
-                className="h-10 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:ring"
-              />
+              <div id="clover-card-postal-code" className="flex h-10 items-center rounded-2xl border border-slate-200 bg-white px-3" />
               {isDelivery && !postalCodeValid ? (
                 <p className="text-xs text-rose-600">{locale === "zh" ? "配送订单需有效加拿大邮编。" : "Delivery requires a valid Canadian postal code."}</p>
               ) : null}
@@ -304,7 +325,7 @@ export default function CardPayWalletPage() {
 
             {hasFieldError ? (
               <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
-                {(fieldErrors.number || fieldErrors.date || fieldErrors.cvv || fieldErrors.name || (locale === "zh" ? "请检查银行卡信息输入是否正确。" : "Please verify your card details."))}
+                {(fieldErrors.CARD_NUMBER || fieldErrors.CARD_DATE || fieldErrors.CARD_CVV || fieldErrors.CARD_NAME || fieldErrors.CARD_POSTAL_CODE || (locale === "zh" ? "请检查银行卡信息输入是否正确。" : "Please verify your card details."))}
               </div>
             ) : null}
 
