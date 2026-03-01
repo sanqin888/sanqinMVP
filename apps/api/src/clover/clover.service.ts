@@ -390,7 +390,7 @@ export class CloverService {
           Number.isFinite(charge.rate) &&
           charge.rate >= 0
         ) {
-          surchargeRate = Math.round(charge.rate);
+          surchargeRate = Math.round(charge.rate * 10) / 10;
         }
       }
 
