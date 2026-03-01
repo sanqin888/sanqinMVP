@@ -34,6 +34,7 @@ type CloverElementInstance = { mount: (selector: string) => void; addEventListen
 type CloverTokenResult = { token?: string; errors?: Array<{ message?: string }> };
 type CloverInstance = { elements: () => { create: (type: string, options?: Record<string, unknown>) => CloverElementInstance }; createToken: () => Promise<CloverTokenResult> };
 type CloverConstructor = new (key?: string, options?: { merchantId?: string }) => CloverInstance;
+type CardFieldKey = "name" | "number" | "date" | "cvv";
 
 function toSafeErrorLog(error: unknown) { if (error instanceof ApiError) return { name: error.name, message: error.message, status: error.status }; if (error instanceof Error) return { name: error.name, message: error.message }; return { message: String(error) }; }
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> { return new Promise((resolve, reject) => { const id = setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms); p.then((value) => { clearTimeout(id); resolve(value); }, (error) => { clearTimeout(id); reject(error); }); }); }
@@ -41,15 +42,38 @@ function getRemainingMs(expiresAtIso?: string): number { if (!expiresAtIso) retu
 function formatRemaining(remainingMs: number): string { const t = Math.max(0, Math.ceil(remainingMs / 1000)); return `${Math.floor(t / 60).toString().padStart(2, "0")}:${(t % 60).toString().padStart(2, "0")}`; }
 
 function buildPaymentErrorMessage(locale: Locale, error: unknown) {
+  if (error instanceof Error && error.message.trim()) return error.message;
   if (error instanceof ApiError && error.payload && typeof error.payload === "object") {
     const payload = error.payload as Record<string, unknown>;
     const code = typeof payload.code === "string" ? payload.code : "";
     if (["AMOUNT_MISMATCH", "pricing_token_amount_mismatch", "PAYMENT_SESSION_EXPIRED"].includes(code)) {
       return locale === "zh" ? "订单金额或会话状态已变更，请返回结算页重新确认后再支付。" : "Order amount/session changed. Please return to checkout and confirm again.";
     }
+    if (payload.details && typeof payload.details === "object") {
+      const details = payload.details as Record<string, unknown>;
+      const reason = typeof details.reason === "string" ? details.reason.trim() : "";
+      if (reason) return reason;
+    }
     if (typeof payload.message === "string" && payload.message.trim()) return payload.message;
   }
   return locale === "zh" ? "银行卡支付失败，请返回结算页重试。" : "Card payment failed. Please go back and try again.";
+}
+
+function extractFieldEventState(payload: unknown): { complete?: boolean; error?: string } {
+  if (!payload || typeof payload !== "object") return {};
+  const data = payload as Record<string, unknown>;
+  const complete = typeof data.complete === "boolean" ? data.complete : typeof data.isValid === "boolean" ? data.isValid : typeof data.valid === "boolean" ? data.valid : undefined;
+  const errorObj = data.error;
+  const error =
+    typeof data.error === "string"
+      ? data.error
+      : errorObj && typeof errorObj === "object" && "message" in errorObj && typeof (errorObj as Record<string, unknown>).message === "string"
+        ? ((errorObj as Record<string, unknown>).message as string)
+        : typeof data.message === "string"
+          ? data.message
+          : undefined;
+
+  return { complete, error };
 }
 
 export default function CardPayWalletPage() {
@@ -62,8 +86,16 @@ export default function CardPayWalletPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [postalCode, setPostalCode] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<CardFieldKey, string>>>({});
+  const [fieldCompletion, setFieldCompletion] = useState<Record<CardFieldKey, boolean>>({ name: false, number: false, date: false, cvv: false });
   const [remainingMs, setRemainingMs] = useState(0);
   const sessionExpired = remainingMs <= 0 && !loading && Boolean(ctx);
+  const isDelivery = ctx?.metadata && typeof ctx.metadata === "object" && "fulfillment" in ctx.metadata ? ctx.metadata.fulfillment === "delivery" : false;
+  const normalizedPostalCode = postalCode.replace(/\s+/g, "").toUpperCase();
+  const postalCodeValid = !isDelivery || /^[A-Z]\d[A-Z]\d[A-Z]\d$/.test(normalizedPostalCode);
+  const hasFieldError = Object.values(fieldErrors).some((v) => Boolean(v));
+  const canSubmit = !submitting && !sessionExpired && Object.values(fieldCompletion).every(Boolean) && !hasFieldError && postalCodeValid;
 
   const cloverRef = useRef<CloverInstance | null>(null);
   const fieldRefs = useRef<CloverElementInstance[]>([]);
@@ -80,6 +112,7 @@ export default function CardPayWalletPage() {
         const data = await withTimeout(apiFetch<PaymentSessionFetchResponse>(`/clover/pay/online/session?sessionId=${encodeURIComponent(sessionId)}&paymentMethod=CARD`), 15000, "apiFetch /clover/pay/online/session");
         if (cancelled) return;
         setCtx({ sessionId: data.sessionId, paymentMethod: (data.paymentMethod as PaymentCtx["paymentMethod"]) ?? "CARD", locale, checkoutIntentId: data.checkoutIntentId, pricingToken: data.pricingToken, pricingTokenExpiresAt: data.pricingTokenExpiresAt, currency: data.currency || HOSTED_CHECKOUT_CURRENCY, totalCents: data.quote.totalCents, metadata: data.metadata });
+        setPostalCode("");
         setRemainingMs(getRemainingMs(data.pricingTokenExpiresAt));
         setLoading(false);
       } catch (err) {
@@ -131,6 +164,26 @@ export default function CardPayWalletPage() {
         const number = clover.elements().create("CARD_NUMBER");
         const date = clover.elements().create("CARD_DATE");
         const cvv = clover.elements().create("CARD_CVV");
+
+        const bindFieldListener = (field: CloverElementInstance, key: CardFieldKey) => {
+          field.addEventListener("change", (payload) => {
+            const next = extractFieldEventState(payload);
+            if (typeof next.complete === "boolean") {
+              setFieldCompletion((prev) => ({ ...prev, [key]: next.complete ?? false }));
+            }
+            if (typeof next.error === "string") {
+              setFieldErrors((prev) => ({ ...prev, [key]: next.error }));
+            } else if (next.complete) {
+              setFieldErrors((prev) => ({ ...prev, [key]: "" }));
+            }
+          });
+        };
+
+        bindFieldListener(name, "name");
+        bindFieldListener(number, "number");
+        bindFieldListener(date, "date");
+        bindFieldListener(cvv, "cvv");
+
         name.mount("#clover-card-name");
         number.mount("#clover-card-number");
         date.mount("#clover-card-date");
@@ -157,6 +210,12 @@ export default function CardPayWalletPage() {
       if (sessionExpired) setError(locale === "zh" ? "支付会话已过期，请返回结算页重新发起支付。" : "Payment session expired. Please go back to checkout and restart payment.");
       return;
     }
+    if (!canSubmit) {
+      setError(isDelivery && !postalCodeValid
+        ? (locale === "zh" ? "配送订单需要填写有效邮编（如 A1A1A1）。" : "A valid postal code is required for delivery orders.")
+        : (locale === "zh" ? "请先完整填写银行卡信息并修正错误后再支付。" : "Please complete card details and fix errors before paying."));
+      return;
+    }
     setSubmitting(true);
     setError(null);
 
@@ -177,10 +236,16 @@ export default function CardPayWalletPage() {
           source: tokenResult.token,
           sourceType: "CARD",
           cardholderName: typeof customer?.firstName === "string" || typeof customer?.lastName === "string" ? `${typeof customer?.firstName === "string" ? customer.firstName : ""} ${typeof customer?.lastName === "string" ? customer.lastName : ""}`.trim() || "Card Holder" : "Card Holder",
+          postalCode: normalizedPostalCode || undefined,
           customer: customer ?? {}, metadata: ctx.metadata,
           threeds: { source: "CLOVER", browserInfo },
         }),
       }), 20000, "apiFetch /clover/pay/online/card-token");
+
+      if (paymentResponse?.status === "CHALLENGE_REQUIRED" && paymentResponse.challengeUrl) {
+        window.location.assign(paymentResponse.challengeUrl);
+        return;
+      }
 
       if (!paymentResponse?.orderStableId) throw new Error(locale === "zh" ? "支付处理中或失败，请返回结算页重试。" : "Payment is processing/failed. Please go back and try again.");
       router.replace(`/${locale}/thank-you/${paymentResponse.orderStableId}`);
@@ -219,9 +284,33 @@ export default function CardPayWalletPage() {
               <div className="space-y-1"><label className="text-xs font-medium text-slate-600">{locale === "zh" ? "安全码" : "CVV"} *</label><div id="clover-card-cvv" className="flex h-10 items-center rounded-2xl border border-slate-200 bg-white px-3" /></div>
             </div>
 
+
+            <div className="mt-3 space-y-1">
+              <label className="text-xs font-medium text-slate-600">
+                {locale === "zh" ? "邮编" : "Postal code"}{isDelivery ? " *" : ""}
+              </label>
+              <input
+                value={postalCode}
+                onChange={(event) => setPostalCode(event.target.value)}
+                autoComplete="postal-code"
+                inputMode="text"
+                placeholder={locale === "zh" ? "例如 A1A 1A1" : "e.g. A1A 1A1"}
+                className="h-10 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:ring"
+              />
+              {isDelivery && !postalCodeValid ? (
+                <p className="text-xs text-rose-600">{locale === "zh" ? "配送订单需有效加拿大邮编。" : "Delivery requires a valid Canadian postal code."}</p>
+              ) : null}
+            </div>
+
+            {hasFieldError ? (
+              <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
+                {(fieldErrors.number || fieldErrors.date || fieldErrors.cvv || fieldErrors.name || (locale === "zh" ? "请检查银行卡信息输入是否正确。" : "Please verify your card details."))}
+              </div>
+            ) : null}
+
             {sessionExpired ? <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">{locale === "zh" ? "支付会话已过期，请返回结算页重新发起支付。" : "Payment session expired. Please go back to checkout and restart payment."}</div> : null}
 
-            <button type="button" className="mt-5 w-full rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition enabled:hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-emerald-200" onClick={() => void handlePay()} disabled={submitting || sessionExpired}>
+            <button type="button" className="mt-5 w-full rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition enabled:hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-emerald-200" onClick={() => void handlePay()} disabled={!canSubmit}>
               {submitting ? (locale === "zh" ? "支付处理中…" : "Processing...") : (locale === "zh" ? "确认并支付" : "Pay now")}
             </button>
           </>
