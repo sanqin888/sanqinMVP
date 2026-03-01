@@ -355,11 +355,11 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
 
           if (
             typeof chargeStatus.amountCents === 'number' &&
-            ![
+            !isIntentAmountCompatibleWithCharge(
+              intent.amountCents,
               chargeStatus.amountCents,
-              chargeStatus.amountCents -
-                Math.max(0, chargeStatus.creditSurchargeCents ?? 0),
-            ].includes(intent.amountCents)
+              chargeStatus.creditSurchargeCents,
+            )
           ) {
             await this.checkoutIntents.markFailed({
               intentId: intent.id,
@@ -874,6 +874,19 @@ function stableStringify(value: unknown): string {
   }
 
   return JSON.stringify(value);
+}
+
+function isIntentAmountCompatibleWithCharge(
+  intentAmountCents: number,
+  chargedAmountCents: number,
+  surchargeCents?: number,
+): boolean {
+  const normalizedSurcharge = Math.max(0, surchargeCents ?? 0);
+  return [
+    chargedAmountCents,
+    chargedAmountCents - normalizedSurcharge,
+    chargedAmountCents + normalizedSurcharge,
+  ].includes(intentAmountCents);
 }
 
 function normalizeCanadianPostalCode(value?: string): string {
