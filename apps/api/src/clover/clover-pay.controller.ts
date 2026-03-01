@@ -676,6 +676,10 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
         description: `Order ${referenceId} - Online`,
       });
     } catch (err: unknown) {
+      await this.checkoutIntents.markFailed({
+        intentId: intent.id,
+        result: 'UPSTREAM_ERROR',
+      });
       const response =
         typeof err === 'object' && err !== null && 'response' in err
           ? (err as { response?: { status?: unknown; data?: unknown } })
