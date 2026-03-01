@@ -2709,7 +2709,7 @@ export class OrdersService {
         : 0;
     const rate =
       typeof rateRaw === 'number' && Number.isFinite(rateRaw) && rateRaw >= 0
-        ? Math.round(rateRaw)
+        ? Math.round(rateRaw * 10) / 10
         : undefined;
 
     if (cents <= 0) return null;

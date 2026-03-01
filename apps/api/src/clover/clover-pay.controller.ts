@@ -353,13 +353,18 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
             });
           }
 
+          const chargeSurcharge =
+            typeof chargeStatus.amountCents === 'number'
+              ? resolveCreditCardSurchargeCents({
+                  intentAmountCents: intent.amountCents,
+                  chargedAmountCents: chargeStatus.amountCents,
+                  surchargeCents: chargeStatus.creditSurchargeCents,
+                })
+              : null;
+
           if (
             typeof chargeStatus.amountCents === 'number' &&
-            ![
-              chargeStatus.amountCents,
-              chargeStatus.amountCents -
-                Math.max(0, chargeStatus.creditSurchargeCents ?? 0),
-            ].includes(intent.amountCents)
+            chargeSurcharge === null
           ) {
             await this.checkoutIntents.markFailed({
               intentId: intent.id,
@@ -371,11 +376,13 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
             });
           }
 
-          if ((chargeStatus.creditSurchargeCents ?? 0) > 0) {
+          const surchargeForSummary = chargeSurcharge ?? 0;
+          if (surchargeForSummary > 0) {
             await this.checkoutIntents.updateMetadata(intent.id, {
               ...intent.metadata,
-              creditCardSurchargeCents: chargeStatus.creditSurchargeCents,
-              creditCardSurchargeRate: chargeStatus.creditSurchargeRate,
+              creditCardSurchargeCents: surchargeForSummary,
+              creditCardSurchargeRate:
+                chargeStatus.creditSurchargeRate ?? CLOVER_CARD_SURCHARGE_RATE,
             });
           }
 
@@ -771,11 +778,22 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       idempotencyKey,
     });
 
+    const surchargeCentsForSummary =
+      chargeStatus.ok && typeof chargeStatus.amountCents === 'number'
+        ? resolveCreditCardSurchargeCents({
+            intentAmountCents: expectedTotalCents,
+            chargedAmountCents: chargeStatus.amountCents,
+            surchargeCents: chargeStatus.creditSurchargeCents,
+          })
+        : null;
+
+    const surchargeCentsValue = surchargeCentsForSummary ?? 0;
     const surchargeMeta =
-      chargeStatus.ok && (chargeStatus.creditSurchargeCents ?? 0) > 0
+      chargeStatus.ok && surchargeCentsValue > 0
         ? {
-            creditCardSurchargeCents: chargeStatus.creditSurchargeCents,
-            creditCardSurchargeRate: chargeStatus.creditSurchargeRate,
+            creditCardSurchargeCents: surchargeCentsValue,
+            creditCardSurchargeRate:
+              chargeStatus.creditSurchargeRate ?? CLOVER_CARD_SURCHARGE_RATE,
           }
         : {};
 
@@ -876,6 +894,39 @@ function stableStringify(value: unknown): string {
   return JSON.stringify(value);
 }
 
+const CLOVER_CARD_SURCHARGE_RATE = 2.4;
+
+function resolveCreditCardSurchargeCents(params: {
+  intentAmountCents: number;
+  chargedAmountCents: number;
+  surchargeCents?: number;
+}): number | null {
+  const { intentAmountCents, chargedAmountCents, surchargeCents } = params;
+  const normalizedSurcharge = Math.max(0, Math.round(surchargeCents ?? 0));
+  if (
+    [
+      chargedAmountCents,
+      chargedAmountCents - normalizedSurcharge,
+      chargedAmountCents + normalizedSurcharge,
+    ].includes(intentAmountCents)
+  ) {
+    return normalizedSurcharge;
+  }
+
+  const fallbackSurcharge = Math.max(0, chargedAmountCents - intentAmountCents);
+  const surchargeByRate = Math.round(
+    intentAmountCents * (CLOVER_CARD_SURCHARGE_RATE / 100),
+  );
+  if (
+    chargedAmountCents === intentAmountCents + surchargeByRate &&
+    fallbackSurcharge === surchargeByRate
+  ) {
+    return fallbackSurcharge;
+  }
+
+  return null;
+}
+
 function normalizeCanadianPostalCode(value?: string): string {
   if (typeof value !== 'string') return '';
   const cleaned = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -950,7 +1001,7 @@ function extractPaymentMeta(
       typeof meta.creditCardSurchargeRate === 'number' &&
       Number.isFinite(meta.creditCardSurchargeRate) &&
       meta.creditCardSurchargeRate >= 0
-        ? Math.round(meta.creditCardSurchargeRate)
+        ? Math.round(meta.creditCardSurchargeRate * 10) / 10
         : undefined,
   };
 }
