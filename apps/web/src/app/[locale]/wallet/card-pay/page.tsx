@@ -35,6 +35,22 @@ type CloverTokenResult = { token?: string; errors?: Array<{ message?: string }> 
 type CloverInstance = { elements: () => { create: (type: string, options?: Record<string, unknown>) => CloverElementInstance }; createToken: () => Promise<CloverTokenResult> };
 type CloverConstructor = new (key?: string, options?: { merchantId?: string }) => CloverInstance;
 type CardFieldKey = "CARD_NAME" | "CARD_NUMBER" | "CARD_DATE" | "CARD_CVV" | "CARD_POSTAL_CODE";
+type CloverEventPayload = {
+  complete?: boolean;
+  touched?: boolean;
+  info?: string;
+  error?: string | { message?: string };
+  value?: string;
+  [k: string]: unknown;
+};
+type CloverFieldChangeEvent = {
+  complete?: boolean;
+  touched?: boolean;
+  info?: string;
+  error?: string | { message?: string };
+  value?: string;
+  [k: string]: unknown;
+};
 
 function toSafeErrorLog(error: unknown) { if (error instanceof ApiError) return { name: error.name, message: error.message, status: error.status }; if (error instanceof Error) return { name: error.name, message: error.message }; return { message: String(error) }; }
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> { return new Promise((resolve, reject) => { const id = setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms); p.then((value) => { clearTimeout(id); resolve(value); }, (error) => { clearTimeout(id); reject(error); }); }); }
@@ -59,34 +75,51 @@ function buildPaymentErrorMessage(locale: Locale, error: unknown) {
   return locale === "zh" ? "银行卡支付失败，请返回结算页重试。" : "Card payment failed. Please go back and try again.";
 }
 
-function extractFieldEventState(payload: unknown): { complete?: boolean; error?: string } {
-  if (!payload || typeof payload !== "object") return {};
-  const data = payload as Record<string, unknown>;
-  const complete = typeof data.complete === "boolean" ? data.complete : typeof data.isValid === "boolean" ? data.isValid : typeof data.valid === "boolean" ? data.valid : undefined;
-  const errorObj = data.error;
-  const error =
-    typeof data.error === "string"
-      ? data.error
-      : errorObj && typeof errorObj === "object" && "message" in errorObj && typeof (errorObj as Record<string, unknown>).message === "string"
-        ? ((errorObj as Record<string, unknown>).message as string)
-        : typeof data.message === "string"
-          ? data.message
-          : undefined;
+function getFieldFromEvent(event: CloverEventPayload, key: CardFieldKey): CloverFieldChangeEvent {
+  if (event && typeof event === "object") {
+    const e = event as {
+      data?: { realTimeFormState?: unknown } | undefined;
+      realTimeFormState?: unknown;
+      [k: string]: unknown;
+    };
 
-  return { complete, error };
+    const rts1 = e.data?.realTimeFormState;
+    if (rts1 && typeof rts1 === "object") {
+      const rec = rts1 as Record<string, unknown>;
+      const v = rec[key];
+      if (v && typeof v === "object") return v as CloverFieldChangeEvent;
+    }
+
+    const rts2 = e.realTimeFormState;
+    if (rts2 && typeof rts2 === "object") {
+      const rec = rts2 as Record<string, unknown>;
+      const v = rec[key];
+      if (v && typeof v === "object") return v as CloverFieldChangeEvent;
+    }
+
+    const direct = e[key];
+    if (direct && typeof direct === "object") return direct as CloverFieldChangeEvent;
+  }
+
+  return event as unknown as CloverFieldChangeEvent;
 }
 
-function getFieldFromEvent(raw: unknown, key: CardFieldKey): Record<string, unknown> {
-  if (!raw || typeof raw !== "object") return {};
-  const event = raw as Record<string, unknown>;
-  const data = event.data && typeof event.data === "object" ? (event.data as Record<string, unknown>) : undefined;
-  const fromDataState = data?.realTimeFormState && typeof data.realTimeFormState === "object" ? (data.realTimeFormState as Record<string, unknown>)[key] : undefined;
-  if (fromDataState && typeof fromDataState === "object") return fromDataState as Record<string, unknown>;
-  const fromState = event.realTimeFormState && typeof event.realTimeFormState === "object" ? (event.realTimeFormState as Record<string, unknown>)[key] : undefined;
-  if (fromState && typeof fromState === "object") return fromState as Record<string, unknown>;
-  const fromKey = event[key];
-  if (fromKey && typeof fromKey === "object") return fromKey as Record<string, unknown>;
-  return event;
+function hasError(field?: CloverFieldChangeEvent): boolean {
+  const err = field?.error;
+  if (!err) return false;
+  if (typeof err === "string") return err.trim().length > 0;
+  if (typeof err === "object" && "message" in err) {
+    const msg = (err as { message?: unknown }).message;
+    return typeof msg === "string" && msg.trim().length > 0;
+  }
+  return true;
+}
+
+function isFieldPayable(field?: CloverFieldChangeEvent): boolean {
+  if (!field) return false;
+  if (typeof field.complete === "boolean") return field.complete === true && !hasError(field);
+  const info = typeof field.info === "string" ? field.info : "";
+  return Boolean(field.touched) && info.trim().length === 0;
 }
 
 export default function CardPayWalletPage() {
@@ -100,20 +133,22 @@ export default function CardPayWalletPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [postalCode, setPostalCode] = useState("");
+  const [cloverReady, setCloverReady] = useState(false);
+  const [canPay, setCanPay] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<CardFieldKey, string>>>({});
-  const [fieldCompletion, setFieldCompletion] = useState<Record<CardFieldKey, boolean>>({ CARD_NAME: false, CARD_NUMBER: false, CARD_DATE: false, CARD_CVV: false, CARD_POSTAL_CODE: false });
   const [remainingMs, setRemainingMs] = useState(0);
-  const sessionExpired = remainingMs <= 0 && !loading && Boolean(ctx);
-  const isDelivery = ctx?.metadata && typeof ctx.metadata === "object" && "fulfillment" in ctx.metadata ? ctx.metadata.fulfillment === "delivery" : false;
-  const normalizedPostalCode = postalCode.replace(/\s+/g, "").toUpperCase();
-  const postalCodeComplete = fieldCompletion.CARD_POSTAL_CODE;
-  const postalCodeValid = !isDelivery || postalCodeComplete;
-  const hasFieldError = Object.values(fieldErrors).some((v) => Boolean(v));
-  const baseCardComplete = fieldCompletion.CARD_NAME && fieldCompletion.CARD_NUMBER && fieldCompletion.CARD_DATE && fieldCompletion.CARD_CVV;
-  const canSubmit = !submitting && !sessionExpired && baseCardComplete && (!isDelivery || postalCodeComplete) && !hasFieldError && postalCodeValid;
 
   const cloverRef = useRef<CloverInstance | null>(null);
   const fieldRefs = useRef<CloverElementInstance[]>([]);
+  const cloverFieldStateRef = useRef<Partial<Record<CardFieldKey, CloverFieldChangeEvent>>>({});
+
+  const sessionExpired = remainingMs <= 0 && !loading && Boolean(ctx);
+  const isDelivery = ctx?.metadata && typeof ctx.metadata === "object" && "fulfillment" in ctx.metadata ? ctx.metadata.fulfillment === "delivery" : false;
+  const normalizedPostalCode = postalCode.replace(/\s+/g, "").toUpperCase();
+  const postalCodeComplete = isFieldPayable(cloverFieldStateRef.current.CARD_POSTAL_CODE);
+  const postalCodeValid = !isDelivery || postalCodeComplete;
+  const hasFieldError = Object.values(fieldErrors).some((v) => Boolean(v));
+  const canSubmit = !submitting && !sessionExpired && cloverReady && canPay && !hasFieldError && postalCodeValid;
 
   const currencyFormatter = useMemo(() => new Intl.NumberFormat(locale === "zh" ? "zh-Hans-CA" : "en-CA", { style: "currency", currency: HOSTED_CHECKOUT_CURRENCY, minimumFractionDigits: 2, maximumFractionDigits: 2 }), [locale]);
 
@@ -129,7 +164,9 @@ export default function CardPayWalletPage() {
         setCtx({ sessionId: data.sessionId, paymentMethod: (data.paymentMethod as PaymentCtx["paymentMethod"]) ?? "CARD", locale, checkoutIntentId: data.checkoutIntentId, pricingToken: data.pricingToken, pricingTokenExpiresAt: data.pricingTokenExpiresAt, currency: data.currency || HOSTED_CHECKOUT_CURRENCY, totalCents: data.quote.totalCents, metadata: data.metadata });
         setPostalCode("");
         setFieldErrors({});
-        setFieldCompletion({ CARD_NAME: false, CARD_NUMBER: false, CARD_DATE: false, CARD_CVV: false, CARD_POSTAL_CODE: false });
+        setCloverReady(false);
+        setCanPay(false);
+        cloverFieldStateRef.current = {};
         setRemainingMs(getRemainingMs(data.pricingTokenExpiresAt));
         setLoading(false);
       } catch (err) {
@@ -159,6 +196,9 @@ export default function CardPayWalletPage() {
     if (!publicKey || !merchantId) { setError(locale === "zh" ? "支付初始化失败：缺少 Clover 配置。" : "Payment init failed: missing Clover config."); return; }
 
     let cancelled = false;
+    const requiredFieldKeys: Array<Exclude<CardFieldKey, "CARD_NAME">> = ["CARD_NUMBER", "CARD_DATE", "CARD_CVV", "CARD_POSTAL_CODE"];
+    const computeCanPay = (state: Partial<Record<CardFieldKey, CloverFieldChangeEvent>>) => requiredFieldKeys.every((k) => isFieldPayable(state[k]));
+
     const init = async () => {
       try {
         await loadScript(sdkUrl);
@@ -175,21 +215,38 @@ export default function CardPayWalletPage() {
 
         fieldRefs.current.forEach((f) => f.destroy?.());
         fieldRefs.current = [];
+        setCloverReady(false);
+        setCanPay(false);
+        cloverFieldStateRef.current = {};
 
         const clover = new Clover(publicKey, { merchantId });
         cloverRef.current = clover;
-        const name = clover.elements().create("CARD_NAME");
-        const number = clover.elements().create("CARD_NUMBER");
-        const date = clover.elements().create("CARD_DATE");
-        const cvv = clover.elements().create("CARD_CVV");
-        const postalCode = clover.elements().create("CARD_POSTAL_CODE");
+        const elements = clover.elements();
+        const name = elements.create("CARD_NAME");
+        const number = elements.create("CARD_NUMBER");
+        const date = elements.create("CARD_DATE");
+        const cvv = elements.create("CARD_CVV");
+        const postalCode = elements.create("CARD_POSTAL_CODE");
 
         const bindFieldListener = (field: CloverElementInstance, key: CardFieldKey) => {
           const syncState = (payload: unknown) => {
-            const fieldPayload = getFieldFromEvent(payload, key);
-            const next = extractFieldEventState(fieldPayload);
-            setFieldCompletion((prev) => ({ ...prev, [key]: typeof next.complete === "boolean" ? next.complete : prev[key] }));
-            setFieldErrors((prev) => ({ ...prev, [key]: typeof next.error === "string" ? next.error : "" }));
+            const fieldPayload = getFieldFromEvent(payload as CloverEventPayload, key);
+            cloverFieldStateRef.current[key] = fieldPayload;
+
+            const nextCanPay = computeCanPay(cloverFieldStateRef.current);
+            setCanPay(nextCanPay);
+
+            const nextError = typeof fieldPayload.error === "string"
+              ? fieldPayload.error
+              : fieldPayload.error && typeof fieldPayload.error === "object" && "message" in fieldPayload.error && typeof fieldPayload.error.message === "string"
+                ? fieldPayload.error.message
+                : "";
+            setFieldErrors((prev) => {
+              const next = { ...prev };
+              if (nextError) next[key] = nextError;
+              else delete next[key];
+              return next;
+            });
 
             if (key === "CARD_POSTAL_CODE") {
               const info = fieldPayload.info;
@@ -217,10 +274,13 @@ export default function CardPayWalletPage() {
         cvv.mount("#clover-card-cvv");
         postalCode.mount("#clover-card-postal-code");
         fieldRefs.current = [name, number, date, cvv, postalCode];
+        setCloverReady(true);
 
       } catch (err) {
         console.error("[CARD][session] init error", toSafeErrorLog(err));
         setError(locale === "zh" ? "银行卡支付初始化失败，请返回结算页重试。" : "Failed to initialize card payment. Please go back and try again.");
+        setCloverReady(false);
+        setCanPay(false);
       }
     };
 
@@ -230,6 +290,9 @@ export default function CardPayWalletPage() {
       fieldRefs.current.forEach((f) => f.destroy?.());
       fieldRefs.current = [];
       cloverRef.current = null;
+      cloverFieldStateRef.current = {};
+      setCanPay(false);
+      setCloverReady(false);
     };
   }, [ctx, locale]);
 
@@ -318,7 +381,7 @@ export default function CardPayWalletPage() {
                 {locale === "zh" ? "邮编" : "Postal code"}{isDelivery ? " *" : ""}
               </label>
               <div id="clover-card-postal-code" className="flex h-10 items-center rounded-2xl border border-slate-200 bg-white px-3" />
-              {isDelivery && !postalCodeValid ? (
+              {isDelivery && normalizedPostalCode.length > 0 && !postalCodeValid ? (
                 <p className="text-xs text-rose-600">{locale === "zh" ? "配送订单需有效加拿大邮编。" : "Delivery requires a valid Canadian postal code."}</p>
               ) : null}
             </div>
