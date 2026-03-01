@@ -122,6 +122,19 @@ function isFieldPayable(field?: CloverFieldChangeEvent): boolean {
   return Boolean(field.touched) && info.trim().length === 0;
 }
 
+function getFieldFromEvent(raw: unknown, key: CardFieldKey): Record<string, unknown> {
+  if (!raw || typeof raw !== "object") return {};
+  const event = raw as Record<string, unknown>;
+  const data = event.data && typeof event.data === "object" ? (event.data as Record<string, unknown>) : undefined;
+  const fromDataState = data?.realTimeFormState && typeof data.realTimeFormState === "object" ? (data.realTimeFormState as Record<string, unknown>)[key] : undefined;
+  if (fromDataState && typeof fromDataState === "object") return fromDataState as Record<string, unknown>;
+  const fromState = event.realTimeFormState && typeof event.realTimeFormState === "object" ? (event.realTimeFormState as Record<string, unknown>)[key] : undefined;
+  if (fromState && typeof fromState === "object") return fromState as Record<string, unknown>;
+  const fromKey = event[key];
+  if (fromKey && typeof fromKey === "object") return fromKey as Record<string, unknown>;
+  return event;
+}
+
 export default function CardPayWalletPage() {
   const params = useParams<{ locale?: string }>();
   const searchParams = useSearchParams();
@@ -140,7 +153,8 @@ export default function CardPayWalletPage() {
   const sessionExpired = remainingMs <= 0 && !loading && Boolean(ctx);
   const isDelivery = ctx?.metadata && typeof ctx.metadata === "object" && "fulfillment" in ctx.metadata ? ctx.metadata.fulfillment === "delivery" : false;
   const normalizedPostalCode = postalCode.replace(/\s+/g, "").toUpperCase();
-  const postalCodeValid = !isDelivery || /^[A-Z]\d[A-Z]\d[A-Z]\d$/.test(normalizedPostalCode);
+  const postalCodeComplete = fieldCompletion.CARD_POSTAL_CODE;
+  const postalCodeValid = !isDelivery || postalCodeComplete;
   const hasFieldError = Object.values(fieldErrors).some((v) => Boolean(v));
   const canSubmit = !submitting && !sessionExpired && cloverReady && canPay && !hasFieldError && postalCodeValid;
 
