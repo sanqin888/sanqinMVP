@@ -795,7 +795,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
         checkoutIntentId: referenceId,
         intentId: intent.id,
         intentAmountCents: expectedTotalCents,
-        chargedAmountCents: chargeStatus.amountCents,
+        chargedAmountCents: expectedTotalCents + chargeReconcile.surchargeCents,
         chargeStatus,
         cloverPaymentId: paymentResult.paymentId ?? null,
         detail: chargeReconcile,
@@ -892,8 +892,6 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       );
     }
   }
-
-
 }
 
 function buildPricingFingerprint(
