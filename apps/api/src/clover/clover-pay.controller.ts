@@ -32,6 +32,8 @@ import { buildClientRequestId } from '../common/utils/client-request-id';
 import { CreateOnlinePricingQuoteDto } from './dto/create-online-pricing-quote.dto';
 import { CreatePaymentSessionDto } from './dto/create-payment-session.dto';
 import { PricingTokenService } from './pricing-token.service';
+import { EmailService } from '../email/email.service';
+import { MessagingTemplateType } from '@prisma/client';
 
 @Controller('clover')
 export class CloverPayController implements OnModuleInit, OnModuleDestroy {
@@ -43,6 +45,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     private readonly checkoutIntents: CheckoutIntentsService,
     private readonly orders: OrdersService,
     private readonly pricingTokens: PricingTokenService,
+    private readonly emailService: EmailService,
   ) {}
 
   @Post('pay/online/session')
@@ -353,30 +356,29 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
             });
           }
 
-          const chargeSurcharge =
+          const chargeReconcile =
             typeof chargeStatus.amountCents === 'number'
-              ? resolveCreditCardSurchargeCents({
+              ? reconcileChargeAmount({
                   intentAmountCents: intent.amountCents,
                   chargedAmountCents: chargeStatus.amountCents,
                   surchargeCents: chargeStatus.creditSurchargeCents,
                 })
               : null;
 
-          if (
-            typeof chargeStatus.amountCents === 'number' &&
-            chargeSurcharge === null
-          ) {
-            await this.checkoutIntents.markFailed({
+          if (chargeReconcile?.mismatchBeyondTolerance) {
+            await this.sendChargeMismatchAlert({
+              stage: 'reconcileIntent',
+              checkoutIntentId: intent.referenceId,
               intentId: intent.id,
-              result: 'CHARGED_AMOUNT_MISMATCH',
-            });
-            throw new ConflictException({
-              code: 'CHARGED_AMOUNT_MISMATCH',
-              message: 'charged amount does not match checkout intent amount',
+              intentAmountCents: intent.amountCents,
+              chargedAmountCents: chargeStatus.amountCents,
+              chargeStatus,
+              cloverPaymentId: chargeStatus.paymentId ?? null,
+              detail: chargeReconcile,
             });
           }
 
-          const surchargeForSummary = chargeSurcharge ?? 0;
+          const surchargeForSummary = chargeReconcile?.surchargeCents ?? 0;
           if (surchargeForSummary > 0) {
             await this.checkoutIntents.updateMetadata(intent.id, {
               ...intent.metadata,
@@ -778,16 +780,29 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       idempotencyKey,
     });
 
-    const surchargeCentsForSummary =
+    const chargeReconcile =
       chargeStatus.ok && typeof chargeStatus.amountCents === 'number'
-        ? resolveCreditCardSurchargeCents({
+        ? reconcileChargeAmount({
             intentAmountCents: expectedTotalCents,
             chargedAmountCents: chargeStatus.amountCents,
             surchargeCents: chargeStatus.creditSurchargeCents,
           })
         : null;
 
-    const surchargeCentsValue = surchargeCentsForSummary ?? 0;
+    if (chargeReconcile?.mismatchBeyondTolerance) {
+      await this.sendChargeMismatchAlert({
+        stage: 'payWithCardToken',
+        checkoutIntentId: referenceId,
+        intentId: intent.id,
+        intentAmountCents: expectedTotalCents,
+        chargedAmountCents: chargeStatus.amountCents,
+        chargeStatus,
+        cloverPaymentId: paymentResult.paymentId ?? null,
+        detail: chargeReconcile,
+      });
+    }
+
+    const surchargeCentsValue = chargeReconcile?.surchargeCents ?? 0;
     const surchargeMeta =
       chargeStatus.ok && surchargeCentsValue > 0
         ? {
@@ -843,6 +858,42 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       status: paymentResult.status ?? 'SUCCESS',
     };
   }
+  private async sendChargeMismatchAlert(params: {
+    stage: 'reconcileIntent' | 'payWithCardToken';
+    checkoutIntentId: string;
+    intentId: string;
+    intentAmountCents: number;
+    chargedAmountCents?: number;
+    cloverPaymentId?: string | null;
+    chargeStatus: unknown;
+    detail: ChargeAmountReconcileResult;
+  }): Promise<void> {
+    const payload = {
+      ...params,
+      timestamp: new Date().toISOString(),
+    };
+    const text = [
+      'Clover 扣款金额与订单金额不一致（超过±1分容差），但订单已继续创建。',
+      JSON.stringify(payload, null, 2),
+    ].join('\n\n');
+
+    try {
+      await this.emailService.sendEmail({
+        to: 'admin@sanq.ca',
+        subject: `[支付告警] Clover 金额不一致 intent=${params.checkoutIntentId}`,
+        text,
+        templateType: MessagingTemplateType.SIGNUP_WELCOME,
+        metadata: payload,
+        skipSuppression: true,
+      });
+    } catch (error) {
+      this.logger.error(
+        `[payment.alert] send mismatch email failed intent=${params.checkoutIntentId} reason=${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+
 }
 
 function buildPricingFingerprint(
@@ -895,12 +946,20 @@ function stableStringify(value: unknown): string {
 }
 
 const CLOVER_CARD_SURCHARGE_RATE = 2.4;
+const CLOVER_SURCHARGE_TOLERANCE_CENTS = 1;
 
-function resolveCreditCardSurchargeCents(params: {
+type ChargeAmountReconcileResult = {
+  surchargeCents: number;
+  mismatchBeyondTolerance: boolean;
+  mode: 'provider' | 'fallback_rate' | 'fallback_actual_diff';
+  expectedChargeByRateCents: number;
+};
+
+function reconcileChargeAmount(params: {
   intentAmountCents: number;
   chargedAmountCents: number;
   surchargeCents?: number;
-}): number | null {
+}): ChargeAmountReconcileResult {
   const { intentAmountCents, chargedAmountCents, surchargeCents } = params;
   const normalizedSurcharge = Math.max(0, Math.round(surchargeCents ?? 0));
   if (
@@ -910,21 +969,33 @@ function resolveCreditCardSurchargeCents(params: {
       chargedAmountCents + normalizedSurcharge,
     ].includes(intentAmountCents)
   ) {
-    return normalizedSurcharge;
+    return {
+      surchargeCents: normalizedSurcharge,
+      mismatchBeyondTolerance: false,
+      mode: 'provider',
+      expectedChargeByRateCents:
+        intentAmountCents +
+        Math.round(intentAmountCents * (CLOVER_CARD_SURCHARGE_RATE / 100)),
+    };
   }
 
-  const fallbackSurcharge = Math.max(0, chargedAmountCents - intentAmountCents);
   const surchargeByRate = Math.round(
     intentAmountCents * (CLOVER_CARD_SURCHARGE_RATE / 100),
   );
-  if (
-    chargedAmountCents === intentAmountCents + surchargeByRate &&
-    fallbackSurcharge === surchargeByRate
-  ) {
-    return fallbackSurcharge;
-  }
+  const expectedChargedByRate = intentAmountCents + surchargeByRate;
+  const fallbackSurcharge = Math.max(0, chargedAmountCents - intentAmountCents);
+  const isWithinTolerance =
+    Math.abs(chargedAmountCents - expectedChargedByRate) <=
+      CLOVER_SURCHARGE_TOLERANCE_CENTS &&
+    Math.abs(fallbackSurcharge - surchargeByRate) <=
+      CLOVER_SURCHARGE_TOLERANCE_CENTS;
 
-  return null;
+  return {
+    surchargeCents: fallbackSurcharge,
+    mismatchBeyondTolerance: !isWithinTolerance,
+    mode: isWithinTolerance ? 'fallback_rate' : 'fallback_actual_diff',
+    expectedChargeByRateCents: expectedChargedByRate,
+  };
 }
 
 function normalizeCanadianPostalCode(value?: string): string {
