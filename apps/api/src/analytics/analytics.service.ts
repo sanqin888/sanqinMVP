@@ -36,6 +36,11 @@ const MAX_BATCH_SIZE = 50;
 const MAX_EVENT_NAME_LENGTH = 120;
 const MAX_PAYLOAD_KEYS = 80;
 
+const NON_CUSTOMER_PATH_PATTERNS = [
+  /^\/(zh|en)\/admin(?:\/|$)/i,
+  /^\/(zh|en)\/store\/pos(?:\/|$)/i,
+];
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
@@ -102,6 +107,12 @@ function isMissingTableError(error: unknown): boolean {
   );
 }
 
+function shouldCollectAnalytics(path: string | null): boolean {
+  if (!path) return false;
+
+  return !NON_CUSTOMER_PATH_PATTERNS.some((pattern) => pattern.test(path));
+}
+
 @Injectable()
 export class AnalyticsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -132,6 +143,10 @@ export class AnalyticsService {
       payload: normalizePayload(item?.payload),
       occurredAt: normalizeTimestamp(item?.ts),
     }));
+
+    if (!shouldCollectAnalytics(normalizedContext.path)) {
+      return 0;
+    }
 
     try {
       await this.prisma.$transaction(
