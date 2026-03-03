@@ -3094,6 +3094,131 @@ export class OrdersService {
         },
       });
 
+      const voidItems = items.filter(
+        (item) => item.action === OrderAmendmentItemAction.VOID,
+      );
+      const addItems = items.filter(
+        (item) => item.action === OrderAmendmentItemAction.ADD,
+      );
+
+      const parsedOrderItems = order.items.map((item) => ({
+        id: item.id,
+        productStableId: item.productStableId,
+        qty: Math.max(0, item.qty ?? 0),
+        unitPriceCents: item.unitPriceCents ?? 0,
+      }));
+
+      let removedSubtotalCents = 0;
+      if (voidItems.length > 0) {
+        for (const voidItem of voidItems) {
+          let remainingQty = Math.max(0, Math.round(voidItem.qty));
+          if (remainingQty <= 0) continue;
+
+          const candidates = parsedOrderItems.filter(
+            (it) =>
+              it.productStableId === voidItem.productStableId && it.qty > 0,
+          );
+
+          for (const candidate of candidates) {
+            if (remainingQty <= 0) break;
+            const removedQty = Math.min(candidate.qty, remainingQty);
+            if (removedQty <= 0) continue;
+            removedSubtotalCents +=
+              removedQty * (candidate.unitPriceCents ?? 0);
+            remainingQty -= removedQty;
+            candidate.qty -= removedQty;
+
+            if (candidate.qty <= 0) {
+              await tx.orderItem.delete({ where: { id: candidate.id } });
+            } else {
+              await tx.orderItem.update({
+                where: { id: candidate.id },
+                data: { qty: candidate.qty },
+              });
+            }
+          }
+        }
+      }
+
+      let addedSubtotalCents = 0;
+      if (addItems.length > 0) {
+        for (const addItem of addItems) {
+          const addQty = Math.max(0, Math.round(addItem.qty));
+          const unitPriceCents =
+            typeof addItem.unitPriceCents === 'number' &&
+            Number.isFinite(addItem.unitPriceCents)
+              ? Math.round(addItem.unitPriceCents)
+              : 0;
+          if (addQty <= 0) continue;
+          addedSubtotalCents += addQty * unitPriceCents;
+
+          await tx.orderItem.create({
+            data: {
+              orderId: internalOrderId,
+              productStableId: addItem.productStableId,
+              qty: addQty,
+              unitPriceCents,
+              displayName: addItem.displayName ?? null,
+              nameEn: addItem.nameEn ?? null,
+              nameZh: addItem.nameZh ?? null,
+              optionsJson:
+                addItem.optionsJson !== undefined ? addItem.optionsJson : null,
+            },
+          });
+        }
+      }
+
+      if (voidItems.length > 0 || addItems.length > 0) {
+        const baseSubtotalCents = Math.max(0, order.subtotalCents ?? 0);
+        const baseSubtotalAfterDiscountCents = Math.max(
+          0,
+          order.subtotalAfterDiscountCents ?? 0,
+        );
+        const baseTaxCents = Math.max(0, order.taxCents ?? 0);
+        const baseDiscountCents = Math.max(
+          0,
+          baseSubtotalCents - baseSubtotalAfterDiscountCents,
+        );
+
+        const nextSubtotalCents = Math.max(
+          0,
+          baseSubtotalCents - removedSubtotalCents + addedSubtotalCents,
+        );
+        const nextDiscountCents =
+          baseSubtotalCents > 0
+            ? Math.round(
+                (baseDiscountCents * nextSubtotalCents) / baseSubtotalCents,
+              )
+            : 0;
+        const nextSubtotalAfterDiscountCents = Math.max(
+          0,
+          nextSubtotalCents - nextDiscountCents,
+        );
+        const taxRate =
+          baseSubtotalAfterDiscountCents > 0
+            ? baseTaxCents / baseSubtotalAfterDiscountCents
+            : 0;
+        const nextTaxCents = Math.max(
+          0,
+          Math.round(nextSubtotalAfterDiscountCents * taxRate),
+        );
+        const nextTotalCents =
+          nextSubtotalAfterDiscountCents +
+          nextTaxCents +
+          Math.max(0, order.deliveryFeeCents ?? 0);
+
+        await tx.order.update({
+          where: { id: internalOrderId },
+          data: {
+            subtotalCents: nextSubtotalCents,
+            subtotalAfterDiscountCents: nextSubtotalAfterDiscountCents,
+            taxCents: nextTaxCents,
+            totalCents: nextTotalCents,
+            paymentTotalCents: nextTotalCents,
+          },
+        });
+      }
+
       if (paymentMethod !== null) {
         await tx.order.update({
           where: { id: internalOrderId },
