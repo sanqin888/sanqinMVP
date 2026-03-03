@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AppLogger } from '../common/app-logger';
 import {
   DailySpecialDto,
+  isAvailableNow,
   PublicMenuCategoryDto,
   PublicMenuResponse,
 } from '@shared/menu';
@@ -15,6 +16,18 @@ import {
 
 function toIso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
+}
+
+function availabilityFromDb(
+  isAvailable: boolean,
+  tempUnavailableUntil: Date | null,
+) {
+  return {
+    isAvailable,
+    tempUnavailableUntil: tempUnavailableUntil
+      ? tempUnavailableUntil.toISOString()
+      : null,
+  };
 }
 
 @Injectable()
@@ -114,7 +127,11 @@ export class PublicMenuService {
     const availablePublicItemStableIds = new Set(
       (categories ?? []).flatMap((cat) =>
         (cat.items ?? [])
-          .filter((item) => item.isAvailable)
+          .filter((item) =>
+            isAvailableNow(
+              availabilityFromDb(item.isAvailable, item.tempUnavailableUntil),
+            ),
+          )
           .map((item) => item.stableId),
       ),
     );
@@ -124,7 +141,9 @@ export class PublicMenuService {
 
       const items = (cat.items ?? [])
         .filter((it) => {
-          return it.isAvailable;
+          return isAvailableNow(
+            availabilityFromDb(it.isAvailable, it.tempUnavailableUntil),
+          );
         })
         .map((it) => {
           const activeSpecial = specialsByItemStableId.get(it.stableId) ?? null;
@@ -157,7 +176,12 @@ export class PublicMenuService {
                   ) {
                     return false;
                   }
-                  return opt.isAvailable;
+                  return isAvailableNow(
+                    availabilityFromDb(
+                      opt.isAvailable,
+                      opt.tempUnavailableUntil,
+                    ),
+                  );
                 })
                 .map((opt) => ({
                   optionStableId: opt.stableId,
