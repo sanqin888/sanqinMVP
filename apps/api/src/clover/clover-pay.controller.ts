@@ -22,10 +22,10 @@ import {
 } from './dto/create-card-token-payment.dto';
 import { CheckoutIntentsService } from './checkout-intents.service';
 import {
-  parseHostedCheckoutMetadata,
-  type HostedCheckoutMetadata,
+  parseCheckoutMetadata,
+  type CheckoutMetadata,
   buildOrderDtoFromMetadata,
-} from './hco-metadata';
+} from './checkout-metadata';
 import { OrdersService } from '../orders/orders.service';
 import { generateStableId } from '../common/utils/stable-id';
 import { buildClientRequestId } from '../common/utils/client-request-id';
@@ -55,9 +55,9 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
 
   @Post('pay/online/session')
   async createPaymentSession(@Body() dto: CreatePaymentSessionDto) {
-    let metadata: HostedCheckoutMetadata;
+    let metadata: CheckoutMetadata;
     try {
-      metadata = parseHostedCheckoutMetadata(dto.metadata);
+      metadata = parseCheckoutMetadata(dto.metadata);
     } catch (error) {
       throw new BadRequestException({
         code: 'INVALID_CHECKOUT_METADATA',
@@ -92,7 +92,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       paymentMethod: dto.paymentMethod,
       paymentSessionId: sessionId,
       paymentSessionCreatedAt: new Date().toISOString(),
-    } as HostedCheckoutMetadata & Record<string, unknown>;
+    } as CheckoutMetadata & Record<string, unknown>;
 
     await this.checkoutIntents.recordIntent({
       referenceId: checkoutIntentId,
@@ -100,7 +100,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       amountCents: quote.totalCents,
       currency: CLOVER_PAYMENT_CURRENCY,
       locale: metadata.locale,
-      metadata: metadataWithSession as HostedCheckoutMetadata,
+      metadata: metadataWithSession as CheckoutMetadata,
     });
 
     this.logger.debug(
@@ -150,7 +150,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       });
     }
 
-    const metadata = intent.metadata as HostedCheckoutMetadata &
+    const metadata = intent.metadata as CheckoutMetadata &
       Record<string, unknown>;
 
     if (
@@ -205,9 +205,9 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
 
   @Post('pay/online/quote')
   async createOnlinePricingQuote(@Body() dto: CreateOnlinePricingQuoteDto) {
-    let metadata: HostedCheckoutMetadata;
+    let metadata: CheckoutMetadata;
     try {
-      metadata = parseHostedCheckoutMetadata(dto.metadata);
+      metadata = parseCheckoutMetadata(dto.metadata);
     } catch (error) {
       throw new BadRequestException({
         code: 'INVALID_CHECKOUT_METADATA',
@@ -308,7 +308,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     status: string;
     result: string | null;
     orderId: string | null;
-    metadata: HostedCheckoutMetadata;
+    metadata: CheckoutMetadata;
     amountCents: number;
     referenceId: string;
   }) {
@@ -499,9 +499,9 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       });
     }
 
-    let metadata: HostedCheckoutMetadata;
+    let metadata: CheckoutMetadata;
     try {
-      metadata = parseHostedCheckoutMetadata(dto.metadata);
+      metadata = parseCheckoutMetadata(dto.metadata);
     } catch (error) {
       throw new BadRequestException({
         code: 'INVALID_CHECKOUT_METADATA',
@@ -668,7 +668,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       lastIdempotencyKey: idempotencyKey,
       serverQuotedTotalCents: expectedTotalCents,
       pricingFingerprint: fingerprint,
-    } satisfies HostedCheckoutMetadata & CheckoutIntentPaymentMeta;
+    } satisfies CheckoutMetadata & CheckoutIntentPaymentMeta;
 
     const intent =
       existingIntent ??
@@ -763,7 +763,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
         const updatedMetadata = {
           ...metadataWithIds,
           lastPaymentId: paymentResult.paymentId ?? null,
-        } satisfies HostedCheckoutMetadata & CheckoutIntentPaymentMeta;
+        } satisfies CheckoutMetadata & CheckoutIntentPaymentMeta;
         await this.checkoutIntents.updateMetadata(intent.id, updatedMetadata);
 
         this.logger.debug(
@@ -1031,10 +1031,10 @@ type CheckoutIntentPaymentMeta = {
 };
 
 function extractPaymentMeta(
-  metadata?: HostedCheckoutMetadata | null,
+  metadata?: CheckoutMetadata | null,
 ): CheckoutIntentPaymentMeta {
   if (!metadata) return {};
-  const meta = metadata as HostedCheckoutMetadata & CheckoutIntentPaymentMeta;
+  const meta = metadata as CheckoutMetadata & CheckoutIntentPaymentMeta;
   return {
     paymentAttempt:
       typeof meta.paymentAttempt === 'number' && meta.paymentAttempt > 0
@@ -1062,7 +1062,7 @@ function extractPaymentMeta(
 }
 
 function extractPaymentAttempt(
-  metadata?: HostedCheckoutMetadata | null,
+  metadata?: CheckoutMetadata | null,
 ): number {
   return extractPaymentMeta(metadata).paymentAttempt ?? 0;
 }

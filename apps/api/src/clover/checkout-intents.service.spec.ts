@@ -1,5 +1,5 @@
 import { PrismaService } from '../prisma/prisma.service';
-import { HostedCheckoutMetadata } from './hco-metadata';
+import { CheckoutMetadata } from './checkout-metadata';
 import { CheckoutIntentsService } from './checkout-intents.service';
 
 type CheckoutIntentRecord = {
@@ -8,7 +8,7 @@ type CheckoutIntentRecord = {
   status?: string;
   orderId?: string | null;
   expiresAt?: Date | null;
-  metadataJson: HostedCheckoutMetadata;
+  metadataJson: CheckoutMetadata;
 };
 
 type CreateIntentArgs = { data: { expiresAt: Date } & Record<string, unknown> };
@@ -63,7 +63,7 @@ describe('CheckoutIntentsService', () => {
     return { prisma, service };
   };
 
-  const baseMetadata: HostedCheckoutMetadata = {
+  const baseMetadata: CheckoutMetadata = {
     locale: 'en',
     customer: { email: 'a@test.com' },
     items: [],
