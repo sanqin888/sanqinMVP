@@ -396,6 +396,8 @@ model Order {
   subtotalCents              Int               @default(0)
   taxCents                   Int               @default(0)
   totalCents                 Int               @default(0)
+  paymentTotalCents          Int               @default(0)
+  creditCardSurchargeCents   Int               @default(0)
   pickupCode                 String?
   deliveryType               DeliveryType?
   deliveryProvider           DeliveryProvider?
