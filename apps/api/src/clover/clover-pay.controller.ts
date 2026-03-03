@@ -36,6 +36,7 @@ import { EmailService } from '../email/email.service';
 import { MessagingTemplateType } from '@prisma/client';
 import {
   CLOVER_CARD_SURCHARGE_RATE,
+  type ChargeAmountReconcileResult,
   reconcileChargeAmount,
 } from './reconcile-charge';
 
