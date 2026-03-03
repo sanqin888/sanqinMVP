@@ -2,10 +2,10 @@
 import { Injectable } from '@nestjs/common';
 import { CheckoutIntent, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { HostedCheckoutMetadata } from './hco-metadata';
+import { CheckoutMetadata } from './checkout-metadata';
 
 export type CheckoutIntentWithMetadata = CheckoutIntent & {
-  metadata: HostedCheckoutMetadata;
+  metadata: CheckoutMetadata;
 };
 
 type CheckoutIntentRecord = CheckoutIntent & {
@@ -37,7 +37,7 @@ export class CheckoutIntentsService {
     amountCents: number;
     currency: string;
     locale?: string;
-    metadata: HostedCheckoutMetadata;
+    metadata: CheckoutMetadata;
   }): Promise<CheckoutIntentWithMetadata> {
     const expiresAt = this.buildPendingExpiryDate();
     const data = {
@@ -227,7 +227,7 @@ export class CheckoutIntentsService {
 
   async updateMetadata(
     intentId: string,
-    metadata: HostedCheckoutMetadata & Record<string, unknown>,
+    metadata: CheckoutMetadata & Record<string, unknown>,
   ): Promise<void> {
     await this.prisma.checkoutIntent.update({
       where: { id: intentId },
@@ -253,7 +253,7 @@ export class CheckoutIntentsService {
   }
 
   private mapRecord(record: CheckoutIntentRecord): CheckoutIntentWithMetadata {
-    const metadata = record.metadataJson as HostedCheckoutMetadata;
+    const metadata = record.metadataJson as CheckoutMetadata;
     return { ...record, metadata } satisfies CheckoutIntentWithMetadata;
   }
 }
