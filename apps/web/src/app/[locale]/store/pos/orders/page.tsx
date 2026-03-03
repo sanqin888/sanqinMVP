@@ -588,6 +588,8 @@ type ActionContentProps = {
   onReasonChange: (value: string) => void;
   selectedItemIds: string[];
   onToggleItem: (id: string) => void;
+  selectedItemQtyMap: Record<string, number>;
+  onItemQtyChange: (id: string, qty: number) => void;
   summary: ActionSummary | null;
   selectedPaymentMethod: AmendmentPaymentMethod | null;
   onPaymentMethodChange: (value: AmendmentPaymentMethod) => void;
@@ -610,6 +612,8 @@ function ActionContent({
   onReasonChange,
   selectedItemIds,
   onToggleItem,
+  selectedItemQtyMap,
+  onItemQtyChange,
   summary,
   selectedPaymentMethod,
   onPaymentMethodChange,
@@ -717,6 +721,37 @@ function ActionContent({
                     <span className="text-xs font-semibold text-slate-100">
                       {formatMoney(item.totalCents)}
                     </span>
+                    {selectedItemIds.includes(item.stableId) ? (
+                      <div className="ml-2 flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            const nextQty =
+                              (selectedItemQtyMap[item.stableId] ?? 1) - 1;
+                            onItemQtyChange(item.stableId, nextQty);
+                          }}
+                          className="h-6 w-6 rounded border border-slate-600 text-xs"
+                        >
+                          -
+                        </button>
+                        <span className="w-8 text-center text-xs">
+                          {selectedItemQtyMap[item.stableId] ?? 1}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            const nextQty =
+                              (selectedItemQtyMap[item.stableId] ?? 1) + 1;
+                            onItemQtyChange(item.stableId, nextQty);
+                          }}
+                          className="h-6 w-6 rounded border border-slate-600 text-xs"
+                        >
+                          +
+                        </button>
+                      </div>
+                    ) : null}
                   </label>
                 ))}
               </div>
@@ -978,6 +1013,7 @@ export default function PosOrdersPage() {
   const [selectedPaymentMethod, setSelectedPaymentMethod] =
     useState<AmendmentPaymentMethod | null>(null);
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+  const [selectedItemQtyMap, setSelectedItemQtyMap] = useState<Record<string, number>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAdvancing, setIsAdvancing] = useState(false);
   const [menuCategories, setMenuCategories] = useState<PublicMenuCategory[]>(
@@ -1132,6 +1168,7 @@ const mapOrder = useCallback(
       setSelectedAction(null);
       setReason("");
       setSelectedItemIds([]);
+      setSelectedItemQtyMap({});
       setSwapSelection(null);
       setSwapActiveItem(null);
     }
@@ -1223,11 +1260,21 @@ const mapOrder = useCallback(
     const baseDiscount = selectedOrder.discountCents;
     const baseTax = selectedOrder.taxCents;
     const baseDelivery = selectedOrder.deliveryFeeCents;
-    const selectedItems = selectedOrder.items.filter((item) =>
-      selectedItemIds.includes(item.stableId),
-    );
+    const selectedItems = selectedOrder.items
+      .filter((item) => selectedItemIds.includes(item.stableId))
+      .map((item) => {
+        const qty = Math.max(
+          1,
+          Math.min(item.qty, selectedItemQtyMap[item.stableId] ?? 1),
+        );
+        return {
+          ...item,
+          selectedQty: qty,
+          selectedTotalCents: qty * item.unitPriceCents,
+        };
+      });
     const removedCents = selectedItems.reduce(
-      (sum, item) => sum + item.totalCents,
+      (sum, item) => sum + item.selectedTotalCents,
       0,
     );
     const replacementCents =
@@ -1297,7 +1344,13 @@ const mapOrder = useCallback(
       newTotalCents: newTotal,
       rebillGroupId: null,
     };
-  }, [selectedAction, selectedItemIds, selectedOrder, swapSelection]);
+  }, [
+    selectedAction,
+    selectedItemIds,
+    selectedItemQtyMap,
+    selectedOrder,
+    swapSelection,
+  ]);
 
   function toggleArrayValue<T>(values: T[], value: T): T[] {
     return values.includes(value)
@@ -1347,15 +1400,32 @@ const mapOrder = useCallback(
    };
 
   const handleToggleItem = (id: string) => {
-    setSelectedItemIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
-    );
+    setSelectedItemIds((prev) => {
+      if (prev.includes(id)) {
+        setSelectedItemQtyMap((qtyPrev) => {
+          const next = { ...qtyPrev };
+          delete next[id];
+          return next;
+        });
+        return prev.filter((item) => item !== id);
+      }
+      setSelectedItemQtyMap((qtyPrev) => ({ ...qtyPrev, [id]: 1 }));
+      return [...prev, id];
+    });
+  };
+
+  const handleItemQtyChange = (id: string, qty: number) => {
+    const maxQty =
+      selectedOrder?.items.find((item) => item.stableId === id)?.qty ?? 1;
+    const boundedQty = Math.max(1, Math.min(maxQty, Math.round(qty)));
+    setSelectedItemQtyMap((prev) => ({ ...prev, [id]: boundedQty }));
   };
 
   const handleSelectAction = (action: ActionKey) => {
     setSelectedAction(action);
     if (action !== "void_item" && action !== "swap_item") {
       setSelectedItemIds([]);
+      setSelectedItemQtyMap({});
       setSwapSelection(null);
       setSwapActiveItem(null);
     }
@@ -1462,9 +1532,15 @@ const handleSubmit = () => {
   if (!selectedOrder || !selectedAction) return;
   if (!canSubmit) return;
 
-  const selectedItems = selectedOrder.items.filter((item) =>
-    selectedItemIds.includes(item.stableId),
-  );
+  const selectedItems = selectedOrder.items
+    .filter((item) => selectedItemIds.includes(item.stableId))
+    .map((item) => ({
+      ...item,
+      selectedQty: Math.max(
+        1,
+        Math.min(item.qty, selectedItemQtyMap[item.stableId] ?? 1),
+      ),
+    }));
 
   const completeReset = () => {
     setSelectedId(null);
@@ -1472,6 +1548,7 @@ const handleSubmit = () => {
     setReason("");
     setSelectedPaymentMethod(null);
     setSelectedItemIds([]);
+    setSelectedItemQtyMap({});
     setSwapSelection(null);
     setSwapActiveItem(null);
   };
@@ -1529,7 +1606,7 @@ const handleSubmit = () => {
           ? selectedItems.map((it) => ({
               action: "VOID" as const,
               productStableId: it.stableId,
-              qty: it.qty,
+              qty: it.selectedQty,
               unitPriceCents: it.unitPriceCents,
               displayName: it.displayName ?? it.name,
               nameEn: it.nameEn ?? null,
@@ -1955,6 +2032,8 @@ const handleSubmit = () => {
                 onReasonChange={setReason}
                 selectedItemIds={selectedItemIds}
                 onToggleItem={handleToggleItem}
+                selectedItemQtyMap={selectedItemQtyMap}
+                onItemQtyChange={handleItemQtyChange}
                 summary={summary}
                 selectedPaymentMethod={selectedPaymentMethod}
                 onPaymentMethodChange={setSelectedPaymentMethod}
