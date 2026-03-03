@@ -3162,7 +3162,9 @@ export class OrdersService {
               nameEn: addItem.nameEn ?? null,
               nameZh: addItem.nameZh ?? null,
               optionsJson:
-                addItem.optionsJson !== undefined ? addItem.optionsJson : null,
+                addItem.optionsJson !== undefined
+                  ? addItem.optionsJson
+                  : Prisma.JsonNull,
             },
           });
         }
