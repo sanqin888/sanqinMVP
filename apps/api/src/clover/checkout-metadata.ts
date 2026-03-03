@@ -271,9 +271,7 @@ const parseCustomer = (value: unknown): CheckoutCustomer => {
   } satisfies CheckoutCustomer;
 };
 
-export function parseCheckoutMetadata(
-  input: unknown,
-): CheckoutMetadata {
+export function parseCheckoutMetadata(input: unknown): CheckoutMetadata {
   if (!isPlainObject(input)) {
     throw new Error('metadata must be an object');
   }

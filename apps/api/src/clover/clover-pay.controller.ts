@@ -805,7 +805,8 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       });
       throw new ConflictException({
         code: chargeStatus.code ?? 'CHARGE_STATUS_FAILED',
-        message: chargeStatus.message ?? 'failed to query clover payment status',
+        message:
+          chargeStatus.message ?? 'failed to query clover payment status',
         details: {
           reason: chargeStatus.reason,
         },
@@ -1061,9 +1062,7 @@ function extractPaymentMeta(
   };
 }
 
-function extractPaymentAttempt(
-  metadata?: CheckoutMetadata | null,
-): number {
+function extractPaymentAttempt(metadata?: CheckoutMetadata | null): number {
   return extractPaymentMeta(metadata).paymentAttempt ?? 0;
 }
 

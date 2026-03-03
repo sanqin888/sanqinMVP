@@ -407,7 +407,11 @@ export class CloverService {
       if (typeof charge.amount === 'number' && Number.isFinite(charge.amount)) {
         surchargeAmount += Math.max(0, Math.round(charge.amount));
       }
-      if (typeof charge.rate === 'number' && Number.isFinite(charge.rate) && charge.rate >= 0) {
+      if (
+        typeof charge.rate === 'number' &&
+        Number.isFinite(charge.rate) &&
+        charge.rate >= 0
+      ) {
         surchargeRateBps = Math.round(charge.rate);
       }
     }
@@ -416,7 +420,10 @@ export class CloverService {
 
     return {
       amountCents: surchargeAmount,
-      rate: typeof surchargeRateBps === 'number' ? surchargeRateBps / 10000 : undefined,
+      rate:
+        typeof surchargeRateBps === 'number'
+          ? surchargeRateBps / 10000
+          : undefined,
     };
   }
 }
