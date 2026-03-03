@@ -765,7 +765,7 @@ export class OrdersService {
       );
     }
 
-    const data: Prisma.OrderUpdateInput = { status: next };
+    const data: Prisma.OrderUpdateManyMutationInput = { status: next };
     if (next === 'making' && !current.makingAt) {
       data.makingAt = new Date();
     }
@@ -776,11 +776,21 @@ export class OrdersService {
       }
     }
 
-    const updated = (await this.prisma.order.update({
-      where: { id },
+    const result = await this.prisma.order.updateMany({
+      where: { id, status: current.status },
       data,
+    });
+
+    const updated = (await this.prisma.order.findUnique({
+      where: { id },
       include: { items: true },
-    })) as OrderWithItems & { loyaltyRedeemCents: number };
+    })) as (OrderWithItems & { loyaltyRedeemCents: number }) | null;
+
+    if (!updated) throw new NotFoundException('order not found');
+
+    if (result.count === 0) {
+      return updated;
+    }
 
     // —— 积分结算与优惠券处理
     if (next === 'paid') {
