@@ -434,10 +434,8 @@ export function StoreBoardWidget(props: { locale: Locale }) {
       if (autoAcceptEnabled) {
         for (const order of newOnlinePaid) {
           try {
+            // 仅推进到 making，后端会在 accepted 事件中统一触发打印，避免重复出单。
             await advanceOrder(order.orderStableId);
-            await printOrderCloud(order.orderStableId, {
-              targets: { customer: true, kitchen: true },
-            });
           } catch (error) {
             console.error("Failed to auto-accept order:", order.orderStableId, error);
           }
