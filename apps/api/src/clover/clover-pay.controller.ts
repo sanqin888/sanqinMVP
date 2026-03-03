@@ -964,6 +964,59 @@ function stableStringify(value: unknown): string {
   return JSON.stringify(value);
 }
 
+const CLOVER_CARD_SURCHARGE_RATE = 2.4;
+const CLOVER_SURCHARGE_TOLERANCE_CENTS = 1;
+
+type ChargeAmountReconcileResult = {
+  surchargeCents: number;
+  mismatchBeyondTolerance: boolean;
+  mode: 'provider' | 'fallback_rate' | 'fallback_actual_diff';
+  expectedChargeByRateCents: number;
+};
+
+function reconcileChargeAmount(params: {
+  intentAmountCents: number;
+  chargedAmountCents: number;
+  surchargeCents?: number;
+}): ChargeAmountReconcileResult {
+  const { intentAmountCents, chargedAmountCents, surchargeCents } = params;
+  const normalizedSurcharge = Math.max(0, Math.round(surchargeCents ?? 0));
+  if (
+    [
+      chargedAmountCents,
+      chargedAmountCents - normalizedSurcharge,
+      chargedAmountCents + normalizedSurcharge,
+    ].includes(intentAmountCents)
+  ) {
+    return {
+      surchargeCents: normalizedSurcharge,
+      mismatchBeyondTolerance: false,
+      mode: 'provider',
+      expectedChargeByRateCents:
+        intentAmountCents +
+        Math.round(intentAmountCents * (CLOVER_CARD_SURCHARGE_RATE / 100)),
+    };
+  }
+
+  const surchargeByRate = Math.round(
+    intentAmountCents * (CLOVER_CARD_SURCHARGE_RATE / 100),
+  );
+  const expectedChargedByRate = intentAmountCents + surchargeByRate;
+  const fallbackSurcharge = Math.max(0, chargedAmountCents - intentAmountCents);
+  const isWithinTolerance =
+    Math.abs(chargedAmountCents - expectedChargedByRate) <=
+      CLOVER_SURCHARGE_TOLERANCE_CENTS &&
+    Math.abs(fallbackSurcharge - surchargeByRate) <=
+      CLOVER_SURCHARGE_TOLERANCE_CENTS;
+
+  return {
+    surchargeCents: fallbackSurcharge,
+    mismatchBeyondTolerance: !isWithinTolerance,
+    mode: isWithinTolerance ? 'fallback_rate' : 'fallback_actual_diff',
+    expectedChargeByRateCents: expectedChargedByRate,
+  };
+}
+
 function normalizeCanadianPostalCode(value?: string): string {
   if (typeof value !== 'string') return '';
   const cleaned = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
