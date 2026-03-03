@@ -23,6 +23,7 @@ describe('OrdersService', () => {
     order: {
       findUnique: jest.Mock;
       update: jest.Mock;
+      updateMany: jest.Mock;
       create: jest.Mock;
       findMany: jest.Mock;
       delete: jest.Mock;
@@ -117,6 +118,7 @@ describe('OrdersService', () => {
       order: {
         findUnique: jest.fn(),
         update: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         create: jest.fn(),
         findMany: jest.fn(),
         delete: jest.fn(),
@@ -223,22 +225,23 @@ describe('OrdersService', () => {
   });
 
   it('sends order-ready SMS when pickup order is marked ready', async () => {
-    prisma.order.findUnique.mockResolvedValue({
-      status: 'making',
-      paidAt: new Date('2024-01-01T00:00:00.000Z'),
-      makingAt: new Date('2024-01-01T00:05:00.000Z'),
-      fulfillmentType: 'pickup',
-    });
-    prisma.order.update.mockResolvedValue({
-      id: 'order-pickup-ready',
-      orderStableId: 'cordpickupready001',
-      clientRequestId: null,
-      contactPhone: '+14165550000',
-      contactName: 'Test',
-      userId: null,
-      fulfillmentType: 'pickup',
-      items: [],
-    });
+    prisma.order.findUnique
+      .mockResolvedValueOnce({
+        status: 'making',
+        paidAt: new Date('2024-01-01T00:00:00.000Z'),
+        makingAt: new Date('2024-01-01T00:05:00.000Z'),
+        fulfillmentType: 'pickup',
+      })
+      .mockResolvedValueOnce({
+        id: 'order-pickup-ready',
+        orderStableId: 'cordpickupready001',
+        clientRequestId: null,
+        contactPhone: '+14165550000',
+        contactName: 'Test',
+        userId: null,
+        fulfillmentType: 'pickup',
+        items: [],
+      });
     prisma.checkoutIntent.findFirst.mockResolvedValue({ locale: 'en' });
 
     await service.updateStatusInternal(
@@ -251,22 +254,23 @@ describe('OrdersService', () => {
   });
 
   it('does not send order-ready SMS when delivery order is marked ready', async () => {
-    prisma.order.findUnique.mockResolvedValue({
-      status: 'making',
-      paidAt: new Date('2024-01-01T00:00:00.000Z'),
-      makingAt: new Date('2024-01-01T00:05:00.000Z'),
-      fulfillmentType: 'delivery',
-    });
-    prisma.order.update.mockResolvedValue({
-      id: 'order-delivery-ready',
-      orderStableId: 'corddeliveryready001',
-      clientRequestId: null,
-      contactPhone: '+14165550000',
-      contactName: 'Test',
-      userId: null,
-      fulfillmentType: 'delivery',
-      items: [],
-    });
+    prisma.order.findUnique
+      .mockResolvedValueOnce({
+        status: 'making',
+        paidAt: new Date('2024-01-01T00:00:00.000Z'),
+        makingAt: new Date('2024-01-01T00:05:00.000Z'),
+        fulfillmentType: 'delivery',
+      })
+      .mockResolvedValueOnce({
+        id: 'order-delivery-ready',
+        orderStableId: 'corddeliveryready001',
+        clientRequestId: null,
+        contactPhone: '+14165550000',
+        contactName: 'Test',
+        userId: null,
+        fulfillmentType: 'delivery',
+        items: [],
+      });
 
     await service.updateStatusInternal(
       '22222222-2222-2222-2222-222222222222',
@@ -294,7 +298,7 @@ describe('OrdersService', () => {
     await expect(
       service.updateStatus('order-1', 'pending'),
     ).rejects.toBeInstanceOf(BadRequestException);
-    expect(prisma.order.update).not.toHaveBeenCalled();
+    expect(prisma.order.updateMany).not.toHaveBeenCalled();
   });
 
   it('propagates NotFoundException when advancing a missing order', async () => {

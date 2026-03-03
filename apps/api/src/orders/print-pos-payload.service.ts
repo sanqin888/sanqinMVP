@@ -55,6 +55,12 @@ export class PrintPosPayloadService {
     );
     const surcharge = await this.getOrderCreditCardSurcharge(order);
     const creditCardSurchargeCents = surcharge?.cents ?? 0;
+    const paymentTotalCents =
+      typeof order.paymentTotalCents === 'number' &&
+      Number.isFinite(order.paymentTotalCents) &&
+      order.paymentTotalCents > 0
+        ? Math.round(order.paymentTotalCents)
+        : (order.totalCents ?? 0) + creditCardSurchargeCents;
 
     const paymentMethod = (() => {
       switch (order.paymentMethod) {
@@ -81,7 +87,7 @@ export class PrintPosPayloadService {
         items,
         subtotalCents: order.subtotalCents ?? 0,
         taxCents: order.taxCents ?? 0,
-        totalCents: (order.totalCents ?? 0) + creditCardSurchargeCents,
+        totalCents: paymentTotalCents,
         creditCardSurchargeCents,
         discountCents,
         deliveryFeeCents,
@@ -94,9 +100,16 @@ export class PrintPosPayloadService {
   private async getOrderCreditCardSurcharge(order: {
     clientRequestId?: string | null;
     paymentMethod?: PaymentMethod | null;
+    creditCardSurchargeCents?: number | null;
   }): Promise<{ cents: number } | null> {
+    const persistedSurcharge =
+      typeof order.creditCardSurchargeCents === 'number' &&
+      Number.isFinite(order.creditCardSurchargeCents)
+        ? Math.max(0, Math.round(order.creditCardSurchargeCents))
+        : 0;
+
     if (!order.clientRequestId) {
-      return null;
+      return persistedSurcharge > 0 ? { cents: persistedSurcharge } : null;
     }
 
     const intent = await this.prisma.checkoutIntent.findFirst({
@@ -116,6 +129,7 @@ export class PrintPosPayloadService {
         ? Math.max(0, Math.round(raw))
         : 0;
 
-    return cents > 0 ? { cents } : null;
+    const finalCents = cents > 0 ? cents : persistedSurcharge;
+    return finalCents > 0 ? { cents: finalCents } : null;
   }
 }

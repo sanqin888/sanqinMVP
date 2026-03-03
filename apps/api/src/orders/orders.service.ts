@@ -95,6 +95,8 @@ const orderDetailSelect = {
   deliveryCostCents: true,
   deliverySubsidyCents: true,
   totalCents: true,
+  paymentTotalCents: true,
+  creditCardSurchargeCents: true,
   couponCodeSnapshot: true,
   couponTitleSnapshot: true,
   couponDiscountCents: true,
@@ -765,7 +767,7 @@ export class OrdersService {
       );
     }
 
-    const data: Prisma.OrderUpdateInput = { status: next };
+    const data: Prisma.OrderUpdateManyMutationInput = { status: next };
     if (next === 'making' && !current.makingAt) {
       data.makingAt = new Date();
     }
@@ -776,11 +778,21 @@ export class OrdersService {
       }
     }
 
-    const updated = (await this.prisma.order.update({
-      where: { id },
+    const result = await this.prisma.order.updateMany({
+      where: { id, status: current.status },
       data,
+    });
+
+    const updated = (await this.prisma.order.findUnique({
+      where: { id },
       include: { items: true },
-    })) as OrderWithItems & { loyaltyRedeemCents: number };
+    })) as (OrderWithItems & { loyaltyRedeemCents: number }) | null;
+
+    if (!updated) throw new NotFoundException('order not found');
+
+    if (result.count === 0) {
+      return updated;
+    }
 
     // —— 积分结算与优惠券处理
     if (next === 'paid') {
@@ -1820,6 +1832,8 @@ export class OrdersService {
       id: string;
       referenceId: string;
       amountCents: number;
+      creditCardSurchargeCents: number;
+      paymentTotalCents: number;
     } | null = null;
 
     if (requiresCheckoutIntentVerification) {
@@ -1876,10 +1890,22 @@ export class OrdersService {
         throw new ConflictException('This payment has already been used.');
       }
 
+      const intentMeta =
+        intent.metadataJson && typeof intent.metadataJson === 'object'
+          ? (intent.metadataJson as Record<string, unknown>)
+          : null;
+      const surchargeRaw = intentMeta?.creditCardSurchargeCents;
+      const surchargeCents =
+        typeof surchargeRaw === 'number' && Number.isFinite(surchargeRaw)
+          ? Math.max(0, Math.round(surchargeRaw))
+          : 0;
+
       verifiedCheckoutIntent = {
         id: intent.id,
         referenceId: intent.referenceId,
         amountCents: intent.amountCents,
+        creditCardSurchargeCents: surchargeCents,
+        paymentTotalCents: intent.amountCents + surchargeCents,
       };
       idempotencyKey = idempotencyKey ?? intent.referenceId;
     }
@@ -2340,6 +2366,10 @@ export class OrdersService {
                 subtotalCents,
                 taxCents,
                 totalCents,
+                paymentTotalCents:
+                  verifiedCheckoutIntent?.paymentTotalCents ?? totalCents,
+                creditCardSurchargeCents:
+                  verifiedCheckoutIntent?.creditCardSurchargeCents ?? 0,
                 deliveryFeeCents: deliveryFeeCustomerCents, // ⭐ 写入服务端计算的配送费
                 deliveryCostCents: 0,
                 deliverySubsidyCents: 0,
@@ -2627,6 +2657,12 @@ export class OrdersService {
     const discountCents = this.getTotalDiscountCents(order);
     const creditCardSurcharge = await this.getOrderCreditCardSurcharge(order);
     const creditCardSurchargeCents = creditCardSurcharge?.cents ?? 0;
+    const paymentTotalCents =
+      typeof order.paymentTotalCents === 'number' &&
+      Number.isFinite(order.paymentTotalCents) &&
+      order.paymentTotalCents > 0
+        ? Math.round(order.paymentTotalCents)
+        : (order.totalCents ?? 0) + creditCardSurchargeCents;
 
     let itemCount = 0;
     const lineItems = order.items.map((item) => {
@@ -2668,7 +2704,7 @@ export class OrdersService {
       taxCents,
       deliveryFeeCents,
       discountCents,
-      totalCents: (order.totalCents ?? 0) + creditCardSurchargeCents,
+      totalCents: paymentTotalCents,
       loyaltyRedeemCents: order.loyaltyRedeemCents ?? 0,
       couponDiscountCents: order.couponDiscountCents ?? 0,
       creditCardSurchargeCents,
@@ -2683,9 +2719,16 @@ export class OrdersService {
   private async getOrderCreditCardSurcharge(order: {
     clientRequestId?: string | null;
     paymentMethod?: PaymentMethod | null;
+    creditCardSurchargeCents?: number | null;
   }): Promise<{ cents: number; rate?: number } | null> {
+    const persistedSurcharge =
+      typeof order.creditCardSurchargeCents === 'number' &&
+      Number.isFinite(order.creditCardSurchargeCents)
+        ? Math.max(0, Math.round(order.creditCardSurchargeCents))
+        : 0;
+
     if (!order.clientRequestId) {
-      return null;
+      return persistedSurcharge > 0 ? { cents: persistedSurcharge } : null;
     }
 
     const intent = await this.prisma.checkoutIntent.findFirst({
@@ -2712,8 +2755,9 @@ export class OrdersService {
         ? Math.round(rateRaw * 10) / 10
         : undefined;
 
-    if (cents <= 0) return null;
-    return { cents, rate };
+    const finalCents = cents > 0 ? cents : persistedSurcharge;
+    if (finalCents <= 0) return null;
+    return { cents: finalCents, rate };
   }
 
   async sendInvoiceEmail(params: {

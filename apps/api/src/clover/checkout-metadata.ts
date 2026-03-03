@@ -1,9 +1,9 @@
-// apps/api/src/clover/hco-metadata.ts
+// apps/api/src/clover/checkout-metadata.ts
 import { DeliveryProvider, DeliveryType } from '@prisma/client';
 import { CreateOrderInput, DeliveryDestinationInput } from '@shared/order';
 import { normalizeStableId } from '../common/utils/stable-id';
 
-export type HostedCheckoutItem = {
+export type CheckoutItem = {
   productStableId: string;
 
   nameEn?: string;
@@ -15,7 +15,7 @@ export type HostedCheckoutItem = {
   options?: unknown;
 };
 
-export type HostedCheckoutCustomer = {
+export type CheckoutCustomer = {
   firstName: string;
   lastName: string;
   phone: string;
@@ -29,13 +29,13 @@ export type HostedCheckoutCustomer = {
   notes?: string;
 };
 
-export type HostedCheckoutMetadata = {
+export type CheckoutMetadata = {
   locale?: string;
   orderStableId?: string;
   fulfillment: 'pickup' | 'delivery';
   schedule?: string;
-  customer: HostedCheckoutCustomer;
-  items: HostedCheckoutItem[];
+  customer: CheckoutCustomer;
+  items: CheckoutItem[];
 
   // 全部用“分”
   subtotalCents: number;
@@ -118,7 +118,7 @@ const toOptionalCents = (value: unknown): number | undefined => {
   return Math.round(num);
 };
 
-const formatCustomerName = (customer: HostedCheckoutCustomer) =>
+const formatCustomerName = (customer: CheckoutCustomer) =>
   [customer.firstName, customer.lastName].filter(Boolean).join(' ').trim();
 
 const parseFulfillment = (value: unknown): 'pickup' | 'delivery' => {
@@ -153,7 +153,7 @@ const parseEtaRange = (value: unknown): [number, number] | undefined => {
   return [Math.round(first), Math.round(second)];
 };
 
-const parseItems = (value: unknown): HostedCheckoutItem[] => {
+const parseItems = (value: unknown): CheckoutItem[] => {
   if (!Array.isArray(value)) {
     throw new Error('items must be an array');
   }
@@ -181,7 +181,7 @@ const parseItems = (value: unknown): HostedCheckoutItem[] => {
       const rawOptions = entry.options;
       const options = isPlainObject(rawOptions) ? rawOptions : undefined;
 
-      const item: HostedCheckoutItem = {
+      const item: CheckoutItem = {
         productStableId,
         priceCents,
         quantity,
@@ -195,7 +195,7 @@ const parseItems = (value: unknown): HostedCheckoutItem[] => {
 
       return item;
     })
-    .filter((item): item is HostedCheckoutItem => Boolean(item));
+    .filter((item): item is CheckoutItem => Boolean(item));
 
   if (items.length === 0) {
     throw new Error('items must include at least one entry');
@@ -206,7 +206,7 @@ const parseItems = (value: unknown): HostedCheckoutItem[] => {
 
 const parseCoupon = (
   value: unknown,
-): HostedCheckoutMetadata['coupon'] | undefined => {
+): CheckoutMetadata['coupon'] | undefined => {
   if (!isPlainObject(value)) return undefined;
 
   const couponStableId = normalizeStableId(
@@ -226,7 +226,7 @@ const parseCoupon = (
 
 const parseDeliveryDestination = (
   value: unknown,
-): HostedCheckoutMetadata['deliveryDestination'] | undefined => {
+): CheckoutMetadata['deliveryDestination'] | undefined => {
   if (!isPlainObject(value)) return undefined;
 
   return {
@@ -243,7 +243,7 @@ const parseDeliveryDestination = (
   };
 };
 
-const parseCustomer = (value: unknown): HostedCheckoutCustomer => {
+const parseCustomer = (value: unknown): CheckoutCustomer => {
   if (!isPlainObject(value)) {
     throw new Error('customer is required');
   }
@@ -268,12 +268,10 @@ const parseCustomer = (value: unknown): HostedCheckoutCustomer => {
     postalCode: toString(value.postalCode),
     country: toString(value.country),
     notes: toString(value.notes),
-  } satisfies HostedCheckoutCustomer;
+  } satisfies CheckoutCustomer;
 };
 
-export function parseHostedCheckoutMetadata(
-  input: unknown,
-): HostedCheckoutMetadata {
+export function parseCheckoutMetadata(input: unknown): CheckoutMetadata {
   if (!isPlainObject(input)) {
     throw new Error('metadata must be an object');
   }
@@ -318,11 +316,11 @@ export function parseHostedCheckoutMetadata(
     coupon: parseCoupon(input.coupon),
     selectedUserCouponId: toString(metadata.selectedUserCouponId),
     deliveryDestination: parseDeliveryDestination(metadata.deliveryDestination),
-  } satisfies HostedCheckoutMetadata;
+  } satisfies CheckoutMetadata;
 }
 
 export function resolveMetadataPayableTotalCents(
-  metadata: HostedCheckoutMetadata,
+  metadata: CheckoutMetadata,
 ): number {
   const serverRecalculatedSubtotalCents = metadata.items.reduce(
     (sum, item) => sum + item.priceCents * item.quantity,
@@ -366,7 +364,7 @@ export function resolveMetadataPayableTotalCents(
 // ===== 把 metadata 转成 CreateOrderInput =====
 
 const buildDestination = (
-  meta: HostedCheckoutMetadata,
+  meta: CheckoutMetadata,
 ): DeliveryDestinationInput | undefined => {
   // 只有 fulfillment = delivery 才需要地址
   if (meta.fulfillment !== 'delivery') return undefined;
@@ -412,7 +410,7 @@ export function buildOrderDtoFromMetadata(
   orderStableId?: string,
 ): CreateOrderInput {
   // 统一从原始 JSON 解析，容错更好
-  const meta = parseHostedCheckoutMetadata(raw);
+  const meta = parseCheckoutMetadata(raw);
   const normalizedStableId = normalizeStableId(
     orderStableId ?? meta.orderStableId,
   );
