@@ -19,7 +19,8 @@ type CloverChargeStatusResult =
       paymentId?: string;
       status?: string;
       captured?: boolean;
-      amountCents?: number;
+      baseAmountCents?: number;
+      chargedTotalCents?: number;
       creditSurchargeCents?: number;
       creditSurchargeRate?: number;
     }
@@ -27,6 +28,8 @@ type CloverChargeStatusResult =
       ok: false;
       reason: string;
       status?: string;
+      code?: string;
+      message?: string;
     };
 
 // ===== Service =====
@@ -35,6 +38,7 @@ export class CloverService {
   private readonly logger = new AppLogger(CloverService.name);
   private readonly apiBase: string;
   private readonly apiToken: string | undefined;
+  private readonly v3ApiToken: string | undefined;
   private readonly merchantId: string | undefined;
 
   constructor() {
@@ -43,6 +47,7 @@ export class CloverService {
       'https://api.clover.com';
 
     this.apiToken = process.env.CLOVER_ACCESS_TOKEN?.trim();
+    this.v3ApiToken = process.env.CLOVER_V3_ACCESS_TOKEN?.trim();
     this.merchantId = process.env.CLOVER_MERCHANT_ID?.trim();
   }
 
@@ -243,7 +248,7 @@ export class CloverService {
     paymentId?: string;
     idempotencyKey?: string;
   }): Promise<CloverChargeStatusResult> {
-    if (!this.apiToken) {
+    if (!this.v3ApiToken || !this.merchantId) {
       return { ok: false, reason: 'missing-credentials' };
     }
 
@@ -253,11 +258,18 @@ export class CloverService {
       return { ok: false, reason: 'missing-identifiers' };
     }
 
-    const url = paymentId
-      ? `${this.apiBase}/v1/charges/${encodeURIComponent(paymentId)}`
-      : `${this.apiBase}/v1/charges?limit=1&idempotency_key=${encodeURIComponent(
-          idempotencyKey ?? '',
-        )}`;
+    if (!paymentId && !this.apiToken) {
+      return { ok: false, reason: 'missing-credentials' };
+    }
+
+    const resolvedPaymentId =
+      paymentId ??
+      (await this.resolvePaymentIdByIdempotencyKey(idempotencyKey));
+    if (!resolvedPaymentId) {
+      return { ok: false, reason: 'missing-payment-id' };
+    }
+
+    const url = `${this.apiBase}/v3/merchants/${encodeURIComponent(this.merchantId)}/payments/${encodeURIComponent(resolvedPaymentId)}?expand=additionalCharges`;
 
     let resp: Response;
     try {
@@ -265,7 +277,7 @@ export class CloverService {
         method: 'GET',
         headers: {
           Accept: 'application/json',
-          Authorization: `Bearer ${this.apiToken}`,
+          Authorization: `Bearer ${this.v3ApiToken}`,
         },
       });
     } catch (error) {
@@ -276,73 +288,81 @@ export class CloverService {
       this.logger.error(
         `[CloverService] status request failed reason=${reason}`,
       );
-      return {
-        ok: false,
-        status: 'FAILED',
-        reason,
-      };
+      return { ok: false, status: 'FAILED', reason };
     }
 
     const rawText = await resp.text();
     let parsed: Record<string, unknown> | undefined;
     try {
-      parsed = JSON.parse(rawText) as Record<string, unknown>;
+      const json = JSON.parse(rawText) as unknown;
+      if (!json || typeof json !== 'object' || Array.isArray(json)) {
+        return { ok: false, reason: rawText, message: rawText };
+      }
+      parsed = json as Record<string, unknown>;
     } catch {
-      return { ok: false, reason: rawText };
+      return { ok: false, reason: rawText, message: rawText };
+    }
+
+    const directError = extractDirectApiError(parsed);
+    if (directError) {
+      return {
+        ok: false,
+        reason: rawText,
+        status: 'FAILED',
+        code: directError.code,
+        message: directError.message,
+      };
     }
 
     if (!resp.ok) {
-      this.logger.warn(
-        `Unexpected Clover status response keys: ${JSON.stringify(
-          safeLogKeys(parsed),
-        )}`,
-      );
       const errorDetails = extractCloverErrorDetails(parsed);
       const reason = stringifyReason(parsed, rawText, errorDetails.message);
-      return { ok: false, reason, status: errorDetails.status ?? 'FAILED' };
+      return {
+        ok: false,
+        reason,
+        status: errorDetails.status ?? 'FAILED',
+        code: errorDetails.code,
+        message: errorDetails.message,
+      };
     }
 
-    const record = extractChargeRecord(parsed);
-    if (!record) {
-      return { ok: false, reason: 'missing-charge' };
+    const baseAmountCents =
+      typeof parsed.amount === 'number' && Number.isFinite(parsed.amount)
+        ? Math.round(parsed.amount)
+        : undefined;
+    if (typeof baseAmountCents !== 'number') {
+      return { ok: false, reason: 'missing-payment-amount' };
     }
 
     const status =
-      typeof record.status === 'string' ? record.status : undefined;
+      typeof parsed.result === 'string'
+        ? parsed.result
+        : typeof parsed.status === 'string'
+          ? parsed.status
+          : undefined;
     const captured =
-      typeof record.captured === 'boolean' ? record.captured : undefined;
-    const recordPaymentId =
-      typeof record.id === 'string' ? record.id : undefined;
-    const amountCents =
-      typeof record.amount === 'number' && Number.isFinite(record.amount)
-        ? Math.round(record.amount)
-        : undefined;
-
-    const surcharge = recordPaymentId
-      ? await this.getCreditCardSurcharge(recordPaymentId)
-      : undefined;
+      typeof parsed.captured === 'boolean' ? parsed.captured : undefined;
+    const surcharge = this.extractCreditCardSurcharge(parsed);
+    const surchargeAmount = surcharge?.amountCents ?? 0;
 
     return {
       ok: true,
       status,
       captured,
-      paymentId: recordPaymentId,
-      amountCents,
-      creditSurchargeCents: surcharge?.amountCents,
+      paymentId: resolvedPaymentId,
+      baseAmountCents,
+      chargedTotalCents: baseAmountCents + surchargeAmount,
+      creditSurchargeCents: surchargeAmount > 0 ? surchargeAmount : undefined,
       creditSurchargeRate: surcharge?.rate,
     };
   }
 
-  private async getCreditCardSurcharge(paymentId: string): Promise<
-    | {
-        amountCents: number;
-        rate?: number;
-      }
-    | undefined
-  > {
-    if (!this.apiToken || !this.merchantId) return undefined;
+  private async resolvePaymentIdByIdempotencyKey(
+    idempotencyKey?: string,
+  ): Promise<string | undefined> {
+    if (!this.apiToken || !idempotencyKey) return undefined;
 
-    const url = `${this.apiBase}/v3/merchants/${encodeURIComponent(this.merchantId)}/payments/${encodeURIComponent(paymentId)}?expand=additionalCharges`;
+    const url = `${this.apiBase}/v1/charges?limit=1&idempotency_key=${encodeURIComponent(idempotencyKey)}`;
     try {
       const resp = await fetch(url, {
         method: 'GET',
@@ -356,56 +376,66 @@ export class CloverService {
         return undefined;
       }
 
-      const payload = (await resp.json()) as unknown;
-      if (!payload || typeof payload !== 'object') {
-        return undefined;
-      }
-
-      const root = payload as Record<string, unknown>;
-      const additionalCharges = root.additionalCharges;
-      if (!additionalCharges || typeof additionalCharges !== 'object') {
-        return undefined;
-      }
-
-      const elements = (additionalCharges as Record<string, unknown>).elements;
-      if (!Array.isArray(elements)) {
-        return undefined;
-      }
-
-      let surchargeAmount = 0;
-      let surchargeRate: number | undefined;
-
-      for (const entry of elements) {
-        if (!entry || typeof entry !== 'object') continue;
-        const charge = entry as Record<string, unknown>;
-        if (charge.type !== 'CREDIT_SURCHARGE') continue;
-        if (
-          typeof charge.amount === 'number' &&
-          Number.isFinite(charge.amount)
-        ) {
-          surchargeAmount += Math.max(0, Math.round(charge.amount));
-        }
-        if (
-          typeof charge.rate === 'number' &&
-          Number.isFinite(charge.rate) &&
-          charge.rate >= 0
-        ) {
-          surchargeRate = Math.round(charge.rate * 10) / 10;
-        }
-      }
-
-      if (surchargeAmount <= 0) {
-        return undefined;
-      }
-
-      return {
-        amountCents: surchargeAmount,
-        rate: surchargeRate,
-      };
+      const payload = (await resp.json()) as Record<string, unknown>;
+      const record = extractChargeRecord(payload);
+      if (!record) return undefined;
+      return typeof record.id === 'string' ? record.id : undefined;
     } catch {
       return undefined;
     }
   }
+
+  private extractCreditCardSurcharge(
+    paymentPayload: Record<string, unknown>,
+  ): { amountCents: number; rate?: number } | undefined {
+    const additionalCharges = paymentPayload.additionalCharges;
+    if (!additionalCharges || typeof additionalCharges !== 'object') {
+      return undefined;
+    }
+
+    const elements = (additionalCharges as Record<string, unknown>).elements;
+    if (!Array.isArray(elements)) {
+      return undefined;
+    }
+
+    let surchargeAmount = 0;
+    let surchargeRateBps: number | undefined;
+    for (const entry of elements) {
+      if (!entry || typeof entry !== 'object') continue;
+      const charge = entry as Record<string, unknown>;
+      if (charge.type !== 'CREDIT_SURCHARGE') continue;
+      if (typeof charge.amount === 'number' && Number.isFinite(charge.amount)) {
+        surchargeAmount += Math.max(0, Math.round(charge.amount));
+      }
+      if (typeof charge.rate === 'number' && Number.isFinite(charge.rate) && charge.rate >= 0) {
+        surchargeRateBps = Math.round(charge.rate);
+      }
+    }
+
+    if (surchargeAmount <= 0) return undefined;
+
+    return {
+      amountCents: surchargeAmount,
+      rate: typeof surchargeRateBps === 'number' ? surchargeRateBps / 10000 : undefined,
+    };
+  }
+}
+
+function extractDirectApiError(payload: Record<string, unknown>): {
+  code?: string;
+  message: string;
+} | null {
+  const message =
+    typeof payload.message === 'string' ? payload.message.trim() : '';
+  const errorCode =
+    typeof payload.error === 'string' ? payload.error.trim() : '';
+  if (!message && !errorCode) {
+    return null;
+  }
+  return {
+    message: message || 'Clover request failed',
+    code: errorCode || undefined,
+  };
 }
 
 type CloverErrorDetails = {

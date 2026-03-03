@@ -19,6 +19,7 @@ const COPY: Record<
     sending: string;
     memberHint: (email: string) => string;
     guestHint: string;
+    memberNoEmailHint: string;
     modalTitle: string;
     emailLabel: string;
     emailPlaceholder: string;
@@ -34,6 +35,7 @@ const COPY: Record<
     sending: "Sending…",
     memberHint: (email) => `We will send the invoice to ${email}.`,
     guestHint: "Enter your email address to receive the invoice.",
+    memberNoEmailHint: "No email is linked to your account yet. Please enter one to receive the invoice.",
     modalTitle: "Send invoice",
     emailLabel: "Email address",
     emailPlaceholder: "you@example.com",
@@ -48,6 +50,7 @@ const COPY: Record<
     sending: "发送中…",
     memberHint: (email) => `账单将发送到会员邮箱：${email}`,
     guestHint: "请输入邮箱地址以接收账单。",
+    memberNoEmailHint: "当前会员资料未绑定邮箱，请先填写接收账单邮箱。",
     modalTitle: "发送账单",
     emailLabel: "邮箱地址",
     emailPlaceholder: "you@example.com",
@@ -66,7 +69,8 @@ function isValidEmail(value: string) {
 export function InvoiceButton({ orderStableId, locale }: Props) {
   const { data: session, status } = useSession();
   const memberEmail = session?.user?.email ?? "";
-  const isMember = status === "authenticated" && !!memberEmail;
+  const isAuthenticated = status === "authenticated";
+  const isMember = isAuthenticated && !!memberEmail;
   const [isSending, setIsSending] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [emailInput, setEmailInput] = useState("");
@@ -81,8 +85,11 @@ export function InvoiceButton({ orderStableId, locale }: Props) {
     if (isMember) {
       return copy.memberHint(memberEmail);
     }
+    if (isAuthenticated) {
+      return copy.memberNoEmailHint;
+    }
     return copy.guestHint;
-  }, [copy, isMember, memberEmail]);
+  }, [copy, isAuthenticated, isMember, memberEmail]);
 
   const sendInvoice = async (email?: string) => {
     setIsSending(true);

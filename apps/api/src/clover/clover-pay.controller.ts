@@ -362,10 +362,10 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
           }
 
           const chargeReconcile =
-            typeof chargeStatus.amountCents === 'number'
+            typeof chargeStatus.chargedTotalCents === 'number'
               ? reconcileChargeAmount({
                   intentAmountCents: intent.amountCents,
-                  chargedAmountCents: chargeStatus.amountCents,
+                  chargedAmountCents: chargeStatus.chargedTotalCents,
                   surchargeCents: chargeStatus.creditSurchargeCents,
                   allowRateFallbackWhenEqual: true,
                 })
@@ -383,7 +383,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
               checkoutIntentId: intent.referenceId,
               intentId: intent.id,
               intentAmountCents: intent.amountCents,
-              chargedAmountCents: chargeStatus.amountCents,
+              chargedAmountCents: chargeStatus.chargedTotalCents,
               chargeStatus,
               cloverPaymentId: chargeStatus.paymentId ?? null,
               detail: chargeReconcile,
@@ -465,6 +465,12 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
             orderNumber: intent.referenceId,
           };
         }
+      }
+
+      if (!chargeStatus.ok) {
+        this.logger.warn(
+          `[payment.clover.status.failed] stage=reconcileIntent intent=${intent.referenceId} reason=${chargeStatus.reason} code=${chargeStatus.code ?? 'unknown'}`,
+        );
       }
     }
 
@@ -792,23 +798,35 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       idempotencyKey,
     });
 
+    if (!chargeStatus.ok) {
+      await this.checkoutIntents.markFailed({
+        intentId: intent.id,
+        result: 'CHARGE_STATUS_FAILED',
+      });
+      throw new ConflictException({
+        code: chargeStatus.code ?? 'CHARGE_STATUS_FAILED',
+        message: chargeStatus.message ?? 'failed to query clover payment status',
+        details: {
+          reason: chargeStatus.reason,
+        },
+      });
+    }
+
     const chargeReconcile =
-      chargeStatus.ok && typeof chargeStatus.amountCents === 'number'
+      typeof chargeStatus.chargedTotalCents === 'number'
         ? reconcileChargeAmount({
             intentAmountCents: expectedTotalCents,
-            chargedAmountCents: chargeStatus.amountCents,
+            chargedAmountCents: chargeStatus.chargedTotalCents,
             surchargeCents: chargeStatus.creditSurchargeCents,
             allowRateFallbackWhenEqual: true,
           })
         : null;
 
-    if (chargeStatus.ok) {
-      this.logger.log(
-        `[payment.clover.success] stage=payWithCardToken intent=${referenceId} response=${stableStringify(
-          chargeStatus,
-        )}`,
-      );
-    }
+    this.logger.log(
+      `[payment.clover.success] stage=payWithCardToken intent=${referenceId} response=${stableStringify(
+        chargeStatus,
+      )}`,
+    );
 
     if (chargeReconcile?.mismatchBeyondTolerance) {
       await this.sendChargeMismatchAlert({
@@ -816,7 +834,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
         checkoutIntentId: referenceId,
         intentId: intent.id,
         intentAmountCents: expectedTotalCents,
-        chargedAmountCents: expectedTotalCents + chargeReconcile.surchargeCents,
+        chargedAmountCents: chargeStatus.chargedTotalCents,
         chargeStatus,
         cloverPaymentId: paymentResult.paymentId ?? null,
         detail: chargeReconcile,
@@ -825,7 +843,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
 
     const surchargeCentsValue = chargeReconcile?.surchargeCents ?? 0;
     const surchargeMeta =
-      chargeStatus.ok && surchargeCentsValue > 0
+      surchargeCentsValue > 0
         ? {
             creditCardSurchargeCents: surchargeCentsValue,
             creditCardSurchargeRate:
