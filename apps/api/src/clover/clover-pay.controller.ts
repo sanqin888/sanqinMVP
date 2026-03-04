@@ -817,7 +817,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     const chargeStatusUnverified = !chargeStatus.ok;
     if (chargeStatusUnverified) {
       this.logger.warn(
-        `[payment.clover.status.unverified] stage=payWithCardToken intent=${referenceId} externalPaymentId=${externalPaymentId} attempts=${chargeStatusAttempts} reason=${chargeStatus.reason}`,
+        `[payment.clover.status.unverified] stage=payWithCardToken intent=${referenceId} externalPaymentId=${externalPaymentId} attempts=${chargeStatusAttempts} reason=${chargeStatus.ok ? 'unknown' : chargeStatus.reason}`,
       );
     }
 
