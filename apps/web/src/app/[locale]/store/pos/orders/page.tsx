@@ -32,6 +32,7 @@ const COPY = {
     filtersTitle: "筛选条件",
     filtersReset: "重置",
     filtersSubtitle: "支持时间、渠道、状态、支付方式、金额区间等组合筛选。",
+    filterDateLabel: "订单日期",
     tableTitle: "订单列表",
     tableSubtitle: "点击订单可查看可操作功能。",
     orderNumber: "订单号",
@@ -168,6 +169,7 @@ const COPY = {
     filtersReset: "Reset",
     filtersSubtitle:
       "Combine time, channel, status, payment method, and amount range.",
+    filterDateLabel: "Order date",
     tableTitle: "Orders",
     tableSubtitle: "Select an order to see actions.",
     orderNumber: "Order #",
@@ -411,6 +413,7 @@ function statusTone(status: OrderStatusKey): string {
 
 type OrderFilters = {
   time: "all" | "today";
+  dateYmd: string | null;
   statuses: OrderStatusKey[];
   channels: BackendOrder["channel"][];
   fulfillments: OrderRecord["type"][];
@@ -419,6 +422,7 @@ type OrderFilters = {
 
 const createInitialFilters = (): OrderFilters => ({
   time: "all",
+  dateYmd: null,
   statuses: [],
   channels: [],
   fulfillments: [],
@@ -1056,10 +1060,16 @@ export default function PosOrdersPage() {
 
   const filtersDirty =
     filters.time !== "all" ||
+    filters.dateYmd !== null ||
     filters.statuses.length > 0 ||
     filters.channels.length > 0 ||
     filters.fulfillments.length > 0 ||
     filters.minTotalCents !== null;
+
+  const todayYmd = useMemo(() => {
+    const tz = storeTimezone || "UTC";
+    return ymdInTimeZone(new Date(), tz);
+  }, [storeTimezone]);
 
   const handleResetOrderFilters = () => {
     setFilters(createInitialFilters());
@@ -1126,7 +1136,7 @@ const mapOrder = useCallback(
         setErrorMessage(null);
         const [configRes, data] = await Promise.all([
           apiFetch<BusinessConfigLite>("/admin/business/config").catch(() => null),
-          fetchRecentOrders<BackendOrder[]>(10),
+          fetchRecentOrders<BackendOrder[]>(200),
         ]);
 
         if (cancelled) return;
@@ -1216,13 +1226,15 @@ const mapOrder = useCallback(
       .filter((order) => {
         if (filters.time === "today") {
           const orderDate = parseBackendDate(order.createdAt);
-          const now = new Date();
-
           const tz = storeTimezone || "UTC";
           const orderYmd = ymdInTimeZone(orderDate, tz);
-          const nowYmd = ymdInTimeZone(now, tz);
-
-          if (orderYmd !== nowYmd) return false;
+          if (orderYmd !== todayYmd) return false;
+        }
+        if (filters.dateYmd) {
+          const orderDate = parseBackendDate(order.createdAt);
+          const tz = storeTimezone || "UTC";
+          const orderYmd = ymdInTimeZone(orderDate, tz);
+          if (orderYmd !== filters.dateYmd) return false;
         }
         if (
           filters.statuses.length > 0 &&
@@ -1251,7 +1263,7 @@ const mapOrder = useCallback(
         return true;
       })
       .sort(compareOrderCreatedAtAsc);
-  }, [filters, orders, storeTimezone]);
+  }, [filters, orders, storeTimezone, todayYmd]);
 
   const summary = useMemo(() => {
     if (!selectedOrder || !selectedAction) return null;
@@ -1362,7 +1374,8 @@ const mapOrder = useCallback(
     if (key.type === "time") {
       setFilters((prev) => ({
         ...prev,
-        time: prev.time === "today" ? "all" : "today",
+        time: "all",
+        dateYmd: prev.dateYmd === todayYmd ? null : todayYmd,
       }));
       return;
     }
@@ -1397,7 +1410,7 @@ const mapOrder = useCallback(
       }));
       return;
     }
-   };
+  };
 
   const handleToggleItem = (id: string) => {
     setSelectedItemIds((prev) => {
@@ -1788,7 +1801,7 @@ const handleSubmit = () => {
           <div className="mt-4 flex flex-wrap gap-2">
             {QUICK_FILTERS.map((filter) => {
               const active =
-                (filter.type === "time" && filters.time === "today") ||
+                (filter.type === "time" && filters.dateYmd === todayYmd) ||
                 (filter.type === "status" &&
                   filters.statuses.includes(filter.value as OrderStatusKey)) ||
                 (filter.type === "fulfillment" &&
@@ -1815,6 +1828,25 @@ const handleSubmit = () => {
             })}
           </div>
           <div className="mt-4 grid gap-3 text-xs text-slate-300">
+            <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-3">
+              <div className="text-[11px] uppercase text-slate-400">{copy.filterDateLabel}</div>
+              <div className="mt-2">
+                <input
+                  type="date"
+                  value={filters.dateYmd ?? ""}
+                  max={todayYmd}
+                  onChange={(event) => {
+                    const nextDate = event.target.value || null;
+                    setFilters((prev) => ({
+                      ...prev,
+                      time: "all",
+                      dateYmd: nextDate,
+                    }));
+                  }}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs text-slate-100 focus:border-emerald-400/70 focus:outline-none"
+                />
+              </div>
+            </div>
             <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-3">
               <div className="text-[11px] uppercase text-slate-400">Channels</div>
               <div className="mt-2 flex flex-wrap gap-2">
