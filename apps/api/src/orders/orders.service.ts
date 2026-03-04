@@ -2655,7 +2655,11 @@ export class OrdersService {
     const taxCents = order.taxCents ?? 0;
     const deliveryFeeCents = order.deliveryFeeCents ?? 0;
     const discountCents = this.getTotalDiscountCents(order);
-    const creditCardSurcharge = await this.getOrderCreditCardSurcharge(order);
+    const paymentMeta = await this.getCheckoutIntentPaymentMeta(order);
+    const creditCardSurcharge = this.resolveOrderCreditCardSurcharge(
+      order,
+      paymentMeta,
+    );
     const creditCardSurchargeCents = creditCardSurcharge?.cents ?? 0;
     const paymentTotalCents =
       typeof order.paymentTotalCents === 'number' &&
@@ -2709,6 +2713,11 @@ export class OrdersService {
       couponDiscountCents: order.couponDiscountCents ?? 0,
       creditCardSurchargeCents,
       creditCardSurchargeRate: creditCardSurcharge?.rate,
+      chargeStatusUnverified: paymentMeta?.chargeStatusUnverified === true,
+      chargeStatusUnverifiedReason:
+        typeof paymentMeta?.chargeStatusUnverifiedReason === 'string'
+          ? paymentMeta.chargeStatusUnverifiedReason
+          : undefined,
       subtotalAfterDiscountCents:
         order.subtotalAfterDiscountCents ?? subtotalCents,
       ...(await this.getLoyaltyUsageByOrderStableId(order.orderStableId)),
@@ -2716,19 +2725,11 @@ export class OrdersService {
     };
   }
 
-  private async getOrderCreditCardSurcharge(order: {
+  private async getCheckoutIntentPaymentMeta(order: {
     clientRequestId?: string | null;
-    paymentMethod?: PaymentMethod | null;
-    creditCardSurchargeCents?: number | null;
-  }): Promise<{ cents: number; rate?: number } | null> {
-    const persistedSurcharge =
-      typeof order.creditCardSurchargeCents === 'number' &&
-      Number.isFinite(order.creditCardSurchargeCents)
-        ? Math.max(0, Math.round(order.creditCardSurchargeCents))
-        : 0;
-
+  }): Promise<Record<string, unknown> | null> {
     if (!order.clientRequestId) {
-      return persistedSurcharge > 0 ? { cents: persistedSurcharge } : null;
+      return null;
     }
 
     const intent = await this.prisma.checkoutIntent.findFirst({
@@ -2742,7 +2743,24 @@ export class OrdersService {
         ? (intent.metadataJson as Record<string, unknown>)
         : null;
 
-    if (!metadata) return null;
+    return metadata;
+  }
+
+  private resolveOrderCreditCardSurcharge(
+    order: {
+      creditCardSurchargeCents?: number | null;
+    },
+    metadata: Record<string, unknown> | null,
+  ): { cents: number; rate?: number } | null {
+    const persistedSurcharge =
+      typeof order.creditCardSurchargeCents === 'number' &&
+      Number.isFinite(order.creditCardSurchargeCents)
+        ? Math.max(0, Math.round(order.creditCardSurchargeCents))
+        : 0;
+
+    if (!metadata) {
+      return persistedSurcharge > 0 ? { cents: persistedSurcharge } : null;
+    }
 
     const centsRaw = metadata.creditCardSurchargeCents;
     const rateRaw = metadata.creditCardSurchargeRate;

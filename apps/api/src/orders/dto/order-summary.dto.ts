@@ -33,6 +33,8 @@ export type OrderSummaryDto = {
   subtotalAfterDiscountCents?: number | null;
   creditCardSurchargeCents?: number;
   creditCardSurchargeRate?: number;
+  chargeStatusUnverified?: boolean;
+  chargeStatusUnverifiedReason?: string;
   balancePaidCents?: number;
   pointsEarned?: number;
 
