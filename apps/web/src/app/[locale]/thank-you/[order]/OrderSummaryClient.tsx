@@ -29,6 +29,8 @@ type OrderSummaryResponse = {
   discountCents: number;
   totalCents: number;
   creditCardSurchargeCents?: number;
+  chargeStatusUnverified?: boolean;
+  chargeStatusUnverifiedReason?: string;
   lineItems: OrderSummaryLineItem[];
   loyaltyRedeemCents?: number | null;
   subtotalAfterDiscountCents?: number | null;
@@ -55,6 +57,7 @@ const LABELS: Record<
     creditCardSurcharge: string;
     discount: string;
     total: string;
+    chargeStatusUnverifiedHint: string;
     loading: string;
     failed: string;
   }
@@ -68,6 +71,8 @@ const LABELS: Record<
     creditCardSurcharge: "Credit card surcharge",
     discount: "Discount",
     total: "Total",
+    chargeStatusUnverifiedHint:
+      "Charge succeeded, but actual charged amount could not be confirmed yet. Please check your bank statement.",
     loading: "Loading your order summary…",
     failed: "Failed to load order summary. If this persists, please contact us.",
   },
@@ -80,6 +85,8 @@ const LABELS: Record<
     creditCardSurcharge: "信用卡附加费",
     discount: "优惠/积分抵扣",
     total: "合计",
+    chargeStatusUnverifiedHint:
+      "扣款已成功，但暂未查询到实际扣款金额，请以您的银行流水为准。",
     loading: "正在加载订单小结…",
     failed: "订单小结加载失败，如多次刷新仍有问题，请联系客服。",
   },
@@ -263,6 +270,11 @@ export function OrderSummaryClient({ orderStableId, locale }: Props) {
         <h2 className="text-base font-semibold text-slate-900">
           {labels.heading}
         </h2>
+        {data?.chargeStatusUnverified ? (
+          <p className="mt-2 text-xs text-amber-700">
+            {labels.chargeStatusUnverifiedHint}
+          </p>
+        ) : null}
 
         {prepTimeMinutes ? (
           <div className="mt-3 rounded-xl border border-orange-200 bg-orange-50 p-3 text-xs text-orange-700">

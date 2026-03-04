@@ -13,7 +13,7 @@ type CloverPaymentCreateResult =
       paymentId?: string;
     };
 
-type CloverChargeStatusResult =
+export type CloverChargeStatusResult =
   | {
       ok: true;
       paymentId?: string;
@@ -56,6 +56,7 @@ export class CloverService {
     currency: string;
     source: string;
     orderId: string;
+    externalPaymentId?: string;
     idempotencyKey?: string;
     description?: string;
   }): Promise<CloverPaymentCreateResult> {
@@ -100,6 +101,7 @@ export class CloverService {
           amount: params.amountCents,
           currency: params.currency.toLowerCase(),
           source: params.source,
+          externalPaymentId: params.externalPaymentId,
           description: params.description || `Online Order ${params.orderId}`,
         }),
       });
@@ -245,6 +247,7 @@ export class CloverService {
   }
 
   async getChargeStatus(params: {
+    externalPaymentId?: string;
     paymentId?: string;
     idempotencyKey?: string;
   }): Promise<CloverChargeStatusResult> {
@@ -252,14 +255,31 @@ export class CloverService {
       return { ok: false, reason: 'missing-credentials' };
     }
 
+    const externalPaymentId = params.externalPaymentId?.trim();
     const paymentId = params.paymentId?.trim();
     const idempotencyKey = params.idempotencyKey?.trim();
-    if (!paymentId && !idempotencyKey) {
+    if (!externalPaymentId && !paymentId && !idempotencyKey) {
       return { ok: false, reason: 'missing-identifiers' };
     }
 
-    if (!paymentId && !this.apiToken) {
+    if (!externalPaymentId && !paymentId && !this.apiToken) {
       return { ok: false, reason: 'missing-credentials' };
+    }
+
+    if (externalPaymentId) {
+      const byExternalPaymentId =
+        await this.getChargeStatusByExternalPaymentId(externalPaymentId);
+      if (byExternalPaymentId) {
+        return byExternalPaymentId;
+      }
+
+      return {
+        ok: false,
+        reason: `externalPaymentId_not_found:${externalPaymentId}`,
+        status: 'FAILED',
+        code: 'EXTERNAL_PAYMENT_ID_NOT_FOUND',
+        message: 'payment status not found by externalPaymentId',
+      };
     }
 
     const resolvedPaymentId =
@@ -342,7 +362,7 @@ export class CloverService {
           : undefined;
     const captured =
       typeof parsed.captured === 'boolean' ? parsed.captured : undefined;
-    const surcharge = this.extractCreditCardSurcharge(parsed);
+    const surcharge = extractCreditCardSurchargeFromPayment(parsed);
     const surchargeAmount = surcharge?.amountCents ?? 0;
 
     return {
@@ -355,6 +375,81 @@ export class CloverService {
       creditSurchargeCents: surchargeAmount > 0 ? surchargeAmount : undefined,
       creditSurchargeRate: surcharge?.rate,
     };
+  }
+
+  private async getChargeStatusByExternalPaymentId(
+    externalPaymentId: string,
+  ): Promise<CloverChargeStatusResult | null> {
+    const candidateUrls = [
+      `${this.apiBase}/v3/merchants/${encodeURIComponent(this.merchantId ?? '')}/payments?externalPaymentId=${encodeURIComponent(externalPaymentId)}&expand=additionalCharges`,
+      `${this.apiBase}/v3/merchants/${encodeURIComponent(this.merchantId ?? '')}/payments?filter=externalPaymentId==${encodeURIComponent(externalPaymentId)}&expand=additionalCharges`,
+    ];
+
+    for (const url of candidateUrls) {
+      const response = await this.fetchV3PaymentStatus(url);
+      if (!response) continue;
+      return response;
+    }
+
+    return null;
+  }
+
+  private async fetchV3PaymentStatus(
+    url: string,
+  ): Promise<CloverChargeStatusResult | null> {
+    let resp: Response;
+    try {
+      resp = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${this.v3ApiToken}`,
+        },
+      });
+    } catch (error) {
+      const reason =
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message
+          : 'Clover request failed';
+      this.logger.error(
+        `[CloverService] externalPaymentId status request failed reason=${reason}`,
+      );
+      return { ok: false, status: 'FAILED', reason };
+    }
+
+    const rawText = await resp.text();
+    let parsed: Record<string, unknown> | undefined;
+    try {
+      const json = JSON.parse(rawText) as unknown;
+      if (json && typeof json === 'object' && !Array.isArray(json)) {
+        parsed = json as Record<string, unknown>;
+      }
+    } catch {
+      return null;
+    }
+
+    if (!resp.ok) {
+      if (resp.status === 404) {
+        return null;
+      }
+
+      const errorDetails = extractCloverErrorDetails(parsed);
+      const reason = stringifyReason(parsed, rawText, errorDetails.message);
+      return {
+        ok: false,
+        reason,
+        status: errorDetails.status ?? 'FAILED',
+        code: errorDetails.code,
+        message: errorDetails.message,
+      };
+    }
+
+    const payment = extractFirstPaymentRecord(parsed);
+    if (!payment) {
+      return null;
+    }
+
+    return toChargeStatusSuccess(payment);
   }
 
   private async resolvePaymentIdByIdempotencyKey(
@@ -383,48 +478,6 @@ export class CloverService {
     } catch {
       return undefined;
     }
-  }
-
-  private extractCreditCardSurcharge(
-    paymentPayload: Record<string, unknown>,
-  ): { amountCents: number; rate?: number } | undefined {
-    const additionalCharges = paymentPayload.additionalCharges;
-    if (!additionalCharges || typeof additionalCharges !== 'object') {
-      return undefined;
-    }
-
-    const elements = (additionalCharges as Record<string, unknown>).elements;
-    if (!Array.isArray(elements)) {
-      return undefined;
-    }
-
-    let surchargeAmount = 0;
-    let surchargeRateBps: number | undefined;
-    for (const entry of elements) {
-      if (!entry || typeof entry !== 'object') continue;
-      const charge = entry as Record<string, unknown>;
-      if (charge.type !== 'CREDIT_SURCHARGE') continue;
-      if (typeof charge.amount === 'number' && Number.isFinite(charge.amount)) {
-        surchargeAmount += Math.max(0, Math.round(charge.amount));
-      }
-      if (
-        typeof charge.rate === 'number' &&
-        Number.isFinite(charge.rate) &&
-        charge.rate >= 0
-      ) {
-        surchargeRateBps = Math.round(charge.rate);
-      }
-    }
-
-    if (surchargeAmount <= 0) return undefined;
-
-    return {
-      amountCents: surchargeAmount,
-      rate:
-        typeof surchargeRateBps === 'number'
-          ? surchargeRateBps / 10000
-          : undefined,
-    };
   }
 }
 
@@ -551,6 +604,115 @@ function extractChargeRecord(
   }
 
   return payload;
+}
+
+function extractFirstPaymentRecord(
+  payload: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!payload) return undefined;
+
+  const elements = payload.elements;
+  if (Array.isArray(elements)) {
+    const first = elements[0] as unknown;
+    if (first && typeof first === 'object') {
+      return first as Record<string, unknown>;
+    }
+  }
+
+  const data = payload.data;
+  if (Array.isArray(data)) {
+    const first = data[0] as unknown;
+    if (first && typeof first === 'object') {
+      return first as Record<string, unknown>;
+    }
+  }
+
+  if (typeof payload.id === 'string') {
+    return payload;
+  }
+
+  return undefined;
+}
+
+function toChargeStatusSuccess(
+  paymentPayload: Record<string, unknown>,
+): CloverChargeStatusResult {
+  const amountRaw = paymentPayload.amount;
+  const baseAmountCents =
+    typeof amountRaw === 'number' && Number.isFinite(amountRaw)
+      ? Math.round(amountRaw)
+      : undefined;
+  if (typeof baseAmountCents !== 'number') {
+    return { ok: false, reason: 'missing-payment-amount' };
+  }
+
+  const status =
+    typeof paymentPayload.result === 'string'
+      ? paymentPayload.result
+      : typeof paymentPayload.status === 'string'
+        ? paymentPayload.status
+        : undefined;
+  const captured =
+    typeof paymentPayload.captured === 'boolean'
+      ? paymentPayload.captured
+      : undefined;
+
+  const surcharge = extractCreditCardSurchargeFromPayment(paymentPayload);
+  const surchargeAmount = surcharge?.amountCents ?? 0;
+
+  return {
+    ok: true,
+    status,
+    captured,
+    paymentId:
+      typeof paymentPayload.id === 'string' ? paymentPayload.id : undefined,
+    baseAmountCents,
+    chargedTotalCents: baseAmountCents + surchargeAmount,
+    creditSurchargeCents: surchargeAmount > 0 ? surchargeAmount : undefined,
+    creditSurchargeRate: surcharge?.rate,
+  };
+}
+
+function extractCreditCardSurchargeFromPayment(
+  paymentPayload: Record<string, unknown>,
+): { amountCents: number; rate?: number } | undefined {
+  const additionalCharges = paymentPayload.additionalCharges;
+  if (!additionalCharges || typeof additionalCharges !== 'object') {
+    return undefined;
+  }
+
+  const elements = (additionalCharges as Record<string, unknown>).elements;
+  if (!Array.isArray(elements)) {
+    return undefined;
+  }
+
+  let surchargeAmount = 0;
+  let surchargeRateBps: number | undefined;
+  for (const entry of elements) {
+    if (!entry || typeof entry !== 'object') continue;
+    const charge = entry as Record<string, unknown>;
+    if (charge.type !== 'CREDIT_SURCHARGE') continue;
+    if (typeof charge.amount === 'number' && Number.isFinite(charge.amount)) {
+      surchargeAmount += Math.max(0, Math.round(charge.amount));
+    }
+    if (
+      typeof charge.rate === 'number' &&
+      Number.isFinite(charge.rate) &&
+      charge.rate >= 0
+    ) {
+      surchargeRateBps = Math.round(charge.rate);
+    }
+  }
+
+  if (surchargeAmount <= 0) return undefined;
+
+  return {
+    amountCents: surchargeAmount,
+    rate:
+      typeof surchargeRateBps === 'number'
+        ? surchargeRateBps / 10000
+        : undefined,
+  };
 }
 
 function safeLogKeys(
