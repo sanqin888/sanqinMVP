@@ -3,6 +3,7 @@ import {
   Injectable,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -139,6 +140,7 @@ export class AnalyticsService {
     };
 
     const rows = events.map((item) => ({
+      id: randomUUID(),
       eventName: normalizeEventName(item?.event),
       payload: normalizePayload(item?.payload),
       occurredAt: normalizeTimestamp(item?.ts),
@@ -154,6 +156,7 @@ export class AnalyticsService {
           (row) =>
             this.prisma.$executeRaw`
             INSERT INTO "AnalyticsEvent" (
+              "id",
               "eventName",
               "source",
               "locale",
@@ -163,6 +166,7 @@ export class AnalyticsService {
               "payload",
               "occurredAt"
             ) VALUES (
+              ${row.id}::uuid,
               ${row.eventName},
               ${'web'},
               ${normalizedContext.locale},
