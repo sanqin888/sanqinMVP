@@ -10,6 +10,7 @@ import {
   DailySpecialDto,
   AdminMenuCategoryDto,
   AdminMenuFullResponse,
+  isAvailableNow,
   MenuOptionGroupBindingDto,
   TemplateGroupFullDto,
   TemplateGroupLiteDto,
@@ -40,6 +41,18 @@ function parseIsoOrNull(v: unknown): Date | null {
       'tempUnavailableUntil must be valid ISO string',
     );
   return new Date(t);
+}
+
+function availabilityFromDb(
+  isAvailable: boolean,
+  tempUnavailableUntil: Date | null,
+) {
+  return {
+    isAvailable,
+    tempUnavailableUntil: tempUnavailableUntil
+      ? tempUnavailableUntil.toISOString()
+      : null,
+  };
 }
 
 function nextMidnightLocal(): Date {
@@ -587,6 +600,41 @@ export class AdminMenuService {
       },
     });
 
+    const targetItemStableIds = Array.from(
+      new Set(
+        (groups ?? []).flatMap((group) =>
+          (group.options ?? [])
+            .map((option) => option.targetItemStableId?.trim() ?? '')
+            .filter((stableId) => stableId.length > 0),
+        ),
+      ),
+    );
+
+    const targetItems =
+      targetItemStableIds.length === 0
+        ? []
+        : await this.prisma.menuItem.findMany({
+            where: {
+              stableId: { in: targetItemStableIds },
+              deletedAt: null,
+            },
+            select: {
+              stableId: true,
+              isAvailable: true,
+              tempUnavailableUntil: true,
+            },
+          });
+
+    const availableTargetItemStableIds = new Set(
+      targetItems
+        .filter((item) =>
+          isAvailableNow(
+            availabilityFromDb(item.isAvailable, item.tempUnavailableUntil),
+          ),
+        )
+        .map((item) => item.stableId),
+    );
+
     return (groups ?? []).map((g) => {
       const templateGroupStableId = g.stableId;
       return {
@@ -603,25 +651,34 @@ export class AdminMenuService {
 
         sortOrder: g.sortOrder,
 
-        options: (g.options ?? []).map((o) => ({
-          optionStableId: o.stableId,
-          templateGroupStableId,
+        options: (g.options ?? []).map((o) => {
+          const selfAvailable = isAvailableNow(
+            availabilityFromDb(o.isAvailable, o.tempUnavailableUntil),
+          );
+          const targetAvailable =
+            !o.targetItemStableId ||
+            availableTargetItemStableIds.has(o.targetItemStableId);
 
-          nameEn: o.nameEn,
-          nameZh: o.nameZh ?? null,
-          priceDeltaCents: o.priceDeltaCents,
-          targetItemStableId: o.targetItemStableId ?? null,
+          return {
+            optionStableId: o.stableId,
+            templateGroupStableId,
 
-          isAvailable: o.isAvailable,
-          tempUnavailableUntil: toIso(o.tempUnavailableUntil),
-          sortOrder: o.sortOrder,
-          childOptionStableIds: (o.childLinks ?? []).map(
-            (link) => link.childOption.stableId,
-          ),
-          parentOptionStableIds: (o.parentLinks ?? []).map(
-            (link) => link.parentOption.stableId,
-          ),
-        })),
+            nameEn: o.nameEn,
+            nameZh: o.nameZh ?? null,
+            priceDeltaCents: o.priceDeltaCents,
+            targetItemStableId: o.targetItemStableId ?? null,
+
+            isAvailable: selfAvailable && targetAvailable,
+            tempUnavailableUntil: toIso(o.tempUnavailableUntil),
+            sortOrder: o.sortOrder,
+            childOptionStableIds: (o.childLinks ?? []).map(
+              (link) => link.childOption.stableId,
+            ),
+            parentOptionStableIds: (o.parentLinks ?? []).map(
+              (link) => link.parentOption.stableId,
+            ),
+          };
+        }),
       };
     });
   }
