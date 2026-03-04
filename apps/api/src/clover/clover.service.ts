@@ -13,7 +13,7 @@ type CloverPaymentCreateResult =
       paymentId?: string;
     };
 
-type CloverChargeStatusResult =
+export type CloverChargeStatusResult =
   | {
       ok: true;
       paymentId?: string;
@@ -479,7 +479,6 @@ export class CloverService {
       return undefined;
     }
   }
-
 }
 
 function extractDirectApiError(payload: Record<string, unknown>): {

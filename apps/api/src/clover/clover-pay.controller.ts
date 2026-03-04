@@ -15,7 +15,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { AppLogger } from '../common/app-logger';
-import { CloverService } from './clover.service';
+import { CloverService, type CloverChargeStatusResult } from './clover.service';
 import {
   CLOVER_PAYMENT_CURRENCY,
   CreateCardTokenPaymentDto,
@@ -796,9 +796,10 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       });
     }
 
-    let chargeStatus = await this.clover.getChargeStatus({
-      externalPaymentId,
-    });
+    let chargeStatus: CloverChargeStatusResult =
+      await this.clover.getChargeStatus({
+        externalPaymentId,
+      });
     let chargeStatusAttempts = 1;
     while (!chargeStatus.ok && chargeStatusAttempts < 3) {
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -835,12 +836,15 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     }
 
     if (chargeReconcile?.mismatchBeyondTolerance) {
+      const chargedAmountCents = chargeStatus.ok
+        ? chargeStatus.chargedTotalCents
+        : undefined;
       await this.sendChargeMismatchAlert({
         stage: 'payWithCardToken',
         checkoutIntentId: referenceId,
         intentId: intent.id,
         intentAmountCents: expectedTotalCents,
-        chargedAmountCents: chargeStatus.chargedTotalCents,
+        chargedAmountCents,
         chargeStatus,
         cloverPaymentId: paymentResult.paymentId ?? null,
         detail: chargeReconcile,
@@ -852,10 +856,9 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       surchargeCentsValue > 0
         ? {
             creditCardSurchargeCents: surchargeCentsValue,
-            creditCardSurchargeRate:
-              chargeStatus.ok
-                ? chargeStatus.creditSurchargeRate ?? CLOVER_CARD_SURCHARGE_RATE
-                : CLOVER_CARD_SURCHARGE_RATE,
+            creditCardSurchargeRate: chargeStatus.ok
+              ? (chargeStatus.creditSurchargeRate ?? CLOVER_CARD_SURCHARGE_RATE)
+              : CLOVER_CARD_SURCHARGE_RATE,
           }
         : {};
 
@@ -863,7 +866,9 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       ...metadataWithIds,
       lastPaymentId: paymentResult.paymentId,
       chargeStatusUnverified,
-      chargeStatusUnverifiedReason: chargeStatus.ok ? null : chargeStatus.reason,
+      chargeStatusUnverifiedReason: chargeStatus.ok
+        ? null
+        : chargeStatus.reason,
       ...surchargeMeta,
     });
 
@@ -906,7 +911,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       paymentId: paymentResult.paymentId,
       status: chargeStatusUnverified
         ? 'SUCCESS_CHARGE_STATUS_UNVERIFIED'
-        : paymentResult.status ?? 'SUCCESS',
+        : (paymentResult.status ?? 'SUCCESS'),
       warningCode: chargeStatusUnverified
         ? 'CHARGE_STATUS_UNVERIFIED'
         : undefined,
