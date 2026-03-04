@@ -63,6 +63,8 @@ export type CardTokenPaymentResponse = {
   paymentId?: string;
   status: string;
   challengeUrl?: string | null;
+  warningCode?: string;
+  warningMessage?: string;
 };
 
 /** ===== 工具函数 ===== */
