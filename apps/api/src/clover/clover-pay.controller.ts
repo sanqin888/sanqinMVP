@@ -322,9 +322,11 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       });
 
       if (chargeStatus.ok) {
-        const normalizedStatus = chargeStatus.status?.toLowerCase();
-        const isSuccess =
-          normalizedStatus === 'succeeded' || chargeStatus.captured === true;
+        const normalizedStatus = normalizeChargeStatus(chargeStatus.status);
+        const isSuccess = isChargeSucceeded({
+          status: normalizedStatus,
+          captured: chargeStatus.captured,
+        });
         if (isSuccess) {
           const claimed =
             intent.status === 'creating_order'
@@ -464,6 +466,9 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
             orderNumber: intent.referenceId,
           };
         }
+        this.logger.warn(
+          `[payment.clover.status.unhandled] stage=reconcileIntent intent=${intent.referenceId} status=${normalizedStatus ?? 'unknown'} captured=${String(chargeStatus.captured ?? 'unknown')} paymentId=${chargeStatus.paymentId ?? 'N/A'}`,
+        );
       }
 
       if (!chargeStatus.ok) {
@@ -1031,6 +1036,22 @@ function normalizeClientIp(
   }
 
   return undefined;
+}
+
+function normalizeChargeStatus(status: string | undefined): string | undefined {
+  return typeof status === 'string' ? status.trim().toLowerCase() : undefined;
+}
+
+function isChargeSucceeded(params: {
+  status?: string;
+  captured?: boolean;
+}): boolean {
+  if (params.captured === true) return true;
+  if (!params.status) return false;
+
+  return ['succeeded', 'success', 'paid', 'captured', 'completed'].includes(
+    params.status,
+  );
 }
 
 function isValidCanadianPostalCode(value: string): boolean {
