@@ -1403,6 +1403,18 @@ export class OrdersService {
       string,
       Map<string, OptionChoiceContext>
     >();
+    const itemAvailabilityByStableId = new Map<string, boolean>();
+
+    const setItemAvailability = (
+      stableId: string,
+      isAvailable: boolean,
+      tempUnavailableUntil: Date | null,
+    ) => {
+      itemAvailabilityByStableId.set(
+        stableId,
+        isAvailableNow(availabilityFromDb(isAvailable, tempUnavailableUntil)),
+      );
+    };
 
     const addProductOptionChoices = (
       optionLookup: Map<string, OptionChoiceContext>,
@@ -1415,12 +1427,17 @@ export class OrdersService {
 
         const choices = (templateGroup.options ?? []).filter((opt) => {
           const deleted = (opt as { deletedAt?: Date | null }).deletedAt;
-          return (
-            !deleted &&
-            isAvailableNow(
-              availabilityFromDb(opt.isAvailable, opt.tempUnavailableUntil),
-            )
+          if (deleted) return false;
+
+          const selfAvailable = isAvailableNow(
+            availabilityFromDb(opt.isAvailable, opt.tempUnavailableUntil),
           );
+          if (!selfAvailable) return false;
+
+          const targetItemStableId = opt.targetItemStableId?.trim();
+          if (!targetItemStableId) return true;
+
+          return itemAvailabilityByStableId.get(targetItemStableId) !== false;
         });
 
         choices.forEach((choice) => {
@@ -1437,6 +1454,11 @@ export class OrdersService {
     for (const product of dbProducts) {
       productMap.set(product.id, product);
       productMap.set(product.stableId, product);
+      setItemAvailability(
+        product.stableId,
+        product.isAvailable,
+        product.tempUnavailableUntil,
+      );
 
       const optionLookup = new Map<string, OptionChoiceContext>();
       addProductOptionChoices(optionLookup, product);
@@ -1478,6 +1500,13 @@ export class OrdersService {
       });
 
       linkedProductByStableId.set(stableId, linkedProduct);
+      if (linkedProduct) {
+        setItemAvailability(
+          linkedProduct.stableId,
+          linkedProduct.isAvailable,
+          linkedProduct.tempUnavailableUntil,
+        );
+      }
       return linkedProduct;
     };
 
@@ -1600,6 +1629,34 @@ export class OrdersService {
           throw new BadRequestException(
             `Option not found or unavailable: ${optionId} for product ${itemDto.normalizedProductId}`,
           );
+        }
+
+        const targetItemStableId = context.choice.targetItemStableId?.trim();
+        if (targetItemStableId) {
+          const cachedTargetAvailability =
+            itemAvailabilityByStableId.get(targetItemStableId);
+          if (cachedTargetAvailability === false) {
+            throw new BadRequestException(
+              `Option not available because target item is unavailable: ${optionId}`,
+            );
+          }
+          if (cachedTargetAvailability === undefined) {
+            const linkedTarget =
+              await ensureLinkedProductByStableId(targetItemStableId);
+            const isTargetAvailable =
+              !!linkedTarget &&
+              isAvailableNow(
+                availabilityFromDb(
+                  linkedTarget.isAvailable,
+                  linkedTarget.tempUnavailableUntil,
+                ),
+              );
+            if (!isTargetAvailable) {
+              throw new BadRequestException(
+                `Option not available because target item is unavailable: ${optionId}`,
+              );
+            }
+          }
         }
 
         optionsUnitPriceCents += context.choice.priceDeltaCents;
