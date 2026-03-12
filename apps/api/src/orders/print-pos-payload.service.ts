@@ -72,6 +72,8 @@ export class PrintPosPayloadService {
           return 'wechat_alipay';
         case PaymentMethod.STORE_BALANCE:
           return 'store_balance';
+        case PaymentMethod.UBEREATS:
+          return 'ubereats';
         default:
           return order.channel === Channel.in_store ? 'cash' : 'card';
       }
