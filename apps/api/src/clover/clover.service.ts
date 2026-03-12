@@ -38,8 +38,6 @@ export class CloverService {
   private readonly logger = new AppLogger(CloverService.name);
   private readonly apiBase: string;
   private readonly apiToken: string | undefined;
-  private readonly v3ApiToken: string | undefined;
-  private readonly merchantId: string | undefined;
 
   constructor() {
     this.apiBase =
@@ -47,8 +45,6 @@ export class CloverService {
       'https://api.clover.com';
 
     this.apiToken = process.env.CLOVER_ACCESS_TOKEN?.trim();
-    this.v3ApiToken = process.env.CLOVER_V3_ACCESS_TOKEN?.trim();
-    this.merchantId = process.env.CLOVER_MERCHANT_ID?.trim();
   }
 
   async createCardPayment(params: {
@@ -251,7 +247,7 @@ export class CloverService {
     paymentId?: string;
     idempotencyKey?: string;
   }): Promise<CloverChargeStatusResult> {
-    if (!this.v3ApiToken || !this.merchantId) {
+    if (!this.apiToken) {
       return { ok: false, reason: 'missing-credentials' };
     }
 
@@ -262,15 +258,13 @@ export class CloverService {
       return { ok: false, reason: 'missing-identifiers' };
     }
 
-    if (!externalPaymentId && !paymentId && !this.apiToken) {
-      return { ok: false, reason: 'missing-credentials' };
-    }
-
     if (externalPaymentId) {
-      const byExternalPaymentId =
-        await this.getChargeStatusByExternalPaymentId(externalPaymentId);
-      if (byExternalPaymentId) {
-        return byExternalPaymentId;
+      const byExternalPaymentId = await this.queryChargeStatusByFilters([
+        `externalPaymentId=${encodeURIComponent(externalPaymentId)}`,
+        `external_payment_id=${encodeURIComponent(externalPaymentId)}`,
+      ]);
+      if (byExternalPaymentId.ok) {
+        return byExternalPaymentId.result;
       }
 
       return {
@@ -289,112 +283,45 @@ export class CloverService {
       return { ok: false, reason: 'missing-payment-id' };
     }
 
-    const url = `${this.apiBase}/v3/merchants/${encodeURIComponent(this.merchantId)}/payments/${encodeURIComponent(resolvedPaymentId)}?expand=additionalCharges`;
-
-    let resp: Response;
-    try {
-      resp = await fetch(url, {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-          Authorization: `Bearer ${this.v3ApiToken}`,
-        },
-      });
-    } catch (error) {
-      const reason =
-        error instanceof Error && error.message.trim().length > 0
-          ? error.message
-          : 'Clover request failed';
-      this.logger.error(
-        `[CloverService] status request failed reason=${reason}`,
-      );
-      return { ok: false, status: 'FAILED', reason };
+    const byPaymentId = await this.queryChargeStatusByFilters([
+      `id=${encodeURIComponent(resolvedPaymentId)}`,
+      `paymentId=${encodeURIComponent(resolvedPaymentId)}`,
+    ]);
+    if (byPaymentId.ok) {
+      return byPaymentId.result;
     }
-
-    const rawText = await resp.text();
-    let parsed: Record<string, unknown> | undefined;
-    try {
-      const json = JSON.parse(rawText) as unknown;
-      if (!json || typeof json !== 'object' || Array.isArray(json)) {
-        return { ok: false, reason: rawText, message: rawText };
-      }
-      parsed = json as Record<string, unknown>;
-    } catch {
-      return { ok: false, reason: rawText, message: rawText };
-    }
-
-    const directError = extractDirectApiError(parsed);
-    if (directError) {
-      return {
-        ok: false,
-        reason: rawText,
-        status: 'FAILED',
-        code: directError.code,
-        message: directError.message,
-      };
-    }
-
-    if (!resp.ok) {
-      const errorDetails = extractCloverErrorDetails(parsed);
-      const reason = stringifyReason(parsed, rawText, errorDetails.message);
-      return {
-        ok: false,
-        reason,
-        status: errorDetails.status ?? 'FAILED',
-        code: errorDetails.code,
-        message: errorDetails.message,
-      };
-    }
-
-    const baseAmountCents =
-      typeof parsed.amount === 'number' && Number.isFinite(parsed.amount)
-        ? Math.round(parsed.amount)
-        : undefined;
-    if (typeof baseAmountCents !== 'number') {
-      return { ok: false, reason: 'missing-payment-amount' };
-    }
-
-    const status =
-      typeof parsed.result === 'string'
-        ? parsed.result
-        : typeof parsed.status === 'string'
-          ? parsed.status
-          : undefined;
-    const captured =
-      typeof parsed.captured === 'boolean' ? parsed.captured : undefined;
-    const surcharge = extractCreditCardSurchargeFromPayment(parsed);
-    const surchargeAmount = surcharge?.amountCents ?? 0;
 
     return {
-      ok: true,
-      status,
-      captured,
-      paymentId: resolvedPaymentId,
-      baseAmountCents,
-      chargedTotalCents: baseAmountCents + surchargeAmount,
-      creditSurchargeCents: surchargeAmount > 0 ? surchargeAmount : undefined,
-      creditSurchargeRate: surcharge?.rate,
+      ok: false,
+      reason: `payment_not_found:${resolvedPaymentId}`,
+      status: 'FAILED',
+      code: 'PAYMENT_NOT_FOUND',
+      message: 'payment status not found by paymentId',
     };
   }
 
-  private async getChargeStatusByExternalPaymentId(
-    externalPaymentId: string,
-  ): Promise<CloverChargeStatusResult | null> {
-    const candidateUrls = [
-      `${this.apiBase}/v3/merchants/${encodeURIComponent(this.merchantId ?? '')}/payments?externalPaymentId=${encodeURIComponent(externalPaymentId)}&expand=additionalCharges`,
-      `${this.apiBase}/v3/merchants/${encodeURIComponent(this.merchantId ?? '')}/payments?filter=externalPaymentId==${encodeURIComponent(externalPaymentId)}&expand=additionalCharges`,
-    ];
-
-    for (const url of candidateUrls) {
-      const response = await this.fetchV3PaymentStatus(url);
-      if (!response) continue;
-      return response;
+  private async queryChargeStatusByFilters(filters: string[]): Promise<
+    | {
+        ok: true;
+        result: CloverChargeStatusResult;
+      }
+    | { ok: false }
+  > {
+    if (!this.apiToken) {
+      return { ok: false };
     }
 
-    return null;
+    for (const filter of filters) {
+      const url = `${this.apiBase}/v1/charges?limit=1&${filter}`;
+      const response = await this.fetchV1ChargeStatus(url);
+      if (!response) continue;
+      return { ok: true, result: response };
+    }
+
+    return { ok: false };
   }
 
-  private async fetchV3PaymentStatus(
+  private async fetchV1ChargeStatus(
     url: string,
   ): Promise<CloverChargeStatusResult | null> {
     let resp: Response;
@@ -403,7 +330,7 @@ export class CloverService {
         method: 'GET',
         headers: {
           Accept: 'application/json',
-          Authorization: `Bearer ${this.v3ApiToken}`,
+          Authorization: `Bearer ${this.apiToken}`,
         },
       });
     } catch (error) {
@@ -412,7 +339,7 @@ export class CloverService {
           ? error.message
           : 'Clover request failed';
       this.logger.error(
-        `[CloverService] externalPaymentId status request failed reason=${reason}`,
+        `[CloverService] charge status request failed reason=${reason}`,
       );
       return { ok: false, status: 'FAILED', reason };
     }
@@ -444,12 +371,16 @@ export class CloverService {
       };
     }
 
-    const payment = extractFirstPaymentRecord(parsed);
-    if (!payment) {
+    if (!parsed) {
       return null;
     }
 
-    return toChargeStatusSuccess(payment);
+    const charge = extractChargeRecord(parsed);
+    if (!charge) {
+      return null;
+    }
+
+    return toChargeStatusSuccess(charge);
   }
 
   private async resolvePaymentIdByIdempotencyKey(
@@ -479,23 +410,6 @@ export class CloverService {
       return undefined;
     }
   }
-}
-
-function extractDirectApiError(payload: Record<string, unknown>): {
-  code?: string;
-  message: string;
-} | null {
-  const message =
-    typeof payload.message === 'string' ? payload.message.trim() : '';
-  const errorCode =
-    typeof payload.error === 'string' ? payload.error.trim() : '';
-  if (!message && !errorCode) {
-    return null;
-  }
-  return {
-    message: message || 'Clover request failed',
-    code: errorCode || undefined,
-  };
 }
 
 type CloverErrorDetails = {
@@ -606,38 +520,10 @@ function extractChargeRecord(
   return payload;
 }
 
-function extractFirstPaymentRecord(
-  payload: Record<string, unknown> | undefined,
-): Record<string, unknown> | undefined {
-  if (!payload) return undefined;
-
-  const elements = payload.elements;
-  if (Array.isArray(elements)) {
-    const first = elements[0] as unknown;
-    if (first && typeof first === 'object') {
-      return first as Record<string, unknown>;
-    }
-  }
-
-  const data = payload.data;
-  if (Array.isArray(data)) {
-    const first = data[0] as unknown;
-    if (first && typeof first === 'object') {
-      return first as Record<string, unknown>;
-    }
-  }
-
-  if (typeof payload.id === 'string') {
-    return payload;
-  }
-
-  return undefined;
-}
-
 function toChargeStatusSuccess(
-  paymentPayload: Record<string, unknown>,
+  chargePayload: Record<string, unknown>,
 ): CloverChargeStatusResult {
-  const amountRaw = paymentPayload.amount;
+  const amountRaw = chargePayload.amount;
   const baseAmountCents =
     typeof amountRaw === 'number' && Number.isFinite(amountRaw)
       ? Math.round(amountRaw)
@@ -647,71 +533,24 @@ function toChargeStatusSuccess(
   }
 
   const status =
-    typeof paymentPayload.result === 'string'
-      ? paymentPayload.result
-      : typeof paymentPayload.status === 'string'
-        ? paymentPayload.status
+    typeof chargePayload.result === 'string'
+      ? chargePayload.result
+      : typeof chargePayload.status === 'string'
+        ? chargePayload.status
         : undefined;
   const captured =
-    typeof paymentPayload.captured === 'boolean'
-      ? paymentPayload.captured
+    typeof chargePayload.captured === 'boolean'
+      ? chargePayload.captured
       : undefined;
-
-  const surcharge = extractCreditCardSurchargeFromPayment(paymentPayload);
-  const surchargeAmount = surcharge?.amountCents ?? 0;
 
   return {
     ok: true,
     status,
     captured,
     paymentId:
-      typeof paymentPayload.id === 'string' ? paymentPayload.id : undefined,
+      typeof chargePayload.id === 'string' ? chargePayload.id : undefined,
     baseAmountCents,
-    chargedTotalCents: baseAmountCents + surchargeAmount,
-    creditSurchargeCents: surchargeAmount > 0 ? surchargeAmount : undefined,
-    creditSurchargeRate: surcharge?.rate,
-  };
-}
-
-function extractCreditCardSurchargeFromPayment(
-  paymentPayload: Record<string, unknown>,
-): { amountCents: number; rate?: number } | undefined {
-  const additionalCharges = paymentPayload.additionalCharges;
-  if (!additionalCharges || typeof additionalCharges !== 'object') {
-    return undefined;
-  }
-
-  const elements = (additionalCharges as Record<string, unknown>).elements;
-  if (!Array.isArray(elements)) {
-    return undefined;
-  }
-
-  let surchargeAmount = 0;
-  let surchargeRateBps: number | undefined;
-  for (const entry of elements) {
-    if (!entry || typeof entry !== 'object') continue;
-    const charge = entry as Record<string, unknown>;
-    if (charge.type !== 'CREDIT_SURCHARGE') continue;
-    if (typeof charge.amount === 'number' && Number.isFinite(charge.amount)) {
-      surchargeAmount += Math.max(0, Math.round(charge.amount));
-    }
-    if (
-      typeof charge.rate === 'number' &&
-      Number.isFinite(charge.rate) &&
-      charge.rate >= 0
-    ) {
-      surchargeRateBps = Math.round(charge.rate);
-    }
-  }
-
-  if (surchargeAmount <= 0) return undefined;
-
-  return {
-    amountCents: surchargeAmount,
-    rate:
-      typeof surchargeRateBps === 'number'
-        ? surchargeRateBps / 10000
-        : undefined,
+    chargedTotalCents: baseAmountCents,
   };
 }
 
