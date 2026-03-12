@@ -547,13 +547,32 @@ export default function StorePosPage() {
 
   const hasItems = cartWithDetails.length > 0;
 
+  const visibleMenuCategories = useMemo(
+    () =>
+      menuCategories
+        .map((category) => ({
+          ...category,
+          items: category.items.filter((item) => item.isVisibleOnMainMenu),
+        }))
+        .filter((category) => category.items.length > 0),
+    [menuCategories],
+  );
+
+  useEffect(() => {
+    if (activeCategoryId === "all") return;
+    const exists = visibleMenuCategories.some((c) => c.stableId === activeCategoryId);
+    if (!exists) {
+      setActiveCategoryId("all");
+    }
+  }, [activeCategoryId, visibleMenuCategories]);
+
   const visibleItems = useMemo(() => {
     if (activeCategoryId === "all") {
-      return menuCategories.flatMap((cat) => cat.items);
+      return visibleMenuCategories.flatMap((cat) => cat.items);
     }
-    const cat = menuCategories.find((c) => c.stableId === activeCategoryId);
+    const cat = visibleMenuCategories.find((c) => c.stableId === activeCategoryId);
     return cat ? cat.items : [];
-  }, [menuCategories, activeCategoryId]);
+  }, [visibleMenuCategories, activeCategoryId]);
 
 
   useEffect(() => {
@@ -1019,7 +1038,7 @@ export default function StorePosPage() {
             >
               {t.categoriesAll}
             </button>
-            {menuCategories.map((cat) => (
+            {visibleMenuCategories.map((cat) => (
               <button
                 key={cat.stableId}
                 type="button"
