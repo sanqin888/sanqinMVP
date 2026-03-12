@@ -276,6 +276,22 @@ export class CloverService {
       };
     }
 
+    if (externalPaymentId) {
+      const byExternalPaymentId =
+        await this.getChargeStatusByExternalPaymentId(externalPaymentId);
+      if (byExternalPaymentId) {
+        return byExternalPaymentId;
+      }
+
+      return {
+        ok: false,
+        reason: `externalPaymentId_not_found:${externalPaymentId}`,
+        status: 'FAILED',
+        code: 'EXTERNAL_PAYMENT_ID_NOT_FOUND',
+        message: 'payment status not found by externalPaymentId',
+      };
+    }
+
     const resolvedPaymentId =
       paymentId ??
       (await this.resolvePaymentIdByIdempotencyKey(idempotencyKey));
@@ -378,6 +394,81 @@ export class CloverService {
     }
 
     return toChargeStatusSuccess(charge);
+  }
+
+  private async getChargeStatusByExternalPaymentId(
+    externalPaymentId: string,
+  ): Promise<CloverChargeStatusResult | null> {
+    const candidateUrls = [
+      `${this.apiBase}/v3/merchants/${encodeURIComponent(this.merchantId ?? '')}/payments?externalPaymentId=${encodeURIComponent(externalPaymentId)}&expand=additionalCharges`,
+      `${this.apiBase}/v3/merchants/${encodeURIComponent(this.merchantId ?? '')}/payments?filter=externalPaymentId==${encodeURIComponent(externalPaymentId)}&expand=additionalCharges`,
+    ];
+
+    for (const url of candidateUrls) {
+      const response = await this.fetchV3PaymentStatus(url);
+      if (!response) continue;
+      return response;
+    }
+
+    return null;
+  }
+
+  private async fetchV3PaymentStatus(
+    url: string,
+  ): Promise<CloverChargeStatusResult | null> {
+    let resp: Response;
+    try {
+      resp = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${this.v3ApiToken}`,
+        },
+      });
+    } catch (error) {
+      const reason =
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message
+          : 'Clover request failed';
+      this.logger.error(
+        `[CloverService] externalPaymentId status request failed reason=${reason}`,
+      );
+      return { ok: false, status: 'FAILED', reason };
+    }
+
+    const rawText = await resp.text();
+    let parsed: Record<string, unknown> | undefined;
+    try {
+      const json = JSON.parse(rawText) as unknown;
+      if (json && typeof json === 'object' && !Array.isArray(json)) {
+        parsed = json as Record<string, unknown>;
+      }
+    } catch {
+      return null;
+    }
+
+    if (!resp.ok) {
+      if (resp.status === 404) {
+        return null;
+      }
+
+      const errorDetails = extractCloverErrorDetails(parsed);
+      const reason = stringifyReason(parsed, rawText, errorDetails.message);
+      return {
+        ok: false,
+        reason,
+        status: errorDetails.status ?? 'FAILED',
+        code: errorDetails.code,
+        message: errorDetails.message,
+      };
+    }
+
+    const payment = extractFirstPaymentRecord(parsed);
+    if (!payment) {
+      return null;
+    }
+
+    return toChargeStatusSuccess(payment);
   }
 
   private async resolvePaymentIdByIdempotencyKey(
