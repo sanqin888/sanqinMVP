@@ -35,7 +35,6 @@ import { PricingTokenService } from './pricing-token.service';
 import { EmailService } from '../email/email.service';
 import { MessagingTemplateType } from '@prisma/client';
 import {
-  CLOVER_CARD_SURCHARGE_RATE,
   type ChargeAmountReconcileResult,
   reconcileChargeAmount,
 } from './reconcile-charge';
@@ -363,12 +362,12 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
           }
 
           const chargeReconcile =
-            typeof chargeStatus.chargedTotalCents === 'number'
+            typeof chargeStatus.chargedTotalCents === 'number' &&
+            chargeStatus.chargedTotalCents > 0
               ? reconcileChargeAmount({
                   intentAmountCents: intent.amountCents,
                   chargedAmountCents: chargeStatus.chargedTotalCents,
-                  surchargeCents: chargeStatus.creditSurchargeCents,
-                  allowRateFallbackWhenEqual: true,
+                  allowRateFallbackWhenEqual: false,
                 })
               : null;
 
@@ -396,8 +395,6 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
             await this.checkoutIntents.updateMetadata(intent.id, {
               ...intent.metadata,
               creditCardSurchargeCents: surchargeForSummary,
-              creditCardSurchargeRate:
-                chargeStatus.creditSurchargeRate ?? CLOVER_CARD_SURCHARGE_RATE,
             });
           }
 
@@ -822,12 +819,12 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     }
 
     const chargeReconcile = chargeStatus.ok
-      ? typeof chargeStatus.chargedTotalCents === 'number'
+      ? typeof chargeStatus.chargedTotalCents === 'number' &&
+        chargeStatus.chargedTotalCents > 0
         ? reconcileChargeAmount({
             intentAmountCents: expectedTotalCents,
             chargedAmountCents: chargeStatus.chargedTotalCents,
-            surchargeCents: chargeStatus.creditSurchargeCents,
-            allowRateFallbackWhenEqual: true,
+            allowRateFallbackWhenEqual: false,
           })
         : null
       : null;
@@ -861,9 +858,6 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       surchargeCentsValue > 0
         ? {
             creditCardSurchargeCents: surchargeCentsValue,
-            creditCardSurchargeRate: chargeStatus.ok
-              ? (chargeStatus.creditSurchargeRate ?? CLOVER_CARD_SURCHARGE_RATE)
-              : CLOVER_CARD_SURCHARGE_RATE,
           }
         : {};
 
