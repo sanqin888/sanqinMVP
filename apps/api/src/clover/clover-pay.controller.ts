@@ -43,6 +43,7 @@ import {
 export class CloverPayController implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new AppLogger(CloverPayController.name);
   private reconcileTimer: NodeJS.Timeout | null = null;
+  private static readonly PROCESSING_RECONCILE_SAFETY_WINDOW_MS = 30_000;
 
   constructor(
     private readonly clover: CloverService,
@@ -307,6 +308,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     status: string;
     result: string | null;
     orderId: string | null;
+    currency: string;
     metadata: CheckoutMetadata;
     amountCents: number;
     referenceId: string;
@@ -316,15 +318,108 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       !intent.orderId
     ) {
       const paymentMeta = extractPaymentMeta(intent.metadata);
+      const processingStartedAtMs =
+        typeof paymentMeta.paymentStartedAt === 'string'
+          ? Date.parse(paymentMeta.paymentStartedAt)
+          : Number.NaN;
+      const processingWithinSafetyWindow =
+        intent.status === 'processing' &&
+        Number.isFinite(processingStartedAtMs) &&
+        Date.now() - processingStartedAtMs <
+          CloverPayController.PROCESSING_RECONCILE_SAFETY_WINDOW_MS;
+      if (processingWithinSafetyWindow || paymentMeta.inFlight) {
+        this.logger.debug(
+          `[payment.clover.reconcile.skip] intent=${intent.referenceId} reason=${paymentMeta.inFlight ? 'in_flight' : 'safety_window'}`,
+        );
+        return {
+          status: intent.status,
+          result: intent.result,
+          orderStableId: intent.metadata?.orderStableId ?? null,
+          orderNumber: intent.referenceId,
+        };
+      }
+
       const chargeStatus = await this.clover.getChargeStatus({
+        paymentId: paymentMeta.cloverPaymentId ?? undefined,
         externalPaymentId: paymentMeta.externalPaymentId ?? intent.referenceId,
       });
 
       if (chargeStatus.ok) {
+        const paymentMethod =
+          typeof (intent.metadata as Record<string, unknown>).paymentMethod ===
+          'string'
+            ? String(
+                (intent.metadata as Record<string, unknown>).paymentMethod,
+              ).toUpperCase()
+            : undefined;
+        const requireCapturedForWallet =
+          paymentMethod === 'APPLE_PAY' || paymentMethod === 'GOOGLE_PAY';
+        if (
+          paymentMeta.cloverPaymentId &&
+          chargeStatus.paymentId &&
+          chargeStatus.paymentId !== paymentMeta.cloverPaymentId
+        ) {
+          this.logger.warn(
+            `[payment.clover.status.mismatch] stage=reconcileIntent intent=${intent.referenceId} expectedPaymentId=${paymentMeta.cloverPaymentId} actualPaymentId=${chargeStatus.paymentId}`,
+          );
+          return {
+            status: intent.status,
+            result: intent.result,
+            orderStableId: intent.metadata?.orderStableId ?? null,
+            orderNumber: intent.referenceId,
+          };
+        }
+        if (
+          paymentMeta.externalPaymentId &&
+          chargeStatus.externalPaymentId &&
+          chargeStatus.externalPaymentId !== paymentMeta.externalPaymentId
+        ) {
+          this.logger.warn(
+            `[payment.clover.status.mismatch] stage=reconcileIntent intent=${intent.referenceId} expectedExternalPaymentId=${paymentMeta.externalPaymentId} actualExternalPaymentId=${chargeStatus.externalPaymentId}`,
+          );
+          return {
+            status: intent.status,
+            result: intent.result,
+            orderStableId: intent.metadata?.orderStableId ?? null,
+            orderNumber: intent.referenceId,
+          };
+        }
+        if (
+          chargeStatus.currency &&
+          intent.currency &&
+          chargeStatus.currency.toUpperCase() !== intent.currency.toUpperCase()
+        ) {
+          await this.checkoutIntents.markFailed({
+            intentId: intent.id,
+            result: 'CURRENCY_MISMATCH',
+          });
+          return {
+            status: 'failed',
+            result: 'CURRENCY_MISMATCH',
+            orderStableId: intent.metadata?.orderStableId ?? null,
+            orderNumber: intent.referenceId,
+          };
+        }
+        if (
+          typeof chargeStatus.baseAmountCents === 'number' &&
+          chargeStatus.baseAmountCents !== intent.amountCents
+        ) {
+          await this.checkoutIntents.markFailed({
+            intentId: intent.id,
+            result: 'AMOUNT_MISMATCH',
+          });
+          return {
+            status: 'failed',
+            result: 'AMOUNT_MISMATCH',
+            orderStableId: intent.metadata?.orderStableId ?? null,
+            orderNumber: intent.referenceId,
+          };
+        }
         const normalizedStatus = normalizeChargeStatus(chargeStatus.status);
         const isSuccess = isChargeSucceeded({
           status: normalizedStatus,
           captured: chargeStatus.captured,
+          requireCaptured: requireCapturedForWallet,
         });
         if (isSuccess) {
           const claimed =
@@ -670,6 +765,8 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       paymentAttempt,
       lastIdempotencyKey: idempotencyKey,
       externalPaymentId,
+      inFlight: true,
+      paymentStartedAt: new Date().toISOString(),
       serverQuotedTotalCents: expectedTotalCents,
       pricingFingerprint: fingerprint,
     } satisfies CheckoutMetadata & CheckoutIntentPaymentMeta;
@@ -711,6 +808,10 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       await this.checkoutIntents.markFailed({
         intentId: intent.id,
         result: 'UPSTREAM_ERROR',
+      });
+      await this.checkoutIntents.updateMetadata(intent.id, {
+        ...metadataWithIds,
+        inFlight: false,
       });
       const response =
         typeof err === 'object' && err !== null && 'response' in err
@@ -768,6 +869,8 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
         const updatedMetadata = {
           ...metadataWithIds,
           lastPaymentId: paymentResult.paymentId ?? null,
+          cloverPaymentId: paymentResult.paymentId ?? null,
+          inFlight: false,
         } satisfies CheckoutMetadata & CheckoutIntentPaymentMeta;
         await this.checkoutIntents.updateMetadata(intent.id, updatedMetadata);
 
@@ -786,6 +889,12 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
         intentId: intent.id,
         result: paymentResult.status ?? 'FAILED',
       });
+      await this.checkoutIntents.updateMetadata(intent.id, {
+        ...metadataWithIds,
+        lastPaymentId: paymentResult.paymentId ?? null,
+        cloverPaymentId: paymentResult.paymentId ?? null,
+        inFlight: false,
+      });
 
       throw new BadRequestException({
         code: errorCode,
@@ -800,47 +909,146 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
 
     let chargeStatus: CloverChargeStatusResult =
       await this.clover.getChargeStatus({
+        paymentId: paymentResult.paymentId,
         externalPaymentId,
       });
     let chargeStatusAttempts = 1;
     while (!chargeStatus.ok && chargeStatusAttempts < 3) {
       await new Promise((resolve) => setTimeout(resolve, 500));
       chargeStatus = await this.clover.getChargeStatus({
+        paymentId: paymentResult.paymentId,
         externalPaymentId,
       });
       chargeStatusAttempts += 1;
     }
 
-    const chargeStatusUnverified = !chargeStatus.ok;
-    if (chargeStatusUnverified) {
-      this.logger.warn(
-        `[payment.clover.status.unverified] stage=payWithCardToken intent=${referenceId} externalPaymentId=${externalPaymentId} attempts=${chargeStatusAttempts} reason=${chargeStatus.ok ? 'unknown' : chargeStatus.reason}`,
-      );
+    if (!chargeStatus.ok) {
+      await this.checkoutIntents.markFailed({
+        intentId: intent.id,
+        result: 'CHARGE_STATUS_UNVERIFIED',
+      });
+      await this.checkoutIntents.updateMetadata(intent.id, {
+        ...metadataWithIds,
+        lastPaymentId: paymentResult.paymentId ?? null,
+        cloverPaymentId: paymentResult.paymentId ?? null,
+        inFlight: false,
+        chargeStatusUnverified: true,
+        chargeStatusUnverifiedReason: chargeStatus.reason,
+      });
+      throw new BadRequestException({
+        code: 'CHARGE_STATUS_UNVERIFIED',
+        message: 'payment status verification failed',
+        details: {
+          attempts: chargeStatusAttempts,
+          reason: chargeStatus.reason,
+          paymentId: paymentResult.paymentId ?? null,
+          externalPaymentId,
+        },
+      });
     }
 
-    const chargeReconcile = chargeStatus.ok
-      ? typeof chargeStatus.chargedTotalCents === 'number' &&
-        chargeStatus.chargedTotalCents > 0
+    const paymentMethod =
+      typeof (metadataWithIds as Record<string, unknown>).paymentMethod ===
+      'string'
+        ? String((metadataWithIds as Record<string, unknown>).paymentMethod)
+            .trim()
+            .toUpperCase()
+        : undefined;
+    const requireCapturedForWallet =
+      paymentMethod === 'APPLE_PAY' || paymentMethod === 'GOOGLE_PAY';
+
+    if (
+      paymentResult.paymentId &&
+      chargeStatus.paymentId &&
+      chargeStatus.paymentId !== paymentResult.paymentId
+    ) {
+      await this.checkoutIntents.markFailed({
+        intentId: intent.id,
+        result: 'PAYMENT_ID_MISMATCH',
+      });
+      throw new ConflictException({
+        code: 'PAYMENT_ID_MISMATCH',
+        message: 'payment id mismatch during verification',
+      });
+    }
+
+    if (
+      chargeStatus.externalPaymentId &&
+      chargeStatus.externalPaymentId !== externalPaymentId
+    ) {
+      await this.checkoutIntents.markFailed({
+        intentId: intent.id,
+        result: 'EXTERNAL_PAYMENT_ID_MISMATCH',
+      });
+      throw new ConflictException({
+        code: 'EXTERNAL_PAYMENT_ID_MISMATCH',
+        message: 'external payment id mismatch during verification',
+      });
+    }
+
+    if (
+      chargeStatus.currency &&
+      chargeStatus.currency.toUpperCase() !== currency.toUpperCase()
+    ) {
+      await this.checkoutIntents.markFailed({
+        intentId: intent.id,
+        result: 'CURRENCY_MISMATCH',
+      });
+      throw new ConflictException({
+        code: 'CURRENCY_MISMATCH',
+        message: 'payment currency mismatch during verification',
+      });
+    }
+
+    if (
+      typeof chargeStatus.baseAmountCents === 'number' &&
+      chargeStatus.baseAmountCents !== expectedTotalCents
+    ) {
+      await this.checkoutIntents.markFailed({
+        intentId: intent.id,
+        result: 'AMOUNT_MISMATCH',
+      });
+      throw new ConflictException({
+        code: 'AMOUNT_MISMATCH',
+        message: 'payment amount mismatch during verification',
+      });
+    }
+
+    const normalizedChargeStatus = normalizeChargeStatus(chargeStatus.status);
+    const chargeSucceeded = isChargeSucceeded({
+      status: normalizedChargeStatus,
+      captured: chargeStatus.captured,
+      requireCaptured: requireCapturedForWallet,
+    });
+    if (!chargeSucceeded) {
+      await this.checkoutIntents.markFailed({
+        intentId: intent.id,
+        result: chargeStatus.status ?? 'FAILED',
+      });
+      throw new BadRequestException({
+        code: 'payment_not_settled',
+        message: 'payment status is not in a final successful state',
+      });
+    }
+
+    const chargeReconcile =
+      typeof chargeStatus.chargedTotalCents === 'number' &&
+      chargeStatus.chargedTotalCents > 0
         ? reconcileChargeAmount({
             intentAmountCents: expectedTotalCents,
             chargedAmountCents: chargeStatus.chargedTotalCents,
             allowRateFallbackWhenEqual: false,
           })
-        : null
-      : null;
+        : null;
 
-    if (chargeStatus.ok) {
-      this.logger.log(
-        `[payment.clover.success] stage=payWithCardToken intent=${referenceId} response=${stableStringify(
-          chargeStatus,
-        )}`,
-      );
-    }
+    this.logger.log(
+      `[payment.clover.success] stage=payWithCardToken intent=${referenceId} response=${stableStringify(
+        chargeStatus,
+      )}`,
+    );
 
     if (chargeReconcile?.mismatchBeyondTolerance) {
-      const chargedAmountCents = chargeStatus.ok
-        ? chargeStatus.chargedTotalCents
-        : undefined;
+      const chargedAmountCents = chargeStatus.chargedTotalCents;
       await this.sendChargeMismatchAlert({
         stage: 'payWithCardToken',
         checkoutIntentId: referenceId,
@@ -864,10 +1072,10 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     await this.checkoutIntents.updateMetadata(intent.id, {
       ...metadataWithIds,
       lastPaymentId: paymentResult.paymentId,
-      chargeStatusUnverified,
-      chargeStatusUnverifiedReason: chargeStatus.ok
-        ? null
-        : chargeStatus.reason,
+      cloverPaymentId: paymentResult.paymentId,
+      chargeStatusUnverified: false,
+      chargeStatusUnverifiedReason: null,
+      inFlight: false,
       ...surchargeMeta,
     });
 
@@ -908,15 +1116,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       orderStableId,
       orderNumber: referenceId,
       paymentId: paymentResult.paymentId,
-      status: chargeStatusUnverified
-        ? 'SUCCESS_CHARGE_STATUS_UNVERIFIED'
-        : (paymentResult.status ?? 'SUCCESS'),
-      warningCode: chargeStatusUnverified
-        ? 'CHARGE_STATUS_UNVERIFIED'
-        : undefined,
-      warningMessage: chargeStatusUnverified
-        ? '扣款成功，但暂未查询到支付状态明细，请以银行流水为准。'
-        : undefined,
+      status: paymentResult.status ?? 'SUCCESS',
     };
   }
   private async sendChargeMismatchAlert(params: {
@@ -1039,7 +1239,11 @@ function normalizeChargeStatus(status: string | undefined): string | undefined {
 function isChargeSucceeded(params: {
   status?: string;
   captured?: boolean;
+  requireCaptured?: boolean;
 }): boolean {
+  if (params.requireCaptured && params.captured !== true) {
+    return false;
+  }
   if (params.captured === true) return true;
   if (!params.status) return false;
 
@@ -1062,7 +1266,10 @@ type CheckoutIntentPaymentMeta = {
   paymentAttempt?: number;
   lastIdempotencyKey?: string | null;
   lastPaymentId?: string | null;
+  cloverPaymentId?: string | null;
   externalPaymentId?: string | null;
+  inFlight?: boolean;
+  paymentStartedAt?: string;
   serverQuotedTotalCents?: number;
   pricingFingerprint?: string;
   creditCardSurchargeCents?: number;
@@ -1087,9 +1294,18 @@ function extractPaymentMeta(
         : undefined,
     lastPaymentId:
       typeof meta.lastPaymentId === 'string' ? meta.lastPaymentId : undefined,
+    cloverPaymentId:
+      typeof meta.cloverPaymentId === 'string'
+        ? meta.cloverPaymentId
+        : undefined,
     externalPaymentId:
       typeof meta.externalPaymentId === 'string'
         ? meta.externalPaymentId
+        : undefined,
+    inFlight: typeof meta.inFlight === 'boolean' ? meta.inFlight : undefined,
+    paymentStartedAt:
+      typeof meta.paymentStartedAt === 'string'
+        ? meta.paymentStartedAt
         : undefined,
     creditCardSurchargeCents:
       typeof meta.creditCardSurchargeCents === 'number' &&
