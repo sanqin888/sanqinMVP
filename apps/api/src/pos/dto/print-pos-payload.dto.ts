@@ -6,7 +6,8 @@ type PrintPosPaymentMethod =
   | 'cash'
   | 'card'
   | 'wechat_alipay'
-  | 'store_balance';
+  | 'store_balance'
+  | 'ubereats';
 
 type PrintPosItemSnapshot = {
   productStableId: string;
