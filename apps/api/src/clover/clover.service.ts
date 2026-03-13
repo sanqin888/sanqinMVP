@@ -17,8 +17,10 @@ export type CloverChargeStatusResult =
   | {
       ok: true;
       paymentId?: string;
+      externalPaymentId?: string;
       status?: string;
       captured?: boolean;
+      currency?: string;
       baseAmountCents?: number;
       chargedTotalCents?: number;
       creditSurchargeCents?: number;
@@ -200,6 +202,25 @@ export class CloverService {
       };
     }
 
+    // HTTP 2xx：先识别 Clover 返回的失败结构
+    const hasFailurePayload = isFailurePayload(parsed);
+    if (hasFailurePayload) {
+      const errorDetails = extractCloverErrorDetails(parsed);
+      const reason = stringifyReason(
+        parsed,
+        rawText,
+        errorDetails.message ?? 'Clover charge failed',
+      );
+      return {
+        ok: false,
+        reason,
+        status: errorDetails.status ?? 'FAILED',
+        code: errorDetails.code,
+        challengeUrl: errorDetails.challengeUrl ?? null,
+        paymentId: errorDetails.paymentId,
+      };
+    }
+
     // HTTP 2xx：但不一定已 capture/succeed
     const status = getString(parsed, 'status');
     const captured = getBoolean(parsed, 'captured');
@@ -260,8 +281,18 @@ export class CloverService {
 
     if (externalPaymentId) {
       const byExternalPaymentId = await this.queryChargeStatusByFilters([
-        `externalPaymentId=${encodeURIComponent(externalPaymentId)}`,
-        `external_payment_id=${encodeURIComponent(externalPaymentId)}`,
+        {
+          query: `externalPaymentId=${encodeURIComponent(externalPaymentId)}`,
+          matcher: (charge) =>
+            charge.externalPaymentId === externalPaymentId ||
+            charge.paymentId === externalPaymentId,
+        },
+        {
+          query: `external_payment_id=${encodeURIComponent(externalPaymentId)}`,
+          matcher: (charge) =>
+            charge.externalPaymentId === externalPaymentId ||
+            charge.paymentId === externalPaymentId,
+        },
       ]);
       if (byExternalPaymentId.ok) {
         return byExternalPaymentId.result;
@@ -284,8 +315,14 @@ export class CloverService {
     }
 
     const byPaymentId = await this.queryChargeStatusByFilters([
-      `id=${encodeURIComponent(resolvedPaymentId)}`,
-      `paymentId=${encodeURIComponent(resolvedPaymentId)}`,
+      {
+        query: `id=${encodeURIComponent(resolvedPaymentId)}`,
+        matcher: (charge) => charge.paymentId === resolvedPaymentId,
+      },
+      {
+        query: `paymentId=${encodeURIComponent(resolvedPaymentId)}`,
+        matcher: (charge) => charge.paymentId === resolvedPaymentId,
+      },
     ]);
     if (byPaymentId.ok) {
       return byPaymentId.result;
@@ -300,7 +337,12 @@ export class CloverService {
     };
   }
 
-  private async queryChargeStatusByFilters(filters: string[]): Promise<
+  private async queryChargeStatusByFilters(
+    filters: Array<{
+      query: string;
+      matcher: (charge: CloverChargeStatusResult & { ok: true }) => boolean;
+    }>,
+  ): Promise<
     | {
         ok: true;
         result: CloverChargeStatusResult;
@@ -312,18 +354,24 @@ export class CloverService {
     }
 
     for (const filter of filters) {
-      const url = `${this.apiBase}/v1/charges?limit=1&${filter}`;
-      const response = await this.fetchV1ChargeStatus(url);
-      if (!response) continue;
-      return { ok: true, result: response };
+      const url = `${this.apiBase}/v1/charges?limit=20&${filter.query}`;
+      const responses = await this.fetchV1ChargeStatuses(url);
+      if (!responses || responses.length === 0) continue;
+      const matched = responses.find(
+        (response): response is CloverChargeStatusResult & { ok: true } =>
+          response.ok && filter.matcher(response),
+      );
+      if (matched) {
+        return { ok: true, result: matched };
+      }
     }
 
     return { ok: false };
   }
 
-  private async fetchV1ChargeStatus(
+  private async fetchV1ChargeStatuses(
     url: string,
-  ): Promise<CloverChargeStatusResult | null> {
+  ): Promise<CloverChargeStatusResult[] | null> {
     let resp: Response;
     try {
       resp = await fetch(url, {
@@ -341,7 +389,7 @@ export class CloverService {
       this.logger.error(
         `[CloverService] charge status request failed reason=${reason}`,
       );
-      return { ok: false, status: 'FAILED', reason };
+      return [{ ok: false, status: 'FAILED', reason }];
     }
 
     const rawText = await resp.text();
@@ -362,25 +410,27 @@ export class CloverService {
 
       const errorDetails = extractCloverErrorDetails(parsed);
       const reason = stringifyReason(parsed, rawText, errorDetails.message);
-      return {
-        ok: false,
-        reason,
-        status: errorDetails.status ?? 'FAILED',
-        code: errorDetails.code,
-        message: errorDetails.message,
-      };
+      return [
+        {
+          ok: false,
+          reason,
+          status: errorDetails.status ?? 'FAILED',
+          code: errorDetails.code,
+          message: errorDetails.message,
+        },
+      ];
     }
 
     if (!parsed) {
       return null;
     }
 
-    const charge = extractChargeRecord(parsed);
-    if (!charge) {
+    const charges = extractChargeRecords(parsed);
+    if (charges.length === 0) {
       return null;
     }
 
-    return toChargeStatusSuccess(charge);
+    return charges.map((charge) => toChargeStatusSuccess(charge));
   }
 
   private async resolvePaymentIdByIdempotencyKey(
@@ -403,7 +453,7 @@ export class CloverService {
       }
 
       const payload = (await resp.json()) as Record<string, unknown>;
-      const record = extractChargeRecord(payload);
+      const record = extractChargeRecords(payload)[0];
       if (!record) return undefined;
       return typeof record.id === 'string' ? record.id : undefined;
     } catch {
@@ -498,26 +548,26 @@ function pickString(
   return undefined;
 }
 
-function extractChargeRecord(
+function extractChargeRecords(
   payload: Record<string, unknown>,
-): Record<string, unknown> | undefined {
+): Record<string, unknown>[] {
   const data = payload.data;
   if (Array.isArray(data)) {
-    const first = data[0] as unknown;
-    return first && typeof first === 'object'
-      ? (first as Record<string, unknown>)
-      : undefined;
+    return data.filter(
+      (entry): entry is Record<string, unknown> =>
+        !!entry && typeof entry === 'object' && !Array.isArray(entry),
+    );
   }
 
   const charges = payload.charges;
   if (Array.isArray(charges)) {
-    const first = charges[0] as unknown;
-    return first && typeof first === 'object'
-      ? (first as Record<string, unknown>)
-      : undefined;
+    return charges.filter(
+      (entry): entry is Record<string, unknown> =>
+        !!entry && typeof entry === 'object' && !Array.isArray(entry),
+    );
   }
 
-  return payload;
+  return [payload];
 }
 
 function toChargeStatusSuccess(
@@ -549,9 +599,38 @@ function toChargeStatusSuccess(
     captured,
     paymentId:
       typeof chargePayload.id === 'string' ? chargePayload.id : undefined,
+    externalPaymentId:
+      typeof chargePayload.externalPaymentId === 'string'
+        ? chargePayload.externalPaymentId
+        : typeof chargePayload.external_payment_id === 'string'
+          ? chargePayload.external_payment_id
+          : undefined,
+    currency:
+      typeof chargePayload.currency === 'string'
+        ? chargePayload.currency
+        : undefined,
     baseAmountCents,
     chargedTotalCents: baseAmountCents,
   };
+}
+
+function isFailurePayload(payload: Record<string, unknown>): boolean {
+  const errorRaw = payload.error;
+  const error =
+    errorRaw && typeof errorRaw === 'object'
+      ? (errorRaw as Record<string, unknown>)
+      : undefined;
+  const hasDeclineCode =
+    typeof payload.declineCode === 'string' ||
+    typeof payload.decline_code === 'string' ||
+    typeof error?.declineCode === 'string' ||
+    typeof error?.decline_code === 'string';
+  const hasErrorObject = Boolean(error);
+  const hasErrorCode =
+    typeof payload.code === 'string' || typeof error?.code === 'string';
+  const hasMessageAndError =
+    typeof payload.message === 'string' && hasErrorObject;
+  return hasDeclineCode || hasErrorObject || hasErrorCode || hasMessageAndError;
 }
 
 function safeLogKeys(

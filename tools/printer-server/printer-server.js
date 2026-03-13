@@ -273,6 +273,8 @@ async function buildCustomerReceiptEscPos(params) {
       ? "银行卡"
       : normalizedPm === "wechat_alipay"
       ? "微信/支付宝"
+      : normalizedPm === "ubereats"
+      ? "Uber Eats"
       : normalizedPm === "store_balance" || normalizedPm === "balance"
       ? "储值余额"
       : "其他";
@@ -284,6 +286,8 @@ async function buildCustomerReceiptEscPos(params) {
       ? "Card"
       : normalizedPm === "wechat_alipay"
       ? "WeChat / Alipay"
+      : normalizedPm === "ubereats"
+      ? "Uber Eats"
       : normalizedPm === "store_balance" || normalizedPm === "balance"
       ? "Store Balance"
       : "Other";

@@ -29,7 +29,14 @@ type PaymentSessionFetchResponse = {
   metadata: Record<string, unknown>;
 };
 
-type CloverApplePaymentRequest = { amount: number; countryCode: string; currencyCode: string };
+type CloverAppleContactField = "postalAddress" | "name" | "email" | "phone";
+type CloverApplePaymentRequest = {
+  amount: number;
+  countryCode: string;
+  currencyCode: string;
+  requiredBillingContactFields?: CloverAppleContactField[];
+  requiredShippingContactFields?: CloverAppleContactField[];
+};
 type CloverElementInstance = { mount: (selector: string) => void; destroy?: () => void };
 type CloverInstance = {
   elements: () => { create: (type: string, options?: Record<string, unknown>) => CloverElementInstance };
@@ -66,15 +73,32 @@ function formatRemaining(remainingMs: number): string {
 }
 
 function buildPaymentErrorMessage(locale: Locale, error: unknown) {
+  const fallbackReason = locale === "zh" ? "系统未返回具体原因" : "No detailed reason returned";
+  const wrapWithFallback = (reason?: string) => {
+    const finalReason = typeof reason === "string" && reason.trim() ? reason.trim() : fallbackReason;
+    return locale === "zh"
+      ? `支付失败（${finalReason}），请改用其他支付方式`
+      : `Payment failed (${finalReason}). Please use another payment method.`;
+  };
+
   if (error instanceof ApiError && error.payload && typeof error.payload === "object") {
     const payload = error.payload as Record<string, unknown>;
     const code = typeof payload.code === "string" ? payload.code : "";
+    const payloadMessage = typeof payload.message === "string" ? payload.message : "";
+
+    const avsPostalMismatchByCode = ["POSTAL_CODE_MISMATCH", "AVS_POSTAL_MISMATCH", "postal_mismatch"].includes(code);
+    const avsPostalMismatchByMessage = /postal\s*code\s*mismatch|avs/i.test(payloadMessage);
+    if (avsPostalMismatchByCode || avsPostalMismatchByMessage) {
+      return wrapWithFallback(locale === "zh" ? "账单邮编校验失败（postal code mismatch）" : "Billing postal code verification failed (postal code mismatch)");
+    }
+
     if (["AMOUNT_MISMATCH", "pricing_token_amount_mismatch", "PAYMENT_SESSION_EXPIRED"].includes(code)) {
       return locale === "zh" ? "订单金额或会话状态已变更，请返回结算页重新确认后再支付。" : "Order amount/session changed. Please return to checkout and confirm again.";
     }
-    if (typeof payload.message === "string" && payload.message.trim()) return payload.message;
+    if (payloadMessage.trim()) return wrapWithFallback(payloadMessage);
   }
-  return locale === "zh" ? "Apple Pay 支付失败，请返回结算页重试。" : "Apple Pay failed. Please go back and try again.";
+  if (error instanceof Error && error.message.trim()) return wrapWithFallback(error.message);
+  return wrapWithFallback();
 }
 
 export default function ApplePayWalletPage() {
@@ -165,7 +189,13 @@ export default function ApplePayWalletPage() {
         submittedTokenRef.current = null;
         const clover = new Clover(publicKey, { merchantId });
         cloverRef.current = clover;
-        const appleReq = clover.createApplePaymentRequest({ amount: ctx.totalCents, countryCode: "CA", currencyCode: "CAD" });
+        const appleReq = clover.createApplePaymentRequest({
+          amount: ctx.totalCents,
+          countryCode: "CA",
+          currencyCode: "CAD",
+          requiredBillingContactFields: ["postalAddress", "name"],
+          requiredShippingContactFields: ["email"],
+        });
         const applePay = clover.elements().create("PAYMENT_REQUEST_BUTTON_APPLE_PAY", { applePaymentRequest: appleReq, sessionIdentifier: merchantId });
         host.innerHTML = "";
         applePay.mount("#clover-apple-pay");
