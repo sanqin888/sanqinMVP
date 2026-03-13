@@ -410,13 +410,15 @@ export class CloverService {
 
       const errorDetails = extractCloverErrorDetails(parsed);
       const reason = stringifyReason(parsed, rawText, errorDetails.message);
-      return [{
-        ok: false,
-        reason,
-        status: errorDetails.status ?? 'FAILED',
-        code: errorDetails.code,
-        message: errorDetails.message,
-      }];
+      return [
+        {
+          ok: false,
+          reason,
+          status: errorDetails.status ?? 'FAILED',
+          code: errorDetails.code,
+          message: errorDetails.message,
+        },
+      ];
     }
 
     if (!parsed) {
