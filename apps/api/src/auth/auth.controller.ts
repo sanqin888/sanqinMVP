@@ -529,7 +529,7 @@ export class AuthController {
         twoFactorEnabledAt?: Date | null;
         twoFactorMethod?: TwoFactorMethod;
       };
-      session?: { mfaVerifiedAt?: Date | null };
+      session?: { mfaVerifiedAt?: Date | null; expiresAt?: Date | null };
     },
   ) {
     const user = req.user;
@@ -553,6 +553,7 @@ export class AuthController {
       mfaVerifiedAt,
       twoFactorEnabled,
       requiresTwoFactor,
+      sessionExpiresAt: req.session?.expiresAt ?? null,
     };
   }
 

@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { cookies, headers } from 'next/headers';
 import type { ReactNode } from 'react';
 import type { Locale } from '@/lib/i18n/locales';
+import { PosSessionKeepAlive } from './PosSessionKeepAlive';
 
 const SESSION_COOKIE_NAME = 'session_id';
 
@@ -82,5 +83,10 @@ export default async function PosLayout({
     redirect(`/${safeLocale}/store/pos/login`);
   }
 
-  return children;
+  return (
+    <>
+      <PosSessionKeepAlive />
+      {children}
+    </>
+  );
 }
