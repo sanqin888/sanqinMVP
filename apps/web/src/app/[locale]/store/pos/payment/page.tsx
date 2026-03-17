@@ -6,7 +6,6 @@ import { useRouter, useParams } from "next/navigation";
 import { TAX_RATE } from "@/lib/order/shared";
 import type { Locale } from "@/lib/i18n/locales";
 import { ApiError, apiFetch } from "@/lib/api/client";
-import type { PublicMenuResponse as PublicMenuApiResponse } from "@shared/menu";
 import { advanceOrder, printOrderCloud } from "@/lib/api/pos";
 import {
   POS_DISPLAY_CHANNEL,
@@ -303,7 +302,6 @@ export default function StorePosPaymentPage() {
   const t = STRINGS[locale];
 
   const [snapshot, setSnapshot] = useState<PosDisplaySnapshot | null>(null);
-  const [menuCategories, setMenuCategories] = useState<PublicMenuApiResponse["categories"]>([]);
   const [loadingSnapshot, setLoadingSnapshot] = useState(true);
   const [fulfillment, setFulfillment] = useState<FulfillmentType | null>(null);
   const [orderChannel, setOrderChannel] = useState<PosOrderChannel>("in_store");
@@ -359,19 +357,6 @@ export default function StorePosPaymentPage() {
 
   useEffect(() => {
     let active = true;
-    apiFetch<PublicMenuApiResponse>("/menu/public")
-      .then((menu) => {
-        if (!active) return;
-        setMenuCategories(Array.isArray(menu.categories) ? menu.categories : []);
-      })
-      .catch((err) => console.warn("Failed to load menu for option labels:", err));
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
     apiFetch<BusinessConfigLite>("/admin/business/config")
       .then((config) => {
         if (!active) return;
@@ -389,30 +374,6 @@ export default function StorePosPaymentPage() {
       .catch((err) => console.warn("Failed to load exchange rate config:", err));
     return () => { active = false; };
   }, []);
-
-  const optionMetaMap = useMemo(() => {
-    const map = new Map<string, {
-      optionNameZh: string | null;
-      optionNameEn: string;
-      priceDeltaCents: number;
-    }>();
-
-    for (const category of menuCategories) {
-      for (const item of category.items) {
-        for (const group of item.optionGroups ?? []) {
-          for (const option of group.options ?? []) {
-            map.set(`${group.templateGroupStableId}::${option.optionStableId}`, {
-              optionNameZh: option.nameZh,
-              optionNameEn: option.nameEn,
-              priceDeltaCents: option.priceDeltaCents,
-            });
-          }
-        }
-      }
-    }
-
-    return map;
-  }, [menuCategories]);
 
   const hasItems = !!snapshot && Array.isArray(snapshot.items) && snapshot.items.length > 0;
 
@@ -634,30 +595,16 @@ const loyaltyRedeemCents = redeemCents;
   );
 
   const resolveSelectedOptions = useCallback((item: PosDisplaySnapshot["items"][number]) => {
-    if (!item.options) return [];
+    if (!Array.isArray(item.optionLines) || item.optionLines.length === 0) return [];
 
-    const lines: Array<{ optionName: string; priceDeltaCents: number }> = [];
-
-    Object.entries(item.options).forEach(([groupStableId, optionStableIds]) => {
-      optionStableIds.forEach((optionStableId) => {
-        const meta = optionMetaMap.get(`${groupStableId}::${optionStableId}`);
-        if (meta) {
-          lines.push({
-            optionName: locale === "zh" ? meta.optionNameZh ?? meta.optionNameEn : meta.optionNameEn,
-            priceDeltaCents: meta.priceDeltaCents,
-          });
-          return;
-        }
-
-        lines.push({
-          optionName: optionStableId.slice(-6),
-          priceDeltaCents: 0,
-        });
-      });
-    });
-
-    return lines;
-  }, [locale, optionMetaMap]);
+    return item.optionLines.map((optionLine) => ({
+      optionName:
+        locale === "zh"
+          ? optionLine.labelZh ?? optionLine.label ?? optionLine.labelEn ?? ""
+          : optionLine.labelEn ?? optionLine.label ?? optionLine.labelZh ?? "",
+      priceDeltaCents: optionLine.priceCents,
+    }));
+  }, [locale]);
 
   const handleMemberLookup = async () => {
     if (!memberPhone.trim()) {
