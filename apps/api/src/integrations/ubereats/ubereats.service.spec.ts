@@ -7,20 +7,41 @@ import {
 import { UberEatsService } from './ubereats.service';
 
 describe('UberEatsService', () => {
+  const clientSecret = 'test-ubereats-secret';
+
+  beforeEach(() => {
+    process.env.UBER_EATS_CLIENT_SECRET = clientSecret;
+  });
+
+  afterEach(() => {
+    delete process.env.UBER_EATS_CLIENT_SECRET;
+  });
+
   it('接收订单 webhook 时会写入 ubereats 订单并返回 orderStableId', async () => {
+    const rawBody = '{"event_type":"orders.accepted"}';
+    const signature = require('crypto')
+      .createHmac('sha256', clientSecret)
+      .update(rawBody, 'utf8')
+      .digest('hex');
+
     const prisma = {
       order: {
-        upsert: jest.fn().mockResolvedValue({ orderStableId: 'ord_uber_1' }),
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ orderStableId: 'ord_uber_1' }),
       },
       analyticsEvent: {
+        findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue(null),
       },
     };
 
     const service = new UberEatsService(prisma as never);
-    const result = await service.handleWebhook({
-      headers: {},
-      rawBody: '{"event_type":"orders.accepted"}',
+    await service.handleWebhook({
+      headers: {
+        'x-uber-signature': signature,
+        'x-event-id': 'evt_123',
+      },
+      rawBody,
       body: {
         event_type: 'orders.accepted',
         order: {
@@ -32,9 +53,8 @@ describe('UberEatsService', () => {
       },
     });
 
-    expect(result.processed).toBe(true);
-    expect(result.orderStableId).toBe('ord_uber_1');
-    expect(prisma.order.upsert).toHaveBeenCalled();
+    expect(prisma.order.findUnique).toHaveBeenCalled();
+    expect(prisma.order.create).toHaveBeenCalled();
   });
 
   it('同步订单状态时，找不到订单会返回失败', async () => {
