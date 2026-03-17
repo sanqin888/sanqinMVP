@@ -1,20 +1,27 @@
 import {
+  Body,
   Controller,
   Get,
   Head,
   Header,
   HttpCode,
+  Param,
+  ParseEnumPipe,
   Post,
   Query,
-  Res,
   Req,
+  Res,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { OrderStatus } from '@prisma/client';
 import { AppLogger } from '../../common/app-logger';
+import { UberEatsService } from './ubereats.service';
 
 @Controller('integrations/ubereats')
 export class UberEatsController {
   private readonly logger = new AppLogger(UberEatsController.name);
+
+  constructor(private readonly uberEatsService: UberEatsService) {}
 
   @Get('oauth/callback')
   @Header('Content-Type', 'text/html; charset=utf-8')
@@ -40,14 +47,34 @@ export class UberEatsController {
 
   @Post('webhook')
   @HttpCode(200)
-  webhook(@Req() req: Request) {
+  async webhook(@Req() req: Request) {
     const rawBody = this.toRawBodyString(req.body);
 
-    this.logger.log(
-      `[ubereats webhook] headers=${JSON.stringify(req.headers)} rawBody=${rawBody}`,
-    );
+    const result = await this.uberEatsService.handleWebhook({
+      headers: req.headers,
+      body: req.body,
+      rawBody,
+    });
 
-    return { ok: true };
+    return { ok: true, ...result };
+  }
+
+  @Post('orders/:externalOrderId/status')
+  async syncOrderStatus(
+    @Param('externalOrderId') externalOrderId: string,
+    @Body('status', new ParseEnumPipe(OrderStatus)) status: OrderStatus,
+  ) {
+    return this.uberEatsService.syncOrderStatusToUber(externalOrderId, status);
+  }
+
+  @Get('orders/pending')
+  async listPendingOrders() {
+    return this.uberEatsService.listPendingUberOrders();
+  }
+
+  @Post('store/status/sync')
+  async syncStoreStatus() {
+    return this.uberEatsService.syncStoreStatusToUber();
   }
 
   private toRawBodyString(body: unknown): string {
