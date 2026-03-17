@@ -1061,6 +1061,38 @@ model AnalyticsEvent {
   @@index([occurredAt])
 }
 
+
+model UberPriceBookItem {
+  id               String   @id @default(uuid()) @db.Uuid
+  storeId          String   @default("default")
+  menuItemStableId String
+  priceCents       Int
+  isAvailable      Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([storeId, menuItemStableId])
+  @@index([storeId, updatedAt])
+}
+
+model UberMenuPublishVersion {
+  id               String                @id @default(uuid()) @db.Uuid
+  versionStableId  String                @unique @default(cuid())
+  storeId          String                @default("default")
+  status           UberMenuPublishStatus @default(SUCCESS)
+  totalItems       Int
+  changedItems     Int
+  payload          Json
+  createdAt        DateTime              @default(now())
+
+  @@index([storeId, createdAt])
+}
+
+enum UberMenuPublishStatus {
+  SUCCESS
+  FAILED
+}
+
 enum OrderStatus {
   pending
   paid
