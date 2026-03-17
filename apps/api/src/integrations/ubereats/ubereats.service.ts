@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import {
   Channel,
   OrderStatus,
   PaymentMethod,
+  UberMenuPublishStatus,
   type Prisma,
 } from '@prisma/client';
 import { AppLogger } from '../../common/app-logger';
@@ -22,6 +23,25 @@ type ParsedUberOrder = {
   contactName?: string | null;
   contactPhone?: string | null;
   paidAt: Date;
+};
+
+type UberStoreScopedInput = {
+  storeId?: string;
+};
+
+type UpsertPriceBookItemInput = UberStoreScopedInput & {
+  menuItemStableId: string;
+  priceCents: number;
+  isAvailable?: boolean;
+};
+
+type PublishMenuInput = UberStoreScopedInput & {
+  dryRun?: boolean;
+};
+
+type SyncAvailabilityInput = UberStoreScopedInput & {
+  menuItemStableId: string;
+  isAvailable: boolean;
 };
 
 @Injectable()
@@ -61,7 +81,7 @@ export class UberEatsService {
     const clientRequestId = this.toClientRequestId(externalOrderId);
     const order = await this.prisma.order.findUnique({
       where: { clientRequestId },
-      select: { id: true, orderStableId: true, status: true },
+      select: { id: true, orderStableId: true },
     });
 
     if (!order) {
@@ -145,6 +165,223 @@ export class UberEatsService {
       ok: true,
       payload,
     };
+  }
+
+  async listUberPriceBook(storeId?: string) {
+    const normalizedStoreId = this.normalizeStoreId(storeId);
+    const items = await this.prisma.uberPriceBookItem.findMany({
+      where: { storeId: normalizedStoreId },
+      orderBy: { updatedAt: 'desc' },
+      take: 500,
+      select: {
+        menuItemStableId: true,
+        priceCents: true,
+        isAvailable: true,
+        updatedAt: true,
+      },
+    });
+
+    return {
+      storeId: normalizedStoreId,
+      count: items.length,
+      items,
+    };
+  }
+
+  async upsertUberPriceBookItem(input: UpsertPriceBookItemInput) {
+    const normalizedStoreId = this.normalizeStoreId(input.storeId);
+    await this.ensureMenuItemExists(input.menuItemStableId);
+
+    const row = await this.prisma.uberPriceBookItem.upsert({
+      where: {
+        storeId_menuItemStableId: {
+          storeId: normalizedStoreId,
+          menuItemStableId: input.menuItemStableId,
+        },
+      },
+      create: {
+        storeId: normalizedStoreId,
+        menuItemStableId: input.menuItemStableId,
+        priceCents: Math.max(1, Math.round(input.priceCents)),
+        isAvailable: input.isAvailable ?? true,
+      },
+      update: {
+        priceCents: Math.max(1, Math.round(input.priceCents)),
+        ...(typeof input.isAvailable === 'boolean'
+          ? { isAvailable: input.isAvailable }
+          : {}),
+      },
+    });
+
+    await this.captureEvent('ubereats_price_book_item_upserted', {
+      storeId: normalizedStoreId,
+      menuItemStableId: input.menuItemStableId,
+      priceCents: row.priceCents,
+      isAvailable: row.isAvailable,
+    });
+
+    return {
+      ok: true,
+      storeId: normalizedStoreId,
+      item: row,
+    };
+  }
+
+  async publishUberMenu(input: PublishMenuInput) {
+    const normalizedStoreId = this.normalizeStoreId(input.storeId);
+    const pairs = await this.collectPublishItems(normalizedStoreId);
+    const changedItems = pairs.filter((pair) => pair.hasDelta).length;
+
+    const payload: Prisma.JsonObject = {
+      storeId: normalizedStoreId,
+      dryRun: !!input.dryRun,
+      items: pairs.map((pair) => ({
+        menuItemStableId: pair.menuItemStableId,
+        basePriceCents: pair.basePriceCents,
+        uberPriceCents: pair.uberPriceCents,
+        isAvailable: pair.isAvailable,
+      })),
+      summary: {
+        totalItems: pairs.length,
+        changedItems,
+      },
+    };
+
+    if (input.dryRun) {
+      await this.captureEvent('ubereats_menu_publish_dry_run', payload);
+      return {
+        ok: true,
+        dryRun: true,
+        storeId: normalizedStoreId,
+        totalItems: pairs.length,
+        changedItems,
+      };
+    }
+
+    const version = await this.prisma.uberMenuPublishVersion.create({
+      data: {
+        storeId: normalizedStoreId,
+        status: UberMenuPublishStatus.SUCCESS,
+        totalItems: pairs.length,
+        changedItems,
+        payload,
+      },
+      select: {
+        versionStableId: true,
+        createdAt: true,
+      },
+    });
+
+    await this.captureEvent('ubereats_menu_published', {
+      storeId: normalizedStoreId,
+      versionStableId: version.versionStableId,
+      totalItems: pairs.length,
+      changedItems,
+    });
+
+    return {
+      ok: true,
+      dryRun: false,
+      storeId: normalizedStoreId,
+      versionStableId: version.versionStableId,
+      createdAt: version.createdAt,
+      totalItems: pairs.length,
+      changedItems,
+    };
+  }
+
+  async syncMenuItemAvailability(input: SyncAvailabilityInput) {
+    const normalizedStoreId = this.normalizeStoreId(input.storeId);
+    await this.ensureMenuItemExists(input.menuItemStableId);
+
+    const priceBookItem = await this.prisma.uberPriceBookItem.findUnique({
+      where: {
+        storeId_menuItemStableId: {
+          storeId: normalizedStoreId,
+          menuItemStableId: input.menuItemStableId,
+        },
+      },
+    });
+
+    if (!priceBookItem) {
+      throw new BadRequestException(
+        `未找到 ${input.menuItemStableId} 的 Uber 价目表配置，请先配置 price book`,
+      );
+    }
+
+    const updated = await this.prisma.uberPriceBookItem.update({
+      where: {
+        storeId_menuItemStableId: {
+          storeId: normalizedStoreId,
+          menuItemStableId: input.menuItemStableId,
+        },
+      },
+      data: {
+        isAvailable: input.isAvailable,
+      },
+      select: {
+        menuItemStableId: true,
+        isAvailable: true,
+        updatedAt: true,
+      },
+    });
+
+    await this.captureEvent('ubereats_menu_item_availability_synced', {
+      storeId: normalizedStoreId,
+      menuItemStableId: input.menuItemStableId,
+      isAvailable: updated.isAvailable,
+    });
+
+    return {
+      ok: true,
+      storeId: normalizedStoreId,
+      item: updated,
+    };
+  }
+
+  private async collectPublishItems(storeId: string) {
+    const [menuItems, priceBookItems] = await Promise.all([
+      this.prisma.menuItem.findMany({
+        where: { deletedAt: null },
+        select: {
+          stableId: true,
+          basePriceCents: true,
+          isAvailable: true,
+        },
+      }),
+      this.prisma.uberPriceBookItem.findMany({
+        where: { storeId },
+        select: {
+          menuItemStableId: true,
+          priceCents: true,
+          isAvailable: true,
+        },
+      }),
+    ]);
+
+    const priceMap = new Map(
+      priceBookItems.map((item) => [item.menuItemStableId, item]),
+    );
+
+    return menuItems.map((menuItem) => {
+      const priceBookItem = priceMap.get(menuItem.stableId);
+      const uberPriceCents =
+        priceBookItem?.priceCents ?? menuItem.basePriceCents;
+      const isAvailable =
+        priceBookItem?.isAvailable !== undefined
+          ? priceBookItem.isAvailable
+          : menuItem.isAvailable;
+
+      return {
+        menuItemStableId: menuItem.stableId,
+        basePriceCents: menuItem.basePriceCents,
+        uberPriceCents,
+        isAvailable,
+        hasDelta:
+          uberPriceCents !== menuItem.basePriceCents ||
+          isAvailable !== menuItem.isAvailable,
+      };
+    });
   }
 
   private async upsertUberOrder(order: ParsedUberOrder, eventType: string) {
@@ -256,6 +493,21 @@ export class UberEatsService {
 
   private toClientRequestId(externalOrderId: string): string {
     return `ubereats:${externalOrderId}`;
+  }
+
+  private normalizeStoreId(storeId?: string): string {
+    return storeId?.trim() || 'default';
+  }
+
+  private async ensureMenuItemExists(menuItemStableId: string) {
+    const menuItem = await this.prisma.menuItem.findUnique({
+      where: { stableId: menuItemStableId },
+      select: { stableId: true },
+    });
+
+    if (!menuItem) {
+      throw new BadRequestException(`菜单项 ${menuItemStableId} 不存在`);
+    }
   }
 
   private async ensureBusinessConfig() {

@@ -69,4 +69,36 @@ describe('UberEatsService', () => {
     expect(result.ok).toBe(false);
     expect(result.reason).toBe('ORDER_NOT_FOUND');
   });
+
+  it('发布菜单 dry-run 会返回差异统计并记录事件', async () => {
+    const prisma = {
+      menuItem: {
+        findMany: jest.fn().mockResolvedValue([
+          { stableId: 'm1', basePriceCents: 1000, isAvailable: true },
+          { stableId: 'm2', basePriceCents: 2000, isAvailable: true },
+        ]),
+      },
+      uberPriceBookItem: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { menuItemStableId: 'm1', priceCents: 1200, isAvailable: false },
+          ]),
+      },
+      analyticsEvent: {
+        create: jest.fn().mockResolvedValue(null),
+      },
+    };
+
+    const service = new UberEatsService(prisma as never);
+    const result = await service.publishUberMenu({
+      storeId: 's1',
+      dryRun: true,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.dryRun).toBe(true);
+    expect(result.totalItems).toBe(2);
+    expect(result.changedItems).toBe(1);
+  });
 });

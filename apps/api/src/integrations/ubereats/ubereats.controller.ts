@@ -14,8 +14,48 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { OrderStatus } from '@prisma/client';
+import {
+  IsBoolean,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 import { AppLogger } from '../../common/app-logger';
 import { UberEatsService } from './ubereats.service';
+
+class UpsertUberPriceBookItemDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(1000000)
+  priceCents!: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isAvailable?: boolean;
+}
+
+class PublishUberMenuDto {
+  @IsOptional()
+  @IsString()
+  storeId?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  dryRun?: boolean;
+}
+
+class SyncUberMenuItemAvailabilityDto {
+  @IsBoolean()
+  isAvailable!: boolean;
+
+  @IsOptional()
+  @IsString()
+  storeId?: string;
+}
 
 @Controller('integrations/ubereats')
 export class UberEatsController {
@@ -33,13 +73,11 @@ export class UberEatsController {
     return 'Authorized. You can close this window. (ok)';
   }
 
-  // Uber/平台可达性探测：GET
   @Get('webhook')
   health(@Res() res: Response) {
     return res.status(200).json({ ok: true });
   }
 
-  // 可达性探测：HEAD
   @Head('webhook')
   head(@Res() res: Response) {
     return res.sendStatus(200);
@@ -75,6 +113,45 @@ export class UberEatsController {
   @Post('store/status/sync')
   async syncStoreStatus() {
     return this.uberEatsService.syncStoreStatusToUber();
+  }
+
+  @Get('price-book')
+  async getPriceBook(@Query('storeId') storeId?: string) {
+    return this.uberEatsService.listUberPriceBook(storeId);
+  }
+
+  @Post('price-book/items/:menuItemStableId')
+  async upsertPriceBookItem(
+    @Param('menuItemStableId') menuItemStableId: string,
+    @Body() dto: UpsertUberPriceBookItemDto,
+    @Query('storeId') storeId?: string,
+  ) {
+    return this.uberEatsService.upsertUberPriceBookItem({
+      storeId,
+      menuItemStableId,
+      priceCents: dto.priceCents,
+      isAvailable: dto.isAvailable,
+    });
+  }
+
+  @Post('menu/publish')
+  async publishMenu(@Body() dto: PublishUberMenuDto) {
+    return this.uberEatsService.publishUberMenu({
+      storeId: dto.storeId,
+      dryRun: dto.dryRun,
+    });
+  }
+
+  @Post('menu/items/:menuItemStableId/availability')
+  async syncMenuItemAvailability(
+    @Param('menuItemStableId') menuItemStableId: string,
+    @Body() dto: SyncUberMenuItemAvailabilityDto,
+  ) {
+    return this.uberEatsService.syncMenuItemAvailability({
+      menuItemStableId,
+      isAvailable: dto.isAvailable,
+      storeId: dto.storeId,
+    });
   }
 
   private toRawBodyString(body: unknown): string {
