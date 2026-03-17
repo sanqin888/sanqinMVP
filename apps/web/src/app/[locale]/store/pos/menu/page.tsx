@@ -102,8 +102,11 @@ function getAvailabilityLabel(
   tempUnavailableUntil: string | null,
   labels: StatusLabels,
 ) {
+  const isTempOff =
+    !!tempUnavailableUntil &&
+    !isAvailableNow({ isAvailable: true, tempUnavailableUntil });
+  if (isTempOff) return labels.offToday;
   if (!isAvailable) return labels.offPermanent;
-  if (!isAvailableNow({ isAvailable, tempUnavailableUntil })) return labels.offToday;
   return labels.on;
 }
 
