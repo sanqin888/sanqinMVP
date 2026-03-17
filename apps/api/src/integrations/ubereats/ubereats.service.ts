@@ -177,7 +177,10 @@ export class UberEatsService {
       updatedAt: config.updatedAt,
     };
 
-    await this.captureEvent('ubereats_store_status_synced', payload);
+    await this.captureEvent('ubereats_store_status_synced', {
+      ...payload,
+      updatedAt: payload.updatedAt.toISOString(),
+    });
 
     return {
       ok: true,
