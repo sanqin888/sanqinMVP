@@ -135,13 +135,15 @@ export class UberEatsController {
   @Post('webhook')
   @HttpCode(200)
   async webhook(@Req() req: Request) {
-  this.logger.log(
-    `[ubereats webhook headers] ${JSON.stringify(req.headers)}`,
-  );
+    this.logger.log(
+      `[ubereats webhook headers] ${JSON.stringify(req.headers)}`,
+    );
     const rawBuffer = Buffer.isBuffer(req.body)
       ? req.body
       : Buffer.from(
-          typeof req.body === 'string' ? req.body : JSON.stringify(req.body ?? {}),
+          typeof req.body === 'string'
+            ? req.body
+            : JSON.stringify(req.body ?? {}),
           'utf8',
         );
 

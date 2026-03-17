@@ -108,15 +108,27 @@ export class UberEatsService {
         return;
 
       case 'store.provisioned':
-        await this.handleStoreProvisionedWebhook(eventType, eventId, input.body);
+        await this.handleStoreProvisionedWebhook(
+          eventType,
+          eventId,
+          input.body,
+        );
         return;
 
       case 'store.deprovisioned':
-        await this.handleStoreDeprovisionedWebhook(eventType, eventId, input.body);
+        await this.handleStoreDeprovisionedWebhook(
+          eventType,
+          eventId,
+          input.body,
+        );
         return;
 
       case 'store.status.changed':
-        await this.handleStoreStatusChangedWebhook(eventType, eventId, input.body);
+        await this.handleStoreStatusChangedWebhook(
+          eventType,
+          eventId,
+          input.body,
+        );
         return;
 
       default:
@@ -857,7 +869,10 @@ export class UberEatsService {
       return { orderStableId: created.orderStableId };
     }
 
-    const nextStatus = this.shouldAdvanceOrderStatus(existing.status, mappedStatus)
+    const nextStatus = this.shouldAdvanceOrderStatus(
+      existing.status,
+      mappedStatus,
+    )
       ? mappedStatus
       : existing.status;
 
@@ -896,9 +911,7 @@ export class UberEatsService {
     const root = payload as Record<string, unknown>;
     const dataNode = this.asObject(root.data);
     const orderNode =
-      this.asObject(root.order) ??
-      this.asObject(dataNode?.order) ??
-      dataNode;
+      this.asObject(root.order) ?? this.asObject(dataNode?.order) ?? dataNode;
 
     if (!orderNode) return null;
 
@@ -1089,7 +1102,11 @@ export class UberEatsService {
 
     if (!payload || typeof payload !== 'object') return null;
     const root = payload as Record<string, unknown>;
-    return this.readString(root.event_id, root.id, this.asObject(root.data)?.id);
+    return this.readString(
+      root.event_id,
+      root.id,
+      this.asObject(root.data)?.id,
+    );
   }
 
   private async hasSeenWebhookEvent(eventId: string): Promise<boolean> {
@@ -1135,7 +1152,10 @@ export class UberEatsService {
         return value.trim();
       }
       if (Array.isArray(value)) {
-        const first = value.find((item) => typeof item === 'string' && item.trim());
+        const values = value as unknown[];
+        const first = values.find(
+          (item: unknown) => typeof item === 'string' && item.trim(),
+        );
         if (typeof first === 'string') return first.trim();
       }
     }
