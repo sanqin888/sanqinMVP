@@ -4,6 +4,9 @@ import {
   OrderStatus,
   PaymentMethod,
   UberMenuPublishStatus,
+  UberOpsTicketPriority,
+  UberOpsTicketStatus,
+  UberOpsTicketType,
   type Prisma,
 } from '@prisma/client';
 import { AppLogger } from '../../common/app-logger';
@@ -42,6 +45,21 @@ type PublishMenuInput = UberStoreScopedInput & {
 type SyncAvailabilityInput = UberStoreScopedInput & {
   menuItemStableId: string;
   isAvailable: boolean;
+};
+
+type GenerateReconciliationReportInput = UberStoreScopedInput & {
+  rangeStart?: string;
+  rangeEnd?: string;
+};
+
+type CreateOpsTicketInput = UberStoreScopedInput & {
+  type: UberOpsTicketType;
+  title: string;
+  description?: string;
+  priority?: UberOpsTicketPriority;
+  externalOrderId?: string;
+  menuItemStableId?: string;
+  context?: Prisma.JsonObject;
 };
 
 @Injectable()
@@ -337,6 +355,312 @@ export class UberEatsService {
       storeId: normalizedStoreId,
       item: updated,
     };
+  }
+
+  async generateReconciliationReport(input: GenerateReconciliationReportInput) {
+    const normalizedStoreId = this.normalizeStoreId(input.storeId);
+    const range = this.resolveReportRange(input.rangeStart, input.rangeEnd);
+
+    const [orders, failedSyncEvents, openTickets] = await Promise.all([
+      this.prisma.order.findMany({
+        where: {
+          channel: Channel.ubereats,
+          createdAt: {
+            gte: range.rangeStart,
+            lt: range.rangeEnd,
+          },
+        },
+        select: {
+          status: true,
+          totalCents: true,
+        },
+      }),
+      this.prisma.analyticsEvent.count({
+        where: {
+          source: 'ubereats',
+          eventName: {
+            in: [
+              'ubereats_order_sync_failed',
+              'ubereats_menu_publish_failed',
+              'ubereats_menu_item_availability_sync_failed',
+            ],
+          },
+          createdAt: {
+            gte: range.rangeStart,
+            lt: range.rangeEnd,
+          },
+        },
+      }),
+      this.prisma.uberOpsTicket.count({
+        where: {
+          storeId: normalizedStoreId,
+          status: {
+            in: [UberOpsTicketStatus.OPEN, UberOpsTicketStatus.IN_PROGRESS],
+          },
+        },
+      }),
+    ]);
+
+    const summary = {
+      totalOrders: orders.length,
+      totalAmountCents: orders.reduce((sum, row) => sum + row.totalCents, 0),
+      syncedOrders: orders.filter((row) => row.status !== OrderStatus.pending)
+        .length,
+      pendingOrders: orders.filter((row) => row.status === OrderStatus.pending)
+        .length,
+      failedSyncEvents,
+      discrepancyOrders: openTickets,
+    };
+
+    const payload: Prisma.JsonObject = {
+      rangeStart: range.rangeStart.toISOString(),
+      rangeEnd: range.rangeEnd.toISOString(),
+      summary,
+    };
+
+    const report = await this.prisma.uberReconciliationReport.create({
+      data: {
+        storeId: normalizedStoreId,
+        rangeStart: range.rangeStart,
+        rangeEnd: range.rangeEnd,
+        ...summary,
+        payload,
+      },
+      select: {
+        reportStableId: true,
+        createdAt: true,
+      },
+    });
+
+    await this.captureEvent('ubereats_reconciliation_report_generated', {
+      storeId: normalizedStoreId,
+      reportStableId: report.reportStableId,
+      ...summary,
+    });
+
+    return {
+      ok: true,
+      storeId: normalizedStoreId,
+      reportStableId: report.reportStableId,
+      createdAt: report.createdAt,
+      ...summary,
+      rangeStart: range.rangeStart,
+      rangeEnd: range.rangeEnd,
+    };
+  }
+
+  async listReconciliationReports(storeId?: string, limit = 20) {
+    const normalizedStoreId = this.normalizeStoreId(storeId);
+    const take = Math.min(Math.max(1, Number(limit) || 20), 100);
+
+    const rows = await this.prisma.uberReconciliationReport.findMany({
+      where: { storeId: normalizedStoreId },
+      orderBy: { createdAt: 'desc' },
+      take,
+      select: {
+        reportStableId: true,
+        rangeStart: true,
+        rangeEnd: true,
+        totalOrders: true,
+        totalAmountCents: true,
+        failedSyncEvents: true,
+        discrepancyOrders: true,
+        createdAt: true,
+      },
+    });
+
+    return {
+      storeId: normalizedStoreId,
+      count: rows.length,
+      items: rows,
+    };
+  }
+
+  async createOpsTicket(input: CreateOpsTicketInput) {
+    const normalizedStoreId = this.normalizeStoreId(input.storeId);
+
+    if (input.externalOrderId) {
+      await this.ensureUberOrderExists(input.externalOrderId);
+    }
+    if (input.menuItemStableId) {
+      await this.ensureMenuItemExists(input.menuItemStableId);
+    }
+
+    const ticket = await this.prisma.uberOpsTicket.create({
+      data: {
+        storeId: normalizedStoreId,
+        type: input.type,
+        status: UberOpsTicketStatus.OPEN,
+        priority: input.priority ?? UberOpsTicketPriority.MEDIUM,
+        title: input.title,
+        description: input.description,
+        externalOrderId: input.externalOrderId,
+        menuItemStableId: input.menuItemStableId,
+        context: input.context,
+      },
+      select: {
+        ticketStableId: true,
+        status: true,
+        priority: true,
+        createdAt: true,
+      },
+    });
+
+    await this.captureEvent('ubereats_ops_ticket_created', {
+      storeId: normalizedStoreId,
+      ticketStableId: ticket.ticketStableId,
+      type: input.type,
+      priority: ticket.priority,
+    });
+
+    return {
+      ok: true,
+      storeId: normalizedStoreId,
+      ...ticket,
+    };
+  }
+
+  async listOpsTickets(storeId?: string, status?: UberOpsTicketStatus) {
+    const normalizedStoreId = this.normalizeStoreId(storeId);
+    const rows = await this.prisma.uberOpsTicket.findMany({
+      where: {
+        storeId: normalizedStoreId,
+        ...(status ? { status } : {}),
+      },
+      orderBy: [{ status: 'asc' }, { priority: 'desc' }, { createdAt: 'desc' }],
+      take: 200,
+      select: {
+        ticketStableId: true,
+        type: true,
+        status: true,
+        priority: true,
+        title: true,
+        externalOrderId: true,
+        menuItemStableId: true,
+        retryCount: true,
+        lastError: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return {
+      storeId: normalizedStoreId,
+      count: rows.length,
+      items: rows,
+    };
+  }
+
+  async retryOpsTicket(ticketStableId: string) {
+    const ticket = await this.prisma.uberOpsTicket.findUnique({
+      where: { ticketStableId },
+    });
+
+    if (!ticket) {
+      throw new BadRequestException(`工单 ${ticketStableId} 不存在`);
+    }
+
+    let errorMessage: string | null = null;
+
+    try {
+      await this.prisma.uberOpsTicket.update({
+        where: { ticketStableId },
+        data: { status: UberOpsTicketStatus.IN_PROGRESS },
+      });
+
+      if (ticket.type === UberOpsTicketType.ORDER_STATUS_SYNC) {
+        if (!ticket.externalOrderId) {
+          throw new BadRequestException('订单状态同步工单缺少 externalOrderId');
+        }
+        await this.syncOrderStatusToUber(
+          ticket.externalOrderId,
+          OrderStatus.paid,
+        );
+      } else if (ticket.type === UberOpsTicketType.STORE_STATUS_SYNC) {
+        await this.syncStoreStatusToUber();
+      } else if (ticket.type === UberOpsTicketType.MENU_PUBLISH) {
+        await this.publishUberMenu({ storeId: ticket.storeId, dryRun: false });
+      } else if (ticket.type === UberOpsTicketType.MENU_ITEM_AVAILABILITY) {
+        if (!ticket.menuItemStableId) {
+          throw new BadRequestException('商品状态工单缺少 menuItemStableId');
+        }
+        await this.syncMenuItemAvailability({
+          storeId: ticket.storeId,
+          menuItemStableId: ticket.menuItemStableId,
+          isAvailable: true,
+        });
+      }
+    } catch (error) {
+      errorMessage = error instanceof Error ? error.message : 'unknown_error';
+    }
+
+    const updated = await this.prisma.uberOpsTicket.update({
+      where: { ticketStableId },
+      data: errorMessage
+        ? {
+            status: UberOpsTicketStatus.OPEN,
+            retryCount: { increment: 1 },
+            lastError: errorMessage,
+          }
+        : {
+            status: UberOpsTicketStatus.RESOLVED,
+            retryCount: { increment: 1 },
+            lastError: null,
+            resolvedAt: new Date(),
+          },
+      select: {
+        ticketStableId: true,
+        status: true,
+        retryCount: true,
+        lastError: true,
+        resolvedAt: true,
+      },
+    });
+
+    await this.captureEvent('ubereats_ops_ticket_retried', {
+      ticketStableId,
+      status: updated.status,
+      retryCount: updated.retryCount,
+      ...(updated.lastError ? { lastError: updated.lastError } : {}),
+    });
+
+    return {
+      ok: !updated.lastError,
+      ...updated,
+    };
+  }
+
+  private resolveReportRange(rangeStart?: string, rangeEnd?: string) {
+    const end = rangeEnd ? new Date(rangeEnd) : new Date();
+    const start = rangeStart
+      ? new Date(rangeStart)
+      : new Date(end.getTime() - 24 * 60 * 60 * 1000);
+
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      throw new BadRequestException('对账时间范围格式不正确');
+    }
+
+    if (start >= end) {
+      throw new BadRequestException('对账时间范围不合法：start 必须早于 end');
+    }
+
+    return {
+      rangeStart: start,
+      rangeEnd: end,
+    };
+  }
+
+  private async ensureUberOrderExists(externalOrderId: string) {
+    const row = await this.prisma.order.findUnique({
+      where: {
+        clientRequestId: this.toClientRequestId(externalOrderId),
+      },
+      select: { id: true },
+    });
+
+    if (!row) {
+      throw new BadRequestException(`Uber 订单 ${externalOrderId} 不存在`);
+    }
   }
 
   private async collectPublishItems(storeId: string) {

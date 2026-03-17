@@ -13,9 +13,15 @@ import {
   Res,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { OrderStatus } from '@prisma/client';
+import {
+  OrderStatus,
+  UberOpsTicketPriority,
+  UberOpsTicketStatus,
+  UberOpsTicketType,
+} from '@prisma/client';
 import {
   IsBoolean,
+  IsEnum,
   IsInt,
   IsOptional,
   IsString,
@@ -55,6 +61,48 @@ class SyncUberMenuItemAvailabilityDto {
   @IsOptional()
   @IsString()
   storeId?: string;
+}
+
+class GenerateUberReconciliationReportDto {
+  @IsOptional()
+  @IsString()
+  storeId?: string;
+
+  @IsOptional()
+  @IsString()
+  rangeStart?: string;
+
+  @IsOptional()
+  @IsString()
+  rangeEnd?: string;
+}
+
+class CreateUberOpsTicketDto {
+  @IsEnum(UberOpsTicketType)
+  type!: UberOpsTicketType;
+
+  @IsString()
+  title!: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsEnum(UberOpsTicketPriority)
+  priority?: UberOpsTicketPriority;
+
+  @IsOptional()
+  @IsString()
+  storeId?: string;
+
+  @IsOptional()
+  @IsString()
+  externalOrderId?: string;
+
+  @IsOptional()
+  @IsString()
+  menuItemStableId?: string;
 }
 
 @Controller('integrations/ubereats')
@@ -152,6 +200,54 @@ export class UberEatsController {
       isAvailable: dto.isAvailable,
       storeId: dto.storeId,
     });
+  }
+
+  @Post('reports/reconciliation/generate')
+  async generateReconciliationReport(
+    @Body() dto: GenerateUberReconciliationReportDto,
+  ) {
+    return this.uberEatsService.generateReconciliationReport({
+      storeId: dto.storeId,
+      rangeStart: dto.rangeStart,
+      rangeEnd: dto.rangeEnd,
+    });
+  }
+
+  @Get('reports/reconciliation')
+  async listReconciliationReports(
+    @Query('storeId') storeId?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.uberEatsService.listReconciliationReports(
+      storeId,
+      Number(limit || 20),
+    );
+  }
+
+  @Post('ops/tickets')
+  async createOpsTicket(@Body() dto: CreateUberOpsTicketDto) {
+    return this.uberEatsService.createOpsTicket({
+      type: dto.type,
+      title: dto.title,
+      description: dto.description,
+      priority: dto.priority,
+      storeId: dto.storeId,
+      externalOrderId: dto.externalOrderId,
+      menuItemStableId: dto.menuItemStableId,
+    });
+  }
+
+  @Get('ops/tickets')
+  async listOpsTickets(
+    @Query('storeId') storeId?: string,
+    @Query('status') status?: UberOpsTicketStatus,
+  ) {
+    return this.uberEatsService.listOpsTickets(storeId, status);
+  }
+
+  @Post('ops/tickets/:ticketStableId/retry')
+  async retryOpsTicket(@Param('ticketStableId') ticketStableId: string) {
+    return this.uberEatsService.retryOpsTicket(ticketStableId);
   }
 
   private toRawBodyString(body: unknown): string {

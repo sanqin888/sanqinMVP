@@ -1093,6 +1093,68 @@ enum UberMenuPublishStatus {
   FAILED
 }
 
+enum UberOpsTicketType {
+  ORDER_STATUS_SYNC
+  STORE_STATUS_SYNC
+  MENU_PUBLISH
+  MENU_ITEM_AVAILABILITY
+}
+
+enum UberOpsTicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  IGNORED
+}
+
+enum UberOpsTicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+
+model UberReconciliationReport {
+  id                     String   @id @default(uuid()) @db.Uuid
+  reportStableId         String   @unique @default(cuid())
+  storeId                String   @default("default")
+  rangeStart             DateTime
+  rangeEnd               DateTime
+  totalOrders            Int      @default(0)
+  totalAmountCents       Int      @default(0)
+  syncedOrders           Int      @default(0)
+  failedSyncEvents       Int      @default(0)
+  pendingOrders          Int      @default(0)
+  discrepancyOrders      Int      @default(0)
+  payload                Json
+  createdAt              DateTime @default(now())
+
+  @@index([storeId, createdAt])
+  @@index([rangeStart, rangeEnd])
+}
+
+model UberOpsTicket {
+  id                     String            @id @default(uuid()) @db.Uuid
+  ticketStableId         String            @unique @default(cuid())
+  storeId                String            @default("default")
+  type                   UberOpsTicketType
+  status                 UberOpsTicketStatus @default(OPEN)
+  priority               UberOpsTicketPriority @default(MEDIUM)
+  title                  String
+  description            String?
+  externalOrderId        String?
+  menuItemStableId       String?
+  context                Json?
+  lastError              String?
+  retryCount             Int               @default(0)
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+  resolvedAt             DateTime?
+
+  @@index([storeId, status, priority, createdAt])
+  @@index([externalOrderId])
+}
+
 enum OrderStatus {
   pending
   paid
