@@ -10,6 +10,7 @@ import { AuthService } from './auth.service';
 import {
   POS_DEVICE_ID_COOKIE,
   POS_DEVICE_KEY_COOKIE,
+  POS_DEVICE_COOKIE_MAX_AGE_MS,
 } from '../pos/pos-device.constants';
 
 export const SESSION_COOKIE_NAME = 'session_id';
@@ -57,30 +58,38 @@ export class SessionAuthGuard implements CanActivate {
         session.user?.role === 'ADMIN' ||
         session.user?.role === 'STAFF' ||
         session.user?.role === 'ACCOUNTANT';
-      const maxAge = session.expiresAt.getTime() - Date.now();
+      const sessionMaxAge = session.expiresAt.getTime() - Date.now();
+      const deviceStableId =
+        request.signedCookies?.[POS_DEVICE_ID_COOKIE] ??
+        request.cookies?.[POS_DEVICE_ID_COOKIE];
+      const deviceKey =
+        request.signedCookies?.[POS_DEVICE_KEY_COOKIE] ??
+        request.cookies?.[POS_DEVICE_KEY_COOKIE];
+      const isPosSession =
+        typeof deviceStableId === 'string' && typeof deviceKey === 'string';
 
       // ✅ 2. 下发 Session Cookie (带签名)
       response.cookie(SESSION_COOKIE_NAME, sessionId, {
         ...baseCookieOptions,
         signed: true, // Session ID 必须签名
-        // Admin 保持会话级 Cookie (关闭浏览器失效)，普通用户设置有效期
-        ...(isAdminSession ? {} : { maxAge }),
+        // POS 端必须保留持久化 Session，否则重启浏览器/设备后会立即丢登录态。
+        // 只有非 POS 的后台账号仍保持会话级 Cookie。
+        ...(!isAdminSession || isPosSession ? { maxAge: sessionMaxAge } : {}),
       });
 
       // ✅ 3. 下发 POS 设备 Cookie (如果有)
-      const deviceStableId = request.cookies?.[POS_DEVICE_ID_COOKIE];
-      const deviceKey = request.cookies?.[POS_DEVICE_KEY_COOKIE];
-
-      if (typeof deviceStableId === 'string' && typeof deviceKey === 'string') {
-        // POS Cookie 通常不签名，但需要加上 domain 防止跨域丢失
+      if (isPosSession) {
+        // POS 设备 Cookie 需要长期保留；不能跟随 Session 续期窗口缩短，否则会导致设备被迫重新绑定。
         response.cookie(POS_DEVICE_ID_COOKIE, deviceStableId, {
           ...baseCookieOptions,
-          maxAge, // POS 设备 Cookie 跟随 Session 有效期
+          signed: true,
+          maxAge: POS_DEVICE_COOKIE_MAX_AGE_MS,
         });
 
         response.cookie(POS_DEVICE_KEY_COOKIE, deviceKey, {
           ...baseCookieOptions,
-          maxAge,
+          signed: true,
+          maxAge: POS_DEVICE_COOKIE_MAX_AGE_MS,
         });
       }
     }
