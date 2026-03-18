@@ -62,9 +62,12 @@ describe('UberAuthService', () => {
   it('getAccessToken 会命中缓存，未过期时不重复请求', async () => {
     const service = new UberAuthService();
     const now = Date.now();
+    const normalizedScope = 'eats.order eats.store';
 
-    Reflect.set(service, 'cachedAccessToken', 'token_cached');
-    Reflect.set(service, 'accessTokenExpiresAt', now + 10 * 60 * 1000);
+    Reflect.set(service, 'tokenCache', new Map([[normalizedScope, {
+      accessToken: 'token_cached',
+      expiresAt: now + 10 * 60 * 1000,
+    }]]));
 
     await expect(service.getAccessToken()).resolves.toBe('token_cached');
   });
