@@ -152,6 +152,28 @@ export class UberEatsController {
     this.logger.log(
       `[ubereats webhook controller] rawBodyBytes=${rawBuffer.length}`,
     );
+  }
+
+  @Post('ops/tickets')
+  async createOpsTicket(@Body() dto: CreateUberOpsTicketDto) {
+    return this.uberEatsService.createOpsTicket({
+      type: dto.type,
+      title: dto.title,
+      description: dto.description,
+      priority: dto.priority,
+      storeId: dto.storeId,
+      externalOrderId: dto.externalOrderId,
+      menuItemStableId: dto.menuItemStableId,
+    });
+  }
+
+  @Get('ops/tickets')
+  async listOpsTickets(
+    @Query('storeId') storeId?: string,
+    @Query('status') status?: UberOpsTicketStatus,
+  ) {
+    return this.uberEatsService.listOpsTickets(storeId, status);
+  }
 
     let parsedBody: unknown = null;
     try {
