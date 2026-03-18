@@ -152,28 +152,6 @@ export class UberEatsController {
     this.logger.log(
       `[ubereats webhook controller] rawBodyBytes=${rawBuffer.length}`,
     );
-  }
-
-  @Post('ops/tickets')
-  async createOpsTicket(@Body() dto: CreateUberOpsTicketDto) {
-    return this.uberEatsService.createOpsTicket({
-      type: dto.type,
-      title: dto.title,
-      description: dto.description,
-      priority: dto.priority,
-      storeId: dto.storeId,
-      externalOrderId: dto.externalOrderId,
-      menuItemStableId: dto.menuItemStableId,
-    });
-  }
-
-  @Get('ops/tickets')
-  async listOpsTickets(
-    @Query('storeId') storeId?: string,
-    @Query('status') status?: UberOpsTicketStatus,
-  ) {
-    return this.uberEatsService.listOpsTickets(storeId, status);
-  }
 
     let parsedBody: unknown = null;
     try {
@@ -190,7 +168,6 @@ export class UberEatsController {
 
     return { ok: true };
   }
-
   @Post('orders/:externalOrderId/status')
   async syncOrderStatus(
     @Param('externalOrderId') externalOrderId: string,
@@ -271,7 +248,7 @@ export class UberEatsController {
   }
 
   @Post('ops/tickets')
-  async createOpsTicket(@Body() dto: CreateUberOpsTicketDto) {
+  async createOpsTicket(@Body() dto: CreateUberOpsTicketDto): Promise<unknown> {
     return this.uberEatsService.createOpsTicket({
       type: dto.type,
       title: dto.title,
@@ -287,12 +264,14 @@ export class UberEatsController {
   async listOpsTickets(
     @Query('storeId') storeId?: string,
     @Query('status') status?: UberOpsTicketStatus,
-  ) {
+  ): Promise<unknown> {
     return this.uberEatsService.listOpsTickets(storeId, status);
   }
 
   @Post('ops/tickets/:ticketStableId/retry')
-  async retryOpsTicket(@Param('ticketStableId') ticketStableId: string) {
+  async retryOpsTicket(
+    @Param('ticketStableId') ticketStableId: string,
+  ): Promise<unknown> {
     return this.uberEatsService.retryOpsTicket(ticketStableId);
   }
 }
