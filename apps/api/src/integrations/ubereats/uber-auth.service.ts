@@ -106,10 +106,7 @@ export class UberAuthService implements OnModuleInit {
   }
 
   private normalizePrivateKey(raw: string): string {
-    const normalized = raw
-      .replace(/\r\n/g, '\n')
-      .replace(/\n/g, '\n')
-      .trim();
+    const normalized = raw.replace(/\r\n/g, '\n').replace(/\n/g, '\n').trim();
 
     const pemPatterns = [
       {
