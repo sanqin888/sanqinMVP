@@ -59,7 +59,7 @@ services:
       UBER_DIRECT_STORE_COUNTRY: "CA"
       UBER_EATS_WEBHOOK_SIGNING_KEY: ${UBER_EATS_WEBHOOK_SIGNING_KEY}
       UBER_EATS_AUTH_MODE: "asymmetric_key"
-      UBER_EATS_KEY_FILE: "/run/secrets/uber/Sandbox_Ubereats_key.json"
+      UBER_EATS_KEY_FILE: "/run/secrets/uber/sandbox_ubereats_key.json"
       UBER_EATS_TOKEN_ENDPOINT: "https://auth.uber.com/oauth/v2/token"
       UBER_EATS_SCOPES: "eats.store eats.order"
       CLOVER_ENV: "production"
