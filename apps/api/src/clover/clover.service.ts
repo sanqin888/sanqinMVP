@@ -587,17 +587,55 @@ function extractChargeRecords(
   return [payload];
 }
 
-function toChargeStatusSuccess(
+function toFiniteCents(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.round(value);
+  }
+
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return Math.round(parsed);
+    }
+  }
+
+  return undefined;
+}
+
+function pickFirstFiniteCents(
+  record: Record<string, unknown>,
+  keys: string[],
+): number | undefined {
+  for (const key of keys) {
+    const value = toFiniteCents(record[key]);
+    if (typeof value === 'number') {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+export function toChargeStatusSuccess(
   chargePayload: Record<string, unknown>,
 ): CloverChargeStatusResult {
-  const amountRaw = chargePayload.amount;
-  const baseAmountCents =
-    typeof amountRaw === 'number' && Number.isFinite(amountRaw)
-      ? Math.round(amountRaw)
-      : undefined;
+  const baseAmountCents = pickFirstFiniteCents(chargePayload, ['amount']);
   if (typeof baseAmountCents !== 'number') {
     return { ok: false, reason: 'missing-payment-amount' };
   }
+
+  const explicitChargedTotalCents = pickFirstFiniteCents(chargePayload, [
+    'chargedTotalCents',
+    'charged_total_cents',
+    'totalAmount',
+    'total_amount',
+    'amountTotal',
+    'amount_total',
+    'finalAmount',
+    'final_amount',
+    'total',
+  ]);
+  const chargedTotalCents = explicitChargedTotalCents ?? baseAmountCents;
 
   const status =
     typeof chargePayload.result === 'string'
@@ -627,7 +665,7 @@ function toChargeStatusSuccess(
         ? chargePayload.currency
         : undefined,
     baseAmountCents,
-    chargedTotalCents: baseAmountCents,
+    chargedTotalCents,
   };
 }
 
