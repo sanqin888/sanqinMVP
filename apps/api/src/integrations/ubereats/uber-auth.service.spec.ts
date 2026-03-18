@@ -9,6 +9,10 @@ describe('UberAuthService', () => {
 
   const validPrivateKey =
     '-----BEGIN PRIVATE KEY-----\\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBK...\\n-----END PRIVATE KEY-----';
+  const validRsaPrivateKey = `-----BEGIN RSA PRIVATE KEY-----
+MIIEpAIBAAKCAQEA1234567890
+-----END RSA PRIVATE KEY-----
+`;
 
   beforeEach(() => {
     jest.restoreAllMocks();
@@ -37,6 +41,28 @@ describe('UberAuthService', () => {
 
     const service = new UberAuthService();
     await expect(service.onModuleInit()).resolves.toBeUndefined();
+  });
+
+  it('支持直接使用多行 RSA PEM private_key', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'uber-key-'));
+    const file = join(dir, 'key.json');
+    await writeFile(
+      file,
+      JSON.stringify({
+        application_id: 'app_1',
+        key_id: 'kid_1',
+        private_key: validRsaPrivateKey,
+      }),
+      'utf8',
+    );
+
+    process.env.UBER_EATS_KEY_FILE = file;
+
+    const service = new UberAuthService();
+    await expect(service.onModuleInit()).resolves.toBeUndefined();
+    expect(Reflect.get(service, 'normalizedPrivateKey')).toContain(
+      'BEGIN RSA PRIVATE KEY',
+    );
   });
 
   it('key 文件缺少字段会直接报错', async () => {
