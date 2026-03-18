@@ -255,10 +255,7 @@ export class UberAuthService implements OnModuleInit {
     const now = Date.now();
 
     const cached = this.tokenCache.get(normalizedScope);
-    if (
-      cached &&
-      now < cached.expiresAt - this.tokenRefreshBufferMs
-    ) {
+    if (cached && now < cached.expiresAt - this.tokenRefreshBufferMs) {
       return cached.accessToken;
     }
 
