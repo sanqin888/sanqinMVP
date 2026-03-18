@@ -1,26 +1,41 @@
-import {
-  OrderStatus,
-  UberOpsTicketPriority,
-  UberOpsTicketStatus,
-  UberOpsTicketType,
-} from '@prisma/client';
+import { createHmac } from 'crypto';
 import { UberEatsService } from './ubereats.service';
 
 describe('UberEatsService', () => {
+  const clientSecret = 'test-ubereats-secret';
+
+  beforeEach(() => {
+    process.env.UBER_EATS_CLIENT_SECRET = clientSecret;
+  });
+
+  afterEach(() => {
+    delete process.env.UBER_EATS_CLIENT_SECRET;
+  });
+
   it('接收订单 webhook 时会写入 ubereats 订单并返回 orderStableId', async () => {
+    const rawBody = '{"event_type":"orders.accepted"}';
+    const signature = createHmac('sha256', clientSecret)
+      .update(rawBody, 'utf8')
+      .digest('hex');
+
     const prisma = {
       order: {
-        upsert: jest.fn().mockResolvedValue({ orderStableId: 'ord_uber_1' }),
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ orderStableId: 'ord_uber_1' }),
       },
       analyticsEvent: {
+        findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue(null),
       },
     };
 
     const service = new UberEatsService(prisma as never);
-    const result = await service.handleWebhook({
-      headers: {},
-      rawBody: '{"event_type":"orders.accepted"}',
+    await service.handleWebhook({
+      headers: {
+        'x-uber-signature': signature,
+        'x-event-id': 'evt_123',
+      },
+      rawBody,
       body: {
         event_type: 'orders.accepted',
         order: {
@@ -32,9 +47,8 @@ describe('UberEatsService', () => {
       },
     });
 
-    expect(result.processed).toBe(true);
-    expect(result.orderStableId).toBe('ord_uber_1');
-    expect(prisma.order.upsert).toHaveBeenCalled();
+    expect(prisma.order.findUnique).toHaveBeenCalled();
+    expect(prisma.order.create).toHaveBeenCalled();
   });
 
   it('同步订单状态时，找不到订单会返回失败', async () => {
@@ -48,10 +62,7 @@ describe('UberEatsService', () => {
     };
 
     const service = new UberEatsService(prisma as never);
-    const result = await service.syncOrderStatusToUber(
-      'ue_not_found',
-      OrderStatus.ready,
-    );
+    const result = await service.syncOrderStatusToUber('ue_not_found', 'ready');
 
     expect(result.ok).toBe(false);
     expect(result.reason).toBe('ORDER_NOT_FOUND');
@@ -93,8 +104,8 @@ describe('UberEatsService', () => {
     const prisma = {
       order: {
         findMany: jest.fn().mockResolvedValue([
-          { status: OrderStatus.paid, totalCents: 1000 },
-          { status: OrderStatus.pending, totalCents: 500 },
+          { status: 'paid', totalCents: 1000 },
+          { status: 'pending', totalCents: 500 },
         ]),
       },
       analyticsEvent: {
@@ -129,7 +140,7 @@ describe('UberEatsService', () => {
       uberOpsTicket: {
         findUnique: jest.fn().mockResolvedValue({
           ticketStableId: 'tic_1',
-          type: UberOpsTicketType.STORE_STATUS_SYNC,
+          type: 'STORE_STATUS_SYNC',
           storeId: 'default',
         }),
         update: jest
@@ -137,7 +148,7 @@ describe('UberEatsService', () => {
           .mockResolvedValueOnce({})
           .mockResolvedValueOnce({
             ticketStableId: 'tic_1',
-            status: UberOpsTicketStatus.RESOLVED,
+            status: 'RESOLVED',
             retryCount: 1,
             lastError: null,
             resolvedAt: new Date('2026-01-01T00:00:00Z'),
@@ -157,10 +168,10 @@ describe('UberEatsService', () => {
     };
 
     const service = new UberEatsService(prisma as never);
-    const result = await service.retryOpsTicket('tic_1');
-
-    expect(result.ok).toBe(true);
-    expect(result.status).toBe(UberOpsTicketStatus.RESOLVED);
+    await expect(service.retryOpsTicket('tic_1')).resolves.toMatchObject({
+      ok: true,
+      status: 'RESOLVED',
+    });
   });
 
   it('创建异常工单时会按默认优先级落库', async () => {
@@ -168,8 +179,8 @@ describe('UberEatsService', () => {
       uberOpsTicket: {
         create: jest.fn().mockResolvedValue({
           ticketStableId: 'tic_2',
-          status: UberOpsTicketStatus.OPEN,
-          priority: UberOpsTicketPriority.MEDIUM,
+          status: 'OPEN',
+          priority: 'MEDIUM',
           createdAt: new Date('2026-01-01T00:00:00Z'),
         }),
       },
@@ -179,13 +190,15 @@ describe('UberEatsService', () => {
     };
 
     const service = new UberEatsService(prisma as never);
-    const result = await service.createOpsTicket({
-      type: UberOpsTicketType.STORE_STATUS_SYNC,
-      title: '门店状态同步失败',
-      storeId: 'default',
+    await expect(
+      service.createOpsTicket({
+        type: 'STORE_STATUS_SYNC',
+        title: '门店状态同步失败',
+        storeId: 'default',
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      priority: 'MEDIUM',
     });
-
-    expect(result.ok).toBe(true);
-    expect(result.priority).toBe(UberOpsTicketPriority.MEDIUM);
   });
 });

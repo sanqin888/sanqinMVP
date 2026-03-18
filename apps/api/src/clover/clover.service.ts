@@ -298,6 +298,23 @@ export class CloverService {
         return byExternalPaymentId.result;
       }
 
+      if (paymentId) {
+        const byPaymentIdFallback = await this.queryChargeStatusByFilters([
+          {
+            query: `id=${encodeURIComponent(paymentId)}`,
+            matcher: (charge) => charge.paymentId === paymentId,
+          },
+          {
+            query: `paymentId=${encodeURIComponent(paymentId)}`,
+            matcher: (charge) => charge.paymentId === paymentId,
+          },
+        ]);
+
+        if (byPaymentIdFallback.ok) {
+          return byPaymentIdFallback.result;
+        }
+      }
+
       return {
         ok: false,
         reason: `externalPaymentId_not_found:${externalPaymentId}`,

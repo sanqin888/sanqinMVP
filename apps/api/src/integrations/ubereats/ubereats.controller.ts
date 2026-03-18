@@ -1,3 +1,4 @@
+//apps/api/src/integrations/ubereats/ubereats.controller.ts
 import {
   Body,
   Controller,
@@ -134,17 +135,39 @@ export class UberEatsController {
   @Post('webhook')
   @HttpCode(200)
   async webhook(@Req() req: Request) {
-    const rawBody = this.toRawBodyString(req.body);
+    this.logger.log(
+      `[ubereats webhook headers] ${JSON.stringify(req.headers)}`,
+    );
+    const rawBuffer = Buffer.isBuffer(req.body)
+      ? req.body
+      : Buffer.from(
+          typeof req.body === 'string'
+            ? req.body
+            : JSON.stringify(req.body ?? {}),
+          'utf8',
+        );
 
-    const result = await this.uberEatsService.handleWebhook({
-      headers: req.headers,
-      body: req.body,
+    const rawBody = rawBuffer.toString('utf8');
+
+    this.logger.log(
+      `[ubereats webhook controller] rawBodyBytes=${rawBuffer.length}`,
+    );
+
+    let parsedBody: unknown = null;
+    try {
+      parsedBody = rawBody ? JSON.parse(rawBody) : null;
+    } catch {
+      parsedBody = null;
+    }
+
+    await this.uberEatsService.handleWebhook({
+      headers: req.headers as Record<string, unknown>,
+      body: parsedBody,
       rawBody,
     });
 
-    return { ok: true, ...result };
+    return { ok: true };
   }
-
   @Post('orders/:externalOrderId/status')
   async syncOrderStatus(
     @Param('externalOrderId') externalOrderId: string,
@@ -225,7 +248,7 @@ export class UberEatsController {
   }
 
   @Post('ops/tickets')
-  async createOpsTicket(@Body() dto: CreateUberOpsTicketDto) {
+  async createOpsTicket(@Body() dto: CreateUberOpsTicketDto): Promise<unknown> {
     return this.uberEatsService.createOpsTicket({
       type: dto.type,
       title: dto.title,
@@ -241,19 +264,14 @@ export class UberEatsController {
   async listOpsTickets(
     @Query('storeId') storeId?: string,
     @Query('status') status?: UberOpsTicketStatus,
-  ) {
+  ): Promise<unknown> {
     return this.uberEatsService.listOpsTickets(storeId, status);
   }
 
   @Post('ops/tickets/:ticketStableId/retry')
-  async retryOpsTicket(@Param('ticketStableId') ticketStableId: string) {
+  async retryOpsTicket(
+    @Param('ticketStableId') ticketStableId: string,
+  ): Promise<unknown> {
     return this.uberEatsService.retryOpsTicket(ticketStableId);
-  }
-
-  private toRawBodyString(body: unknown): string {
-    if (typeof body === 'string') return body;
-    if (Buffer.isBuffer(body)) return body.toString('utf8');
-    if (body && typeof body === 'object') return JSON.stringify(body);
-    return '';
   }
 }

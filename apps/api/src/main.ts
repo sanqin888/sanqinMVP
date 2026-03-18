@@ -1,4 +1,5 @@
 /* apps/api/src/main.ts */
+/* apps/api/src/main.ts */
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
@@ -11,8 +12,6 @@ import * as path from 'path';
 import { getUploadsRootDir } from './common/utils/uploads-path';
 
 async function bootstrap(): Promise<void> {
-  // 1. 禁用 NestJS 默认的 bodyParser
-  // 这样我们可以手动控制解析器的顺序，避免 Webhook 的 raw body 被提前消费
   const corsOrigin = process.env.CORS_ORIGIN
     ? process.env.CORS_ORIGIN.split(',')
     : null;
@@ -26,7 +25,7 @@ async function bootstrap(): Promise<void> {
   }
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
-    bodyParser: false, //禁用默认
+    bodyParser: false,
     cors: {
       origin: corsOrigin ?? 'http://localhost:3000',
       credentials: true,
@@ -36,27 +35,25 @@ async function bootstrap(): Promise<void> {
 
   const prefix = getApiPrefix();
 
-  // 2. 【第一步】特殊处理 sendgrid webhooks
-  // 使用 express.raw 只针对这个路径解析为 Buffer，方便验签
-  // 注意：必须在 express.json() 之前注册
+  // 先注册所有需要 raw body 的 webhook 路由
   app.use(`/${prefix}/webhooks/sendgrid-email`, express.raw({ type: '*/*' }));
   app.use(`/${prefix}/webhooks/twilio`, express.raw({ type: '*/*' }));
   app.use(`/${prefix}/webhooks/aws-sns`, express.raw({ type: '*/*' }));
+
+  // Uber Eats webhook 必须保留原始 body，供 HMAC 验签
   app.use(
     `/${prefix}/integrations/ubereats/webhook`,
     express.raw({ type: '*/*' }),
   );
-  // 3. 【第二步】为其余所有路由启用 JSON 解析
+
+  // 其余路由正常走 JSON / form 解析
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
-  // 4. 配置全局拦截器、过滤器等
   configureApp(app);
 
-  // 5. 🔐 安全配置：Cookie 签名
   const cookieSecret = process.env.COOKIE_SIGNING_SECRET;
 
-  // 生产环境强制检查：必须配置密钥，否则禁止启动
   if (!cookieSecret && process.env.NODE_ENV === 'production') {
     console.error(
       '\n❌ FATAL ERROR: COOKIE_SIGNING_SECRET is not defined in .env file.',
@@ -67,15 +64,14 @@ async function bootstrap(): Promise<void> {
     process.exit(1);
   }
 
-  // 启用 cookie-parser
   app.use(cookieParser(cookieSecret || 'dev-fallback-secret-key'));
 
-  // 6. 处理图片上传目录
   const uploadsDir = getUploadsRootDir();
   if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
     console.log(`Created uploads directory at: ${uploadsDir}`);
   }
+
   const uploadAllowedExtensions = new Set([
     '.jpg',
     '.jpeg',
@@ -84,6 +80,7 @@ async function bootstrap(): Promise<void> {
     '.webp',
     '.svg',
   ]);
+
   app.use(
     '/uploads',
     (
@@ -109,7 +106,6 @@ async function bootstrap(): Promise<void> {
     }),
   );
 
-  // 7. 启动监听
   const port = process.env.PORT ? Number(process.env.PORT) : 4000;
   await app.listen(port);
 

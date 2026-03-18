@@ -58,6 +58,8 @@ services:
       UBER_DIRECT_STORE_POSTAL_CODE: "M2N 5M6"
       UBER_DIRECT_STORE_COUNTRY: "CA"
       UBER_EATS_WEBHOOK_SIGNING_KEY: ${UBER_EATS_WEBHOOK_SIGNING_KEY}
+      UBER_EATS_AUTH_MODE: "asymmetric_key"
+      UBER_EATS_KEY_FILE: "/run/secrets/uber/Sandbox_Ubereats_private_key.json"
       CLOVER_ENV: "production"
       CLOVER_BASE: "https://scl.clover.com"
       CLOVER_MERCHANT_ID: "XC3DQ9Z7D4YJ1"
@@ -90,6 +92,7 @@ services:
       - db
     volumes:
       - ./uploads:/app/uploads
+      - /home/ubuntu/sanq-secrets/uber:/run/secrets/uber:ro
   web:
     build:
       context: .
