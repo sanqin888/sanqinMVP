@@ -106,12 +106,25 @@ export class UberAuthService implements OnModuleInit {
   }
 
   private normalizePrivateKey(raw: string): string {
-    const normalized = raw.replace(/\\n/g, '\n').trim();
+    const normalized = raw.replace(/\r\n/g, '\n').replace(/\n/g, '\n').trim();
 
-    if (
-      !normalized.includes('-----BEGIN PRIVATE KEY-----') ||
-      !normalized.includes('-----END PRIVATE KEY-----')
-    ) {
+    const pemPatterns = [
+      {
+        begin: '-----BEGIN PRIVATE KEY-----',
+        end: '-----END PRIVATE KEY-----',
+      },
+      {
+        begin: '-----BEGIN RSA PRIVATE KEY-----',
+        end: '-----END RSA PRIVATE KEY-----',
+      },
+    ];
+
+    const isValidPem = pemPatterns.some(
+      ({ begin, end }) =>
+        normalized.includes(begin) && normalized.includes(end),
+    );
+
+    if (!isValidPem) {
       throw new Error('Uber private_key 不是合法 PEM 格式');
     }
 
