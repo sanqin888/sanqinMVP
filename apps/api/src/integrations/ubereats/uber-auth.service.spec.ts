@@ -64,10 +64,19 @@ describe('UberAuthService', () => {
     const now = Date.now();
     const normalizedScope = 'eats.order eats.store';
 
-    Reflect.set(service, 'tokenCache', new Map([[normalizedScope, {
-      accessToken: 'token_cached',
-      expiresAt: now + 10 * 60 * 1000,
-    }]]));
+    Reflect.set(
+      service,
+      'tokenCache',
+      new Map([
+        [
+          normalizedScope,
+          {
+            accessToken: 'token_cached',
+            expiresAt: now + 10 * 60 * 1000,
+          },
+        ],
+      ]),
+    );
 
     await expect(service.getAccessToken()).resolves.toBe('token_cached');
   });
