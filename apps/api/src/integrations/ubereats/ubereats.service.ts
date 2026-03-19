@@ -79,6 +79,73 @@ type UberMerchantConnectionRecord = {
   rawStoresSnapshot?: unknown;
 };
 
+type UberStoreMappingRecord = {
+  merchantUberUserId: string;
+  uberStoreId: string;
+  storeName: string | null;
+  locationSummary: string | null;
+  isProvisioned: boolean;
+  provisionedAt: Date | null;
+  posExternalStoreId: string | null;
+  rawPayload?: unknown;
+};
+
+type UpsertStoreMappingInput = {
+  merchantUberUserId: string;
+  uberStoreId: string;
+  storeName: string | null;
+  locationSummary: string | null;
+  isProvisioned: boolean;
+  posExternalStoreId: string | null;
+  raw: Record<string, unknown>;
+};
+
+type UberMerchantConnectionDelegate = {
+  findUnique(args: {
+    where: { merchantUberUserId: string };
+  }): Promise<UberMerchantConnectionRecord | null>;
+  findFirst(args: {
+    orderBy: { connectedAt: 'desc' | 'asc' };
+  }): Promise<UberMerchantConnectionRecord | null>;
+  upsert(args: {
+    where: { merchantUberUserId: string };
+    create: UberMerchantConnectionRecord;
+    update: Omit<
+      UberMerchantConnectionRecord,
+      'merchantUberUserId' | 'rawStoresSnapshot'
+    >;
+  }): Promise<UberMerchantConnectionRecord>;
+  update(args: {
+    where: { merchantUberUserId: string };
+    data: { rawStoresSnapshot: Record<string, unknown> };
+  }): Promise<unknown>;
+};
+
+type UberStoreMappingDelegate = {
+  upsert(args: {
+    where: { uberStoreId: string };
+    create: {
+      merchantUberUserId: string;
+      uberStoreId: string;
+      storeName: string | null;
+      locationSummary: string | null;
+      isProvisioned: boolean;
+      provisionedAt: Date | null;
+      posExternalStoreId: string | null;
+      rawPayload: Record<string, unknown>;
+    };
+    update: {
+      merchantUberUserId: string;
+      storeName: string | null;
+      locationSummary: string | null;
+      isProvisioned: boolean;
+      provisionedAt: Date | undefined;
+      posExternalStoreId: string | null;
+      rawPayload: Record<string, unknown>;
+    };
+  }): Promise<UberStoreMappingRecord>;
+};
+
 type CreateOpsTicketInput = UberStoreScopedInput & {
   type: UberOpsTicketType;
   title: string;
@@ -99,6 +166,22 @@ export class UberEatsService {
     private readonly prisma: PrismaService,
     private readonly uberAuthService: UberAuthService,
   ) {}
+
+  private get uberMerchantConnectionDelegate(): UberMerchantConnectionDelegate | null {
+    const prismaWithUber = this.prisma as PrismaService & {
+      uberMerchantConnection?: UberMerchantConnectionDelegate;
+    };
+
+    return prismaWithUber.uberMerchantConnection ?? null;
+  }
+
+  private get uberStoreMappingDelegate(): UberStoreMappingDelegate | null {
+    const prismaWithUber = this.prisma as PrismaService & {
+      uberStoreMapping?: UberStoreMappingDelegate;
+    };
+
+    return prismaWithUber.uberStoreMapping ?? null;
+  }
 
   async debugAccessToken() {
     const scope = 'eats.store.orders.read';
@@ -319,7 +402,7 @@ export class UberEatsService {
     };
   }
 
-  async revokeOrDeprovisionStore() {
+  revokeOrDeprovisionStore() {
     throw new NotImplementedException('deprovision MVP 暂未实现');
   }
 
@@ -983,12 +1066,12 @@ export class UberEatsService {
       };
     }
 
-    const prismaAny = this.prisma as any;
+    const merchantConnection = this.uberMerchantConnectionDelegate;
     const row = merchantUberUserId?.trim()
-      ? await prismaAny.uberMerchantConnection?.findUnique({
+      ? await merchantConnection?.findUnique({
           where: { merchantUberUserId: merchantUberUserId.trim() },
         })
-      : await prismaAny.uberMerchantConnection?.findFirst({
+      : await merchantConnection?.findFirst({
           orderBy: { connectedAt: 'desc' },
         });
 
@@ -998,13 +1081,20 @@ export class UberEatsService {
       );
     }
 
-    return row as UberMerchantConnectionRecord;
+    return row;
   }
 
-  private async upsertMerchantConnection(input: UberMerchantConnectionRecord) {
-    const prismaAny = this.prisma as any;
+  private upsertMerchantConnection(
+    input: UberMerchantConnectionRecord,
+  ): Promise<UberMerchantConnectionRecord> {
+    const merchantConnection = this.uberMerchantConnectionDelegate;
+    if (!merchantConnection) {
+      throw new BadRequestException(
+        'Prisma 未配置 uberMerchantConnection 模型',
+      );
+    }
 
-    return prismaAny.uberMerchantConnection.upsert({
+    return merchantConnection.upsert({
       where: { merchantUberUserId: input.merchantUberUserId },
       create: input,
       update: {
@@ -1023,8 +1113,8 @@ export class UberEatsService {
     stores: UberMerchantStore[],
     raw: Record<string, unknown>,
   ) {
-    const prismaAny = this.prisma as any;
-    await prismaAny.uberMerchantConnection?.update({
+    const merchantConnection = this.uberMerchantConnectionDelegate;
+    await merchantConnection?.update({
       where: { merchantUberUserId },
       data: { rawStoresSnapshot: raw },
     });
@@ -1044,18 +1134,15 @@ export class UberEatsService {
     );
   }
 
-  private async upsertStoreMapping(input: {
-    merchantUberUserId: string;
-    uberStoreId: string;
-    storeName: string | null;
-    locationSummary: string | null;
-    isProvisioned: boolean;
-    posExternalStoreId: string | null;
-    raw: Record<string, unknown>;
-  }) {
-    const prismaAny = this.prisma as any;
+  private upsertStoreMapping(
+    input: UpsertStoreMappingInput,
+  ): Promise<UberStoreMappingRecord> {
+    const storeMapping = this.uberStoreMappingDelegate;
+    if (!storeMapping) {
+      throw new BadRequestException('Prisma 未配置 uberStoreMapping 模型');
+    }
 
-    return prismaAny.uberStoreMapping.upsert({
+    return storeMapping.upsert({
       where: { uberStoreId: input.uberStoreId },
       create: {
         merchantUberUserId: input.merchantUberUserId,
