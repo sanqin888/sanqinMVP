@@ -122,6 +122,16 @@ export class UberEatsController {
     return 'Authorized. You can close this window. (ok)';
   }
 
+  @Get('debug/token')
+  async debugAccessToken() {
+    return this.uberEatsService.debugAccessToken();
+  }
+
+  @Get('debug/created-orders')
+  async debugCreatedOrders(@Query('storeId') storeId?: string) {
+    return this.uberEatsService.debugCreatedOrders(storeId);
+  }
+
   @Get('webhook')
   health(@Res() res: Response) {
     return res.status(200).json({ ok: true });
