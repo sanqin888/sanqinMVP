@@ -1686,9 +1686,20 @@ export class UberEatsService {
     headers: Record<string, unknown>,
     rawBody: string,
   ) {
-    const configuredSecret = process.env.UBER_EATS_CLIENT_SECRET?.trim();
-    if (!configuredSecret) {
-      throw new Error('UBER_EATS_CLIENT_SECRET 未配置');
+    const clientSecret = process.env.UBER_EATS_CLIENT_SECRET?.trim();
+    const webhookSigningKey =
+      process.env.UBER_EATS_WEBHOOK_SIGNING_KEY?.trim();
+    const candidateSecrets = [
+      clientSecret,
+      webhookSigningKey && webhookSigningKey !== clientSecret
+        ? webhookSigningKey
+        : null,
+    ].filter((secret): secret is string => !!secret);
+
+    if (!candidateSecrets.length) {
+      throw new Error(
+        'UBER_EATS_CLIENT_SECRET 或 UBER_EATS_WEBHOOK_SIGNING_KEY 未配置',
+      );
     }
 
     const receivedSignature = this.readHeader(
@@ -1701,17 +1712,21 @@ export class UberEatsService {
       throw new UnauthorizedException('Missing Uber signature header');
     }
 
-    const expected = createHmac('sha256', configuredSecret)
-      .update(rawBody, 'utf8')
-      .digest('hex');
-
-    const expectedBuffer = Buffer.from(expected, 'utf8');
     const receivedBuffer = Buffer.from(receivedSignature.trim(), 'utf8');
+    const isMatched = candidateSecrets.some((secret) => {
+      const expected = createHmac('sha256', secret)
+        .update(rawBody, 'utf8')
+        .digest('hex');
 
-    if (
-      expectedBuffer.length !== receivedBuffer.length ||
-      !timingSafeEqual(expectedBuffer, receivedBuffer)
-    ) {
+      const expectedBuffer = Buffer.from(expected, 'utf8');
+
+      return (
+        expectedBuffer.length === receivedBuffer.length &&
+        timingSafeEqual(expectedBuffer, receivedBuffer)
+      );
+    });
+
+    if (!isMatched) {
       throw new UnauthorizedException('Invalid Uber signature');
     }
   }

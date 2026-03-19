@@ -49,7 +49,9 @@ export class UberAuthService implements OnModuleInit {
     'https://api.uber.com/v1/me';
 
   private readonly merchantProvisioningScope =
-    process.env.UBER_EATS_MERCHANT_SCOPE?.trim() || 'eats.pos_provisioning';
+    process.env.UBER_EATS_USER_AUTH_SCOPES?.trim() ||
+    process.env.UBER_EATS_MERCHANT_SCOPE?.trim() ||
+    'eats.pos_provisioning';
 
   private readonly merchantRedirectUri =
     process.env.UBER_EATS_REDIRECT_URI?.trim() ||
@@ -57,7 +59,9 @@ export class UberAuthService implements OnModuleInit {
     '';
 
   private readonly defaultScopes =
-    process.env.UBER_EATS_SCOPES?.trim() || 'eats.store eats.order';
+    process.env.UBER_EATS_APP_SCOPES?.trim() ||
+    process.env.UBER_EATS_SCOPES?.trim() ||
+    'eats.store eats.order';
 
   // 提前 60 秒刷新，避免刚拿到 token 就快过期
   private readonly tokenRefreshBufferMs = 60_000;
@@ -209,7 +213,9 @@ export class UberAuthService implements OnModuleInit {
     const raw = (scope?.trim() || this.defaultScopes).trim();
 
     if (!raw) {
-      throw new Error('Uber scopes 为空，请配置 UBER_EATS_SCOPES');
+      throw new Error(
+        'Uber scopes 为空，请配置 UBER_EATS_APP_SCOPES 或 UBER_EATS_SCOPES',
+      );
     }
 
     // 去重 + 排序，避免同一组 scope 因顺序不同生成多个缓存 key
