@@ -1,8 +1,40 @@
+jest.mock('@prisma/client', () => ({
+  PrismaClient: class {},
+  Channel: { ubereats: 'ubereats' },
+  OrderStatus: {
+    pending: 'pending',
+    paid: 'paid',
+    making: 'making',
+    ready: 'ready',
+    completed: 'completed',
+    cancelled: 'cancelled',
+    refunded: 'refunded',
+  },
+  UberMenuPublishStatus: { SUCCESS: 'SUCCESS' },
+  UberOpsTicketPriority: {
+    LOW: 'LOW',
+    MEDIUM: 'MEDIUM',
+    HIGH: 'HIGH',
+    CRITICAL: 'CRITICAL',
+  },
+  UberOpsTicketStatus: {
+    OPEN: 'OPEN',
+    IN_PROGRESS: 'IN_PROGRESS',
+    RESOLVED: 'RESOLVED',
+  },
+  UberOpsTicketType: { STORE_STATUS_SYNC: 'STORE_STATUS_SYNC' },
+  PaymentMethod: { UBEREATS: 'UBEREATS' },
+}));
+
 import { createHmac } from 'crypto';
 import { UberEatsService } from './ubereats.service';
 
 describe('UberEatsService', () => {
   const clientSecret = 'test-ubereats-secret';
+  const createAuthService = () =>
+    ({
+      getAccessToken: jest.fn().mockResolvedValue('token_debug_1234567890'),
+    }) as never;
 
   beforeEach(() => {
     process.env.UBER_EATS_CLIENT_SECRET = clientSecret;
@@ -10,6 +42,7 @@ describe('UberEatsService', () => {
 
   afterEach(() => {
     delete process.env.UBER_EATS_CLIENT_SECRET;
+    jest.restoreAllMocks();
   });
 
   it('接收订单 webhook 时会写入 ubereats 订单并返回 orderStableId', async () => {
@@ -29,7 +62,7 @@ describe('UberEatsService', () => {
       },
     };
 
-    const service = new UberEatsService(prisma as never);
+    const service = new UberEatsService(prisma as never, createAuthService());
     await service.handleWebhook({
       headers: {
         'x-uber-signature': signature,
@@ -51,6 +84,100 @@ describe('UberEatsService', () => {
     expect(prisma.order.create).toHaveBeenCalled();
   });
 
+  it('debugAccessToken 会返回请求 scope 与脱敏 token 信息', async () => {
+    const service = new UberEatsService({} as never, createAuthService());
+
+    await expect(service.debugAccessToken()).resolves.toEqual({
+      ok: true,
+      requestedScope: 'eats.store.orders.read',
+      tokenPrefix: 'token_debug_',
+      tokenLength: 'token_debug_1234567890'.length,
+    });
+  });
+
+  it('debugCreatedOrders 会返回请求 URL 与订单摘要且不暴露完整 token', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      text: jest.fn().mockResolvedValue(
+        JSON.stringify({
+          orders: [
+            {
+              id: 'ord_1',
+              current_state: 'CREATED',
+              placed_at: '2026-03-19T00:00:00Z',
+            },
+          ],
+        }),
+      ),
+    }) as never;
+
+    const authService = {
+      getAccessToken: jest.fn().mockResolvedValue('token_debug_1234567890'),
+    } as never;
+
+    const service = new UberEatsService({} as never, authService);
+
+    await expect(service.debugCreatedOrders('store_1')).resolves.toEqual({
+      ok: true,
+      storeId: 'store_1',
+      requestUrl: 'https://api.uber.com/v1/eats/stores/store_1/created-orders',
+      tokenPrefix: 'token_debug_',
+      tokenLength: 'token_debug_1234567890'.length,
+      orderCount: 1,
+      orders: [
+        {
+          id: 'ord_1',
+          currentState: 'CREATED',
+          placedAt: '2026-03-19T00:00:00Z',
+        },
+      ],
+    });
+
+    expect(authService.getAccessToken).toHaveBeenCalledWith(
+      'eats.store.orders.read',
+    );
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://api.uber.com/v1/eats/stores/store_1/created-orders',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer token_debug_1234567890',
+        }),
+      }),
+    );
+  });
+
+  it('debugCreatedOrders 在未传 storeId 时会回退到环境变量', async () => {
+    process.env.UBER_EATS_STORE_ID = 'store_env';
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      text: jest.fn().mockResolvedValue(JSON.stringify({ orders: [] })),
+    }) as never;
+
+    const authService = {
+      getAccessToken: jest.fn().mockResolvedValue('token_debug_1234567890'),
+    } as never;
+
+    const service = new UberEatsService({} as never, authService);
+
+    await expect(service.debugCreatedOrders()).resolves.toMatchObject({
+      ok: true,
+      storeId: 'store_env',
+      requestUrl:
+        'https://api.uber.com/v1/eats/stores/store_env/created-orders',
+      orderCount: 0,
+    });
+  });
+
+  it('debugCreatedOrders 在缺少 storeId 时会直接报错', async () => {
+    delete process.env.UBER_EATS_STORE_ID;
+    const service = new UberEatsService({} as never, createAuthService());
+
+    await expect(service.debugCreatedOrders()).rejects.toThrow(
+      '缺少 storeId，请通过 query 传入或配置 UBER_EATS_STORE_ID',
+    );
+  });
+
   it('同步订单状态时，找不到订单会返回失败', async () => {
     const prisma = {
       order: {
@@ -61,7 +188,7 @@ describe('UberEatsService', () => {
       },
     };
 
-    const service = new UberEatsService(prisma as never);
+    const service = new UberEatsService(prisma as never, createAuthService());
     const result = await service.syncOrderStatusToUber('ue_not_found', 'ready');
 
     expect(result.ok).toBe(false);
@@ -88,7 +215,7 @@ describe('UberEatsService', () => {
       },
     };
 
-    const service = new UberEatsService(prisma as never);
+    const service = new UberEatsService(prisma as never, createAuthService());
     const result = await service.publishUberMenu({
       storeId: 's1',
       dryRun: true,
@@ -123,7 +250,7 @@ describe('UberEatsService', () => {
       },
     };
 
-    const service = new UberEatsService(prisma as never);
+    const service = new UberEatsService(prisma as never, createAuthService());
     const result = await service.generateReconciliationReport({
       storeId: 'default',
     });
@@ -167,7 +294,7 @@ describe('UberEatsService', () => {
       },
     };
 
-    const service = new UberEatsService(prisma as never);
+    const service = new UberEatsService(prisma as never, createAuthService());
     await expect(service.retryOpsTicket('tic_1')).resolves.toMatchObject({
       ok: true,
       status: 'RESOLVED',
@@ -189,7 +316,7 @@ describe('UberEatsService', () => {
       },
     };
 
-    const service = new UberEatsService(prisma as never);
+    const service = new UberEatsService(prisma as never, createAuthService());
     await expect(
       service.createOpsTicket({
         type: 'STORE_STATUS_SYNC',

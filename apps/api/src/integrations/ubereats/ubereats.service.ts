@@ -17,6 +17,7 @@ import {
 import { createHmac, timingSafeEqual } from 'crypto';
 import { AppLogger } from '../../common/app-logger';
 import { PrismaService } from '../../prisma/prisma.service';
+import { UberAuthService } from './uber-auth.service';
 
 type UberWebhookInput = {
   headers: Record<string, unknown>;
@@ -72,8 +73,92 @@ type CreateOpsTicketInput = UberStoreScopedInput & {
 @Injectable()
 export class UberEatsService {
   private readonly logger = new AppLogger(UberEatsService.name);
+  private readonly uberApiBaseUrl =
+    process.env.UBER_EATS_API_BASE_URL?.trim() || 'https://api.uber.com';
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly uberAuthService: UberAuthService,
+  ) {}
+
+  async debugAccessToken() {
+    const scope = 'eats.store.orders.read';
+    const token = await this.uberAuthService.getAccessToken(scope);
+
+    return {
+      ok: true,
+      requestedScope: scope,
+      tokenPrefix: token.slice(0, 12),
+      tokenLength: token.length,
+    };
+  }
+
+  async debugCreatedOrders(storeId?: string) {
+    const normalizedStoreId = this.resolveDebugStoreId(storeId);
+    const token = await this.uberAuthService.getAccessToken(
+      'eats.store.orders.read',
+    );
+    const url = this.buildCreatedOrdersUrl(normalizedStoreId);
+
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `[ubereats debug] created-orders request failed storeId=${normalizedStoreId} message=${message}`,
+      );
+      throw new BadRequestException({
+        ok: false,
+        storeId: normalizedStoreId,
+        message: '调用 Uber created-orders 接口失败',
+        detail: message,
+      });
+    }
+
+    const rawText = await response.text();
+    const parsed = this.tryParseJson(rawText);
+
+    if (!response.ok) {
+      const detail = this.summarizeDebugResponse(parsed, rawText);
+      this.logger.error(
+        `[ubereats debug] created-orders upstream error storeId=${normalizedStoreId} status=${response.status} detail=${detail}`,
+      );
+      throw new BadRequestException({
+        ok: false,
+        storeId: normalizedStoreId,
+        status: response.status,
+        message: 'Uber created-orders 接口返回错误',
+        detail,
+      });
+    }
+
+    const orders = this.extractCreatedOrders(parsed);
+
+    this.logger.log(
+      `[ubereats debug] created-orders success storeId=${normalizedStoreId} count=${orders.length}`,
+    );
+
+    return {
+      ok: true,
+      storeId: normalizedStoreId,
+      requestUrl: url,
+      tokenPrefix: token.slice(0, 12),
+      tokenLength: token.length,
+      orderCount: orders.length,
+      orders: orders.map((order) => ({
+        id: order.id,
+        currentState: order.current_state,
+        placedAt: order.placed_at,
+      })),
+    };
+  }
 
   async handleWebhook(input: UberWebhookInput): Promise<void> {
     this.verifyWebhookSignature(input.headers, input.rawBody);
@@ -1011,6 +1096,72 @@ export class UberEatsService {
 
   private toClientRequestId(externalOrderId: string): string {
     return `ubereats:${externalOrderId}`;
+  }
+
+  private resolveDebugStoreId(storeId?: string): string {
+    const normalizedStoreId =
+      storeId?.trim() || process.env.UBER_EATS_STORE_ID?.trim();
+
+    if (!normalizedStoreId) {
+      throw new BadRequestException(
+        '缺少 storeId，请通过 query 传入或配置 UBER_EATS_STORE_ID',
+      );
+    }
+
+    return normalizedStoreId;
+  }
+
+  private buildCreatedOrdersUrl(storeId: string): string {
+    const base = this.uberApiBaseUrl.replace(/\/$/, '');
+    return `${base}/v1/eats/stores/${encodeURIComponent(storeId)}/created-orders`;
+  }
+
+  private tryParseJson(rawText: string): unknown {
+    if (!rawText) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(rawText);
+    } catch {
+      return null;
+    }
+  }
+
+  private summarizeDebugResponse(parsed: unknown, rawText: string): string {
+    if (parsed && typeof parsed === 'object') {
+      return JSON.stringify(parsed).slice(0, 500);
+    }
+
+    return rawText.slice(0, 500) || 'empty response body';
+  }
+
+  private extractCreatedOrders(
+    payload: unknown,
+  ): Array<{ id?: string; current_state?: string; placed_at?: string }> {
+    if (!payload || typeof payload !== 'object') {
+      return [];
+    }
+
+    const orders = (payload as { orders?: unknown }).orders;
+    if (!Array.isArray(orders)) {
+      return [];
+    }
+
+    return orders
+      .filter(
+        (order): order is Record<string, unknown> =>
+          !!order && typeof order === 'object',
+      )
+      .map((order) => ({
+        id: typeof order.id === 'string' ? order.id : undefined,
+        current_state:
+          typeof order.current_state === 'string'
+            ? order.current_state
+            : undefined,
+        placed_at:
+          typeof order.placed_at === 'string' ? order.placed_at : undefined,
+      }));
   }
 
   private normalizeStoreId(storeId?: string): string {
