@@ -96,7 +96,8 @@ describe('UberEatsService', () => {
   });
 
   it('debugCreatedOrders 会返回请求 URL 与订单摘要且不暴露完整 token', async () => {
-    global.fetch = jest.fn().mockResolvedValue({
+    const fetchMock: jest.MockedFunction<typeof fetch> = jest.fn();
+    fetchMock.mockResolvedValue({
       ok: true,
       text: jest.fn().mockResolvedValue(
         JSON.stringify({
@@ -109,11 +110,10 @@ describe('UberEatsService', () => {
           ],
         }),
       ),
-    }) as never;
+    } as Response);
+    global.fetch = fetchMock;
 
-    const authService = {
-      getAccessToken: jest.fn().mockResolvedValue('token_debug_1234567890'),
-    } as never;
+    const authService = createAuthService();
 
     const service = new UberEatsService({} as never, authService);
 
@@ -136,27 +136,30 @@ describe('UberEatsService', () => {
     expect(authService.getAccessToken).toHaveBeenCalledWith(
       'eats.store.orders.read',
     );
-    expect(global.fetch).toHaveBeenCalledWith(
+    expect(fetchMock).toHaveBeenCalledWith(
       'https://api.uber.com/v1/eats/stores/store_1/created-orders',
-      expect.objectContaining({
-        method: 'GET',
-        headers: expect.objectContaining({
-          Authorization: 'Bearer token_debug_1234567890',
-        }),
-      }),
+      expect.anything(),
     );
+
+    const [, requestInit] = fetchMock.mock.calls[0];
+    expect(requestInit).toMatchObject({
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer token_debug_1234567890',
+      },
+    });
   });
 
   it('debugCreatedOrders 在未传 storeId 时会回退到环境变量', async () => {
     process.env.UBER_EATS_STORE_ID = 'store_env';
-    global.fetch = jest.fn().mockResolvedValue({
+    const fetchMock: jest.MockedFunction<typeof fetch> = jest.fn();
+    fetchMock.mockResolvedValue({
       ok: true,
       text: jest.fn().mockResolvedValue(JSON.stringify({ orders: [] })),
-    }) as never;
+    } as Response);
+    global.fetch = fetchMock;
 
-    const authService = {
-      getAccessToken: jest.fn().mockResolvedValue('token_debug_1234567890'),
-    } as never;
+    const authService = createAuthService();
 
     const service = new UberEatsService({} as never, authService);
 
