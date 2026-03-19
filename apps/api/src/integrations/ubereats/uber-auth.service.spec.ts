@@ -65,6 +65,32 @@ MIIEpAIBAAKCAQEA1234567890
     );
   });
 
+  it('buildMerchantAuthorizeUrl 会生成包含 state 与 scope 的授权链接', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'uber-key-'));
+    const file = join(dir, 'key.json');
+    await writeFile(
+      file,
+      JSON.stringify({
+        application_id: 'app_1',
+        key_id: 'kid_1',
+        private_key: validPrivateKey,
+      }),
+      'utf8',
+    );
+
+    process.env.UBER_EATS_KEY_FILE = file;
+    process.env.UBER_EATS_REDIRECT_URI =
+      'https://example.com/api/integrations/ubereats/oauth/callback';
+
+    const service = new UberAuthService();
+    const url = await service.buildMerchantAuthorizeUrl('state_123');
+
+    expect(url).toContain('client_id=app_1');
+    expect(url).toContain('response_type=code');
+    expect(url).toContain('state=state_123');
+    expect(url).toContain('scope=eats.pos_provisioning');
+  });
+
   it('key 文件缺少字段会直接报错', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'uber-key-'));
     const file = join(dir, 'key.json');

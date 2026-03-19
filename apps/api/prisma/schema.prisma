@@ -119,8 +119,8 @@ enum LoyaltyEntryType {
 }
 
 enum LoyaltyTarget {
-  POINTS   // 积分（赠送、消费返利）
-  BALANCE  // 余额（充值本金）
+  POINTS // 积分（赠送、消费返利）
+  BALANCE // 余额（充值本金）
 }
 
 enum UserRole {
@@ -235,31 +235,31 @@ enum CouponDistributionType {
 // === Models ===
 
 model User {
-  id                    String    @id @default(uuid()) @db.Uuid
-  userStableId          String    @unique @default(cuid())
-  email                 String?   @unique
+  id                    String          @id @default(uuid()) @db.Uuid
+  userStableId          String          @unique @default(cuid())
+  email                 String?         @unique
   emailVerifiedAt       DateTime?
-  phone                 String?   @unique
+  phone                 String?         @unique
   phoneVerifiedAt       DateTime?
   firstName             String?
   lastName              String?
-  role                  UserRole  @default(CUSTOMER)
-  status                UserStatus @default(ACTIVE)
+  role                  UserRole        @default(CUSTOMER)
+  status                UserStatus      @default(ACTIVE)
   passwordHash          String?
   passwordChangedAt     DateTime?
   twoFactorEnabledAt    DateTime?
   twoFactorMethod       TwoFactorMethod @default(OFF)
-  language              UserLanguage @default(ZH)
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-  marketingEmailOptIn   Boolean   @default(false)
+  language              UserLanguage    @default(ZH)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  marketingEmailOptIn   Boolean         @default(false)
   marketingEmailOptInAt DateTime?
   birthdayDay           Int?
   birthdayMonth         Int?
   referredByUserId      String?
-  googleSub             String?       @unique
+  googleSub             String?         @unique
   addresses             UserAddress[]
-  invitesSent           UserInvite[]  @relation("InvitesSent")
+  invitesSent           UserInvite[]    @relation("InvitesSent")
   sessions              UserSession[]
   trustedDevices        TrustedDevice[]
   userCoupons           UserCoupon[]
@@ -270,14 +270,14 @@ model User {
 }
 
 model UserSession {
-  id           String   @id @default(uuid()) @db.Uuid
-  sessionId    String   @unique
-  userId       String   @db.Uuid
-  expiresAt    DateTime
-  deviceInfo   String?
+  id            String    @id @default(uuid()) @db.Uuid
+  sessionId     String    @unique
+  userId        String    @db.Uuid
+  expiresAt     DateTime
+  deviceInfo    String?
   loginLocation String?
   mfaVerifiedAt DateTime?
-  createdAt    DateTime @default(now())
+  createdAt     DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -285,13 +285,13 @@ model UserSession {
 }
 
 model TrustedDevice {
-  id          String   @id @default(uuid()) @db.Uuid
-  userId      String   @db.Uuid
-  tokenHash   String   @unique
-  label       String?
-  createdAt   DateTime @default(now())
-  lastSeenAt  DateTime?
-  expiresAt   DateTime
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  tokenHash  String    @unique
+  label      String?
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime?
+  expiresAt  DateTime
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -404,9 +404,9 @@ model Order {
   deliveryEtaMinMinutes      Int?
   deliveryEtaMaxMinutes      Int?
   externalDeliveryId         String?
-  deliveryFeeCents      Int @default(0) // 顾客运费
-  deliveryCostCents     Int @default(0)      // 第三方成本
-  deliverySubsidyCents  Int @default(0) // max(0, cost - fee)
+  deliveryFeeCents           Int               @default(0) // 顾客运费
+  deliveryCostCents          Int               @default(0) // 第三方成本
+  deliverySubsidyCents       Int               @default(0) // max(0, cost - fee)
   loyaltyRedeemCents         Int               @default(0)
   subtotalAfterDiscountCents Int               @default(0)
   couponCodeSnapshot         String?
@@ -434,27 +434,27 @@ model Order {
 }
 
 model Coupon {
-  id            String    @id @default(uuid()) @db.Uuid
-  couponStableId String @unique @default(cuid())
-  userId        String?   @db.Uuid
-  code          String
-  title         String
-  discountCents Int
-  minSpendCents Int?
-  expiresAt     DateTime?
-  issuedAt      DateTime  @default(now())
-  usedAt        DateTime?
-  orderId       String?   @db.Uuid
-  source        String?
-  campaign      String?
-  fromTemplateId String?  @db.Uuid
-  unlockedItemStableIds String[] @default([])
-  isFrozen      Boolean   @default(false)
-  isActive      Boolean   @default(true)
-  startsAt      DateTime?
-  endsAt        DateTime?
-  stackingPolicy CouponStackingPolicy @default(EXCLUSIVE)
-  userCoupons   UserCoupon[]
+  id                    String               @id @default(uuid()) @db.Uuid
+  couponStableId        String               @unique @default(cuid())
+  userId                String?              @db.Uuid
+  code                  String
+  title                 String
+  discountCents         Int
+  minSpendCents         Int?
+  expiresAt             DateTime?
+  issuedAt              DateTime             @default(now())
+  usedAt                DateTime?
+  orderId               String?              @db.Uuid
+  source                String?
+  campaign              String?
+  fromTemplateId        String?              @db.Uuid
+  unlockedItemStableIds String[]             @default([])
+  isFrozen              Boolean              @default(false)
+  isActive              Boolean              @default(true)
+  startsAt              DateTime?
+  endsAt                DateTime?
+  stackingPolicy        CouponStackingPolicy @default(EXCLUSIVE)
+  userCoupons           UserCoupon[]
 
   @@index([userId, expiresAt])
 }
@@ -475,39 +475,39 @@ model CouponTemplate {
 }
 
 model CouponProgram {
-  id              String                   @id @default(uuid()) @db.Uuid
-  programStableId String                   @unique @default(cuid())
-  tittleCh        String
-  tittleEn        String?
-  giftValue       String?
-  status          CouponProgramStatus      @default(DRAFT)
-  distributionType CouponDistributionType  @default(AUTOMATIC_TRIGGER)
-  triggerType     CouponProgramTriggerType?
-  validFrom       DateTime?
-  validTo         DateTime?
-  promoCode       String?                  @unique
-  totalLimit      Int?
-  perUserLimit    Int                      @default(1)
-  issuedCount     Int                      @default(0)
-  usedCount       Int                      @default(0)
-  items           Json
-  createdAt       DateTime                 @default(now())
-  updatedAt       DateTime                 @updatedAt
+  id               String                    @id @default(uuid()) @db.Uuid
+  programStableId  String                    @unique @default(cuid())
+  tittleCh         String
+  tittleEn         String?
+  giftValue        String?
+  status           CouponProgramStatus       @default(DRAFT)
+  distributionType CouponDistributionType    @default(AUTOMATIC_TRIGGER)
+  triggerType      CouponProgramTriggerType?
+  validFrom        DateTime?
+  validTo          DateTime?
+  promoCode        String?                   @unique
+  totalLimit       Int?
+  perUserLimit     Int                       @default(1)
+  issuedCount      Int                       @default(0)
+  usedCount        Int                       @default(0)
+  items            Json
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
 }
 
 model UserCoupon {
-  id             String            @id @default(uuid()) @db.Uuid
+  id             String           @id @default(uuid()) @db.Uuid
   userStableId   String
   couponStableId String
-  status         UserCouponStatus  @default(AVAILABLE)
+  status         UserCouponStatus @default(AVAILABLE)
   expiresAt      DateTime?
   reservedAt     DateTime?
   redeemedAt     DateTime?
   orderStableId  String?
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
-  user           User              @relation(fields: [userStableId], references: [userStableId], onDelete: Cascade)
-  coupon         Coupon            @relation(fields: [couponStableId], references: [couponStableId], onDelete: Cascade)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  user           User             @relation(fields: [userStableId], references: [userStableId], onDelete: Cascade)
+  coupon         Coupon           @relation(fields: [couponStableId], references: [couponStableId], onDelete: Cascade)
 
   @@unique([userStableId, couponStableId])
   @@index([userStableId, status, expiresAt])
@@ -515,20 +515,20 @@ model UserCoupon {
 }
 
 model OrderItem {
-  qty             Int
-  unitPriceCents  Int?
-  baseUnitPriceCents Int?
+  qty                   Int
+  unitPriceCents        Int?
+  baseUnitPriceCents    Int?
   optionsUnitPriceCents Int?
   isDailySpecialApplied Boolean @default(false)
-  dailySpecialStableId String?
-  optionsJson     Json?
-  id              String  @id @default(uuid()) @db.Uuid
-  orderId         String  @db.Uuid
-  displayName     String?
-  nameEn          String?
-  nameZh          String?
-  productStableId String
-  order           Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  dailySpecialStableId  String?
+  optionsJson           Json?
+  id                    String  @id @default(uuid()) @db.Uuid
+  orderId               String  @db.Uuid
+  displayName           String?
+  nameEn                String?
+  nameZh                String?
+  productStableId       String
+  order                 Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId])
 }
@@ -606,20 +606,20 @@ model LoyaltyLedger {
 }
 
 model CheckoutIntent {
-  referenceId       String   @unique
-  checkoutSessionId String?  @unique
+  referenceId       String    @unique
+  checkoutSessionId String?   @unique
   amountCents       Int
   currency          String
   locale            String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
   expiresAt         DateTime?
   metadataJson      Json
-  orderId           String?  @db.Uuid
+  orderId           String?   @db.Uuid
   result            String?
-  status            String   @default("pending")
+  status            String    @default("pending")
   processedAt       DateTime?
-  id                String   @id @default(uuid()) @db.Uuid
+  id                String    @id @default(uuid()) @db.Uuid
 
   @@index([referenceId, createdAt])
 }
@@ -629,7 +629,7 @@ model CheckoutIntent {
 // =======================
 
 model MessagingSuppression {
-  id              String            @id @default(uuid()) @db.Uuid
+  id              String             @id @default(uuid()) @db.Uuid
   channel         MessagingChannel
   addressNorm     String
   addressRaw      String?
@@ -638,8 +638,8 @@ model MessagingSuppression {
   sourceMessageId String?
   feedbackId      String?
   metadata        Json?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
   liftedAt        DateTime?
 
   @@unique([channel, addressNorm])
@@ -647,8 +647,8 @@ model MessagingSuppression {
 }
 
 model MessagingSend {
-  id                 String              @id @default(uuid()) @db.Uuid
-  direction          MessagingDirection  @default(OUTBOUND)
+  id                 String                   @id @default(uuid()) @db.Uuid
+  direction          MessagingDirection       @default(OUTBOUND)
   channel            MessagingChannel
   provider           MessagingProvider
   toAddressNorm      String
@@ -658,17 +658,17 @@ model MessagingSend {
   templateVersion    String?
   locale             UserLanguage?
   providerMessageId  String?
-  statusLatest       MessagingSendStatus @default(QUEUED)
+  statusLatest       MessagingSendStatus      @default(QUEUED)
   errorCodeLatest    String?
   errorMessageLatest String?
   metadata           Json?
-  userId             String?             @db.Uuid
-  user               User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
-  orderId            String?             @db.Uuid
+  userId             String?                  @db.Uuid
+  user               User?                    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  orderId            String?                  @db.Uuid
   deliveryEvents     MessagingDeliveryEvent[]
   authChallenges     AuthChallenge[]
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
 
   @@index([channel, toAddressNorm, createdAt])
   @@index([provider, providerMessageId])
@@ -677,10 +677,10 @@ model MessagingSend {
 }
 
 model MessagingDeliveryEvent {
-  id                String            @id @default(uuid()) @db.Uuid
-  sendId            String?           @db.Uuid
-  send              MessagingSend?    @relation(fields: [sendId], references: [id], onDelete: SetNull)
-  webhookEventId    String?           @db.Uuid
+  id                String                 @id @default(uuid()) @db.Uuid
+  sendId            String?                @db.Uuid
+  send              MessagingSend?         @relation(fields: [sendId], references: [id], onDelete: SetNull)
+  webhookEventId    String?                @db.Uuid
   webhookEvent      MessagingWebhookEvent? @relation(fields: [webhookEventId], references: [id], onDelete: SetNull)
   channel           MessagingChannel
   provider          MessagingProvider
@@ -691,7 +691,7 @@ model MessagingDeliveryEvent {
   errorMessage      String?
   occurredAt        DateTime?
   payload           Json
-  createdAt         DateTime          @default(now())
+  createdAt         DateTime               @default(now())
 
   @@index([provider, providerMessageId, createdAt])
   @@index([channel, eventType, createdAt])
@@ -700,8 +700,8 @@ model MessagingDeliveryEvent {
 }
 
 model MessagingWebhookEvent {
-  id                String            @id @default(uuid()) @db.Uuid
-  idempotencyKey     String            @unique
+  id                String                   @id @default(uuid()) @db.Uuid
+  idempotencyKey    String                   @unique
   channel           MessagingChannel
   provider          MessagingProvider
   eventKind         String
@@ -715,22 +715,22 @@ model MessagingWebhookEvent {
   fromAddressNorm   String?
   occurredAt        DateTime?
   deliveryEvents    MessagingDeliveryEvent[]
-  createdAt         DateTime          @default(now())
-  lastSeenAt        DateTime          @default(now())
+  createdAt         DateTime                 @default(now())
+  lastSeenAt        DateTime                 @default(now())
 
   @@index([provider, eventKind, createdAt])
   @@index([providerMessageId])
 }
 
 model RecipientFailureCounter {
-  id            String            @id @default(uuid()) @db.Uuid
+  id            String             @id @default(uuid()) @db.Uuid
   channel       MessagingChannel
   addressNorm   String
   provider      MessagingProvider?
-  failCount     Int               @default(0)
+  failCount     Int                @default(0)
   lastErrorCode String?
   lastFailedAt  DateTime?
-  updatedAt     DateTime          @updatedAt
+  updatedAt     DateTime           @updatedAt
 
   @@unique([channel, addressNorm])
   @@index([channel, failCount, updatedAt])
@@ -841,11 +841,11 @@ model MenuItem {
 }
 
 model MenuDailySpecial {
-  id                 Int      @id @default(autoincrement())
-  stableId           String   @unique @default(cuid())
+  id                 Int                @id @default(autoincrement())
+  stableId           String             @unique @default(cuid())
   weekday            Int
   itemStableId       String
-  item               MenuItem @relation("MenuItemDailySpecials", fields: [itemStableId], references: [stableId])
+  item               MenuItem           @relation("MenuItemDailySpecials", fields: [itemStableId], references: [stableId])
   pricingMode        SpecialPricingMode
   overridePriceCents Int?
   discountDeltaCents Int?
@@ -854,11 +854,11 @@ model MenuDailySpecial {
   endDate            DateTime?
   startMinutes       Int?
   endMinutes         Int?
-  disallowCoupons    Boolean  @default(true)
-  isEnabled          Boolean  @default(true)
-  sortOrder          Int      @default(0)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  disallowCoupons    Boolean            @default(true)
+  isEnabled          Boolean            @default(true)
+  sortOrder          Int                @default(0)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
   deletedAt          DateTime?
 
   @@index([weekday, isEnabled, deletedAt])
@@ -904,7 +904,7 @@ model MenuOptionTemplateChoice {
 }
 
 model MenuOptionChoiceLink {
-  id             String                  @id @default(uuid())
+  id             String                   @id @default(uuid())
   parentOptionId String
   childOptionId  String
   parentOption   MenuOptionTemplateChoice @relation("OptionParent", fields: [parentOptionId], references: [id], onDelete: Cascade)
@@ -930,34 +930,34 @@ model MenuItemOptionGroup {
 }
 
 model AccountingCategory {
-  id          String              @id @default(uuid()) @db.Uuid
-  name        String
-  type        AccountingTxType
-  parentId    String?             @db.Uuid
-  isActive    Boolean             @default(true)
-  sortOrder   Int                 @default(0)
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
-  parent      AccountingCategory? @relation("AccountingCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
-  children    AccountingCategory[] @relation("AccountingCategoryTree")
+  id           String                  @id @default(uuid()) @db.Uuid
+  name         String
+  type         AccountingTxType
+  parentId     String?                 @db.Uuid
+  isActive     Boolean                 @default(true)
+  sortOrder    Int                     @default(0)
+  createdAt    DateTime                @default(now())
+  updatedAt    DateTime                @updatedAt
+  parent       AccountingCategory?     @relation("AccountingCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children     AccountingCategory[]    @relation("AccountingCategoryTree")
   transactions AccountingTransaction[]
 
+  @@unique([name, type])
   @@index([parentId])
   @@index([type, isActive, sortOrder])
-  @@unique([name, type])
 }
 
 model AccountingAccount {
-  id             String                 @id @default(uuid()) @db.Uuid
-  accountStableId String                @unique @default(cuid())
-  name           String
-  type           AccountingAccountType
-  currency       String                 @default("CAD")
-  isActive       Boolean                @default(true)
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
-  outgoingTx     AccountingTransaction[] @relation("AccountingTxAccount")
-  incomingTx     AccountingTransaction[] @relation("AccountingTxToAccount")
+  id              String                  @id @default(uuid()) @db.Uuid
+  accountStableId String                  @unique @default(cuid())
+  name            String
+  type            AccountingAccountType
+  currency        String                  @default("CAD")
+  isActive        Boolean                 @default(true)
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  outgoingTx      AccountingTransaction[] @relation("AccountingTxAccount")
+  incomingTx      AccountingTransaction[] @relation("AccountingTxToAccount")
 
   @@unique([name, type])
   @@index([type, isActive])
@@ -999,23 +999,23 @@ model AccountingTransaction {
 }
 
 model PlatformSettlementRecord {
-  id               String           @id @default(uuid()) @db.Uuid
-  settlementStableId String         @unique @default(cuid())
-  platform         SettlementPlatform
-  importBatchId    String
-  externalRowId    String?
-  orderId          String?
-  grossCents       Int
-  commissionCents  Int
-  netCents         Int
-  payoutAt         DateTime
-  rawPayload       Json?
-  createdAt        DateTime         @default(now())
+  id                 String             @id @default(uuid()) @db.Uuid
+  settlementStableId String             @unique @default(cuid())
+  platform           SettlementPlatform
+  importBatchId      String
+  externalRowId      String?
+  orderId            String?
+  grossCents         Int
+  commissionCents    Int
+  netCents           Int
+  payoutAt           DateTime
+  rawPayload         Json?
+  createdAt          DateTime           @default(now())
 
+  @@unique([platform, importBatchId, externalRowId])
   @@index([platform, payoutAt])
   @@index([orderId])
   @@index([importBatchId])
-  @@unique([platform, importBatchId, externalRowId])
 }
 
 model AccountingAuditLog {
@@ -1046,21 +1046,56 @@ model AccountingPeriodClose {
 }
 
 model AnalyticsEvent {
-  id        String   @id @default(uuid()) @db.Uuid
-  eventName String
-  source    String   @default("web")
-  locale    String?
-  path      String?
-  userAgent String?
-  ipAddress String?
-  payload   Json?
+  id         String   @id @default(uuid()) @db.Uuid
+  eventName  String
+  source     String   @default("web")
+  locale     String?
+  path       String?
+  userAgent  String?
+  ipAddress  String?
+  payload    Json?
   occurredAt DateTime @default(now())
-  createdAt DateTime @default(now())
+  createdAt  DateTime @default(now())
 
   @@index([eventName, occurredAt])
   @@index([occurredAt])
 }
 
+model UberMerchantConnection {
+  id                 String    @id @default(uuid()) @db.Uuid
+  merchantUberUserId String    @unique
+  accessToken        String
+  refreshToken       String?
+  expiresAt          DateTime?
+  scope              String?
+  tokenType          String?
+  connectedAt        DateTime  @default(now())
+  rawStoresSnapshot  Json?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  storeMappings UberStoreMapping[]
+
+  @@index([connectedAt])
+}
+
+model UberStoreMapping {
+  id                 String    @id @default(uuid()) @db.Uuid
+  uberStoreId        String    @unique
+  merchantUberUserId String
+  storeName          String?
+  locationSummary    String?
+  isProvisioned      Boolean   @default(false)
+  provisionedAt      DateTime?
+  posExternalStoreId String?
+  rawPayload         Json?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  merchantConnection UberMerchantConnection @relation(fields: [merchantUberUserId], references: [merchantUberUserId], onDelete: Cascade)
+
+  @@index([merchantUberUserId, isProvisioned])
+}
 
 model UberPriceBookItem {
   id               String   @id @default(uuid()) @db.Uuid
@@ -1076,14 +1111,14 @@ model UberPriceBookItem {
 }
 
 model UberMenuPublishVersion {
-  id               String                @id @default(uuid()) @db.Uuid
-  versionStableId  String                @unique @default(cuid())
-  storeId          String                @default("default")
-  status           UberMenuPublishStatus @default(SUCCESS)
-  totalItems       Int
-  changedItems     Int
-  payload          Json
-  createdAt        DateTime              @default(now())
+  id              String                @id @default(uuid()) @db.Uuid
+  versionStableId String                @unique @default(cuid())
+  storeId         String                @default("default")
+  status          UberMenuPublishStatus @default(SUCCESS)
+  totalItems      Int
+  changedItems    Int
+  payload         Json
+  createdAt       DateTime              @default(now())
 
   @@index([storeId, createdAt])
 }
@@ -1113,43 +1148,42 @@ enum UberOpsTicketPriority {
   HIGH
 }
 
-
 model UberReconciliationReport {
-  id                     String   @id @default(uuid()) @db.Uuid
-  reportStableId         String   @unique @default(cuid())
-  storeId                String   @default("default")
-  rangeStart             DateTime
-  rangeEnd               DateTime
-  totalOrders            Int      @default(0)
-  totalAmountCents       Int      @default(0)
-  syncedOrders           Int      @default(0)
-  failedSyncEvents       Int      @default(0)
-  pendingOrders          Int      @default(0)
-  discrepancyOrders      Int      @default(0)
-  payload                Json
-  createdAt              DateTime @default(now())
+  id                String   @id @default(uuid()) @db.Uuid
+  reportStableId    String   @unique @default(cuid())
+  storeId           String   @default("default")
+  rangeStart        DateTime
+  rangeEnd          DateTime
+  totalOrders       Int      @default(0)
+  totalAmountCents  Int      @default(0)
+  syncedOrders      Int      @default(0)
+  failedSyncEvents  Int      @default(0)
+  pendingOrders     Int      @default(0)
+  discrepancyOrders Int      @default(0)
+  payload           Json
+  createdAt         DateTime @default(now())
 
   @@index([storeId, createdAt])
   @@index([rangeStart, rangeEnd])
 }
 
 model UberOpsTicket {
-  id                     String            @id @default(uuid()) @db.Uuid
-  ticketStableId         String            @unique @default(cuid())
-  storeId                String            @default("default")
-  type                   UberOpsTicketType
-  status                 UberOpsTicketStatus @default(OPEN)
-  priority               UberOpsTicketPriority @default(MEDIUM)
-  title                  String
-  description            String?
-  externalOrderId        String?
-  menuItemStableId       String?
-  context                Json?
-  lastError              String?
-  retryCount             Int               @default(0)
-  createdAt              DateTime          @default(now())
-  updatedAt              DateTime          @updatedAt
-  resolvedAt             DateTime?
+  id               String                @id @default(uuid()) @db.Uuid
+  ticketStableId   String                @unique @default(cuid())
+  storeId          String                @default("default")
+  type             UberOpsTicketType
+  status           UberOpsTicketStatus   @default(OPEN)
+  priority         UberOpsTicketPriority @default(MEDIUM)
+  title            String
+  description      String?
+  externalOrderId  String?
+  menuItemStableId String?
+  context          Json?
+  lastError        String?
+  retryCount       Int                   @default(0)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  resolvedAt       DateTime?
 
   @@index([storeId, status, priority, createdAt])
   @@index([externalOrderId])
