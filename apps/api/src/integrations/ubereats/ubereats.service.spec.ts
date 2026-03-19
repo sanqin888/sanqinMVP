@@ -55,7 +55,51 @@ describe('UberEatsService', () => {
 
   afterEach(() => {
     delete process.env.UBER_EATS_CLIENT_SECRET;
+    delete process.env.UBER_EATS_WEBHOOK_SIGNING_KEY;
     jest.restoreAllMocks();
+  });
+
+  it('当 client secret 校验失败时会回退使用 webhook signing key 校验', async () => {
+    const rawBody = '{"event_type":"orders.accepted"}';
+    process.env.UBER_EATS_CLIENT_SECRET = 'wrong-client-secret';
+    process.env.UBER_EATS_WEBHOOK_SIGNING_KEY = 'fallback-webhook-key';
+
+    const signature = createHmac('sha256', 'fallback-webhook-key')
+      .update(rawBody, 'utf8')
+      .digest('hex');
+
+    const prisma = {
+      order: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ orderStableId: 'ord_uber_2' }),
+      },
+      analyticsEvent: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue(null),
+      },
+    };
+
+    const service = new UberEatsService(prisma as never, createAuthService());
+    await expect(
+      service.handleWebhook({
+        headers: {
+          'x-uber-signature': signature,
+          'x-event-id': 'evt_456',
+        },
+        rawBody,
+        body: {
+          event_type: 'orders.accepted',
+          order: {
+            order_id: 'ue_456',
+            subtotal_cents: 1000,
+            tax_cents: 130,
+            total_cents: 1130,
+          },
+        },
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(prisma.order.create).toHaveBeenCalled();
   });
 
   it('接收订单 webhook 时会写入 ubereats 订单并返回 orderStableId', async () => {
