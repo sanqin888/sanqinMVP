@@ -34,6 +34,19 @@ describe('UberEatsService', () => {
   const createAuthService = () =>
     ({
       getAccessToken: jest.fn().mockResolvedValue('token_debug_1234567890'),
+      buildMerchantAuthorizeUrl: jest
+        .fn()
+        .mockResolvedValue(
+          'https://auth.uber.com/oauth/v2/authorize?state=test',
+        ),
+      exchangeAuthorizationCode: jest.fn().mockResolvedValue({
+        accessToken: 'merchant_token_123',
+        refreshToken: 'refresh_token_123',
+        expiresAt: new Date('2026-03-19T01:00:00Z'),
+        scope: 'eats.pos_provisioning',
+        tokenType: 'Bearer',
+      }),
+      getMerchantIdentity: jest.fn().mockResolvedValue({ id: 'merchant_1' }),
     }) as never;
 
   beforeEach(() => {
@@ -179,6 +192,90 @@ describe('UberEatsService', () => {
     await expect(service.debugCreatedOrders()).rejects.toThrow(
       '缺少 storeId，请通过 query 传入或配置 UBER_EATS_STORE_ID',
     );
+  });
+
+  it('获取商户门店列表时会更新授权快照与门店映射', async () => {
+    const fetchMock: jest.MockedFunction<typeof fetch> = jest.fn();
+    fetchMock.mockResolvedValue({
+      ok: true,
+      text: jest.fn().mockResolvedValue(
+        JSON.stringify({
+          stores: [
+            {
+              store_id: 'store_1',
+              name: 'Main Store',
+              location: { city: 'Toronto', country: 'CA' },
+            },
+          ],
+        }),
+      ),
+    } as Response);
+    global.fetch = fetchMock;
+
+    const prisma = {
+      uberMerchantConnection: {
+        findUnique: jest.fn().mockResolvedValue({
+          merchantUberUserId: 'merchant_1',
+          accessToken: 'merchant_token_123',
+        }),
+        update: jest.fn().mockResolvedValue(null),
+      },
+      uberStoreMapping: {
+        upsert: jest.fn().mockResolvedValue({}),
+      },
+    };
+
+    const service = new UberEatsService(prisma as never, createAuthService());
+    const result = await service.getMerchantStores(undefined, 'merchant_1');
+
+    expect(result.ok).toBe(true);
+    expect(result.count).toBe(1);
+    expect(prisma.uberMerchantConnection.update).toHaveBeenCalled();
+    expect(prisma.uberStoreMapping.upsert).toHaveBeenCalled();
+  });
+
+  it('provisionStore 会调用 Uber provision 接口并标记门店已激活', async () => {
+    const fetchMock: jest.MockedFunction<typeof fetch> = jest.fn();
+    fetchMock.mockResolvedValue({
+      ok: true,
+      text: jest.fn().mockResolvedValue(
+        JSON.stringify({
+          store_name: 'Main Store',
+          pos_external_store_id: 'pos_1',
+        }),
+      ),
+    } as Response);
+    global.fetch = fetchMock;
+
+    const prisma = {
+      uberMerchantConnection: {
+        findUnique: jest.fn().mockResolvedValue({
+          merchantUberUserId: 'merchant_1',
+          accessToken: 'merchant_token_123',
+        }),
+      },
+      uberStoreMapping: {
+        upsert: jest.fn().mockResolvedValue({
+          isProvisioned: true,
+          provisionedAt: new Date('2026-03-19T00:00:00Z'),
+        }),
+      },
+      analyticsEvent: {
+        create: jest.fn().mockResolvedValue(null),
+      },
+    };
+
+    const service = new UberEatsService(prisma as never, createAuthService());
+    const result = await service.provisionStore(
+      undefined,
+      'store_1',
+      { pos_store_id: 'pos_1' },
+      'merchant_1',
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.isProvisioned).toBe(true);
+    expect(prisma.uberStoreMapping.upsert).toHaveBeenCalled();
   });
 
   it('同步订单状态时，找不到订单会返回失败', async () => {

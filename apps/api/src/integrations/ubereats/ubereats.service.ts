@@ -2,6 +2,7 @@
 import {
   BadRequestException,
   Injectable,
+  NotImplementedException,
   UnauthorizedException,
 } from '@nestjs/common';
 import {
@@ -14,7 +15,7 @@ import {
   UberOpsTicketType,
   type Prisma,
 } from '@prisma/client';
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
 import { AppLogger } from '../../common/app-logger';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UberAuthService } from './uber-auth.service';
@@ -58,6 +59,24 @@ type SyncAvailabilityInput = UberStoreScopedInput & {
 type GenerateReconciliationReportInput = UberStoreScopedInput & {
   rangeStart?: string;
   rangeEnd?: string;
+};
+
+type UberMerchantStore = {
+  storeId: string;
+  storeName: string | null;
+  locationSummary: string | null;
+  raw: Record<string, unknown>;
+};
+
+type UberMerchantConnectionRecord = {
+  merchantUberUserId: string;
+  accessToken: string;
+  refreshToken: string | null;
+  expiresAt: Date | null;
+  scope: string | null;
+  tokenType: string | null;
+  connectedAt: Date;
+  rawStoresSnapshot?: unknown;
 };
 
 type CreateOpsTicketInput = UberStoreScopedInput & {
@@ -158,6 +177,150 @@ export class UberEatsService {
         placedAt: order.placed_at,
       })),
     };
+  }
+
+  async buildMerchantAuthorizeUrl() {
+    const state = this.createOAuthState();
+    const authorizeUrl =
+      await this.uberAuthService.buildMerchantAuthorizeUrl(state);
+
+    return {
+      ok: true,
+      state,
+      authorizeUrl,
+    };
+  }
+
+  async exchangeAuthorizationCode(code: string, state?: string) {
+    this.verifyOAuthState(state);
+
+    const tokenResult =
+      await this.uberAuthService.exchangeAuthorizationCode(code);
+    const identity = await this.uberAuthService.getMerchantIdentity(
+      tokenResult.accessToken,
+    );
+    const merchantUberUserId =
+      this.readString(
+        identity?.user_id,
+        identity?.id,
+        this.asObject(identity?.user)?.id,
+        this.asObject(identity?.merchant)?.id,
+      ) ?? `unknown:${randomUUID()}`;
+
+    const connection = await this.upsertMerchantConnection({
+      merchantUberUserId,
+      accessToken: tokenResult.accessToken,
+      refreshToken: tokenResult.refreshToken,
+      expiresAt: tokenResult.expiresAt,
+      scope: tokenResult.scope,
+      tokenType: tokenResult.tokenType,
+      connectedAt: new Date(),
+      rawStoresSnapshot: null,
+    });
+
+    await this.captureEvent('ubereats_merchant_oauth_connected', {
+      merchantUberUserId,
+      scope: tokenResult.scope ?? '',
+      tokenType: tokenResult.tokenType ?? '',
+      expiresAt: tokenResult.expiresAt?.toISOString() ?? null,
+    });
+
+    return {
+      ok: true,
+      merchantUberUserId,
+      scope: tokenResult.scope,
+      tokenType: tokenResult.tokenType,
+      expiresAt: tokenResult.expiresAt,
+      connectedAt: connection.connectedAt,
+      identity,
+    };
+  }
+
+  async getMerchantStores(accessToken?: string, merchantUberUserId?: string) {
+    const connection = await this.resolveMerchantConnection(
+      merchantUberUserId,
+      accessToken,
+    );
+    const response = await this.callUberApi('/v1/eats/stores', {
+      accessToken: connection.accessToken,
+      method: 'GET',
+    });
+
+    const stores = this.extractMerchantStores(response);
+    await this.persistMerchantStores(
+      connection.merchantUberUserId,
+      stores,
+      response,
+    );
+
+    return {
+      ok: true,
+      merchantUberUserId: connection.merchantUberUserId,
+      count: stores.length,
+      stores: stores.map((store) => ({
+        storeId: store.storeId,
+        storeName: store.storeName,
+        locationSummary: store.locationSummary,
+      })),
+      raw: response,
+    };
+  }
+
+  async provisionStore(
+    accessToken: string | undefined,
+    storeId: string,
+    payload: Record<string, unknown> = {},
+    merchantUberUserId?: string,
+  ) {
+    if (!storeId.trim()) {
+      throw new BadRequestException('storeId 不能为空');
+    }
+
+    const connection = await this.resolveMerchantConnection(
+      merchantUberUserId,
+      accessToken,
+    );
+    const requestBody = {
+      store_id: storeId.trim(),
+      ...payload,
+    };
+
+    const response = await this.callUberApi('/v1/eats/stores/provision', {
+      accessToken: connection.accessToken,
+      method: 'POST',
+      body: requestBody,
+    });
+
+    const mapping = await this.upsertStoreMapping({
+      merchantUberUserId: connection.merchantUberUserId,
+      uberStoreId: storeId.trim(),
+      storeName: this.readString(
+        this.asObject(response.store)?.name,
+        response.store_name,
+      ),
+      locationSummary: this.readLocationSummary(response),
+      isProvisioned: true,
+      posExternalStoreId: this.readString(response.pos_external_store_id),
+      raw: response,
+    });
+
+    await this.captureEvent('ubereats_store_provision_requested', {
+      merchantUberUserId: connection.merchantUberUserId,
+      uberStoreId: storeId.trim(),
+    });
+
+    return {
+      ok: true,
+      merchantUberUserId: connection.merchantUberUserId,
+      storeId: storeId.trim(),
+      isProvisioned: mapping.isProvisioned,
+      provisionedAt: mapping.provisionedAt,
+      response,
+    };
+  }
+
+  async revokeOrDeprovisionStore() {
+    throw new NotImplementedException('deprovision MVP 暂未实现');
   }
 
   async handleWebhook(input: UberWebhookInput): Promise<void> {
@@ -761,6 +924,234 @@ export class UberEatsService {
       ok: !updated.lastError,
       ...updated,
     };
+  }
+
+  private createOAuthState(): string {
+    const timestamp = Date.now().toString();
+    const nonce = randomUUID();
+    const secret =
+      process.env.UBER_EATS_OAUTH_STATE_SECRET?.trim() ||
+      'ubereats-oauth-state';
+    const payload = `${timestamp}.${nonce}`;
+    const signature = createHmac('sha256', secret)
+      .update(payload)
+      .digest('hex');
+    return `${payload}.${signature}`;
+  }
+
+  private verifyOAuthState(state?: string): void {
+    if (!state?.trim()) {
+      throw new BadRequestException('缺少 OAuth state');
+    }
+
+    const parts = state.split('.');
+    if (parts.length < 3) {
+      throw new BadRequestException('OAuth state 非法');
+    }
+
+    const [timestamp, nonce, signature] = parts;
+    const secret =
+      process.env.UBER_EATS_OAUTH_STATE_SECRET?.trim() ||
+      'ubereats-oauth-state';
+    const expected = createHmac('sha256', secret)
+      .update(`${timestamp}.${nonce}`)
+      .digest('hex');
+
+    if (expected !== signature) {
+      throw new BadRequestException('OAuth state 校验失败');
+    }
+
+    const issuedAt = Number(timestamp);
+    if (!Number.isFinite(issuedAt) || Date.now() - issuedAt > 10 * 60 * 1000) {
+      throw new BadRequestException('OAuth state 已过期');
+    }
+  }
+
+  private async resolveMerchantConnection(
+    merchantUberUserId?: string,
+    accessToken?: string,
+  ): Promise<UberMerchantConnectionRecord> {
+    if (accessToken?.trim()) {
+      return {
+        merchantUberUserId: merchantUberUserId?.trim() || 'manual_token',
+        accessToken: accessToken.trim(),
+        refreshToken: null,
+        expiresAt: null,
+        scope: null,
+        tokenType: 'Bearer',
+        connectedAt: new Date(),
+      };
+    }
+
+    const prismaAny = this.prisma as any;
+    const row = merchantUberUserId?.trim()
+      ? await prismaAny.uberMerchantConnection?.findUnique({
+          where: { merchantUberUserId: merchantUberUserId.trim() },
+        })
+      : await prismaAny.uberMerchantConnection?.findFirst({
+          orderBy: { connectedAt: 'desc' },
+        });
+
+    if (!row?.accessToken) {
+      throw new BadRequestException(
+        '未找到 Uber 商户授权，请先调用 /oauth/connect-url 和 /oauth/callback 完成授权',
+      );
+    }
+
+    return row as UberMerchantConnectionRecord;
+  }
+
+  private async upsertMerchantConnection(input: UberMerchantConnectionRecord) {
+    const prismaAny = this.prisma as any;
+
+    return prismaAny.uberMerchantConnection.upsert({
+      where: { merchantUberUserId: input.merchantUberUserId },
+      create: input,
+      update: {
+        accessToken: input.accessToken,
+        refreshToken: input.refreshToken,
+        expiresAt: input.expiresAt,
+        scope: input.scope,
+        tokenType: input.tokenType,
+        connectedAt: input.connectedAt,
+      },
+    });
+  }
+
+  private async persistMerchantStores(
+    merchantUberUserId: string,
+    stores: UberMerchantStore[],
+    raw: Record<string, unknown>,
+  ) {
+    const prismaAny = this.prisma as any;
+    await prismaAny.uberMerchantConnection?.update({
+      where: { merchantUberUserId },
+      data: { rawStoresSnapshot: raw },
+    });
+
+    await Promise.all(
+      stores.map((store) =>
+        this.upsertStoreMapping({
+          merchantUberUserId,
+          uberStoreId: store.storeId,
+          storeName: store.storeName,
+          locationSummary: store.locationSummary,
+          isProvisioned: false,
+          posExternalStoreId: null,
+          raw: store.raw,
+        }),
+      ),
+    );
+  }
+
+  private async upsertStoreMapping(input: {
+    merchantUberUserId: string;
+    uberStoreId: string;
+    storeName: string | null;
+    locationSummary: string | null;
+    isProvisioned: boolean;
+    posExternalStoreId: string | null;
+    raw: Record<string, unknown>;
+  }) {
+    const prismaAny = this.prisma as any;
+
+    return prismaAny.uberStoreMapping.upsert({
+      where: { uberStoreId: input.uberStoreId },
+      create: {
+        merchantUberUserId: input.merchantUberUserId,
+        uberStoreId: input.uberStoreId,
+        storeName: input.storeName,
+        locationSummary: input.locationSummary,
+        isProvisioned: input.isProvisioned,
+        provisionedAt: input.isProvisioned ? new Date() : null,
+        posExternalStoreId: input.posExternalStoreId,
+        rawPayload: input.raw,
+      },
+      update: {
+        merchantUberUserId: input.merchantUberUserId,
+        storeName: input.storeName,
+        locationSummary: input.locationSummary,
+        isProvisioned: input.isProvisioned,
+        provisionedAt: input.isProvisioned ? new Date() : undefined,
+        posExternalStoreId: input.posExternalStoreId,
+        rawPayload: input.raw,
+      },
+    });
+  }
+
+  private async callUberApi(
+    path: string,
+    options: {
+      accessToken: string;
+      method: 'GET' | 'POST';
+      body?: Record<string, unknown>;
+    },
+  ): Promise<Record<string, unknown>> {
+    const response = await fetch(
+      `${this.uberApiBaseUrl.replace(/\/$/, '')}${path}`,
+      {
+        method: options.method,
+        headers: {
+          Authorization: `Bearer ${options.accessToken}`,
+          Accept: 'application/json',
+          ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        },
+        ...(options.body ? { body: JSON.stringify(options.body) } : {}),
+      },
+    );
+
+    const rawText = await response.text();
+    const parsed = this.tryParseJson(rawText);
+    if (!response.ok) {
+      throw new BadRequestException({
+        ok: false,
+        status: response.status,
+        detail: this.summarizeDebugResponse(parsed, rawText),
+      });
+    }
+
+    return this.asObject(parsed) ?? {};
+  }
+
+  private extractMerchantStores(
+    payload: Record<string, unknown>,
+  ): UberMerchantStore[] {
+    const candidates = [
+      payload.stores,
+      payload.data,
+      this.asObject(payload.data)?.stores,
+    ];
+    const storesNode = candidates.find((value) => Array.isArray(value));
+    if (!Array.isArray(storesNode)) return [];
+
+    return storesNode
+      .map((item) => this.asObject(item))
+      .filter((item): item is Record<string, unknown> => !!item)
+      .map((store) => ({
+        storeId:
+          this.readString(store.store_id, store.id, store.uuid) ||
+          `unknown:${randomUUID()}`,
+        storeName: this.readString(store.name, store.store_name),
+        locationSummary: this.readLocationSummary(store),
+        raw: store,
+      }));
+  }
+
+  private readLocationSummary(payload: unknown): string | null {
+    const root = this.asObject(payload);
+    const location =
+      this.asObject(root?.location) ?? this.asObject(root?.address);
+
+    return this.readString(
+      root?.location_summary,
+      location?.formatted_address,
+      [location?.address_line_one, location?.city, location?.country]
+        .filter(
+          (item): item is string =>
+            typeof item === 'string' && item.trim().length > 0,
+        )
+        .join(', '),
+    );
   }
 
   private async handleOrderWebhook(

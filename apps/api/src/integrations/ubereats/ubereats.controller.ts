@@ -78,6 +78,22 @@ class GenerateUberReconciliationReportDto {
   rangeEnd?: string;
 }
 
+class ProvisionUberStoreDto {
+  @IsString()
+  storeId!: string;
+
+  @IsOptional()
+  @IsString()
+  merchantUberUserId?: string;
+
+  @IsOptional()
+  @IsString()
+  accessToken?: string;
+
+  @IsOptional()
+  payload?: Record<string, unknown>;
+}
+
 class CreateUberOpsTicketDto {
   @IsEnum(UberOpsTicketType)
   type!: UberOpsTicketType;
@@ -112,14 +128,53 @@ export class UberEatsController {
 
   constructor(private readonly uberEatsService: UberEatsService) {}
 
+  @Get('oauth/connect-url')
+  async oauthConnectUrl() {
+    return this.uberEatsService.buildMerchantAuthorizeUrl();
+  }
+
   @Get('oauth/callback')
   @Header('Content-Type', 'text/html; charset=utf-8')
-  oauthCallback(@Query('code') code?: string, @Req() req?: Request) {
+  async oauthCallback(
+    @Query('code') code?: string,
+    @Query('state') state?: string,
+    @Req() req?: Request,
+  ) {
     this.logger.log(
-      `[ubereats oauth callback] code=${code ?? 'missing'} query=${JSON.stringify(req?.query ?? {})}`,
+      `[ubereats oauth callback] code=${code ?? 'missing'} state=${state ?? 'missing'} query=${JSON.stringify(req?.query ?? {})}`,
     );
 
-    return 'Authorized. You can close this window. (ok)';
+    if (!code) {
+      return 'Uber 授权失败：缺少 code。';
+    }
+
+    const result = await this.uberEatsService.exchangeAuthorizationCode(
+      code,
+      state,
+    );
+
+    return `Uber 授权成功，商户 ${result.merchantUberUserId} 已连接。你现在可以关闭窗口，并继续调用 /oauth/stores 与 /oauth/provision。`;
+  }
+
+  @Get('oauth/stores')
+  async oauthStores(
+    @Query('accessToken') accessToken?: string,
+    @Query('merchantUberUserId') merchantUberUserId?: string,
+  ) {
+    return this.uberEatsService.getMerchantStores(
+      accessToken,
+      merchantUberUserId,
+    );
+  }
+
+  @Post('oauth/provision')
+  async oauthProvision(@Body() dto: ProvisionUberStoreDto) {
+    return this.uberEatsService.provisionStore(
+      dto.accessToken,
+      dto.storeId,
+      dto.payload ?? {},
+      dto.merchantUberUserId,
+    );
   }
 
   @Get('debug/token')
