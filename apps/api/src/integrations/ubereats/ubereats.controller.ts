@@ -154,16 +154,19 @@ export class UberEatsController {
     );
 
     let parsedBody: unknown = null;
+    let bodyParseFailed = false;
     try {
       parsedBody = rawBody ? JSON.parse(rawBody) : null;
     } catch {
       parsedBody = null;
+      bodyParseFailed = Boolean(rawBody);
     }
 
     await this.uberEatsService.handleWebhook({
       headers: req.headers as Record<string, unknown>,
       body: parsedBody,
       rawBody,
+      bodyParseFailed,
     });
 
     return { ok: true };

@@ -22,6 +22,7 @@ type UberWebhookInput = {
   headers: Record<string, unknown>;
   body: unknown;
   rawBody: string;
+  bodyParseFailed?: boolean;
 };
 
 type ParsedUberOrder = {
@@ -78,6 +79,11 @@ export class UberEatsService {
   async handleWebhook(input: UberWebhookInput): Promise<void> {
     this.verifyWebhookSignature(input.headers, input.rawBody);
 
+    if (input.bodyParseFailed) {
+      this.logger.warn('[ubereats webhook] ignored reason=invalid_json');
+      return;
+    }
+
     const eventType = this.readEventType(input.body);
     const eventId =
       this.readEventId(input.headers, input.body) ??
@@ -132,6 +138,9 @@ export class UberEatsService {
         return;
 
       default:
+        this.logger.warn(
+          `[ubereats webhook] ignored reason=unknown_event_type eventType=${eventType}`,
+        );
         await this.captureEvent('ubereats_webhook_unhandled', {
           eventType,
           eventId,

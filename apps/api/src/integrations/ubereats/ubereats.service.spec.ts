@@ -51,6 +51,77 @@ describe('UberEatsService', () => {
     expect(prisma.order.create).toHaveBeenCalled();
   });
 
+  it('非法 JSON webhook 会记录 invalid_json 日志并直接忽略', async () => {
+    const rawBody = '{"event_type":';
+    const signature = createHmac('sha256', clientSecret)
+      .update(rawBody, 'utf8')
+      .digest('hex');
+
+    const prisma = {
+      analyticsEvent: {
+        create: jest.fn().mockResolvedValue(null),
+      },
+    };
+
+    const service = new UberEatsService(prisma as never);
+    const loggerWarnSpy = jest
+      .spyOn(Reflect.get(service, 'logger'), 'warn')
+      .mockImplementation(() => undefined);
+
+    await expect(
+      service.handleWebhook({
+        headers: {
+          'x-uber-signature': signature,
+        },
+        rawBody,
+        body: null,
+        bodyParseFailed: true,
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(loggerWarnSpy).toHaveBeenCalledWith(
+      '[ubereats webhook] ignored reason=invalid_json',
+    );
+    expect(prisma.analyticsEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('未知 event_type webhook 会记录 unknown_event_type 日志', async () => {
+    const rawBody = '{"event_type":"orders.mystery"}';
+    const signature = createHmac('sha256', clientSecret)
+      .update(rawBody, 'utf8')
+      .digest('hex');
+
+    const prisma = {
+      analyticsEvent: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue(null),
+      },
+    };
+
+    const service = new UberEatsService(prisma as never);
+    const loggerWarnSpy = jest
+      .spyOn(Reflect.get(service, 'logger'), 'warn')
+      .mockImplementation(() => undefined);
+
+    await expect(
+      service.handleWebhook({
+        headers: {
+          'x-uber-signature': signature,
+          'x-event-id': 'evt_unknown_1',
+        },
+        rawBody,
+        body: {
+          event_type: 'orders.mystery',
+        },
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(loggerWarnSpy).toHaveBeenCalledWith(
+      '[ubereats webhook] ignored reason=unknown_event_type eventType=orders.mystery',
+    );
+    expect(prisma.analyticsEvent.create).toHaveBeenCalled();
+  });
+
   it('同步订单状态时，找不到订单会返回失败', async () => {
     const prisma = {
       order: {
