@@ -82,17 +82,19 @@ export class UberEatsService {
   ) {}
 
   async debugAccessToken() {
-    const token = await this.uberAuthService.getAccessToken();
+    const scope = 'eats.store.orders.read';
+    const token = await this.uberAuthService.getAccessToken(scope);
 
     return {
       ok: true,
+      requestedScope: scope,
       tokenPrefix: token.slice(0, 12),
       tokenLength: token.length,
     };
   }
 
   async debugCreatedOrders(storeId?: string) {
-    const normalizedStoreId = this.normalizeStoreId(storeId);
+    const normalizedStoreId = this.resolveDebugStoreId(storeId);
     const token = await this.uberAuthService.getAccessToken(
       'eats.store.orders.read',
     );
@@ -146,6 +148,7 @@ export class UberEatsService {
     return {
       ok: true,
       storeId: normalizedStoreId,
+      requestUrl: url,
       tokenPrefix: token.slice(0, 12),
       tokenLength: token.length,
       orderCount: orders.length,
@@ -1093,6 +1096,19 @@ export class UberEatsService {
 
   private toClientRequestId(externalOrderId: string): string {
     return `ubereats:${externalOrderId}`;
+  }
+
+  private resolveDebugStoreId(storeId?: string): string {
+    const normalizedStoreId =
+      storeId?.trim() || process.env.UBER_EATS_STORE_ID?.trim();
+
+    if (!normalizedStoreId) {
+      throw new BadRequestException(
+        '缺少 storeId，请通过 query 传入或配置 UBER_EATS_STORE_ID',
+      );
+    }
+
+    return normalizedStoreId;
   }
 
   private buildCreatedOrdersUrl(storeId: string): string {

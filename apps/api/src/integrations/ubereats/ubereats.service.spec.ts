@@ -84,17 +84,18 @@ describe('UberEatsService', () => {
     expect(prisma.order.create).toHaveBeenCalled();
   });
 
-  it('debugAccessToken 只返回脱敏 token 信息', async () => {
+  it('debugAccessToken 会返回请求 scope 与脱敏 token 信息', async () => {
     const service = new UberEatsService({} as never, createAuthService());
 
     await expect(service.debugAccessToken()).resolves.toEqual({
       ok: true,
+      requestedScope: 'eats.store.orders.read',
       tokenPrefix: 'token_debug_',
       tokenLength: 'token_debug_1234567890'.length,
     });
   });
 
-  it('debugCreatedOrders 会返回订单摘要且不暴露完整 token', async () => {
+  it('debugCreatedOrders 会返回请求 URL 与订单摘要且不暴露完整 token', async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       text: jest.fn().mockResolvedValue(
@@ -119,6 +120,7 @@ describe('UberEatsService', () => {
     await expect(service.debugCreatedOrders('store_1')).resolves.toEqual({
       ok: true,
       storeId: 'store_1',
+      requestUrl: 'https://api.uber.com/v1/eats/stores/store_1/created-orders',
       tokenPrefix: 'token_debug_',
       tokenLength: 'token_debug_1234567890'.length,
       orderCount: 1,
@@ -142,6 +144,37 @@ describe('UberEatsService', () => {
           Authorization: 'Bearer token_debug_1234567890',
         }),
       }),
+    );
+  });
+
+  it('debugCreatedOrders 在未传 storeId 时会回退到环境变量', async () => {
+    process.env.UBER_EATS_STORE_ID = 'store_env';
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      text: jest.fn().mockResolvedValue(JSON.stringify({ orders: [] })),
+    }) as never;
+
+    const authService = {
+      getAccessToken: jest.fn().mockResolvedValue('token_debug_1234567890'),
+    } as never;
+
+    const service = new UberEatsService({} as never, authService);
+
+    await expect(service.debugCreatedOrders()).resolves.toMatchObject({
+      ok: true,
+      storeId: 'store_env',
+      requestUrl:
+        'https://api.uber.com/v1/eats/stores/store_env/created-orders',
+      orderCount: 0,
+    });
+  });
+
+  it('debugCreatedOrders 在缺少 storeId 时会直接报错', async () => {
+    delete process.env.UBER_EATS_STORE_ID;
+    const service = new UberEatsService({} as never, createAuthService());
+
+    await expect(service.debugCreatedOrders()).rejects.toThrow(
+      '缺少 storeId，请通过 query 传入或配置 UBER_EATS_STORE_ID',
     );
   });
 
