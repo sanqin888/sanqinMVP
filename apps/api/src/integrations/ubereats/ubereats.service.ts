@@ -1687,8 +1687,7 @@ export class UberEatsService {
     rawBody: string,
   ) {
     const clientSecret = process.env.UBER_EATS_CLIENT_SECRET?.trim();
-    const webhookSigningKey =
-      process.env.UBER_EATS_WEBHOOK_SIGNING_KEY?.trim();
+    const webhookSigningKey = process.env.UBER_EATS_WEBHOOK_SIGNING_KEY?.trim();
     const candidateSecrets = [
       clientSecret,
       webhookSigningKey && webhookSigningKey !== clientSecret
