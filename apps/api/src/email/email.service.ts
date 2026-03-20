@@ -356,10 +356,7 @@ export class EmailService {
     });
     rows.push({
       label: labels.total,
-      value: this.formatCurrency(
-        payload.snapshot.totalCents + payload.snapshot.creditCardSurchargeCents,
-        locale,
-      ),
+      value: this.formatCurrency(payload.snapshot.totalCents, locale),
       highlight: true,
     });
 
@@ -562,10 +559,7 @@ export class EmailService {
       )}`,
     );
     totalLines.push(
-      `${labels.total}: ${this.formatCurrency(
-        payload.snapshot.totalCents + payload.snapshot.creditCardSurchargeCents,
-        locale,
-      )}`,
+      `${labels.total}: ${this.formatCurrency(payload.snapshot.totalCents, locale)}`,
     );
 
     const contactLines = [storePhone, supportEmail].filter(Boolean).join('\n');
