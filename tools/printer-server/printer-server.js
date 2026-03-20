@@ -14,8 +14,8 @@ const path = require("path");
 const { exec } = require("child_process");
 const iconv = require("iconv-lite");
 const { Jimp } = require("jimp");
-const io = require('socket.io-client');
-require('dotenv').config();
+const io = require("socket.io-client");
+require("dotenv").config();
 // === 打印机配置 ===
 // 可以通过环境变量覆盖：POS_FRONT_PRINTER / POS_KITCHEN_PRINTER
 // 注意：这里的名字建议用“打印机共享名”，例如 POS80、KITCHEN 等
@@ -79,7 +79,10 @@ function cmd(...bytes) {
   return Buffer.from(bytes);
 }
 
-function getOptionLines(item, { includeEnglish = false, includePrice = true } = {}) {
+function getOptionLines(
+  item,
+  { includeEnglish = false, includePrice = true } = {},
+) {
   if (!item || typeof item !== "object") return [];
   if (!Array.isArray(item.options)) return [];
 
@@ -95,7 +98,8 @@ function getOptionLines(item, { includeEnglish = false, includePrice = true } = 
         const nameEn =
           typeof choice.nameEn === "string" ? choice.nameEn.trim() : "";
         const priceDeltaCents =
-          typeof choice.priceDeltaCents === "number" && Number.isFinite(choice.priceDeltaCents)
+          typeof choice.priceDeltaCents === "number" &&
+          Number.isFinite(choice.priceDeltaCents)
             ? Math.round(choice.priceDeltaCents)
             : 0;
 
@@ -104,14 +108,17 @@ function getOptionLines(item, { includeEnglish = false, includePrice = true } = 
             ? ` (${priceDeltaCents > 0 ? "+" : "-"}${money(Math.abs(priceDeltaCents))})`
             : "";
 
-        if (includeEnglish && nameZh && nameEn) return `${nameZh} ${nameEn}${priceSuffix}`;
+        if (includeEnglish && nameZh && nameEn)
+          return `${nameZh} ${nameEn}${priceSuffix}`;
         if (nameZh) return `${nameZh}${priceSuffix}`;
         if (includeEnglish && nameEn) return `${nameEn}${priceSuffix}`;
 
         if (!includeEnglish) return "";
 
         const displayName =
-          typeof choice.displayName === "string" ? choice.displayName.trim() : "";
+          typeof choice.displayName === "string"
+            ? choice.displayName.trim()
+            : "";
         if (!displayName) return "";
         return `${displayName}${priceSuffix}`;
       })
@@ -119,16 +126,59 @@ function getOptionLines(item, { includeEnglish = false, includePrice = true } = 
   });
 }
 
+function wrapReceiptText(prefix, value, width = LINE_WIDTH) {
+  const cleanPrefix = String(prefix ?? "");
+  const cleanValue = String(value ?? "").trim();
+  if (!cleanValue) return [];
+
+  const availableWidth = Math.max(8, width - cleanPrefix.length);
+  const lines = [];
+  let remaining = cleanValue;
+  let isFirstLine = true;
+
+  while (remaining.length > 0) {
+    const sliceWidth = isFirstLine ? availableWidth : Math.max(8, width - 2);
+    const segment = remaining.slice(0, sliceWidth);
+    lines.push(isFirstLine ? `${cleanPrefix}${segment}` : `  ${segment}`);
+    remaining = remaining.slice(sliceWidth);
+    isFirstLine = false;
+  }
+
+  return lines;
+}
+
+function buildCustomerServiceNoteBlockLines(params) {
+  const utensilsSummary =
+    typeof params?.utensils?.summary === "string"
+      ? params.utensils.summary.trim()
+      : "";
+  const orderNotes =
+    typeof params?.orderNotes === "string" ? params.orderNotes.trim() : "";
+
+  const lines = [];
+  if (utensilsSummary) {
+    lines.push(...wrapReceiptText("餐具: ", utensilsSummary));
+  }
+  if (orderNotes) {
+    lines.push(...wrapReceiptText("订单备注: ", orderNotes));
+  }
+
+  return lines;
+}
+
 // PNG/JPG -> ESC/POS Raster Bit Image (GS v 0)
-async function escposRasterFromImage(filePath, targetWidthDots = LOGO_WIDTH_DOTS) {
+async function escposRasterFromImage(
+  filePath,
+  targetWidthDots = LOGO_WIDTH_DOTS,
+) {
   try {
     // 1. 读取图片
     const img = await Jimp.read(filePath);
 
     // 2. ⚠️【核心修复】计算高度并使用对象传参 (适配 Jimp v1.6.0+)
-    // 旧版: img.resize(w, -1) 
+    // 旧版: img.resize(w, -1)
     // 新版: img.resize({ w: w }) 或者需要显式计算高度
-    const srcW = img.width;   // v1 直接用属性，不再是 bitmap.width
+    const srcW = img.width; // v1 直接用属性，不再是 bitmap.width
     const srcH = img.height;
     const aspect = srcH / srcW;
     const targetHeight = Math.round(targetWidthDots * aspect);
@@ -160,11 +210,11 @@ async function escposRasterFromImage(filePath, targetWidthDots = LOGO_WIDTH_DOTS
             // ⚠️【核心修复】手动位运算获取颜色 (因为 Jimp.intToRGBA 已移除)
             const color = img.getPixelColor(x, y);
             // Jimp 颜色是 0xRRGGBBAA，我们取 R 即可 (灰度图 R=G=B)
-            const r = (color >> 24) & 0xff; 
+            const r = (color >> 24) & 0xff;
             v = r;
           }
           // 黑点=1（阈值以下当黑）
-          if (v < threshold) b |= (0x80 >> bit);
+          if (v < threshold) b |= 0x80 >> bit;
         }
         data[offset++] = b;
       }
@@ -194,7 +244,7 @@ function printEscPosTo(printerName, dataBuffer) {
   return new Promise((resolve, reject) => {
     const tmpFile = path.join(
       os.tmpdir(),
-      `pos-escpos-${Date.now()}-${Math.random().toString(16).slice(2)}.bin`
+      `pos-escpos-${Date.now()}-${Math.random().toString(16).slice(2)}.bin`,
     );
 
     fs.writeFile(tmpFile, dataBuffer, (err) => {
@@ -236,10 +286,16 @@ function printEscPosTo(printerName, dataBuffer) {
         }
 
         if (stderr) {
-          console.warn("[printEscPosTo] Print command stderr:", stderr.toString().trim());
+          console.warn(
+            "[printEscPosTo] Print command stderr:",
+            stderr.toString().trim(),
+          );
         }
 
-        console.log("[printEscPosTo] Print command stdout:", (stdout || "").toString().trim());
+        console.log(
+          "[printEscPosTo] Print command stdout:",
+          (stdout || "").toString().trim(),
+        );
         resolve();
       });
     });
@@ -250,13 +306,18 @@ function printEscPosTo(printerName, dataBuffer) {
 
 // 顾客联
 async function buildCustomerReceiptEscPos(params) {
-  const { orderNumber, pickupCode, fulfillment, paymentMethod, snapshot } = params;
+  const { orderNumber, pickupCode, fulfillment, paymentMethod, snapshot } =
+    params;
 
   const f = String(fulfillment || "").toLowerCase();
   const isDelivery = f === "delivery";
 
   const dineZh = isDelivery ? "配送" : f === "pickup" ? "外带" : "堂食";
-  const dineEn = isDelivery ? "DELIVERY" : f === "pickup" ? "TAKE-OUT" : "DINE-IN";
+  const dineEn = isDelivery
+    ? "DELIVERY"
+    : f === "pickup"
+      ? "TAKE-OUT"
+      : "DINE-IN";
 
   // --- payment method normalize ---
   const pm = String(paymentMethod || "")
@@ -270,27 +331,27 @@ async function buildCustomerReceiptEscPos(params) {
     normalizedPm === "cash"
       ? "现金"
       : normalizedPm === "card"
-      ? "银行卡"
-      : normalizedPm === "wechat_alipay"
-      ? "微信/支付宝"
-      : normalizedPm === "ubereats"
-      ? "Uber Eats"
-      : normalizedPm === "store_balance" || normalizedPm === "balance"
-      ? "储值余额"
-      : "其他";
+        ? "银行卡"
+        : normalizedPm === "wechat_alipay"
+          ? "微信/支付宝"
+          : normalizedPm === "ubereats"
+            ? "Uber Eats"
+            : normalizedPm === "store_balance" || normalizedPm === "balance"
+              ? "储值余额"
+              : "其他";
 
   const payEn =
     normalizedPm === "cash"
       ? "Cash"
       : normalizedPm === "card"
-      ? "Card"
-      : normalizedPm === "wechat_alipay"
-      ? "WeChat / Alipay"
-      : normalizedPm === "ubereats"
-      ? "Uber Eats"
-      : normalizedPm === "store_balance" || normalizedPm === "balance"
-      ? "Store Balance"
-      : "Other";
+        ? "Card"
+        : normalizedPm === "wechat_alipay"
+          ? "WeChat / Alipay"
+          : normalizedPm === "ubereats"
+            ? "Uber Eats"
+            : normalizedPm === "store_balance" || normalizedPm === "balance"
+              ? "Store Balance"
+              : "Other";
 
   const chunks = [];
 
@@ -341,7 +402,17 @@ async function buildCustomerReceiptEscPos(params) {
     console.warn("[logo] Print logo failed，pass:", e?.message || e);
   }
   chunks.push(cmd(ESC, 0x61, 0x00)); // 左对齐
-  chunks.push(encLine(makeLine("-")));
+
+  const serviceNoteBlockLines = buildCustomerServiceNoteBlockLines(params);
+  if (serviceNoteBlockLines.length > 0) {
+    chunks.push(encLine(makeLine("-")));
+    serviceNoteBlockLines.forEach((line) => {
+      chunks.push(encLine(line));
+    });
+    chunks.push(encLine(makeLine("-")));
+  } else {
+    chunks.push(encLine(makeLine("-")));
+  }
 
   // ==== 订单信息 ====
   if (orderNumber) {
@@ -367,7 +438,7 @@ async function buildCustomerReceiptEscPos(params) {
 
       // 菜名：加粗 + 双倍高度
       chunks.push(cmd(ESC, 0x45, 0x01)); // bold on
-      chunks.push(cmd(GS, 0x21, 0x01));  // double-height only
+      chunks.push(cmd(GS, 0x21, 0x01)); // double-height only
 
       if (nameZh) chunks.push(encLine(nameZh));
       if (nameEn) chunks.push(encLine(nameEn));
@@ -418,8 +489,13 @@ async function buildCustomerReceiptEscPos(params) {
   if (discount > 0) {
     chunks.push(encLine(`折扣 Discount: -${money(discount)}`));
   }
-  if (typeof loyalty.pointsRedeemed === "number" && loyalty.pointsRedeemed > 0) {
-    chunks.push(encLine(`积分抵扣 Points: -${loyalty.pointsRedeemed.toFixed(2)} pt`));
+  if (
+    typeof loyalty.pointsRedeemed === "number" &&
+    loyalty.pointsRedeemed > 0
+  ) {
+    chunks.push(
+      encLine(`积分抵扣 Points: -${loyalty.pointsRedeemed.toFixed(2)} pt`),
+    );
   }
 
   if (isDelivery || deliveryFee > 0) {
@@ -427,7 +503,9 @@ async function buildCustomerReceiptEscPos(params) {
   }
 
   if (creditCardSurcharge > 0) {
-    chunks.push(encLine(`信用卡附加费 Card Surcharge: ${money(creditCardSurcharge)}`));
+    chunks.push(
+      encLine(`信用卡附加费 Card Surcharge: ${money(creditCardSurcharge)}`),
+    );
   }
 
   chunks.push(encLine(`税费(HST) Tax: ${money(tax)}`));
@@ -440,10 +518,16 @@ async function buildCustomerReceiptEscPos(params) {
   }
 
   if (typeof loyalty.pointsEarned === "number" && loyalty.pointsEarned > 0) {
-    chunks.push(encLine(`本单新增积分 Earned: +${loyalty.pointsEarned.toFixed(2)} pt`));
+    chunks.push(
+      encLine(`本单新增积分 Earned: +${loyalty.pointsEarned.toFixed(2)} pt`),
+    );
   }
   if (typeof loyalty.pointsBalanceAfter === "number") {
-    chunks.push(encLine(`结算后积分 Balance: ${loyalty.pointsBalanceAfter.toFixed(2)} pt`));
+    chunks.push(
+      encLine(
+        `结算后积分 Balance: ${loyalty.pointsBalanceAfter.toFixed(2)} pt`,
+      ),
+    );
   }
   chunks.push(encLine(makeLine("-")));
 
@@ -546,7 +630,8 @@ function buildSummaryReceiptEscPos(params) {
   } = params;
   const chunks = [];
 
-  const resolvedBreakdownType = breakdownType === "payment" ? "payment" : "channel";
+  const resolvedBreakdownType =
+    breakdownType === "payment" ? "payment" : "channel";
   const resolvedBreakdownItems = Array.isArray(breakdownItems)
     ? breakdownItems
     : resolvedBreakdownType === "payment"
@@ -578,18 +663,25 @@ function buildSummaryReceiptEscPos(params) {
       encLine(
         resolvedBreakdownType === "payment"
           ? "按支付方式汇总 (By Payment)"
-          : "按渠道汇总 (By Channel)"
-      )
+          : "按渠道汇总 (By Channel)",
+      ),
     );
     chunks.push(cmd(ESC, 0x45, 0x00));
     chunks.push(encLine("(金额: 实际收款 - 不含税)"));
     chunks.push(encLine(""));
 
-    chunks.push(encLine(padRight("类别", 14) + padLeft("单数", 6) + padLeft("金额", 12)));
+    chunks.push(
+      encLine(padRight("类别", 14) + padLeft("单数", 6) + padLeft("金额", 12)),
+    );
     chunks.push(encLine(makeLine(".")));
 
     resolvedBreakdownItems.forEach((item) => {
-      let label = item.label || item.payment || item.channel || item.fulfillmentType || "Unknown";
+      let label =
+        item.label ||
+        item.payment ||
+        item.channel ||
+        item.fulfillmentType ||
+        "Unknown";
       if (!item.label && resolvedBreakdownType === "payment") {
         const paymentLabelMap = {
           cash: "现金 CASH",
@@ -703,13 +795,15 @@ app.post("/print-summary", async (req, res) => {
 
 // 仅保留一个简单的探活接口，方便查看服务是否存活
 app.get("/", (req, res) => res.send("Printer Server is Running (Cloud Mode)"));
-app.listen(19191, () => console.log("Local server is running, this is for health check."));
+app.listen(19191, () =>
+  console.log("Local server is running, this is for health check."),
+);
 
 // ============================================================
 // 🚀 云端自动接单模块 (Cloud Auto-Print)
 // ============================================================
 
-const API_URL = process.env.API_URL || 'http://localhost:3000';
+const API_URL = process.env.API_URL || "http://localhost:3000";
 const STORE_ID = process.env.STORE_ID;
 
 if (STORE_ID) {
@@ -718,27 +812,27 @@ if (STORE_ID) {
   console.log(`Store: ${STORE_ID}\n`);
 
   const socket = io(`${API_URL}/pos`, {
-    transports: ['websocket'],
+    transports: ["websocket"],
     reconnection: true,
     reconnectionAttempts: Infinity,
     reconnectionDelay: 5000,
   });
 
-  socket.on('connect', () => {
+  socket.on("connect", () => {
     console.log(`[Cloud] Connected! Socket ID: ${socket.id}`);
-    socket.emit('joinStore', { storeId: STORE_ID });
+    socket.emit("joinStore", { storeId: STORE_ID });
   });
 
-  socket.on('Disconnect', (reason) => {
+  socket.on("Disconnect", (reason) => {
     console.warn(`[Cloud] Disconnect: ${reason}`);
   });
 
   // 核心：监听云端指令
-  socket.on('PRINT_JOB', async (formattedPayload) => {
+  socket.on("PRINT_JOB", async (formattedPayload) => {
     // 这里的 formattedPayload 已经是后端 PrintPosPayloadService 生成好的完美格式
     // 直接包含 { orderNumber, snapshot: { ... } }
 
-    const orderId = formattedPayload.orderNumber || 'Unknown';
+    const orderId = formattedPayload.orderNumber || "Unknown";
     const targetCustomer = formattedPayload?.targets?.customer ?? true;
     const targetKitchen = formattedPayload?.targets?.kitchen ?? true;
     console.log(`[Cloud] 收到打印任务: ${orderId}`);
@@ -748,7 +842,8 @@ if (STORE_ID) {
       // 🖨️ 任务 A: 前台打印机 (Customer Receipt)
       // ==========================================
       if (targetCustomer) {
-        const customerBuffer = await buildCustomerReceiptEscPos(formattedPayload);
+        const customerBuffer =
+          await buildCustomerReceiptEscPos(formattedPayload);
         const frontPrinterName = process.env.POS_FRONT_PRINTER || "POS80";
         if (frontPrinterName) {
           console.log(`Cashier Print -> ${frontPrinterName}`);
@@ -778,8 +873,7 @@ if (STORE_ID) {
     }
   });
 
-
-  socket.on('PRINT_SUMMARY', async (summaryData) => {
+  socket.on("PRINT_SUMMARY", async (summaryData) => {
     console.log(`\n [Cloud] Received print task ”Daily Summary“`);
 
     try {
@@ -789,12 +883,11 @@ if (STORE_ID) {
       console.log(`Printing ”Daily Summary“ -> ${printerName}`);
       await printEscPosTo(printerName, buffer);
 
-      console.log('Print ”Daily Summary“ completed');
+      console.log("Print ”Daily Summary“ completed");
     } catch (err) {
-      console.error('Failed print ”Daily Summary“:', err);
+      console.error("Failed print ”Daily Summary“:", err);
     }
   });
-
 } else {
   console.warn(`[Cloud] No STORE_ID Found，cloud print server stop。`);
 }
