@@ -306,6 +306,8 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       pickupCode: order.pickupCode,
       fulfillment: order.fulfillmentType,
       paymentMethod,
+      orderNotes: null,
+      utensils: null,
       snapshot: {
         items: order.items.map((item) => ({
           productStableId: item.productStableId,
