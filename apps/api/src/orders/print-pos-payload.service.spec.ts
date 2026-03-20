@@ -106,4 +106,54 @@ describe('PrintPosPayloadService', () => {
     expect(payload.snapshot.creditCardSurchargeCents).toBe(24);
     expect(payload.snapshot.totalCents).toBe(1024);
   });
+
+  it('当 intent metadata 包含餐具和订单备注时，打印载荷会带上对应摘要', async () => {
+    const prisma = {
+      order: {
+        findUnique: jest.fn().mockResolvedValue({
+          orderStableId: 'ord_4',
+          clientRequestId: 'REQ-4',
+          deliveryFeeCents: 0,
+          deliveryCostCents: 0,
+          deliverySubsidyCents: 0,
+          items: [],
+          subtotalCents: 1000,
+          subtotalAfterDiscountCents: 1000,
+          paymentTotalCents: 1000,
+          totalCents: 1000,
+          paymentMethod: PaymentMethod.CARD,
+          channel: Channel.web,
+          pickupCode: null,
+          fulfillmentType: 'pickup',
+          taxCents: 0,
+          creditCardSurchargeCents: 0,
+        }),
+      },
+      checkoutIntent: {
+        findFirst: jest.fn().mockResolvedValue({
+          metadataJson: {
+            customer: {
+              notes: '少辣，不要香菜',
+            },
+            utensils: {
+              needed: true,
+              type: 'chopsticks',
+              quantity: 1,
+            },
+          },
+        }),
+      },
+    };
+
+    const service = new PrintPosPayloadService(prisma as never);
+    const payload = await service.getByStableId('ord_4');
+
+    expect(payload.orderNotes).toBe('少辣，不要香菜');
+    expect(payload.utensils).toEqual({
+      needed: true,
+      type: 'chopsticks',
+      quantity: 1,
+      summary: '筷子1份',
+    });
+  });
 });

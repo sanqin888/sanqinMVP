@@ -19,6 +19,13 @@ type PrintPosItemSnapshot = {
   options: OrderItemOptionsSnapshot | null;
 };
 
+type PrintPosUtensilsSnapshot = {
+  needed: boolean;
+  type: string | null;
+  quantity: number | null;
+  summary: string | null;
+};
+
 type PrintPosOrderSnapshot = {
   items: PrintPosItemSnapshot[];
   subtotalCents: number;
@@ -37,5 +44,7 @@ export type PrintPosPayloadDto = {
   pickupCode: string | null;
   fulfillment: FulfillmentType;
   paymentMethod: PrintPosPaymentMethod;
+  orderNotes: string | null;
+  utensils: PrintPosUtensilsSnapshot | null;
   snapshot: PrintPosOrderSnapshot;
 };

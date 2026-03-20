@@ -420,6 +420,10 @@ export class CloverService {
       return null;
     }
 
+    this.logger.debug(
+      `[CloverService] charge status raw response url=${url} payload=${safeSerializeForLog(parsed ?? rawText)}`,
+    );
+
     if (!resp.ok) {
       if (resp.status === 404) {
         return null;
@@ -722,4 +726,19 @@ function stringifyReason(
   }
 
   return fallbackMessage?.trim() || 'Clover request failed';
+}
+
+function safeSerializeForLog(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  try {
+    const serialized = JSON.stringify(value);
+    return serialized && serialized.length > 0
+      ? serialized
+      : '[unserializable-empty]';
+  } catch {
+    return '[unserializable]';
+  }
 }
