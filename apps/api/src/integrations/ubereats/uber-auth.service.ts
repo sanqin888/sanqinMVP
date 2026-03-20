@@ -12,9 +12,19 @@ type UberKeyFile = {
 
 type UberTokenResponse = {
   access_token?: string;
+  refresh_token?: string;
   expires_in?: number;
   token_type?: string;
   scope?: string;
+};
+
+type UberMerchantTokenExchangeResult = {
+  accessToken: string;
+  refreshToken: string | null;
+  expiresAt: Date | null;
+  scope: string | null;
+  tokenType: string | null;
+  raw: UberTokenResponse;
 };
 
 type CachedToken = {
@@ -30,8 +40,28 @@ export class UberAuthService implements OnModuleInit {
     process.env.UBER_EATS_TOKEN_ENDPOINT?.trim() ||
     'https://auth.uber.com/oauth/v2/token';
 
+  private readonly authorizeEndpoint =
+    process.env.UBER_EATS_AUTHORIZE_ENDPOINT?.trim() ||
+    'https://auth.uber.com/oauth/v2/authorize';
+
+  private readonly merchantIdentityEndpoint =
+    process.env.UBER_EATS_MERCHANT_IDENTITY_ENDPOINT?.trim() ||
+    'https://api.uber.com/v1/me';
+
+  private readonly merchantProvisioningScope =
+    process.env.UBER_EATS_USER_AUTH_SCOPES?.trim() ||
+    process.env.UBER_EATS_MERCHANT_SCOPE?.trim() ||
+    'eats.pos_provisioning';
+
+  private readonly merchantRedirectUri =
+    process.env.UBER_EATS_REDIRECT_URI?.trim() ||
+    process.env.UBER_EATS_OAUTH_REDIRECT_URI?.trim() ||
+    '';
+
   private readonly defaultScopes =
-    process.env.UBER_EATS_SCOPES?.trim() || 'eats.store eats.order';
+    process.env.UBER_EATS_APP_SCOPES?.trim() ||
+    process.env.UBER_EATS_SCOPES?.trim() ||
+    'eats.store eats.order';
 
   // 提前 60 秒刷新，避免刚拿到 token 就快过期
   private readonly tokenRefreshBufferMs = 60_000;
@@ -183,7 +213,9 @@ export class UberAuthService implements OnModuleInit {
     const raw = (scope?.trim() || this.defaultScopes).trim();
 
     if (!raw) {
-      throw new Error('Uber scopes 为空，请配置 UBER_EATS_SCOPES');
+      throw new Error(
+        'Uber scopes 为空，请配置 UBER_EATS_APP_SCOPES 或 UBER_EATS_SCOPES',
+      );
     }
 
     // 去重 + 排序，避免同一组 scope 因顺序不同生成多个缓存 key
@@ -201,6 +233,127 @@ export class UberAuthService implements OnModuleInit {
     }
 
     return normalized.join(' ');
+  }
+
+  private async performTokenRequest(
+    params: URLSearchParams,
+  ): Promise<UberTokenResponse> {
+    const response = await fetch(this.tokenEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: params.toString(),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `Uber token 获取失败 status=${response.status} body=${errorText.slice(0, 300)}`,
+      );
+    }
+
+    return (await response.json()) as UberTokenResponse;
+  }
+
+  private resolveMerchantRedirectUri(override?: string): string {
+    const redirectUri = override?.trim() || this.merchantRedirectUri;
+
+    if (!redirectUri) {
+      throw new Error('UBER_EATS_REDIRECT_URI 未配置');
+    }
+
+    return redirectUri;
+  }
+
+  async buildMerchantAuthorizeUrl(
+    state: string,
+    scope?: string,
+  ): Promise<string> {
+    const keyConfig = await this.readKeyFile();
+    const resolvedScope = this.normalizeScopes(
+      scope || this.merchantProvisioningScope,
+    );
+    const redirectUri = this.resolveMerchantRedirectUri();
+
+    const params = new URLSearchParams({
+      client_id: keyConfig.application_id,
+      response_type: 'code',
+      redirect_uri: redirectUri,
+      scope: resolvedScope,
+      state,
+    });
+
+    return `${this.authorizeEndpoint}?${params.toString()}`;
+  }
+
+  async exchangeAuthorizationCode(
+    code: string,
+    redirectUriOverride?: string,
+  ): Promise<UberMerchantTokenExchangeResult> {
+    if (!code.trim()) {
+      throw new Error('authorization code 不能为空');
+    }
+
+    if (!this.keyConfig) {
+      await this.readKeyFile();
+    }
+
+    const assertion = this.buildClientAssertion();
+    const redirectUri = this.resolveMerchantRedirectUri(redirectUriOverride);
+    const params = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: code.trim(),
+      redirect_uri: redirectUri,
+      client_assertion_type:
+        'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+      client_assertion: assertion,
+    });
+
+    const data = await this.performTokenRequest(params);
+
+    if (!data.access_token) {
+      throw new Error('Uber authorization_code 响应缺少 access_token');
+    }
+
+    const expiresAt =
+      typeof data.expires_in === 'number' && data.expires_in > 0
+        ? new Date(Date.now() + data.expires_in * 1000)
+        : null;
+
+    return {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token?.trim() || null,
+      expiresAt,
+      scope: data.scope?.trim() || null,
+      tokenType: data.token_type?.trim() || null,
+      raw: data,
+    };
+  }
+
+  async getMerchantIdentity(
+    accessToken: string,
+  ): Promise<Record<string, unknown> | null> {
+    const response = await fetch(this.merchantIdentityEndpoint, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      this.logger.warn(
+        `[ubereats auth] merchant identity lookup failed status=${response.status} body=${errorText.slice(0, 200)}`,
+      );
+      return null;
+    }
+
+    const payload = (await response.json()) as unknown;
+    return payload && typeof payload === 'object'
+      ? (payload as Record<string, unknown>)
+      : null;
   }
 
   private async requestAccessToken(scope: string): Promise<CachedToken> {
@@ -223,22 +376,7 @@ export class UberAuthService implements OnModuleInit {
       client_assertion: assertion,
     });
 
-    const response = await fetch(this.tokenEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: params.toString(),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(
-        `Uber access token 获取失败 status=${response.status} scope="${scope}" body=${errorText.slice(0, 300)}`,
-      );
-    }
-
-    const data = (await response.json()) as UberTokenResponse;
+    const data = await this.performTokenRequest(params);
 
     if (!data.access_token) {
       throw new Error(
