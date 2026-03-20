@@ -6,6 +6,8 @@ import { OrderItemOptionsSnapshot } from './order-item-options';
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 
+type CheckoutMetadataRecord = Record<string, unknown>;
+
 @Injectable()
 export class PrintPosPayloadService {
   constructor(private readonly prisma: PrismaService) {}
@@ -53,7 +55,8 @@ export class PrintPosPayloadService {
       (order.subtotalCents ?? 0) -
         (order.subtotalAfterDiscountCents ?? order.subtotalCents ?? 0),
     );
-    const surcharge = await this.getOrderCreditCardSurcharge(order);
+    const intentMetadata = await this.getCheckoutIntentMetadata(orderNumber);
+    const surcharge = this.getOrderCreditCardSurcharge(order, intentMetadata);
     const creditCardSurchargeCents = surcharge?.cents ?? 0;
     const paymentTotalCents =
       typeof order.paymentTotalCents === 'number' &&
@@ -85,6 +88,8 @@ export class PrintPosPayloadService {
       pickupCode: order.pickupCode ?? null,
       fulfillment: order.fulfillmentType,
       paymentMethod,
+      orderNotes: this.extractOrderNotes(intentMetadata),
+      utensils: this.extractUtensils(intentMetadata),
       snapshot: {
         items,
         subtotalCents: order.subtotalCents ?? 0,
@@ -99,31 +104,32 @@ export class PrintPosPayloadService {
     };
   }
 
-  private async getOrderCreditCardSurcharge(order: {
-    clientRequestId?: string | null;
-    paymentMethod?: PaymentMethod | null;
-    creditCardSurchargeCents?: number | null;
-  }): Promise<{ cents: number } | null> {
+  private async getCheckoutIntentMetadata(
+    referenceId: string,
+  ): Promise<CheckoutMetadataRecord | null> {
+    const intent = await this.prisma.checkoutIntent.findFirst({
+      where: { referenceId },
+      orderBy: { createdAt: 'desc' },
+      select: { metadataJson: true },
+    });
+
+    return intent?.metadataJson && typeof intent.metadataJson === 'object'
+      ? (intent.metadataJson as CheckoutMetadataRecord)
+      : null;
+  }
+
+  private getOrderCreditCardSurcharge(
+    order: {
+      paymentMethod?: PaymentMethod | null;
+      creditCardSurchargeCents?: number | null;
+    },
+    metadata: CheckoutMetadataRecord | null,
+  ): { cents: number } | null {
     const persistedSurcharge =
       typeof order.creditCardSurchargeCents === 'number' &&
       Number.isFinite(order.creditCardSurchargeCents)
         ? Math.max(0, Math.round(order.creditCardSurchargeCents))
         : 0;
-
-    if (!order.clientRequestId) {
-      return persistedSurcharge > 0 ? { cents: persistedSurcharge } : null;
-    }
-
-    const intent = await this.prisma.checkoutIntent.findFirst({
-      where: { referenceId: order.clientRequestId },
-      orderBy: { createdAt: 'desc' },
-      select: { metadataJson: true },
-    });
-
-    const metadata =
-      intent?.metadataJson && typeof intent.metadataJson === 'object'
-        ? (intent.metadataJson as Record<string, unknown>)
-        : null;
 
     const raw = metadata?.creditCardSurchargeCents;
     const cents =
@@ -133,5 +139,87 @@ export class PrintPosPayloadService {
 
     const finalCents = cents > 0 ? cents : persistedSurcharge;
     return finalCents > 0 ? { cents: finalCents } : null;
+  }
+
+  private extractOrderNotes(
+    metadata: CheckoutMetadataRecord | null,
+  ): string | null {
+    const customer = this.asRecord(metadata?.customer);
+    const deliveryDestination = this.asRecord(metadata?.deliveryDestination);
+
+    return (
+      this.asString(customer?.notes) ??
+      this.asString(deliveryDestination?.instructions) ??
+      this.asString(deliveryDestination?.notes) ??
+      null
+    );
+  }
+
+  private extractUtensils(
+    metadata: CheckoutMetadataRecord | null,
+  ): PrintPosPayloadDto['utensils'] {
+    const utensils = this.asRecord(metadata?.utensils);
+    if (!utensils) return null;
+
+    const neededRaw = utensils.needed;
+    const needed =
+      typeof neededRaw === 'boolean'
+        ? neededRaw
+        : typeof neededRaw === 'number'
+          ? neededRaw > 0
+          : this.asString(neededRaw)?.toLowerCase() === 'true';
+
+    const type = this.asString(utensils.type) ?? null;
+    const quantity = this.asFiniteInteger(utensils.quantity);
+
+    const summary = needed
+      ? this.buildUtensilsSummary(type, quantity)
+      : '无需餐具';
+
+    return {
+      needed,
+      type,
+      quantity,
+      summary,
+    };
+  }
+
+  private buildUtensilsSummary(
+    type: string | null,
+    quantity: number | null,
+  ): string {
+    const typeLabel =
+      type === 'chopsticks' ? '筷子' : type === 'fork' ? '叉子' : '餐具';
+
+    if (quantity && quantity > 0) {
+      return `${typeLabel}${quantity}份`;
+    }
+
+    return `需要${typeLabel}`;
+  }
+
+  private asRecord(value: unknown): Record<string, unknown> | null {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null;
+  }
+
+  private asString(value: unknown): string | null {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  private asFiniteInteger(value: unknown): number | null {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return Math.max(0, Math.round(value));
+    }
+    if (typeof value === 'string' && value.trim().length > 0) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return Math.max(0, Math.round(parsed));
+      }
+    }
+    return null;
   }
 }

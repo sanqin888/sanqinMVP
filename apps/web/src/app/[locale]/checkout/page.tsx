@@ -174,7 +174,11 @@ type SelectedOptionDisplay = {
 
 type DailySpecialLookupEntry = Pick<
   DailySpecialDto,
-  "stableId" | "itemStableId" | "basePriceCents" | "effectivePriceCents" | "disallowCoupons"
+  | "stableId"
+  | "itemStableId"
+  | "basePriceCents"
+  | "effectivePriceCents"
+  | "disallowCoupons"
 >;
 
 type CartItemWithPricing = LocalizedCartItem & {
@@ -789,7 +793,8 @@ export default function CheckoutPage() {
     null,
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isRedirectingToGooglePay, setIsRedirectingToGooglePay] = useState(false);
+  const [isRedirectingToGooglePay, setIsRedirectingToGooglePay] =
+    useState(false);
   const [isRedirectingToApplePay, setIsRedirectingToApplePay] = useState(false);
   const [isRedirectingToCardPay, setIsRedirectingToCardPay] = useState(false);
   const [payFlowState, setPayFlowState] = useState<PayFlowState>("IDLE");
@@ -905,7 +910,10 @@ export default function CheckoutPage() {
         setPublicMenuLookup(map);
         setDailySpecialLookup(specialsMap);
       } catch (error) {
-        console.error("Failed to load menu for checkout", toSafeErrorLog(error));
+        console.error(
+          "Failed to load menu for checkout",
+          toSafeErrorLog(error),
+        );
         if (cancelled) return;
 
         setPublicMenuLookup(new Map());
@@ -1096,7 +1104,6 @@ export default function CheckoutPage() {
         .replace("{radius}", radiusLabel),
     [radiusLabel],
   );
-
 
   // 这里和上面的 deliveryOptions 保持同一套规则（单位：分）
   const deliveryFeeCents =
@@ -1331,10 +1338,12 @@ export default function CheckoutPage() {
           : "Please complete the delivery address details.";
       }
       if (!isStoreOpen) {
-        return storeStatusDetail ??
+        return (
+          storeStatusDetail ??
           (locale === "zh"
             ? "门店暂未开放在线下单。"
-            : "Online ordering is currently unavailable.");
+            : "Online ordering is currently unavailable.")
+        );
       }
       if (entitlementBlockingMessage) return entitlementBlockingMessage;
     }
@@ -1365,6 +1374,7 @@ export default function CheckoutPage() {
         lastName: customer.lastName,
         email: customer.email,
         phone: formattedCustomerPhone,
+        notes: customer.notes || undefined,
         ...(fulfillment === "delivery"
           ? {
               addressLine1: customer.addressLine1,
@@ -1464,13 +1474,15 @@ export default function CheckoutPage() {
       const checkoutIntentId =
         checkoutIntentIdRef.current ??
         (typeof window !== "undefined"
-          ? window.crypto?.randomUUID?.() ??
-            `chk_${Date.now()}_${Math.random().toString(16).slice(2)}`
+          ? (window.crypto?.randomUUID?.() ??
+            `chk_${Date.now()}_${Math.random().toString(16).slice(2)}`)
           : undefined);
 
       if (!checkoutIntentId) {
         throw new Error(
-          locale === "zh" ? "无法创建支付会话，请重试。" : "Unable to create payment session. Please retry.",
+          locale === "zh"
+            ? "无法创建支付会话，请重试。"
+            : "Unable to create payment session. Please retry.",
         );
       }
 
@@ -1547,10 +1559,17 @@ export default function CheckoutPage() {
           sessionId: session.sessionId,
           checkoutIntentId: session.checkoutIntentId,
         });
-        router.push(`/${locale}${path}?sessionId=${encodeURIComponent(session.sessionId)}`);
+        router.push(
+          `/${locale}${path}?sessionId=${encodeURIComponent(session.sessionId)}`,
+        );
       } catch (error) {
-        console.error("[checkout] payment redirect failed", toSafeErrorLog(error));
-        setErrorMessage(locale === "zh" ? startFailedMessageZh : startFailedMessageEn);
+        console.error(
+          "[checkout] payment redirect failed",
+          toSafeErrorLog(error),
+        );
+        setErrorMessage(
+          locale === "zh" ? startFailedMessageZh : startFailedMessageEn,
+        );
       } finally {
         setRedirecting(false);
       }
@@ -1747,7 +1766,7 @@ export default function CheckoutPage() {
       setCustomer((prev) => ({
         ...prev,
         firstName: selected.receiver
-          ? selected.receiver.split(/\s+/)[0] ?? ""
+          ? (selected.receiver.split(/\s+/)[0] ?? "")
           : prev.firstName,
         lastName: selected.receiver
           ? selected.receiver.split(/\s+/).slice(1).join(" ")
@@ -2029,7 +2048,9 @@ export default function CheckoutPage() {
         setMemberFirstName(data.firstName ?? fallbackParts[0] ?? null);
         setMemberLastName(
           data.lastName ??
-            (fallbackParts.length > 1 ? fallbackParts.slice(1).join(" ") : null),
+            (fallbackParts.length > 1
+              ? fallbackParts.slice(1).join(" ")
+              : null),
         );
         setMemberEmail(data.email ?? null);
       } catch (err) {
@@ -2270,75 +2291,72 @@ export default function CheckoutPage() {
 
   // 带可选 override 类型的距离校验
   const validateDeliveryDistance = useCallback(async () => {
+    setAddressValidation({ distanceKm: null, isChecking: true, error: null });
 
-      setAddressValidation({ distanceKm: null, isChecking: true, error: null });
-
-      try {
-        let coordinates = selectedCoordinates;
-        if (!coordinates) {
-          coordinates = await geocodeAddress(deliveryAddressText, {
-            cityHint: `${customer.city}, ${customer.province}`,
-          });
-          if (coordinates) {
-            setSelectedCoordinates(coordinates);
-            setSelectedPlaceId(null);
-          }
-        }
-
-        if (!coordinates) {
-          setAddressValidation({
-            distanceKm: null,
-            isChecking: false,
-            error: strings.deliveryDistance.notFound,
-          });
-          return { success: false } as const;
-        }
-
-        const distanceKm = calculateDistanceKm(STORE_COORDINATES, coordinates);
-
-        // Uber 配送：最大 DELIVERY_RADIUS_KM
-        if (distanceKm > PRIORITY_MAX_RADIUS_KM) {
-          const distanceLabel = formatDistanceValue(distanceKm);
-          const message =
-            locale === "zh"
-              ? `当前地址距离门店约 ${distanceLabel}，超出 Uber 配送最大范围（${PRIORITY_MAX_RADIUS_KM} km）。`
-              : `This address is about ${distanceLabel} away from the store, which exceeds the maximum ${PRIORITY_MAX_RADIUS_KM} km range for Uber delivery.`;
-
-          setAddressValidation({
-            distanceKm,
-            isChecking: false,
-            error: message,
-          });
-          return { success: false } as const;
-        }
-
-        // 在可配送范围内：记录距离用于计费
-        setAddressValidation({
-          distanceKm,
-          isChecking: false,
-          error: null,
+    try {
+      let coordinates = selectedCoordinates;
+      if (!coordinates) {
+        coordinates = await geocodeAddress(deliveryAddressText, {
+          cityHint: `${customer.city}, ${customer.province}`,
         });
-        return { success: true, distanceKm } as const;
-      } catch {
+        if (coordinates) {
+          setSelectedCoordinates(coordinates);
+          setSelectedPlaceId(null);
+        }
+      }
+
+      if (!coordinates) {
         setAddressValidation({
           distanceKm: null,
           isChecking: false,
-          error: strings.deliveryDistance.failed,
+          error: strings.deliveryDistance.notFound,
         });
         return { success: false } as const;
       }
-    },
-    [
-      customer.city,
-      customer.province,
-      deliveryAddressText,
-      formatDistanceValue,
-      locale,
-      selectedCoordinates,
-      strings.deliveryDistance.failed,
-      strings.deliveryDistance.notFound,
-    ],
-  );
+
+      const distanceKm = calculateDistanceKm(STORE_COORDINATES, coordinates);
+
+      // Uber 配送：最大 DELIVERY_RADIUS_KM
+      if (distanceKm > PRIORITY_MAX_RADIUS_KM) {
+        const distanceLabel = formatDistanceValue(distanceKm);
+        const message =
+          locale === "zh"
+            ? `当前地址距离门店约 ${distanceLabel}，超出 Uber 配送最大范围（${PRIORITY_MAX_RADIUS_KM} km）。`
+            : `This address is about ${distanceLabel} away from the store, which exceeds the maximum ${PRIORITY_MAX_RADIUS_KM} km range for Uber delivery.`;
+
+        setAddressValidation({
+          distanceKm,
+          isChecking: false,
+          error: message,
+        });
+        return { success: false } as const;
+      }
+
+      // 在可配送范围内：记录距离用于计费
+      setAddressValidation({
+        distanceKm,
+        isChecking: false,
+        error: null,
+      });
+      return { success: true, distanceKm } as const;
+    } catch {
+      setAddressValidation({
+        distanceKm: null,
+        isChecking: false,
+        error: strings.deliveryDistance.failed,
+      });
+      return { success: false } as const;
+    }
+  }, [
+    customer.city,
+    customer.province,
+    deliveryAddressText,
+    formatDistanceValue,
+    locale,
+    selectedCoordinates,
+    strings.deliveryDistance.failed,
+    strings.deliveryDistance.notFound,
+  ]);
 
   useEffect(() => {
     if (!isDeliveryFulfillment) return;
@@ -2457,7 +2475,9 @@ export default function CheckoutPage() {
     let deliveryFeeCentsForOrder = 0;
     if (isDeliveryFulfillment && subtotalCents > 0) {
       const billedKm =
-        deliveryDistanceKm !== null ? Math.max(1, Math.ceil(deliveryDistanceKm)) : 1;
+        deliveryDistanceKm !== null
+          ? Math.max(1, Math.ceil(deliveryDistanceKm))
+          : 1;
       deliveryFeeCentsForOrder = 600 + 100 * billedKm;
     }
 
@@ -2526,7 +2546,6 @@ export default function CheckoutPage() {
           ? "请先选择支付方式并进入对应支付页完成支付。"
           : "Please choose a payment method and complete payment on the dedicated page.",
       );
-
     } catch (error) {
       const fallback =
         error instanceof Error ? error.message : strings.errors.checkoutFailed;
@@ -2569,7 +2588,7 @@ export default function CheckoutPage() {
       }
 
       if (strictApplePay) {
-        throw (error instanceof Error ? error : new Error(fallback));
+        throw error instanceof Error ? error : new Error(fallback);
       }
     } finally {
       setIsSubmitting(false);
@@ -2603,7 +2622,10 @@ export default function CheckoutPage() {
 
       if (!addressWithinRadius) {
         addressDistanceMessage = {
-          text: applyDistanceTemplate(strings.deliveryDistance.outsideRange, distanceLabel),
+          text: applyDistanceTemplate(
+            strings.deliveryDistance.outsideRange,
+            distanceLabel,
+          ),
           tone: "error",
         };
       } else {
@@ -3994,7 +4016,9 @@ export default function CheckoutPage() {
                         }}
                         className="rounded-full border border-current px-3 py-1 text-[11px] font-semibold"
                       >
-                        {locale === "zh" ? "刷新页面重试支付模块" : "Refresh to retry payment module"}
+                        {locale === "zh"
+                          ? "刷新页面重试支付模块"
+                          : "Refresh to retry payment module"}
                       </button>
                     </div>
                   ) : null}
