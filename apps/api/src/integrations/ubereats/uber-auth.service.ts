@@ -171,37 +171,37 @@ export class UberAuthService implements OnModuleInit {
   }
 
   private async buildClientAssertion(): Promise<string> {
-  const keyConfig = await this.loadKeyConfig();
-  const now = Math.floor(Date.now() / 1000);
+    const keyConfig = await this.readKeyFile();
+    const now = Math.floor(Date.now() / 1000);
 
-  const header = {
-    alg: 'RS256',
-    kid: keyConfig.key_id,
-    typ: 'JWT',
-  };
+    const header = {
+      alg: 'RS256',
+      kid: keyConfig.key_id,
+      typ: 'JWT',
+    };
 
-  const payload = {
-    iss: keyConfig.application_id,
-    sub: keyConfig.application_id,
-    aud: 'auth.uber.com',
-    iat: now,
-    exp: now + 300,
-    jti: randomUUID(),
-  };
+    const payload = {
+      iss: keyConfig.application_id,
+      sub: keyConfig.application_id,
+      aud: 'auth.uber.com',
+      iat: now,
+      exp: now + 300,
+      jti: randomUUID(),
+    };
 
-  const encodedHeader = this.base64UrlEncode(JSON.stringify(header));
-  const encodedPayload = this.base64UrlEncode(JSON.stringify(payload));
-  const unsignedToken = `${encodedHeader}.${encodedPayload}`;
+    const encodedHeader = this.base64UrlEncode(JSON.stringify(header));
+    const encodedPayload = this.base64UrlEncode(JSON.stringify(payload));
+    const unsignedToken = `${encodedHeader}.${encodedPayload}`;
 
-  const signer = createSign('RSA-SHA256');
-  signer.update(unsignedToken);
-  signer.end();
+    const signer = createSign('RSA-SHA256');
+    signer.update(unsignedToken);
+    signer.end();
 
-  const signature = signer.sign(keyConfig.private_key);
-  const encodedSignature = this.base64UrlEncode(signature);
+    const signature = signer.sign(keyConfig.private_key);
+    const encodedSignature = this.base64UrlEncode(signature);
 
-  return `${unsignedToken}.${encodedSignature}`;
-}
+    return `${unsignedToken}.${encodedSignature}`;
+  }
 
   private normalizeScopes(scope?: string): string {
     const raw = (scope?.trim() || this.defaultScopes).trim();
