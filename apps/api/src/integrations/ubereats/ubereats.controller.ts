@@ -133,6 +133,12 @@ export class UberEatsController {
     return this.uberEatsService.buildMerchantAuthorizeUrl();
   }
 
+  @Get('oauth/start')
+  async oauthStart(@Res() res: Response) {
+    const result = await this.uberEatsService.startMerchantOAuth();
+    return res.redirect(result.authorizeUrl);
+  }
+
   @Get('oauth/callback')
   @Header('Content-Type', 'text/html; charset=utf-8')
   async oauthCallback(

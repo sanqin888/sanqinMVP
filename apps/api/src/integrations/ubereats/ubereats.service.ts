@@ -267,11 +267,19 @@ export class UberEatsService {
     const authorizeUrl =
       await this.uberAuthService.buildMerchantAuthorizeUrl(state);
 
+    this.logger.log(
+      `[ubereats oauth start] stateIssued=${state.slice(0, 24)}... authorizeEndpointReady=true`,
+    );
+
     return {
       ok: true,
       state,
       authorizeUrl,
     };
+  }
+
+  async startMerchantOAuth() {
+    return this.buildMerchantAuthorizeUrl();
   }
 
   async exchangeAuthorizationCode(code: string, state?: string) {
@@ -1023,16 +1031,21 @@ export class UberEatsService {
   }
 
   private verifyOAuthState(state?: string): void {
-    if (!state?.trim()) {
+    const normalizedState = state?.trim();
+    if (!normalizedState) {
       throw new BadRequestException('缺少 OAuth state');
     }
 
-    const parts = state.split('.');
-    if (parts.length < 3) {
+    const parts = normalizedState.split('.');
+    if (parts.length !== 3) {
       throw new BadRequestException('OAuth state 非法');
     }
 
     const [timestamp, nonce, signature] = parts;
+    if (!timestamp || !nonce || !signature) {
+      throw new BadRequestException('OAuth state 非法');
+    }
+
     const secret =
       process.env.UBER_EATS_OAUTH_STATE_SECRET?.trim() ||
       'ubereats-oauth-state';
@@ -1040,12 +1053,23 @@ export class UberEatsService {
       .update(`${timestamp}.${nonce}`)
       .digest('hex');
 
-    if (expected !== signature) {
+    const expectedBuffer = Buffer.from(expected, 'utf8');
+    const receivedBuffer = Buffer.from(signature, 'utf8');
+
+    if (
+      expectedBuffer.length !== receivedBuffer.length ||
+      !timingSafeEqual(expectedBuffer, receivedBuffer)
+    ) {
       throw new BadRequestException('OAuth state 校验失败');
     }
 
     const issuedAt = Number(timestamp);
-    if (!Number.isFinite(issuedAt) || Date.now() - issuedAt > 10 * 60 * 1000) {
+    if (!Number.isFinite(issuedAt)) {
+      throw new BadRequestException('OAuth state 时间戳非法');
+    }
+
+    const maxAgeMs = 10 * 60 * 1000;
+    if (Date.now() - issuedAt > maxAgeMs) {
       throw new BadRequestException('OAuth state 已过期');
     }
   }
