@@ -187,10 +187,12 @@ export class UberAuthService implements OnModuleInit {
       typ: 'JWT',
     };
 
+    const tokenHost = new URL(this.tokenEndpoint).host;
+
     const payload = {
       iss: keyConfig.application_id,
       sub: keyConfig.application_id,
-      aud: 'auth.uber.com',
+      aud: tokenHost,
       iat: now,
       exp: now + 300,
       jti: randomUUID(),
