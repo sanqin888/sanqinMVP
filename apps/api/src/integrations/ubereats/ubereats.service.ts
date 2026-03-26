@@ -279,16 +279,6 @@ export class UberEatsService {
   }
 
   async startMerchantOAuth() {
-    const { state, authorizeUrl } = await this.buildMerchantAuthorizeUrl();
-
-    return {
-      ok: true,
-      state,
-      authorizeUrl,
-    };
-  }
-
-  async startMerchantOAuth() {
     return this.buildMerchantAuthorizeUrl();
   }
 
