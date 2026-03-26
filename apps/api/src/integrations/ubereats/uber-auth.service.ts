@@ -1,4 +1,5 @@
 //apps/api/src/integrations/ubereats/uber-auth.service.ts
+//apps/api/src/integrations/ubereats/uber-auth.service.ts
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { createSign, randomUUID } from 'crypto';
 import { readFile } from 'fs/promises';
