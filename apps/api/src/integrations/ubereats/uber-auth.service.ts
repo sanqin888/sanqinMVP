@@ -170,45 +170,38 @@ export class UberAuthService implements OnModuleInit {
       .replace(/\//g, '_');
   }
 
-  private buildClientAssertion(): string {
-    const keyConfig = this.keyConfig;
-    if (!keyConfig) {
-      throw new Error('Uber key 配置未初始化');
-    }
-    if (!this.normalizedPrivateKey) {
-      throw new Error('Uber private key 未初始化');
-    }
+  private async buildClientAssertion(): Promise<string> {
+  const keyConfig = await this.loadKeyConfig();
+  const now = Math.floor(Date.now() / 1000);
 
-    const now = Math.floor(Date.now() / 1000);
+  const header = {
+    alg: 'RS256',
+    kid: keyConfig.key_id,
+    typ: 'JWT',
+  };
 
-    const header = {
-      alg: 'RS256',
-      kid: keyConfig.key_id,
-      typ: 'JWT',
-    };
+  const payload = {
+    iss: keyConfig.application_id,
+    sub: keyConfig.application_id,
+    aud: 'auth.uber.com',
+    iat: now,
+    exp: now + 300,
+    jti: randomUUID(),
+  };
 
-    const payload = {
-      iss: keyConfig.application_id,
-      sub: keyConfig.application_id,
-      aud: 'auth.uber.com',
-      iat: now,
-      exp: now + 300,
-      jti: randomUUID(),
-    };
+  const encodedHeader = this.base64UrlEncode(JSON.stringify(header));
+  const encodedPayload = this.base64UrlEncode(JSON.stringify(payload));
+  const unsignedToken = `${encodedHeader}.${encodedPayload}`;
 
-    const encodedHeader = this.base64UrlEncode(JSON.stringify(header));
-    const encodedPayload = this.base64UrlEncode(JSON.stringify(payload));
-    const signingInput = `${encodedHeader}.${encodedPayload}`;
+  const signer = createSign('RSA-SHA256');
+  signer.update(unsignedToken);
+  signer.end();
 
-    const signer = createSign('RSA-SHA256');
-    signer.update(signingInput);
-    signer.end();
+  const signature = signer.sign(keyConfig.private_key);
+  const encodedSignature = this.base64UrlEncode(signature);
 
-    const signature = signer.sign(this.normalizedPrivateKey);
-    const encodedSignature = this.base64UrlEncode(signature);
-
-    return `${signingInput}.${encodedSignature}`;
-  }
+  return `${unsignedToken}.${encodedSignature}`;
+}
 
   private normalizeScopes(scope?: string): string {
     const raw = (scope?.trim() || this.defaultScopes).trim();
