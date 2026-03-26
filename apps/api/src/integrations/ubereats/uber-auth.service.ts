@@ -251,7 +251,7 @@ export class UberAuthService implements OnModuleInit {
 
     this.logger.log(
       `[ubereats token request] endpoint=${this.tokenEndpoint} grantType=${grantType} redirectUri=${redirectUri} scope=${scope} ` +
-        `clientId=${this.maskValue(clientId, 6, 4)} authMode=${this.authMode} ` +
+        `clientId=${this.maskValue(clientId, 6, 4)}  ` +
         `hasCode=${hasCode} hasRefreshToken=${hasRefreshToken} hasClientSecret=${hasClientSecret} hasClientAssertion=${hasClientAssertion}`,
     );
 
