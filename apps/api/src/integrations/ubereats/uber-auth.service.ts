@@ -229,9 +229,32 @@ export class UberAuthService implements OnModuleInit {
     return normalized.join(' ');
   }
 
+  private maskValue(value?: string | null, keepStart = 4, keepEnd = 4): string {
+    const v = value?.trim();
+    if (!v) return 'missing';
+    if (v.length <= keepStart + keepEnd) return `${v.slice(0, 2)}***`;
+    return `${v.slice(0, keepStart)}***${v.slice(-keepEnd)}`;
+  }
+
   private async performTokenRequest(
     params: URLSearchParams,
   ): Promise<UberTokenResponse> {
+    const grantType = params.get('grant_type') ?? 'missing';
+    const redirectUri = params.get('redirect_uri') ?? 'missing';
+    const scope = params.get('scope') ?? 'missing';
+    const clientId = params.get('client_id') ?? 'missing';
+
+    const hasCode = Boolean(params.get('code'));
+    const hasRefreshToken = Boolean(params.get('refresh_token'));
+    const hasClientSecret = Boolean(params.get('client_secret'));
+    const hasClientAssertion = Boolean(params.get('client_assertion'));
+
+    this.logger.log(
+      `[ubereats token request] endpoint=${this.tokenEndpoint} grantType=${grantType} redirectUri=${redirectUri} scope=${scope} ` +
+        `clientId=${this.maskValue(clientId, 6, 4)}  ` +
+        `hasCode=${hasCode} hasRefreshToken=${hasRefreshToken} hasClientSecret=${hasClientSecret} hasClientAssertion=${hasClientAssertion}`,
+    );
+
     const response = await fetch(this.tokenEndpoint, {
       method: 'POST',
       headers: {
@@ -240,14 +263,25 @@ export class UberAuthService implements OnModuleInit {
       body: params.toString(),
     });
 
+    const responseText = await response.text();
+
     if (!response.ok) {
-      const errorText = await response.text();
+      this.logger.error(
+        `[ubereats token error] endpoint=${this.tokenEndpoint} status=${response.status} ` +
+          `grantType=${grantType} redirectUri=${redirectUri} scope=${scope} ` +
+          `clientId=${this.maskValue(clientId, 6, 4)} body=${responseText.slice(0, 500)}`,
+      );
+
       throw new Error(
-        `Uber token 获取失败 status=${response.status} body=${errorText.slice(0, 300)}`,
+        `Uber token 获取失败 status=${response.status} body=${responseText.slice(0, 300)}`,
       );
     }
 
-    return (await response.json()) as UberTokenResponse;
+    this.logger.log(
+      `[ubereats token success] endpoint=${this.tokenEndpoint} status=${response.status} body=${responseText.slice(0, 200)}`,
+    );
+
+    return JSON.parse(responseText) as UberTokenResponse;
   }
 
   private resolveMerchantRedirectUri(override?: string): string {
