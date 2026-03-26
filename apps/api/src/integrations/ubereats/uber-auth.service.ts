@@ -170,15 +170,8 @@ export class UberAuthService implements OnModuleInit {
       .replace(/\//g, '_');
   }
 
-  private buildClientAssertion(): string {
-    const keyConfig = this.keyConfig;
-    if (!keyConfig) {
-      throw new Error('Uber key 配置未初始化');
-    }
-    if (!this.normalizedPrivateKey) {
-      throw new Error('Uber private key 未初始化');
-    }
-
+  private async buildClientAssertion(): Promise<string> {
+    const keyConfig = await this.readKeyFile();
     const now = Math.floor(Date.now() / 1000);
 
     const header = {
@@ -187,12 +180,10 @@ export class UberAuthService implements OnModuleInit {
       typ: 'JWT',
     };
 
-    const tokenHost = new URL(this.tokenEndpoint).host;
-
     const payload = {
       iss: keyConfig.application_id,
       sub: keyConfig.application_id,
-      aud: tokenHost,
+      aud: 'auth.uber.com',
       iat: now,
       exp: now + 300,
       jti: randomUUID(),
@@ -200,16 +191,16 @@ export class UberAuthService implements OnModuleInit {
 
     const encodedHeader = this.base64UrlEncode(JSON.stringify(header));
     const encodedPayload = this.base64UrlEncode(JSON.stringify(payload));
-    const signingInput = `${encodedHeader}.${encodedPayload}`;
+    const unsignedToken = `${encodedHeader}.${encodedPayload}`;
 
     const signer = createSign('RSA-SHA256');
-    signer.update(signingInput);
+    signer.update(unsignedToken);
     signer.end();
 
-    const signature = signer.sign(this.normalizedPrivateKey);
+    const signature = signer.sign(keyConfig.private_key);
     const encodedSignature = this.base64UrlEncode(signature);
 
-    return `${signingInput}.${encodedSignature}`;
+    return `${unsignedToken}.${encodedSignature}`;
   }
 
   private normalizeScopes(scope?: string): string {
@@ -302,7 +293,7 @@ export class UberAuthService implements OnModuleInit {
       await this.readKeyFile();
     }
 
-    const assertion = this.buildClientAssertion();
+    const assertion = await this.buildClientAssertion();
     const redirectUri = this.resolveMerchantRedirectUri(redirectUriOverride);
     const params = new URLSearchParams({
       grant_type: 'authorization_code',
@@ -369,7 +360,7 @@ export class UberAuthService implements OnModuleInit {
       throw new Error('Uber key 配置未初始化');
     }
 
-    const assertion = this.buildClientAssertion();
+    const assertion = await this.buildClientAssertion();
 
     const params = new URLSearchParams({
       grant_type: 'client_credentials',
