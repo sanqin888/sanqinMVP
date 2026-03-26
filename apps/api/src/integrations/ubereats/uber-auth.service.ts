@@ -293,7 +293,7 @@ export class UberAuthService implements OnModuleInit {
       await this.readKeyFile();
     }
 
-    const assertion = this.buildClientAssertion();
+    const assertion = await this.buildClientAssertion();
     const redirectUri = this.resolveMerchantRedirectUri(redirectUriOverride);
     const params = new URLSearchParams({
       grant_type: 'authorization_code',
@@ -360,7 +360,7 @@ export class UberAuthService implements OnModuleInit {
       throw new Error('Uber key 配置未初始化');
     }
 
-    const assertion = this.buildClientAssertion();
+    const assertion = await this.buildClientAssertion();
 
     const params = new URLSearchParams({
       grant_type: 'client_credentials',
