@@ -70,7 +70,7 @@ services:
       UBER_EATS_USER_AUTH_SCOPES: "eats.pos_provisioning"
       UBER_EATS_REDIRECT_URI: "https://api.sanq.ca/api/v1/integrations/ubereats/oauth/callback"
       UBER_EATS_OAUTH_STATE_SECRET: ${UBER_EATS_OAUTH_STATE_SECRET}
-      UBER_EATS_STORE_ID: "c28b2ca2-e283-45f7-8149-aa566bd7ebb7"
+      UBER_EATS_STORE_ID: "47f93365-f7dc-4b49-9e3b-a99e9915e558"
       CLOVER_ENV: "production"
       CLOVER_BASE: "https://scl.clover.com"
       CLOVER_MERCHANT_ID: "XC3DQ9Z7D4YJ1"
