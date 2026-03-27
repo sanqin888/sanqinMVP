@@ -50,20 +50,27 @@ export class UberAuthService implements OnModuleInit {
     process.env.UBER_EATS_MERCHANT_IDENTITY_ENDPOINT?.trim() ||
     'https://api.uber.com/v1/me';
 
+  /**
+   * 商户 OAuth（店主授权）用的 scope
+   * 优先用 UBER_EATS_USER_AUTH_SCOPES
+   */
   private readonly merchantProvisioningScope =
     process.env.UBER_EATS_USER_AUTH_SCOPES?.trim() ||
     process.env.UBER_EATS_MERCHANT_SCOPE?.trim() ||
     'eats.pos_provisioning';
 
-  private readonly merchantRedirectUri =
-    process.env.UBER_EATS_REDIRECT_URI?.trim() ||
-    process.env.UBER_EATS_OAUTH_REDIRECT_URI?.trim() ||
-    '';
-
+  /**
+   * app 自己拿 client_credentials token 用的 scope
+   */
   private readonly defaultScopes =
     process.env.UBER_EATS_APP_SCOPES?.trim() ||
     process.env.UBER_EATS_SCOPES?.trim() ||
     'eats.store eats.order';
+
+  private readonly merchantRedirectUri =
+    process.env.UBER_EATS_REDIRECT_URI?.trim() ||
+    process.env.UBER_EATS_OAUTH_REDIRECT_URI?.trim() ||
+    '';
 
   // 提前 60 秒刷新，避免刚拿到 token 就快过期
   private readonly tokenRefreshBufferMs = 60_000;
@@ -138,7 +145,7 @@ export class UberAuthService implements OnModuleInit {
   }
 
   private normalizePrivateKey(raw: string): string {
-    const normalized = raw.replace(/\r\n/g, '\n').replace(/\n/g, '\n').trim();
+    const normalized = raw.replace(/\r\n/g, '\n').trim();
 
     const pemPatterns = [
       {
@@ -177,17 +184,17 @@ export class UberAuthService implements OnModuleInit {
 
     const header = {
       alg: 'RS256',
-      kid: keyConfig.key_id,
       typ: 'JWT',
+      kid: keyConfig.key_id,
     };
 
     const payload = {
       iss: keyConfig.application_id,
       sub: keyConfig.application_id,
       aud: 'auth.uber.com',
+      jti: randomUUID(),
       iat: now,
       exp: now + 300,
-      jti: randomUUID(),
     };
 
     const encodedHeader = this.base64UrlEncode(JSON.stringify(header));
@@ -198,7 +205,7 @@ export class UberAuthService implements OnModuleInit {
     signer.update(unsignedToken);
     signer.end();
 
-    const signature = signer.sign(keyConfig.private_key);
+    const signature = signer.sign(this.normalizedPrivateKey);
     const encodedSignature = this.base64UrlEncode(signature);
 
     return `${unsignedToken}.${encodedSignature}`;
@@ -213,7 +220,6 @@ export class UberAuthService implements OnModuleInit {
       );
     }
 
-    // 去重 + 排序，避免同一组 scope 因顺序不同生成多个缓存 key
     const normalized = Array.from(
       new Set(
         raw
@@ -225,6 +231,35 @@ export class UberAuthService implements OnModuleInit {
 
     if (!normalized.length) {
       throw new Error('Uber scopes 无有效内容');
+    }
+
+    return normalized.join(' ');
+  }
+
+  private normalizeMerchantScopes(scope?: string): string {
+    const raw = (
+      scope?.trim() ||
+      this.merchantProvisioningScope ||
+      this.defaultScopes
+    ).trim();
+
+    if (!raw) {
+      throw new Error(
+        'Uber merchant scopes 为空，请配置 UBER_EATS_USER_AUTH_SCOPES 或 UBER_EATS_MERCHANT_SCOPE',
+      );
+    }
+
+    const normalized = Array.from(
+      new Set(
+        raw
+          .split(/\s+/)
+          .map((item) => item.trim())
+          .filter(Boolean),
+      ),
+    ).sort();
+
+    if (!normalized.length) {
+      throw new Error('Uber merchant scopes 无有效内容');
     }
 
     return normalized.join(' ');
@@ -252,7 +287,7 @@ export class UberAuthService implements OnModuleInit {
 
     this.logger.log(
       `[ubereats token request] endpoint=${this.tokenEndpoint} grantType=${grantType} redirectUri=${redirectUri} scope=${scope} ` +
-        `clientId=${this.maskValue(clientId, 6, 4)}  ` +
+        `clientId=${this.maskValue(clientId, 6, 4)} ` +
         `hasCode=${hasCode} hasRefreshToken=${hasRefreshToken} hasClientSecret=${hasClientSecret} hasClientAssertion=${hasClientAssertion}`,
     );
 
@@ -260,6 +295,7 @@ export class UberAuthService implements OnModuleInit {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'application/json',
       },
       body: params.toString(),
     });
@@ -300,9 +336,7 @@ export class UberAuthService implements OnModuleInit {
     scope?: string,
   ): Promise<string> {
     const keyConfig = await this.readKeyFile();
-    const resolvedScope = this.normalizeScopes(
-      scope || this.merchantProvisioningScope,
-    );
+    const resolvedScope = this.normalizeMerchantScopes(scope);
     const redirectUri = this.resolveMerchantRedirectUri();
 
     const params = new URLSearchParams({
@@ -319,21 +353,25 @@ export class UberAuthService implements OnModuleInit {
   async exchangeAuthorizationCode(
     code: string,
     redirectUriOverride?: string,
+    scopeOverride?: string,
   ): Promise<UberMerchantTokenExchangeResult> {
     if (!code.trim()) {
       throw new Error('authorization code 不能为空');
     }
 
-    if (!this.keyConfig) {
-      await this.readKeyFile();
-    }
-
+    const keyConfig = await this.readKeyFile();
     const assertion = await this.buildClientAssertion();
     const redirectUri = this.resolveMerchantRedirectUri(redirectUriOverride);
+
+    // 注意：Uber 的 authorization_code 换 token 这里也需要带 scope
+    const resolvedScope = this.normalizeMerchantScopes(scopeOverride);
+
     const params = new URLSearchParams({
+      client_id: keyConfig.application_id,
       grant_type: 'authorization_code',
       code: code.trim(),
       redirect_uri: redirectUri,
+      scope: resolvedScope,
       client_assertion_type:
         'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
       client_assertion: assertion,
@@ -354,7 +392,50 @@ export class UberAuthService implements OnModuleInit {
       accessToken: data.access_token,
       refreshToken: data.refresh_token?.trim() || null,
       expiresAt,
-      scope: data.scope?.trim() || null,
+      scope: data.scope?.trim() || resolvedScope,
+      tokenType: data.token_type?.trim() || null,
+      raw: data,
+    };
+  }
+
+  async refreshMerchantAccessToken(
+    refreshToken: string,
+    scopeOverride?: string,
+  ): Promise<UberMerchantTokenExchangeResult> {
+    if (!refreshToken.trim()) {
+      throw new Error('refresh token 不能为空');
+    }
+
+    const keyConfig = await this.readKeyFile();
+    const assertion = await this.buildClientAssertion();
+    const resolvedScope = this.normalizeMerchantScopes(scopeOverride);
+
+    const params = new URLSearchParams({
+      client_id: keyConfig.application_id,
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken.trim(),
+      scope: resolvedScope,
+      client_assertion_type:
+        'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+      client_assertion: assertion,
+    });
+
+    const data = await this.performTokenRequest(params);
+
+    if (!data.access_token) {
+      throw new Error('Uber refresh_token 响应缺少 access_token');
+    }
+
+    const expiresAt =
+      typeof data.expires_in === 'number' && data.expires_in > 0
+        ? new Date(Date.now() + data.expires_in * 1000)
+        : null;
+
+    return {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token?.trim() || refreshToken.trim(),
+      expiresAt,
+      scope: data.scope?.trim() || resolvedScope,
       tokenType: data.token_type?.trim() || null,
       raw: data,
     };
@@ -386,18 +467,11 @@ export class UberAuthService implements OnModuleInit {
   }
 
   private async requestAccessToken(scope: string): Promise<CachedToken> {
-    if (!this.keyConfig) {
-      await this.readKeyFile();
-    }
-
-    const keyConfig = this.keyConfig;
-    if (!keyConfig) {
-      throw new Error('Uber key 配置未初始化');
-    }
-
+    const keyConfig = await this.readKeyFile();
     const assertion = await this.buildClientAssertion();
 
     const params = new URLSearchParams({
+      client_id: keyConfig.application_id,
       grant_type: 'client_credentials',
       scope,
       client_assertion_type:
