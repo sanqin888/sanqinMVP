@@ -262,10 +262,9 @@ export class UberEatsService {
     };
   }
 
-  async buildMerchantAuthorizeUrl() {
+  buildMerchantAuthorizeUrl() {
     const state = this.createOAuthState();
-    const authorizeUrl =
-      await this.uberAuthService.buildMerchantAuthorizeUrl(state);
+    const authorizeUrl = this.uberAuthService.buildMerchantAuthorizeUrl(state);
 
     this.logger.log(
       `[ubereats oauth start] stateIssued=${state.slice(0, 24)}... authorizeEndpointReady=true`,
@@ -278,7 +277,7 @@ export class UberEatsService {
     };
   }
 
-  async startMerchantOAuth() {
+  startMerchantOAuth() {
     return this.buildMerchantAuthorizeUrl();
   }
 
