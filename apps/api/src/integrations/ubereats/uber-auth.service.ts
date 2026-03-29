@@ -183,10 +183,7 @@ export class UberAuthService {
     this.inflightTokenRequests.clear();
   }
 
-  async buildMerchantAuthorizeUrl(
-    state: string,
-    scope?: string,
-  ): Promise<string> {
+  buildMerchantAuthorizeUrl(state: string, scope?: string): string {
     if (!state.trim()) {
       throw new Error('OAuth state 不能为空');
     }

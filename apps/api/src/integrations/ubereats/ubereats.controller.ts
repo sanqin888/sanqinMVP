@@ -129,13 +129,13 @@ export class UberEatsController {
   constructor(private readonly uberEatsService: UberEatsService) {}
 
   @Get('oauth/connect-url')
-  async oauthConnectUrl() {
+  oauthConnectUrl() {
     return this.uberEatsService.buildMerchantAuthorizeUrl();
   }
 
   @Get('oauth/start')
-  async oauthStart(@Res() res: Response) {
-    const result = await this.uberEatsService.startMerchantOAuth();
+  oauthStart(@Res() res: Response) {
+    const result = this.uberEatsService.startMerchantOAuth();
     return res.redirect(result.authorizeUrl);
   }
 
