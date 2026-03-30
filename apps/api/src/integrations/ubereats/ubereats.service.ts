@@ -262,10 +262,9 @@ export class UberEatsService {
     };
   }
 
-  async buildMerchantAuthorizeUrl() {
+  buildMerchantAuthorizeUrl() {
     const state = this.createOAuthState();
-    const authorizeUrl =
-      await this.uberAuthService.buildMerchantAuthorizeUrl(state);
+    const authorizeUrl = this.uberAuthService.buildMerchantAuthorizeUrl(state);
 
     this.logger.log(
       `[ubereats oauth start] stateIssued=${state.slice(0, 24)}... authorizeEndpointReady=true`,
@@ -278,7 +277,7 @@ export class UberEatsService {
     };
   }
 
-  async startMerchantOAuth() {
+  startMerchantOAuth() {
     return this.buildMerchantAuthorizeUrl();
   }
 
@@ -287,16 +286,26 @@ export class UberEatsService {
 
     const tokenResult =
       await this.uberAuthService.exchangeAuthorizationCode(code);
+
     const identity = await this.uberAuthService.getMerchantIdentity(
       tokenResult.accessToken,
     );
+    const identityObj = this.asObject(identity);
+
     const merchantUberUserId =
       this.readString(
-        identity?.user_id,
-        identity?.id,
-        this.asObject(identity?.user)?.id,
-        this.asObject(identity?.merchant)?.id,
+        identityObj?.user_id,
+        identityObj?.id,
+        identityObj?.sub,
+        this.asObject(identityObj?.user)?.id,
+        this.asObject(identityObj?.merchant)?.id,
       ) ?? `unknown:${randomUUID()}`;
+
+    if (merchantUberUserId.startsWith('unknown:')) {
+      this.logger.warn(
+        `[ubereats oauth] unable to resolve merchant id identity=${JSON.stringify(identityObj ?? {})}`,
+      );
+    }
 
     const connection = await this.upsertMerchantConnection({
       merchantUberUserId,
@@ -323,10 +332,9 @@ export class UberEatsService {
       tokenType: tokenResult.tokenType,
       expiresAt: tokenResult.expiresAt,
       connectedAt: connection.connectedAt,
-      identity,
+      identity: identityObj,
     };
   }
-
   async getMerchantStores(accessToken?: string, merchantUberUserId?: string) {
     const connection = await this.resolveMerchantConnection(
       merchantUberUserId,
@@ -372,10 +380,9 @@ export class UberEatsService {
       accessToken,
     );
     const requestBody = {
-      store_id: storeId.trim(),
       ...payload,
+      store_id: storeId.trim(),
     };
-
     const response = await this.callUberApi('/v1/eats/stores/provision', {
       accessToken: connection.accessToken,
       method: 'POST',
@@ -1105,7 +1112,45 @@ export class UberEatsService {
       );
     }
 
-    return row;
+    const now = Date.now();
+    const skewMs = 60_000;
+    const isExpired =
+      !!row.expiresAt && row.expiresAt.getTime() <= now + skewMs;
+
+    if (!isExpired) {
+      return row;
+    }
+
+    if (!row.refreshToken) {
+      throw new BadRequestException(
+        'Uber 商户 access token 已过期，且缺少 refresh token，请重新授权',
+      );
+    }
+
+    const refreshed = await this.uberAuthService.refreshMerchantAccessToken(
+      row.refreshToken,
+      row.scope ?? undefined,
+    );
+
+    const updated = await this.upsertMerchantConnection({
+      merchantUberUserId: row.merchantUberUserId,
+      accessToken: refreshed.accessToken,
+      refreshToken: refreshed.refreshToken,
+      expiresAt: refreshed.expiresAt,
+      scope: refreshed.scope,
+      tokenType: refreshed.tokenType,
+      connectedAt: row.connectedAt,
+      rawStoresSnapshot: row.rawStoresSnapshot,
+    });
+
+    await this.captureEvent('ubereats_merchant_oauth_refreshed', {
+      merchantUberUserId: row.merchantUberUserId,
+      scope: refreshed.scope ?? '',
+      tokenType: refreshed.tokenType ?? '',
+      expiresAt: refreshed.expiresAt?.toISOString() ?? null,
+    });
+
+    return updated;
   }
 
   private upsertMerchantConnection(

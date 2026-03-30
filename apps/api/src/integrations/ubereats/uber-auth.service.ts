@@ -1,26 +1,21 @@
 //apps/api/src/integrations/ubereats/uber-auth.service.ts
-//apps/api/src/integrations/ubereats/uber-auth.service.ts
-import { Injectable, OnModuleInit } from '@nestjs/common';
-import { createSign, randomUUID } from 'crypto';
-import { readFile } from 'fs/promises';
+import { Injectable } from '@nestjs/common';
 import { AppLogger } from '../../common/app-logger';
-
-type UberKeyFile = {
-  application_id: string;
-  key_id: string;
-  private_key: string;
-  public_key?: string;
-};
 
 type UberTokenResponse = {
   access_token?: string;
-  refresh_token?: string;
   expires_in?: number;
   token_type?: string;
+  refresh_token?: string;
   scope?: string;
 };
 
-type UberMerchantTokenExchangeResult = {
+type CachedToken = {
+  accessToken: string;
+  expiresAt: number;
+};
+
+export type UberMerchantTokenExchangeResult = {
   accessToken: string;
   refreshToken: string | null;
   expiresAt: Date | null;
@@ -29,14 +24,13 @@ type UberMerchantTokenExchangeResult = {
   raw: UberTokenResponse;
 };
 
-type CachedToken = {
-  accessToken: string;
-  expiresAt: number;
-};
-
 @Injectable()
-export class UberAuthService implements OnModuleInit {
+export class UberAuthService {
   private readonly logger = new AppLogger(UberAuthService.name);
+
+  private readonly clientId = process.env.UBER_EATS_CLIENT_ID?.trim() || '';
+  private readonly clientSecret =
+    process.env.UBER_EATS_CLIENT_SECRET?.trim() || '';
 
   private readonly tokenEndpoint =
     process.env.UBER_EATS_TOKEN_ENDPOINT?.trim() ||
@@ -48,281 +42,85 @@ export class UberAuthService implements OnModuleInit {
 
   private readonly merchantIdentityEndpoint =
     process.env.UBER_EATS_MERCHANT_IDENTITY_ENDPOINT?.trim() ||
-    'https://api.uber.com/v1/me';
+    'https://auth.uber.com/v3/me';
 
-  /**
-   * 商户 OAuth（店主授权）用的 scope
-   * 优先用 UBER_EATS_USER_AUTH_SCOPES
-   */
-  private readonly merchantProvisioningScope =
-    process.env.UBER_EATS_USER_AUTH_SCOPES?.trim() ||
-    process.env.UBER_EATS_MERCHANT_SCOPE?.trim() ||
-    'eats.pos_provisioning';
-
-  /**
-   * app 自己拿 client_credentials token 用的 scope
-   */
-  private readonly defaultScopes =
+  private readonly defaultAppScopes =
     process.env.UBER_EATS_APP_SCOPES?.trim() ||
     process.env.UBER_EATS_SCOPES?.trim() ||
     'eats.store eats.order';
 
-  private readonly merchantRedirectUri =
-    process.env.UBER_EATS_REDIRECT_URI?.trim() ||
-    process.env.UBER_EATS_OAUTH_REDIRECT_URI?.trim() ||
-    '';
+  private readonly defaultMerchantScopes =
+    process.env.UBER_EATS_USER_AUTH_SCOPES?.trim() || 'eats.pos_provisioning';
 
-  // 提前 60 秒刷新，避免刚拿到 token 就快过期
-  private readonly tokenRefreshBufferMs = 60_000;
+  private readonly redirectUri =
+    process.env.UBER_EATS_REDIRECT_URI?.trim() || '';
 
-  private keyFilePath = '';
-  private keyConfig: UberKeyFile | null = null;
-  private normalizedPrivateKey = '';
+  private readonly accessTokenSkewMs = 60_000;
 
-  // 按 scope 缓存 token，避免不同 scope 相互覆盖
   private readonly tokenCache = new Map<string, CachedToken>();
-
-  // 按 scope 去重并发刷新
-  private readonly inflightTokenPromises = new Map<
+  private readonly inflightTokenRequests = new Map<
     string,
     Promise<CachedToken>
   >();
 
-  async onModuleInit(): Promise<void> {
-    const keyConfig = await this.readKeyFile();
+  private resolveOAuthClientCredentials(): {
+    clientId: string;
+    clientSecret: string;
+  } {
+    const clientId = this.clientId;
+    const clientSecret = this.clientSecret;
 
-    this.logger.log(
-      `[ubereats auth] key file validated path=${this.keyFilePath} applicationId=${keyConfig.application_id} keyId=${keyConfig.key_id}`,
-    );
-  }
-
-  private async readKeyFile(): Promise<UberKeyFile> {
-    if (this.keyConfig) {
-      return this.keyConfig;
+    if (!clientId) {
+      throw new Error('UBER_EATS_CLIENT_ID 未配置');
     }
 
-    const keyFilePath = process.env.UBER_EATS_KEY_FILE?.trim();
-    if (!keyFilePath) {
-      throw new Error('UBER_EATS_KEY_FILE 未配置');
+    if (!clientSecret) {
+      throw new Error('UBER_EATS_CLIENT_SECRET 未配置');
     }
 
-    const raw = await readFile(keyFilePath, 'utf8');
-
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      throw new Error(`Uber key 文件 JSON 解析失败: ${keyFilePath}`);
-    }
-
-    if (!parsed || typeof parsed !== 'object') {
-      throw new Error(`Uber key 文件内容无效: ${keyFilePath}`);
-    }
-
-    const config = parsed as Partial<UberKeyFile>;
-
-    if (!config.application_id?.trim()) {
-      throw new Error('Uber key 文件缺少 application_id');
-    }
-    if (!config.key_id?.trim()) {
-      throw new Error('Uber key 文件缺少 key_id');
-    }
-    if (!config.private_key?.trim()) {
-      throw new Error('Uber key 文件缺少 private_key');
-    }
-
-    this.keyFilePath = keyFilePath;
-    this.normalizedPrivateKey = this.normalizePrivateKey(config.private_key);
-
-    this.keyConfig = {
-      application_id: config.application_id.trim(),
-      key_id: config.key_id.trim(),
-      private_key: config.private_key,
-      public_key: config.public_key,
-    };
-
-    return this.keyConfig;
-  }
-
-  private normalizePrivateKey(raw: string): string {
-    const normalized = raw.replace(/\r\n/g, '\n').trim();
-
-    const pemPatterns = [
-      {
-        begin: '-----BEGIN PRIVATE KEY-----',
-        end: '-----END PRIVATE KEY-----',
-      },
-      {
-        begin: '-----BEGIN RSA PRIVATE KEY-----',
-        end: '-----END RSA PRIVATE KEY-----',
-      },
-    ];
-
-    const isValidPem = pemPatterns.some(
-      ({ begin, end }) =>
-        normalized.includes(begin) && normalized.includes(end),
-    );
-
-    if (!isValidPem) {
-      throw new Error('Uber private_key 不是合法 PEM 格式');
-    }
-
-    return normalized;
-  }
-
-  private base64UrlEncode(input: string | Buffer): string {
-    return Buffer.from(input)
-      .toString('base64')
-      .replace(/=/g, '')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_');
-  }
-
-  private async buildClientAssertion(): Promise<string> {
-    const keyConfig = await this.readKeyFile();
-    const now = Math.floor(Date.now() / 1000);
-
-    const header = {
-      alg: 'RS256',
-      typ: 'JWT',
-      kid: keyConfig.key_id,
-    };
-
-    const payload = {
-      iss: keyConfig.application_id,
-      sub: keyConfig.application_id,
-      aud: 'auth.uber.com',
-      jti: randomUUID(),
-      iat: now,
-      exp: now + 300,
-    };
-
-    const encodedHeader = this.base64UrlEncode(JSON.stringify(header));
-    const encodedPayload = this.base64UrlEncode(JSON.stringify(payload));
-    const unsignedToken = `${encodedHeader}.${encodedPayload}`;
-
-    const signer = createSign('RSA-SHA256');
-    signer.update(unsignedToken);
-    signer.end();
-
-    const signature = signer.sign(this.normalizedPrivateKey);
-    const encodedSignature = this.base64UrlEncode(signature);
-
-    return `${unsignedToken}.${encodedSignature}`;
+    return { clientId, clientSecret };
   }
 
   private normalizeScopes(scope?: string): string {
-    const raw = (scope?.trim() || this.defaultScopes).trim();
+    const source = (scope || this.defaultAppScopes || '').trim();
 
-    if (!raw) {
-      throw new Error(
-        'Uber scopes 为空，请配置 UBER_EATS_APP_SCOPES 或 UBER_EATS_SCOPES',
-      );
-    }
-
-    const normalized = Array.from(
+    const deduped = Array.from(
       new Set(
-        raw
+        source
           .split(/\s+/)
           .map((item) => item.trim())
           .filter(Boolean),
       ),
-    ).sort();
+    );
 
-    if (!normalized.length) {
-      throw new Error('Uber scopes 无有效内容');
+    if (!deduped.length) {
+      throw new Error('Uber app scopes 不能为空');
     }
 
-    return normalized.join(' ');
+    return deduped.join(' ');
   }
 
   private normalizeMerchantScopes(scope?: string): string {
-    const raw = (
-      scope?.trim() ||
-      this.merchantProvisioningScope ||
-      this.defaultScopes
-    ).trim();
+    const source = (scope || this.defaultMerchantScopes || '').trim();
 
-    if (!raw) {
-      throw new Error(
-        'Uber merchant scopes 为空，请配置 UBER_EATS_USER_AUTH_SCOPES 或 UBER_EATS_MERCHANT_SCOPE',
-      );
-    }
-
-    const normalized = Array.from(
+    const deduped = Array.from(
       new Set(
-        raw
+        source
           .split(/\s+/)
           .map((item) => item.trim())
           .filter(Boolean),
       ),
-    ).sort();
-
-    if (!normalized.length) {
-      throw new Error('Uber merchant scopes 无有效内容');
-    }
-
-    return normalized.join(' ');
-  }
-
-  private maskValue(value?: string | null, keepStart = 4, keepEnd = 4): string {
-    const v = value?.trim();
-    if (!v) return 'missing';
-    if (v.length <= keepStart + keepEnd) return `${v.slice(0, 2)}***`;
-    return `${v.slice(0, keepStart)}***${v.slice(-keepEnd)}`;
-  }
-
-  private async performTokenRequest(
-    params: URLSearchParams,
-  ): Promise<UberTokenResponse> {
-    const grantType = params.get('grant_type') ?? 'missing';
-    const redirectUri = params.get('redirect_uri') ?? 'missing';
-    const scope = params.get('scope') ?? 'missing';
-    const clientId = params.get('client_id') ?? 'missing';
-
-    const hasCode = Boolean(params.get('code'));
-    const hasRefreshToken = Boolean(params.get('refresh_token'));
-    const hasClientSecret = Boolean(params.get('client_secret'));
-    const hasClientAssertion = Boolean(params.get('client_assertion'));
-
-    this.logger.log(
-      `[ubereats token request] endpoint=${this.tokenEndpoint} grantType=${grantType} redirectUri=${redirectUri} scope=${scope} ` +
-        `clientId=${this.maskValue(clientId, 6, 4)} ` +
-        `hasCode=${hasCode} hasRefreshToken=${hasRefreshToken} hasClientSecret=${hasClientSecret} hasClientAssertion=${hasClientAssertion}`,
     );
 
-    const response = await fetch(this.tokenEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        Accept: 'application/json',
-      },
-      body: params.toString(),
-    });
-
-    const responseText = await response.text();
-
-    if (!response.ok) {
-      this.logger.error(
-        `[ubereats token error] endpoint=${this.tokenEndpoint} status=${response.status} ` +
-          `grantType=${grantType} redirectUri=${redirectUri} scope=${scope} ` +
-          `clientId=${this.maskValue(clientId, 6, 4)} body=${responseText.slice(0, 500)}`,
-      );
-
-      throw new Error(
-        `Uber token 获取失败 status=${response.status} body=${responseText.slice(0, 300)}`,
-      );
+    if (!deduped.length) {
+      throw new Error('Uber merchant scopes 不能为空');
     }
 
-    this.logger.log(
-      `[ubereats token success] endpoint=${this.tokenEndpoint} status=${response.status} body=${responseText.slice(0, 200)}`,
-    );
-
-    return JSON.parse(responseText) as UberTokenResponse;
+    return deduped.join(' ');
   }
 
   private resolveMerchantRedirectUri(override?: string): string {
-    const redirectUri = override?.trim() || this.merchantRedirectUri;
+    const redirectUri = (override || this.redirectUri || '').trim();
 
     if (!redirectUri) {
       throw new Error('UBER_EATS_REDIRECT_URI 未配置');
@@ -331,20 +129,75 @@ export class UberAuthService implements OnModuleInit {
     return redirectUri;
   }
 
-  async buildMerchantAuthorizeUrl(
-    state: string,
-    scope?: string,
-  ): Promise<string> {
-    const keyConfig = await this.readKeyFile();
+  private isTokenUsable(entry?: CachedToken | null): entry is CachedToken {
+    return !!entry && Date.now() + this.accessTokenSkewMs < entry.expiresAt;
+  }
+
+  async getAccessToken(scope?: string): Promise<string> {
+    const normalizedScope = this.normalizeScopes(scope);
+
+    const cached = this.tokenCache.get(normalizedScope);
+    if (this.isTokenUsable(cached)) {
+      return cached.accessToken;
+    }
+
+    const inflight = this.inflightTokenRequests.get(normalizedScope);
+    if (inflight) {
+      const shared = await inflight;
+      return shared.accessToken;
+    }
+
+    const request = this.requestAccessToken(normalizedScope)
+      .then((result) => {
+        this.tokenCache.set(normalizedScope, result);
+        return result;
+      })
+      .finally(() => {
+        this.inflightTokenRequests.delete(normalizedScope);
+      });
+
+    this.inflightTokenRequests.set(normalizedScope, request);
+
+    const resolved = await request;
+    return resolved.accessToken;
+  }
+
+  async forceRefreshAccessToken(scope?: string): Promise<string> {
+    const normalizedScope = this.normalizeScopes(scope);
+    this.tokenCache.delete(normalizedScope);
+
+    const fresh = await this.requestAccessToken(normalizedScope);
+    this.tokenCache.set(normalizedScope, fresh);
+
+    return fresh.accessToken;
+  }
+
+  clearAccessTokenCache(scope?: string): void {
+    if (scope?.trim()) {
+      this.tokenCache.delete(this.normalizeScopes(scope));
+      this.inflightTokenRequests.delete(this.normalizeScopes(scope));
+      return;
+    }
+
+    this.tokenCache.clear();
+    this.inflightTokenRequests.clear();
+  }
+
+  buildMerchantAuthorizeUrl(state: string, scope?: string): string {
+    if (!state.trim()) {
+      throw new Error('OAuth state 不能为空');
+    }
+
+    const { clientId } = this.resolveOAuthClientCredentials();
     const resolvedScope = this.normalizeMerchantScopes(scope);
     const redirectUri = this.resolveMerchantRedirectUri();
 
     const params = new URLSearchParams({
-      client_id: keyConfig.application_id,
+      client_id: clientId,
       response_type: 'code',
       redirect_uri: redirectUri,
       scope: resolvedScope,
-      state,
+      state: state.trim(),
     });
 
     return `${this.authorizeEndpoint}?${params.toString()}`;
@@ -359,22 +212,17 @@ export class UberAuthService implements OnModuleInit {
       throw new Error('authorization code 不能为空');
     }
 
-    const keyConfig = await this.readKeyFile();
-    const assertion = await this.buildClientAssertion();
+    const { clientId, clientSecret } = this.resolveOAuthClientCredentials();
     const redirectUri = this.resolveMerchantRedirectUri(redirectUriOverride);
-
-    // 注意：Uber 的 authorization_code 换 token 这里也需要带 scope
     const resolvedScope = this.normalizeMerchantScopes(scopeOverride);
 
     const params = new URLSearchParams({
-      client_id: keyConfig.application_id,
+      client_id: clientId,
+      client_secret: clientSecret,
       grant_type: 'authorization_code',
       code: code.trim(),
       redirect_uri: redirectUri,
       scope: resolvedScope,
-      client_assertion_type:
-        'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
-      client_assertion: assertion,
     });
 
     const data = await this.performTokenRequest(params);
@@ -406,18 +254,15 @@ export class UberAuthService implements OnModuleInit {
       throw new Error('refresh token 不能为空');
     }
 
-    const keyConfig = await this.readKeyFile();
-    const assertion = await this.buildClientAssertion();
+    const { clientId, clientSecret } = this.resolveOAuthClientCredentials();
     const resolvedScope = this.normalizeMerchantScopes(scopeOverride);
 
     const params = new URLSearchParams({
-      client_id: keyConfig.application_id,
+      client_id: clientId,
+      client_secret: clientSecret,
       grant_type: 'refresh_token',
       refresh_token: refreshToken.trim(),
       scope: resolvedScope,
-      client_assertion_type:
-        'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
-      client_assertion: assertion,
     });
 
     const data = await this.performTokenRequest(params);
@@ -441,42 +286,42 @@ export class UberAuthService implements OnModuleInit {
     };
   }
 
-  async getMerchantIdentity(
-    accessToken: string,
-  ): Promise<Record<string, unknown> | null> {
+  async getMerchantIdentity(accessToken: string): Promise<unknown> {
+    if (!accessToken.trim()) {
+      throw new Error('access token 不能为空');
+    }
+
     const response = await fetch(this.merchantIdentityEndpoint, {
       method: 'GET',
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${accessToken.trim()}`,
         Accept: 'application/json',
       },
     });
 
+    const text = await response.text();
+    const data = text ? this.tryParseJson(text) : null;
+
     if (!response.ok) {
-      const errorText = await response.text();
-      this.logger.warn(
-        `[ubereats auth] merchant identity lookup failed status=${response.status} body=${errorText.slice(0, 200)}`,
+      this.logger.error(
+        `[merchant.identity] failed status=${response.status} body=${text || '<empty>'}`,
       );
-      return null;
+      throw new Error(
+        `Uber merchant identity 请求失败 status=${response.status}`,
+      );
     }
 
-    const payload = (await response.json()) as unknown;
-    return payload && typeof payload === 'object'
-      ? (payload as Record<string, unknown>)
-      : null;
+    return data;
   }
 
   private async requestAccessToken(scope: string): Promise<CachedToken> {
-    const keyConfig = await this.readKeyFile();
-    const assertion = await this.buildClientAssertion();
+    const { clientId, clientSecret } = this.resolveOAuthClientCredentials();
 
     const params = new URLSearchParams({
-      client_id: keyConfig.application_id,
+      client_id: clientId,
+      client_secret: clientSecret,
       grant_type: 'client_credentials',
       scope,
-      client_assertion_type:
-        'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
-      client_assertion: assertion,
     });
 
     const data = await this.performTokenRequest(params);
@@ -492,63 +337,50 @@ export class UberAuthService implements OnModuleInit {
         ? data.expires_in
         : 3600;
 
-    const expiresAt = Date.now() + expiresInSec * 1000;
-
-    this.logger.log(
-      `[ubereats auth] access token fetched scope="${scope}" tokenType=${data.token_type ?? 'unknown'} responseScope="${data.scope ?? ''}" expiresAt=${new Date(expiresAt).toISOString()}`,
-    );
-
     return {
       accessToken: data.access_token,
-      expiresAt,
+      expiresAt: Date.now() + expiresInSec * 1000,
     };
   }
 
-  async getAccessToken(scope?: string): Promise<string> {
-    const normalizedScope = this.normalizeScopes(scope);
-    const now = Date.now();
+  private async performTokenRequest(
+    params: URLSearchParams,
+  ): Promise<UberTokenResponse> {
+    const body = params.toString();
 
-    const cached = this.tokenCache.get(normalizedScope);
-    if (cached && now < cached.expiresAt - this.tokenRefreshBufferMs) {
-      return cached.accessToken;
+    this.logger.debug(
+      `[token.request] endpoint=${this.tokenEndpoint} grant_type=${params.get('grant_type') || ''} scope=${params.get('scope') || ''}`,
+    );
+
+    const response = await fetch(this.tokenEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'application/json',
+      },
+      body,
+    });
+
+    const text = await response.text();
+    const data = text ? this.tryParseJson(text) : {};
+
+    if (!response.ok) {
+      this.logger.error(
+        `[token.request] failed status=${response.status} body=${text || '<empty>'}`,
+      );
+      throw new Error(
+        `Uber token 请求失败 status=${response.status} body=${text || '<empty>'}`,
+      );
     }
 
-    const inflight = this.inflightTokenPromises.get(normalizedScope);
-    if (inflight) {
-      const shared = await inflight;
-      return shared.accessToken;
-    }
-
-    const refreshPromise = this.requestAccessToken(normalizedScope)
-      .then((token) => {
-        this.tokenCache.set(normalizedScope, token);
-        return token;
-      })
-      .finally(() => {
-        this.inflightTokenPromises.delete(normalizedScope);
-      });
-
-    this.inflightTokenPromises.set(normalizedScope, refreshPromise);
-
-    const token = await refreshPromise;
-    return token.accessToken;
+    return (data || {}) as UberTokenResponse;
   }
 
-  clearTokenCache(scope?: string): void {
-    if (!scope) {
-      this.tokenCache.clear();
-      this.inflightTokenPromises.clear();
-
-      this.logger.warn('[ubereats auth] token cache cleared for all scopes');
-      return;
+  private tryParseJson(text: string): unknown {
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { raw: text };
     }
-
-    const normalizedScope = this.normalizeScopes(scope);
-    this.tokenCache.delete(normalizedScope);
-    this.inflightTokenPromises.delete(normalizedScope);
-
-    this.logger.warn(
-      `[ubereats auth] token cache cleared scope="${normalizedScope}"`,
-    );
   }
 }

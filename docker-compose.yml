@@ -60,11 +60,9 @@ services:
       UBER_EATS_CLIENT_ID: "ji_NnxmUDZsh1WM_oz07zVZs1j9GKwry"
       UBER_EATS_WEBHOOK_SIGNING_KEY: ${UBER_EATS_WEBHOOK_SIGNING_KEY}
       UBER_EATS_CLIENT_SECRET: ${UBER_EATS_CLIENT_SECRET}
-      UBER_EATS_AUTH_MODE: "asymmetric_key"
-      UBER_EATS_KEY_FILE: "/run/secrets/uber/sandbox_ubereats_key.json"
       UBER_EATS_AUTHORIZE_ENDPOINT: "https://sandbox-login.uber.com/oauth/v2/authorize"
       UBER_EATS_TOKEN_ENDPOINT: "https://sandbox-login.uber.com/oauth/v2/token"
-      UBER_EATS_MERCHANT_IDENTITY_ENDPOINT: "https://test-api.uber.com/v1/me"
+      UBER_EATS_MERCHANT_IDENTITY_ENDPOINT: "https://sandbox-login.uber.com/v3/me"
       UBER_EATS_API_BASE_URL: "https://test-api.uber.com"
       UBER_EATS_APP_SCOPES: "eats.store eats.order"
       UBER_EATS_USER_AUTH_SCOPES: "eats.pos_provisioning"
@@ -103,7 +101,6 @@ services:
       - db
     volumes:
       - ./uploads:/app/uploads
-      - /home/ubuntu/sanq-secrets/uber:/run/secrets/uber:ro
   web:
     build:
       context: .

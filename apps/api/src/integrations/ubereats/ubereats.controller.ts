@@ -129,13 +129,13 @@ export class UberEatsController {
   constructor(private readonly uberEatsService: UberEatsService) {}
 
   @Get('oauth/connect-url')
-  async oauthConnectUrl() {
+  oauthConnectUrl() {
     return this.uberEatsService.buildMerchantAuthorizeUrl();
   }
 
   @Get('oauth/start')
-  async oauthStart(@Res() res: Response) {
-    const result = await this.uberEatsService.startMerchantOAuth();
+  oauthStart(@Res() res: Response) {
+    const result = this.uberEatsService.startMerchantOAuth();
     return res.redirect(result.authorizeUrl);
   }
 
@@ -159,7 +159,18 @@ export class UberEatsController {
       state,
     );
 
-    return `Uber 授权成功，商户 ${result.merchantUberUserId} 已连接。你现在可以关闭窗口，并继续调用 /oauth/stores 与 /oauth/provision。`;
+    return `
+<!doctype html>
+<html lang="zh-CN">
+  <body>
+    <h2>Uber 授权成功</h2>
+    <p>merchantUberUserId: ${result.merchantUberUserId}</p>
+    <p>scope: ${result.scope ?? ''}</p>
+    <p>expiresAt: ${result.expiresAt ? new Date(result.expiresAt).toISOString() : 'unknown'}</p>
+    <p>你现在可以关闭此页面，并继续调用 /integrations/ubereats/oauth/stores 或 /integrations/ubereats/oauth/provision。</p>
+  </body>
+</html>
+`;
   }
 
   @Get('oauth/stores')
