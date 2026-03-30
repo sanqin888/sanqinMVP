@@ -30,7 +30,7 @@ describe('UberAuthService', () => {
   it('getAccessToken 会命中缓存，未过期时不重复请求', async () => {
     const service = new UberAuthService();
     const now = Date.now();
-    const normalizedScope = 'eats.order eats.store';
+    const normalizedScope = (service as never).normalizeScopes();
 
     Reflect.set(
       service,
