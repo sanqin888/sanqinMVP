@@ -30,14 +30,14 @@ describe('UberAuthService', () => {
   it('getAccessToken 会命中缓存，未过期时不重复请求', async () => {
     const service = new UberAuthService();
     const now = Date.now();
-    const normalizedScope = (service as never).normalizeScopes();
+    const scope = 'eats.store eats.order';
 
     Reflect.set(
       service,
       'tokenCache',
       new Map([
         [
-          normalizedScope,
+          scope,
           {
             accessToken: 'token_cached',
             expiresAt: now + 10 * 60 * 1000,
@@ -46,7 +46,7 @@ describe('UberAuthService', () => {
       ]),
     );
 
-    await expect(service.getAccessToken()).resolves.toBe('token_cached');
+    await expect(service.getAccessToken(scope)).resolves.toBe('token_cached');
   });
 
   it('token 过期时会刷新并缓存', async () => {
