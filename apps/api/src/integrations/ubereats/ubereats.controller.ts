@@ -139,28 +139,28 @@ export class UberEatsController {
     return res.redirect(result.authorizeUrl);
   }
 
-@Get('oauth/callback')
-@Header('Content-Type', 'text/html; charset=utf-8')
-async oauthCallback(
-  @Query('code') code?: string,
-  @Query('state') state?: string,
-  @Req() req?: Request,
-) {
-  this.logger.log(
-    `[ubereats oauth callback] code=${code ?? 'missing'} state=${state ?? 'missing'} query=${JSON.stringify(req?.query ?? {})}`,
-  );
-
-  if (!code) {
-    return 'Uber 授权失败：缺少 code。';
-  }
-
-  try {
-    const result = await this.uberEatsService.exchangeAuthorizationCode(
-      code,
-      state,
+  @Get('oauth/callback')
+  @Header('Content-Type', 'text/html; charset=utf-8')
+  async oauthCallback(
+    @Query('code') code?: string,
+    @Query('state') state?: string,
+    @Req() req?: Request,
+  ) {
+    this.logger.log(
+      `[ubereats oauth callback] code=${code ?? 'missing'} state=${state ?? 'missing'} query=${JSON.stringify(req?.query ?? {})}`,
     );
 
-    return `
+    if (!code) {
+      return 'Uber 授权失败：缺少 code。';
+    }
+
+    try {
+      const result = await this.uberEatsService.exchangeAuthorizationCode(
+        code,
+        state,
+      );
+
+      return `
 <!doctype html>
 <html lang="zh-CN">
   <body>
@@ -174,16 +174,15 @@ async oauthCallback(
   </body>
 </html>
 `;
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : 'Unknown error';
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
 
-    this.logger.error(
-      `[ubereats oauth callback] failed error=${message}`,
-      error instanceof Error ? error.stack : undefined,
-    );
+      this.logger.error(
+        `[ubereats oauth callback] failed error=${message}`,
+        error instanceof Error ? error.stack : undefined,
+      );
 
-    return `
+      return `
 <!doctype html>
 <html lang="zh-CN">
   <body>
@@ -192,8 +191,8 @@ async oauthCallback(
   </body>
 </html>
 `;
+    }
   }
-}
 
   @Get('oauth/stores')
   async oauthStores(
