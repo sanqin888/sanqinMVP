@@ -37,18 +37,13 @@ describe('UberEatsService', () => {
       forceRefreshAccessToken: jest
         .fn()
         .mockResolvedValue('token_debug_1234567890'),
-      normalizeScopesToArray: jest
-        .fn()
-        .mockImplementation((scope?: string) => {
-          if (!scope?.trim()) {
-            return ['eats.store.orders.read'];
-          }
+      normalizeScopesToArray: jest.fn().mockImplementation((scope?: string) => {
+        if (!scope?.trim()) {
+          return ['eats.store.orders.read'];
+        }
 
-          return scope
-            .trim()
-            .split(/\s+/)
-            .filter(Boolean);
-        }),
+        return scope.trim().split(/\s+/).filter(Boolean);
+      }),
       buildMerchantAuthorizeUrl: jest
         .fn()
         .mockResolvedValue(
