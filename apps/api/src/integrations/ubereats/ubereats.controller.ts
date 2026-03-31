@@ -168,8 +168,6 @@ export class UberEatsController {
     <p>merchantUberUserId: ${result.merchantUberUserId}</p>
     <p>scope: ${result.scope ?? ''}</p>
     <p>expiresAt: ${result.expiresAt ? new Date(result.expiresAt).toISOString() : 'unknown'}</p>
-    <p>identityResolved: ${result.identityResolved ? 'true' : 'false'}</p>
-    <p>identityLookupError: ${result.identityLookupError ?? ''}</p>
     <p>你现在可以关闭此页面，并继续调用 /integrations/ubereats/oauth/stores 或 /integrations/ubereats/oauth/provision。</p>
   </body>
 </html>
