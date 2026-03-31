@@ -62,7 +62,7 @@ services:
       UBER_EATS_CLIENT_SECRET: ${UBER_EATS_CLIENT_SECRET}
       UBER_EATS_AUTHORIZE_ENDPOINT: "https://sandbox-login.uber.com/oauth/v2/authorize"
       UBER_EATS_TOKEN_ENDPOINT: "https://sandbox-login.uber.com/oauth/v2/token"
-      UBER_EATS_MERCHANT_IDENTITY_ENDPOINT: "https://sandbox-login.uber.com/v3/me"
+      UBER_EATS_MERCHANT_IDENTITY_ENDPOINT: "https://api.uber.com/v3/me"
       UBER_EATS_API_BASE_URL: "https://test-api.uber.com"
       UBER_EATS_APP_SCOPES: "eats.store eats.order"
       UBER_EATS_USER_AUTH_SCOPES: "eats.pos_provisioning"
