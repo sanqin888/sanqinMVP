@@ -21,6 +21,7 @@ import {
   UberOpsTicketType,
 } from '@prisma/client';
 import {
+  IsArray,
   IsBoolean,
   IsEnum,
   IsInt,
@@ -92,6 +93,25 @@ class ProvisionUberStoreDto {
 
   @IsOptional()
   payload?: Record<string, unknown>;
+}
+
+class VerifyUberScopesDto {
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  scopes?: string[];
+
+  @IsOptional()
+  @IsString()
+  storeId?: string;
+
+  @IsOptional()
+  @IsString()
+  orderId?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  forceRefresh?: boolean;
 }
 
 class CreateUberOpsTicketDto {
@@ -214,13 +234,27 @@ export class UberEatsController {
   }
 
   @Get('debug/token')
-  async debugAccessToken() {
-    return this.uberEatsService.debugAccessToken();
+  async debugAccessToken(
+    @Query('scope') scope?: string,
+    @Query('forceRefresh') forceRefresh?: string,
+  ) {
+    const shouldForceRefresh =
+      forceRefresh === 'true' || forceRefresh === '1';
+    return this.uberEatsService.debugAccessToken(scope, shouldForceRefresh);
   }
 
   @Get('debug/created-orders')
   async debugCreatedOrders(@Query('storeId') storeId?: string) {
     return this.uberEatsService.debugCreatedOrders(storeId);
+  }
+
+  @Post('debug/scopes/verify')
+  async verifyScopes(@Body() dto: VerifyUberScopesDto) {
+    return this.uberEatsService.verifyScopes(dto.scopes, {
+      storeId: dto.storeId,
+      orderId: dto.orderId,
+      forceRefresh: dto.forceRefresh,
+    });
   }
 
   @Get('webhook')

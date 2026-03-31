@@ -78,9 +78,32 @@ export class UberAuthService {
   }
 
   private normalizeScopes(scope?: string): string {
-    const source = (scope || this.defaultAppScopes || '').trim();
+    const deduped = this.normalizeScopesToArray(scope);
 
-    const deduped = Array.from(
+    if (!deduped.length) {
+      throw new Error('Uber app scopes 不能为空');
+    }
+
+    return deduped.join(' ');
+  }
+
+  getDefaultAppScopes(): string[] {
+    return Array.from(
+      new Set(
+        (this.defaultAppScopes || '')
+          .split(/\s+/)
+          .map((item) => item.trim())
+          .filter(Boolean),
+      ),
+    );
+  }
+
+  normalizeScopesToArray(scope?: string): string[] {
+    const source = (
+      scope?.trim() ? scope : this.defaultAppScopes || ''
+    ).trim();
+
+    return Array.from(
       new Set(
         source
           .split(/\s+/)
@@ -88,12 +111,6 @@ export class UberAuthService {
           .filter(Boolean),
       ),
     );
-
-    if (!deduped.length) {
-      throw new Error('Uber app scopes 不能为空');
-    }
-
-    return deduped.join(' ');
   }
 
   private normalizeMerchantScopes(scope?: string): string {
