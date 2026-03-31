@@ -42,7 +42,7 @@ export class UberAuthService {
 
   private readonly merchantIdentityEndpoint =
     process.env.UBER_EATS_MERCHANT_IDENTITY_ENDPOINT?.trim() ||
-    'https://auth.uber.com/v3/me';
+    'https://api.uber.com/v3/me';
 
   private readonly defaultAppScopes =
     process.env.UBER_EATS_APP_SCOPES?.trim() ||
