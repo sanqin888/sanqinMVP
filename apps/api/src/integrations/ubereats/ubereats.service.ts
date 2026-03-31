@@ -291,46 +291,7 @@ export class UberEatsService {
       `[ubereats oauth] accessToken=${tokenResult.accessToken.slice(0, 16)}...${tokenResult.accessToken.slice(-10)} scope=${tokenResult.scope ?? 'null'} tokenType=${tokenResult.tokenType ?? 'null'} expiresAt=${tokenResult.expiresAt?.toISOString() ?? 'null'}`,
     );
 
-    let identityObj: Record<string, any> | null = null;
-    let merchantUberUserId: string | null = null;
-    let identityResolved = false;
-    let identityLookupError: string | null = null;
-
-    try {
-      const identity = await this.uberAuthService.getMerchantIdentity(
-        tokenResult.accessToken,
-      );
-
-      identityObj = this.asObject(identity);
-
-      merchantUberUserId =
-        this.readString(
-          identityObj?.user_id,
-          identityObj?.id,
-          identityObj?.sub,
-          this.asObject(identityObj?.user)?.id,
-          this.asObject(identityObj?.merchant)?.id,
-        ) ?? null;
-
-      identityResolved = !!merchantUberUserId;
-
-      if (!merchantUberUserId) {
-        this.logger.warn(
-          `[ubereats oauth] merchant identity lookup returned no usable id identity=${JSON.stringify(identityObj ?? {})}`,
-        );
-      }
-    } catch (error) {
-      identityLookupError =
-        error instanceof Error ? error.message : String(error);
-
-      this.logger.warn(
-        `[ubereats oauth] merchant identity lookup failed err=${identityLookupError}`,
-      );
-    }
-
-    if (!merchantUberUserId) {
-      merchantUberUserId = `unknown:${randomUUID()}`;
-    }
+    const merchantUberUserId = `oauth:${randomUUID()}`;
 
     const connection = await this.upsertMerchantConnection({
       merchantUberUserId,
@@ -348,8 +309,6 @@ export class UberEatsService {
       scope: tokenResult.scope ?? '',
       tokenType: tokenResult.tokenType ?? '',
       expiresAt: tokenResult.expiresAt?.toISOString() ?? null,
-      identityResolved,
-      identityLookupError: identityLookupError ?? null,
     });
 
     return {
@@ -359,9 +318,6 @@ export class UberEatsService {
       tokenType: tokenResult.tokenType,
       expiresAt: tokenResult.expiresAt,
       connectedAt: connection.connectedAt,
-      identity: identityObj,
-      identityResolved,
-      identityLookupError,
     };
   }
 
@@ -409,16 +365,16 @@ export class UberEatsService {
       merchantUberUserId,
       accessToken,
     );
-    const requestBody = {
-      ...payload,
-      store_id: storeId.trim(),
-    };
-    const response = await this.callUberApi('/v1/eats/stores/provision', {
-      accessToken: connection.accessToken,
-      method: 'POST',
-      body: requestBody,
-    });
-
+    const response = await this.callUberApi(
+      `/v1/eats/stores/${encodeURIComponent(storeId.trim())}/pos_data`,
+      {
+        method: 'POST',
+        accessToken: connection.accessToken,
+        body: {
+          ...payload,
+        },
+      },
+    );
     const mapping = await this.upsertStoreMapping({
       merchantUberUserId: connection.merchantUberUserId,
       uberStoreId: storeId.trim(),

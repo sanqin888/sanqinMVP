@@ -40,10 +40,6 @@ export class UberAuthService {
     process.env.UBER_EATS_AUTHORIZE_ENDPOINT?.trim() ||
     'https://auth.uber.com/oauth/v2/authorize';
 
-  private readonly merchantIdentityEndpoint =
-    process.env.UBER_EATS_MERCHANT_IDENTITY_ENDPOINT?.trim() ||
-    'https://api.uber.com/v3/me';
-
   private readonly defaultAppScopes =
     process.env.UBER_EATS_APP_SCOPES?.trim() ||
     process.env.UBER_EATS_SCOPES?.trim() ||
@@ -284,34 +280,6 @@ export class UberAuthService {
       tokenType: data.token_type?.trim() || null,
       raw: data,
     };
-  }
-
-  async getMerchantIdentity(accessToken: string): Promise<unknown> {
-    if (!accessToken.trim()) {
-      throw new Error('access token 不能为空');
-    }
-
-    const response = await fetch(this.merchantIdentityEndpoint, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${accessToken.trim()}`,
-        Accept: 'application/json',
-      },
-    });
-
-    const text = await response.text();
-    const data = text ? this.tryParseJson(text) : null;
-
-    if (!response.ok) {
-      this.logger.error(
-        `[merchant.identity] failed status=${response.status} body=${text || '<empty>'}`,
-      );
-      throw new Error(
-        `Uber merchant identity 请求失败 status=${response.status}`,
-      );
-    }
-
-    return data;
   }
 
   private async requestAccessToken(scope: string): Promise<CachedToken> {
