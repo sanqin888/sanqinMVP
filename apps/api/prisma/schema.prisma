@@ -1061,6 +1061,18 @@ model AnalyticsEvent {
   @@index([occurredAt])
 }
 
+model OpsEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  eventName  String
+  source     String
+  payload    Json?
+  occurredAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@index([source, eventName, occurredAt])
+  @@index([occurredAt])
+}
+
 model UberMerchantConnection {
   id                 String    @id @default(uuid()) @db.Uuid
   merchantUberUserId String    @unique

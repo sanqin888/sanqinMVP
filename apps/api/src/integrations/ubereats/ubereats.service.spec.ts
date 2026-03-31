@@ -73,7 +73,7 @@ describe('UberEatsService', () => {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ orderStableId: 'ord_uber_2' }),
       },
-      analyticsEvent: {
+      opsEvent: {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue(null),
       },
@@ -113,7 +113,7 @@ describe('UberEatsService', () => {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ orderStableId: 'ord_uber_1' }),
       },
-      analyticsEvent: {
+      opsEvent: {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue(null),
       },
@@ -304,7 +304,7 @@ describe('UberEatsService', () => {
           provisionedAt: new Date('2026-03-19T00:00:00Z'),
         }),
       },
-      analyticsEvent: {
+      opsEvent: {
         create: jest.fn().mockResolvedValue(null),
       },
     };
@@ -327,7 +327,7 @@ describe('UberEatsService', () => {
       order: {
         findUnique: jest.fn().mockResolvedValue(null),
       },
-      analyticsEvent: {
+      opsEvent: {
         create: jest.fn().mockResolvedValue(null),
       },
     };
@@ -354,7 +354,7 @@ describe('UberEatsService', () => {
             { menuItemStableId: 'm1', priceCents: 1200, isAvailable: false },
           ]),
       },
-      analyticsEvent: {
+      opsEvent: {
         create: jest.fn().mockResolvedValue(null),
       },
     };
@@ -379,7 +379,7 @@ describe('UberEatsService', () => {
           { status: 'pending', totalCents: 500 },
         ]),
       },
-      analyticsEvent: {
+      opsEvent: {
         count: jest.fn().mockResolvedValue(2),
         create: jest.fn().mockResolvedValue(null),
       },
@@ -433,7 +433,7 @@ describe('UberEatsService', () => {
           updatedAt: new Date('2026-01-01T00:00:00Z'),
         }),
       },
-      analyticsEvent: {
+      opsEvent: {
         create: jest.fn().mockResolvedValue(null),
       },
     };
@@ -455,7 +455,7 @@ describe('UberEatsService', () => {
           createdAt: new Date('2026-01-01T00:00:00Z'),
         }),
       },
-      analyticsEvent: {
+      opsEvent: {
         create: jest.fn().mockResolvedValue(null),
       },
     };
