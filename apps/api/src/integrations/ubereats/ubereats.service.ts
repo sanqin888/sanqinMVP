@@ -61,6 +61,24 @@ type GenerateReconciliationReportInput = UberStoreScopedInput & {
   rangeEnd?: string;
 };
 
+type VerifyScopeInput = {
+  storeId?: string;
+  orderId?: string;
+  dryRun?: boolean;
+  forceRefresh?: boolean;
+};
+
+type ScopeVerificationResult = {
+  scope: string;
+  tokenIssued: boolean;
+  tokenError?: string;
+  apiValidated?: boolean;
+  apiSkipped?: boolean;
+  reason?: string;
+  status?: number;
+  detail?: string;
+};
+
 type UberMerchantStore = {
   storeId: string;
   storeName: string | null;
@@ -183,15 +201,23 @@ export class UberEatsService {
     return prismaWithUber.uberStoreMapping ?? null;
   }
 
-  async debugAccessToken() {
-    const scope = 'eats.store.orders.read';
-    const token = await this.uberAuthService.getAccessToken(scope);
+  async debugAccessToken(scope?: string, forceRefresh = false) {
+    const normalizedScopes = this.uberAuthService.normalizeScopesToArray(scope);
+    const normalizedScope = normalizedScopes.join(' ');
+    const usedDefaultScopes = !scope?.trim();
+    const token = forceRefresh
+      ? await this.uberAuthService.forceRefreshAccessToken(scope)
+      : await this.uberAuthService.getAccessToken(scope);
 
     return {
       ok: true,
-      requestedScope: scope,
+      requestedScope: scope?.trim() || null,
+      normalizedScope,
       tokenPrefix: token.slice(0, 12),
       tokenLength: token.length,
+      usedDefaultScopes,
+      forceRefreshed: forceRefresh,
+      cached: !forceRefresh ? 'cache_or_fetch' : 'skipped_by_force_refresh',
     };
   }
 
@@ -259,6 +285,135 @@ export class UberEatsService {
         currentState: order.current_state,
         placedAt: order.placed_at,
       })),
+    };
+  }
+
+  async verifyScope(
+    scope: string,
+    input: VerifyScopeInput = {},
+  ): Promise<ScopeVerificationResult> {
+    const normalizedScope = scope.trim();
+    if (!normalizedScope) {
+      throw new BadRequestException('scope 不能为空');
+    }
+
+    let token = '';
+    try {
+      token = input.forceRefresh
+        ? await this.uberAuthService.forceRefreshAccessToken(normalizedScope)
+        : await this.uberAuthService.getAccessToken(normalizedScope);
+    } catch (error) {
+      return {
+        scope: normalizedScope,
+        tokenIssued: false,
+        tokenError: error instanceof Error ? error.message : String(error),
+      };
+    }
+
+    const baseResult: ScopeVerificationResult = {
+      scope: normalizedScope,
+      tokenIssued: true,
+    };
+
+    if (normalizedScope === 'eats.store') {
+      const storeId = this.resolveDebugStoreId(input.storeId);
+      return await this.verifyScopeByRequest(
+        baseResult,
+        `/v1/eats/stores/${encodeURIComponent(storeId)}`,
+        token,
+      );
+    }
+
+    if (normalizedScope === 'eats.store.orders.read') {
+      try {
+        const payload = await this.debugCreatedOrders(input.storeId);
+        return {
+          ...baseResult,
+          apiValidated: true,
+          status: 200,
+          detail: `created-orders count=${payload.orderCount}`,
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          ...baseResult,
+          apiValidated: false,
+          detail: message,
+        };
+      }
+    }
+
+    if (normalizedScope === 'eats.store.status.write') {
+      if (input.dryRun !== false) {
+        return {
+          ...baseResult,
+          apiSkipped: true,
+          reason: 'dryRun=true，跳过真实状态写入',
+        };
+      }
+
+      const storeId = this.resolveDebugStoreId(input.storeId);
+      return await this.verifyScopeByRequest(
+        baseResult,
+        `/v1/eats/stores/${encodeURIComponent(storeId)}/status`,
+        token,
+        'POST',
+        { is_paused: false },
+      );
+    }
+
+    if (normalizedScope === 'eats.order') {
+      if (!input.orderId?.trim()) {
+        return {
+          ...baseResult,
+          apiSkipped: true,
+          reason: 'missing orderId',
+        };
+      }
+
+      return await this.verifyScopeByRequest(
+        baseResult,
+        `/v1/eats/orders/${encodeURIComponent(input.orderId.trim())}/accept-pos-order`,
+        token,
+        'POST',
+        {},
+      );
+    }
+
+    if (normalizedScope === 'eats.report') {
+      return {
+        ...baseResult,
+        apiSkipped: true,
+        reason: 'reporting endpoint 待接入',
+      };
+    }
+
+    return {
+      ...baseResult,
+      apiSkipped: true,
+      reason: '未配置该 scope 的最小 API 校验',
+    };
+  }
+
+  async verifyScopes(scopes?: string[], input: VerifyScopeInput = {}) {
+    const requestedScopes =
+      scopes?.filter((scope) => typeof scope === 'string' && scope.trim()) ?? [];
+    const finalScopes =
+      requestedScopes.length > 0
+        ? requestedScopes
+        : this.uberAuthService.getDefaultAppScopes();
+
+    const results: ScopeVerificationResult[] = [];
+    for (const scope of finalScopes) {
+      // eslint-disable-next-line no-await-in-loop
+      const result = await this.verifyScope(scope, input);
+      results.push(result);
+    }
+
+    return {
+      ok: results.every((item) => item.tokenIssued),
+      storeId: input.storeId?.trim() || process.env.UBER_EATS_STORE_ID?.trim() || null,
+      results,
     };
   }
 
@@ -1253,6 +1408,42 @@ export class UberEatsService {
     }
 
     return this.asObject(parsed) ?? {};
+  }
+
+  private async verifyScopeByRequest(
+    baseResult: ScopeVerificationResult,
+    path: string,
+    token: string,
+    method: 'GET' | 'POST' = 'GET',
+    body?: Record<string, unknown>,
+  ): Promise<ScopeVerificationResult> {
+    const response = await fetch(`${this.uberApiBaseUrl.replace(/\/$/, '')}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+
+    const rawText = await response.text();
+    const parsed = this.tryParseJson(rawText);
+
+    if (!response.ok) {
+      return {
+        ...baseResult,
+        apiValidated: false,
+        status: response.status,
+        detail: this.summarizeDebugResponse(parsed, rawText),
+      };
+    }
+
+    return {
+      ...baseResult,
+      apiValidated: true,
+      status: response.status,
+    };
   }
 
   private extractMerchantStores(
