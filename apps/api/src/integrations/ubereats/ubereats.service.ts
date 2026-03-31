@@ -281,60 +281,90 @@ export class UberEatsService {
     return this.buildMerchantAuthorizeUrl();
   }
 
-  async exchangeAuthorizationCode(code: string, state?: string) {
-    this.verifyOAuthState(state);
+async exchangeAuthorizationCode(code: string, state?: string) {
+  this.verifyOAuthState(state);
 
-    const tokenResult =
-      await this.uberAuthService.exchangeAuthorizationCode(code);
+  const tokenResult =
+    await this.uberAuthService.exchangeAuthorizationCode(code);
 
+  this.logger.log(
+    `[ubereats oauth] accessToken=${tokenResult.accessToken.slice(0, 16)}...${tokenResult.accessToken.slice(-10)} scope=${tokenResult.scope ?? 'null'} tokenType=${tokenResult.tokenType ?? 'null'} expiresAt=${tokenResult.expiresAt?.toISOString() ?? 'null'}`,
+  );
+
+  let identityObj: Record<string, any> | null = null;
+  let merchantUberUserId: string | null = null;
+  let identityResolved = false;
+  let identityLookupError: string | null = null;
+
+  try {
     const identity = await this.uberAuthService.getMerchantIdentity(
       tokenResult.accessToken,
     );
-    const identityObj = this.asObject(identity);
 
-    const merchantUberUserId =
+    identityObj = this.asObject(identity);
+
+    merchantUberUserId =
       this.readString(
         identityObj?.user_id,
         identityObj?.id,
         identityObj?.sub,
         this.asObject(identityObj?.user)?.id,
         this.asObject(identityObj?.merchant)?.id,
-      ) ?? `unknown:${randomUUID()}`;
+      ) ?? null;
 
-    if (merchantUberUserId.startsWith('unknown:')) {
+    identityResolved = !!merchantUberUserId;
+
+    if (!merchantUberUserId) {
       this.logger.warn(
-        `[ubereats oauth] unable to resolve merchant id identity=${JSON.stringify(identityObj ?? {})}`,
+        `[ubereats oauth] merchant identity lookup returned no usable id identity=${JSON.stringify(identityObj ?? {})}`,
       );
     }
+  } catch (error) {
+    identityLookupError =
+      error instanceof Error ? error.message : String(error);
 
-    const connection = await this.upsertMerchantConnection({
-      merchantUberUserId,
-      accessToken: tokenResult.accessToken,
-      refreshToken: tokenResult.refreshToken,
-      expiresAt: tokenResult.expiresAt,
-      scope: tokenResult.scope,
-      tokenType: tokenResult.tokenType,
-      connectedAt: new Date(),
-      rawStoresSnapshot: null,
-    });
-
-    await this.captureEvent('ubereats_merchant_oauth_connected', {
-      merchantUberUserId,
-      scope: tokenResult.scope ?? '',
-      tokenType: tokenResult.tokenType ?? '',
-      expiresAt: tokenResult.expiresAt?.toISOString() ?? null,
-    });
-
-    return {
-      ok: true,
-      merchantUberUserId,
-      scope: tokenResult.scope,
-      tokenType: tokenResult.tokenType,
-      expiresAt: tokenResult.expiresAt,
-      connectedAt: connection.connectedAt,
-      identity: identityObj,
-    };
+    this.logger.warn(
+      `[ubereats oauth] merchant identity lookup failed err=${identityLookupError}`,
+    );
   }
+
+  if (!merchantUberUserId) {
+    merchantUberUserId = `unknown:${randomUUID()}`;
+  }
+
+  const connection = await this.upsertMerchantConnection({
+    merchantUberUserId,
+    accessToken: tokenResult.accessToken,
+    refreshToken: tokenResult.refreshToken,
+    expiresAt: tokenResult.expiresAt,
+    scope: tokenResult.scope,
+    tokenType: tokenResult.tokenType,
+    connectedAt: new Date(),
+    rawStoresSnapshot: null,
+  });
+
+  await this.captureEvent('ubereats_merchant_oauth_connected', {
+    merchantUberUserId,
+    scope: tokenResult.scope ?? '',
+    tokenType: tokenResult.tokenType ?? '',
+    expiresAt: tokenResult.expiresAt?.toISOString() ?? null,
+    identityResolved,
+    identityLookupError: identityLookupError ?? null,
+  });
+
+  return {
+    ok: true,
+    merchantUberUserId,
+    scope: tokenResult.scope,
+    tokenType: tokenResult.tokenType,
+    expiresAt: tokenResult.expiresAt,
+    connectedAt: connection.connectedAt,
+    identity: identityObj,
+    identityResolved,
+    identityLookupError,
+  };
+}
+
   async getMerchantStores(accessToken?: string, merchantUberUserId?: string) {
     const connection = await this.resolveMerchantConnection(
       merchantUberUserId,

@@ -139,21 +139,22 @@ export class UberEatsController {
     return res.redirect(result.authorizeUrl);
   }
 
-  @Get('oauth/callback')
-  @Header('Content-Type', 'text/html; charset=utf-8')
-  async oauthCallback(
-    @Query('code') code?: string,
-    @Query('state') state?: string,
-    @Req() req?: Request,
-  ) {
-    this.logger.log(
-      `[ubereats oauth callback] code=${code ?? 'missing'} state=${state ?? 'missing'} query=${JSON.stringify(req?.query ?? {})}`,
-    );
+@Get('oauth/callback')
+@Header('Content-Type', 'text/html; charset=utf-8')
+async oauthCallback(
+  @Query('code') code?: string,
+  @Query('state') state?: string,
+  @Req() req?: Request,
+) {
+  this.logger.log(
+    `[ubereats oauth callback] code=${code ?? 'missing'} state=${state ?? 'missing'} query=${JSON.stringify(req?.query ?? {})}`,
+  );
 
-    if (!code) {
-      return 'Uber 授权失败：缺少 code。';
-    }
+  if (!code) {
+    return 'Uber 授权失败：缺少 code。';
+  }
 
+  try {
     const result = await this.uberEatsService.exchangeAuthorizationCode(
       code,
       state,
@@ -167,11 +168,32 @@ export class UberEatsController {
     <p>merchantUberUserId: ${result.merchantUberUserId}</p>
     <p>scope: ${result.scope ?? ''}</p>
     <p>expiresAt: ${result.expiresAt ? new Date(result.expiresAt).toISOString() : 'unknown'}</p>
+    <p>identityResolved: ${result.identityResolved ? 'true' : 'false'}</p>
+    <p>identityLookupError: ${result.identityLookupError ?? ''}</p>
     <p>你现在可以关闭此页面，并继续调用 /integrations/ubereats/oauth/stores 或 /integrations/ubereats/oauth/provision。</p>
   </body>
 </html>
 `;
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : 'Unknown error';
+
+    this.logger.error(
+      `[ubereats oauth callback] failed error=${message}`,
+      error instanceof Error ? error.stack : undefined,
+    );
+
+    return `
+<!doctype html>
+<html lang="zh-CN">
+  <body>
+    <h2>Uber 授权失败</h2>
+    <p>${message}</p>
+  </body>
+</html>
+`;
   }
+}
 
   @Get('oauth/stores')
   async oauthStores(
