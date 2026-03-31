@@ -799,7 +799,7 @@ export class UberEatsService {
           totalCents: true,
         },
       }),
-      this.prisma.analyticsEvent.count({
+      this.prisma.opsEvent.count({
         where: {
           source: 'ubereats',
           eventName: {
@@ -1772,7 +1772,7 @@ export class UberEatsService {
   }
 
   private async captureEvent(eventName: string, payload: Prisma.JsonObject) {
-    await this.prisma.analyticsEvent.create({
+    await this.prisma.opsEvent.create({
       data: {
         eventName,
         source: 'ubereats',
@@ -1852,7 +1852,7 @@ export class UberEatsService {
   }
 
   private async hasSeenWebhookEvent(eventId: string): Promise<boolean> {
-    const row = await this.prisma.analyticsEvent.findFirst({
+    const row = await this.prisma.opsEvent.findFirst({
       where: {
         source: 'ubereats',
         eventName: 'ubereats_webhook_processed',
