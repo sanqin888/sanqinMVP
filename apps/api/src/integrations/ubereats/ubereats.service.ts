@@ -293,6 +293,10 @@ export class UberEatsService {
 
     const merchantUberUserId = `oauth:${randomUUID()}`;
 
+    if (!merchantUberUserId) {
+      merchantUberUserId = `unknown:${randomUUID()}`;
+    }
+
     const connection = await this.upsertMerchantConnection({
       merchantUberUserId,
       accessToken: tokenResult.accessToken,
@@ -309,6 +313,8 @@ export class UberEatsService {
       scope: tokenResult.scope ?? '',
       tokenType: tokenResult.tokenType ?? '',
       expiresAt: tokenResult.expiresAt?.toISOString() ?? null,
+      identityResolved,
+      identityLookupError: identityLookupError ?? null,
     });
 
     return {
