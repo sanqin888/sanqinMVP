@@ -199,7 +199,7 @@ export class UberEatsController {
     @Query('accessToken') accessToken?: string,
     @Query('merchantUberUserId') merchantUberUserId?: string,
   ) {
-    return this.uberEatsService.getMerchantStores(
+    return await this.uberEatsService.getMerchantStores(
       accessToken,
       merchantUberUserId,
     );
@@ -207,7 +207,7 @@ export class UberEatsController {
 
   @Post('oauth/provision')
   async oauthProvision(@Body() dto: ProvisionUberStoreDto) {
-    return this.uberEatsService.provisionStore(
+    return await this.uberEatsService.provisionStore(
       dto.accessToken,
       dto.storeId,
       dto.payload ?? {},
@@ -276,22 +276,25 @@ export class UberEatsController {
     @Param('externalOrderId') externalOrderId: string,
     @Body('status', new ParseEnumPipe(OrderStatus)) status: OrderStatus,
   ) {
-    return this.uberEatsService.syncOrderStatusToUber(externalOrderId, status);
+    return await this.uberEatsService.syncOrderStatusToUber(
+      externalOrderId,
+      status,
+    );
   }
 
   @Get('orders/pending')
   async listPendingOrders() {
-    return this.uberEatsService.listPendingUberOrders();
+    return await this.uberEatsService.listPendingUberOrders();
   }
 
   @Post('store/status/sync')
   async syncStoreStatus() {
-    return this.uberEatsService.syncStoreStatusToUber();
+    return await this.uberEatsService.syncStoreStatusToUber();
   }
 
   @Get('price-book')
   async getPriceBook(@Query('storeId') storeId?: string) {
-    return this.uberEatsService.listUberPriceBook(storeId);
+    return await this.uberEatsService.listUberPriceBook(storeId);
   }
 
   @Post('price-book/items/:menuItemStableId')
@@ -300,7 +303,7 @@ export class UberEatsController {
     @Body() dto: UpsertUberPriceBookItemDto,
     @Query('storeId') storeId?: string,
   ) {
-    return this.uberEatsService.upsertUberPriceBookItem({
+    return await this.uberEatsService.upsertUberPriceBookItem({
       storeId,
       menuItemStableId,
       priceCents: dto.priceCents,
@@ -310,7 +313,7 @@ export class UberEatsController {
 
   @Post('menu/publish')
   async publishMenu(@Body() dto: PublishUberMenuDto) {
-    return this.uberEatsService.publishUberMenu({
+    return await this.uberEatsService.publishUberMenu({
       storeId: dto.storeId,
       dryRun: dto.dryRun,
     });
@@ -321,7 +324,7 @@ export class UberEatsController {
     @Param('menuItemStableId') menuItemStableId: string,
     @Body() dto: SyncUberMenuItemAvailabilityDto,
   ) {
-    return this.uberEatsService.syncMenuItemAvailability({
+    return await this.uberEatsService.syncMenuItemAvailability({
       menuItemStableId,
       isAvailable: dto.isAvailable,
       storeId: dto.storeId,
@@ -332,7 +335,7 @@ export class UberEatsController {
   async generateReconciliationReport(
     @Body() dto: GenerateUberReconciliationReportDto,
   ) {
-    return this.uberEatsService.generateReconciliationReport({
+    return await this.uberEatsService.generateReconciliationReport({
       storeId: dto.storeId,
       rangeStart: dto.rangeStart,
       rangeEnd: dto.rangeEnd,
@@ -344,7 +347,7 @@ export class UberEatsController {
     @Query('storeId') storeId?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.uberEatsService.listReconciliationReports(
+    return await this.uberEatsService.listReconciliationReports(
       storeId,
       Number(limit || 20),
     );
@@ -352,7 +355,7 @@ export class UberEatsController {
 
   @Post('ops/tickets')
   async createOpsTicket(@Body() dto: CreateUberOpsTicketDto): Promise<unknown> {
-    return this.uberEatsService.createOpsTicket({
+    return await this.uberEatsService.createOpsTicket({
       type: dto.type,
       title: dto.title,
       description: dto.description,
@@ -368,13 +371,13 @@ export class UberEatsController {
     @Query('storeId') storeId?: string,
     @Query('status') status?: UberOpsTicketStatus,
   ): Promise<unknown> {
-    return this.uberEatsService.listOpsTickets(storeId, status);
+    return await this.uberEatsService.listOpsTickets(storeId, status);
   }
 
   @Post('ops/tickets/:ticketStableId/retry')
   async retryOpsTicket(
     @Param('ticketStableId') ticketStableId: string,
   ): Promise<unknown> {
-    return this.uberEatsService.retryOpsTicket(ticketStableId);
+    return await this.uberEatsService.retryOpsTicket(ticketStableId);
   }
 }

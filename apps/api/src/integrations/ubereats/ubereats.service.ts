@@ -281,45 +281,29 @@ export class UberEatsService {
     return this.buildMerchantAuthorizeUrl();
   }
 
-async exchangeAuthorizationCode(code: string, state?: string) {
-  this.verifyOAuthState(state);
+  async exchangeAuthorizationCode(code: string, state?: string) {
+    this.verifyOAuthState(state);
 
-  const tokenResult =
-    await this.uberAuthService.exchangeAuthorizationCode(code);
+    const tokenResult =
+      await this.uberAuthService.exchangeAuthorizationCode(code);
 
-  this.logger.log(
-    `[ubereats oauth] accessToken=${tokenResult.accessToken.slice(0, 16)}...${tokenResult.accessToken.slice(-10)} scope=${tokenResult.scope ?? 'null'} tokenType=${tokenResult.tokenType ?? 'null'} expiresAt=${tokenResult.expiresAt?.toISOString() ?? 'null'}`,
-  );
+    this.logger.log(
+      `[ubereats oauth] accessToken=${tokenResult.accessToken.slice(0, 16)}...${tokenResult.accessToken.slice(-10)} scope=${tokenResult.scope ?? 'null'} tokenType=${tokenResult.tokenType ?? 'null'} expiresAt=${tokenResult.expiresAt?.toISOString() ?? 'null'}`,
+    );
 
-  const merchantUberUserId = `oauth:${randomUUID()}`;
+    const merchantUberUserId = `oauth:${randomUUID()}`;
 
-  const connection = await this.upsertMerchantConnection({
-    merchantUberUserId,
-    accessToken: tokenResult.accessToken,
-    refreshToken: tokenResult.refreshToken,
-    expiresAt: tokenResult.expiresAt,
-    scope: tokenResult.scope,
-    tokenType: tokenResult.tokenType,
-    connectedAt: new Date(),
-    rawStoresSnapshot: null,
-  });
+    const connection = await this.upsertMerchantConnection({
+      merchantUberUserId,
+      accessToken: tokenResult.accessToken,
+      refreshToken: tokenResult.refreshToken,
+      expiresAt: tokenResult.expiresAt,
+      scope: tokenResult.scope,
+      tokenType: tokenResult.tokenType,
+      connectedAt: new Date(),
+      rawStoresSnapshot: null,
+    });
 
-  await this.captureEvent('ubereats_merchant_oauth_connected', {
-    merchantUberUserId,
-    scope: tokenResult.scope ?? '',
-    tokenType: tokenResult.tokenType ?? '',
-    expiresAt: tokenResult.expiresAt?.toISOString() ?? null,
-  });
-
-  return {
-    ok: true,
-    merchantUberUserId,
-    scope: tokenResult.scope,
-    tokenType: tokenResult.tokenType,
-    expiresAt: tokenResult.expiresAt,
-    connectedAt: connection.connectedAt,
-  };
-}
     await this.captureEvent('ubereats_merchant_oauth_connected', {
       merchantUberUserId,
       scope: tokenResult.scope ?? '',
@@ -381,19 +365,16 @@ async exchangeAuthorizationCode(code: string, state?: string) {
       merchantUberUserId,
       accessToken,
     );
-const requestBody = {
-  ...payload,
-};
-const response = await this.callUberApi(
-  `/v1/eats/stores/${encodeURIComponent(storeId.trim())}/pos_data`,
-  {
-    method: 'POST',
-    merchantAccessToken: merchant.accessToken,
-    body: {
-      ...payload,
-    },
-  },
-);
+    const response = await this.callUberApi(
+      `/v1/eats/stores/${encodeURIComponent(storeId.trim())}/pos_data`,
+      {
+        method: 'POST',
+        accessToken: connection.accessToken,
+        body: {
+          ...payload,
+        },
+      },
+    );
     const mapping = await this.upsertStoreMapping({
       merchantUberUserId: connection.merchantUberUserId,
       uberStoreId: storeId.trim(),
