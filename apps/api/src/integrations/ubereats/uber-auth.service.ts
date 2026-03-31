@@ -99,9 +99,7 @@ export class UberAuthService {
   }
 
   normalizeScopesToArray(scope?: string): string[] {
-    const source = (
-      scope?.trim() ? scope : this.defaultAppScopes || ''
-    ).trim();
+    const source = (scope?.trim() ? scope : this.defaultAppScopes || '').trim();
 
     return Array.from(
       new Set(
