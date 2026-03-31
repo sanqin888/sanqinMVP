@@ -238,8 +238,7 @@ export class UberEatsController {
     @Query('scope') scope?: string,
     @Query('forceRefresh') forceRefresh?: string,
   ) {
-    const shouldForceRefresh =
-      forceRefresh === 'true' || forceRefresh === '1';
+    const shouldForceRefresh = forceRefresh === 'true' || forceRefresh === '1';
     return this.uberEatsService.debugAccessToken(scope, shouldForceRefresh);
   }
 

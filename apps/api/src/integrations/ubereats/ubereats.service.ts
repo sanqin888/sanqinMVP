@@ -397,7 +397,8 @@ export class UberEatsService {
 
   async verifyScopes(scopes?: string[], input: VerifyScopeInput = {}) {
     const requestedScopes =
-      scopes?.filter((scope) => typeof scope === 'string' && scope.trim()) ?? [];
+      scopes?.filter((scope) => typeof scope === 'string' && scope.trim()) ??
+      [];
     const finalScopes =
       requestedScopes.length > 0
         ? requestedScopes
@@ -405,14 +406,14 @@ export class UberEatsService {
 
     const results: ScopeVerificationResult[] = [];
     for (const scope of finalScopes) {
-      // eslint-disable-next-line no-await-in-loop
       const result = await this.verifyScope(scope, input);
       results.push(result);
     }
 
     return {
       ok: results.every((item) => item.tokenIssued),
-      storeId: input.storeId?.trim() || process.env.UBER_EATS_STORE_ID?.trim() || null,
+      storeId:
+        input.storeId?.trim() || process.env.UBER_EATS_STORE_ID?.trim() || null,
       results,
     };
   }
@@ -1417,15 +1418,18 @@ export class UberEatsService {
     method: 'GET' | 'POST' = 'GET',
     body?: Record<string, unknown>,
   ): Promise<ScopeVerificationResult> {
-    const response = await fetch(`${this.uberApiBaseUrl.replace(/\/$/, '')}${path}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/json',
-        ...(body ? { 'Content-Type': 'application/json' } : {}),
+    const response = await fetch(
+      `${this.uberApiBaseUrl.replace(/\/$/, '')}${path}`,
+      {
+        method,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+          ...(body ? { 'Content-Type': 'application/json' } : {}),
+        },
+        ...(body ? { body: JSON.stringify(body) } : {}),
       },
-      ...(body ? { body: JSON.stringify(body) } : {}),
-    });
+    );
 
     const rawText = await response.text();
     const parsed = this.tryParseJson(rawText);
