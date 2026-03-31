@@ -34,6 +34,16 @@ describe('UberEatsService', () => {
   const createAuthService = () =>
     ({
       getAccessToken: jest.fn().mockResolvedValue('token_debug_1234567890'),
+      forceRefreshAccessToken: jest
+        .fn()
+        .mockResolvedValue('token_debug_1234567890'),
+      normalizeScopesToArray: jest.fn().mockImplementation((scope?: string) => {
+        if (!scope?.trim()) {
+          return ['eats.store.orders.read'];
+        }
+
+        return scope.trim().split(/\s+/).filter(Boolean);
+      }),
       buildMerchantAuthorizeUrl: jest
         .fn()
         .mockResolvedValue(
@@ -146,9 +156,13 @@ describe('UberEatsService', () => {
 
     await expect(service.debugAccessToken()).resolves.toEqual({
       ok: true,
-      requestedScope: 'eats.store.orders.read',
+      requestedScope: null,
+      normalizedScope: 'eats.store.orders.read',
       tokenPrefix: 'token_debug_',
       tokenLength: 'token_debug_1234567890'.length,
+      usedDefaultScopes: true,
+      forceRefreshed: false,
+      cached: 'cache_or_fetch',
     });
   });
 

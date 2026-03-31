@@ -63,7 +63,7 @@ services:
       UBER_EATS_AUTHORIZE_ENDPOINT: "https://sandbox-login.uber.com/oauth/v2/authorize"
       UBER_EATS_TOKEN_ENDPOINT: "https://sandbox-login.uber.com/oauth/v2/token"
       UBER_EATS_API_BASE_URL: "https://test-api.uber.com"
-      UBER_EATS_APP_SCOPES: "eats.store eats.order"
+      UBER_EATS_APP_SCOPES: "eats.store eats.order eats.report eats.store.orders.read eats.store.status.write"
       UBER_EATS_USER_AUTH_SCOPES: "eats.pos_provisioning"
       UBER_EATS_REDIRECT_URI: "https://api.sanq.ca/api/v1/integrations/ubereats/oauth/callback"
       UBER_EATS_OAUTH_STATE_SECRET: ${UBER_EATS_OAUTH_STATE_SECRET}
