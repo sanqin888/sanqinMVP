@@ -156,9 +156,9 @@ type UberStoreMappingDelegate = {
       merchantUberUserId: string;
       storeName: string | null;
       locationSummary: string | null;
-      isProvisioned: boolean;
-      provisionedAt: Date | undefined;
-      posExternalStoreId: string | null;
+      isProvisioned?: boolean;
+      provisionedAt?: Date | undefined;
+      posExternalStoreId?: string | null;
       rawPayload: Record<string, unknown>;
     };
   }): Promise<UberStoreMappingRecord>;
@@ -1417,9 +1417,6 @@ export class UberEatsService {
         merchantUberUserId: input.merchantUberUserId,
         storeName: input.storeName ?? null,
         locationSummary: input.locationSummary ?? null,
-        isProvisioned: false,
-        provisionedAt: undefined,
-        posExternalStoreId: null,
         rawPayload,
       },
     });
