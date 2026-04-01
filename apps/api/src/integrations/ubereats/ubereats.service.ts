@@ -162,6 +162,13 @@ type UberStoreMappingDelegate = {
       rawPayload: Record<string, unknown>;
     };
   }): Promise<UberStoreMappingRecord>;
+  updateMany(args: {
+    where: { uberStoreId: string };
+    data: {
+      isProvisioned: boolean;
+      provisionedAt: Date | null;
+    };
+  }): Promise<{ count: number }>;
 };
 
 type CreateOpsTicketInput = UberStoreScopedInput & {
