@@ -1395,6 +1395,7 @@ export class UberEatsService {
     locationSummary?: string | null;
     raw: unknown;
   }): Promise<void> {
+    const rawPayload = this.asObject(input.raw) ?? {};
     const storeMapping = this.uberStoreMappingDelegate;
     if (!storeMapping) {
       throw new BadRequestException('Prisma 未配置 uberStoreMapping 模型');
@@ -1410,13 +1411,16 @@ export class UberEatsService {
         isProvisioned: false,
         provisionedAt: null,
         posExternalStoreId: null,
-        rawPayload: input.raw,
+        rawPayload,
       },
       update: {
         merchantUberUserId: input.merchantUberUserId,
         storeName: input.storeName ?? null,
         locationSummary: input.locationSummary ?? null,
-        rawPayload: input.raw,
+        isProvisioned: false,
+        provisionedAt: undefined,
+        posExternalStoreId: null,
+        rawPayload,
       },
     });
   }
