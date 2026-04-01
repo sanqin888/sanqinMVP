@@ -223,6 +223,15 @@ export class UberEatsController {
     );
   }
 
+  @Get('oauth/connection')
+  async oauthConnection(
+    @Query('merchantUberUserId') merchantUberUserId?: string,
+  ) {
+    return await this.uberEatsService.getMerchantConnectionStatus(
+      merchantUberUserId,
+    );
+  }
+
   @Post('oauth/provision')
   async oauthProvision(@Body() dto: ProvisionUberStoreDto) {
     return await this.uberEatsService.provisionStore(

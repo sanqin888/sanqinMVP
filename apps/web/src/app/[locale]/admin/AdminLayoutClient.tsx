@@ -32,6 +32,7 @@ export default function AdminLayoutClient({
     { href: `/${locale}/admin/reports`, labelZh: '报表页' },
     { href: `/${locale}/admin/analytics`, labelZh: '埋点分析' },
     { href: `/${locale}/accounting/dashboard`, labelZh: '财务系统' },
+    { href: `/${locale}/admin/ubereats`, labelZh: 'UberEats' },
   ];
 
   function isActive(href: string): boolean {
