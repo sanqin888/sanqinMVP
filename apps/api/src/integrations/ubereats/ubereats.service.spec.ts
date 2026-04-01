@@ -290,6 +290,9 @@ describe('UberEatsService', () => {
 
   it('获取商户门店列表时会更新授权快照，且不覆盖 provision 状态', async () => {
     const fetchMock: jest.MockedFunction<typeof fetch> = jest.fn();
+    const upsertMock = jest
+      .fn<Promise<Record<string, never>>, [unknown]>()
+      .mockResolvedValue({});
     fetchMock.mockResolvedValue({
       ok: true,
       text: jest.fn().mockResolvedValue(
@@ -316,7 +319,7 @@ describe('UberEatsService', () => {
       },
       uberStoreMapping: {
         findMany: jest.fn().mockResolvedValue([]),
-        upsert: jest.fn().mockResolvedValue({}),
+        upsert: upsertMock,
       },
     };
 
@@ -326,13 +329,12 @@ describe('UberEatsService', () => {
     expect(result.ok).toBe(true);
     expect(result.count).toBe(1);
     expect(prisma.uberMerchantConnection.update).toHaveBeenCalled();
-    expect(prisma.uberStoreMapping.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        update: expect.not.objectContaining({
-          isProvisioned: expect.anything(),
-        }),
-      }),
-    );
+    const upsertCallArg = upsertMock.mock.calls[0]?.[0] as
+      | { update?: Record<string, unknown> }
+      | undefined;
+    expect(upsertCallArg).toBeDefined();
+    expect(upsertCallArg?.update).toBeDefined();
+    expect(upsertCallArg?.update).not.toHaveProperty('isProvisioned');
   });
 
   it('provisionStore 会调用 Uber provision 接口并标记门店已激活', async () => {
