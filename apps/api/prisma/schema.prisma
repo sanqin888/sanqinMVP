@@ -1106,6 +1106,7 @@ model UberStoreMapping {
 
   merchantConnection UberMerchantConnection @relation(fields: [merchantUberUserId], references: [merchantUberUserId], onDelete: Cascade)
 
+  @@unique([merchantUberUserId, uberStoreId])
   @@index([merchantUberUserId, isProvisioned])
 }
 

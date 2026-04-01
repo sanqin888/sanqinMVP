@@ -1370,17 +1370,48 @@ export class UberEatsService {
 
     await Promise.all(
       stores.map((store) =>
-        this.upsertStoreMapping({
+        this.upsertStoreDiscoverySnapshot({
           merchantUberUserId,
           uberStoreId: store.storeId,
           storeName: store.storeName,
           locationSummary: store.locationSummary,
-          isProvisioned: false,
-          posExternalStoreId: null,
           raw: store.raw,
         }),
       ),
     );
+  }
+
+  private async upsertStoreDiscoverySnapshot(input: {
+    merchantUberUserId: string;
+    uberStoreId: string;
+    storeName?: string | null;
+    locationSummary?: string | null;
+    raw: unknown;
+  }): Promise<void> {
+    const storeMapping = this.uberStoreMappingDelegate;
+    if (!storeMapping) {
+      throw new BadRequestException('Prisma 未配置 uberStoreMapping 模型');
+    }
+
+    await storeMapping.upsert({
+      where: { uberStoreId: input.uberStoreId },
+      create: {
+        merchantUberUserId: input.merchantUberUserId,
+        uberStoreId: input.uberStoreId,
+        storeName: input.storeName ?? null,
+        locationSummary: input.locationSummary ?? null,
+        isProvisioned: false,
+        provisionedAt: null,
+        posExternalStoreId: null,
+        rawPayload: input.raw,
+      },
+      update: {
+        merchantUberUserId: input.merchantUberUserId,
+        storeName: input.storeName ?? null,
+        locationSummary: input.locationSummary ?? null,
+        rawPayload: input.raw,
+      },
+    });
   }
 
   private upsertStoreMapping(
@@ -1562,6 +1593,10 @@ export class UberEatsService {
   ) {
     const storeId = this.extractStoreId(payload);
 
+    if (storeId) {
+      await this.updateStoreProvisioningState(storeId, true);
+    }
+
     await this.captureEvent('ubereats_store_provisioned', {
       eventType,
       eventId,
@@ -1575,6 +1610,10 @@ export class UberEatsService {
     payload: unknown,
   ) {
     const storeId = this.extractStoreId(payload);
+
+    if (storeId) {
+      await this.updateStoreProvisioningState(storeId, false);
+    }
 
     await this.captureEvent('ubereats_store_deprovisioned', {
       eventType,
@@ -1595,6 +1634,30 @@ export class UberEatsService {
       eventId,
       storeId: storeId ?? 'unknown',
     });
+  }
+
+  private async updateStoreProvisioningState(
+    storeId: string,
+    isProvisioned: boolean,
+  ): Promise<void> {
+    const storeMapping = this.uberStoreMappingDelegate;
+    if (!storeMapping) {
+      throw new BadRequestException('Prisma 未配置 uberStoreMapping 模型');
+    }
+
+    const updated = await storeMapping.updateMany({
+      where: { uberStoreId: storeId },
+      data: {
+        isProvisioned,
+        provisionedAt: isProvisioned ? new Date() : null,
+      },
+    });
+
+    if (!updated.count) {
+      this.logger.warn(
+        `[ubereats webhook] store mapping not found for provisioning update storeId=${storeId} isProvisioned=${isProvisioned}`,
+      );
+    }
   }
 
   private resolveReportRange(rangeStart?: string, rangeEnd?: string) {
