@@ -488,6 +488,22 @@ export class UberEatsService {
     });
 
     const stores = this.extractMerchantStores(response);
+    const mappingRows = await this.prisma.uberStoreMapping.findMany({
+      where: {
+        merchantUberUserId: connection.merchantUberUserId,
+        uberStoreId: { in: stores.map((store) => store.storeId) },
+      },
+      select: {
+        uberStoreId: true,
+        isProvisioned: true,
+        provisionedAt: true,
+        posExternalStoreId: true,
+      },
+    });
+    const mappingByStoreId = new Map(
+      mappingRows.map((row) => [row.uberStoreId, row]),
+    );
+
     await this.persistMerchantStores(
       connection.merchantUberUserId,
       stores,
@@ -502,8 +518,30 @@ export class UberEatsService {
         storeId: store.storeId,
         storeName: store.storeName,
         locationSummary: store.locationSummary,
+        isProvisioned:
+          mappingByStoreId.get(store.storeId)?.isProvisioned ?? false,
+        provisionedAt:
+          mappingByStoreId.get(store.storeId)?.provisionedAt ?? null,
+        posExternalStoreId:
+          mappingByStoreId.get(store.storeId)?.posExternalStoreId ?? null,
       })),
       raw: response,
+    };
+  }
+
+  async getMerchantConnectionStatus(merchantUberUserId?: string) {
+    const connection = await this.resolveMerchantConnection(
+      merchantUberUserId,
+      undefined,
+    );
+
+    return {
+      ok: true,
+      merchantUberUserId: connection.merchantUberUserId,
+      scope: connection.scope,
+      tokenType: connection.tokenType,
+      expiresAt: connection.expiresAt,
+      connectedAt: connection.connectedAt,
     };
   }
 

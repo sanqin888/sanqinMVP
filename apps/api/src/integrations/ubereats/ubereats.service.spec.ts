@@ -279,6 +279,7 @@ describe('UberEatsService', () => {
         update: jest.fn().mockResolvedValue(null),
       },
       uberStoreMapping: {
+        findMany: jest.fn().mockResolvedValue([]),
         upsert: jest.fn().mockResolvedValue({}),
       },
     };
