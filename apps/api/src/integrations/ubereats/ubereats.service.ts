@@ -1621,7 +1621,8 @@ export class UberEatsService {
     },
   ): Promise<Record<string, unknown>> {
     const resolvedBody =
-      options.rawBody ?? (options.body ? JSON.stringify(options.body) : undefined);
+      options.rawBody ??
+      (options.body ? JSON.stringify(options.body) : undefined);
     const response = await fetch(
       `${this.uberApiBaseUrl.replace(/\/$/, '')}${path}`,
       {
@@ -1953,7 +1954,9 @@ export class UberEatsService {
         },
         price_info: { price: item.priceCents },
         modifier_group_ids: item.modifierGroupIds,
-        suspension_info: { suspended_until: item.isAvailable ? null : '2099-01-01T00:00:00Z' },
+        suspension_info: {
+          suspended_until: item.isAvailable ? null : '2099-01-01T00:00:00Z',
+        },
       })),
       modifier_groups: graph.groups,
     };
