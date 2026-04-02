@@ -257,8 +257,8 @@ export default function UberEatsAdminPage() {
         {active === 'auth' && (
           <section className="space-y-4">
             <div className="rounded-xl border bg-white p-4">
-              <h3 className="text-lg font-semibold">A. 环境选择</h3>
-              <p className="text-sm text-slate-600">Authorize URL: {connectUrl?.authorizeUrl ?? '-'}</p>
+              <h3 className="text-lg font-semibold">A. 环境配置</h3>
+              <p className="break-all whitespace-pre-wrap text-sm text-slate-600">Authorize URL: {connectUrl?.authorizeUrl ?? '-'}</p>
             </div>
             <div className="rounded-xl border bg-white p-4">
               <h3 className="text-lg font-semibold">B. 商户授权</h3>
@@ -268,9 +268,9 @@ export default function UberEatsAdminPage() {
                 <button type="button" className="rounded border px-3 py-1 text-sm" onClick={() => void loadAll()}>刷新授权状态</button>
               </div>
               <div className="mt-2 grid gap-2 text-sm md:grid-cols-2">
-                <p>merchantUberUserId：{connection?.merchantUberUserId ?? '-'}</p>
-                <p>scope：{connection?.scope ?? '-'}</p>
-                <p>tokenType：{connection?.tokenType ?? '-'}</p>
+                <p className="break-all whitespace-pre-wrap">merchantUberUserId：{connection?.merchantUberUserId ?? '-'}</p>
+                <p className="break-all whitespace-pre-wrap">scope：{connection?.scope ?? '-'}</p>
+                <p className="break-all whitespace-pre-wrap">tokenType：{connection?.tokenType ?? '-'}</p>
                 <p>expiresAt：{safeTime(connection?.expiresAt)}</p>
                 <p>connectedAt：{safeTime(connection?.connectedAt)}</p>
               </div>
@@ -288,11 +288,11 @@ export default function UberEatsAdminPage() {
                   <tbody>
                     {stores.map((s) => (
                       <tr key={s.storeId} className="border-b last:border-0">
-                        <td className="px-2 py-2 font-mono text-xs">{s.storeId}</td>
+                        <td className="break-all whitespace-pre-wrap px-2 py-2 font-mono text-xs">{s.storeId}</td>
                         <td className="px-2 py-2">{s.storeName ?? '-'}</td>
-                        <td className="px-2 py-2">{s.locationSummary ?? '-'}</td>
+                        <td className="break-all whitespace-pre-wrap px-2 py-2">{s.locationSummary ?? '-'}</td>
                         <td className="px-2 py-2">{s.isProvisioned ? '已 provision' : '未 provision'}</td>
-                        <td className="px-2 py-2">{s.posExternalStoreId ?? '-'}</td>
+                        <td className="break-all whitespace-pre-wrap px-2 py-2">{s.posExternalStoreId ?? '-'}</td>
                         <td className="px-2 py-2">
                           <button
                             type="button"
