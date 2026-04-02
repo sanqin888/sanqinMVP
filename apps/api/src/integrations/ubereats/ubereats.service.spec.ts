@@ -151,6 +151,42 @@ describe('UberEatsService', () => {
     expect(prisma.order.create).toHaveBeenCalled();
   });
 
+  it('store.provisioned webhook 会回写门店 provision 状态', async () => {
+    const rawBody = '{"event_type":"store.provisioned","store_id":"store_1"}';
+    const signature = createHmac('sha256', clientSecret)
+      .update(rawBody, 'utf8')
+      .digest('hex');
+
+    const prisma = {
+      uberStoreMapping: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      opsEvent: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue(null),
+      },
+    };
+
+    const service = new UberEatsService(prisma as never, createAuthService());
+    await service.handleWebhook({
+      headers: {
+        'x-uber-signature': signature,
+        'x-event-id': 'evt_store_provisioned_1',
+      },
+      rawBody,
+      body: {
+        event_type: 'store.provisioned',
+        store_id: 'store_1',
+      },
+    });
+
+    expect(prisma.uberStoreMapping.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { uberStoreId: 'store_1' },
+      }),
+    );
+  });
+
   it('debugAccessToken 会返回请求 scope 与脱敏 token 信息', async () => {
     const service = new UberEatsService({} as never, createAuthService());
 
@@ -252,8 +288,11 @@ describe('UberEatsService', () => {
     );
   });
 
-  it('获取商户门店列表时会更新授权快照与门店映射', async () => {
+  it('获取商户门店列表时会更新授权快照，且不覆盖 provision 状态', async () => {
     const fetchMock: jest.MockedFunction<typeof fetch> = jest.fn();
+    const upsertMock = jest
+      .fn<Promise<Record<string, never>>, [unknown]>()
+      .mockResolvedValue({});
     fetchMock.mockResolvedValue({
       ok: true,
       text: jest.fn().mockResolvedValue(
@@ -280,7 +319,7 @@ describe('UberEatsService', () => {
       },
       uberStoreMapping: {
         findMany: jest.fn().mockResolvedValue([]),
-        upsert: jest.fn().mockResolvedValue({}),
+        upsert: upsertMock,
       },
     };
 
@@ -290,7 +329,12 @@ describe('UberEatsService', () => {
     expect(result.ok).toBe(true);
     expect(result.count).toBe(1);
     expect(prisma.uberMerchantConnection.update).toHaveBeenCalled();
-    expect(prisma.uberStoreMapping.upsert).toHaveBeenCalled();
+    const upsertCallArg = upsertMock.mock.calls[0]?.[0] as
+      | { update?: Record<string, unknown> }
+      | undefined;
+    expect(upsertCallArg).toBeDefined();
+    expect(upsertCallArg?.update).toBeDefined();
+    expect(upsertCallArg?.update).not.toHaveProperty('isProvisioned');
   });
 
   it('provisionStore 会调用 Uber provision 接口并标记门店已激活', async () => {
@@ -362,12 +406,15 @@ describe('UberEatsService', () => {
           { stableId: 'm2', basePriceCents: 2000, isAvailable: true },
         ]),
       },
-      uberPriceBookItem: {
+      uberItemChannelConfig: {
         findMany: jest
           .fn()
           .mockResolvedValue([
             { menuItemStableId: 'm1', priceCents: 1200, isAvailable: false },
           ]),
+      },
+      uberStoreMapping: {
+        findFirst: jest.fn().mockResolvedValue({ uberStoreId: 'uber_store_1' }),
       },
       opsEvent: {
         create: jest.fn().mockResolvedValue(null),
@@ -382,8 +429,8 @@ describe('UberEatsService', () => {
 
     expect(result.ok).toBe(true);
     expect(result.dryRun).toBe(true);
-    expect(result.totalItems).toBe(2);
-    expect(result.changedItems).toBe(1);
+    expect(result.summary.totalItems).toBe(2);
+    expect(result.summary.changedItems).toBe(1);
   });
 
   it('生成自动对账报表时会汇总订单与失败事件', async () => {

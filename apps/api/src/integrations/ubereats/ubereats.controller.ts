@@ -44,6 +44,33 @@ class UpsertUberPriceBookItemDto {
   @IsOptional()
   @IsBoolean()
   isAvailable?: boolean;
+
+  @IsOptional()
+  @IsString()
+  displayName?: string;
+
+  @IsOptional()
+  @IsString()
+  displayDescription?: string;
+}
+
+class UpsertUberOptionItemConfigDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  priceDeltaCents?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isAvailable?: boolean;
+
+  @IsOptional()
+  @IsString()
+  displayName?: string;
+
+  @IsOptional()
+  @IsString()
+  displayDescription?: string;
 }
 
 class PublishUberMenuDto {
@@ -57,6 +84,15 @@ class PublishUberMenuDto {
 }
 
 class SyncUberMenuItemAvailabilityDto {
+  @IsBoolean()
+  isAvailable!: boolean;
+
+  @IsOptional()
+  @IsString()
+  storeId?: string;
+}
+
+class SyncUberOptionItemAvailabilityDto {
   @IsBoolean()
   isAvailable!: boolean;
 
@@ -332,22 +368,45 @@ export class UberEatsController {
     return await this.uberEatsService.syncStoreStatusToUber();
   }
 
-  @Get('price-book')
-  async getPriceBook(@Query('storeId') storeId?: string) {
-    return await this.uberEatsService.listUberPriceBook(storeId);
+  @Get('menu/channel/items')
+  async listItemChannelConfigs(@Query('storeId') storeId?: string) {
+    return await this.uberEatsService.listUberItemChannelConfigs(storeId);
   }
 
-  @Post('price-book/items/:menuItemStableId')
-  async upsertPriceBookItem(
+  @Post('menu/channel/items/:menuItemStableId')
+  async upsertItemChannelConfig(
     @Param('menuItemStableId') menuItemStableId: string,
     @Body() dto: UpsertUberPriceBookItemDto,
     @Query('storeId') storeId?: string,
   ) {
-    return await this.uberEatsService.upsertUberPriceBookItem({
+    return await this.uberEatsService.upsertUberItemChannelConfig({
       storeId,
       menuItemStableId,
       priceCents: dto.priceCents,
       isAvailable: dto.isAvailable,
+      displayName: dto.displayName,
+      displayDescription: dto.displayDescription,
+    });
+  }
+
+  @Get('menu/channel/options')
+  async listOptionChannelConfigs(@Query('storeId') storeId?: string) {
+    return await this.uberEatsService.listUberOptionItemConfigs(storeId);
+  }
+
+  @Post('menu/channel/options/:optionChoiceStableId')
+  async upsertOptionChannelConfig(
+    @Param('optionChoiceStableId') optionChoiceStableId: string,
+    @Body() dto: UpsertUberOptionItemConfigDto,
+    @Query('storeId') storeId?: string,
+  ) {
+    return await this.uberEatsService.upsertUberOptionItemConfig({
+      storeId,
+      optionChoiceStableId,
+      priceDeltaCents: dto.priceDeltaCents,
+      isAvailable: dto.isAvailable,
+      displayName: dto.displayName,
+      displayDescription: dto.displayDescription,
     });
   }
 
@@ -364,8 +423,20 @@ export class UberEatsController {
     @Param('menuItemStableId') menuItemStableId: string,
     @Body() dto: SyncUberMenuItemAvailabilityDto,
   ) {
-    return await this.uberEatsService.syncMenuItemAvailability({
+    return await this.uberEatsService.syncUberMenuItemAvailability({
       menuItemStableId,
+      isAvailable: dto.isAvailable,
+      storeId: dto.storeId,
+    });
+  }
+
+  @Post('menu/options/:optionChoiceStableId/availability')
+  async syncOptionItemAvailability(
+    @Param('optionChoiceStableId') optionChoiceStableId: string,
+    @Body() dto: SyncUberOptionItemAvailabilityDto,
+  ) {
+    return await this.uberEatsService.syncUberOptionItemAvailability({
+      optionChoiceStableId,
       isAvailable: dto.isAvailable,
       storeId: dto.storeId,
     });

@@ -15,7 +15,8 @@ import {
   UberOpsTicketType,
   type Prisma,
 } from '@prisma/client';
-import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
+import { createHash, createHmac, randomUUID, timingSafeEqual } from 'crypto';
+import { gzipSync } from 'zlib';
 import { AppLogger } from '../../common/app-logger';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UberAuthService } from './uber-auth.service';
@@ -45,6 +46,16 @@ type UpsertPriceBookItemInput = UberStoreScopedInput & {
   menuItemStableId: string;
   priceCents: number;
   isAvailable?: boolean;
+  displayName?: string;
+  displayDescription?: string;
+};
+
+type UpsertOptionItemConfigInput = UberStoreScopedInput & {
+  optionChoiceStableId: string;
+  priceDeltaCents?: number;
+  isAvailable?: boolean;
+  displayName?: string;
+  displayDescription?: string;
 };
 
 type PublishMenuInput = UberStoreScopedInput & {
@@ -53,6 +64,11 @@ type PublishMenuInput = UberStoreScopedInput & {
 
 type SyncAvailabilityInput = UberStoreScopedInput & {
   menuItemStableId: string;
+  isAvailable: boolean;
+};
+
+type SyncOptionAvailabilityInput = UberStoreScopedInput & {
+  optionChoiceStableId: string;
   isAvailable: boolean;
 };
 
@@ -156,12 +172,19 @@ type UberStoreMappingDelegate = {
       merchantUberUserId: string;
       storeName: string | null;
       locationSummary: string | null;
-      isProvisioned: boolean;
-      provisionedAt: Date | undefined;
-      posExternalStoreId: string | null;
+      isProvisioned?: boolean;
+      provisionedAt?: Date | undefined;
+      posExternalStoreId?: string | null;
       rawPayload: Record<string, unknown>;
     };
   }): Promise<UberStoreMappingRecord>;
+  updateMany(args: {
+    where: { uberStoreId: string };
+    data: {
+      isProvisioned: boolean;
+      provisionedAt: Date | null;
+    };
+  }): Promise<{ count: number }>;
 };
 
 type CreateOpsTicketInput = UberStoreScopedInput & {
@@ -759,9 +782,9 @@ export class UberEatsService {
     };
   }
 
-  async listUberPriceBook(storeId?: string) {
+  async listUberItemChannelConfigs(storeId?: string) {
     const normalizedStoreId = this.normalizeStoreId(storeId);
-    const items = await this.prisma.uberPriceBookItem.findMany({
+    const items = await this.prisma.uberItemChannelConfig.findMany({
       where: { storeId: normalizedStoreId },
       orderBy: { updatedAt: 'desc' },
       take: 500,
@@ -769,6 +792,12 @@ export class UberEatsService {
         menuItemStableId: true,
         priceCents: true,
         isAvailable: true,
+        displayName: true,
+        displayDescription: true,
+        externalItemId: true,
+        externalCategoryId: true,
+        lastPublishedAt: true,
+        lastPublishError: true,
         updatedAt: true,
       },
     });
@@ -780,11 +809,37 @@ export class UberEatsService {
     };
   }
 
-  async upsertUberPriceBookItem(input: UpsertPriceBookItemInput) {
+  async listUberOptionItemConfigs(storeId?: string) {
+    const normalizedStoreId = this.normalizeStoreId(storeId);
+    const items = await this.prisma.uberOptionItemConfig.findMany({
+      where: { storeId: normalizedStoreId },
+      orderBy: { updatedAt: 'desc' },
+      take: 1000,
+      select: {
+        optionChoiceStableId: true,
+        priceDeltaCents: true,
+        isAvailable: true,
+        displayName: true,
+        displayDescription: true,
+        externalItemId: true,
+        lastPublishedAt: true,
+        lastPublishError: true,
+        updatedAt: true,
+      },
+    });
+
+    return {
+      storeId: normalizedStoreId,
+      count: items.length,
+      items,
+    };
+  }
+
+  async upsertUberItemChannelConfig(input: UpsertPriceBookItemInput) {
     const normalizedStoreId = this.normalizeStoreId(input.storeId);
     await this.ensureMenuItemExists(input.menuItemStableId);
 
-    const row = await this.prisma.uberPriceBookItem.upsert({
+    const row = await this.prisma.uberItemChannelConfig.upsert({
       where: {
         storeId_menuItemStableId: {
           storeId: normalizedStoreId,
@@ -796,11 +851,19 @@ export class UberEatsService {
         menuItemStableId: input.menuItemStableId,
         priceCents: Math.max(1, Math.round(input.priceCents)),
         isAvailable: input.isAvailable ?? true,
+        displayName: input.displayName?.trim() || null,
+        displayDescription: input.displayDescription?.trim() || null,
       },
       update: {
         priceCents: Math.max(1, Math.round(input.priceCents)),
         ...(typeof input.isAvailable === 'boolean'
           ? { isAvailable: input.isAvailable }
+          : {}),
+        ...(input.displayName !== undefined
+          ? { displayName: input.displayName?.trim() || null }
+          : {}),
+        ...(input.displayDescription !== undefined
+          ? { displayDescription: input.displayDescription?.trim() || null }
           : {}),
       },
     });
@@ -819,74 +882,125 @@ export class UberEatsService {
     };
   }
 
-  async publishUberMenu(input: PublishMenuInput) {
+  async upsertUberOptionItemConfig(input: UpsertOptionItemConfigInput) {
     const normalizedStoreId = this.normalizeStoreId(input.storeId);
-    const pairs = await this.collectPublishItems(normalizedStoreId);
-    const changedItems = pairs.filter((pair) => pair.hasDelta).length;
+    await this.ensureOptionChoiceExists(input.optionChoiceStableId);
 
-    const payload: Prisma.JsonObject = {
-      storeId: normalizedStoreId,
-      dryRun: !!input.dryRun,
-      items: pairs.map((pair) => ({
-        menuItemStableId: pair.menuItemStableId,
-        basePriceCents: pair.basePriceCents,
-        uberPriceCents: pair.uberPriceCents,
-        isAvailable: pair.isAvailable,
-      })),
-      summary: {
-        totalItems: pairs.length,
-        changedItems,
+    const row = await this.prisma.uberOptionItemConfig.upsert({
+      where: {
+        storeId_optionChoiceStableId: {
+          storeId: normalizedStoreId,
+          optionChoiceStableId: input.optionChoiceStableId,
+        },
       },
-    };
-
-    if (input.dryRun) {
-      await this.captureEvent('ubereats_menu_publish_dry_run', payload);
-      return {
-        ok: true,
-        dryRun: true,
+      create: {
         storeId: normalizedStoreId,
-        totalItems: pairs.length,
-        changedItems,
-      };
-    }
-
-    const version = await this.prisma.uberMenuPublishVersion.create({
-      data: {
-        storeId: normalizedStoreId,
-        status: UberMenuPublishStatus.SUCCESS,
-        totalItems: pairs.length,
-        changedItems,
-        payload,
+        optionChoiceStableId: input.optionChoiceStableId,
+        priceDeltaCents: Math.round(input.priceDeltaCents ?? 0),
+        isAvailable: input.isAvailable ?? true,
+        displayName: input.displayName?.trim() || null,
+        displayDescription: input.displayDescription?.trim() || null,
       },
-      select: {
-        versionStableId: true,
-        createdAt: true,
+      update: {
+        ...(input.priceDeltaCents !== undefined
+          ? { priceDeltaCents: Math.round(input.priceDeltaCents) }
+          : {}),
+        ...(typeof input.isAvailable === 'boolean'
+          ? { isAvailable: input.isAvailable }
+          : {}),
+        ...(input.displayName !== undefined
+          ? { displayName: input.displayName?.trim() || null }
+          : {}),
+        ...(input.displayDescription !== undefined
+          ? { displayDescription: input.displayDescription?.trim() || null }
+          : {}),
       },
     });
 
-    await this.captureEvent('ubereats_menu_published', {
+    await this.captureEvent('ubereats_option_item_config_upserted', {
       storeId: normalizedStoreId,
-      versionStableId: version.versionStableId,
-      totalItems: pairs.length,
-      changedItems,
+      optionChoiceStableId: input.optionChoiceStableId,
+      priceDeltaCents: row.priceDeltaCents,
+      isAvailable: row.isAvailable,
     });
 
     return {
       ok: true,
-      dryRun: false,
       storeId: normalizedStoreId,
-      versionStableId: version.versionStableId,
-      createdAt: version.createdAt,
-      totalItems: pairs.length,
-      changedItems,
+      item: row,
     };
   }
 
-  async syncMenuItemAvailability(input: SyncAvailabilityInput) {
+  async publishUberMenu(input: PublishMenuInput) {
+    const normalizedStoreId = this.normalizeStoreId(input.storeId);
+    const uberStoreId = await this.resolveUberStoreIdOrThrow(normalizedStoreId);
+    const graph = await this.buildUberMenuGraph(normalizedStoreId, uberStoreId);
+    const payload = this.buildUberUploadMenuPayload(graph);
+    const summary = this.summarizePublishGraph(graph);
+
+    if (input.dryRun) {
+      await this.captureEvent('ubereats_menu_publish_dry_run', {
+        storeId: normalizedStoreId,
+        uberStoreId,
+        summary,
+      });
+      return {
+        ok: true,
+        dryRun: true,
+        storeId: normalizedStoreId,
+        uberStoreId,
+        summary,
+        payload,
+      };
+    }
+
+    const version = await this.createMenuPublishVersionStarted(
+      normalizedStoreId,
+      uberStoreId,
+      summary,
+      payload,
+    );
+
+    try {
+      const response = await this.uploadUberMenu(uberStoreId, payload);
+      await this.markMenuPublishVersionSuccess(version.id, response);
+      await this.backfillPublishedStateFromGraph(
+        normalizedStoreId,
+        uberStoreId,
+        graph,
+      );
+
+      await this.captureEvent('ubereats_menu_published', {
+        storeId: normalizedStoreId,
+        uberStoreId,
+        versionStableId: version.versionStableId,
+        totalItems: summary.totalItems,
+        changedItems: summary.changedItems,
+      });
+
+      return {
+        ok: true,
+        dryRun: false,
+        storeId: normalizedStoreId,
+        uberStoreId,
+        versionStableId: version.versionStableId,
+        createdAt: version.createdAt,
+        summary,
+      };
+    } catch (error) {
+      await this.markMenuPublishVersionFailed(
+        version.id,
+        error instanceof Error ? error.message : String(error),
+      );
+      throw error;
+    }
+  }
+
+  async syncUberMenuItemAvailability(input: SyncAvailabilityInput) {
     const normalizedStoreId = this.normalizeStoreId(input.storeId);
     await this.ensureMenuItemExists(input.menuItemStableId);
 
-    const priceBookItem = await this.prisma.uberPriceBookItem.findUnique({
+    const priceBookItem = await this.prisma.uberItemChannelConfig.findUnique({
       where: {
         storeId_menuItemStableId: {
           storeId: normalizedStoreId,
@@ -901,7 +1015,7 @@ export class UberEatsService {
       );
     }
 
-    const updated = await this.prisma.uberPriceBookItem.update({
+    const updated = await this.prisma.uberItemChannelConfig.update({
       where: {
         storeId_menuItemStableId: {
           storeId: normalizedStoreId,
@@ -921,6 +1035,55 @@ export class UberEatsService {
     await this.captureEvent('ubereats_menu_item_availability_synced', {
       storeId: normalizedStoreId,
       menuItemStableId: input.menuItemStableId,
+      isAvailable: updated.isAvailable,
+    });
+
+    return {
+      ok: true,
+      storeId: normalizedStoreId,
+      item: updated,
+    };
+  }
+
+  async syncUberOptionItemAvailability(input: SyncOptionAvailabilityInput) {
+    const normalizedStoreId = this.normalizeStoreId(input.storeId);
+    await this.ensureOptionChoiceExists(input.optionChoiceStableId);
+
+    const optionConfig = await this.prisma.uberOptionItemConfig.findUnique({
+      where: {
+        storeId_optionChoiceStableId: {
+          storeId: normalizedStoreId,
+          optionChoiceStableId: input.optionChoiceStableId,
+        },
+      },
+    });
+
+    if (!optionConfig) {
+      throw new BadRequestException(
+        `未找到 ${input.optionChoiceStableId} 的 Uber option 配置，请先配置`,
+      );
+    }
+
+    const updated = await this.prisma.uberOptionItemConfig.update({
+      where: {
+        storeId_optionChoiceStableId: {
+          storeId: normalizedStoreId,
+          optionChoiceStableId: input.optionChoiceStableId,
+        },
+      },
+      data: {
+        isAvailable: input.isAvailable,
+      },
+      select: {
+        optionChoiceStableId: true,
+        isAvailable: true,
+        updatedAt: true,
+      },
+    });
+
+    await this.captureEvent('ubereats_option_item_availability_synced', {
+      storeId: normalizedStoreId,
+      optionChoiceStableId: input.optionChoiceStableId,
       isAvailable: updated.isAvailable,
     });
 
@@ -1158,7 +1321,7 @@ export class UberEatsService {
         if (!ticket.menuItemStableId) {
           throw new BadRequestException('商品状态工单缺少 menuItemStableId');
         }
-        await this.syncMenuItemAvailability({
+        await this.syncUberMenuItemAvailability({
           storeId: ticket.storeId,
           menuItemStableId: ticket.menuItemStableId,
           isAvailable: true,
@@ -1370,17 +1533,49 @@ export class UberEatsService {
 
     await Promise.all(
       stores.map((store) =>
-        this.upsertStoreMapping({
+        this.upsertStoreDiscoverySnapshot({
           merchantUberUserId,
           uberStoreId: store.storeId,
           storeName: store.storeName,
           locationSummary: store.locationSummary,
-          isProvisioned: false,
-          posExternalStoreId: null,
           raw: store.raw,
         }),
       ),
     );
+  }
+
+  private async upsertStoreDiscoverySnapshot(input: {
+    merchantUberUserId: string;
+    uberStoreId: string;
+    storeName?: string | null;
+    locationSummary?: string | null;
+    raw: unknown;
+  }): Promise<void> {
+    const rawPayload = this.asObject(input.raw) ?? {};
+    const storeMapping = this.uberStoreMappingDelegate;
+    if (!storeMapping) {
+      throw new BadRequestException('Prisma 未配置 uberStoreMapping 模型');
+    }
+
+    await storeMapping.upsert({
+      where: { uberStoreId: input.uberStoreId },
+      create: {
+        merchantUberUserId: input.merchantUberUserId,
+        uberStoreId: input.uberStoreId,
+        storeName: input.storeName ?? null,
+        locationSummary: input.locationSummary ?? null,
+        isProvisioned: false,
+        provisionedAt: null,
+        posExternalStoreId: null,
+        rawPayload,
+      },
+      update: {
+        merchantUberUserId: input.merchantUberUserId,
+        storeName: input.storeName ?? null,
+        locationSummary: input.locationSummary ?? null,
+        rawPayload,
+      },
+    });
   }
 
   private upsertStoreMapping(
@@ -1419,10 +1614,20 @@ export class UberEatsService {
     path: string,
     options: {
       accessToken: string;
-      method: 'GET' | 'POST';
+      method: 'GET' | 'POST' | 'PUT';
       body?: Record<string, unknown>;
+      rawBody?: string | Buffer;
+      extraHeaders?: Record<string, string>;
     },
   ): Promise<Record<string, unknown>> {
+    const resolvedBody: BodyInit | undefined =
+      options.rawBody !== undefined
+        ? typeof options.rawBody === 'string'
+          ? options.rawBody
+          : new Uint8Array(options.rawBody)
+        : options.body
+          ? JSON.stringify(options.body)
+          : undefined;
     const response = await fetch(
       `${this.uberApiBaseUrl.replace(/\/$/, '')}${path}`,
       {
@@ -1430,9 +1635,12 @@ export class UberEatsService {
         headers: {
           Authorization: `Bearer ${options.accessToken}`,
           Accept: 'application/json',
-          ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+          ...(options.body && !options.rawBody
+            ? { 'Content-Type': 'application/json' }
+            : {}),
+          ...(options.extraHeaders ?? {}),
         },
-        ...(options.body ? { body: JSON.stringify(options.body) } : {}),
+        ...(resolvedBody !== undefined ? { body: resolvedBody } : {}),
       },
     );
 
@@ -1562,6 +1770,10 @@ export class UberEatsService {
   ) {
     const storeId = this.extractStoreId(payload);
 
+    if (storeId) {
+      await this.updateStoreProvisioningState(storeId, true);
+    }
+
     await this.captureEvent('ubereats_store_provisioned', {
       eventType,
       eventId,
@@ -1575,6 +1787,10 @@ export class UberEatsService {
     payload: unknown,
   ) {
     const storeId = this.extractStoreId(payload);
+
+    if (storeId) {
+      await this.updateStoreProvisioningState(storeId, false);
+    }
 
     await this.captureEvent('ubereats_store_deprovisioned', {
       eventType,
@@ -1595,6 +1811,30 @@ export class UberEatsService {
       eventId,
       storeId: storeId ?? 'unknown',
     });
+  }
+
+  private async updateStoreProvisioningState(
+    storeId: string,
+    isProvisioned: boolean,
+  ): Promise<void> {
+    const storeMapping = this.uberStoreMappingDelegate;
+    if (!storeMapping) {
+      throw new BadRequestException('Prisma 未配置 uberStoreMapping 模型');
+    }
+
+    const updated = await storeMapping.updateMany({
+      where: { uberStoreId: storeId },
+      data: {
+        isProvisioned,
+        provisionedAt: isProvisioned ? new Date() : null,
+      },
+    });
+
+    if (!updated.count) {
+      this.logger.warn(
+        `[ubereats webhook] store mapping not found for provisioning update storeId=${storeId} isProvisioned=${isProvisioned}`,
+      );
+    }
   }
 
   private resolveReportRange(rangeStart?: string, rangeEnd?: string) {
@@ -1630,7 +1870,7 @@ export class UberEatsService {
     }
   }
 
-  private async collectPublishItems(storeId: string) {
+  private async buildUberMenuGraph(storeId: string, uberStoreId: string) {
     const [menuItems, priceBookItems] = await Promise.all([
       this.prisma.menuItem.findMany({
         where: { deletedAt: null },
@@ -1640,7 +1880,7 @@ export class UberEatsService {
           isAvailable: true,
         },
       }),
-      this.prisma.uberPriceBookItem.findMany({
+      this.prisma.uberItemChannelConfig.findMany({
         where: { storeId },
         select: {
           menuItemStableId: true,
@@ -1654,7 +1894,7 @@ export class UberEatsService {
       priceBookItems.map((item) => [item.menuItemStableId, item]),
     );
 
-    return menuItems.map((menuItem) => {
+    const items = menuItems.map((menuItem) => {
       const priceBookItem = priceMap.get(menuItem.stableId);
       const uberPriceCents =
         priceBookItem?.priceCents ?? menuItem.basePriceCents;
@@ -1664,15 +1904,193 @@ export class UberEatsService {
           : menuItem.isAvailable;
 
       return {
-        menuItemStableId: menuItem.stableId,
+        id: this.buildStableUberNodeId('item', storeId, menuItem.stableId),
+        sourceType: 'MENU_ITEM' as const,
+        sourceStableId: menuItem.stableId,
         basePriceCents: menuItem.basePriceCents,
-        uberPriceCents,
+        priceCents: uberPriceCents,
         isAvailable,
+        modifierGroupIds: [] as string[],
         hasDelta:
           uberPriceCents !== menuItem.basePriceCents ||
           isAvailable !== menuItem.isAvailable,
       };
     });
+
+    return {
+      menuId: this.buildStableUberNodeId('menu', storeId, uberStoreId),
+      categories: [] as Array<Record<string, unknown>>,
+      items,
+      groups: [] as Array<Record<string, unknown>>,
+    };
+  }
+
+  private buildUberUploadMenuPayload(graph: {
+    menuId: string;
+    categories: Array<Record<string, unknown>>;
+    items: Array<{
+      id: string;
+      sourceStableId: string;
+      priceCents: number;
+      isAvailable: boolean;
+      modifierGroupIds: string[];
+    }>;
+    groups: Array<Record<string, unknown>>;
+  }): Record<string, unknown> {
+    return {
+      menus: [
+        {
+          id: graph.menuId,
+          title: {
+            translations: {
+              en_us: 'Main Menu',
+            },
+          },
+          category_ids: graph.categories.map((category) => category.id),
+        },
+      ],
+      categories: graph.categories,
+      items: graph.items.map((item) => ({
+        id: item.id,
+        title: {
+          translations: {
+            en_us: item.sourceStableId,
+          },
+        },
+        price_info: { price: item.priceCents },
+        modifier_group_ids: item.modifierGroupIds,
+        suspension_info: {
+          suspended_until: item.isAvailable ? null : '2099-01-01T00:00:00Z',
+        },
+      })),
+      modifier_groups: graph.groups,
+    };
+  }
+
+  private summarizePublishGraph(graph: {
+    items: Array<{ hasDelta: boolean }>;
+    categories: unknown[];
+    groups: unknown[];
+  }) {
+    const changedItems = graph.items.filter((item) => item.hasDelta).length;
+    return {
+      totalItems: graph.items.length,
+      changedItems,
+      totalCategories: graph.categories.length,
+      totalModifierGroups: graph.groups.length,
+    };
+  }
+
+  private async uploadUberMenu(
+    uberStoreId: string,
+    payload: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const connection = await this.resolveMerchantConnection();
+    const rawJson = JSON.stringify(payload);
+    const gzipped = gzipSync(rawJson);
+
+    return this.callUberApi(
+      `/v2/eats/stores/${encodeURIComponent(uberStoreId)}/menus`,
+      {
+        accessToken: connection.accessToken,
+        method: 'PUT',
+        rawBody: gzipped,
+        extraHeaders: {
+          'Content-Type': 'application/json',
+          'Content-Encoding': 'gzip',
+        },
+      },
+    );
+  }
+
+  private async createMenuPublishVersionStarted(
+    storeId: string,
+    uberStoreId: string,
+    summary: { totalItems: number; changedItems: number },
+    payload: Record<string, unknown>,
+  ) {
+    const checksum = createHash('sha256')
+      .update(JSON.stringify(payload))
+      .digest('hex');
+
+    const version = await this.prisma.uberMenuPublishVersion.create({
+      data: {
+        storeId,
+        uberStoreId,
+        status: UberMenuPublishStatus.IN_PROGRESS,
+        totalItems: summary.totalItems,
+        changedItems: summary.changedItems,
+        requestPayload: payload as Prisma.InputJsonValue,
+        payload: payload as Prisma.InputJsonValue,
+        checksum,
+      },
+      select: { id: true, versionStableId: true, createdAt: true },
+    });
+
+    return version;
+  }
+
+  private async markMenuPublishVersionSuccess(
+    id: string,
+    responsePayload: Record<string, unknown>,
+  ) {
+    await this.prisma.uberMenuPublishVersion.update({
+      where: { id },
+      data: {
+        status: UberMenuPublishStatus.SUCCESS,
+        responsePayload: responsePayload as Prisma.InputJsonValue,
+        errorMessage: null,
+        finishedAt: new Date(),
+      },
+    });
+  }
+
+  private async markMenuPublishVersionFailed(id: string, errorMessage: string) {
+    await this.prisma.uberMenuPublishVersion.update({
+      where: { id },
+      data: {
+        status: UberMenuPublishStatus.FAILED,
+        errorMessage,
+        finishedAt: new Date(),
+      },
+    });
+  }
+
+  private async backfillPublishedStateFromGraph(
+    storeId: string,
+    uberStoreId: string,
+    graph: {
+      items: Array<{
+        sourceType: 'MENU_ITEM';
+        sourceStableId: string;
+        priceCents: number;
+        isAvailable: boolean;
+      }>;
+    },
+  ) {
+    const now = new Date();
+    await Promise.all(
+      graph.items.map((item) =>
+        this.prisma.uberItemChannelConfig.updateMany({
+          where: {
+            storeId,
+            menuItemStableId: item.sourceStableId,
+          },
+          data: {
+            uberStoreId,
+            lastPublishedPriceCents: item.priceCents,
+            lastPublishedIsAvailable: item.isAvailable,
+            lastPublishedHash: this.buildStableUberNodeId(
+              'publish',
+              storeId,
+              item.sourceStableId,
+            ),
+            lastPublishedAt: now,
+            lastPublishError: null,
+          },
+        }),
+      ),
+    );
   }
 
   private async upsertUberOrder(order: ParsedUberOrder, eventType: string) {
@@ -1934,6 +2352,38 @@ export class UberEatsService {
     return storeId?.trim() || 'default';
   }
 
+  private async resolveUberStoreIdOrThrow(storeId: string): Promise<string> {
+    const mappingDelegate = this.uberStoreMappingDelegate;
+    if (!mappingDelegate) {
+      throw new BadRequestException('Prisma 未配置 uberStoreMapping 模型');
+    }
+
+    const row = await this.prisma.uberStoreMapping.findFirst({
+      where: {
+        OR: [{ posExternalStoreId: storeId }, { uberStoreId: storeId }],
+        isProvisioned: true,
+      },
+      select: { uberStoreId: true },
+    });
+
+    if (!row?.uberStoreId) {
+      throw new BadRequestException(
+        `未找到已 provision 的 Uber store 映射，请先完成店铺映射。storeId=${storeId}`,
+      );
+    }
+
+    return row.uberStoreId;
+  }
+
+  private buildStableUberNodeId(
+    nodeType: 'menu' | 'item' | 'group' | 'category' | 'publish',
+    storeId: string,
+    sourceStableId: string,
+  ): string {
+    const raw = `${nodeType}:${storeId}:${sourceStableId}`;
+    return `sanq:${createHash('sha1').update(raw).digest('hex').slice(0, 24)}`;
+  }
+
   private async ensureMenuItemExists(menuItemStableId: string) {
     const menuItem = await this.prisma.menuItem.findUnique({
       where: { stableId: menuItemStableId },
@@ -1942,6 +2392,17 @@ export class UberEatsService {
 
     if (!menuItem) {
       throw new BadRequestException(`菜单项 ${menuItemStableId} 不存在`);
+    }
+  }
+
+  private async ensureOptionChoiceExists(optionChoiceStableId: string) {
+    const choice = await this.prisma.menuOptionTemplateChoice.findUnique({
+      where: { stableId: optionChoiceStableId },
+      select: { stableId: true },
+    });
+
+    if (!choice) {
+      throw new BadRequestException(`选项 ${optionChoiceStableId} 不存在`);
     }
   }
 

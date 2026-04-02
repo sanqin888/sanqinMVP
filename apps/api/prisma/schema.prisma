@@ -1106,38 +1106,124 @@ model UberStoreMapping {
 
   merchantConnection UberMerchantConnection @relation(fields: [merchantUberUserId], references: [merchantUberUserId], onDelete: Cascade)
 
+  @@unique([merchantUberUserId, uberStoreId])
   @@index([merchantUberUserId, isProvisioned])
 }
 
-model UberPriceBookItem {
-  id               String   @id @default(uuid()) @db.Uuid
-  storeId          String   @default("default")
-  menuItemStableId String
-  priceCents       Int
-  isAvailable      Boolean  @default(true)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+model UberItemChannelConfig {
+  id                       String    @id @default(uuid()) @db.Uuid
+  storeId                  String    @default("default")
+  uberStoreId              String?
+  menuItemStableId         String
+  priceCents               Int
+  isAvailable              Boolean   @default(true)
+  displayName              String?
+  displayDescription       String?
+  externalItemId           String?
+  externalCategoryId       String?
+  lastPublishedPriceCents  Int?
+  lastPublishedIsAvailable Boolean?
+  lastPublishedHash        String?
+  lastPublishedAt          DateTime?
+  lastPublishError         String?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
 
   @@unique([storeId, menuItemStableId])
   @@index([storeId, updatedAt])
+  @@index([uberStoreId])
+}
+
+model UberCategoryConfig {
+  id                   String    @id @default(uuid()) @db.Uuid
+  storeId              String    @default("default")
+  uberStoreId          String?
+  menuCategoryStableId String
+  displayName          String?
+  sortOrder            Int       @default(0)
+  isActive             Boolean   @default(true)
+  externalCategoryId   String?
+  lastPublishedAt      DateTime?
+  lastPublishError     String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@unique([storeId, menuCategoryStableId])
+  @@index([storeId, sortOrder])
+  @@index([uberStoreId])
+}
+
+model UberModifierGroupConfig {
+  id                      String    @id @default(uuid()) @db.Uuid
+  storeId                 String    @default("default")
+  uberStoreId             String?
+  templateGroupStableId   String
+  displayName             String?
+  minSelect               Int       @default(0)
+  maxSelect               Int       @default(1)
+  isActive                Boolean   @default(true)
+  externalModifierGroupId String?
+  lastPublishedAt         DateTime?
+  lastPublishError        String?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@unique([storeId, templateGroupStableId])
+  @@index([storeId, updatedAt])
+  @@index([uberStoreId])
+}
+
+model UberOptionItemConfig {
+  id                           String    @id @default(uuid()) @db.Uuid
+  storeId                      String    @default("default")
+  uberStoreId                  String?
+  optionChoiceStableId         String
+  displayName                  String?
+  displayDescription           String?
+  priceDeltaCents              Int       @default(0)
+  isAvailable                  Boolean   @default(true)
+  externalItemId               String?
+  lastPublishedPriceDeltaCents Int?
+  lastPublishedIsAvailable     Boolean?
+  lastPublishedHash            String?
+  lastPublishedAt              DateTime?
+  lastPublishError             String?
+  createdAt                    DateTime  @default(now())
+  updatedAt                    DateTime  @updatedAt
+
+  @@unique([storeId, optionChoiceStableId])
+  @@index([storeId, updatedAt])
+  @@index([uberStoreId])
 }
 
 model UberMenuPublishVersion {
   id              String                @id @default(uuid()) @db.Uuid
   versionStableId String                @unique @default(cuid())
   storeId         String                @default("default")
-  status          UberMenuPublishStatus @default(SUCCESS)
+  uberStoreId     String?
+  status          UberMenuPublishStatus @default(PENDING)
   totalItems      Int
   changedItems    Int
+  requestPayload  Json?
+  responsePayload Json?
+  errorMessage    String?
+  publishedBy     String?
+  startedAt       DateTime              @default(now())
+  finishedAt      DateTime?
+  checksum        String?
   payload         Json
   createdAt       DateTime              @default(now())
 
   @@index([storeId, createdAt])
+  @@index([status, createdAt])
 }
 
 enum UberMenuPublishStatus {
+  PENDING
+  IN_PROGRESS
   SUCCESS
   FAILED
+  PARTIAL_SUCCESS
 }
 
 enum UberOpsTicketType {
