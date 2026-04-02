@@ -536,10 +536,7 @@ export class UberEatsController {
     @Param('optionItemId') optionItemId: string,
     @Body() dto: UpdateUberDraftOptionDto,
   ) {
-    return await this.uberEatsService.updateUberDraftOption(
-      optionItemId,
-      dto,
-    );
+    return await this.uberEatsService.updateUberDraftOption(optionItemId, dto);
   }
 
   @Post('menu/draft/options/:optionItemId/child-groups')

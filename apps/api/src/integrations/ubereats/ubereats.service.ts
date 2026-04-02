@@ -967,20 +967,22 @@ export class UberEatsService {
       },
       select: { uberStoreId: true },
     });
-    const uberStoreId = storeMapping?.uberStoreId ?? `draft:${normalizedStoreId}`;
+    const uberStoreId =
+      storeMapping?.uberStoreId ?? `draft:${normalizedStoreId}`;
     const graph = await this.buildUberMenuGraph(normalizedStoreId, uberStoreId);
     const summary = this.summarizePublishGraph(graph);
-    const lastPublishedVersion = await this.prisma.uberMenuPublishVersion.findFirst({
-      where: { storeId: normalizedStoreId },
-      orderBy: { createdAt: 'desc' },
-      select: {
-        versionStableId: true,
-        status: true,
-        createdAt: true,
-        totalItems: true,
-        changedItems: true,
-      },
-    });
+    const lastPublishedVersion =
+      await this.prisma.uberMenuPublishVersion.findFirst({
+        where: { storeId: normalizedStoreId },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          versionStableId: true,
+          status: true,
+          createdAt: true,
+          totalItems: true,
+          changedItems: true,
+        },
+      });
 
     const groupMap = new Map(graph.groups.map((group) => [group.id, group]));
     const itemMap = new Map(graph.items.map((item) => [item.id, item]));
@@ -1009,9 +1011,8 @@ export class UberEatsService {
                 maxSelect: group.maxSelect,
                 options: group.optionItemIds
                   .map((optionItemId) => itemMap.get(optionItemId))
-                  .filter(
-                    (option): option is NonNullable<typeof option> =>
-                      Boolean(option),
+                  .filter((option): option is NonNullable<typeof option> =>
+                    Boolean(option),
                   )
                   .map((option) => ({
                     id: option.id,
@@ -1043,9 +1044,11 @@ export class UberEatsService {
       storeId: normalizedStoreId,
       sourceMenu: {
         categories: graph.categories.length,
-        items: graph.items.filter((item) => item.sourceType === 'MENU_ITEM').length,
-        optionItems: graph.items.filter((item) => item.sourceType === 'OPTION_ITEM')
+        items: graph.items.filter((item) => item.sourceType === 'MENU_ITEM')
           .length,
+        optionItems: graph.items.filter(
+          (item) => item.sourceType === 'OPTION_ITEM',
+        ).length,
         groups: graph.groups.length,
       },
       uberDraft: {
@@ -1091,7 +1094,10 @@ export class UberEatsService {
       create: {
         storeId: normalizedStoreId,
         menuItemStableId: itemId,
-        priceCents: Math.max(1, Math.round(input.priceCents ?? menuItem.basePriceCents)),
+        priceCents: Math.max(
+          1,
+          Math.round(input.priceCents ?? menuItem.basePriceCents),
+        ),
         isAvailable: input.isAvailable ?? menuItem.isAvailable,
         displayName: input.displayName?.trim() || null,
         displayDescription: input.displayDescription?.trim() || null,
@@ -1216,7 +1222,9 @@ export class UberEatsService {
         storeId: normalizedStoreId,
         optionChoiceStableId: optionItemId,
         displayName: input.displayName?.trim() || null,
-        priceDeltaCents: Math.round(input.priceDeltaCents ?? choice.priceDeltaCents),
+        priceDeltaCents: Math.round(
+          input.priceDeltaCents ?? choice.priceDeltaCents,
+        ),
         isAvailable: input.isAvailable ?? choice.isAvailable,
       },
       update: {
@@ -1239,7 +1247,9 @@ export class UberEatsService {
       config: row,
       warnings:
         input.sortOrder !== undefined
-          ? ['当前没有 Uber option 独立 sortOrder 字段，已忽略 sortOrder 更新。']
+          ? [
+              '当前没有 Uber option 独立 sortOrder 字段，已忽略 sortOrder 更新。',
+            ]
           : [],
     };
   }
@@ -1263,7 +1273,10 @@ export class UberEatsService {
       select: {
         id: true,
         stableId: true,
-        options: { where: { deletedAt: null }, select: { id: true, stableId: true } },
+        options: {
+          where: { deletedAt: null },
+          select: { id: true, stableId: true },
+        },
       },
     });
     if (!childGroup) {
@@ -2476,9 +2489,14 @@ export class UberEatsService {
       optionConfigs.map((config) => [config.optionChoiceStableId, config]),
     );
     const groupConfigMap = new Map(
-      modifierGroupConfigs.map((config) => [config.templateGroupStableId, config]),
+      modifierGroupConfigs.map((config) => [
+        config.templateGroupStableId,
+        config,
+      ]),
     );
-    const categoryById = new Map(categories.map((category) => [category.id, category]));
+    const categoryById = new Map(
+      categories.map((category) => [category.id, category]),
+    );
 
     const groupDraftMap = new Map<
       string,
@@ -2526,7 +2544,11 @@ export class UberEatsService {
 
     for (const template of templates) {
       const groupConfig = groupConfigMap.get(template.stableId);
-      const groupId = this.buildStableUberNodeId('group', storeId, template.stableId);
+      const groupId = this.buildStableUberNodeId(
+        'group',
+        storeId,
+        template.stableId,
+      );
       const optionItemIds: string[] = [];
       const minSelect = groupConfig?.minSelect ?? template.defaultMinSelect;
       const maxSelect =
@@ -2540,12 +2562,17 @@ export class UberEatsService {
 
       for (const choice of template.options) {
         const optionConfig = optionConfigMap.get(choice.stableId);
-        const optionItemId = this.buildStableUberNodeId('item', storeId, choice.stableId);
+        const optionItemId = this.buildStableUberNodeId(
+          'item',
+          storeId,
+          choice.stableId,
+        );
         const optionAvailable =
           optionConfig?.isAvailable !== undefined
             ? optionConfig.isAvailable
             : choice.isAvailable;
-        const optionPriceCents = optionConfig?.priceDeltaCents ?? choice.priceDeltaCents;
+        const optionPriceCents =
+          optionConfig?.priceDeltaCents ?? choice.priceDeltaCents;
         const childGroupIds = Array.from(
           new Set(
             choice.childLinks.map((link) =>
@@ -2642,14 +2669,20 @@ export class UberEatsService {
         if (!categoryItemIds.length) return null;
 
         return {
-          id: this.buildStableUberNodeId('category', storeId, category.stableId),
+          id: this.buildStableUberNodeId(
+            'category',
+            storeId,
+            category.stableId,
+          ),
           sourceStableId: category.stableId,
           title: categoryConfig?.displayName || category.nameEn,
           sortOrder: categoryConfig?.sortOrder ?? category.sortOrder,
           entities: categoryItemIds,
         };
       })
-      .filter((category): category is NonNullable<typeof category> => Boolean(category))
+      .filter((category): category is NonNullable<typeof category> =>
+        Boolean(category),
+      )
       .sort((a, b) => a.sortOrder - b.sortOrder);
 
     return {
@@ -2872,11 +2905,15 @@ export class UberEatsService {
   ) {
     const now = new Date();
     const menuItems = graph.items.filter(
-      (item): item is (typeof graph.items)[number] & { sourceType: 'MENU_ITEM' } =>
+      (
+        item,
+      ): item is (typeof graph.items)[number] & { sourceType: 'MENU_ITEM' } =>
         item.sourceType === 'MENU_ITEM',
     );
     const optionItems = graph.items.filter(
-      (item): item is (typeof graph.items)[number] & { sourceType: 'OPTION_ITEM' } =>
+      (
+        item,
+      ): item is (typeof graph.items)[number] & { sourceType: 'OPTION_ITEM' } =>
         item.sourceType === 'OPTION_ITEM',
     );
 
