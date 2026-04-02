@@ -400,11 +400,46 @@ describe('UberEatsService', () => {
 
   it('发布菜单 dry-run 会返回差异统计并记录事件', async () => {
     const prisma = {
+      menuCategory: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 1,
+            stableId: 'cat_1',
+            nameEn: 'Category 1',
+            nameZh: '分类1',
+            sortOrder: 1,
+            isActive: true,
+          },
+        ]),
+      },
       menuItem: {
         findMany: jest.fn().mockResolvedValue([
-          { stableId: 'm1', basePriceCents: 1000, isAvailable: true },
-          { stableId: 'm2', basePriceCents: 2000, isAvailable: true },
+          {
+            id: 101,
+            stableId: 'm1',
+            categoryId: 1,
+            nameEn: 'Item 1',
+            nameZh: '菜品1',
+            basePriceCents: 1000,
+            isAvailable: true,
+            sortOrder: 1,
+            optionGroups: [],
+          },
+          {
+            id: 102,
+            stableId: 'm2',
+            categoryId: 1,
+            nameEn: 'Item 2',
+            nameZh: '菜品2',
+            basePriceCents: 2000,
+            isAvailable: true,
+            sortOrder: 2,
+            optionGroups: [],
+          },
         ]),
+      },
+      menuOptionGroupTemplate: {
+        findMany: jest.fn().mockResolvedValue([]),
       },
       uberItemChannelConfig: {
         findMany: jest
@@ -412,6 +447,15 @@ describe('UberEatsService', () => {
           .mockResolvedValue([
             { menuItemStableId: 'm1', priceCents: 1200, isAvailable: false },
           ]),
+      },
+      uberOptionItemConfig: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      uberModifierGroupConfig: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      uberCategoryConfig: {
+        findMany: jest.fn().mockResolvedValue([]),
       },
       uberStoreMapping: {
         findFirst: jest.fn().mockResolvedValue({ uberStoreId: 'uber_store_1' }),
