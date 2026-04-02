@@ -1491,43 +1491,43 @@ export class UberEatsService {
 
   async syncUberMenuItemAvailability(input: SyncAvailabilityInput) {
     const normalizedStoreId = this.normalizeStoreId(input.storeId);
-    await this.ensureMenuItemExists(input.menuItemStableId);
+    await this.ensureOptionChoiceExists(input.optionChoiceStableId);
 
     const priceBookItem = await this.prisma.uberItemChannelConfig.findUnique({
       where: {
-        storeId_menuItemStableId: {
+        storeId_optionChoiceStableId: {
           storeId: normalizedStoreId,
-          menuItemStableId: input.menuItemStableId,
+          optionChoiceStableId: input.optionChoiceStableId,
         },
       },
     });
 
-    if (!priceBookItem) {
+    if (!optionConfig) {
       throw new BadRequestException(
-        `未找到 ${input.menuItemStableId} 的 Uber 价目表配置，请先配置 price book`,
+        `未找到 ${input.optionChoiceStableId} 的 Uber option 配置，请先配置`,
       );
     }
 
     const updated = await this.prisma.uberItemChannelConfig.update({
       where: {
-        storeId_menuItemStableId: {
+        storeId_optionChoiceStableId: {
           storeId: normalizedStoreId,
-          menuItemStableId: input.menuItemStableId,
+          optionChoiceStableId: input.optionChoiceStableId,
         },
       },
       data: {
         isAvailable: input.isAvailable,
       },
       select: {
-        menuItemStableId: true,
+        optionChoiceStableId: true,
         isAvailable: true,
         updatedAt: true,
       },
     });
 
-    await this.captureEvent('ubereats_menu_item_availability_synced', {
+    await this.captureEvent('ubereats_option_item_availability_synced', {
       storeId: normalizedStoreId,
-      menuItemStableId: input.menuItemStableId,
+      optionChoiceStableId: input.optionChoiceStableId,
       isAvailable: updated.isAvailable,
     });
 
@@ -2889,6 +2889,181 @@ export class UberEatsService {
         finishedAt: new Date(),
       },
     });
+
+    return {
+      menuId: this.buildStableUberNodeId('menu', storeId, uberStoreId),
+      categories: [] as Array<Record<string, unknown>>,
+      items,
+      groups: [] as Array<Record<string, unknown>>,
+    };
+  }
+
+  private buildUberUploadMenuPayload(graph: {
+    menuId: string;
+    categories: Array<Record<string, unknown>>;
+    items: Array<{
+      id: string;
+      sourceStableId: string;
+      priceCents: number;
+      isAvailable: boolean;
+      modifierGroupIds: string[];
+    }>;
+    groups: Array<Record<string, unknown>>;
+  }): Record<string, unknown> {
+    return {
+      menus: [
+        {
+          id: graph.menuId,
+          title: {
+            translations: {
+              en_us: 'Main Menu',
+            },
+          },
+          category_ids: graph.categories.map((category) => category.id),
+        },
+      ],
+      categories: graph.categories,
+      items: graph.items.map((item) => ({
+        id: item.id,
+        title: {
+          translations: {
+            en_us: item.sourceStableId,
+          },
+        },
+        price_info: { price: item.priceCents },
+        modifier_group_ids: item.modifierGroupIds,
+        suspension_info: {
+          suspended_until: item.isAvailable ? null : '2099-01-01T00:00:00Z',
+        },
+      })),
+      modifier_groups: graph.groups,
+    };
+  }
+
+  private summarizePublishGraph(graph: {
+    items: Array<{ hasDelta: boolean }>;
+    categories: unknown[];
+    groups: unknown[];
+  }) {
+    const changedItems = graph.items.filter((item) => item.hasDelta).length;
+    return {
+      totalItems: graph.items.length,
+      changedItems,
+      totalCategories: graph.categories.length,
+      totalModifierGroups: graph.groups.length,
+    };
+  }
+
+  private async uploadUberMenu(
+    uberStoreId: string,
+    payload: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const connection = await this.resolveMerchantConnection();
+    const rawJson = JSON.stringify(payload);
+    const gzipped = gzipSync(rawJson);
+
+    return this.callUberApi(
+      `/v2/eats/stores/${encodeURIComponent(uberStoreId)}/menus`,
+      {
+        accessToken: connection.accessToken,
+        method: 'PUT',
+        rawBody: gzipped,
+        extraHeaders: {
+          'Content-Type': 'application/json',
+          'Content-Encoding': 'gzip',
+        },
+      },
+    );
+  }
+
+  private async createMenuPublishVersionStarted(
+    storeId: string,
+    uberStoreId: string,
+    summary: { totalItems: number; changedItems: number },
+    payload: Record<string, unknown>,
+  ) {
+    const checksum = createHash('sha256')
+      .update(JSON.stringify(payload))
+      .digest('hex');
+
+    const version = await this.prisma.uberMenuPublishVersion.create({
+      data: {
+        storeId,
+        uberStoreId,
+        status: UberMenuPublishStatus.IN_PROGRESS,
+        totalItems: summary.totalItems,
+        changedItems: summary.changedItems,
+        requestPayload: payload as Prisma.InputJsonValue,
+        payload: payload as Prisma.InputJsonValue,
+        checksum,
+      },
+      select: { id: true, versionStableId: true, createdAt: true },
+    });
+
+    return version;
+  }
+
+  private async markMenuPublishVersionSuccess(
+    id: string,
+    responsePayload: Record<string, unknown>,
+  ) {
+    await this.prisma.uberMenuPublishVersion.update({
+      where: { id },
+      data: {
+        status: UberMenuPublishStatus.SUCCESS,
+        responsePayload: responsePayload as Prisma.InputJsonValue,
+        errorMessage: null,
+        finishedAt: new Date(),
+      },
+    });
+  }
+
+  private async markMenuPublishVersionFailed(id: string, errorMessage: string) {
+    await this.prisma.uberMenuPublishVersion.update({
+      where: { id },
+      data: {
+        status: UberMenuPublishStatus.FAILED,
+        errorMessage,
+        finishedAt: new Date(),
+      },
+    });
+  }
+
+  private async backfillPublishedStateFromGraph(
+    storeId: string,
+    uberStoreId: string,
+    graph: {
+      items: Array<{
+        sourceType: 'MENU_ITEM';
+        sourceStableId: string;
+        priceCents: number;
+        isAvailable: boolean;
+      }>;
+    },
+  ) {
+    const now = new Date();
+    await Promise.all(
+      graph.items.map((item) =>
+        this.prisma.uberItemChannelConfig.updateMany({
+          where: {
+            storeId,
+            menuItemStableId: item.sourceStableId,
+          },
+          data: {
+            uberStoreId,
+            lastPublishedPriceCents: item.priceCents,
+            lastPublishedIsAvailable: item.isAvailable,
+            lastPublishedHash: this.buildStableUberNodeId(
+              'publish',
+              storeId,
+              item.sourceStableId,
+            ),
+            lastPublishedAt: now,
+            lastPublishError: null,
+          },
+        }),
+      ),
+    );
   }
 
   private async backfillPublishedStateFromGraph(
