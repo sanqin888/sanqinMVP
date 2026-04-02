@@ -2,10 +2,12 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Head,
   Header,
   HttpCode,
+  Patch,
   Param,
   ParseEnumPipe,
   Post,
@@ -71,6 +73,104 @@ class UpsertUberOptionItemConfigDto {
   @IsOptional()
   @IsString()
   displayDescription?: string;
+}
+
+class UpdateUberDraftItemDto {
+  @IsOptional()
+  @IsString()
+  displayName?: string;
+
+  @IsOptional()
+  @IsString()
+  displayDescription?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(1000000)
+  priceCents?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isAvailable?: boolean;
+
+  @IsOptional()
+  @IsString()
+  categoryId?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  sortOrder?: number;
+
+  @IsOptional()
+  @IsString()
+  storeId?: string;
+}
+
+class UpdateUberDraftGroupDto {
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  minSelect?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  maxSelect?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  required?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  sortOrder?: number;
+
+  @IsOptional()
+  @IsString()
+  storeId?: string;
+}
+
+class UpdateUberDraftOptionDto {
+  @IsOptional()
+  @IsString()
+  displayName?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  priceDeltaCents?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isAvailable?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  sortOrder?: number;
+
+  @IsOptional()
+  @IsString()
+  storeId?: string;
+}
+
+class UpdateUberDraftOptionChildGroupDto {
+  @IsString()
+  groupId!: string;
+
+  @IsOptional()
+  @IsString()
+  storeId?: string;
 }
 
 class PublishUberMenuDto {
@@ -408,6 +508,65 @@ export class UberEatsController {
       displayName: dto.displayName,
       displayDescription: dto.displayDescription,
     });
+  }
+
+  @Get('menu/draft')
+  async getMenuDraft(@Query('storeId') storeId?: string) {
+    return await this.uberEatsService.getUberMenuDraft(storeId);
+  }
+
+  @Patch('menu/draft/items/:itemId')
+  async patchDraftItem(
+    @Param('itemId') itemId: string,
+    @Body() dto: UpdateUberDraftItemDto,
+  ) {
+    return await this.uberEatsService.updateUberDraftItem(itemId, dto);
+  }
+
+  @Patch('menu/draft/groups/:groupId')
+  async patchDraftGroup(
+    @Param('groupId') groupId: string,
+    @Body() dto: UpdateUberDraftGroupDto,
+  ) {
+    return await this.uberEatsService.updateUberDraftGroup(groupId, dto);
+  }
+
+  @Patch('menu/draft/options/:optionItemId')
+  async patchDraftOption(
+    @Param('optionItemId') optionItemId: string,
+    @Body() dto: UpdateUberDraftOptionDto,
+  ) {
+    return await this.uberEatsService.updateUberDraftOption(optionItemId, dto);
+  }
+
+  @Post('menu/draft/options/:optionItemId/child-groups')
+  async bindOptionChildGroup(
+    @Param('optionItemId') optionItemId: string,
+    @Body() dto: UpdateUberDraftOptionChildGroupDto,
+  ) {
+    return await this.uberEatsService.bindUberDraftOptionChildGroup(
+      optionItemId,
+      dto.groupId,
+      dto.storeId,
+    );
+  }
+
+  @Delete('menu/draft/options/:optionItemId/child-groups/:groupId')
+  async unbindOptionChildGroup(
+    @Param('optionItemId') optionItemId: string,
+    @Param('groupId') groupId: string,
+    @Query('storeId') storeId?: string,
+  ) {
+    return await this.uberEatsService.unbindUberDraftOptionChildGroup(
+      optionItemId,
+      groupId,
+      storeId,
+    );
+  }
+
+  @Get('menu/draft/diff')
+  async getMenuDraftDiff(@Query('storeId') storeId?: string) {
+    return await this.uberEatsService.getUberMenuDraftDiff(storeId);
   }
 
   @Post('menu/publish')

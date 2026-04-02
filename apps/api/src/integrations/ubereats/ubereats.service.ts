@@ -58,6 +58,30 @@ type UpsertOptionItemConfigInput = UberStoreScopedInput & {
   displayDescription?: string;
 };
 
+type UpdateDraftItemInput = UberStoreScopedInput & {
+  displayName?: string;
+  displayDescription?: string;
+  priceCents?: number;
+  isAvailable?: boolean;
+  categoryId?: string;
+  sortOrder?: number;
+};
+
+type UpdateDraftGroupInput = UberStoreScopedInput & {
+  name?: string;
+  minSelect?: number;
+  maxSelect?: number;
+  required?: boolean;
+  sortOrder?: number;
+};
+
+type UpdateDraftOptionInput = UberStoreScopedInput & {
+  displayName?: string;
+  priceDeltaCents?: number;
+  isAvailable?: boolean;
+  sortOrder?: number;
+};
+
 type PublishMenuInput = UberStoreScopedInput & {
   dryRun?: boolean;
 };
@@ -329,7 +353,7 @@ export class UberEatsService {
       return {
         scope: normalizedScope,
         tokenIssued: false,
-        tokenError: error instanceof Error ? error.message : String(error),
+        tokenError: error instanceof Error ? error.message : `${error}`,
       };
     }
 
@@ -931,6 +955,475 @@ export class UberEatsService {
     };
   }
 
+  async getUberMenuDraft(storeId?: string) {
+    const normalizedStoreId = this.normalizeStoreId(storeId);
+    const storeMapping = await this.prisma.uberStoreMapping.findFirst({
+      where: {
+        OR: [
+          { posExternalStoreId: normalizedStoreId },
+          { uberStoreId: normalizedStoreId },
+        ],
+        isProvisioned: true,
+      },
+      select: { uberStoreId: true },
+    });
+    const uberStoreId =
+      storeMapping?.uberStoreId ?? `draft:${normalizedStoreId}`;
+    const graph = await this.buildUberMenuGraph(normalizedStoreId, uberStoreId);
+    const summary = this.summarizePublishGraph(graph);
+    const lastPublishedVersion =
+      await this.prisma.uberMenuPublishVersion.findFirst({
+        where: { storeId: normalizedStoreId },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          versionStableId: true,
+          status: true,
+          createdAt: true,
+          totalItems: true,
+          changedItems: true,
+        },
+      });
+
+    const groupMap = new Map(graph.groups.map((group) => [group.id, group]));
+    const itemMap = new Map(graph.items.map((item) => [item.id, item]));
+    const uberDraftCategories = graph.categories.map((category) => ({
+      id: category.id,
+      name: category.title,
+      items: category.entities
+        .map((itemId) => itemMap.get(itemId))
+        .filter((item): item is NonNullable<typeof item> => Boolean(item))
+        .filter((item) => item.sourceType === 'MENU_ITEM')
+        .map((item) => ({
+          id: item.id,
+          sourceMenuItemStableId: item.sourceStableId,
+          displayName: item.title,
+          displayDescription: item.description,
+          priceCents: item.priceCents,
+          isAvailable: item.isAvailable,
+          groups: item.modifierGroupIds
+            .map((groupId) => {
+              const group = groupMap.get(groupId);
+              if (!group) return null;
+              return {
+                id: group.id,
+                name: group.title,
+                minSelect: group.minSelect,
+                maxSelect: group.maxSelect,
+                options: group.optionItemIds
+                  .map((optionItemId) => itemMap.get(optionItemId))
+                  .filter((option): option is NonNullable<typeof option> =>
+                    Boolean(option),
+                  )
+                  .map((option) => ({
+                    id: option.id,
+                    sourceOptionChoiceStableId: option.sourceStableId,
+                    displayName: option.title,
+                    priceDeltaCents: option.priceCents,
+                    isAvailable: option.isAvailable,
+                    childGroups: option.modifierGroupIds
+                      .map((childGroupId) => {
+                        const childGroup = groupMap.get(childGroupId);
+                        return childGroup
+                          ? {
+                              id: childGroup.id,
+                              name: childGroup.title,
+                              minSelect: childGroup.minSelect,
+                              maxSelect: childGroup.maxSelect,
+                            }
+                          : null;
+                      })
+                      .filter(Boolean),
+                  })),
+              };
+            })
+            .filter(Boolean),
+        })),
+    }));
+
+    return {
+      storeId: normalizedStoreId,
+      sourceMenu: {
+        categories: graph.categories.length,
+        items: graph.items.filter((item) => item.sourceType === 'MENU_ITEM')
+          .length,
+        optionItems: graph.items.filter(
+          (item) => item.sourceType === 'OPTION_ITEM',
+        ).length,
+        groups: graph.groups.length,
+      },
+      uberDraft: {
+        menuId: graph.menuId,
+        categories: graph.categories,
+        items: graph.items,
+        groups: graph.groups,
+        edges: this.buildUberDraftEdges(graph),
+        tree: {
+          categories: uberDraftCategories,
+        },
+      },
+      mappingWarnings: [
+        ...(storeMapping?.uberStoreId
+          ? []
+          : ['当前门店尚未完成 Uber store provision，返回的是本地 draft 图。']),
+      ],
+      publishSummary: summary,
+      dirty: summary.changedItems > 0,
+      lastPublishedVersion,
+    };
+  }
+
+  async updateUberDraftItem(itemId: string, input: UpdateDraftItemInput) {
+    const normalizedStoreId = this.normalizeStoreId(input.storeId);
+    await this.ensureMenuItemExists(itemId);
+
+    const menuItem = await this.prisma.menuItem.findUnique({
+      where: { stableId: itemId },
+      select: { basePriceCents: true, isAvailable: true },
+    });
+    if (!menuItem) {
+      throw new BadRequestException(`菜单项 ${itemId} 不存在`);
+    }
+
+    const row = await this.prisma.uberItemChannelConfig.upsert({
+      where: {
+        storeId_menuItemStableId: {
+          storeId: normalizedStoreId,
+          menuItemStableId: itemId,
+        },
+      },
+      create: {
+        storeId: normalizedStoreId,
+        menuItemStableId: itemId,
+        priceCents: Math.max(
+          1,
+          Math.round(input.priceCents ?? menuItem.basePriceCents),
+        ),
+        isAvailable: input.isAvailable ?? menuItem.isAvailable,
+        displayName: input.displayName?.trim() || null,
+        displayDescription: input.displayDescription?.trim() || null,
+        externalCategoryId: input.categoryId?.trim() || null,
+      },
+      update: {
+        ...(input.priceCents !== undefined
+          ? { priceCents: Math.max(1, Math.round(input.priceCents)) }
+          : {}),
+        ...(input.isAvailable !== undefined
+          ? { isAvailable: input.isAvailable }
+          : {}),
+        ...(input.displayName !== undefined
+          ? { displayName: input.displayName?.trim() || null }
+          : {}),
+        ...(input.displayDescription !== undefined
+          ? { displayDescription: input.displayDescription?.trim() || null }
+          : {}),
+        ...(input.categoryId !== undefined
+          ? { externalCategoryId: input.categoryId?.trim() || null }
+          : {}),
+      },
+    });
+
+    return {
+      ok: true,
+      storeId: normalizedStoreId,
+      itemId,
+      config: row,
+      warnings:
+        input.sortOrder !== undefined
+          ? ['当前没有 Uber item 独立 sortOrder 字段，已忽略 sortOrder 更新。']
+          : [],
+    };
+  }
+
+  async updateUberDraftGroup(groupId: string, input: UpdateDraftGroupInput) {
+    const normalizedStoreId = this.normalizeStoreId(input.storeId);
+    const template = await this.prisma.menuOptionGroupTemplate.findUnique({
+      where: { stableId: groupId },
+      select: {
+        stableId: true,
+        nameEn: true,
+        defaultMinSelect: true,
+        defaultMaxSelect: true,
+      },
+    });
+    if (!template) {
+      throw new BadRequestException(`选项模板组 ${groupId} 不存在`);
+    }
+
+    const minSelect =
+      input.required === true
+        ? Math.max(1, input.minSelect ?? template.defaultMinSelect)
+        : (input.minSelect ?? template.defaultMinSelect);
+    const maxSelect = Math.max(
+      minSelect,
+      input.maxSelect ?? template.defaultMaxSelect ?? 1,
+    );
+
+    const row = await this.prisma.uberModifierGroupConfig.upsert({
+      where: {
+        storeId_templateGroupStableId: {
+          storeId: normalizedStoreId,
+          templateGroupStableId: groupId,
+        },
+      },
+      create: {
+        storeId: normalizedStoreId,
+        templateGroupStableId: groupId,
+        displayName: input.name?.trim() || template.nameEn,
+        minSelect,
+        maxSelect,
+      },
+      update: {
+        ...(input.name !== undefined
+          ? { displayName: input.name?.trim() || null }
+          : {}),
+        ...(input.minSelect !== undefined || input.required !== undefined
+          ? { minSelect }
+          : {}),
+        ...(input.maxSelect !== undefined || input.required !== undefined
+          ? { maxSelect }
+          : {}),
+      },
+    });
+
+    return {
+      ok: true,
+      storeId: normalizedStoreId,
+      groupId,
+      config: row,
+      warnings:
+        input.sortOrder !== undefined
+          ? ['当前没有 Uber group 独立 sortOrder 字段，已忽略 sortOrder 更新。']
+          : [],
+    };
+  }
+
+  async updateUberDraftOption(
+    optionItemId: string,
+    input: UpdateDraftOptionInput,
+  ) {
+    const normalizedStoreId = this.normalizeStoreId(input.storeId);
+    await this.ensureOptionChoiceExists(optionItemId);
+    const choice = await this.prisma.menuOptionTemplateChoice.findUnique({
+      where: { stableId: optionItemId },
+      select: { priceDeltaCents: true, isAvailable: true },
+    });
+    if (!choice) {
+      throw new BadRequestException(`选项 ${optionItemId} 不存在`);
+    }
+
+    const row = await this.prisma.uberOptionItemConfig.upsert({
+      where: {
+        storeId_optionChoiceStableId: {
+          storeId: normalizedStoreId,
+          optionChoiceStableId: optionItemId,
+        },
+      },
+      create: {
+        storeId: normalizedStoreId,
+        optionChoiceStableId: optionItemId,
+        displayName: input.displayName?.trim() || null,
+        priceDeltaCents: Math.round(
+          input.priceDeltaCents ?? choice.priceDeltaCents,
+        ),
+        isAvailable: input.isAvailable ?? choice.isAvailable,
+      },
+      update: {
+        ...(input.displayName !== undefined
+          ? { displayName: input.displayName?.trim() || null }
+          : {}),
+        ...(input.priceDeltaCents !== undefined
+          ? { priceDeltaCents: Math.round(input.priceDeltaCents) }
+          : {}),
+        ...(input.isAvailable !== undefined
+          ? { isAvailable: input.isAvailable }
+          : {}),
+      },
+    });
+
+    return {
+      ok: true,
+      storeId: normalizedStoreId,
+      optionItemId,
+      config: row,
+      warnings:
+        input.sortOrder !== undefined
+          ? [
+              '当前没有 Uber option 独立 sortOrder 字段，已忽略 sortOrder 更新。',
+            ]
+          : [],
+    };
+  }
+
+  async bindUberDraftOptionChildGroup(
+    optionItemId: string,
+    groupId: string,
+    storeId?: string,
+  ) {
+    const normalizedStoreId = this.normalizeStoreId(storeId);
+    const parentChoice = await this.prisma.menuOptionTemplateChoice.findUnique({
+      where: { stableId: optionItemId },
+      select: { id: true, stableId: true },
+    });
+    if (!parentChoice) {
+      throw new BadRequestException(`选项 ${optionItemId} 不存在`);
+    }
+
+    const childGroup = await this.prisma.menuOptionGroupTemplate.findUnique({
+      where: { stableId: groupId },
+      select: {
+        id: true,
+        stableId: true,
+        options: {
+          where: { deletedAt: null },
+          select: { id: true, stableId: true },
+        },
+      },
+    });
+    if (!childGroup) {
+      throw new BadRequestException(`模板组 ${groupId} 不存在`);
+    }
+
+    if (!childGroup.options.length) {
+      throw new BadRequestException(`模板组 ${groupId} 下没有可绑定的选项`);
+    }
+
+    await this.prisma.menuOptionChoiceLink.createMany({
+      data: childGroup.options.map((option) => ({
+        parentOptionId: parentChoice.id,
+        childOptionId: option.id,
+      })),
+      skipDuplicates: true,
+    });
+
+    await this.captureEvent('ubereats_draft_option_child_group_bound', {
+      storeId: normalizedStoreId,
+      optionItemId,
+      groupId,
+      childOptionCount: childGroup.options.length,
+    });
+
+    return { ok: true, storeId: normalizedStoreId, optionItemId, groupId };
+  }
+
+  async unbindUberDraftOptionChildGroup(
+    optionItemId: string,
+    groupId: string,
+    storeId?: string,
+  ) {
+    const normalizedStoreId = this.normalizeStoreId(storeId);
+    const parentChoice = await this.prisma.menuOptionTemplateChoice.findUnique({
+      where: { stableId: optionItemId },
+      select: { id: true },
+    });
+    if (!parentChoice) {
+      throw new BadRequestException(`选项 ${optionItemId} 不存在`);
+    }
+
+    const childGroup = await this.prisma.menuOptionGroupTemplate.findUnique({
+      where: { stableId: groupId },
+      select: { id: true },
+    });
+    if (!childGroup) {
+      throw new BadRequestException(`模板组 ${groupId} 不存在`);
+    }
+
+    const deleted = await this.prisma.menuOptionChoiceLink.deleteMany({
+      where: {
+        parentOptionId: parentChoice.id,
+        childOption: {
+          templateGroupId: childGroup.id,
+        },
+      },
+    });
+
+    await this.captureEvent('ubereats_draft_option_child_group_unbound', {
+      storeId: normalizedStoreId,
+      optionItemId,
+      groupId,
+      deletedCount: deleted.count,
+    });
+
+    return {
+      ok: true,
+      storeId: normalizedStoreId,
+      optionItemId,
+      groupId,
+      deletedCount: deleted.count,
+    };
+  }
+
+  async getUberMenuDraftDiff(storeId?: string) {
+    const normalizedStoreId = this.normalizeStoreId(storeId);
+    const draft = await this.getUberMenuDraft(normalizedStoreId);
+    const lastSuccess = await this.prisma.uberMenuPublishVersion.findFirst({
+      where: {
+        storeId: normalizedStoreId,
+        status: UberMenuPublishStatus.SUCCESS,
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+    const [itemConfigs, optionConfigs] = await Promise.all([
+      this.prisma.uberItemChannelConfig.findMany({
+        where: { storeId: normalizedStoreId, lastPublishedAt: { not: null } },
+        select: { menuItemStableId: true },
+      }),
+      this.prisma.uberOptionItemConfig.findMany({
+        where: { storeId: normalizedStoreId, lastPublishedAt: { not: null } },
+        select: { optionChoiceStableId: true },
+      }),
+    ]);
+    const publishedMenuItemSet = new Set(
+      itemConfigs.map((item) => item.menuItemStableId),
+    );
+    const publishedOptionSet = new Set(
+      optionConfigs.map((item) => item.optionChoiceStableId),
+    );
+
+    const changedItems = draft.uberDraft.items.filter((item) => item.hasDelta);
+    const addedItems = changedItems.filter(
+      (item) =>
+        (item.sourceType === 'MENU_ITEM' &&
+          !publishedMenuItemSet.has(item.sourceStableId)) ||
+        (item.sourceType === 'OPTION_ITEM' &&
+          !publishedOptionSet.has(item.sourceStableId)),
+    );
+
+    return {
+      storeId: normalizedStoreId,
+      lastPublishedAt: lastSuccess?.createdAt ?? null,
+      addedItems: addedItems.map((item) => item.sourceStableId),
+      modifiedItems: changedItems.map((item) => ({
+        sourceType: item.sourceType,
+        stableId: item.sourceStableId,
+        priceCents: item.priceCents,
+        isAvailable: item.isAvailable,
+      })),
+      deletedItems: [] as string[],
+      addedGroups: draft.uberDraft.groups
+        .filter((group) => group.optionItemIds.length > 0)
+        .map((group) => group.sourceStableId),
+      modifiedGroups: draft.uberDraft.groups
+        .filter((group) => group.minSelect > 0 || group.maxSelect > 1)
+        .map((group) => ({
+          stableId: group.sourceStableId,
+          minSelect: group.minSelect,
+          maxSelect: group.maxSelect,
+        })),
+      hierarchyChanges: draft.uberDraft.edges,
+      priceChanges: changedItems.map((item) => ({
+        sourceType: item.sourceType,
+        stableId: item.sourceStableId,
+        priceCents: item.priceCents,
+      })),
+      availabilityChanges: changedItems.map((item) => ({
+        sourceType: item.sourceType,
+        stableId: item.sourceStableId,
+        isAvailable: item.isAvailable,
+      })),
+    };
+  }
+
   async publishUberMenu(input: PublishMenuInput) {
     const normalizedStoreId = this.normalizeStoreId(input.storeId);
     const uberStoreId = await this.resolveUberStoreIdOrThrow(normalizedStoreId);
@@ -990,7 +1483,7 @@ export class UberEatsService {
     } catch (error) {
       await this.markMenuPublishVersionFailed(
         version.id,
-        error instanceof Error ? error.message : String(error),
+        error instanceof Error ? error.message : `${error}`,
       );
       throw error;
     }
@@ -1000,7 +1493,7 @@ export class UberEatsService {
     const normalizedStoreId = this.normalizeStoreId(input.storeId);
     await this.ensureMenuItemExists(input.menuItemStableId);
 
-    const priceBookItem = await this.prisma.uberItemChannelConfig.findUnique({
+    const itemConfig = await this.prisma.uberItemChannelConfig.findUnique({
       where: {
         storeId_menuItemStableId: {
           storeId: normalizedStoreId,
@@ -1009,9 +1502,9 @@ export class UberEatsService {
       },
     });
 
-    if (!priceBookItem) {
+    if (!itemConfig) {
       throw new BadRequestException(
-        `未找到 ${input.menuItemStableId} 的 Uber 价目表配置，请先配置 price book`,
+        `未找到 ${input.menuItemStableId} 的 Uber 商品配置，请先配置`,
       );
     }
 
@@ -1871,14 +2364,79 @@ export class UberEatsService {
   }
 
   private async buildUberMenuGraph(storeId: string, uberStoreId: string) {
-    const [menuItems, priceBookItems] = await Promise.all([
+    const [
+      categories,
+      menuItems,
+      templates,
+      itemConfigs,
+      optionConfigs,
+      modifierGroupConfigs,
+      categoryConfigs,
+    ] = await Promise.all([
+      this.prisma.menuCategory.findMany({
+        where: { deletedAt: null },
+        select: {
+          id: true,
+          stableId: true,
+          nameEn: true,
+          nameZh: true,
+          sortOrder: true,
+          isActive: true,
+        },
+      }),
       this.prisma.menuItem.findMany({
         where: { deletedAt: null },
         select: {
+          id: true,
           stableId: true,
+          categoryId: true,
+          nameEn: true,
+          nameZh: true,
           basePriceCents: true,
           isAvailable: true,
+          sortOrder: true,
+          optionGroups: {
+            where: { isEnabled: true },
+            select: {
+              templateGroup: { select: { stableId: true } },
+              sortOrder: true,
+            },
+            orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+          },
         },
+        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+      }),
+      this.prisma.menuOptionGroupTemplate.findMany({
+        where: { deletedAt: null },
+        select: {
+          stableId: true,
+          nameEn: true,
+          nameZh: true,
+          defaultMinSelect: true,
+          defaultMaxSelect: true,
+          isAvailable: true,
+          sortOrder: true,
+          options: {
+            where: { deletedAt: null },
+            select: {
+              stableId: true,
+              nameEn: true,
+              nameZh: true,
+              priceDeltaCents: true,
+              isAvailable: true,
+              sortOrder: true,
+              childLinks: {
+                select: {
+                  childOption: {
+                    select: { templateGroup: { select: { stableId: true } } },
+                  },
+                },
+              },
+            },
+            orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+          },
+        },
+        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
       }),
       this.prisma.uberItemChannelConfig.findMany({
         where: { storeId },
@@ -1886,56 +2444,279 @@ export class UberEatsService {
           menuItemStableId: true,
           priceCents: true,
           isAvailable: true,
+          displayName: true,
+          displayDescription: true,
+        },
+      }),
+      this.prisma.uberOptionItemConfig.findMany({
+        where: { storeId },
+        select: {
+          optionChoiceStableId: true,
+          priceDeltaCents: true,
+          isAvailable: true,
+          displayName: true,
+          displayDescription: true,
+        },
+      }),
+      this.prisma.uberModifierGroupConfig.findMany({
+        where: { storeId },
+        select: {
+          templateGroupStableId: true,
+          displayName: true,
+          minSelect: true,
+          maxSelect: true,
+          isActive: true,
+        },
+      }),
+      this.prisma.uberCategoryConfig.findMany({
+        where: { storeId },
+        select: {
+          menuCategoryStableId: true,
+          displayName: true,
+          sortOrder: true,
+          isActive: true,
         },
       }),
     ]);
 
-    const priceMap = new Map(
-      priceBookItems.map((item) => [item.menuItemStableId, item]),
+    const categoryConfigMap = new Map(
+      categoryConfigs.map((config) => [config.menuCategoryStableId, config]),
+    );
+    const itemConfigMap = new Map(
+      itemConfigs.map((item) => [item.menuItemStableId, item]),
+    );
+    const optionConfigMap = new Map(
+      optionConfigs.map((config) => [config.optionChoiceStableId, config]),
+    );
+    const groupConfigMap = new Map(
+      modifierGroupConfigs.map((config) => [
+        config.templateGroupStableId,
+        config,
+      ]),
+    );
+    const categoryById = new Map(
+      categories.map((category) => [category.id, category]),
     );
 
-    const items = menuItems.map((menuItem) => {
-      const priceBookItem = priceMap.get(menuItem.stableId);
-      const uberPriceCents =
-        priceBookItem?.priceCents ?? menuItem.basePriceCents;
+    const groupDraftMap = new Map<
+      string,
+      {
+        id: string;
+        sourceStableId: string;
+        title: string;
+        minSelect: number;
+        maxSelect: number;
+        isAvailable: boolean;
+        optionItemIds: string[];
+      }
+    >();
+
+    const optionItemDraftMap = new Map<
+      string,
+      {
+        id: string;
+        sourceType: 'OPTION_ITEM';
+        sourceStableId: string;
+        title: string;
+        description: string | null;
+        basePriceCents: number;
+        priceCents: number;
+        isAvailable: boolean;
+        modifierGroupIds: string[];
+        hasDelta: boolean;
+      }
+    >();
+
+    const itemDrafts: Array<{
+      id: string;
+      sourceType: 'MENU_ITEM';
+      sourceStableId: string;
+      title: string;
+      description: string | null;
+      basePriceCents: number;
+      priceCents: number;
+      isAvailable: boolean;
+      modifierGroupIds: string[];
+      categoryStableId: string;
+      sortOrder: number;
+      hasDelta: boolean;
+    }> = [];
+
+    for (const template of templates) {
+      const groupConfig = groupConfigMap.get(template.stableId);
+      const groupId = this.buildStableUberNodeId(
+        'group',
+        storeId,
+        template.stableId,
+      );
+      const optionItemIds: string[] = [];
+      const minSelect = groupConfig?.minSelect ?? template.defaultMinSelect;
+      const maxSelect =
+        groupConfig?.maxSelect ??
+        template.defaultMaxSelect ??
+        Math.max(template.options.length, minSelect, 1);
+      const groupIsActive = groupConfig?.isActive ?? template.isAvailable;
+      if (!groupIsActive) {
+        continue;
+      }
+
+      for (const choice of template.options) {
+        const optionConfig = optionConfigMap.get(choice.stableId);
+        const optionItemId = this.buildStableUberNodeId(
+          'item',
+          storeId,
+          choice.stableId,
+        );
+        const optionAvailable =
+          optionConfig?.isAvailable !== undefined
+            ? optionConfig.isAvailable
+            : choice.isAvailable;
+        const optionPriceCents =
+          optionConfig?.priceDeltaCents ?? choice.priceDeltaCents;
+        const childGroupIds = Array.from(
+          new Set(
+            choice.childLinks.map((link) =>
+              this.buildStableUberNodeId(
+                'group',
+                storeId,
+                link.childOption.templateGroup.stableId,
+              ),
+            ),
+          ),
+        );
+
+        optionItemIds.push(optionItemId);
+        optionItemDraftMap.set(choice.stableId, {
+          id: optionItemId,
+          sourceType: 'OPTION_ITEM',
+          sourceStableId: choice.stableId,
+          title: optionConfig?.displayName || choice.nameEn,
+          description: optionConfig?.displayDescription || null,
+          basePriceCents: choice.priceDeltaCents,
+          priceCents: optionPriceCents,
+          isAvailable: optionAvailable,
+          modifierGroupIds: childGroupIds,
+          hasDelta:
+            optionPriceCents !== choice.priceDeltaCents ||
+            optionAvailable !== choice.isAvailable,
+        });
+      }
+
+      groupDraftMap.set(template.stableId, {
+        id: groupId,
+        sourceStableId: template.stableId,
+        title: groupConfig?.displayName || template.nameEn,
+        minSelect,
+        maxSelect,
+        isAvailable: template.isAvailable,
+        optionItemIds,
+      });
+    }
+
+    for (const menuItem of menuItems) {
+      const itemConfig = itemConfigMap.get(menuItem.stableId);
+      const category = categoryById.get(menuItem.categoryId);
+      if (!category) continue;
+
+      const categoryConfig = categoryConfigMap.get(category.stableId);
+      const categoryActive = categoryConfig?.isActive ?? category.isActive;
+      if (!categoryActive) {
+        continue;
+      }
+
+      const mappedGroupIds = menuItem.optionGroups
+        .map((link) => {
+          const templateStableId = link.templateGroup.stableId;
+          if (!groupDraftMap.has(templateStableId)) return null;
+          return this.buildStableUberNodeId('group', storeId, templateStableId);
+        })
+        .filter((groupId): groupId is string => Boolean(groupId));
+
+      const priceCents = itemConfig?.priceCents ?? menuItem.basePriceCents;
       const isAvailable =
-        priceBookItem?.isAvailable !== undefined
-          ? priceBookItem.isAvailable
+        itemConfig?.isAvailable !== undefined
+          ? itemConfig.isAvailable
           : menuItem.isAvailable;
 
-      return {
+      itemDrafts.push({
         id: this.buildStableUberNodeId('item', storeId, menuItem.stableId),
-        sourceType: 'MENU_ITEM' as const,
+        sourceType: 'MENU_ITEM',
         sourceStableId: menuItem.stableId,
+        title: itemConfig?.displayName || menuItem.nameEn,
+        description: itemConfig?.displayDescription || null,
         basePriceCents: menuItem.basePriceCents,
-        priceCents: uberPriceCents,
+        priceCents,
         isAvailable,
-        modifierGroupIds: [] as string[],
+        modifierGroupIds: mappedGroupIds,
+        categoryStableId: category.stableId,
+        sortOrder: menuItem.sortOrder,
         hasDelta:
-          uberPriceCents !== menuItem.basePriceCents ||
+          priceCents !== menuItem.basePriceCents ||
           isAvailable !== menuItem.isAvailable,
-      };
-    });
+      });
+    }
+
+    const categoryDrafts = categories
+      .map((category) => {
+        const categoryConfig = categoryConfigMap.get(category.stableId);
+        const categoryActive = categoryConfig?.isActive ?? category.isActive;
+        if (!categoryActive) return null;
+
+        const categoryItemIds = itemDrafts
+          .filter((item) => item.categoryStableId === category.stableId)
+          .sort((a, b) => a.sortOrder - b.sortOrder)
+          .map((item) => item.id);
+        if (!categoryItemIds.length) return null;
+
+        return {
+          id: this.buildStableUberNodeId(
+            'category',
+            storeId,
+            category.stableId,
+          ),
+          sourceStableId: category.stableId,
+          title: categoryConfig?.displayName || category.nameEn,
+          sortOrder: categoryConfig?.sortOrder ?? category.sortOrder,
+          entities: categoryItemIds,
+        };
+      })
+      .filter((category): category is NonNullable<typeof category> =>
+        Boolean(category),
+      )
+      .sort((a, b) => a.sortOrder - b.sortOrder);
 
     return {
       menuId: this.buildStableUberNodeId('menu', storeId, uberStoreId),
-      categories: [] as Array<Record<string, unknown>>,
-      items,
-      groups: [] as Array<Record<string, unknown>>,
+      categories: categoryDrafts,
+      items: [...itemDrafts, ...optionItemDraftMap.values()],
+      groups: Array.from(groupDraftMap.values()),
     };
   }
 
   private buildUberUploadMenuPayload(graph: {
     menuId: string;
-    categories: Array<Record<string, unknown>>;
+    categories: Array<{
+      id: string;
+      title: string;
+      entities: string[];
+    }>;
     items: Array<{
       id: string;
+      sourceType: 'MENU_ITEM' | 'OPTION_ITEM';
       sourceStableId: string;
+      title: string;
+      description: string | null;
       priceCents: number;
       isAvailable: boolean;
       modifierGroupIds: string[];
     }>;
-    groups: Array<Record<string, unknown>>;
+    groups: Array<{
+      id: string;
+      title: string;
+      minSelect: number;
+      maxSelect: number;
+      optionItemIds: string[];
+    }>;
   }): Record<string, unknown> {
     return {
       menus: [
@@ -1949,22 +2730,76 @@ export class UberEatsService {
           category_ids: graph.categories.map((category) => category.id),
         },
       ],
-      categories: graph.categories,
+      categories: graph.categories.map((category) => ({
+        id: category.id,
+        title: { translations: { en_us: category.title } },
+        entities: category.entities,
+      })),
       items: graph.items.map((item) => ({
         id: item.id,
         title: {
           translations: {
-            en_us: item.sourceStableId,
+            en_us: item.title || item.sourceStableId,
           },
         },
+        ...(item.description
+          ? {
+              description: {
+                translations: {
+                  en_us: item.description,
+                },
+              },
+            }
+          : {}),
         price_info: { price: item.priceCents },
         modifier_group_ids: item.modifierGroupIds,
         suspension_info: {
           suspended_until: item.isAvailable ? null : '2099-01-01T00:00:00Z',
         },
       })),
-      modifier_groups: graph.groups,
+      modifier_groups: graph.groups.map((group) => ({
+        id: group.id,
+        title: {
+          translations: {
+            en_us: group.title,
+          },
+        },
+        quantity_info: {
+          quantity: {
+            min_permitted: group.minSelect,
+            max_permitted: Math.max(group.minSelect, group.maxSelect),
+          },
+        },
+        modifier_options: group.optionItemIds.map((optionItemId) => ({
+          type: 'ITEM',
+          id: optionItemId,
+        })),
+      })),
     };
+  }
+
+  private buildUberDraftEdges(graph: {
+    categories: Array<{ id: string; entities: string[] }>;
+    items: Array<{ id: string; modifierGroupIds: string[] }>;
+    groups: Array<{ id: string; optionItemIds: string[] }>;
+  }) {
+    const edges: Array<{ from: string; to: string; type: string }> = [];
+    for (const category of graph.categories) {
+      for (const itemId of category.entities) {
+        edges.push({ from: category.id, to: itemId, type: 'CATEGORY_ITEM' });
+      }
+    }
+    for (const item of graph.items) {
+      for (const groupId of item.modifierGroupIds) {
+        edges.push({ from: item.id, to: groupId, type: 'ITEM_GROUP' });
+      }
+    }
+    for (const group of graph.groups) {
+      for (const optionItemId of group.optionItemIds) {
+        edges.push({ from: group.id, to: optionItemId, type: 'GROUP_OPTION' });
+      }
+    }
+    return edges;
   }
 
   private summarizePublishGraph(graph: {
@@ -2061,7 +2896,7 @@ export class UberEatsService {
     uberStoreId: string,
     graph: {
       items: Array<{
-        sourceType: 'MENU_ITEM';
+        sourceType: 'MENU_ITEM' | 'OPTION_ITEM';
         sourceStableId: string;
         priceCents: number;
         isAvailable: boolean;
@@ -2069,8 +2904,21 @@ export class UberEatsService {
     },
   ) {
     const now = new Date();
+    const menuItems = graph.items.filter(
+      (
+        item,
+      ): item is (typeof graph.items)[number] & { sourceType: 'MENU_ITEM' } =>
+        item.sourceType === 'MENU_ITEM',
+    );
+    const optionItems = graph.items.filter(
+      (
+        item,
+      ): item is (typeof graph.items)[number] & { sourceType: 'OPTION_ITEM' } =>
+        item.sourceType === 'OPTION_ITEM',
+    );
+
     await Promise.all(
-      graph.items.map((item) =>
+      menuItems.map((item) =>
         this.prisma.uberItemChannelConfig.updateMany({
           where: {
             storeId,
@@ -2079,6 +2927,29 @@ export class UberEatsService {
           data: {
             uberStoreId,
             lastPublishedPriceCents: item.priceCents,
+            lastPublishedIsAvailable: item.isAvailable,
+            lastPublishedHash: this.buildStableUberNodeId(
+              'publish',
+              storeId,
+              item.sourceStableId,
+            ),
+            lastPublishedAt: now,
+            lastPublishError: null,
+          },
+        }),
+      ),
+    );
+
+    await Promise.all(
+      optionItems.map((item) =>
+        this.prisma.uberOptionItemConfig.updateMany({
+          where: {
+            storeId,
+            optionChoiceStableId: item.sourceStableId,
+          },
+          data: {
+            uberStoreId,
+            lastPublishedPriceDeltaCents: item.priceCents,
             lastPublishedIsAvailable: item.isAvailable,
             lastPublishedHash: this.buildStableUberNodeId(
               'publish',
