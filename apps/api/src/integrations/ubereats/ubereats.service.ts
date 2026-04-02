@@ -353,7 +353,7 @@ export class UberEatsService {
       return {
         scope: normalizedScope,
         tokenIssued: false,
-        tokenError: error instanceof Error ? error.message : String(error),
+        tokenError: error instanceof Error ? error.message : `${error}`,
       };
     }
 
@@ -1483,7 +1483,7 @@ export class UberEatsService {
     } catch (error) {
       await this.markMenuPublishVersionFailed(
         version.id,
-        error instanceof Error ? error.message : String(error),
+        error instanceof Error ? error.message : `${error}`,
       );
       throw error;
     }
@@ -1491,43 +1491,43 @@ export class UberEatsService {
 
   async syncUberMenuItemAvailability(input: SyncAvailabilityInput) {
     const normalizedStoreId = this.normalizeStoreId(input.storeId);
-    await this.ensureOptionChoiceExists(input.optionChoiceStableId);
+    await this.ensureMenuItemExists(input.menuItemStableId);
 
-    const priceBookItem = await this.prisma.uberItemChannelConfig.findUnique({
+    const itemConfig = await this.prisma.uberItemChannelConfig.findUnique({
       where: {
-        storeId_optionChoiceStableId: {
+        storeId_menuItemStableId: {
           storeId: normalizedStoreId,
-          optionChoiceStableId: input.optionChoiceStableId,
+          menuItemStableId: input.menuItemStableId,
         },
       },
     });
 
-    if (!optionConfig) {
+    if (!itemConfig) {
       throw new BadRequestException(
-        `未找到 ${input.optionChoiceStableId} 的 Uber option 配置，请先配置`,
+        `未找到 ${input.menuItemStableId} 的 Uber 商品配置，请先配置`,
       );
     }
 
     const updated = await this.prisma.uberItemChannelConfig.update({
       where: {
-        storeId_optionChoiceStableId: {
+        storeId_menuItemStableId: {
           storeId: normalizedStoreId,
-          optionChoiceStableId: input.optionChoiceStableId,
+          menuItemStableId: input.menuItemStableId,
         },
       },
       data: {
         isAvailable: input.isAvailable,
       },
       select: {
-        optionChoiceStableId: true,
+        menuItemStableId: true,
         isAvailable: true,
         updatedAt: true,
       },
     });
 
-    await this.captureEvent('ubereats_option_item_availability_synced', {
+    await this.captureEvent('ubereats_menu_item_availability_synced', {
       storeId: normalizedStoreId,
-      optionChoiceStableId: input.optionChoiceStableId,
+      menuItemStableId: input.menuItemStableId,
       isAvailable: updated.isAvailable,
     });
 
@@ -2889,13 +2889,6 @@ export class UberEatsService {
         finishedAt: new Date(),
       },
     });
-
-    return {
-      menuId: this.buildStableUberNodeId('menu', storeId, uberStoreId),
-      categories: [] as Array<Record<string, unknown>>,
-      items,
-      groups: [] as Array<Record<string, unknown>>,
-    };
   }
 
   private buildUberUploadMenuPayload(graph: {
