@@ -1620,9 +1620,14 @@ export class UberEatsService {
       extraHeaders?: Record<string, string>;
     },
   ): Promise<Record<string, unknown>> {
-    const resolvedBody =
-      options.rawBody ??
-      (options.body ? JSON.stringify(options.body) : undefined);
+    const resolvedBody: BodyInit | undefined =
+      options.rawBody !== undefined
+        ? typeof options.rawBody === 'string'
+          ? options.rawBody
+          : new Uint8Array(options.rawBody)
+        : options.body
+          ? JSON.stringify(options.body)
+          : undefined;
     const response = await fetch(
       `${this.uberApiBaseUrl.replace(/\/$/, '')}${path}`,
       {
@@ -2015,8 +2020,8 @@ export class UberEatsService {
         status: UberMenuPublishStatus.IN_PROGRESS,
         totalItems: summary.totalItems,
         changedItems: summary.changedItems,
-        requestPayload: payload,
-        payload,
+        requestPayload: payload as Prisma.InputJsonValue,
+        payload: payload as Prisma.InputJsonValue,
         checksum,
       },
       select: { id: true, versionStableId: true, createdAt: true },
@@ -2033,7 +2038,7 @@ export class UberEatsService {
       where: { id },
       data: {
         status: UberMenuPublishStatus.SUCCESS,
-        responsePayload,
+        responsePayload: responsePayload as Prisma.InputJsonValue,
         errorMessage: null,
         finishedAt: new Date(),
       },
