@@ -8,6 +8,6 @@ import { UberEatsService } from './ubereats.service';
   imports: [PrismaModule],
   controllers: [UberEatsController],
   providers: [UberEatsService, UberAuthService],
-  exports: [UberAuthService],
+  exports: [UberAuthService, UberEatsService],
 })
 export class UberEatsModule {}

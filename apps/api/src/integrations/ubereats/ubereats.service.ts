@@ -83,6 +83,10 @@ type UpdateDraftOptionInput = UberStoreScopedInput & {
 
 type PublishMenuInput = UberStoreScopedInput & {
   dryRun?: boolean;
+  excludedCategoryIds?: string[];
+  excludedGroupIds?: string[];
+  excludedMenuItemStableIds?: string[];
+  excludedOptionChoiceStableIds?: string[];
 };
 
 type SyncAvailabilityInput = UberStoreScopedInput & {
@@ -122,6 +126,8 @@ type UberMerchantStore = {
   storeId: string;
   storeName: string | null;
   locationSummary: string | null;
+  integrationEnabled: boolean;
+  posExternalStoreId: string | null;
   raw: Record<string, unknown>;
 };
 
@@ -565,11 +571,14 @@ export class UberEatsService {
         storeName: store.storeName,
         locationSummary: store.locationSummary,
         isProvisioned:
-          mappingByStoreId.get(store.storeId)?.isProvisioned ?? false,
+          mappingByStoreId.get(store.storeId)?.isProvisioned ??
+          store.integrationEnabled,
         provisionedAt:
-          mappingByStoreId.get(store.storeId)?.provisionedAt ?? null,
+          mappingByStoreId.get(store.storeId)?.provisionedAt ??
+          (store.integrationEnabled ? new Date() : null),
         posExternalStoreId:
-          mappingByStoreId.get(store.storeId)?.posExternalStoreId ?? null,
+          mappingByStoreId.get(store.storeId)?.posExternalStoreId ??
+          store.posExternalStoreId,
       })),
       raw: response,
     };
@@ -1487,7 +1496,20 @@ export class UberEatsService {
   async publishUberMenu(input: PublishMenuInput) {
     const normalizedStoreId = this.normalizeStoreId(input.storeId);
     const uberStoreId = await this.resolveUberStoreIdOrThrow(normalizedStoreId);
-    const graph = await this.buildUberMenuGraph(normalizedStoreId, uberStoreId);
+    const graph = await this.buildUberMenuGraphWithFilters(
+      normalizedStoreId,
+      uberStoreId,
+      {
+        excludedCategoryIds: new Set(input.excludedCategoryIds ?? []),
+        excludedGroupIds: new Set(input.excludedGroupIds ?? []),
+        excludedMenuItemStableIds: new Set(
+          input.excludedMenuItemStableIds ?? [],
+        ),
+        excludedOptionChoiceStableIds: new Set(
+          input.excludedOptionChoiceStableIds ?? [],
+        ),
+      },
+    );
     const payload = this.buildUberUploadMenuPayload(graph);
     const summary = this.summarizePublishGraph(graph);
 
@@ -2105,6 +2127,8 @@ export class UberEatsService {
     raw: unknown;
   }): Promise<void> {
     const rawPayload = this.asObject(input.raw) ?? {};
+    const integrationEnabled = this.readStoreIntegrationEnabled(rawPayload);
+    const posExternalStoreId = this.readStorePosExternalStoreId(rawPayload);
     const storeMapping = this.uberStoreMappingDelegate;
     if (!storeMapping) {
       throw new BadRequestException('Prisma 未配置 uberStoreMapping 模型');
@@ -2117,15 +2141,19 @@ export class UberEatsService {
         uberStoreId: input.uberStoreId,
         storeName: input.storeName ?? null,
         locationSummary: input.locationSummary ?? null,
-        isProvisioned: false,
-        provisionedAt: null,
-        posExternalStoreId: null,
+        isProvisioned: integrationEnabled,
+        provisionedAt: integrationEnabled ? new Date() : null,
+        posExternalStoreId: posExternalStoreId ?? null,
         rawPayload,
       },
       update: {
         merchantUberUserId: input.merchantUberUserId,
         storeName: input.storeName ?? null,
         locationSummary: input.locationSummary ?? null,
+        ...(integrationEnabled
+          ? { isProvisioned: true, provisionedAt: new Date() }
+          : {}),
+        ...(posExternalStoreId ? { posExternalStoreId } : {}),
         rawPayload,
       },
     });
@@ -2269,8 +2297,27 @@ export class UberEatsService {
           `unknown:${randomUUID()}`,
         storeName: this.readString(store.name, store.store_name),
         locationSummary: this.readLocationSummary(store),
+        integrationEnabled: this.readStoreIntegrationEnabled(store),
+        posExternalStoreId: this.readStorePosExternalStoreId(store),
         raw: store,
       }));
+  }
+
+  private readStoreIntegrationEnabled(payload: unknown): boolean {
+    const store = this.asObject(payload);
+    const posData = this.asObject(store?.pos_data);
+    return posData?.integration_enabled === true;
+  }
+
+  private readStorePosExternalStoreId(payload: unknown): string | null {
+    const store = this.asObject(payload);
+    const posData = this.asObject(store?.pos_data);
+
+    return this.readString(
+      posData?.order_manager_client_id,
+      posData?.pos_external_store_id,
+      store?.pos_external_store_id,
+    );
   }
 
   private readLocationSummary(payload: unknown): string | null {
@@ -2424,6 +2471,38 @@ export class UberEatsService {
   }
 
   private async buildUberMenuGraph(storeId: string, uberStoreId: string) {
+    const excludedCategoryIds = new Set<string>();
+    const excludedGroupIds = new Set<string>();
+    const excludedMenuItemStableIds = new Set<string>();
+    const excludedOptionChoiceStableIds = new Set<string>();
+    return this.buildUberMenuGraphWithFilters(storeId, uberStoreId, {
+      excludedCategoryIds,
+      excludedGroupIds,
+      excludedMenuItemStableIds,
+      excludedOptionChoiceStableIds,
+    });
+  }
+
+  private composeUberDisplayName(
+    nameEn?: string | null,
+    nameZh?: string | null,
+  ) {
+    const en = (nameEn ?? '').trim();
+    const zh = (nameZh ?? '').trim();
+    if (en && zh) return `${en} ${zh}`;
+    return en || zh;
+  }
+
+  private async buildUberMenuGraphWithFilters(
+    storeId: string,
+    uberStoreId: string,
+    filters: {
+      excludedCategoryIds: Set<string>;
+      excludedGroupIds: Set<string>;
+      excludedMenuItemStableIds: Set<string>;
+      excludedOptionChoiceStableIds: Set<string>;
+    },
+  ) {
     const [
       categories,
       menuItems,
@@ -2631,6 +2710,9 @@ export class UberEatsService {
         storeId,
         template.stableId,
       );
+      if (filters.excludedGroupIds.has(groupId)) {
+        continue;
+      }
       const optionItemIds: string[] = [];
       const minSelect = groupConfig?.minSelect ?? template.defaultMinSelect;
       const maxSelect =
@@ -2643,6 +2725,9 @@ export class UberEatsService {
       }
 
       for (const choice of template.options) {
+        if (filters.excludedOptionChoiceStableIds.has(choice.stableId)) {
+          continue;
+        }
         const optionConfig = optionConfigMap.get(choice.stableId);
         const optionItemId = this.buildStableUberNodeId(
           'item',
@@ -2684,7 +2769,9 @@ export class UberEatsService {
           id: optionItemId,
           sourceType: 'OPTION_ITEM',
           sourceStableId: choice.stableId,
-          title: optionConfig?.displayName || choice.nameEn,
+          title:
+            optionConfig?.displayName ||
+            this.composeUberDisplayName(choice.nameEn, choice.nameZh),
           description: optionConfig?.displayDescription || null,
           basePriceCents: choice.priceDeltaCents,
           priceCents: optionPriceCents,
@@ -2699,7 +2786,9 @@ export class UberEatsService {
       groupDraftMap.set(template.stableId, {
         id: groupId,
         sourceStableId: template.stableId,
-        title: groupConfig?.displayName || template.nameEn,
+        title:
+          groupConfig?.displayName ||
+          this.composeUberDisplayName(template.nameEn, template.nameZh),
         minSelect,
         maxSelect,
         isAvailable: template.isAvailable,
@@ -2708,6 +2797,9 @@ export class UberEatsService {
     }
 
     for (const menuItem of menuItems) {
+      if (filters.excludedMenuItemStableIds.has(menuItem.stableId)) {
+        continue;
+      }
       const itemConfig = itemConfigMap.get(menuItem.stableId);
       const category = categoryById.get(menuItem.categoryId);
       if (!category) continue;
@@ -2736,7 +2828,9 @@ export class UberEatsService {
         id: this.buildStableUberNodeId('item', storeId, menuItem.stableId),
         sourceType: 'MENU_ITEM',
         sourceStableId: menuItem.stableId,
-        title: itemConfig?.displayName || menuItem.nameEn,
+        title:
+          itemConfig?.displayName ||
+          this.composeUberDisplayName(menuItem.nameEn, menuItem.nameZh),
         description: itemConfig?.displayDescription || null,
         basePriceCents: menuItem.basePriceCents,
         priceCents,
@@ -2752,6 +2846,12 @@ export class UberEatsService {
 
     const categoryDrafts = categories
       .map((category) => {
+        const categoryId = this.buildStableUberNodeId(
+          'category',
+          storeId,
+          category.stableId,
+        );
+        if (filters.excludedCategoryIds.has(categoryId)) return null;
         const categoryConfig = categoryConfigMap.get(category.stableId);
         const categoryActive = categoryConfig?.isActive ?? category.isActive;
         if (!categoryActive) return null;
@@ -2763,13 +2863,11 @@ export class UberEatsService {
         if (!categoryItemIds.length) return null;
 
         return {
-          id: this.buildStableUberNodeId(
-            'category',
-            storeId,
-            category.stableId,
-          ),
+          id: categoryId,
           sourceStableId: category.stableId,
-          title: categoryConfig?.displayName || category.nameEn,
+          title:
+            categoryConfig?.displayName ||
+            this.composeUberDisplayName(category.nameEn, category.nameZh),
           sortOrder: categoryConfig?.sortOrder ?? category.sortOrder,
           entities: categoryItemIds,
         };

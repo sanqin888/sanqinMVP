@@ -337,6 +337,60 @@ describe('UberEatsService', () => {
     expect(upsertCallArg?.update).not.toHaveProperty('isProvisioned');
   });
 
+  it('获取商户门店列表时会识别 integration_enabled 并同步为已 provision', async () => {
+    const fetchMock: jest.MockedFunction<typeof fetch> = jest.fn();
+    const upsertMock = jest
+      .fn<Promise<Record<string, never>>, [unknown]>()
+      .mockResolvedValue({});
+    fetchMock.mockResolvedValue({
+      ok: true,
+      text: jest.fn().mockResolvedValue(
+        JSON.stringify({
+          stores: [
+            {
+              store_id: 'store_1',
+              name: 'Main Store',
+              location: { city: 'Toronto', country: 'CA' },
+              pos_data: {
+                integration_enabled: true,
+                order_manager_client_id: 'client_1',
+              },
+            },
+          ],
+        }),
+      ),
+    } as Response);
+    global.fetch = fetchMock;
+
+    const prisma = {
+      uberMerchantConnection: {
+        findUnique: jest.fn().mockResolvedValue({
+          merchantUberUserId: 'merchant_1',
+          accessToken: 'merchant_token_123',
+        }),
+        update: jest.fn().mockResolvedValue(null),
+      },
+      uberStoreMapping: {
+        findMany: jest.fn().mockResolvedValue([]),
+        upsert: upsertMock,
+      },
+    };
+
+    const service = new UberEatsService(prisma as never, createAuthService());
+    const result = await service.getMerchantStores(undefined, 'merchant_1');
+
+    expect(result.stores[0]?.isProvisioned).toBe(true);
+    expect(result.stores[0]?.posExternalStoreId).toBe('client_1');
+
+    const upsertCallArg = upsertMock.mock.calls[0]?.[0] as
+      | { update?: Record<string, unknown> }
+      | undefined;
+    expect(upsertCallArg?.update).toMatchObject({
+      isProvisioned: true,
+      posExternalStoreId: 'client_1',
+    });
+  });
+
   it('provisionStore 会调用 Uber provision 接口并标记门店已激活', async () => {
     const fetchMock: jest.MockedFunction<typeof fetch> = jest.fn();
     fetchMock.mockResolvedValue({
