@@ -1039,7 +1039,8 @@ export class UberEatsService {
             .filter(Boolean),
         })),
     }));
-    const uberDraftTreeNodes = this.buildUberDraftTreeNodes(uberDraftCategories);
+    const uberDraftTreeNodes =
+      this.buildUberDraftTreeNodes(uberDraftCategories);
 
     return {
       storeId: normalizedStoreId,
@@ -1396,7 +1397,9 @@ export class UberEatsService {
         (item.sourceType === 'OPTION_ITEM' &&
           !publishedOptionSet.has(item.sourceStableId)),
     );
-    const draftItemIdSet = new Set(draft.uberDraft.items.map((item) => item.id));
+    const draftItemIdSet = new Set(
+      draft.uberDraft.items.map((item) => item.id),
+    );
     const draftGroupIdSet = new Set(
       draft.uberDraft.groups.map((group) => group.id),
     );
@@ -1439,9 +1442,8 @@ export class UberEatsService {
       deletedEdges: Array.from(publishedSnapshot.edgeKeys)
         .filter((edgeKey) => !draftEdgeSet.has(edgeKey))
         .map((edgeKey) => this.decodeDraftEdgeKey(edgeKey))
-        .filter(
-          (edge): edge is { from: string; to: string; type: string } =>
-            Boolean(edge),
+        .filter((edge): edge is { from: string; to: string; type: string } =>
+          Boolean(edge),
         ),
       priceChanges: changedItems.map((item) => ({
         sourceType: item.sourceType,
@@ -2930,7 +2932,9 @@ export class UberEatsService {
             source: 'AUTO-MAPPED',
             priceDeltaCents: option.priceDeltaCents,
             isAvailable: option.isAvailable,
-            childGroupIds: option.childGroups.map((childGroup) => childGroup.id),
+            childGroupIds: option.childGroups.map(
+              (childGroup) => childGroup.id,
+            ),
             children: option.childGroups.map((childGroup) => ({
               id: childGroup.id,
               type: 'group',
@@ -2964,7 +2968,9 @@ export class UberEatsService {
     for (const rawCategory of categories) {
       const category = this.asObject(rawCategory);
       const categoryId = this.readString(category?.id);
-      const entities = Array.isArray(category?.entities) ? category.entities : [];
+      const entities = Array.isArray(category?.entities)
+        ? category.entities
+        : [];
       if (!categoryId) continue;
       for (const entity of entities) {
         const itemId = this.readString(entity);
