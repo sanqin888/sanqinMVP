@@ -737,60 +737,6 @@ export default function UberEatsAdminPage() {
     }
   }, [inspectorDraft, selectedNode, selectedStoreId]);
 
-  const selectedNodeWarnings = useMemo(
-    () => menuDraft?.mappingWarnings.filter((warning) => selectedNode?.name ? warning.includes(selectedNode.name) : true) ?? menuDraft?.mappingWarnings ?? [],
-    [menuDraft?.mappingWarnings, selectedNode?.name],
-  );
-
-  const selectedNodeEdgeInfo = useMemo(
-    () => (menuDraft?.uberDraft.edges ?? []).filter((edge) => edge.from === selectedNode?.id || edge.to === selectedNode?.id),
-    [menuDraft?.uberDraft.edges, selectedNode?.id],
-  );
-
-  const saveSelectedNode = useCallback(async () => {
-    if (!selectedNode || !selectedStoreId) return;
-    if (selectedNode.type === 'item') {
-      await apiFetch(`/integrations/ubereats/menu/draft/items/${encodeURIComponent(selectedNode.id)}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          storeId: selectedStoreId,
-          displayName: inspectorDraft.displayName,
-          displayDescription: inspectorDraft.displayDescription,
-          priceCents: Number(inspectorDraft.priceCents ?? 0),
-          isAvailable: Boolean(inspectorDraft.isAvailable),
-        }),
-      });
-      return;
-    }
-    if (selectedNode.type === 'group') {
-      await apiFetch(`/integrations/ubereats/menu/draft/groups/${encodeURIComponent(selectedNode.id)}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          storeId: selectedStoreId,
-          name: inspectorDraft.name,
-          minSelect: Number(inspectorDraft.minSelect ?? 0),
-          maxSelect: Number(inspectorDraft.maxSelect ?? 1),
-          required: Boolean(inspectorDraft.required),
-        }),
-      });
-      return;
-    }
-    if (selectedNode.type === 'option') {
-      await apiFetch(`/integrations/ubereats/menu/draft/options/${encodeURIComponent(selectedNode.id)}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          storeId: selectedStoreId,
-          displayName: inspectorDraft.displayName,
-          priceDeltaCents: Number(inspectorDraft.priceDeltaCents ?? 0),
-          isAvailable: Boolean(inspectorDraft.isAvailable),
-        }),
-      });
-    }
-  }, [inspectorDraft, selectedNode, selectedStoreId]);
-
   return (
     <div className="flex gap-6">
       <aside className="w-64 shrink-0 rounded-xl border border-slate-200 bg-white p-4">
