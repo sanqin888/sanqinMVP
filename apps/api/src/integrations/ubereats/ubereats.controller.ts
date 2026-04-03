@@ -92,6 +92,16 @@ class UpdateUberDraftItemDto {
   priceCents?: number;
 
   @IsOptional()
+  @Type(() => Number)
+  @Min(0)
+  @Max(500)
+  priceAdjustmentPercent?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isPriceOverridden?: boolean;
+
+  @IsOptional()
   @IsBoolean()
   isAvailable?: boolean;
 

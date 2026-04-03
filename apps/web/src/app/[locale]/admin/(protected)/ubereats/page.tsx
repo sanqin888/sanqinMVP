@@ -101,6 +101,8 @@ type DraftNode = {
   source: 'SOURCE' | 'AUTO-MAPPED' | 'OVERRIDDEN';
   status?: 'UNPUBLISHED' | 'ERROR';
   priceCents?: number;
+  priceAdjustmentPercent?: number;
+  isPriceOverridden?: boolean;
   priceDeltaCents?: number;
   isAvailable?: boolean;
   minSelect?: number;
@@ -137,6 +139,8 @@ type UberDraftItemNode = {
   displayName: string;
   displayDescription?: string | null;
   priceCents: number;
+  priceAdjustmentPercent: number;
+  isPriceOverridden: boolean;
   isAvailable: boolean;
   groups: UberDraftGroupNode[];
 };
@@ -562,6 +566,8 @@ export default function UberEatsAdminPage() {
         displayName: selectedNode.name,
         displayDescription: '',
         priceCents: selectedNode.priceCents ?? 0,
+        priceAdjustmentPercent: selectedNode.priceAdjustmentPercent ?? 0,
+        isPriceOverridden: selectedNode.isPriceOverridden ?? false,
         isAvailable: selectedNode.isAvailable ?? true,
       });
       return;
@@ -703,7 +709,11 @@ export default function UberEatsAdminPage() {
           storeId: selectedStoreId,
           displayName: inspectorDraft.displayName,
           displayDescription: inspectorDraft.displayDescription,
-          priceCents: Number(inspectorDraft.priceCents ?? 0),
+          priceAdjustmentPercent: Number(inspectorDraft.priceAdjustmentPercent ?? 0),
+          isPriceOverridden: Boolean(inspectorDraft.isPriceOverridden),
+          ...(Boolean(inspectorDraft.isPriceOverridden)
+            ? { priceCents: Number(inspectorDraft.priceCents ?? 0) }
+            : {}),
           isAvailable: Boolean(inspectorDraft.isAvailable),
         }),
       });
@@ -970,7 +980,9 @@ export default function UberEatsAdminPage() {
                       </p>
                       <label className="block"><span className="mb-1 block text-slate-500">displayName</span><input className="w-full rounded border px-2 py-1" value={String(inspectorDraft.displayName ?? '')} onChange={(e) => setInspectorDraft((prev) => ({ ...prev, displayName: e.target.value }))} /></label>
                       <label className="block"><span className="mb-1 block text-slate-500">displayDescription</span><input className="w-full rounded border px-2 py-1" value={String(inspectorDraft.displayDescription ?? '')} onChange={(e) => setInspectorDraft((prev) => ({ ...prev, displayDescription: e.target.value }))} /></label>
-                      <label className="block"><span className="mb-1 block text-slate-500">priceCents</span><input type="number" className="w-full rounded border px-2 py-1" value={Number(inspectorDraft.priceCents ?? 0)} onChange={(e) => setInspectorDraft((prev) => ({ ...prev, priceCents: Number(e.target.value) }))} /></label>
+                      <label className="block"><span className="mb-1 block text-slate-500">价格上浮百分比（仅商品基础价，选项加价不变）</span><input type="number" min={0} max={500} step={0.1} className="w-full rounded border px-2 py-1" value={Number(inspectorDraft.priceAdjustmentPercent ?? 0)} onChange={(e) => setInspectorDraft((prev) => ({ ...prev, priceAdjustmentPercent: Number(e.target.value) }))} /></label>
+                      <label className="block"><span className="mb-1 block text-slate-500">人工价格 Override</span><select className="w-full rounded border px-2 py-1" value={String(Boolean(inspectorDraft.isPriceOverridden))} onChange={(e) => setInspectorDraft((prev) => ({ ...prev, isPriceOverridden: e.target.value === 'true' }))}><option value="false">关闭（按基础价+百分比）</option><option value="true">开启（priceCents 优先）</option></select></label>
+                      <label className="block"><span className="mb-1 block text-slate-500">priceCents（仅 Override 开启时生效）</span><input type="number" className="w-full rounded border px-2 py-1 disabled:bg-slate-100" disabled={!Boolean(inspectorDraft.isPriceOverridden)} value={Number(inspectorDraft.priceCents ?? 0)} onChange={(e) => setInspectorDraft((prev) => ({ ...prev, priceCents: Number(e.target.value) }))} /></label>
                       <label className="block"><span className="mb-1 block text-slate-500">isAvailable</span><select className="w-full rounded border px-2 py-1" value={String(Boolean(inspectorDraft.isAvailable))} onChange={(e) => setInspectorDraft((prev) => ({ ...prev, isAvailable: e.target.value === 'true' }))}><option value="true">上架</option><option value="false">下架</option></select></label>
                       <button type="button" className="rounded border px-3 py-1.5" onClick={() => void runAction('save-node-item', saveSelectedNode, 'item 草稿已保存', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>保存 item</button>
                     </div>
