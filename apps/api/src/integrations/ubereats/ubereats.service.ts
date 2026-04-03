@@ -62,8 +62,6 @@ type UpdateDraftItemInput = UberStoreScopedInput & {
   displayName?: string;
   displayDescription?: string;
   priceCents?: number;
-  priceAdjustmentPercent?: number;
-  isPriceOverridden?: boolean;
   isAvailable?: boolean;
   sortOrder?: number;
 };
@@ -1009,8 +1007,6 @@ export class UberEatsService {
           displayName: item.title,
           displayDescription: item.description,
           priceCents: item.priceCents,
-          priceAdjustmentPercent: item.priceAdjustmentPercent,
-          isPriceOverridden: item.isPriceOverridden,
           isAvailable: item.isAvailable,
           groups: item.modifierGroupIds
             .map((groupId) => {
@@ -1144,12 +1140,6 @@ export class UberEatsService {
           1,
           Math.round(input.priceCents ?? menuItem.basePriceCents),
         ),
-        priceAdjustmentPercent: Math.max(
-          0,
-          Number(input.priceAdjustmentPercent ?? 0),
-        ),
-        isPriceOverridden:
-          input.isPriceOverridden ?? input.priceCents !== undefined,
         isAvailable: input.isAvailable ?? menuItem.isAvailable,
         displayName: input.displayName?.trim() || null,
         displayDescription: input.displayDescription?.trim() || null,
@@ -1158,19 +1148,6 @@ export class UberEatsService {
         ...(input.priceCents !== undefined
           ? { priceCents: Math.max(1, Math.round(input.priceCents)) }
           : {}),
-        ...(input.priceAdjustmentPercent !== undefined
-          ? {
-              priceAdjustmentPercent: Math.max(
-                0,
-                Number(input.priceAdjustmentPercent),
-              ),
-            }
-          : {}),
-        ...(input.isPriceOverridden !== undefined
-          ? { isPriceOverridden: input.isPriceOverridden }
-          : input.priceCents !== undefined
-            ? { isPriceOverridden: true }
-            : {}),
         ...(input.isAvailable !== undefined
           ? { isAvailable: input.isAvailable }
           : {}),
@@ -2606,8 +2583,6 @@ export class UberEatsService {
         select: {
           menuItemStableId: true,
           priceCents: true,
-          priceAdjustmentPercent: true,
-          isPriceOverridden: true,
           isAvailable: true,
           displayName: true,
           displayDescription: true,
@@ -2721,8 +2696,6 @@ export class UberEatsService {
       description: string | null;
       basePriceCents: number;
       priceCents: number;
-      priceAdjustmentPercent: number;
-      isPriceOverridden: boolean;
       isAvailable: boolean;
       modifierGroupIds: string[];
       categoryStableId: string;
@@ -2845,19 +2818,7 @@ export class UberEatsService {
         })
         .filter((groupId): groupId is string => Boolean(groupId));
 
-      const priceAdjustmentPercent = Math.max(
-        0,
-        Number(itemConfig?.priceAdjustmentPercent ?? 0),
-      );
-      const isPriceOverridden = itemConfig?.isPriceOverridden ?? false;
-      const priceCents = isPriceOverridden
-        ? (itemConfig?.priceCents ?? menuItem.basePriceCents)
-        : Math.max(
-            1,
-            Math.round(
-              menuItem.basePriceCents * (1 + priceAdjustmentPercent / 100),
-            ),
-          );
+      const priceCents = itemConfig?.priceCents ?? menuItem.basePriceCents;
       const isAvailable =
         itemConfig?.isAvailable !== undefined
           ? itemConfig.isAvailable
@@ -2873,8 +2834,6 @@ export class UberEatsService {
         description: itemConfig?.displayDescription || null,
         basePriceCents: menuItem.basePriceCents,
         priceCents,
-        priceAdjustmentPercent,
-        isPriceOverridden,
         isAvailable,
         modifierGroupIds: mappedGroupIds,
         categoryStableId: category.stableId,
@@ -3044,8 +3003,6 @@ export class UberEatsService {
         sourceMenuItemStableId: string;
         displayName: string;
         priceCents: number;
-        priceAdjustmentPercent: number;
-        isPriceOverridden: boolean;
         isAvailable: boolean;
         groups: Array<{
           id: string;
@@ -3082,8 +3039,6 @@ export class UberEatsService {
         sourceStableId: item.sourceMenuItemStableId,
         source: 'AUTO-MAPPED',
         priceCents: item.priceCents,
-        priceAdjustmentPercent: item.priceAdjustmentPercent,
-        isPriceOverridden: item.isPriceOverridden,
         isAvailable: item.isAvailable,
         children: item.groups.map((group) => ({
           id: group.id,
