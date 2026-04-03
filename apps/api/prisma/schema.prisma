@@ -1116,6 +1116,8 @@ model UberItemChannelConfig {
   uberStoreId              String?
   menuItemStableId         String
   priceCents               Int
+  priceAdjustmentPercent   Float     @default(0)
+  isPriceOverridden        Boolean   @default(false)
   isAvailable              Boolean   @default(true)
   displayName              String?
   displayDescription       String?
