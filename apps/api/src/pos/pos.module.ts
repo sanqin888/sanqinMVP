@@ -10,6 +10,7 @@ import { OrdersModule } from '../orders/orders.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { PosStoreStatusController } from './pos-store-status.controller';
 import { PosStoreStatusService } from './pos-store-status.service';
+import { UberEatsModule } from '../integrations/ubereats/ubereats.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { PosStoreStatusService } from './pos-store-status.service';
     PosDeviceModule, // 引入基础设备模块
     OrdersModule,
     PrismaModule,
+    UberEatsModule,
   ],
   controllers: [
     PosSummaryController,

@@ -17,6 +17,7 @@ import { PromotionsModule } from '../promotions/promotions.module';
 import { AdminMembersModule } from './members/admin-members.module';
 import { AdminPosDevicesModule } from './pos-devices/admin-pos-devices.module';
 import { EmailModule } from '../email/email.module';
+import { UberEatsModule } from '../integrations/ubereats/ubereats.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { EmailModule } from '../email/email.module';
     AdminMembersModule,
     AdminPosDevicesModule,
     EmailModule,
+    UberEatsModule,
   ],
   controllers: [
     AdminBusinessController,

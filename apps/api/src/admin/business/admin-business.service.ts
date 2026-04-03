@@ -4,6 +4,7 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import type { BusinessConfig, BusinessHour } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AppLogger } from '../../common/app-logger';
+import { UberEatsService } from '../../integrations/ubereats/ubereats.service';
 
 export type DayConfigDto = {
   weekday: number; // 0-6
@@ -67,7 +68,10 @@ export type BusinessConfigResponse = {
 export class AdminBusinessService {
   private readonly logger = new AppLogger(AdminBusinessService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly uberEatsService: UberEatsService,
+  ) {}
 
   /**
    * 统一返回给前端的配置：
@@ -592,10 +596,17 @@ export class AdminBusinessService {
       return this.getConfig();
     }
 
-    await this.prisma.businessConfig.update({
+    const updatedConfig = await this.prisma.businessConfig.update({
       where: { id: config.id },
       data: updates,
     });
+
+    if (
+      updatedConfig.isTemporarilyClosed !== config.isTemporarilyClosed ||
+      updatedConfig.temporaryCloseReason !== config.temporaryCloseReason
+    ) {
+      await this.syncUberStoreStatusSafely('admin_business_config');
+    }
 
     this.logger.log(
       `Business config updated: isTemporarilyClosed=${updates.isTemporarilyClosed ?? config.isTemporarilyClosed} reason="${
@@ -606,6 +617,17 @@ export class AdminBusinessService {
     );
 
     return this.getConfig();
+  }
+
+  private async syncUberStoreStatusSafely(source: string) {
+    try {
+      await this.uberEatsService.syncStoreStatusToUber();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : `${error}`;
+      this.logger.warn(
+        `Failed to sync Uber store status after ${source}: ${message}`,
+      );
+    }
   }
 
   /**
