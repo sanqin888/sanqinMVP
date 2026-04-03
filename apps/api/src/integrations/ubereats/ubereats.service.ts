@@ -1039,6 +1039,7 @@ export class UberEatsService {
             .filter(Boolean),
         })),
     }));
+    const uberDraftTreeNodes = this.buildUberDraftTreeNodes(uberDraftCategories);
 
     return {
       storeId: normalizedStoreId,
@@ -1060,6 +1061,7 @@ export class UberEatsService {
         tree: {
           categories: uberDraftCategories,
         },
+        treeNodes: uberDraftTreeNodes,
       },
       mappingWarnings: [
         ...(storeMapping?.uberStoreId
@@ -1262,7 +1264,7 @@ export class UberEatsService {
     const normalizedStoreId = this.normalizeStoreId(storeId);
     const parentChoice = await this.prisma.menuOptionTemplateChoice.findUnique({
       where: { stableId: optionItemId },
-      select: { id: true, stableId: true },
+      select: { stableId: true },
     });
     if (!parentChoice) {
       throw new BadRequestException(`选项 ${optionItemId} 不存在`);
@@ -1270,36 +1272,34 @@ export class UberEatsService {
 
     const childGroup = await this.prisma.menuOptionGroupTemplate.findUnique({
       where: { stableId: groupId },
-      select: {
-        id: true,
-        stableId: true,
-        options: {
-          where: { deletedAt: null },
-          select: { id: true, stableId: true },
-        },
-      },
+      select: { stableId: true },
     });
     if (!childGroup) {
       throw new BadRequestException(`模板组 ${groupId} 不存在`);
     }
 
-    if (!childGroup.options.length) {
-      throw new BadRequestException(`模板组 ${groupId} 下没有可绑定的选项`);
-    }
-
-    await this.prisma.menuOptionChoiceLink.createMany({
-      data: childGroup.options.map((option) => ({
-        parentOptionId: parentChoice.id,
-        childOptionId: option.id,
-      })),
-      skipDuplicates: true,
+    await this.prisma.uberOptionChildGroupBinding.upsert({
+      where: {
+        storeId_parentOptionChoiceStableId_childTemplateGroupStableId: {
+          storeId: normalizedStoreId,
+          parentOptionChoiceStableId: parentChoice.stableId,
+          childTemplateGroupStableId: childGroup.stableId,
+        },
+      },
+      create: {
+        storeId: normalizedStoreId,
+        parentOptionChoiceStableId: parentChoice.stableId,
+        childTemplateGroupStableId: childGroup.stableId,
+        isBound: true,
+      },
+      update: { isBound: true },
     });
 
     await this.captureEvent('ubereats_draft_option_child_group_bound', {
       storeId: normalizedStoreId,
       optionItemId,
       groupId,
-      childOptionCount: childGroup.options.length,
+      mode: 'uber_binding_only',
     });
 
     return { ok: true, storeId: normalizedStoreId, optionItemId, groupId };
@@ -1313,7 +1313,7 @@ export class UberEatsService {
     const normalizedStoreId = this.normalizeStoreId(storeId);
     const parentChoice = await this.prisma.menuOptionTemplateChoice.findUnique({
       where: { stableId: optionItemId },
-      select: { id: true },
+      select: { stableId: true },
     });
     if (!parentChoice) {
       throw new BadRequestException(`选项 ${optionItemId} 不存在`);
@@ -1321,26 +1321,34 @@ export class UberEatsService {
 
     const childGroup = await this.prisma.menuOptionGroupTemplate.findUnique({
       where: { stableId: groupId },
-      select: { id: true },
+      select: { stableId: true },
     });
     if (!childGroup) {
       throw new BadRequestException(`模板组 ${groupId} 不存在`);
     }
 
-    const deleted = await this.prisma.menuOptionChoiceLink.deleteMany({
+    const row = await this.prisma.uberOptionChildGroupBinding.upsert({
       where: {
-        parentOptionId: parentChoice.id,
-        childOption: {
-          templateGroupId: childGroup.id,
+        storeId_parentOptionChoiceStableId_childTemplateGroupStableId: {
+          storeId: normalizedStoreId,
+          parentOptionChoiceStableId: parentChoice.stableId,
+          childTemplateGroupStableId: childGroup.stableId,
         },
       },
+      create: {
+        storeId: normalizedStoreId,
+        parentOptionChoiceStableId: parentChoice.stableId,
+        childTemplateGroupStableId: childGroup.stableId,
+        isBound: false,
+      },
+      update: { isBound: false },
     });
 
     await this.captureEvent('ubereats_draft_option_child_group_unbound', {
       storeId: normalizedStoreId,
       optionItemId,
       groupId,
-      deletedCount: deleted.count,
+      isBound: row.isBound,
     });
 
     return {
@@ -1348,7 +1356,7 @@ export class UberEatsService {
       storeId: normalizedStoreId,
       optionItemId,
       groupId,
-      deletedCount: deleted.count,
+      deletedCount: 1,
     };
   }
 
@@ -1361,7 +1369,7 @@ export class UberEatsService {
         status: UberMenuPublishStatus.SUCCESS,
       },
       orderBy: { createdAt: 'desc' },
-      select: { createdAt: true },
+      select: { createdAt: true, requestPayload: true, payload: true },
     });
     const [itemConfigs, optionConfigs] = await Promise.all([
       this.prisma.uberItemChannelConfig.findMany({
@@ -1388,6 +1396,18 @@ export class UberEatsService {
         (item.sourceType === 'OPTION_ITEM' &&
           !publishedOptionSet.has(item.sourceStableId)),
     );
+    const draftItemIdSet = new Set(draft.uberDraft.items.map((item) => item.id));
+    const draftGroupIdSet = new Set(
+      draft.uberDraft.groups.map((group) => group.id),
+    );
+    const draftEdgeSet = new Set(
+      draft.uberDraft.edges.map(
+        (edge) => `${edge.type}:${edge.from}->${edge.to}`,
+      ),
+    );
+    const publishedSnapshot = this.extractPublishedSnapshotFromPayload(
+      lastSuccess?.requestPayload ?? lastSuccess?.payload ?? null,
+    );
 
     return {
       storeId: normalizedStoreId,
@@ -1399,7 +1419,9 @@ export class UberEatsService {
         priceCents: item.priceCents,
         isAvailable: item.isAvailable,
       })),
-      deletedItems: [] as string[],
+      deletedItems: Array.from(publishedSnapshot.itemIds).filter(
+        (itemId) => !draftItemIdSet.has(itemId),
+      ),
       addedGroups: draft.uberDraft.groups
         .filter((group) => group.optionItemIds.length > 0)
         .map((group) => group.sourceStableId),
@@ -1410,7 +1432,17 @@ export class UberEatsService {
           minSelect: group.minSelect,
           maxSelect: group.maxSelect,
         })),
+      deletedGroups: Array.from(publishedSnapshot.groupIds).filter(
+        (groupId) => !draftGroupIdSet.has(groupId),
+      ),
       hierarchyChanges: draft.uberDraft.edges,
+      deletedEdges: Array.from(publishedSnapshot.edgeKeys)
+        .filter((edgeKey) => !draftEdgeSet.has(edgeKey))
+        .map((edgeKey) => this.decodeDraftEdgeKey(edgeKey))
+        .filter(
+          (edge): edge is { from: string; to: string; type: string } =>
+            Boolean(edge),
+        ),
       priceChanges: changedItems.map((item) => ({
         sourceType: item.sourceType,
         stableId: item.sourceStableId,
@@ -2372,6 +2404,7 @@ export class UberEatsService {
       optionConfigs,
       modifierGroupConfigs,
       categoryConfigs,
+      childGroupBindings,
     ] = await Promise.all([
       this.prisma.menuCategory.findMany({
         where: { deletedAt: null },
@@ -2477,6 +2510,14 @@ export class UberEatsService {
           isActive: true,
         },
       }),
+      this.prisma.uberOptionChildGroupBinding.findMany({
+        where: { storeId },
+        select: {
+          parentOptionChoiceStableId: true,
+          childTemplateGroupStableId: true,
+          isBound: true,
+        },
+      }),
     ]);
 
     const categoryConfigMap = new Map(
@@ -2494,6 +2535,19 @@ export class UberEatsService {
         config,
       ]),
     );
+    const childGroupBindingMap = new Map<
+      string,
+      Array<{ childTemplateGroupStableId: string; isBound: boolean }>
+    >();
+    for (const binding of childGroupBindings) {
+      const list =
+        childGroupBindingMap.get(binding.parentOptionChoiceStableId) ?? [];
+      list.push({
+        childTemplateGroupStableId: binding.childTemplateGroupStableId,
+        isBound: binding.isBound,
+      });
+      childGroupBindingMap.set(binding.parentOptionChoiceStableId, list);
+    }
     const categoryById = new Map(
       categories.map((category) => [category.id, category]),
     );
@@ -2573,16 +2627,28 @@ export class UberEatsService {
             : choice.isAvailable;
         const optionPriceCents =
           optionConfig?.priceDeltaCents ?? choice.priceDeltaCents;
-        const childGroupIds = Array.from(
-          new Set(
-            choice.childLinks.map((link) =>
-              this.buildStableUberNodeId(
-                'group',
-                storeId,
-                link.childOption.templateGroup.stableId,
-              ),
-            ),
+        const sourceChildGroupStableIds = new Set(
+          choice.childLinks.map(
+            (link) => link.childOption.templateGroup.stableId,
           ),
+        );
+        const bindings = childGroupBindingMap.get(choice.stableId) ?? [];
+        for (const binding of bindings) {
+          if (binding.isBound) {
+            sourceChildGroupStableIds.add(binding.childTemplateGroupStableId);
+          } else {
+            sourceChildGroupStableIds.delete(
+              binding.childTemplateGroupStableId,
+            );
+          }
+        }
+        const childGroupIds = Array.from(sourceChildGroupStableIds).map(
+          (childTemplateGroupStableId) =>
+            this.buildStableUberNodeId(
+              'group',
+              storeId,
+              childTemplateGroupStableId,
+            ),
         );
 
         optionItemIds.push(optionItemId);
@@ -2800,6 +2866,153 @@ export class UberEatsService {
       }
     }
     return edges;
+  }
+
+  private buildUberDraftTreeNodes(
+    categories: Array<{
+      id: string;
+      name: string;
+      items: Array<{
+        id: string;
+        sourceMenuItemStableId: string;
+        displayName: string;
+        priceCents: number;
+        isAvailable: boolean;
+        groups: Array<{
+          id: string;
+          name: string;
+          minSelect: number;
+          maxSelect: number;
+          options: Array<{
+            id: string;
+            sourceOptionChoiceStableId: string;
+            displayName: string;
+            priceDeltaCents: number;
+            isAvailable: boolean;
+            childGroups: Array<{
+              id: string;
+              name: string;
+              minSelect: number;
+              maxSelect: number;
+            }>;
+          }>;
+        }>;
+      }>;
+    }>,
+  ) {
+    return categories.map((category) => ({
+      id: category.id,
+      type: 'category',
+      name: category.name,
+      sourceStableId: category.id,
+      source: 'AUTO-MAPPED',
+      children: category.items.map((item) => ({
+        id: item.id,
+        type: 'item',
+        name: item.displayName,
+        sourceStableId: item.sourceMenuItemStableId,
+        source: 'AUTO-MAPPED',
+        priceCents: item.priceCents,
+        isAvailable: item.isAvailable,
+        children: item.groups.map((group) => ({
+          id: group.id,
+          type: 'group',
+          name: group.name,
+          sourceStableId: group.id,
+          source: 'AUTO-MAPPED',
+          minSelect: group.minSelect,
+          maxSelect: group.maxSelect,
+          children: group.options.map((option) => ({
+            id: option.id,
+            type: 'option',
+            name: option.displayName,
+            sourceStableId: option.sourceOptionChoiceStableId,
+            source: 'AUTO-MAPPED',
+            priceDeltaCents: option.priceDeltaCents,
+            isAvailable: option.isAvailable,
+            childGroupIds: option.childGroups.map((childGroup) => childGroup.id),
+            children: option.childGroups.map((childGroup) => ({
+              id: childGroup.id,
+              type: 'group',
+              name: childGroup.name,
+              sourceStableId: childGroup.id,
+              source: 'AUTO-MAPPED',
+              minSelect: childGroup.minSelect,
+              maxSelect: childGroup.maxSelect,
+            })),
+          })),
+        })),
+      })),
+    }));
+  }
+
+  private extractPublishedSnapshotFromPayload(payload: unknown) {
+    const itemIds = new Set<string>();
+    const groupIds = new Set<string>();
+    const edgeKeys = new Set<string>();
+    const root = this.asObject(payload);
+    if (!root) {
+      return { itemIds, groupIds, edgeKeys };
+    }
+
+    const categories = Array.isArray(root.categories) ? root.categories : [];
+    const items = Array.isArray(root.items) ? root.items : [];
+    const modifierGroups = Array.isArray(root.modifier_groups)
+      ? root.modifier_groups
+      : [];
+
+    for (const rawCategory of categories) {
+      const category = this.asObject(rawCategory);
+      const categoryId = this.readString(category?.id);
+      const entities = Array.isArray(category?.entities) ? category.entities : [];
+      if (!categoryId) continue;
+      for (const entity of entities) {
+        const itemId = this.readString(entity);
+        if (!itemId) continue;
+        edgeKeys.add(`CATEGORY_ITEM:${categoryId}->${itemId}`);
+      }
+    }
+
+    for (const rawItem of items) {
+      const item = this.asObject(rawItem);
+      const itemId = this.readString(item?.id);
+      if (!itemId) continue;
+      itemIds.add(itemId);
+      const groupIdsInItem = Array.isArray(item?.modifier_group_ids)
+        ? item.modifier_group_ids
+        : [];
+      for (const groupIdRaw of groupIdsInItem) {
+        const groupId = this.readString(groupIdRaw);
+        if (!groupId) continue;
+        edgeKeys.add(`ITEM_GROUP:${itemId}->${groupId}`);
+      }
+    }
+
+    for (const rawGroup of modifierGroups) {
+      const group = this.asObject(rawGroup);
+      const groupId = this.readString(group?.id);
+      if (!groupId) continue;
+      groupIds.add(groupId);
+      const options = Array.isArray(group?.modifier_options)
+        ? group.modifier_options
+        : [];
+      for (const rawOption of options) {
+        const option = this.asObject(rawOption);
+        const optionId = this.readString(option?.id);
+        if (!optionId) continue;
+        edgeKeys.add(`GROUP_OPTION:${groupId}->${optionId}`);
+      }
+    }
+
+    return { itemIds, groupIds, edgeKeys };
+  }
+
+  private decodeDraftEdgeKey(edgeKey: string) {
+    const [type, relation] = edgeKey.split(':');
+    if (!type || !relation) return null;
+    const [from, to] = relation.split('->');
+    if (!from || !to) return null;
+    return { type, from, to };
   }
 
   private summarizePublishGraph(graph: {
