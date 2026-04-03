@@ -1031,11 +1031,42 @@ export class UberEatsService {
                             }
                           : null;
                       })
-                      .filter(Boolean),
+                      .filter(
+                        (
+                          childGroup,
+                        ): childGroup is {
+                          id: string;
+                          name: string;
+                          minSelect: number;
+                          maxSelect: number;
+                        } => Boolean(childGroup),
+                      ),
                   })),
               };
             })
-            .filter(Boolean),
+            .filter(
+              (
+                group,
+              ): group is {
+                id: string;
+                name: string;
+                minSelect: number;
+                maxSelect: number;
+                options: Array<{
+                  id: string;
+                  sourceOptionChoiceStableId: string;
+                  displayName: string;
+                  priceDeltaCents: number;
+                  isAvailable: boolean;
+                  childGroups: Array<{
+                    id: string;
+                    name: string;
+                    minSelect: number;
+                    maxSelect: number;
+                  }>;
+                }>;
+              } => Boolean(group),
+            ),
         })),
     }));
     const uberDraftTreeNodes =
