@@ -63,7 +63,6 @@ type UpdateDraftItemInput = UberStoreScopedInput & {
   displayDescription?: string;
   priceCents?: number;
   isAvailable?: boolean;
-  categoryId?: string;
   sortOrder?: number;
 };
 
@@ -1104,7 +1103,6 @@ export class UberEatsService {
         isAvailable: input.isAvailable ?? menuItem.isAvailable,
         displayName: input.displayName?.trim() || null,
         displayDescription: input.displayDescription?.trim() || null,
-        externalCategoryId: input.categoryId?.trim() || null,
       },
       update: {
         ...(input.priceCents !== undefined
@@ -1118,9 +1116,6 @@ export class UberEatsService {
           : {}),
         ...(input.displayDescription !== undefined
           ? { displayDescription: input.displayDescription?.trim() || null }
-          : {}),
-        ...(input.categoryId !== undefined
-          ? { externalCategoryId: input.categoryId?.trim() || null }
           : {}),
       },
     });

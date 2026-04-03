@@ -96,10 +96,6 @@ class UpdateUberDraftItemDto {
   isAvailable?: boolean;
 
   @IsOptional()
-  @IsString()
-  categoryId?: string;
-
-  @IsOptional()
   @Type(() => Number)
   @IsInt()
   sortOrder?: number;
