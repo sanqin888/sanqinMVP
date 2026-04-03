@@ -122,6 +122,8 @@ type UberMerchantStore = {
   storeId: string;
   storeName: string | null;
   locationSummary: string | null;
+  integrationEnabled: boolean;
+  posExternalStoreId: string | null;
   raw: Record<string, unknown>;
 };
 
@@ -565,11 +567,14 @@ export class UberEatsService {
         storeName: store.storeName,
         locationSummary: store.locationSummary,
         isProvisioned:
-          mappingByStoreId.get(store.storeId)?.isProvisioned ?? false,
+          mappingByStoreId.get(store.storeId)?.isProvisioned ??
+          store.integrationEnabled,
         provisionedAt:
-          mappingByStoreId.get(store.storeId)?.provisionedAt ?? null,
+          mappingByStoreId.get(store.storeId)?.provisionedAt ??
+          (store.integrationEnabled ? new Date() : null),
         posExternalStoreId:
-          mappingByStoreId.get(store.storeId)?.posExternalStoreId ?? null,
+          mappingByStoreId.get(store.storeId)?.posExternalStoreId ??
+          store.posExternalStoreId,
       })),
       raw: response,
     };
@@ -2105,6 +2110,8 @@ export class UberEatsService {
     raw: unknown;
   }): Promise<void> {
     const rawPayload = this.asObject(input.raw) ?? {};
+    const integrationEnabled = this.readStoreIntegrationEnabled(rawPayload);
+    const posExternalStoreId = this.readStorePosExternalStoreId(rawPayload);
     const storeMapping = this.uberStoreMappingDelegate;
     if (!storeMapping) {
       throw new BadRequestException('Prisma 未配置 uberStoreMapping 模型');
@@ -2117,15 +2124,17 @@ export class UberEatsService {
         uberStoreId: input.uberStoreId,
         storeName: input.storeName ?? null,
         locationSummary: input.locationSummary ?? null,
-        isProvisioned: false,
-        provisionedAt: null,
-        posExternalStoreId: null,
+        isProvisioned: integrationEnabled,
+        provisionedAt: integrationEnabled ? new Date() : null,
+        posExternalStoreId: posExternalStoreId ?? null,
         rawPayload,
       },
       update: {
         merchantUberUserId: input.merchantUberUserId,
         storeName: input.storeName ?? null,
         locationSummary: input.locationSummary ?? null,
+        ...(integrationEnabled ? { isProvisioned: true, provisionedAt: new Date() } : {}),
+        ...(posExternalStoreId ? { posExternalStoreId } : {}),
         rawPayload,
       },
     });
@@ -2269,8 +2278,27 @@ export class UberEatsService {
           `unknown:${randomUUID()}`,
         storeName: this.readString(store.name, store.store_name),
         locationSummary: this.readLocationSummary(store),
+        integrationEnabled: this.readStoreIntegrationEnabled(store),
+        posExternalStoreId: this.readStorePosExternalStoreId(store),
         raw: store,
       }));
+  }
+
+  private readStoreIntegrationEnabled(payload: unknown): boolean {
+    const store = this.asObject(payload);
+    const posData = this.asObject(store?.pos_data);
+    return posData?.integration_enabled === true;
+  }
+
+  private readStorePosExternalStoreId(payload: unknown): string | null {
+    const store = this.asObject(payload);
+    const posData = this.asObject(store?.pos_data);
+
+    return this.readString(
+      posData?.order_manager_client_id,
+      posData?.pos_external_store_id,
+      store?.pos_external_store_id,
+    );
   }
 
   private readLocationSummary(payload: unknown): string | null {
