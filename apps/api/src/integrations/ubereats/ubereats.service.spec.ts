@@ -514,6 +514,11 @@ describe('UberEatsService', () => {
       uberOptionChildGroupBinding: {
         findMany: jest.fn().mockResolvedValue([]),
       },
+      uberStoreMenuConfig: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ priceAdjustmentPercent: 10 }),
+      },
       uberStoreMapping: {
         findFirst: jest.fn().mockResolvedValue({ uberStoreId: 'uber_store_1' }),
       },
@@ -531,7 +536,7 @@ describe('UberEatsService', () => {
     expect(result.ok).toBe(true);
     expect(result.dryRun).toBe(true);
     expect(result.summary.totalItems).toBe(2);
-    expect(result.summary.changedItems).toBe(1);
+    expect(result.summary.changedItems).toBe(2);
   });
 
   it('生成自动对账报表时会汇总订单与失败事件', async () => {

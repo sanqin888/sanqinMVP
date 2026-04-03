@@ -1110,6 +1110,16 @@ model UberStoreMapping {
   @@index([merchantUberUserId, isProvisioned])
 }
 
+model UberStoreMenuConfig {
+  id                     String   @id @default(uuid()) @db.Uuid
+  storeId                String   @default("default") @unique
+  priceAdjustmentPercent Float    @default(0)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@index([updatedAt])
+}
+
 model UberItemChannelConfig {
   id                       String    @id @default(uuid()) @db.Uuid
   storeId                  String    @default("default")

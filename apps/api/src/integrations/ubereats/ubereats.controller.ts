@@ -105,6 +105,17 @@ class UpdateUberDraftItemDto {
   storeId?: string;
 }
 
+class UpdateUberStoreMenuConfigDto {
+  @Type(() => Number)
+  @Min(0)
+  @Max(500)
+  priceAdjustmentPercent!: number;
+
+  @IsOptional()
+  @IsString()
+  storeId?: string;
+}
+
 class UpdateUberDraftGroupDto {
   @IsOptional()
   @IsString()
@@ -529,6 +540,11 @@ export class UberEatsController {
   @Get('menu/draft')
   async getMenuDraft(@Query('storeId') storeId?: string) {
     return await this.uberEatsService.getUberMenuDraft(storeId);
+  }
+
+  @Patch('menu/draft/store-config')
+  async patchDraftStoreConfig(@Body() dto: UpdateUberStoreMenuConfigDto) {
+    return await this.uberEatsService.updateUberStoreMenuConfig(dto);
   }
 
   @Patch('menu/draft/items/:itemId')

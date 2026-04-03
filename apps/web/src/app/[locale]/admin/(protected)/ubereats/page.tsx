@@ -174,6 +174,9 @@ type UberMenuDraftResponse = {
     totalModifierGroups: number;
   };
   dirty: boolean;
+  storePricing?: {
+    priceAdjustmentPercent: number;
+  };
   lastPublishedVersion?: {
     versionStableId: string;
     status: string;
@@ -252,6 +255,7 @@ export default function UberEatsAdminPage() {
   const [inspectorDraft, setInspectorDraft] = useState<Record<string, unknown>>({});
   const [menuLoading, setMenuLoading] = useState(false);
   const [menuFetchedAt, setMenuFetchedAt] = useState<string | null>(null);
+  const [storePriceAdjustmentPercent, setStorePriceAdjustmentPercent] = useState(0);
   const [expandedNodeKeys, setExpandedNodeKeys] = useState<Set<string>>(() => new Set());
   const [selectedSourceNodeIds, setSelectedSourceNodeIds] = useState<Set<string> | null>(null);
 
@@ -332,6 +336,7 @@ export default function UberEatsAdminPage() {
       ]);
       setMenuDraft(draftRes);
       setMenuDiff(diffRes);
+      setStorePriceAdjustmentPercent(Number(draftRes.storePricing?.priceAdjustmentPercent ?? 0));
       setMenuFetchedAt(new Date().toISOString());
       if (!options?.keepSelection) {
         setSelectedNodeId(null);
@@ -910,11 +915,24 @@ export default function UberEatsAdminPage() {
             </div>
 
             {storeMenuTab === 'overview' && (
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-500">已绑定门店</p><p className="mt-2 text-xl font-semibold">{selectedStore?.storeId ?? '-'}</p><p className="text-xs text-slate-500">{selectedStore?.storeName ?? '-'}</p></div>
-                <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-500">最近生成 / draft fetchedAt</p><p className="mt-2 text-xl font-semibold">{safeTime(menuFetchedAt)}</p><p className="text-xs text-slate-500">最近发布：{safeTime(menuDraft?.lastPublishedVersion?.createdAt)}</p></div>
-                <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-500">结构统计</p><p className="mt-2 text-xl font-semibold">item {menuDraft?.sourceMenu.items ?? 0} / group {menuDraft?.sourceMenu.groups ?? 0}</p><p className="text-xs text-slate-500">option item {menuDraft?.sourceMenu.optionItems ?? 0}</p></div>
-                <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-500">未发布差异</p><p className="mt-2 text-xl font-semibold">{menuDraft?.publishSummary.changedItems ?? 0}</p><p className="text-xs text-slate-500">provision：{selectedStore?.isProvisioned ? '已 provision' : '未 provision'}</p></div>
+              <div className="space-y-3">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-500">已绑定门店</p><p className="mt-2 text-xl font-semibold">{selectedStore?.storeId ?? '-'}</p><p className="text-xs text-slate-500">{selectedStore?.storeName ?? '-'}</p></div>
+                  <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-500">最近生成 / draft fetchedAt</p><p className="mt-2 text-xl font-semibold">{safeTime(menuFetchedAt)}</p><p className="text-xs text-slate-500">最近发布：{safeTime(menuDraft?.lastPublishedVersion?.createdAt)}</p></div>
+                  <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-500">结构统计</p><p className="mt-2 text-xl font-semibold">item {menuDraft?.sourceMenu.items ?? 0} / group {menuDraft?.sourceMenu.groups ?? 0}</p><p className="text-xs text-slate-500">option item {menuDraft?.sourceMenu.optionItems ?? 0}</p></div>
+                  <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-500">未发布差异</p><p className="mt-2 text-xl font-semibold">{menuDraft?.publishSummary.changedItems ?? 0}</p><p className="text-xs text-slate-500">provision：{selectedStore?.isProvisioned ? '已 provision' : '未 provision'}</p></div>
+                </div>
+                <div className="rounded-xl border bg-white p-4">
+                  <h5 className="font-semibold">Uber 商品默认价格上浮</h5>
+                  <p className="mt-1 text-xs text-slate-500">仅影响映射后的商品基础价格；选项加价保持网站菜单原值，不参与上浮。若商品在 Inspector 手工改过 priceCents，则手工价优先。</p>
+                  <div className="mt-3 flex flex-wrap items-end gap-2">
+                    <label className="block text-sm">
+                      <span className="mb-1 block text-slate-500">价格上浮百分比（%）</span>
+                      <input type="number" min={0} max={500} step={0.1} className="w-40 rounded border px-2 py-1" value={Number(storePriceAdjustmentPercent)} onChange={(e) => setStorePriceAdjustmentPercent(Number(e.target.value))} />
+                    </label>
+                    <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={() => void runAction('save-store-price-adjust', () => apiFetch('/integrations/ubereats/menu/draft/store-config', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, priceAdjustmentPercent: Number(storePriceAdjustmentPercent) }) }).then(() => {}), '门店价格上浮已保存', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>保存上浮配置</button>
+                  </div>
+                </div>
               </div>
             )}
 

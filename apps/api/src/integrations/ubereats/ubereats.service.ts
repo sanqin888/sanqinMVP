@@ -66,6 +66,10 @@ type UpdateDraftItemInput = UberStoreScopedInput & {
   sortOrder?: number;
 };
 
+type UpdateStoreMenuConfigInput = UberStoreScopedInput & {
+  priceAdjustmentPercent: number;
+};
+
 type UpdateDraftGroupInput = UberStoreScopedInput & {
   name?: string;
   minSelect?: number;
@@ -979,6 +983,10 @@ export class UberEatsService {
       storeMapping?.uberStoreId ?? `draft:${normalizedStoreId}`;
     const graph = await this.buildUberMenuGraph(normalizedStoreId, uberStoreId);
     const summary = this.summarizePublishGraph(graph);
+    const storeMenuConfig = await this.prisma.uberStoreMenuConfig.findUnique({
+      where: { storeId: normalizedStoreId },
+      select: { priceAdjustmentPercent: true },
+    });
     const lastPublishedVersion =
       await this.prisma.uberMenuPublishVersion.findFirst({
         where: { storeId: normalizedStoreId },
@@ -1110,7 +1118,35 @@ export class UberEatsService {
       ],
       publishSummary: summary,
       dirty: summary.changedItems > 0,
+      storePricing: {
+        priceAdjustmentPercent: storeMenuConfig?.priceAdjustmentPercent ?? 0,
+      },
       lastPublishedVersion,
+    };
+  }
+
+  async updateUberStoreMenuConfig(input: UpdateStoreMenuConfigInput) {
+    const normalizedStoreId = this.normalizeStoreId(input.storeId);
+    const priceAdjustmentPercent = Math.max(
+      0,
+      Number(input.priceAdjustmentPercent ?? 0),
+    );
+
+    const config = await this.prisma.uberStoreMenuConfig.upsert({
+      where: { storeId: normalizedStoreId },
+      create: {
+        storeId: normalizedStoreId,
+        priceAdjustmentPercent,
+      },
+      update: {
+        priceAdjustmentPercent,
+      },
+    });
+
+    return {
+      ok: true,
+      storeId: normalizedStoreId,
+      config,
     };
   }
 
@@ -2512,6 +2548,7 @@ export class UberEatsService {
       modifierGroupConfigs,
       categoryConfigs,
       childGroupBindings,
+      storeMenuConfig,
     ] = await Promise.all([
       this.prisma.menuCategory.findMany({
         where: { deletedAt: null },
@@ -2624,6 +2661,10 @@ export class UberEatsService {
           childTemplateGroupStableId: true,
           isBound: true,
         },
+      }),
+      this.prisma.uberStoreMenuConfig.findUnique({
+        where: { storeId },
+        select: { priceAdjustmentPercent: true },
       }),
     ]);
 
@@ -2818,7 +2859,17 @@ export class UberEatsService {
         })
         .filter((groupId): groupId is string => Boolean(groupId));
 
-      const priceCents = itemConfig?.priceCents ?? menuItem.basePriceCents;
+      const globalPriceAdjustmentPercent = Math.max(
+        0,
+        Number(storeMenuConfig?.priceAdjustmentPercent ?? 0),
+      );
+      const generatedPriceCents = Math.max(
+        1,
+        Math.round(
+          menuItem.basePriceCents * (1 + globalPriceAdjustmentPercent / 100),
+        ),
+      );
+      const priceCents = itemConfig?.priceCents ?? generatedPriceCents;
       const isAvailable =
         itemConfig?.isAvailable !== undefined
           ? itemConfig.isAvailable
