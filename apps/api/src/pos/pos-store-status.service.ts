@@ -155,7 +155,9 @@ export class PosStoreStatusService {
     return status;
   }
 
-  private async syncUberStoreStatusSafely(source: 'pause' | 'resume' | 'auto_resume') {
+  private async syncUberStoreStatusSafely(
+    source: 'pause' | 'resume' | 'auto_resume',
+  ) {
     try {
       await this.uberEatsService.syncStoreStatusToUber();
     } catch (error) {

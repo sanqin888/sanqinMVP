@@ -2133,7 +2133,9 @@ export class UberEatsService {
         merchantUberUserId: input.merchantUberUserId,
         storeName: input.storeName ?? null,
         locationSummary: input.locationSummary ?? null,
-        ...(integrationEnabled ? { isProvisioned: true, provisionedAt: new Date() } : {}),
+        ...(integrationEnabled
+          ? { isProvisioned: true, provisionedAt: new Date() }
+          : {}),
         ...(posExternalStoreId ? { posExternalStoreId } : {}),
         rawPayload,
       },
