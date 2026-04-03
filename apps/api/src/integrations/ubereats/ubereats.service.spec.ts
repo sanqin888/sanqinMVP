@@ -457,6 +457,9 @@ describe('UberEatsService', () => {
       uberCategoryConfig: {
         findMany: jest.fn().mockResolvedValue([]),
       },
+      uberOptionChildGroupBinding: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
       uberStoreMapping: {
         findFirst: jest.fn().mockResolvedValue({ uberStoreId: 'uber_store_1' }),
       },
