@@ -1196,6 +1196,20 @@ model UberOptionItemConfig {
   @@index([uberStoreId])
 }
 
+model UberOptionChildGroupBinding {
+  id                        String   @id @default(uuid()) @db.Uuid
+  storeId                   String   @default("default")
+  parentOptionChoiceStableId String
+  childTemplateGroupStableId String
+  isBound                   Boolean  @default(true)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  @@unique([storeId, parentOptionChoiceStableId, childTemplateGroupStableId])
+  @@index([storeId, parentOptionChoiceStableId])
+  @@index([storeId, childTemplateGroupStableId])
+}
+
 model UberMenuPublishVersion {
   id              String                @id @default(uuid()) @db.Uuid
   versionStableId String                @unique @default(cuid())
