@@ -91,6 +91,7 @@ type CreatedOrdersResponse = {
 };
 
 type StoreMenuTabKey = 'overview' | 'mapping' | 'editor' | 'publish';
+type DraftTreeKey = 'source' | 'uber-mapping' | 'uber-editor';
 type DraftNodeType = 'category' | 'item' | 'group' | 'option';
 type DraftNode = {
   id: string;
@@ -251,6 +252,8 @@ export default function UberEatsAdminPage() {
   const [inspectorDraft, setInspectorDraft] = useState<Record<string, unknown>>({});
   const [menuLoading, setMenuLoading] = useState(false);
   const [menuFetchedAt, setMenuFetchedAt] = useState<string | null>(null);
+  const [expandedNodeKeys, setExpandedNodeKeys] = useState<Set<string>>(() => new Set());
+  const [selectedSourceNodeIds, setSelectedSourceNodeIds] = useState<Set<string> | null>(null);
 
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
 
@@ -356,6 +359,11 @@ export default function UberEatsAdminPage() {
     void loadStoreMenuDraft(selectedStoreId);
   }, [selectedStoreId, loadStoreMenuDraft]);
 
+  useEffect(() => {
+    setExpandedNodeKeys(new Set());
+    setSelectedSourceNodeIds(null);
+  }, [selectedStoreId]);
+
   const openTickets = useMemo(() => tickets.filter((t) => t.status !== 'RESOLVED').length, [tickets]);
   const verifiedCount = scopes.filter((s) => s.apiValidated || s.apiSkipped).length;
   const failedCount = scopes.filter((s) => !s.tokenIssued || s.apiValidated === false).length;
@@ -439,15 +447,99 @@ export default function UberEatsAdminPage() {
     [menuDraft?.uberDraft.treeNodes, uberDraftTree],
   );
 
+  const sourceNodeLookup = useMemo(() => {
+    const map = new Map<string, DraftNode>();
+    const travel = (list: DraftNode[]) => list.forEach((node) => {
+      map.set(node.id, node);
+      if (node.children?.length) travel(node.children);
+    });
+    travel(sourceMenuTree);
+    return map;
+  }, [sourceMenuTree]);
+
+  useEffect(() => {
+    if (selectedSourceNodeIds !== null) return;
+    const allIds = new Set<string>(Array.from(sourceNodeLookup.keys()));
+    setSelectedSourceNodeIds(allIds);
+  }, [selectedSourceNodeIds, sourceNodeLookup]);
+
+  const uncheckedSourceNodeIds = useMemo(() => {
+    if (selectedSourceNodeIds === null) return new Set<string>();
+    const unchecked = new Set<string>();
+    sourceNodeLookup.forEach((_node, id) => {
+      if (!selectedSourceNodeIds.has(id)) unchecked.add(id);
+    });
+    return unchecked;
+  }, [selectedSourceNodeIds, sourceNodeLookup]);
+
+  const exclusionFilter = useMemo(() => {
+    const excludedCategoryIds = new Set<string>();
+    const excludedGroupIds = new Set<string>();
+    const excludedMenuItemStableIds = new Set<string>();
+    const excludedOptionChoiceStableIds = new Set<string>();
+
+    uncheckedSourceNodeIds.forEach((id) => {
+      const node = sourceNodeLookup.get(id);
+      if (!node) return;
+      if (node.type === 'category') {
+        if (node.sourceStableId) excludedCategoryIds.add(node.sourceStableId);
+        return;
+      }
+      if (node.type === 'group') {
+        excludedGroupIds.add(node.id);
+        return;
+      }
+      if (node.type === 'item') {
+        if (node.sourceStableId) excludedMenuItemStableIds.add(node.sourceStableId);
+        return;
+      }
+      if (node.type === 'option' && node.sourceStableId) {
+        excludedOptionChoiceStableIds.add(node.sourceStableId);
+      }
+    });
+
+    return {
+      excludedCategoryIds,
+      excludedGroupIds,
+      excludedMenuItemStableIds,
+      excludedOptionChoiceStableIds,
+    };
+  }, [uncheckedSourceNodeIds, sourceNodeLookup]);
+
+  const filteredUberTree = useMemo(() => {
+    const travel = (nodes: DraftNode[]): DraftNode[] => {
+      const result: DraftNode[] = [];
+      nodes.forEach((node) => {
+        if (node.type === 'category' && exclusionFilter.excludedCategoryIds.has(node.id)) return null;
+        if (node.type === 'group' && exclusionFilter.excludedGroupIds.has(node.id)) return null;
+        if (node.type === 'item' && node.sourceStableId && exclusionFilter.excludedMenuItemStableIds.has(node.sourceStableId)) return null;
+        if (node.type === 'option' && node.sourceStableId && exclusionFilter.excludedOptionChoiceStableIds.has(node.sourceStableId)) return null;
+
+        const children = node.children?.length ? travel(node.children) : undefined;
+        if ((node.type === 'category' || node.type === 'item' || node.type === 'group') && children && children.length === 0) {
+          return null;
+        }
+
+        result.push({
+          ...node,
+          children,
+        });
+        return null;
+      });
+      return result;
+    };
+    return travel(normalizedUberDraftTree);
+  }, [normalizedUberDraftTree, exclusionFilter]);
+
   const allDraftNodes = useMemo(() => {
     const nodes: DraftNode[] = [];
     const travel = (list: DraftNode[]) => list.forEach((node) => {
       nodes.push(node);
       if (node.children?.length) travel(node.children);
     });
-    travel(normalizedUberDraftTree);
+    travel(filteredUberTree);
     return nodes;
-  }, [normalizedUberDraftTree]);
+  }, [filteredUberTree]);
 
   const selectedNode = allDraftNodes.find((node) => node.id === selectedNodeId) ?? allDraftNodes[0] ?? null;
   useEffect(() => {
@@ -494,7 +586,38 @@ export default function UberEatsAdminPage() {
     setInspectorDraft({});
   }, [selectedNode]);
   const selectedStore = stores.find((store) => store.storeId === selectedStoreId);
-  const renderDraftTree = useCallback((nodes: DraftNode[], depth = 0) => (
+  const isNodeExpanded = useCallback(
+    (treeKey: DraftTreeKey, nodeId: string) => expandedNodeKeys.has(`${treeKey}:${nodeId}`),
+    [expandedNodeKeys],
+  );
+  const toggleNodeExpand = useCallback((treeKey: DraftTreeKey, nodeId: string) => {
+    const key = `${treeKey}:${nodeId}`;
+    setExpandedNodeKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+  const handleSourceNodeChecked = useCallback((nodeId: string, checked: boolean) => {
+    const root = sourceNodeLookup.get(nodeId);
+    if (!root) return;
+    const descendantIds: string[] = [];
+    const travel = (node: DraftNode) => {
+      descendantIds.push(node.id);
+      node.children?.forEach(travel);
+    };
+    travel(root);
+    setSelectedSourceNodeIds((prev) => {
+      const base = new Set(prev ?? []);
+      descendantIds.forEach((id) => {
+        if (checked) base.add(id);
+        else base.delete(id);
+      });
+      return base;
+    });
+  }, [sourceNodeLookup]);
+  const renderDraftTree = useCallback((treeKey: DraftTreeKey, nodes: DraftNode[], depth = 0) => (
     <ul className={depth === 0 ? 'space-y-2' : 'ml-4 mt-2 space-y-2 border-l border-slate-200 pl-3'}>
       {nodes.map((node) => (
         <li key={node.id}>
@@ -503,7 +626,40 @@ export default function UberEatsAdminPage() {
             onClick={() => setSelectedNodeId(node.id)}
             className={`flex w-full items-center justify-between rounded-md px-2 py-1 text-left text-sm ${selectedNodeId === node.id ? 'bg-slate-100' : 'hover:bg-slate-50'}`}
           >
-            <span>
+            <span className="flex items-center gap-2">
+              {node.children?.length ? (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  className="inline-flex h-5 w-5 items-center justify-center rounded border text-xs"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleNodeExpand(treeKey, node.id);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleNodeExpand(treeKey, node.id);
+                  }}
+                >
+                  {isNodeExpanded(treeKey, node.id) ? '-' : '+'}
+                </span>
+              ) : (
+                <span className="inline-flex h-5 w-5 items-center justify-center text-xs text-slate-300">·</span>
+              )}
+              {treeKey === 'source' ? (
+                <input
+                  type="checkbox"
+                  checked={selectedSourceNodeIds?.has(node.id) ?? true}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    handleSourceNodeChecked(node.id, e.target.checked);
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : null}
               <span className="mr-2 text-slate-500">{node.type.toUpperCase()}</span>
               {node.name}
             </span>
@@ -512,11 +668,11 @@ export default function UberEatsAdminPage() {
               {node.status ? <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700">{node.status}</span> : null}
             </span>
           </button>
-          {node.children?.length ? renderDraftTree(node.children, depth + 1) : null}
+          {node.children?.length && isNodeExpanded(treeKey, node.id) ? renderDraftTree(treeKey, node.children, depth + 1) : null}
         </li>
       ))}
     </ul>
-  ), [selectedNodeId]);
+  ), [handleSourceNodeChecked, isNodeExpanded, selectedNodeId, selectedSourceNodeIds, toggleNodeExpand]);
 
   const selectedNodeWarnings = useMemo(
     () => menuDraft?.mappingWarnings.filter((warning) => selectedNode?.name ? warning.includes(selectedNode.name) : true) ?? menuDraft?.mappingWarnings ?? [],
@@ -526,6 +682,15 @@ export default function UberEatsAdminPage() {
   const selectedNodeEdgeInfo = useMemo(
     () => (menuDraft?.uberDraft.edges ?? []).filter((edge) => edge.from === selectedNode?.id || edge.to === selectedNode?.id),
     [menuDraft?.uberDraft.edges, selectedNode?.id],
+  );
+  const publishFilterPayload = useMemo(
+    () => ({
+      excludedCategoryIds: Array.from(exclusionFilter.excludedCategoryIds),
+      excludedGroupIds: Array.from(exclusionFilter.excludedGroupIds),
+      excludedMenuItemStableIds: Array.from(exclusionFilter.excludedMenuItemStableIds),
+      excludedOptionChoiceStableIds: Array.from(exclusionFilter.excludedOptionChoiceStableIds),
+    }),
+    [exclusionFilter],
   );
 
   const saveSelectedNode = useCallback(async () => {
@@ -728,8 +893,8 @@ export default function UberEatsAdminPage() {
                 </select>
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => void runAction('reload-draft', () => loadStoreMenuDraft(selectedStoreId), '菜单草稿已刷新', false)}>刷新草稿</button>
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => void runAction('save-node', saveSelectedNode, '当前节点已保存', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>保存当前节点</button>
-                <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => void runAction('publish-dry', () => apiFetch('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: true }) }).then(() => {}), 'Dry Run Publish 成功', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>Dry Run</button>
-                <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => void runAction('publish-formal', () => apiFetch('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: false }) }).then(() => {}), '正式 Publish 成功', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>正式 Publish</button>
+                <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => void runAction('publish-dry', () => apiFetch('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: true, ...publishFilterPayload }) }).then(() => {}), 'Dry Run Publish 成功', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>Dry Run</button>
+                <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => void runAction('publish-formal', () => apiFetch('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: false, ...publishFilterPayload }) }).then(() => {}), '正式 Publish 成功', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>正式 Publish</button>
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => void runAction('refresh-diff', () => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }), '草稿与 Diff 已刷新', false)}>刷新 Diff</button>
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => setStoreMenuTab('publish')}>查看本次 Diff</button>
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => setStoreMenuTab('overview')}>查看上次发布版本</button>
@@ -757,7 +922,7 @@ export default function UberEatsAdminPage() {
               <div className="grid gap-4 xl:grid-cols-[1fr_360px_1fr]">
                 <div className="rounded-xl border bg-white p-4">
                   <h4 className="font-semibold">网站菜单树（来源）</h4>
-                  <div className="mt-3">{renderDraftTree(sourceMenuTree)}</div>
+                  <div className="mt-3">{renderDraftTree('source', sourceMenuTree)}</div>
                 </div>
                 <div className="rounded-xl border bg-white p-4">
                   <h4 className="font-semibold">节点映射检查器</h4>
@@ -784,7 +949,7 @@ export default function UberEatsAdminPage() {
                 </div>
                 <div className="rounded-xl border bg-white p-4">
                   <h4 className="font-semibold">Uber 菜单树（映射结果）</h4>
-                  <div className="mt-3 max-h-[520px] overflow-auto">{renderDraftTree(normalizedUberDraftTree)}</div>
+                  <div className="mt-3 max-h-[520px] overflow-auto">{renderDraftTree('uber-mapping', filteredUberTree)}</div>
                 </div>
               </div>
             )}
@@ -793,7 +958,7 @@ export default function UberEatsAdminPage() {
               <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
                 <div className="rounded-xl border bg-white p-4">
                   <h4 className="font-semibold">Uber 菜单树编辑器</h4>
-                  <div className="mt-3 max-h-[560px] overflow-auto">{renderDraftTree(normalizedUberDraftTree)}</div>
+                  <div className="mt-3 max-h-[560px] overflow-auto">{renderDraftTree('uber-editor', filteredUberTree)}</div>
                 </div>
                 <div className="rounded-xl border bg-white p-4">
                   <h4 className="font-semibold">Inspector</h4>
@@ -872,8 +1037,8 @@ export default function UberEatsAdminPage() {
                     <li className="rounded border p-2">availabilityChanges: {menuDiff?.availabilityChanges.length ?? 0}</li>
                   </ul>
                   <div className="mt-3 flex gap-2">
-                    <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={() => void runAction('publish-dry-inline', () => apiFetch('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: true }) }).then(() => {}), 'Dry Run Publish 成功', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>Dry Run Publish</button>
-                    <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={() => void runAction('publish-formal-inline', () => apiFetch('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: false }) }).then(() => {}), '正式 Publish 成功', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>正式 Publish</button>
+                    <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={() => void runAction('publish-dry-inline', () => apiFetch('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: true, ...publishFilterPayload }) }).then(() => {}), 'Dry Run Publish 成功', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>Dry Run Publish</button>
+                    <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={() => void runAction('publish-formal-inline', () => apiFetch('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: false, ...publishFilterPayload }) }).then(() => {}), '正式 Publish 成功', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>正式 Publish</button>
                   </div>
                 </div>
                 <div className="rounded-xl border bg-white p-4">

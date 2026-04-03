@@ -177,6 +177,26 @@ class PublishUberMenuDto {
   @IsOptional()
   @IsBoolean()
   dryRun?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  excludedCategoryIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  excludedGroupIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  excludedMenuItemStableIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  excludedOptionChoiceStableIds?: string[];
 }
 
 class SyncUberMenuItemAvailabilityDto {
@@ -570,6 +590,10 @@ export class UberEatsController {
     return await this.uberEatsService.publishUberMenu({
       storeId: dto.storeId,
       dryRun: dto.dryRun,
+      excludedCategoryIds: dto.excludedCategoryIds,
+      excludedGroupIds: dto.excludedGroupIds,
+      excludedMenuItemStableIds: dto.excludedMenuItemStableIds,
+      excludedOptionChoiceStableIds: dto.excludedOptionChoiceStableIds,
     });
   }
 
