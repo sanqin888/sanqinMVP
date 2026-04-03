@@ -2483,7 +2483,10 @@ export class UberEatsService {
     });
   }
 
-  private composeUberDisplayName(nameEn?: string | null, nameZh?: string | null) {
+  private composeUberDisplayName(
+    nameEn?: string | null,
+    nameZh?: string | null,
+  ) {
     const en = (nameEn ?? '').trim();
     const zh = (nameZh ?? '').trim();
     if (en && zh) return `${en} ${zh}`;
