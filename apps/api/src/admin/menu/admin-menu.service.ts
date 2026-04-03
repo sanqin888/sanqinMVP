@@ -22,6 +22,7 @@ import {
 } from '../../common/daily-specials';
 import type { Prisma } from '@prisma/client';
 import { SpecialPricingMode } from '@prisma/client';
+import { UberEatsService } from '../../integrations/ubereats/ubereats.service';
 
 type AvailabilityMode = 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF';
 
@@ -65,7 +66,10 @@ function nextMidnightLocal(): Date {
 export class AdminMenuService {
   private readonly logger = new AppLogger(AdminMenuService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly uberEatsService: UberEatsService,
+  ) {}
 
   async updateCategory(
     categoryStableId: string,
@@ -484,7 +488,7 @@ export class AdminMenuService {
     }
 
     // ✅ 标准 2：只允许创建时写入 stableId（这里不更新 stableId）
-    await this.prisma.menuItem.update({
+    const updated = await this.prisma.menuItem.update({
       where: { stableId },
       data: {
         categoryId,
@@ -522,7 +526,24 @@ export class AdminMenuService {
             ? undefined
             : parseIsoOrNull(body.tempUnavailableUntil),
       },
+      select: {
+        stableId: true,
+        isAvailable: true,
+        tempUnavailableUntil: true,
+      },
     });
+
+    if (
+      body.isAvailable !== undefined ||
+      body.tempUnavailableUntil !== undefined
+    ) {
+      await this.syncUberMenuItemAvailabilitySafely(
+        updated.stableId,
+        isAvailableNow(
+          availabilityFromDb(updated.isAvailable, updated.tempUnavailableUntil),
+        ),
+      );
+    }
 
     return { ok: true };
   }
@@ -555,6 +576,13 @@ export class AdminMenuService {
         tempUnavailableUntil: true,
       },
     });
+
+    await this.syncUberMenuItemAvailabilitySafely(
+      updated.stableId,
+      isAvailableNow(
+        availabilityFromDb(updated.isAvailable, updated.tempUnavailableUntil),
+      ),
+    );
 
     return {
       stableId: updated.stableId,
@@ -972,12 +1000,58 @@ export class AdminMenuService {
           ? { isAvailable: false, tempUnavailableUntil: null }
           : { isAvailable: true, tempUnavailableUntil: nextMidnightLocal() };
 
-    await this.prisma.menuOptionTemplateChoice.update({
+    const updated = await this.prisma.menuOptionTemplateChoice.update({
       where: { stableId },
       data,
+      select: {
+        stableId: true,
+        isAvailable: true,
+        tempUnavailableUntil: true,
+      },
     });
 
+    await this.syncUberOptionAvailabilitySafely(
+      updated.stableId,
+      isAvailableNow(
+        availabilityFromDb(updated.isAvailable, updated.tempUnavailableUntil),
+      ),
+    );
+
     return { ok: true };
+  }
+
+  private async syncUberMenuItemAvailabilitySafely(
+    menuItemStableId: string,
+    isAvailable: boolean,
+  ) {
+    try {
+      await this.uberEatsService.syncUberMenuItemAvailability({
+        menuItemStableId,
+        isAvailable,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : `${error}`;
+      this.logger.warn(
+        `Failed to sync Uber menu item availability: item=${menuItemStableId}, isAvailable=${isAvailable}, error=${message}`,
+      );
+    }
+  }
+
+  private async syncUberOptionAvailabilitySafely(
+    optionChoiceStableId: string,
+    isAvailable: boolean,
+  ) {
+    try {
+      await this.uberEatsService.syncUberOptionItemAvailability({
+        optionChoiceStableId,
+        isAvailable,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : `${error}`;
+      this.logger.warn(
+        `Failed to sync Uber option availability: option=${optionChoiceStableId}, isAvailable=${isAvailable}, error=${message}`,
+      );
+    }
   }
 
   // ✅ 标准 3：软删除（deletedAt 写入），不物理删除，保证 stableId 永不复用

@@ -2,6 +2,8 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import { PrismaService } from '../prisma/prisma.service';
 import { PosGateway } from './pos.gateway';
+import { UberEatsService } from '../integrations/ubereats/ubereats.service';
+import { AppLogger } from '../common/app-logger';
 
 const AUTO_UNTIL_PREFIX = '__AUTO_UNTIL__:';
 
@@ -33,9 +35,12 @@ function buildAutoPauseReason(
 
 @Injectable()
 export class PosStoreStatusService {
+  private readonly logger = new AppLogger(PosStoreStatusService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly posGateway: PosGateway,
+    private readonly uberEatsService: UberEatsService,
   ) {}
 
   async getCustomerOrderingStatus() {
@@ -71,6 +76,7 @@ export class PosStoreStatusService {
         autoResumeAt: null,
       };
       this.posGateway.publishCustomerOrderingStatusUpdate(status);
+      await this.syncUberStoreStatusSafely('auto_resume');
 
       return status;
     }
@@ -124,6 +130,7 @@ export class PosStoreStatusService {
     };
 
     this.posGateway.publishCustomerOrderingStatusUpdate(status);
+    await this.syncUberStoreStatusSafely('pause');
 
     return status;
   }
@@ -143,8 +150,21 @@ export class PosStoreStatusService {
     };
 
     this.posGateway.publishCustomerOrderingStatusUpdate(status);
+    await this.syncUberStoreStatusSafely('resume');
 
     return status;
+  }
+
+  private async syncUberStoreStatusSafely(source: 'pause' | 'resume' | 'auto_resume') {
+    try {
+      await this.uberEatsService.syncStoreStatusToUber();
+    } catch (error) {
+      // Uber 同步失败不应阻塞 POS 端状态更新
+      const message = error instanceof Error ? error.message : `${error}`;
+      this.logger.warn(
+        `Failed to sync Uber store status after ${source}: ${message}`,
+      );
+    }
   }
 
   private async ensureConfig() {
