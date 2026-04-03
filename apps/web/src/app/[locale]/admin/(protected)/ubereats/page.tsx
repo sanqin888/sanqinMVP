@@ -163,6 +163,7 @@ type UberMenuDraftResponse = {
     tree: {
       categories: UberDraftCategoryNode[];
     };
+    treeNodes?: DraftNode[];
   };
   mappingWarnings: string[];
   publishSummary: {
@@ -189,7 +190,9 @@ type UberMenuDraftDiffResponse = {
   deletedItems: string[];
   addedGroups: string[];
   modifiedGroups: Array<{ stableId: string; minSelect: number; maxSelect: number }>;
+  deletedGroups?: string[];
   hierarchyChanges: Array<{ from: string; to: string; type: string }>;
+  deletedEdges?: Array<{ from: string; to: string; type: string }>;
   priceChanges: Array<{ sourceType: string; stableId: string; priceCents: number }>;
   availabilityChanges: Array<{ sourceType: string; stableId: string; isAvailable: boolean }>;
 };
@@ -431,6 +434,10 @@ export default function UberEatsAdminPage() {
     () => toDraftTrees(draftCategories),
     [draftCategories, toDraftTrees],
   );
+  const normalizedUberDraftTree = useMemo(
+    () => menuDraft?.uberDraft.treeNodes ?? uberDraftTree,
+    [menuDraft?.uberDraft.treeNodes, uberDraftTree],
+  );
 
   const allDraftNodes = useMemo(() => {
     const nodes: DraftNode[] = [];
@@ -438,9 +445,9 @@ export default function UberEatsAdminPage() {
       nodes.push(node);
       if (node.children?.length) travel(node.children);
     });
-    travel(uberDraftTree);
+    travel(normalizedUberDraftTree);
     return nodes;
-  }, [uberDraftTree]);
+  }, [normalizedUberDraftTree]);
 
   const selectedNode = allDraftNodes.find((node) => node.id === selectedNodeId) ?? allDraftNodes[0] ?? null;
   useEffect(() => {
@@ -777,7 +784,7 @@ export default function UberEatsAdminPage() {
                 </div>
                 <div className="rounded-xl border bg-white p-4">
                   <h4 className="font-semibold">Uber 菜单树（映射结果）</h4>
-                  <div className="mt-3 max-h-[520px] overflow-auto">{renderDraftTree(uberDraftTree)}</div>
+                  <div className="mt-3 max-h-[520px] overflow-auto">{renderDraftTree(normalizedUberDraftTree)}</div>
                 </div>
               </div>
             )}
@@ -786,7 +793,7 @@ export default function UberEatsAdminPage() {
               <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
                 <div className="rounded-xl border bg-white p-4">
                   <h4 className="font-semibold">Uber 菜单树编辑器</h4>
-                  <div className="mt-3 max-h-[560px] overflow-auto">{renderDraftTree(uberDraftTree)}</div>
+                  <div className="mt-3 max-h-[560px] overflow-auto">{renderDraftTree(normalizedUberDraftTree)}</div>
                 </div>
                 <div className="rounded-xl border bg-white p-4">
                   <h4 className="font-semibold">Inspector</h4>
