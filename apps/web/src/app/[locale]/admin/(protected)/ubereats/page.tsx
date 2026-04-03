@@ -800,6 +800,9 @@ export default function UberEatsAdminPage() {
                   <p className="mt-2 text-sm text-slate-500">当前节点：{selectedNode?.name ?? '-'}</p>
                   {selectedNode?.type === 'item' ? (
                     <div className="mt-3 space-y-2 text-sm">
+                      <p className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-700">
+                        当前已隐藏“所属分类”编辑，避免将 categoryId 误写入 externalCategoryId。
+                      </p>
                       <label className="block"><span className="mb-1 block text-slate-500">displayName</span><input className="w-full rounded border px-2 py-1" value={String(inspectorDraft.displayName ?? '')} onChange={(e) => setInspectorDraft((prev) => ({ ...prev, displayName: e.target.value }))} /></label>
                       <label className="block"><span className="mb-1 block text-slate-500">displayDescription</span><input className="w-full rounded border px-2 py-1" value={String(inspectorDraft.displayDescription ?? '')} onChange={(e) => setInspectorDraft((prev) => ({ ...prev, displayDescription: e.target.value }))} /></label>
                       <label className="block"><span className="mb-1 block text-slate-500">priceCents</span><input type="number" className="w-full rounded border px-2 py-1" value={Number(inspectorDraft.priceCents ?? 0)} onChange={(e) => setInspectorDraft((prev) => ({ ...prev, priceCents: Number(e.target.value) }))} /></label>
