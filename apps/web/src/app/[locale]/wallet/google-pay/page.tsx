@@ -51,6 +51,31 @@ function buildPaymentErrorMessage(locale: Locale, error: unknown) {
   return locale === "zh" ? "Google Pay 支付失败，请返回结算页重试。" : "Google Pay failed. Please go back and try again.";
 }
 
+function toRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function readGooglePayToken(candidate: Record<string, unknown>): string | null {
+  for (const key of ["tokenReceived", "tokenRecieved", "token"]) {
+    const value = candidate[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+    const nested = toRecord(value);
+    if (typeof nested?.id === "string" && nested.id.trim()) return nested.id.trim();
+  }
+  return typeof candidate.id === "string" && candidate.id.trim() ? candidate.id.trim() : null;
+}
+
+function extractGooglePayToken(payload: unknown): string | null {
+  const root = toRecord(payload);
+  if (!root) return null;
+
+  const rootToken = readGooglePayToken(root);
+  if (rootToken) return rootToken;
+
+  const detail = toRecord(root.detail);
+  return detail ? readGooglePayToken(detail) : null;
+}
+
 export default function GooglePayWalletPage() {
   const params = useParams<{ locale?: string }>();
   const searchParams = useSearchParams();
@@ -131,9 +156,16 @@ export default function GooglePayWalletPage() {
         gp.mount("#clover-google-pay");
         googlePayRef.current = gp;
 
+        gp.addEventListener("paymentMethodStart", () => {
+          console.debug("[GP][paymentMethodStart]", { sessionId: ctx.sessionId });
+        });
+
+        gp.addEventListener("paymentMethodEnd", () => {
+          console.debug("[GP][paymentMethodEnd]", { sessionId: ctx.sessionId });
+        });
+
         gp.addEventListener("paymentMethod", async (evt: unknown) => {
-          const detail = typeof evt === "object" && evt && "detail" in evt ? (evt as { detail?: Record<string, unknown> }).detail : undefined;
-          const token = (detail?.tokenReceived as { id?: string } | undefined)?.id ?? (detail?.tokenRecieved as { id?: string } | undefined)?.id ?? (detail?.token as { id?: string } | undefined)?.id;
+          const token = extractGooglePayToken(evt);
           if (!token) return;
           if (sessionExpired) { setError(locale === "zh" ? "支付会话已过期，请返回结算页重新发起支付。" : "Payment session expired. Please go back to checkout and restart payment."); return; }
           if (submittedTokenRef.current === token) return;
