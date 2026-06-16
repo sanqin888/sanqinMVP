@@ -192,6 +192,7 @@ export class PosSummaryService {
     const where: Prisma.OrderWhereInput = {
       paidAt: { gte: start, lt: end },
       ...(fulfillmentFilter ? { fulfillmentType: fulfillmentFilter } : {}),
+      ...(statusFilter ? {} : { status: { not: 'refunded' } }),
     };
 
     const orders = (await this.prisma.order.findMany({
@@ -340,7 +341,12 @@ export class PosSummaryService {
         salesCents: salesCentsForOrder,
       };
 
-      if (statusFilter && row.statusBucket !== statusFilter) continue;
+      // 默认当日小结只统计有效收款订单；退款/取消订单仅在明确筛选时展示，避免关店结算重复计入。
+      if (statusFilter) {
+        if (row.statusBucket !== statusFilter) continue;
+      } else if (row.statusBucket !== 'paid') {
+        continue;
+      }
       if (paymentFilter && row.payment !== paymentFilter) continue;
 
       rows.push(row);
