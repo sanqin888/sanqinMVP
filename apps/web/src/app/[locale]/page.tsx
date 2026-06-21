@@ -325,6 +325,9 @@ export default function LocalOrderPage() {
   const [selectedChildOptions, setSelectedChildOptions] = useState<
     Record<string, string[]>
   >({});
+  const [expandedOptionalGroups, setExpandedOptionalGroups] = useState<
+    Record<string, boolean>
+  >({});
 
   const entitlementItems = useMemo(
     () =>
@@ -461,6 +464,7 @@ export default function LocalOrderPage() {
     setActiveItem(null);
     setSelectedOptions({});
     setSelectedChildOptions({});
+    setExpandedOptionalGroups({});
     setSelectedQuantity(1);
     setSelectedDailySpecial(null);
   };
@@ -807,6 +811,11 @@ export default function LocalOrderPage() {
     const groupPath = [...basePath, buildGroupSegment(group, groupIndex)];
     const groupKey = buildPathKey(groupPath);
     const selectedCount = selectedOptions[groupKey]?.length ?? 0;
+    const isRequiredGroup = group.minSelect > 0;
+    const isExpanded =
+      isRequiredGroup ||
+      expandedOptionalGroups[groupKey] === true ||
+      selectedCount > 0;
     
     const requirementLabel = (() => {
         if (group.minSelect > 0 && group.maxSelect === 1) return locale === "zh" ? "必选 1 项" : "Required: 1";
@@ -818,18 +827,46 @@ export default function LocalOrderPage() {
 
     return (
         <div key={groupKey} className="space-y-3">
-            <div className="flex items-center justify-between gap-4">
+            <button
+              type="button"
+              onClick={() => {
+                if (isRequiredGroup) return;
+                setExpandedOptionalGroups((prev) => ({
+                  ...prev,
+                  [groupKey]: !prev[groupKey],
+                }));
+              }}
+              className={`flex w-full items-center justify-between gap-4 rounded-2xl text-left transition ${
+                isRequiredGroup
+                  ? "cursor-default"
+                  : "cursor-pointer hover:bg-slate-50"
+              }`}
+            >
             <div>
                 <h4 className="text-base font-semibold text-slate-900">
                 {locale === "zh" && group.template.nameZh ? group.template.nameZh : group.template.nameEn}
                 </h4>
                 <p className="text-xs text-slate-500">{requirementLabel}</p>
             </div>
-            <span className={`text-xs font-semibold ${group.minSelect > 0 && selectedCount < group.minSelect ? "text-rose-500" : "text-slate-400"}`}>
-                {locale === "zh" ? `已选 ${selectedCount}` : `${selectedCount} selected`}
+            <span className="flex items-center gap-2">
+                {!isRequiredGroup ? (
+                  <span className="rounded-full border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-500">
+                    {isExpanded
+                      ? locale === "zh"
+                        ? "收起"
+                        : "Collapse"
+                      : locale === "zh"
+                        ? "点击展开"
+                        : "Expand"}
+                  </span>
+                ) : null}
+                <span className={`text-xs font-semibold ${group.minSelect > 0 && selectedCount < group.minSelect ? "text-rose-500" : "text-slate-400"}`}>
+                    {locale === "zh" ? `已选 ${selectedCount}` : `${selectedCount} selected`}
+                </span>
             </span>
-            </div>
+            </button>
 
+            {isExpanded ? (
             <div className="grid gap-2 md:grid-cols-2">
             {group.options
               .filter(
@@ -947,6 +984,7 @@ export default function LocalOrderPage() {
                 );
             })}
             </div>
+            ) : null}
         </div>
     );
   };
