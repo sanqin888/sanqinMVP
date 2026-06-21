@@ -544,6 +544,7 @@ type OrderRecord = {
 };
 
 type OrderItemRecord = {
+  lineId: string;
   stableId: string;
   name: string;
   nameEn?: string | null;
@@ -560,10 +561,10 @@ type SwapSelection = {
   quantity: number;
 };
 
-function compareOrderCreatedAtAsc(a: OrderRecord, b: OrderRecord) {
+function compareOrderCreatedAtDesc(a: OrderRecord, b: OrderRecord) {
   const aTime = parseBackendDate(a.createdAt).getTime();
   const bTime = parseBackendDate(b.createdAt).getTime();
-  return aTime - bTime;
+  return bTime - aTime;
 }
 
 type ActionSummary = {
@@ -703,14 +704,14 @@ function ActionContent({
               <div className="mt-2 space-y-2">
                 {order.items.map((item) => (
                   <label
-                    key={item.stableId}
+                    key={item.lineId}
                     className="flex items-center justify-between gap-3 rounded-lg border border-slate-700 bg-slate-950/40 px-3 py-2 text-[11px]"
                   >
                     <div className="flex items-center gap-2">
                       <input
                         type="checkbox"
-                        checked={selectedItemIds.includes(item.stableId)}
-                        onChange={() => onToggleItem(item.stableId)}
+                        checked={selectedItemIds.includes(item.lineId)}
+                        onChange={() => onToggleItem(item.lineId)}
                         className="h-3.5 w-3.5 rounded border-slate-500 bg-slate-900 text-emerald-400"
                       />
                       <div>
@@ -725,30 +726,30 @@ function ActionContent({
                     <span className="text-xs font-semibold text-slate-100">
                       {formatMoney(item.totalCents)}
                     </span>
-                    {selectedItemIds.includes(item.stableId) ? (
+                    {selectedItemIds.includes(item.lineId) ? (
                       <div className="ml-2 flex items-center gap-1">
                         <button
                           type="button"
                           onClick={(event) => {
                             event.preventDefault();
                             const nextQty =
-                              (selectedItemQtyMap[item.stableId] ?? 1) - 1;
-                            onItemQtyChange(item.stableId, nextQty);
+                              (selectedItemQtyMap[item.lineId] ?? 1) - 1;
+                            onItemQtyChange(item.lineId, nextQty);
                           }}
                           className="h-6 w-6 rounded border border-slate-600 text-xs"
                         >
                           -
                         </button>
                         <span className="w-8 text-center text-xs">
-                          {selectedItemQtyMap[item.stableId] ?? 1}
+                          {selectedItemQtyMap[item.lineId] ?? 1}
                         </span>
                         <button
                           type="button"
                           onClick={(event) => {
                             event.preventDefault();
                             const nextQty =
-                              (selectedItemQtyMap[item.stableId] ?? 1) + 1;
-                            onItemQtyChange(item.stableId, nextQty);
+                              (selectedItemQtyMap[item.lineId] ?? 1) + 1;
+                            onItemQtyChange(item.lineId, nextQty);
                           }}
                           className="h-6 w-6 rounded border border-slate-600 text-xs"
                         >
@@ -1091,9 +1092,10 @@ const mapOrder = useCallback(
       order.pickupCode?.trim() ||
       order.orderStableId;
 
-    const items = order.items.map((item) => {
+    const items = order.items.map((item, index) => {
       const unitPriceCents = item.unitPriceCents ?? 0;
       return {
+        lineId: `${item.productStableId}:${index}`,
         stableId: item.productStableId,
         name: pickItemName(item, locale),
         nameEn: item.nameEn ?? null,
@@ -1136,7 +1138,7 @@ const mapOrder = useCallback(
         setErrorMessage(null);
         const [configRes, data] = await Promise.all([
           apiFetch<BusinessConfigLite>("/admin/business/config").catch(() => null),
-          fetchRecentOrders<BackendOrder[]>(200),
+          fetchRecentOrders<BackendOrder[]>(30),
         ]);
 
         if (cancelled) return;
@@ -1262,7 +1264,7 @@ const mapOrder = useCallback(
         }
         return true;
       })
-      .sort(compareOrderCreatedAtAsc);
+      .sort(compareOrderCreatedAtDesc);
   }, [filters, orders, storeTimezone, todayYmd]);
 
   const summary = useMemo(() => {
@@ -1273,11 +1275,11 @@ const mapOrder = useCallback(
     const baseTax = selectedOrder.taxCents;
     const baseDelivery = selectedOrder.deliveryFeeCents;
     const selectedItems = selectedOrder.items
-      .filter((item) => selectedItemIds.includes(item.stableId))
+      .filter((item) => selectedItemIds.includes(item.lineId))
       .map((item) => {
         const qty = Math.max(
           1,
-          Math.min(item.qty, selectedItemQtyMap[item.stableId] ?? 1),
+          Math.min(item.qty, selectedItemQtyMap[item.lineId] ?? 1),
         );
         return {
           ...item,
@@ -1429,7 +1431,7 @@ const mapOrder = useCallback(
 
   const handleItemQtyChange = (id: string, qty: number) => {
     const maxQty =
-      selectedOrder?.items.find((item) => item.stableId === id)?.qty ?? 1;
+      selectedOrder?.items.find((item) => item.lineId === id)?.qty ?? 1;
     const boundedQty = Math.max(1, Math.min(maxQty, Math.round(qty)));
     setSelectedItemQtyMap((prev) => ({ ...prev, [id]: boundedQty }));
   };
@@ -1546,12 +1548,12 @@ const handleSubmit = () => {
   if (!canSubmit) return;
 
   const selectedItems = selectedOrder.items
-    .filter((item) => selectedItemIds.includes(item.stableId))
+    .filter((item) => selectedItemIds.includes(item.lineId))
     .map((item) => ({
       ...item,
       selectedQty: Math.max(
         1,
-        Math.min(item.qty, selectedItemQtyMap[item.stableId] ?? 1),
+        Math.min(item.qty, selectedItemQtyMap[item.lineId] ?? 1),
       ),
     }));
 
