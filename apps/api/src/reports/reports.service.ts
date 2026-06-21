@@ -1,7 +1,7 @@
 // apps/api/src/reports/reports.service.ts
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { OrderStatus } from '@prisma/client';
+import { OrderStatus, Prisma } from '@prisma/client';
 import { DateTime } from 'luxon';
 
 interface ReportQueryDto {
@@ -9,9 +9,148 @@ interface ReportQueryDto {
   to?: string;
 }
 
+type ReportOrderItem = {
+  qty: number;
+  productStableId: string;
+  displayName: string | null;
+  nameEn: string | null;
+  nameZh: string | null;
+  optionsJson: Prisma.JsonValue | null;
+};
+
+type TopItemAggregate = {
+  name: string;
+  quantity: number;
+};
+
 @Injectable()
 export class ReportsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private async buildTopItems(orderItems: ReportOrderItem[]) {
+    const selectedChoiceStableIds = Array.from(
+      new Set(orderItems.flatMap((item) => this.extractChoiceStableIds(item))),
+    );
+
+    const choices = selectedChoiceStableIds.length
+      ? await this.prisma.menuOptionTemplateChoice.findMany({
+          where: { stableId: { in: selectedChoiceStableIds } },
+          select: { stableId: true, targetItemStableId: true },
+        })
+      : [];
+
+    const choiceTargetByStableId = new Map(
+      choices
+        .filter((choice) => choice.targetItemStableId)
+        .map((choice) => [
+          choice.stableId,
+          choice.targetItemStableId as string,
+        ]),
+    );
+
+    const targetItemStableIds = Array.from(
+      new Set(choiceTargetByStableId.values()),
+    );
+    const targetItems = targetItemStableIds.length
+      ? await this.prisma.menuItem.findMany({
+          where: { stableId: { in: targetItemStableIds }, deletedAt: null },
+          select: { stableId: true, nameEn: true, nameZh: true },
+        })
+      : [];
+
+    const targetNameByStableId = new Map(
+      targetItems.map((item) => [
+        item.stableId,
+        this.resolveItemName({
+          productStableId: item.stableId,
+          displayName: null,
+          nameEn: item.nameEn,
+          nameZh: item.nameZh,
+        }),
+      ]),
+    );
+
+    const aggregate = new Map<string, TopItemAggregate>();
+    const addItem = (key: string, name: string, quantity: number) => {
+      const current = aggregate.get(key);
+      aggregate.set(key, {
+        name: current?.name ?? name,
+        quantity: (current?.quantity ?? 0) + quantity,
+      });
+    };
+
+    for (const orderItem of orderItems) {
+      const targetStableIds = this.extractChoiceStableIds(orderItem)
+        .map((choiceStableId) => choiceTargetByStableId.get(choiceStableId))
+        .filter((stableId): stableId is string => Boolean(stableId));
+
+      if (targetStableIds.length > 0) {
+        for (const targetStableId of targetStableIds) {
+          addItem(
+            targetStableId,
+            targetNameByStableId.get(targetStableId) ?? targetStableId,
+            orderItem.qty,
+          );
+        }
+        continue;
+      }
+
+      addItem(
+        orderItem.productStableId,
+        this.resolveItemName(orderItem),
+        orderItem.qty,
+      );
+    }
+
+    return Array.from(aggregate.values())
+      .sort((a, b) => b.quantity - a.quantity)
+      .slice(0, 10);
+  }
+
+  private extractChoiceStableIds(
+    orderItem: Pick<ReportOrderItem, 'optionsJson'>,
+  ) {
+    if (!Array.isArray(orderItem.optionsJson)) {
+      return [];
+    }
+
+    const stableIds: string[] = [];
+    for (const group of orderItem.optionsJson) {
+      if (!group || typeof group !== 'object' || !('choices' in group)) {
+        continue;
+      }
+      const choices = (group as { choices?: unknown }).choices;
+      if (!Array.isArray(choices)) {
+        continue;
+      }
+      for (const choice of choices) {
+        if (!choice || typeof choice !== 'object' || !('stableId' in choice)) {
+          continue;
+        }
+        const stableId = (choice as { stableId?: unknown }).stableId;
+        if (typeof stableId === 'string' && stableId.trim().length > 0) {
+          stableIds.push(stableId);
+        }
+      }
+    }
+
+    return stableIds;
+  }
+
+  private resolveItemName(
+    item: Pick<
+      ReportOrderItem,
+      'productStableId' | 'displayName' | 'nameEn' | 'nameZh'
+    >,
+  ) {
+    return (
+      item.displayName ||
+      item.nameZh ||
+      item.nameEn ||
+      item.productStableId ||
+      '未知商品'
+    );
+  }
 
   async getReport(query: ReportQueryDto) {
     // 1. 确定时间范围 (默认为多伦多时间的一整天)
@@ -113,26 +252,23 @@ export class ReportsService {
       .sort((a, b) => a.date.localeCompare(b.date));
 
     // 8. 统计畅销单品 Top 10
-    const topItemsRaw = await this.prisma.orderItem.groupBy({
-      by: ['displayName'],
+    // 套餐会把选中的具体菜品快照写入 optionsJson，这里先取出订单项，
+    // 再在内存中按真实菜品 stableId 聚合，避免用 displayName 合并导致重名/语言问题。
+    const orderItems = await this.prisma.orderItem.findMany({
       where: {
         order: whereCondition,
       },
-      _sum: {
+      select: {
         qty: true,
+        productStableId: true,
+        displayName: true,
+        nameEn: true,
+        nameZh: true,
+        optionsJson: true,
       },
-      orderBy: {
-        _sum: {
-          qty: 'desc',
-        },
-      },
-      take: 10,
     });
 
-    const topItems = topItemsRaw.map((item) => ({
-      name: item.displayName || '未知商品',
-      quantity: item._sum.qty ?? 0,
-    }));
+    const topItems = await this.buildTopItems(orderItems);
 
     // 9. 计算最终结果
     const totalCents = aggregations._sum.totalCents ?? 0;
