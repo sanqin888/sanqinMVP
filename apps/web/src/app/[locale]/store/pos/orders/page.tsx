@@ -561,10 +561,10 @@ type SwapSelection = {
   quantity: number;
 };
 
-function compareOrderCreatedAtAsc(a: OrderRecord, b: OrderRecord) {
+function compareOrderCreatedAtDesc(a: OrderRecord, b: OrderRecord) {
   const aTime = parseBackendDate(a.createdAt).getTime();
   const bTime = parseBackendDate(b.createdAt).getTime();
-  return aTime - bTime;
+  return bTime - aTime;
 }
 
 type ActionSummary = {
@@ -1138,7 +1138,7 @@ const mapOrder = useCallback(
         setErrorMessage(null);
         const [configRes, data] = await Promise.all([
           apiFetch<BusinessConfigLite>("/admin/business/config").catch(() => null),
-          fetchRecentOrders<BackendOrder[]>(200),
+          fetchRecentOrders<BackendOrder[]>(30),
         ]);
 
         if (cancelled) return;
@@ -1264,7 +1264,7 @@ const mapOrder = useCallback(
         }
         return true;
       })
-      .sort(compareOrderCreatedAtAsc);
+      .sort(compareOrderCreatedAtDesc);
   }, [filters, orders, storeTimezone, todayYmd]);
 
   const summary = useMemo(() => {
