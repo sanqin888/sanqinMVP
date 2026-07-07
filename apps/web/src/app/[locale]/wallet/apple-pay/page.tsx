@@ -37,13 +37,25 @@ type CloverApplePaymentRequest = {
   requiredBillingContactFields?: CloverAppleContactField[];
   requiredShippingContactFields?: CloverAppleContactField[];
 };
-type CloverElementInstance = { mount: (selector: string) => void; destroy?: () => void };
+type CloverElementInstance = {
+  mount: (selector: string) => void;
+  destroy?: () => void;
+  addEventListener?: (type: string, listener: (event: unknown) => void) => void;
+};
 type CloverInstance = {
   elements: () => { create: (type: string, options?: Record<string, unknown>) => CloverElementInstance };
   createApplePaymentRequest: (request: CloverApplePaymentRequest) => CloverApplePaymentRequest;
   updateApplePaymentStatus: (status: "success" | "failed") => void;
 };
 type CloverConstructor = new (key?: string, options?: { merchantId?: string }) => CloverInstance;
+type ApplePaySessionConstructor = {
+  supportsVersion?: (version: number) => boolean;
+  canMakePayments?: () => boolean;
+};
+type ApplePayWindow = Window & {
+  ApplePaySession?: ApplePaySessionConstructor;
+  Clover?: CloverConstructor;
+};
 
 function getApplePayEventDetail(event: Event): Record<string, unknown> | undefined {
   if (!(event instanceof CustomEvent)) return undefined;
@@ -71,6 +83,25 @@ function buildApplePayEventLog(detail: Record<string, unknown> | undefined) {
     hasTokenRecieved: !!detail?.tokenRecieved,
     hasTokenReceived: !!detail?.tokenReceived,
     status: typeof detail?.status === "string" ? detail.status : undefined,
+  };
+}
+
+function getUnknownEventDetail(event: unknown): Record<string, unknown> | undefined {
+  if (event instanceof CustomEvent) return getApplePayEventDetail(event);
+  if (event && typeof event === "object" && "detail" in event) {
+    const detail = (event as { detail?: unknown }).detail;
+    if (detail && typeof detail === "object" && !Array.isArray(detail)) return detail as Record<string, unknown>;
+  }
+  if (event && typeof event === "object" && !Array.isArray(event)) return event as Record<string, unknown>;
+  return undefined;
+}
+
+function getApplePayCapabilityLog() {
+  const applePaySession = typeof window !== "undefined" ? (window as ApplePayWindow).ApplePaySession : undefined;
+  return {
+    hasApplePaySession: !!applePaySession,
+    supportsApplePayV3: applePaySession?.supportsVersion?.(3),
+    canMakePayments: applePaySession?.canMakePayments?.(),
   };
 }
 
@@ -206,6 +237,18 @@ export default function ApplePayWalletPage() {
     const publicKey = process.env.NEXT_PUBLIC_CLOVER_PUBLIC_TOKEN?.trim();
     const merchantId = process.env.NEXT_PUBLIC_CLOVER_MERCHANT_ID?.trim();
     const sdkUrl = process.env.NEXT_PUBLIC_CLOVER_SDK_URL?.trim() ?? DEFAULT_CLOVER_SDK_URL;
+    console.debug("[AP][env]", {
+      href: window.location.href,
+      origin: window.location.origin,
+      hostname: window.location.hostname,
+      protocol: window.location.protocol,
+      sdkUrl,
+      hasPublicKey: !!publicKey,
+      publicKeyTail: publicKey?.slice(-6),
+      hasMerchantId: !!merchantId,
+      merchantIdTail: merchantId?.slice(-6),
+      ...getApplePayCapabilityLog(),
+    });
     if (!publicKey || !merchantId) {
       setError(locale === "zh" ? "支付初始化失败：缺少 Clover 配置。" : "Payment init failed: missing Clover config.");
       return;
@@ -214,16 +257,21 @@ export default function ApplePayWalletPage() {
     let cancelled = false;
     const init = async () => {
       try {
+        console.debug("[AP][init] load-script:start", { sdkUrl });
         await loadScript(sdkUrl);
+        console.debug("[AP][init] load-script:done", { sdkUrl });
         if (cancelled) return;
-        const Clover = (window as Window & { Clover?: CloverConstructor }).Clover;
+        const Clover = (window as ApplePayWindow).Clover;
+        console.debug("[AP][init] clover-global", { hasClover: !!Clover });
         if (!Clover) throw new Error("Clover SDK not available");
         const host = document.getElementById("clover-apple-pay");
+        console.debug("[AP][init] host", { hasHost: !!host });
         if (!host) throw new Error("Apple Pay host not ready");
         applePayRef.current?.destroy?.();
         submittedTokenRef.current = null;
         const clover = new Clover(publicKey, { merchantId });
         cloverRef.current = clover;
+        console.debug("[AP][init] clover-instance:created", { merchantIdTail: merchantId.slice(-6) });
         const appleReq = clover.createApplePaymentRequest({
           amount: ctx.totalCents,
           countryCode: "CA",
@@ -231,12 +279,53 @@ export default function ApplePayWalletPage() {
           requiredBillingContactFields: ["postalAddress", "name"],
           requiredShippingContactFields: ["email"],
         });
+        console.debug("[AP][init] apple-request:created", {
+          amount: appleReq.amount,
+          countryCode: appleReq.countryCode,
+          currencyCode: appleReq.currencyCode,
+          requiredBillingContactFields: appleReq.requiredBillingContactFields,
+          requiredShippingContactFields: appleReq.requiredShippingContactFields,
+        });
         const applePay = clover.elements().create("PAYMENT_REQUEST_BUTTON_APPLE_PAY", { applePaymentRequest: appleReq, sessionIdentifier: merchantId });
+        console.debug("[AP][init] apple-button:created");
+        applePay.addEventListener?.("paymentMethodStart", (event) => {
+          console.debug("[AP][element paymentMethodStart]", {
+            sessionId: ctx.sessionId,
+            ...buildApplePayEventLog(getUnknownEventDetail(event)),
+          });
+        });
+        applePay.addEventListener?.("paymentMethod", (event) => {
+          console.debug("[AP][element paymentMethod]", {
+            sessionId: ctx.sessionId,
+            ...buildApplePayEventLog(getUnknownEventDetail(event)),
+          });
+        });
+        applePay.addEventListener?.("paymentMethodEnd", (event) => {
+          console.debug("[AP][element paymentMethodEnd]", {
+            sessionId: ctx.sessionId,
+            ...buildApplePayEventLog(getUnknownEventDetail(event)),
+          });
+        });
+        applePay.addEventListener?.("error", (event) => {
+          console.error("[AP][element error]", {
+            sessionId: ctx.sessionId,
+            ...buildApplePayEventLog(getUnknownEventDetail(event)),
+          });
+        });
         host.innerHTML = "";
         applePay.mount("#clover-apple-pay");
+        console.debug("[AP][init] apple-button:mounted", { sessionId: ctx.sessionId });
         applePayRef.current = applePay;
       } catch (err) {
-        console.error("[AP][session] init error", toSafeErrorLog(err));
+        console.error("[AP][session] init error", {
+          ...toSafeErrorLog(err),
+          sessionId: ctx.sessionId,
+          sdkUrl,
+          hasPublicKey: !!publicKey,
+          merchantIdTail: merchantId.slice(-6),
+          origin: window.location.origin,
+          ...getApplePayCapabilityLog(),
+        });
         setError(locale === "zh" ? "Apple Pay 初始化失败，请返回结算页重试。" : "Failed to initialize Apple Pay. Please go back and try again.");
       }
     };
