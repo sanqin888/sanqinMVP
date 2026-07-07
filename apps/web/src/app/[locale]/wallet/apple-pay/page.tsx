@@ -105,6 +105,23 @@ function getApplePayCapabilityLog() {
   };
 }
 
+function buildApplePayInitErrorMessage(locale: Locale, error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || "");
+  if (message.includes("ApplePaySession is not available") || message.includes("Apple Pay v3 is not supported")) {
+    return locale === "zh"
+      ? "当前浏览器不支持 Apple Pay。请使用 Apple 设备上的 Safari 浏览器，或返回结算页改用其他支付方式。"
+      : "This browser does not support Apple Pay. Please use Safari on an Apple device, or go back and choose another payment method.";
+  }
+  if (message.includes("cannot make payments")) {
+    return locale === "zh"
+      ? "当前设备暂时无法使用 Apple Pay。请确认钱包中已添加可用银行卡，或返回结算页改用其他支付方式。"
+      : "Apple Pay is not available on this device right now. Please confirm Wallet has an eligible card, or go back and choose another payment method.";
+  }
+  return locale === "zh"
+    ? "Apple Pay 暂时无法启动。请返回结算页重试，或改用其他支付方式。"
+    : "Apple Pay could not be started right now. Please go back and try again, or choose another payment method.";
+}
+
 function getApplePayMissingTokenMessage(locale: Locale) {
   return locale === "zh"
     ? "Apple Pay 未返回支付令牌，请关闭支付窗口后重试或改用其他支付方式。"
@@ -175,6 +192,7 @@ export default function ApplePayWalletPage() {
 
   const [ctx, setCtx] = useState<PaymentCtx | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [initError, setInitError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [remainingMs, setRemainingMs] = useState(0);
   const sessionExpired = remainingMs <= 0 && !loading && Boolean(ctx);
@@ -266,6 +284,11 @@ export default function ApplePayWalletPage() {
     const isCurrentInit = () => !cancelled && initRunIdRef.current === initRunId;
     const init = async () => {
       try {
+        setInitError(null);
+        const applePaySession = (window as ApplePayWindow).ApplePaySession;
+        if (!applePaySession) throw new Error("ApplePaySession is not available");
+        if (applePaySession.supportsVersion && !applePaySession.supportsVersion(3)) throw new Error("Apple Pay v3 is not supported by this browser");
+        if (applePaySession.canMakePayments && !applePaySession.canMakePayments()) throw new Error("Apple Pay cannot make payments on this device");
         console.debug("[AP][init] load-script:start", { sdkUrl });
         await loadScript(sdkUrl);
         console.debug("[AP][init] load-script:done", { sdkUrl });
@@ -340,7 +363,7 @@ export default function ApplePayWalletPage() {
           origin: window.location.origin,
           ...getApplePayCapabilityLog(),
         });
-        setError(locale === "zh" ? "Apple Pay 初始化失败，请返回结算页重试。" : "Failed to initialize Apple Pay. Please go back and try again.");
+        setInitError(buildApplePayInitErrorMessage(locale, err));
       }
     };
     void init();
@@ -430,8 +453,6 @@ export default function ApplePayWalletPage() {
         <h1 className="text-xl font-semibold text-slate-900">{locale === "zh" ? "Apple Pay 支付" : "Apple Pay"}</h1>
         {loading ? (
           <p className="mt-4 text-sm text-slate-500">{locale === "zh" ? "正在加载支付信息…" : "Loading payment context…"}</p>
-        ) : error ? (
-          <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>
         ) : ctx ? (
           <>
             <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
@@ -448,7 +469,11 @@ export default function ApplePayWalletPage() {
             ) : (
               <div id="clover-apple-pay" className="mt-4 flex h-12 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white" />
             )}
+            {initError ? <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">{initError}</div> : null}
+            {error ? <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div> : null}
           </>
+        ) : error ? (
+          <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>
         ) : null}
 
         <button type="button" className="mt-6 w-full rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" onClick={() => router.replace(`/${locale}/checkout`)}>
