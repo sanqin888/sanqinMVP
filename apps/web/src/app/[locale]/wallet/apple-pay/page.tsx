@@ -111,41 +111,6 @@ function getApplePayMissingTokenMessage(locale: Locale) {
     : "Apple Pay did not return a payment token. Please close the payment sheet and try again or use another payment method.";
 }
 
-function getApplePayEventDetail(event: Event): Record<string, unknown> | undefined {
-  if (!(event instanceof CustomEvent)) return undefined;
-  return event.detail && typeof event.detail === "object" && !Array.isArray(event.detail) ? (event.detail as Record<string, unknown>) : undefined;
-}
-
-function getApplePayToken(detail: Record<string, unknown> | undefined): string | undefined {
-  const misspelledToken = detail?.tokenRecieved;
-  if (misspelledToken && typeof misspelledToken === "object" && "id" in misspelledToken && typeof (misspelledToken as { id?: unknown }).id === "string") {
-    return (misspelledToken as { id: string }).id;
-  }
-
-  const correctedToken = detail?.tokenReceived;
-  if (correctedToken && typeof correctedToken === "object" && "id" in correctedToken && typeof (correctedToken as { id?: unknown }).id === "string") {
-    return (correctedToken as { id: string }).id;
-  }
-
-  return undefined;
-}
-
-function buildApplePayEventLog(detail: Record<string, unknown> | undefined) {
-  return {
-    hasDetail: !!detail,
-    detailKeys: detail ? Object.keys(detail) : [],
-    hasTokenRecieved: !!detail?.tokenRecieved,
-    hasTokenReceived: !!detail?.tokenReceived,
-    status: typeof detail?.status === "string" ? detail.status : undefined,
-  };
-}
-
-function getApplePayMissingTokenMessage(locale: Locale) {
-  return locale === "zh"
-    ? "Apple Pay 未返回支付令牌，请关闭支付窗口后重试或改用其他支付方式。"
-    : "Apple Pay did not return a payment token. Please close the payment sheet and try again or use another payment method.";
-}
-
 function toSafeErrorLog(error: unknown) {
   if (error instanceof ApiError) return { name: error.name, message: error.message, status: error.status };
   if (error instanceof Error) return { name: error.name, message: error.message };
