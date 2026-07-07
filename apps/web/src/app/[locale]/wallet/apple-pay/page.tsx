@@ -182,6 +182,8 @@ export default function ApplePayWalletPage() {
   const cloverRef = useRef<CloverInstance | null>(null);
   const applePayRef = useRef<CloverElementInstance | null>(null);
   const submittedTokenRef = useRef<string | null>(null);
+  const initRunIdRef = useRef(0);
+  const sessionExpiredRef = useRef(false);
 
   const currencyFormatter = useMemo(() => new Intl.NumberFormat(locale === "zh" ? "zh-Hans-CA" : "en-CA", {
     style: "currency", currency: HOSTED_CHECKOUT_CURRENCY, minimumFractionDigits: 2, maximumFractionDigits: 2,
@@ -225,6 +227,10 @@ export default function ApplePayWalletPage() {
   }, [locale, searchParams]);
 
   useEffect(() => {
+    sessionExpiredRef.current = sessionExpired;
+  }, [sessionExpired]);
+
+  useEffect(() => {
     if (!ctx) return;
     const tick = () => setRemainingMs(getRemainingMs(ctx.pricingTokenExpiresAt));
     tick();
@@ -255,12 +261,15 @@ export default function ApplePayWalletPage() {
     }
 
     let cancelled = false;
+    const initRunId = initRunIdRef.current + 1;
+    initRunIdRef.current = initRunId;
+    const isCurrentInit = () => !cancelled && initRunIdRef.current === initRunId;
     const init = async () => {
       try {
         console.debug("[AP][init] load-script:start", { sdkUrl });
         await loadScript(sdkUrl);
         console.debug("[AP][init] load-script:done", { sdkUrl });
-        if (cancelled) return;
+        if (!isCurrentInit()) return;
         const Clover = (window as ApplePayWindow).Clover;
         console.debug("[AP][init] clover-global", { hasClover: !!Clover });
         if (!Clover) throw new Error("Clover SDK not available");
@@ -314,9 +323,14 @@ export default function ApplePayWalletPage() {
         });
         host.innerHTML = "";
         applePay.mount("#clover-apple-pay");
+        if (!isCurrentInit()) {
+          applePay.destroy?.();
+          return;
+        }
         console.debug("[AP][init] apple-button:mounted", { sessionId: ctx.sessionId });
         applePayRef.current = applePay;
       } catch (err) {
+        if (!isCurrentInit()) return;
         console.error("[AP][session] init error", {
           ...toSafeErrorLog(err),
           sessionId: ctx.sessionId,
@@ -341,7 +355,7 @@ export default function ApplePayWalletPage() {
         setError(getApplePayMissingTokenMessage(locale));
         return;
       }
-      if (sessionExpired) {
+      if (sessionExpiredRef.current) {
         console.warn("[AP][session-expired-before-submit]", { sessionId: ctx.sessionId });
         cloverRef.current?.updateApplePaymentStatus("failed");
         setError(locale === "zh" ? "支付会话已过期，请返回结算页重新发起支付。" : "Payment session expired. Please go back to checkout and restart payment.");
@@ -401,12 +415,14 @@ export default function ApplePayWalletPage() {
       cancelled = true;
       window.removeEventListener("paymentMethod", onPaymentMethod);
       window.removeEventListener("paymentMethodEnd", onPaymentMethodEnd);
-      applePayRef.current?.destroy?.();
-      applePayRef.current = null;
-      cloverRef.current = null;
-      submittedTokenRef.current = null;
+      if (initRunIdRef.current === initRunId) {
+        applePayRef.current?.destroy?.();
+        applePayRef.current = null;
+        cloverRef.current = null;
+        submittedTokenRef.current = null;
+      }
     };
-  }, [ctx, locale, router, sessionExpired]);
+  }, [ctx, locale, router]);
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-lg flex-col px-4 py-10">
