@@ -563,6 +563,12 @@ export default function ApplePayWalletPage() {
             capability: getApplePayCapabilityLog(),
           });
           cloverRef.current?.updateApplePaymentStatus("failed");
+          const status = typeof detail?.status === "string" ? detail.status : undefined;
+          if (status === "session_cancelled") {
+            setError(locale === "zh" ? "Apple Pay 会话已取消或超时，请重试或改用其他支付方式。" : "Apple Pay was cancelled or timed out. Please try again or use another payment method.");
+            submittedTokenRef.current = null;
+            return;
+          }
           setInitError(buildApplePayElementErrorMessage(locale, detail));
         });
         host.innerHTML = "";
