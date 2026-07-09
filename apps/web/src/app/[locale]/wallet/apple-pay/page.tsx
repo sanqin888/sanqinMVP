@@ -48,6 +48,7 @@ type CloverInstance = {
   updateApplePaymentStatus: (status: "success" | "failed") => void;
 };
 type CloverConstructor = new (key?: string, options?: { merchantId?: string }) => CloverInstance;
+type ApplePayProgressState = "idle" | "started" | "tokenReceived" | "submitted" | "finished";
 type ApplePaySessionConstructor = {
   supportsVersion?: (version: number) => boolean;
   canMakePayments?: () => boolean;
@@ -267,6 +268,8 @@ export default function ApplePayWalletPage() {
   const submittedTokenRef = useRef<string | null>(null);
   const initRunIdRef = useRef(0);
   const sessionExpiredRef = useRef(false);
+  const applePayProgressRef = useRef<ApplePayProgressState>("idle");
+  const applePayStartTimerRef = useRef<number | null>(null);
 
   const currencyFormatter = useMemo(() => new Intl.NumberFormat(locale === "zh" ? "zh-Hans-CA" : "en-CA", {
     style: "currency", currency: HOSTED_CHECKOUT_CURRENCY, minimumFractionDigits: 2, maximumFractionDigits: 2,
@@ -394,12 +397,14 @@ export default function ApplePayWalletPage() {
       }
       if (submittedTokenRef.current === token) return;
       submittedTokenRef.current = token;
+      applePayProgressRef.current = "tokenReceived";
       console.debug("[AP][token] received", { sessionId: ctx.sessionId });
       setError(null);
       try {
         const browserInfo = build3dsBrowserInfo();
         const customer = ctx.metadata && typeof ctx.metadata === "object" && "customer" in ctx.metadata ? (ctx.metadata.customer as Record<string, unknown> | undefined) : undefined;
         console.debug("[AP][submit] start", { sessionId: ctx.sessionId, checkoutIntentId: ctx.checkoutIntentId });
+        applePayProgressRef.current = "submitted";
         const paymentResponse = await withTimeout(apiFetch<CardTokenPaymentResponse>("/clover/pay/online/card-token", {
           method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
             amountCents: ctx.totalCents,
@@ -415,6 +420,7 @@ export default function ApplePayWalletPage() {
         }), 20000, "apiFetch /clover/pay/online/card-token");
 
         if (!paymentResponse?.orderStableId) throw new Error(locale === "zh" ? "支付处理中或失败，请返回结算页重试。" : "Payment is processing/failed. Please go back and try again.");
+        applePayProgressRef.current = "finished";
         cloverRef.current?.updateApplePaymentStatus("success");
         router.replace(`/${locale}/thank-you/${paymentResponse.orderStableId}`);
       } catch (err) {
@@ -427,6 +433,11 @@ export default function ApplePayWalletPage() {
         cloverRef.current?.updateApplePaymentStatus("failed");
         setError(buildPaymentErrorMessage(locale, err));
         submittedTokenRef.current = null;
+        applePayProgressRef.current = "idle";
+        if (applePayStartTimerRef.current) {
+          window.clearTimeout(applePayStartTimerRef.current);
+          applePayStartTimerRef.current = null;
+        }
       }
     };
 
@@ -455,6 +466,11 @@ export default function ApplePayWalletPage() {
       if (status === "session_cancelled") {
         setError(locale === "zh" ? "Apple Pay 已取消，请重试或改用其他支付方式。" : "Apple Pay was cancelled. Please try again or use another payment method.");
         submittedTokenRef.current = null;
+        applePayProgressRef.current = "idle";
+        if (applePayStartTimerRef.current) {
+          window.clearTimeout(applePayStartTimerRef.current);
+          applePayStartTimerRef.current = null;
+        }
       }
     };
 
@@ -507,13 +523,18 @@ export default function ApplePayWalletPage() {
         if (!host) throw new Error("Apple Pay host not ready");
         applePayRef.current?.destroy?.();
         submittedTokenRef.current = null;
+        applePayProgressRef.current = "idle";
+        if (applePayStartTimerRef.current) {
+          window.clearTimeout(applePayStartTimerRef.current);
+          applePayStartTimerRef.current = null;
+        }
         const clover = new Clover(publicKey, { merchantId });
         cloverRef.current = clover;
         console.debug("[AP][init] clover-instance:created", { merchantIdTail: merchantId.slice(-6) });
         const appleReq = clover.createApplePaymentRequest({
           amount: ctx.totalCents,
           countryCode: "CA",
-          currencyCode: "CAD",
+          currencyCode: ctx.currency || HOSTED_CHECKOUT_CURRENCY,
           requiredBillingContactFields: ["postalAddress", "name"],
           requiredShippingContactFields: ["email"],
         });
@@ -532,6 +553,19 @@ export default function ApplePayWalletPage() {
             sessionId: ctx.sessionId,
             ...buildApplePayEventLog(detail),
           });
+          applePayProgressRef.current = "started";
+          if (applePayStartTimerRef.current) window.clearTimeout(applePayStartTimerRef.current);
+          applePayStartTimerRef.current = window.setTimeout(() => {
+            if (applePayProgressRef.current !== "started") return;
+            postApplePayClientEvent({
+              eventName: "apple-pay.no-token-before-session-timeout",
+              sessionId: ctx.sessionId,
+              checkoutIntentId: ctx.checkoutIntentId,
+              detail: { status: applePayProgressRef.current, message: "No paymentMethod token event received within 25 seconds after Apple Pay button click" },
+              capability: getApplePayCapabilityLog(),
+              extra: { merchantIdTail: merchantId.slice(-6) },
+            });
+          }, 25000);
           postApplePayClientEvent({
             eventName: "element.appleButtonClick",
             sessionId: ctx.sessionId,
@@ -573,11 +607,16 @@ export default function ApplePayWalletPage() {
             detail: buildApplePayEventLog(detail),
             capability: getApplePayCapabilityLog(),
           });
-          cloverRef.current?.updateApplePaymentStatus("failed");
+          if (applePayStartTimerRef.current) {
+            window.clearTimeout(applePayStartTimerRef.current);
+            applePayStartTimerRef.current = null;
+          }
           const status = typeof detail?.status === "string" ? detail.status : undefined;
+          if (applePayProgressRef.current === "submitted") cloverRef.current?.updateApplePaymentStatus("failed");
           if (status === "session_cancelled") {
             setError(locale === "zh" ? "Apple Pay 会话已取消或超时，请重试或改用其他支付方式。" : "Apple Pay was cancelled or timed out. Please try again or use another payment method.");
             submittedTokenRef.current = null;
+            applePayProgressRef.current = "idle";
             return;
           }
           setInitError(buildApplePayElementErrorMessage(locale, detail));
@@ -637,6 +676,11 @@ export default function ApplePayWalletPage() {
         applePayRef.current = null;
         cloverRef.current = null;
         submittedTokenRef.current = null;
+        applePayProgressRef.current = "idle";
+        if (applePayStartTimerRef.current) {
+          window.clearTimeout(applePayStartTimerRef.current);
+          applePayStartTimerRef.current = null;
+        }
       }
     };
   }, [ctx, locale, router]);
