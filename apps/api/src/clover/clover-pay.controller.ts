@@ -39,6 +39,34 @@ import {
   reconcileChargeAmount,
 } from './reconcile-charge';
 
+type ApplePayClientEventDto = {
+  eventName?: unknown;
+  sessionId?: unknown;
+  checkoutIntentId?: unknown;
+  href?: unknown;
+  origin?: unknown;
+  userAgent?: unknown;
+  detail?: unknown;
+  capability?: unknown;
+  extra?: unknown;
+};
+
+function toLogString(value: unknown, maxLength = 180): string {
+  if (typeof value === 'string') return value.slice(0, maxLength);
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  return '';
+}
+
+function toLogJson(value: unknown, maxLength = 1200): string {
+  try {
+    return JSON.stringify(value ?? null).slice(0, maxLength);
+  } catch {
+    return '"[unserializable]"';
+  }
+}
+
 @Controller('clover')
 export class CloverPayController implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new AppLogger(CloverPayController.name);
@@ -201,6 +229,28 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       pricingTokenExpiresAt: token.expiresAt,
       metadata,
     };
+  }
+
+  @Post('pay/online/apple-pay-event')
+  logApplePayClientEvent(
+    @Body() dto: ApplePayClientEventDto,
+    @Ip() ip?: string,
+    @Headers('user-agent') requestUserAgent?: string,
+  ) {
+    const eventName = toLogString(dto.eventName, 80) || 'unknown';
+    const sessionId = toLogString(dto.sessionId, 80) || 'unknown';
+    const checkoutIntentId =
+      toLogString(dto.checkoutIntentId, 120) || 'unknown';
+    const origin = toLogString(dto.origin, 180);
+    const href = toLogString(dto.href, 260);
+    const userAgent =
+      toLogString(dto.userAgent, 260) || toLogString(requestUserAgent, 260);
+
+    this.logger.log(
+      `[apple-pay.client-event] event=${eventName} sessionId=${sessionId} intent=${checkoutIntentId} ip=${ip ?? 'unknown'} origin=${origin || 'unknown'} href=${href || 'unknown'} ua=${userAgent || 'unknown'} detail=${toLogJson(dto.detail)} capability=${toLogJson(dto.capability)} extra=${toLogJson(dto.extra)}`,
+    );
+
+    return { ok: true };
   }
 
   @Post('pay/online/quote')
