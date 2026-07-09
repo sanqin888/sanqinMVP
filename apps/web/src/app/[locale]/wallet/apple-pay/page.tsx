@@ -535,8 +535,6 @@ export default function ApplePayWalletPage() {
           amount: ctx.totalCents,
           countryCode: "CA",
           currencyCode: ctx.currency || HOSTED_CHECKOUT_CURRENCY,
-          requiredBillingContactFields: ["postalAddress", "name"],
-          requiredShippingContactFields: ["email"],
         });
         console.debug("[AP][init] apple-request:created", {
           amount: appleReq.amount,
