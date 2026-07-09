@@ -76,12 +76,23 @@ function getApplePayToken(detail: Record<string, unknown> | undefined): string |
   return undefined;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
 function buildApplePayEventLog(detail: Record<string, unknown> | undefined) {
+  const tokenRecieved = isRecord(detail?.tokenRecieved) ? detail.tokenRecieved : undefined;
+  const tokenReceived = isRecord(detail?.tokenReceived) ? detail.tokenReceived : undefined;
+
   return {
     hasDetail: !!detail,
     detailKeys: detail ? Object.keys(detail) : [],
     hasTokenRecieved: !!detail?.tokenRecieved,
     hasTokenReceived: !!detail?.tokenReceived,
+    tokenRecievedKeys: tokenRecieved ? Object.keys(tokenRecieved) : [],
+    tokenReceivedKeys: tokenReceived ? Object.keys(tokenReceived) : [],
+    hasTokenRecievedId: typeof tokenRecieved?.id === "string" && tokenRecieved.id.length > 0,
+    hasTokenReceivedId: typeof tokenReceived?.id === "string" && tokenReceived.id.length > 0,
     status: typeof detail?.status === "string" ? detail.status : undefined,
     eventMessage: typeof detail?.eventMessage === "string" ? detail.eventMessage : undefined,
     message: typeof detail?.message === "string" ? detail.message : undefined,
