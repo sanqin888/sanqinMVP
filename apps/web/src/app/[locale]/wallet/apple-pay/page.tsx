@@ -126,6 +126,22 @@ function buildApplePayInitErrorMessage(locale: Locale, error: unknown) {
     : "Apple Pay could not be started right now. Please go back and try again, or choose another payment method.";
 }
 
+function buildApplePayElementErrorMessage(locale: Locale, detail: Record<string, unknown> | undefined) {
+  const message = [detail?.eventMessage, detail?.message, detail?.reason]
+    .find((value): value is string => typeof value === "string" && value.trim().length > 0)
+    ?.trim();
+  const code = typeof detail?.code === "string" && detail.code.trim() ? detail.code.trim() : "";
+  const suffix = [code, message].filter(Boolean).join(": ");
+  if (!suffix) {
+    return locale === "zh"
+      ? "Apple Pay 暂时无法启动。请确认当前域名已在 Clover/Apple Pay 中完成验证，或返回结算页改用其他支付方式。"
+      : "Apple Pay could not be started. Please confirm this domain is verified for Clover/Apple Pay, or choose another payment method.";
+  }
+  return locale === "zh"
+    ? `Apple Pay 暂时无法启动（${suffix}）。请返回结算页重试，或改用其他支付方式。`
+    : `Apple Pay could not be started (${suffix}). Please go back and try again, or choose another payment method.`;
+}
+
 function getApplePayMissingTokenMessage(locale: Locale) {
   return locale === "zh"
     ? "Apple Pay 未返回支付令牌，请关闭支付窗口后重试或改用其他支付方式。"
@@ -546,6 +562,8 @@ export default function ApplePayWalletPage() {
             detail: buildApplePayEventLog(detail),
             capability: getApplePayCapabilityLog(),
           });
+          cloverRef.current?.updateApplePaymentStatus("failed");
+          setInitError(buildApplePayElementErrorMessage(locale, detail));
         });
         host.innerHTML = "";
         applePay.mount("#clover-apple-pay");
