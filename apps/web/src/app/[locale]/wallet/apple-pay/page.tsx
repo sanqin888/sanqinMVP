@@ -352,14 +352,14 @@ export default function ApplePayWalletPage() {
     initRunIdRef.current = initRunId;
     const isCurrentInit = () => !cancelled && initRunIdRef.current === initRunId;
 
-    const onPaymentMethod = async (event: Event) => {
-      const detail = getApplePayEventDetail(event);
-      console.debug("[AP][paymentMethod raw]", {
+    const handleApplePayTokenEvent = async (event: unknown, eventName: string) => {
+      const detail = getUnknownEventDetail(event);
+      console.debug(`[AP][${eventName} raw]`, {
         sessionId: ctx.sessionId,
         ...buildApplePayEventLog(detail),
       });
       postApplePayClientEvent({
-        eventName: "paymentMethod",
+        eventName,
         sessionId: ctx.sessionId,
         checkoutIntentId: ctx.checkoutIntentId,
         detail: buildApplePayEventLog(detail),
@@ -419,6 +419,14 @@ export default function ApplePayWalletPage() {
       }
     };
 
+    const onPaymentMethod = (event: Event) => {
+      void handleApplePayTokenEvent(event, "paymentMethod");
+    };
+
+    const onPaymentAuthorize = (event: Event) => {
+      void handleApplePayTokenEvent(event, "paymentAuthorize");
+    };
+
     const onPaymentMethodEnd = (event: Event) => {
       const detail = getApplePayEventDetail(event);
       console.debug("[AP][paymentMethodEnd]", {
@@ -440,6 +448,7 @@ export default function ApplePayWalletPage() {
     };
 
     window.addEventListener("paymentMethod", onPaymentMethod);
+    window.addEventListener("paymentAuthorize", onPaymentAuthorize);
     window.addEventListener("paymentMethodEnd", onPaymentMethodEnd);
     const onWindowError = (event: ErrorEvent) => {
       postApplePayClientEvent({
@@ -506,6 +515,20 @@ export default function ApplePayWalletPage() {
         });
         const applePay = clover.elements().create("PAYMENT_REQUEST_BUTTON_APPLE_PAY", { applePaymentRequest: appleReq, sessionIdentifier: merchantId });
         console.debug("[AP][init] apple-button:created");
+        applePay.addEventListener?.("appleButtonClick", (event) => {
+          const detail = getUnknownEventDetail(event);
+          console.debug("[AP][element appleButtonClick]", {
+            sessionId: ctx.sessionId,
+            ...buildApplePayEventLog(detail),
+          });
+          postApplePayClientEvent({
+            eventName: "element.appleButtonClick",
+            sessionId: ctx.sessionId,
+            checkoutIntentId: ctx.checkoutIntentId,
+            detail: buildApplePayEventLog(detail),
+            capability: getApplePayCapabilityLog(),
+          });
+        });
         applePay.addEventListener?.("paymentMethodStart", (event) => {
           const detail = getUnknownEventDetail(event);
           console.debug("[AP][element paymentMethodStart]", {
@@ -521,18 +544,10 @@ export default function ApplePayWalletPage() {
           });
         });
         applePay.addEventListener?.("paymentMethod", (event) => {
-          const detail = getUnknownEventDetail(event);
-          console.debug("[AP][element paymentMethod]", {
-            sessionId: ctx.sessionId,
-            ...buildApplePayEventLog(detail),
-          });
-          postApplePayClientEvent({
-            eventName: "element.paymentMethod",
-            sessionId: ctx.sessionId,
-            checkoutIntentId: ctx.checkoutIntentId,
-            detail: buildApplePayEventLog(detail),
-            capability: getApplePayCapabilityLog(),
-          });
+          void handleApplePayTokenEvent(event, "element.paymentMethod");
+        });
+        applePay.addEventListener?.("paymentAuthorize", (event) => {
+          void handleApplePayTokenEvent(event, "element.paymentAuthorize");
         });
         applePay.addEventListener?.("paymentMethodEnd", (event) => {
           const detail = getUnknownEventDetail(event);
@@ -542,20 +557,6 @@ export default function ApplePayWalletPage() {
           });
           postApplePayClientEvent({
             eventName: "element.paymentMethodEnd",
-            sessionId: ctx.sessionId,
-            checkoutIntentId: ctx.checkoutIntentId,
-            detail: buildApplePayEventLog(detail),
-            capability: getApplePayCapabilityLog(),
-          });
-        });
-        applePay.addEventListener?.("error", (event) => {
-          const detail = getUnknownEventDetail(event);
-          console.error("[AP][element error]", {
-            sessionId: ctx.sessionId,
-            ...buildApplePayEventLog(detail),
-          });
-          postApplePayClientEvent({
-            eventName: "element.error",
             sessionId: ctx.sessionId,
             checkoutIntentId: ctx.checkoutIntentId,
             detail: buildApplePayEventLog(detail),
@@ -610,6 +611,7 @@ export default function ApplePayWalletPage() {
     return () => {
       cancelled = true;
       window.removeEventListener("paymentMethod", onPaymentMethod);
+      window.removeEventListener("paymentAuthorize", onPaymentAuthorize);
       window.removeEventListener("paymentMethodEnd", onPaymentMethodEnd);
       window.removeEventListener("error", onWindowError);
       window.removeEventListener("unhandledrejection", onUnhandledRejection);
