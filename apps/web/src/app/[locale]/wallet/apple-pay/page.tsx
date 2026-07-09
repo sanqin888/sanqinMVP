@@ -261,6 +261,8 @@ export default function ApplePayWalletPage() {
   const [initError, setInitError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [remainingMs, setRemainingMs] = useState(0);
+  const [applePayInteractionActive, setApplePayInteractionActive] = useState(false);
+  const [applePayElementResetNonce, setApplePayElementResetNonce] = useState(0);
   const sessionExpired = remainingMs <= 0 && !loading && Boolean(ctx);
 
   const cloverRef = useRef<CloverInstance | null>(null);
@@ -270,6 +272,7 @@ export default function ApplePayWalletPage() {
   const sessionExpiredRef = useRef(false);
   const applePayProgressRef = useRef<ApplePayProgressState>("idle");
   const applePayStartTimerRef = useRef<number | null>(null);
+  const lastAppleButtonClickLogAtRef = useRef(0);
 
   const currencyFormatter = useMemo(() => new Intl.NumberFormat(locale === "zh" ? "zh-Hans-CA" : "en-CA", {
     style: "currency", currency: HOSTED_CHECKOUT_CURRENCY, minimumFractionDigits: 2, maximumFractionDigits: 2,
@@ -300,6 +303,8 @@ export default function ApplePayWalletPage() {
           metadata: data.metadata,
         });
         setRemainingMs(getRemainingMs(data.pricingTokenExpiresAt));
+        setApplePayInteractionActive(false);
+        setApplePayElementResetNonce((value) => value + 1);
         setLoading(false);
       } catch (err) {
         if (cancelled) return;
@@ -362,9 +367,15 @@ export default function ApplePayWalletPage() {
     }
 
     let cancelled = false;
+    let resetRequested = false;
     const initRunId = initRunIdRef.current + 1;
     initRunIdRef.current = initRunId;
     const isCurrentInit = () => !cancelled && initRunIdRef.current === initRunId;
+    const resetApplePayElement = () => {
+      if (resetRequested) return;
+      resetRequested = true;
+      setApplePayElementResetNonce((value) => value + 1);
+    };
 
     const handleApplePayTokenEvent = async (event: unknown, eventName: string) => {
       const detail = getUnknownEventDetail(event);
@@ -386,12 +397,14 @@ export default function ApplePayWalletPage() {
           ...buildApplePayEventLog(detail),
         });
         cloverRef.current?.updateApplePaymentStatus("failed");
+        setApplePayInteractionActive(false);
         setError(getApplePayMissingTokenMessage(locale));
         return;
       }
       if (sessionExpiredRef.current) {
         console.warn("[AP][session-expired-before-submit]", { sessionId: ctx.sessionId });
         cloverRef.current?.updateApplePaymentStatus("failed");
+        setApplePayInteractionActive(false);
         setError(locale === "zh" ? "支付会话已过期，请返回结算页重新发起支付。" : "Payment session expired. Please go back to checkout and restart payment.");
         return;
       }
@@ -421,6 +434,7 @@ export default function ApplePayWalletPage() {
 
         if (!paymentResponse?.orderStableId) throw new Error(locale === "zh" ? "支付处理中或失败，请返回结算页重试。" : "Payment is processing/failed. Please go back and try again.");
         applePayProgressRef.current = "finished";
+        setApplePayInteractionActive(false);
         cloverRef.current?.updateApplePaymentStatus("success");
         router.replace(`/${locale}/thank-you/${paymentResponse.orderStableId}`);
       } catch (err) {
@@ -431,6 +445,7 @@ export default function ApplePayWalletPage() {
           console.error("[AP][submit-error]", toSafeErrorLog(err));
         }
         cloverRef.current?.updateApplePaymentStatus("failed");
+        setApplePayInteractionActive(false);
         setError(buildPaymentErrorMessage(locale, err));
         submittedTokenRef.current = null;
         applePayProgressRef.current = "idle";
@@ -441,42 +456,8 @@ export default function ApplePayWalletPage() {
       }
     };
 
-    const onPaymentMethod = (event: Event) => {
-      void handleApplePayTokenEvent(event, "paymentMethod");
-    };
-
-    const onPaymentAuthorize = (event: Event) => {
-      void handleApplePayTokenEvent(event, "paymentAuthorize");
-    };
-
-    const onPaymentMethodEnd = (event: Event) => {
-      const detail = getApplePayEventDetail(event);
-      console.debug("[AP][paymentMethodEnd]", {
-        sessionId: ctx.sessionId,
-        ...buildApplePayEventLog(detail),
-      });
-      postApplePayClientEvent({
-        eventName: "paymentMethodEnd",
-        sessionId: ctx.sessionId,
-        checkoutIntentId: ctx.checkoutIntentId,
-        detail: buildApplePayEventLog(detail),
-        capability: getApplePayCapabilityLog(),
-      });
-      const status = typeof detail?.status === "string" ? detail.status : undefined;
-      if (status === "session_cancelled") {
-        setError(locale === "zh" ? "Apple Pay 已取消，请重试或改用其他支付方式。" : "Apple Pay was cancelled. Please try again or use another payment method.");
-        submittedTokenRef.current = null;
-        applePayProgressRef.current = "idle";
-        if (applePayStartTimerRef.current) {
-          window.clearTimeout(applePayStartTimerRef.current);
-          applePayStartTimerRef.current = null;
-        }
-      }
-    };
-
-    window.addEventListener("paymentMethod", onPaymentMethod);
-    window.addEventListener("paymentAuthorize", onPaymentAuthorize);
-    window.addEventListener("paymentMethodEnd", onPaymentMethodEnd);
+    // Clover Apple Pay events are handled on the element instance below.
+    // Keep only global browser error listeners here so token/session events are not handled twice.
     const onWindowError = (event: ErrorEvent) => {
       postApplePayClientEvent({
         eventName: "windowError",
@@ -547,30 +528,37 @@ export default function ApplePayWalletPage() {
         console.debug("[AP][init] apple-button:created");
         applePay.addEventListener?.("appleButtonClick", (event) => {
           const detail = getUnknownEventDetail(event);
-          console.debug("[AP][element appleButtonClick]", {
-            sessionId: ctx.sessionId,
-            ...buildApplePayEventLog(detail),
-          });
+          const now = Date.now();
+          const isDuplicateStartEvent = applePayProgressRef.current === "started" && now - lastAppleButtonClickLogAtRef.current < 1000;
+          if (!isDuplicateStartEvent) {
+            console.debug("[AP][element appleButtonClick]", {
+              sessionId: ctx.sessionId,
+              ...buildApplePayEventLog(detail),
+            });
+            postApplePayClientEvent({
+              eventName: "element.appleButtonClick",
+              sessionId: ctx.sessionId,
+              checkoutIntentId: ctx.checkoutIntentId,
+              detail: buildApplePayEventLog(detail),
+              capability: getApplePayCapabilityLog(),
+            });
+          }
+          lastAppleButtonClickLogAtRef.current = now;
           applePayProgressRef.current = "started";
+          setApplePayInteractionActive(true);
           if (applePayStartTimerRef.current) window.clearTimeout(applePayStartTimerRef.current);
           applePayStartTimerRef.current = window.setTimeout(() => {
             if (applePayProgressRef.current !== "started") return;
+            setApplePayInteractionActive(false);
             postApplePayClientEvent({
-              eventName: "apple-pay.no-token-before-session-timeout",
+              eventName: "apple-pay.no-token-after-35s",
               sessionId: ctx.sessionId,
               checkoutIntentId: ctx.checkoutIntentId,
-              detail: { status: applePayProgressRef.current, message: "No paymentMethod token event received within 25 seconds after Apple Pay button click" },
+              detail: { status: applePayProgressRef.current, message: "No paymentMethod token event received within 35 seconds after Apple Pay button click" },
               capability: getApplePayCapabilityLog(),
               extra: { merchantIdTail: merchantId.slice(-6) },
             });
-          }, 25000);
-          postApplePayClientEvent({
-            eventName: "element.appleButtonClick",
-            sessionId: ctx.sessionId,
-            checkoutIntentId: ctx.checkoutIntentId,
-            detail: buildApplePayEventLog(detail),
-            capability: getApplePayCapabilityLog(),
-          });
+          }, 35000);
         });
         applePay.addEventListener?.("paymentMethodStart", (event) => {
           const detail = getUnknownEventDetail(event);
@@ -611,10 +599,12 @@ export default function ApplePayWalletPage() {
           }
           const status = typeof detail?.status === "string" ? detail.status : undefined;
           if (applePayProgressRef.current === "submitted") cloverRef.current?.updateApplePaymentStatus("failed");
+          setApplePayInteractionActive(false);
           if (status === "session_cancelled") {
             setError(locale === "zh" ? "Apple Pay 会话已取消或超时，请重试或改用其他支付方式。" : "Apple Pay was cancelled or timed out. Please try again or use another payment method.");
             submittedTokenRef.current = null;
             applePayProgressRef.current = "idle";
+            resetApplePayElement();
             return;
           }
           setInitError(buildApplePayElementErrorMessage(locale, detail));
@@ -664,9 +654,6 @@ export default function ApplePayWalletPage() {
     void init();
     return () => {
       cancelled = true;
-      window.removeEventListener("paymentMethod", onPaymentMethod);
-      window.removeEventListener("paymentAuthorize", onPaymentAuthorize);
-      window.removeEventListener("paymentMethodEnd", onPaymentMethodEnd);
       window.removeEventListener("error", onWindowError);
       window.removeEventListener("unhandledrejection", onUnhandledRejection);
       if (initRunIdRef.current === initRunId) {
@@ -681,7 +668,7 @@ export default function ApplePayWalletPage() {
         }
       }
     };
-  }, [ctx, locale, router]);
+  }, [applePayElementResetNonce, ctx, locale, router]);
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-lg flex-col px-4 py-10">
@@ -703,7 +690,14 @@ export default function ApplePayWalletPage() {
                 {locale === "zh" ? "支付会话已过期，请返回结算页重新发起支付。" : "Payment session expired. Please go back to checkout and restart payment."}
               </div>
             ) : (
-              <div id="clover-apple-pay" className="mt-4 flex h-12 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white" />
+              <div className="relative mt-4">
+                <div id="clover-apple-pay" className={`flex h-12 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white ${applePayInteractionActive ? "pointer-events-none opacity-60" : ""}`} />
+                {applePayInteractionActive ? (
+                  <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-white/80 px-3 text-center text-xs font-semibold text-slate-600">
+                    {locale === "zh" ? "请在 Apple Pay 界面完成验证，超时或取消后可重试。" : "Complete verification in Apple Pay. You can retry after timeout or cancellation."}
+                  </div>
+                ) : null}
+              </div>
             )}
             {initError ? <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">{initError}</div> : null}
             {error ? <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div> : null}
