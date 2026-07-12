@@ -727,18 +727,3 @@ function stringifyReason(
 
   return fallbackMessage?.trim() || 'Clover request failed';
 }
-
-function safeSerializeForLog(value: unknown): string {
-  if (typeof value === 'string') {
-    return value;
-  }
-
-  try {
-    const serialized = JSON.stringify(value);
-    return serialized && serialized.length > 0
-      ? serialized
-      : '[unserializable-empty]';
-  } catch {
-    return '[unserializable]';
-  }
-}
