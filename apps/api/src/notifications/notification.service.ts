@@ -177,7 +177,8 @@ export class NotificationService {
     const vars = {
       ...baseVars,
       userName:
-        params.name?.trim() || (locale === 'zh' ? '亲爱的顾客' : 'Dear Customer'),
+        params.name?.trim() ||
+        (locale === 'zh' ? '亲爱的顾客' : 'Dear Customer'),
       pickupCode: params.orderNumber,
     };
 
