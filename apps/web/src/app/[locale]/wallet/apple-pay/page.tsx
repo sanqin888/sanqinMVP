@@ -272,7 +272,6 @@ export default function ApplePayWalletPage() {
   const sessionExpiredRef = useRef(false);
   const applePayProgressRef = useRef<ApplePayProgressState>("idle");
   const applePayStartTimerRef = useRef<number | null>(null);
-  const lastAppleButtonClickLogAtRef = useRef(0);
 
   const currencyFormatter = useMemo(() => new Intl.NumberFormat(locale === "zh" ? "zh-Hans-CA" : "en-CA", {
     style: "currency", currency: HOSTED_CHECKOUT_CURRENCY, minimumFractionDigits: 2, maximumFractionDigits: 2,
@@ -456,8 +455,48 @@ export default function ApplePayWalletPage() {
       }
     };
 
-    // Clover Apple Pay events are handled on the element instance below.
-    // Keep only global browser error listeners here so token/session events are not handled twice.
+    const handleApplePayEndEvent = (event: unknown, eventName: string) => {
+      const detail = getUnknownEventDetail(event);
+      console.debug(`[AP][${eventName}]`, {
+        sessionId: ctx.sessionId,
+        ...buildApplePayEventLog(detail),
+      });
+      postApplePayClientEvent({
+        eventName,
+        sessionId: ctx.sessionId,
+        checkoutIntentId: ctx.checkoutIntentId,
+        detail: buildApplePayEventLog(detail),
+        capability: getApplePayCapabilityLog(),
+      });
+      if (applePayStartTimerRef.current) {
+        window.clearTimeout(applePayStartTimerRef.current);
+        applePayStartTimerRef.current = null;
+      }
+      const status = typeof detail?.status === "string" ? detail.status : undefined;
+      if (applePayProgressRef.current === "submitted") cloverRef.current?.updateApplePaymentStatus("failed");
+      setApplePayInteractionActive(false);
+      if (status === "session_cancelled") {
+        setError(locale === "zh" ? "Apple Pay 会话已取消或超时，请重试或改用其他支付方式。" : "Apple Pay was cancelled or timed out. Please try again or use another payment method.");
+        submittedTokenRef.current = null;
+        applePayProgressRef.current = "idle";
+        resetApplePayElement();
+        return;
+      }
+      if (applePayProgressRef.current !== "finished") setInitError(buildApplePayElementErrorMessage(locale, detail));
+    };
+
+    // Clover's Apple Pay iframe docs specify window-level paymentMethod/paymentMethodEnd
+    // listeners for token and session-end callbacks. Do not attach Apple Pay element-level
+    // listeners here so callback handling follows the documented dispatch layer only.
+    const onWindowPaymentMethod = (event: Event) => {
+      void handleApplePayTokenEvent(event, "window.paymentMethod");
+    };
+    const onWindowPaymentAuthorize = (event: Event) => {
+      void handleApplePayTokenEvent(event, "window.paymentAuthorize");
+    };
+    const onWindowPaymentMethodEnd = (event: Event) => {
+      handleApplePayEndEvent(event, "window.paymentMethodEnd");
+    };
     const onWindowError = (event: ErrorEvent) => {
       postApplePayClientEvent({
         eventName: "windowError",
@@ -482,6 +521,9 @@ export default function ApplePayWalletPage() {
         detail: event.reason instanceof Error ? toSafeErrorLog(event.reason) : { reason: String(event.reason || "") },
       });
     };
+    window.addEventListener("paymentMethod", onWindowPaymentMethod);
+    window.addEventListener("paymentAuthorize", onWindowPaymentAuthorize);
+    window.addEventListener("paymentMethodEnd", onWindowPaymentMethodEnd);
     window.addEventListener("error", onWindowError);
     window.addEventListener("unhandledrejection", onUnhandledRejection);
 
@@ -526,89 +568,6 @@ export default function ApplePayWalletPage() {
         });
         const applePay = clover.elements().create("PAYMENT_REQUEST_BUTTON_APPLE_PAY", { applePaymentRequest: appleReq, sessionIdentifier: merchantId });
         console.debug("[AP][init] apple-button:created");
-        applePay.addEventListener?.("appleButtonClick", (event) => {
-          const detail = getUnknownEventDetail(event);
-          const now = Date.now();
-          const isDuplicateStartEvent = applePayProgressRef.current === "started" && now - lastAppleButtonClickLogAtRef.current < 1000;
-          if (!isDuplicateStartEvent) {
-            console.debug("[AP][element appleButtonClick]", {
-              sessionId: ctx.sessionId,
-              ...buildApplePayEventLog(detail),
-            });
-            postApplePayClientEvent({
-              eventName: "element.appleButtonClick",
-              sessionId: ctx.sessionId,
-              checkoutIntentId: ctx.checkoutIntentId,
-              detail: buildApplePayEventLog(detail),
-              capability: getApplePayCapabilityLog(),
-            });
-          }
-          lastAppleButtonClickLogAtRef.current = now;
-          applePayProgressRef.current = "started";
-          setApplePayInteractionActive(true);
-          if (applePayStartTimerRef.current) window.clearTimeout(applePayStartTimerRef.current);
-          applePayStartTimerRef.current = window.setTimeout(() => {
-            if (applePayProgressRef.current !== "started") return;
-            setApplePayInteractionActive(false);
-            postApplePayClientEvent({
-              eventName: "apple-pay.no-token-after-35s",
-              sessionId: ctx.sessionId,
-              checkoutIntentId: ctx.checkoutIntentId,
-              detail: { status: applePayProgressRef.current, message: "No paymentMethod token event received within 35 seconds after Apple Pay button click" },
-              capability: getApplePayCapabilityLog(),
-              extra: { merchantIdTail: merchantId.slice(-6) },
-            });
-          }, 35000);
-        });
-        applePay.addEventListener?.("paymentMethodStart", (event) => {
-          const detail = getUnknownEventDetail(event);
-          console.debug("[AP][element paymentMethodStart]", {
-            sessionId: ctx.sessionId,
-            ...buildApplePayEventLog(detail),
-          });
-          postApplePayClientEvent({
-            eventName: "element.paymentMethodStart",
-            sessionId: ctx.sessionId,
-            checkoutIntentId: ctx.checkoutIntentId,
-            detail: buildApplePayEventLog(detail),
-            capability: getApplePayCapabilityLog(),
-          });
-        });
-        applePay.addEventListener?.("paymentMethod", (event) => {
-          void handleApplePayTokenEvent(event, "element.paymentMethod");
-        });
-        applePay.addEventListener?.("paymentAuthorize", (event) => {
-          void handleApplePayTokenEvent(event, "element.paymentAuthorize");
-        });
-        applePay.addEventListener?.("paymentMethodEnd", (event) => {
-          const detail = getUnknownEventDetail(event);
-          console.debug("[AP][element paymentMethodEnd]", {
-            sessionId: ctx.sessionId,
-            ...buildApplePayEventLog(detail),
-          });
-          postApplePayClientEvent({
-            eventName: "element.paymentMethodEnd",
-            sessionId: ctx.sessionId,
-            checkoutIntentId: ctx.checkoutIntentId,
-            detail: buildApplePayEventLog(detail),
-            capability: getApplePayCapabilityLog(),
-          });
-          if (applePayStartTimerRef.current) {
-            window.clearTimeout(applePayStartTimerRef.current);
-            applePayStartTimerRef.current = null;
-          }
-          const status = typeof detail?.status === "string" ? detail.status : undefined;
-          if (applePayProgressRef.current === "submitted") cloverRef.current?.updateApplePaymentStatus("failed");
-          setApplePayInteractionActive(false);
-          if (status === "session_cancelled") {
-            setError(locale === "zh" ? "Apple Pay 会话已取消或超时，请重试或改用其他支付方式。" : "Apple Pay was cancelled or timed out. Please try again or use another payment method.");
-            submittedTokenRef.current = null;
-            applePayProgressRef.current = "idle";
-            resetApplePayElement();
-            return;
-          }
-          setInitError(buildApplePayElementErrorMessage(locale, detail));
-        });
         host.innerHTML = "";
         applePay.mount("#clover-apple-pay");
         if (!isCurrentInit()) {
@@ -654,6 +613,9 @@ export default function ApplePayWalletPage() {
     void init();
     return () => {
       cancelled = true;
+      window.removeEventListener("paymentMethod", onWindowPaymentMethod);
+      window.removeEventListener("paymentAuthorize", onWindowPaymentAuthorize);
+      window.removeEventListener("paymentMethodEnd", onWindowPaymentMethodEnd);
       window.removeEventListener("error", onWindowError);
       window.removeEventListener("unhandledrejection", onUnhandledRejection);
       if (initRunIdRef.current === initRunId) {
