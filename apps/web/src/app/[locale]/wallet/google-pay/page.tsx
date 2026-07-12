@@ -100,7 +100,6 @@ export default function GooglePayWalletPage() {
     let cancelled = false;
     const loadSession = async () => {
       try {
-        console.debug("[GP][session] enter", { sessionId });
         const data = await withTimeout(apiFetch<PaymentSessionFetchResponse>(`/clover/pay/online/session?sessionId=${encodeURIComponent(sessionId)}&paymentMethod=GOOGLE_PAY`), 15000, "apiFetch /clover/pay/online/session");
         if (cancelled) return;
         setCtx({ sessionId: data.sessionId, paymentMethod: (data.paymentMethod as PaymentCtx["paymentMethod"]) ?? "GOOGLE_PAY", locale, checkoutIntentId: data.checkoutIntentId, pricingToken: data.pricingToken, pricingTokenExpiresAt: data.pricingTokenExpiresAt, currency: data.currency || HOSTED_CHECKOUT_CURRENCY, totalCents: data.quote.totalCents, metadata: data.metadata });
@@ -156,13 +155,6 @@ export default function GooglePayWalletPage() {
         gp.mount("#clover-google-pay");
         googlePayRef.current = gp;
 
-        gp.addEventListener("paymentMethodStart", () => {
-          console.debug("[GP][paymentMethodStart]", { sessionId: ctx.sessionId });
-        });
-
-        gp.addEventListener("paymentMethodEnd", () => {
-          console.debug("[GP][paymentMethodEnd]", { sessionId: ctx.sessionId });
-        });
 
         gp.addEventListener("paymentMethod", async (evt: unknown) => {
           const token = extractGooglePayToken(evt);
@@ -171,7 +163,6 @@ export default function GooglePayWalletPage() {
           if (submittedTokenRef.current === token) return;
           submittedTokenRef.current = token;
           setError(null);
-          console.debug("[GP][token] received", { sessionId: ctx.sessionId });
 
           try {
             const browserInfo = build3dsBrowserInfo();
@@ -179,7 +170,6 @@ export default function GooglePayWalletPage() {
             const firstName = typeof customer?.firstName === "string" ? customer.firstName.trim() : "";
             const lastName = typeof customer?.lastName === "string" ? customer.lastName.trim() : "";
             const cardholderName = `${firstName} ${lastName}`.trim() || "Google Pay";
-            console.debug("[GP][submit] start", { sessionId: ctx.sessionId, checkoutIntentId: ctx.checkoutIntentId });
             const paymentResponse = await withTimeout(apiFetch<CardTokenPaymentResponse>("/clover/pay/online/card-token", {
               method: "POST",
               headers: { "Content-Type": "application/json" },

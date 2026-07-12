@@ -10,6 +10,7 @@ import type { Request, Response } from 'express';
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { runWithLogContext } from './log-context';
+import { sanitizeUrlForLog } from './log-sanitizer';
 
 @Injectable()
 export class RequestIdInterceptor implements NestInterceptor {
@@ -67,6 +68,7 @@ export class RequestIdInterceptor implements NestInterceptor {
 
     const { method, url } = request;
     const requestPath = request.originalUrl ?? url;
+    const safeUrl = sanitizeUrlForLog(url);
     const requestPathWithoutQuery = requestPath.split('?')[0];
     const shouldSkipInfoLog = this.quietPaths.some((path) =>
       requestPathWithoutQuery.startsWith(path),
@@ -83,7 +85,7 @@ export class RequestIdInterceptor implements NestInterceptor {
 
             const ms = Date.now() - start;
             const status = response?.statusCode;
-            const logMessage = `[reqId=${requestId}] ${method} ${url} - ${status} (${ms}ms)`;
+            const logMessage = `[reqId=${requestId}] ${method} ${safeUrl} - ${status} (${ms}ms)`;
 
             if (
               method === 'POST' &&
@@ -133,7 +135,7 @@ export class RequestIdInterceptor implements NestInterceptor {
                 : undefined) ??
               response?.statusCode;
             this.logger.error(
-              `[reqId=${requestId}] ${method} ${url} - ${status} (${ms}ms)`,
+              `[reqId=${requestId}] ${method} ${safeUrl} - ${status} (${ms}ms)`,
               err instanceof Error ? err.stack : undefined,
             );
           },

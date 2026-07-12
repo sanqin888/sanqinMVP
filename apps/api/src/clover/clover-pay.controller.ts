@@ -67,6 +67,13 @@ function toLogJson(value: unknown, maxLength = 1200): string {
   }
 }
 
+function toSafeLogId(value: unknown): string {
+  const text = toLogString(value, 120).trim();
+  if (!text) return 'unknown';
+  if (text.length <= 8) return '***';
+  return `${text.slice(0, 4)}...${text.slice(-4)}`;
+}
+
 @Controller('clover')
 export class CloverPayController implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new AppLogger(CloverPayController.name);
@@ -238,15 +245,14 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     @Headers('user-agent') requestUserAgent?: string,
   ) {
     const eventName = toLogString(dto.eventName, 80) || 'unknown';
-    const sessionId = toLogString(dto.sessionId, 80) || 'unknown';
-    const checkoutIntentId =
-      toLogString(dto.checkoutIntentId, 120) || 'unknown';
+    const sessionId = toSafeLogId(dto.sessionId);
+    const checkoutIntentId = toSafeLogId(dto.checkoutIntentId);
     const origin = toLogString(dto.origin, 180);
     const href = toLogString(dto.href, 260);
     const userAgent =
       toLogString(dto.userAgent, 260) || toLogString(requestUserAgent, 260);
 
-    this.logger.log(
+    this.logger.debug(
       `[apple-pay.client-event] event=${eventName} sessionId=${sessionId} intent=${checkoutIntentId} ip=${ip ?? 'unknown'} origin=${origin || 'unknown'} href=${href || 'unknown'} ua=${userAgent || 'unknown'} detail=${toLogJson(dto.detail)} capability=${toLogJson(dto.capability)} extra=${toLogJson(dto.extra)}`,
     );
 
@@ -516,10 +522,8 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
                 })
               : null;
 
-          this.logger.log(
-            `[payment.clover.success] stage=reconcileIntent intent=${intent.referenceId} response=${stableStringify(
-              chargeStatus,
-            )}`,
+          this.logger.debug(
+            `[payment.clover.success] stage=reconcileIntent intent=${toSafeLogId(intent.referenceId)} paymentId=${toSafeLogId(chargeStatus.paymentId)} status=${chargeStatus.status ?? 'unknown'}`,
           );
 
           if (chargeReconcile?.mismatchBeyondTolerance) {
@@ -636,7 +640,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     @Ip() rawIp: string,
   ) {
     this.logger.debug(
-      `[payment.request] card-token received amount=${dto.amountCents ?? 'N/A'} checkoutIntentId=${dto.checkoutIntentId ?? 'N/A'}`,
+      `[payment.request] card-token received amount=${dto.amountCents ?? 'N/A'} checkoutIntentId=${toSafeLogId(dto.checkoutIntentId)}`,
     );
 
     if (!dto.metadata) {
@@ -775,7 +779,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     const cfConnectingIpDisplay = Array.isArray(cfConnectingIp)
       ? cfConnectingIp.join(', ')
       : (cfConnectingIp ?? 'N/A');
-    this.logger.log(
+    this.logger.debug(
       `Processing payment from IP: ${clientIp} (CF: ${cfConnectingIpDisplay}, Raw: ${rawIp ?? 'N/A'})`,
     );
 
@@ -1092,9 +1096,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
         : null;
 
     this.logger.log(
-      `[payment.clover.success] stage=payWithCardToken intent=${referenceId} response=${stableStringify(
-        chargeStatus,
-      )}`,
+      `[payment.clover.success] stage=payWithCardToken intent=${toSafeLogId(referenceId)} paymentId=${toSafeLogId(chargeStatus.paymentId)} status=${chargeStatus.status ?? 'unknown'}`,
     );
 
     if (chargeReconcile?.mismatchBeyondTolerance) {
@@ -1159,7 +1161,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     });
 
     this.logger.debug(
-      `[payment.complete] intent=${referenceId} order=${orderStableId} status=${paymentResult.status ?? 'SUCCESS'}`,
+      `[payment.complete] intent=${toSafeLogId(referenceId)} order=${toSafeLogId(orderStableId)} status=${paymentResult.status ?? 'SUCCESS'}`,
     );
 
     return {

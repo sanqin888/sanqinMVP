@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { sanitizeUrlForLog } from '../log-sanitizer';
 
 type ErrorEnvelope = {
   code: string;
@@ -23,13 +24,15 @@ export class ApiExceptionFilter implements ExceptionFilter {
     const res = ctx.getResponse<Response>();
     const req = ctx.getRequest<Request>();
 
+    const safeUrl = sanitizeUrlForLog(req.url);
+
     // ✅ 如果某个 controller 已经手动 send 过响应，就不要再写 headers/body
     if (res.headersSent) {
       // 默认静音，只在需要调试时打印
       if (process.env.DEBUG_API_FILTER === '1') {
         this.logger.debug(
           `Response already sent for ${req.method} ${
-            req.url
+            safeUrl
           }, skipping ApiExceptionFilter. Original error: ${
             exception instanceof Error ? exception.message : String(exception)
           }`,
@@ -44,10 +47,10 @@ export class ApiExceptionFilter implements ExceptionFilter {
     const isInternalServerError = status === HttpStatus.INTERNAL_SERVER_ERROR;
 
     if (isNotFound) {
-      this.logger.warn(`Request ${req.method} ${req.url} not found.`);
+      this.logger.warn(`Request ${req.method} ${safeUrl} not found.`);
     } else {
       this.logger.error(
-        `Request ${req.method} ${req.url} failed with status ${
+        `Request ${req.method} ${safeUrl} failed with status ${
           body.code
         } (${status}): ${body.message}`,
         isInternalServerError && exception instanceof Error
