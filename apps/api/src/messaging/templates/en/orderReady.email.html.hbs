@@ -1,0 +1,12 @@
+<h1>Your order is ready</h1>
+
+<p>Hello {{userName}},</p>
+
+<p>Your order is ready for pickup.</p>
+
+<ul>
+  <li>Pickup code: {{pickupCode}}</li>
+  {{#if storeAddressLine}}<li>Store address: {{storeAddressLine}}</li>{{/if}}
+</ul>
+
+<p>Thank you for choosing {{brandName}}.</p>

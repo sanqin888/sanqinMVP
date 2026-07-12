@@ -849,17 +849,28 @@ export class OrdersService {
       return;
     }
 
-    if (!order.contactPhone) return;
     const orderNumber = order.clientRequestId ?? order.orderStableId;
     if (!orderNumber) return;
 
     const locale = await this.resolveOrderReadyLocale(order);
+    const member = order.userId
+      ? await this.prisma.user.findUnique({
+          where: { id: order.userId },
+          select: { email: true },
+        })
+      : null;
+    const email = member?.email ?? null;
+    const phone = order.contactPhone ?? null;
+
+    if (!email && !phone) return;
 
     await this.notificationService.notifyOrderReady({
-      phone: order.contactPhone,
+      email,
+      phone,
       orderNumber,
       name: order.contactName ?? null,
       locale,
+      userId: order.userId ?? null,
     });
   }
 

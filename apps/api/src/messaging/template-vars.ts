@@ -35,8 +35,8 @@ export type GiftIssuedVars = BaseVars & {
 };
 
 export type OrderReadyVars = BaseVars & {
+  userName?: string;
   pickupCode: string;
-  pickupLocation?: string;
 };
 
 export type InvoiceVars = BaseVars & {
