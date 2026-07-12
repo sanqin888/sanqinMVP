@@ -1507,13 +1507,6 @@ export default function CheckoutPage() {
         "apiFetch /clover/pay/online/quote",
       );
 
-      if (quoteResponse.checkoutIntentId !== checkoutIntentId) {
-        console.debug("[checkout][session] intent id adjusted by server", {
-          from: checkoutIntentId,
-          to: quoteResponse.checkoutIntentId,
-        });
-      }
-
       return {
         sessionId: quoteResponse.sessionId,
         checkoutIntentId: quoteResponse.checkoutIntentId,
@@ -1554,11 +1547,6 @@ export default function CheckoutPage() {
         setRedirecting(true);
 
         const session = await createPaymentSession(paymentMethod);
-        console.debug("[checkout][session] created", {
-          paymentMethod,
-          sessionId: session.sessionId,
-          checkoutIntentId: session.checkoutIntentId,
-        });
         router.push(
           `/${locale}${path}?sessionId=${encodeURIComponent(session.sessionId)}`,
         );

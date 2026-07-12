@@ -272,7 +272,6 @@ export default function ApplePayWalletPage() {
   const sessionExpiredRef = useRef(false);
   const applePayProgressRef = useRef<ApplePayProgressState>("idle");
   const applePayStartTimerRef = useRef<number | null>(null);
-  const lastAppleButtonClickLogAtRef = useRef(0);
 
   const currencyFormatter = useMemo(() => new Intl.NumberFormat(locale === "zh" ? "zh-Hans-CA" : "en-CA", {
     style: "currency", currency: HOSTED_CHECKOUT_CURRENCY, minimumFractionDigits: 2, maximumFractionDigits: 2,
@@ -289,7 +288,6 @@ export default function ApplePayWalletPage() {
     let cancelled = false;
     const loadSession = async () => {
       try {
-        console.debug("[AP][session] enter", { sessionId });
         const data = await withTimeout(apiFetch<PaymentSessionFetchResponse>(`/clover/pay/online/session?sessionId=${encodeURIComponent(sessionId)}&paymentMethod=APPLE_PAY`), 15000, "apiFetch /clover/pay/online/session");
         if (cancelled) return;
         setCtx({
@@ -334,18 +332,6 @@ export default function ApplePayWalletPage() {
     const publicKey = process.env.NEXT_PUBLIC_CLOVER_PUBLIC_TOKEN?.trim();
     const merchantId = process.env.NEXT_PUBLIC_CLOVER_MERCHANT_ID?.trim();
     const sdkUrl = process.env.NEXT_PUBLIC_CLOVER_SDK_URL?.trim() ?? DEFAULT_CLOVER_SDK_URL;
-    console.debug("[AP][env]", {
-      href: window.location.href,
-      origin: window.location.origin,
-      hostname: window.location.hostname,
-      protocol: window.location.protocol,
-      sdkUrl,
-      hasPublicKey: !!publicKey,
-      publicKeyTail: publicKey?.slice(-6),
-      hasMerchantId: !!merchantId,
-      merchantIdTail: merchantId?.slice(-6),
-      ...getApplePayCapabilityLog(),
-    });
     postApplePayClientEvent({
       eventName: "env",
       sessionId: ctx.sessionId,
@@ -379,10 +365,6 @@ export default function ApplePayWalletPage() {
 
     const handleApplePayTokenEvent = async (event: unknown, eventName: string) => {
       const detail = getUnknownEventDetail(event);
-      console.debug(`[AP][${eventName} raw]`, {
-        sessionId: ctx.sessionId,
-        ...buildApplePayEventLog(detail),
-      });
       postApplePayClientEvent({
         eventName,
         sessionId: ctx.sessionId,
@@ -411,12 +393,10 @@ export default function ApplePayWalletPage() {
       if (submittedTokenRef.current === token) return;
       submittedTokenRef.current = token;
       applePayProgressRef.current = "tokenReceived";
-      console.debug("[AP][token] received", { sessionId: ctx.sessionId });
       setError(null);
       try {
         const browserInfo = build3dsBrowserInfo();
         const customer = ctx.metadata && typeof ctx.metadata === "object" && "customer" in ctx.metadata ? (ctx.metadata.customer as Record<string, unknown> | undefined) : undefined;
-        console.debug("[AP][submit] start", { sessionId: ctx.sessionId, checkoutIntentId: ctx.checkoutIntentId });
         applePayProgressRef.current = "submitted";
         const paymentResponse = await withTimeout(apiFetch<CardTokenPaymentResponse>("/clover/pay/online/card-token", {
           method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
@@ -458,10 +438,6 @@ export default function ApplePayWalletPage() {
 
     const handleApplePayEndEvent = (event: unknown, eventName: string) => {
       const detail = getUnknownEventDetail(event);
-      console.debug(`[AP][${eventName}]`, {
-        sessionId: ctx.sessionId,
-        ...buildApplePayEventLog(detail),
-      });
       postApplePayClientEvent({
         eventName,
         sessionId: ctx.sessionId,
@@ -535,15 +511,11 @@ export default function ApplePayWalletPage() {
         if (!applePaySession) throw new Error("ApplePaySession is not available");
         if (applePaySession.supportsVersion && !applePaySession.supportsVersion(3)) throw new Error("Apple Pay v3 is not supported by this browser");
         if (applePaySession.canMakePayments && !applePaySession.canMakePayments()) throw new Error("Apple Pay cannot make payments on this device");
-        console.debug("[AP][init] load-script:start", { sdkUrl });
         await loadScript(sdkUrl);
-        console.debug("[AP][init] load-script:done", { sdkUrl });
         if (!isCurrentInit()) return;
         const Clover = (window as ApplePayWindow).Clover;
-        console.debug("[AP][init] clover-global", { hasClover: !!Clover });
         if (!Clover) throw new Error("Clover SDK not available");
         const host = document.getElementById("clover-apple-pay");
-        console.debug("[AP][init] host", { hasHost: !!host });
         if (!host) throw new Error("Apple Pay host not ready");
         applePayRef.current?.destroy?.();
         submittedTokenRef.current = null;
@@ -554,28 +526,18 @@ export default function ApplePayWalletPage() {
         }
         const clover = new Clover(publicKey, { merchantId });
         cloverRef.current = clover;
-        console.debug("[AP][init] clover-instance:created", { merchantIdTail: merchantId.slice(-6) });
         const appleReq = clover.createApplePaymentRequest({
           amount: ctx.totalCents,
           countryCode: "CA",
           currencyCode: ctx.currency || HOSTED_CHECKOUT_CURRENCY,
         });
-        console.debug("[AP][init] apple-request:created", {
-          amount: appleReq.amount,
-          countryCode: appleReq.countryCode,
-          currencyCode: appleReq.currencyCode,
-          requiredBillingContactFields: appleReq.requiredBillingContactFields,
-          requiredShippingContactFields: appleReq.requiredShippingContactFields,
-        });
         const applePay = clover.elements().create("PAYMENT_REQUEST_BUTTON_APPLE_PAY", { applePaymentRequest: appleReq, sessionIdentifier: merchantId });
-        console.debug("[AP][init] apple-button:created");
         host.innerHTML = "";
         applePay.mount("#clover-apple-pay");
         if (!isCurrentInit()) {
           applePay.destroy?.();
           return;
         }
-        console.debug("[AP][init] apple-button:mounted", { sessionId: ctx.sessionId });
         postApplePayClientEvent({
           eventName: "button.mounted",
           sessionId: ctx.sessionId,
