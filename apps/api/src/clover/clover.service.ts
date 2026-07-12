@@ -570,8 +570,10 @@ function pickString(
 }
 
 function extractChargeRecords(
-  payload: Record<string, unknown>,
+  payload: Record<string, unknown> | undefined,
 ): Record<string, unknown>[] {
+  if (!payload) return [];
+
   const data = payload.data;
   if (Array.isArray(data)) {
     return data.filter(
