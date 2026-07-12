@@ -272,6 +272,7 @@ export default function ApplePayWalletPage() {
   const sessionExpiredRef = useRef(false);
   const applePayProgressRef = useRef<ApplePayProgressState>("idle");
   const applePayStartTimerRef = useRef<number | null>(null);
+  const lastAppleButtonClickLogAtRef = useRef(0);
 
   const currencyFormatter = useMemo(() => new Intl.NumberFormat(locale === "zh" ? "zh-Hans-CA" : "en-CA", {
     style: "currency", currency: HOSTED_CHECKOUT_CURRENCY, minimumFractionDigits: 2, maximumFractionDigits: 2,
