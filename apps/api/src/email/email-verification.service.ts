@@ -73,6 +73,108 @@ export class EmailVerificationService {
     return { ok: true };
   }
 
+  async requestCheckoutVerification(params: {
+    email: string;
+    locale?: string;
+    purpose?: 'checkout';
+  }) {
+    const normalized = normalizeEmail(params.email);
+    if (!normalized) {
+      return { ok: false, error: 'invalid_email' };
+    }
+
+    const now = new Date();
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const dailyCount = await this.prisma.authChallenge.count({
+      where: {
+        type: AuthChallengeType.EMAIL_VERIFY,
+        channel: MessagingChannel.EMAIL,
+        addressNorm: normalized,
+        purpose: params.purpose ?? 'checkout',
+        createdAt: { gt: oneDayAgo },
+      },
+    });
+
+    if (dailyCount >= 5) {
+      return { ok: false, error: 'too many requests in a day' };
+    }
+
+    const expiresAt = new Date(now.getTime() + 10 * 60 * 1000);
+    const token = this.generateVerificationCode();
+    const codeHash = this.hashCode(token);
+
+    const challenge = await this.prisma.authChallenge.create({
+      data: {
+        type: AuthChallengeType.EMAIL_VERIFY,
+        channel: MessagingChannel.EMAIL,
+        addressNorm: normalized,
+        addressRaw: params.email,
+        codeHash,
+        purpose: params.purpose ?? 'checkout',
+        expiresAt,
+      },
+    });
+
+    const sendResult = await this.emailService.sendVerificationEmail({
+      to: params.email,
+      token,
+      name: null,
+      locale: params.locale === 'zh' ? 'zh' : 'en',
+    });
+
+    await this.prisma.authChallenge.update({
+      where: { id: challenge.id },
+      data: { messagingSendId: sendResult.sendId },
+    });
+
+    return { ok: true };
+  }
+
+  async verifyCheckoutToken(params: {
+    email: string;
+    token: string;
+    purpose?: 'checkout';
+  }) {
+    const normalized = normalizeEmail(params.email);
+    const codeHash = this.hashCode(params.token.trim());
+    const now = new Date();
+
+    if (!normalized || !params.token.trim()) {
+      return { ok: false, error: 'email_or_token_empty' };
+    }
+
+    const record = await this.prisma.authChallenge.findFirst({
+      where: {
+        type: AuthChallengeType.EMAIL_VERIFY,
+        channel: MessagingChannel.EMAIL,
+        status: AuthChallengeStatus.PENDING,
+        addressNorm: normalized,
+        purpose: params.purpose ?? 'checkout',
+        codeHash,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!record) {
+      return { ok: false, error: 'token_not_found' };
+    }
+
+    if (record.expiresAt < now) {
+      await this.prisma.authChallenge.update({
+        where: { id: record.id },
+        data: { status: AuthChallengeStatus.EXPIRED, consumedAt: now },
+      });
+      return { ok: false, error: 'token_expired' };
+    }
+
+    await this.prisma.authChallenge.update({
+      where: { id: record.id },
+      data: { status: AuthChallengeStatus.CONSUMED, consumedAt: now },
+    });
+
+    return { ok: true, email: record.addressNorm };
+  }
+
   async verifyToken(token: string) {
     const codeHash = this.hashCode(token);
     const now = new Date();
