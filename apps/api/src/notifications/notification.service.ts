@@ -164,28 +164,58 @@ export class NotificationService {
   }
 
   async notifyOrderReady(params: {
-    phone: string;
+    email?: string | null;
+    phone?: string | null;
     orderNumber: string;
     name?: string | null;
     locale?: string;
+    userId?: string | null;
   }) {
     const locale = params.locale?.toLowerCase().startsWith('zh') ? 'zh' : 'en';
     const { baseVars } =
       await this.businessConfigService.getMessagingSnapshot(locale);
-    const body = await this.templateRenderer.renderSms({
-      template: 'orderReady',
-      locale,
-      vars: {
-        ...baseVars,
-        pickupCode: params.orderNumber,
-      },
-    });
-    return this.smsService.sendSms({
-      phone: params.phone,
-      body,
-      templateType: MessagingTemplateType.ORDER_READY,
-      locale,
-    });
+    const vars = {
+      ...baseVars,
+      userName:
+        params.name?.trim() || (locale === 'zh' ? '亲爱的顾客' : 'Dear Customer'),
+      pickupCode: params.orderNumber,
+    };
+
+    if (params.email) {
+      const { subject, html, text } = await this.templateRenderer.renderEmail({
+        template: 'orderReady',
+        locale,
+        vars,
+      });
+
+      return this.emailService.sendEmail({
+        to: params.email,
+        subject,
+        html,
+        text,
+        tags: { type: 'order_ready' },
+        locale: locale === 'zh' ? 'zh-CN' : 'en',
+        templateType: MessagingTemplateType.ORDER_READY,
+        userId: params.userId ?? undefined,
+        metadata: { trigger: 'order_ready' },
+      });
+    }
+
+    if (params.phone) {
+      const body = await this.templateRenderer.renderSms({
+        template: 'orderReady',
+        locale,
+        vars,
+      });
+      return this.smsService.sendSms({
+        phone: params.phone,
+        body,
+        templateType: MessagingTemplateType.ORDER_READY,
+        locale,
+        userId: params.userId ?? undefined,
+        metadata: { trigger: 'order_ready' },
+      });
+    }
   }
 
   async notifyDeliveryDispatchFailed(params: {

@@ -1,0 +1,12 @@
+<h1>您的订单已备好</h1>
+
+<p>您好{{userName}}，</p>
+
+<p>您的订单已备好，可以取餐了。</p>
+
+<ul>
+  <li>取餐码：{{pickupCode}}</li>
+  {{#if storeAddressLine}}<li>门店地址：{{storeAddressLine}}</li>{{/if}}
+</ul>
+
+<p>感谢您选择 {{brandName}}。</p>
