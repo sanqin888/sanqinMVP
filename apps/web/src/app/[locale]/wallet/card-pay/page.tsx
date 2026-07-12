@@ -158,7 +158,6 @@ export default function CardPayWalletPage() {
     let cancelled = false;
     const loadSession = async () => {
       try {
-        console.debug("[CARD][session] enter", { sessionId });
         const data = await withTimeout(apiFetch<PaymentSessionFetchResponse>(`/clover/pay/online/session?sessionId=${encodeURIComponent(sessionId)}&paymentMethod=CARD`), 15000, "apiFetch /clover/pay/online/session");
         if (cancelled) return;
         setCtx({ sessionId: data.sessionId, paymentMethod: (data.paymentMethod as PaymentCtx["paymentMethod"]) ?? "CARD", locale, checkoutIntentId: data.checkoutIntentId, pricingToken: data.pricingToken, pricingTokenExpiresAt: data.pricingTokenExpiresAt, currency: data.currency || HOSTED_CHECKOUT_CURRENCY, totalCents: data.quote.totalCents, metadata: data.metadata });
@@ -313,10 +312,8 @@ export default function CardPayWalletPage() {
     try {
       const tokenResult = await cloverRef.current.createToken();
       if (!tokenResult?.token) throw new Error(tokenResult?.errors?.[0]?.message ?? (locale === "zh" ? "卡信息验证失败，请检查后重试。" : "Card verification failed. Please check and try again."));
-      console.debug("[CARD][token] created", { sessionId: ctx.sessionId });
       const browserInfo = build3dsBrowserInfo();
       const customer = ctx.metadata && typeof ctx.metadata === "object" && "customer" in ctx.metadata ? (ctx.metadata.customer as Record<string, unknown> | undefined) : undefined;
-      console.debug("[CARD][submit] start", { sessionId: ctx.sessionId, checkoutIntentId: ctx.checkoutIntentId });
 
       const paymentResponse = await withTimeout(apiFetch<CardTokenPaymentResponse>("/clover/pay/online/card-token", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({

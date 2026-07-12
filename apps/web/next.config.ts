@@ -12,6 +12,10 @@ const API_TARGET =
 
 const nextConfig: NextConfig = {
   // 关键修复：开启 Standalone 模式
+  compiler: {
+    removeConsole:
+      process.env.NODE_ENV === "production" ? { exclude: ["error"] } : false,
+  },
   output: "standalone",
   async rewrites() {
     return [
