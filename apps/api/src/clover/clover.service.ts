@@ -280,6 +280,23 @@ export class CloverService {
     }
 
     if (externalPaymentId) {
+      if (paymentId) {
+        const byPaymentId = await this.queryChargeStatusByFilters([
+          {
+            query: `id=${encodeURIComponent(paymentId)}`,
+            matcher: (charge) => charge.paymentId === paymentId,
+          },
+          {
+            query: `paymentId=${encodeURIComponent(paymentId)}`,
+            matcher: (charge) => charge.paymentId === paymentId,
+          },
+        ]);
+
+        if (byPaymentId.ok) {
+          return byPaymentId.result;
+        }
+      }
+
       const byExternalPaymentId = await this.queryChargeStatusByFilters([
         {
           query: `externalPaymentId=${encodeURIComponent(externalPaymentId)}`,
@@ -296,23 +313,6 @@ export class CloverService {
       ]);
       if (byExternalPaymentId.ok) {
         return byExternalPaymentId.result;
-      }
-
-      if (paymentId) {
-        const byPaymentIdFallback = await this.queryChargeStatusByFilters([
-          {
-            query: `id=${encodeURIComponent(paymentId)}`,
-            matcher: (charge) => charge.paymentId === paymentId,
-          },
-          {
-            query: `paymentId=${encodeURIComponent(paymentId)}`,
-            matcher: (charge) => charge.paymentId === paymentId,
-          },
-        ]);
-
-        if (byPaymentIdFallback.ok) {
-          return byPaymentIdFallback.result;
-        }
       }
 
       return {
@@ -421,7 +421,7 @@ export class CloverService {
     }
 
     this.logger.debug(
-      `[CloverService] charge status raw response url=${url} payload=${safeSerializeForLog(parsed ?? rawText)}`,
+      `[CloverService] charge status response url=${url} ok=${resp.ok} status=${resp.status} chargeCount=${extractChargeRecords(parsed).length}`,
     );
 
     if (!resp.ok) {
