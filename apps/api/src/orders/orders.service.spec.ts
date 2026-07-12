@@ -248,7 +248,7 @@ describe('OrdersService', () => {
       '11111111-1111-1111-1111-111111111111',
       'ready',
     );
-    await new Promise(process.nextTick);
+    await new Promise<void>((resolve) => process.nextTick(resolve));
 
     expect(notificationService.notifyOrderReady).toHaveBeenCalledTimes(1);
     expect(notificationService.notifyOrderReady).toHaveBeenCalledWith({
@@ -286,7 +286,7 @@ describe('OrdersService', () => {
       '33333333-3333-3333-3333-333333333333',
       'ready',
     );
-    await new Promise(process.nextTick);
+    await new Promise<void>((resolve) => process.nextTick(resolve));
 
     expect(notificationService.notifyOrderReady).toHaveBeenCalledTimes(1);
     expect(notificationService.notifyOrderReady).toHaveBeenCalledWith({
@@ -323,7 +323,7 @@ describe('OrdersService', () => {
       '44444444-4444-4444-4444-444444444444',
       'ready',
     );
-    await new Promise(process.nextTick);
+    await new Promise<void>((resolve) => process.nextTick(resolve));
 
     expect(notificationService.notifyOrderReady).not.toHaveBeenCalled();
   });
@@ -351,7 +351,7 @@ describe('OrdersService', () => {
       '22222222-2222-2222-2222-222222222222',
       'ready',
     );
-    await new Promise(process.nextTick);
+    await new Promise<void>((resolve) => process.nextTick(resolve));
 
     expect(notificationService.notifyOrderReady).not.toHaveBeenCalled();
   });
