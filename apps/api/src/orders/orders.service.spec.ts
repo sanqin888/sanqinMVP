@@ -224,7 +224,7 @@ describe('OrdersService', () => {
     );
   });
 
-  it('sends order-ready SMS when pickup order is marked ready', async () => {
+  it('sends order-ready notification with phone when pickup order is marked ready and no email exists', async () => {
     prisma.order.findUnique
       .mockResolvedValueOnce({
         status: 'making',
@@ -248,12 +248,87 @@ describe('OrdersService', () => {
       '11111111-1111-1111-1111-111111111111',
       'ready',
     );
-    await Promise.resolve();
+    await new Promise<void>((resolve) => process.nextTick(resolve));
 
     expect(notificationService.notifyOrderReady).toHaveBeenCalledTimes(1);
+    expect(notificationService.notifyOrderReady).toHaveBeenCalledWith({
+      email: null,
+      phone: '+14165550000',
+      orderNumber: 'cordpickupready001',
+      name: 'Test',
+      locale: 'en',
+      userId: null,
+    });
   });
 
-  it('does not send order-ready SMS when delivery order is marked ready', async () => {
+  it('sends order-ready notification with email when pickup order has a member email', async () => {
+    prisma.order.findUnique
+      .mockResolvedValueOnce({
+        status: 'making',
+        paidAt: new Date('2024-01-01T00:00:00.000Z'),
+        makingAt: new Date('2024-01-01T00:05:00.000Z'),
+        fulfillmentType: 'pickup',
+      })
+      .mockResolvedValueOnce({
+        id: 'order-pickup-ready-email',
+        orderStableId: 'cordpickupready002',
+        clientRequestId: null,
+        contactPhone: '+14165550000',
+        contactName: 'Email Test',
+        userId: 'user-1',
+        fulfillmentType: 'pickup',
+        items: [],
+      });
+    prisma.checkoutIntent.findFirst.mockResolvedValue({ locale: 'en' });
+    prisma.user.findUnique.mockResolvedValue({ email: 'member@example.com' });
+
+    await service.updateStatusInternal(
+      '33333333-3333-3333-3333-333333333333',
+      'ready',
+    );
+    await new Promise<void>((resolve) => process.nextTick(resolve));
+
+    expect(notificationService.notifyOrderReady).toHaveBeenCalledTimes(1);
+    expect(notificationService.notifyOrderReady).toHaveBeenCalledWith({
+      email: 'member@example.com',
+      phone: '+14165550000',
+      orderNumber: 'cordpickupready002',
+      name: 'Email Test',
+      locale: 'en',
+      userId: 'user-1',
+    });
+  });
+
+  it('does not send order-ready notification when pickup order has no email or phone', async () => {
+    prisma.order.findUnique
+      .mockResolvedValueOnce({
+        status: 'making',
+        paidAt: new Date('2024-01-01T00:00:00.000Z'),
+        makingAt: new Date('2024-01-01T00:05:00.000Z'),
+        fulfillmentType: 'pickup',
+      })
+      .mockResolvedValueOnce({
+        id: 'order-pickup-ready-no-contact',
+        orderStableId: 'cordpickupready003',
+        clientRequestId: null,
+        contactPhone: null,
+        contactName: 'No Contact',
+        userId: null,
+        fulfillmentType: 'pickup',
+        items: [],
+      });
+    prisma.checkoutIntent.findFirst.mockResolvedValue({ locale: 'en' });
+
+    await service.updateStatusInternal(
+      '44444444-4444-4444-4444-444444444444',
+      'ready',
+    );
+    await new Promise<void>((resolve) => process.nextTick(resolve));
+
+    expect(notificationService.notifyOrderReady).not.toHaveBeenCalled();
+  });
+
+  it('does not send order-ready notification when delivery order is marked ready', async () => {
     prisma.order.findUnique
       .mockResolvedValueOnce({
         status: 'making',
@@ -276,7 +351,7 @@ describe('OrdersService', () => {
       '22222222-2222-2222-2222-222222222222',
       'ready',
     );
-    await Promise.resolve();
+    await new Promise<void>((resolve) => process.nextTick(resolve));
 
     expect(notificationService.notifyOrderReady).not.toHaveBeenCalled();
   });

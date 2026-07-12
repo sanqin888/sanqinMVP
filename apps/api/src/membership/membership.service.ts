@@ -627,6 +627,8 @@ export class MembershipService {
       availableDiscountCents,
       marketingEmailOptIn: user.marketingEmailOptIn ?? false,
       phone: user.phone ?? null,
+      emailVerified: !!user.emailVerifiedAt,
+      emailVerifiedAt: user.emailVerifiedAt?.toISOString() ?? null,
       phoneVerified: !!user.phoneVerifiedAt,
       twoFactorEnabledAt: user.twoFactorEnabledAt,
       twoFactorMethod: user.twoFactorMethod,
