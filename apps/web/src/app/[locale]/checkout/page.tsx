@@ -1284,6 +1284,12 @@ export default function CheckoutPage() {
   }
 
   const isEmailValid = /^\S+@\S+\.\S+$/.test(customer.email.trim());
+  const isPhoneValid = isValidCanadianPhone(customer.phone);
+  const hasValidContactMethod = isEmailValid || isPhoneValid;
+  const contactMethodRequiredLabel =
+    locale === "zh"
+      ? `${strings.contactFields.email}或${strings.contactFields.phone}`
+      : `${strings.contactFields.email} or ${strings.contactFields.phone}`;
   const missingContactFields = useMemo(() => {
     const missing: string[] = [];
     if (!customer.firstName.trim()) {
@@ -1292,23 +1298,17 @@ export default function CheckoutPage() {
     if (!customer.lastName.trim()) {
       missing.push(strings.contactFields.lastName);
     }
-    if (!customer.email.trim() || !isEmailValid) {
-      missing.push(strings.contactFields.email);
-    }
-    if (!isValidCanadianPhone(customer.phone)) {
-      missing.push(strings.contactFields.phone);
+    if (!hasValidContactMethod) {
+      missing.push(contactMethodRequiredLabel);
     }
     return missing;
   }, [
-    customer.email,
+    contactMethodRequiredLabel,
     customer.firstName,
     customer.lastName,
-    customer.phone,
-    isEmailValid,
-    strings.contactFields.email,
+    hasValidContactMethod,
     strings.contactFields.firstName,
     strings.contactFields.lastName,
-    strings.contactFields.phone,
   ]);
   const missingContactMessage =
     missingContactFields.length > 0
@@ -1317,13 +1317,12 @@ export default function CheckoutPage() {
         : `Please complete: ${missingContactFields.join(", ")}`
       : null;
 
-  // ⭐ 下单前置条件：有菜 + 姓名 + 邮箱 + 手机号长度 + 手机已验证 + （外送时地址完整）+ 门店当前允许下单
+  // ⭐ 下单前置条件：有菜 + 姓名 + 有效邮箱/手机号二选一 + 对应联系方式已验证 + （外送时地址完整）+ 门店当前允许下单
   const canPlaceOrder =
     localizedCartItems.length > 0 &&
     customer.firstName.trim().length > 0 &&
     customer.lastName.trim().length > 0 &&
-    isEmailValid &&
-    isValidCanadianPhone(customer.phone) &&
+    hasValidContactMethod &&
     (emailVerified || phoneVerified) &&
     (fulfillment === "pickup" || deliveryAddressReady) &&
     isStoreOpen &&
@@ -1834,7 +1833,7 @@ export default function CheckoutPage() {
   // 发送联系方式验证码：邮箱有效时优先邮箱，否则走手机号短信
   const handleSendContactCode = async () => {
     const useEmail = isEmailValid;
-    const usePhone = !useEmail && isValidCanadianPhone(customer.phone);
+    const usePhone = !useEmail && isPhoneValid;
 
     if (!useEmail && !usePhone) {
       setPhoneVerificationError(
@@ -3217,17 +3216,6 @@ export default function CheckoutPage() {
                   </label>
                 </div>
 
-                <label className="block text-xs font-medium text-slate-600">
-                  {strings.contactFields.email}
-                  <input
-                    value={customer.email}
-                    onChange={(event) =>
-                      handleCustomerChange("email", event.target.value)
-                    }
-                    placeholder={strings.contactFields.emailPlaceholder}
-                    className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
-                  />
-                </label>
                 {missingContactMessage ? (
                   <p className="text-[11px] text-rose-600">
                     {missingContactMessage}
@@ -3240,10 +3228,18 @@ export default function CheckoutPage() {
                     : "Email or phone verification"}
                   <p className="mt-1 text-[11px] font-normal text-slate-500">
                     {locale === "zh"
-                      ? "优先使用邮箱验证，也可使用手机号验证。"
-                      : "Email verification is preferred; phone verification is also available."}
+                      ? "可使用邮箱或手机号码进行验证。"
+                      : "You can verify with your email or mobile phone number."}
                   </p>
                   <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <input
+                      value={customer.email}
+                      onChange={(event) =>
+                        handleCustomerChange("email", event.target.value)
+                      }
+                      placeholder={strings.contactFields.emailPlaceholder}
+                      className="w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                    />
                     <div className="flex w-full items-center rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus-within:ring-1 focus-within:ring-slate-400">
                       <span className="mr-2 text-xs text-slate-500">+1</span>
                       <input
@@ -3273,8 +3269,7 @@ export default function CheckoutPage() {
                           onClick={handleSendContactCode}
                           disabled={
                             phoneVerificationLoading ||
-                            (!isEmailValid &&
-                              !isValidCanadianPhone(customer.phone))
+                            !hasValidContactMethod
                           }
                           className="shrink-0 rounded-full border border-slate-300 px-3 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                         >
