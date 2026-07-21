@@ -300,4 +300,28 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
       verificationToken,
     };
   }
+
+  async validateCheckoutVerificationToken(params: {
+    phone: string;
+    verificationToken: string;
+  }): Promise<boolean> {
+    const addressNorm = this.normalizePhoneAddress(params.phone);
+    const token = params.verificationToken.trim();
+    if (!addressNorm || !token) return false;
+
+    const challenge = await this.prisma.authChallenge.findFirst({
+      where: {
+        type: AuthChallengeType.PHONE_VERIFY,
+        channel: MessagingChannel.SMS,
+        status: AuthChallengeStatus.PENDING,
+        addressNorm,
+        purpose: 'checkout',
+        tokenHash: this.hashToken(token),
+        expiresAt: { gt: new Date() },
+      },
+      select: { id: true },
+    });
+
+    return Boolean(challenge);
+  }
 }

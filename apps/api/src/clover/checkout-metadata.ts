@@ -37,6 +37,14 @@ export type CheckoutMetadata = {
   fulfillment: 'pickup' | 'delivery';
   schedule?: string;
   customer: CheckoutCustomer;
+  contactVerification?: {
+    emailToken?: string;
+    phoneToken?: string;
+  };
+  verifiedContacts?: {
+    email?: string;
+    phone?: string;
+  };
   items: CheckoutItem[];
 
   // 全部用“分”
@@ -245,6 +253,19 @@ const parseDeliveryDestination = (
   };
 };
 
+const parseContactVerification = (
+  value: unknown,
+): CheckoutMetadata['contactVerification'] | undefined => {
+  if (!isPlainObject(value)) return undefined;
+  const emailToken = toString(value.emailToken);
+  const phoneToken = toString(value.phoneToken);
+  if (!emailToken && !phoneToken) return undefined;
+  return {
+    ...(emailToken ? { emailToken } : {}),
+    ...(phoneToken ? { phoneToken } : {}),
+  };
+};
+
 const parseCustomer = (
   value: unknown,
   fulfillment: CheckoutMetadata['fulfillment'],
@@ -311,6 +332,9 @@ export function parseCheckoutMetadata(input: unknown): CheckoutMetadata {
     fulfillment,
     schedule: toString(metadata.schedule),
     customer,
+    contactVerification: parseContactVerification(
+      metadata.contactVerification,
+    ),
     items,
     subtotalCents,
     taxCents,

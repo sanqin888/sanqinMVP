@@ -111,6 +111,24 @@ describe('parseCheckoutMetadata customer contacts', () => {
     });
   });
 
+  it('解析结算联系方式验证凭证且不接受空凭证', () => {
+    const result = parseCheckoutMetadata({
+      ...metadataWithCustomer({
+        firstName: 'San',
+        lastName: 'Qin',
+        email: 'customer@example.com',
+      }),
+      contactVerification: {
+        emailToken: 'email-proof',
+        phoneToken: '   ',
+      },
+    });
+
+    expect(result.contactVerification).toEqual({
+      emailToken: 'email-proof',
+    });
+  });
+
   it('拒绝格式无效的邮箱和加拿大电话号码', () => {
     expect(() =>
       parseCheckoutMetadata(

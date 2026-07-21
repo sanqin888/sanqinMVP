@@ -88,9 +88,12 @@ type ApiEnvelope<T> = {
 type OperationStatusPayload = {
   ok?: boolean;
   error?: string;
+  verificationToken?: string;
 };
 
-async function assertOperationResult(response: Response): Promise<void> {
+async function assertOperationResult(
+  response: Response,
+): Promise<OperationStatusPayload> {
   const payload = (await response.json().catch(() => null)) as
     | ApiEnvelope<OperationStatusPayload>
     | OperationStatusPayload
@@ -114,6 +117,8 @@ async function assertOperationResult(response: Response): Promise<void> {
   if (details && typeof details.ok === "boolean" && !details.ok) {
     throw new Error(details.error || "request failed");
   }
+
+  return details ?? {};
 }
 
 function toSafeErrorLog(error: unknown): Record<string, unknown> {
@@ -809,6 +814,8 @@ export default function CheckoutPage() {
   const customerRef = useRef(customer);
   const verifiedEmailRef = useRef(verifiedEmailValue);
   const verifiedPhoneRef = useRef(verifiedPhoneValue);
+  const verifiedEmailTokenRef = useRef<string | null>(null);
+  const verifiedPhoneTokenRef = useRef<string | null>(null);
   customerRef.current = customer;
   verifiedEmailRef.current = verifiedEmailValue;
   verifiedPhoneRef.current = verifiedPhoneValue;
@@ -1476,6 +1483,13 @@ export default function CheckoutPage() {
             }
           : {}),
       },
+      contactVerification:
+        verifiedEmailTokenRef.current || verifiedPhoneTokenRef.current
+          ? {
+              emailToken: verifiedEmailTokenRef.current ?? undefined,
+              phoneToken: verifiedPhoneTokenRef.current ?? undefined,
+            }
+          : undefined,
       deliveryDestination:
         fulfillment === "delivery"
           ? {
@@ -1843,6 +1857,7 @@ export default function CheckoutPage() {
 
     // 🔐 邮箱变更时，重置邮箱验证状态
     if (field === "email") {
+      verifiedEmailTokenRef.current = null;
       setPhoneVerificationError(null);
       setPhoneVerificationCode("");
       const trimmed = normalizeCheckoutEmail(nextValue);
@@ -1858,6 +1873,7 @@ export default function CheckoutPage() {
         return;
       }
       verifiedEmailRef.current = null;
+      verifiedEmailTokenRef.current = null;
       setVerifiedEmailValue(null);
       if (verifiedPhoneValue !== normalizedPhone) {
         setContactVerificationMethod(null);
@@ -1867,6 +1883,7 @@ export default function CheckoutPage() {
 
     // 🔐 手机号变更时，重置验证状态
     if (field === "phone") {
+      verifiedPhoneTokenRef.current = null;
       setPhoneVerificationError(null);
       setPhoneVerificationCode("");
 
@@ -1874,6 +1891,7 @@ export default function CheckoutPage() {
       if (!trimmed) {
         // 清空手机号 → 一定是未验证
         verifiedPhoneRef.current = null;
+        verifiedPhoneTokenRef.current = null;
         setVerifiedPhoneValue(null);
         setPhoneVerificationStep("idle");
         return;
@@ -1894,6 +1912,7 @@ export default function CheckoutPage() {
 
       // 其他情况：统一认为还未验证，需要走短信验证码
       verifiedPhoneRef.current = null;
+      verifiedPhoneTokenRef.current = null;
       setVerifiedPhoneValue(null);
       if (verifiedEmailValue !== normalizedEmail) {
         setContactVerificationMethod(null);
@@ -2060,16 +2079,21 @@ export default function CheckoutPage() {
         },
       );
 
-      await assertOperationResult(res);
+      const verification = await assertOperationResult(res);
+      if (!verification.verificationToken) {
+        throw new Error("verification proof missing");
+      }
 
       if (contactVerificationMethod === "email") {
         const verifiedEmail = normalizeCheckoutEmail(customer.email);
         verifiedEmailRef.current = verifiedEmail;
         setVerifiedEmailValue(verifiedEmail);
+        verifiedEmailTokenRef.current = verification.verificationToken;
       } else {
         const verifiedPhone = formatCanadianPhoneForApi(customer.phone);
         verifiedPhoneRef.current = verifiedPhone;
         setVerifiedPhoneValue(verifiedPhone);
+        verifiedPhoneTokenRef.current = verification.verificationToken;
       }
       setPhoneVerificationStep("verified");
     } catch (err) {
@@ -2081,9 +2105,11 @@ export default function CheckoutPage() {
       );
       if (contactVerificationMethod === "email") {
         verifiedEmailRef.current = null;
+        verifiedEmailTokenRef.current = null;
         setVerifiedEmailValue(null);
       } else {
         verifiedPhoneRef.current = null;
+        verifiedPhoneTokenRef.current = null;
         setVerifiedPhoneValue(null);
       }
     } finally {

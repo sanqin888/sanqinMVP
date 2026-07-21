@@ -191,6 +191,14 @@ type DeliveryPricingConfig = {
   enableUberDirect: boolean;
 };
 
+type OrderContactPolicy = {
+  requireCustomerName: boolean;
+  requireVerifiedNotificationContact: boolean;
+  requireDeliveryPhone: boolean;
+  allowMemberVerifiedContactFallback: boolean;
+  allowUnverifiedExternalContact: boolean;
+};
+
 export type OrderPricingQuote = {
   subtotalCents: number;
   couponDiscountCents: number;
@@ -217,6 +225,38 @@ export class OrdersService {
     private readonly orderEventsBus: OrderEventsBus,
     private readonly printPosPayloadService: PrintPosPayloadService,
   ) {}
+
+  private resolveContactPolicy(dto: CreateOrderInput): OrderContactPolicy {
+    const requireDeliveryPhone = dto.fulfillmentType === 'delivery';
+
+    if (dto.channel === Channel.web) {
+      return {
+        requireCustomerName: true,
+        requireVerifiedNotificationContact: true,
+        requireDeliveryPhone,
+        allowMemberVerifiedContactFallback: true,
+        allowUnverifiedExternalContact: false,
+      };
+    }
+
+    if (dto.channel === Channel.in_store) {
+      return {
+        requireCustomerName: false,
+        requireVerifiedNotificationContact: false,
+        requireDeliveryPhone,
+        allowMemberVerifiedContactFallback: true,
+        allowUnverifiedExternalContact: false,
+      };
+    }
+
+    return {
+      requireCustomerName: false,
+      requireVerifiedNotificationContact: false,
+      requireDeliveryPhone: false,
+      allowMemberVerifiedContactFallback: false,
+      allowUnverifiedExternalContact: true,
+    };
+  }
 
   async quoteOrderPricing(dto: CreateOrderInput): Promise<OrderPricingQuote> {
     const rawUserStableId =
@@ -1796,6 +1836,7 @@ export class OrdersService {
     dto: CreateOrderInput,
     idempotencyKey?: string,
   ): Promise<OrderDto> {
+    const contactPolicy = this.resolveContactPolicy(dto);
     if (dto.channel === Channel.web) {
       const paymentMethod = this.resolvePaymentMethod(dto);
       if (paymentMethod === PaymentMethod.CARD) {
@@ -2194,6 +2235,12 @@ export class OrdersService {
     // —— Step 3: 准备入库
     const contactName =
       dto.contactName?.trim() || dto.deliveryDestination?.name?.trim() || null;
+    if (contactPolicy.requireCustomerName && !contactName) {
+      throw new BadRequestException({
+        code: 'CONTACT_NAME_REQUIRED',
+        message: 'Customer name is required',
+      });
+    }
     const contactEmail = dto.contactEmail?.trim().toLowerCase() || null;
     const contactPhone =
       dto.contactPhone?.trim() ||
