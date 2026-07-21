@@ -170,19 +170,19 @@ describe('parseCheckoutMetadata customer contacts', () => {
     });
   });
 
-  it('delivery 即使有邮箱，缺少电话仍以明确错误拒绝', () => {
-    expect(() =>
-      parseCheckoutMetadata(
-        metadataWithCustomer(
-          {
-            firstName: 'San',
-            lastName: 'Qin',
-            email: 'customer@example.com',
-          },
-          'delivery',
-        ),
+  it('delivery 缺少电话时允许进入服务端会员号码兜底流程', () => {
+    const result = parseCheckoutMetadata(
+      metadataWithCustomer(
+        {
+          firstName: 'San',
+          lastName: 'Qin',
+          email: 'customer@example.com',
+        },
+        'delivery',
       ),
-    ).toThrow('DELIVERY_PHONE_REQUIRED');
+    );
+
+    expect(result.customer.phone).toBeUndefined();
   });
 
   it('delivery 无邮箱但有有效电话时通过', () => {

@@ -83,6 +83,7 @@ export type CheckoutMetadata = {
 
   deliveryDestination?: {
     addressStableId?: string;
+    phone?: string;
     addressLine1?: string;
     addressLine2?: string;
     city?: string;
@@ -243,6 +244,7 @@ const parseDeliveryDestination = (
     addressStableId:
       normalizeStableId(toString(value.addressStableId ?? value.stableId)) ??
       undefined,
+    phone: toString(value.phone),
     addressLine1: toString(value.addressLine1),
     addressLine2: toString(value.addressLine2),
     city: toString(value.city),
@@ -294,10 +296,6 @@ const parseCustomer = (
   if (fulfillment === 'pickup' && !email && !canadianPhone) {
     throw new Error('CONTACT_METHOD_REQUIRED');
   }
-  if (fulfillment === 'delivery' && !canadianPhone) {
-    throw new Error('DELIVERY_PHONE_REQUIRED');
-  }
-
   return {
     firstName,
     lastName,
@@ -415,11 +413,6 @@ const buildDestination = (
   if (meta.fulfillment !== 'delivery') return undefined;
 
   const { customer } = meta;
-  if (!customer.phone) {
-    throw new Error(
-      'DELIVERY_PHONE_REQUIRED: delivery fulfillment requires a phone',
-    );
-  }
   const source = meta.deliveryDestination;
   const addressLine1 = source?.addressLine1 ?? customer.addressLine1;
   const addressLine2 = source?.addressLine2 ?? customer.addressLine2;
@@ -427,6 +420,7 @@ const buildDestination = (
   const province = source?.province ?? customer.province;
   const postalCode = source?.postalCode ?? customer.postalCode;
   const country = source?.country ?? customer.country;
+  const phone = source?.phone ?? customer.phone;
 
   const requiredFields = [addressLine1, city, province, postalCode];
 
@@ -442,7 +436,7 @@ const buildDestination = (
       ? { addressStableId: source.addressStableId }
       : {}),
     name: formatCustomerName(customer),
-    phone: customer.phone,
+    ...(phone ? { phone } : {}),
     addressLine1: addressLine1!,
     ...(addressLine2 ? { addressLine2 } : {}),
     city: city!,

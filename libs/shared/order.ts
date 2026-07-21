@@ -60,7 +60,7 @@ export const CreateOrderItemSchema = z.object({
 export const DeliveryDestinationSchema = z.object({
   addressStableId: z.string().optional(),
   name: z.string(),
-  phone: z.string(),
+  phone: z.string().nullable().optional(),
   addressLine1: z.string(),
   placeId: z.string().optional(),
   addressLine2: z.string().optional(),

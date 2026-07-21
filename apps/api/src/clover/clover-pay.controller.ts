@@ -179,9 +179,20 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     const { contactVerification: _contactVerification, ...verifiedMetadata } =
       metadata;
     void _contactVerification;
+    const resolvedDeliveryPhone = orderDto.deliveryDestination?.phone;
     const metadataWithSession = {
       ...verifiedMetadata,
       ...(verifiedContacts ? { verifiedContacts } : {}),
+      ...(metadata.fulfillment === 'delivery'
+        ? {
+            deliveryDestination: {
+              ...metadata.deliveryDestination,
+              ...(resolvedDeliveryPhone
+                ? { phone: resolvedDeliveryPhone }
+                : {}),
+            },
+          }
+        : {}),
       orderStableId,
       paymentMethod: dto.paymentMethod,
       paymentSessionId: sessionId,

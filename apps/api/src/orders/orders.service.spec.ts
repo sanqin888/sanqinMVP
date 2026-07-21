@@ -689,4 +689,69 @@ describe('OrdersService', () => {
       expect.arrayContaining(['processing', 'creating_order']),
     );
   });
+
+  it('外送明确填写的新号码优先于会员资料号码', async () => {
+    const resolver = service as unknown as {
+      resolveDeliveryPhone(params: {
+        submittedPhone?: string | null;
+        userId?: string;
+        requirePhone: boolean;
+      }): Promise<string | undefined>;
+    };
+
+    await expect(
+      resolver.resolveDeliveryPhone({
+        submittedPhone: '(416) 555-0199',
+        userId: 'member-1',
+        requirePhone: true,
+      }),
+    ).resolves.toBe('+14165550199');
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('外送未填写号码时仅回退到会员已验证号码', async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      phone: '4165550188',
+      phoneVerifiedAt: new Date(),
+    });
+    const resolver = service as unknown as {
+      resolveDeliveryPhone(params: {
+        submittedPhone?: string | null;
+        userId?: string;
+        requirePhone: boolean;
+      }): Promise<string | undefined>;
+    };
+
+    await expect(
+      resolver.resolveDeliveryPhone({
+        submittedPhone: null,
+        userId: 'member-1',
+        requirePhone: true,
+      }),
+    ).resolves.toBe('+14165550188');
+  });
+
+  it('外送没有本单号码或会员已验证号码时拒绝', async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      phone: '4165550188',
+      phoneVerifiedAt: null,
+    });
+    const resolver = service as unknown as {
+      resolveDeliveryPhone(params: {
+        submittedPhone?: string | null;
+        userId?: string;
+        requirePhone: boolean;
+      }): Promise<string | undefined>;
+    };
+
+    await expect(
+      resolver.resolveDeliveryPhone({
+        submittedPhone: null,
+        userId: 'member-1',
+        requirePhone: true,
+      }),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'DELIVERY_PHONE_REQUIRED' }),
+    });
+  });
 });
