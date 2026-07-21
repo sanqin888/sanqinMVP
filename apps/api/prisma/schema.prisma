@@ -416,6 +416,7 @@ model Order {
   couponMinSpendCents        Int?
   couponTitleSnapshot        String?
   contactName                String?
+  contactEmail               String?
   contactPhone               String?
   placeId                    String?
   orderStableId              String            @unique @default(cuid())

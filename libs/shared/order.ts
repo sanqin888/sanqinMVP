@@ -83,6 +83,7 @@ export const CreateOrderSchema = z.object({
   clientRequestId: z.string().optional(),
   pickupCode: z.string().optional(),
   contactName: z.string().optional(),
+  contactEmail: z.string().nullable().optional(),
   contactPhone: z.string().optional(),
   channel: ChannelSchema,
   fulfillmentType: FulfillmentTypeSchema,
