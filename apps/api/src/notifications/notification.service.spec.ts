@@ -77,4 +77,130 @@ describe('NotificationService.notifyCouponIssued', () => {
     const [payload] = templateRenderer.renderSms.mock.calls[0];
     expect(payload.vars.giftName).toBe('Welcome Gift');
   });
+
+  it('order ready 有邮箱和电话时只发送邮件', async () => {
+    templateRenderer.renderEmail.mockResolvedValue({
+      subject: 'Ready',
+      html: '<p>Ready</p>',
+      text: 'Ready',
+    });
+    emailService.sendEmail.mockResolvedValue({ ok: true });
+
+    await service.notifyOrderReady({
+      email: 'order@example.com',
+      phone: '+14165550000',
+      orderNumber: 'SQ001',
+    });
+
+    expect(emailService.sendEmail).toHaveBeenCalledTimes(1);
+    expect(smsService.sendSms).not.toHaveBeenCalled();
+    expect(templateRenderer.renderSms).not.toHaveBeenCalled();
+  });
+
+  it('order ready 没有邮箱时使用短信兜底', async () => {
+    await service.notifyOrderReady({
+      email: null,
+      phone: '+14165550000',
+      orderNumber: 'SQ002',
+    });
+
+    expect(smsService.sendSms).toHaveBeenCalledTimes(1);
+    expect(emailService.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('order ready 邮件返回失败时改发短信并记录兜底原因', async () => {
+    templateRenderer.renderEmail.mockResolvedValue({
+      subject: 'Ready',
+      html: '<p>Ready</p>',
+      text: 'Ready',
+    });
+    emailService.sendEmail.mockResolvedValue({
+      ok: false,
+      error: 'suppressed:bounce',
+    });
+
+    const result = await service.notifyOrderReady({
+      email: 'order@example.com',
+      phone: '+14165550000',
+      orderNumber: 'SQ003',
+    });
+
+    expect(smsService.sendSms).toHaveBeenCalledTimes(1);
+    const [smsPayload] = smsService.sendSms.mock.calls[0] as [
+      { metadata?: Record<string, string> },
+    ];
+    expect(smsPayload.metadata).toMatchObject({
+      fallbackFrom: 'email',
+      fallbackReason: 'suppressed:bounce',
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      finalChannel: 'sms',
+      attemptedChannels: ['email', 'sms'],
+    });
+  });
+
+  it('order ready 邮件抛出异常时仍改发短信', async () => {
+    templateRenderer.renderEmail.mockResolvedValue({
+      subject: 'Ready',
+      html: '<p>Ready</p>',
+      text: 'Ready',
+    });
+    emailService.sendEmail.mockRejectedValue(new Error('provider unavailable'));
+
+    await service.notifyOrderReady({
+      email: 'order@example.com',
+      phone: '+14165550000',
+      orderNumber: 'SQ004',
+    });
+
+    expect(smsService.sendSms).toHaveBeenCalledTimes(1);
+  });
+
+  it('order ready 没有可信联系方式时返回结构化跳过结果', async () => {
+    const result = await service.notifyOrderReady({
+      email: null,
+      phone: null,
+      orderNumber: 'SQ005',
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: 'no_verified_contact',
+      finalChannel: null,
+      attemptedChannels: [],
+    });
+    expect(emailService.sendEmail).not.toHaveBeenCalled();
+    expect(smsService.sendSms).not.toHaveBeenCalled();
+  });
+
+  it('邮件失败且短信也失败时返回两个渠道均已尝试', async () => {
+    templateRenderer.renderEmail.mockResolvedValue({
+      subject: 'Ready',
+      html: '<p>Ready</p>',
+      text: 'Ready',
+    });
+    emailService.sendEmail.mockResolvedValue({
+      ok: false,
+      error: 'email unavailable',
+    });
+    smsService.sendSms.mockResolvedValue({
+      ok: false,
+      error: 'sms unavailable',
+      sendId: 'sid-failed',
+    });
+
+    const result = await service.notifyOrderReady({
+      email: 'order@example.com',
+      phone: '+14165550000',
+      orderNumber: 'SQ006',
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      finalChannel: null,
+      attemptedChannels: ['email', 'sms'],
+      fallbackReason: 'email unavailable',
+    });
+  });
 });

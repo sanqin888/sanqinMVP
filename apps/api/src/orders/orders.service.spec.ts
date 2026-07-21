@@ -236,13 +236,19 @@ describe('OrdersService', () => {
         id: 'order-pickup-ready',
         orderStableId: 'cordpickupready001',
         clientRequestId: null,
+        contactEmail: null,
         contactPhone: '+14165550000',
         contactName: 'Test',
         userId: null,
         fulfillmentType: 'pickup',
         items: [],
       });
-    prisma.checkoutIntent.findFirst.mockResolvedValue({ locale: 'en' });
+    prisma.checkoutIntent.findFirst.mockResolvedValue({
+      locale: 'en',
+      metadataJson: {
+        verifiedContacts: { phone: '+14165550000' },
+      },
+    });
 
     await service.updateStatusInternal(
       '11111111-1111-1111-1111-111111111111',
@@ -261,7 +267,7 @@ describe('OrdersService', () => {
     });
   });
 
-  it('sends order-ready notification with email when pickup order has a member email', async () => {
+  it('prefers the checkout email over a different member email', async () => {
     prisma.order.findUnique
       .mockResolvedValueOnce({
         status: 'making',
@@ -273,14 +279,28 @@ describe('OrdersService', () => {
         id: 'order-pickup-ready-email',
         orderStableId: 'cordpickupready002',
         clientRequestId: null,
+        contactEmail: 'checkout@example.com',
         contactPhone: '+14165550000',
         contactName: 'Email Test',
         userId: 'user-1',
         fulfillmentType: 'pickup',
         items: [],
       });
-    prisma.checkoutIntent.findFirst.mockResolvedValue({ locale: 'en' });
-    prisma.user.findUnique.mockResolvedValue({ email: 'member@example.com' });
+    prisma.checkoutIntent.findFirst.mockResolvedValue({
+      locale: 'en',
+      metadataJson: {
+        verifiedContacts: {
+          email: 'checkout@example.com',
+          phone: '+14165550000',
+        },
+      },
+    });
+    prisma.user.findUnique.mockResolvedValue({
+      email: 'member@example.com',
+      emailVerifiedAt: new Date(),
+      phone: null,
+      phoneVerifiedAt: null,
+    });
 
     await service.updateStatusInternal(
       '33333333-3333-3333-3333-333333333333',
@@ -290,13 +310,58 @@ describe('OrdersService', () => {
 
     expect(notificationService.notifyOrderReady).toHaveBeenCalledTimes(1);
     expect(notificationService.notifyOrderReady).toHaveBeenCalledWith({
-      email: 'member@example.com',
+      email: 'checkout@example.com',
       phone: '+14165550000',
       orderNumber: 'cordpickupready002',
       name: 'Email Test',
       locale: 'en',
       userId: 'user-1',
     });
+    expect(prisma.user.findUnique).toHaveBeenCalledTimes(2);
+    expect(prisma.user.findUnique).not.toHaveBeenCalledWith(
+      expect.objectContaining({ select: { email: true } }),
+    );
+  });
+
+  it('falls back to the member email for an old order without contactEmail', async () => {
+    prisma.order.findUnique
+      .mockResolvedValueOnce({
+        status: 'making',
+        paidAt: new Date('2024-01-01T00:00:00.000Z'),
+        makingAt: new Date('2024-01-01T00:05:00.000Z'),
+        fulfillmentType: 'pickup',
+      })
+      .mockResolvedValueOnce({
+        id: 'old-order',
+        orderStableId: 'cordoldorder001',
+        clientRequestId: null,
+        contactEmail: null,
+        contactPhone: null,
+        contactName: 'Old Member',
+        userId: 'user-old',
+        fulfillmentType: 'pickup',
+        items: [],
+      });
+    prisma.checkoutIntent.findFirst.mockResolvedValue({ locale: 'en' });
+    prisma.user.findUnique.mockResolvedValue({
+      email: 'member@example.com',
+      emailVerifiedAt: new Date(),
+      phone: null,
+      phoneVerifiedAt: null,
+    });
+
+    await service.updateStatusInternal(
+      '55555555-5555-5555-5555-555555555555',
+      'ready',
+    );
+    await new Promise<void>((resolve) => process.nextTick(resolve));
+
+    expect(notificationService.notifyOrderReady).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: 'member@example.com',
+        phone: null,
+      }),
+    );
   });
 
   it('does not send order-ready notification when pickup order has no email or phone', async () => {
@@ -311,6 +376,7 @@ describe('OrdersService', () => {
         id: 'order-pickup-ready-no-contact',
         orderStableId: 'cordpickupready003',
         clientRequestId: null,
+        contactEmail: null,
         contactPhone: null,
         contactName: 'No Contact',
         userId: null,
@@ -340,6 +406,7 @@ describe('OrdersService', () => {
         id: 'order-delivery-ready',
         orderStableId: 'corddeliveryready001',
         clientRequestId: null,
+        contactEmail: null,
         contactPhone: '+14165550000',
         contactName: 'Test',
         userId: null,
@@ -387,6 +454,7 @@ describe('OrdersService', () => {
     const dto: CreateOrderInput = {
       channel: 'web',
       fulfillmentType: 'pickup',
+      contactName: 'Test Customer',
       paymentMethod: 'CASH',
       subtotalCents: 1000,
       deliveryType: DeliveryType.PRIORITY,
@@ -418,6 +486,43 @@ describe('OrdersService', () => {
       expect(uberDirect.createDelivery).not.toHaveBeenCalled();
       expect(emitOrderAccepted).not.toHaveBeenCalled();
     });
+  });
+
+  it('normalizes and saves the checkout contact email', async () => {
+    const storedOrder = {
+      id: 'order-email',
+      orderStableId: 'cord-email',
+      status: 'paid',
+      channel: 'web',
+      fulfillmentType: 'pickup',
+      createdAt: new Date('2024-01-01T00:00:00.000Z'),
+      paidAt: new Date('2024-01-01T00:00:00.000Z'),
+      subtotalCents: 1000,
+      taxCents: 130,
+      totalCents: 1130,
+      pickupCode: '1234',
+      clientRequestId: null,
+      items: [],
+    };
+    prisma.order.create.mockResolvedValue(storedOrder);
+
+    await service.create({
+      channel: 'web',
+      fulfillmentType: 'pickup',
+      contactName: 'Guest Customer',
+      paymentMethod: 'CASH',
+      subtotalCents: 1000,
+      contactEmail: '  Guest@Example.COM  ',
+    });
+
+    expect(prisma.order.create).toHaveBeenCalled();
+    const createMock = prisma.order.create as jest.Mock<
+      unknown,
+      [{ data: { contactEmail?: string | null } }]
+    >;
+    expect(createMock.mock.calls[0]?.[0].data.contactEmail).toBe(
+      'guest@example.com',
+    );
   });
 
   it('emits paid-verified event for priority orders', () => {
@@ -585,6 +690,7 @@ describe('OrdersService', () => {
     const dto: CreateOrderInput = {
       channel: 'web',
       fulfillmentType: 'pickup',
+      contactName: 'Card Customer',
       paymentMethod: 'CARD',
       checkoutIntentId: 'ref-1',
       items: [{ productStableId: 'c1234567890abcdefghijklmn', qty: 1 }],
@@ -605,5 +711,116 @@ describe('OrdersService', () => {
     expect(firstUpdateManyCall[0].where?.status?.in).toEqual(
       expect.arrayContaining(['processing', 'creating_order']),
     );
+  });
+
+  it('外送明确填写的新号码优先于会员资料号码', async () => {
+    const resolver = service as unknown as {
+      resolveDeliveryPhone(params: {
+        submittedPhone?: string | null;
+        userId?: string;
+        requirePhone: boolean;
+      }): Promise<string | undefined>;
+    };
+
+    await expect(
+      resolver.resolveDeliveryPhone({
+        submittedPhone: '(416) 555-0199',
+        userId: 'member-1',
+        requirePhone: true,
+      }),
+    ).resolves.toBe('+14165550199');
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('外送未填写号码时仅回退到会员已验证号码', async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      phone: '4165550188',
+      phoneVerifiedAt: new Date(),
+    });
+    const resolver = service as unknown as {
+      resolveDeliveryPhone(params: {
+        submittedPhone?: string | null;
+        userId?: string;
+        requirePhone: boolean;
+      }): Promise<string | undefined>;
+    };
+
+    await expect(
+      resolver.resolveDeliveryPhone({
+        submittedPhone: null,
+        userId: 'member-1',
+        requirePhone: true,
+      }),
+    ).resolves.toBe('+14165550188');
+  });
+
+  it('外送没有本单号码或会员已验证号码时拒绝', async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      phone: '4165550188',
+      phoneVerifiedAt: null,
+    });
+    const resolver = service as unknown as {
+      resolveDeliveryPhone(params: {
+        submittedPhone?: string | null;
+        userId?: string;
+        requirePhone: boolean;
+      }): Promise<string | undefined>;
+    };
+
+    await expect(
+      resolver.resolveDeliveryPhone({
+        submittedPhone: null,
+        userId: 'member-1',
+        requirePhone: true,
+      }),
+    ).rejects.toMatchObject({
+      response: { code: 'DELIVERY_PHONE_REQUIRED' },
+    });
+  });
+
+  it('按渠道隔离 Web、POS 与 Uber Eats 联系方式策略', () => {
+    const policyResolver = service as unknown as {
+      resolveContactPolicy(dto: CreateOrderInput): {
+        requireCustomerName: boolean;
+        requireVerifiedNotificationContact: boolean;
+        requireDeliveryPhone: boolean;
+        allowMemberVerifiedContactFallback: boolean;
+        allowUnverifiedExternalContact: boolean;
+      };
+    };
+
+    expect(
+      policyResolver.resolveContactPolicy({
+        channel: 'web',
+        fulfillmentType: 'delivery',
+      }),
+    ).toMatchObject({
+      requireCustomerName: true,
+      requireVerifiedNotificationContact: true,
+      requireDeliveryPhone: true,
+      allowMemberVerifiedContactFallback: true,
+      allowUnverifiedExternalContact: false,
+    });
+    expect(
+      policyResolver.resolveContactPolicy({
+        channel: 'in_store',
+        fulfillmentType: 'pickup',
+      }),
+    ).toMatchObject({
+      requireCustomerName: false,
+      requireVerifiedNotificationContact: false,
+      requireDeliveryPhone: false,
+    });
+    expect(
+      policyResolver.resolveContactPolicy({
+        channel: 'ubereats',
+        fulfillmentType: 'delivery',
+      }),
+    ).toMatchObject({
+      requireCustomerName: false,
+      requireVerifiedNotificationContact: false,
+      requireDeliveryPhone: false,
+      allowUnverifiedExternalContact: true,
+    });
   });
 });

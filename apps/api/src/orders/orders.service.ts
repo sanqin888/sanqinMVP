@@ -9,6 +9,7 @@ import {
 import * as crypto from 'crypto';
 import { AppLogger } from '../common/app-logger';
 import { normalizeEmail } from '../common/utils/email';
+import { normalizePhone } from '../common/utils/phone';
 import {
   BusinessConfig,
   Channel,
@@ -84,6 +85,7 @@ const orderDetailSelect = {
   paymentMethod: true,
   pickupCode: true,
   contactName: true,
+  contactEmail: true,
   contactPhone: true,
   deliveryType: true,
   deliveryProvider: true,
@@ -190,6 +192,14 @@ type DeliveryPricingConfig = {
   enableUberDirect: boolean;
 };
 
+type OrderContactPolicy = {
+  requireCustomerName: boolean;
+  requireVerifiedNotificationContact: boolean;
+  requireDeliveryPhone: boolean;
+  allowMemberVerifiedContactFallback: boolean;
+  allowUnverifiedExternalContact: boolean;
+};
+
 export type OrderPricingQuote = {
   subtotalCents: number;
   couponDiscountCents: number;
@@ -216,6 +226,38 @@ export class OrdersService {
     private readonly orderEventsBus: OrderEventsBus,
     private readonly printPosPayloadService: PrintPosPayloadService,
   ) {}
+
+  private resolveContactPolicy(dto: CreateOrderInput): OrderContactPolicy {
+    const requireDeliveryPhone = dto.fulfillmentType === 'delivery';
+
+    if (dto.channel === Channel.web) {
+      return {
+        requireCustomerName: true,
+        requireVerifiedNotificationContact: true,
+        requireDeliveryPhone,
+        allowMemberVerifiedContactFallback: true,
+        allowUnverifiedExternalContact: false,
+      };
+    }
+
+    if (dto.channel === Channel.in_store) {
+      return {
+        requireCustomerName: false,
+        requireVerifiedNotificationContact: false,
+        requireDeliveryPhone,
+        allowMemberVerifiedContactFallback: true,
+        allowUnverifiedExternalContact: false,
+      };
+    }
+
+    return {
+      requireCustomerName: false,
+      requireVerifiedNotificationContact: false,
+      requireDeliveryPhone: false,
+      allowMemberVerifiedContactFallback: false,
+      allowUnverifiedExternalContact: true,
+    };
+  }
 
   async quoteOrderPricing(dto: CreateOrderInput): Promise<OrderPricingQuote> {
     const rawUserStableId =
@@ -284,6 +326,7 @@ export class OrdersService {
       const dest = await this.resolveTrustedDeliveryDestination(dto, userId);
 
       if (dest) {
+        dto.deliveryDestination = dest;
         const hasCoords =
           typeof dest.latitude === 'number' &&
           typeof dest.longitude === 'number';
@@ -538,6 +581,7 @@ export class OrdersService {
       pickupCode: order.pickupCode ?? null,
 
       contactName: order.contactName ?? null,
+      contactEmail: order.contactEmail ?? null,
       contactPhone: order.contactPhone ?? null,
 
       deliveryType: order.deliveryType ?? null,
@@ -853,16 +897,57 @@ export class OrdersService {
     if (!orderNumber) return;
 
     const locale = await this.resolveOrderReadyLocale(order);
+    const checkoutIntent = await this.prisma.checkoutIntent.findFirst({
+      where: { orderId: order.id },
+      orderBy: { createdAt: 'desc' },
+      select: { metadataJson: true },
+    });
+    const metadata = this.asRecord(checkoutIntent?.metadataJson);
+    const verifiedContacts = this.asRecord(metadata?.verifiedContacts);
+    const verifiedEmail = normalizeEmail(
+      typeof verifiedContacts?.email === 'string'
+        ? verifiedContacts.email
+        : null,
+    );
+    const verifiedPhone =
+      typeof verifiedContacts?.phone === 'string'
+        ? verifiedContacts.phone.trim() || null
+        : null;
+
     const member = order.userId
       ? await this.prisma.user.findUnique({
           where: { id: order.userId },
-          select: { email: true },
+          select: {
+            email: true,
+            emailVerifiedAt: true,
+            phone: true,
+            phoneVerifiedAt: true,
+          },
         })
       : null;
-    const email = member?.email ?? null;
-    const phone = order.contactPhone ?? null;
+    const memberEmail = member?.emailVerifiedAt
+      ? normalizeEmail(member.email)
+      : null;
+    const memberPhone = member?.phoneVerifiedAt
+      ? member.phone?.trim() || null
+      : null;
 
-    if (!email && !phone) return;
+    const allowExternalContacts = order.channel === Channel.ubereats;
+    const email =
+      verifiedEmail ??
+      memberEmail ??
+      (allowExternalContacts ? normalizeEmail(order.contactEmail) : null);
+    const phone =
+      verifiedPhone ??
+      memberPhone ??
+      (allowExternalContacts ? order.contactPhone?.trim() || null : null);
+
+    if (!email && !phone) {
+      this.logger.warn(
+        `[notifyOrderReady] No contact channel available; notification skipped for order ${order.id}`,
+      );
+      return;
+    }
 
     await this.notificationService.notifyOrderReady({
       email,
@@ -1131,6 +1216,12 @@ export class OrdersService {
     const dest = dto.deliveryDestination;
     if (!dest) return undefined;
 
+    const phone = await this.resolveDeliveryPhone({
+      submittedPhone: dest.phone,
+      userId,
+      requirePhone: dto.channel !== Channel.ubereats,
+    });
+
     const addressStableId =
       typeof dest.addressStableId === 'string'
         ? normalizeStableId(dest.addressStableId)
@@ -1160,6 +1251,7 @@ export class OrdersService {
 
       const merged: DeliveryDestinationInput = {
         ...dest,
+        ...(phone ? { phone } : {}),
         addressStableId,
         addressLine1: saved.addressLine1,
         ...(saved.addressLine2 ? { addressLine2: saved.addressLine2 } : {}),
@@ -1185,12 +1277,60 @@ export class OrdersService {
 
     const sanitized: DeliveryDestinationInput = {
       ...dest,
+      ...(phone ? { phone } : {}),
     };
 
     delete sanitized.latitude;
     delete sanitized.longitude;
 
     return sanitized;
+  }
+
+  private async resolveDeliveryPhone(params: {
+    submittedPhone?: string | null;
+    userId?: string;
+    requirePhone: boolean;
+  }): Promise<string | undefined> {
+    const submitted = params.submittedPhone?.trim();
+    if (submitted) {
+      const normalized = this.normalizeCanadianDeliveryPhone(submitted);
+      if (!normalized) {
+        throw new BadRequestException({
+          code: 'DELIVERY_PHONE_INVALID',
+          message: 'Delivery phone must be a valid Canadian phone number',
+        });
+      }
+      return normalized;
+    }
+
+    if (params.userId) {
+      const member = await this.prisma.user.findUnique({
+        where: { id: params.userId },
+        select: { phone: true, phoneVerifiedAt: true },
+      });
+      if (member?.phone && member.phoneVerifiedAt) {
+        const normalized = this.normalizeCanadianDeliveryPhone(member.phone);
+        if (normalized) return normalized;
+      }
+    }
+
+    if (params.requirePhone) {
+      throw new BadRequestException({
+        code: 'DELIVERY_PHONE_REQUIRED',
+        message: 'A mobile phone number is required for delivery',
+      });
+    }
+
+    return undefined;
+  }
+
+  private normalizeCanadianDeliveryPhone(phone: string): string | null {
+    const normalized = normalizePhone(phone);
+    if (!normalized) return null;
+    const digits = normalized.replace(/\D/g, '');
+    const national =
+      digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
+    return national.length === 10 ? `+1${national}` : null;
   }
 
   // --- 核心逻辑 1: 距离计算 (Haversine Formula) ---
@@ -1892,6 +2032,7 @@ export class OrdersService {
     dto: CreateOrderInput,
     idempotencyKey?: string,
   ): Promise<OrderWithItems> {
+    const contactPolicy = this.resolveContactPolicy(dto);
     const paymentMethod = this.resolvePaymentMethod(dto);
     const requiresCheckoutIntentVerification =
       dto.channel === Channel.web && paymentMethod === PaymentMethod.CARD;
@@ -2186,6 +2327,13 @@ export class OrdersService {
     // —— Step 3: 准备入库
     const contactName =
       dto.contactName?.trim() || dto.deliveryDestination?.name?.trim() || null;
+    if (contactPolicy.requireCustomerName && !contactName) {
+      throw new BadRequestException({
+        code: 'CONTACT_NAME_REQUIRED',
+        message: 'Customer name is required',
+      });
+    }
+    const contactEmail = dto.contactEmail?.trim().toLowerCase() || null;
     const contactPhone =
       dto.contactPhone?.trim() ||
       dto.deliveryDestination?.phone?.trim() ||
@@ -2429,6 +2577,7 @@ export class OrdersService {
                 channel: dto.channel,
                 fulfillmentType: dto.fulfillmentType,
                 contactName,
+                contactEmail,
                 contactPhone,
                 // 金额字段
                 subtotalCents,
@@ -3358,9 +3507,16 @@ export class OrdersService {
       const trimmed = value.trim();
       return trimmed.length > 0 ? trimmed : undefined;
     };
+    const phone = sanitize(destination.phone);
+    if (!phone) {
+      throw new BadRequestException({
+        code: 'DELIVERY_PHONE_REQUIRED',
+        message: 'A mobile phone number is required for delivery',
+      });
+    }
     return {
       name: sanitize(destination.name) ?? destination.name,
-      phone: sanitize(destination.phone) ?? destination.phone,
+      phone,
       company: sanitize(destination.company),
       addressLine1:
         sanitize(destination.addressLine1) ?? destination.addressLine1,
@@ -3451,33 +3607,35 @@ export class OrdersService {
 
       const user = await this.prisma.user.findUnique({
         where: { id: order.userId },
-        select: { phone: true },
+        select: { phone: true, phoneVerifiedAt: true },
       });
 
-      if (user && user.phone) {
-        destination.phone = user.phone;
+      const verifiedPhone =
+        user?.phone && user.phoneVerifiedAt
+          ? this.normalizeCanadianDeliveryPhone(user.phone)
+          : null;
+      if (verifiedPhone) {
+        destination.phone = verifiedPhone;
         this.logger.log(`✅ [Uber Fix] Restored real phone from database.`);
       } else {
-        this.logger.warn(
-          `❌ [Uber Fix] User has no phone in DB. Using fallback.`,
-        );
+        throw new BadRequestException({
+          code: 'DELIVERY_PHONE_REQUIRED',
+          message: 'A verified mobile phone number is required for delivery',
+        });
       }
     }
 
-    // 2. 格式标准化：确保是 E.164 格式 (+1xxxxxxxxxx)
-    if (destination.phone) {
-      const originalPhone = destination.phone;
-      const digits = originalPhone.replace(/\D/g, ''); // 提取纯数字
-
-      // 如果是 10 位 (4375556666) -> 补 +1
-      if (digits.length === 10) {
-        destination.phone = `+1${digits}`;
-      }
-      // 如果是 11 位且以1开头 (14375556666) -> 补 +
-      else if (digits.length === 11 && digits.startsWith('1')) {
-        destination.phone = `+${digits}`;
-      }
+    // 2. 格式标准化：确保发送给 Uber Direct 的一定是有效 E.164 号码
+    const normalizedPhone = this.normalizeCanadianDeliveryPhone(
+      destination.phone,
+    );
+    if (!normalizedPhone) {
+      throw new BadRequestException({
+        code: 'DELIVERY_PHONE_INVALID',
+        message: 'Delivery phone must be a valid Canadian phone number',
+      });
     }
+    destination.phone = normalizedPhone;
 
     const response: UberDirectDeliveryResult =
       await this.uberDirect.createDelivery({

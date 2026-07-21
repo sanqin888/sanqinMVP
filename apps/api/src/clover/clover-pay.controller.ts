@@ -33,6 +33,8 @@ import { CreateOnlinePricingQuoteDto } from './dto/create-online-pricing-quote.d
 import { CreatePaymentSessionDto } from './dto/create-payment-session.dto';
 import { PricingTokenService } from './pricing-token.service';
 import { EmailService } from '../email/email.service';
+import { EmailVerificationService } from '../email/email-verification.service';
+import { PhoneVerificationService } from '../phone-verification/phone-verification.service';
 import { MessagingTemplateType } from '@prisma/client';
 import {
   type ChargeAmountReconcileResult,
@@ -86,7 +88,57 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     private readonly orders: OrdersService,
     private readonly pricingTokens: PricingTokenService,
     private readonly emailService: EmailService,
+    private readonly emailVerification: EmailVerificationService,
+    private readonly phoneVerification: PhoneVerificationService,
   ) {}
+
+  private async resolveVerifiedCheckoutContacts(
+    metadata: CheckoutMetadata,
+  ): Promise<CheckoutMetadata['verifiedContacts']> {
+    const proof = metadata.contactVerification;
+    if (!proof) return undefined;
+
+    const verifiedContacts: NonNullable<CheckoutMetadata['verifiedContacts']> =
+      {};
+
+    if (proof.emailToken) {
+      const email = metadata.customer.email;
+      if (
+        !email ||
+        !(await this.emailVerification.validateCheckoutVerificationToken({
+          email,
+          verificationToken: proof.emailToken,
+        }))
+      ) {
+        throw new BadRequestException({
+          code: 'CONTACT_VERIFICATION_MISMATCH',
+          message: 'Email verification does not match checkout contact',
+        });
+      }
+      verifiedContacts.email = email;
+    }
+
+    if (proof.phoneToken) {
+      const phone = metadata.customer.phone;
+      if (
+        !phone ||
+        !(await this.phoneVerification.validateCheckoutVerificationToken({
+          phone,
+          verificationToken: proof.phoneToken,
+        }))
+      ) {
+        throw new BadRequestException({
+          code: 'CONTACT_VERIFICATION_MISMATCH',
+          message: 'Phone verification does not match checkout contact',
+        });
+      }
+      verifiedContacts.phone = phone;
+    }
+
+    return Object.keys(verifiedContacts).length > 0
+      ? verifiedContacts
+      : undefined;
+  }
 
   @Post('pay/online/session')
   async createPaymentSession(@Body() dto: CreatePaymentSessionDto) {
@@ -102,6 +154,9 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
             : 'invalid checkout metadata payload',
       });
     }
+
+    const verifiedContacts =
+      await this.resolveVerifiedCheckoutContacts(metadata);
 
     const checkoutIntentId =
       typeof dto.checkoutIntentId === 'string' &&
@@ -121,8 +176,23 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     });
 
     const sessionId = generateStableId();
+    const { contactVerification: _contactVerification, ...verifiedMetadata } =
+      metadata;
+    void _contactVerification;
+    const resolvedDeliveryPhone = orderDto.deliveryDestination?.phone;
     const metadataWithSession = {
-      ...metadata,
+      ...verifiedMetadata,
+      ...(verifiedContacts ? { verifiedContacts } : {}),
+      ...(metadata.fulfillment === 'delivery'
+        ? {
+            deliveryDestination: {
+              ...metadata.deliveryDestination,
+              ...(resolvedDeliveryPhone
+                ? { phone: resolvedDeliveryPhone }
+                : {}),
+            },
+          }
+        : {}),
       orderStableId,
       paymentMethod: dto.paymentMethod,
       paymentSessionId: sessionId,
@@ -273,6 +343,8 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
             : 'invalid checkout metadata payload',
       });
     }
+
+    await this.resolveVerifiedCheckoutContacts(metadata);
 
     const checkoutIntentId =
       typeof dto.checkoutIntentId === 'string' &&
@@ -702,29 +774,6 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       });
     }
 
-    const rawEmail = (() => {
-      const meta = dto.metadata;
-      if (!isPlainObject(meta)) return undefined;
-
-      const customer = meta.customer;
-      if (!isPlainObject(customer)) return undefined;
-
-      const email = customer.email;
-      return typeof email === 'string' && email.trim().length > 0
-        ? email.trim()
-        : undefined;
-    })();
-
-    const parsedEmail = metadata.customer.email;
-    const finalEmail = parsedEmail ?? rawEmail;
-
-    if (!finalEmail) {
-      throw new BadRequestException({
-        code: 'CUSTOMER_EMAIL_REQUIRED',
-        message: 'customer email is required for online payment',
-      });
-    }
-
     const currency = dto.currency ?? CLOVER_PAYMENT_CURRENCY;
     const referenceId = dto.checkoutIntentId?.trim() || buildClientRequestId();
     const orderStableId = metadata.orderStableId ?? generateStableId();
@@ -811,10 +860,6 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
 
     const metadataWithIds = {
       ...metadata,
-      customer: {
-        ...metadata.customer,
-        email: finalEmail,
-      },
       orderStableId,
       paymentAttempt,
       lastIdempotencyKey: idempotencyKey,

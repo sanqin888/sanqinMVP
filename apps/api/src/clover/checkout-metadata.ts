@@ -1,6 +1,8 @@
 // apps/api/src/clover/checkout-metadata.ts
 import { DeliveryProvider, DeliveryType } from '@prisma/client';
 import { CreateOrderInput, DeliveryDestinationInput } from '@shared/order';
+import { isEmail } from 'class-validator';
+import { normalizePhone } from '../common/utils/phone';
 import { normalizeStableId } from '../common/utils/stable-id';
 
 export type CheckoutItem = {
@@ -18,8 +20,8 @@ export type CheckoutItem = {
 export type CheckoutCustomer = {
   firstName: string;
   lastName: string;
-  phone: string;
-  email: string;
+  phone?: string;
+  email?: string;
   addressLine1?: string;
   addressLine2?: string;
   city?: string;
@@ -35,6 +37,14 @@ export type CheckoutMetadata = {
   fulfillment: 'pickup' | 'delivery';
   schedule?: string;
   customer: CheckoutCustomer;
+  contactVerification?: {
+    emailToken?: string;
+    phoneToken?: string;
+  };
+  verifiedContacts?: {
+    email?: string;
+    phone?: string;
+  };
   items: CheckoutItem[];
 
   // 全部用“分”
@@ -73,6 +83,7 @@ export type CheckoutMetadata = {
 
   deliveryDestination?: {
     addressStableId?: string;
+    phone?: string;
     addressLine1?: string;
     addressLine2?: string;
     city?: string;
@@ -233,6 +244,7 @@ const parseDeliveryDestination = (
     addressStableId:
       normalizeStableId(toString(value.addressStableId ?? value.stableId)) ??
       undefined,
+    phone: toString(value.phone),
     addressLine1: toString(value.addressLine1),
     addressLine2: toString(value.addressLine2),
     city: toString(value.city),
@@ -243,24 +255,52 @@ const parseDeliveryDestination = (
   };
 };
 
-const parseCustomer = (value: unknown): CheckoutCustomer => {
+const parseContactVerification = (
+  value: unknown,
+): CheckoutMetadata['contactVerification'] | undefined => {
+  if (!isPlainObject(value)) return undefined;
+  const emailToken = toString(value.emailToken);
+  const phoneToken = toString(value.phoneToken);
+  if (!emailToken && !phoneToken) return undefined;
+  return {
+    ...(emailToken ? { emailToken } : {}),
+    ...(phoneToken ? { phoneToken } : {}),
+  };
+};
+
+const parseCustomer = (
+  value: unknown,
+  fulfillment: CheckoutMetadata['fulfillment'],
+): CheckoutCustomer => {
   if (!isPlainObject(value)) {
     throw new Error('customer is required');
   }
   const firstName = toString(value.firstName);
   const lastName = toString(value.lastName);
-  const phone = toString(value.phone);
   const email = toString(value.email);
-  if (!firstName || !lastName || !email || !phone) {
-    throw new Error(
-      'customer firstName, lastName, email, and phone are required',
-    );
+  const rawPhone = toString(value.phone);
+  if (!firstName || !lastName) {
+    throw new Error('customer firstName and lastName are required');
+  }
+  if (email && !isEmail(email)) {
+    throw new Error('customer email must be a valid email');
+  }
+
+  const normalizedPhone = normalizePhone(rawPhone);
+  const canadianPhone = normalizedPhone?.startsWith('1')
+    ? normalizedPhone.slice(1)
+    : normalizedPhone;
+  if (rawPhone && canadianPhone?.length !== 10) {
+    throw new Error('customer phone must be a valid Canadian phone number');
+  }
+  if (fulfillment === 'pickup' && !email && !canadianPhone) {
+    throw new Error('CONTACT_METHOD_REQUIRED');
   }
   return {
     firstName,
     lastName,
-    phone,
-    email,
+    ...(email ? { email } : {}),
+    ...(canadianPhone ? { phone: `+1${canadianPhone}` } : {}),
     addressLine1: toString(value.addressLine1),
     addressLine2: toString(value.addressLine2),
     city: toString(value.city),
@@ -279,7 +319,7 @@ export function parseCheckoutMetadata(input: unknown): CheckoutMetadata {
 
   const fulfillment = parseFulfillment(metadata.fulfillment);
   const items = parseItems(metadata.items);
-  const customer = parseCustomer(metadata.customer);
+  const customer = parseCustomer(metadata.customer, fulfillment);
 
   const subtotalCents = toCents(metadata.subtotalCents, 'subtotalCents');
   const taxCents = toCents(metadata.taxCents, 'taxCents');
@@ -290,6 +330,7 @@ export function parseCheckoutMetadata(input: unknown): CheckoutMetadata {
     fulfillment,
     schedule: toString(metadata.schedule),
     customer,
+    contactVerification: parseContactVerification(metadata.contactVerification),
     items,
     subtotalCents,
     taxCents,
@@ -377,6 +418,7 @@ const buildDestination = (
   const province = source?.province ?? customer.province;
   const postalCode = source?.postalCode ?? customer.postalCode;
   const country = source?.country ?? customer.country;
+  const phone = source?.phone ?? customer.phone;
 
   const requiredFields = [addressLine1, city, province, postalCode];
 
@@ -392,7 +434,7 @@ const buildDestination = (
       ? { addressStableId: source.addressStableId }
       : {}),
     name: formatCustomerName(customer),
-    phone: customer.phone,
+    ...(phone ? { phone } : {}),
     addressLine1: addressLine1!,
     ...(addressLine2 ? { addressLine2 } : {}),
     city: city!,
@@ -428,7 +470,8 @@ export function buildOrderDtoFromMetadata(
 
     // ⭐ 订单级联系人（pickup / delivery 都有）
     contactName: formatCustomerName(meta.customer),
-    contactPhone: meta.customer.phone,
+    contactEmail: meta.customer.email ?? null,
+    ...(meta.customer.phone ? { contactPhone: meta.customer.phone } : {}),
 
     // ⭐ 关键：让订单有 userStableId，这样 paid 时才会结算积分
     ...(meta.loyaltyUserStableId

@@ -38,6 +38,7 @@ export type OrderDto = {
   pickupCode: string | null;
 
   contactName: string | null;
+  contactEmail: string | null;
   contactPhone: string | null;
 
   deliveryType: DeliveryType | null;
