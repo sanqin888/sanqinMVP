@@ -51,6 +51,7 @@ import {
 import {
   buildCheckoutContactPayload,
   normalizeCheckoutEmail,
+  resolveDeliveryPhoneState,
   selectVerifiedCheckoutContact,
 } from "./contact-verification";
 type MemberAddress = {
@@ -1322,15 +1323,15 @@ export default function CheckoutPage() {
     verifiedContactMethod === "phone" ||
     (isPhoneValid && verifiedPhoneValue === normalizedPhone);
   const hasVerifiedContact = verifiedContactMethod !== null;
-  const hasSubmittedDeliveryPhone = customer.phone.trim().length > 0;
-  const hasVerifiedMemberDeliveryPhone = Boolean(
-    !hasSubmittedDeliveryPhone &&
-      memberPhone &&
-      memberPhoneVerified &&
-      isValidCanadianPhone(memberPhone),
-  );
-  const hasDeliveryPhone =
-    isPhoneValid || hasVerifiedMemberDeliveryPhone;
+  const deliveryPhoneState = resolveDeliveryPhoneState({
+    enteredPhone: customer.phone,
+    memberPhone,
+    memberPhoneVerified,
+  });
+  const hasSubmittedDeliveryPhone = deliveryPhoneState.hasSubmittedPhone;
+  const hasVerifiedMemberDeliveryPhone =
+    deliveryPhoneState.usesVerifiedMemberFallback;
+  const hasDeliveryPhone = deliveryPhoneState.hasDeliveryPhone;
   const deliveryPhoneLookupPending =
     fulfillment === "delivery" &&
     !hasSubmittedDeliveryPhone &&

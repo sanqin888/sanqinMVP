@@ -1,3 +1,5 @@
+import { isValidCanadianPhone } from "@/lib/phone";
+
 export type VerifiedContacts = {
   verifiedEmail: string | null;
   verifiedPhone: string | null;
@@ -43,5 +45,27 @@ export function buildCheckoutContactPayload(
   return {
     email: normalizedEmail || undefined,
     phone: normalizedPhone || undefined,
+  };
+}
+
+export function resolveDeliveryPhoneState(params: {
+  enteredPhone: string;
+  memberPhone: string | null;
+  memberPhoneVerified: boolean;
+}) {
+  const hasSubmittedPhone = params.enteredPhone.trim().length > 0;
+  const submittedPhoneValid = isValidCanadianPhone(params.enteredPhone);
+  const usesVerifiedMemberFallback = Boolean(
+    !hasSubmittedPhone &&
+      params.memberPhone &&
+      params.memberPhoneVerified &&
+      isValidCanadianPhone(params.memberPhone),
+  );
+
+  return {
+    hasSubmittedPhone,
+    submittedPhoneValid,
+    usesVerifiedMemberFallback,
+    hasDeliveryPhone: submittedPhoneValid || usesVerifiedMemberFallback,
   };
 }

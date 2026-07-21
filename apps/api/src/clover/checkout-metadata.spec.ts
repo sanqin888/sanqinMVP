@@ -200,6 +200,34 @@ describe('parseCheckoutMetadata customer contacts', () => {
     });
   });
 
+  it('delivery destination 的本单履约号码优先于 customer 通知号码', () => {
+    const dto = buildOrderDtoFromMetadata({
+      ...metadataWithCustomer(
+        {
+          firstName: 'San',
+          lastName: 'Qin',
+          email: 'customer@example.com',
+          phone: '4165550100',
+          addressLine1: '100 Customer St',
+          city: 'Toronto',
+          province: 'ON',
+          postalCode: 'M5V 1A1',
+        },
+        'delivery',
+      ),
+      deliveryDestination: {
+        phone: '4165550199',
+        addressLine1: '200 Delivery St',
+        city: 'Toronto',
+        province: 'ON',
+        postalCode: 'M5V 2B2',
+      },
+    });
+
+    expect(dto.contactPhone).toBe('+14165550100');
+    expect(dto.deliveryDestination?.phone).toBe('4165550199');
+  });
+
   it('delivery 无效电话在解析支付 metadata 时拒绝', () => {
     expect(() =>
       parseCheckoutMetadata(

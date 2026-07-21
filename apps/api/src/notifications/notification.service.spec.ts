@@ -156,4 +156,51 @@ describe('NotificationService.notifyCouponIssued', () => {
 
     expect(smsService.sendSms).toHaveBeenCalledTimes(1);
   });
+
+  it('order ready 没有可信联系方式时返回结构化跳过结果', async () => {
+    const result = await service.notifyOrderReady({
+      email: null,
+      phone: null,
+      orderNumber: 'SQ005',
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: 'no_verified_contact',
+      finalChannel: null,
+      attemptedChannels: [],
+    });
+    expect(emailService.sendEmail).not.toHaveBeenCalled();
+    expect(smsService.sendSms).not.toHaveBeenCalled();
+  });
+
+  it('邮件失败且短信也失败时返回两个渠道均已尝试', async () => {
+    templateRenderer.renderEmail.mockResolvedValue({
+      subject: 'Ready',
+      html: '<p>Ready</p>',
+      text: 'Ready',
+    });
+    emailService.sendEmail.mockResolvedValue({
+      ok: false,
+      error: 'email unavailable',
+    });
+    smsService.sendSms.mockResolvedValue({
+      ok: false,
+      error: 'sms unavailable',
+      sendId: 'sid-failed',
+    });
+
+    const result = await service.notifyOrderReady({
+      email: 'order@example.com',
+      phone: '+14165550000',
+      orderNumber: 'SQ006',
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      finalChannel: null,
+      attemptedChannels: ['email', 'sms'],
+      fallbackReason: 'email unavailable',
+    });
+  });
 });

@@ -777,4 +777,50 @@ describe('OrdersService', () => {
       response: expect.objectContaining({ code: 'DELIVERY_PHONE_REQUIRED' }),
     });
   });
+
+  it('按渠道隔离 Web、POS 与 Uber Eats 联系方式策略', () => {
+    const policyResolver = service as unknown as {
+      resolveContactPolicy(dto: CreateOrderInput): {
+        requireCustomerName: boolean;
+        requireVerifiedNotificationContact: boolean;
+        requireDeliveryPhone: boolean;
+        allowMemberVerifiedContactFallback: boolean;
+        allowUnverifiedExternalContact: boolean;
+      };
+    };
+
+    expect(
+      policyResolver.resolveContactPolicy({
+        channel: 'web',
+        fulfillmentType: 'delivery',
+      }),
+    ).toMatchObject({
+      requireCustomerName: true,
+      requireVerifiedNotificationContact: true,
+      requireDeliveryPhone: true,
+      allowMemberVerifiedContactFallback: true,
+      allowUnverifiedExternalContact: false,
+    });
+    expect(
+      policyResolver.resolveContactPolicy({
+        channel: 'in_store',
+        fulfillmentType: 'pickup',
+      }),
+    ).toMatchObject({
+      requireCustomerName: false,
+      requireVerifiedNotificationContact: false,
+      requireDeliveryPhone: false,
+    });
+    expect(
+      policyResolver.resolveContactPolicy({
+        channel: 'ubereats',
+        fulfillmentType: 'delivery',
+      }),
+    ).toMatchObject({
+      requireCustomerName: false,
+      requireVerifiedNotificationContact: false,
+      requireDeliveryPhone: false,
+      allowUnverifiedExternalContact: true,
+    });
+  });
 });
