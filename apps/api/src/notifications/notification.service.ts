@@ -172,9 +172,7 @@ export class NotificationService {
       ok: false,
       error: fallbackReason ?? 'no_verified_contact',
       finalChannel: null,
-      attemptedChannels: params.email
-        ? (['email'] as const)
-        : ([] as const),
+      attemptedChannels: params.email ? (['email'] as const) : ([] as const),
       ...(fallbackReason ? { fallbackReason } : {}),
     };
   }
@@ -191,8 +189,8 @@ export class NotificationService {
       phone: params.user.phone,
       context: `register_welcome:${params.user.id}`,
       sendEmail: async () => {
-        const { subject, html, text } =
-          await this.templateRenderer.renderEmail({
+        const { subject, html, text } = await this.templateRenderer.renderEmail(
+          {
             template: 'welcome',
             locale,
             vars: {
@@ -202,7 +200,8 @@ export class NotificationService {
                 (locale === 'zh' ? '亲爱的顾客' : 'Dear Customer'),
               claimUrl,
             },
-          });
+          },
+        );
         return this.emailService.sendEmail({
           to: params.user.email!,
           subject,
@@ -262,12 +261,13 @@ export class NotificationService {
       phone: params.phone,
       context: `order_ready:${params.orderNumber}`,
       sendEmail: async () => {
-        const { subject, html, text } =
-          await this.templateRenderer.renderEmail({
+        const { subject, html, text } = await this.templateRenderer.renderEmail(
+          {
             template: 'orderReady',
             locale,
             vars,
-          });
+          },
+        );
         return this.emailService.sendEmail({
           to: params.email!,
           subject,
@@ -491,8 +491,9 @@ export class NotificationService {
       phone: user.phone,
       context: `gift_issued:${program.programStableId}:${user.id}`,
       sendEmail: async () => {
-        const { subject, html, text } =
-          await this.templateRenderer.renderEmail({ template, locale, vars });
+        const { subject, html, text } = await this.templateRenderer.renderEmail(
+          { template, locale, vars },
+        );
         return this.emailService.sendEmail({
           to: user.email!,
           subject,

@@ -330,9 +330,7 @@ export function parseCheckoutMetadata(input: unknown): CheckoutMetadata {
     fulfillment,
     schedule: toString(metadata.schedule),
     customer,
-    contactVerification: parseContactVerification(
-      metadata.contactVerification,
-    ),
+    contactVerification: parseContactVerification(metadata.contactVerification),
     items,
     subtotalCents,
     taxCents,
