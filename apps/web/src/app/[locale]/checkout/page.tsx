@@ -38,6 +38,7 @@ import type {
 } from "@shared/menu";
 import { useSession } from "@/lib/auth-session";
 import { formatStoreTime } from "@/lib/time/tz";
+import { clampDisplayedPrepTimeMinutes } from "@/lib/prep-time";
 import {
   formatCanadianPhoneForApi,
   isValidCanadianPhone,
@@ -509,7 +510,7 @@ export default function CheckoutPage() {
       try {
         const response = await apiFetch<PrepTimeResponse>("/orders/prep-time");
         if (!cancelled) {
-          setPrepTimeMinutes(response.minutes);
+          setPrepTimeMinutes(clampDisplayedPrepTimeMinutes(response.minutes));
         }
       } catch {
         if (!cancelled) {
