@@ -774,7 +774,7 @@ describe('OrdersService', () => {
         requirePhone: true,
       }),
     ).rejects.toMatchObject({
-      response: expect.objectContaining({ code: 'DELIVERY_PHONE_REQUIRED' }),
+      response: { code: 'DELIVERY_PHONE_REQUIRED' },
     });
   });
 
