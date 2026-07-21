@@ -84,6 +84,7 @@ const orderDetailSelect = {
   paymentMethod: true,
   pickupCode: true,
   contactName: true,
+  contactEmail: true,
   contactPhone: true,
   deliveryType: true,
   deliveryProvider: true,
@@ -538,6 +539,7 @@ export class OrdersService {
       pickupCode: order.pickupCode ?? null,
 
       contactName: order.contactName ?? null,
+      contactEmail: order.contactEmail ?? null,
       contactPhone: order.contactPhone ?? null,
 
       deliveryType: order.deliveryType ?? null,
@@ -853,16 +855,22 @@ export class OrdersService {
     if (!orderNumber) return;
 
     const locale = await this.resolveOrderReadyLocale(order);
-    const member = order.userId
-      ? await this.prisma.user.findUnique({
-          where: { id: order.userId },
-          select: { email: true },
-        })
-      : null;
-    const email = member?.email ?? null;
+    const member =
+      !order.contactEmail && order.userId
+        ? await this.prisma.user.findUnique({
+            where: { id: order.userId },
+            select: { email: true },
+          })
+        : null;
+    const email = order.contactEmail ?? member?.email ?? null;
     const phone = order.contactPhone ?? null;
 
-    if (!email && !phone) return;
+    if (!email && !phone) {
+      this.logger.warn(
+        `[notifyOrderReady] No contact channel available; notification skipped for order ${order.id}`,
+      );
+      return;
+    }
 
     await this.notificationService.notifyOrderReady({
       email,
@@ -2186,6 +2194,7 @@ export class OrdersService {
     // —— Step 3: 准备入库
     const contactName =
       dto.contactName?.trim() || dto.deliveryDestination?.name?.trim() || null;
+    const contactEmail = dto.contactEmail?.trim().toLowerCase() || null;
     const contactPhone =
       dto.contactPhone?.trim() ||
       dto.deliveryDestination?.phone?.trim() ||
@@ -2429,6 +2438,7 @@ export class OrdersService {
                 channel: dto.channel,
                 fulfillmentType: dto.fulfillmentType,
                 contactName,
+                contactEmail,
                 contactPhone,
                 // 金额字段
                 subtotalCents,

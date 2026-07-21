@@ -1,4 +1,7 @@
-import { parseCheckoutMetadata } from './checkout-metadata';
+import {
+  buildOrderDtoFromMetadata,
+  parseCheckoutMetadata,
+} from './checkout-metadata';
 
 const metadataWithCustomer = (
   customer: Record<string, unknown>,
@@ -18,6 +21,18 @@ const metadataWithCustomer = (
 });
 
 describe('parseCheckoutMetadata customer contacts', () => {
+  it('把游客结算邮箱写入订单输入', () => {
+    const dto = buildOrderDtoFromMetadata(
+      metadataWithCustomer({
+        firstName: 'San',
+        lastName: 'Qin',
+        email: 'guest@example.com',
+      }),
+    );
+
+    expect(dto.contactEmail).toBe('guest@example.com');
+  });
+
   it('姓名和邮箱存在而电话缺失时通过', () => {
     const result = parseCheckoutMetadata(
       metadataWithCustomer({

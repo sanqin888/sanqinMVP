@@ -454,6 +454,7 @@ export function buildOrderDtoFromMetadata(
 
     // ⭐ 订单级联系人（pickup / delivery 都有）
     contactName: formatCustomerName(meta.customer),
+    contactEmail: meta.customer.email ?? null,
     ...(meta.customer.phone ? { contactPhone: meta.customer.phone } : {}),
 
     // ⭐ 关键：让订单有 userStableId，这样 paid 时才会结算积分

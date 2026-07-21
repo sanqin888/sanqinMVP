@@ -77,4 +77,34 @@ describe('NotificationService.notifyCouponIssued', () => {
     const [payload] = templateRenderer.renderSms.mock.calls[0];
     expect(payload.vars.giftName).toBe('Welcome Gift');
   });
+
+  it('order ready 有邮箱和电话时只发送邮件', async () => {
+    templateRenderer.renderEmail.mockResolvedValue({
+      subject: 'Ready',
+      html: '<p>Ready</p>',
+      text: 'Ready',
+    });
+    emailService.sendEmail.mockResolvedValue({ ok: true });
+
+    await service.notifyOrderReady({
+      email: 'order@example.com',
+      phone: '+14165550000',
+      orderNumber: 'SQ001',
+    });
+
+    expect(emailService.sendEmail).toHaveBeenCalledTimes(1);
+    expect(smsService.sendSms).not.toHaveBeenCalled();
+    expect(templateRenderer.renderSms).not.toHaveBeenCalled();
+  });
+
+  it('order ready 没有邮箱时使用短信兜底', async () => {
+    await service.notifyOrderReady({
+      email: null,
+      phone: '+14165550000',
+      orderNumber: 'SQ002',
+    });
+
+    expect(smsService.sendSms).toHaveBeenCalledTimes(1);
+    expect(emailService.sendEmail).not.toHaveBeenCalled();
+  });
 });
