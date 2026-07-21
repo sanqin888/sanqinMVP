@@ -125,14 +125,14 @@ describe('NotificationService.notifyCouponIssued', () => {
       orderNumber: 'SQ003',
     });
 
-    expect(smsService.sendSms).toHaveBeenCalledWith(
-      expect.objectContaining({
-        metadata: expect.objectContaining({
-          fallbackFrom: 'email',
-          fallbackReason: 'suppressed:bounce',
-        }),
-      }),
-    );
+    expect(smsService.sendSms).toHaveBeenCalledTimes(1);
+    const [smsPayload] = smsService.sendSms.mock.calls[0] as [
+      { metadata?: Record<string, string> },
+    ];
+    expect(smsPayload.metadata).toMatchObject({
+      fallbackFrom: 'email',
+      fallbackReason: 'suppressed:bounce',
+    });
     expect(result).toMatchObject({
       ok: true,
       finalChannel: 'sms',
