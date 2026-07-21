@@ -1,7 +1,10 @@
 import { parseCheckoutMetadata } from './checkout-metadata';
 
-const metadataWithCustomer = (customer: Record<string, unknown>) => ({
-  fulfillment: 'pickup',
+const metadataWithCustomer = (
+  customer: Record<string, unknown>,
+  fulfillment: 'pickup' | 'delivery' = 'pickup',
+) => ({
+  fulfillment,
   customer,
   items: [
     {
@@ -50,7 +53,7 @@ describe('parseCheckoutMetadata customer contacts', () => {
       parseCheckoutMetadata(
         metadataWithCustomer({ firstName: 'San', lastName: 'Qin' }),
       ),
-    ).toThrow('customer email or phone is required');
+    ).toThrow('CONTACT_METHOD_REQUIRED');
   });
 
   it.each([
@@ -74,7 +77,7 @@ describe('parseCheckoutMetadata customer contacts', () => {
           phone: '   ',
         }),
       ),
-    ).toThrow('customer email or phone is required');
+    ).toThrow('CONTACT_METHOD_REQUIRED');
   });
 
   it('email 和 phone 同时存在时通过', () => {
@@ -111,6 +114,66 @@ describe('parseCheckoutMetadata customer contacts', () => {
           lastName: 'Qin',
           phone: '12345',
         }),
+      ),
+    ).toThrow('customer phone must be a valid Canadian phone number');
+  });
+
+  it('delivery 有邮箱和有效电话时通过并保留两种联系方式', () => {
+    const result = parseCheckoutMetadata(
+      metadataWithCustomer(
+        {
+          firstName: 'San',
+          lastName: 'Qin',
+          email: 'customer@example.com',
+          phone: '(416) 555-1234',
+        },
+        'delivery',
+      ),
+    );
+
+    expect(result.customer).toMatchObject({
+      email: 'customer@example.com',
+      phone: '+14165551234',
+    });
+  });
+
+  it('delivery 即使有邮箱，缺少电话仍以明确错误拒绝', () => {
+    expect(() =>
+      parseCheckoutMetadata(
+        metadataWithCustomer(
+          {
+            firstName: 'San',
+            lastName: 'Qin',
+            email: 'customer@example.com',
+          },
+          'delivery',
+        ),
+      ),
+    ).toThrow('DELIVERY_PHONE_REQUIRED');
+  });
+
+  it('delivery 无邮箱但有有效电话时通过', () => {
+    const result = parseCheckoutMetadata(
+      metadataWithCustomer(
+        { firstName: 'San', lastName: 'Qin', phone: '4165551234' },
+        'delivery',
+      ),
+    );
+
+    expect(result.customer).toEqual({
+      firstName: 'San',
+      lastName: 'Qin',
+      phone: '+14165551234',
+    });
+  });
+
+  it('delivery 无效电话在解析支付 metadata 时拒绝', () => {
+    expect(() =>
+      parseCheckoutMetadata(
+        metadataWithCustomer(
+          { firstName: 'San', lastName: 'Qin', phone: '12345' },
+          'delivery',
+        ),
       ),
     ).toThrow('customer phone must be a valid Canadian phone number');
   });
