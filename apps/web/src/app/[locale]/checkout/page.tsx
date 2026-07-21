@@ -38,6 +38,7 @@ import type {
 } from "@shared/menu";
 import { useSession } from "@/lib/auth-session";
 import { formatStoreTime } from "@/lib/time/tz";
+import { clampDisplayedPrepTimeMinutes } from "@/lib/prep-time";
 import {
   formatCanadianPhoneForApi,
   isValidCanadianPhone,
@@ -54,6 +55,12 @@ import {
   resolveDeliveryPhoneState,
   selectVerifiedCheckoutContact,
 } from "./contact-verification";
+import {
+  createNewAddressState,
+  DEFAULT_CHECKOUT_CITY,
+  DEFAULT_CHECKOUT_PROVINCE,
+  isNewAddressActivationKey,
+} from "./checkout-address";
 type MemberAddress = {
   addressStableId?: string;
   stableId?: string;
@@ -356,8 +363,8 @@ type CustomerInfo = {
   notes: string;
 };
 
-const DEFAULT_CITY = "Toronto";
-const DEFAULT_PROVINCE = "ON";
+const DEFAULT_CITY = DEFAULT_CHECKOUT_CITY;
+const DEFAULT_PROVINCE = DEFAULT_CHECKOUT_PROVINCE;
 const DELIVERY_COUNTRY = "Canada";
 const POSTAL_CODE_PATTERN = /^[A-Za-z]\d[A-Za-z]\s?\d[A-Za-z]\d$/;
 const PRIORITY_MAX_RADIUS_KM = DELIVERY_RADIUS_KM;
@@ -503,7 +510,7 @@ export default function CheckoutPage() {
       try {
         const response = await apiFetch<PrepTimeResponse>("/orders/prep-time");
         if (!cancelled) {
-          setPrepTimeMinutes(response.minutes);
+          setPrepTimeMinutes(clampDisplayedPrepTimeMinutes(response.minutes));
         }
       } catch {
         if (!cancelled) {
@@ -1105,6 +1112,16 @@ export default function CheckoutPage() {
       }),
     [],
   );
+
+  const handleUseNewAddress = useCallback(() => {
+    const next = createNewAddressState(customerRef.current);
+    customerRef.current = next.customer;
+    setCustomer(next.customer);
+    setSelectedAddressStableId(next.selectedAddressStableId);
+    setSelectedCoordinates(next.selectedCoordinates);
+    setSelectedPlaceId(next.selectedPlaceId);
+    resetAddressValidation();
+  }, [resetAddressValidation]);
 
   const currencyFormatter = useMemo(
     () =>
@@ -3572,17 +3589,11 @@ export default function CheckoutPage() {
                             role="button"
                             tabIndex={0}
                             className="cursor-pointer text-[10px] text-blue-600"
-                            onClick={() => {
-                              setSelectedAddressStableId(null);
-                              setSelectedCoordinates(null);
-                              setSelectedPlaceId(null);
-                            }}
+                            onClick={handleUseNewAddress}
                             onKeyDown={(event) => {
-                              if (event.key === "Enter" || event.key === " ") {
+                              if (isNewAddressActivationKey(event.key)) {
                                 event.preventDefault();
-                                setSelectedAddressStableId(null);
-                                setSelectedCoordinates(null);
-                                setSelectedPlaceId(null);
+                                handleUseNewAddress();
                               }
                             }}
                           >
@@ -3603,15 +3614,7 @@ export default function CheckoutPage() {
                               handleSelectAddress(value);
                               return;
                             }
-                            setSelectedAddressStableId(null);
-                            setSelectedCoordinates(null);
-                            setSelectedPlaceId(null);
-                            setCustomer((prev) => ({
-                              ...prev,
-                              addressLine1: "",
-                              addressLine2: "",
-                              postalCode: "",
-                            }));
+                            handleUseNewAddress();
                           }}
                         >
                           <option value="">

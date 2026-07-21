@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api/client";
 import type { Locale } from "@/lib/i18n/locales";
 import type { OrderItemOptionsSnapshot } from "@/lib/order/order-item-options";
+import { clampDisplayedPrepTimeMinutes } from "@/lib/prep-time";
 
 type OrderSummaryLineItem = {
   productStableId: string;
@@ -168,7 +169,7 @@ export function OrderSummaryClient({ orderStableId, locale }: Props) {
       try {
         const response = await apiFetch<PrepTimeResponse>("/orders/prep-time");
         if (!cancelled) {
-          setPrepTimeMinutes(response.minutes);
+          setPrepTimeMinutes(clampDisplayedPrepTimeMinutes(response.minutes));
         }
       } catch {
         if (!cancelled) {
