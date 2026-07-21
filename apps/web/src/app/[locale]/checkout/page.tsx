@@ -1322,7 +1322,21 @@ export default function CheckoutPage() {
     verifiedContactMethod === "phone" ||
     (isPhoneValid && verifiedPhoneValue === normalizedPhone);
   const hasVerifiedContact = verifiedContactMethod !== null;
-  const hasDeliveryPhone = isPhoneValid;
+  const hasSubmittedDeliveryPhone = customer.phone.trim().length > 0;
+  const hasVerifiedMemberDeliveryPhone = Boolean(
+    !hasSubmittedDeliveryPhone &&
+      memberPhone &&
+      memberPhoneVerified &&
+      isValidCanadianPhone(memberPhone),
+  );
+  const hasDeliveryPhone =
+    isPhoneValid || hasVerifiedMemberDeliveryPhone;
+  const deliveryPhoneLookupPending =
+    fulfillment === "delivery" &&
+    !hasSubmittedDeliveryPhone &&
+    authStatus === "authenticated" &&
+    Boolean(session?.user?.mfaVerifiedAt) &&
+    loyaltyLoading;
   const hasRequiredContact =
     fulfillment === "delivery"
       ? hasDeliveryPhone && hasVerifiedContact
@@ -1336,7 +1350,13 @@ export default function CheckoutPage() {
     if (!customer.lastName.trim()) {
       missing.push(strings.contactFields.lastName);
     }
-    if (fulfillment === "delivery" && !hasDeliveryPhone) {
+    if (deliveryPhoneLookupPending) {
+      missing.push(
+        locale === "zh"
+          ? "正在查询会员资料中的已验证手机号"
+          : "Checking your verified member phone number",
+      );
+    } else if (fulfillment === "delivery" && !hasDeliveryPhone) {
       missing.push(
         locale === "zh"
           ? "外送订单必须提供有效手机号码，以便骑手联系"
@@ -1357,6 +1377,7 @@ export default function CheckoutPage() {
   }, [
     customer.firstName,
     customer.lastName,
+    deliveryPhoneLookupPending,
     fulfillment,
     hasDeliveryPhone,
     hasVerifiedContact,
@@ -1387,6 +1408,11 @@ export default function CheckoutPage() {
     if (isSubmitting) return null;
 
     if (!canPlaceOrder) {
+      if (deliveryPhoneLookupPending) {
+        return locale === "zh"
+          ? "正在查询会员资料中的已验证手机号，请稍候。"
+          : "Checking your verified member phone number. Please wait.";
+      }
       if (fulfillment === "delivery" && !hasDeliveryPhone) {
         return locale === "zh"
           ? "外送订单必须提供有效手机号码，以便骑手联系"
@@ -1421,6 +1447,7 @@ export default function CheckoutPage() {
     return null;
   }, [
     canPlaceOrder,
+    deliveryPhoneLookupPending,
     deliveryAddressReady,
     entitlementBlockingMessage,
     fulfillment,
@@ -1459,7 +1486,7 @@ export default function CheckoutPage() {
       latestEmailValid ? latestEmail : "",
       latestPhoneValid ? latestPhone : "",
     );
-    const formattedCustomerPhone = checkoutContact.phone;
+    const submittedDeliveryPhone = latestPhoneValid ? latestPhone : undefined;
 
     return {
       locale,
@@ -1494,7 +1521,7 @@ export default function CheckoutPage() {
         fulfillment === "delivery"
           ? {
               name: formatCustomerFullName(customer),
-              phone: formattedCustomerPhone,
+              phone: submittedDeliveryPhone,
               addressLine1: customer.addressLine1,
               addressLine2: customer.addressLine2 || undefined,
               city: customer.city,
@@ -1690,8 +1717,20 @@ export default function CheckoutPage() {
           "[checkout] payment redirect failed",
           toSafeErrorLog(error),
         );
+        const errorText = error instanceof Error ? error.message : "";
+        const deliveryPhoneError =
+          errorText.includes("DELIVERY_PHONE_REQUIRED") ||
+          errorText.includes("DELIVERY_PHONE_INVALID") ||
+          errorText.toLowerCase().includes("delivery phone") ||
+          errorText.toLowerCase().includes("mobile phone number is required");
         setErrorMessage(
-          locale === "zh" ? startFailedMessageZh : startFailedMessageEn,
+          deliveryPhoneError
+            ? locale === "zh"
+              ? "未找到可用于外送履约的已验证手机号，请填写有效手机号后重试。"
+              : "No verified delivery phone was found. Please enter a valid mobile number and try again."
+            : locale === "zh"
+              ? startFailedMessageZh
+              : startFailedMessageEn,
         );
       } finally {
         setRedirecting(false);
@@ -2285,6 +2324,7 @@ export default function CheckoutPage() {
         );
         setLoyaltyInfo(null);
         setMemberPhone(null);
+        setMemberPhoneVerified(false);
         setMemberEmailVerified(false);
         setMemberUserStableId(null);
       } finally {
@@ -2643,11 +2683,15 @@ export default function CheckoutPage() {
 
     try {
       const formattedPhone = formatCanadianPhoneForApi(customer.phone);
+      const addressBookPhone = formattedPhone ||
+        (hasVerifiedMemberDeliveryPhone && memberPhone
+          ? formatCanadianPhoneForApi(memberPhone)
+          : "");
       const payload = {
         userStableId,
         label: customer.addressLine1,
         receiver: formatCustomerFullName(customer),
-        phone: formattedPhone,
+        phone: addressBookPhone,
         addressLine1: customer.addressLine1,
         addressLine2: customer.addressLine2 ?? "",
         city: customer.city,
@@ -2748,7 +2792,9 @@ export default function CheckoutPage() {
     totalCentsForOrder =
       discountedSubtotalForOrder + deliveryFeeCentsForOrder + taxCentsForOrder;
 
-    const formattedCustomerPhone = formatCanadianPhoneForApi(customer.phone);
+    const formattedCustomerPhone = isValidCanadianPhone(customer.phone)
+      ? formatCanadianPhoneForApi(customer.phone)
+      : undefined;
 
     const loyaltyOrderPayload = {
       fulfillmentType: fulfillment,
@@ -3435,7 +3481,23 @@ export default function CheckoutPage() {
                         </button>
                       )}
                     </div>
-                  </div>
+                    </div>
+                    {fulfillment === "delivery" &&
+                    !hasSubmittedDeliveryPhone &&
+                    hasVerifiedMemberDeliveryPhone ? (
+                      <p className="mt-1 text-[11px] text-emerald-700">
+                        {locale === "zh"
+                          ? `未填写新号码时，将使用会员资料中尾号 ${memberPhone?.replace(/\D/g, "").slice(-4)} 的已验证手机号供骑手联系。`
+                          : `If you leave this blank, the courier will use your verified member phone ending in ${memberPhone?.replace(/\D/g, "").slice(-4)}.`}
+                      </p>
+                    ) : fulfillment === "delivery" &&
+                      deliveryPhoneLookupPending ? (
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        {locale === "zh"
+                          ? "正在查询会员资料中的已验证手机号…"
+                          : "Checking your verified member phone…"}
+                      </p>
+                    ) : null}
 
                   {!hasVerifiedEmail &&
                     !hasVerifiedPhone &&
