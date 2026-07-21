@@ -702,29 +702,6 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       });
     }
 
-    const rawEmail = (() => {
-      const meta = dto.metadata;
-      if (!isPlainObject(meta)) return undefined;
-
-      const customer = meta.customer;
-      if (!isPlainObject(customer)) return undefined;
-
-      const email = customer.email;
-      return typeof email === 'string' && email.trim().length > 0
-        ? email.trim()
-        : undefined;
-    })();
-
-    const parsedEmail = metadata.customer.email;
-    const finalEmail = parsedEmail ?? rawEmail;
-
-    if (!finalEmail) {
-      throw new BadRequestException({
-        code: 'CUSTOMER_EMAIL_REQUIRED',
-        message: 'customer email is required for online payment',
-      });
-    }
-
     const currency = dto.currency ?? CLOVER_PAYMENT_CURRENCY;
     const referenceId = dto.checkoutIntentId?.trim() || buildClientRequestId();
     const orderStableId = metadata.orderStableId ?? generateStableId();
@@ -811,10 +788,6 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
 
     const metadataWithIds = {
       ...metadata,
-      customer: {
-        ...metadata.customer,
-        email: finalEmail,
-      },
       orderStableId,
       paymentAttempt,
       lastIdempotencyKey: idempotencyKey,
