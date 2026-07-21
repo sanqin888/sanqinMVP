@@ -105,6 +105,80 @@ export class NotificationService {
     return name.length > 0 ? name : null;
   }
 
+  private async sendEmailFirst(params: {
+    email?: string | null;
+    phone?: string | null;
+    context: string;
+    sendEmail: () => Promise<{ ok: boolean; error?: string; sendId?: string }>;
+    sendSms: (fallbackReason?: string) => Promise<{
+      ok: boolean;
+      error?: string;
+      sendId?: string;
+    }>;
+  }) {
+    let fallbackReason: string | undefined;
+
+    if (params.email) {
+      try {
+        const emailResult = await params.sendEmail();
+        if (emailResult.ok) {
+          return {
+            ...emailResult,
+            finalChannel: 'email' as const,
+            attemptedChannels: ['email'] as const,
+          };
+        }
+        fallbackReason = emailResult.error ?? 'email_send_failed';
+        this.logger.warn(
+          `${params.context}: email failed; attempting SMS fallback reason=${fallbackReason}`,
+        );
+      } catch (error) {
+        fallbackReason =
+          error instanceof Error ? error.message : 'email_send_exception';
+        this.logger.warn(
+          `${params.context}: email threw; attempting SMS fallback reason=${fallbackReason}`,
+        );
+      }
+    }
+
+    if (params.phone) {
+      try {
+        const smsResult = await params.sendSms(fallbackReason);
+        return {
+          ...smsResult,
+          finalChannel: smsResult.ok ? ('sms' as const) : null,
+          attemptedChannels: params.email
+            ? (['email', 'sms'] as const)
+            : (['sms'] as const),
+          ...(fallbackReason ? { fallbackReason } : {}),
+        };
+      } catch (error) {
+        const smsError =
+          error instanceof Error ? error.message : 'sms_send_exception';
+        this.logger.warn(`${params.context}: SMS failed reason=${smsError}`);
+        return {
+          ok: false,
+          error: smsError,
+          finalChannel: null,
+          attemptedChannels: params.email
+            ? (['email', 'sms'] as const)
+            : (['sms'] as const),
+          ...(fallbackReason ? { fallbackReason } : {}),
+        };
+      }
+    }
+
+    return {
+      ok: false,
+      error: fallbackReason ?? 'no_verified_contact',
+      finalChannel: null,
+      attemptedChannels: params.email
+        ? (['email'] as const)
+        : ([] as const),
+      ...(fallbackReason ? { fallbackReason } : {}),
+    };
+  }
+
   async notifyRegisterWelcome(params: { user: User }) {
     // 准备基础变量
     const locale = params.user.language === 'ZH' ? 'zh' : 'en';
@@ -112,55 +186,56 @@ export class NotificationService {
       await this.businessConfigService.getMessagingSnapshot(locale);
     const claimUrl = `${process.env.PUBLIC_BASE_URL}/${locale}/membership/login`;
 
-    // 1. 优先尝试发送邮件
-    if (params.user.email) {
-      return this.templateRenderer
-        .renderEmail({
+    return this.sendEmailFirst({
+      email: params.user.email,
+      phone: params.user.phone,
+      context: `register_welcome:${params.user.id}`,
+      sendEmail: async () => {
+        const { subject, html, text } =
+          await this.templateRenderer.renderEmail({
+            template: 'welcome',
+            locale,
+            vars: {
+              ...baseVars,
+              userName:
+                this.formatUserName(params.user) ||
+                (locale === 'zh' ? '亲爱的顾客' : 'Dear Customer'),
+              claimUrl,
+            },
+          });
+        return this.emailService.sendEmail({
+          to: params.user.email!,
+          subject,
+          html,
+          text,
+          tags: { type: 'register_welcome' },
+          locale: params.user.language === 'ZH' ? 'zh-CN' : 'en',
+          templateType: MessagingTemplateType.SIGNUP_WELCOME,
+          userId: params.user.id,
+          metadata: { trigger: 'register' },
+        });
+      },
+      sendSms: async (fallbackReason) => {
+        const body = await this.templateRenderer.renderSms({
           template: 'welcome',
           locale,
-          vars: {
-            ...baseVars,
-            userName:
-              this.formatUserName(params.user) ||
-              (locale === 'zh' ? '亲爱的顾客' : 'Dear Customer'),
-            claimUrl,
-          },
-        })
-        .then(({ subject, html, text }) => {
-          return this.emailService.sendEmail({
-            to: params.user.email!,
-            subject,
-            html,
-            text,
-            tags: { type: 'register_welcome' },
-            locale: params.user.language === 'ZH' ? 'zh-CN' : 'en',
-            templateType: MessagingTemplateType.SIGNUP_WELCOME,
-            userId: params.user.id,
-            metadata: { trigger: 'register' },
-          });
+          vars: { ...baseVars, claimUrl },
         });
-    }
-
-    // 2. 如果没邮箱，但有手机号，发送短信
-    if (params.user.phone) {
-      const body = await this.templateRenderer.renderSms({
-        template: 'welcome',
-        locale,
-        vars: {
-          ...baseVars,
-          claimUrl,
-        },
-      });
-
-      return this.smsService.sendSms({
-        phone: params.user.phone,
-        body,
-        templateType: MessagingTemplateType.SIGNUP_WELCOME,
-        locale,
-        userId: params.user.id,
-        metadata: { trigger: 'register' },
-      });
-    }
+        return this.smsService.sendSms({
+          phone: params.user.phone!,
+          body,
+          templateType: MessagingTemplateType.SIGNUP_WELCOME,
+          locale,
+          userId: params.user.id,
+          metadata: {
+            trigger: 'register',
+            ...(fallbackReason
+              ? { fallbackFrom: 'email', fallbackReason }
+              : {}),
+          },
+        });
+      },
+    });
   }
 
   async notifyOrderReady(params: {
@@ -182,41 +257,50 @@ export class NotificationService {
       pickupCode: params.orderNumber,
     };
 
-    if (params.email) {
-      const { subject, html, text } = await this.templateRenderer.renderEmail({
-        template: 'orderReady',
-        locale,
-        vars,
-      });
-
-      return this.emailService.sendEmail({
-        to: params.email,
-        subject,
-        html,
-        text,
-        tags: { type: 'order_ready' },
-        locale: locale === 'zh' ? 'zh-CN' : 'en',
-        templateType: MessagingTemplateType.ORDER_READY,
-        userId: params.userId ?? undefined,
-        metadata: { trigger: 'order_ready' },
-      });
-    }
-
-    if (params.phone) {
-      const body = await this.templateRenderer.renderSms({
-        template: 'orderReady',
-        locale,
-        vars,
-      });
-      return this.smsService.sendSms({
-        phone: params.phone,
-        body,
-        templateType: MessagingTemplateType.ORDER_READY,
-        locale,
-        userId: params.userId ?? undefined,
-        metadata: { trigger: 'order_ready' },
-      });
-    }
+    return this.sendEmailFirst({
+      email: params.email,
+      phone: params.phone,
+      context: `order_ready:${params.orderNumber}`,
+      sendEmail: async () => {
+        const { subject, html, text } =
+          await this.templateRenderer.renderEmail({
+            template: 'orderReady',
+            locale,
+            vars,
+          });
+        return this.emailService.sendEmail({
+          to: params.email!,
+          subject,
+          html,
+          text,
+          tags: { type: 'order_ready' },
+          locale: locale === 'zh' ? 'zh-CN' : 'en',
+          templateType: MessagingTemplateType.ORDER_READY,
+          userId: params.userId ?? undefined,
+          metadata: { trigger: 'order_ready' },
+        });
+      },
+      sendSms: async (fallbackReason) => {
+        const body = await this.templateRenderer.renderSms({
+          template: 'orderReady',
+          locale,
+          vars,
+        });
+        return this.smsService.sendSms({
+          phone: params.phone!,
+          body,
+          templateType: MessagingTemplateType.ORDER_READY,
+          locale,
+          userId: params.userId ?? undefined,
+          metadata: {
+            trigger: 'order_ready',
+            ...(fallbackReason
+              ? { fallbackFrom: 'email', fallbackReason }
+              : {}),
+          },
+        });
+      },
+    });
   }
 
   async notifyDeliveryDispatchFailed(params: {
@@ -402,42 +486,46 @@ export class NotificationService {
     };
     const template = 'giftGeneral';
 
-    if (user.email) {
-      const { subject, html, text } = await this.templateRenderer.renderEmail({
-        template,
-        locale,
-        vars,
-      });
-      return this.emailService.sendEmail({
-        to: user.email,
-        subject,
-        html,
-        text,
-        tags: { type: 'gift_issued' },
-        locale: user.language === 'ZH' ? 'zh-CN' : 'en',
-        templateType: MessagingTemplateType.SIGNUP_WELCOME,
-        userId: user.id,
-        metadata: { triggerType: program.triggerType ?? null },
-      });
-    }
-
-    if (user.phone) {
-      const body = await this.templateRenderer.renderSms({
-        template,
-        locale,
-        vars,
-      });
-      return this.smsService.sendSms({
-        phone: user.phone,
-        body,
-        templateType: MessagingTemplateType.SIGNUP_WELCOME,
-        locale,
-        userId: user.id,
-        metadata: { triggerType: program.triggerType ?? null },
-      });
-    }
-
-    return { ok: false, error: 'no_contact' };
+    return this.sendEmailFirst({
+      email: user.email,
+      phone: user.phone,
+      context: `gift_issued:${program.programStableId}:${user.id}`,
+      sendEmail: async () => {
+        const { subject, html, text } =
+          await this.templateRenderer.renderEmail({ template, locale, vars });
+        return this.emailService.sendEmail({
+          to: user.email!,
+          subject,
+          html,
+          text,
+          tags: { type: 'gift_issued' },
+          locale: user.language === 'ZH' ? 'zh-CN' : 'en',
+          templateType: MessagingTemplateType.SIGNUP_WELCOME,
+          userId: user.id,
+          metadata: { triggerType: program.triggerType ?? null },
+        });
+      },
+      sendSms: async (fallbackReason) => {
+        const body = await this.templateRenderer.renderSms({
+          template,
+          locale,
+          vars,
+        });
+        return this.smsService.sendSms({
+          phone: user.phone!,
+          body,
+          templateType: MessagingTemplateType.SIGNUP_WELCOME,
+          locale,
+          userId: user.id,
+          metadata: {
+            triggerType: program.triggerType ?? null,
+            ...(fallbackReason
+              ? { fallbackFrom: 'email', fallbackReason }
+              : {}),
+          },
+        });
+      },
+    });
   }
 
   async notifyMarketing(params: {

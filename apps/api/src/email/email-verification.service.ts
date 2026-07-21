@@ -4,7 +4,7 @@ import {
   AuthChallengeType,
   MessagingChannel,
 } from '@prisma/client';
-import { randomInt, createHmac } from 'crypto';
+import { createHash, createHmac, randomBytes, randomInt } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from './email.service';
 import { normalizeEmail } from '../common/utils/email';
@@ -24,6 +24,14 @@ export class EmailVerificationService {
     const secret =
       process.env.OTP_SECRET ?? process.env.OAUTH_STATE_SECRET ?? 'dev-secret';
     return createHmac('sha256', secret).update(code).digest('hex');
+  }
+
+  private generateVerificationToken(): string {
+    return randomBytes(32).toString('hex');
+  }
+
+  private hashToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
   }
 
   async requestVerification(params: {
@@ -167,12 +175,55 @@ export class EmailVerificationService {
       return { ok: false, error: 'token_expired' };
     }
 
-    await this.prisma.authChallenge.update({
-      where: { id: record.id },
-      data: { status: AuthChallengeStatus.CONSUMED, consumedAt: now },
+    const verificationToken = this.generateVerificationToken();
+    await this.prisma.$transaction([
+      this.prisma.authChallenge.update({
+        where: { id: record.id },
+        data: { status: AuthChallengeStatus.CONSUMED, consumedAt: now },
+      }),
+      this.prisma.authChallenge.create({
+        data: {
+          type: AuthChallengeType.EMAIL_VERIFY,
+          status: AuthChallengeStatus.PENDING,
+          channel: MessagingChannel.EMAIL,
+          addressNorm: record.addressNorm,
+          addressRaw: record.addressRaw,
+          tokenHash: this.hashToken(verificationToken),
+          purpose: params.purpose ?? 'checkout',
+          expiresAt: record.expiresAt,
+        },
+      }),
+    ]);
+
+    return {
+      ok: true,
+      email: record.addressNorm,
+      verificationToken,
+    };
+  }
+
+  async validateCheckoutVerificationToken(params: {
+    email: string;
+    verificationToken: string;
+  }): Promise<boolean> {
+    const normalized = normalizeEmail(params.email);
+    const token = params.verificationToken.trim();
+    if (!normalized || !token) return false;
+
+    const challenge = await this.prisma.authChallenge.findFirst({
+      where: {
+        type: AuthChallengeType.EMAIL_VERIFY,
+        channel: MessagingChannel.EMAIL,
+        status: AuthChallengeStatus.PENDING,
+        addressNorm: normalized,
+        purpose: 'checkout',
+        tokenHash: this.hashToken(token),
+        expiresAt: { gt: new Date() },
+      },
+      select: { id: true },
     });
 
-    return { ok: true, email: record.addressNorm };
+    return Boolean(challenge);
   }
 
   async verifyToken(token: string) {

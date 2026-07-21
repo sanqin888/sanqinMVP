@@ -111,6 +111,24 @@ describe('parseCheckoutMetadata customer contacts', () => {
     });
   });
 
+  it('解析结算联系方式验证凭证且不接受空凭证', () => {
+    const result = parseCheckoutMetadata({
+      ...metadataWithCustomer({
+        firstName: 'San',
+        lastName: 'Qin',
+        email: 'customer@example.com',
+      }),
+      contactVerification: {
+        emailToken: 'email-proof',
+        phoneToken: '   ',
+      },
+    });
+
+    expect(result.contactVerification).toEqual({
+      emailToken: 'email-proof',
+    });
+  });
+
   it('拒绝格式无效的邮箱和加拿大电话号码', () => {
     expect(() =>
       parseCheckoutMetadata(
@@ -152,19 +170,19 @@ describe('parseCheckoutMetadata customer contacts', () => {
     });
   });
 
-  it('delivery 即使有邮箱，缺少电话仍以明确错误拒绝', () => {
-    expect(() =>
-      parseCheckoutMetadata(
-        metadataWithCustomer(
-          {
-            firstName: 'San',
-            lastName: 'Qin',
-            email: 'customer@example.com',
-          },
-          'delivery',
-        ),
+  it('delivery 缺少电话时允许进入服务端会员号码兜底流程', () => {
+    const result = parseCheckoutMetadata(
+      metadataWithCustomer(
+        {
+          firstName: 'San',
+          lastName: 'Qin',
+          email: 'customer@example.com',
+        },
+        'delivery',
       ),
-    ).toThrow('DELIVERY_PHONE_REQUIRED');
+    );
+
+    expect(result.customer.phone).toBeUndefined();
   });
 
   it('delivery 无邮箱但有有效电话时通过', () => {
@@ -180,6 +198,34 @@ describe('parseCheckoutMetadata customer contacts', () => {
       lastName: 'Qin',
       phone: '+14165551234',
     });
+  });
+
+  it('delivery destination 的本单履约号码优先于 customer 通知号码', () => {
+    const dto = buildOrderDtoFromMetadata({
+      ...metadataWithCustomer(
+        {
+          firstName: 'San',
+          lastName: 'Qin',
+          email: 'customer@example.com',
+          phone: '4165550100',
+          addressLine1: '100 Customer St',
+          city: 'Toronto',
+          province: 'ON',
+          postalCode: 'M5V 1A1',
+        },
+        'delivery',
+      ),
+      deliveryDestination: {
+        phone: '4165550199',
+        addressLine1: '200 Delivery St',
+        city: 'Toronto',
+        province: 'ON',
+        postalCode: 'M5V 2B2',
+      },
+    });
+
+    expect(dto.contactPhone).toBe('+14165550100');
+    expect(dto.deliveryDestination?.phone).toBe('4165550199');
   });
 
   it('delivery 无效电话在解析支付 metadata 时拒绝', () => {

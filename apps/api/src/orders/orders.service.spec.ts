@@ -243,7 +243,12 @@ describe('OrdersService', () => {
         fulfillmentType: 'pickup',
         items: [],
       });
-    prisma.checkoutIntent.findFirst.mockResolvedValue({ locale: 'en' });
+    prisma.checkoutIntent.findFirst.mockResolvedValue({
+      locale: 'en',
+      metadataJson: {
+        verifiedContacts: { phone: '+14165550000' },
+      },
+    });
 
     await service.updateStatusInternal(
       '11111111-1111-1111-1111-111111111111',
@@ -281,8 +286,21 @@ describe('OrdersService', () => {
         fulfillmentType: 'pickup',
         items: [],
       });
-    prisma.checkoutIntent.findFirst.mockResolvedValue({ locale: 'en' });
-    prisma.user.findUnique.mockResolvedValue({ email: 'member@example.com' });
+    prisma.checkoutIntent.findFirst.mockResolvedValue({
+      locale: 'en',
+      metadataJson: {
+        verifiedContacts: {
+          email: 'checkout@example.com',
+          phone: '+14165550000',
+        },
+      },
+    });
+    prisma.user.findUnique.mockResolvedValue({
+      email: 'member@example.com',
+      emailVerifiedAt: new Date(),
+      phone: null,
+      phoneVerifiedAt: null,
+    });
 
     await service.updateStatusInternal(
       '33333333-3333-3333-3333-333333333333',
@@ -299,7 +317,7 @@ describe('OrdersService', () => {
       locale: 'en',
       userId: 'user-1',
     });
-    expect(prisma.user.findUnique).toHaveBeenCalledTimes(1);
+    expect(prisma.user.findUnique).toHaveBeenCalledTimes(2);
     expect(prisma.user.findUnique).not.toHaveBeenCalledWith(
       expect.objectContaining({ select: { email: true } }),
     );
@@ -325,7 +343,12 @@ describe('OrdersService', () => {
         items: [],
       });
     prisma.checkoutIntent.findFirst.mockResolvedValue({ locale: 'en' });
-    prisma.user.findUnique.mockResolvedValue({ email: 'member@example.com' });
+    prisma.user.findUnique.mockResolvedValue({
+      email: 'member@example.com',
+      emailVerifiedAt: new Date(),
+      phone: null,
+      phoneVerifiedAt: null,
+    });
 
     await service.updateStatusInternal(
       '55555555-5555-5555-5555-555555555555',
@@ -688,5 +711,116 @@ describe('OrdersService', () => {
     expect(firstUpdateManyCall[0].where?.status?.in).toEqual(
       expect.arrayContaining(['processing', 'creating_order']),
     );
+  });
+
+  it('外送明确填写的新号码优先于会员资料号码', async () => {
+    const resolver = service as unknown as {
+      resolveDeliveryPhone(params: {
+        submittedPhone?: string | null;
+        userId?: string;
+        requirePhone: boolean;
+      }): Promise<string | undefined>;
+    };
+
+    await expect(
+      resolver.resolveDeliveryPhone({
+        submittedPhone: '(416) 555-0199',
+        userId: 'member-1',
+        requirePhone: true,
+      }),
+    ).resolves.toBe('+14165550199');
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('外送未填写号码时仅回退到会员已验证号码', async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      phone: '4165550188',
+      phoneVerifiedAt: new Date(),
+    });
+    const resolver = service as unknown as {
+      resolveDeliveryPhone(params: {
+        submittedPhone?: string | null;
+        userId?: string;
+        requirePhone: boolean;
+      }): Promise<string | undefined>;
+    };
+
+    await expect(
+      resolver.resolveDeliveryPhone({
+        submittedPhone: null,
+        userId: 'member-1',
+        requirePhone: true,
+      }),
+    ).resolves.toBe('+14165550188');
+  });
+
+  it('外送没有本单号码或会员已验证号码时拒绝', async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      phone: '4165550188',
+      phoneVerifiedAt: null,
+    });
+    const resolver = service as unknown as {
+      resolveDeliveryPhone(params: {
+        submittedPhone?: string | null;
+        userId?: string;
+        requirePhone: boolean;
+      }): Promise<string | undefined>;
+    };
+
+    await expect(
+      resolver.resolveDeliveryPhone({
+        submittedPhone: null,
+        userId: 'member-1',
+        requirePhone: true,
+      }),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'DELIVERY_PHONE_REQUIRED' }),
+    });
+  });
+
+  it('按渠道隔离 Web、POS 与 Uber Eats 联系方式策略', () => {
+    const policyResolver = service as unknown as {
+      resolveContactPolicy(dto: CreateOrderInput): {
+        requireCustomerName: boolean;
+        requireVerifiedNotificationContact: boolean;
+        requireDeliveryPhone: boolean;
+        allowMemberVerifiedContactFallback: boolean;
+        allowUnverifiedExternalContact: boolean;
+      };
+    };
+
+    expect(
+      policyResolver.resolveContactPolicy({
+        channel: 'web',
+        fulfillmentType: 'delivery',
+      }),
+    ).toMatchObject({
+      requireCustomerName: true,
+      requireVerifiedNotificationContact: true,
+      requireDeliveryPhone: true,
+      allowMemberVerifiedContactFallback: true,
+      allowUnverifiedExternalContact: false,
+    });
+    expect(
+      policyResolver.resolveContactPolicy({
+        channel: 'in_store',
+        fulfillmentType: 'pickup',
+      }),
+    ).toMatchObject({
+      requireCustomerName: false,
+      requireVerifiedNotificationContact: false,
+      requireDeliveryPhone: false,
+    });
+    expect(
+      policyResolver.resolveContactPolicy({
+        channel: 'ubereats',
+        fulfillmentType: 'delivery',
+      }),
+    ).toMatchObject({
+      requireCustomerName: false,
+      requireVerifiedNotificationContact: false,
+      requireDeliveryPhone: false,
+      allowUnverifiedExternalContact: true,
+    });
   });
 });

@@ -51,6 +51,7 @@ import {
 import {
   buildCheckoutContactPayload,
   normalizeCheckoutEmail,
+  resolveDeliveryPhoneState,
   selectVerifiedCheckoutContact,
 } from "./contact-verification";
 type MemberAddress = {
@@ -88,9 +89,12 @@ type ApiEnvelope<T> = {
 type OperationStatusPayload = {
   ok?: boolean;
   error?: string;
+  verificationToken?: string;
 };
 
-async function assertOperationResult(response: Response): Promise<void> {
+async function assertOperationResult(
+  response: Response,
+): Promise<OperationStatusPayload> {
   const payload = (await response.json().catch(() => null)) as
     | ApiEnvelope<OperationStatusPayload>
     | OperationStatusPayload
@@ -114,6 +118,8 @@ async function assertOperationResult(response: Response): Promise<void> {
   if (details && typeof details.ok === "boolean" && !details.ok) {
     throw new Error(details.error || "request failed");
   }
+
+  return details ?? {};
 }
 
 function toSafeErrorLog(error: unknown): Record<string, unknown> {
@@ -809,6 +815,8 @@ export default function CheckoutPage() {
   const customerRef = useRef(customer);
   const verifiedEmailRef = useRef(verifiedEmailValue);
   const verifiedPhoneRef = useRef(verifiedPhoneValue);
+  const verifiedEmailTokenRef = useRef<string | null>(null);
+  const verifiedPhoneTokenRef = useRef<string | null>(null);
   customerRef.current = customer;
   verifiedEmailRef.current = verifiedEmailValue;
   verifiedPhoneRef.current = verifiedPhoneValue;
@@ -1315,7 +1323,21 @@ export default function CheckoutPage() {
     verifiedContactMethod === "phone" ||
     (isPhoneValid && verifiedPhoneValue === normalizedPhone);
   const hasVerifiedContact = verifiedContactMethod !== null;
-  const hasDeliveryPhone = isPhoneValid;
+  const deliveryPhoneState = resolveDeliveryPhoneState({
+    enteredPhone: customer.phone,
+    memberPhone,
+    memberPhoneVerified,
+  });
+  const hasSubmittedDeliveryPhone = deliveryPhoneState.hasSubmittedPhone;
+  const hasVerifiedMemberDeliveryPhone =
+    deliveryPhoneState.usesVerifiedMemberFallback;
+  const hasDeliveryPhone = deliveryPhoneState.hasDeliveryPhone;
+  const deliveryPhoneLookupPending =
+    fulfillment === "delivery" &&
+    !hasSubmittedDeliveryPhone &&
+    authStatus === "authenticated" &&
+    Boolean(session?.user?.mfaVerifiedAt) &&
+    loyaltyLoading;
   const hasRequiredContact =
     fulfillment === "delivery"
       ? hasDeliveryPhone && hasVerifiedContact
@@ -1329,7 +1351,13 @@ export default function CheckoutPage() {
     if (!customer.lastName.trim()) {
       missing.push(strings.contactFields.lastName);
     }
-    if (fulfillment === "delivery" && !hasDeliveryPhone) {
+    if (deliveryPhoneLookupPending) {
+      missing.push(
+        locale === "zh"
+          ? "正在查询会员资料中的已验证手机号"
+          : "Checking your verified member phone number",
+      );
+    } else if (fulfillment === "delivery" && !hasDeliveryPhone) {
       missing.push(
         locale === "zh"
           ? "外送订单必须提供有效手机号码，以便骑手联系"
@@ -1350,6 +1378,7 @@ export default function CheckoutPage() {
   }, [
     customer.firstName,
     customer.lastName,
+    deliveryPhoneLookupPending,
     fulfillment,
     hasDeliveryPhone,
     hasVerifiedContact,
@@ -1380,6 +1409,11 @@ export default function CheckoutPage() {
     if (isSubmitting) return null;
 
     if (!canPlaceOrder) {
+      if (deliveryPhoneLookupPending) {
+        return locale === "zh"
+          ? "正在查询会员资料中的已验证手机号，请稍候。"
+          : "Checking your verified member phone number. Please wait.";
+      }
       if (fulfillment === "delivery" && !hasDeliveryPhone) {
         return locale === "zh"
           ? "外送订单必须提供有效手机号码，以便骑手联系"
@@ -1414,6 +1448,7 @@ export default function CheckoutPage() {
     return null;
   }, [
     canPlaceOrder,
+    deliveryPhoneLookupPending,
     deliveryAddressReady,
     entitlementBlockingMessage,
     fulfillment,
@@ -1452,7 +1487,7 @@ export default function CheckoutPage() {
       latestEmailValid ? latestEmail : "",
       latestPhoneValid ? latestPhone : "",
     );
-    const formattedCustomerPhone = checkoutContact.phone;
+    const submittedDeliveryPhone = latestPhoneValid ? latestPhone : undefined;
 
     return {
       locale,
@@ -1476,11 +1511,18 @@ export default function CheckoutPage() {
             }
           : {}),
       },
+      contactVerification:
+        verifiedEmailTokenRef.current || verifiedPhoneTokenRef.current
+          ? {
+              emailToken: verifiedEmailTokenRef.current ?? undefined,
+              phoneToken: verifiedPhoneTokenRef.current ?? undefined,
+            }
+          : undefined,
       deliveryDestination:
         fulfillment === "delivery"
           ? {
               name: formatCustomerFullName(customer),
-              phone: formattedCustomerPhone,
+              phone: submittedDeliveryPhone,
               addressLine1: customer.addressLine1,
               addressLine2: customer.addressLine2 || undefined,
               city: customer.city,
@@ -1676,8 +1718,20 @@ export default function CheckoutPage() {
           "[checkout] payment redirect failed",
           toSafeErrorLog(error),
         );
+        const errorText = error instanceof Error ? error.message : "";
+        const deliveryPhoneError =
+          errorText.includes("DELIVERY_PHONE_REQUIRED") ||
+          errorText.includes("DELIVERY_PHONE_INVALID") ||
+          errorText.toLowerCase().includes("delivery phone") ||
+          errorText.toLowerCase().includes("mobile phone number is required");
         setErrorMessage(
-          locale === "zh" ? startFailedMessageZh : startFailedMessageEn,
+          deliveryPhoneError
+            ? locale === "zh"
+              ? "未找到可用于外送履约的已验证手机号，请填写有效手机号后重试。"
+              : "No verified delivery phone was found. Please enter a valid mobile number and try again."
+            : locale === "zh"
+              ? startFailedMessageZh
+              : startFailedMessageEn,
         );
       } finally {
         setRedirecting(false);
@@ -1843,6 +1897,7 @@ export default function CheckoutPage() {
 
     // 🔐 邮箱变更时，重置邮箱验证状态
     if (field === "email") {
+      verifiedEmailTokenRef.current = null;
       setPhoneVerificationError(null);
       setPhoneVerificationCode("");
       const trimmed = normalizeCheckoutEmail(nextValue);
@@ -1858,6 +1913,7 @@ export default function CheckoutPage() {
         return;
       }
       verifiedEmailRef.current = null;
+      verifiedEmailTokenRef.current = null;
       setVerifiedEmailValue(null);
       if (verifiedPhoneValue !== normalizedPhone) {
         setContactVerificationMethod(null);
@@ -1867,6 +1923,7 @@ export default function CheckoutPage() {
 
     // 🔐 手机号变更时，重置验证状态
     if (field === "phone") {
+      verifiedPhoneTokenRef.current = null;
       setPhoneVerificationError(null);
       setPhoneVerificationCode("");
 
@@ -1874,6 +1931,7 @@ export default function CheckoutPage() {
       if (!trimmed) {
         // 清空手机号 → 一定是未验证
         verifiedPhoneRef.current = null;
+        verifiedPhoneTokenRef.current = null;
         setVerifiedPhoneValue(null);
         setPhoneVerificationStep("idle");
         return;
@@ -1894,6 +1952,7 @@ export default function CheckoutPage() {
 
       // 其他情况：统一认为还未验证，需要走短信验证码
       verifiedPhoneRef.current = null;
+      verifiedPhoneTokenRef.current = null;
       setVerifiedPhoneValue(null);
       if (verifiedEmailValue !== normalizedEmail) {
         setContactVerificationMethod(null);
@@ -2060,16 +2119,21 @@ export default function CheckoutPage() {
         },
       );
 
-      await assertOperationResult(res);
+      const verification = await assertOperationResult(res);
+      if (!verification.verificationToken) {
+        throw new Error("verification proof missing");
+      }
 
       if (contactVerificationMethod === "email") {
         const verifiedEmail = normalizeCheckoutEmail(customer.email);
         verifiedEmailRef.current = verifiedEmail;
         setVerifiedEmailValue(verifiedEmail);
+        verifiedEmailTokenRef.current = verification.verificationToken;
       } else {
         const verifiedPhone = formatCanadianPhoneForApi(customer.phone);
         verifiedPhoneRef.current = verifiedPhone;
         setVerifiedPhoneValue(verifiedPhone);
+        verifiedPhoneTokenRef.current = verification.verificationToken;
       }
       setPhoneVerificationStep("verified");
     } catch (err) {
@@ -2081,9 +2145,11 @@ export default function CheckoutPage() {
       );
       if (contactVerificationMethod === "email") {
         verifiedEmailRef.current = null;
+        verifiedEmailTokenRef.current = null;
         setVerifiedEmailValue(null);
       } else {
         verifiedPhoneRef.current = null;
+        verifiedPhoneTokenRef.current = null;
         setVerifiedPhoneValue(null);
       }
     } finally {
@@ -2259,6 +2325,7 @@ export default function CheckoutPage() {
         );
         setLoyaltyInfo(null);
         setMemberPhone(null);
+        setMemberPhoneVerified(false);
         setMemberEmailVerified(false);
         setMemberUserStableId(null);
       } finally {
@@ -2617,11 +2684,15 @@ export default function CheckoutPage() {
 
     try {
       const formattedPhone = formatCanadianPhoneForApi(customer.phone);
+      const addressBookPhone = formattedPhone ||
+        (hasVerifiedMemberDeliveryPhone && memberPhone
+          ? formatCanadianPhoneForApi(memberPhone)
+          : "");
       const payload = {
         userStableId,
         label: customer.addressLine1,
         receiver: formatCustomerFullName(customer),
-        phone: formattedPhone,
+        phone: addressBookPhone,
         addressLine1: customer.addressLine1,
         addressLine2: customer.addressLine2 ?? "",
         city: customer.city,
@@ -2722,7 +2793,9 @@ export default function CheckoutPage() {
     totalCentsForOrder =
       discountedSubtotalForOrder + deliveryFeeCentsForOrder + taxCentsForOrder;
 
-    const formattedCustomerPhone = formatCanadianPhoneForApi(customer.phone);
+    const formattedCustomerPhone = isValidCanadianPhone(customer.phone)
+      ? formatCanadianPhoneForApi(customer.phone)
+      : undefined;
 
     const loyaltyOrderPayload = {
       fulfillmentType: fulfillment,
@@ -3409,7 +3482,23 @@ export default function CheckoutPage() {
                         </button>
                       )}
                     </div>
-                  </div>
+                    </div>
+                    {fulfillment === "delivery" &&
+                    !hasSubmittedDeliveryPhone &&
+                    hasVerifiedMemberDeliveryPhone ? (
+                      <p className="mt-1 text-[11px] text-emerald-700">
+                        {locale === "zh"
+                          ? `未填写新号码时，将使用会员资料中尾号 ${memberPhone?.replace(/\D/g, "").slice(-4)} 的已验证手机号供骑手联系。`
+                          : `If you leave this blank, the courier will use your verified member phone ending in ${memberPhone?.replace(/\D/g, "").slice(-4)}.`}
+                      </p>
+                    ) : fulfillment === "delivery" &&
+                      deliveryPhoneLookupPending ? (
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        {locale === "zh"
+                          ? "正在查询会员资料中的已验证手机号…"
+                          : "Checking your verified member phone…"}
+                      </p>
+                    ) : null}
 
                   {!hasVerifiedEmail &&
                     !hasVerifiedPhone &&

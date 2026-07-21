@@ -188,13 +188,24 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
   ): UberDirectDropoffDetails | null {
     const root = this.asRecord(metadata);
     const customer = this.asRecord(root?.customer);
+    const deliveryDestination = this.asRecord(root?.deliveryDestination);
     if (!customer) return null;
 
-    const addressLine1 = this.asString(customer.addressLine1);
-    const city = this.asString(customer.city);
-    const province = this.asString(customer.province);
-    const postalCode = this.asString(customer.postalCode);
-    const phone = this.asString(customer.phone) ?? order.contactPhone;
+    const addressLine1 =
+      this.asString(deliveryDestination?.addressLine1) ??
+      this.asString(customer.addressLine1);
+    const city =
+      this.asString(deliveryDestination?.city) ?? this.asString(customer.city);
+    const province =
+      this.asString(deliveryDestination?.province) ??
+      this.asString(customer.province);
+    const postalCode =
+      this.asString(deliveryDestination?.postalCode) ??
+      this.asString(customer.postalCode);
+    const phone =
+      this.asString(deliveryDestination?.phone) ??
+      this.asString(customer.phone) ??
+      order.contactPhone;
 
     if (!phone) {
       throw new Error(
@@ -216,11 +227,16 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
         'Customer',
       phone,
       addressLine1,
-      addressLine2: this.asString(customer.addressLine2),
+      addressLine2:
+        this.asString(deliveryDestination?.addressLine2) ??
+        this.asString(customer.addressLine2),
       city,
       province,
       postalCode,
-      country: this.asString(customer.country) ?? 'Canada',
+      country:
+        this.asString(deliveryDestination?.country) ??
+        this.asString(customer.country) ??
+        'Canada',
       instructions: this.asString(customer.notes),
     };
   }

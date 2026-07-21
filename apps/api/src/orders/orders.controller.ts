@@ -82,8 +82,9 @@ class DeliveryDestinationDto {
   @IsString()
   name!: string;
 
+  @IsOptional()
   @IsString()
-  phone!: string;
+  phone?: string | null;
 
   @IsString()
   addressLine1!: string;

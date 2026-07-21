@@ -1,6 +1,7 @@
 import {
   buildCheckoutContactPayload,
   reconcileVerifiedContacts,
+  resolveDeliveryPhoneState,
   selectVerifiedCheckoutContact,
 } from "./contact-verification";
 
@@ -53,6 +54,63 @@ describe("checkout contact verification", () => {
     ).toEqual({
       email: "member@example.com",
       phone: "+14165550100",
+    });
+  });
+});
+
+describe("resolveDeliveryPhoneState", () => {
+  it("客人输入有效新号码时优先使用新号码", () => {
+    expect(
+      resolveDeliveryPhoneState({
+        enteredPhone: "4165550199",
+        memberPhone: "4165550188",
+        memberPhoneVerified: true,
+      }),
+    ).toEqual({
+      hasSubmittedPhone: true,
+      submittedPhoneValid: true,
+      usesVerifiedMemberFallback: false,
+      hasDeliveryPhone: true,
+    });
+  });
+
+  it("客人留空时允许使用会员已验证号码", () => {
+    expect(
+      resolveDeliveryPhoneState({
+        enteredPhone: "",
+        memberPhone: "4165550188",
+        memberPhoneVerified: true,
+      }),
+    ).toEqual({
+      hasSubmittedPhone: false,
+      submittedPhoneValid: false,
+      usesVerifiedMemberFallback: true,
+      hasDeliveryPhone: true,
+    });
+  });
+
+  it("会员号码未验证时不能作为外送兜底", () => {
+    expect(
+      resolveDeliveryPhoneState({
+        enteredPhone: "",
+        memberPhone: "4165550188",
+        memberPhoneVerified: false,
+      }).hasDeliveryPhone,
+    ).toBe(false);
+  });
+
+  it("客人输入无效号码时不静默回退会员旧号码", () => {
+    expect(
+      resolveDeliveryPhoneState({
+        enteredPhone: "12345",
+        memberPhone: "4165550188",
+        memberPhoneVerified: true,
+      }),
+    ).toEqual({
+      hasSubmittedPhone: true,
+      submittedPhoneValid: false,
+      usesVerifiedMemberFallback: false,
+      hasDeliveryPhone: false,
     });
   });
 });
