@@ -431,6 +431,7 @@ describe('OrdersService', () => {
     const dto: CreateOrderInput = {
       channel: 'web',
       fulfillmentType: 'pickup',
+      contactName: 'Test Customer',
       paymentMethod: 'CASH',
       subtotalCents: 1000,
       deliveryType: DeliveryType.PRIORITY,
@@ -485,6 +486,7 @@ describe('OrdersService', () => {
     await service.create({
       channel: 'web',
       fulfillmentType: 'pickup',
+      contactName: 'Guest Customer',
       paymentMethod: 'CASH',
       subtotalCents: 1000,
       contactEmail: '  Guest@Example.COM  ',
@@ -665,6 +667,7 @@ describe('OrdersService', () => {
     const dto: CreateOrderInput = {
       channel: 'web',
       fulfillmentType: 'pickup',
+      contactName: 'Card Customer',
       paymentMethod: 'CARD',
       checkoutIntentId: 'ref-1',
       items: [{ productStableId: 'c1234567890abcdefghijklmn', qty: 1 }],
