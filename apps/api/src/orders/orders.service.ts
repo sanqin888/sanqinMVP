@@ -897,15 +897,50 @@ export class OrdersService {
     if (!orderNumber) return;
 
     const locale = await this.resolveOrderReadyLocale(order);
-    const member =
-      !order.contactEmail && order.userId
-        ? await this.prisma.user.findUnique({
-            where: { id: order.userId },
-            select: { email: true },
-          })
+    const checkoutIntent = await this.prisma.checkoutIntent.findFirst({
+      where: { orderId: order.id },
+      orderBy: { createdAt: 'desc' },
+      select: { metadataJson: true },
+    });
+    const metadata = this.asRecord(checkoutIntent?.metadataJson);
+    const verifiedContacts = this.asRecord(metadata?.verifiedContacts);
+    const verifiedEmail = normalizeEmail(
+      typeof verifiedContacts?.email === 'string'
+        ? verifiedContacts.email
+        : null,
+    );
+    const verifiedPhone =
+      typeof verifiedContacts?.phone === 'string'
+        ? verifiedContacts.phone.trim() || null
         : null;
-    const email = order.contactEmail ?? member?.email ?? null;
-    const phone = order.contactPhone ?? null;
+
+    const member = order.userId
+      ? await this.prisma.user.findUnique({
+          where: { id: order.userId },
+          select: {
+            email: true,
+            emailVerifiedAt: true,
+            phone: true,
+            phoneVerifiedAt: true,
+          },
+        })
+      : null;
+    const memberEmail = member?.emailVerifiedAt
+      ? normalizeEmail(member.email)
+      : null;
+    const memberPhone = member?.phoneVerifiedAt
+      ? member.phone?.trim() || null
+      : null;
+
+    const allowExternalContacts = order.channel === Channel.ubereats;
+    const email =
+      verifiedEmail ??
+      memberEmail ??
+      (allowExternalContacts ? normalizeEmail(order.contactEmail) : null);
+    const phone =
+      verifiedPhone ??
+      memberPhone ??
+      (allowExternalContacts ? order.contactPhone?.trim() || null : null);
 
     if (!email && !phone) {
       this.logger.warn(

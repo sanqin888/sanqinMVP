@@ -243,7 +243,12 @@ describe('OrdersService', () => {
         fulfillmentType: 'pickup',
         items: [],
       });
-    prisma.checkoutIntent.findFirst.mockResolvedValue({ locale: 'en' });
+    prisma.checkoutIntent.findFirst.mockResolvedValue({
+      locale: 'en',
+      metadataJson: {
+        verifiedContacts: { phone: '+14165550000' },
+      },
+    });
 
     await service.updateStatusInternal(
       '11111111-1111-1111-1111-111111111111',
@@ -281,8 +286,21 @@ describe('OrdersService', () => {
         fulfillmentType: 'pickup',
         items: [],
       });
-    prisma.checkoutIntent.findFirst.mockResolvedValue({ locale: 'en' });
-    prisma.user.findUnique.mockResolvedValue({ email: 'member@example.com' });
+    prisma.checkoutIntent.findFirst.mockResolvedValue({
+      locale: 'en',
+      metadataJson: {
+        verifiedContacts: {
+          email: 'checkout@example.com',
+          phone: '+14165550000',
+        },
+      },
+    });
+    prisma.user.findUnique.mockResolvedValue({
+      email: 'member@example.com',
+      emailVerifiedAt: new Date(),
+      phone: null,
+      phoneVerifiedAt: null,
+    });
 
     await service.updateStatusInternal(
       '33333333-3333-3333-3333-333333333333',
@@ -299,7 +317,7 @@ describe('OrdersService', () => {
       locale: 'en',
       userId: 'user-1',
     });
-    expect(prisma.user.findUnique).toHaveBeenCalledTimes(1);
+    expect(prisma.user.findUnique).toHaveBeenCalledTimes(2);
     expect(prisma.user.findUnique).not.toHaveBeenCalledWith(
       expect.objectContaining({ select: { email: true } }),
     );
@@ -325,7 +343,12 @@ describe('OrdersService', () => {
         items: [],
       });
     prisma.checkoutIntent.findFirst.mockResolvedValue({ locale: 'en' });
-    prisma.user.findUnique.mockResolvedValue({ email: 'member@example.com' });
+    prisma.user.findUnique.mockResolvedValue({
+      email: 'member@example.com',
+      emailVerifiedAt: new Date(),
+      phone: null,
+      phoneVerifiedAt: null,
+    });
 
     await service.updateStatusInternal(
       '55555555-5555-5555-5555-555555555555',
