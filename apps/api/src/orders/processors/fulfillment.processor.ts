@@ -61,18 +61,14 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       select: { metadataJson: true },
     });
 
-    const destination = this.extractDropoff(
-      checkoutIntent?.metadataJson ?? null,
-      order,
-    );
-    if (!destination) {
-      this.logger.warn(
-        `[Fulfillment] Skip Uber dispatch, missing dropoff: ${payload.orderId}`,
-      );
-      return;
-    }
-
     try {
+      const destination = this.extractDropoff(
+        checkoutIntent?.metadataJson ?? null,
+        order,
+      );
+      if (!destination) {
+        throw new Error('DELIVERY_DESTINATION_REQUIRED');
+      }
       const response = await this.uberDirect.createDelivery({
         orderRef: order.clientRequestId ?? order.orderStableId,
         pickupCode: order.pickupCode ?? undefined,
@@ -198,9 +194,15 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
     const city = this.asString(customer.city);
     const province = this.asString(customer.province);
     const postalCode = this.asString(customer.postalCode);
-    const phone = this.asString(customer.phone) ?? order.contactPhone ?? '';
+    const phone = this.asString(customer.phone) ?? order.contactPhone;
 
-    if (!addressLine1 || !city || !province || !postalCode || !phone) {
+    if (!phone) {
+      throw new Error(
+        'DELIVERY_PHONE_REQUIRED: Uber Direct dropoff requires a phone',
+      );
+    }
+
+    if (!addressLine1 || !city || !province || !postalCode) {
       return null;
     }
 

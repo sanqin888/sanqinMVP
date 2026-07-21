@@ -245,7 +245,10 @@ const parseDeliveryDestination = (
   };
 };
 
-const parseCustomer = (value: unknown): CheckoutCustomer => {
+const parseCustomer = (
+  value: unknown,
+  fulfillment: CheckoutMetadata['fulfillment'],
+): CheckoutCustomer => {
   if (!isPlainObject(value)) {
     throw new Error('customer is required');
   }
@@ -255,9 +258,6 @@ const parseCustomer = (value: unknown): CheckoutCustomer => {
   const rawPhone = toString(value.phone);
   if (!firstName || !lastName) {
     throw new Error('customer firstName and lastName are required');
-  }
-  if (!email && !rawPhone) {
-    throw new Error('customer email or phone is required');
   }
   if (email && !isEmail(email)) {
     throw new Error('customer email must be a valid email');
@@ -269,6 +269,12 @@ const parseCustomer = (value: unknown): CheckoutCustomer => {
     : normalizedPhone;
   if (rawPhone && canadianPhone?.length !== 10) {
     throw new Error('customer phone must be a valid Canadian phone number');
+  }
+  if (fulfillment === 'pickup' && !email && !canadianPhone) {
+    throw new Error('CONTACT_METHOD_REQUIRED');
+  }
+  if (fulfillment === 'delivery' && !canadianPhone) {
+    throw new Error('DELIVERY_PHONE_REQUIRED');
   }
 
   return {
@@ -294,7 +300,7 @@ export function parseCheckoutMetadata(input: unknown): CheckoutMetadata {
 
   const fulfillment = parseFulfillment(metadata.fulfillment);
   const items = parseItems(metadata.items);
-  const customer = parseCustomer(metadata.customer);
+  const customer = parseCustomer(metadata.customer, fulfillment);
 
   const subtotalCents = toCents(metadata.subtotalCents, 'subtotalCents');
   const taxCents = toCents(metadata.taxCents, 'taxCents');
@@ -385,6 +391,11 @@ const buildDestination = (
   if (meta.fulfillment !== 'delivery') return undefined;
 
   const { customer } = meta;
+  if (!customer.phone) {
+    throw new Error(
+      'DELIVERY_PHONE_REQUIRED: delivery fulfillment requires a phone',
+    );
+  }
   const source = meta.deliveryDestination;
   const addressLine1 = source?.addressLine1 ?? customer.addressLine1;
   const addressLine2 = source?.addressLine2 ?? customer.addressLine2;
@@ -393,13 +404,7 @@ const buildDestination = (
   const postalCode = source?.postalCode ?? customer.postalCode;
   const country = source?.country ?? customer.country;
 
-  const requiredFields = [
-    customer.phone,
-    addressLine1,
-    city,
-    province,
-    postalCode,
-  ];
+  const requiredFields = [addressLine1, city, province, postalCode];
 
   const missingRequired = requiredFields.some((field) => !field);
 
@@ -413,7 +418,7 @@ const buildDestination = (
       ? { addressStableId: source.addressStableId }
       : {}),
     name: formatCustomerName(customer),
-    phone: customer.phone!,
+    phone: customer.phone,
     addressLine1: addressLine1!,
     ...(addressLine2 ? { addressLine2 } : {}),
     city: city!,
