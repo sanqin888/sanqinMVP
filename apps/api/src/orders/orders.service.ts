@@ -1329,9 +1329,7 @@ export class OrdersService {
     if (!normalized) return null;
     const digits = normalized.replace(/\D/g, '');
     const national =
-      digits.length === 11 && digits.startsWith('1')
-        ? digits.slice(1)
-        : digits;
+      digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
     return national.length === 10 ? `+1${national}` : null;
   }
 
@@ -1930,7 +1928,6 @@ export class OrdersService {
     dto: CreateOrderInput,
     idempotencyKey?: string,
   ): Promise<OrderDto> {
-    const contactPolicy = this.resolveContactPolicy(dto);
     if (dto.channel === Channel.web) {
       const paymentMethod = this.resolvePaymentMethod(dto);
       if (paymentMethod === PaymentMethod.CARD) {
@@ -2035,6 +2032,7 @@ export class OrdersService {
     dto: CreateOrderInput,
     idempotencyKey?: string,
   ): Promise<OrderWithItems> {
+    const contactPolicy = this.resolveContactPolicy(dto);
     const paymentMethod = this.resolvePaymentMethod(dto);
     const requiresCheckoutIntentVerification =
       dto.channel === Channel.web && paymentMethod === PaymentMethod.CARD;
