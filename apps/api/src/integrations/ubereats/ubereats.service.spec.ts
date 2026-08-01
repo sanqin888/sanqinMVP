@@ -836,7 +836,7 @@ describe('UberEatsService', () => {
         validation: {
           errors: expect.arrayContaining([
             expect.objectContaining({ code: 'UBER_CHILD_GROUP_MISSING' }),
-          ]),
+          ]) as unknown,
         },
       },
     });
@@ -1230,8 +1230,8 @@ describe('UberEatsService', () => {
         expect.objectContaining({
           code,
           severity: 'ERROR',
-          path: expect.stringMatching(/^\$/),
-          message: expect.any(String),
+          path: expect.stringMatching(/^\$/) as unknown,
+          message: expect.any(String) as unknown,
         }),
       );
       expect(issue).toHaveProperty('sourceStableId');
