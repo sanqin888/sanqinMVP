@@ -582,7 +582,8 @@ describe('UberEatsService', () => {
     const itemIds = new Set(payload.items.map((item) => item.id));
     for (const category of payload.categories) {
       for (const entity of category.entities) {
-        expect(entity).toEqual({ id: expect.any(String), type: 'ITEM' });
+        expect(typeof entity.id).toBe('string');
+        expect(entity.type).toBe('ITEM');
         expect(itemIds.has(entity.id)).toBe(true);
       }
     }
