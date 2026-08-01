@@ -27,9 +27,23 @@ jest.mock('@prisma/client', () => ({
 }));
 
 import { createHash, createHmac } from 'crypto';
-import { UberEatsService } from './ubereats.service';
+import { toUberServiceAvailability, UberEatsService } from './ubereats.service';
+
+const openSchedulePrisma = {
+  businessConfig: {
+    findUnique: jest.fn().mockResolvedValue({ timezone: 'America/Toronto' }),
+  },
+  businessHour: {
+    findMany: jest
+      .fn()
+      .mockResolvedValue([
+        { weekday: 1, openMinutes: 540, closeMinutes: 1080, isClosed: false },
+      ]),
+  },
+};
 
 const createNestedMenuPrisma = (templates: unknown[]) => ({
+  ...openSchedulePrisma,
   menuCategory: {
     findMany: jest.fn().mockResolvedValue([
       {
@@ -68,6 +82,72 @@ const createNestedMenuPrisma = (templates: unknown[]) => ({
   },
   uberMenuPublishVersion: { create: jest.fn() },
   opsEvent: { create: jest.fn().mockResolvedValue(null) },
+});
+
+describe('toUberServiceAvailability', () => {
+  const convert = (hours: Parameters<typeof toUberServiceAvailability>[0]) =>
+    toUberServiceAvailability(hours, 'America/Toronto');
+
+  it('保留门店时区下的普通本地时段', () => {
+    expect(
+      convert([
+        { weekday: 1, openMinutes: 540, closeMinutes: 1080, isClosed: false },
+      ]),
+    ).toEqual([
+      {
+        day_of_week: 'MONDAY',
+        time_periods: [{ start_time: '09:00', end_time: '18:00' }],
+      },
+    ]);
+  });
+
+  it('休息日和空配置不产生可售时段', () => {
+    expect(
+      convert([
+        { weekday: 2, openMinutes: null, closeMinutes: null, isClosed: true },
+      ]),
+    ).toEqual([]);
+    expect(convert([])).toEqual([]);
+  });
+
+  it('跨午夜时段拆分至相邻本地日期', () => {
+    expect(
+      convert([
+        { weekday: 6, openMinutes: 1320, closeMinutes: 120, isClosed: false },
+      ]),
+    ).toEqual([
+      {
+        day_of_week: 'SUNDAY',
+        time_periods: [{ start_time: '00:00', end_time: '02:00' }],
+      },
+      {
+        day_of_week: 'SATURDAY',
+        time_periods: [{ start_time: '22:00', end_time: '23:59' }],
+      },
+    ]);
+  });
+
+  it('同一天保留多个营业区间，并明确表达全天营业', () => {
+    expect(
+      convert([
+        { weekday: 3, openMinutes: 480, closeMinutes: 720, isClosed: false },
+        { weekday: 3, openMinutes: 1020, closeMinutes: 1260, isClosed: false },
+        { weekday: 4, openMinutes: 0, closeMinutes: 0, isClosed: false },
+      ]),
+    ).toEqual([
+      {
+        day_of_week: 'WEDNESDAY',
+        time_periods: [
+          { start_time: '08:00', end_time: '12:00' },
+          { start_time: '17:00', end_time: '21:00' },
+        ],
+      },
+      {
+        day_of_week: 'THURSDAY',
+        time_periods: [{ start_time: '00:00', end_time: '23:59' }],
+      },
+    ]);
+  });
 });
 
 describe('UberEatsService', () => {
@@ -495,6 +575,7 @@ describe('UberEatsService', () => {
 
   it('发布菜单 dry-run 会返回差异统计并记录事件', async () => {
     const prisma = {
+      ...openSchedulePrisma,
       menuCategory: {
         findMany: jest.fn().mockResolvedValue([
           {
@@ -574,11 +655,19 @@ describe('UberEatsService', () => {
     expect(result.summary.totalItems).toBe(2);
     expect(result.summary.changedItems).toBe(1);
     const payload = result.payload as {
+      menus: Array<{ service_availability: unknown }>;
       categories: Array<{
         entities: Array<{ id: string; type: 'ITEM' }>;
       }>;
       items: Array<{ id: string }>;
     };
+    expect(payload.menus[0].service_availability).toEqual([
+      {
+        day_of_week: 'MONDAY',
+        time_periods: [{ start_time: '09:00', end_time: '18:00' }],
+      },
+    ]);
+    expect(result.serviceAvailabilityTimezone).toBe('America/Toronto');
     const itemIds = new Set(payload.items.map((item) => item.id));
     for (const category of payload.categories) {
       for (const entity of category.entities) {
@@ -1098,6 +1187,12 @@ describe('UberEatsService', () => {
           id: 'menu',
           title: { translations: { en_us: 'Main' } },
           category_ids: ['cat'],
+          service_availability: [
+            {
+              day_of_week: 'MONDAY',
+              time_periods: [{ start_time: '09:00', end_time: '18:00' }],
+            },
+          ],
         },
       ],
       categories: [
@@ -1129,12 +1224,6 @@ describe('UberEatsService', () => {
           title: { translations: { en_us: 'Size' } },
           quantity_info: { quantity: { min_permitted: 1, max_permitted: 1 } },
           modifier_options: [{ id: 'option', type: 'ITEM' }],
-        },
-      ],
-      service_availability: [
-        {
-          day_of_week: 'MONDAY',
-          time_periods: [{ start_time: '09:00', end_time: '18:00' }],
         },
       ],
     });
@@ -1216,7 +1305,7 @@ describe('UberEatsService', () => {
       [
         'UBER_SERVICE_AVAILABILITY_INVALID',
         (p: ReturnType<typeof validPayload>) => {
-          p.service_availability[0].time_periods[0].end_time = '08:00';
+          p.menus[0].service_availability[0].time_periods[0].end_time = '08:00';
         },
       ],
     ])('%s 约束失败时返回可定位的结构化错误', (code, mutate) => {
