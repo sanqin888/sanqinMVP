@@ -168,7 +168,8 @@ type UberMenuDraftResponse = {
     treeNodes?: DraftNode[];
     optionMappings: Array<{ sourceOptionChoiceStableId: string; compositeOptionItemId: string; sourcePath: string[] }>;
   };
-  mappingWarnings: string[];
+  mappingWarnings: UberValidationIssue[];
+  validation: { warnings: UberValidationIssue[]; errors: UberValidationIssue[] };
   mappingErrors: Array<{ code: string; sourceOptionChoiceStableId: string; message: string }>;
   publishSummary: {
     totalItems: number;
@@ -185,6 +186,8 @@ type UberMenuDraftResponse = {
     changedItems: number;
   } | null;
 };
+
+type UberValidationIssue = { code: string; severity: 'ERROR' | 'WARNING'; path: string; sourceStableId: string | null; message: string };
 
 type UberMenuDraftDiffResponse = {
   storeId: string;
@@ -686,9 +689,10 @@ export default function UberEatsAdminPage() {
   ), [handleSourceNodeChecked, isNodeExpanded, selectedNodeId, selectedSourceNodeIds, toggleNodeExpand]);
 
   const selectedNodeWarnings = useMemo(
-    () => menuDraft?.mappingWarnings.filter((warning) => selectedNode?.name ? warning.includes(selectedNode.name) : true) ?? menuDraft?.mappingWarnings ?? [],
-    [menuDraft?.mappingWarnings, selectedNode?.name],
+    () => menuDraft?.mappingWarnings.filter((warning) => selectedNode ? warning.sourceStableId === selectedNode.id || warning.path.includes(selectedNode.id) : true) ?? [],
+    [menuDraft?.mappingWarnings, selectedNode],
   );
+  const blockingValidationIssues = menuDraft?.validation.errors ?? [];
 
   const selectedNodeEdgeInfo = useMemo(
     () => (menuDraft?.uberDraft.edges ?? []).filter((edge) => edge.from === selectedNode?.id || edge.to === selectedNode?.id),
@@ -905,7 +909,7 @@ export default function UberEatsAdminPage() {
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => void runAction('reload-draft', () => loadStoreMenuDraft(selectedStoreId), '菜单草稿已刷新', false)}>刷新草稿</button>
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => void runAction('save-node', saveSelectedNode, '当前节点已保存', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>保存当前节点</button>
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => void runAction('publish-dry', () => apiFetch('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: true, ...publishFilterPayload }) }).then(() => {}), 'Dry Run Publish 成功', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>Dry Run</button>
-                <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => void runAction('publish-formal', () => apiFetch('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: false, ...publishFilterPayload }) }).then(() => {}), '正式 Publish 成功', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>正式 Publish</button>
+                <button type="button" disabled={blockingValidationIssues.length > 0} title={blockingValidationIssues.length ? '请先修复阻断错误' : undefined} className="rounded border px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void runAction('publish-formal', () => apiFetch('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: false, ...publishFilterPayload }) }).then(() => {}), '正式 Publish 成功', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>正式 Publish</button>
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => void runAction('refresh-diff', () => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }), '草稿与 Diff 已刷新', false)}>刷新 Diff</button>
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => setStoreMenuTab('publish')}>查看本次 Diff</button>
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => setStoreMenuTab('overview')}>查看上次发布版本</button>
@@ -954,7 +958,7 @@ export default function UberEatsAdminPage() {
                     <div>
                       <p className="text-slate-500">warning 列表：</p>
                       <ul className="mt-1 space-y-1">
-                        {selectedNodeWarnings.map((warning) => <li key={warning} className="rounded border border-amber-200 bg-amber-50 p-1 text-xs">{warning}</li>)}
+                        {selectedNodeWarnings.map((warning) => <li key={`${warning.code}-${warning.path}`} className="rounded border border-amber-200 bg-amber-50 p-1 text-xs"><strong>{warning.code}</strong> · {warning.path}<br />{warning.message}</li>)}
                         {selectedNodeWarnings.length === 0 ? <li className="text-xs text-slate-400">暂无 warning</li> : null}
                       </ul>
                     </div>
@@ -1032,6 +1036,10 @@ export default function UberEatsAdminPage() {
               <div className="grid gap-4 xl:grid-cols-2">
                 <div className="rounded-xl border bg-white p-4">
                   <h4 className="font-semibold">发布前 Diff 摘要</h4>
+                  <div className="mt-3 space-y-2">
+                    {blockingValidationIssues.map((issue) => <div key={`${issue.code}-${issue.path}`} className="rounded border border-red-200 bg-red-50 p-2 text-xs text-red-800"><p><strong>{issue.code}</strong> · 节点 {issue.sourceStableId ?? '全局'}</p><code className="break-all">{issue.path}</code><p>{issue.message}</p>{issue.sourceStableId ? <button type="button" className="mt-1 underline" onClick={() => setSelectedNodeId(issue.sourceStableId)}>跳转到对应菜品或选项组</button> : null}</div>)}
+                    {blockingValidationIssues.length === 0 ? <p className="rounded bg-emerald-50 p-2 text-xs text-emerald-700">当前无阻断错误，可执行 Dry Run 与正式 Publish。</p> : null}
+                  </div>
                   <ul className="mt-3 space-y-2 text-sm">
                     <li className="rounded border p-2">总 items：{menuDraft?.publishSummary.totalItems ?? 0}</li>
                     <li className="rounded border p-2">变更 items：{menuDraft?.publishSummary.changedItems ?? 0}</li>
@@ -1051,7 +1059,7 @@ export default function UberEatsAdminPage() {
                   </ul>
                   <div className="mt-3 flex gap-2">
                     <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={() => void runAction('publish-dry-inline', () => apiFetch('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: true, ...publishFilterPayload }) }).then(() => {}), 'Dry Run Publish 成功', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>Dry Run Publish</button>
-                    <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={() => void runAction('publish-formal-inline', () => apiFetch('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: false, ...publishFilterPayload }) }).then(() => {}), '正式 Publish 成功', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>正式 Publish</button>
+                    <button type="button" disabled={blockingValidationIssues.length > 0} className="rounded border px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void runAction('publish-formal-inline', () => apiFetch('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: false, ...publishFilterPayload }) }).then(() => {}), '正式 Publish 成功', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>正式 Publish</button>
                   </div>
                 </div>
                 <div className="rounded-xl border bg-white p-4">
