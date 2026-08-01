@@ -273,6 +273,7 @@ export class AdminMenuService {
             isAvailable: it.isAvailable,
             visibility: it.visibility,
             isVisibleOnMainMenu: it.isVisibleOnMainMenu,
+            publishToUberEats: it.publishToUberEats,
             tempUnavailableUntil: toIso(it.tempUnavailableUntil),
             sortOrder: it.sortOrder,
             imageUrl: it.imageUrl ?? null,
@@ -385,6 +386,7 @@ export class AdminMenuService {
     isAvailable?: boolean;
     visibility?: 'PUBLIC' | 'HIDDEN';
     isVisibleOnMainMenu?: boolean;
+    publishToUberEats?: boolean;
     tempUnavailableUntil?: string | null;
   }) {
     const categoryStableId = (body.categoryStableId ?? '').trim();
@@ -433,6 +435,10 @@ export class AdminMenuService {
           typeof body.isVisibleOnMainMenu === 'boolean'
             ? body.isVisibleOnMainMenu
             : true,
+        publishToUberEats:
+          typeof body.publishToUberEats === 'boolean'
+            ? body.publishToUberEats
+            : false,
         tempUnavailableUntil: parseIsoOrNull(body.tempUnavailableUntil),
 
         deletedAt: null,
@@ -461,6 +467,7 @@ export class AdminMenuService {
       isAvailable?: boolean;
       visibility?: 'PUBLIC' | 'HIDDEN';
       isVisibleOnMainMenu?: boolean;
+      publishToUberEats?: boolean;
       tempUnavailableUntil?: string | null;
     },
   ) {
@@ -521,6 +528,10 @@ export class AdminMenuService {
           body.isVisibleOnMainMenu === undefined
             ? undefined
             : body.isVisibleOnMainMenu,
+        publishToUberEats:
+          body.publishToUberEats === undefined
+            ? undefined
+            : body.publishToUberEats,
         tempUnavailableUntil:
           body.tempUnavailableUntil === undefined
             ? undefined

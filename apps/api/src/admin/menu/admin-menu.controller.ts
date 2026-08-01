@@ -122,6 +122,7 @@ export class AdminMenuController {
       isAvailable?: boolean;
       visibility?: 'PUBLIC' | 'HIDDEN';
       isVisibleOnMainMenu?: boolean;
+      publishToUberEats?: boolean;
       tempUnavailableUntil?: string | null;
     },
   ) {
@@ -149,6 +150,7 @@ export class AdminMenuController {
       isAvailable?: boolean;
       visibility?: 'PUBLIC' | 'HIDDEN';
       isVisibleOnMainMenu?: boolean;
+      publishToUberEats?: boolean;
       tempUnavailableUntil?: string | null;
     },
   ) {

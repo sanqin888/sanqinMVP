@@ -65,6 +65,7 @@ type CreateItemPayload = {
   isAvailable?: boolean;
   visibility?: "PUBLIC" | "HIDDEN";
   isVisibleOnMainMenu?: boolean;
+  publishToUberEats?: boolean;
 };
 
 type CategoryEditDraft = {
@@ -164,6 +165,7 @@ export default function AdminMenuPage() {
         nameZh: string;
         basePriceCents: string;
         sortOrder: string;
+        publishToUberEats: boolean;
       }
     >
   >({});
@@ -362,6 +364,7 @@ export default function AdminMenuPage() {
         nameZh: '',
         basePriceCents: '0',
         sortOrder: '0',
+        publishToUberEats: false,
       }
     );
   }
@@ -387,6 +390,7 @@ export default function AdminMenuPage() {
       isAvailable: true,
       visibility: "PUBLIC",
       isVisibleOnMainMenu: true,
+      publishToUberEats: draft.publishToUberEats,
     };
 
     try {
@@ -420,6 +424,7 @@ export default function AdminMenuPage() {
         isAvailable: item.isAvailable,
         visibility: item.visibility,
         isVisibleOnMainMenu: item.isVisibleOnMainMenu,
+        publishToUberEats: item.publishToUberEats,
         sortOrder: item.sortOrder,
         imageUrl: item.imageUrl ?? undefined,
         ingredientsEn: item.ingredientsEn ?? undefined,
@@ -896,6 +901,30 @@ export default function AdminMenuPage() {
                   />
                 </label>
 
+                <label className="flex items-center gap-2 md:col-span-6">
+                  <input
+                    type="checkbox"
+                    checked={getNewItemDraft(cat.stableId).publishToUberEats}
+                    onChange={(e) =>
+                      setNewItemDraft((prev) => ({
+                        ...prev,
+                        [cat.stableId]: {
+                          ...getNewItemDraft(cat.stableId),
+                          publishToUberEats: e.target.checked,
+                        },
+                      }))
+                    }
+                  />
+                  <span className="text-sm">
+                    {isZh ? '发布到 Uber Eats' : 'Publish to Uber Eats'}
+                  </span>
+                  <span className="text-xs text-slate-500">
+                    {isZh
+                      ? '只有明确开启的公开菜品才会进入 Uber Eats 菜单。'
+                      : 'Only public items explicitly enabled here will be included in the Uber Eats menu.'}
+                  </span>
+                </label>
+
                 <div className="flex items-end">
                   <button
                     type="button"
@@ -1067,6 +1096,31 @@ export default function AdminMenuPage() {
                               }
                             />
                             <span className="text-sm">{isZh ? '可售' : 'Available'}</span>
+                          </label>
+
+                          <label className="space-y-1 md:col-span-6">
+                            <span className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={item.publishToUberEats}
+                                onChange={(e) =>
+                                  updateItemField(
+                                    cat.stableId,
+                                    item.stableId,
+                                    'publishToUberEats',
+                                    e.target.checked,
+                                  )
+                                }
+                              />
+                              <span className="text-sm">
+                                {isZh ? '发布到 Uber Eats' : 'Publish to Uber Eats'}
+                              </span>
+                            </span>
+                            <span className="block text-xs text-slate-500">
+                              {isZh
+                                ? '只有明确开启的公开菜品才会进入 Uber Eats 菜单。'
+                                : 'Only public items explicitly enabled here will be included in the Uber Eats menu.'}
+                            </span>
                           </label>
 
                           <label className="space-y-1 md:col-span-6">
