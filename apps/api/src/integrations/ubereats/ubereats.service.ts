@@ -2525,7 +2525,11 @@ export class UberEatsService {
         },
       }),
       this.prisma.menuItem.findMany({
-        where: { deletedAt: null },
+        where: {
+          deletedAt: null,
+          visibility: 'PUBLIC',
+          publishToUberEats: true,
+        },
         select: {
           id: true,
           stableId: true,

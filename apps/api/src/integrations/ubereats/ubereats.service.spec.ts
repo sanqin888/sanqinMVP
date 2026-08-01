@@ -532,6 +532,15 @@ describe('UberEatsService', () => {
     expect(result.dryRun).toBe(true);
     expect(result.summary.totalItems).toBe(2);
     expect(result.summary.changedItems).toBe(1);
+    expect(prisma.menuItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          deletedAt: null,
+          visibility: 'PUBLIC',
+          publishToUberEats: true,
+        },
+      }),
+    );
   });
 
   it('生成自动对账报表时会汇总订单与失败事件', async () => {

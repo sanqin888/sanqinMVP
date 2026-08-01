@@ -111,6 +111,7 @@ export type MenuItemDtoBase = LocalizedName &
   };
 
 export type MenuItemWithBindingsDto = MenuItemDtoBase & {
+  publishToUberEats: boolean;
   optionGroups: MenuOptionGroupBindingDto[];
 };
 
