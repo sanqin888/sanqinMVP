@@ -131,11 +131,22 @@ type UberMenuUploadPayload = {
 type UberMenuGraphValidationIssue = {
   code: string;
   message: string;
+  severity?: 'ERROR' | 'WARNING';
+  path?: string;
+  sourceStableId?: string;
   itemId?: string;
   itemStableId?: string;
   groupId?: string;
   groupStableId?: string;
   optionItemId?: string;
+};
+
+export type UberMenuPayloadValidationIssue = {
+  code: string;
+  severity: 'ERROR' | 'WARNING';
+  path: string;
+  sourceStableId: string | null;
+  message: string;
 };
 
 type SyncAvailabilityInput = UberStoreScopedInput & {
@@ -1029,6 +1040,9 @@ export class UberEatsService {
       storeMapping?.uberStoreId ?? `draft:${normalizedStoreId}`;
     const graph = await this.buildUberMenuGraph(normalizedStoreId, uberStoreId);
     const normalized = this.normalizeAndValidateUberMenuGraph(graph);
+    const payloadValidation = this.validateUberMenuPayload(
+      this.buildUberUploadMenuPayload(normalized.graph),
+    );
     const summary = this.summarizePublishGraph(normalized.graph);
     const lastPublishedVersion =
       await this.prisma.uberMenuPublishVersion.findFirst({
@@ -1188,12 +1202,22 @@ export class UberEatsService {
       mappingErrors: graph.mappingErrors,
       validation: {
         warnings: normalized.warnings,
-        errors: normalized.errors,
+        errors: [...normalized.errors, ...payloadValidation],
       },
       mappingWarnings: [
+        ...payloadValidation,
         ...(storeMapping?.uberStoreId
           ? []
-          : ['当前门店尚未完成 Uber store provision，返回的是本地 draft 图。']),
+          : [
+              {
+                code: 'UBER_STORE_NOT_PROVISIONED',
+                severity: 'WARNING' as const,
+                path: '$',
+                sourceStableId: null,
+                message:
+                  '当前门店尚未完成 Uber store provision，返回的是本地 draft 图。',
+              },
+            ]),
       ],
       publishSummary: summary,
       dirty: summary.changedItems > 0,
@@ -1599,7 +1623,17 @@ export class UberEatsService {
     );
     const normalized = this.normalizeAndValidateUberMenuGraph(graph);
     const payload = this.buildUberUploadMenuPayload(normalized.graph);
+    const payloadValidation = this.validateUberMenuPayload(payload);
+    const validationErrors = [...normalized.errors, ...payloadValidation];
     const summary = this.summarizePublishGraph(normalized.graph);
+
+    if (validationErrors.length > 0) {
+      throw new BadRequestException({
+        message: 'Uber 菜单发布 payload 校验失败，已阻止请求。',
+        mappingErrors: graph.mappingErrors,
+        validation: { warnings: normalized.warnings, errors: validationErrors },
+      });
+    }
 
     if (input.dryRun) {
       await this.captureEvent('ubereats_menu_publish_dry_run', {
@@ -1617,20 +1651,9 @@ export class UberEatsService {
         mappingErrors: graph.mappingErrors,
         validation: {
           warnings: normalized.warnings,
-          errors: normalized.errors,
+          errors: validationErrors,
         },
       };
-    }
-
-    if (normalized.errors.length > 0) {
-      throw new BadRequestException({
-        message: 'Uber 菜单发布图校验失败，已阻止发布。',
-        mappingErrors: graph.mappingErrors,
-        validation: {
-          warnings: normalized.warnings,
-          errors: normalized.errors,
-        },
-      });
     }
 
     const version = await this.createMenuPublishVersionStarted(
@@ -3406,6 +3429,205 @@ export class UberEatsService {
     };
   }
 
+  /** Validate the final wire payload. Both preview and upload must pass here. */
+  validateUberMenuPayload(
+    payload: UberMenuUploadPayload,
+  ): UberMenuPayloadValidationIssue[] {
+    const issues: UberMenuPayloadValidationIssue[] = [];
+    const error = (
+      code: string,
+      path: string,
+      sourceStableId: string | null,
+      message: string,
+    ) =>
+      issues.push({ code, severity: 'ERROR', path, sourceStableId, message });
+    const collections: Array<
+      readonly [
+        string,
+        Array<{
+          id: string;
+          title: { translations: { en_us: string } };
+        }>,
+      ]
+    > = [
+      ['menus', payload.menus],
+      ['categories', payload.categories],
+      ['items', payload.items],
+      ['modifier_groups', payload.modifier_groups],
+    ] as const;
+    const ids = new Map<string, string>();
+    for (const [name, nodes] of collections) {
+      nodes.forEach((node, index) => {
+        const path = `$.${name}[${index}]`;
+        if (!node.id || ids.has(node.id)) {
+          error(
+            'UBER_ID_NOT_GLOBALLY_UNIQUE',
+            `${path}.id`,
+            node.id || null,
+            node.id ? `ID“${node.id}”在顶层实体中重复。` : '实体 ID 不能为空。',
+          );
+        } else ids.set(node.id, path);
+        const title = node.title?.translations?.en_us;
+        if (typeof title !== 'string' || !title.trim() || title.length > 300)
+          error(
+            'UBER_TITLE_INVALID',
+            `${path}.title.translations.en_us`,
+            node.id || null,
+            '标题不能为空且长度不得超过 300 个字符。',
+          );
+      });
+    }
+    const categoryIds = new Set(payload.categories.map((x) => x.id));
+    const itemIds = new Set(payload.items.map((x) => x.id));
+    const groupIds = new Set(payload.modifier_groups.map((x) => x.id));
+    payload.menus.forEach((menu, mi) => {
+      if (!menu.category_ids.length)
+        error(
+          'UBER_MENU_CATEGORY_EMPTY',
+          `$.menus[${mi}].category_ids`,
+          menu.id,
+          '菜单至少需要一个分类。',
+        );
+      menu.category_ids.forEach((id, i) => {
+        if (!categoryIds.has(id))
+          error(
+            'UBER_REFERENCE_UNRESOLVED',
+            `$.menus[${mi}].category_ids[${i}]`,
+            menu.id,
+            `引用的分类“${id}”不存在。`,
+          );
+      });
+    });
+    payload.categories.forEach((category, ci) => {
+      if (!category.entities.length)
+        error(
+          'UBER_CATEGORY_ITEM_EMPTY',
+          `$.categories[${ci}].entities`,
+          category.id,
+          '分类至少需要一个菜品。',
+        );
+      category.entities.forEach((ref, ri) => {
+        const path = `$.categories[${ci}].entities[${ri}]`;
+        if (ref.type !== 'ITEM')
+          error(
+            'UBER_CATEGORY_ENTITY_TYPE_INVALID',
+            `${path}.type`,
+            category.id,
+            '分类实体类型必须为 ITEM。',
+          );
+        if (!itemIds.has(ref.id))
+          error(
+            'UBER_REFERENCE_UNRESOLVED',
+            `${path}.id`,
+            category.id,
+            `引用的菜品“${ref.id}”不存在。`,
+          );
+      });
+    });
+    payload.items.forEach((item, ii) => {
+      if (
+        !Number.isInteger(item.price_info?.price) ||
+        item.price_info.price < 0
+      )
+        error(
+          'UBER_PRICE_INVALID',
+          `$.items[${ii}].price_info.price`,
+          item.id,
+          '价格必须为非负整数（分）。',
+        );
+      item.modifier_group_ids.forEach((id, gi) => {
+        if (!groupIds.has(id))
+          error(
+            'UBER_REFERENCE_UNRESOLVED',
+            `$.items[${ii}].modifier_group_ids[${gi}]`,
+            item.id,
+            `引用的选项组“${id}”不存在。`,
+          );
+      });
+    });
+    const optionIds = new Set(
+      payload.modifier_groups.flatMap((g) =>
+        g.modifier_options.map((o) => o.id),
+      ),
+    );
+    payload.modifier_groups.forEach((group, gi) => {
+      const min = group.quantity_info?.quantity?.min_permitted;
+      const max = group.quantity_info?.quantity?.max_permitted;
+      if (
+        !Number.isInteger(min) ||
+        !Number.isInteger(max) ||
+        min < 0 ||
+        min > max ||
+        max > group.modifier_options.length
+      )
+        error(
+          'UBER_GROUP_QUANTITY_INVALID',
+          `$.modifier_groups[${gi}].quantity_info.quantity`,
+          group.id,
+          '组选取数量必须为整数，且满足 0 ≤ min ≤ max ≤ 可选项数量。',
+        );
+      if (min > 0 && group.modifier_options.length === 0)
+        error(
+          'UBER_REQUIRED_GROUP_EMPTY',
+          `$.modifier_groups[${gi}].modifier_options`,
+          group.id,
+          '必选组选项不能为空。',
+        );
+      group.modifier_options.forEach((ref, oi) => {
+        const path = `$.modifier_groups[${gi}].modifier_options[${oi}]`;
+        if (ref.type !== 'ITEM')
+          error(
+            'UBER_MODIFIER_OPTION_TYPE_INVALID',
+            `${path}.type`,
+            group.id,
+            'Modifier option 类型必须为 ITEM。',
+          );
+        if (!itemIds.has(ref.id))
+          error(
+            'UBER_REFERENCE_UNRESOLVED',
+            `${path}.id`,
+            group.id,
+            `引用的选项菜品“${ref.id}”不存在。`,
+          );
+      });
+    });
+    payload.items.forEach((item, ii) => {
+      if (optionIds.has(item.id) && item.modifier_group_ids.length)
+        error(
+          'UBER_OPTION_ITEM_HAS_MODIFIER_GROUP',
+          `$.items[${ii}].modifier_group_ids`,
+          item.id,
+          'Option item 不得再引用 modifier group。',
+        );
+    });
+    const availability = (
+      payload as unknown as {
+        service_availability?: Array<{
+          day_of_week?: string;
+          time_periods?: Array<{ start_time?: string; end_time?: string }>;
+        }>;
+      }
+    ).service_availability;
+    availability?.forEach((day, di) =>
+      day.time_periods?.forEach((period, pi) => {
+        const time = /^([01]\d|2[0-3]):[0-5]\d$/;
+        if (
+          !day.day_of_week ||
+          !time.test(period.start_time ?? '') ||
+          !time.test(period.end_time ?? '') ||
+          period.start_time! >= period.end_time!
+        )
+          error(
+            'UBER_SERVICE_AVAILABILITY_INVALID',
+            `$.service_availability[${di}].time_periods[${pi}]`,
+            null,
+            '营业时段必须包含星期，并使用有效且起始早于结束的 HH:mm 时间。',
+          );
+      }),
+    );
+    return issues;
+  }
+
   private buildUberUploadMenuPayload(graph: {
     menuId: string;
     categories: Array<{
@@ -3431,15 +3653,6 @@ export class UberEatsService {
       optionItemIds: string[];
     }>;
   }): UberMenuUploadPayload {
-    const nestedOption = graph.items.find(
-      (item) =>
-        item.sourceType === 'OPTION_ITEM' && item.modifierGroupIds.length > 0,
-    );
-    if (nestedOption) {
-      throw new BadRequestException(
-        `Uber 发布图约束违反：OPTION_ITEM ${nestedOption.id} 不得引用 modifier group。`,
-      );
-    }
     return {
       menus: [
         {

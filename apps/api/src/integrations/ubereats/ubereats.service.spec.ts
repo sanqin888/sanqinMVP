@@ -749,6 +749,7 @@ describe('UberEatsService', () => {
     ];
     const prisma = createNestedMenuPrisma(templates);
     const service = new UberEatsService(prisma as never, createAuthService());
+    const uberApiSpy = jest.spyOn(service as never, 'callUberApi');
 
     await expect(
       service.publishUberMenu({ storeId: 's1', dryRun: false }),
@@ -762,6 +763,7 @@ describe('UberEatsService', () => {
       },
     });
     expect(prisma.uberMenuPublishVersion.create).not.toHaveBeenCalled();
+    expect(uberApiSpy).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -823,17 +825,21 @@ describe('UberEatsService', () => {
             .slice(0, 24)}`,
         ];
 
-    const result = await service.publishUberMenu({
-      storeId: 's1',
-      dryRun: true,
-      excludedGroupIds,
+    await expect(
+      service.publishUberMenu({
+        storeId: 's1',
+        dryRun: true,
+        excludedGroupIds,
+      }),
+    ).rejects.toMatchObject({
+      response: {
+        validation: {
+          errors: expect.arrayContaining([
+            expect.objectContaining({ code: 'UBER_CHILD_GROUP_MISSING' }),
+          ]),
+        },
+      },
     });
-
-    expect(result.validation.errors).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: 'UBER_CHILD_GROUP_MISSING' }),
-      ]),
-    );
   });
 
   it('归一化会删除空可选组和孤立模板，但阻止空必选组', () => {
@@ -1082,6 +1088,153 @@ describe('UberEatsService', () => {
     ).resolves.toMatchObject({
       ok: true,
       priority: 'MEDIUM',
+    });
+  });
+
+  describe('validateUberMenuPayload', () => {
+    const validPayload = () => ({
+      menus: [
+        {
+          id: 'menu',
+          title: { translations: { en_us: 'Main' } },
+          category_ids: ['cat'],
+        },
+      ],
+      categories: [
+        {
+          id: 'cat',
+          title: { translations: { en_us: 'Food' } },
+          entities: [{ id: 'dish', type: 'ITEM' }],
+        },
+      ],
+      items: [
+        {
+          id: 'dish',
+          title: { translations: { en_us: 'Dish' } },
+          price_info: { price: 100 },
+          modifier_group_ids: ['group'],
+          suspension_info: { suspended_until: null },
+        },
+        {
+          id: 'option',
+          title: { translations: { en_us: 'Option' } },
+          price_info: { price: 0 },
+          modifier_group_ids: [],
+          suspension_info: { suspended_until: null },
+        },
+      ],
+      modifier_groups: [
+        {
+          id: 'group',
+          title: { translations: { en_us: 'Size' } },
+          quantity_info: { quantity: { min_permitted: 1, max_permitted: 1 } },
+          modifier_options: [{ id: 'option', type: 'ITEM' }],
+        },
+      ],
+      service_availability: [
+        {
+          day_of_week: 'MONDAY',
+          time_periods: [{ start_time: '09:00', end_time: '18:00' }],
+        },
+      ],
+    });
+
+    it('完整合法 payload 通过校验', () => {
+      const service = new UberEatsService({} as never, createAuthService());
+      expect(service.validateUberMenuPayload(validPayload() as never)).toEqual(
+        [],
+      );
+    });
+
+    it.each([
+      [
+        'UBER_ID_NOT_GLOBALLY_UNIQUE',
+        (p: ReturnType<typeof validPayload>) => {
+          p.categories[0].id = 'menu';
+        },
+      ],
+      [
+        'UBER_REFERENCE_UNRESOLVED',
+        (p: ReturnType<typeof validPayload>) => {
+          p.menus[0].category_ids = ['missing'];
+        },
+      ],
+      [
+        'UBER_CATEGORY_ENTITY_TYPE_INVALID',
+        (p: ReturnType<typeof validPayload>) => {
+          p.categories[0].entities[0].type = 'MODIFIER_GROUP';
+        },
+      ],
+      [
+        'UBER_MODIFIER_OPTION_TYPE_INVALID',
+        (p: ReturnType<typeof validPayload>) => {
+          p.modifier_groups[0].modifier_options[0].type = 'GROUP';
+        },
+      ],
+      [
+        'UBER_OPTION_ITEM_HAS_MODIFIER_GROUP',
+        (p: ReturnType<typeof validPayload>) => {
+          p.items[1].modifier_group_ids = ['group'];
+        },
+      ],
+      [
+        'UBER_TITLE_INVALID',
+        (p: ReturnType<typeof validPayload>) => {
+          p.items[0].title.translations.en_us = ' ';
+        },
+      ],
+      [
+        'UBER_PRICE_INVALID',
+        (p: ReturnType<typeof validPayload>) => {
+          p.items[0].price_info.price = -1;
+        },
+      ],
+      [
+        'UBER_GROUP_QUANTITY_INVALID',
+        (p: ReturnType<typeof validPayload>) => {
+          p.modifier_groups[0].quantity_info.quantity.max_permitted = 2;
+        },
+      ],
+      [
+        'UBER_MENU_CATEGORY_EMPTY',
+        (p: ReturnType<typeof validPayload>) => {
+          p.menus[0].category_ids = [];
+        },
+      ],
+      [
+        'UBER_CATEGORY_ITEM_EMPTY',
+        (p: ReturnType<typeof validPayload>) => {
+          p.categories[0].entities = [];
+        },
+      ],
+      [
+        'UBER_REQUIRED_GROUP_EMPTY',
+        (p: ReturnType<typeof validPayload>) => {
+          p.modifier_groups[0].modifier_options = [];
+        },
+      ],
+      [
+        'UBER_SERVICE_AVAILABILITY_INVALID',
+        (p: ReturnType<typeof validPayload>) => {
+          p.service_availability[0].time_periods[0].end_time = '08:00';
+        },
+      ],
+    ])('%s 约束失败时返回可定位的结构化错误', (code, mutate) => {
+      const payload = validPayload();
+      mutate(payload);
+      const service = new UberEatsService({} as never, createAuthService());
+      const issue = service
+        .validateUberMenuPayload(payload as never)
+        .find((entry) => entry.code === code);
+      expect(issue).toEqual(
+        expect.objectContaining({
+          code,
+          severity: 'ERROR',
+          path: expect.stringMatching(/^\$/),
+          message: expect.any(String),
+        }),
+      );
+      expect(issue).toHaveProperty('sourceStableId');
     });
   });
 });
