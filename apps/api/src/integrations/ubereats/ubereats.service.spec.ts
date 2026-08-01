@@ -31,18 +31,16 @@ import { UberEatsService } from './ubereats.service';
 
 const createNestedMenuPrisma = (templates: unknown[]) => ({
   menuCategory: {
-    findMany: jest
-      .fn()
-      .mockResolvedValue([
-        {
-          id: 1,
-          stableId: 'cat_1',
-          nameEn: 'Category',
-          nameZh: '',
-          sortOrder: 1,
-          isActive: true,
-        },
-      ]),
+    findMany: jest.fn().mockResolvedValue([
+      {
+        id: 1,
+        stableId: 'cat_1',
+        nameEn: 'Category',
+        nameZh: '',
+        sortOrder: 1,
+        isActive: true,
+      },
+    ]),
   },
   menuItem: {
     findMany: jest.fn().mockResolvedValue([
@@ -741,13 +739,13 @@ describe('UberEatsService', () => {
     await expect(
       service.publishUberMenu({ storeId: 's1', dryRun: false }),
     ).rejects.toMatchObject({
-      response: expect.objectContaining({
-        mappingErrors: expect.arrayContaining([
-          expect.objectContaining({
+      response: {
+        mappingErrors: [
+          {
             code: 'UBER_OPTIONAL_CHILD_GROUP_UNSUPPORTED',
-          }),
-        ]),
-      }),
+          },
+        ],
+      },
     });
     expect(prisma.uberMenuPublishVersion.create).not.toHaveBeenCalled();
   });
