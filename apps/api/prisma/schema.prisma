@@ -827,6 +827,7 @@ model MenuItem {
   isAvailable          Boolean               @default(true)
   visibility           MenuItemVisibility    @default(PUBLIC)
   isVisibleOnMainMenu  Boolean               @default(true)
+  publishToUberEats    Boolean               @default(false)
   tempUnavailableUntil DateTime?
   sortOrder            Int                   @default(0)
   imageUrl             String?
