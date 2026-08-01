@@ -26,7 +26,7 @@ jest.mock('@prisma/client', () => ({
   PaymentMethod: { UBEREATS: 'UBEREATS' },
 }));
 
-import { createHmac } from 'crypto';
+import { createHash, createHmac } from 'crypto';
 import { UberEatsService } from './ubereats.service';
 
 const createNestedMenuPrisma = (templates: unknown[]) => ({
@@ -762,6 +762,225 @@ describe('UberEatsService', () => {
       },
     });
     expect(prisma.uberMenuPublishVersion.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['被排除', false],
+    ['停用', true],
+  ])('%s必选子组会产生阻断性校验错误', async (_label, inactive) => {
+    const templates = [
+      {
+        stableId: 'meal',
+        nameEn: 'Meal',
+        nameZh: '',
+        defaultMinSelect: 1,
+        defaultMaxSelect: 1,
+        isAvailable: true,
+        sortOrder: 1,
+        options: [
+          {
+            stableId: 'combo',
+            nameEn: 'Combo',
+            nameZh: '',
+            priceDeltaCents: 0,
+            isAvailable: true,
+            sortOrder: 1,
+            childLinks: [
+              { childOption: { templateGroup: { stableId: 'drink' } } },
+            ],
+          },
+        ],
+      },
+      {
+        stableId: 'drink',
+        nameEn: 'Drink',
+        nameZh: '',
+        defaultMinSelect: 1,
+        defaultMaxSelect: 1,
+        isAvailable: !inactive,
+        sortOrder: 2,
+        options: [
+          {
+            stableId: 'cola',
+            nameEn: 'Cola',
+            nameZh: '',
+            priceDeltaCents: 0,
+            isAvailable: true,
+            sortOrder: 1,
+            childLinks: [],
+          },
+        ],
+      },
+    ];
+    const prisma = createNestedMenuPrisma(templates);
+    const service = new UberEatsService(prisma as never, createAuthService());
+    const excludedGroupIds = inactive
+      ? []
+      : [
+          `sanq:${createHash('sha1')
+            .update('group:s1:drink')
+            .digest('hex')
+            .slice(0, 24)}`,
+        ];
+
+    const result = await service.publishUberMenu({
+      storeId: 's1',
+      dryRun: true,
+      excludedGroupIds,
+    });
+
+    expect(result.validation.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'UBER_CHILD_GROUP_MISSING' }),
+      ]),
+    );
+  });
+
+  it('归一化会删除空可选组和孤立模板，但阻止空必选组', () => {
+    const service = new UberEatsService({} as never, createAuthService());
+    const normalized = service.normalizeAndValidateUberMenuGraph({
+      menuId: 'menu',
+      categories: [{ id: 'cat', entities: ['dish'] }],
+      items: [
+        {
+          id: 'dish',
+          sourceType: 'MENU_ITEM',
+          sourceStableId: 'dish_stable',
+          isAvailable: true,
+          modifierGroupIds: ['optional_empty', 'required_empty'],
+        },
+      ],
+      groups: [
+        {
+          id: 'optional_empty',
+          sourceStableId: 'optional_stable',
+          minSelect: 0,
+          maxSelect: 0,
+          optionItemIds: [],
+        },
+        {
+          id: 'required_empty',
+          sourceStableId: 'required_stable',
+          minSelect: 1,
+          maxSelect: 1,
+          optionItemIds: [],
+        },
+        {
+          id: 'orphan',
+          sourceStableId: 'orphan_stable',
+          minSelect: 0,
+          maxSelect: 1,
+          optionItemIds: ['orphan_option'],
+        },
+      ],
+      mappingErrors: [],
+    });
+
+    expect(normalized.graph.groups).toEqual([]);
+    expect(normalized.graph.items[0].modifierGroupIds).toEqual([]);
+    expect(normalized.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'UBER_EMPTY_GROUP_REMOVED' }),
+      ]),
+    );
+    expect(normalized.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'UBER_REQUIRED_GROUP_EMPTY',
+          itemStableId: 'dish_stable',
+          groupStableId: 'required_stable',
+        }),
+      ]),
+    );
+  });
+
+  it('剩余可选项少于 minSelect 时报错，不会篡改上限', () => {
+    const service = new UberEatsService({} as never, createAuthService());
+    const normalized = service.normalizeAndValidateUberMenuGraph({
+      menuId: 'menu',
+      categories: [{ id: 'cat', entities: ['dish'] }],
+      items: [
+        {
+          id: 'dish',
+          sourceType: 'MENU_ITEM',
+          sourceStableId: 'dish_stable',
+          isAvailable: true,
+          modifierGroupIds: ['group'],
+        },
+        {
+          id: 'available',
+          sourceType: 'OPTION_ITEM',
+          sourceStableId: 'a',
+          isAvailable: true,
+          modifierGroupIds: [],
+        },
+        {
+          id: 'disabled',
+          sourceType: 'OPTION_ITEM',
+          sourceStableId: 'b',
+          isAvailable: false,
+          modifierGroupIds: [],
+        },
+      ],
+      groups: [
+        {
+          id: 'group',
+          sourceStableId: 'group_stable',
+          minSelect: 2,
+          maxSelect: 2,
+          optionItemIds: ['available', 'disabled'],
+        },
+      ],
+      mappingErrors: [],
+    });
+
+    expect(normalized.graph.groups[0]).toMatchObject({
+      minSelect: 2,
+      maxSelect: 2,
+      optionItemIds: ['available'],
+    });
+    expect(normalized.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'UBER_GROUP_QUANTITY_INVALID' }),
+      ]),
+    );
+  });
+
+  it('悬空 category、group 和 option ID 都会被报告', () => {
+    const service = new UberEatsService({} as never, createAuthService());
+    const normalized = service.normalizeAndValidateUberMenuGraph({
+      menuId: 'menu',
+      categories: [{ id: 'cat', entities: ['dish', 'missing_dish'] }],
+      items: [
+        {
+          id: 'dish',
+          sourceType: 'MENU_ITEM',
+          sourceStableId: 'dish_stable',
+          isAvailable: true,
+          modifierGroupIds: ['group', 'missing_group'],
+        },
+      ],
+      groups: [
+        {
+          id: 'group',
+          sourceStableId: 'group_stable',
+          minSelect: 0,
+          maxSelect: 1,
+          optionItemIds: ['missing_option'],
+        },
+      ],
+      mappingErrors: [],
+    });
+
+    expect(
+      normalized.errors.map((error: { code: string }) => error.code),
+    ).toEqual(
+      expect.arrayContaining([
+        'UBER_CATEGORY_ITEM_MISSING',
+        'UBER_ITEM_GROUP_MISSING',
+        'UBER_GROUP_OPTION_MISSING',
+      ]),
+    );
   });
 
   it('生成自动对账报表时会汇总订单与失败事件', async () => {
