@@ -104,6 +104,7 @@ type UberMenuUploadPayload = {
     id: string;
     title: { translations: { en_us: string } };
     category_ids: string[];
+    service_availability: UberServiceAvailability[];
   }>;
   categories: Array<{
     id: string;
@@ -127,6 +128,96 @@ type UberMenuUploadPayload = {
     modifier_options: UberModifierOptionRef[];
   }>;
 };
+
+export type LocalBusinessHour = {
+  weekday: number;
+  openMinutes: number | null;
+  closeMinutes: number | null;
+  isClosed: boolean;
+};
+
+export type UberServiceAvailability = {
+  day_of_week: string;
+  time_periods: Array<{ start_time: string; end_time: string }>;
+};
+
+const UBER_WEEKDAYS = [
+  'SUNDAY',
+  'MONDAY',
+  'TUESDAY',
+  'WEDNESDAY',
+  'THURSDAY',
+  'FRIDAY',
+  'SATURDAY',
+] as const;
+
+/** Convert recurring store-local hours without applying the server/UTC clock. */
+export function toUberServiceAvailability(
+  hours: LocalBusinessHour[],
+  timezone: string,
+): UberServiceAvailability[] {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format();
+  } catch {
+    throw new BadRequestException(`门店时区无效：${timezone}`);
+  }
+
+  const periods = Array.from(
+    { length: 7 },
+    () =>
+      [] as Array<{
+        start_time: string;
+        end_time: string;
+      }>,
+  );
+  const format = (minutes: number) =>
+    `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+
+  for (const hour of hours) {
+    if (hour.isClosed) continue;
+    if (
+      !Number.isInteger(hour.weekday) ||
+      hour.weekday < 0 ||
+      hour.weekday > 6 ||
+      hour.openMinutes === null ||
+      hour.closeMinutes === null ||
+      !Number.isInteger(hour.openMinutes) ||
+      !Number.isInteger(hour.closeMinutes) ||
+      hour.openMinutes < 0 ||
+      hour.openMinutes > 1439 ||
+      hour.closeMinutes < 0 ||
+      hour.closeMinutes > 1440
+    )
+      continue;
+
+    const start = hour.openMinutes;
+    const end = hour.closeMinutes;
+    // Equal endpoints explicitly mean all day; Uber accepts 00:00–23:59.
+    if (start === end || (start === 0 && end === 1440)) {
+      periods[hour.weekday].push({ start_time: '00:00', end_time: '23:59' });
+    } else if (start < end) {
+      periods[hour.weekday].push({
+        start_time: format(start),
+        end_time: end === 1440 ? '23:59' : format(end),
+      });
+    } else {
+      periods[hour.weekday].push({
+        start_time: format(start),
+        end_time: '23:59',
+      });
+      periods[(hour.weekday + 1) % 7].push({
+        start_time: '00:00',
+        end_time: format(end),
+      });
+    }
+  }
+
+  return periods.flatMap((time_periods, weekday) =>
+    time_periods.length
+      ? [{ day_of_week: UBER_WEEKDAYS[weekday], time_periods }]
+      : [],
+  );
+}
 
 type UberMenuGraphValidationIssue = {
   code: string;
@@ -1040,9 +1131,12 @@ export class UberEatsService {
       storeMapping?.uberStoreId ?? `draft:${normalizedStoreId}`;
     const graph = await this.buildUberMenuGraph(normalizedStoreId, uberStoreId);
     const normalized = this.normalizeAndValidateUberMenuGraph(graph);
-    const payloadValidation = this.validateUberMenuPayload(
-      this.buildUberUploadMenuPayload(normalized.graph),
+    const schedule = await this.getUberMenuSchedule();
+    const payload = this.buildUberUploadMenuPayload(
+      normalized.graph,
+      schedule.serviceAvailability,
     );
+    const payloadValidation = this.validateUberMenuPayload(payload);
     const summary = this.summarizePublishGraph(normalized.graph);
     const lastPublishedVersion =
       await this.prisma.uberMenuPublishVersion.findFirst({
@@ -1220,6 +1314,8 @@ export class UberEatsService {
             ]),
       ],
       publishSummary: summary,
+      serviceAvailability: schedule.serviceAvailability,
+      serviceAvailabilityTimezone: schedule.timezone,
       dirty: summary.changedItems > 0,
       lastPublishedVersion,
     };
@@ -1622,7 +1718,11 @@ export class UberEatsService {
       },
     );
     const normalized = this.normalizeAndValidateUberMenuGraph(graph);
-    const payload = this.buildUberUploadMenuPayload(normalized.graph);
+    const schedule = await this.getUberMenuSchedule();
+    const payload = this.buildUberUploadMenuPayload(
+      normalized.graph,
+      schedule.serviceAvailability,
+    );
     const payloadValidation = this.validateUberMenuPayload(payload);
     const validationErrors = [...normalized.errors, ...payloadValidation];
     const summary = this.summarizePublishGraph(normalized.graph);
@@ -1647,6 +1747,8 @@ export class UberEatsService {
         storeId: normalizedStoreId,
         uberStoreId,
         summary,
+        serviceAvailability: schedule.serviceAvailability,
+        serviceAvailabilityTimezone: schedule.timezone,
         payload,
         mappingErrors: graph.mappingErrors,
         validation: {
@@ -3600,14 +3702,19 @@ export class UberEatsService {
           'Option item 不得再引用 modifier group。',
         );
     });
-    const availability = (
-      payload as unknown as {
-        service_availability?: Array<{
-          day_of_week?: string;
-          time_periods?: Array<{ start_time?: string; end_time?: string }>;
-        }>;
-      }
-    ).service_availability;
+    const availability = payload.menus.flatMap(
+      (menu) => menu.service_availability ?? [],
+    );
+    if (
+      availability.length === 0 ||
+      availability.every((day) => day.time_periods.length === 0)
+    )
+      error(
+        'UBER_SERVICE_AVAILABILITY_EMPTY',
+        '$.menus[0].service_availability',
+        null,
+        '发布前必须至少配置一个合法可售营业时段。',
+      );
     availability?.forEach((day, di) =>
       day.time_periods?.forEach((period, pi) => {
         const time = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -3619,7 +3726,7 @@ export class UberEatsService {
         )
           error(
             'UBER_SERVICE_AVAILABILITY_INVALID',
-            `$.service_availability[${di}].time_periods[${pi}]`,
+            `$.menus[0].service_availability[${di}].time_periods[${pi}]`,
             null,
             '营业时段必须包含星期，并使用有效且起始早于结束的 HH:mm 时间。',
           );
@@ -3628,31 +3735,34 @@ export class UberEatsService {
     return issues;
   }
 
-  private buildUberUploadMenuPayload(graph: {
-    menuId: string;
-    categories: Array<{
-      id: string;
-      title: string;
-      entities: string[];
-    }>;
-    items: Array<{
-      id: string;
-      sourceType: 'MENU_ITEM' | 'OPTION_ITEM';
-      sourceStableId: string;
-      title: string;
-      description: string | null;
-      priceCents: number;
-      isAvailable: boolean;
-      modifierGroupIds: string[];
-    }>;
-    groups: Array<{
-      id: string;
-      title: string;
-      minSelect: number;
-      maxSelect: number;
-      optionItemIds: string[];
-    }>;
-  }): UberMenuUploadPayload {
+  private buildUberUploadMenuPayload(
+    graph: {
+      menuId: string;
+      categories: Array<{
+        id: string;
+        title: string;
+        entities: string[];
+      }>;
+      items: Array<{
+        id: string;
+        sourceType: 'MENU_ITEM' | 'OPTION_ITEM';
+        sourceStableId: string;
+        title: string;
+        description: string | null;
+        priceCents: number;
+        isAvailable: boolean;
+        modifierGroupIds: string[];
+      }>;
+      groups: Array<{
+        id: string;
+        title: string;
+        minSelect: number;
+        maxSelect: number;
+        optionItemIds: string[];
+      }>;
+    },
+    serviceAvailability: UberServiceAvailability[],
+  ): UberMenuUploadPayload {
     return {
       menus: [
         {
@@ -3663,6 +3773,7 @@ export class UberEatsService {
             },
           },
           category_ids: graph.categories.map((category) => category.id),
+          service_availability: serviceAvailability,
         },
       ],
       categories: graph.categories.map((category) => ({
@@ -3712,6 +3823,30 @@ export class UberEatsService {
         })),
       })),
     };
+  }
+
+  private async getUberMenuSchedule(): Promise<{
+    timezone: string;
+    serviceAvailability: UberServiceAvailability[];
+  }> {
+    const [config, hours] = await Promise.all([
+      this.prisma.businessConfig.findUnique({
+        where: { id: 1 },
+        select: { timezone: true },
+      }),
+      this.prisma.businessHour.findMany({ orderBy: { weekday: 'asc' } }),
+    ]);
+    const timezone = config?.timezone?.trim();
+    if (!timezone) {
+      throw new BadRequestException('发布 Uber 菜单前必须配置门店时区。');
+    }
+    const serviceAvailability = toUberServiceAvailability(hours, timezone);
+    if (serviceAvailability.length === 0) {
+      throw new BadRequestException(
+        '发布 Uber 菜单前必须至少配置一个合法可售营业时段；全天营业请明确配置 00:00–24:00。',
+      );
+    }
+    return { timezone, serviceAvailability };
   }
 
   private buildUberDraftEdges(graph: {
