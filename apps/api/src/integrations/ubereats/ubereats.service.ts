@@ -89,6 +89,45 @@ type PublishMenuInput = UberStoreScopedInput & {
   excludedOptionChoiceStableIds?: string[];
 };
 
+type UberCategoryEntityRef = {
+  id: string;
+  type: 'ITEM';
+};
+
+type UberModifierOptionRef = {
+  id: string;
+  type: 'ITEM';
+};
+
+type UberMenuUploadPayload = {
+  menus: Array<{
+    id: string;
+    title: { translations: { en_us: string } };
+    category_ids: string[];
+  }>;
+  categories: Array<{
+    id: string;
+    title: { translations: { en_us: string } };
+    entities: UberCategoryEntityRef[];
+  }>;
+  items: Array<{
+    id: string;
+    title: { translations: { en_us: string } };
+    description?: { translations: { en_us: string } };
+    price_info: { price: number };
+    modifier_group_ids: string[];
+    suspension_info: { suspended_until: string | null };
+  }>;
+  modifier_groups: Array<{
+    id: string;
+    title: { translations: { en_us: string } };
+    quantity_info: {
+      quantity: { min_permitted: number; max_permitted: number };
+    };
+    modifier_options: UberModifierOptionRef[];
+  }>;
+};
+
 type SyncAvailabilityInput = UberStoreScopedInput & {
   menuItemStableId: string;
   isAvailable: boolean;
@@ -3187,7 +3226,7 @@ export class UberEatsService {
       maxSelect: number;
       optionItemIds: string[];
     }>;
-  }): Record<string, unknown> {
+  }): UberMenuUploadPayload {
     const nestedOption = graph.items.find(
       (item) =>
         item.sourceType === 'OPTION_ITEM' && item.modifierGroupIds.length > 0,
@@ -3212,7 +3251,7 @@ export class UberEatsService {
       categories: graph.categories.map((category) => ({
         id: category.id,
         title: { translations: { en_us: category.title } },
-        entities: category.entities,
+        entities: category.entities.map((id) => ({ id, type: 'ITEM' })),
       })),
       items: graph.items.map((item) => ({
         id: item.id,
@@ -3385,7 +3424,9 @@ export class UberEatsService {
         : [];
       if (!categoryId) continue;
       for (const entity of entities) {
-        const itemId = this.readString(entity);
+        const entityRef = this.asObject(entity);
+        const itemId =
+          this.readString(entityRef?.id) ?? this.readString(entity);
         if (!itemId) continue;
         edgeKeys.add(`CATEGORY_ITEM:${categoryId}->${itemId}`);
       }
@@ -3449,7 +3490,7 @@ export class UberEatsService {
 
   private async uploadUberMenu(
     uberStoreId: string,
-    payload: Record<string, unknown>,
+    payload: UberMenuUploadPayload,
   ): Promise<Record<string, unknown>> {
     const connection = await this.resolveMerchantConnection();
     const rawJson = JSON.stringify(payload);
@@ -3473,7 +3514,7 @@ export class UberEatsService {
     storeId: string,
     uberStoreId: string,
     summary: { totalItems: number; changedItems: number },
-    payload: Record<string, unknown>,
+    payload: UberMenuUploadPayload,
   ) {
     const checksum = createHash('sha256')
       .update(JSON.stringify(payload))
