@@ -228,6 +228,7 @@ type CreateOpsTicketInput = UberStoreScopedInput & {
 
 @Injectable()
 export class UberEatsService {
+  private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
   private readonly logger = new AppLogger(UberEatsService.name);
   private readonly uberApiBaseUrl =
     process.env.UBER_EATS_API_BASE_URL?.trim() || 'https://api.uber.com';
@@ -992,92 +993,117 @@ export class UberEatsService {
         },
       });
 
-    const groupMap = new Map(graph.groups.map((group) => [group.id, group]));
-    const itemMap = new Map(graph.items.map((item) => [item.id, item]));
-    const uberDraftCategories = graph.categories.map((category) => ({
-      id: category.id,
-      name: category.title,
-      items: category.entities
-        .map((itemId) => itemMap.get(itemId))
-        .filter((item): item is NonNullable<typeof item> => Boolean(item))
-        .filter((item) => item.sourceType === 'MENU_ITEM')
-        .map((item) => ({
-          id: item.id,
-          sourceMenuItemStableId: item.sourceStableId,
-          displayName: item.title,
-          displayDescription: item.description,
-          priceCents: item.priceCents,
-          isAvailable: item.isAvailable,
-          groups: item.modifierGroupIds
-            .map((groupId) => {
-              const group = groupMap.get(groupId);
-              if (!group) return null;
-              return {
-                id: group.id,
-                name: group.title,
-                minSelect: group.minSelect,
-                maxSelect: group.maxSelect,
-                options: group.optionItemIds
-                  .map((optionItemId) => itemMap.get(optionItemId))
-                  .filter((option): option is NonNullable<typeof option> =>
-                    Boolean(option),
-                  )
-                  .map((option) => ({
-                    id: option.id,
-                    sourceOptionChoiceStableId: option.sourceStableId,
-                    displayName: option.title,
-                    priceDeltaCents: option.priceCents,
-                    isAvailable: option.isAvailable,
-                    childGroups: option.modifierGroupIds
-                      .map((childGroupId) => {
-                        const childGroup = groupMap.get(childGroupId);
-                        return childGroup
-                          ? {
-                              id: childGroup.id,
-                              name: childGroup.title,
-                              minSelect: childGroup.minSelect,
-                              maxSelect: childGroup.maxSelect,
-                            }
-                          : null;
-                      })
-                      .filter(
-                        (
-                          childGroup,
-                        ): childGroup is {
-                          id: string;
-                          name: string;
-                          minSelect: number;
-                          maxSelect: number;
-                        } => Boolean(childGroup),
-                      ),
-                  })),
-              };
-            })
-            .filter(
-              (
-                group,
-              ): group is {
-                id: string;
-                name: string;
-                minSelect: number;
-                maxSelect: number;
-                options: Array<{
+    const buildDraftCategories = (
+      groups: Array<{
+        id: string;
+        title: string;
+        minSelect: number;
+        maxSelect: number;
+        optionItemIds: string[];
+      }>,
+      items: Array<{
+        id: string;
+        sourceType: 'MENU_ITEM' | 'OPTION_ITEM';
+        sourceStableId: string;
+        title: string;
+        description: string | null;
+        priceCents: number;
+        isAvailable: boolean;
+        modifierGroupIds: string[];
+      }>,
+    ) => {
+      const groupMap = new Map(groups.map((group) => [group.id, group]));
+      const itemMap = new Map(items.map((item) => [item.id, item]));
+      return graph.categories.map((category) => ({
+        id: category.id,
+        name: category.title,
+        items: category.entities
+          .map((itemId) => itemMap.get(itemId))
+          .filter((item): item is NonNullable<typeof item> => Boolean(item))
+          .filter((item) => item.sourceType === 'MENU_ITEM')
+          .map((item) => ({
+            id: item.id,
+            sourceMenuItemStableId: item.sourceStableId,
+            displayName: item.title,
+            displayDescription: item.description,
+            priceCents: item.priceCents,
+            isAvailable: item.isAvailable,
+            groups: item.modifierGroupIds
+              .map((groupId) => {
+                const group = groupMap.get(groupId);
+                if (!group) return null;
+                return {
+                  id: group.id,
+                  name: group.title,
+                  minSelect: group.minSelect,
+                  maxSelect: group.maxSelect,
+                  options: group.optionItemIds
+                    .map((optionItemId) => itemMap.get(optionItemId))
+                    .filter((option): option is NonNullable<typeof option> =>
+                      Boolean(option),
+                    )
+                    .map((option) => ({
+                      id: option.id,
+                      sourceOptionChoiceStableId: option.sourceStableId,
+                      displayName: option.title,
+                      priceDeltaCents: option.priceCents,
+                      isAvailable: option.isAvailable,
+                      childGroups: option.modifierGroupIds
+                        .map((childGroupId) => {
+                          const childGroup = groupMap.get(childGroupId);
+                          return childGroup
+                            ? {
+                                id: childGroup.id,
+                                name: childGroup.title,
+                                minSelect: childGroup.minSelect,
+                                maxSelect: childGroup.maxSelect,
+                              }
+                            : null;
+                        })
+                        .filter(
+                          (
+                            childGroup,
+                          ): childGroup is {
+                            id: string;
+                            name: string;
+                            minSelect: number;
+                            maxSelect: number;
+                          } => Boolean(childGroup),
+                        ),
+                    })),
+                };
+              })
+              .filter(
+                (
+                  group,
+                ): group is {
                   id: string;
-                  sourceOptionChoiceStableId: string;
-                  displayName: string;
-                  priceDeltaCents: number;
-                  isAvailable: boolean;
-                  childGroups: Array<{
+                  name: string;
+                  minSelect: number;
+                  maxSelect: number;
+                  options: Array<{
                     id: string;
-                    name: string;
-                    minSelect: number;
-                    maxSelect: number;
+                    sourceOptionChoiceStableId: string;
+                    displayName: string;
+                    priceDeltaCents: number;
+                    isAvailable: boolean;
+                    childGroups: Array<{
+                      id: string;
+                      name: string;
+                      minSelect: number;
+                      maxSelect: number;
+                    }>;
                   }>;
-                }>;
-              } => Boolean(group),
-            ),
-        })),
-    }));
+                } => Boolean(group),
+              ),
+          })),
+      }));
+    };
+    const uberDraftCategories = buildDraftCategories(graph.groups, graph.items);
+    const sourceDraftCategories = buildDraftCategories(
+      graph.sourceGroups,
+      graph.sourceItems,
+    );
     const uberDraftTreeNodes =
       this.buildUberDraftTreeNodes(uberDraftCategories);
 
@@ -1085,12 +1111,14 @@ export class UberEatsService {
       storeId: normalizedStoreId,
       sourceMenu: {
         categories: graph.categories.length,
-        items: graph.items.filter((item) => item.sourceType === 'MENU_ITEM')
-          .length,
-        optionItems: graph.items.filter(
+        items: graph.sourceItems.filter(
+          (item) => item.sourceType === 'MENU_ITEM',
+        ).length,
+        optionItems: graph.sourceItems.filter(
           (item) => item.sourceType === 'OPTION_ITEM',
         ).length,
-        groups: graph.groups.length,
+        groups: graph.sourceGroups.length,
+        tree: { categories: sourceDraftCategories },
       },
       uberDraft: {
         menuId: graph.menuId,
@@ -1102,7 +1130,9 @@ export class UberEatsService {
           categories: uberDraftCategories,
         },
         treeNodes: uberDraftTreeNodes,
+        optionMappings: graph.optionMappings,
       },
+      mappingErrors: graph.mappingErrors,
       mappingWarnings: [
         ...(storeMapping?.uberStoreId
           ? []
@@ -1526,7 +1556,16 @@ export class UberEatsService {
         uberStoreId,
         summary,
         payload,
+        mappingErrors: graph.mappingErrors,
       };
+    }
+
+    if (graph.mappingErrors.length > 0) {
+      throw new BadRequestException({
+        message:
+          '菜单包含无法无损转换的嵌套选项，已阻止 Uber 发布。请排除对应菜品，或配置 Uber 专用的平面选项组。',
+        mappingErrors: graph.mappingErrors,
+      });
     }
 
     const version = await this.createMenuPublishVersionStarted(
@@ -2881,12 +2920,247 @@ export class UberEatsService {
       )
       .sort((a, b) => a.sortOrder - b.sortOrder);
 
+    const sourceGroups = Array.from(groupDraftMap.values()).map((group) => ({
+      ...group,
+      optionItemIds: [...group.optionItemIds],
+    }));
+    const sourceOptionItems = Array.from(optionItemDraftMap.values()).map(
+      (item) => ({ ...item, modifierGroupIds: [...item.modifierGroupIds] }),
+    );
+    const flattened = this.flattenNestedModifiersForUber({
+      storeId,
+      groups: sourceGroups,
+      optionItems: sourceOptionItems,
+    });
+
     return {
       menuId: this.buildStableUberNodeId('menu', storeId, uberStoreId),
       categories: categoryDrafts,
-      items: [...itemDrafts, ...optionItemDraftMap.values()],
-      groups: Array.from(groupDraftMap.values()),
+      items: [...itemDrafts, ...flattened.optionItems],
+      groups: flattened.groups,
+      sourceItems: [...itemDrafts, ...sourceOptionItems],
+      sourceGroups,
+      optionMappings: flattened.optionMappings,
+      mappingErrors: flattened.mappingErrors,
     };
+  }
+
+  /**
+   * Uber Eats modifier options cannot own modifier groups. Convert the internal
+   * nested graph into Uber's flat graph without mutating the source graph.
+   */
+  private flattenNestedModifiersForUber(input: {
+    storeId: string;
+    groups: Array<{
+      id: string;
+      sourceStableId: string;
+      title: string;
+      minSelect: number;
+      maxSelect: number;
+      isAvailable: boolean;
+      optionItemIds: string[];
+    }>;
+    optionItems: Array<{
+      id: string;
+      sourceType: 'OPTION_ITEM';
+      sourceStableId: string;
+      title: string;
+      description: string | null;
+      basePriceCents: number;
+      priceCents: number;
+      isAvailable: boolean;
+      modifierGroupIds: string[];
+      hasDelta: boolean;
+    }>;
+  }) {
+    const groupById = new Map(input.groups.map((group) => [group.id, group]));
+    const optionById = new Map(
+      input.optionItems.map((option) => [option.id, option]),
+    );
+    const outputOptions = new Map(
+      input.optionItems
+        .filter((option) => option.modifierGroupIds.length === 0)
+        .map((option) => [option.id, { ...option, modifierGroupIds: [] }]),
+    );
+    const optionMappings: Array<{
+      sourceOptionChoiceStableId: string;
+      compositeOptionItemId: string;
+      sourcePath: string[];
+    }> = [];
+    const mappingErrors: Array<{
+      code: string;
+      sourceOptionChoiceStableId: string;
+      message: string;
+    }> = [];
+
+    const groups = input.groups.map((group) => {
+      const optionItemIds: string[] = [];
+      for (const optionId of group.optionItemIds) {
+        const parent = optionById.get(optionId);
+        if (!parent) continue;
+        if (parent.modifierGroupIds.length === 0) {
+          optionItemIds.push(parent.id);
+          continue;
+        }
+
+        const childGroups = parent.modifierGroupIds
+          .map((groupId) => groupById.get(groupId))
+          .filter((child): child is NonNullable<typeof child> =>
+            Boolean(child),
+          );
+        const invalidReason = this.getUberFlatteningInvalidReason(
+          parent.sourceStableId,
+          childGroups,
+          optionById,
+        );
+        if (invalidReason) {
+          mappingErrors.push(invalidReason);
+          continue;
+        }
+
+        const selectionsByGroup = childGroups.map((childGroup) =>
+          this.buildRequiredChildSelections(childGroup, optionById),
+        );
+        const combinations = selectionsByGroup.reduce<string[][]>(
+          (acc, selections) =>
+            acc.flatMap((prefix) =>
+              selections.map((selection) => [...prefix, ...selection]),
+            ),
+          [[]],
+        );
+        if (
+          combinations.length > UberEatsService.UBER_MODIFIER_COMBINATION_LIMIT
+        ) {
+          mappingErrors.push({
+            code: 'UBER_MODIFIER_COMBINATION_LIMIT_EXCEEDED',
+            sourceOptionChoiceStableId: parent.sourceStableId,
+            message: `选项 ${parent.title} 展开后产生 ${combinations.length} 个组合，超过上限 ${UberEatsService.UBER_MODIFIER_COMBINATION_LIMIT}。`,
+          });
+          continue;
+        }
+
+        for (const selection of combinations) {
+          const children = selection
+            .map((id) => optionById.get(id))
+            .filter((child): child is NonNullable<typeof child> =>
+              Boolean(child),
+            );
+          const sourcePath = [
+            parent.sourceStableId,
+            ...children.map((child) => child.sourceStableId),
+          ];
+          const compositeId = this.buildStableUberNodeId(
+            'item',
+            input.storeId,
+            `composite:${sourcePath.join('>')}`,
+          );
+          outputOptions.set(compositeId, {
+            ...parent,
+            id: compositeId,
+            sourceStableId: parent.sourceStableId,
+            title: [parent.title, ...children.map((child) => child.title)].join(
+              ' / ',
+            ),
+            basePriceCents:
+              parent.basePriceCents +
+              children.reduce((sum, child) => sum + child.basePriceCents, 0),
+            priceCents:
+              parent.priceCents +
+              children.reduce((sum, child) => sum + child.priceCents, 0),
+            isAvailable:
+              parent.isAvailable &&
+              children.every((child) => child.isAvailable),
+            modifierGroupIds: [],
+            hasDelta:
+              parent.hasDelta || children.some((child) => child.hasDelta),
+          });
+          optionItemIds.push(compositeId);
+          optionMappings.push({
+            sourceOptionChoiceStableId: parent.sourceStableId,
+            compositeOptionItemId: compositeId,
+            sourcePath,
+          });
+        }
+      }
+      return { ...group, optionItemIds };
+    });
+
+    return {
+      groups,
+      optionItems: Array.from(outputOptions.values()),
+      optionMappings,
+      mappingErrors,
+    };
+  }
+
+  private getUberFlatteningInvalidReason(
+    sourceOptionChoiceStableId: string,
+    childGroups: Array<{
+      title: string;
+      minSelect: number;
+      maxSelect: number;
+      optionItemIds: string[];
+    }>,
+    optionById: Map<string, { modifierGroupIds: string[] }>,
+  ) {
+    const fail = (code: string, message: string) => ({
+      code,
+      sourceOptionChoiceStableId,
+      message,
+    });
+    if (childGroups.length === 0) {
+      return fail('UBER_CHILD_GROUP_MISSING', '子选项组不存在或已被排除。');
+    }
+    if (childGroups.some((group) => group.minSelect === 0)) {
+      return fail(
+        'UBER_OPTIONAL_CHILD_GROUP_UNSUPPORTED',
+        '可选子组无法无损展开为 Uber 平面选项。',
+      );
+    }
+    if (
+      childGroups.some((group) =>
+        group.optionItemIds.some(
+          (optionId) =>
+            (optionById.get(optionId)?.modifierGroupIds.length ?? 0) > 0,
+        ),
+      )
+    ) {
+      return fail(
+        'UBER_MULTI_LEVEL_NESTING_UNSUPPORTED',
+        '多级嵌套选项无法无损展开为 Uber 平面选项。',
+      );
+    }
+    if (childGroups.filter((group) => group.maxSelect > 1).length > 1) {
+      return fail(
+        'UBER_MULTIPLE_MULTI_SELECT_CHILD_GROUPS_UNSUPPORTED',
+        '多个可多选子组会导致不可控的笛卡尔积。',
+      );
+    }
+    return null;
+  }
+
+  private buildRequiredChildSelections(
+    group: { minSelect: number; maxSelect: number; optionItemIds: string[] },
+    optionById: Map<string, { isAvailable: boolean }>,
+  ) {
+    const available = group.optionItemIds.filter(
+      (id) => optionById.get(id)?.isAvailable !== false,
+    );
+    const maximum = Math.min(group.maxSelect, available.length);
+    const selections: string[][] = [];
+    const choose = (size: number, start = 0, selected: string[] = []) => {
+      if (selected.length === size) {
+        selections.push([...selected]);
+        return;
+      }
+      for (let index = start; index < available.length; index += 1) {
+        selected.push(available[index]);
+        choose(size, index + 1, selected);
+        selected.pop();
+      }
+    };
+    for (let size = group.minSelect; size <= maximum; size += 1) choose(size);
+    return selections;
   }
 
   private buildUberUploadMenuPayload(graph: {
@@ -2914,6 +3188,15 @@ export class UberEatsService {
       optionItemIds: string[];
     }>;
   }): Record<string, unknown> {
+    const nestedOption = graph.items.find(
+      (item) =>
+        item.sourceType === 'OPTION_ITEM' && item.modifierGroupIds.length > 0,
+    );
+    if (nestedOption) {
+      throw new BadRequestException(
+        `Uber 发布图约束违反：OPTION_ITEM ${nestedOption.id} 不得引用 modifier group。`,
+      );
+    }
     return {
       menus: [
         {
@@ -2948,7 +3231,8 @@ export class UberEatsService {
             }
           : {}),
         price_info: { price: item.priceCents },
-        modifier_group_ids: item.modifierGroupIds,
+        modifier_group_ids:
+          item.sourceType === 'OPTION_ITEM' ? [] : item.modifierGroupIds,
         suspension_info: {
           suspended_until: item.isAvailable ? null : '2099-01-01T00:00:00Z',
         },

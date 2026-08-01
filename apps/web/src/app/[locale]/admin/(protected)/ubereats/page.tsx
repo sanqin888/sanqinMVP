@@ -154,6 +154,7 @@ type UberMenuDraftResponse = {
     items: number;
     optionItems: number;
     groups: number;
+    tree: { categories: UberDraftCategoryNode[] };
   };
   uberDraft: {
     menuId: string;
@@ -165,8 +166,10 @@ type UberMenuDraftResponse = {
       categories: UberDraftCategoryNode[];
     };
     treeNodes?: DraftNode[];
+    optionMappings: Array<{ sourceOptionChoiceStableId: string; compositeOptionItemId: string; sourcePath: string[] }>;
   };
   mappingWarnings: string[];
+  mappingErrors: Array<{ code: string; sourceOptionChoiceStableId: string; message: string }>;
   publishSummary: {
     totalItems: number;
     changedItems: number;
@@ -372,6 +375,10 @@ export default function UberEatsAdminPage() {
     () => menuDraft?.uberDraft.tree.categories ?? [],
     [menuDraft?.uberDraft.tree.categories],
   );
+  const sourceDraftCategories = useMemo(
+    () => menuDraft?.sourceMenu.tree.categories ?? draftCategories,
+    [draftCategories, menuDraft?.sourceMenu.tree.categories],
+  );
   const toDraftTrees = useCallback((categories: UberDraftCategoryNode[]) => {
     const toGroup = (group: UberDraftGroupNode, source: DraftNode['source']): DraftNode => ({
       id: group.id,
@@ -438,8 +445,12 @@ export default function UberEatsAdminPage() {
     }));
     return { sourceTree, uberTree };
   }, [menuDraft?.dirty]);
-  const { sourceTree: sourceMenuTree, uberTree: uberDraftTree } = useMemo(
-    () => toDraftTrees(draftCategories),
+  const sourceMenuTree = useMemo(
+    () => toDraftTrees(sourceDraftCategories).sourceTree,
+    [sourceDraftCategories, toDraftTrees],
+  );
+  const uberDraftTree = useMemo(
+    () => toDraftTrees(draftCategories).uberTree,
     [draftCategories, toDraftTrees],
   );
   const normalizedUberDraftTree = useMemo(
@@ -931,6 +942,8 @@ export default function UberEatsAdminPage() {
                     <p><span className="text-slate-500">映射后 Uber node id：</span>{selectedNode?.id ?? '-'}</p>
                     <p><span className="text-slate-500">规则：</span>{selectedNode?.type ?? '-'}</p>
                     <p><span className="text-slate-500">override 来源：</span>{selectedNode?.source ?? '-'}</p>
+                    <p><span className="text-slate-500">扁平化映射：</span>{(menuDraft?.uberDraft.optionMappings ?? []).filter((mapping) => !selectedNode?.sourceStableId || mapping.sourcePath.includes(selectedNode.sourceStableId)).map((mapping) => mapping.sourcePath.join(' / ')).join('；') || '-'}</p>
+                    {(menuDraft?.mappingErrors ?? []).map((error) => <p key={`${error.code}-${error.sourceOptionChoiceStableId}`} className="rounded border border-red-200 bg-red-50 p-1 text-xs text-red-700">{error.code}: {error.message}</p>)}
                     <div>
                       <p className="text-slate-500">关联 edges：</p>
                       <ul className="mt-1 space-y-1">

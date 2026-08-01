@@ -29,6 +29,49 @@ jest.mock('@prisma/client', () => ({
 import { createHmac } from 'crypto';
 import { UberEatsService } from './ubereats.service';
 
+const createNestedMenuPrisma = (templates: unknown[]) => ({
+  menuCategory: {
+    findMany: jest
+      .fn()
+      .mockResolvedValue([
+        {
+          id: 1,
+          stableId: 'cat_1',
+          nameEn: 'Category',
+          nameZh: '',
+          sortOrder: 1,
+          isActive: true,
+        },
+      ]),
+  },
+  menuItem: {
+    findMany: jest.fn().mockResolvedValue([
+      {
+        id: 1,
+        stableId: 'item_1',
+        categoryId: 1,
+        nameEn: 'Item',
+        nameZh: '',
+        basePriceCents: 1000,
+        isAvailable: true,
+        sortOrder: 1,
+        optionGroups: [{ templateGroup: { stableId: 'meal' }, sortOrder: 1 }],
+      },
+    ]),
+  },
+  menuOptionGroupTemplate: { findMany: jest.fn().mockResolvedValue(templates) },
+  uberItemChannelConfig: { findMany: jest.fn().mockResolvedValue([]) },
+  uberOptionItemConfig: { findMany: jest.fn().mockResolvedValue([]) },
+  uberModifierGroupConfig: { findMany: jest.fn().mockResolvedValue([]) },
+  uberCategoryConfig: { findMany: jest.fn().mockResolvedValue([]) },
+  uberOptionChildGroupBinding: { findMany: jest.fn().mockResolvedValue([]) },
+  uberStoreMapping: {
+    findFirst: jest.fn().mockResolvedValue({ uberStoreId: 'uber_store_1' }),
+  },
+  uberMenuPublishVersion: { create: jest.fn() },
+  opsEvent: { create: jest.fn().mockResolvedValue(null) },
+});
+
 describe('UberEatsService', () => {
   const clientSecret = 'test-ubereats-secret';
   const createAuthService = () =>
@@ -541,6 +584,172 @@ describe('UberEatsService', () => {
         },
       }),
     );
+  });
+
+  it('会将父选项与一个或多个必选子组展开为无嵌套的 Uber 合成项', async () => {
+    const templates = [
+      {
+        stableId: 'meal',
+        nameEn: 'Meal',
+        nameZh: '',
+        defaultMinSelect: 1,
+        defaultMaxSelect: 1,
+        isAvailable: true,
+        sortOrder: 1,
+        options: [
+          {
+            stableId: 'combo_a',
+            nameEn: 'Combo A',
+            nameZh: '',
+            priceDeltaCents: 200,
+            isAvailable: true,
+            sortOrder: 1,
+            childLinks: [
+              { childOption: { templateGroup: { stableId: 'drink' } } },
+              { childOption: { templateGroup: { stableId: 'size' } } },
+            ],
+          },
+        ],
+      },
+      {
+        stableId: 'drink',
+        nameEn: 'Drink',
+        nameZh: '',
+        defaultMinSelect: 1,
+        defaultMaxSelect: 1,
+        isAvailable: true,
+        sortOrder: 2,
+        options: [
+          {
+            stableId: 'cola',
+            nameEn: 'Cola',
+            nameZh: '',
+            priceDeltaCents: 100,
+            isAvailable: true,
+            sortOrder: 1,
+            childLinks: [],
+          },
+        ],
+      },
+      {
+        stableId: 'size',
+        nameEn: 'Size',
+        nameZh: '',
+        defaultMinSelect: 1,
+        defaultMaxSelect: 1,
+        isAvailable: true,
+        sortOrder: 3,
+        options: [
+          {
+            stableId: 'medium',
+            nameEn: 'Medium',
+            nameZh: '',
+            priceDeltaCents: 50,
+            isAvailable: true,
+            sortOrder: 1,
+            childLinks: [],
+          },
+        ],
+      },
+    ];
+    const prisma = createNestedMenuPrisma(templates);
+    const service = new UberEatsService(prisma as never, createAuthService());
+
+    const result = await service.publishUberMenu({
+      storeId: 's1',
+      dryRun: true,
+    });
+    const payload = result.payload as {
+      items: Array<{
+        id: string;
+        title: { translations: { en_us: string } };
+        modifier_group_ids: string[];
+      }>;
+      modifier_groups: Array<{ modifier_options: Array<{ id: string }> }>;
+    };
+    const referencedIds = new Set(
+      payload.modifier_groups.flatMap((group) =>
+        group.modifier_options.map((option) => option.id),
+      ),
+    );
+    const referencedItems = payload.items.filter((item) =>
+      referencedIds.has(item.id),
+    );
+
+    expect(referencedItems).not.toHaveLength(0);
+    expect(
+      referencedItems.every((item) => item.modifier_group_ids.length === 0),
+    ).toBe(true);
+    expect(
+      referencedItems.some(
+        (item) => item.title.translations.en_us === 'Combo A / Cola / Medium',
+      ),
+    ).toBe(true);
+    expect(result.mappingErrors).toEqual([]);
+  });
+
+  it('可选子组无法无损展开时会阻止正式发布', async () => {
+    const templates = [
+      {
+        stableId: 'meal',
+        nameEn: 'Meal',
+        nameZh: '',
+        defaultMinSelect: 1,
+        defaultMaxSelect: 1,
+        isAvailable: true,
+        sortOrder: 1,
+        options: [
+          {
+            stableId: 'combo_a',
+            nameEn: 'Combo A',
+            nameZh: '',
+            priceDeltaCents: 200,
+            isAvailable: true,
+            sortOrder: 1,
+            childLinks: [
+              {
+                childOption: { templateGroup: { stableId: 'optional_drink' } },
+              },
+            ],
+          },
+        ],
+      },
+      {
+        stableId: 'optional_drink',
+        nameEn: 'Optional drink',
+        nameZh: '',
+        defaultMinSelect: 0,
+        defaultMaxSelect: 1,
+        isAvailable: true,
+        sortOrder: 2,
+        options: [
+          {
+            stableId: 'cola',
+            nameEn: 'Cola',
+            nameZh: '',
+            priceDeltaCents: 100,
+            isAvailable: true,
+            sortOrder: 1,
+            childLinks: [],
+          },
+        ],
+      },
+    ];
+    const prisma = createNestedMenuPrisma(templates);
+    const service = new UberEatsService(prisma as never, createAuthService());
+
+    await expect(
+      service.publishUberMenu({ storeId: 's1', dryRun: false }),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        mappingErrors: expect.arrayContaining([
+          expect.objectContaining({
+            code: 'UBER_OPTIONAL_CHILD_GROUP_UNSUPPORTED',
+          }),
+        ]),
+      }),
+    });
+    expect(prisma.uberMenuPublishVersion.create).not.toHaveBeenCalled();
   });
 
   it('生成自动对账报表时会汇总订单与失败事件', async () => {
