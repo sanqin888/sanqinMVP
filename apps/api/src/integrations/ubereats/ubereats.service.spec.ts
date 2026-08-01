@@ -573,6 +573,19 @@ describe('UberEatsService', () => {
     expect(result.dryRun).toBe(true);
     expect(result.summary.totalItems).toBe(2);
     expect(result.summary.changedItems).toBe(1);
+    const payload = result.payload as {
+      categories: Array<{
+        entities: Array<{ id: string; type: 'ITEM' }>;
+      }>;
+      items: Array<{ id: string }>;
+    };
+    const itemIds = new Set(payload.items.map((item) => item.id));
+    for (const category of payload.categories) {
+      for (const entity of category.entities) {
+        expect(entity).toEqual({ id: expect.any(String), type: 'ITEM' });
+        expect(itemIds.has(entity.id)).toBe(true);
+      }
+    }
     expect(prisma.menuItem.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
