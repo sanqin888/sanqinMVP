@@ -35,7 +35,9 @@ import { toUberServiceAvailability, UberEatsService } from './ubereats.service';
 
 const openSchedulePrisma = {
   businessConfig: {
-    findUnique: jest.fn().mockResolvedValue({ timezone: 'America/Toronto' }),
+    findUnique: jest
+      .fn()
+      .mockResolvedValue({ timezone: 'America/Toronto', salesTaxRate: 0.13 }),
   },
   businessHour: {
     findMany: jest
@@ -126,7 +128,7 @@ describe('toUberServiceAvailability', () => {
       },
       {
         day_of_week: 'SATURDAY',
-        time_periods: [{ start_time: '22:00', end_time: '23:59' }],
+        time_periods: [{ start_time: '22:00', end_time: '24:00' }],
       },
     ]);
   });
@@ -148,7 +150,24 @@ describe('toUberServiceAvailability', () => {
       },
       {
         day_of_week: 'THURSDAY',
-        time_periods: [{ start_time: '00:00', end_time: '23:59' }],
+        time_periods: [{ start_time: '00:00', end_time: '24:00' }],
+      },
+    ]);
+  });
+
+  it('正确将周日跨午夜时段拆分到下周一', () => {
+    expect(
+      convert([
+        { weekday: 0, openMinutes: 1380, closeMinutes: 60, isClosed: false },
+      ]),
+    ).toEqual([
+      {
+        day_of_week: 'SUNDAY',
+        time_periods: [{ start_time: '23:00', end_time: '24:00' }],
+      },
+      {
+        day_of_week: 'MONDAY',
+        time_periods: [{ start_time: '00:00', end_time: '01:00' }],
       },
     ]);
   });
@@ -689,6 +708,7 @@ describe('UberEatsService', () => {
             basePriceCents: 1000,
             isAvailable: true,
             sortOrder: 1,
+            ingredientsEn: 'Website description that should be overridden',
             optionGroups: [],
           },
           {
@@ -700,6 +720,20 @@ describe('UberEatsService', () => {
             basePriceCents: 2000,
             isAvailable: true,
             sortOrder: 2,
+            ingredientsEn: '  Website English description  ',
+            optionGroups: [],
+          },
+          {
+            id: 103,
+            stableId: 'm3',
+            categoryId: 1,
+            nameEn: 'Item 3',
+            nameZh: '菜品3',
+            basePriceCents: 3000,
+            isAvailable: true,
+            sortOrder: 3,
+            ingredientsEn: '   ',
+            ingredientsZh: '仅有中文说明',
             optionGroups: [],
           },
         ]),
@@ -708,11 +742,14 @@ describe('UberEatsService', () => {
         findMany: jest.fn().mockResolvedValue([]),
       },
       uberItemChannelConfig: {
-        findMany: jest
-          .fn()
-          .mockResolvedValue([
-            { menuItemStableId: 'm1', priceCents: 1200, isAvailable: false },
-          ]),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            menuItemStableId: 'm1',
+            priceCents: 1200,
+            isAvailable: false,
+            displayDescription: '  Uber channel description  ',
+          },
+        ]),
       },
       uberOptionItemConfig: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -742,14 +779,19 @@ describe('UberEatsService', () => {
 
     expect(result.ok).toBe(true);
     expect(result.dryRun).toBe(true);
-    expect(result.summary.totalItems).toBe(2);
+    expect(result.summary.totalItems).toBe(3);
     expect(result.summary.changedItems).toBe(1);
     const payload = result.payload as {
       menus: Array<{ service_availability: unknown }>;
       categories: Array<{
         entities: Array<{ id: string; type: 'ITEM' }>;
       }>;
-      items: Array<{ id: string }>;
+      items: Array<{
+        id: string;
+        title: { translations: { en_us: string } };
+        description?: { translations: { en_us: string } };
+        tax_info: { tax_rate: number };
+      }>;
     };
     expect(payload.menus[0].service_availability).toEqual([
       {
@@ -759,6 +801,24 @@ describe('UberEatsService', () => {
     ]);
     expect(result.serviceAvailabilityTimezone).toBe('America/Toronto');
     const itemIds = new Set(payload.items.map((item) => item.id));
+    expect(payload.items.every((item) => item.tax_info.tax_rate === 13)).toBe(
+      true,
+    );
+    expect(
+      payload.items.find((item) =>
+        item.title.translations.en_us.startsWith('Item 1'),
+      )?.description,
+    ).toEqual({ translations: { en_us: 'Uber channel description' } });
+    expect(
+      payload.items.find((item) =>
+        item.title.translations.en_us.startsWith('Item 2'),
+      )?.description,
+    ).toEqual({ translations: { en_us: 'Website English description' } });
+    expect(
+      payload.items.find((item) =>
+        item.title.translations.en_us.startsWith('Item 3'),
+      ),
+    ).not.toHaveProperty('description');
     for (const category of payload.categories) {
       for (const entity of category.entities) {
         expect(typeof entity.id).toBe('string');
@@ -877,6 +937,21 @@ describe('UberEatsService', () => {
       ),
     ).toBe(true);
     expect(result.mappingErrors).toEqual([]);
+  });
+
+  it('拒绝将百分数格式的站内税率再次转换后发布到 Uber', async () => {
+    const prisma = createNestedMenuPrisma([]);
+    prisma.businessConfig.findUnique.mockResolvedValueOnce({
+      timezone: 'America/Toronto',
+      salesTaxRate: 13,
+    });
+    const service = new UberEatsService(prisma as never, createAuthService());
+
+    await expect(
+      service.publishUberMenu({ storeId: 's1', dryRun: true }),
+    ).rejects.toThrow(
+      'salesTaxRate 必须使用 0～1 的比例格式，例如 13% 应保存为 0.13',
+    );
   });
 
   it('可选子组无法无损展开时会阻止正式发布', async () => {
@@ -1297,6 +1372,7 @@ describe('UberEatsService', () => {
           id: 'dish',
           title: { translations: { en_us: 'Dish' } },
           price_info: { price: 100 },
+          tax_info: { tax_rate: 13 },
           modifier_group_ids: ['group'],
           suspension_info: { suspended_until: null },
         },
@@ -1304,6 +1380,7 @@ describe('UberEatsService', () => {
           id: 'option',
           title: { translations: { en_us: 'Option' } },
           price_info: { price: 0 },
+          tax_info: { tax_rate: 13 },
           modifier_group_ids: [],
           suspension_info: { suspended_until: null },
         },
@@ -1322,6 +1399,88 @@ describe('UberEatsService', () => {
       const service = new UberEatsService({} as never, createAuthService());
       expect(service.validateUberMenuPayload(validPayload() as never)).toEqual(
         [],
+      );
+    });
+
+    it('合法公网 HTTPS 图片仅产生不可阻断的元数据 warning', () => {
+      const payload = validPayload();
+      (
+        payload.items[0] as (typeof payload.items)[number] & {
+          image_url?: string;
+        }
+      ).image_url = 'https://cdn.example.com/menu/dish.jpg';
+      const service = new UberEatsService({} as never, createAuthService());
+      expect(service.validateUberMenuPayload(payload as never)).toEqual([
+        expect.objectContaining({
+          code: 'UBER_IMAGE_METADATA_UNVERIFIED',
+          severity: 'WARNING',
+          path: '$.items[0].image_url',
+        }),
+      ]);
+    });
+
+    it('清理描述空白并按 Uber schema 限制截断过长描述', () => {
+      const payload = validPayload();
+      (
+        payload.items[0] as (typeof payload.items)[number] & {
+          description?: { translations: { en_us: string } };
+        }
+      ).description = {
+        translations: { en_us: `  ${'a'.repeat(299)}  b  ` },
+      };
+      const service = new UberEatsService({} as never, createAuthService());
+
+      expect(service.validateUberMenuPayload(payload as never)).toContainEqual(
+        expect.objectContaining({
+          code: 'UBER_DESCRIPTION_TRUNCATED',
+          severity: 'WARNING',
+          path: '$.items[0].description.translations.en_us',
+        }),
+      );
+      expect(
+        (
+          payload.items[0] as (typeof payload.items)[number] & {
+            description: { translations: { en_us: string } };
+          }
+        ).description.translations.en_us,
+      ).toHaveLength(300);
+    });
+
+    it('从 payload 移除只有空白的描述', () => {
+      const payload = validPayload();
+      const item = payload.items[0] as (typeof payload.items)[number] & {
+        description?: { translations: { en_us: string } };
+      };
+      item.description = { translations: { en_us: ' \n\t ' } };
+      const service = new UberEatsService({} as never, createAuthService());
+
+      expect(service.validateUberMenuPayload(payload as never)).toContainEqual(
+        expect.objectContaining({
+          code: 'UBER_DESCRIPTION_EMPTY_REMOVED',
+          severity: 'WARNING',
+        }),
+      );
+      expect(item.description).toBeUndefined();
+    });
+
+    it.each([
+      'http://cdn.example.com/dish.jpg',
+      'https://localhost/dish.jpg',
+      'https://192.168.1.2/dish.jpg',
+      'https://cdn.example.com/dish.jpg?expires=1234',
+    ])('拒绝非永久公网图片地址 %s', (imageUrl) => {
+      const payload = validPayload();
+      (
+        payload.items[0] as (typeof payload.items)[number] & {
+          image_url?: string;
+        }
+      ).image_url = imageUrl;
+      const service = new UberEatsService({} as never, createAuthService());
+      expect(service.validateUberMenuPayload(payload as never)).toContainEqual(
+        expect.objectContaining({
+          code: 'UBER_IMAGE_URL_INVALID',
+          severity: 'ERROR',
+        }),
       );
     });
 

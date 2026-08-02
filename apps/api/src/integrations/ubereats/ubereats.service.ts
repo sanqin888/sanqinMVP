@@ -89,6 +89,7 @@ type UpdateDraftOptionInput = UberStoreScopedInput & {
 
 type PublishMenuInput = UberStoreScopedInput & {
   dryRun?: boolean;
+  timezoneConfirmed?: boolean;
   excludedCategoryIds?: string[];
   excludedGroupIds?: string[];
   excludedMenuItemStableIds?: string[];
@@ -122,8 +123,10 @@ type UberMenuUploadPayload = {
     title: { translations: { en_us: string } };
     description?: { translations: { en_us: string } };
     price_info: { price: number };
+    tax_info: { tax_rate: number };
     modifier_group_ids: string[];
     suspension_info: { suspended_until: string | null };
+    image_url?: string;
   }>;
   modifier_groups: Array<{
     id: string;
@@ -198,18 +201,19 @@ export function toUberServiceAvailability(
 
     const start = hour.openMinutes;
     const end = hour.closeMinutes;
-    // Equal endpoints explicitly mean all day; Uber accepts 00:00–23:59.
+    // Uber uses 24:00 as the exclusive end of a local day. 23:59 would leave
+    // a one-minute gap in split and full-day ranges.
     if (start === end || (start === 0 && end === 1440)) {
-      periods[hour.weekday].push({ start_time: '00:00', end_time: '23:59' });
+      periods[hour.weekday].push({ start_time: '00:00', end_time: '24:00' });
     } else if (start < end) {
       periods[hour.weekday].push({
         start_time: format(start),
-        end_time: end === 1440 ? '23:59' : format(end),
+        end_time: end === 1440 ? '24:00' : format(end),
       });
     } else {
       periods[hour.weekday].push({
         start_time: format(start),
-        end_time: '23:59',
+        end_time: '24:00',
       });
       periods[(hour.weekday + 1) % 7].push({
         start_time: '00:00',
@@ -245,6 +249,54 @@ export type UberMenuPayloadValidationIssue = {
   sourceStableId: string | null;
   message: string;
 };
+
+const UBER_IMAGE_URL_MAX_LENGTH = 2_000;
+export const UBER_ITEM_DESCRIPTION_MAX_LENGTH = 300;
+const EXPIRING_IMAGE_QUERY_KEYS = new Set([
+  'expires',
+  'x-amz-expires',
+  'x-amz-signature',
+  'signature',
+  'token',
+]);
+
+function isPermanentPublicHttpsUrl(value: string): boolean {
+  if (!value || value.length > UBER_IMAGE_URL_MAX_LENGTH) return false;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.username || url.password) return false;
+    const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    if (
+      hostname === 'localhost' ||
+      hostname.endsWith('.localhost') ||
+      hostname.endsWith('.local') ||
+      hostname === '::1' ||
+      hostname.startsWith('fc') ||
+      hostname.startsWith('fd') ||
+      hostname.startsWith('fe80:')
+    )
+      return false;
+    const octets = hostname.split('.').map(Number);
+    if (
+      octets.length === 4 &&
+      octets.every(
+        (part) => Number.isInteger(part) && part >= 0 && part <= 255,
+      ) &&
+      (octets[0] === 10 ||
+        octets[0] === 127 ||
+        octets[0] === 0 ||
+        (octets[0] === 169 && octets[1] === 254) ||
+        (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) ||
+        (octets[0] === 192 && octets[1] === 168))
+    )
+      return false;
+    return !Array.from(url.searchParams.keys()).some((key) =>
+      EXPIRING_IMAGE_QUERY_KEYS.has(key.toLowerCase()),
+    );
+  } catch {
+    return false;
+  }
+}
 
 type SyncAvailabilityInput = UberStoreScopedInput & {
   menuItemStableId: string;
@@ -285,6 +337,7 @@ type UberMerchantStore = {
   locationSummary: string | null;
   integrationEnabled: boolean;
   posExternalStoreId: string | null;
+  timezone: string | null;
   raw: Record<string, unknown>;
 };
 
@@ -737,6 +790,7 @@ export class UberEatsService {
         posExternalStoreId:
           mappingByStoreId.get(store.storeId)?.posExternalStoreId ??
           store.posExternalStoreId,
+        timezone: store.timezone,
       })),
       raw: response,
     };
@@ -1151,6 +1205,7 @@ export class UberEatsService {
     const payload = this.buildUberUploadMenuPayload(
       normalized.graph,
       schedule.serviceAvailability,
+      schedule.taxRatePercentage,
     );
     const payloadValidation = this.validateUberMenuPayload(payload);
     const summary = this.summarizePublishGraph(normalized.graph);
@@ -1187,6 +1242,7 @@ export class UberEatsService {
         priceCents: number;
         isAvailable: boolean;
         modifierGroupIds: string[];
+        imageUrl: string | null;
       }>,
     ) => {
       const groupMap = new Map(groups.map((group) => [group.id, group]));
@@ -1205,6 +1261,7 @@ export class UberEatsService {
             displayDescription: item.description,
             priceCents: item.priceCents,
             isAvailable: item.isAvailable,
+            imageUrl: item.imageUrl,
             groups: item.modifierGroupIds
               .map((groupId) => {
                 const group = groupMap.get(groupId);
@@ -1741,6 +1798,7 @@ export class UberEatsService {
     const payload = this.buildUberUploadMenuPayload(
       normalized.graph,
       schedule.serviceAvailability,
+      schedule.taxRatePercentage,
     );
     const payloadValidation = this.validateUberMenuPayload(payload);
     const validationErrors = [...normalized.errors, ...payloadValidation];
@@ -1776,6 +1834,12 @@ export class UberEatsService {
         },
       };
     }
+
+    await this.assertUberStoreTimezone(
+      uberStoreId,
+      schedule.timezone,
+      input.timezoneConfirmed === true,
+    );
 
     const version = await this.createMenuPublishVersionStarted(
       normalizedStoreId,
@@ -2559,6 +2623,7 @@ export class UberEatsService {
         locationSummary: this.readLocationSummary(store),
         integrationEnabled: this.readStoreIntegrationEnabled(store),
         posExternalStoreId: this.readStorePosExternalStoreId(store),
+        timezone: this.readUberStoreTimezone(store),
         raw: store,
       }));
   }
@@ -2888,6 +2953,8 @@ export class UberEatsService {
           basePriceCents: true,
           isAvailable: true,
           sortOrder: true,
+          imageUrl: true,
+          ingredientsEn: true,
           optionGroups: {
             where: { isEnabled: true },
             select: {
@@ -3038,6 +3105,7 @@ export class UberEatsService {
         isAvailable: boolean;
         modifierGroupIds: string[];
         hasDelta: boolean;
+        imageUrl: string | null;
       }
     >();
 
@@ -3054,6 +3122,7 @@ export class UberEatsService {
       categoryStableId: string;
       sortOrder: number;
       hasDelta: boolean;
+      imageUrl: string | null;
     }> = [];
 
     for (const template of templates) {
@@ -3133,6 +3202,7 @@ export class UberEatsService {
           hasDelta:
             optionPriceCents !== choice.priceDeltaCents ||
             optionAvailable !== choice.isAvailable,
+          imageUrl: null,
         });
       }
 
@@ -3184,7 +3254,12 @@ export class UberEatsService {
         title:
           itemConfig?.displayName ||
           this.composeUberDisplayName(menuItem.nameEn, menuItem.nameZh),
-        description: itemConfig?.displayDescription || null,
+        // Website ingredients are reusable English description copy, not a
+        // legally complete allergen declaration. Never emit ingredientsZh.
+        description:
+          itemConfig?.displayDescription?.trim() ||
+          menuItem.ingredientsEn?.trim() ||
+          null,
         basePriceCents: menuItem.basePriceCents,
         priceCents,
         isAvailable,
@@ -3194,6 +3269,7 @@ export class UberEatsService {
         hasDelta:
           priceCents !== menuItem.basePriceCents ||
           isAvailable !== menuItem.isAvailable,
+        imageUrl: menuItem.imageUrl,
       });
     }
 
@@ -3281,6 +3357,7 @@ export class UberEatsService {
       isAvailable: boolean;
       modifierGroupIds: string[];
       hasDelta: boolean;
+      imageUrl: string | null;
     }>;
   }) {
     const groupById = new Map(input.groups.map((group) => [group.id, group]));
@@ -3663,6 +3740,13 @@ export class UberEatsService {
       message: string,
     ) =>
       issues.push({ code, severity: 'ERROR', path, sourceStableId, message });
+    const warning = (
+      code: string,
+      path: string,
+      sourceStableId: string | null,
+      message: string,
+    ) =>
+      issues.push({ code, severity: 'WARNING', path, sourceStableId, message });
     const collections: Array<
       readonly [
         string,
@@ -3747,6 +3831,62 @@ export class UberEatsService {
       });
     });
     payload.items.forEach((item, ii) => {
+      const descriptionPath = `$.items[${ii}].description.translations.en_us`;
+      const descriptionNode = item.description;
+      if (descriptionNode !== undefined) {
+        const description = descriptionNode.translations?.en_us;
+        if (typeof description !== 'string') {
+          error(
+            'UBER_DESCRIPTION_INVALID',
+            descriptionPath,
+            item.id,
+            '描述必须是字符串。',
+          );
+        } else {
+          const cleanedDescription = description.replace(/\s+/g, ' ').trim();
+          if (!cleanedDescription) {
+            delete item.description;
+            warning(
+              'UBER_DESCRIPTION_EMPTY_REMOVED',
+              descriptionPath,
+              item.id,
+              '空白描述已从发布 payload 中移除。',
+            );
+          } else if (
+            cleanedDescription.length > UBER_ITEM_DESCRIPTION_MAX_LENGTH
+          ) {
+            descriptionNode.translations.en_us = cleanedDescription.slice(
+              0,
+              UBER_ITEM_DESCRIPTION_MAX_LENGTH,
+            );
+            warning(
+              'UBER_DESCRIPTION_TRUNCATED',
+              descriptionPath,
+              item.id,
+              `描述超过 Uber schema 的 ${UBER_ITEM_DESCRIPTION_MAX_LENGTH} 个字符限制，已清理并截断。`,
+            );
+          } else {
+            descriptionNode.translations.en_us = cleanedDescription;
+          }
+        }
+      }
+      if (item.image_url !== undefined) {
+        const imagePath = `$.items[${ii}].image_url`;
+        if (!isPermanentPublicHttpsUrl(item.image_url))
+          error(
+            'UBER_IMAGE_URL_INVALID',
+            imagePath,
+            item.id,
+            `图片地址必须是不超过 ${UBER_IMAGE_URL_MAX_LENGTH} 个字符、不含临时签名的永久公网 HTTPS URL。`,
+          );
+        else
+          warning(
+            'UBER_IMAGE_METADATA_UNVERIFIED',
+            imagePath,
+            item.id,
+            '未下载远程图片，无法确认内容类型和文件大小；这不会阻断发布。',
+          );
+      }
       if (
         !Number.isInteger(item.price_info?.price) ||
         item.price_info.price < 0
@@ -3756,6 +3896,17 @@ export class UberEatsService {
           `$.items[${ii}].price_info.price`,
           item.id,
           '价格必须为非负整数（分）。',
+        );
+      if (
+        !Number.isFinite(item.tax_info?.tax_rate) ||
+        item.tax_info.tax_rate < 0 ||
+        item.tax_info.tax_rate > 100
+      )
+        error(
+          'UBER_TAX_RATE_INVALID',
+          `$.items[${ii}].tax_info.tax_rate`,
+          item.id,
+          '税率必须使用 0～100 的百分数格式。',
         );
       item.modifier_group_ids.forEach((id, gi) => {
         if (!groupIds.has(id))
@@ -3838,17 +3989,19 @@ export class UberEatsService {
     availability?.forEach((day, di) =>
       day.time_periods?.forEach((period, pi) => {
         const time = /^([01]\d|2[0-3]):[0-5]\d$/;
+        const validEnd =
+          time.test(period.end_time ?? '') || period.end_time === '24:00';
         if (
           !day.day_of_week ||
           !time.test(period.start_time ?? '') ||
-          !time.test(period.end_time ?? '') ||
+          !validEnd ||
           period.start_time >= period.end_time
         )
           error(
             'UBER_SERVICE_AVAILABILITY_INVALID',
             `$.menus[0].service_availability[${di}].time_periods[${pi}]`,
             null,
-            '营业时段必须包含星期，并使用有效且起始早于结束的 HH:mm 时间。',
+            '营业时段必须包含星期，并使用有效且起始早于结束的 HH:mm 时间（当日终点可为 24:00）。',
           );
       }),
     );
@@ -3872,6 +4025,7 @@ export class UberEatsService {
         priceCents: number;
         isAvailable: boolean;
         modifierGroupIds: string[];
+        imageUrl: string | null;
       }>;
       groups: Array<{
         id: string;
@@ -3882,6 +4036,7 @@ export class UberEatsService {
       }>;
     },
     serviceAvailability: UberServiceAvailability[],
+    taxRatePercentage: number,
   ): UberMenuUploadPayload {
     return {
       menus: [
@@ -3918,11 +4073,17 @@ export class UberEatsService {
             }
           : {}),
         price_info: { price: item.priceCents },
+        tax_info: { tax_rate: taxRatePercentage },
         modifier_group_ids:
           item.sourceType === 'OPTION_ITEM' ? [] : item.modifierGroupIds,
         suspension_info: {
           suspended_until: item.isAvailable ? null : '2099-01-01T00:00:00Z',
         },
+        ...(item.sourceType === 'MENU_ITEM' &&
+        item.imageUrl &&
+        isPermanentPublicHttpsUrl(item.imageUrl)
+          ? { image_url: item.imageUrl }
+          : {}),
       })),
       modifier_groups: graph.groups.map((group) => ({
         id: group.id,
@@ -3948,11 +4109,12 @@ export class UberEatsService {
   private async getUberMenuSchedule(): Promise<{
     timezone: string;
     serviceAvailability: UberServiceAvailability[];
+    taxRatePercentage: number;
   }> {
     const [config, hours] = await Promise.all([
       this.prisma.businessConfig.findUnique({
         where: { id: 1 },
-        select: { timezone: true },
+        select: { timezone: true, salesTaxRate: true },
       }),
       this.prisma.businessHour.findMany({ orderBy: { weekday: 'asc' } }),
     ]);
@@ -3960,13 +4122,63 @@ export class UberEatsService {
     if (!timezone) {
       throw new BadRequestException('发布 Uber 菜单前必须配置门店时区。');
     }
+    if (/^(?:UTC|GMT)?[+-]\d{1,2}(?::?\d{2})?$/i.test(timezone)) {
+      throw new BadRequestException(
+        '夏令时地区不得使用固定 UTC offset，请配置 IANA timezone（例如 America/Toronto）。',
+      );
+    }
+    const salesTaxRate = config?.salesTaxRate;
+    if (
+      typeof salesTaxRate !== 'number' ||
+      !Number.isFinite(salesTaxRate) ||
+      salesTaxRate < 0 ||
+      salesTaxRate > 1
+    ) {
+      throw new BadRequestException(
+        'salesTaxRate 必须使用 0～1 的比例格式，例如 13% 应保存为 0.13',
+      );
+    }
+    const taxRatePercentage = Number((salesTaxRate * 100).toFixed(4));
     const serviceAvailability = toUberServiceAvailability(hours, timezone);
     if (serviceAvailability.length === 0) {
       throw new BadRequestException(
         '发布 Uber 菜单前必须至少配置一个合法可售营业时段；全天营业请明确配置 00:00–24:00。',
       );
     }
-    return { timezone, serviceAvailability };
+    return { timezone, serviceAvailability, taxRatePercentage };
+  }
+
+  private async assertUberStoreTimezone(
+    uberStoreId: string,
+    businessTimezone: string,
+    timezoneConfirmed: boolean,
+  ): Promise<void> {
+    const mapping = await this.prisma.uberStoreMapping.findFirst({
+      where: { uberStoreId },
+      select: { rawPayload: true },
+    });
+    const uberTimezone = this.readUberStoreTimezone(mapping?.rawPayload);
+    if (uberTimezone && uberTimezone !== businessTimezone) {
+      throw new BadRequestException(
+        `BusinessConfig.timezone（${businessTimezone}）与 Uber 门店时区（${uberTimezone}）不一致，已阻止正式发布。`,
+      );
+    }
+    if (!uberTimezone && !timezoneConfirmed) {
+      throw new BadRequestException(
+        `Uber API 未返回门店时区；请在管理页确认 Uber 门店使用 ${businessTimezone} 后再正式发布。`,
+      );
+    }
+  }
+
+  private readUberStoreTimezone(payload: unknown): string | null {
+    const store = this.asObject(payload);
+    const location = this.asObject(store?.location);
+    return this.readString(
+      store?.timezone,
+      store?.time_zone,
+      location?.timezone,
+      location?.time_zone,
+    );
   }
 
   private buildUberDraftEdges(graph: {
