@@ -89,6 +89,7 @@ type UpdateDraftOptionInput = UberStoreScopedInput & {
 
 type PublishMenuInput = UberStoreScopedInput & {
   dryRun?: boolean;
+  timezoneConfirmed?: boolean;
   excludedCategoryIds?: string[];
   excludedGroupIds?: string[];
   excludedMenuItemStableIds?: string[];
@@ -200,18 +201,19 @@ export function toUberServiceAvailability(
 
     const start = hour.openMinutes;
     const end = hour.closeMinutes;
-    // Equal endpoints explicitly mean all day; Uber accepts 00:00–23:59.
+    // Uber uses 24:00 as the exclusive end of a local day. 23:59 would leave
+    // a one-minute gap in split and full-day ranges.
     if (start === end || (start === 0 && end === 1440)) {
-      periods[hour.weekday].push({ start_time: '00:00', end_time: '23:59' });
+      periods[hour.weekday].push({ start_time: '00:00', end_time: '24:00' });
     } else if (start < end) {
       periods[hour.weekday].push({
         start_time: format(start),
-        end_time: end === 1440 ? '23:59' : format(end),
+        end_time: end === 1440 ? '24:00' : format(end),
       });
     } else {
       periods[hour.weekday].push({
         start_time: format(start),
-        end_time: '23:59',
+        end_time: '24:00',
       });
       periods[(hour.weekday + 1) % 7].push({
         start_time: '00:00',
@@ -335,6 +337,7 @@ type UberMerchantStore = {
   locationSummary: string | null;
   integrationEnabled: boolean;
   posExternalStoreId: string | null;
+  timezone: string | null;
   raw: Record<string, unknown>;
 };
 
@@ -787,6 +790,7 @@ export class UberEatsService {
         posExternalStoreId:
           mappingByStoreId.get(store.storeId)?.posExternalStoreId ??
           store.posExternalStoreId,
+        timezone: store.timezone,
       })),
       raw: response,
     };
@@ -1831,6 +1835,12 @@ export class UberEatsService {
       };
     }
 
+    await this.assertUberStoreTimezone(
+      uberStoreId,
+      schedule.timezone,
+      input.timezoneConfirmed === true,
+    );
+
     const version = await this.createMenuPublishVersionStarted(
       normalizedStoreId,
       uberStoreId,
@@ -2613,6 +2623,7 @@ export class UberEatsService {
         locationSummary: this.readLocationSummary(store),
         integrationEnabled: this.readStoreIntegrationEnabled(store),
         posExternalStoreId: this.readStorePosExternalStoreId(store),
+        timezone: this.readUberStoreTimezone(store),
         raw: store,
       }));
   }
@@ -3978,17 +3989,19 @@ export class UberEatsService {
     availability?.forEach((day, di) =>
       day.time_periods?.forEach((period, pi) => {
         const time = /^([01]\d|2[0-3]):[0-5]\d$/;
+        const validEnd =
+          time.test(period.end_time ?? '') || period.end_time === '24:00';
         if (
           !day.day_of_week ||
           !time.test(period.start_time ?? '') ||
-          !time.test(period.end_time ?? '') ||
+          !validEnd ||
           period.start_time >= period.end_time
         )
           error(
             'UBER_SERVICE_AVAILABILITY_INVALID',
             `$.menus[0].service_availability[${di}].time_periods[${pi}]`,
             null,
-            '营业时段必须包含星期，并使用有效且起始早于结束的 HH:mm 时间。',
+            '营业时段必须包含星期，并使用有效且起始早于结束的 HH:mm 时间（当日终点可为 24:00）。',
           );
       }),
     );
@@ -4109,6 +4122,11 @@ export class UberEatsService {
     if (!timezone) {
       throw new BadRequestException('发布 Uber 菜单前必须配置门店时区。');
     }
+    if (/^(?:UTC|GMT)?[+-]\d{1,2}(?::?\d{2})?$/i.test(timezone)) {
+      throw new BadRequestException(
+        '夏令时地区不得使用固定 UTC offset，请配置 IANA timezone（例如 America/Toronto）。',
+      );
+    }
     const salesTaxRate = config?.salesTaxRate;
     if (
       typeof salesTaxRate !== 'number' ||
@@ -4128,6 +4146,39 @@ export class UberEatsService {
       );
     }
     return { timezone, serviceAvailability, taxRatePercentage };
+  }
+
+  private async assertUberStoreTimezone(
+    uberStoreId: string,
+    businessTimezone: string,
+    timezoneConfirmed: boolean,
+  ): Promise<void> {
+    const mapping = await this.prisma.uberStoreMapping.findFirst({
+      where: { uberStoreId },
+      select: { rawPayload: true },
+    });
+    const uberTimezone = this.readUberStoreTimezone(mapping?.rawPayload);
+    if (uberTimezone && uberTimezone !== businessTimezone) {
+      throw new BadRequestException(
+        `BusinessConfig.timezone（${businessTimezone}）与 Uber 门店时区（${uberTimezone}）不一致，已阻止正式发布。`,
+      );
+    }
+    if (!uberTimezone && !timezoneConfirmed) {
+      throw new BadRequestException(
+        `Uber API 未返回门店时区；请在管理页确认 Uber 门店使用 ${businessTimezone} 后再正式发布。`,
+      );
+    }
+  }
+
+  private readUberStoreTimezone(payload: unknown): string | null {
+    const store = this.asObject(payload);
+    const location = this.asObject(store?.location);
+    return this.readString(
+      store?.timezone,
+      store?.time_zone,
+      location?.timezone,
+      location?.time_zone,
+    );
   }
 
   private buildUberDraftEdges(graph: {
