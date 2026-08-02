@@ -354,9 +354,9 @@ export class UberEatsController {
   @Roles('ADMIN')
   @Header('Content-Type', 'text/html; charset=utf-8')
   async oauthCallback(
+    @Req() req: Request & OAuthRequestContext,
     @Query('code') code?: string,
     @Query('state') state?: string,
-    @Req() req: Request & OAuthRequestContext,
   ) {
     const correlationId = randomUUID();
     this.logger.log(
