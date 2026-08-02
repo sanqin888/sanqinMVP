@@ -873,7 +873,11 @@ export class UberEatsService {
       case 'menu.notification':
       case 'menus.notification':
       case 'store.menu.updated':
-        await this.handleMenuNotificationWebhook(eventType, eventId, input.body);
+        await this.handleMenuNotificationWebhook(
+          eventType,
+          eventId,
+          input.body,
+        );
         return;
 
       default:
@@ -2682,14 +2686,19 @@ export class UberEatsService {
     const root = this.asObject(payload) ?? {};
     const failure = this.asObject(root.failure_info) ?? {};
     const candidates = [root.errors, failure.errors, root.error];
-    const values = candidates.flatMap((candidate) =>
-      Array.isArray(candidate) ? candidate : candidate ? [candidate] : [],
+    const values = candidates.flatMap<unknown>((candidate) =>
+      Array.isArray(candidate)
+        ? (candidate as unknown[])
+        : candidate
+          ? [candidate]
+          : [],
     );
 
     return values.map((value) => {
       const error = this.asObject(value) ?? {};
       return {
-        code: this.readString(error.code, error.error_code) ?? 'UBER_MENU_ERROR',
+        code:
+          this.readString(error.code, error.error_code) ?? 'UBER_MENU_ERROR',
         path: this.readString(
           error.path,
           error.field_path,
