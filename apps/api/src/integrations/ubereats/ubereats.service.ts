@@ -249,6 +249,7 @@ export type UberMenuPayloadValidationIssue = {
 };
 
 const UBER_IMAGE_URL_MAX_LENGTH = 2_000;
+export const UBER_ITEM_DESCRIPTION_MAX_LENGTH = 300;
 const EXPIRING_IMAGE_QUERY_KEYS = new Set([
   'expires',
   'x-amz-expires',
@@ -2942,6 +2943,7 @@ export class UberEatsService {
           isAvailable: true,
           sortOrder: true,
           imageUrl: true,
+          ingredientsEn: true,
           optionGroups: {
             where: { isEnabled: true },
             select: {
@@ -3241,7 +3243,12 @@ export class UberEatsService {
         title:
           itemConfig?.displayName ||
           this.composeUberDisplayName(menuItem.nameEn, menuItem.nameZh),
-        description: itemConfig?.displayDescription || null,
+        // Website ingredients are reusable English description copy, not a
+        // legally complete allergen declaration. Never emit ingredientsZh.
+        description:
+          itemConfig?.displayDescription?.trim() ||
+          menuItem.ingredientsEn?.trim() ||
+          null,
         basePriceCents: menuItem.basePriceCents,
         priceCents,
         isAvailable,
@@ -3813,6 +3820,45 @@ export class UberEatsService {
       });
     });
     payload.items.forEach((item, ii) => {
+      const descriptionPath = `$.items[${ii}].description.translations.en_us`;
+      const descriptionNode = item.description;
+      if (descriptionNode !== undefined) {
+        const description = descriptionNode.translations?.en_us;
+        if (typeof description !== 'string') {
+          error(
+            'UBER_DESCRIPTION_INVALID',
+            descriptionPath,
+            item.id,
+            '描述必须是字符串。',
+          );
+        } else {
+          const cleanedDescription = description.replace(/\s+/g, ' ').trim();
+          if (!cleanedDescription) {
+            delete item.description;
+            warning(
+              'UBER_DESCRIPTION_EMPTY_REMOVED',
+              descriptionPath,
+              item.id,
+              '空白描述已从发布 payload 中移除。',
+            );
+          } else if (
+            cleanedDescription.length > UBER_ITEM_DESCRIPTION_MAX_LENGTH
+          ) {
+            descriptionNode.translations.en_us = cleanedDescription.slice(
+              0,
+              UBER_ITEM_DESCRIPTION_MAX_LENGTH,
+            );
+            warning(
+              'UBER_DESCRIPTION_TRUNCATED',
+              descriptionPath,
+              item.id,
+              `描述超过 Uber schema 的 ${UBER_ITEM_DESCRIPTION_MAX_LENGTH} 个字符限制，已清理并截断。`,
+            );
+          } else {
+            descriptionNode.translations.en_us = cleanedDescription;
+          }
+        }
+      }
       if (item.image_url !== undefined) {
         const imagePath = `$.items[${ii}].image_url`;
         if (!isPermanentPublicHttpsUrl(item.image_url))

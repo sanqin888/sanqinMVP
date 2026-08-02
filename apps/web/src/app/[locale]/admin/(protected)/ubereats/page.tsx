@@ -222,6 +222,7 @@ const MODULES: Array<{ key: ModuleKey; label: string }> = [
 ];
 
 const DEFAULT_SCOPES = ['eats.store', 'eats.order', 'eats.report', 'eats.store.orders.read', 'eats.store.status.write'];
+const UBER_ITEM_DESCRIPTION_MAX_LENGTH = 300;
 const STORE_MENU_TABS: Array<{ key: StoreMenuTabKey; label: string }> = [
   { key: 'overview', label: '概览' },
   { key: 'mapping', label: '菜单映射' },
@@ -389,6 +390,12 @@ export default function UberEatsAdminPage() {
   );
   const publishPreviewItems = useMemo(() => draftCategories.flatMap((category) => category.items), [draftCategories]);
   const missingImageCount = useMemo(() => publishPreviewItems.filter((item) => !item.imageUrl?.trim()).length, [publishPreviewItems]);
+  const descriptionWarnings = useMemo(() => publishPreviewItems.flatMap((item) => {
+    const description = item.displayDescription?.trim() ?? '';
+    if (!description) return [{ item, message: '缺少描述' }];
+    if (description.length > UBER_ITEM_DESCRIPTION_MAX_LENGTH) return [{ item, message: `描述过长（${description.length}/${UBER_ITEM_DESCRIPTION_MAX_LENGTH}）` }];
+    return [];
+  }), [publishPreviewItems]);
   const sourceDraftCategories = useMemo(
     () => menuDraft?.sourceMenu.tree.categories ?? draftCategories,
     [draftCategories, menuDraft?.sourceMenu.tree.categories],
@@ -1057,10 +1064,12 @@ export default function UberEatsAdminPage() {
                     <li className="rounded border p-2">总 categories：{menuDraft?.publishSummary.totalCategories ?? 0}</li>
                     <li className="rounded border p-2">总 modifier groups：{menuDraft?.publishSummary.totalModifierGroups ?? 0}</li>
                     <li className="rounded border p-2">缺少图片：{missingImageCount}</li>
+                    <li className="rounded border p-2">描述 warnings：{descriptionWarnings.length}</li>
                   </ul>
-                  <h5 className="mt-4 text-sm font-semibold">菜品图片预览</h5>
+                  {descriptionWarnings.length > 0 ? <div className="mt-3 space-y-1">{descriptionWarnings.map(({ item, message }) => <div key={item.id} className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800"><strong>WARNING</strong> · {item.displayName}：{message}</div>)}</div> : null}
+                  <h5 className="mt-4 text-sm font-semibold">菜品发布预览</h5>
                   <div className="mt-2 grid max-h-80 grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
-                    {publishPreviewItems.map((item) => <div key={item.id} className="rounded border p-2 text-xs">{item.imageUrl ? <img src={item.imageUrl} alt={item.displayName} className="mb-1 aspect-square w-full rounded object-cover" /> : <div className="mb-1 flex aspect-square w-full items-center justify-center rounded bg-slate-100 text-slate-500">缺少图片</div>}<p className="truncate" title={item.displayName}>{item.displayName}</p></div>)}
+                    {publishPreviewItems.map((item) => <div key={item.id} className="rounded border p-2 text-xs">{item.imageUrl ? <img src={item.imageUrl} alt={item.displayName} className="mb-1 aspect-square w-full rounded object-cover" /> : <div className="mb-1 flex aspect-square w-full items-center justify-center rounded bg-slate-100 text-slate-500">缺少图片</div>}<p className="truncate font-medium" title={item.displayName}>{item.displayName}</p><p className="mt-1 line-clamp-3 whitespace-pre-wrap text-slate-600" title={item.displayDescription?.trim() || '缺少描述'}>{item.displayDescription?.trim() || '缺少描述'}</p></div>)}
                   </div>
                   <h5 className="mt-4 text-sm font-semibold">最终发布营业时段（门店本地时间）</h5>
                   <p className="mt-1 text-xs text-slate-500">时区：{dryRunSchedule?.serviceAvailabilityTimezone ?? menuDraft?.serviceAvailabilityTimezone ?? '-'}</p>
