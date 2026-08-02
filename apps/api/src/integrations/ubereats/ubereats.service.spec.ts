@@ -128,7 +128,7 @@ describe('toUberServiceAvailability', () => {
       },
       {
         day_of_week: 'SATURDAY',
-        time_periods: [{ start_time: '22:00', end_time: '23:59' }],
+        time_periods: [{ start_time: '22:00', end_time: '24:00' }],
       },
     ]);
   });
@@ -150,7 +150,24 @@ describe('toUberServiceAvailability', () => {
       },
       {
         day_of_week: 'THURSDAY',
-        time_periods: [{ start_time: '00:00', end_time: '23:59' }],
+        time_periods: [{ start_time: '00:00', end_time: '24:00' }],
+      },
+    ]);
+  });
+
+  it('正确将周日跨午夜时段拆分到下周一', () => {
+    expect(
+      convert([
+        { weekday: 0, openMinutes: 1380, closeMinutes: 60, isClosed: false },
+      ]),
+    ).toEqual([
+      {
+        day_of_week: 'SUNDAY',
+        time_periods: [{ start_time: '23:00', end_time: '24:00' }],
+      },
+      {
+        day_of_week: 'MONDAY',
+        time_periods: [{ start_time: '00:00', end_time: '01:00' }],
       },
     ]);
   });

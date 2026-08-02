@@ -41,6 +41,7 @@ type OAuthStoresResponse = {
     isProvisioned?: boolean;
     provisionedAt?: string | null;
     posExternalStoreId?: string | null;
+    timezone?: string | null;
   }>;
 };
 
@@ -261,6 +262,7 @@ export default function UberEatsAdminPage() {
   const [ticketStatusFilter, setTicketStatusFilter] = useState<TicketStatus | ''>('');
   const [storeMenuTab, setStoreMenuTab] = useState<StoreMenuTabKey>('overview');
   const [selectedStoreId, setSelectedStoreId] = useState('');
+  const [timezoneConfirmed, setTimezoneConfirmed] = useState(false);
   const [menuDraft, setMenuDraft] = useState<UberMenuDraftResponse | null>(null);
   const [dryRunSchedule, setDryRunSchedule] = useState<UberDryRunResponse | null>(null);
   const [menuDiff, setMenuDiff] = useState<UberMenuDraftDiffResponse | null>(null);
@@ -378,6 +380,7 @@ export default function UberEatsAdminPage() {
   useEffect(() => {
     setExpandedNodeKeys(new Set());
     setSelectedSourceNodeIds(null);
+    setTimezoneConfirmed(false);
   }, [selectedStoreId]);
 
   const openTickets = useMemo(() => tickets.filter((t) => t.status !== 'RESOLVED').length, [tickets]);
@@ -711,6 +714,10 @@ export default function UberEatsAdminPage() {
     [menuDraft?.mappingWarnings, selectedNode],
   );
   const blockingValidationIssues = menuDraft?.validation.errors ?? [];
+  const businessTimezone = menuDraft?.serviceAvailabilityTimezone ?? null;
+  const uberTimezone = selectedStore?.timezone?.trim() || null;
+  const timezoneMismatch = Boolean(businessTimezone && uberTimezone && businessTimezone !== uberTimezone);
+  const formalPublishDisabled = blockingValidationIssues.length > 0 || timezoneMismatch || !timezoneConfirmed;
 
   const selectedNodeEdgeInfo = useMemo(
     () => (menuDraft?.uberDraft.edges ?? []).filter((edge) => edge.from === selectedNode?.id || edge.to === selectedNode?.id),
@@ -927,7 +934,7 @@ export default function UberEatsAdminPage() {
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => void runAction('reload-draft', () => loadStoreMenuDraft(selectedStoreId), '菜单草稿已刷新', false)}>刷新草稿</button>
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => void runAction('save-node', saveSelectedNode, '当前节点已保存', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>保存当前节点</button>
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => void runAction('publish-dry', () => apiFetch<UberDryRunResponse>('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: true, ...publishFilterPayload }) }).then(setDryRunSchedule), 'Dry Run Publish 成功', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>Dry Run</button>
-                <button type="button" disabled={blockingValidationIssues.length > 0} title={blockingValidationIssues.length ? '请先修复阻断错误' : undefined} className="rounded border px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void runAction('publish-formal', () => apiFetch('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: false, ...publishFilterPayload }) }).then(() => {}), '已提交，等待 Uber 确认', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>正式 Publish</button>
+                <button type="button" disabled={formalPublishDisabled} title={timezoneMismatch ? '本地与 Uber 门店时区不一致' : !timezoneConfirmed ? '请先确认门店时区' : blockingValidationIssues.length ? '请先修复阻断错误' : undefined} className="rounded border px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void runAction('publish-formal', () => apiFetch('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: false, timezoneConfirmed, ...publishFilterPayload }) }).then(() => {}), '已提交，等待 Uber 确认', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>正式 Publish</button>
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => void runAction('refresh-diff', () => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }), '草稿与 Diff 已刷新', false)}>刷新 Diff</button>
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => setStoreMenuTab('publish')}>查看本次 Diff</button>
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => setStoreMenuTab('overview')}>查看上次发布版本</button>
@@ -1073,6 +1080,7 @@ export default function UberEatsAdminPage() {
                   </div>
                   <h5 className="mt-4 text-sm font-semibold">最终发布营业时段（门店本地时间）</h5>
                   <p className="mt-1 text-xs text-slate-500">时区：{dryRunSchedule?.serviceAvailabilityTimezone ?? menuDraft?.serviceAvailabilityTimezone ?? '-'}</p>
+                  <div className={`mt-2 rounded border p-2 text-xs ${timezoneMismatch ? 'border-red-300 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}><p>BusinessConfig.timezone：{businessTimezone ?? '-'}</p><p>Uber 门店时区：{uberTimezone ?? 'API 未返回，需人工核对'}</p>{timezoneMismatch ? <p className="mt-1 font-semibold">时区不一致，已禁止正式发布。</p> : null}<label className="mt-2 flex items-start gap-2"><input type="checkbox" checked={timezoneConfirmed} disabled={timezoneMismatch || !businessTimezone} onChange={(event) => setTimezoneConfirmed(event.target.checked)} /><span>我已在 Uber 门店配置中核对，目标门店使用 IANA timezone <strong>{businessTimezone ?? '-'}</strong>（非固定 UTC offset）。</span></label></div>
                   <ul className="mt-2 space-y-1 text-xs">{(dryRunSchedule?.serviceAvailability ?? menuDraft?.serviceAvailability ?? []).map((day) => <li key={day.day_of_week} className="rounded border p-2"><strong>{day.day_of_week}</strong>：{day.time_periods.map((period) => `${period.start_time}–${period.end_time}`).join('，')}</li>)}</ul>
                   <h5 className="mt-4 text-sm font-semibold">真实 Diff 列表</h5>
                   <ul className="mt-2 space-y-1 text-xs">
@@ -1087,7 +1095,7 @@ export default function UberEatsAdminPage() {
                   </ul>
                   <div className="mt-3 flex gap-2">
                     <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={() => void runAction('publish-dry-inline', () => apiFetch<UberDryRunResponse>('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: true, ...publishFilterPayload }) }).then(setDryRunSchedule), 'Dry Run Publish 成功', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>Dry Run Publish</button>
-                    <button type="button" disabled={blockingValidationIssues.length > 0} className="rounded border px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void runAction('publish-formal-inline', () => apiFetch('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: false, ...publishFilterPayload }) }).then(() => {}), '已提交，等待 Uber 确认', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>正式 Publish</button>
+                    <button type="button" disabled={formalPublishDisabled} className="rounded border px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void runAction('publish-formal-inline', () => apiFetch('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: false, timezoneConfirmed, ...publishFilterPayload }) }).then(() => {}), '已提交，等待 Uber 确认', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>正式 Publish</button>
                   </div>
                 </div>
                 <div className="rounded-xl border bg-white p-4">
