@@ -33,7 +33,11 @@ describe('UberEatsController OAuth callback', () => {
     await controller.oauthCallback(
       {
         session: { sessionId: 'session-secret' },
-        query: { code: 'super-secret', state: 'state-secret', extra: 'private' },
+        query: {
+          code: 'super-secret',
+          state: 'state-secret',
+          extra: 'private',
+        },
       } as never,
       'super-secret',
       'state-secret',
