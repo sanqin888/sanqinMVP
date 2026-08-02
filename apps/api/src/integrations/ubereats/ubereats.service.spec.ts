@@ -35,7 +35,9 @@ import { toUberServiceAvailability, UberEatsService } from './ubereats.service';
 
 const openSchedulePrisma = {
   businessConfig: {
-    findUnique: jest.fn().mockResolvedValue({ timezone: 'America/Toronto' }),
+    findUnique: jest
+      .fn()
+      .mockResolvedValue({ timezone: 'America/Toronto', salesTaxRate: 0.13 }),
   },
   businessHour: {
     findMany: jest
@@ -749,7 +751,7 @@ describe('UberEatsService', () => {
       categories: Array<{
         entities: Array<{ id: string; type: 'ITEM' }>;
       }>;
-      items: Array<{ id: string }>;
+      items: Array<{ id: string; tax_info: { tax_rate: number } }>;
     };
     expect(payload.menus[0].service_availability).toEqual([
       {
@@ -759,6 +761,9 @@ describe('UberEatsService', () => {
     ]);
     expect(result.serviceAvailabilityTimezone).toBe('America/Toronto');
     const itemIds = new Set(payload.items.map((item) => item.id));
+    expect(payload.items.every((item) => item.tax_info.tax_rate === 13)).toBe(
+      true,
+    );
     for (const category of payload.categories) {
       for (const entity of category.entities) {
         expect(typeof entity.id).toBe('string');
@@ -877,6 +882,21 @@ describe('UberEatsService', () => {
       ),
     ).toBe(true);
     expect(result.mappingErrors).toEqual([]);
+  });
+
+  it('拒绝将百分数格式的站内税率再次转换后发布到 Uber', async () => {
+    const prisma = createNestedMenuPrisma([]);
+    prisma.businessConfig.findUnique.mockResolvedValueOnce({
+      timezone: 'America/Toronto',
+      salesTaxRate: 13,
+    });
+    const service = new UberEatsService(prisma as never, createAuthService());
+
+    await expect(
+      service.publishUberMenu({ storeId: 's1', dryRun: true }),
+    ).rejects.toThrow(
+      'salesTaxRate 必须使用 0～1 的比例格式，例如 13% 应保存为 0.13',
+    );
   });
 
   it('可选子组无法无损展开时会阻止正式发布', async () => {
@@ -1297,6 +1317,7 @@ describe('UberEatsService', () => {
           id: 'dish',
           title: { translations: { en_us: 'Dish' } },
           price_info: { price: 100 },
+          tax_info: { tax_rate: 13 },
           modifier_group_ids: ['group'],
           suspension_info: { suspended_until: null },
         },
@@ -1304,6 +1325,7 @@ describe('UberEatsService', () => {
           id: 'option',
           title: { translations: { en_us: 'Option' } },
           price_info: { price: 0 },
+          tax_info: { tax_rate: 13 },
           modifier_group_ids: [],
           suspension_info: { suspended_until: null },
         },
