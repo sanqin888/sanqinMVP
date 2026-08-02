@@ -4204,11 +4204,11 @@ export class UberEatsService {
         `/v2/eats/stores/${encodeURIComponent(uberStoreId)}/menus`,
         { accessToken: connection.accessToken, method: 'GET' },
       );
-      const readPayload = this.asObject(response.menu ?? response);
+      const readPayload = this.asObject(response.menu ?? response) ?? {};
       const expectedIds = requested.items.map((item) => item.id);
       const actualIds = new Set(
         (Array.isArray(readPayload.items) ? readPayload.items : [])
-          .map((item) => this.readString(this.asObject(item).id))
+          .map((item) => this.readString(this.asObject(item)?.id))
           .filter((id): id is string => Boolean(id)),
       );
 
