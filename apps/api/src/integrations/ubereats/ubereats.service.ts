@@ -122,6 +122,7 @@ type UberMenuUploadPayload = {
     title: { translations: { en_us: string } };
     description?: { translations: { en_us: string } };
     price_info: { price: number };
+    tax_info: { tax_rate: number };
     modifier_group_ids: string[];
     suspension_info: { suspended_until: string | null };
     image_url?: string;
@@ -1199,6 +1200,7 @@ export class UberEatsService {
     const payload = this.buildUberUploadMenuPayload(
       normalized.graph,
       schedule.serviceAvailability,
+      schedule.taxRatePercentage,
     );
     const payloadValidation = this.validateUberMenuPayload(payload);
     const summary = this.summarizePublishGraph(normalized.graph);
@@ -1791,6 +1793,7 @@ export class UberEatsService {
     const payload = this.buildUberUploadMenuPayload(
       normalized.graph,
       schedule.serviceAvailability,
+      schedule.taxRatePercentage,
     );
     const payloadValidation = this.validateUberMenuPayload(payload);
     const validationErrors = [...normalized.errors, ...payloadValidation];
@@ -3837,6 +3840,17 @@ export class UberEatsService {
           item.id,
           '价格必须为非负整数（分）。',
         );
+      if (
+        !Number.isFinite(item.tax_info?.tax_rate) ||
+        item.tax_info.tax_rate < 0 ||
+        item.tax_info.tax_rate > 100
+      )
+        error(
+          'UBER_TAX_RATE_INVALID',
+          `$.items[${ii}].tax_info.tax_rate`,
+          item.id,
+          '税率必须使用 0～100 的百分数格式。',
+        );
       item.modifier_group_ids.forEach((id, gi) => {
         if (!groupIds.has(id))
           error(
@@ -3963,6 +3977,7 @@ export class UberEatsService {
       }>;
     },
     serviceAvailability: UberServiceAvailability[],
+    taxRatePercentage: number,
   ): UberMenuUploadPayload {
     return {
       menus: [
@@ -3999,6 +4014,7 @@ export class UberEatsService {
             }
           : {}),
         price_info: { price: item.priceCents },
+        tax_info: { tax_rate: taxRatePercentage },
         modifier_group_ids:
           item.sourceType === 'OPTION_ITEM' ? [] : item.modifierGroupIds,
         suspension_info: {
@@ -4034,11 +4050,12 @@ export class UberEatsService {
   private async getUberMenuSchedule(): Promise<{
     timezone: string;
     serviceAvailability: UberServiceAvailability[];
+    taxRatePercentage: number;
   }> {
     const [config, hours] = await Promise.all([
       this.prisma.businessConfig.findUnique({
         where: { id: 1 },
-        select: { timezone: true },
+        select: { timezone: true, salesTaxRate: true },
       }),
       this.prisma.businessHour.findMany({ orderBy: { weekday: 'asc' } }),
     ]);
@@ -4046,13 +4063,25 @@ export class UberEatsService {
     if (!timezone) {
       throw new BadRequestException('发布 Uber 菜单前必须配置门店时区。');
     }
+    const salesTaxRate = config?.salesTaxRate;
+    if (
+      typeof salesTaxRate !== 'number' ||
+      !Number.isFinite(salesTaxRate) ||
+      salesTaxRate < 0 ||
+      salesTaxRate > 1
+    ) {
+      throw new BadRequestException(
+        'salesTaxRate 必须使用 0～1 的比例格式，例如 13% 应保存为 0.13',
+      );
+    }
+    const taxRatePercentage = Number((salesTaxRate * 100).toFixed(4));
     const serviceAvailability = toUberServiceAvailability(hours, timezone);
     if (serviceAvailability.length === 0) {
       throw new BadRequestException(
         '发布 Uber 菜单前必须至少配置一个合法可售营业时段；全天营业请明确配置 00:00–24:00。',
       );
     }
-    return { timezone, serviceAvailability };
+    return { timezone, serviceAvailability, taxRatePercentage };
   }
 
   private buildUberDraftEdges(graph: {
