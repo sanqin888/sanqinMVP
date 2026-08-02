@@ -372,7 +372,9 @@ describe('UberEatsService', () => {
       },
     };
     Object.assign(prisma, {
-      $transaction: jest.fn((callback) => callback(prisma)),
+      $transaction: jest.fn(
+        (callback: (transaction: typeof prisma) => unknown) => callback(prisma),
+      ),
     });
 
     const auth = createAuthService() as unknown as {
