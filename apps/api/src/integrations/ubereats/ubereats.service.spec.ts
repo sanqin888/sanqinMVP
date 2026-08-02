@@ -1,6 +1,7 @@
 jest.mock('@prisma/client', () => ({
   PrismaClient: class {},
   Channel: { ubereats: 'ubereats' },
+  FulfillmentType: { pickup: 'pickup', delivery: 'delivery' },
   OrderStatus: {
     pending: 'pending',
     paid: 'paid',
@@ -351,13 +352,28 @@ describe('UberEatsService', () => {
     const prisma = {
       order: {
         findUnique: jest.fn().mockResolvedValue(null),
-        create: jest.fn().mockResolvedValue({ orderStableId: 'ord_uber_1' }),
+        create: jest.fn().mockResolvedValue({
+          id: 'order-db-id',
+          orderStableId: 'ord_uber_1',
+          status: 'paid',
+        }),
       },
+      orderItem: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        create: jest.fn(),
+      },
+      menuItem: { findFirst: jest.fn() },
+      uberItemChannelConfig: { findFirst: jest.fn() },
+      uberOrderItemModifier: { createMany: jest.fn() },
+      uberWebhookInbox: { upsert: jest.fn() },
       opsEvent: {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue(null),
       },
     };
+    Object.assign(prisma, {
+      $transaction: jest.fn((callback) => callback(prisma)),
+    });
 
     const auth = createAuthService() as unknown as {
       getAccessToken: jest.Mock;
@@ -390,7 +406,80 @@ describe('UberEatsService', () => {
     );
     expect(prisma.order.findUnique).toHaveBeenCalled();
     expect(prisma.order.create).toHaveBeenCalled();
+    expect(prisma.uberWebhookInbox.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { eventId: 'evt_123' } }),
+    );
     fetchSpy.mockRestore();
+  });
+
+  it('解析多数量、嵌套 modifier、特殊说明、折扣、税费和未知商品快照', () => {
+    const service = new UberEatsService(
+      createSignatureOnlyPrisma() as never,
+      createAuthService(),
+    );
+    const parsed = (
+      service as unknown as {
+        parseOrderPayload(payload: unknown): {
+          displayId: string;
+          discountCents: number;
+          taxCents: number;
+          items: Array<{
+            quantity: number;
+            displayName: string;
+            specialInstructions: string | null;
+            optionsUnitPriceCents: number;
+            modifiers: Array<{ children: unknown[] }>;
+          }>;
+        };
+      }
+    ).parseOrderPayload({
+      order_id: 'ue_complex',
+      display_id: 'A-2048',
+      subtotal_cents: 2700,
+      discount_cents: 300,
+      tax_cents: 312,
+      total_cents: 2712,
+      items: [
+        {
+          line_item_id: 'line_unknown',
+          item_id: 'not-in-local-menu',
+          title: 'External noodle snapshot',
+          quantity: 2,
+          unit_price: 1350,
+          total_price: 2700,
+          special_instructions: '不要香菜',
+          modifiers: [
+            {
+              id: 'size-large',
+              title: 'Large',
+              quantity: 1,
+              price_delta: 200,
+              modifiers: [
+                {
+                  id: 'extra-meat',
+                  title: 'Extra meat',
+                  quantity: 2,
+                  price_delta: 75,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(parsed).toMatchObject({
+      displayId: 'A-2048',
+      discountCents: 300,
+      taxCents: 312,
+    });
+    expect(parsed.items[0]).toMatchObject({
+      quantity: 2,
+      displayName: 'External noodle snapshot',
+      specialInstructions: '不要香菜',
+      optionsUnitPriceCents: 350,
+    });
+    expect(parsed.items[0].modifiers[0].children).toHaveLength(1);
   });
 
   it('拒绝 origin 或 base 路径不匹配的 resource_href', async () => {

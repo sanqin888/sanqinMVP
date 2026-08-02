@@ -23,7 +23,8 @@ export class PrintPosPayloadService {
 
     if (!order) throw new NotFoundException('order not found');
 
-    const orderNumber = order.clientRequestId ?? order.orderStableId;
+    const orderNumber =
+      order.externalDisplayId ?? order.clientRequestId ?? order.orderStableId;
     const deliveryFeeCents = order.deliveryFeeCents ?? 0;
     const deliveryCostCents = order.deliveryCostCents ?? 0;
     const deliverySubsidyCentsRaw = order.deliverySubsidyCents;
@@ -88,7 +89,8 @@ export class PrintPosPayloadService {
       pickupCode: order.pickupCode ?? null,
       fulfillment: order.fulfillmentType,
       paymentMethod,
-      orderNotes: this.extractOrderNotes(intentMetadata),
+      orderNotes:
+        order.externalOrderNotes ?? this.extractOrderNotes(intentMetadata),
       utensils: this.extractUtensils(intentMetadata),
       snapshot: {
         items,

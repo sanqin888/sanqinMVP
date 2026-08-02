@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import {
   Channel,
+  FulfillmentType,
   OrderStatus,
   PaymentMethod,
   UberMenuPublishStatus,
@@ -41,12 +42,117 @@ type UberMenuPublishError = {
   message: string;
 };
 
+type UberOrderMoneyDto = number | { amount?: number; value?: number };
+
+type UberOrderModifierDto = {
+  id?: string;
+  modifier_id?: string;
+  title?: string;
+  name?: string;
+  quantity?: number;
+  price?: UberOrderMoneyDto;
+  price_delta?: UberOrderMoneyDto;
+  special_instructions?: string;
+  modifiers?: UberOrderModifierDto[];
+  selected_items?: UberOrderModifierDto[];
+};
+
+type UberOrderItemDto = {
+  id?: string;
+  line_item_id?: string;
+  item_id?: string;
+  external_data?: string;
+  title?: string;
+  name?: string;
+  quantity?: number;
+  price?: UberOrderMoneyDto;
+  unit_price?: UberOrderMoneyDto;
+  total_price?: UberOrderMoneyDto;
+  special_instructions?: string;
+  modifiers?: UberOrderModifierDto[];
+  selected_modifier_groups?: Array<{
+    id?: string;
+    title?: string;
+    selected_items?: UberOrderModifierDto[];
+  }>;
+};
+
+type UberOrderDetailDto = {
+  id?: string;
+  order_id?: string;
+  external_order_id?: string;
+  display_id?: string;
+  store_id?: string;
+  subtotal?: UberOrderMoneyDto;
+  subtotal_cents?: number;
+  tax?: UberOrderMoneyDto;
+  tax_cents?: number;
+  total?: UberOrderMoneyDto;
+  total_cents?: number;
+  discount?: UberOrderMoneyDto;
+  discount_cents?: number;
+  delivery_fee?: UberOrderMoneyDto;
+  items?: UberOrderItemDto[];
+  cart?: { items?: UberOrderItemDto[] };
+  customer?: {
+    name?: string;
+    full_name?: string;
+    phone?: string;
+    phone_number?: string;
+  };
+  eater?: {
+    name?: string;
+    full_name?: string;
+    phone?: string;
+    phone_number?: string;
+  };
+  fulfillment_type?: string;
+  type?: string;
+  estimated_ready_for_pickup_at?: string;
+  estimated_delivery_at?: string;
+  special_instructions?: string;
+  paid_at?: string;
+  created_at?: string;
+  placed_at?: string;
+};
+
+type ParsedUberModifier = {
+  externalId: string | null;
+  parentExternalId: string | null;
+  displayName: string;
+  quantity: number;
+  priceDeltaCents: number;
+  specialInstructions: string | null;
+  children: ParsedUberModifier[];
+};
+
+type ParsedUberOrderItem = {
+  externalLineId: string | null;
+  externalItemId: string | null;
+  stableIdHint: string | null;
+  displayName: string;
+  quantity: number;
+  baseUnitPriceCents: number;
+  optionsUnitPriceCents: number;
+  unitPriceCents: number;
+  lineTotalCents: number;
+  specialInstructions: string | null;
+  modifiers: ParsedUberModifier[];
+};
+
 type ParsedUberOrder = {
   externalOrderId: string;
+  displayId: string;
   storeId?: string | null;
   subtotalCents: number;
   taxCents: number;
   totalCents: number;
+  discountCents: number;
+  deliveryFeeCents: number;
+  fulfillmentType: 'pickup' | 'delivery';
+  estimatedReadyAt: Date | null;
+  specialInstructions: string | null;
+  items: ParsedUberOrderItem[];
   contactName?: string | null;
   contactPhone?: string | null;
   paidAt: Date;
@@ -2760,7 +2866,7 @@ export class UberEatsService {
       throw new BadGatewayException('Uber 订单详情响应无法解析');
     }
 
-    const order = await this.upsertUberOrder(parsedOrder, eventType);
+    const order = await this.upsertUberOrder(parsedOrder, eventType, eventId);
 
     await this.captureEvent('ubereats_webhook_processed', {
       eventType,
@@ -4703,136 +4809,337 @@ export class UberEatsService {
     );
   }
 
-  private async upsertUberOrder(order: ParsedUberOrder, eventType: string) {
+  private async upsertUberOrder(
+    order: ParsedUberOrder,
+    eventType: string,
+    eventId: string,
+  ) {
     const clientRequestId = this.toClientRequestId(order.externalOrderId);
     const mappedStatus = this.mapEventTypeToOrderStatus(eventType);
+    const validation = this.validateOrderAmounts(order);
 
-    const existing = await this.prisma.order.findUnique({
-      where: { clientRequestId },
-      select: {
-        id: true,
-        orderStableId: true,
-        status: true,
-      },
-    });
-
-    if (!existing) {
-      const created = await this.prisma.order.create({
-        data: {
-          channel: Channel.ubereats,
-          clientRequestId,
-          status: mappedStatus,
-          paidAt: order.paidAt,
-          paymentMethod: PaymentMethod.UBEREATS,
-          subtotalCents: order.subtotalCents,
-          taxCents: order.taxCents,
-          totalCents: order.totalCents,
-          paymentTotalCents: order.totalCents,
-          contactName: order.contactName,
-          contactPhone: order.contactPhone,
-        },
-        select: {
-          orderStableId: true,
-          status: true,
-        },
+    const result = await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.order.findUnique({
+        where: { clientRequestId },
+        select: { id: true, orderStableId: true, status: true },
       });
-
-      await this.captureEvent('ubereats_order_upserted', {
-        eventType,
-        externalOrderId: order.externalOrderId,
-        orderStableId: created.orderStableId,
-        mappedStatus: created.status,
-        action: 'created',
-      });
-
-      return { orderStableId: created.orderStableId };
-    }
-
-    const nextStatus = this.shouldAdvanceOrderStatus(
-      existing.status,
-      mappedStatus,
-    )
-      ? mappedStatus
-      : existing.status;
-
-    const updated = await this.prisma.order.update({
-      where: { id: existing.id },
-      data: {
+      const nextStatus =
+        existing &&
+        !this.shouldAdvanceOrderStatus(existing.status, mappedStatus)
+          ? existing.status
+          : mappedStatus;
+      const header = {
+        channel: Channel.ubereats,
         status: nextStatus,
+        paidAt: order.paidAt,
+        paymentMethod: PaymentMethod.UBEREATS,
+        fulfillmentType:
+          order.fulfillmentType === 'delivery'
+            ? FulfillmentType.delivery
+            : FulfillmentType.pickup,
         subtotalCents: order.subtotalCents,
+        subtotalAfterDiscountCents: Math.max(
+          0,
+          order.subtotalCents - order.discountCents,
+        ),
+        couponDiscountCents: order.discountCents,
         taxCents: order.taxCents,
+        deliveryFeeCents: order.deliveryFeeCents,
         totalCents: order.totalCents,
         paymentTotalCents: order.totalCents,
         contactName: order.contactName,
         contactPhone: order.contactPhone,
-      },
-      select: {
-        orderStableId: true,
-        status: true,
-      },
+        externalDisplayId: order.displayId,
+        externalOrderNotes: order.specialInstructions,
+        externalEstimatedReadyAt: order.estimatedReadyAt,
+        externalPriceVarianceCents: validation.totalVarianceCents,
+      };
+      const saved = existing
+        ? await tx.order.update({ where: { id: existing.id }, data: header })
+        : await tx.order.create({ data: { ...header, clientRequestId } });
+
+      // Replacing the externally-owned snapshot makes repeated deliveries idempotent.
+      await tx.orderItem.deleteMany({ where: { orderId: saved.id } });
+      for (const item of order.items) {
+        const productStableId = await this.resolveUberProductStableId(
+          tx,
+          order.storeId,
+          item,
+        );
+        const createdItem = await tx.orderItem.create({
+          data: {
+            orderId: saved.id,
+            productStableId,
+            displayName: item.displayName,
+            qty: item.quantity,
+            baseUnitPriceCents: item.baseUnitPriceCents,
+            optionsUnitPriceCents: item.optionsUnitPriceCents,
+            unitPriceCents: item.unitPriceCents,
+            optionsJson: this.toOrderOptionsSnapshot(item.modifiers),
+            externalItemId: item.externalItemId,
+            externalLineId: item.externalLineId,
+            externalSpecialInstructions: item.specialInstructions,
+            externalLineTotalCents: item.lineTotalCents,
+          },
+        });
+        const modifiers = this.flattenUberModifiers(item.modifiers);
+        if (modifiers.length) {
+          await tx.uberOrderItemModifier.createMany({
+            data: modifiers.map((modifier, sortOrder) => ({
+              orderItemId: createdItem.id,
+              externalModifierId: modifier.externalId,
+              parentExternalId: modifier.parentExternalId,
+              displayName: modifier.displayName,
+              quantity: modifier.quantity,
+              priceDeltaCents: modifier.priceDeltaCents,
+              specialInstructions: modifier.specialInstructions,
+              sortOrder,
+              snapshot: modifier as unknown as Prisma.InputJsonValue,
+            })),
+          });
+        }
+      }
+      await tx.uberWebhookInbox.upsert({
+        where: { eventId },
+        create: {
+          eventId,
+          eventType,
+          externalOrderId: order.externalOrderId,
+          status: 'PROCESSED',
+          processedAt: new Date(),
+          payload: validation as unknown as Prisma.InputJsonValue,
+        },
+        update: {
+          status: 'PROCESSED',
+          processedAt: new Date(),
+          payload: validation as unknown as Prisma.InputJsonValue,
+        },
+      });
+      return {
+        orderStableId: saved.orderStableId,
+        status: saved.status,
+        action: existing ? 'updated' : 'created',
+      };
     });
 
+    if (validation.hasMaterialVariance) {
+      this.logger.warn(
+        `[ubereats order] amount variance externalOrderId=${order.externalOrderId} line=${validation.lineVarianceCents} total=${validation.totalVarianceCents}`,
+      );
+    }
     await this.captureEvent('ubereats_order_upserted', {
       eventType,
       externalOrderId: order.externalOrderId,
-      orderStableId: updated.orderStableId,
-      mappedStatus,
-      finalStatus: updated.status,
-      action: 'updated',
+      orderStableId: result.orderStableId,
+      mappedStatus: result.status,
+      action: result.action,
+      ...validation,
     });
+    return { orderStableId: result.orderStableId };
+  }
 
-    return { orderStableId: updated.orderStableId };
+  private async resolveUberProductStableId(
+    tx: Prisma.TransactionClient,
+    storeId: string | null | undefined,
+    item: ParsedUberOrderItem,
+  ): Promise<string> {
+    const candidates = [item.stableIdHint, item.externalItemId].filter(
+      (value): value is string => !!value,
+    );
+    if (candidates.length) {
+      const local = await tx.menuItem.findFirst({
+        where: { stableId: { in: candidates } },
+        select: { stableId: true },
+      });
+      if (local) return local.stableId;
+      const config = await tx.uberItemChannelConfig.findFirst({
+        where: {
+          AND: [
+            ...(storeId
+              ? [{ OR: [{ storeId }, { uberStoreId: storeId }] }]
+              : []),
+            {
+              OR: [
+                { externalItemId: { in: candidates } },
+                { menuItemStableId: { in: candidates } },
+              ],
+            },
+          ],
+        },
+        select: { menuItemStableId: true },
+      });
+      if (config) return config.menuItemStableId;
+    }
+    return `ubereats:unknown:${item.externalItemId ?? item.externalLineId ?? createHash('sha256').update(item.displayName).digest('hex').slice(0, 20)}`;
+  }
+
+  private flattenUberModifiers(
+    items: ParsedUberModifier[],
+  ): ParsedUberModifier[] {
+    return items.flatMap((item) => [
+      item,
+      ...this.flattenUberModifiers(item.children),
+    ]);
+  }
+
+  private toOrderOptionsSnapshot(
+    items: ParsedUberModifier[],
+  ): Prisma.InputJsonValue {
+    return items.map((item, index) => ({
+      templateGroupStableId: item.parentExternalId ?? `uber-group-${index}`,
+      nameEn: item.displayName,
+      nameZh: null,
+      minSelect: 0,
+      maxSelect: null,
+      sortOrder: index,
+      choices: this.flattenUberModifiers([item]).map((choice, choiceIndex) => ({
+        stableId: choice.externalId ?? `uber-option-${index}-${choiceIndex}`,
+        templateGroupStableId: choice.parentExternalId ?? `uber-group-${index}`,
+        nameEn: choice.displayName,
+        nameZh: null,
+        priceDeltaCents: choice.priceDeltaCents,
+        quantity: choice.quantity,
+        specialInstructions: choice.specialInstructions,
+        sortOrder: choiceIndex,
+      })),
+    }));
+  }
+
+  private validateOrderAmounts(order: ParsedUberOrder) {
+    const calculatedLinesCents = order.items.reduce(
+      (sum, item) => sum + item.lineTotalCents,
+      0,
+    );
+    const lineVarianceCents = order.subtotalCents - calculatedLinesCents;
+    const calculatedTotalCents =
+      order.subtotalCents -
+      order.discountCents +
+      order.taxCents +
+      order.deliveryFeeCents;
+    const totalVarianceCents = order.totalCents - calculatedTotalCents;
+    const roundingToleranceCents = Math.max(1, order.items.length);
+    return {
+      calculatedLinesCents,
+      calculatedTotalCents,
+      lineVarianceCents,
+      totalVarianceCents,
+      roundingToleranceCents,
+      hasMaterialVariance:
+        Math.abs(lineVarianceCents) > roundingToleranceCents ||
+        Math.abs(totalVarianceCents) > roundingToleranceCents,
+    };
   }
 
   private parseOrderPayload(payload: unknown): ParsedUberOrder | null {
-    if (!payload || typeof payload !== 'object') return null;
-
-    const orderNode = payload as Record<string, unknown>;
-
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload))
+      return null;
+    const dto = payload as UberOrderDetailDto;
     const externalOrderId = this.readString(
-      orderNode.order_id,
-      orderNode.id,
-      orderNode.external_order_id,
-      orderNode.display_id,
+      dto.order_id,
+      dto.id,
+      dto.external_order_id,
     );
     if (
       !externalOrderId ||
-      (!('total' in orderNode) && !('total_cents' in orderNode))
+      (dto.total === undefined && dto.total_cents === undefined)
     )
       return null;
-
-    const subtotalCents = this.readCents(
-      orderNode.subtotal,
-      orderNode.subtotal_cents,
-      0,
+    const subtotalCents = this.readCents(dto.subtotal, dto.subtotal_cents, 0);
+    const taxCents = this.readCents(dto.tax, dto.tax_cents, 0);
+    const discountCents = this.readCents(dto.discount, dto.discount_cents, 0);
+    const deliveryFeeCents = this.readCents(dto.delivery_fee, undefined, 0);
+    const items = (dto.items ?? dto.cart?.items ?? []).map((item) =>
+      this.parseUberOrderItem(item),
     );
-    const taxCents = this.readCents(orderNode.tax, orderNode.tax_cents, 0);
     const totalCents = this.readCents(
-      orderNode.total,
-      orderNode.total_cents,
-      subtotalCents + taxCents,
+      dto.total,
+      dto.total_cents,
+      subtotalCents - discountCents + taxCents + deliveryFeeCents,
     );
-
-    const customer =
-      this.asObject(orderNode.customer) ??
-      this.asObject(orderNode.eater) ??
-      orderNode;
-
-    const paidAt = this.readDate(
-      orderNode.paid_at,
-      orderNode.created_at,
-      orderNode.placed_at,
-    );
-
+    const customer = dto.customer ?? dto.eater ?? {};
     return {
       externalOrderId,
-      storeId: this.readString(orderNode.store_id) ?? null,
+      displayId: this.readString(dto.display_id) ?? externalOrderId,
+      storeId: this.readString(dto.store_id),
       subtotalCents,
       taxCents,
       totalCents,
+      discountCents,
+      deliveryFeeCents,
       contactName: this.readString(customer.name, customer.full_name),
       contactPhone: this.readString(customer.phone, customer.phone_number),
-      paidAt: paidAt ?? new Date(),
+      paidAt:
+        this.readDate(dto.paid_at, dto.created_at, dto.placed_at) ?? new Date(),
+      fulfillmentType: this.readString(dto.fulfillment_type, dto.type)
+        ?.toLowerCase()
+        .includes('deliver')
+        ? 'delivery'
+        : 'pickup',
+      estimatedReadyAt: this.readDate(
+        dto.estimated_ready_for_pickup_at,
+        dto.estimated_delivery_at,
+      ),
+      specialInstructions: this.readString(dto.special_instructions),
+      items,
+    };
+  }
+
+  private parseUberOrderItem(item: UberOrderItemDto): ParsedUberOrderItem {
+    const quantity = Math.max(1, Math.round(item.quantity ?? 1));
+    const modifiers = [
+      ...(item.modifiers ?? []).map((modifier) =>
+        this.parseUberModifier(modifier, null),
+      ),
+      ...(item.selected_modifier_groups ?? []).flatMap((group) =>
+        (group.selected_items ?? []).map((modifier) =>
+          this.parseUberModifier(modifier, group.id ?? null),
+        ),
+      ),
+    ];
+    const optionsUnitPriceCents = this.flattenUberModifiers(modifiers).reduce(
+      (sum, modifier) => sum + modifier.priceDeltaCents * modifier.quantity,
+      0,
+    );
+    const suppliedUnit = this.readCents(item.unit_price, item.price, 0);
+    const suppliedLine = this.readCents(
+      item.total_price,
+      undefined,
+      suppliedUnit * quantity,
+    );
+    const unitPriceCents = suppliedUnit || Math.round(suppliedLine / quantity);
+    return {
+      externalLineId: this.readString(item.line_item_id, item.id),
+      externalItemId: this.readString(item.item_id, item.id),
+      stableIdHint: this.readString(item.external_data),
+      displayName:
+        this.readString(item.title, item.name) ?? 'Unknown Uber item',
+      quantity,
+      baseUnitPriceCents: Math.max(0, unitPriceCents - optionsUnitPriceCents),
+      optionsUnitPriceCents,
+      unitPriceCents,
+      lineTotalCents: suppliedLine,
+      specialInstructions: this.readString(item.special_instructions),
+      modifiers,
+    };
+  }
+
+  private parseUberModifier(
+    modifier: UberOrderModifierDto,
+    parentExternalId: string | null,
+  ): ParsedUberModifier {
+    const externalId = this.readString(modifier.modifier_id, modifier.id);
+    return {
+      externalId,
+      parentExternalId,
+      displayName:
+        this.readString(modifier.title, modifier.name) ?? 'Unknown modifier',
+      quantity: Math.max(1, Math.round(modifier.quantity ?? 1)),
+      priceDeltaCents: this.readCents(modifier.price_delta, modifier.price, 0),
+      specialInstructions: this.readString(modifier.special_instructions),
+      children: [
+        ...(modifier.modifiers ?? []),
+        ...(modifier.selected_items ?? []),
+      ].map((child) => this.parseUberModifier(child, externalId)),
     };
   }
 
