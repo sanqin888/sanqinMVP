@@ -30,10 +30,14 @@ describe('UberEatsController OAuth callback', () => {
     };
     const controller = new UberEatsController(service as never);
 
-    await controller.oauthCallback('super-secret', 'state-secret', {
-      session: { sessionId: 'session-secret' },
-      query: { code: 'super-secret', state: 'state-secret', extra: 'private' },
-    } as never);
+    await controller.oauthCallback(
+      {
+        session: { sessionId: 'session-secret' },
+        query: { code: 'super-secret', state: 'state-secret', extra: 'private' },
+      } as never,
+      'super-secret',
+      'state-secret',
+    );
 
     const logs = logSpy.mock.calls.flat().join(' ');
     expect(logs).toMatch(/correlationId=[0-9a-f-]+/);
@@ -53,9 +57,9 @@ describe('UberEatsController OAuth callback', () => {
     const request = { session: { sessionId: 'session_1' } } as never;
 
     const developmentHtml = await controller.oauthCallback(
+      request,
       'code',
       'state',
-      request,
     );
     expect(developmentHtml).toContain(
       '&lt;script&gt;alert(&quot;token&quot;)&lt;/script&gt;',
@@ -64,9 +68,9 @@ describe('UberEatsController OAuth callback', () => {
 
     process.env.NODE_ENV = 'production';
     const productionHtml = await controller.oauthCallback(
+      request,
       'code',
       'state',
-      request,
     );
     expect(productionHtml).toContain('授权处理失败，请重试或联系管理员。');
     expect(productionHtml).not.toContain('script');
