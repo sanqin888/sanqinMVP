@@ -410,6 +410,16 @@ export class UberEatsController {
     }
   }
 
+  private readRequestHeader(req: Request, name: string): string | null {
+    const value = req.headers[name.toLowerCase()];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (Array.isArray(value)) {
+      const first = value.find((item) => item.trim());
+      return first?.trim() || null;
+    }
+    return null;
+  }
+
   private requireAdminSession(req: Request & OAuthRequestContext): string {
     const sessionId = req.session?.sessionId?.trim();
     if (!sessionId) throw new Error('缺少管理员会话');
@@ -482,9 +492,6 @@ export class UberEatsController {
   @Post('webhook')
   @HttpCode(200)
   async webhook(@Req() req: Request) {
-    this.logger.log(
-      `[ubereats webhook headers] ${JSON.stringify(req.headers)}`,
-    );
     const rawBuffer = Buffer.isBuffer(req.body)
       ? req.body
       : Buffer.from(
@@ -496,16 +503,25 @@ export class UberEatsController {
 
     const rawBody = rawBuffer.toString('utf8');
 
-    this.logger.log(
-      `[ubereats webhook controller] rawBodyBytes=${rawBuffer.length}`,
-    );
-
     let parsedBody: unknown = null;
     try {
       parsedBody = rawBody ? JSON.parse(rawBody) : null;
     } catch {
       parsedBody = null;
     }
+
+    const body =
+      parsedBody && typeof parsedBody === 'object'
+        ? (parsedBody as Record<string, unknown>)
+        : null;
+    const requestId = this.readRequestHeader(req, 'x-request-id') ?? 'unknown';
+    const eventType =
+      typeof body?.event_type === 'string' ? body.event_type : 'unknown';
+    const contentType =
+      this.readRequestHeader(req, 'content-type') ?? 'unknown';
+    this.logger.log(
+      `[ubereats webhook] requestId=${requestId} eventType=${eventType} contentType=${contentType} bodyBytes=${rawBuffer.length}`,
+    );
 
     await this.uberEatsService.handleWebhook({
       headers: req.headers as Record<string, unknown>,

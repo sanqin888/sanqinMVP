@@ -902,10 +902,6 @@ export class UberEatsService {
       this.readEventId(input.headers, input.body) ??
       `no-event-id:${eventType}:${this.hashForFallback(input.rawBody)}`;
 
-    this.logger.log(
-      `[ubereats webhook] eventType=${eventType} eventId=${eventId} bodyLength=${input.rawBody.length}`,
-    );
-
     const alreadySeen = await this.hasSeenWebhookEvent(eventId);
     if (alreadySeen) {
       this.logger.warn(
@@ -4986,43 +4982,42 @@ export class UberEatsService {
     headers: Record<string, unknown>,
     rawBody: string,
   ) {
-    const clientSecret = process.env.UBER_EATS_CLIENT_SECRET?.trim();
-    const webhookSigningKey = process.env.UBER_EATS_WEBHOOK_SIGNING_KEY?.trim();
-    const candidateSecrets = [
-      clientSecret,
-      webhookSigningKey && webhookSigningKey !== clientSecret
-        ? webhookSigningKey
-        : null,
-    ].filter((secret): secret is string => !!secret);
-
-    if (!candidateSecrets.length) {
-      throw new Error(
-        'UBER_EATS_CLIENT_SECRET 或 UBER_EATS_WEBHOOK_SIGNING_KEY 未配置',
-      );
+    // Uber signs the exact UTF-8 request body with the app client secret and
+    // sends the lowercase hexadecimal HMAC-SHA256 in X-Uber-Signature.
+    const currentClientSecret =
+      process.env.UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET?.trim();
+    if (!currentClientSecret) {
+      throw new Error('UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET 未配置');
     }
 
-    const receivedSignature = this.readHeader(
-      headers,
-      'x-uber-signature',
-      'x-uber-eats-signature',
-    );
-
+    const receivedSignature = this.readHeader(headers, 'x-uber-signature');
     if (!receivedSignature) {
       throw new UnauthorizedException('Missing Uber signature header');
     }
 
-    const receivedBuffer = Buffer.from(receivedSignature.trim(), 'utf8');
-    const isMatched = candidateSecrets.some((secret) => {
-      const expected = createHmac('sha256', secret)
+    const candidateClientSecrets = [currentClientSecret];
+    const previousClientSecret =
+      process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET?.trim();
+    const previousValidUntil =
+      process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET_VALID_UNTIL?.trim();
+    if (previousClientSecret && previousValidUntil) {
+      const validUntilMs = Date.parse(previousValidUntil);
+      if (Number.isFinite(validUntilMs) && Date.now() < validUntilMs) {
+        candidateClientSecrets.push(previousClientSecret);
+      }
+    }
+
+    const normalizedSignature = receivedSignature.trim().toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(normalizedSignature)) {
+      throw new UnauthorizedException('Invalid Uber signature');
+    }
+
+    const receivedBuffer = Buffer.from(normalizedSignature, 'hex');
+    const isMatched = candidateClientSecrets.some((clientSecret) => {
+      const expectedBuffer = createHmac('sha256', clientSecret)
         .update(rawBody, 'utf8')
-        .digest('hex');
-
-      const expectedBuffer = Buffer.from(expected, 'utf8');
-
-      return (
-        expectedBuffer.length === receivedBuffer.length &&
-        timingSafeEqual(expectedBuffer, receivedBuffer)
-      );
+        .digest();
+      return timingSafeEqual(expectedBuffer, receivedBuffer);
     });
 
     if (!isMatched) {
@@ -5085,18 +5080,12 @@ export class UberEatsService {
     headers: Record<string, unknown>,
     ...keys: string[]
   ): string | null {
-    for (const key of keys) {
-      const direct = headers[key];
-      const lower = headers[key.toLowerCase()];
-      const upper = headers[key.toUpperCase()];
-      const value = direct ?? lower ?? upper;
-
-      if (typeof value === 'string' && value.trim()) {
-        return value.trim();
-      }
+    const acceptedKeys = new Set(keys.map((key) => key.toLowerCase()));
+    for (const [key, value] of Object.entries(headers)) {
+      if (!acceptedKeys.has(key.toLowerCase())) continue;
+      if (typeof value === 'string' && value.trim()) return value.trim();
       if (Array.isArray(value)) {
-        const values = value as unknown[];
-        const first = values.find(
+        const first = value.find(
           (item: unknown) => typeof item === 'string' && item.trim(),
         );
         if (typeof first === 'string') return first.trim();

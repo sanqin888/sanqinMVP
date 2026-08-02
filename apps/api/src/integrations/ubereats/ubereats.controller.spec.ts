@@ -80,4 +80,36 @@ describe('UberEatsController OAuth callback', () => {
     expect(productionHtml).not.toContain('script');
     expect(productionHtml).not.toContain('token');
   });
+
+  it('webhook 日志仅包含安全元数据，不包含认证 headers', async () => {
+    const logSpy = jest.spyOn(AppLogger.prototype, 'log').mockImplementation();
+    const service = { handleWebhook: jest.fn().mockResolvedValue(undefined) };
+    const controller = new UberEatsController(service as never);
+    const rawBody = Buffer.from(
+      '{"event_type":"orders.notification","data":{"id":"1"}}',
+      'utf8',
+    );
+
+    await controller.webhook({
+      body: rawBody,
+      headers: {
+        'x-request-id': 'request-safe-1',
+        'content-type': 'application/json',
+        'x-uber-signature': 'signature-must-not-be-logged',
+        cookie: 'session=must-not-be-logged',
+        authorization: 'Bearer must-not-be-logged',
+        'proxy-authorization': 'Basic must-not-be-logged',
+      },
+    } as never);
+
+    const logs = logSpy.mock.calls.flat().join(' ');
+    expect(logs).toContain('requestId=request-safe-1');
+    expect(logs).toContain('eventType=orders.notification');
+    expect(logs).toContain('contentType=application/json');
+    expect(logs).toContain(`bodyBytes=${rawBody.length}`);
+    expect(logs).not.toContain('signature-must-not-be-logged');
+    expect(logs).not.toContain('session=must-not-be-logged');
+    expect(logs).not.toContain('Bearer must-not-be-logged');
+    expect(logs).not.toContain('Basic must-not-be-logged');
+  });
 });

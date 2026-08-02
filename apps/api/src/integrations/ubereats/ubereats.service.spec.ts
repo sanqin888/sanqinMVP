@@ -208,58 +208,130 @@ describe('UberEatsService', () => {
 
   beforeEach(() => {
     process.env.UBER_EATS_CLIENT_SECRET = clientSecret;
+    process.env.UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET = clientSecret;
     process.env.UBER_EATS_OAUTH_STATE_SECRET =
       'high-entropy-test-secret-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   });
 
   afterEach(() => {
     delete process.env.UBER_EATS_CLIENT_SECRET;
-    delete process.env.UBER_EATS_WEBHOOK_SIGNING_KEY;
+    delete process.env.UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET;
+    delete process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET;
+    delete process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET_VALID_UNTIL;
     delete process.env.UBER_EATS_OAUTH_STATE_SECRET;
     jest.restoreAllMocks();
   });
 
-  it('当 client secret 校验失败时会回退使用 webhook signing key 校验', async () => {
-    const rawBody = '{"event_type":"orders.accepted"}';
-    process.env.UBER_EATS_CLIENT_SECRET = 'wrong-client-secret';
-    process.env.UBER_EATS_WEBHOOK_SIGNING_KEY = 'fallback-webhook-key';
+  const createSignatureOnlyPrisma = () => ({
+    opsEvent: {
+      findFirst: jest.fn().mockResolvedValue({ id: 'already-seen' }),
+    },
+  });
 
-    const signature = createHmac('sha256', 'fallback-webhook-key')
-      .update(rawBody, 'utf8')
-      .digest('hex');
+  const verifySignature = (
+    service: UberEatsService,
+    rawBody: string,
+    headers: Record<string, unknown>,
+  ) =>
+    service.handleWebhook({
+      headers,
+      rawBody,
+      body: { event_type: 'orders.notification', event_id: 'fixed-event' },
+    });
 
-    const prisma = {
-      order: {
-        findUnique: jest.fn().mockResolvedValue(null),
-        create: jest.fn().mockResolvedValue({ orderStableId: 'ord_uber_2' }),
-      },
-      opsEvent: {
-        findFirst: jest.fn().mockResolvedValue(null),
-        create: jest.fn().mockResolvedValue(null),
-      },
-    };
-
-    const service = new UberEatsService(prisma as never, createAuthService());
+  it('接受 Uber 文档算法的固定 UTF-8/HMAC-SHA256 十六进制签名向量', async () => {
+    const rawBody =
+      '{"event_type":"orders.notification","event_id":"d4e4a8b1-3b7d-4f61-9e4b-123456789abc"}';
+    process.env.UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET = 'uber-client-secret';
+    const documentedVector =
+      '552930492844589395696d9784bab01a2205c2d9ff3aeffc9a1bcb154217d3e1';
+    const service = new UberEatsService(
+      createSignatureOnlyPrisma() as never,
+      createAuthService(),
+    );
     await expect(
-      service.handleWebhook({
-        headers: {
-          'x-uber-signature': signature,
-          'x-event-id': 'evt_456',
-        },
-        rawBody,
-        body: {
-          event_type: 'orders.accepted',
-          order: {
-            order_id: 'ue_456',
-            subtotal_cents: 1000,
-            tax_cents: 130,
-            total_cents: 1130,
-          },
-        },
+      verifySignature(service, rawBody, {
+        'x-uber-signature': documentedVector,
       }),
     ).resolves.toBeUndefined();
+  });
 
-    expect(prisma.order.create).toHaveBeenCalled();
+  it.each([
+    [
+      'body 被修改',
+      '{"event_type":"orders.notification","changed":true}',
+      clientSecret,
+    ],
+    ['secret 错误', '{"event_type":"orders.notification"}', 'wrong-secret'],
+  ])('拒绝%s时的签名', async (caseName, rawBody, signingSecret) => {
+    const signature = createHmac('sha256', signingSecret)
+      .update(rawBody, 'utf8')
+      .digest('hex');
+    const receivedBody = caseName === 'body 被修改' ? `${rawBody} ` : rawBody;
+    const service = new UberEatsService(
+      createSignatureOnlyPrisma() as never,
+      createAuthService(),
+    );
+    await expect(
+      verifySignature(service, receivedBody, {
+        'x-uber-signature': signature,
+      }),
+    ).rejects.toThrow('Invalid Uber signature');
+  });
+
+  it('拒绝缺少唯一 X-Uber-Signature header 的请求', async () => {
+    const service = new UberEatsService(
+      createSignatureOnlyPrisma() as never,
+      createAuthService(),
+    );
+    await expect(verifySignature(service, '{}', {})).rejects.toThrow(
+      'Missing Uber signature header',
+    );
+    await expect(
+      verifySignature(service, '{}', {
+        'x-uber-eats-signature': createHmac('sha256', clientSecret)
+          .update('{}', 'utf8')
+          .digest('hex'),
+      }),
+    ).rejects.toThrow('Missing Uber signature header');
+  });
+
+  it('按 HTTP 规则不区分签名 header 名称大小写', async () => {
+    const rawBody = '{"event_type":"orders.notification"}';
+    const signature = createHmac('sha256', clientSecret)
+      .update(rawBody, 'utf8')
+      .digest('hex');
+    const service = new UberEatsService(
+      createSignatureOnlyPrisma() as never,
+      createAuthService(),
+    );
+    await expect(
+      verifySignature(service, rawBody, {
+        'X-UbEr-SiGnAtUrE': signature,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('仅在显式过渡期内接受 previous client secret', async () => {
+    const rawBody = '{"event_type":"orders.notification"}';
+    process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET = 'previous-client-secret';
+    process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET_VALID_UNTIL =
+      '2099-01-01T00:00:00.000Z';
+    const signature = createHmac('sha256', 'previous-client-secret')
+      .update(rawBody, 'utf8')
+      .digest('hex');
+    const service = new UberEatsService(
+      createSignatureOnlyPrisma() as never,
+      createAuthService(),
+    );
+    await expect(
+      verifySignature(service, rawBody, { 'x-uber-signature': signature }),
+    ).resolves.toBeUndefined();
+    process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET_VALID_UNTIL =
+      '2020-01-01T00:00:00.000Z';
+    await expect(
+      verifySignature(service, rawBody, { 'x-uber-signature': signature }),
+    ).rejects.toThrow('Invalid Uber signature');
   });
 
   it('接收订单 webhook 时会写入 ubereats 订单并返回 orderStableId', async () => {
