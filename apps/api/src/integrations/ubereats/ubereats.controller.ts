@@ -14,6 +14,7 @@ import {
   Query,
   Req,
   Res,
+  UseGuards,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import {
@@ -33,8 +34,31 @@ import {
   Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { randomUUID } from 'crypto';
 import { AppLogger } from '../../common/app-logger';
+import { Roles } from '../../auth/roles.decorator';
+import { RolesGuard } from '../../auth/roles.guard';
+import { SessionAuthGuard } from '../../auth/session-auth.guard';
 import { UberEatsService } from './ubereats.service';
+
+type OAuthRequestContext = {
+  session?: { sessionId?: string };
+  user?: { userStableId?: string };
+};
+
+function escapeHtml(value: string): string {
+  return value.replace(
+    /[&<>'"]/g,
+    (character) =>
+      ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        "'": '&#39;',
+        '"': '&quot;',
+      })[character] ?? character,
+  );
+}
 
 class UpsertUberPriceBookItemDto {
   @Type(() => Number)
@@ -305,25 +329,38 @@ export class UberEatsController {
   constructor(private readonly uberEatsService: UberEatsService) {}
 
   @Get('oauth/connect-url')
-  oauthConnectUrl() {
-    return this.uberEatsService.buildMerchantAuthorizeUrl();
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  oauthConnectUrl(@Req() req: Request & OAuthRequestContext) {
+    return this.uberEatsService.buildMerchantAuthorizeUrl(
+      this.requireAdminSession(req),
+      req.user?.userStableId,
+    );
   }
 
   @Get('oauth/start')
-  oauthStart(@Res() res: Response) {
-    const result = this.uberEatsService.startMerchantOAuth();
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  oauthStart(@Req() req: Request & OAuthRequestContext, @Res() res: Response) {
+    const result = this.uberEatsService.startMerchantOAuth(
+      this.requireAdminSession(req),
+      req.user?.userStableId,
+    );
     return res.redirect(result.authorizeUrl);
   }
 
   @Get('oauth/callback')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   @Header('Content-Type', 'text/html; charset=utf-8')
   async oauthCallback(
     @Query('code') code?: string,
     @Query('state') state?: string,
-    @Req() req?: Request,
+    @Req() req: Request & OAuthRequestContext,
   ) {
+    const correlationId = randomUUID();
     this.logger.log(
-      `[ubereats oauth callback] code=${code ?? 'missing'} state=${state ?? 'missing'} query=${JSON.stringify(req?.query ?? {})}`,
+      `[ubereats oauth callback] correlationId=${correlationId} hasCode=${Boolean(code)} hasState=${Boolean(state)}`,
     );
 
     if (!code) {
@@ -334,6 +371,7 @@ export class UberEatsController {
       const result = await this.uberEatsService.exchangeAuthorizationCode(
         code,
         state,
+        this.requireAdminSession(req),
       );
 
       return `
@@ -341,19 +379,23 @@ export class UberEatsController {
 <html lang="zh-CN">
   <body>
     <h2>Uber 授权成功</h2>
-    <p>merchantUberUserId: ${result.merchantUberUserId}</p>
-    <p>scope: ${result.scope ?? ''}</p>
+    <p>merchantUberUserId: ${escapeHtml(result.merchantUberUserId)}</p>
+    <p>scope: ${escapeHtml(result.scope ?? '')}</p>
     <p>expiresAt: ${result.expiresAt ? new Date(result.expiresAt).toISOString() : 'unknown'}</p>
     <p>你现在可以关闭此页面，并继续调用 /integrations/ubereats/oauth/stores 或 /integrations/ubereats/oauth/provision。</p>
   </body>
 </html>
 `;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const internalMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      const displayMessage =
+        process.env.NODE_ENV === 'production'
+          ? '授权处理失败，请重试或联系管理员。'
+          : internalMessage;
 
       this.logger.error(
-        `[ubereats oauth callback] failed error=${message}`,
-        error instanceof Error ? error.stack : undefined,
+        `[ubereats oauth callback] correlationId=${correlationId} failed=true errorType=${error instanceof Error ? error.name : 'UnknownError'}`,
       );
 
       return `
@@ -361,11 +403,17 @@ export class UberEatsController {
 <html lang="zh-CN">
   <body>
     <h2>Uber 授权失败</h2>
-    <p>${message}</p>
+    <p>${escapeHtml(displayMessage)}</p>
   </body>
 </html>
 `;
     }
+  }
+
+  private requireAdminSession(req: Request & OAuthRequestContext): string {
+    const sessionId = req.session?.sessionId?.trim();
+    if (!sessionId) throw new Error('缺少管理员会话');
+    return sessionId;
   }
 
   @Get('oauth/stores')

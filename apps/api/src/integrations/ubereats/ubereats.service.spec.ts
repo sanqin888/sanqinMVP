@@ -193,6 +193,9 @@ describe('UberEatsService', () => {
         .mockResolvedValue(
           'https://auth.uber.com/oauth/v2/authorize?state=test',
         ),
+      getMerchantRedirectUri: jest
+        .fn()
+        .mockReturnValue('https://example.com/oauth/callback'),
       exchangeAuthorizationCode: jest.fn().mockResolvedValue({
         accessToken: 'merchant_token_123',
         refreshToken: 'refresh_token_123',
@@ -205,11 +208,14 @@ describe('UberEatsService', () => {
 
   beforeEach(() => {
     process.env.UBER_EATS_CLIENT_SECRET = clientSecret;
+    process.env.UBER_EATS_OAUTH_STATE_SECRET =
+      'high-entropy-test-secret-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   });
 
   afterEach(() => {
     delete process.env.UBER_EATS_CLIENT_SECRET;
     delete process.env.UBER_EATS_WEBHOOK_SIGNING_KEY;
+    delete process.env.UBER_EATS_OAUTH_STATE_SECRET;
     jest.restoreAllMocks();
   });
 
@@ -417,15 +423,13 @@ describe('UberEatsService', () => {
     );
   });
 
-  it('debugAccessToken 会返回请求 scope 与脱敏 token 信息', async () => {
+  it('debugAccessToken 会返回请求 scope 且不暴露 token 元数据', async () => {
     const service = new UberEatsService({} as never, createAuthService());
 
     await expect(service.debugAccessToken()).resolves.toEqual({
       ok: true,
       requestedScope: null,
       normalizedScope: 'eats.store.orders.read',
-      tokenPrefix: 'token_debug_',
-      tokenLength: 'token_debug_1234567890'.length,
       usedDefaultScopes: true,
       forceRefreshed: false,
       cached: 'cache_or_fetch',
@@ -458,8 +462,6 @@ describe('UberEatsService', () => {
       ok: true,
       storeId: 'store_1',
       requestUrl: 'https://api.uber.com/v1/eats/stores/store_1/created-orders',
-      tokenPrefix: 'token_debug_',
-      tokenLength: 'token_debug_1234567890'.length,
       orderCount: 1,
       orders: [
         {
@@ -516,6 +518,52 @@ describe('UberEatsService', () => {
     await expect(service.debugCreatedOrders()).rejects.toThrow(
       '缺少 storeId，请通过 query 传入或配置 UBER_EATS_STORE_ID',
     );
+  });
+
+  describe('OAuth state 安全校验', () => {
+    const stateInternals = (service: UberEatsService) =>
+      service as unknown as {
+        consumeOAuthState: (state: string, sessionId: string) => unknown;
+      };
+
+    it('拒绝过期与未来时间的 state', () => {
+      const service = new UberEatsService({} as never, createAuthService());
+      const nowSpy = jest.spyOn(Date, 'now');
+      nowSpy.mockReturnValue(1_700_000_000_000);
+      const expired = service.buildMerchantAuthorizeUrl('session_1').state;
+      nowSpy.mockReturnValue(1_700_000_000_000 + 10 * 60 * 1000 + 1);
+      expect(() =>
+        stateInternals(service).consumeOAuthState(expired, 'session_1'),
+      ).toThrow('OAuth state 已过期');
+
+      nowSpy.mockReturnValue(1_700_000_000_000 + 120_000);
+      const future = service.buildMerchantAuthorizeUrl('session_1').state;
+      nowSpy.mockReturnValue(1_700_000_000_000);
+      expect(() =>
+        stateInternals(service).consumeOAuthState(future, 'session_1'),
+      ).toThrow('OAuth state 时间戳来自未来');
+    });
+
+    it('拒绝伪造、会话不匹配和二次使用的 state', () => {
+      const service = new UberEatsService({} as never, createAuthService());
+      const forged = service.buildMerchantAuthorizeUrl('session_1').state;
+      expect(() =>
+        stateInternals(service).consumeOAuthState(`${forged}x`, 'session_1'),
+      ).toThrow('OAuth state 校验失败');
+
+      const mismatched = service.buildMerchantAuthorizeUrl('session_1').state;
+      expect(() =>
+        stateInternals(service).consumeOAuthState(mismatched, 'session_2'),
+      ).toThrow('OAuth state 与管理员会话不匹配');
+
+      const oneTime = service.buildMerchantAuthorizeUrl('session_1').state;
+      expect(() =>
+        stateInternals(service).consumeOAuthState(oneTime, 'session_1'),
+      ).not.toThrow();
+      expect(() =>
+        stateInternals(service).consumeOAuthState(oneTime, 'session_1'),
+      ).toThrow('OAuth state 不存在或已使用');
+    });
   });
 
   it('获取商户门店列表时会更新授权快照，且不覆盖 provision 状态', async () => {
