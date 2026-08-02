@@ -574,6 +574,26 @@ model UberWebhookInbox {
   @@index([externalOrderId])
 }
 
+/// Durable idempotency/audit record for each mutating Uber order decision.
+model UberOrderAction {
+  id              String    @id @default(uuid()) @db.Uuid
+  externalOrderId String
+  action          String
+  status          String
+  reasonCode      String?
+  reasonDetail    String?
+  uberHttpStatus  Int?
+  response        Json?
+  retryable       Boolean   @default(false)
+  attemptCount    Int       @default(0)
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([externalOrderId, action])
+  @@index([status, retryable, updatedAt])
+}
+
 model OrderAmendment {
   id                    String               @id @default(uuid()) @db.Uuid
   amendmentStableId     String               @unique @default(cuid())

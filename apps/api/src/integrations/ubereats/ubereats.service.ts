@@ -445,6 +445,33 @@ type ScopeVerificationResult = {
   detail?: string;
 };
 
+type UberOrderActionName = 'ACCEPT' | 'DENY';
+
+type UberOrderActionRecord = {
+  id: string;
+  status: string;
+  retryable: boolean;
+  uberHttpStatus: number | null;
+};
+
+type UberOrderActionDelegate = {
+  findUnique(args: {
+    where: {
+      externalOrderId_action: {
+        externalOrderId: string;
+        action: UberOrderActionName;
+      };
+    };
+  }): Promise<UberOrderActionRecord | null>;
+  create(args: {
+    data: Record<string, unknown>;
+  }): Promise<UberOrderActionRecord>;
+  update(args: {
+    where: { id: string };
+    data: Record<string, unknown>;
+  }): Promise<UberOrderActionRecord>;
+};
+
 type UberMerchantStore = {
   storeId: string;
   storeName: string | null;
@@ -596,6 +623,18 @@ export class UberEatsService {
     return prismaWithUber.uberStoreMapping ?? null;
   }
 
+  private get uberOrderActionDelegate(): UberOrderActionDelegate {
+    const delegate = (
+      this.prisma as PrismaService & {
+        uberOrderAction?: UberOrderActionDelegate;
+      }
+    ).uberOrderAction;
+    if (!delegate) {
+      throw new Error('UberOrderAction 数据表不可用');
+    }
+    return delegate;
+  }
+
   async debugAccessToken(scope?: string, forceRefresh = false) {
     const normalizedScopes = this.uberAuthService.normalizeScopesToArray(scope);
     const normalizedScope = normalizedScopes.join(' ');
@@ -737,40 +776,19 @@ export class UberEatsService {
     }
 
     if (normalizedScope === 'eats.store.status.write') {
-      if (input.dryRun !== false) {
-        return {
-          ...baseResult,
-          apiSkipped: true,
-          reason: 'dryRun=true，跳过真实状态写入',
-        };
-      }
-
-      const storeId = this.resolveDebugStoreId(input.storeId);
-      return await this.verifyScopeByRequest(
-        baseResult,
-        `/v1/eats/stores/${encodeURIComponent(storeId)}/status`,
-        token,
-        'POST',
-        { is_paused: false },
-      );
+      return {
+        ...baseResult,
+        apiSkipped: true,
+        reason: '未执行写验证：scope 验证不得改变门店状态',
+      };
     }
 
     if (normalizedScope === 'eats.order') {
-      if (!input.orderId?.trim()) {
-        return {
-          ...baseResult,
-          apiSkipped: true,
-          reason: 'missing orderId',
-        };
-      }
-
-      return await this.verifyScopeByRequest(
-        baseResult,
-        `/v1/eats/orders/${encodeURIComponent(input.orderId.trim())}/accept-pos-order`,
-        token,
-        'POST',
-        {},
-      );
+      return {
+        ...baseResult,
+        apiSkipped: true,
+        reason: '未执行写验证：仅以 token scope 声明验证 eats.order',
+      };
     }
 
     if (normalizedScope === 'eats.report') {
@@ -1113,6 +1131,37 @@ export class UberEatsService {
       orderStableId: updated.orderStableId,
       status: updated.status,
     };
+  }
+
+  /** Accept only an order whose complete local transaction has committed. */
+  async acceptUberOrder(externalOrderId: string) {
+    const normalizedOrderId = externalOrderId.trim();
+    const localOrder = await this.prisma.order.findUnique({
+      where: { clientRequestId: this.toClientRequestId(normalizedOrderId) },
+      select: { id: true },
+    });
+    if (!localOrder) {
+      throw new BadRequestException('订单尚未完整落库，禁止向 Uber 接单');
+    }
+    return this.executeUberOrderAction(normalizedOrderId, 'ACCEPT', {
+      reason: 'accepted',
+    });
+  }
+
+  /** Deny through Uber's POS decision endpoint with an auditable reason. */
+  async denyUberOrder(
+    externalOrderId: string,
+    reasonCode: string,
+    reasonDetail?: string,
+  ) {
+    const normalizedReason = reasonCode.trim();
+    if (!normalizedReason) {
+      throw new BadRequestException('拒单原因不能为空');
+    }
+    return this.executeUberOrderAction(externalOrderId.trim(), 'DENY', {
+      reason: normalizedReason,
+      ...(reasonDetail?.trim() ? { details: reasonDetail.trim() } : {}),
+    });
   }
 
   async listPendingUberOrders() {
@@ -2863,10 +2912,48 @@ export class UberEatsService {
     const parsedOrder = this.parseOrderPayload(orderPayload);
 
     if (!parsedOrder) {
-      throw new BadGatewayException('Uber 订单详情响应无法解析');
+      const externalOrderId = envelope.resourceId;
+      if (externalOrderId) {
+        await this.denyUberOrder(
+          externalOrderId,
+          'INVALID_ORDER',
+          '订单详情无法解析',
+        );
+      }
+      return;
     }
 
-    const order = await this.upsertUberOrder(parsedOrder, eventType, eventId);
+    const config = await this.ensureBusinessConfig();
+    if (config.isTemporarilyClosed) {
+      await this.denyUberOrder(
+        parsedOrder.externalOrderId,
+        'STORE_CLOSED',
+        config.temporaryCloseReason ?? '门店暂停营业',
+      );
+      return;
+    }
+
+    let order: { orderStableId: string };
+    try {
+      order = await this.upsertUberOrder(parsedOrder, eventType, eventId);
+    } catch (error) {
+      if (
+        error instanceof BadRequestException &&
+        error.message.includes('菜单映射')
+      ) {
+        await this.denyUberOrder(
+          parsedOrder.externalOrderId,
+          'ITEM_UNAVAILABLE',
+          error.message,
+        );
+        return;
+      }
+      // Database/local infrastructure errors deliberately remain pending so
+      // the webhook/job can retry; accepting before commit would lose orders.
+      throw error;
+    }
+
+    await this.acceptUberOrder(parsedOrder.externalOrderId);
 
     await this.captureEvent('ubereats_webhook_processed', {
       eventType,
@@ -2875,6 +2962,145 @@ export class UberEatsService {
       orderStableId: order.orderStableId,
       storeId: parsedOrder.storeId ?? this.normalizeStoreId(undefined),
     });
+  }
+
+  private async executeUberOrderAction(
+    externalOrderId: string,
+    action: UberOrderActionName,
+    payload: Record<string, unknown>,
+  ) {
+    if (!externalOrderId) {
+      throw new BadRequestException('externalOrderId 不能为空');
+    }
+    const delegate = this.uberOrderActionDelegate;
+    const key = { externalOrderId, action };
+    let record = await delegate.findUnique({
+      where: { externalOrderId_action: key },
+    });
+    if (record?.status === 'SUCCEEDED' || record?.status === 'PENDING') {
+      return { ok: record.status === 'SUCCEEDED', duplicate: true, action };
+    }
+    if (record && !record.retryable) {
+      return { ok: false, duplicate: true, action, retryable: false };
+    }
+    if (!record) {
+      try {
+        record = await delegate.create({
+          data: {
+            ...key,
+            status: 'PENDING',
+            reasonCode: this.readString(payload.reason),
+            reasonDetail: this.readString(payload.details),
+            attemptCount: 1,
+          },
+        });
+      } catch (error) {
+        if (this.readString(this.asObject(error)?.code) !== 'P2002')
+          throw error;
+        record = await delegate.findUnique({
+          where: { externalOrderId_action: key },
+        });
+        return { ok: record?.status === 'SUCCEEDED', duplicate: true, action };
+      }
+    } else {
+      record = await delegate.update({
+        where: { id: record.id },
+        data: {
+          status: 'PENDING',
+          retryable: false,
+          attemptCount: { increment: 1 },
+        },
+      });
+    }
+
+    const endpoint =
+      action === 'ACCEPT' ? 'accept_pos_order' : 'deny_pos_order';
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+    let response: Response;
+    try {
+      const token = await this.uberAuthService.getAccessToken('eats.order');
+      response = await fetch(
+        `${this.uberApiBaseUrl.replace(/\/$/, '')}/v1/eats/orders/${encodeURIComponent(externalOrderId)}/${endpoint}`,
+        {
+          method: 'POST',
+          signal: controller.signal,
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        },
+      );
+    } catch (error) {
+      await delegate.update({
+        where: { id: record.id },
+        data: {
+          status: 'FAILED',
+          retryable: true,
+          response: this.redactUberResponse({
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        },
+      });
+      throw new BadGatewayException({
+        ok: false,
+        retryable: true,
+        message: 'Uber 订单动作网络请求失败或超时',
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    const rawText = await response.text();
+    const parsed = this.tryParseJson(rawText);
+    const retryable = response.status === 429 || response.status >= 500;
+    await delegate.update({
+      where: { id: record.id },
+      data: {
+        status: response.ok ? 'SUCCEEDED' : 'FAILED',
+        uberHttpStatus: response.status,
+        retryable,
+        response: this.redactUberResponse(
+          parsed ?? { body: rawText.slice(0, 2_000) },
+        ),
+        ...(response.ok ? { completedAt: new Date() } : {}),
+      },
+    });
+    if (!response.ok) {
+      throw new BadGatewayException({
+        ok: false,
+        status: response.status,
+        retryable,
+        detail: this.summarizeDebugResponse(parsed, rawText),
+      });
+    }
+    return { ok: true, duplicate: false, action, status: response.status };
+  }
+
+  private redactUberResponse(value: unknown): Prisma.InputJsonValue {
+    if (Array.isArray(value)) {
+      return value.map((item) => this.redactUberResponse(item));
+    }
+    const object = this.asObject(value);
+    if (!object) {
+      if (typeof value === 'string') {
+        return value
+          .replace(/Bearer\s+[A-Za-z0-9._~-]+/gi, 'Bearer [REDACTED]')
+          .replace(/\b(token|password|secret)=([^\s&]+)/gi, '$1=[REDACTED]')
+          .slice(0, 2_000);
+      }
+      return (value === undefined ? null : value) as Prisma.InputJsonValue;
+    }
+    return Object.fromEntries(
+      Object.entries(object).map(([key, item]) => [
+        key,
+        /token|authorization|phone|email|address|name/i.test(key)
+          ? '[REDACTED]'
+          : this.redactUberResponse(item),
+      ]),
+    );
   }
 
   private validateOrderResourceHref(resourceHref: string): string {
@@ -4970,7 +5196,9 @@ export class UberEatsService {
       });
       if (config) return config.menuItemStableId;
     }
-    return `ubereats:unknown:${item.externalItemId ?? item.externalLineId ?? createHash('sha256').update(item.displayName).digest('hex').slice(0, 20)}`;
+    throw new BadRequestException(
+      `Uber 菜单映射失败：${item.externalItemId ?? item.displayName}`,
+    );
   }
 
   private flattenUberModifiers(

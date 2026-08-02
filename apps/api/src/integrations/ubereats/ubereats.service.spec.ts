@@ -351,7 +351,10 @@ describe('UberEatsService', () => {
 
     const prisma = {
       order: {
-        findUnique: jest.fn().mockResolvedValue(null),
+        findUnique: jest
+          .fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValue({ id: 'order-db-id' }),
         create: jest.fn().mockResolvedValue({
           id: 'order-db-id',
           orderStableId: 'ord_uber_1',
@@ -366,6 +369,19 @@ describe('UberEatsService', () => {
       uberItemChannelConfig: { findFirst: jest.fn() },
       uberOrderItemModifier: { createMany: jest.fn() },
       uberWebhookInbox: { upsert: jest.fn() },
+      businessConfig: {
+        findUnique: jest.fn().mockResolvedValue({ isTemporarilyClosed: false }),
+      },
+      uberOrderAction: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({
+          id: 'action_1',
+          status: 'PENDING',
+          retryable: false,
+          uberHttpStatus: null,
+        }),
+        update: jest.fn(),
+      },
       opsEvent: {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue(null),
@@ -380,17 +396,20 @@ describe('UberEatsService', () => {
     const auth = createAuthService() as unknown as {
       getAccessToken: jest.Mock;
     };
-    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          order_id: 'ue_123',
-          subtotal_cents: 1000,
-          tax_cents: 130,
-          total_cents: 1130,
-        }),
-        { status: 200 },
-      ),
-    );
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            order_id: 'ue_123',
+            subtotal_cents: 1000,
+            tax_cents: 130,
+            total_cents: 1130,
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
     const service = new UberEatsService(prisma as never, auth as never);
     await service.handleWebhook({
       headers: {
@@ -571,7 +590,7 @@ describe('UberEatsService', () => {
     fetchSpy.mockRestore();
   });
 
-  it('下载成功但订单解析失败时不记录为已处理', async () => {
+  it('下载成功但订单解析失败时按原因拒单且不记录为已处理', async () => {
     const body = {
       event_type: 'orders.notification',
       resource_href: 'https://api.uber.com/v2/eats/order/ue_invalid',
@@ -583,6 +602,16 @@ describe('UberEatsService', () => {
       .update(rawBody, 'utf8')
       .digest('hex');
     const prisma = {
+      uberOrderAction: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({
+          id: 'deny_1',
+          status: 'PENDING',
+          retryable: false,
+          uberHttpStatus: null,
+        }),
+        update: jest.fn(),
+      },
       opsEvent: {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn(),
@@ -590,9 +619,8 @@ describe('UberEatsService', () => {
     };
     jest
       .spyOn(global, 'fetch')
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ id: 'ue_invalid' })),
-      );
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'ue_invalid' })))
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
     const service = new UberEatsService(prisma as never, createAuthService());
     await expect(
       service.handleWebhook({
@@ -600,7 +628,12 @@ describe('UberEatsService', () => {
         rawBody,
         body,
       }),
-    ).rejects.toMatchObject({ status: 502 });
+    ).resolves.toBeUndefined();
+    expect(prisma.uberOrderAction.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ reasonCode: 'INVALID_ORDER' }),
+      }),
+    );
     expect(prisma.opsEvent.create).not.toHaveBeenCalled();
     jest.restoreAllMocks();
   });
@@ -738,6 +771,122 @@ describe('UberEatsService', () => {
       forceRefreshed: false,
       cached: 'cache_or_fetch',
     });
+  });
+
+  it('scope 验证不产生任何 POST，write scope 明确标记未执行写验证', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    const service = new UberEatsService({} as never, createAuthService());
+
+    await expect(
+      service.verifyScope('eats.order', { orderId: 'ue_1' }),
+    ).resolves.toMatchObject({
+      tokenIssued: true,
+      apiSkipped: true,
+      reason: expect.stringContaining('未执行写验证'),
+    });
+    await expect(
+      service.verifyScope('eats.store.status.write', { dryRun: false }),
+    ).resolves.toMatchObject({
+      apiSkipped: true,
+      reason: expect.stringContaining('未执行写验证'),
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  const createActionPrisma = (
+    localOrder: object | null = { id: 'local_1' },
+  ) => {
+    let action: Record<string, unknown> | null = null;
+    return {
+      order: { findUnique: jest.fn().mockResolvedValue(localOrder) },
+      uberOrderAction: {
+        findUnique: jest.fn().mockImplementation(() => Promise.resolve(action)),
+        create: jest.fn().mockImplementation(({ data }) => {
+          action = {
+            id: 'action_1',
+            retryable: false,
+            uberHttpStatus: null,
+            ...data,
+          };
+          return Promise.resolve(action);
+        }),
+        update: jest.fn().mockImplementation(({ data }) => {
+          action = { ...action, ...data };
+          return Promise.resolve(action);
+        }),
+      },
+    };
+  };
+
+  it('只有本地订单完整落库后才调用 Uber 接单 endpoint', async () => {
+    const missing = createActionPrisma(null);
+    const service = new UberEatsService(missing as never, createAuthService());
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    await expect(service.acceptUberOrder('ue_missing')).rejects.toThrow(
+      '订单尚未完整落库',
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    const prisma = createActionPrisma();
+    fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    const persisted = new UberEatsService(prisma as never, createAuthService());
+    await expect(persisted.acceptUberOrder('ue_saved')).resolves.toMatchObject({
+      ok: true,
+      duplicate: false,
+    });
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://api.uber.com/v1/eats/orders/ue_saved/accept_pos_order',
+      expect.objectContaining({
+        method: 'POST',
+        body: '{"reason":"accepted"}',
+      }),
+    );
+  });
+
+  it('重复接单复用唯一动作记录且不重复请求 Uber', async () => {
+    const prisma = createActionPrisma();
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    const service = new UberEatsService(prisma as never, createAuthService());
+    await service.acceptUberOrder('ue_duplicate');
+    await expect(
+      service.acceptUberOrder('ue_duplicate'),
+    ).resolves.toMatchObject({
+      duplicate: true,
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('拒单 endpoint 保存业务原因 payload', async () => {
+    const prisma = createActionPrisma();
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    const service = new UberEatsService(prisma as never, createAuthService());
+    await service.denyUberOrder('ue_deny', 'STORE_CLOSED', '门店暂停');
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://api.uber.com/v1/eats/orders/ue_deny/deny_pos_order',
+      expect.objectContaining({
+        body: '{"reason":"STORE_CLOSED","details":"门店暂停"}',
+      }),
+    );
+  });
+
+  it('Uber 超时/网络错误标记为可重试并保存脱敏错误', async () => {
+    const prisma = createActionPrisma();
+    jest
+      .spyOn(global, 'fetch')
+      .mockRejectedValueOnce(new Error('timeout token=secret'));
+    const service = new UberEatsService(prisma as never, createAuthService());
+    await expect(
+      service.denyUberOrder('ue_timeout', 'INVALID_ORDER'),
+    ).rejects.toMatchObject({ status: 502 });
+    expect(prisma.uberOrderAction.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ retryable: true }),
+      }),
+    );
   });
 
   it('debugCreatedOrders 会返回请求 URL 与订单摘要且不暴露完整 token', async () => {
