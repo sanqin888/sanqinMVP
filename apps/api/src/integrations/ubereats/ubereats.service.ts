@@ -124,6 +124,7 @@ type UberMenuUploadPayload = {
     price_info: { price: number };
     modifier_group_ids: string[];
     suspension_info: { suspended_until: string | null };
+    image_url?: string;
   }>;
   modifier_groups: Array<{
     id: string;
@@ -245,6 +246,53 @@ export type UberMenuPayloadValidationIssue = {
   sourceStableId: string | null;
   message: string;
 };
+
+const UBER_IMAGE_URL_MAX_LENGTH = 2_000;
+const EXPIRING_IMAGE_QUERY_KEYS = new Set([
+  'expires',
+  'x-amz-expires',
+  'x-amz-signature',
+  'signature',
+  'token',
+]);
+
+function isPermanentPublicHttpsUrl(value: string): boolean {
+  if (!value || value.length > UBER_IMAGE_URL_MAX_LENGTH) return false;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.username || url.password) return false;
+    const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    if (
+      hostname === 'localhost' ||
+      hostname.endsWith('.localhost') ||
+      hostname.endsWith('.local') ||
+      hostname === '::1' ||
+      hostname.startsWith('fc') ||
+      hostname.startsWith('fd') ||
+      hostname.startsWith('fe80:')
+    )
+      return false;
+    const octets = hostname.split('.').map(Number);
+    if (
+      octets.length === 4 &&
+      octets.every(
+        (part) => Number.isInteger(part) && part >= 0 && part <= 255,
+      ) &&
+      (octets[0] === 10 ||
+        octets[0] === 127 ||
+        octets[0] === 0 ||
+        (octets[0] === 169 && octets[1] === 254) ||
+        (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) ||
+        (octets[0] === 192 && octets[1] === 168))
+    )
+      return false;
+    return !Array.from(url.searchParams.keys()).some((key) =>
+      EXPIRING_IMAGE_QUERY_KEYS.has(key.toLowerCase()),
+    );
+  } catch {
+    return false;
+  }
+}
 
 type SyncAvailabilityInput = UberStoreScopedInput & {
   menuItemStableId: string;
@@ -1187,6 +1235,7 @@ export class UberEatsService {
         priceCents: number;
         isAvailable: boolean;
         modifierGroupIds: string[];
+        imageUrl: string | null;
       }>,
     ) => {
       const groupMap = new Map(groups.map((group) => [group.id, group]));
@@ -1205,6 +1254,7 @@ export class UberEatsService {
             displayDescription: item.description,
             priceCents: item.priceCents,
             isAvailable: item.isAvailable,
+            imageUrl: item.imageUrl,
             groups: item.modifierGroupIds
               .map((groupId) => {
                 const group = groupMap.get(groupId);
@@ -2888,6 +2938,7 @@ export class UberEatsService {
           basePriceCents: true,
           isAvailable: true,
           sortOrder: true,
+          imageUrl: true,
           optionGroups: {
             where: { isEnabled: true },
             select: {
@@ -3038,6 +3089,7 @@ export class UberEatsService {
         isAvailable: boolean;
         modifierGroupIds: string[];
         hasDelta: boolean;
+        imageUrl: string | null;
       }
     >();
 
@@ -3054,6 +3106,7 @@ export class UberEatsService {
       categoryStableId: string;
       sortOrder: number;
       hasDelta: boolean;
+      imageUrl: string | null;
     }> = [];
 
     for (const template of templates) {
@@ -3133,6 +3186,7 @@ export class UberEatsService {
           hasDelta:
             optionPriceCents !== choice.priceDeltaCents ||
             optionAvailable !== choice.isAvailable,
+          imageUrl: null,
         });
       }
 
@@ -3194,6 +3248,7 @@ export class UberEatsService {
         hasDelta:
           priceCents !== menuItem.basePriceCents ||
           isAvailable !== menuItem.isAvailable,
+        imageUrl: menuItem.imageUrl,
       });
     }
 
@@ -3281,6 +3336,7 @@ export class UberEatsService {
       isAvailable: boolean;
       modifierGroupIds: string[];
       hasDelta: boolean;
+      imageUrl: string | null;
     }>;
   }) {
     const groupById = new Map(input.groups.map((group) => [group.id, group]));
@@ -3663,6 +3719,13 @@ export class UberEatsService {
       message: string,
     ) =>
       issues.push({ code, severity: 'ERROR', path, sourceStableId, message });
+    const warning = (
+      code: string,
+      path: string,
+      sourceStableId: string | null,
+      message: string,
+    ) =>
+      issues.push({ code, severity: 'WARNING', path, sourceStableId, message });
     const collections: Array<
       readonly [
         string,
@@ -3747,6 +3810,23 @@ export class UberEatsService {
       });
     });
     payload.items.forEach((item, ii) => {
+      if (item.image_url !== undefined) {
+        const imagePath = `$.items[${ii}].image_url`;
+        if (!isPermanentPublicHttpsUrl(item.image_url))
+          error(
+            'UBER_IMAGE_URL_INVALID',
+            imagePath,
+            item.id,
+            `图片地址必须是不超过 ${UBER_IMAGE_URL_MAX_LENGTH} 个字符、不含临时签名的永久公网 HTTPS URL。`,
+          );
+        else
+          warning(
+            'UBER_IMAGE_METADATA_UNVERIFIED',
+            imagePath,
+            item.id,
+            '未下载远程图片，无法确认内容类型和文件大小；这不会阻断发布。',
+          );
+      }
       if (
         !Number.isInteger(item.price_info?.price) ||
         item.price_info.price < 0
@@ -3872,6 +3952,7 @@ export class UberEatsService {
         priceCents: number;
         isAvailable: boolean;
         modifierGroupIds: string[];
+        imageUrl: string | null;
       }>;
       groups: Array<{
         id: string;
@@ -3923,6 +4004,11 @@ export class UberEatsService {
         suspension_info: {
           suspended_until: item.isAvailable ? null : '2099-01-01T00:00:00Z',
         },
+        ...(item.sourceType === 'MENU_ITEM' &&
+        item.imageUrl &&
+        isPermanentPublicHttpsUrl(item.imageUrl)
+          ? { image_url: item.imageUrl }
+          : {}),
       })),
       modifier_groups: graph.groups.map((group) => ({
         id: group.id,

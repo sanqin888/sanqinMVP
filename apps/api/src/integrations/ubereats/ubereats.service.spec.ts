@@ -1325,6 +1325,44 @@ describe('UberEatsService', () => {
       );
     });
 
+    it('合法公网 HTTPS 图片仅产生不可阻断的元数据 warning', () => {
+      const payload = validPayload();
+      (
+        payload.items[0] as (typeof payload.items)[number] & {
+          image_url?: string;
+        }
+      ).image_url = 'https://cdn.example.com/menu/dish.jpg';
+      const service = new UberEatsService({} as never, createAuthService());
+      expect(service.validateUberMenuPayload(payload as never)).toEqual([
+        expect.objectContaining({
+          code: 'UBER_IMAGE_METADATA_UNVERIFIED',
+          severity: 'WARNING',
+          path: '$.items[0].image_url',
+        }),
+      ]);
+    });
+
+    it.each([
+      'http://cdn.example.com/dish.jpg',
+      'https://localhost/dish.jpg',
+      'https://192.168.1.2/dish.jpg',
+      'https://cdn.example.com/dish.jpg?expires=1234',
+    ])('拒绝非永久公网图片地址 %s', (imageUrl) => {
+      const payload = validPayload();
+      (
+        payload.items[0] as (typeof payload.items)[number] & {
+          image_url?: string;
+        }
+      ).image_url = imageUrl;
+      const service = new UberEatsService({} as never, createAuthService());
+      expect(service.validateUberMenuPayload(payload as never)).toContainEqual(
+        expect.objectContaining({
+          code: 'UBER_IMAGE_URL_INVALID',
+          severity: 'ERROR',
+        }),
+      );
+    });
+
     it.each([
       [
         'UBER_ID_NOT_GLOBALLY_UNIQUE',
