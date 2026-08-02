@@ -388,7 +388,7 @@ export class UberAuthService {
         /\b(?:access[_ -]?token|client[_ -]?secret|authorization[_ -]?code|token|secret|code|credential|password)\s*[:=]\s*\S+/gi,
         '[redacted]',
       )
-      .replace(/[^a-zA-Z0-9 _.,:;()\[\]\/\-]/g, '')
+      .replace(/[^a-zA-Z0-9 _.,:;()[\]/-]/g, '')
       .trim()
       .slice(0, 200);
     return normalized || fallback;

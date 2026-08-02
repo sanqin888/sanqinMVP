@@ -1,5 +1,5 @@
 jest.mock('@prisma/client', () => ({
-  ...jest.requireActual('@prisma/client'),
+  ...jest.requireActual<typeof import('@prisma/client')>('@prisma/client'),
   OrderStatus: { PENDING: 'PENDING' },
   UberOpsTicketType: { GENERAL: 'GENERAL' },
   UberOpsTicketPriority: { NORMAL: 'NORMAL' },
