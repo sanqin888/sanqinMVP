@@ -5085,10 +5085,9 @@ export class UberEatsService {
       if (!acceptedKeys.has(key.toLowerCase())) continue;
       if (typeof value === 'string' && value.trim()) return value.trim();
       if (Array.isArray(value)) {
-        const first = value.find(
-          (item: unknown) => typeof item === 'string' && item.trim(),
-        );
-        if (typeof first === 'string') return first.trim();
+        for (const item of value as unknown[]) {
+          if (typeof item === 'string' && item.trim()) return item.trim();
+        }
       }
     }
     return null;
