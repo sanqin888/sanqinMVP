@@ -10,7 +10,11 @@ jest.mock('@prisma/client', () => ({
     cancelled: 'cancelled',
     refunded: 'refunded',
   },
-  UberMenuPublishStatus: { SUCCESS: 'SUCCESS' },
+  UberMenuPublishStatus: {
+    SUBMITTED: 'SUBMITTED',
+    SUCCEEDED: 'SUCCEEDED',
+    FAILED: 'FAILED',
+  },
   UberOpsTicketPriority: {
     LOW: 'LOW',
     MEDIUM: 'MEDIUM',
@@ -304,6 +308,92 @@ describe('UberEatsService', () => {
     expect(prisma.uberStoreMapping.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { uberStoreId: 'store_1' },
+      }),
+    );
+  });
+
+  it('菜单成功通知会将已提交版本标记为最终成功', async () => {
+    const rawBody = '{"event_type":"menus.notification"}';
+    const signature = createHmac('sha256', clientSecret)
+      .update(rawBody, 'utf8')
+      .digest('hex');
+    const prisma = {
+      uberMenuPublishVersion: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'version_1' }),
+        update: jest.fn().mockResolvedValue(null),
+      },
+      opsEvent: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue(null),
+      },
+    };
+
+    const service = new UberEatsService(prisma as never, createAuthService());
+    await service.handleWebhook({
+      headers: { 'x-uber-signature': signature, 'x-event-id': 'menu_ok' },
+      rawBody,
+      body: {
+        event_type: 'menus.notification',
+        data: { store_id: 'uber_store_1', status: 'SUCCESS' },
+      },
+    });
+
+    expect(prisma.uberMenuPublishVersion.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'version_1' },
+        data: expect.objectContaining({ status: 'SUCCEEDED' }) as unknown,
+      }),
+    );
+  });
+
+  it('菜单失败通知会保存 Uber 错误代码、字段路径和说明', async () => {
+    const rawBody = '{"event_type":"menus.notification"}';
+    const signature = createHmac('sha256', clientSecret)
+      .update(rawBody, 'utf8')
+      .digest('hex');
+    const prisma = {
+      uberMenuPublishVersion: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'version_2' }),
+        update: jest.fn().mockResolvedValue(null),
+      },
+      opsEvent: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue(null),
+      },
+    };
+
+    const service = new UberEatsService(prisma as never, createAuthService());
+    await service.handleWebhook({
+      headers: { 'x-uber-signature': signature, 'x-event-id': 'menu_failed' },
+      rawBody,
+      body: {
+        event_type: 'menus.notification',
+        data: {
+          store_id: 'uber_store_1',
+          status: 'FAILED',
+          errors: [
+            {
+              code: 'INVALID_PRICE',
+              field_path: 'items[0].price_info.price',
+              description: 'price is invalid',
+            },
+          ],
+        },
+      },
+    });
+
+    expect(prisma.uberMenuPublishVersion.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'FAILED',
+          errorDetails: [
+            {
+              code: 'INVALID_PRICE',
+              path: 'items[0].price_info.price',
+              message: 'price is invalid',
+            },
+          ],
+        }) as unknown,
       }),
     );
   });

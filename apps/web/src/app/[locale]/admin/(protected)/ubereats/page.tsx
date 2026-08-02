@@ -186,6 +186,9 @@ type UberMenuDraftResponse = {
     createdAt: string;
     totalItems: number;
     changedItems: number;
+    errorMessage?: string | null;
+    errorDetails?: Array<{ code: string; path?: string | null; message: string }> | null;
+    finishedAt?: string | null;
   } | null;
 };
 
@@ -914,7 +917,7 @@ export default function UberEatsAdminPage() {
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => void runAction('reload-draft', () => loadStoreMenuDraft(selectedStoreId), '菜单草稿已刷新', false)}>刷新草稿</button>
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => void runAction('save-node', saveSelectedNode, '当前节点已保存', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>保存当前节点</button>
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => void runAction('publish-dry', () => apiFetch<UberDryRunResponse>('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: true, ...publishFilterPayload }) }).then(setDryRunSchedule), 'Dry Run Publish 成功', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>Dry Run</button>
-                <button type="button" disabled={blockingValidationIssues.length > 0} title={blockingValidationIssues.length ? '请先修复阻断错误' : undefined} className="rounded border px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void runAction('publish-formal', () => apiFetch('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: false, ...publishFilterPayload }) }).then(() => {}), '正式 Publish 成功', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>正式 Publish</button>
+                <button type="button" disabled={blockingValidationIssues.length > 0} title={blockingValidationIssues.length ? '请先修复阻断错误' : undefined} className="rounded border px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void runAction('publish-formal', () => apiFetch('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: false, ...publishFilterPayload }) }).then(() => {}), '已提交，等待 Uber 确认', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>正式 Publish</button>
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => void runAction('refresh-diff', () => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }), '草稿与 Diff 已刷新', false)}>刷新 Diff</button>
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => setStoreMenuTab('publish')}>查看本次 Diff</button>
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => setStoreMenuTab('overview')}>查看上次发布版本</button>
@@ -1067,7 +1070,7 @@ export default function UberEatsAdminPage() {
                   </ul>
                   <div className="mt-3 flex gap-2">
                     <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={() => void runAction('publish-dry-inline', () => apiFetch<UberDryRunResponse>('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: true, ...publishFilterPayload }) }).then(setDryRunSchedule), 'Dry Run Publish 成功', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>Dry Run Publish</button>
-                    <button type="button" disabled={blockingValidationIssues.length > 0} className="rounded border px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void runAction('publish-formal-inline', () => apiFetch('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: false, ...publishFilterPayload }) }).then(() => {}), '正式 Publish 成功', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>正式 Publish</button>
+                    <button type="button" disabled={blockingValidationIssues.length > 0} className="rounded border px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void runAction('publish-formal-inline', () => apiFetch('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: false, ...publishFilterPayload }) }).then(() => {}), '已提交，等待 Uber 确认', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>正式 Publish</button>
                   </div>
                 </div>
                 <div className="rounded-xl border bg-white p-4">
@@ -1079,6 +1082,10 @@ export default function UberEatsAdminPage() {
                       <p>createdAt: {safeTime(menuDraft?.lastPublishedVersion?.createdAt)}</p>
                       <p>totalItems: {menuDraft?.lastPublishedVersion?.totalItems ?? 0}</p>
                       <p>changedItems: {menuDraft?.lastPublishedVersion?.changedItems ?? 0}</p>
+                      <p>finishedAt: {safeTime(menuDraft?.lastPublishedVersion?.finishedAt)}</p>
+                      {menuDraft?.lastPublishedVersion?.status === 'SUBMITTED' ? <p className="mt-2 rounded bg-amber-50 p-2 text-amber-800">已提交，等待 Uber 确认。</p> : null}
+                      {menuDraft?.lastPublishedVersion?.status === 'SUCCEEDED' ? <p className="mt-2 rounded bg-emerald-50 p-2 text-emerald-700">Uber 已确认菜单处理成功。</p> : null}
+                      {menuDraft?.lastPublishedVersion?.status === 'FAILED' ? <div className="mt-2 rounded bg-rose-50 p-2 text-rose-700"><p>{menuDraft.lastPublishedVersion.errorMessage ?? 'Uber 菜单处理失败'}</p>{menuDraft.lastPublishedVersion.errorDetails?.map((error, index) => <p key={`${error.code}-${index}`} className="mt-1 font-mono text-xs">{error.code}{error.path ? ` · ${error.path}` : ''} · {error.message}</p>)}</div> : null}
                     </div>
                     <p className="text-xs text-slate-500">lastPublishedAt(diff): {safeTime(menuDiff?.lastPublishedAt)}</p>
                   </div>

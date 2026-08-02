@@ -27,6 +27,12 @@ type UberWebhookInput = {
   rawBody: string;
 };
 
+type UberMenuPublishError = {
+  code: string;
+  path: string | null;
+  message: string;
+};
+
 type ParsedUberOrder = {
   externalOrderId: string;
   storeId?: string | null;
@@ -864,6 +870,16 @@ export class UberEatsService {
         );
         return;
 
+      case 'menu.notification':
+      case 'menus.notification':
+      case 'store.menu.updated':
+        await this.handleMenuNotificationWebhook(
+          eventType,
+          eventId,
+          input.body,
+        );
+        return;
+
       default:
         await this.captureEvent('ubereats_webhook_unhandled', {
           eventType,
@@ -1148,6 +1164,9 @@ export class UberEatsService {
           createdAt: true,
           totalItems: true,
           changedItems: true,
+          errorMessage: true,
+          errorDetails: true,
+          finishedAt: true,
         },
       });
 
@@ -1609,7 +1628,7 @@ export class UberEatsService {
     const lastSuccess = await this.prisma.uberMenuPublishVersion.findFirst({
       where: {
         storeId: normalizedStoreId,
-        status: UberMenuPublishStatus.SUCCESS,
+        status: UberMenuPublishStatus.SUCCEEDED,
       },
       orderBy: { createdAt: 'desc' },
       select: { createdAt: true, requestPayload: true, payload: true },
@@ -1767,17 +1786,29 @@ export class UberEatsService {
 
     try {
       const response = await this.uploadUberMenu(uberStoreId, payload);
-      await this.markMenuPublishVersionSuccess(version.id, response);
-      await this.backfillPublishedStateFromGraph(
-        normalizedStoreId,
-        uberStoreId,
-        normalized.graph,
-      );
+      await this.markMenuPublishVersionSubmitted(version.id, response);
+
+      let finalStatus: 'SUBMITTED' | 'SUCCEEDED' | 'FAILED' = 'SUBMITTED';
+      if (!this.hasMenuNotificationCapability()) {
+        finalStatus = await this.confirmUploadedMenu(
+          version.id,
+          uberStoreId,
+          payload,
+        );
+        if (finalStatus === 'SUCCEEDED') {
+          await this.backfillPublishedStateFromGraph(
+            normalizedStoreId,
+            uberStoreId,
+            normalized.graph,
+          );
+        }
+      }
 
       await this.captureEvent('ubereats_menu_published', {
         storeId: normalizedStoreId,
         uberStoreId,
         versionStableId: version.versionStableId,
+        status: finalStatus,
         totalItems: summary.totalItems,
         changedItems: summary.changedItems,
       });
@@ -2589,6 +2620,95 @@ export class UberEatsService {
       externalOrderId: parsedOrder.externalOrderId,
       orderStableId: order.orderStableId,
       storeId: parsedOrder.storeId ?? this.normalizeStoreId(undefined),
+    });
+  }
+
+  private async handleMenuNotificationWebhook(
+    eventType: string,
+    eventId: string,
+    payload: unknown,
+  ) {
+    const root = this.asObject(payload) ?? {};
+    const data = this.asObject(root.data) ?? root;
+    const meta = this.asObject(root.meta) ?? {};
+    const uberStoreId = this.readString(
+      data.store_id,
+      data.storeId,
+      meta.resource_id,
+      root.store_id,
+    );
+    const versionStableId = this.readString(
+      data.version_id,
+      data.versionStableId,
+      data.client_reference_id,
+    );
+    const status = (
+      this.readString(data.status, data.state, root.status) ?? ''
+    ).toUpperCase();
+    const errors = this.extractMenuPublishErrors(data);
+    const version = await this.prisma.uberMenuPublishVersion.findFirst({
+      where: {
+        status: UberMenuPublishStatus.SUBMITTED,
+        ...(versionStableId
+          ? { versionStableId }
+          : uberStoreId
+            ? { uberStoreId }
+            : { id: '__missing_menu_notification_identity__' }),
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+
+    if (version && /^(SUCCESS|SUCCEEDED|COMPLETED|PUBLISHED)$/.test(status)) {
+      await this.markMenuPublishVersionSuccess(version.id, data);
+    } else if (
+      version &&
+      (/^(FAIL|FAILED|FAILURE|REJECTED)$/.test(status) || errors.length > 0)
+    ) {
+      await this.markMenuPublishVersionFailed(
+        version.id,
+        errors.map((error) => error.message).join('; ') || 'Uber 菜单处理失败',
+        errors,
+      );
+    }
+
+    await this.captureEvent('ubereats_menu_notification_processed', {
+      eventType,
+      eventId,
+      uberStoreId: uberStoreId ?? 'unknown',
+      status: status || 'unknown',
+      matchedVersion: Boolean(version),
+      errors: errors as unknown as Prisma.JsonArray,
+    });
+  }
+
+  private extractMenuPublishErrors(payload: unknown): UberMenuPublishError[] {
+    const root = this.asObject(payload) ?? {};
+    const failure = this.asObject(root.failure_info) ?? {};
+    const candidates = [root.errors, failure.errors, root.error];
+    const values = candidates.flatMap<unknown>((candidate) =>
+      Array.isArray(candidate)
+        ? (candidate as unknown[])
+        : candidate
+          ? [candidate]
+          : [],
+    );
+
+    return values.map((value) => {
+      const error = this.asObject(value) ?? {};
+      return {
+        code:
+          this.readString(error.code, error.error_code) ?? 'UBER_MENU_ERROR',
+        path: this.readString(
+          error.path,
+          error.field_path,
+          error.field,
+          error.location,
+        ),
+        message:
+          this.readString(error.message, error.description, error.detail) ??
+          'Uber 未提供错误说明',
+      };
     });
   }
 
@@ -4062,6 +4182,57 @@ export class UberEatsService {
     );
   }
 
+  /**
+   * Menu uploads are asynchronous at Uber. Accounts subscribed to menu
+   * notifications must wait for the webhook; other accounts verify the menu
+   * through the read API instead of treating the PUT response as completion.
+   */
+  private hasMenuNotificationCapability(): boolean {
+    return /^(1|true|yes)$/i.test(
+      process.env.UBER_EATS_MENU_NOTIFICATIONS_ENABLED?.trim() ?? '',
+    );
+  }
+
+  private async confirmUploadedMenu(
+    versionId: string,
+    uberStoreId: string,
+    requested: UberMenuUploadPayload,
+  ): Promise<'SUBMITTED' | 'SUCCEEDED' | 'FAILED'> {
+    try {
+      const connection = await this.resolveMerchantConnection();
+      const response = await this.callUberApi(
+        `/v2/eats/stores/${encodeURIComponent(uberStoreId)}/menus`,
+        { accessToken: connection.accessToken, method: 'GET' },
+      );
+      const readPayload = this.asObject(response.menu ?? response) ?? {};
+      const expectedIds = requested.items.map((item) => item.id);
+      const actualIds = new Set(
+        (Array.isArray(readPayload.items) ? readPayload.items : [])
+          .map((item) => this.readString(this.asObject(item)?.id))
+          .filter((id): id is string => Boolean(id)),
+      );
+
+      // A readable response can still be the previous menu while Uber is
+      // processing. Only the uploaded entity set confirms this version.
+      if (
+        expectedIds.length === 0 ||
+        expectedIds.every((itemId) => actualIds.has(itemId))
+      ) {
+        await this.markMenuPublishVersionSuccess(versionId, response);
+        return 'SUCCEEDED';
+      }
+      return 'SUBMITTED';
+    } catch (error) {
+      // A transient read failure does not prove that asynchronous processing
+      // failed. Preserve SUBMITTED so a later refresh/reconciliation can retry.
+      await this.captureEvent('ubereats_menu_confirmation_pending', {
+        uberStoreId,
+        reason: error instanceof Error ? error.message : `${error}`,
+      });
+      return 'SUBMITTED';
+    }
+  }
+
   private async createMenuPublishVersionStarted(
     storeId: string,
     uberStoreId: string,
@@ -4076,7 +4247,7 @@ export class UberEatsService {
       data: {
         storeId,
         uberStoreId,
-        status: UberMenuPublishStatus.IN_PROGRESS,
+        status: UberMenuPublishStatus.SUBMITTED,
         totalItems: summary.totalItems,
         changedItems: summary.changedItems,
         requestPayload: payload as Prisma.InputJsonValue,
@@ -4089,6 +4260,22 @@ export class UberEatsService {
     return version;
   }
 
+  private async markMenuPublishVersionSubmitted(
+    id: string,
+    responsePayload: Record<string, unknown>,
+  ) {
+    await this.prisma.uberMenuPublishVersion.update({
+      where: { id },
+      data: {
+        status: UberMenuPublishStatus.SUBMITTED,
+        responsePayload: responsePayload as Prisma.InputJsonValue,
+        errorMessage: null,
+        errorDetails: undefined,
+        finishedAt: null,
+      },
+    });
+  }
+
   private async markMenuPublishVersionSuccess(
     id: string,
     responsePayload: Record<string, unknown>,
@@ -4096,20 +4283,26 @@ export class UberEatsService {
     await this.prisma.uberMenuPublishVersion.update({
       where: { id },
       data: {
-        status: UberMenuPublishStatus.SUCCESS,
+        status: UberMenuPublishStatus.SUCCEEDED,
         responsePayload: responsePayload as Prisma.InputJsonValue,
         errorMessage: null,
+        errorDetails: undefined,
         finishedAt: new Date(),
       },
     });
   }
 
-  private async markMenuPublishVersionFailed(id: string, errorMessage: string) {
+  private async markMenuPublishVersionFailed(
+    id: string,
+    errorMessage: string,
+    errors: UberMenuPublishError[] = [],
+  ) {
     await this.prisma.uberMenuPublishVersion.update({
       where: { id },
       data: {
         status: UberMenuPublishStatus.FAILED,
         errorMessage,
+        errorDetails: errors as unknown as Prisma.InputJsonValue,
         finishedAt: new Date(),
       },
     });
