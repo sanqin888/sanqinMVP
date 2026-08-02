@@ -1,6 +1,7 @@
 //apps/api/src/integrations/ubereats/ubereats.service.ts
 import {
   BadRequestException,
+  BadGatewayException,
   Injectable,
   NotImplementedException,
   UnauthorizedException,
@@ -26,6 +27,7 @@ import { gzipSync } from 'zlib';
 import { AppLogger } from '../../common/app-logger';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UberAuthService } from './uber-auth.service';
+import { UberWebhookEnvelopeDto } from './dto/uber-webhook-envelope.dto';
 
 type UberWebhookInput = {
   headers: Record<string, unknown>;
@@ -897,9 +899,10 @@ export class UberEatsService {
   async handleWebhook(input: UberWebhookInput): Promise<void> {
     this.verifyWebhookSignature(input.headers, input.rawBody);
 
-    const eventType = this.readEventType(input.body);
+    const envelope = UberWebhookEnvelopeDto.parse(input.body);
+    const eventType = envelope?.eventType ?? this.readEventType(input.body);
     const eventId =
-      this.readEventId(input.headers, input.body) ??
+      this.readEventId(input.headers, input.body, envelope?.eventId) ??
       `no-event-id:${eventType}:${this.hashForFallback(input.rawBody)}`;
 
     const alreadySeen = await this.hasSeenWebhookEvent(eventId);
@@ -919,7 +922,7 @@ export class UberEatsService {
       case 'orders.completed':
       case 'orders.cancelled':
       case 'orders.rejected':
-        await this.handleOrderWebhook(eventType, eventId, input.body);
+        await this.handleOrderWebhook(eventType, eventId, envelope);
         return;
 
       case 'store.provisioned':
@@ -2712,16 +2715,49 @@ export class UberEatsService {
   private async handleOrderWebhook(
     eventType: string,
     eventId: string,
-    payload: unknown,
+    envelope: UberWebhookEnvelopeDto | null,
   ) {
-    const parsedOrder = this.parseOrderPayload(payload);
+    if (!envelope) {
+      throw new BadRequestException('Uber 订单 webhook envelope 无效');
+    }
+
+    const resourceUrl = this.validateOrderResourceHref(envelope.resourceHref);
+    const token = await this.uberAuthService.getAccessToken(
+      'eats.store.orders.read',
+    );
+    let response: Response;
+    try {
+      response = await fetch(resourceUrl, {
+        method: 'GET',
+        redirect: 'error',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+        },
+      });
+    } catch (error) {
+      throw new BadGatewayException({
+        ok: false,
+        message: '下载 Uber 订单详情失败',
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    const rawText = await response.text();
+    const orderPayload = this.tryParseJson(rawText);
+    if (!response.ok) {
+      throw new BadGatewayException({
+        ok: false,
+        status: response.status,
+        message: 'Uber 订单详情接口返回错误',
+        detail: this.summarizeDebugResponse(orderPayload, rawText),
+      });
+    }
+
+    const parsedOrder = this.parseOrderPayload(orderPayload);
 
     if (!parsedOrder) {
-      await this.captureEvent('ubereats_order_webhook_parse_failed', {
-        eventType,
-        eventId,
-      });
-      return;
+      throw new BadGatewayException('Uber 订单详情响应无法解析');
     }
 
     const order = await this.upsertUberOrder(parsedOrder, eventType);
@@ -2733,6 +2769,33 @@ export class UberEatsService {
       orderStableId: order.orderStableId,
       storeId: parsedOrder.storeId ?? this.normalizeStoreId(undefined),
     });
+  }
+
+  private validateOrderResourceHref(resourceHref: string): string {
+    let base: URL;
+    let resource: URL;
+    try {
+      base = new URL(this.uberApiBaseUrl);
+      resource = new URL(resourceHref);
+    } catch {
+      throw new BadRequestException('Uber resource_href 无效');
+    }
+
+    const basePath = base.pathname.replace(/\/$/, '');
+    const belongsToBasePath =
+      !basePath ||
+      resource.pathname === basePath ||
+      resource.pathname.startsWith(`${basePath}/`);
+    if (
+      resource.origin !== base.origin ||
+      resource.username ||
+      resource.password ||
+      !belongsToBasePath
+    ) {
+      throw new BadRequestException('Uber resource_href 不属于配置的 API base');
+    }
+
+    return resource.toString();
   }
 
   private async handleMenuNotificationWebhook(
@@ -4724,12 +4787,7 @@ export class UberEatsService {
   private parseOrderPayload(payload: unknown): ParsedUberOrder | null {
     if (!payload || typeof payload !== 'object') return null;
 
-    const root = payload as Record<string, unknown>;
-    const dataNode = this.asObject(root.data);
-    const orderNode =
-      this.asObject(root.order) ?? this.asObject(dataNode?.order) ?? dataNode;
-
-    if (!orderNode) return null;
+    const orderNode = payload as Record<string, unknown>;
 
     const externalOrderId = this.readString(
       orderNode.order_id,
@@ -4737,7 +4795,11 @@ export class UberEatsService {
       orderNode.external_order_id,
       orderNode.display_id,
     );
-    if (!externalOrderId) return null;
+    if (
+      !externalOrderId ||
+      (!('total' in orderNode) && !('total_cents' in orderNode))
+    )
+      return null;
 
     const subtotalCents = this.readCents(
       orderNode.subtotal,
@@ -4760,17 +4822,11 @@ export class UberEatsService {
       orderNode.paid_at,
       orderNode.created_at,
       orderNode.placed_at,
-      root.created_at,
     );
 
     return {
       externalOrderId,
-      storeId:
-        this.readString(
-          orderNode.store_id,
-          dataNode?.store_id,
-          root.store_id,
-        ) ?? null,
+      storeId: this.readString(orderNode.store_id) ?? null,
       subtotalCents,
       taxCents,
       totalCents,
@@ -5028,6 +5084,7 @@ export class UberEatsService {
   private readEventId(
     headers: Record<string, unknown>,
     payload: unknown,
+    envelopeEventId?: string | null,
   ): string | null {
     const fromHeader = this.readHeader(
       headers,
@@ -5037,6 +5094,7 @@ export class UberEatsService {
       'uber-event-id',
     );
     if (fromHeader) return fromHeader;
+    if (envelopeEventId) return envelopeEventId;
 
     if (!payload || typeof payload !== 'object') return null;
     const root = payload as Record<string, unknown>;
