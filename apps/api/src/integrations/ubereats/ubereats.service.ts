@@ -89,6 +89,157 @@ type PublishMenuInput = UberStoreScopedInput & {
   excludedOptionChoiceStableIds?: string[];
 };
 
+type UberCategoryEntityRef = {
+  id: string;
+  type: 'ITEM';
+};
+
+type UberModifierOptionRef = {
+  id: string;
+  type: 'ITEM';
+};
+
+type UberMenuUploadPayload = {
+  menus: Array<{
+    id: string;
+    title: { translations: { en_us: string } };
+    category_ids: string[];
+    service_availability: UberServiceAvailability[];
+  }>;
+  categories: Array<{
+    id: string;
+    title: { translations: { en_us: string } };
+    entities: UberCategoryEntityRef[];
+  }>;
+  items: Array<{
+    id: string;
+    title: { translations: { en_us: string } };
+    description?: { translations: { en_us: string } };
+    price_info: { price: number };
+    modifier_group_ids: string[];
+    suspension_info: { suspended_until: string | null };
+  }>;
+  modifier_groups: Array<{
+    id: string;
+    title: { translations: { en_us: string } };
+    quantity_info: {
+      quantity: { min_permitted: number; max_permitted: number };
+    };
+    modifier_options: UberModifierOptionRef[];
+  }>;
+};
+
+export type LocalBusinessHour = {
+  weekday: number;
+  openMinutes: number | null;
+  closeMinutes: number | null;
+  isClosed: boolean;
+};
+
+export type UberServiceAvailability = {
+  day_of_week: string;
+  time_periods: Array<{ start_time: string; end_time: string }>;
+};
+
+const UBER_WEEKDAYS = [
+  'SUNDAY',
+  'MONDAY',
+  'TUESDAY',
+  'WEDNESDAY',
+  'THURSDAY',
+  'FRIDAY',
+  'SATURDAY',
+] as const;
+
+/** Convert recurring store-local hours without applying the server/UTC clock. */
+export function toUberServiceAvailability(
+  hours: LocalBusinessHour[],
+  timezone: string,
+): UberServiceAvailability[] {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format();
+  } catch {
+    throw new BadRequestException(`门店时区无效：${timezone}`);
+  }
+
+  const periods = Array.from(
+    { length: 7 },
+    () =>
+      [] as Array<{
+        start_time: string;
+        end_time: string;
+      }>,
+  );
+  const format = (minutes: number) =>
+    `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+
+  for (const hour of hours) {
+    if (hour.isClosed) continue;
+    if (
+      !Number.isInteger(hour.weekday) ||
+      hour.weekday < 0 ||
+      hour.weekday > 6 ||
+      hour.openMinutes === null ||
+      hour.closeMinutes === null ||
+      !Number.isInteger(hour.openMinutes) ||
+      !Number.isInteger(hour.closeMinutes) ||
+      hour.openMinutes < 0 ||
+      hour.openMinutes > 1439 ||
+      hour.closeMinutes < 0 ||
+      hour.closeMinutes > 1440
+    )
+      continue;
+
+    const start = hour.openMinutes;
+    const end = hour.closeMinutes;
+    // Equal endpoints explicitly mean all day; Uber accepts 00:00–23:59.
+    if (start === end || (start === 0 && end === 1440)) {
+      periods[hour.weekday].push({ start_time: '00:00', end_time: '23:59' });
+    } else if (start < end) {
+      periods[hour.weekday].push({
+        start_time: format(start),
+        end_time: end === 1440 ? '23:59' : format(end),
+      });
+    } else {
+      periods[hour.weekday].push({
+        start_time: format(start),
+        end_time: '23:59',
+      });
+      periods[(hour.weekday + 1) % 7].push({
+        start_time: '00:00',
+        end_time: format(end),
+      });
+    }
+  }
+
+  return periods.flatMap((time_periods, weekday) =>
+    time_periods.length
+      ? [{ day_of_week: UBER_WEEKDAYS[weekday], time_periods }]
+      : [],
+  );
+}
+
+type UberMenuGraphValidationIssue = {
+  code: string;
+  message: string;
+  severity?: 'ERROR' | 'WARNING';
+  path?: string;
+  sourceStableId?: string;
+  itemId?: string;
+  itemStableId?: string;
+  groupId?: string;
+  groupStableId?: string;
+  optionItemId?: string;
+};
+
+export type UberMenuPayloadValidationIssue = {
+  code: string;
+  severity: 'ERROR' | 'WARNING';
+  path: string;
+  sourceStableId: string | null;
+  message: string;
+};
+
 type SyncAvailabilityInput = UberStoreScopedInput & {
   menuItemStableId: string;
   isAvailable: boolean;
@@ -228,6 +379,7 @@ type CreateOpsTicketInput = UberStoreScopedInput & {
 
 @Injectable()
 export class UberEatsService {
+  private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
   private readonly logger = new AppLogger(UberEatsService.name);
   private readonly uberApiBaseUrl =
     process.env.UBER_EATS_API_BASE_URL?.trim() || 'https://api.uber.com';
@@ -978,7 +1130,14 @@ export class UberEatsService {
     const uberStoreId =
       storeMapping?.uberStoreId ?? `draft:${normalizedStoreId}`;
     const graph = await this.buildUberMenuGraph(normalizedStoreId, uberStoreId);
-    const summary = this.summarizePublishGraph(graph);
+    const normalized = this.normalizeAndValidateUberMenuGraph(graph);
+    const schedule = await this.getUberMenuSchedule();
+    const payload = this.buildUberUploadMenuPayload(
+      normalized.graph,
+      schedule.serviceAvailability,
+    );
+    const payloadValidation = this.validateUberMenuPayload(payload);
+    const summary = this.summarizePublishGraph(normalized.graph);
     const lastPublishedVersion =
       await this.prisma.uberMenuPublishVersion.findFirst({
         where: { storeId: normalizedStoreId },
@@ -992,92 +1151,120 @@ export class UberEatsService {
         },
       });
 
-    const groupMap = new Map(graph.groups.map((group) => [group.id, group]));
-    const itemMap = new Map(graph.items.map((item) => [item.id, item]));
-    const uberDraftCategories = graph.categories.map((category) => ({
-      id: category.id,
-      name: category.title,
-      items: category.entities
-        .map((itemId) => itemMap.get(itemId))
-        .filter((item): item is NonNullable<typeof item> => Boolean(item))
-        .filter((item) => item.sourceType === 'MENU_ITEM')
-        .map((item) => ({
-          id: item.id,
-          sourceMenuItemStableId: item.sourceStableId,
-          displayName: item.title,
-          displayDescription: item.description,
-          priceCents: item.priceCents,
-          isAvailable: item.isAvailable,
-          groups: item.modifierGroupIds
-            .map((groupId) => {
-              const group = groupMap.get(groupId);
-              if (!group) return null;
-              return {
-                id: group.id,
-                name: group.title,
-                minSelect: group.minSelect,
-                maxSelect: group.maxSelect,
-                options: group.optionItemIds
-                  .map((optionItemId) => itemMap.get(optionItemId))
-                  .filter((option): option is NonNullable<typeof option> =>
-                    Boolean(option),
-                  )
-                  .map((option) => ({
-                    id: option.id,
-                    sourceOptionChoiceStableId: option.sourceStableId,
-                    displayName: option.title,
-                    priceDeltaCents: option.priceCents,
-                    isAvailable: option.isAvailable,
-                    childGroups: option.modifierGroupIds
-                      .map((childGroupId) => {
-                        const childGroup = groupMap.get(childGroupId);
-                        return childGroup
-                          ? {
-                              id: childGroup.id,
-                              name: childGroup.title,
-                              minSelect: childGroup.minSelect,
-                              maxSelect: childGroup.maxSelect,
-                            }
-                          : null;
-                      })
-                      .filter(
-                        (
-                          childGroup,
-                        ): childGroup is {
-                          id: string;
-                          name: string;
-                          minSelect: number;
-                          maxSelect: number;
-                        } => Boolean(childGroup),
-                      ),
-                  })),
-              };
-            })
-            .filter(
-              (
-                group,
-              ): group is {
-                id: string;
-                name: string;
-                minSelect: number;
-                maxSelect: number;
-                options: Array<{
+    const buildDraftCategories = (
+      groups: Array<{
+        id: string;
+        title: string;
+        minSelect: number;
+        maxSelect: number;
+        optionItemIds: string[];
+      }>,
+      items: Array<{
+        id: string;
+        sourceType: 'MENU_ITEM' | 'OPTION_ITEM';
+        sourceStableId: string;
+        title: string;
+        description: string | null;
+        priceCents: number;
+        isAvailable: boolean;
+        modifierGroupIds: string[];
+      }>,
+    ) => {
+      const groupMap = new Map(groups.map((group) => [group.id, group]));
+      const itemMap = new Map(items.map((item) => [item.id, item]));
+      return graph.categories.map((category) => ({
+        id: category.id,
+        name: category.title,
+        items: category.entities
+          .map((itemId) => itemMap.get(itemId))
+          .filter((item): item is NonNullable<typeof item> => Boolean(item))
+          .filter((item) => item.sourceType === 'MENU_ITEM')
+          .map((item) => ({
+            id: item.id,
+            sourceMenuItemStableId: item.sourceStableId,
+            displayName: item.title,
+            displayDescription: item.description,
+            priceCents: item.priceCents,
+            isAvailable: item.isAvailable,
+            groups: item.modifierGroupIds
+              .map((groupId) => {
+                const group = groupMap.get(groupId);
+                if (!group) return null;
+                return {
+                  id: group.id,
+                  name: group.title,
+                  minSelect: group.minSelect,
+                  maxSelect: group.maxSelect,
+                  options: group.optionItemIds
+                    .map((optionItemId) => itemMap.get(optionItemId))
+                    .filter((option): option is NonNullable<typeof option> =>
+                      Boolean(option),
+                    )
+                    .map((option) => ({
+                      id: option.id,
+                      sourceOptionChoiceStableId: option.sourceStableId,
+                      displayName: option.title,
+                      priceDeltaCents: option.priceCents,
+                      isAvailable: option.isAvailable,
+                      childGroups: option.modifierGroupIds
+                        .map((childGroupId) => {
+                          const childGroup = groupMap.get(childGroupId);
+                          return childGroup
+                            ? {
+                                id: childGroup.id,
+                                name: childGroup.title,
+                                minSelect: childGroup.minSelect,
+                                maxSelect: childGroup.maxSelect,
+                              }
+                            : null;
+                        })
+                        .filter(
+                          (
+                            childGroup,
+                          ): childGroup is {
+                            id: string;
+                            name: string;
+                            minSelect: number;
+                            maxSelect: number;
+                          } => Boolean(childGroup),
+                        ),
+                    })),
+                };
+              })
+              .filter(
+                (
+                  group,
+                ): group is {
                   id: string;
-                  sourceOptionChoiceStableId: string;
-                  displayName: string;
-                  priceDeltaCents: number;
-                  isAvailable: boolean;
-                  childGroups: Array<{
+                  name: string;
+                  minSelect: number;
+                  maxSelect: number;
+                  options: Array<{
                     id: string;
-                    name: string;
-                    minSelect: number;
-                    maxSelect: number;
+                    sourceOptionChoiceStableId: string;
+                    displayName: string;
+                    priceDeltaCents: number;
+                    isAvailable: boolean;
+                    childGroups: Array<{
+                      id: string;
+                      name: string;
+                      minSelect: number;
+                      maxSelect: number;
+                    }>;
                   }>;
-                }>;
-              } => Boolean(group),
-            ),
-        })),
-    }));
+                } => Boolean(group),
+              ),
+          })),
+      }));
+    };
+    const uberDraftCategories = buildDraftCategories(
+      normalized.graph.groups,
+      normalized.graph.items,
+    );
+    const sourceDraftCategories = buildDraftCategories(
+      graph.sourceGroups,
+      graph.sourceItems,
+    );
     const uberDraftTreeNodes =
       this.buildUberDraftTreeNodes(uberDraftCategories);
 
@@ -1085,30 +1272,50 @@ export class UberEatsService {
       storeId: normalizedStoreId,
       sourceMenu: {
         categories: graph.categories.length,
-        items: graph.items.filter((item) => item.sourceType === 'MENU_ITEM')
-          .length,
-        optionItems: graph.items.filter(
+        items: graph.sourceItems.filter(
+          (item) => item.sourceType === 'MENU_ITEM',
+        ).length,
+        optionItems: graph.sourceItems.filter(
           (item) => item.sourceType === 'OPTION_ITEM',
         ).length,
-        groups: graph.groups.length,
+        groups: graph.sourceGroups.length,
+        tree: { categories: sourceDraftCategories },
       },
       uberDraft: {
         menuId: graph.menuId,
-        categories: graph.categories,
-        items: graph.items,
-        groups: graph.groups,
-        edges: this.buildUberDraftEdges(graph),
+        categories: normalized.graph.categories,
+        items: normalized.graph.items,
+        groups: normalized.graph.groups,
+        edges: this.buildUberDraftEdges(normalized.graph),
         tree: {
           categories: uberDraftCategories,
         },
         treeNodes: uberDraftTreeNodes,
+        optionMappings: graph.optionMappings,
+      },
+      mappingErrors: graph.mappingErrors,
+      validation: {
+        warnings: normalized.warnings,
+        errors: [...normalized.errors, ...payloadValidation],
       },
       mappingWarnings: [
+        ...payloadValidation,
         ...(storeMapping?.uberStoreId
           ? []
-          : ['当前门店尚未完成 Uber store provision，返回的是本地 draft 图。']),
+          : [
+              {
+                code: 'UBER_STORE_NOT_PROVISIONED',
+                severity: 'WARNING' as const,
+                path: '$',
+                sourceStableId: null,
+                message:
+                  '当前门店尚未完成 Uber store provision，返回的是本地 draft 图。',
+              },
+            ]),
       ],
       publishSummary: summary,
+      serviceAvailability: schedule.serviceAvailability,
+      serviceAvailabilityTimezone: schedule.timezone,
       dirty: summary.changedItems > 0,
       lastPublishedVersion,
     };
@@ -1510,8 +1717,23 @@ export class UberEatsService {
         ),
       },
     );
-    const payload = this.buildUberUploadMenuPayload(graph);
-    const summary = this.summarizePublishGraph(graph);
+    const normalized = this.normalizeAndValidateUberMenuGraph(graph);
+    const schedule = await this.getUberMenuSchedule();
+    const payload = this.buildUberUploadMenuPayload(
+      normalized.graph,
+      schedule.serviceAvailability,
+    );
+    const payloadValidation = this.validateUberMenuPayload(payload);
+    const validationErrors = [...normalized.errors, ...payloadValidation];
+    const summary = this.summarizePublishGraph(normalized.graph);
+
+    if (validationErrors.length > 0) {
+      throw new BadRequestException({
+        message: 'Uber 菜单发布 payload 校验失败，已阻止请求。',
+        mappingErrors: graph.mappingErrors,
+        validation: { warnings: normalized.warnings, errors: validationErrors },
+      });
+    }
 
     if (input.dryRun) {
       await this.captureEvent('ubereats_menu_publish_dry_run', {
@@ -1525,7 +1747,14 @@ export class UberEatsService {
         storeId: normalizedStoreId,
         uberStoreId,
         summary,
+        serviceAvailability: schedule.serviceAvailability,
+        serviceAvailabilityTimezone: schedule.timezone,
         payload,
+        mappingErrors: graph.mappingErrors,
+        validation: {
+          warnings: normalized.warnings,
+          errors: validationErrors,
+        },
       };
     }
 
@@ -1542,7 +1771,7 @@ export class UberEatsService {
       await this.backfillPublishedStateFromGraph(
         normalizedStoreId,
         uberStoreId,
-        graph,
+        normalized.graph,
       );
 
       await this.captureEvent('ubereats_menu_published', {
@@ -2881,39 +3110,659 @@ export class UberEatsService {
       )
       .sort((a, b) => a.sortOrder - b.sortOrder);
 
+    const sourceGroups = Array.from(groupDraftMap.values()).map((group) => ({
+      ...group,
+      optionItemIds: [...group.optionItemIds],
+    }));
+    const sourceOptionItems = Array.from(optionItemDraftMap.values()).map(
+      (item) => ({ ...item, modifierGroupIds: [...item.modifierGroupIds] }),
+    );
+    const flattened = this.flattenNestedModifiersForUber({
+      storeId,
+      groups: sourceGroups,
+      optionItems: sourceOptionItems,
+    });
+
     return {
       menuId: this.buildStableUberNodeId('menu', storeId, uberStoreId),
       categories: categoryDrafts,
-      items: [...itemDrafts, ...optionItemDraftMap.values()],
-      groups: Array.from(groupDraftMap.values()),
+      items: [...itemDrafts, ...flattened.optionItems],
+      groups: flattened.groups,
+      sourceItems: [...itemDrafts, ...sourceOptionItems],
+      sourceGroups,
+      optionMappings: flattened.optionMappings,
+      mappingErrors: flattened.mappingErrors,
     };
   }
 
-  private buildUberUploadMenuPayload(graph: {
-    menuId: string;
-    categories: Array<{
+  /**
+   * Uber Eats modifier options cannot own modifier groups. Convert the internal
+   * nested graph into Uber's flat graph without mutating the source graph.
+   */
+  private flattenNestedModifiersForUber(input: {
+    storeId: string;
+    groups: Array<{
       id: string;
+      sourceStableId: string;
       title: string;
-      entities: string[];
+      minSelect: number;
+      maxSelect: number;
+      isAvailable: boolean;
+      optionItemIds: string[];
     }>;
-    items: Array<{
+    optionItems: Array<{
       id: string;
-      sourceType: 'MENU_ITEM' | 'OPTION_ITEM';
+      sourceType: 'OPTION_ITEM';
       sourceStableId: string;
       title: string;
       description: string | null;
+      basePriceCents: number;
       priceCents: number;
       isAvailable: boolean;
       modifierGroupIds: string[];
+      hasDelta: boolean;
     }>;
-    groups: Array<{
-      id: string;
+  }) {
+    const groupById = new Map(input.groups.map((group) => [group.id, group]));
+    const optionById = new Map(
+      input.optionItems.map((option) => [option.id, option]),
+    );
+    const outputOptions = new Map(
+      input.optionItems
+        .filter((option) => option.modifierGroupIds.length === 0)
+        .map((option) => [option.id, { ...option, modifierGroupIds: [] }]),
+    );
+    const optionMappings: Array<{
+      sourceOptionChoiceStableId: string;
+      compositeOptionItemId: string;
+      sourcePath: string[];
+    }> = [];
+    const mappingErrors: Array<{
+      code: string;
+      sourceOptionChoiceStableId: string;
+      message: string;
+    }> = [];
+
+    const groups = input.groups.map((group) => {
+      const optionItemIds: string[] = [];
+      for (const optionId of group.optionItemIds) {
+        const parent = optionById.get(optionId);
+        if (!parent) continue;
+        if (parent.modifierGroupIds.length === 0) {
+          optionItemIds.push(parent.id);
+          continue;
+        }
+
+        const childGroups = parent.modifierGroupIds
+          .map((groupId) => groupById.get(groupId))
+          .filter((child): child is NonNullable<typeof child> =>
+            Boolean(child),
+          );
+        const invalidReason = this.getUberFlatteningInvalidReason(
+          parent.sourceStableId,
+          childGroups,
+          optionById,
+        );
+        if (invalidReason) {
+          mappingErrors.push(invalidReason);
+          continue;
+        }
+
+        const selectionsByGroup = childGroups.map((childGroup) =>
+          this.buildRequiredChildSelections(childGroup, optionById),
+        );
+        const combinations = selectionsByGroup.reduce<string[][]>(
+          (acc, selections) =>
+            acc.flatMap((prefix) =>
+              selections.map((selection) => [...prefix, ...selection]),
+            ),
+          [[]],
+        );
+        if (
+          combinations.length > UberEatsService.UBER_MODIFIER_COMBINATION_LIMIT
+        ) {
+          mappingErrors.push({
+            code: 'UBER_MODIFIER_COMBINATION_LIMIT_EXCEEDED',
+            sourceOptionChoiceStableId: parent.sourceStableId,
+            message: `选项 ${parent.title} 展开后产生 ${combinations.length} 个组合，超过上限 ${UberEatsService.UBER_MODIFIER_COMBINATION_LIMIT}。`,
+          });
+          continue;
+        }
+
+        for (const selection of combinations) {
+          const children = selection
+            .map((id) => optionById.get(id))
+            .filter((child): child is NonNullable<typeof child> =>
+              Boolean(child),
+            );
+          const sourcePath = [
+            parent.sourceStableId,
+            ...children.map((child) => child.sourceStableId),
+          ];
+          const compositeId = this.buildStableUberNodeId(
+            'item',
+            input.storeId,
+            `composite:${sourcePath.join('>')}`,
+          );
+          outputOptions.set(compositeId, {
+            ...parent,
+            id: compositeId,
+            sourceStableId: parent.sourceStableId,
+            title: [parent.title, ...children.map((child) => child.title)].join(
+              ' / ',
+            ),
+            basePriceCents:
+              parent.basePriceCents +
+              children.reduce((sum, child) => sum + child.basePriceCents, 0),
+            priceCents:
+              parent.priceCents +
+              children.reduce((sum, child) => sum + child.priceCents, 0),
+            isAvailable:
+              parent.isAvailable &&
+              children.every((child) => child.isAvailable),
+            modifierGroupIds: [],
+            hasDelta:
+              parent.hasDelta || children.some((child) => child.hasDelta),
+          });
+          optionItemIds.push(compositeId);
+          optionMappings.push({
+            sourceOptionChoiceStableId: parent.sourceStableId,
+            compositeOptionItemId: compositeId,
+            sourcePath,
+          });
+        }
+      }
+      return { ...group, optionItemIds };
+    });
+
+    return {
+      groups,
+      optionItems: Array.from(outputOptions.values()),
+      optionMappings,
+      mappingErrors,
+    };
+  }
+
+  private getUberFlatteningInvalidReason(
+    sourceOptionChoiceStableId: string,
+    childGroups: Array<{
       title: string;
       minSelect: number;
       maxSelect: number;
       optionItemIds: string[];
-    }>;
-  }): Record<string, unknown> {
+    }>,
+    optionById: Map<string, { modifierGroupIds: string[] }>,
+  ) {
+    const fail = (code: string, message: string) => ({
+      code,
+      sourceOptionChoiceStableId,
+      message,
+    });
+    if (childGroups.length === 0) {
+      return fail('UBER_CHILD_GROUP_MISSING', '子选项组不存在或已被排除。');
+    }
+    if (childGroups.some((group) => group.minSelect === 0)) {
+      return fail(
+        'UBER_OPTIONAL_CHILD_GROUP_UNSUPPORTED',
+        '可选子组无法无损展开为 Uber 平面选项。',
+      );
+    }
+    if (
+      childGroups.some((group) =>
+        group.optionItemIds.some(
+          (optionId) =>
+            (optionById.get(optionId)?.modifierGroupIds.length ?? 0) > 0,
+        ),
+      )
+    ) {
+      return fail(
+        'UBER_MULTI_LEVEL_NESTING_UNSUPPORTED',
+        '多级嵌套选项无法无损展开为 Uber 平面选项。',
+      );
+    }
+    if (childGroups.filter((group) => group.maxSelect > 1).length > 1) {
+      return fail(
+        'UBER_MULTIPLE_MULTI_SELECT_CHILD_GROUPS_UNSUPPORTED',
+        '多个可多选子组会导致不可控的笛卡尔积。',
+      );
+    }
+    return null;
+  }
+
+  private buildRequiredChildSelections(
+    group: { minSelect: number; maxSelect: number; optionItemIds: string[] },
+    optionById: Map<string, { isAvailable: boolean }>,
+  ) {
+    const available = group.optionItemIds.filter(
+      (id) => optionById.get(id)?.isAvailable !== false,
+    );
+    const maximum = Math.min(group.maxSelect, available.length);
+    const selections: string[][] = [];
+    const choose = (size: number, start = 0, selected: string[] = []) => {
+      if (selected.length === size) {
+        selections.push([...selected]);
+        return;
+      }
+      for (let index = start; index < available.length; index += 1) {
+        selected.push(available[index]);
+        choose(size, index + 1, selected);
+        selected.pop();
+      }
+    };
+    for (let size = group.minSelect; size <= maximum; size += 1) choose(size);
+    return selections;
+  }
+
+  /**
+   * Turn the generated menu into a closed, reachable Uber graph. Validation is
+   * deliberately performed here (rather than while reading Prisma rows) so
+   * exclusions, channel availability and nested-option flattening have already
+   * taken effect.
+   */
+  normalizeAndValidateUberMenuGraph<
+    T extends {
+      categories: Array<{ id: string; entities: string[] }>;
+      items: Array<{
+        id: string;
+        sourceType: 'MENU_ITEM' | 'OPTION_ITEM';
+        sourceStableId: string;
+        isAvailable: boolean;
+        modifierGroupIds: string[];
+      }>;
+      groups: Array<{
+        id: string;
+        sourceStableId: string;
+        minSelect: number;
+        maxSelect: number;
+        optionItemIds: string[];
+      }>;
+      mappingErrors: Array<{ code: string; message: string }>;
+    },
+  >(graph: T) {
+    const warnings: UberMenuGraphValidationIssue[] = [];
+    const errors: UberMenuGraphValidationIssue[] = graph.mappingErrors.map(
+      (error) => ({ code: error.code, message: error.message }),
+    );
+    const itemById = new Map(graph.items.map((item) => [item.id, item]));
+    const groupById = new Map(graph.groups.map((group) => [group.id, group]));
+    const menuItemIds = new Set<string>();
+
+    const categories = graph.categories.map((category) => {
+      const entities = category.entities.filter((itemId) => {
+        const item = itemById.get(itemId);
+        if (!item || item.sourceType !== 'MENU_ITEM') {
+          errors.push({
+            code: 'UBER_CATEGORY_ITEM_MISSING',
+            message: `Category ${category.id} references missing menu item ${itemId}.`,
+            itemId,
+          });
+          return false;
+        }
+        menuItemIds.add(itemId);
+        return true;
+      });
+      return { ...category, entities };
+    });
+
+    const reachableGroupIds = new Set<string>();
+    const candidateItems = new Map<string, (typeof graph.items)[number]>();
+    for (const itemId of menuItemIds) {
+      const item = itemById.get(itemId);
+      if (item) candidateItems.set(itemId, item);
+    }
+
+    // Start at published dishes. Flattened Uber options may not reference more
+    // groups, but the queue keeps this correct if that restriction changes.
+    const groupQueue = Array.from(candidateItems.values()).flatMap(
+      (item) => item.modifierGroupIds,
+    );
+    for (let index = 0; index < groupQueue.length; index += 1) {
+      const groupId = groupQueue[index];
+      if (reachableGroupIds.has(groupId)) continue;
+      const group = groupById.get(groupId);
+      if (!group) continue;
+      reachableGroupIds.add(groupId);
+      for (const optionId of group.optionItemIds) {
+        const option = itemById.get(optionId);
+        if (!option || option.sourceType !== 'OPTION_ITEM') continue;
+        candidateItems.set(optionId, option);
+        groupQueue.push(...option.modifierGroupIds);
+      }
+    }
+
+    const groups = graph.groups
+      .filter((group) => reachableGroupIds.has(group.id))
+      .map((group) => {
+        const optionItemIds = group.optionItemIds.filter((optionItemId) => {
+          const option = itemById.get(optionItemId);
+          if (!option || option.sourceType !== 'OPTION_ITEM') {
+            errors.push({
+              code: 'UBER_GROUP_OPTION_MISSING',
+              message: `Modifier group ${group.id} references missing option item ${optionItemId}.`,
+              groupId: group.id,
+              groupStableId: group.sourceStableId,
+              optionItemId,
+            });
+            return false;
+          }
+          if (!option.isAvailable) {
+            warnings.push({
+              code: 'UBER_UNAVAILABLE_OPTION_REMOVED',
+              message: `Unavailable option item ${optionItemId} was removed from modifier group ${group.id}.`,
+              groupId: group.id,
+              groupStableId: group.sourceStableId,
+              optionItemId,
+            });
+            candidateItems.delete(optionItemId);
+            return false;
+          }
+          return true;
+        });
+        return { ...group, optionItemIds };
+      });
+
+    const nonEmptyGroupIds = new Set(
+      groups.filter((group) => group.optionItemIds.length > 0).map((g) => g.id),
+    );
+    const normalizedItems = Array.from(candidateItems.values()).map((item) => {
+      const modifierGroupIds = item.modifierGroupIds.filter((groupId) => {
+        const group = groupById.get(groupId);
+        if (!group) {
+          errors.push({
+            code: 'UBER_ITEM_GROUP_MISSING',
+            message: `Item ${item.id} references missing modifier group ${groupId}.`,
+            itemId: item.id,
+            itemStableId: item.sourceStableId,
+            groupId,
+          });
+          return false;
+        }
+        if (nonEmptyGroupIds.has(groupId)) return true;
+        const issue = {
+          code:
+            group.minSelect > 0
+              ? 'UBER_REQUIRED_GROUP_EMPTY'
+              : 'UBER_EMPTY_GROUP_REMOVED',
+          message: `Item ${item.id} (${item.sourceStableId}) references empty modifier group ${group.id} (${group.sourceStableId}).`,
+          itemId: item.id,
+          itemStableId: item.sourceStableId,
+          groupId: group.id,
+          groupStableId: group.sourceStableId,
+        };
+        (group.minSelect > 0 ? errors : warnings).push(issue);
+        return false;
+      });
+      return { ...item, modifierGroupIds };
+    });
+
+    const retainedGroups = groups.filter((group) =>
+      nonEmptyGroupIds.has(group.id),
+    );
+    for (const group of retainedGroups) {
+      const selectableCount = group.optionItemIds.length;
+      if (
+        !Number.isInteger(group.minSelect) ||
+        !Number.isInteger(group.maxSelect) ||
+        group.minSelect < 0 ||
+        group.minSelect > group.maxSelect ||
+        group.maxSelect > selectableCount
+      ) {
+        errors.push({
+          code: 'UBER_GROUP_QUANTITY_INVALID',
+          message: `Modifier group ${group.id} (${group.sourceStableId}) has minSelect=${group.minSelect}, maxSelect=${group.maxSelect}, but only ${selectableCount} selectable options; Uber options cannot be selected repeatedly.`,
+          groupId: group.id,
+          groupStableId: group.sourceStableId,
+        });
+      }
+    }
+
+    const retainedOptionIds = new Set(
+      retainedGroups.flatMap((group) => group.optionItemIds),
+    );
+    const items = normalizedItems.filter(
+      (item) =>
+        item.sourceType === 'MENU_ITEM' || retainedOptionIds.has(item.id),
+    );
+
+    return {
+      graph: { ...graph, categories, items, groups: retainedGroups },
+      warnings,
+      errors,
+    };
+  }
+
+  /** Validate the final wire payload. Both preview and upload must pass here. */
+  validateUberMenuPayload(
+    payload: UberMenuUploadPayload,
+  ): UberMenuPayloadValidationIssue[] {
+    const issues: UberMenuPayloadValidationIssue[] = [];
+    const error = (
+      code: string,
+      path: string,
+      sourceStableId: string | null,
+      message: string,
+    ) =>
+      issues.push({ code, severity: 'ERROR', path, sourceStableId, message });
+    const collections: Array<
+      readonly [
+        string,
+        Array<{
+          id: string;
+          title: { translations: { en_us: string } };
+        }>,
+      ]
+    > = [
+      ['menus', payload.menus],
+      ['categories', payload.categories],
+      ['items', payload.items],
+      ['modifier_groups', payload.modifier_groups],
+    ] as const;
+    const ids = new Map<string, string>();
+    for (const [name, nodes] of collections) {
+      nodes.forEach((node, index) => {
+        const path = `$.${name}[${index}]`;
+        if (!node.id || ids.has(node.id)) {
+          error(
+            'UBER_ID_NOT_GLOBALLY_UNIQUE',
+            `${path}.id`,
+            node.id || null,
+            node.id ? `ID“${node.id}”在顶层实体中重复。` : '实体 ID 不能为空。',
+          );
+        } else ids.set(node.id, path);
+        const title = node.title?.translations?.en_us;
+        if (typeof title !== 'string' || !title.trim() || title.length > 300)
+          error(
+            'UBER_TITLE_INVALID',
+            `${path}.title.translations.en_us`,
+            node.id || null,
+            '标题不能为空且长度不得超过 300 个字符。',
+          );
+      });
+    }
+    const categoryIds = new Set(payload.categories.map((x) => x.id));
+    const itemIds = new Set(payload.items.map((x) => x.id));
+    const groupIds = new Set(payload.modifier_groups.map((x) => x.id));
+    payload.menus.forEach((menu, mi) => {
+      if (!menu.category_ids.length)
+        error(
+          'UBER_MENU_CATEGORY_EMPTY',
+          `$.menus[${mi}].category_ids`,
+          menu.id,
+          '菜单至少需要一个分类。',
+        );
+      menu.category_ids.forEach((id, i) => {
+        if (!categoryIds.has(id))
+          error(
+            'UBER_REFERENCE_UNRESOLVED',
+            `$.menus[${mi}].category_ids[${i}]`,
+            menu.id,
+            `引用的分类“${id}”不存在。`,
+          );
+      });
+    });
+    payload.categories.forEach((category, ci) => {
+      if (!category.entities.length)
+        error(
+          'UBER_CATEGORY_ITEM_EMPTY',
+          `$.categories[${ci}].entities`,
+          category.id,
+          '分类至少需要一个菜品。',
+        );
+      category.entities.forEach((ref, ri) => {
+        const path = `$.categories[${ci}].entities[${ri}]`;
+        if (ref.type !== 'ITEM')
+          error(
+            'UBER_CATEGORY_ENTITY_TYPE_INVALID',
+            `${path}.type`,
+            category.id,
+            '分类实体类型必须为 ITEM。',
+          );
+        if (!itemIds.has(ref.id))
+          error(
+            'UBER_REFERENCE_UNRESOLVED',
+            `${path}.id`,
+            category.id,
+            `引用的菜品“${ref.id}”不存在。`,
+          );
+      });
+    });
+    payload.items.forEach((item, ii) => {
+      if (
+        !Number.isInteger(item.price_info?.price) ||
+        item.price_info.price < 0
+      )
+        error(
+          'UBER_PRICE_INVALID',
+          `$.items[${ii}].price_info.price`,
+          item.id,
+          '价格必须为非负整数（分）。',
+        );
+      item.modifier_group_ids.forEach((id, gi) => {
+        if (!groupIds.has(id))
+          error(
+            'UBER_REFERENCE_UNRESOLVED',
+            `$.items[${ii}].modifier_group_ids[${gi}]`,
+            item.id,
+            `引用的选项组“${id}”不存在。`,
+          );
+      });
+    });
+    const optionIds = new Set(
+      payload.modifier_groups.flatMap((g) =>
+        g.modifier_options.map((o) => o.id),
+      ),
+    );
+    payload.modifier_groups.forEach((group, gi) => {
+      const min = group.quantity_info?.quantity?.min_permitted;
+      const max = group.quantity_info?.quantity?.max_permitted;
+      if (
+        !Number.isInteger(min) ||
+        !Number.isInteger(max) ||
+        min < 0 ||
+        min > max ||
+        max > group.modifier_options.length
+      )
+        error(
+          'UBER_GROUP_QUANTITY_INVALID',
+          `$.modifier_groups[${gi}].quantity_info.quantity`,
+          group.id,
+          '组选取数量必须为整数，且满足 0 ≤ min ≤ max ≤ 可选项数量。',
+        );
+      if (min > 0 && group.modifier_options.length === 0)
+        error(
+          'UBER_REQUIRED_GROUP_EMPTY',
+          `$.modifier_groups[${gi}].modifier_options`,
+          group.id,
+          '必选组选项不能为空。',
+        );
+      group.modifier_options.forEach((ref, oi) => {
+        const path = `$.modifier_groups[${gi}].modifier_options[${oi}]`;
+        if (ref.type !== 'ITEM')
+          error(
+            'UBER_MODIFIER_OPTION_TYPE_INVALID',
+            `${path}.type`,
+            group.id,
+            'Modifier option 类型必须为 ITEM。',
+          );
+        if (!itemIds.has(ref.id))
+          error(
+            'UBER_REFERENCE_UNRESOLVED',
+            `${path}.id`,
+            group.id,
+            `引用的选项菜品“${ref.id}”不存在。`,
+          );
+      });
+    });
+    payload.items.forEach((item, ii) => {
+      if (optionIds.has(item.id) && item.modifier_group_ids.length)
+        error(
+          'UBER_OPTION_ITEM_HAS_MODIFIER_GROUP',
+          `$.items[${ii}].modifier_group_ids`,
+          item.id,
+          'Option item 不得再引用 modifier group。',
+        );
+    });
+    const availability = payload.menus.flatMap(
+      (menu) => menu.service_availability ?? [],
+    );
+    if (
+      availability.length === 0 ||
+      availability.every((day) => day.time_periods.length === 0)
+    )
+      error(
+        'UBER_SERVICE_AVAILABILITY_EMPTY',
+        '$.menus[0].service_availability',
+        null,
+        '发布前必须至少配置一个合法可售营业时段。',
+      );
+    availability?.forEach((day, di) =>
+      day.time_periods?.forEach((period, pi) => {
+        const time = /^([01]\d|2[0-3]):[0-5]\d$/;
+        if (
+          !day.day_of_week ||
+          !time.test(period.start_time ?? '') ||
+          !time.test(period.end_time ?? '') ||
+          period.start_time >= period.end_time
+        )
+          error(
+            'UBER_SERVICE_AVAILABILITY_INVALID',
+            `$.menus[0].service_availability[${di}].time_periods[${pi}]`,
+            null,
+            '营业时段必须包含星期，并使用有效且起始早于结束的 HH:mm 时间。',
+          );
+      }),
+    );
+    return issues;
+  }
+
+  private buildUberUploadMenuPayload(
+    graph: {
+      menuId: string;
+      categories: Array<{
+        id: string;
+        title: string;
+        entities: string[];
+      }>;
+      items: Array<{
+        id: string;
+        sourceType: 'MENU_ITEM' | 'OPTION_ITEM';
+        sourceStableId: string;
+        title: string;
+        description: string | null;
+        priceCents: number;
+        isAvailable: boolean;
+        modifierGroupIds: string[];
+      }>;
+      groups: Array<{
+        id: string;
+        title: string;
+        minSelect: number;
+        maxSelect: number;
+        optionItemIds: string[];
+      }>;
+    },
+    serviceAvailability: UberServiceAvailability[],
+  ): UberMenuUploadPayload {
     return {
       menus: [
         {
@@ -2924,12 +3773,13 @@ export class UberEatsService {
             },
           },
           category_ids: graph.categories.map((category) => category.id),
+          service_availability: serviceAvailability,
         },
       ],
       categories: graph.categories.map((category) => ({
         id: category.id,
         title: { translations: { en_us: category.title } },
-        entities: category.entities,
+        entities: category.entities.map((id) => ({ id, type: 'ITEM' })),
       })),
       items: graph.items.map((item) => ({
         id: item.id,
@@ -2948,7 +3798,8 @@ export class UberEatsService {
             }
           : {}),
         price_info: { price: item.priceCents },
-        modifier_group_ids: item.modifierGroupIds,
+        modifier_group_ids:
+          item.sourceType === 'OPTION_ITEM' ? [] : item.modifierGroupIds,
         suspension_info: {
           suspended_until: item.isAvailable ? null : '2099-01-01T00:00:00Z',
         },
@@ -2963,7 +3814,7 @@ export class UberEatsService {
         quantity_info: {
           quantity: {
             min_permitted: group.minSelect,
-            max_permitted: Math.max(group.minSelect, group.maxSelect),
+            max_permitted: group.maxSelect,
           },
         },
         modifier_options: group.optionItemIds.map((optionItemId) => ({
@@ -2972,6 +3823,30 @@ export class UberEatsService {
         })),
       })),
     };
+  }
+
+  private async getUberMenuSchedule(): Promise<{
+    timezone: string;
+    serviceAvailability: UberServiceAvailability[];
+  }> {
+    const [config, hours] = await Promise.all([
+      this.prisma.businessConfig.findUnique({
+        where: { id: 1 },
+        select: { timezone: true },
+      }),
+      this.prisma.businessHour.findMany({ orderBy: { weekday: 'asc' } }),
+    ]);
+    const timezone = config?.timezone?.trim();
+    if (!timezone) {
+      throw new BadRequestException('发布 Uber 菜单前必须配置门店时区。');
+    }
+    const serviceAvailability = toUberServiceAvailability(hours, timezone);
+    if (serviceAvailability.length === 0) {
+      throw new BadRequestException(
+        '发布 Uber 菜单前必须至少配置一个合法可售营业时段；全天营业请明确配置 00:00–24:00。',
+      );
+    }
+    return { timezone, serviceAvailability };
   }
 
   private buildUberDraftEdges(graph: {
@@ -3101,7 +3976,9 @@ export class UberEatsService {
         : [];
       if (!categoryId) continue;
       for (const entity of entities) {
-        const itemId = this.readString(entity);
+        const entityRef = this.asObject(entity);
+        const itemId =
+          this.readString(entityRef?.id) ?? this.readString(entity);
         if (!itemId) continue;
         edgeKeys.add(`CATEGORY_ITEM:${categoryId}->${itemId}`);
       }
@@ -3165,7 +4042,7 @@ export class UberEatsService {
 
   private async uploadUberMenu(
     uberStoreId: string,
-    payload: Record<string, unknown>,
+    payload: UberMenuUploadPayload,
   ): Promise<Record<string, unknown>> {
     const connection = await this.resolveMerchantConnection();
     const rawJson = JSON.stringify(payload);
@@ -3189,7 +4066,7 @@ export class UberEatsService {
     storeId: string,
     uberStoreId: string,
     summary: { totalItems: number; changedItems: number },
-    payload: Record<string, unknown>,
+    payload: UberMenuUploadPayload,
   ) {
     const checksum = createHash('sha256')
       .update(JSON.stringify(payload))

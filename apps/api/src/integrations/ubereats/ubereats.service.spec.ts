@@ -26,8 +26,129 @@ jest.mock('@prisma/client', () => ({
   PaymentMethod: { UBEREATS: 'UBEREATS' },
 }));
 
-import { createHmac } from 'crypto';
-import { UberEatsService } from './ubereats.service';
+import { createHash, createHmac } from 'crypto';
+import { toUberServiceAvailability, UberEatsService } from './ubereats.service';
+
+const openSchedulePrisma = {
+  businessConfig: {
+    findUnique: jest.fn().mockResolvedValue({ timezone: 'America/Toronto' }),
+  },
+  businessHour: {
+    findMany: jest
+      .fn()
+      .mockResolvedValue([
+        { weekday: 1, openMinutes: 540, closeMinutes: 1080, isClosed: false },
+      ]),
+  },
+};
+
+const createNestedMenuPrisma = (templates: unknown[]) => ({
+  ...openSchedulePrisma,
+  menuCategory: {
+    findMany: jest.fn().mockResolvedValue([
+      {
+        id: 1,
+        stableId: 'cat_1',
+        nameEn: 'Category',
+        nameZh: '',
+        sortOrder: 1,
+        isActive: true,
+      },
+    ]),
+  },
+  menuItem: {
+    findMany: jest.fn().mockResolvedValue([
+      {
+        id: 1,
+        stableId: 'item_1',
+        categoryId: 1,
+        nameEn: 'Item',
+        nameZh: '',
+        basePriceCents: 1000,
+        isAvailable: true,
+        sortOrder: 1,
+        optionGroups: [{ templateGroup: { stableId: 'meal' }, sortOrder: 1 }],
+      },
+    ]),
+  },
+  menuOptionGroupTemplate: { findMany: jest.fn().mockResolvedValue(templates) },
+  uberItemChannelConfig: { findMany: jest.fn().mockResolvedValue([]) },
+  uberOptionItemConfig: { findMany: jest.fn().mockResolvedValue([]) },
+  uberModifierGroupConfig: { findMany: jest.fn().mockResolvedValue([]) },
+  uberCategoryConfig: { findMany: jest.fn().mockResolvedValue([]) },
+  uberOptionChildGroupBinding: { findMany: jest.fn().mockResolvedValue([]) },
+  uberStoreMapping: {
+    findFirst: jest.fn().mockResolvedValue({ uberStoreId: 'uber_store_1' }),
+  },
+  uberMenuPublishVersion: { create: jest.fn() },
+  opsEvent: { create: jest.fn().mockResolvedValue(null) },
+});
+
+describe('toUberServiceAvailability', () => {
+  const convert = (hours: Parameters<typeof toUberServiceAvailability>[0]) =>
+    toUberServiceAvailability(hours, 'America/Toronto');
+
+  it('保留门店时区下的普通本地时段', () => {
+    expect(
+      convert([
+        { weekday: 1, openMinutes: 540, closeMinutes: 1080, isClosed: false },
+      ]),
+    ).toEqual([
+      {
+        day_of_week: 'MONDAY',
+        time_periods: [{ start_time: '09:00', end_time: '18:00' }],
+      },
+    ]);
+  });
+
+  it('休息日和空配置不产生可售时段', () => {
+    expect(
+      convert([
+        { weekday: 2, openMinutes: null, closeMinutes: null, isClosed: true },
+      ]),
+    ).toEqual([]);
+    expect(convert([])).toEqual([]);
+  });
+
+  it('跨午夜时段拆分至相邻本地日期', () => {
+    expect(
+      convert([
+        { weekday: 6, openMinutes: 1320, closeMinutes: 120, isClosed: false },
+      ]),
+    ).toEqual([
+      {
+        day_of_week: 'SUNDAY',
+        time_periods: [{ start_time: '00:00', end_time: '02:00' }],
+      },
+      {
+        day_of_week: 'SATURDAY',
+        time_periods: [{ start_time: '22:00', end_time: '23:59' }],
+      },
+    ]);
+  });
+
+  it('同一天保留多个营业区间，并明确表达全天营业', () => {
+    expect(
+      convert([
+        { weekday: 3, openMinutes: 480, closeMinutes: 720, isClosed: false },
+        { weekday: 3, openMinutes: 1020, closeMinutes: 1260, isClosed: false },
+        { weekday: 4, openMinutes: 0, closeMinutes: 0, isClosed: false },
+      ]),
+    ).toEqual([
+      {
+        day_of_week: 'WEDNESDAY',
+        time_periods: [
+          { start_time: '08:00', end_time: '12:00' },
+          { start_time: '17:00', end_time: '21:00' },
+        ],
+      },
+      {
+        day_of_week: 'THURSDAY',
+        time_periods: [{ start_time: '00:00', end_time: '23:59' }],
+      },
+    ]);
+  });
+});
 
 describe('UberEatsService', () => {
   const clientSecret = 'test-ubereats-secret';
@@ -454,6 +575,7 @@ describe('UberEatsService', () => {
 
   it('发布菜单 dry-run 会返回差异统计并记录事件', async () => {
     const prisma = {
+      ...openSchedulePrisma,
       menuCategory: {
         findMany: jest.fn().mockResolvedValue([
           {
@@ -532,6 +654,28 @@ describe('UberEatsService', () => {
     expect(result.dryRun).toBe(true);
     expect(result.summary.totalItems).toBe(2);
     expect(result.summary.changedItems).toBe(1);
+    const payload = result.payload as {
+      menus: Array<{ service_availability: unknown }>;
+      categories: Array<{
+        entities: Array<{ id: string; type: 'ITEM' }>;
+      }>;
+      items: Array<{ id: string }>;
+    };
+    expect(payload.menus[0].service_availability).toEqual([
+      {
+        day_of_week: 'MONDAY',
+        time_periods: [{ start_time: '09:00', end_time: '18:00' }],
+      },
+    ]);
+    expect(result.serviceAvailabilityTimezone).toBe('America/Toronto');
+    const itemIds = new Set(payload.items.map((item) => item.id));
+    for (const category of payload.categories) {
+      for (const entity of category.entities) {
+        expect(typeof entity.id).toBe('string');
+        expect(entity.type).toBe('ITEM');
+        expect(itemIds.has(entity.id)).toBe(true);
+      }
+    }
     expect(prisma.menuItem.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -540,6 +684,397 @@ describe('UberEatsService', () => {
           publishToUberEats: true,
         },
       }),
+    );
+  });
+
+  it('会将父选项与一个或多个必选子组展开为无嵌套的 Uber 合成项', async () => {
+    const templates = [
+      {
+        stableId: 'meal',
+        nameEn: 'Meal',
+        nameZh: '',
+        defaultMinSelect: 1,
+        defaultMaxSelect: 1,
+        isAvailable: true,
+        sortOrder: 1,
+        options: [
+          {
+            stableId: 'combo_a',
+            nameEn: 'Combo A',
+            nameZh: '',
+            priceDeltaCents: 200,
+            isAvailable: true,
+            sortOrder: 1,
+            childLinks: [
+              { childOption: { templateGroup: { stableId: 'drink' } } },
+              { childOption: { templateGroup: { stableId: 'size' } } },
+            ],
+          },
+        ],
+      },
+      {
+        stableId: 'drink',
+        nameEn: 'Drink',
+        nameZh: '',
+        defaultMinSelect: 1,
+        defaultMaxSelect: 1,
+        isAvailable: true,
+        sortOrder: 2,
+        options: [
+          {
+            stableId: 'cola',
+            nameEn: 'Cola',
+            nameZh: '',
+            priceDeltaCents: 100,
+            isAvailable: true,
+            sortOrder: 1,
+            childLinks: [],
+          },
+        ],
+      },
+      {
+        stableId: 'size',
+        nameEn: 'Size',
+        nameZh: '',
+        defaultMinSelect: 1,
+        defaultMaxSelect: 1,
+        isAvailable: true,
+        sortOrder: 3,
+        options: [
+          {
+            stableId: 'medium',
+            nameEn: 'Medium',
+            nameZh: '',
+            priceDeltaCents: 50,
+            isAvailable: true,
+            sortOrder: 1,
+            childLinks: [],
+          },
+        ],
+      },
+    ];
+    const prisma = createNestedMenuPrisma(templates);
+    const service = new UberEatsService(prisma as never, createAuthService());
+
+    const result = await service.publishUberMenu({
+      storeId: 's1',
+      dryRun: true,
+    });
+    const payload = result.payload as {
+      items: Array<{
+        id: string;
+        title: { translations: { en_us: string } };
+        modifier_group_ids: string[];
+      }>;
+      modifier_groups: Array<{ modifier_options: Array<{ id: string }> }>;
+    };
+    const referencedIds = new Set(
+      payload.modifier_groups.flatMap((group) =>
+        group.modifier_options.map((option) => option.id),
+      ),
+    );
+    const referencedItems = payload.items.filter((item) =>
+      referencedIds.has(item.id),
+    );
+
+    expect(referencedItems).not.toHaveLength(0);
+    expect(
+      referencedItems.every((item) => item.modifier_group_ids.length === 0),
+    ).toBe(true);
+    expect(
+      referencedItems.some(
+        (item) => item.title.translations.en_us === 'Combo A / Cola / Medium',
+      ),
+    ).toBe(true);
+    expect(result.mappingErrors).toEqual([]);
+  });
+
+  it('可选子组无法无损展开时会阻止正式发布', async () => {
+    const templates = [
+      {
+        stableId: 'meal',
+        nameEn: 'Meal',
+        nameZh: '',
+        defaultMinSelect: 1,
+        defaultMaxSelect: 1,
+        isAvailable: true,
+        sortOrder: 1,
+        options: [
+          {
+            stableId: 'combo_a',
+            nameEn: 'Combo A',
+            nameZh: '',
+            priceDeltaCents: 200,
+            isAvailable: true,
+            sortOrder: 1,
+            childLinks: [
+              {
+                childOption: { templateGroup: { stableId: 'optional_drink' } },
+              },
+            ],
+          },
+        ],
+      },
+      {
+        stableId: 'optional_drink',
+        nameEn: 'Optional drink',
+        nameZh: '',
+        defaultMinSelect: 0,
+        defaultMaxSelect: 1,
+        isAvailable: true,
+        sortOrder: 2,
+        options: [
+          {
+            stableId: 'cola',
+            nameEn: 'Cola',
+            nameZh: '',
+            priceDeltaCents: 100,
+            isAvailable: true,
+            sortOrder: 1,
+            childLinks: [],
+          },
+        ],
+      },
+    ];
+    const prisma = createNestedMenuPrisma(templates);
+    const service = new UberEatsService(prisma as never, createAuthService());
+    const uberApiSpy = jest.spyOn(service as never, 'callUberApi');
+
+    await expect(
+      service.publishUberMenu({ storeId: 's1', dryRun: false }),
+    ).rejects.toMatchObject({
+      response: {
+        mappingErrors: [
+          {
+            code: 'UBER_OPTIONAL_CHILD_GROUP_UNSUPPORTED',
+          },
+        ],
+      },
+    });
+    expect(prisma.uberMenuPublishVersion.create).not.toHaveBeenCalled();
+    expect(uberApiSpy).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['被排除', false],
+    ['停用', true],
+  ])('%s必选子组会产生阻断性校验错误', async (_label, inactive) => {
+    const templates = [
+      {
+        stableId: 'meal',
+        nameEn: 'Meal',
+        nameZh: '',
+        defaultMinSelect: 1,
+        defaultMaxSelect: 1,
+        isAvailable: true,
+        sortOrder: 1,
+        options: [
+          {
+            stableId: 'combo',
+            nameEn: 'Combo',
+            nameZh: '',
+            priceDeltaCents: 0,
+            isAvailable: true,
+            sortOrder: 1,
+            childLinks: [
+              { childOption: { templateGroup: { stableId: 'drink' } } },
+            ],
+          },
+        ],
+      },
+      {
+        stableId: 'drink',
+        nameEn: 'Drink',
+        nameZh: '',
+        defaultMinSelect: 1,
+        defaultMaxSelect: 1,
+        isAvailable: !inactive,
+        sortOrder: 2,
+        options: [
+          {
+            stableId: 'cola',
+            nameEn: 'Cola',
+            nameZh: '',
+            priceDeltaCents: 0,
+            isAvailable: true,
+            sortOrder: 1,
+            childLinks: [],
+          },
+        ],
+      },
+    ];
+    const prisma = createNestedMenuPrisma(templates);
+    const service = new UberEatsService(prisma as never, createAuthService());
+    const excludedGroupIds = inactive
+      ? []
+      : [
+          `sanq:${createHash('sha1')
+            .update('group:s1:drink')
+            .digest('hex')
+            .slice(0, 24)}`,
+        ];
+
+    await expect(
+      service.publishUberMenu({
+        storeId: 's1',
+        dryRun: true,
+        excludedGroupIds,
+      }),
+    ).rejects.toMatchObject({
+      response: {
+        validation: {
+          errors: expect.arrayContaining([
+            expect.objectContaining({ code: 'UBER_CHILD_GROUP_MISSING' }),
+          ]) as unknown,
+        },
+      },
+    });
+  });
+
+  it('归一化会删除空可选组和孤立模板，但阻止空必选组', () => {
+    const service = new UberEatsService({} as never, createAuthService());
+    const normalized = service.normalizeAndValidateUberMenuGraph({
+      menuId: 'menu',
+      categories: [{ id: 'cat', entities: ['dish'] }],
+      items: [
+        {
+          id: 'dish',
+          sourceType: 'MENU_ITEM',
+          sourceStableId: 'dish_stable',
+          isAvailable: true,
+          modifierGroupIds: ['optional_empty', 'required_empty'],
+        },
+      ],
+      groups: [
+        {
+          id: 'optional_empty',
+          sourceStableId: 'optional_stable',
+          minSelect: 0,
+          maxSelect: 0,
+          optionItemIds: [],
+        },
+        {
+          id: 'required_empty',
+          sourceStableId: 'required_stable',
+          minSelect: 1,
+          maxSelect: 1,
+          optionItemIds: [],
+        },
+        {
+          id: 'orphan',
+          sourceStableId: 'orphan_stable',
+          minSelect: 0,
+          maxSelect: 1,
+          optionItemIds: ['orphan_option'],
+        },
+      ],
+      mappingErrors: [],
+    });
+
+    expect(normalized.graph.groups).toEqual([]);
+    expect(normalized.graph.items[0].modifierGroupIds).toEqual([]);
+    expect(normalized.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'UBER_EMPTY_GROUP_REMOVED' }),
+      ]),
+    );
+    expect(normalized.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'UBER_REQUIRED_GROUP_EMPTY',
+          itemStableId: 'dish_stable',
+          groupStableId: 'required_stable',
+        }),
+      ]),
+    );
+  });
+
+  it('剩余可选项少于 minSelect 时报错，不会篡改上限', () => {
+    const service = new UberEatsService({} as never, createAuthService());
+    const normalized = service.normalizeAndValidateUberMenuGraph({
+      menuId: 'menu',
+      categories: [{ id: 'cat', entities: ['dish'] }],
+      items: [
+        {
+          id: 'dish',
+          sourceType: 'MENU_ITEM',
+          sourceStableId: 'dish_stable',
+          isAvailable: true,
+          modifierGroupIds: ['group'],
+        },
+        {
+          id: 'available',
+          sourceType: 'OPTION_ITEM',
+          sourceStableId: 'a',
+          isAvailable: true,
+          modifierGroupIds: [],
+        },
+        {
+          id: 'disabled',
+          sourceType: 'OPTION_ITEM',
+          sourceStableId: 'b',
+          isAvailable: false,
+          modifierGroupIds: [],
+        },
+      ],
+      groups: [
+        {
+          id: 'group',
+          sourceStableId: 'group_stable',
+          minSelect: 2,
+          maxSelect: 2,
+          optionItemIds: ['available', 'disabled'],
+        },
+      ],
+      mappingErrors: [],
+    });
+
+    expect(normalized.graph.groups[0]).toMatchObject({
+      minSelect: 2,
+      maxSelect: 2,
+      optionItemIds: ['available'],
+    });
+    expect(normalized.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'UBER_GROUP_QUANTITY_INVALID' }),
+      ]),
+    );
+  });
+
+  it('悬空 category、group 和 option ID 都会被报告', () => {
+    const service = new UberEatsService({} as never, createAuthService());
+    const normalized = service.normalizeAndValidateUberMenuGraph({
+      menuId: 'menu',
+      categories: [{ id: 'cat', entities: ['dish', 'missing_dish'] }],
+      items: [
+        {
+          id: 'dish',
+          sourceType: 'MENU_ITEM',
+          sourceStableId: 'dish_stable',
+          isAvailable: true,
+          modifierGroupIds: ['group', 'missing_group'],
+        },
+      ],
+      groups: [
+        {
+          id: 'group',
+          sourceStableId: 'group_stable',
+          minSelect: 0,
+          maxSelect: 1,
+          optionItemIds: ['missing_option'],
+        },
+      ],
+      mappingErrors: [],
+    });
+
+    expect(
+      normalized.errors.map((error: { code: string }) => error.code),
+    ).toEqual(
+      expect.arrayContaining([
+        'UBER_CATEGORY_ITEM_MISSING',
+        'UBER_ITEM_GROUP_MISSING',
+        'UBER_GROUP_OPTION_MISSING',
+      ]),
     );
   });
 
@@ -642,6 +1177,153 @@ describe('UberEatsService', () => {
     ).resolves.toMatchObject({
       ok: true,
       priority: 'MEDIUM',
+    });
+  });
+
+  describe('validateUberMenuPayload', () => {
+    const validPayload = () => ({
+      menus: [
+        {
+          id: 'menu',
+          title: { translations: { en_us: 'Main' } },
+          category_ids: ['cat'],
+          service_availability: [
+            {
+              day_of_week: 'MONDAY',
+              time_periods: [{ start_time: '09:00', end_time: '18:00' }],
+            },
+          ],
+        },
+      ],
+      categories: [
+        {
+          id: 'cat',
+          title: { translations: { en_us: 'Food' } },
+          entities: [{ id: 'dish', type: 'ITEM' }],
+        },
+      ],
+      items: [
+        {
+          id: 'dish',
+          title: { translations: { en_us: 'Dish' } },
+          price_info: { price: 100 },
+          modifier_group_ids: ['group'],
+          suspension_info: { suspended_until: null },
+        },
+        {
+          id: 'option',
+          title: { translations: { en_us: 'Option' } },
+          price_info: { price: 0 },
+          modifier_group_ids: [],
+          suspension_info: { suspended_until: null },
+        },
+      ],
+      modifier_groups: [
+        {
+          id: 'group',
+          title: { translations: { en_us: 'Size' } },
+          quantity_info: { quantity: { min_permitted: 1, max_permitted: 1 } },
+          modifier_options: [{ id: 'option', type: 'ITEM' }],
+        },
+      ],
+    });
+
+    it('完整合法 payload 通过校验', () => {
+      const service = new UberEatsService({} as never, createAuthService());
+      expect(service.validateUberMenuPayload(validPayload() as never)).toEqual(
+        [],
+      );
+    });
+
+    it.each([
+      [
+        'UBER_ID_NOT_GLOBALLY_UNIQUE',
+        (p: ReturnType<typeof validPayload>) => {
+          p.categories[0].id = 'menu';
+        },
+      ],
+      [
+        'UBER_REFERENCE_UNRESOLVED',
+        (p: ReturnType<typeof validPayload>) => {
+          p.menus[0].category_ids = ['missing'];
+        },
+      ],
+      [
+        'UBER_CATEGORY_ENTITY_TYPE_INVALID',
+        (p: ReturnType<typeof validPayload>) => {
+          p.categories[0].entities[0].type = 'MODIFIER_GROUP';
+        },
+      ],
+      [
+        'UBER_MODIFIER_OPTION_TYPE_INVALID',
+        (p: ReturnType<typeof validPayload>) => {
+          p.modifier_groups[0].modifier_options[0].type = 'GROUP';
+        },
+      ],
+      [
+        'UBER_OPTION_ITEM_HAS_MODIFIER_GROUP',
+        (p: ReturnType<typeof validPayload>) => {
+          p.items[1].modifier_group_ids = ['group'];
+        },
+      ],
+      [
+        'UBER_TITLE_INVALID',
+        (p: ReturnType<typeof validPayload>) => {
+          p.items[0].title.translations.en_us = ' ';
+        },
+      ],
+      [
+        'UBER_PRICE_INVALID',
+        (p: ReturnType<typeof validPayload>) => {
+          p.items[0].price_info.price = -1;
+        },
+      ],
+      [
+        'UBER_GROUP_QUANTITY_INVALID',
+        (p: ReturnType<typeof validPayload>) => {
+          p.modifier_groups[0].quantity_info.quantity.max_permitted = 2;
+        },
+      ],
+      [
+        'UBER_MENU_CATEGORY_EMPTY',
+        (p: ReturnType<typeof validPayload>) => {
+          p.menus[0].category_ids = [];
+        },
+      ],
+      [
+        'UBER_CATEGORY_ITEM_EMPTY',
+        (p: ReturnType<typeof validPayload>) => {
+          p.categories[0].entities = [];
+        },
+      ],
+      [
+        'UBER_REQUIRED_GROUP_EMPTY',
+        (p: ReturnType<typeof validPayload>) => {
+          p.modifier_groups[0].modifier_options = [];
+        },
+      ],
+      [
+        'UBER_SERVICE_AVAILABILITY_INVALID',
+        (p: ReturnType<typeof validPayload>) => {
+          p.menus[0].service_availability[0].time_periods[0].end_time = '08:00';
+        },
+      ],
+    ])('%s 约束失败时返回可定位的结构化错误', (code, mutate) => {
+      const payload = validPayload();
+      mutate(payload);
+      const service = new UberEatsService({} as never, createAuthService());
+      const issue = service
+        .validateUberMenuPayload(payload as never)
+        .find((entry) => entry.code === code);
+      expect(issue).toEqual(
+        expect.objectContaining({
+          code,
+          severity: 'ERROR',
+          path: expect.stringMatching(/^\$/) as unknown,
+          message: expect.any(String) as unknown,
+        }),
+      );
+      expect(issue).toHaveProperty('sourceStableId');
     });
   });
 });
