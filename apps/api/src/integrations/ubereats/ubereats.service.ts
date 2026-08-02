@@ -15,7 +15,13 @@ import {
   UberOpsTicketType,
   type Prisma,
 } from '@prisma/client';
-import { createHash, createHmac, randomUUID, timingSafeEqual } from 'crypto';
+import {
+  createHash,
+  createHmac,
+  randomBytes,
+  randomUUID,
+  timingSafeEqual,
+} from 'crypto';
 import { gzipSync } from 'zlib';
 import { AppLogger } from '../../common/app-logger';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -442,11 +448,29 @@ export class UberEatsService {
   private readonly logger = new AppLogger(UberEatsService.name);
   private readonly uberApiBaseUrl =
     process.env.UBER_EATS_API_BASE_URL?.trim() || 'https://api.uber.com';
+  private readonly oauthStateSecret: string;
+  private readonly oauthStateRequests = new Map<
+    string,
+    {
+      adminSessionId: string;
+      redirectUri: string;
+      createdAt: number;
+      merchantContext: string | null;
+    }
+  >();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly uberAuthService: UberAuthService,
-  ) {}
+  ) {
+    const secret = process.env.UBER_EATS_OAUTH_STATE_SECRET?.trim() || '';
+    if (secret.length < 32 || new Set(secret).size < 12) {
+      throw new Error(
+        'UBER_EATS_OAUTH_STATE_SECRET 必须配置为至少 32 个字符的高熵密钥',
+      );
+    }
+    this.oauthStateSecret = secret;
+  }
 
   private get uberMerchantConnectionDelegate(): UberMerchantConnectionDelegate | null {
     const prismaWithUber = this.prisma as PrismaService & {
@@ -468,16 +492,16 @@ export class UberEatsService {
     const normalizedScopes = this.uberAuthService.normalizeScopesToArray(scope);
     const normalizedScope = normalizedScopes.join(' ');
     const usedDefaultScopes = !scope?.trim();
-    const token = forceRefresh
-      ? await this.uberAuthService.forceRefreshAccessToken(scope)
-      : await this.uberAuthService.getAccessToken(scope);
+    if (forceRefresh) {
+      await this.uberAuthService.forceRefreshAccessToken(scope);
+    } else {
+      await this.uberAuthService.getAccessToken(scope);
+    }
 
     return {
       ok: true,
       requestedScope: scope?.trim() || null,
       normalizedScope,
-      tokenPrefix: token.slice(0, 12),
-      tokenLength: token.length,
       usedDefaultScopes,
       forceRefreshed: forceRefresh,
       cached: !forceRefresh ? 'cache_or_fetch' : 'skipped_by_force_refresh',
@@ -540,8 +564,6 @@ export class UberEatsService {
       ok: true,
       storeId: normalizedStoreId,
       requestUrl: url,
-      tokenPrefix: token.slice(0, 12),
-      tokenLength: token.length,
       orderCount: orders.length,
       orders: orders.map((order) => ({
         id: order.id,
@@ -681,12 +703,12 @@ export class UberEatsService {
     };
   }
 
-  buildMerchantAuthorizeUrl() {
-    const state = this.createOAuthState();
+  buildMerchantAuthorizeUrl(adminSessionId: string, merchantContext?: string) {
+    const state = this.createOAuthState(adminSessionId, merchantContext);
     const authorizeUrl = this.uberAuthService.buildMerchantAuthorizeUrl(state);
 
     this.logger.log(
-      `[ubereats oauth start] stateIssued=${state.slice(0, 24)}... authorizeEndpointReady=true`,
+      '[ubereats oauth start] stateIssued=true authorizeEndpointReady=true',
     );
 
     return {
@@ -696,19 +718,23 @@ export class UberEatsService {
     };
   }
 
-  startMerchantOAuth() {
-    return this.buildMerchantAuthorizeUrl();
+  startMerchantOAuth(adminSessionId: string, merchantContext?: string) {
+    return this.buildMerchantAuthorizeUrl(adminSessionId, merchantContext);
   }
 
-  async exchangeAuthorizationCode(code: string, state?: string) {
-    this.verifyOAuthState(state);
+  async exchangeAuthorizationCode(
+    code: string,
+    state: string | undefined,
+    adminSessionId: string,
+  ) {
+    const stateRequest = this.consumeOAuthState(state, adminSessionId);
 
-    const tokenResult =
-      await this.uberAuthService.exchangeAuthorizationCode(code);
-
-    this.logger.log(
-      `[ubereats oauth] accessToken=${tokenResult.accessToken.slice(0, 16)}...${tokenResult.accessToken.slice(-10)} scope=${tokenResult.scope ?? 'null'} tokenType=${tokenResult.tokenType ?? 'null'} expiresAt=${tokenResult.expiresAt?.toISOString() ?? 'null'}`,
+    const tokenResult = await this.uberAuthService.exchangeAuthorizationCode(
+      code,
+      stateRequest.redirectUri,
     );
+
+    this.logger.log('[ubereats oauth] tokenExchangeSucceeded=true');
 
     const merchantUberUserId = `oauth:${randomUUID()}`;
 
@@ -2266,20 +2292,29 @@ export class UberEatsService {
     };
   }
 
-  private createOAuthState(): string {
+  private createOAuthState(
+    adminSessionId: string,
+    merchantContext?: string,
+  ): string {
+    if (!adminSessionId.trim()) {
+      throw new UnauthorizedException('缺少发起 OAuth 的管理员会话');
+    }
     const timestamp = Date.now().toString();
-    const nonce = randomUUID();
-    const secret =
-      process.env.UBER_EATS_OAUTH_STATE_SECRET?.trim() ||
-      'ubereats-oauth-state';
+    const nonce = randomBytes(32).toString('base64url');
     const payload = `${timestamp}.${nonce}`;
-    const signature = createHmac('sha256', secret)
+    const signature = createHmac('sha256', this.oauthStateSecret)
       .update(payload)
       .digest('hex');
+    this.oauthStateRequests.set(nonce, {
+      adminSessionId: adminSessionId.trim(),
+      redirectUri: this.uberAuthService.getMerchantRedirectUri(),
+      createdAt: Number(timestamp),
+      merchantContext: merchantContext?.trim() || null,
+    });
     return `${payload}.${signature}`;
   }
 
-  private verifyOAuthState(state?: string): void {
+  private consumeOAuthState(state: string | undefined, adminSessionId: string) {
     const normalizedState = state?.trim();
     if (!normalizedState) {
       throw new BadRequestException('缺少 OAuth state');
@@ -2295,10 +2330,7 @@ export class UberEatsService {
       throw new BadRequestException('OAuth state 非法');
     }
 
-    const secret =
-      process.env.UBER_EATS_OAUTH_STATE_SECRET?.trim() ||
-      'ubereats-oauth-state';
-    const expected = createHmac('sha256', secret)
+    const expected = createHmac('sha256', this.oauthStateSecret)
       .update(`${timestamp}.${nonce}`)
       .digest('hex');
 
@@ -2317,10 +2349,29 @@ export class UberEatsService {
       throw new BadRequestException('OAuth state 时间戳非法');
     }
 
+    const now = Date.now();
     const maxAgeMs = 10 * 60 * 1000;
-    if (Date.now() - issuedAt > maxAgeMs) {
+    if (issuedAt > now + 60_000) {
+      throw new BadRequestException('OAuth state 时间戳来自未来');
+    }
+    if (now - issuedAt > maxAgeMs) {
       throw new BadRequestException('OAuth state 已过期');
     }
+
+    const request = this.oauthStateRequests.get(nonce);
+    if (!request || request.createdAt !== issuedAt) {
+      throw new BadRequestException('OAuth state 不存在或已使用');
+    }
+    if (
+      !adminSessionId.trim() ||
+      request.adminSessionId !== adminSessionId.trim()
+    ) {
+      throw new UnauthorizedException('OAuth state 与管理员会话不匹配');
+    }
+
+    // Map.delete 与前面的读取在同一个同步执行段完成；在任何异步 token 请求前消费 nonce。
+    this.oauthStateRequests.delete(nonce);
+    return request;
   }
 
   private async resolveMerchantConnection(

@@ -10,6 +10,12 @@ type UberTokenResponse = {
   scope?: string;
 };
 
+type UberTokenErrorResponse = {
+  error?: unknown;
+  error_code?: unknown;
+  error_description?: unknown;
+};
+
 type CachedToken = {
   accessToken: string;
   expiresAt: number;
@@ -138,6 +144,10 @@ export class UberAuthService {
     }
 
     return redirectUri;
+  }
+
+  getMerchantRedirectUri(): string {
+    return this.resolveMerchantRedirectUri();
   }
 
   private isTokenUsable(entry?: CachedToken | null): entry is CachedToken {
@@ -348,15 +358,40 @@ export class UberAuthService {
     const data = text ? this.tryParseJson(text) : {};
 
     if (!response.ok) {
+      const error = (
+        data && typeof data === 'object' ? data : {}
+      ) as UberTokenErrorResponse;
+      const errorCode = this.safeTokenErrorValue(
+        error.error_code ?? error.error,
+        'unknown',
+      );
+      const description = this.safeTokenErrorValue(
+        error.error_description,
+        'unavailable',
+      );
       this.logger.error(
-        `[token.request] failed status=${response.status} body=${text || '<empty>'}`,
+        `[token.request] failed status=${response.status} uberErrorCode=${errorCode} description=${description}`,
       );
       throw new Error(
-        `Uber token 请求失败 status=${response.status} body=${text || '<empty>'}`,
+        `Uber token 请求失败 status=${response.status} uberErrorCode=${errorCode} description=${description}`,
       );
     }
 
     return (data || {}) as UberTokenResponse;
+  }
+
+  private safeTokenErrorValue(value: unknown, fallback: string): string {
+    if (typeof value !== 'string' && typeof value !== 'number') return fallback;
+
+    const normalized = String(value)
+      .replace(
+        /\b(?:access[_ -]?token|client[_ -]?secret|authorization[_ -]?code|token|secret|code|credential|password)\s*[:=]\s*\S+/gi,
+        '[redacted]',
+      )
+      .replace(/[^a-zA-Z0-9 _.,:;()\[\]\/\-]/g, '')
+      .trim()
+      .slice(0, 200);
+    return normalized || fallback;
   }
 
   private tryParseJson(text: string): unknown {

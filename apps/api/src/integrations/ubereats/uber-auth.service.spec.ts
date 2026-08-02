@@ -62,4 +62,31 @@ describe('UberAuthService', () => {
     await expect(service.getAccessToken()).resolves.toBe('token_new');
     expect(requestAccessTokenSpy).toHaveBeenCalledTimes(1);
   });
+
+  it('token endpoint 失败时只输出白名单错误字段并脱敏凭据', async () => {
+    process.env.UBER_EATS_CLIENT_ID = 'app_1';
+    process.env.UBER_EATS_CLIENT_SECRET = 'top-secret';
+    const errorSpy = jest.fn();
+    const service = new UberAuthService();
+    Reflect.set(service, 'logger', { error: errorSpy, debug: jest.fn() });
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      text: jest.fn().mockResolvedValue(
+        JSON.stringify({
+          error: 'invalid_client',
+          error_description: 'client_secret=leaked credential rejected',
+          access_token: 'must-not-appear',
+        }),
+      ),
+    });
+
+    await expect(service.getAccessToken('eats.store')).rejects.toThrow(
+      'status=401 uberErrorCode=invalid_client',
+    );
+    const logged = errorSpy.mock.calls.flat().join(' ');
+    expect(logged).toContain('description=[redacted] credential rejected');
+    expect(logged).not.toContain('leaked');
+    expect(logged).not.toContain('must-not-appear');
+  });
 });
