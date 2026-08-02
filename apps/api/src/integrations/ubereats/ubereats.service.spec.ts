@@ -214,10 +214,12 @@ describe('UberEatsService', () => {
   });
 
   afterEach(() => {
+    jest.restoreAllMocks();
     delete process.env.UBER_EATS_CLIENT_SECRET;
     delete process.env.UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET;
     delete process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET;
     delete process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET_VALID_UNTIL;
+    delete process.env.UBER_EATS_API_BASE_URL;
     delete process.env.UBER_EATS_OAUTH_STATE_SECRET;
     jest.restoreAllMocks();
   });
@@ -334,8 +336,14 @@ describe('UberEatsService', () => {
     ).rejects.toThrow('Invalid Uber signature');
   });
 
-  it('接收订单 webhook 时会写入 ubereats 订单并返回 orderStableId', async () => {
-    const rawBody = '{"event_type":"orders.accepted"}';
+  it('标准资源引用通知会下载完整订单后写入 ubereats 订单', async () => {
+    const body = {
+      event_type: 'orders.notification',
+      resource_href: 'https://api.uber.com/v2/eats/order/ue_123',
+      meta: { resource_id: 'ue_123', user_id: 'user_1' },
+      event_id: 'evt_123',
+    };
+    const rawBody = JSON.stringify(body);
     const signature = createHmac('sha256', clientSecret)
       .update(rawBody, 'utf8')
       .digest('hex');
@@ -351,26 +359,159 @@ describe('UberEatsService', () => {
       },
     };
 
-    const service = new UberEatsService(prisma as never, createAuthService());
+    const auth = createAuthService() as unknown as {
+      getAccessToken: jest.Mock;
+    };
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          order_id: 'ue_123',
+          subtotal_cents: 1000,
+          tax_cents: 130,
+          total_cents: 1130,
+        }),
+        { status: 200 },
+      ),
+    );
+    const service = new UberEatsService(prisma as never, auth as never);
     await service.handleWebhook({
       headers: {
         'x-uber-signature': signature,
         'x-event-id': 'evt_123',
       },
       rawBody,
-      body: {
-        event_type: 'orders.accepted',
-        order: {
-          order_id: 'ue_123',
-          subtotal_cents: 1000,
-          tax_cents: 130,
-          total_cents: 1130,
-        },
-      },
+      body,
     });
 
+    expect(auth.getAccessToken).toHaveBeenCalledWith('eats.store.orders.read');
+    expect(fetchSpy).toHaveBeenCalledWith(
+      body.resource_href,
+      expect.objectContaining({ method: 'GET' }),
+    );
     expect(prisma.order.findUnique).toHaveBeenCalled();
     expect(prisma.order.create).toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it('拒绝 origin 或 base 路径不匹配的 resource_href', async () => {
+    process.env.UBER_EATS_API_BASE_URL = 'https://api.uber.com/v2';
+    const body = {
+      event_type: 'orders.notification',
+      resource_href: 'https://evil.example/v2/eats/order/ue_123',
+      meta: { resource_id: 'ue_123', user_id: 'user_1' },
+      event_id: 'evt_bad_href',
+    };
+    const rawBody = JSON.stringify(body);
+    const signature = createHmac('sha256', clientSecret)
+      .update(rawBody, 'utf8')
+      .digest('hex');
+    const prisma = {
+      opsEvent: { findFirst: jest.fn().mockResolvedValue(null) },
+    };
+    const service = new UberEatsService(prisma as never, createAuthService());
+
+    await expect(
+      service.handleWebhook({
+        headers: { 'x-uber-signature': signature },
+        rawBody,
+        body,
+      }),
+    ).rejects.toThrow('不属于配置的 API base');
+    delete process.env.UBER_EATS_API_BASE_URL;
+  });
+
+  it.each([429, 503])('Uber %i 时保留通知为可重试失败', async (status) => {
+    const body = {
+      event_type: 'orders.notification',
+      resource_href: 'https://api.uber.com/v2/eats/order/ue_retry',
+      meta: { resource_id: 'ue_retry', user_id: 'user_1' },
+      event_id: `evt_${status}`,
+    };
+    const rawBody = JSON.stringify(body);
+    const signature = createHmac('sha256', clientSecret)
+      .update(rawBody, 'utf8')
+      .digest('hex');
+    const prisma = {
+      opsEvent: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn(),
+      },
+    };
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response('upstream unavailable', { status }));
+    const service = new UberEatsService(prisma as never, createAuthService());
+
+    await expect(
+      service.handleWebhook({
+        headers: { 'x-uber-signature': signature },
+        rawBody,
+        body,
+      }),
+    ).rejects.toMatchObject({ status: 502 });
+    expect(prisma.opsEvent.create).not.toHaveBeenCalled();
+    jest.restoreAllMocks();
+  });
+
+  it('重复通知不会再次下载订单', async () => {
+    const body = {
+      event_type: 'orders.notification',
+      resource_href: 'https://api.uber.com/v2/eats/order/ue_seen',
+      meta: { resource_id: 'ue_seen', user_id: 'user_1' },
+      event_id: 'evt_seen',
+    };
+    const rawBody = JSON.stringify(body);
+    const signature = createHmac('sha256', clientSecret)
+      .update(rawBody, 'utf8')
+      .digest('hex');
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    const service = new UberEatsService(
+      {
+        opsEvent: { findFirst: jest.fn().mockResolvedValue({ id: 1 }) },
+      } as never,
+      createAuthService(),
+    );
+    await service.handleWebhook({
+      headers: { 'x-uber-signature': signature },
+      rawBody,
+      body,
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it('下载成功但订单解析失败时不记录为已处理', async () => {
+    const body = {
+      event_type: 'orders.notification',
+      resource_href: 'https://api.uber.com/v2/eats/order/ue_invalid',
+      meta: { resource_id: 'ue_invalid', user_id: 'user_1' },
+      event_id: 'evt_invalid_order',
+    };
+    const rawBody = JSON.stringify(body);
+    const signature = createHmac('sha256', clientSecret)
+      .update(rawBody, 'utf8')
+      .digest('hex');
+    const prisma = {
+      opsEvent: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn(),
+      },
+    };
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: 'ue_invalid' })),
+      );
+    const service = new UberEatsService(prisma as never, createAuthService());
+    await expect(
+      service.handleWebhook({
+        headers: { 'x-uber-signature': signature },
+        rawBody,
+        body,
+      }),
+    ).rejects.toMatchObject({ status: 502 });
+    expect(prisma.opsEvent.create).not.toHaveBeenCalled();
+    jest.restoreAllMocks();
   });
 
   it('store.provisioned webhook 会回写门店 provision 状态', async () => {
