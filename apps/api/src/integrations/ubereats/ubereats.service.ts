@@ -3722,7 +3722,7 @@ export class UberEatsService {
           !day.day_of_week ||
           !time.test(period.start_time ?? '') ||
           !time.test(period.end_time ?? '') ||
-          period.start_time! >= period.end_time!
+          period.start_time >= period.end_time
         )
           error(
             'UBER_SERVICE_AVAILABILITY_INVALID',
