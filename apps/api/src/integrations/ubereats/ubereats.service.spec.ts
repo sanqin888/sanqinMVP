@@ -91,6 +91,116 @@ const createNestedMenuPrisma = (templates: unknown[]) => ({
   opsEvent: { create: jest.fn().mockResolvedValue(null) },
 });
 
+describe('UberEatsService 门店状态同步', () => {
+  const auth = () =>
+    ({ getAccessToken: jest.fn().mockResolvedValue('status-token') }) as never;
+  const mapping = (uberStoreId: string, isProvisioned = true) => ({
+    merchantUberUserId: 'merchant_1',
+    uberStoreId,
+    storeName: uberStoreId,
+    locationSummary: null,
+    isProvisioned,
+    provisionedAt: isProvisioned ? new Date() : null,
+    posExternalStoreId: null,
+  });
+  const prisma = (
+    mappings: ReturnType<typeof mapping>[],
+    isTemporarilyClosed = true,
+    temporaryCloseReason:
+      | string
+      | null = '__AUTO_UNTIL__:2026-08-03T12:00:00-04:00|厨房繁忙',
+  ) => ({
+    businessConfig: {
+      findUnique: jest.fn().mockResolvedValue({
+        isTemporarilyClosed,
+        temporaryCloseReason,
+        updatedAt: new Date(),
+      }),
+    },
+    uberStoreMapping: {
+      findMany: jest.fn().mockResolvedValue(mappings),
+    },
+    opsEvent: { create: jest.fn().mockResolvedValue({}) },
+    uberOpsTicket: { create: jest.fn().mockResolvedValue({}) },
+  });
+
+  beforeEach(() => {
+    process.env.UBER_EATS_OAUTH_STATE_SECRET =
+      'high-entropy-test-secret-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    delete process.env.UBER_EATS_OAUTH_STATE_SECRET;
+  });
+
+  it('逐个同步多个门店，并在部分失败和未 provision 时返回失败明细及运营告警', async () => {
+    const db = prisma([
+      mapping('store_ok'),
+      mapping('store_forbidden'),
+      mapping('store_pending', false),
+    ]);
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response('{"message":"missing scope"}', { status: 403 }),
+      );
+    const service = new UberEatsService(db as never, auth());
+
+    await expect(service.syncStoreStatusToUber()).resolves.toMatchObject({
+      ok: false,
+      total: 3,
+      succeeded: 1,
+      failed: 2,
+      payload: {
+        status: 'PAUSED',
+        reason: '厨房繁忙',
+        pause_until: '2026-08-03T16:00:00.000Z',
+      },
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(db.opsEvent.create).toHaveBeenCalledTimes(3);
+    expect(db.uberOpsTicket.create).toHaveBeenCalledTimes(2);
+  });
+
+  it('将 409 重复暂停视为已生效的幂等成功', async () => {
+    const db = prisma([mapping('store_1')]);
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response('{"message":"already paused"}', { status: 409 }),
+      );
+    const service = new UberEatsService(db as never, auth());
+
+    await expect(service.syncStoreStatusToUber()).resolves.toMatchObject({
+      ok: true,
+      results: [{ ok: true, duplicate: true, status: 409 }],
+    });
+    expect(db.uberOpsTicket.create).not.toHaveBeenCalled();
+  });
+
+  it('恢复营业时发送 ONLINE，并对 429 限次退避后保存成功', async () => {
+    const db = prisma([mapping('store_1')], false, null);
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response('{}', { status: 429 }))
+      .mockResolvedValueOnce(new Response('{}', { status: 503 }))
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    const service = new UberEatsService(db as never, auth());
+
+    await expect(service.syncStoreStatusToUber()).resolves.toMatchObject({
+      ok: true,
+      payload: { status: 'ONLINE' },
+      results: [{ attempts: 3 }],
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    expect(JSON.parse(String(fetchSpy.mock.calls[0]?.[1]?.body))).toEqual({
+      status: 'ONLINE',
+    });
+  });
+});
+
 describe('toUberServiceAvailability', () => {
   const convert = (hours: Parameters<typeof toUberServiceAvailability>[0]) =>
     toUberServiceAvailability(hours, 'America/Toronto');

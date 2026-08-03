@@ -564,6 +564,9 @@ type UberMerchantConnectionDelegate = {
 };
 
 type UberStoreMappingDelegate = {
+  findMany(args: {
+    orderBy: { uberStoreId: 'asc' | 'desc' };
+  }): Promise<UberStoreMappingRecord[]>;
   upsert(args: {
     where: { uberStoreId: string };
     create: {
@@ -1277,23 +1280,173 @@ export class UberEatsService {
 
   async syncStoreStatusToUber() {
     const config = await this.ensureBusinessConfig();
+    const mappingDelegate = this.uberStoreMappingDelegate;
+    if (!mappingDelegate) {
+      throw new BadRequestException('UberStoreMapping 数据表不可用');
+    }
 
-    const payload = {
-      isOpen: !config.isTemporarilyClosed,
-      isTemporarilyClosed: config.isTemporarilyClosed,
-      temporaryCloseReason: config.temporaryCloseReason,
-      updatedAt: config.updatedAt,
-    };
-
-    await this.captureEvent('ubereats_store_status_synced', {
-      ...payload,
-      updatedAt: payload.updatedAt.toISOString(),
+    const mappings = await mappingDelegate.findMany({
+      orderBy: { uberStoreId: 'asc' },
     });
+    const pause = this.parseUberPause(config.temporaryCloseReason);
+    const payload: Record<string, string> = config.isTemporarilyClosed
+      ? {
+          status: 'PAUSED',
+          reason: pause.reason,
+          ...(pause.pauseUntil ? { pause_until: pause.pauseUntil } : {}),
+        }
+      : { status: 'ONLINE' };
+    const results: Array<Record<string, unknown>> = [];
 
+    for (const mapping of mappings) {
+      if (!mapping.isProvisioned) {
+        const result = {
+          uberStoreId: mapping.uberStoreId,
+          ok: false,
+          skipped: true,
+          status: 422,
+          error: 'Uber 门店尚未 provision，未发送状态写请求',
+        };
+        results.push(result);
+        await this.saveStoreStatusResult(result, payload);
+        await this.createStoreStatusAlert(
+          mapping.uberStoreId,
+          result.error,
+          422,
+        );
+        continue;
+      }
+
+      const result = await this.writeUberStoreStatus(
+        mapping.uberStoreId,
+        payload,
+      );
+      results.push(result);
+      await this.saveStoreStatusResult(result, payload);
+      if (
+        !result.ok &&
+        typeof result.status === 'number' &&
+        result.status >= 400 &&
+        result.status < 500
+      ) {
+        await this.createStoreStatusAlert(
+          mapping.uberStoreId,
+          String(result.error ?? 'Uber 门店状态写入被拒绝'),
+          result.status,
+        );
+      }
+    }
+
+    const succeeded = results.filter((result) => result.ok).length;
     return {
-      ok: true,
+      ok: results.length > 0 && succeeded === results.length,
+      total: results.length,
+      succeeded,
+      failed: results.length - succeeded,
       payload,
+      results,
     };
+  }
+
+  private parseUberPause(reason: string | null | undefined) {
+    const prefix = '__AUTO_UNTIL__:';
+    if (!reason?.startsWith(prefix)) {
+      return { reason: reason?.trim() || '门店临时暂停营业', pauseUntil: null };
+    }
+    const [rawUntil, ...reasonParts] = reason.slice(prefix.length).split('|');
+    const until = new Date(rawUntil.trim());
+    return {
+      reason: reasonParts.join('|').trim() || '门店临时暂停营业',
+      pauseUntil: Number.isNaN(until.getTime()) ? null : until.toISOString(),
+    };
+  }
+
+  private async writeUberStoreStatus(
+    uberStoreId: string,
+    payload: Record<string, string>,
+  ): Promise<Record<string, unknown>> {
+    const maxAttempts = 3;
+    let lastStatus: number | null = null;
+    let lastError = '';
+    let attempts = 0;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      attempts = attempt;
+      try {
+        const token = await this.uberAuthService.getAccessToken(
+          'eats.store.status.write',
+        );
+        const response = await fetch(
+          `${this.uberApiBaseUrl.replace(/\/$/, '')}/v1/eats/stores/${encodeURIComponent(uberStoreId)}/status`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: 'application/json',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+          },
+        );
+        lastStatus = response.status;
+        const rawText = await response.text();
+        lastError = response.ok
+          ? ''
+          : this.summarizeDebugResponse(this.tryParseJson(rawText), rawText);
+        // A repeated pause may race with/replay an already applied request.
+        if (response.ok || response.status === 409) {
+          return {
+            uberStoreId,
+            ok: true,
+            duplicate: response.status === 409,
+            status: response.status,
+            attempts: attempt,
+          };
+        }
+        if (response.status !== 429 && response.status < 500) break;
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : String(error);
+      }
+      if (attempt < maxAttempts) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, 25 * 2 ** (attempt - 1)),
+        );
+      }
+    }
+    return {
+      uberStoreId,
+      ok: false,
+      status: lastStatus,
+      attempts,
+      error: lastError || 'Uber 门店状态写入失败',
+    };
+  }
+
+  private async saveStoreStatusResult(
+    result: Record<string, unknown>,
+    payload: Record<string, string>,
+  ) {
+    await this.captureEvent('ubereats_store_status_sync_result', {
+      ...result,
+      payload,
+    } as Prisma.JsonObject);
+  }
+
+  private async createStoreStatusAlert(
+    uberStoreId: string,
+    error: string,
+    status: number,
+  ) {
+    await this.prisma.uberOpsTicket.create({
+      data: {
+        storeId: uberStoreId,
+        type: UberOpsTicketType.STORE_STATUS_SYNC,
+        status: UberOpsTicketStatus.OPEN,
+        priority: UberOpsTicketPriority.HIGH,
+        title: 'Uber 门店状态同步需要运营处理',
+        description: error,
+        context: { uberStoreId, uberHttpStatus: status },
+      },
+    });
   }
 
   async listUberItemChannelConfigs(storeId?: string) {
