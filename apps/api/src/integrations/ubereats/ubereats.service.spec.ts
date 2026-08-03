@@ -795,7 +795,13 @@ describe('UberEatsService', () => {
       .digest('hex');
     const prisma = {
       uberMenuPublishVersion: {
-        findFirst: jest.fn().mockResolvedValue({ id: 'version_1' }),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'version_1',
+            versionStableId: 'menu_resource_1',
+            status: 'SUBMITTED',
+          },
+        ]),
         update: jest.fn().mockResolvedValue(null),
       },
       opsEvent: {
@@ -810,7 +816,12 @@ describe('UberEatsService', () => {
       rawBody,
       body: {
         event_type: 'menus.notification',
-        data: { store_id: 'uber_store_1', status: 'SUCCESS' },
+        meta: { resource_id: 'menu_resource_1' },
+        data: {
+          store_id: 'uber_store_1',
+          resource_id: 'menu_resource_1',
+          status: 'SUCCEEDED',
+        },
       },
     });
 
@@ -829,7 +840,14 @@ describe('UberEatsService', () => {
       .digest('hex');
     const prisma = {
       uberMenuPublishVersion: {
-        findFirst: jest.fn().mockResolvedValue({ id: 'version_2' }),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'version_2',
+            versionStableId: 'menu_resource_2',
+            status: 'SUBMITTED',
+            requestPayload: { items: [{ id: 'local_item_1' }] },
+          },
+        ]),
         update: jest.fn().mockResolvedValue(null),
       },
       opsEvent: {
@@ -846,6 +864,7 @@ describe('UberEatsService', () => {
         event_type: 'menus.notification',
         data: {
           store_id: 'uber_store_1',
+          resource_id: 'menu_resource_2',
           status: 'FAILED',
           errors: [
             {
@@ -867,11 +886,164 @@ describe('UberEatsService', () => {
               code: 'INVALID_PRICE',
               path: 'items[0].price_info.price',
               message: 'price is invalid',
+              entityType: 'item',
+              localId: 'local_item_1',
             },
           ],
         }) as unknown,
       }),
     );
+  });
+
+  it('菜单通知先于 PUT response 回写时仍按 request 中的 resource ID 命中版本', async () => {
+    const rawBody = '{"event_type":"menus.notification"}';
+    const signature = createHmac('sha256', clientSecret)
+      .update(rawBody, 'utf8')
+      .digest('hex');
+    const update = jest.fn().mockResolvedValue(null);
+    const prisma = {
+      uberMenuPublishVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'version_race',
+            versionStableId: 'version_race',
+            status: 'SUBMITTED',
+            requestPayload: { menus: [{ id: 'uber_menu_resource' }] },
+            responsePayload: null,
+          },
+        ]),
+        update,
+      },
+      opsEvent: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue(null),
+      },
+    };
+    await new UberEatsService(
+      prisma as never,
+      createAuthService(),
+    ).handleWebhook({
+      headers: { 'x-uber-signature': signature, 'x-event-id': 'menu_race' },
+      rawBody,
+      body: {
+        event_type: 'menus.notification',
+        data: {
+          store_id: 'uber_store_1',
+          resource_id: 'uber_menu_resource',
+          status: 'SUCCEEDED',
+        },
+      },
+    });
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'version_race' } }),
+    );
+  });
+
+  it('重复成功菜单通知不会再次更新已成功版本', async () => {
+    const rawBody = '{"event_type":"menus.notification"}';
+    const signature = createHmac('sha256', clientSecret)
+      .update(rawBody, 'utf8')
+      .digest('hex');
+    const update = jest.fn();
+    const prisma = {
+      uberMenuPublishVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'done',
+            versionStableId: 'resource_done',
+            status: 'SUCCEEDED',
+          },
+        ]),
+        update,
+      },
+      opsEvent: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue(null),
+      },
+    };
+    await new UberEatsService(
+      prisma as never,
+      createAuthService(),
+    ).handleWebhook({
+      headers: {
+        'x-uber-signature': signature,
+        'x-event-id': 'menu_done_again',
+      },
+      rawBody,
+      body: {
+        event_type: 'menus.notification',
+        data: {
+          store_id: 'uber_store_1',
+          resource_id: 'resource_done',
+          status: 'SUCCEEDED',
+        },
+      },
+    });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('确认回读仍是旧菜单时保持 SUBMITTED，不误判为成功', async () => {
+    const update = jest.fn();
+    const service = new UberEatsService(
+      { uberMenuPublishVersion: { update } } as never,
+      createAuthService(),
+    );
+    jest
+      .spyOn(service as never, 'resolveMerchantConnection' as never)
+      .mockResolvedValue({ accessToken: 'token' } as never);
+    jest
+      .spyOn(service as never, 'callUberApi' as never)
+      .mockResolvedValue({ items: [{ id: 'old_item' }] } as never);
+    await expect(
+      (service as any).confirmUploadedMenu('version_old', 'store_1', {
+        menus: [],
+        categories: [],
+        modifier_groups: [],
+        items: [{ id: 'new_item' }],
+      }),
+    ).resolves.toBe('SUBMITTED');
+    expect(update).not.toHaveBeenCalled();
+    jest.restoreAllMocks();
+  });
+
+  it('发布确认超时保持 SUBMITTED 并创建 TIMED_OUT 运营工单', async () => {
+    jest.useFakeTimers();
+    process.env.UBER_EATS_MENU_CONFIRM_TIMEOUT_MS = '1';
+    process.env.UBER_EATS_MENU_CONFIRM_INITIAL_DELAY_MS = '1';
+    const create = jest.fn().mockResolvedValue(null);
+    const service = new UberEatsService(
+      {
+        uberMenuPublishVersion: {
+          findUnique: jest.fn().mockResolvedValue({ status: 'SUBMITTED' }),
+        },
+        uberOpsTicket: { create },
+        opsEvent: { create: jest.fn().mockResolvedValue(null) },
+      } as never,
+      createAuthService(),
+    );
+    jest
+      .spyOn(service as never, 'confirmUploadedMenu' as never)
+      .mockResolvedValue('SUBMITTED' as never);
+    const polling = (service as any).pollUploadedMenuUntilTerminal(
+      'version_timeout',
+      'local_store',
+      'uber_store',
+      { menus: [], categories: [], items: [], modifier_groups: [] },
+    );
+    await jest.advanceTimersByTimeAsync(2);
+    await polling;
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          storeId: 'local_store',
+          context: expect.objectContaining({ state: 'TIMED_OUT' }) as unknown,
+        }) as unknown,
+      }),
+    );
+    delete process.env.UBER_EATS_MENU_CONFIRM_TIMEOUT_MS;
+    delete process.env.UBER_EATS_MENU_CONFIRM_INITIAL_DELAY_MS;
+    jest.useRealTimers();
+    jest.restoreAllMocks();
   });
 
   it('debugAccessToken 会返回请求 scope 且不暴露 token 元数据', async () => {
