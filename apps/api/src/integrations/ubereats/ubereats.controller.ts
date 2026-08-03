@@ -441,12 +441,23 @@ export class UberEatsController {
   }
 
   private requireDebugFeature(): void {
-    if (
-      process.env.NODE_ENV === 'production' ||
-      process.env[UBER_EATS_DEBUG_FEATURE_FLAG] !== 'true'
-    ) {
+    if (!this.isDebugFeatureEnabled()) {
       throw new NotFoundException();
     }
+  }
+
+  private isDebugFeatureEnabled(): boolean {
+    return (
+      process.env.NODE_ENV !== 'production' &&
+      process.env[UBER_EATS_DEBUG_FEATURE_FLAG] === 'true'
+    );
+  }
+
+  @Get('debug/status')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  debugFeatureStatus() {
+    return { enabled: this.isDebugFeatureEnabled() };
   }
 
   @Get('oauth/stores')
