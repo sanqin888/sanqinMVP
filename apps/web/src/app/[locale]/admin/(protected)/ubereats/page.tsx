@@ -16,6 +16,7 @@ type ScopeResult = {
 };
 
 type ScopesVerifyResponse = { ok: boolean; results: ScopeResult[] };
+type DebugFeatureStatusResponse = { enabled: boolean };
 type DebugTokenResponse = {
   requestedScope: string | null;
   normalizedScope: string;
@@ -252,6 +253,7 @@ export default function UberEatsAdminPage() {
   const [tickets, setTickets] = useState<TicketsResponse['items']>([]);
   const [reports, setReports] = useState<ReconciliationResponse['items']>([]);
   const [createdOrders, setCreatedOrders] = useState<CreatedOrdersResponse | null>(null);
+  const [debugFeatureEnabled, setDebugFeatureEnabled] = useState(false);
 
   const [scopeInput, setScopeInput] = useState('');
   const [verifyStoreId, setVerifyStoreId] = useState('');
@@ -301,31 +303,46 @@ export default function UberEatsAdminPage() {
     const tasks = await Promise.allSettled([
       apiFetch<OAuthConnectUrlResponse>('/integrations/ubereats/oauth/connect-url'),
       apiFetch<OAuthConnectionResponse>('/integrations/ubereats/oauth/connection'),
-      apiFetch<ScopesVerifyResponse>('/integrations/ubereats/debug/scopes/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scopes: DEFAULT_SCOPES, forceRefresh: false, storeId: verifyStoreId || undefined, orderId: verifyOrderId || undefined }),
-      }),
+      (async () => {
+        const status = await apiFetch<DebugFeatureStatusResponse>('/integrations/ubereats/debug/status');
+        if (!status.enabled) return { enabled: false, scopes: [], createdOrders: null };
+        const [scopeResult, createdOrdersResult] = await Promise.all([
+          apiFetch<ScopesVerifyResponse>('/integrations/ubereats/debug/scopes/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ scopes: DEFAULT_SCOPES, forceRefresh: false, storeId: verifyStoreId || undefined, orderId: verifyOrderId || undefined }),
+          }),
+          apiFetch<CreatedOrdersResponse>('/integrations/ubereats/debug/created-orders'),
+        ]);
+        return { enabled: true, scopes: scopeResult.results ?? [], createdOrders: createdOrdersResult };
+      })(),
       apiFetch<TicketsResponse>(`/integrations/ubereats/ops/tickets${ticketStoreFilter || ticketStatusFilter ? `?${new URLSearchParams({ ...(ticketStoreFilter ? { storeId: ticketStoreFilter } : {}), ...(ticketStatusFilter ? { status: ticketStatusFilter } : {}) }).toString()}` : ''}`),
       apiFetch<ReconciliationResponse>('/integrations/ubereats/reports/reconciliation?limit=20'),
       apiFetch<PendingOrdersResponse>('/integrations/ubereats/orders/pending'),
       apiFetch<OAuthStoresResponse>('/integrations/ubereats/oauth/stores'),
-      apiFetch<CreatedOrdersResponse>('/integrations/ubereats/debug/created-orders'),
     ]);
 
     const errors: string[] = [];
-    const [connect, conn, verify, ticketRes, reportRes, orderRes, storeRes, created] = tasks;
+    const [connect, conn, debug, ticketRes, reportRes, orderRes, storeRes] = tasks;
 
     if (connect.status === 'fulfilled') setConnectUrl(connect.value); else errors.push('connect-url');
     if (conn.status === 'fulfilled') setConnection(conn.value); else setConnection(null);
-    if (verify.status === 'fulfilled') setScopes(verify.value.results ?? []); else errors.push('scopes verify');
+    if (debug.status === 'fulfilled') {
+      setDebugFeatureEnabled(debug.value.enabled);
+      setScopes(debug.value.scopes);
+      setCreatedOrders(debug.value.createdOrders);
+    } else {
+      setDebugFeatureEnabled(false);
+      setScopes([]);
+      setCreatedOrders(null);
+      errors.push('debug status');
+    }
     if (ticketRes.status === 'fulfilled') setTickets(ticketRes.value.items ?? []); else errors.push('tickets');
     if (reportRes.status === 'fulfilled') setReports(reportRes.value.items ?? []); else errors.push('reports');
     if (orderRes.status === 'fulfilled') setPendingOrders(orderRes.value.items ?? []); else errors.push('orders');
     if (storeRes.status === 'fulfilled') {
       setStores(storeRes.value.stores ?? []);
     } else errors.push('oauth stores');
-    if (created.status === 'fulfilled') setCreatedOrders(created.value); else setCreatedOrders(null);
 
     if (errors.length > 0) {
       setGlobalError(`部分区块加载失败：${errors.join('、')}，其余模块仍可使用。`);
@@ -493,10 +510,10 @@ export default function UberEatsAdminPage() {
   }, [sourceMenuTree]);
 
   useEffect(() => {
-    if (selectedSourceNodeIds !== null) return;
+    if (selectedSourceNodeIds !== null || menuDraft?.storeId !== selectedStoreId || sourceNodeLookup.size === 0) return;
     const allIds = new Set<string>(Array.from(sourceNodeLookup.keys()));
     setSelectedSourceNodeIds(allIds);
-  }, [selectedSourceNodeIds, sourceNodeLookup]);
+  }, [menuDraft?.storeId, selectedSourceNodeIds, selectedStoreId, sourceNodeLookup]);
 
   const uncheckedSourceNodeIds = useMemo(() => {
     if (selectedSourceNodeIds === null) return new Set<string>();
@@ -884,12 +901,13 @@ export default function UberEatsAdminPage() {
 
         {active === 'testing' && (
           <section className="space-y-4">
+            {!debugFeatureEnabled ? <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">当前环境未开启 Uber 调试功能；Scopes、Token 和 Sandbox created-orders 检查已停用，不影响菜单、订单和对账模块。</div> : null}
             <div className="rounded-xl border bg-white p-4">
               <h3 className="text-lg font-semibold">Scopes 验证</h3>
               <div className="mt-2 grid gap-2 md:grid-cols-3">
                 <input className="rounded border px-3 py-2 text-sm" placeholder="storeId（可选）" value={verifyStoreId} onChange={(e) => setVerifyStoreId(e.target.value)} />
                 <input className="rounded border px-3 py-2 text-sm" placeholder="orderId（可选）" value={verifyOrderId} onChange={(e) => setVerifyOrderId(e.target.value)} />
-                <button type="button" className="rounded border px-3 py-2 text-sm" onClick={() => void runAction('verify-scope', async () => {
+                <button type="button" disabled={!debugFeatureEnabled} className="rounded border px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void runAction('verify-scope', async () => {
                   const res = await apiFetch<ScopesVerifyResponse>('/integrations/ubereats/debug/scopes/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scopes: DEFAULT_SCOPES, forceRefresh: true, storeId: verifyStoreId || undefined, orderId: verifyOrderId || undefined }) });
                   setScopes(res.results ?? []);
                 }, 'Scopes 验证完成', false)}>重新验证</button>
@@ -901,10 +919,10 @@ export default function UberEatsAdminPage() {
               <div className="rounded-xl border bg-white p-4">
                 <h3 className="text-lg font-semibold">Token 调试</h3>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  <button type="button" className="rounded border px-3 py-1 text-sm" onClick={() => void runAction('token-default', async () => setTokenDebug(await apiFetch<DebugTokenResponse>('/integrations/ubereats/debug/token')), '默认 Token 获取成功', false)}>获取默认 token</button>
-                  <button type="button" className="rounded border px-3 py-1 text-sm" onClick={() => void runAction('token-refresh', async () => setTokenDebug(await apiFetch<DebugTokenResponse>('/integrations/ubereats/debug/token?forceRefresh=true')), 'Token 强制刷新成功', false)}>Force refresh</button>
+                  <button type="button" disabled={!debugFeatureEnabled} className="rounded border px-3 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void runAction('token-default', async () => setTokenDebug(await apiFetch<DebugTokenResponse>('/integrations/ubereats/debug/token')), '默认 Token 获取成功', false)}>获取默认 token</button>
+                  <button type="button" disabled={!debugFeatureEnabled} className="rounded border px-3 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void runAction('token-refresh', async () => setTokenDebug(await apiFetch<DebugTokenResponse>('/integrations/ubereats/debug/token?forceRefresh=true')), 'Token 强制刷新成功', false)}>Force refresh</button>
                 </div>
-                <div className="mt-2 flex gap-2"><input className="flex-1 rounded border px-3 py-2 text-sm" placeholder="指定 scope" value={scopeInput} onChange={(e) => setScopeInput(e.target.value)} /><button type="button" className="rounded border px-3 py-2 text-sm" onClick={() => void runAction('token-scope', async () => setTokenDebug(await apiFetch<DebugTokenResponse>(`/integrations/ubereats/debug/token?scope=${encodeURIComponent(scopeInput)}`)), '自定义 scope Token 获取成功', false)}>测试</button></div>
+                <div className="mt-2 flex gap-2"><input className="flex-1 rounded border px-3 py-2 text-sm" placeholder="指定 scope" value={scopeInput} onChange={(e) => setScopeInput(e.target.value)} /><button type="button" disabled={!debugFeatureEnabled} className="rounded border px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void runAction('token-scope', async () => setTokenDebug(await apiFetch<DebugTokenResponse>(`/integrations/ubereats/debug/token?scope=${encodeURIComponent(scopeInput)}`)), '自定义 scope Token 获取成功', false)}>测试</button></div>
                 {tokenDebug ? <div className="mt-2 text-sm"><p>requestedScope: {tokenDebug.requestedScope ?? '-'}</p><p>normalizedScope: {tokenDebug.normalizedScope}</p><p>tokenPrefix: {tokenDebug.tokenPrefix}</p><p>tokenLength: {tokenDebug.tokenLength}</p></div> : null}
               </div>
 
