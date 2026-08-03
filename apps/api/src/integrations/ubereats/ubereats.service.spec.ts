@@ -195,7 +195,9 @@ describe('UberEatsService 门店状态同步', () => {
       results: [{ attempts: 3 }],
     });
     expect(fetchSpy).toHaveBeenCalledTimes(3);
-    expect(JSON.parse(String(fetchSpy.mock.calls[0]?.[1]?.body))).toEqual({
+    const requestBody = fetchSpy.mock.calls[0]?.[1]?.body;
+    expect(typeof requestBody).toBe('string');
+    expect(JSON.parse(requestBody as string)).toEqual({
       status: 'ONLINE',
     });
   });

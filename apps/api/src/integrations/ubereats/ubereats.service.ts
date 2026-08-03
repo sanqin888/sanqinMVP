@@ -1331,7 +1331,9 @@ export class UberEatsService {
       ) {
         await this.createStoreStatusAlert(
           mapping.uberStoreId,
-          String(result.error ?? 'Uber 门店状态写入被拒绝'),
+          typeof result.error === 'string'
+            ? result.error
+            : 'Uber 门店状态写入被拒绝',
           result.status,
         );
       }
