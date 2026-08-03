@@ -2103,6 +2103,21 @@ describe('UberEatsService', () => {
     );
   });
 
+  it('拒绝将百分数格式的站内税率再次转换后发布到 Uber', async () => {
+    const prisma = createNestedMenuPrisma([]);
+    prisma.businessConfig.findUnique.mockResolvedValueOnce({
+      timezone: 'America/Toronto',
+      salesTaxRate: 13,
+    });
+    const service = new UberEatsService(prisma as never, createAuthService());
+
+    await expect(
+      service.publishUberMenu({ storeId: 's1', dryRun: true }),
+    ).rejects.toThrow(
+      'salesTaxRate 必须使用 0～1 的比例格式，例如 13% 应保存为 0.13',
+    );
+  });
+
   it('可选子组无法无损展开时会阻止正式发布', async () => {
     const templates = [
       {
