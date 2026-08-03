@@ -7,6 +7,7 @@ import {
   Head,
   Header,
   HttpCode,
+  NotFoundException,
   Patch,
   Param,
   ParseEnumPipe,
@@ -37,14 +38,21 @@ import { Type } from 'class-transformer';
 import { randomUUID } from 'crypto';
 import { AppLogger } from '../../common/app-logger';
 import { Roles } from '../../auth/roles.decorator';
+import { AdminMfaGuard } from '../../auth/admin-mfa.guard';
 import { RolesGuard } from '../../auth/roles.guard';
-import { SessionAuthGuard } from '../../auth/session-auth.guard';
+import {
+  SESSION_COOKIE_NAME,
+  SessionAuthGuard,
+} from '../../auth/session-auth.guard';
 import { UberEatsService } from './ubereats.service';
 
 type OAuthRequestContext = {
   session?: { sessionId?: string };
   user?: { userStableId?: string };
+  signedCookies?: Record<string, string | undefined>;
 };
+
+const UBER_EATS_DEBUG_FEATURE_FLAG = 'UBER_EATS_DEBUG_ENABLED';
 
 function escapeHtml(value: string): string {
   return value.replace(
@@ -354,8 +362,6 @@ export class UberEatsController {
   }
 
   @Get('oauth/callback')
-  @UseGuards(SessionAuthGuard, RolesGuard)
-  @Roles('ADMIN')
   @Header('Content-Type', 'text/html; charset=utf-8')
   async oauthCallback(
     @Req() req: Request & OAuthRequestContext,
@@ -372,10 +378,14 @@ export class UberEatsController {
     }
 
     try {
+      const callbackSessionId =
+        typeof req.signedCookies?.[SESSION_COOKIE_NAME] === 'string'
+          ? req.signedCookies[SESSION_COOKIE_NAME]
+          : undefined;
       const result = await this.uberEatsService.exchangeAuthorizationCode(
         code,
         state,
-        this.requireAdminSession(req),
+        callbackSessionId,
       );
 
       return `
@@ -430,7 +440,18 @@ export class UberEatsController {
     return sessionId;
   }
 
+  private requireDebugFeature(): void {
+    if (
+      process.env.NODE_ENV === 'production' ||
+      process.env[UBER_EATS_DEBUG_FEATURE_FLAG] !== 'true'
+    ) {
+      throw new NotFoundException();
+    }
+  }
+
   @Get('oauth/stores')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   async oauthStores(
     @Query('accessToken') accessToken?: string,
     @Query('merchantUberUserId') merchantUberUserId?: string,
@@ -442,6 +463,8 @@ export class UberEatsController {
   }
 
   @Get('oauth/connection')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   async oauthConnection(
     @Query('merchantUberUserId') merchantUberUserId?: string,
   ) {
@@ -451,6 +474,8 @@ export class UberEatsController {
   }
 
   @Post('oauth/provision')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   async oauthProvision(@Body() dto: ProvisionUberStoreDto) {
     return await this.uberEatsService.provisionStore(
       dto.accessToken,
@@ -461,21 +486,30 @@ export class UberEatsController {
   }
 
   @Get('debug/token')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   async debugAccessToken(
     @Query('scope') scope?: string,
     @Query('forceRefresh') forceRefresh?: string,
   ) {
+    this.requireDebugFeature();
     const shouldForceRefresh = forceRefresh === 'true' || forceRefresh === '1';
     return this.uberEatsService.debugAccessToken(scope, shouldForceRefresh);
   }
 
   @Get('debug/created-orders')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   async debugCreatedOrders(@Query('storeId') storeId?: string) {
+    this.requireDebugFeature();
     return this.uberEatsService.debugCreatedOrders(storeId);
   }
 
   @Post('debug/scopes/verify')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   async verifyScopes(@Body() dto: VerifyUberScopesDto) {
+    this.requireDebugFeature();
     return this.uberEatsService.verifyScopes(dto.scopes, {
       storeId: dto.storeId,
       orderId: dto.orderId,
@@ -484,11 +518,15 @@ export class UberEatsController {
   }
 
   @Get('webhook')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   health(@Res() res: Response) {
     return res.status(200).json({ ok: true });
   }
 
   @Head('webhook')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   head(@Res() res: Response) {
     return res.sendStatus(200);
   }
@@ -536,6 +574,8 @@ export class UberEatsController {
     return { ok: true };
   }
   @Post('orders/:externalOrderId/status')
+  @UseGuards(SessionAuthGuard, AdminMfaGuard, RolesGuard)
+  @Roles('ADMIN')
   async syncOrderStatus(
     @Param('externalOrderId') externalOrderId: string,
     @Body('status', new ParseEnumPipe(OrderStatus)) status: OrderStatus,
@@ -547,21 +587,29 @@ export class UberEatsController {
   }
 
   @Get('orders/pending')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   async listPendingOrders() {
     return await this.uberEatsService.listPendingUberOrders();
   }
 
   @Post('store/status/sync')
+  @UseGuards(SessionAuthGuard, AdminMfaGuard, RolesGuard)
+  @Roles('ADMIN')
   async syncStoreStatus() {
     return await this.uberEatsService.syncStoreStatusToUber();
   }
 
   @Get('menu/channel/items')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   async listItemChannelConfigs(@Query('storeId') storeId?: string) {
     return await this.uberEatsService.listUberItemChannelConfigs(storeId);
   }
 
   @Post('menu/channel/items/:menuItemStableId')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   async upsertItemChannelConfig(
     @Param('menuItemStableId') menuItemStableId: string,
     @Body() dto: UpsertUberPriceBookItemDto,
@@ -578,11 +626,15 @@ export class UberEatsController {
   }
 
   @Get('menu/channel/options')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   async listOptionChannelConfigs(@Query('storeId') storeId?: string) {
     return await this.uberEatsService.listUberOptionItemConfigs(storeId);
   }
 
   @Post('menu/channel/options/:optionChoiceStableId')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   async upsertOptionChannelConfig(
     @Param('optionChoiceStableId') optionChoiceStableId: string,
     @Body() dto: UpsertUberOptionItemConfigDto,
@@ -599,11 +651,15 @@ export class UberEatsController {
   }
 
   @Get('menu/draft')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   async getMenuDraft(@Query('storeId') storeId?: string) {
     return await this.uberEatsService.getUberMenuDraft(storeId);
   }
 
   @Patch('menu/draft/items/:itemId')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   async patchDraftItem(
     @Param('itemId') itemId: string,
     @Body() dto: UpdateUberDraftItemDto,
@@ -612,6 +668,8 @@ export class UberEatsController {
   }
 
   @Patch('menu/draft/groups/:groupId')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   async patchDraftGroup(
     @Param('groupId') groupId: string,
     @Body() dto: UpdateUberDraftGroupDto,
@@ -620,6 +678,8 @@ export class UberEatsController {
   }
 
   @Patch('menu/draft/options/:optionItemId')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   async patchDraftOption(
     @Param('optionItemId') optionItemId: string,
     @Body() dto: UpdateUberDraftOptionDto,
@@ -628,6 +688,8 @@ export class UberEatsController {
   }
 
   @Post('menu/draft/options/:optionItemId/child-groups')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   async bindOptionChildGroup(
     @Param('optionItemId') optionItemId: string,
     @Body() dto: UpdateUberDraftOptionChildGroupDto,
@@ -640,6 +702,8 @@ export class UberEatsController {
   }
 
   @Delete('menu/draft/options/:optionItemId/child-groups/:groupId')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   async unbindOptionChildGroup(
     @Param('optionItemId') optionItemId: string,
     @Param('groupId') groupId: string,
@@ -653,11 +717,15 @@ export class UberEatsController {
   }
 
   @Get('menu/draft/diff')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   async getMenuDraftDiff(@Query('storeId') storeId?: string) {
     return await this.uberEatsService.getUberMenuDraftDiff(storeId);
   }
 
   @Post('menu/publish')
+  @UseGuards(SessionAuthGuard, AdminMfaGuard, RolesGuard)
+  @Roles('ADMIN')
   async publishMenu(@Body() dto: PublishUberMenuDto) {
     return await this.uberEatsService.publishUberMenu({
       storeId: dto.storeId,
@@ -672,6 +740,8 @@ export class UberEatsController {
   }
 
   @Post('menu/items/:menuItemStableId/availability')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   async syncMenuItemAvailability(
     @Param('menuItemStableId') menuItemStableId: string,
     @Body() dto: SyncUberMenuItemAvailabilityDto,
@@ -684,6 +754,8 @@ export class UberEatsController {
   }
 
   @Post('menu/options/:optionChoiceStableId/availability')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   async syncOptionItemAvailability(
     @Param('optionChoiceStableId') optionChoiceStableId: string,
     @Body() dto: SyncUberOptionItemAvailabilityDto,
@@ -696,6 +768,8 @@ export class UberEatsController {
   }
 
   @Post('reports/reconciliation/generate')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   async generateReconciliationReport(
     @Body() dto: GenerateUberReconciliationReportDto,
   ) {
@@ -707,6 +781,8 @@ export class UberEatsController {
   }
 
   @Get('reports/reconciliation')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   async listReconciliationReports(
     @Query('storeId') storeId?: string,
     @Query('limit') limit?: string,
@@ -718,6 +794,8 @@ export class UberEatsController {
   }
 
   @Post('ops/tickets')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   async createOpsTicket(@Body() dto: CreateUberOpsTicketDto): Promise<unknown> {
     return await this.uberEatsService.createOpsTicket({
       type: dto.type,
@@ -731,6 +809,8 @@ export class UberEatsController {
   }
 
   @Get('ops/tickets')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   async listOpsTickets(
     @Query('storeId') storeId?: string,
     @Query('status') status?: UberOpsTicketStatus,
@@ -739,6 +819,8 @@ export class UberEatsController {
   }
 
   @Post('ops/tickets/:ticketStableId/retry')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   async retryOpsTicket(
     @Param('ticketStableId') ticketStableId: string,
   ): Promise<unknown> {

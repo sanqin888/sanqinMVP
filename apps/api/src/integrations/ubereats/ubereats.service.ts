@@ -887,7 +887,7 @@ export class UberEatsService {
   async exchangeAuthorizationCode(
     code: string,
     state: string | undefined,
-    adminSessionId: string,
+    adminSessionId: string | undefined,
   ) {
     const stateRequest = this.consumeOAuthState(state, adminSessionId);
 
@@ -2753,7 +2753,10 @@ export class UberEatsService {
     return `${payload}.${signature}`;
   }
 
-  private consumeOAuthState(state: string | undefined, adminSessionId: string) {
+  private consumeOAuthState(
+    state: string | undefined,
+    adminSessionId: string | undefined,
+  ) {
     const normalizedState = state?.trim();
     if (!normalizedState) {
       throw new BadRequestException('缺少 OAuth state');
@@ -2802,7 +2805,7 @@ export class UberEatsService {
       throw new BadRequestException('OAuth state 不存在或已使用');
     }
     if (
-      !adminSessionId.trim() ||
+      !adminSessionId?.trim() ||
       request.adminSessionId !== adminSessionId.trim()
     ) {
       throw new UnauthorizedException('OAuth state 与管理员会话不匹配');
