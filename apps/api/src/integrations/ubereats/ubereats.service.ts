@@ -1063,66 +1063,94 @@ export class UberEatsService {
     const eventType = envelope?.eventType ?? this.readEventType(input.body);
     const eventId =
       this.readEventId(input.headers, input.body, envelope?.eventId) ??
-      `no-event-id:${eventType}:${this.hashForFallback(input.rawBody)}`;
+      `sha256:${this.hashCanonicalBody(input.body)}`;
 
-    const alreadySeen = await this.hasSeenWebhookEvent(eventId);
-    if (alreadySeen) {
+    const claimed = await this.claimWebhookEvent(
+      eventId,
+      eventType,
+      envelope?.resourceId ?? null,
+      input.body,
+    );
+    if (!claimed) {
       this.logger.warn(
         `[ubereats webhook] duplicate ignored eventType=${eventType} eventId=${eventId}`,
       );
       return;
     }
 
-    switch (this.normalizeEventType(eventType)) {
-      case 'orders.notification':
-      case 'orders.accepted':
-      case 'orders.in_progress':
-      case 'orders.making':
-      case 'orders.ready_for_pickup':
-      case 'orders.completed':
-      case 'orders.cancelled':
-      case 'orders.rejected':
-        await this.handleOrderWebhook(eventType, eventId, envelope);
-        return;
+    try {
+      switch (this.normalizeEventType(eventType)) {
+        case 'orders.notification':
+        case 'orders.accepted':
+        case 'orders.in_progress':
+        case 'orders.making':
+        case 'orders.ready_for_pickup':
+        case 'orders.completed':
+        case 'orders.cancelled':
+        case 'orders.rejected':
+          await this.handleOrderWebhook(eventType, eventId, envelope);
+          break;
 
-      case 'store.provisioned':
-        await this.handleStoreProvisionedWebhook(
-          eventType,
-          eventId,
-          input.body,
-        );
-        return;
+        case 'store.provisioned':
+          await this.handleStoreProvisionedWebhook(
+            eventType,
+            eventId,
+            input.body,
+          );
+          break;
 
-      case 'store.deprovisioned':
-        await this.handleStoreDeprovisionedWebhook(
-          eventType,
-          eventId,
-          input.body,
-        );
-        return;
+        case 'store.deprovisioned':
+          await this.handleStoreDeprovisionedWebhook(
+            eventType,
+            eventId,
+            input.body,
+          );
+          break;
 
-      case 'store.status.changed':
-        await this.handleStoreStatusChangedWebhook(
-          eventType,
-          eventId,
-          input.body,
-        );
-        return;
+        case 'store.status.changed':
+          await this.handleStoreStatusChangedWebhook(
+            eventType,
+            eventId,
+            input.body,
+          );
+          break;
 
-      case 'menus.notification':
-        await this.handleMenuNotificationWebhook(
-          eventType,
-          eventId,
-          input.body,
-        );
-        return;
+        case 'menus.notification':
+          await this.handleMenuNotificationWebhook(
+            eventType,
+            eventId,
+            input.body,
+          );
+          break;
 
-      default:
-        await this.captureEvent('ubereats_webhook_unhandled', {
-          eventType,
-          eventId,
-        });
-        return;
+        default:
+          await this.captureEvent('ubereats_webhook_unhandled', {
+            eventType,
+            eventId,
+            orderRelated: this.isOrderRelatedEvent(eventType),
+          });
+          if (this.isOrderRelatedEvent(eventType)) {
+            throw new BadRequestException(
+              `未识别的 Uber 订单事件类型: ${eventType}`,
+            );
+          }
+          break;
+      }
+
+      // Order persistence marks the inbox PROCESSED in the same transaction.
+      // Other event families use this durable, retryable state-machine boundary.
+      await this.prisma.uberWebhookInbox.updateMany({
+        where: { eventId, status: 'PROCESSING' },
+        data: {
+          status: 'PROCESSED',
+          processedAt: new Date(),
+          errorSummary: null,
+          nextRetryAt: null,
+        },
+      });
+    } catch (error) {
+      await this.markWebhookFailed(eventId, error);
+      throw error;
     }
   }
 
@@ -5701,13 +5729,15 @@ export class UberEatsService {
           eventType,
           externalOrderId: order.externalOrderId,
           status: 'PROCESSED',
+          attemptCount: 1,
           processedAt: new Date(),
           payload: validation as unknown as Prisma.InputJsonValue,
         },
         update: {
           status: 'PROCESSED',
           processedAt: new Date(),
-          payload: validation as unknown as Prisma.InputJsonValue,
+          errorSummary: null,
+          nextRetryAt: null,
         },
       });
       return {
@@ -6226,20 +6256,99 @@ export class UberEatsService {
     );
   }
 
-  private async hasSeenWebhookEvent(eventId: string): Promise<boolean> {
-    const row = await this.prisma.opsEvent.findFirst({
-      where: {
-        source: 'ubereats',
-        eventName: 'ubereats_webhook_processed',
-        payload: {
-          path: ['eventId'],
-          equals: eventId,
-        },
-      },
-      select: { id: true },
-    });
+  private async claimWebhookEvent(
+    eventId: string,
+    eventType: string,
+    externalOrderId: string | null,
+    payload: unknown,
+  ): Promise<boolean> {
+    const data = {
+      eventId,
+      eventType,
+      externalOrderId,
+      status: 'RECEIVED',
+      payload: this.toJsonValue(payload),
+    };
 
-    return !!row;
+    try {
+      await this.prisma.uberWebhookInbox.create({ data });
+    } catch (error) {
+      if (!this.isPrismaUniqueConstraintError(error)) throw error;
+
+      // A failed synchronous attempt returned non-2xx, so a later delivery is
+      // allowed to atomically reclaim it. All other conflicts are idempotent
+      // success, including concurrent deliveries while the owner is working.
+      const reclaimed = await this.prisma.uberWebhookInbox.updateMany({
+        where: {
+          eventId,
+          status: 'FAILED',
+        },
+        data: {
+          status: 'RECEIVED',
+          errorSummary: null,
+          nextRetryAt: null,
+        },
+      });
+      if (reclaimed.count === 0) return false;
+    }
+
+    const processing = await this.prisma.uberWebhookInbox.updateMany({
+      where: { eventId, status: 'RECEIVED' },
+      data: {
+        status: 'PROCESSING',
+        processingAt: new Date(),
+        attemptCount: { increment: 1 },
+      },
+    });
+    return processing.count === 1;
+  }
+
+  private async markWebhookFailed(eventId: string, error: unknown) {
+    const summary = (error instanceof Error ? error.message : String(error))
+      .replace(/\s+/g, ' ')
+      .slice(0, 500);
+    await this.prisma.uberWebhookInbox.updateMany({
+      where: { eventId, status: 'PROCESSING' },
+      data: {
+        status: 'FAILED',
+        errorSummary: summary || 'unknown error',
+        nextRetryAt: new Date(Date.now() + 1_000),
+      },
+    });
+  }
+
+  private isPrismaUniqueConstraintError(error: unknown): boolean {
+    return (
+      !!error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      (error as { code?: unknown }).code === 'P2002'
+    );
+  }
+
+  private isOrderRelatedEvent(eventType: string): boolean {
+    return /(^|[._-])orders?([._-]|$)/i.test(eventType);
+  }
+
+  private hashCanonicalBody(payload: unknown): string {
+    const normalize = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(normalize);
+      if (value && typeof value === 'object') {
+        return Object.fromEntries(
+          Object.entries(value as Record<string, unknown>)
+            .sort(([left], [right]) => left.localeCompare(right))
+            .map(([key, child]) => [key, normalize(child)]),
+        );
+      }
+      return value;
+    };
+    return createHash('sha256')
+      .update(JSON.stringify(normalize(payload)) ?? 'null', 'utf8')
+      .digest('hex');
+  }
+
+  private toJsonValue(payload: unknown): Prisma.InputJsonValue {
+    return JSON.parse(JSON.stringify(payload ?? null)) as Prisma.InputJsonValue;
   }
 
   private extractStoreId(payload: unknown): string | null {

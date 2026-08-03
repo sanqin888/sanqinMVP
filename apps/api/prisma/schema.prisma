@@ -567,6 +567,10 @@ model UberWebhookInbox {
   externalOrderId String?
   status          String
   payload         Json?
+  attemptCount    Int       @default(0)
+  errorSummary    String?
+  nextRetryAt     DateTime?
+  processingAt    DateTime?
   processedAt     DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
