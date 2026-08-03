@@ -2291,7 +2291,7 @@ export class UberEatsService {
       const response = await this.uploadUberMenu(uberStoreId, payload);
       await this.markMenuPublishVersionSubmitted(version.id, response);
 
-      let finalStatus: 'SUBMITTED' | 'SUCCEEDED' | 'FAILED' = 'SUBMITTED';
+      const finalStatus: 'SUBMITTED' | 'SUCCEEDED' | 'FAILED' = 'SUBMITTED';
       if (!this.hasMenuNotificationCapability()) {
         void this.pollUploadedMenuUntilTerminal(
           version.id,

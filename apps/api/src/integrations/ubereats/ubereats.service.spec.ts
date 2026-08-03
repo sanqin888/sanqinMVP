@@ -34,6 +34,30 @@ jest.mock('@prisma/client', () => ({
 import { createHash, createHmac } from 'crypto';
 import { toUberServiceAvailability, UberEatsService } from './ubereats.service';
 
+type MenuConfirmationTestApi = {
+  confirmUploadedMenu: (
+    versionId: string,
+    uberStoreId: string,
+    requested: {
+      menus: unknown[];
+      categories: unknown[];
+      modifier_groups: unknown[];
+      items: Array<{ id: string }>;
+    },
+  ) => Promise<'SUBMITTED' | 'SUCCEEDED' | 'FAILED'>;
+  pollUploadedMenuUntilTerminal: (
+    versionId: string,
+    storeId: string,
+    uberStoreId: string,
+    requested: {
+      menus: unknown[];
+      categories: unknown[];
+      modifier_groups: unknown[];
+      items: unknown[];
+    },
+  ) => Promise<void>;
+};
+
 const openSchedulePrisma = {
   businessConfig: {
     findUnique: jest
@@ -994,8 +1018,9 @@ describe('UberEatsService', () => {
     jest
       .spyOn(service as never, 'callUberApi' as never)
       .mockResolvedValue({ items: [{ id: 'old_item' }] } as never);
+    const confirmationApi = service as unknown as MenuConfirmationTestApi;
     await expect(
-      (service as any).confirmUploadedMenu('version_old', 'store_1', {
+      confirmationApi.confirmUploadedMenu('version_old', 'store_1', {
         menus: [],
         categories: [],
         modifier_groups: [],
@@ -1024,7 +1049,8 @@ describe('UberEatsService', () => {
     jest
       .spyOn(service as never, 'confirmUploadedMenu' as never)
       .mockResolvedValue('SUBMITTED' as never);
-    const polling = (service as any).pollUploadedMenuUntilTerminal(
+    const confirmationApi = service as unknown as MenuConfirmationTestApi;
+    const polling = confirmationApi.pollUploadedMenuUntilTerminal(
       'version_timeout',
       'local_store',
       'uber_store',
