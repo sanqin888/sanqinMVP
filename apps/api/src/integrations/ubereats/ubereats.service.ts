@@ -114,6 +114,15 @@ type UberOrderDetailDto = {
   paid_at?: string;
   created_at?: string;
   placed_at?: string;
+  cancelled_at?: string;
+  canceled_at?: string;
+  cancellation?: {
+    cancelled_by?: string;
+    canceled_by?: string;
+    reason?: string;
+    reason_code?: string;
+    details?: string;
+  };
 };
 
 type ParsedUberModifier = {
@@ -156,6 +165,12 @@ type ParsedUberOrder = {
   contactName?: string | null;
   contactPhone?: string | null;
   paidAt: Date;
+  cancellation: {
+    cancelledBy: string | null;
+    reasonCode: string | null;
+    reasonDetail: string | null;
+    occurredAt: Date;
+  } | null;
 };
 
 type UberStoreScopedInput = {
@@ -445,10 +460,18 @@ type ScopeVerificationResult = {
   detail?: string;
 };
 
-type UberOrderActionName = 'ACCEPT' | 'DENY';
+type UberOrderActionName = 'ACCEPT' | 'DENY' | 'READY_FOR_PICKUP';
+
+const UBER_ACTION_BY_LOCAL_STATUS: Partial<
+  Record<OrderStatus, UberOrderActionName>
+> = {
+  [OrderStatus.ready]: 'READY_FOR_PICKUP',
+};
 
 type UberOrderActionRecord = {
   id: string;
+  externalOrderId: string;
+  action: UberOrderActionName;
   status: string;
   retryable: boolean;
   uberHttpStatus: number | null;
@@ -470,6 +493,11 @@ type UberOrderActionDelegate = {
     where: { id: string };
     data: Record<string, unknown>;
   }): Promise<UberOrderActionRecord>;
+  findMany(args: {
+    where: Record<string, unknown>;
+    orderBy: { updatedAt: 'asc' | 'desc' };
+    take: number;
+  }): Promise<UberOrderActionRecord[]>;
 };
 
 type UberMerchantStore = {
@@ -1096,7 +1124,7 @@ export class UberEatsService {
     const clientRequestId = this.toClientRequestId(externalOrderId);
     const order = await this.prisma.order.findUnique({
       where: { clientRequestId },
-      select: { id: true, orderStableId: true },
+      select: { id: true, orderStableId: true, status: true },
     });
 
     if (!order) {
@@ -1113,16 +1141,50 @@ export class UberEatsService {
       };
     }
 
-    const updated = await this.prisma.order.update({
-      where: { id: order.id },
-      data: { status },
-      select: { orderStableId: true, status: true },
+    const action = UBER_ACTION_BY_LOCAL_STATUS[status];
+    if (!action) {
+      throw new BadRequestException(
+        `本地状态 ${status} 没有 Uber 文档支持的外部动作`,
+      );
+    }
+
+    // Local transition and the action outbox row commit atomically. A worker may
+    // call processPendingUberOrderActions after a crash; the eager call below is
+    // only a latency optimisation.
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const transition = await tx.order.updateMany({
+        where: {
+          id: order.id,
+          status: { in: [OrderStatus.paid, OrderStatus.making] },
+        },
+        data: { status, readyAt: new Date() },
+      });
+      if (!transition.count && order.status !== OrderStatus.ready) {
+        throw new BadRequestException(
+          'Uber 订单必须先接单，且状态不能并发回退',
+        );
+      }
+      await tx.uberOrderAction.upsert({
+        where: { externalOrderId_action: { externalOrderId, action } },
+        create: { externalOrderId, action, status: 'PENDING' },
+        update: {},
+      });
+      return { orderStableId: order.orderStableId, status };
     });
+
+    const result = await this.executeUberOrderAction(
+      externalOrderId,
+      action,
+      {},
+      true,
+    );
 
     await this.captureEvent('ubereats_order_status_synced', {
       externalOrderId,
       orderStableId: updated.orderStableId,
       status,
+      action,
+      actionResult: result.ok ? 'SUCCEEDED' : 'FAILED',
     });
 
     return {
@@ -1130,7 +1192,25 @@ export class UberEatsService {
       externalOrderId,
       orderStableId: updated.orderStableId,
       status: updated.status,
+      action,
+      actionResult: result,
     };
+  }
+
+  /** Queue workers can periodically drain retryable/PENDING outbox rows. */
+  async processPendingUberOrderActions(limit = 50) {
+    const rows = await this.uberOrderActionDelegate.findMany({
+      where: {
+        OR: [{ status: 'PENDING' }, { status: 'FAILED', retryable: true }],
+      },
+      orderBy: { updatedAt: 'asc' },
+      take: limit,
+    });
+    return Promise.all(
+      rows.map((row) =>
+        this.executeUberOrderAction(row.externalOrderId, row.action, {}, true),
+      ),
+    );
   }
 
   /** Accept only an order whose complete local transaction has committed. */
@@ -2968,6 +3048,7 @@ export class UberEatsService {
     externalOrderId: string,
     action: UberOrderActionName,
     payload: Record<string, unknown>,
+    processPending = false,
   ) {
     if (!externalOrderId) {
       throw new BadRequestException('externalOrderId 不能为空');
@@ -2977,10 +3058,13 @@ export class UberEatsService {
     let record = await delegate.findUnique({
       where: { externalOrderId_action: key },
     });
-    if (record?.status === 'SUCCEEDED' || record?.status === 'PENDING') {
+    if (
+      record?.status === 'SUCCEEDED' ||
+      (record?.status === 'PENDING' && !processPending)
+    ) {
       return { ok: record.status === 'SUCCEEDED', duplicate: true, action };
     }
-    if (record && !record.retryable) {
+    if (record && !record.retryable && !processPending) {
       return { ok: false, duplicate: true, action, retryable: false };
     }
     if (!record) {
@@ -3014,7 +3098,11 @@ export class UberEatsService {
     }
 
     const endpoint =
-      action === 'ACCEPT' ? 'accept_pos_order' : 'deny_pos_order';
+      action === 'ACCEPT'
+        ? 'accept_pos_order'
+        : action === 'DENY'
+          ? 'deny_pos_order'
+          : 'ready_for_pickup';
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10_000);
     let response: Response;
@@ -3039,6 +3127,9 @@ export class UberEatsService {
         data: {
           status: 'FAILED',
           retryable: true,
+          lastError: (error instanceof Error ? error.message : String(error))
+            .replace(/(token|secret|authorization)=?[^\s&]*/gi, '$1=[REDACTED]')
+            .slice(0, 2_000),
           response: this.redactUberResponse({
             error: error instanceof Error ? error.message : String(error),
           }),
@@ -3055,20 +3146,30 @@ export class UberEatsService {
 
     const rawText = await response.text();
     const parsed = this.tryParseJson(rawText);
+    // Uber may answer 409 when a retried ready action has already won upstream.
+    const succeeded =
+      response.ok || (action === 'READY_FOR_PICKUP' && response.status === 409);
     const retryable = response.status === 429 || response.status >= 500;
+    const uberRequestId =
+      response.headers.get('x-request-id') ??
+      response.headers.get('uber-request-id');
     await delegate.update({
       where: { id: record.id },
       data: {
-        status: response.ok ? 'SUCCEEDED' : 'FAILED',
+        status: succeeded ? 'SUCCEEDED' : 'FAILED',
         uberHttpStatus: response.status,
         retryable,
+        uberRequestId,
+        lastError: succeeded
+          ? null
+          : this.summarizeDebugResponse(parsed, rawText).slice(0, 2_000),
         response: this.redactUberResponse(
           parsed ?? { body: rawText.slice(0, 2_000) },
         ),
-        ...(response.ok ? { completedAt: new Date() } : {}),
+        ...(succeeded ? { completedAt: new Date() } : {}),
       },
     });
-    if (!response.ok) {
+    if (!succeeded) {
       throw new BadGatewayException({
         ok: false,
         status: response.status,
@@ -5049,9 +5150,10 @@ export class UberEatsService {
         where: { clientRequestId },
         select: { id: true, orderStableId: true, status: true },
       });
-      const nextStatus =
-        existing &&
-        !this.shouldAdvanceOrderStatus(existing.status, mappedStatus)
+      const nextStatus = !mappedStatus
+        ? (existing?.status ?? OrderStatus.pending)
+        : existing &&
+            !this.shouldAdvanceOrderStatus(existing.status, mappedStatus)
           ? existing.status
           : mappedStatus;
       const header = {
@@ -5083,6 +5185,32 @@ export class UberEatsService {
       const saved = existing
         ? await tx.order.update({ where: { id: existing.id }, data: header })
         : await tx.order.create({ data: { ...header, clientRequestId } });
+
+      const normalizedEvent = this.normalizeEventType(eventType);
+      if (
+        normalizedEvent === 'orders.cancelled' ||
+        normalizedEvent === 'orders.rejected'
+      ) {
+        const cancellation = order.cancellation ?? {
+          cancelledBy: null,
+          reasonCode: null,
+          reasonDetail: null,
+          occurredAt: new Date(),
+        };
+        await tx.uberOrderCancellation.upsert({
+          where: { eventId },
+          create: {
+            orderId: saved.id,
+            externalOrderId: order.externalOrderId,
+            eventId,
+            kind: normalizedEvent.endsWith('rejected')
+              ? 'REJECTED'
+              : 'CANCELLED',
+            ...cancellation,
+          },
+          update: {},
+        });
+      }
 
       // Replacing the externally-owned snapshot makes repeated deliveries idempotent.
       await tx.orderItem.deleteMany({ where: { orderId: saved.id } });
@@ -5308,6 +5436,22 @@ export class UberEatsService {
         dto.estimated_delivery_at,
       ),
       specialInstructions: this.readString(dto.special_instructions),
+      cancellation:
+        dto.cancellation || dto.cancelled_at || dto.canceled_at
+          ? {
+              cancelledBy: this.readString(
+                dto.cancellation?.cancelled_by,
+                dto.cancellation?.canceled_by,
+              ),
+              reasonCode: this.readString(dto.cancellation?.reason_code),
+              reasonDetail: this.readString(
+                dto.cancellation?.reason,
+                dto.cancellation?.details,
+              ),
+              occurredAt:
+                this.readDate(dto.cancelled_at, dto.canceled_at) ?? new Date(),
+            }
+          : null,
       items,
     };
   }
@@ -5383,7 +5527,7 @@ export class UberEatsService {
     return eventType.trim().toLowerCase();
   }
 
-  private mapEventTypeToOrderStatus(eventType: string): OrderStatus {
+  private mapEventTypeToOrderStatus(eventType: string): OrderStatus | null {
     const normalized = this.normalizeEventType(eventType);
 
     if (normalized.includes('complete')) return OrderStatus.completed;
@@ -5391,9 +5535,10 @@ export class UberEatsService {
     if (normalized.includes('progress') || normalized.includes('making')) {
       return OrderStatus.making;
     }
-    if (normalized.includes('cancel') || normalized.includes('reject')) {
-      return OrderStatus.refunded;
-    }
+    // Cancellation/rejection is captured separately. Refund is a local money
+    // operation and must never be inferred from an Uber lifecycle event.
+    if (normalized.includes('cancel') || normalized.includes('reject'))
+      return null;
     if (normalized.includes('accept')) return OrderStatus.paid;
     if (normalized.includes('notification')) return OrderStatus.pending;
 
