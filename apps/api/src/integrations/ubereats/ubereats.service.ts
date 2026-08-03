@@ -24,7 +24,6 @@ import {
   randomUUID,
   timingSafeEqual,
 } from 'crypto';
-import { gzipSync } from 'zlib';
 import { AppLogger } from '../../common/app-logger';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UberAuthService } from './uber-auth.service';
@@ -255,10 +254,12 @@ type UberMenuUploadPayload = {
     id: string;
     title: { translations: { en_us: string } };
     description?: { translations: { en_us: string } };
-    price_info: { price: number };
-    tax_info: { tax_rate: number };
-    modifier_group_ids: string[];
-    suspension_info: { suspended_until: string | null };
+    price_info: { price: number; overrides: [] };
+    tax_info: { tax_rate: number; vat_rate_percentage: null };
+    modifier_group_ids: { ids: string[] | null; overrides: [] };
+    suspension_info: null | {
+      suspension: { suspend_until: number; reason: string };
+    };
     image_url?: string;
   }>;
   modifier_groups: Array<{
@@ -357,7 +358,7 @@ export function toUberServiceAvailability(
 
   return periods.flatMap((time_periods, weekday) =>
     time_periods.length
-      ? [{ day_of_week: UBER_WEEKDAYS[weekday], time_periods }]
+      ? [{ day_of_week: UBER_WEEKDAYS[weekday].toLowerCase(), time_periods }]
       : [],
   );
 }
@@ -3045,10 +3046,14 @@ export class UberEatsService {
     const rawText = await response.text();
     const parsed = this.tryParseJson(rawText);
     if (!response.ok) {
+      const detail = this.summarizeDebugResponse(parsed, rawText);
+      this.logger.error(
+        `[ubereats api] ${options.method} ${path} failed status=${response.status} detail=${JSON.stringify(detail)}`,
+      );
       throw new BadRequestException({
         ok: false,
         status: response.status,
-        detail: this.summarizeDebugResponse(parsed, rawText),
+        detail,
       });
     }
 
@@ -4711,7 +4716,7 @@ export class UberEatsService {
           item.id,
           '税率必须使用 0～100 的百分数格式。',
         );
-      item.modifier_group_ids.forEach((id, gi) => {
+      (item.modifier_group_ids.ids ?? []).forEach((id, gi) => {
         if (!groupIds.has(id))
           error(
             'UBER_REFERENCE_UNRESOLVED',
@@ -4768,10 +4773,10 @@ export class UberEatsService {
       });
     });
     payload.items.forEach((item, ii) => {
-      if (optionIds.has(item.id) && item.modifier_group_ids.length)
+      if (optionIds.has(item.id) && (item.modifier_group_ids.ids?.length ?? 0))
         error(
           'UBER_OPTION_ITEM_HAS_MODIFIER_GROUP',
-          `$.items[${ii}].modifier_group_ids`,
+          `$.items[${ii}].modifier_group_ids.ids`,
           item.id,
           'Option item 不得再引用 modifier group。',
         );
@@ -5025,13 +5030,26 @@ export class UberEatsService {
               },
             }
           : {}),
-        price_info: { price: item.priceCents },
-        tax_info: { tax_rate: taxRatePercentage },
-        modifier_group_ids:
-          item.sourceType === 'OPTION_ITEM' ? [] : item.modifierGroupIds,
-        suspension_info: {
-          suspended_until: item.isAvailable ? null : '2099-01-01T00:00:00Z',
+        price_info: { price: item.priceCents, overrides: [] },
+        tax_info: {
+          tax_rate: taxRatePercentage,
+          vat_rate_percentage: null,
         },
+        modifier_group_ids: {
+          ids:
+            item.sourceType === 'OPTION_ITEM' || !item.modifierGroupIds.length
+              ? null
+              : item.modifierGroupIds,
+          overrides: [],
+        },
+        suspension_info: item.isAvailable
+          ? null
+          : {
+              suspension: {
+                suspend_until: Date.UTC(2099, 0, 1),
+                reason: 'Item unavailable',
+              },
+            },
         ...(item.sourceType === 'MENU_ITEM' &&
         item.imageUrl &&
         isPermanentPublicHttpsUrl(item.imageUrl)
@@ -5336,19 +5354,13 @@ export class UberEatsService {
     payload: UberMenuUploadPayload,
   ): Promise<Record<string, unknown>> {
     const connection = await this.resolveMerchantConnection();
-    const rawJson = JSON.stringify(payload);
-    const gzipped = gzipSync(rawJson);
 
     return this.callUberApi(
       `/v2/eats/stores/${encodeURIComponent(uberStoreId)}/menus`,
       {
         accessToken: connection.accessToken,
         method: 'PUT',
-        rawBody: gzipped,
-        extraHeaders: {
-          'Content-Type': 'application/json',
-          'Content-Encoding': 'gzip',
-        },
+        body: payload as unknown as Record<string, unknown>,
       },
     );
   }
