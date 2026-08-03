@@ -1,12 +1,14 @@
 //apps/api/src/integrations/ubereats/ubereats.service.ts
 import {
   BadRequestException,
+  BadGatewayException,
   Injectable,
   NotImplementedException,
   UnauthorizedException,
 } from '@nestjs/common';
 import {
   Channel,
+  FulfillmentType,
   OrderStatus,
   PaymentMethod,
   UberMenuPublishStatus,
@@ -15,11 +17,19 @@ import {
   UberOpsTicketType,
   type Prisma,
 } from '@prisma/client';
-import { createHash, createHmac, randomUUID, timingSafeEqual } from 'crypto';
+import {
+  createHash,
+  createHmac,
+  randomBytes,
+  randomUUID,
+  timingSafeEqual,
+} from 'crypto';
 import { gzipSync } from 'zlib';
 import { AppLogger } from '../../common/app-logger';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UberAuthService } from './uber-auth.service';
+import { UberWebhookEnvelopeDto } from './dto/uber-webhook-envelope.dto';
+import { UberMenuNotificationDto } from './dto/uber-menu-notification.dto';
 
 type UberWebhookInput = {
   headers: Record<string, unknown>;
@@ -31,17 +41,139 @@ type UberMenuPublishError = {
   code: string;
   path: string | null;
   message: string;
+  entityType?: 'item' | 'category' | 'modifier';
+  localId?: string;
+};
+
+type UberOrderMoneyDto = number | { amount?: number; value?: number };
+
+type UberOrderModifierDto = {
+  id?: string;
+  modifier_id?: string;
+  title?: string;
+  name?: string;
+  quantity?: number;
+  price?: UberOrderMoneyDto;
+  price_delta?: UberOrderMoneyDto;
+  special_instructions?: string;
+  modifiers?: UberOrderModifierDto[];
+  selected_items?: UberOrderModifierDto[];
+};
+
+type UberOrderItemDto = {
+  id?: string;
+  line_item_id?: string;
+  item_id?: string;
+  external_data?: string;
+  title?: string;
+  name?: string;
+  quantity?: number;
+  price?: UberOrderMoneyDto;
+  unit_price?: UberOrderMoneyDto;
+  total_price?: UberOrderMoneyDto;
+  special_instructions?: string;
+  modifiers?: UberOrderModifierDto[];
+  selected_modifier_groups?: Array<{
+    id?: string;
+    title?: string;
+    selected_items?: UberOrderModifierDto[];
+  }>;
+};
+
+type UberOrderDetailDto = {
+  id?: string;
+  order_id?: string;
+  external_order_id?: string;
+  display_id?: string;
+  store_id?: string;
+  subtotal?: UberOrderMoneyDto;
+  subtotal_cents?: number;
+  tax?: UberOrderMoneyDto;
+  tax_cents?: number;
+  total?: UberOrderMoneyDto;
+  total_cents?: number;
+  discount?: UberOrderMoneyDto;
+  discount_cents?: number;
+  delivery_fee?: UberOrderMoneyDto;
+  items?: UberOrderItemDto[];
+  cart?: { items?: UberOrderItemDto[] };
+  customer?: {
+    name?: string;
+    full_name?: string;
+    phone?: string;
+    phone_number?: string;
+  };
+  eater?: {
+    name?: string;
+    full_name?: string;
+    phone?: string;
+    phone_number?: string;
+  };
+  fulfillment_type?: string;
+  type?: string;
+  estimated_ready_for_pickup_at?: string;
+  estimated_delivery_at?: string;
+  special_instructions?: string;
+  paid_at?: string;
+  created_at?: string;
+  placed_at?: string;
+  cancelled_at?: string;
+  canceled_at?: string;
+  cancellation?: {
+    cancelled_by?: string;
+    canceled_by?: string;
+    reason?: string;
+    reason_code?: string;
+    details?: string;
+  };
+};
+
+type ParsedUberModifier = {
+  externalId: string | null;
+  parentExternalId: string | null;
+  displayName: string;
+  quantity: number;
+  priceDeltaCents: number;
+  specialInstructions: string | null;
+  children: ParsedUberModifier[];
+};
+
+type ParsedUberOrderItem = {
+  externalLineId: string | null;
+  externalItemId: string | null;
+  stableIdHint: string | null;
+  displayName: string;
+  quantity: number;
+  baseUnitPriceCents: number;
+  optionsUnitPriceCents: number;
+  unitPriceCents: number;
+  lineTotalCents: number;
+  specialInstructions: string | null;
+  modifiers: ParsedUberModifier[];
 };
 
 type ParsedUberOrder = {
   externalOrderId: string;
+  displayId: string;
   storeId?: string | null;
   subtotalCents: number;
   taxCents: number;
   totalCents: number;
+  discountCents: number;
+  deliveryFeeCents: number;
+  fulfillmentType: 'pickup' | 'delivery';
+  estimatedReadyAt: Date | null;
+  specialInstructions: string | null;
+  items: ParsedUberOrderItem[];
   contactName?: string | null;
   contactPhone?: string | null;
   paidAt: Date;
+  cancellation: {
+    cancelledBy: string | null;
+    reasonCode: string | null;
+    reasonDetail: string | null;
+    occurredAt: Date;
+  } | null;
 };
 
 type UberStoreScopedInput = {
@@ -90,6 +222,7 @@ type UpdateDraftOptionInput = UberStoreScopedInput & {
 type PublishMenuInput = UberStoreScopedInput & {
   dryRun?: boolean;
   timezoneConfirmed?: boolean;
+  taxRateConfirmed?: boolean;
   excludedCategoryIds?: string[];
   excludedGroupIds?: string[];
   excludedMenuItemStableIds?: string[];
@@ -251,6 +384,7 @@ export type UberMenuPayloadValidationIssue = {
 };
 
 const UBER_IMAGE_URL_MAX_LENGTH = 2_000;
+const UBER_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 export const UBER_ITEM_DESCRIPTION_MAX_LENGTH = 300;
 const EXPIRING_IMAGE_QUERY_KEYS = new Set([
   'expires',
@@ -331,6 +465,46 @@ type ScopeVerificationResult = {
   detail?: string;
 };
 
+type UberOrderActionName = 'ACCEPT' | 'DENY' | 'READY_FOR_PICKUP';
+
+const UBER_ACTION_BY_LOCAL_STATUS: Partial<
+  Record<OrderStatus, UberOrderActionName>
+> = {
+  [OrderStatus.ready]: 'READY_FOR_PICKUP',
+};
+
+type UberOrderActionRecord = {
+  id: string;
+  externalOrderId: string;
+  action: UberOrderActionName;
+  status: string;
+  retryable: boolean;
+  uberHttpStatus: number | null;
+};
+
+type UberOrderActionDelegate = {
+  findUnique(args: {
+    where: {
+      externalOrderId_action: {
+        externalOrderId: string;
+        action: UberOrderActionName;
+      };
+    };
+  }): Promise<UberOrderActionRecord | null>;
+  create(args: {
+    data: Record<string, unknown>;
+  }): Promise<UberOrderActionRecord>;
+  update(args: {
+    where: { id: string };
+    data: Record<string, unknown>;
+  }): Promise<UberOrderActionRecord>;
+  findMany(args: {
+    where: Record<string, unknown>;
+    orderBy: { updatedAt: 'asc' | 'desc' };
+    take: number;
+  }): Promise<UberOrderActionRecord[]>;
+};
+
 type UberMerchantStore = {
   storeId: string;
   storeName: string | null;
@@ -395,6 +569,9 @@ type UberMerchantConnectionDelegate = {
 };
 
 type UberStoreMappingDelegate = {
+  findMany(args: {
+    orderBy: { uberStoreId: 'asc' | 'desc' };
+  }): Promise<UberStoreMappingRecord[]>;
   upsert(args: {
     where: { uberStoreId: string };
     create: {
@@ -442,11 +619,29 @@ export class UberEatsService {
   private readonly logger = new AppLogger(UberEatsService.name);
   private readonly uberApiBaseUrl =
     process.env.UBER_EATS_API_BASE_URL?.trim() || 'https://api.uber.com';
+  private readonly oauthStateSecret: string;
+  private readonly oauthStateRequests = new Map<
+    string,
+    {
+      adminSessionId: string;
+      redirectUri: string;
+      createdAt: number;
+      merchantContext: string | null;
+    }
+  >();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly uberAuthService: UberAuthService,
-  ) {}
+  ) {
+    const secret = process.env.UBER_EATS_OAUTH_STATE_SECRET?.trim() || '';
+    if (secret.length < 32 || new Set(secret).size < 12) {
+      throw new Error(
+        'UBER_EATS_OAUTH_STATE_SECRET 必须配置为至少 32 个字符的高熵密钥',
+      );
+    }
+    this.oauthStateSecret = secret;
+  }
 
   private get uberMerchantConnectionDelegate(): UberMerchantConnectionDelegate | null {
     const prismaWithUber = this.prisma as PrismaService & {
@@ -464,20 +659,32 @@ export class UberEatsService {
     return prismaWithUber.uberStoreMapping ?? null;
   }
 
+  private get uberOrderActionDelegate(): UberOrderActionDelegate {
+    const delegate = (
+      this.prisma as PrismaService & {
+        uberOrderAction?: UberOrderActionDelegate;
+      }
+    ).uberOrderAction;
+    if (!delegate) {
+      throw new Error('UberOrderAction 数据表不可用');
+    }
+    return delegate;
+  }
+
   async debugAccessToken(scope?: string, forceRefresh = false) {
     const normalizedScopes = this.uberAuthService.normalizeScopesToArray(scope);
     const normalizedScope = normalizedScopes.join(' ');
     const usedDefaultScopes = !scope?.trim();
-    const token = forceRefresh
-      ? await this.uberAuthService.forceRefreshAccessToken(scope)
-      : await this.uberAuthService.getAccessToken(scope);
+    if (forceRefresh) {
+      await this.uberAuthService.forceRefreshAccessToken(scope);
+    } else {
+      await this.uberAuthService.getAccessToken(scope);
+    }
 
     return {
       ok: true,
       requestedScope: scope?.trim() || null,
       normalizedScope,
-      tokenPrefix: token.slice(0, 12),
-      tokenLength: token.length,
       usedDefaultScopes,
       forceRefreshed: forceRefresh,
       cached: !forceRefresh ? 'cache_or_fetch' : 'skipped_by_force_refresh',
@@ -540,8 +747,6 @@ export class UberEatsService {
       ok: true,
       storeId: normalizedStoreId,
       requestUrl: url,
-      tokenPrefix: token.slice(0, 12),
-      tokenLength: token.length,
       orderCount: orders.length,
       orders: orders.map((order) => ({
         id: order.id,
@@ -607,40 +812,19 @@ export class UberEatsService {
     }
 
     if (normalizedScope === 'eats.store.status.write') {
-      if (input.dryRun !== false) {
-        return {
-          ...baseResult,
-          apiSkipped: true,
-          reason: 'dryRun=true，跳过真实状态写入',
-        };
-      }
-
-      const storeId = this.resolveDebugStoreId(input.storeId);
-      return await this.verifyScopeByRequest(
-        baseResult,
-        `/v1/eats/stores/${encodeURIComponent(storeId)}/status`,
-        token,
-        'POST',
-        { is_paused: false },
-      );
+      return {
+        ...baseResult,
+        apiSkipped: true,
+        reason: '未执行写验证：scope 验证不得改变门店状态',
+      };
     }
 
     if (normalizedScope === 'eats.order') {
-      if (!input.orderId?.trim()) {
-        return {
-          ...baseResult,
-          apiSkipped: true,
-          reason: 'missing orderId',
-        };
-      }
-
-      return await this.verifyScopeByRequest(
-        baseResult,
-        `/v1/eats/orders/${encodeURIComponent(input.orderId.trim())}/accept-pos-order`,
-        token,
-        'POST',
-        {},
-      );
+      return {
+        ...baseResult,
+        apiSkipped: true,
+        reason: '未执行写验证：仅以 token scope 声明验证 eats.order',
+      };
     }
 
     if (normalizedScope === 'eats.report') {
@@ -681,12 +865,12 @@ export class UberEatsService {
     };
   }
 
-  buildMerchantAuthorizeUrl() {
-    const state = this.createOAuthState();
+  buildMerchantAuthorizeUrl(adminSessionId: string, merchantContext?: string) {
+    const state = this.createOAuthState(adminSessionId, merchantContext);
     const authorizeUrl = this.uberAuthService.buildMerchantAuthorizeUrl(state);
 
     this.logger.log(
-      `[ubereats oauth start] stateIssued=${state.slice(0, 24)}... authorizeEndpointReady=true`,
+      '[ubereats oauth start] stateIssued=true authorizeEndpointReady=true',
     );
 
     return {
@@ -696,19 +880,23 @@ export class UberEatsService {
     };
   }
 
-  startMerchantOAuth() {
-    return this.buildMerchantAuthorizeUrl();
+  startMerchantOAuth(adminSessionId: string, merchantContext?: string) {
+    return this.buildMerchantAuthorizeUrl(adminSessionId, merchantContext);
   }
 
-  async exchangeAuthorizationCode(code: string, state?: string) {
-    this.verifyOAuthState(state);
+  async exchangeAuthorizationCode(
+    code: string,
+    state: string | undefined,
+    adminSessionId: string | undefined,
+  ) {
+    const stateRequest = this.consumeOAuthState(state, adminSessionId);
 
-    const tokenResult =
-      await this.uberAuthService.exchangeAuthorizationCode(code);
-
-    this.logger.log(
-      `[ubereats oauth] accessToken=${tokenResult.accessToken.slice(0, 16)}...${tokenResult.accessToken.slice(-10)} scope=${tokenResult.scope ?? 'null'} tokenType=${tokenResult.tokenType ?? 'null'} expiresAt=${tokenResult.expiresAt?.toISOString() ?? 'null'}`,
+    const tokenResult = await this.uberAuthService.exchangeAuthorizationCode(
+      code,
+      stateRequest.redirectUri,
     );
+
+    this.logger.log('[ubereats oauth] tokenExchangeSucceeded=true');
 
     const merchantUberUserId = `oauth:${randomUUID()}`;
 
@@ -871,75 +1059,98 @@ export class UberEatsService {
   async handleWebhook(input: UberWebhookInput): Promise<void> {
     this.verifyWebhookSignature(input.headers, input.rawBody);
 
-    const eventType = this.readEventType(input.body);
+    const envelope = UberWebhookEnvelopeDto.parse(input.body);
+    const eventType = envelope?.eventType ?? this.readEventType(input.body);
     const eventId =
-      this.readEventId(input.headers, input.body) ??
-      `no-event-id:${eventType}:${this.hashForFallback(input.rawBody)}`;
+      this.readEventId(input.headers, input.body, envelope?.eventId) ??
+      `sha256:${this.hashCanonicalBody(input.body)}`;
 
-    this.logger.log(
-      `[ubereats webhook] eventType=${eventType} eventId=${eventId} bodyLength=${input.rawBody.length}`,
+    const claimed = await this.claimWebhookEvent(
+      eventId,
+      eventType,
+      envelope?.resourceId ?? null,
+      input.body,
     );
-
-    const alreadySeen = await this.hasSeenWebhookEvent(eventId);
-    if (alreadySeen) {
+    if (!claimed) {
       this.logger.warn(
         `[ubereats webhook] duplicate ignored eventType=${eventType} eventId=${eventId}`,
       );
       return;
     }
 
-    switch (this.normalizeEventType(eventType)) {
-      case 'orders.notification':
-      case 'orders.accepted':
-      case 'orders.in_progress':
-      case 'orders.making':
-      case 'orders.ready_for_pickup':
-      case 'orders.completed':
-      case 'orders.cancelled':
-      case 'orders.rejected':
-        await this.handleOrderWebhook(eventType, eventId, input.body);
-        return;
+    try {
+      switch (this.normalizeEventType(eventType)) {
+        case 'orders.notification':
+        case 'orders.accepted':
+        case 'orders.in_progress':
+        case 'orders.making':
+        case 'orders.ready_for_pickup':
+        case 'orders.completed':
+        case 'orders.cancelled':
+        case 'orders.rejected':
+          await this.handleOrderWebhook(eventType, eventId, envelope);
+          break;
 
-      case 'store.provisioned':
-        await this.handleStoreProvisionedWebhook(
-          eventType,
-          eventId,
-          input.body,
-        );
-        return;
+        case 'store.provisioned':
+          await this.handleStoreProvisionedWebhook(
+            eventType,
+            eventId,
+            input.body,
+          );
+          break;
 
-      case 'store.deprovisioned':
-        await this.handleStoreDeprovisionedWebhook(
-          eventType,
-          eventId,
-          input.body,
-        );
-        return;
+        case 'store.deprovisioned':
+          await this.handleStoreDeprovisionedWebhook(
+            eventType,
+            eventId,
+            input.body,
+          );
+          break;
 
-      case 'store.status.changed':
-        await this.handleStoreStatusChangedWebhook(
-          eventType,
-          eventId,
-          input.body,
-        );
-        return;
+        case 'store.status.changed':
+          await this.handleStoreStatusChangedWebhook(
+            eventType,
+            eventId,
+            input.body,
+          );
+          break;
 
-      case 'menu.notification':
-      case 'menus.notification':
-      case 'store.menu.updated':
-        await this.handleMenuNotificationWebhook(
-          eventType,
-          eventId,
-          input.body,
-        );
-        return;
+        case 'menus.notification':
+          await this.handleMenuNotificationWebhook(
+            eventType,
+            eventId,
+            input.body,
+          );
+          break;
 
-      default:
-        await this.captureEvent('ubereats_webhook_unhandled', {
-          eventType,
-          eventId,
-        });
-        return;
+        default:
+          await this.captureEvent('ubereats_webhook_unhandled', {
+            eventType,
+            eventId,
+            orderRelated: this.isOrderRelatedEvent(eventType),
+          });
+          if (this.isOrderRelatedEvent(eventType)) {
+            throw new BadRequestException(
+              `未识别的 Uber 订单事件类型: ${eventType}`,
+            );
+          }
+          break;
+      }
+
+      // Order persistence marks the inbox PROCESSED in the same transaction.
+      // Other event families use this durable, retryable state-machine boundary.
+      await this.prisma.uberWebhookInbox.updateMany({
+        where: { eventId, status: 'PROCESSING' },
+        data: {
+          status: 'PROCESSED',
+          processedAt: new Date(),
+          errorSummary: null,
+          nextRetryAt: null,
+        },
+      });
+    } catch (error) {
+      await this.markWebhookFailed(eventId, error);
+      throw error;
     }
   }
 
@@ -947,7 +1158,7 @@ export class UberEatsService {
     const clientRequestId = this.toClientRequestId(externalOrderId);
     const order = await this.prisma.order.findUnique({
       where: { clientRequestId },
-      select: { id: true, orderStableId: true },
+      select: { id: true, orderStableId: true, status: true },
     });
 
     if (!order) {
@@ -964,16 +1175,50 @@ export class UberEatsService {
       };
     }
 
-    const updated = await this.prisma.order.update({
-      where: { id: order.id },
-      data: { status },
-      select: { orderStableId: true, status: true },
+    const action = UBER_ACTION_BY_LOCAL_STATUS[status];
+    if (!action) {
+      throw new BadRequestException(
+        `本地状态 ${status} 没有 Uber 文档支持的外部动作`,
+      );
+    }
+
+    // Local transition and the action outbox row commit atomically. A worker may
+    // call processPendingUberOrderActions after a crash; the eager call below is
+    // only a latency optimisation.
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const transition = await tx.order.updateMany({
+        where: {
+          id: order.id,
+          status: { in: [OrderStatus.paid, OrderStatus.making] },
+        },
+        data: { status, readyAt: new Date() },
+      });
+      if (!transition.count && order.status !== OrderStatus.ready) {
+        throw new BadRequestException(
+          'Uber 订单必须先接单，且状态不能并发回退',
+        );
+      }
+      await tx.uberOrderAction.upsert({
+        where: { externalOrderId_action: { externalOrderId, action } },
+        create: { externalOrderId, action, status: 'PENDING' },
+        update: {},
+      });
+      return { orderStableId: order.orderStableId, status };
     });
+
+    const result = await this.executeUberOrderAction(
+      externalOrderId,
+      action,
+      {},
+      true,
+    );
 
     await this.captureEvent('ubereats_order_status_synced', {
       externalOrderId,
       orderStableId: updated.orderStableId,
       status,
+      action,
+      actionResult: result.ok ? 'SUCCEEDED' : 'FAILED',
     });
 
     return {
@@ -981,7 +1226,56 @@ export class UberEatsService {
       externalOrderId,
       orderStableId: updated.orderStableId,
       status: updated.status,
+      action,
+      actionResult: result,
     };
+  }
+
+  /** Queue workers can periodically drain retryable/PENDING outbox rows. */
+  async processPendingUberOrderActions(limit = 50) {
+    const rows = await this.uberOrderActionDelegate.findMany({
+      where: {
+        OR: [{ status: 'PENDING' }, { status: 'FAILED', retryable: true }],
+      },
+      orderBy: { updatedAt: 'asc' },
+      take: limit,
+    });
+    return Promise.all(
+      rows.map((row) =>
+        this.executeUberOrderAction(row.externalOrderId, row.action, {}, true),
+      ),
+    );
+  }
+
+  /** Accept only an order whose complete local transaction has committed. */
+  async acceptUberOrder(externalOrderId: string) {
+    const normalizedOrderId = externalOrderId.trim();
+    const localOrder = await this.prisma.order.findUnique({
+      where: { clientRequestId: this.toClientRequestId(normalizedOrderId) },
+      select: { id: true },
+    });
+    if (!localOrder) {
+      throw new BadRequestException('订单尚未完整落库，禁止向 Uber 接单');
+    }
+    return this.executeUberOrderAction(normalizedOrderId, 'ACCEPT', {
+      reason: 'accepted',
+    });
+  }
+
+  /** Deny through Uber's POS decision endpoint with an auditable reason. */
+  async denyUberOrder(
+    externalOrderId: string,
+    reasonCode: string,
+    reasonDetail?: string,
+  ) {
+    const normalizedReason = reasonCode.trim();
+    if (!normalizedReason) {
+      throw new BadRequestException('拒单原因不能为空');
+    }
+    return this.executeUberOrderAction(externalOrderId.trim(), 'DENY', {
+      reason: normalizedReason,
+      ...(reasonDetail?.trim() ? { details: reasonDetail.trim() } : {}),
+    });
   }
 
   async listPendingUberOrders() {
@@ -1017,23 +1311,175 @@ export class UberEatsService {
 
   async syncStoreStatusToUber() {
     const config = await this.ensureBusinessConfig();
+    const mappingDelegate = this.uberStoreMappingDelegate;
+    if (!mappingDelegate) {
+      throw new BadRequestException('UberStoreMapping 数据表不可用');
+    }
 
-    const payload = {
-      isOpen: !config.isTemporarilyClosed,
-      isTemporarilyClosed: config.isTemporarilyClosed,
-      temporaryCloseReason: config.temporaryCloseReason,
-      updatedAt: config.updatedAt,
-    };
-
-    await this.captureEvent('ubereats_store_status_synced', {
-      ...payload,
-      updatedAt: payload.updatedAt.toISOString(),
+    const mappings = await mappingDelegate.findMany({
+      orderBy: { uberStoreId: 'asc' },
     });
+    const pause = this.parseUberPause(config.temporaryCloseReason);
+    const payload: Record<string, string> = config.isTemporarilyClosed
+      ? {
+          status: 'PAUSED',
+          reason: pause.reason,
+          ...(pause.pauseUntil ? { pause_until: pause.pauseUntil } : {}),
+        }
+      : { status: 'ONLINE' };
+    const results: Array<Record<string, unknown>> = [];
 
+    for (const mapping of mappings) {
+      if (!mapping.isProvisioned) {
+        const result = {
+          uberStoreId: mapping.uberStoreId,
+          ok: false,
+          skipped: true,
+          status: 422,
+          error: 'Uber 门店尚未 provision，未发送状态写请求',
+        };
+        results.push(result);
+        await this.saveStoreStatusResult(result, payload);
+        await this.createStoreStatusAlert(
+          mapping.uberStoreId,
+          result.error,
+          422,
+        );
+        continue;
+      }
+
+      const result = await this.writeUberStoreStatus(
+        mapping.uberStoreId,
+        payload,
+      );
+      results.push(result);
+      await this.saveStoreStatusResult(result, payload);
+      if (
+        !result.ok &&
+        typeof result.status === 'number' &&
+        result.status >= 400 &&
+        result.status < 500
+      ) {
+        await this.createStoreStatusAlert(
+          mapping.uberStoreId,
+          typeof result.error === 'string'
+            ? result.error
+            : 'Uber 门店状态写入被拒绝',
+          result.status,
+        );
+      }
+    }
+
+    const succeeded = results.filter((result) => result.ok).length;
     return {
-      ok: true,
+      ok: results.length > 0 && succeeded === results.length,
+      total: results.length,
+      succeeded,
+      failed: results.length - succeeded,
       payload,
+      results,
     };
+  }
+
+  private parseUberPause(reason: string | null | undefined) {
+    const prefix = '__AUTO_UNTIL__:';
+    if (!reason?.startsWith(prefix)) {
+      return { reason: reason?.trim() || '门店临时暂停营业', pauseUntil: null };
+    }
+    const [rawUntil, ...reasonParts] = reason.slice(prefix.length).split('|');
+    const until = new Date(rawUntil.trim());
+    return {
+      reason: reasonParts.join('|').trim() || '门店临时暂停营业',
+      pauseUntil: Number.isNaN(until.getTime()) ? null : until.toISOString(),
+    };
+  }
+
+  private async writeUberStoreStatus(
+    uberStoreId: string,
+    payload: Record<string, string>,
+  ): Promise<Record<string, unknown>> {
+    const maxAttempts = 3;
+    let lastStatus: number | null = null;
+    let lastError = '';
+    let attempts = 0;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      attempts = attempt;
+      try {
+        const token = await this.uberAuthService.getAccessToken(
+          'eats.store.status.write',
+        );
+        const response = await fetch(
+          `${this.uberApiBaseUrl.replace(/\/$/, '')}/v1/eats/stores/${encodeURIComponent(uberStoreId)}/status`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: 'application/json',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+          },
+        );
+        lastStatus = response.status;
+        const rawText = await response.text();
+        lastError = response.ok
+          ? ''
+          : this.summarizeDebugResponse(this.tryParseJson(rawText), rawText);
+        // A repeated pause may race with/replay an already applied request.
+        if (response.ok || response.status === 409) {
+          return {
+            uberStoreId,
+            ok: true,
+            duplicate: response.status === 409,
+            status: response.status,
+            attempts: attempt,
+          };
+        }
+        if (response.status !== 429 && response.status < 500) break;
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : String(error);
+      }
+      if (attempt < maxAttempts) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, 25 * 2 ** (attempt - 1)),
+        );
+      }
+    }
+    return {
+      uberStoreId,
+      ok: false,
+      status: lastStatus,
+      attempts,
+      error: lastError || 'Uber 门店状态写入失败',
+    };
+  }
+
+  private async saveStoreStatusResult(
+    result: Record<string, unknown>,
+    payload: Record<string, string>,
+  ) {
+    await this.captureEvent('ubereats_store_status_sync_result', {
+      ...result,
+      payload,
+    } as Prisma.JsonObject);
+  }
+
+  private async createStoreStatusAlert(
+    uberStoreId: string,
+    error: string,
+    status: number,
+  ) {
+    await this.prisma.uberOpsTicket.create({
+      data: {
+        storeId: uberStoreId,
+        type: UberOpsTicketType.STORE_STATUS_SYNC,
+        status: UberOpsTicketStatus.OPEN,
+        priority: UberOpsTicketPriority.HIGH,
+        title: 'Uber 门店状态同步需要运营处理',
+        description: error,
+        context: { uberStoreId, uberHttpStatus: status },
+      },
+    });
   }
 
   async listUberItemChannelConfigs(storeId?: string) {
@@ -1800,7 +2246,11 @@ export class UberEatsService {
       schedule.serviceAvailability,
       schedule.taxRatePercentage,
     );
-    const payloadValidation = this.validateUberMenuPayload(payload);
+    const imageValidation = await this.validateUberMenuImages(payload);
+    const payloadValidation = [
+      ...this.validateUberMenuPayload(payload),
+      ...imageValidation.issues,
+    ];
     const validationErrors = [...normalized.errors, ...payloadValidation];
     const summary = this.summarizePublishGraph(normalized.graph);
 
@@ -1826,6 +2276,17 @@ export class UberEatsService {
         summary,
         serviceAvailability: schedule.serviceAvailability,
         serviceAvailabilityTimezone: schedule.timezone,
+        taxRate: {
+          percentage: schedule.taxRatePercentage,
+          source: schedule.taxRateSource,
+          requiresAdminConfirmation: true,
+          confirmed: input.taxRateConfirmed === true,
+        },
+        imageValidation: imageValidation.results,
+        modifierFlattening: this.buildModifierFlatteningReport(
+          normalized.graph,
+          graph.optionMappings,
+        ),
         payload,
         mappingErrors: graph.mappingErrors,
         validation: {
@@ -1833,6 +2294,12 @@ export class UberEatsService {
           errors: validationErrors,
         },
       };
+    }
+
+    if (input.taxRateConfirmed !== true) {
+      throw new BadRequestException(
+        `正式发布前必须由管理员确认税率 ${schedule.taxRatePercentage}%（来源：${schedule.taxRateSource}）。`,
+      );
     }
 
     await this.assertUberStoreTimezone(
@@ -1852,20 +2319,18 @@ export class UberEatsService {
       const response = await this.uploadUberMenu(uberStoreId, payload);
       await this.markMenuPublishVersionSubmitted(version.id, response);
 
-      let finalStatus: 'SUBMITTED' | 'SUCCEEDED' | 'FAILED' = 'SUBMITTED';
+      const finalStatus: 'SUBMITTED' | 'SUCCEEDED' | 'FAILED' = 'SUBMITTED';
       if (!this.hasMenuNotificationCapability()) {
-        finalStatus = await this.confirmUploadedMenu(
+        void this.pollUploadedMenuUntilTerminal(
           version.id,
+          normalizedStoreId,
           uberStoreId,
           payload,
+        ).catch((error) =>
+          this.logger.error(
+            `[ubereats menu] confirmation task failed versionId=${version.id}: ${error instanceof Error ? error.message : String(error)}`,
+          ),
         );
-        if (finalStatus === 'SUCCEEDED') {
-          await this.backfillPublishedStateFromGraph(
-            normalizedStoreId,
-            uberStoreId,
-            normalized.graph,
-          );
-        }
       }
 
       await this.captureEvent('ubereats_menu_published', {
@@ -2266,20 +2731,32 @@ export class UberEatsService {
     };
   }
 
-  private createOAuthState(): string {
+  private createOAuthState(
+    adminSessionId: string,
+    merchantContext?: string,
+  ): string {
+    if (!adminSessionId.trim()) {
+      throw new UnauthorizedException('缺少发起 OAuth 的管理员会话');
+    }
     const timestamp = Date.now().toString();
-    const nonce = randomUUID();
-    const secret =
-      process.env.UBER_EATS_OAUTH_STATE_SECRET?.trim() ||
-      'ubereats-oauth-state';
+    const nonce = randomBytes(32).toString('base64url');
     const payload = `${timestamp}.${nonce}`;
-    const signature = createHmac('sha256', secret)
+    const signature = createHmac('sha256', this.oauthStateSecret)
       .update(payload)
       .digest('hex');
+    this.oauthStateRequests.set(nonce, {
+      adminSessionId: adminSessionId.trim(),
+      redirectUri: this.uberAuthService.getMerchantRedirectUri(),
+      createdAt: Number(timestamp),
+      merchantContext: merchantContext?.trim() || null,
+    });
     return `${payload}.${signature}`;
   }
 
-  private verifyOAuthState(state?: string): void {
+  private consumeOAuthState(
+    state: string | undefined,
+    adminSessionId: string | undefined,
+  ) {
     const normalizedState = state?.trim();
     if (!normalizedState) {
       throw new BadRequestException('缺少 OAuth state');
@@ -2295,10 +2772,7 @@ export class UberEatsService {
       throw new BadRequestException('OAuth state 非法');
     }
 
-    const secret =
-      process.env.UBER_EATS_OAUTH_STATE_SECRET?.trim() ||
-      'ubereats-oauth-state';
-    const expected = createHmac('sha256', secret)
+    const expected = createHmac('sha256', this.oauthStateSecret)
       .update(`${timestamp}.${nonce}`)
       .digest('hex');
 
@@ -2317,10 +2791,29 @@ export class UberEatsService {
       throw new BadRequestException('OAuth state 时间戳非法');
     }
 
+    const now = Date.now();
     const maxAgeMs = 10 * 60 * 1000;
-    if (Date.now() - issuedAt > maxAgeMs) {
+    if (issuedAt > now + 60_000) {
+      throw new BadRequestException('OAuth state 时间戳来自未来');
+    }
+    if (now - issuedAt > maxAgeMs) {
       throw new BadRequestException('OAuth state 已过期');
     }
+
+    const request = this.oauthStateRequests.get(nonce);
+    if (!request || request.createdAt !== issuedAt) {
+      throw new BadRequestException('OAuth state 不存在或已使用');
+    }
+    if (
+      !adminSessionId?.trim() ||
+      request.adminSessionId !== adminSessionId.trim()
+    ) {
+      throw new UnauthorizedException('OAuth state 与管理员会话不匹配');
+    }
+
+    // Map.delete 与前面的读取在同一个同步执行段完成；在任何异步 token 请求前消费 nonce。
+    this.oauthStateRequests.delete(nonce);
+    return request;
   }
 
   private async resolveMerchantConnection(
@@ -2665,19 +3158,90 @@ export class UberEatsService {
   private async handleOrderWebhook(
     eventType: string,
     eventId: string,
-    payload: unknown,
+    envelope: UberWebhookEnvelopeDto | null,
   ) {
-    const parsedOrder = this.parseOrderPayload(payload);
+    if (!envelope) {
+      throw new BadRequestException('Uber 订单 webhook envelope 无效');
+    }
+
+    const resourceUrl = this.validateOrderResourceHref(envelope.resourceHref);
+    const token = await this.uberAuthService.getAccessToken(
+      'eats.store.orders.read',
+    );
+    let response: Response;
+    try {
+      response = await fetch(resourceUrl, {
+        method: 'GET',
+        redirect: 'error',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+        },
+      });
+    } catch (error) {
+      throw new BadGatewayException({
+        ok: false,
+        message: '下载 Uber 订单详情失败',
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    const rawText = await response.text();
+    const orderPayload = this.tryParseJson(rawText);
+    if (!response.ok) {
+      throw new BadGatewayException({
+        ok: false,
+        status: response.status,
+        message: 'Uber 订单详情接口返回错误',
+        detail: this.summarizeDebugResponse(orderPayload, rawText),
+      });
+    }
+
+    const parsedOrder = this.parseOrderPayload(orderPayload);
 
     if (!parsedOrder) {
-      await this.captureEvent('ubereats_order_webhook_parse_failed', {
-        eventType,
-        eventId,
-      });
+      const externalOrderId = envelope.resourceId;
+      if (externalOrderId) {
+        await this.denyUberOrder(
+          externalOrderId,
+          'INVALID_ORDER',
+          '订单详情无法解析',
+        );
+      }
       return;
     }
 
-    const order = await this.upsertUberOrder(parsedOrder, eventType);
+    const config = await this.ensureBusinessConfig();
+    if (config.isTemporarilyClosed) {
+      await this.denyUberOrder(
+        parsedOrder.externalOrderId,
+        'STORE_CLOSED',
+        config.temporaryCloseReason ?? '门店暂停营业',
+      );
+      return;
+    }
+
+    let order: { orderStableId: string };
+    try {
+      order = await this.upsertUberOrder(parsedOrder, eventType, eventId);
+    } catch (error) {
+      if (
+        error instanceof BadRequestException &&
+        error.message.includes('菜单映射')
+      ) {
+        await this.denyUberOrder(
+          parsedOrder.externalOrderId,
+          'ITEM_UNAVAILABLE',
+          error.message,
+        );
+        return;
+      }
+      // Database/local infrastructure errors deliberately remain pending so
+      // the webhook/job can retry; accepting before commit would lose orders.
+      throw error;
+    }
+
+    await this.acceptUberOrder(parsedOrder.externalOrderId);
 
     await this.captureEvent('ubereats_webhook_processed', {
       eventType,
@@ -2688,48 +3252,243 @@ export class UberEatsService {
     });
   }
 
+  private async executeUberOrderAction(
+    externalOrderId: string,
+    action: UberOrderActionName,
+    payload: Record<string, unknown>,
+    processPending = false,
+  ) {
+    if (!externalOrderId) {
+      throw new BadRequestException('externalOrderId 不能为空');
+    }
+    const delegate = this.uberOrderActionDelegate;
+    const key = { externalOrderId, action };
+    let record = await delegate.findUnique({
+      where: { externalOrderId_action: key },
+    });
+    if (
+      record?.status === 'SUCCEEDED' ||
+      (record?.status === 'PENDING' && !processPending)
+    ) {
+      return { ok: record.status === 'SUCCEEDED', duplicate: true, action };
+    }
+    if (record && !record.retryable && !processPending) {
+      return { ok: false, duplicate: true, action, retryable: false };
+    }
+    if (!record) {
+      try {
+        record = await delegate.create({
+          data: {
+            ...key,
+            status: 'PENDING',
+            reasonCode: this.readString(payload.reason),
+            reasonDetail: this.readString(payload.details),
+            attemptCount: 1,
+          },
+        });
+      } catch (error) {
+        if (this.readString(this.asObject(error)?.code) !== 'P2002')
+          throw error;
+        record = await delegate.findUnique({
+          where: { externalOrderId_action: key },
+        });
+        return { ok: record?.status === 'SUCCEEDED', duplicate: true, action };
+      }
+    } else {
+      record = await delegate.update({
+        where: { id: record.id },
+        data: {
+          status: 'PENDING',
+          retryable: false,
+          attemptCount: { increment: 1 },
+        },
+      });
+    }
+
+    const endpoint =
+      action === 'ACCEPT'
+        ? 'accept_pos_order'
+        : action === 'DENY'
+          ? 'deny_pos_order'
+          : 'ready_for_pickup';
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+    let response: Response;
+    try {
+      const token = await this.uberAuthService.getAccessToken('eats.order');
+      response = await fetch(
+        `${this.uberApiBaseUrl.replace(/\/$/, '')}/v1/eats/orders/${encodeURIComponent(externalOrderId)}/${endpoint}`,
+        {
+          method: 'POST',
+          signal: controller.signal,
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        },
+      );
+    } catch (error) {
+      await delegate.update({
+        where: { id: record.id },
+        data: {
+          status: 'FAILED',
+          retryable: true,
+          lastError: (error instanceof Error ? error.message : String(error))
+            .replace(/(token|secret|authorization)=?[^\s&]*/gi, '$1=[REDACTED]')
+            .slice(0, 2_000),
+          response: this.redactUberResponse({
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        },
+      });
+      throw new BadGatewayException({
+        ok: false,
+        retryable: true,
+        message: 'Uber 订单动作网络请求失败或超时',
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    const rawText = await response.text();
+    const parsed = this.tryParseJson(rawText);
+    // Uber may answer 409 when a retried ready action has already won upstream.
+    const succeeded =
+      response.ok || (action === 'READY_FOR_PICKUP' && response.status === 409);
+    const retryable = response.status === 429 || response.status >= 500;
+    const uberRequestId =
+      response.headers.get('x-request-id') ??
+      response.headers.get('uber-request-id');
+    await delegate.update({
+      where: { id: record.id },
+      data: {
+        status: succeeded ? 'SUCCEEDED' : 'FAILED',
+        uberHttpStatus: response.status,
+        retryable,
+        uberRequestId,
+        lastError: succeeded
+          ? null
+          : this.summarizeDebugResponse(parsed, rawText).slice(0, 2_000),
+        response: this.redactUberResponse(
+          parsed ?? { body: rawText.slice(0, 2_000) },
+        ),
+        ...(succeeded ? { completedAt: new Date() } : {}),
+      },
+    });
+    if (!succeeded) {
+      throw new BadGatewayException({
+        ok: false,
+        status: response.status,
+        retryable,
+        detail: this.summarizeDebugResponse(parsed, rawText),
+      });
+    }
+    return { ok: true, duplicate: false, action, status: response.status };
+  }
+
+  private redactUberResponse(value: unknown): Prisma.InputJsonValue {
+    if (Array.isArray(value)) {
+      return value.map((item) => this.redactUberResponse(item));
+    }
+    const object = this.asObject(value);
+    if (!object) {
+      if (typeof value === 'string') {
+        return value
+          .replace(/Bearer\s+[A-Za-z0-9._~-]+/gi, 'Bearer [REDACTED]')
+          .replace(/\b(token|password|secret)=([^\s&]+)/gi, '$1=[REDACTED]')
+          .slice(0, 2_000);
+      }
+      return (value === undefined ? null : value) as Prisma.InputJsonValue;
+    }
+    return Object.fromEntries(
+      Object.entries(object).map(([key, item]) => [
+        key,
+        /token|authorization|phone|email|address|name/i.test(key)
+          ? '[REDACTED]'
+          : this.redactUberResponse(item),
+      ]),
+    );
+  }
+
+  private validateOrderResourceHref(resourceHref: string): string {
+    let base: URL;
+    let resource: URL;
+    try {
+      base = new URL(this.uberApiBaseUrl);
+      resource = new URL(resourceHref);
+    } catch {
+      throw new BadRequestException('Uber resource_href 无效');
+    }
+
+    const basePath = base.pathname.replace(/\/$/, '');
+    const belongsToBasePath =
+      !basePath ||
+      resource.pathname === basePath ||
+      resource.pathname.startsWith(`${basePath}/`);
+    if (
+      resource.origin !== base.origin ||
+      resource.username ||
+      resource.password ||
+      !belongsToBasePath
+    ) {
+      throw new BadRequestException('Uber resource_href 不属于配置的 API base');
+    }
+
+    return resource.toString();
+  }
+
   private async handleMenuNotificationWebhook(
     eventType: string,
     eventId: string,
     payload: unknown,
   ) {
-    const root = this.asObject(payload) ?? {};
-    const data = this.asObject(root.data) ?? root;
-    const meta = this.asObject(root.meta) ?? {};
-    const uberStoreId = this.readString(
-      data.store_id,
-      data.storeId,
-      meta.resource_id,
-      root.store_id,
-    );
-    const versionStableId = this.readString(
-      data.version_id,
-      data.versionStableId,
-      data.client_reference_id,
-    );
-    const status = (
-      this.readString(data.status, data.state, root.status) ?? ''
-    ).toUpperCase();
-    const errors = this.extractMenuPublishErrors(data);
-    const version = await this.prisma.uberMenuPublishVersion.findFirst({
+    const notification = UberMenuNotificationDto.parse(payload);
+    if (!notification) {
+      await this.captureEvent('ubereats_menu_notification_invalid', {
+        eventType,
+        eventId,
+      });
+      return;
+    }
+    const candidates = await this.prisma.uberMenuPublishVersion.findMany({
       where: {
-        status: UberMenuPublishStatus.SUBMITTED,
-        ...(versionStableId
-          ? { versionStableId }
-          : uberStoreId
-            ? { uberStoreId }
-            : { id: '__missing_menu_notification_identity__' }),
+        uberStoreId: notification.storeId,
+        status: {
+          in: [
+            UberMenuPublishStatus.SUBMITTED,
+            UberMenuPublishStatus.SUCCEEDED,
+          ],
+        },
       },
       orderBy: { createdAt: 'desc' },
-      select: { id: true },
+      take: 20,
+      select: {
+        id: true,
+        versionStableId: true,
+        requestPayload: true,
+        responsePayload: true,
+        status: true,
+      },
     });
+    const version = candidates.find((candidate) =>
+      this.menuVersionHasResourceId(candidate, notification.resourceId),
+    );
+    const errors = version
+      ? this.mapMenuPublishErrors(notification.failures, version.requestPayload)
+      : notification.failures;
 
-    if (version && /^(SUCCESS|SUCCEEDED|COMPLETED|PUBLISHED)$/.test(status)) {
-      await this.markMenuPublishVersionSuccess(version.id, data);
-    } else if (
+    if (
       version &&
-      (/^(FAIL|FAILED|FAILURE|REJECTED)$/.test(status) || errors.length > 0)
+      notification.status === 'SUCCEEDED' &&
+      version.status !== UberMenuPublishStatus.SUCCEEDED
     ) {
+      await this.markMenuPublishVersionSuccess(version.id, {
+        resource_id: notification.resourceId,
+        status: notification.status,
+      });
+    } else if (version && notification.status === 'FAILED') {
       await this.markMenuPublishVersionFailed(
         version.id,
         errors.map((error) => error.message).join('; ') || 'Uber 菜单处理失败',
@@ -2740,10 +3499,61 @@ export class UberEatsService {
     await this.captureEvent('ubereats_menu_notification_processed', {
       eventType,
       eventId,
-      uberStoreId: uberStoreId ?? 'unknown',
-      status: status || 'unknown',
+      uberStoreId: notification.storeId,
+      resourceId: notification.resourceId,
+      status: notification.status,
       matchedVersion: Boolean(version),
       errors: errors as unknown as Prisma.JsonArray,
+    });
+  }
+
+  private menuVersionHasResourceId(
+    version: {
+      versionStableId: string;
+      requestPayload: unknown;
+      responsePayload: unknown;
+    },
+    resourceId: string,
+  ) {
+    if (version.versionStableId === resourceId) return true;
+    const response = this.asObject(version.responsePayload);
+    if (this.readString(response?.resource_id, response?.id) === resourceId)
+      return true;
+    const request = this.asObject(version.requestPayload);
+    const menus = Array.isArray(request?.menus) ? request.menus : [];
+    return menus.some(
+      (menu) => this.readString(this.asObject(menu)?.id) === resourceId,
+    );
+  }
+
+  private mapMenuPublishErrors(
+    errors: UberMenuPublishError[],
+    requestPayload: unknown,
+  ): UberMenuPublishError[] {
+    const payload = this.asObject(requestPayload);
+    return errors.map((error) => {
+      const match = error.path?.match(
+        /(?:^|\.)(items|categories|modifier_groups)\[(\d+)\]/,
+      );
+      if (!match) return error;
+      const collection = Array.isArray(payload?.[match[1]])
+        ? (payload?.[match[1]] as unknown[])
+        : [];
+      const localId = this.readString(
+        this.asObject(collection[Number(match[2])])?.id,
+      );
+      return localId
+        ? {
+            ...error,
+            entityType:
+              match[1] === 'items'
+                ? 'item'
+                : match[1] === 'categories'
+                  ? 'category'
+                  : 'modifier',
+            localId,
+          }
+        : error;
     });
   }
 
@@ -3879,13 +4689,6 @@ export class UberEatsService {
             item.id,
             `图片地址必须是不超过 ${UBER_IMAGE_URL_MAX_LENGTH} 个字符、不含临时签名的永久公网 HTTPS URL。`,
           );
-        else
-          warning(
-            'UBER_IMAGE_METADATA_UNVERIFIED',
-            imagePath,
-            item.id,
-            '未下载远程图片，无法确认内容类型和文件大小；这不会阻断发布。',
-          );
       }
       if (
         !Number.isInteger(item.price_info?.price) ||
@@ -4008,6 +4811,156 @@ export class UberEatsService {
     return issues;
   }
 
+  private async validateUberMenuImages(payload: UberMenuUploadPayload) {
+    const issues: UberMenuPayloadValidationIssue[] = [];
+    const results: Array<{
+      itemId: string;
+      requestedUrl: string;
+      finalUrl: string | null;
+      finalOrigin: string | null;
+      redirected: boolean;
+      contentType: string | null;
+      sizeBytes: number | null;
+      method: 'HEAD' | 'GET';
+      ok: boolean;
+    }> = [];
+    for (const [index, item] of payload.items.entries()) {
+      if (!item.image_url) continue;
+      const path = `$.items[${index}].image_url`;
+      const requestedUrl = item.image_url;
+      let method: 'HEAD' | 'GET' = 'HEAD';
+      try {
+        let response = await fetch(requestedUrl, {
+          method: 'HEAD',
+          redirect: 'follow',
+          signal: AbortSignal.timeout(5_000),
+        });
+        if (response.status === 405 || response.status === 501) {
+          method = 'GET';
+          response = await fetch(requestedUrl, {
+            method: 'GET',
+            headers: { Range: `bytes=0-${UBER_IMAGE_MAX_BYTES}` },
+            redirect: 'follow',
+            signal: AbortSignal.timeout(8_000),
+          });
+        }
+        const finalUrl = response.url || requestedUrl;
+        const finalOrigin = new URL(finalUrl).origin;
+        const redirected = finalUrl !== requestedUrl;
+        const contentType =
+          response.headers.get('content-type')?.split(';')[0] ?? null;
+        const declaredSize = Number(response.headers.get('content-length'));
+        let sizeBytes =
+          Number.isFinite(declaredSize) && declaredSize >= 0
+            ? declaredSize
+            : null;
+        if (method === 'GET' && sizeBytes === null && response.body) {
+          const reader = response.body.getReader();
+          let received = 0;
+          while (received <= UBER_IMAGE_MAX_BYTES) {
+            const chunk = await reader.read();
+            if (chunk.done) break;
+            received += chunk.value.byteLength;
+          }
+          await reader.cancel();
+          sizeBytes = received;
+        }
+        const errors: string[] = [];
+        if (!response.ok) errors.push(`HTTP ${response.status}`);
+        if (!isPermanentPublicHttpsUrl(finalUrl))
+          errors.push('重定向后的地址不是永久公网 HTTPS URL');
+        if (!contentType?.toLowerCase().startsWith('image/'))
+          errors.push(`Content-Type 不是 image/*（${contentType ?? '缺失'}）`);
+        if (sizeBytes === null)
+          errors.push('无法通过 HEAD 或受限 GET 确认文件大小');
+        else if (sizeBytes > UBER_IMAGE_MAX_BYTES)
+          errors.push(`文件超过 ${UBER_IMAGE_MAX_BYTES} bytes`);
+        if (errors.length) {
+          issues.push({
+            code: 'UBER_IMAGE_PREFLIGHT_FAILED',
+            severity: 'ERROR',
+            path,
+            sourceStableId: item.id,
+            message: `图片发布前校验失败：${errors.join('；')}。`,
+          });
+        }
+        results.push({
+          itemId: item.id,
+          requestedUrl,
+          finalUrl,
+          finalOrigin,
+          redirected,
+          contentType,
+          sizeBytes,
+          method,
+          ok: errors.length === 0,
+        });
+      } catch (error) {
+        issues.push({
+          code: 'UBER_IMAGE_NOT_PUBLIC',
+          severity: 'ERROR',
+          path,
+          sourceStableId: item.id,
+          message: `图片无法公开访问：${error instanceof Error ? error.message : String(error)}`,
+        });
+        results.push({
+          itemId: item.id,
+          requestedUrl,
+          finalUrl: null,
+          finalOrigin: null,
+          redirected: false,
+          contentType: null,
+          sizeBytes: null,
+          method,
+          ok: false,
+        });
+      }
+    }
+    return { issues, results };
+  }
+
+  private buildModifierFlatteningReport(
+    graph: {
+      items: Array<{ id: string; priceCents: number }>;
+      groups: Array<{
+        id: string;
+        minSelect: number;
+        maxSelect: number;
+        optionItemIds: string[];
+      }>;
+    },
+    mappings: Array<{
+      sourceOptionChoiceStableId: string;
+      compositeOptionItemId: string;
+      sourcePath: string[];
+    }>,
+  ) {
+    const priceById = new Map(
+      graph.items.map((item) => [item.id, item.priceCents]),
+    );
+    return {
+      reference:
+        'Uber example menu payload: modifier_options reference ITEM ids',
+      optionIdSemantics: 'modifier_options[].id === items[].id',
+      groups: graph.groups.map((group) => ({
+        groupId: group.id,
+        minPermitted: group.minSelect,
+        maxPermitted: group.maxSelect,
+        optionCount: group.optionItemIds.length,
+        valid:
+          group.minSelect >= 0 &&
+          group.minSelect <= group.maxSelect &&
+          group.maxSelect <= group.optionItemIds.length &&
+          group.optionItemIds.every((id) => priceById.has(id)),
+      })),
+      combinations: mappings.map((mapping) => ({
+        ...mapping,
+        combinedPriceCents:
+          priceById.get(mapping.compositeOptionItemId) ?? null,
+      })),
+    };
+  }
+
   private buildUberUploadMenuPayload(
     graph: {
       menuId: string;
@@ -4110,6 +5063,7 @@ export class UberEatsService {
     timezone: string;
     serviceAvailability: UberServiceAvailability[];
     taxRatePercentage: number;
+    taxRateSource: string;
   }> {
     const [config, hours] = await Promise.all([
       this.prisma.businessConfig.findUnique({
@@ -4145,7 +5099,12 @@ export class UberEatsService {
         '发布 Uber 菜单前必须至少配置一个合法可售营业时段；全天营业请明确配置 00:00–24:00。',
       );
     }
-    return { timezone, serviceAvailability, taxRatePercentage };
+    return {
+      timezone,
+      serviceAvailability,
+      taxRatePercentage,
+      taxRateSource: 'BusinessConfig.salesTaxRate',
+    };
   }
 
   private async assertUberStoreTimezone(
@@ -4445,6 +5404,62 @@ export class UberEatsService {
     }
   }
 
+  private async pollUploadedMenuUntilTerminal(
+    versionId: string,
+    storeId: string,
+    uberStoreId: string,
+    requested: UberMenuUploadPayload,
+  ): Promise<void> {
+    const timeoutMs = Math.max(
+      1,
+      Number(process.env.UBER_EATS_MENU_CONFIRM_TIMEOUT_MS ?? 120_000),
+    );
+    const initialDelayMs = Math.max(
+      1,
+      Number(process.env.UBER_EATS_MENU_CONFIRM_INITIAL_DELAY_MS ?? 1_000),
+    );
+    const startedAt = Date.now();
+    let delayMs = initialDelayMs;
+    while (Date.now() - startedAt < timeoutMs) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      const current = await this.prisma.uberMenuPublishVersion.findUnique({
+        where: { id: versionId },
+        select: { status: true },
+      });
+      if (
+        current?.status === UberMenuPublishStatus.SUCCEEDED ||
+        current?.status === UberMenuPublishStatus.FAILED
+      )
+        return;
+      const status = await this.confirmUploadedMenu(
+        versionId,
+        uberStoreId,
+        requested,
+      );
+      if (status !== 'SUBMITTED') return;
+      delayMs = Math.min(delayMs * 2, 30_000);
+    }
+
+    // Timeout is deliberately not success: retain SUBMITTED and make the
+    // unresolved publication visible to operations without a schema change.
+    await this.prisma.uberOpsTicket.create({
+      data: {
+        storeId,
+        type: UberOpsTicketType.MENU_PUBLISH,
+        status: UberOpsTicketStatus.OPEN,
+        priority: UberOpsTicketPriority.HIGH,
+        title: `Uber 菜单发布确认超时：${versionId}`,
+        description: `在 ${timeoutMs}ms 内未确认 Uber 菜单发布结果。`,
+        context: { versionId, uberStoreId, state: 'TIMED_OUT' },
+      },
+    });
+    await this.captureEvent('ubereats_menu_confirmation_timed_out', {
+      versionId,
+      uberStoreId,
+      timeoutMs,
+    });
+  }
+
   private async createMenuPublishVersionStarted(
     storeId: string,
     uberStoreId: string,
@@ -4593,143 +5608,384 @@ export class UberEatsService {
     );
   }
 
-  private async upsertUberOrder(order: ParsedUberOrder, eventType: string) {
+  private async upsertUberOrder(
+    order: ParsedUberOrder,
+    eventType: string,
+    eventId: string,
+  ) {
     const clientRequestId = this.toClientRequestId(order.externalOrderId);
     const mappedStatus = this.mapEventTypeToOrderStatus(eventType);
+    const validation = this.validateOrderAmounts(order);
 
-    const existing = await this.prisma.order.findUnique({
-      where: { clientRequestId },
-      select: {
-        id: true,
-        orderStableId: true,
-        status: true,
-      },
-    });
-
-    if (!existing) {
-      const created = await this.prisma.order.create({
-        data: {
-          channel: Channel.ubereats,
-          clientRequestId,
-          status: mappedStatus,
-          paidAt: order.paidAt,
-          paymentMethod: PaymentMethod.UBEREATS,
-          subtotalCents: order.subtotalCents,
-          taxCents: order.taxCents,
-          totalCents: order.totalCents,
-          paymentTotalCents: order.totalCents,
-          contactName: order.contactName,
-          contactPhone: order.contactPhone,
-        },
-        select: {
-          orderStableId: true,
-          status: true,
-        },
+    const result = await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.order.findUnique({
+        where: { clientRequestId },
+        select: { id: true, orderStableId: true, status: true },
       });
-
-      await this.captureEvent('ubereats_order_upserted', {
-        eventType,
-        externalOrderId: order.externalOrderId,
-        orderStableId: created.orderStableId,
-        mappedStatus: created.status,
-        action: 'created',
-      });
-
-      return { orderStableId: created.orderStableId };
-    }
-
-    const nextStatus = this.shouldAdvanceOrderStatus(
-      existing.status,
-      mappedStatus,
-    )
-      ? mappedStatus
-      : existing.status;
-
-    const updated = await this.prisma.order.update({
-      where: { id: existing.id },
-      data: {
+      const nextStatus = !mappedStatus
+        ? (existing?.status ?? OrderStatus.pending)
+        : existing &&
+            !this.shouldAdvanceOrderStatus(existing.status, mappedStatus)
+          ? existing.status
+          : mappedStatus;
+      const header = {
+        channel: Channel.ubereats,
         status: nextStatus,
+        paidAt: order.paidAt,
+        paymentMethod: PaymentMethod.UBEREATS,
+        fulfillmentType:
+          order.fulfillmentType === 'delivery'
+            ? FulfillmentType.delivery
+            : FulfillmentType.pickup,
         subtotalCents: order.subtotalCents,
+        subtotalAfterDiscountCents: Math.max(
+          0,
+          order.subtotalCents - order.discountCents,
+        ),
+        couponDiscountCents: order.discountCents,
         taxCents: order.taxCents,
+        deliveryFeeCents: order.deliveryFeeCents,
         totalCents: order.totalCents,
         paymentTotalCents: order.totalCents,
         contactName: order.contactName,
         contactPhone: order.contactPhone,
-      },
-      select: {
-        orderStableId: true,
-        status: true,
-      },
+        externalDisplayId: order.displayId,
+        externalOrderNotes: order.specialInstructions,
+        externalEstimatedReadyAt: order.estimatedReadyAt,
+        externalPriceVarianceCents: validation.totalVarianceCents,
+      };
+      const saved = existing
+        ? await tx.order.update({ where: { id: existing.id }, data: header })
+        : await tx.order.create({ data: { ...header, clientRequestId } });
+
+      const normalizedEvent = this.normalizeEventType(eventType);
+      if (
+        normalizedEvent === 'orders.cancelled' ||
+        normalizedEvent === 'orders.rejected'
+      ) {
+        const cancellation = order.cancellation ?? {
+          cancelledBy: null,
+          reasonCode: null,
+          reasonDetail: null,
+          occurredAt: new Date(),
+        };
+        await tx.uberOrderCancellation.upsert({
+          where: { eventId },
+          create: {
+            orderId: saved.id,
+            externalOrderId: order.externalOrderId,
+            eventId,
+            kind: normalizedEvent.endsWith('rejected')
+              ? 'REJECTED'
+              : 'CANCELLED',
+            ...cancellation,
+          },
+          update: {},
+        });
+      }
+
+      // Replacing the externally-owned snapshot makes repeated deliveries idempotent.
+      await tx.orderItem.deleteMany({ where: { orderId: saved.id } });
+      for (const item of order.items) {
+        const productStableId = await this.resolveUberProductStableId(
+          tx,
+          order.storeId,
+          item,
+        );
+        const createdItem = await tx.orderItem.create({
+          data: {
+            orderId: saved.id,
+            productStableId,
+            displayName: item.displayName,
+            qty: item.quantity,
+            baseUnitPriceCents: item.baseUnitPriceCents,
+            optionsUnitPriceCents: item.optionsUnitPriceCents,
+            unitPriceCents: item.unitPriceCents,
+            optionsJson: this.toOrderOptionsSnapshot(item.modifiers),
+            externalItemId: item.externalItemId,
+            externalLineId: item.externalLineId,
+            externalSpecialInstructions: item.specialInstructions,
+            externalLineTotalCents: item.lineTotalCents,
+          },
+        });
+        const modifiers = this.flattenUberModifiers(item.modifiers);
+        if (modifiers.length) {
+          await tx.uberOrderItemModifier.createMany({
+            data: modifiers.map((modifier, sortOrder) => ({
+              orderItemId: createdItem.id,
+              externalModifierId: modifier.externalId,
+              parentExternalId: modifier.parentExternalId,
+              displayName: modifier.displayName,
+              quantity: modifier.quantity,
+              priceDeltaCents: modifier.priceDeltaCents,
+              specialInstructions: modifier.specialInstructions,
+              sortOrder,
+              snapshot: modifier as unknown as Prisma.InputJsonValue,
+            })),
+          });
+        }
+      }
+      await tx.uberWebhookInbox.upsert({
+        where: { eventId },
+        create: {
+          eventId,
+          eventType,
+          externalOrderId: order.externalOrderId,
+          status: 'PROCESSED',
+          attemptCount: 1,
+          processedAt: new Date(),
+          payload: validation as unknown as Prisma.InputJsonValue,
+        },
+        update: {
+          status: 'PROCESSED',
+          processedAt: new Date(),
+          errorSummary: null,
+          nextRetryAt: null,
+        },
+      });
+      return {
+        orderStableId: saved.orderStableId,
+        status: saved.status,
+        action: existing ? 'updated' : 'created',
+      };
     });
 
+    if (validation.hasMaterialVariance) {
+      this.logger.warn(
+        `[ubereats order] amount variance externalOrderId=${order.externalOrderId} line=${validation.lineVarianceCents} total=${validation.totalVarianceCents}`,
+      );
+    }
     await this.captureEvent('ubereats_order_upserted', {
       eventType,
       externalOrderId: order.externalOrderId,
-      orderStableId: updated.orderStableId,
-      mappedStatus,
-      finalStatus: updated.status,
-      action: 'updated',
+      orderStableId: result.orderStableId,
+      mappedStatus: result.status,
+      action: result.action,
+      ...validation,
     });
+    return { orderStableId: result.orderStableId };
+  }
 
-    return { orderStableId: updated.orderStableId };
+  private async resolveUberProductStableId(
+    tx: Prisma.TransactionClient,
+    storeId: string | null | undefined,
+    item: ParsedUberOrderItem,
+  ): Promise<string> {
+    const candidates = [item.stableIdHint, item.externalItemId].filter(
+      (value): value is string => !!value,
+    );
+    if (candidates.length) {
+      const local = await tx.menuItem.findFirst({
+        where: { stableId: { in: candidates } },
+        select: { stableId: true },
+      });
+      if (local) return local.stableId;
+      const config = await tx.uberItemChannelConfig.findFirst({
+        where: {
+          AND: [
+            ...(storeId
+              ? [{ OR: [{ storeId }, { uberStoreId: storeId }] }]
+              : []),
+            {
+              OR: [
+                { externalItemId: { in: candidates } },
+                { menuItemStableId: { in: candidates } },
+              ],
+            },
+          ],
+        },
+        select: { menuItemStableId: true },
+      });
+      if (config) return config.menuItemStableId;
+    }
+    throw new BadRequestException(
+      `Uber 菜单映射失败：${item.externalItemId ?? item.displayName}`,
+    );
+  }
+
+  private flattenUberModifiers(
+    items: ParsedUberModifier[],
+  ): ParsedUberModifier[] {
+    return items.flatMap((item) => [
+      item,
+      ...this.flattenUberModifiers(item.children),
+    ]);
+  }
+
+  private toOrderOptionsSnapshot(
+    items: ParsedUberModifier[],
+  ): Prisma.InputJsonValue {
+    return items.map((item, index) => ({
+      templateGroupStableId: item.parentExternalId ?? `uber-group-${index}`,
+      nameEn: item.displayName,
+      nameZh: null,
+      minSelect: 0,
+      maxSelect: null,
+      sortOrder: index,
+      choices: this.flattenUberModifiers([item]).map((choice, choiceIndex) => ({
+        stableId: choice.externalId ?? `uber-option-${index}-${choiceIndex}`,
+        templateGroupStableId: choice.parentExternalId ?? `uber-group-${index}`,
+        nameEn: choice.displayName,
+        nameZh: null,
+        priceDeltaCents: choice.priceDeltaCents,
+        quantity: choice.quantity,
+        specialInstructions: choice.specialInstructions,
+        sortOrder: choiceIndex,
+      })),
+    }));
+  }
+
+  private validateOrderAmounts(order: ParsedUberOrder) {
+    const calculatedLinesCents = order.items.reduce(
+      (sum, item) => sum + item.lineTotalCents,
+      0,
+    );
+    const lineVarianceCents = order.subtotalCents - calculatedLinesCents;
+    const calculatedTotalCents =
+      order.subtotalCents -
+      order.discountCents +
+      order.taxCents +
+      order.deliveryFeeCents;
+    const totalVarianceCents = order.totalCents - calculatedTotalCents;
+    const roundingToleranceCents = Math.max(1, order.items.length);
+    return {
+      calculatedLinesCents,
+      calculatedTotalCents,
+      lineVarianceCents,
+      totalVarianceCents,
+      roundingToleranceCents,
+      hasMaterialVariance:
+        Math.abs(lineVarianceCents) > roundingToleranceCents ||
+        Math.abs(totalVarianceCents) > roundingToleranceCents,
+    };
   }
 
   private parseOrderPayload(payload: unknown): ParsedUberOrder | null {
-    if (!payload || typeof payload !== 'object') return null;
-
-    const root = payload as Record<string, unknown>;
-    const dataNode = this.asObject(root.data);
-    const orderNode =
-      this.asObject(root.order) ?? this.asObject(dataNode?.order) ?? dataNode;
-
-    if (!orderNode) return null;
-
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload))
+      return null;
+    const dto = payload as UberOrderDetailDto;
     const externalOrderId = this.readString(
-      orderNode.order_id,
-      orderNode.id,
-      orderNode.external_order_id,
-      orderNode.display_id,
+      dto.order_id,
+      dto.id,
+      dto.external_order_id,
     );
-    if (!externalOrderId) return null;
-
-    const subtotalCents = this.readCents(
-      orderNode.subtotal,
-      orderNode.subtotal_cents,
-      0,
+    if (
+      !externalOrderId ||
+      (dto.total === undefined && dto.total_cents === undefined)
+    )
+      return null;
+    const subtotalCents = this.readCents(dto.subtotal, dto.subtotal_cents, 0);
+    const taxCents = this.readCents(dto.tax, dto.tax_cents, 0);
+    const discountCents = this.readCents(dto.discount, dto.discount_cents, 0);
+    const deliveryFeeCents = this.readCents(dto.delivery_fee, undefined, 0);
+    const items = (dto.items ?? dto.cart?.items ?? []).map((item) =>
+      this.parseUberOrderItem(item),
     );
-    const taxCents = this.readCents(orderNode.tax, orderNode.tax_cents, 0);
     const totalCents = this.readCents(
-      orderNode.total,
-      orderNode.total_cents,
-      subtotalCents + taxCents,
+      dto.total,
+      dto.total_cents,
+      subtotalCents - discountCents + taxCents + deliveryFeeCents,
     );
-
-    const customer =
-      this.asObject(orderNode.customer) ??
-      this.asObject(orderNode.eater) ??
-      orderNode;
-
-    const paidAt = this.readDate(
-      orderNode.paid_at,
-      orderNode.created_at,
-      orderNode.placed_at,
-      root.created_at,
-    );
-
+    const customer = dto.customer ?? dto.eater ?? {};
     return {
       externalOrderId,
-      storeId:
-        this.readString(
-          orderNode.store_id,
-          dataNode?.store_id,
-          root.store_id,
-        ) ?? null,
+      displayId: this.readString(dto.display_id) ?? externalOrderId,
+      storeId: this.readString(dto.store_id),
       subtotalCents,
       taxCents,
       totalCents,
+      discountCents,
+      deliveryFeeCents,
       contactName: this.readString(customer.name, customer.full_name),
       contactPhone: this.readString(customer.phone, customer.phone_number),
-      paidAt: paidAt ?? new Date(),
+      paidAt:
+        this.readDate(dto.paid_at, dto.created_at, dto.placed_at) ?? new Date(),
+      fulfillmentType: this.readString(dto.fulfillment_type, dto.type)
+        ?.toLowerCase()
+        .includes('deliver')
+        ? 'delivery'
+        : 'pickup',
+      estimatedReadyAt: this.readDate(
+        dto.estimated_ready_for_pickup_at,
+        dto.estimated_delivery_at,
+      ),
+      specialInstructions: this.readString(dto.special_instructions),
+      cancellation:
+        dto.cancellation || dto.cancelled_at || dto.canceled_at
+          ? {
+              cancelledBy: this.readString(
+                dto.cancellation?.cancelled_by,
+                dto.cancellation?.canceled_by,
+              ),
+              reasonCode: this.readString(dto.cancellation?.reason_code),
+              reasonDetail: this.readString(
+                dto.cancellation?.reason,
+                dto.cancellation?.details,
+              ),
+              occurredAt:
+                this.readDate(dto.cancelled_at, dto.canceled_at) ?? new Date(),
+            }
+          : null,
+      items,
+    };
+  }
+
+  private parseUberOrderItem(item: UberOrderItemDto): ParsedUberOrderItem {
+    const quantity = Math.max(1, Math.round(item.quantity ?? 1));
+    const modifiers = [
+      ...(item.modifiers ?? []).map((modifier) =>
+        this.parseUberModifier(modifier, null),
+      ),
+      ...(item.selected_modifier_groups ?? []).flatMap((group) =>
+        (group.selected_items ?? []).map((modifier) =>
+          this.parseUberModifier(modifier, group.id ?? null),
+        ),
+      ),
+    ];
+    const optionsUnitPriceCents = this.flattenUberModifiers(modifiers).reduce(
+      (sum, modifier) => sum + modifier.priceDeltaCents * modifier.quantity,
+      0,
+    );
+    const suppliedUnit = this.readCents(item.unit_price, item.price, 0);
+    const suppliedLine = this.readCents(
+      item.total_price,
+      undefined,
+      suppliedUnit * quantity,
+    );
+    const unitPriceCents = suppliedUnit || Math.round(suppliedLine / quantity);
+    return {
+      externalLineId: this.readString(item.line_item_id, item.id),
+      externalItemId: this.readString(item.item_id, item.id),
+      stableIdHint: this.readString(item.external_data),
+      displayName:
+        this.readString(item.title, item.name) ?? 'Unknown Uber item',
+      quantity,
+      baseUnitPriceCents: Math.max(0, unitPriceCents - optionsUnitPriceCents),
+      optionsUnitPriceCents,
+      unitPriceCents,
+      lineTotalCents: suppliedLine,
+      specialInstructions: this.readString(item.special_instructions),
+      modifiers,
+    };
+  }
+
+  private parseUberModifier(
+    modifier: UberOrderModifierDto,
+    parentExternalId: string | null,
+  ): ParsedUberModifier {
+    const externalId = this.readString(modifier.modifier_id, modifier.id);
+    return {
+      externalId,
+      parentExternalId,
+      displayName:
+        this.readString(modifier.title, modifier.name) ?? 'Unknown modifier',
+      quantity: Math.max(1, Math.round(modifier.quantity ?? 1)),
+      priceDeltaCents: this.readCents(modifier.price_delta, modifier.price, 0),
+      specialInstructions: this.readString(modifier.special_instructions),
+      children: [
+        ...(modifier.modifiers ?? []),
+        ...(modifier.selected_items ?? []),
+      ].map((child) => this.parseUberModifier(child, externalId)),
     };
   }
 
@@ -4745,7 +6001,7 @@ export class UberEatsService {
     return eventType.trim().toLowerCase();
   }
 
-  private mapEventTypeToOrderStatus(eventType: string): OrderStatus {
+  private mapEventTypeToOrderStatus(eventType: string): OrderStatus | null {
     const normalized = this.normalizeEventType(eventType);
 
     if (normalized.includes('complete')) return OrderStatus.completed;
@@ -4753,9 +6009,10 @@ export class UberEatsService {
     if (normalized.includes('progress') || normalized.includes('making')) {
       return OrderStatus.making;
     }
-    if (normalized.includes('cancel') || normalized.includes('reject')) {
-      return OrderStatus.refunded;
-    }
+    // Cancellation/rejection is captured separately. Refund is a local money
+    // operation and must never be inferred from an Uber lifecycle event.
+    if (normalized.includes('cancel') || normalized.includes('reject'))
+      return null;
     if (normalized.includes('accept')) return OrderStatus.paid;
     if (normalized.includes('notification')) return OrderStatus.pending;
 
@@ -4935,43 +6192,42 @@ export class UberEatsService {
     headers: Record<string, unknown>,
     rawBody: string,
   ) {
-    const clientSecret = process.env.UBER_EATS_CLIENT_SECRET?.trim();
-    const webhookSigningKey = process.env.UBER_EATS_WEBHOOK_SIGNING_KEY?.trim();
-    const candidateSecrets = [
-      clientSecret,
-      webhookSigningKey && webhookSigningKey !== clientSecret
-        ? webhookSigningKey
-        : null,
-    ].filter((secret): secret is string => !!secret);
-
-    if (!candidateSecrets.length) {
-      throw new Error(
-        'UBER_EATS_CLIENT_SECRET 或 UBER_EATS_WEBHOOK_SIGNING_KEY 未配置',
-      );
+    // Uber signs the exact UTF-8 request body with the app client secret and
+    // sends the lowercase hexadecimal HMAC-SHA256 in X-Uber-Signature.
+    const currentClientSecret =
+      process.env.UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET?.trim();
+    if (!currentClientSecret) {
+      throw new Error('UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET 未配置');
     }
 
-    const receivedSignature = this.readHeader(
-      headers,
-      'x-uber-signature',
-      'x-uber-eats-signature',
-    );
-
+    const receivedSignature = this.readHeader(headers, 'x-uber-signature');
     if (!receivedSignature) {
       throw new UnauthorizedException('Missing Uber signature header');
     }
 
-    const receivedBuffer = Buffer.from(receivedSignature.trim(), 'utf8');
-    const isMatched = candidateSecrets.some((secret) => {
-      const expected = createHmac('sha256', secret)
+    const candidateClientSecrets = [currentClientSecret];
+    const previousClientSecret =
+      process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET?.trim();
+    const previousValidUntil =
+      process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET_VALID_UNTIL?.trim();
+    if (previousClientSecret && previousValidUntil) {
+      const validUntilMs = Date.parse(previousValidUntil);
+      if (Number.isFinite(validUntilMs) && Date.now() < validUntilMs) {
+        candidateClientSecrets.push(previousClientSecret);
+      }
+    }
+
+    const normalizedSignature = receivedSignature.trim().toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(normalizedSignature)) {
+      throw new UnauthorizedException('Invalid Uber signature');
+    }
+
+    const receivedBuffer = Buffer.from(normalizedSignature, 'hex');
+    const isMatched = candidateClientSecrets.some((clientSecret) => {
+      const expectedBuffer = createHmac('sha256', clientSecret)
         .update(rawBody, 'utf8')
-        .digest('hex');
-
-      const expectedBuffer = Buffer.from(expected, 'utf8');
-
-      return (
-        expectedBuffer.length === receivedBuffer.length &&
-        timingSafeEqual(expectedBuffer, receivedBuffer)
-      );
+        .digest();
+      return timingSafeEqual(expectedBuffer, receivedBuffer);
     });
 
     if (!isMatched) {
@@ -4982,6 +6238,7 @@ export class UberEatsService {
   private readEventId(
     headers: Record<string, unknown>,
     payload: unknown,
+    envelopeEventId?: string | null,
   ): string | null {
     const fromHeader = this.readHeader(
       headers,
@@ -4991,6 +6248,7 @@ export class UberEatsService {
       'uber-event-id',
     );
     if (fromHeader) return fromHeader;
+    if (envelopeEventId) return envelopeEventId;
 
     if (!payload || typeof payload !== 'object') return null;
     const root = payload as Record<string, unknown>;
@@ -5001,20 +6259,99 @@ export class UberEatsService {
     );
   }
 
-  private async hasSeenWebhookEvent(eventId: string): Promise<boolean> {
-    const row = await this.prisma.opsEvent.findFirst({
-      where: {
-        source: 'ubereats',
-        eventName: 'ubereats_webhook_processed',
-        payload: {
-          path: ['eventId'],
-          equals: eventId,
-        },
-      },
-      select: { id: true },
-    });
+  private async claimWebhookEvent(
+    eventId: string,
+    eventType: string,
+    externalOrderId: string | null,
+    payload: unknown,
+  ): Promise<boolean> {
+    const data = {
+      eventId,
+      eventType,
+      externalOrderId,
+      status: 'RECEIVED',
+      payload: this.toJsonValue(payload),
+    };
 
-    return !!row;
+    try {
+      await this.prisma.uberWebhookInbox.create({ data });
+    } catch (error) {
+      if (!this.isPrismaUniqueConstraintError(error)) throw error;
+
+      // A failed synchronous attempt returned non-2xx, so a later delivery is
+      // allowed to atomically reclaim it. All other conflicts are idempotent
+      // success, including concurrent deliveries while the owner is working.
+      const reclaimed = await this.prisma.uberWebhookInbox.updateMany({
+        where: {
+          eventId,
+          status: 'FAILED',
+        },
+        data: {
+          status: 'RECEIVED',
+          errorSummary: null,
+          nextRetryAt: null,
+        },
+      });
+      if (reclaimed.count === 0) return false;
+    }
+
+    const processing = await this.prisma.uberWebhookInbox.updateMany({
+      where: { eventId, status: 'RECEIVED' },
+      data: {
+        status: 'PROCESSING',
+        processingAt: new Date(),
+        attemptCount: { increment: 1 },
+      },
+    });
+    return processing.count === 1;
+  }
+
+  private async markWebhookFailed(eventId: string, error: unknown) {
+    const summary = (error instanceof Error ? error.message : String(error))
+      .replace(/\s+/g, ' ')
+      .slice(0, 500);
+    await this.prisma.uberWebhookInbox.updateMany({
+      where: { eventId, status: 'PROCESSING' },
+      data: {
+        status: 'FAILED',
+        errorSummary: summary || 'unknown error',
+        nextRetryAt: new Date(Date.now() + 1_000),
+      },
+    });
+  }
+
+  private isPrismaUniqueConstraintError(error: unknown): boolean {
+    return (
+      !!error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      (error as { code?: unknown }).code === 'P2002'
+    );
+  }
+
+  private isOrderRelatedEvent(eventType: string): boolean {
+    return /(^|[._-])orders?([._-]|$)/i.test(eventType);
+  }
+
+  private hashCanonicalBody(payload: unknown): string {
+    const normalize = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(normalize);
+      if (value && typeof value === 'object') {
+        return Object.fromEntries(
+          Object.entries(value as Record<string, unknown>)
+            .sort(([left], [right]) => left.localeCompare(right))
+            .map(([key, child]) => [key, normalize(child)]),
+        );
+      }
+      return value;
+    };
+    return createHash('sha256')
+      .update(JSON.stringify(normalize(payload)) ?? 'null', 'utf8')
+      .digest('hex');
+  }
+
+  private toJsonValue(payload: unknown): Prisma.InputJsonValue {
+    return JSON.parse(JSON.stringify(payload ?? null)) as Prisma.InputJsonValue;
   }
 
   private extractStoreId(payload: unknown): string | null {
@@ -5034,21 +6371,14 @@ export class UberEatsService {
     headers: Record<string, unknown>,
     ...keys: string[]
   ): string | null {
-    for (const key of keys) {
-      const direct = headers[key];
-      const lower = headers[key.toLowerCase()];
-      const upper = headers[key.toUpperCase()];
-      const value = direct ?? lower ?? upper;
-
-      if (typeof value === 'string' && value.trim()) {
-        return value.trim();
-      }
+    const acceptedKeys = new Set(keys.map((key) => key.toLowerCase()));
+    for (const [key, value] of Object.entries(headers)) {
+      if (!acceptedKeys.has(key.toLowerCase())) continue;
+      if (typeof value === 'string' && value.trim()) return value.trim();
       if (Array.isArray(value)) {
-        const values = value as unknown[];
-        const first = values.find(
-          (item: unknown) => typeof item === 'string' && item.trim(),
-        );
-        if (typeof first === 'string') return first.trim();
+        for (const item of value as unknown[]) {
+          if (typeof item === 'string' && item.trim()) return item.trim();
+        }
       }
     }
     return null;
