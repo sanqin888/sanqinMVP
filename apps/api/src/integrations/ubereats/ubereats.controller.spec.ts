@@ -6,19 +6,138 @@ jest.mock('@prisma/client', () => ({
   UberOpsTicketStatus: { OPEN: 'OPEN' },
 }));
 jest.mock('../../auth/session-auth.guard', () => ({
+  SESSION_COOKIE_NAME: 'session_id',
   SessionAuthGuard: class SessionAuthGuard {},
+}));
+jest.mock('../../auth/admin-mfa.guard', () => ({
+  AdminMfaGuard: class AdminMfaGuard {},
 }));
 jest.mock('../../auth/roles.guard', () => ({
   RolesGuard: class RolesGuard {},
 }));
-
+import { GUARDS_METADATA } from '@nestjs/common/constants';
+import { AdminMfaGuard } from '../../auth/admin-mfa.guard';
+import { ROLES_KEY } from '../../auth/roles.decorator';
+import { RolesGuard } from '../../auth/roles.guard';
+import { SessionAuthGuard } from '../../auth/session-auth.guard';
 import { AppLogger } from '../../common/app-logger';
 import { UberEatsController } from './ubereats.controller';
+
+type ControllerMethod = keyof UberEatsController;
+
+function guardsFor(method: ControllerMethod): unknown[] {
+  return (
+    (Reflect.getMetadata(
+      GUARDS_METADATA,
+      UberEatsController.prototype[method],
+    ) as unknown[] | undefined) ?? []
+  );
+}
+
+function rolesFor(method: ControllerMethod): string[] {
+  return (
+    (Reflect.getMetadata(ROLES_KEY, UberEatsController.prototype[method]) as
+      | string[]
+      | undefined) ?? []
+  );
+}
+
+describe('UberEatsController 权限边界', () => {
+  const protectedRoutes: ControllerMethod[] = [
+    'oauthStart',
+    'oauthStores',
+    'oauthProvision',
+    'debugAccessToken',
+    'listPendingOrders',
+    'listItemChannelConfigs',
+    'generateReconciliationReport',
+    'listOpsTickets',
+  ];
+
+  it.each(protectedRoutes)(
+    '%s 要求管理员会话并拒绝普通用户和 POS 设备角色',
+    (method) => {
+      expect(guardsFor(method)).toEqual(
+        expect.arrayContaining([SessionAuthGuard, RolesGuard]),
+      );
+      expect(rolesFor(method)).toEqual(['ADMIN']);
+    },
+  );
+
+  it.each<ControllerMethod>([
+    'syncOrderStatus',
+    'syncStoreStatus',
+    'publishMenu',
+  ])('%s 的破坏性动作要求管理员 MFA', (method) => {
+    expect(guardsFor(method)).toEqual([
+      SessionAuthGuard,
+      AdminMfaGuard,
+      RolesGuard,
+    ]);
+    expect(rolesFor(method)).toEqual(['ADMIN']);
+  });
+
+  it('仅 OAuth callback 和 POST webhook 不设置会话权限', () => {
+    expect(guardsFor('oauthCallback')).toEqual([]);
+    expect(guardsFor('webhook')).toEqual([]);
+    expect(guardsFor('health')).toEqual(
+      expect.arrayContaining([SessionAuthGuard, RolesGuard]),
+    );
+    expect(guardsFor('head')).toEqual(
+      expect.arrayContaining([SessionAuthGuard, RolesGuard]),
+    );
+  });
+
+  it('生产环境和未开启 flag 时 debug 路由表现为不存在', async () => {
+    const service = { debugAccessToken: jest.fn() };
+    const controller = new UberEatsController(service as never);
+
+    process.env.NODE_ENV = 'production';
+    process.env.UBER_EATS_DEBUG_ENABLED = 'true';
+    await expect(controller.debugAccessToken()).rejects.toMatchObject({
+      status: 404,
+    });
+
+    process.env.NODE_ENV = 'test';
+    delete process.env.UBER_EATS_DEBUG_ENABLED;
+    await expect(controller.debugAccessToken()).rejects.toMatchObject({
+      status: 404,
+    });
+
+    process.env.UBER_EATS_DEBUG_ENABLED = 'true';
+    service.debugAccessToken.mockResolvedValue({ ok: true });
+    await expect(controller.debugAccessToken()).resolves.toEqual({ ok: true });
+  });
+});
 
 describe('UberEatsController OAuth callback', () => {
   afterEach(() => {
     delete process.env.NODE_ENV;
+    delete process.env.UBER_EATS_DEBUG_ENABLED;
     jest.restoreAllMocks();
+  });
+
+  it('callback 使用签名 cookie 将 state 绑定回 OAuth start 的管理员会话', async () => {
+    const service = {
+      exchangeAuthorizationCode: jest.fn().mockResolvedValue({
+        merchantUberUserId: 'merchant_1',
+        scope: 'eats.store',
+        expiresAt: null,
+      }),
+    };
+    const controller = new UberEatsController(service as never);
+
+    await controller.oauthCallback(
+      { signedCookies: { session_id: 'admin_session_1' } } as never,
+      'authorization_code',
+      'signed_state',
+    );
+
+    expect(service.exchangeAuthorizationCode).toHaveBeenCalledWith(
+      'authorization_code',
+      'signed_state',
+      'admin_session_1',
+    );
   });
 
   it('callback 日志只记录 correlation ID 和必要参数是否存在', async () => {
