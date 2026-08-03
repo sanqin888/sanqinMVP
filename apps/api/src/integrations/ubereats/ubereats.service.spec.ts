@@ -1170,14 +1170,19 @@ describe('UberEatsService', () => {
 
   it('确认回读仍是旧菜单时保持 SUBMITTED，不误判为成功', async () => {
     const update = jest.fn();
+    const authService = createAuthService() as unknown as {
+      getAccessToken: jest.Mock<Promise<string>, [string?]>;
+    };
+    authService.getAccessToken.mockResolvedValue('eats-store-read-token');
     const service = new UberEatsService(
       { uberMenuPublishVersion: { update } } as never,
-      createAuthService(),
+      authService,
     );
-    jest
-      .spyOn(service as never, 'resolveMerchantConnection' as never)
-      .mockResolvedValue({ accessToken: 'token' } as never);
-    jest
+    const merchantConnectionSpy = jest.spyOn(
+      service as never,
+      'resolveMerchantConnection' as never,
+    );
+    const uberApiSpy = jest
       .spyOn(service as never, 'callUberApi' as never)
       .mockResolvedValue({ items: [{ id: 'old_item' }] } as never);
     const confirmationApi = service as unknown as MenuConfirmationTestApi;
@@ -1189,9 +1194,55 @@ describe('UberEatsService', () => {
         items: [{ id: 'new_item' }],
       }),
     ).resolves.toBe('SUBMITTED');
+    expect(authService.getAccessToken).toHaveBeenCalledWith('eats.store');
+    expect(uberApiSpy).toHaveBeenCalledWith('/v2/eats/stores/store_1/menus', {
+      accessToken: 'eats-store-read-token',
+      method: 'GET',
+    });
+    expect(merchantConnectionSpy).not.toHaveBeenCalled();
     expect(update).not.toHaveBeenCalled();
     jest.restoreAllMocks();
   });
+
+  it.each([401, 403])(
+    '菜单 API 的 %s 鉴权失败保留结构化且脱敏的上游错误',
+    async (status) => {
+      jest.spyOn(global, 'fetch').mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            code: 'invalid_scope',
+            message: 'missing eats.store; access_token=secret-token',
+          }),
+          { status },
+        ),
+      );
+      const service = new UberEatsService({} as never, createAuthService());
+
+      await expect(
+        (
+          service as never as {
+            callUberApi: (
+              path: string,
+              options: { accessToken: string; method: 'GET' },
+            ) => Promise<unknown>;
+          }
+        ).callUberApi('/v2/eats/stores/store_1/menus', {
+          accessToken: 'request-token',
+          method: 'GET',
+        }),
+      ).rejects.toMatchObject({
+        response: {
+          status,
+          error: {
+            upstreamStatus: status,
+            code: 'invalid_scope',
+            message: 'missing eats.store; access_token=[REDACTED]',
+          },
+        },
+      });
+      jest.restoreAllMocks();
+    },
+  );
 
   it('发布确认超时保持 SUBMITTED 并创建 TIMED_OUT 运营工单', async () => {
     jest.useFakeTimers();
@@ -2088,6 +2139,70 @@ describe('UberEatsService', () => {
       '正式发布前必须由管理员确认税率 13%（来源：BusinessConfig.salesTaxRate）',
     );
     expect(prisma.uberMenuPublishVersion.create).not.toHaveBeenCalled();
+  });
+
+  it('正式发布使用 eats.store 应用 token 上传菜单，不读取商户连接 token', async () => {
+    const prisma = createNestedMenuPrisma([]);
+    prisma.uberStoreMapping.findFirst.mockResolvedValue({
+      uberStoreId: 'uber_store_1',
+      rawPayload: { timezone: 'America/Toronto' },
+    });
+    prisma.uberMenuPublishVersion.create.mockResolvedValue({
+      id: 'version_1',
+      versionStableId: 'menu_version_1',
+      createdAt: new Date('2026-08-03T00:00:00.000Z'),
+    });
+    Object.assign(prisma.uberMenuPublishVersion, {
+      update: jest.fn().mockResolvedValue(null),
+    });
+    const authService = createAuthService() as unknown as {
+      getAccessToken: jest.Mock<Promise<string>, [string?]>;
+    };
+    authService.getAccessToken.mockResolvedValue('eats-store-app-token');
+    const service = new UberEatsService(prisma as never, authService as never);
+    const merchantConnectionSpy = jest.spyOn(
+      service as never,
+      'resolveMerchantConnection' as never,
+    );
+    const uberApiSpy = jest
+      .spyOn(service as never, 'callUberApi' as never)
+      .mockResolvedValue({ resource_id: 'uploaded_menu' } as never);
+    process.env.UBER_EATS_MENU_NOTIFICATIONS_ENABLED = 'true';
+
+    await expect(
+      service.publishUberMenu({
+        storeId: 's1',
+        dryRun: false,
+        taxRateConfirmed: true,
+      }),
+    ).resolves.toMatchObject({ ok: true, dryRun: false });
+
+    expect(authService.getAccessToken).toHaveBeenCalledWith('eats.store');
+    expect(uberApiSpy).toHaveBeenCalledWith(
+      '/v2/eats/stores/uber_store_1/menus',
+      expect.objectContaining({
+        accessToken: 'eats-store-app-token',
+        method: 'PUT',
+      }),
+    );
+    expect(merchantConnectionSpy).not.toHaveBeenCalled();
+    delete process.env.UBER_EATS_MENU_NOTIFICATIONS_ENABLED;
+  });
+
+  it('Dry Run 不请求 Uber token，也不调用菜单上传接口', async () => {
+    const prisma = createNestedMenuPrisma([]);
+    const authService = createAuthService() as unknown as {
+      getAccessToken: jest.Mock<Promise<string>, [string?]>;
+    };
+    const service = new UberEatsService(prisma as never, authService as never);
+    const uberApiSpy = jest.spyOn(service as never, 'callUberApi' as never);
+
+    await expect(
+      service.publishUberMenu({ storeId: 's1', dryRun: true }),
+    ).resolves.toMatchObject({ ok: true, dryRun: true });
+
+    expect(authService.getAccessToken).not.toHaveBeenCalled();
+    expect(uberApiSpy).not.toHaveBeenCalled();
   });
 
   it('拒绝将百分数格式的站内税率再次转换后发布到 Uber', async () => {
