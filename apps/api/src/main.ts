@@ -43,7 +43,7 @@ async function bootstrap(): Promise<void> {
   // Uber Eats webhook 必须保留原始 body，供 HMAC 验签
   app.use(
     `/${prefix}/integrations/ubereats/webhook`,
-    express.raw({ type: '*/*' }),
+    express.raw({ type: 'application/json' }),
   );
 
   // 其余路由正常走 JSON / form 解析

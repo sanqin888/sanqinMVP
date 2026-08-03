@@ -32,8 +32,9 @@ import { UberMenuNotificationDto } from './dto/uber-menu-notification.dto';
 
 type UberWebhookInput = {
   headers: Record<string, unknown>;
-  body: unknown;
-  rawBody: string;
+  /** @deprecated The service always parses the signed rawBody instead. */
+  body?: unknown;
+  rawBody: string | Buffer;
 };
 
 type UberMenuPublishError = {
@@ -1068,17 +1069,28 @@ export class UberEatsService {
   async handleWebhook(input: UberWebhookInput): Promise<void> {
     this.verifyWebhookSignature(input.headers, input.rawBody);
 
-    const envelope = UberWebhookEnvelopeDto.parse(input.body);
-    const eventType = envelope?.eventType ?? this.readEventType(input.body);
+    let body: unknown;
+    try {
+      body = JSON.parse(
+        Buffer.isBuffer(input.rawBody)
+          ? input.rawBody.toString('utf8')
+          : input.rawBody,
+      );
+    } catch {
+      throw new BadRequestException('Uber webhook JSON 无效');
+    }
+
+    const envelope = UberWebhookEnvelopeDto.parse(body);
+    const eventType = envelope?.eventType ?? this.readEventType(body);
     const eventId =
-      this.readEventId(input.headers, input.body, envelope?.eventId) ??
-      `sha256:${this.hashCanonicalBody(input.body)}`;
+      this.readEventId(input.headers, body, envelope?.eventId) ??
+      `sha256:${this.hashCanonicalBody(body)}`;
 
     const claimed = await this.claimWebhookEvent(
       eventId,
       eventType,
       envelope?.resourceId ?? null,
-      input.body,
+      body,
     );
     if (!claimed) {
       this.logger.warn(
@@ -1101,35 +1113,19 @@ export class UberEatsService {
           break;
 
         case 'store.provisioned':
-          await this.handleStoreProvisionedWebhook(
-            eventType,
-            eventId,
-            input.body,
-          );
+          await this.handleStoreProvisionedWebhook(eventType, eventId, body);
           break;
 
         case 'store.deprovisioned':
-          await this.handleStoreDeprovisionedWebhook(
-            eventType,
-            eventId,
-            input.body,
-          );
+          await this.handleStoreDeprovisionedWebhook(eventType, eventId, body);
           break;
 
         case 'store.status.changed':
-          await this.handleStoreStatusChangedWebhook(
-            eventType,
-            eventId,
-            input.body,
-          );
+          await this.handleStoreStatusChangedWebhook(eventType, eventId, body);
           break;
 
         case 'menus.notification':
-          await this.handleMenuNotificationWebhook(
-            eventType,
-            eventId,
-            input.body,
-          );
+          await this.handleMenuNotificationWebhook(eventType, eventId, body);
           break;
 
         default:
@@ -6241,7 +6237,7 @@ export class UberEatsService {
 
   private verifyWebhookSignature(
     headers: Record<string, unknown>,
-    rawBody: string,
+    rawBody: string | Buffer,
   ) {
     // Uber signs the exact UTF-8 request body with the app client secret and
     // sends the lowercase hexadecimal HMAC-SHA256 in X-Uber-Signature.
@@ -6270,7 +6266,7 @@ export class UberEatsService {
     const receivedBuffer = Buffer.from(normalizedSignature, 'hex');
     const isMatched = candidateClientSecrets.some((clientSecret) => {
       const expectedBuffer = createHmac('sha256', clientSecret)
-        .update(rawBody, 'utf8')
+        .update(rawBody)
         .digest();
       return timingSafeEqual(expectedBuffer, receivedBuffer);
     });
