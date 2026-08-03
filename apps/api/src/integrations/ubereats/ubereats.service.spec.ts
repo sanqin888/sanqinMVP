@@ -631,7 +631,9 @@ describe('UberEatsService', () => {
     ).resolves.toBeUndefined();
     expect(prisma.uberOrderAction.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ reasonCode: 'INVALID_ORDER' }),
+        data: expect.objectContaining({
+          reasonCode: 'INVALID_ORDER',
+        }) as unknown,
       }),
     );
     expect(prisma.opsEvent.create).not.toHaveBeenCalled();
@@ -782,13 +784,13 @@ describe('UberEatsService', () => {
     ).resolves.toMatchObject({
       tokenIssued: true,
       apiSkipped: true,
-      reason: expect.stringContaining('未执行写验证'),
+      reason: expect.stringContaining('未执行写验证') as unknown,
     });
     await expect(
       service.verifyScope('eats.store.status.write', { dryRun: false }),
     ).resolves.toMatchObject({
       apiSkipped: true,
-      reason: expect.stringContaining('未执行写验证'),
+      reason: expect.stringContaining('未执行写验证') as unknown,
     });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -801,19 +803,23 @@ describe('UberEatsService', () => {
       order: { findUnique: jest.fn().mockResolvedValue(localOrder) },
       uberOrderAction: {
         findUnique: jest.fn().mockImplementation(() => Promise.resolve(action)),
-        create: jest.fn().mockImplementation(({ data }) => {
-          action = {
-            id: 'action_1',
-            retryable: false,
-            uberHttpStatus: null,
-            ...data,
-          };
-          return Promise.resolve(action);
-        }),
-        update: jest.fn().mockImplementation(({ data }) => {
-          action = { ...action, ...data };
-          return Promise.resolve(action);
-        }),
+        create: jest
+          .fn()
+          .mockImplementation(({ data }: { data: Record<string, unknown> }) => {
+            action = {
+              id: 'action_1',
+              retryable: false,
+              uberHttpStatus: null,
+              ...data,
+            };
+            return Promise.resolve(action);
+          }),
+        update: jest
+          .fn()
+          .mockImplementation(({ data }: { data: Record<string, unknown> }) => {
+            action = { ...action, ...data };
+            return Promise.resolve(action);
+          }),
       },
     };
   };
@@ -884,7 +890,7 @@ describe('UberEatsService', () => {
     ).rejects.toMatchObject({ status: 502 });
     expect(prisma.uberOrderAction.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ retryable: true }),
+        data: expect.objectContaining({ retryable: true }) as unknown,
       }),
     );
   });
