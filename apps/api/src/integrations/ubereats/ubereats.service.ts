@@ -621,6 +621,7 @@ export class UberEatsService {
   private readonly uberApiBaseUrl =
     process.env.UBER_EATS_API_BASE_URL?.trim() || 'https://api.uber.com';
   private readonly oauthStateSecret: string;
+  private readonly webhookCurrentClientSecret: string;
   private readonly oauthStateRequests = new Map<
     string,
     {
@@ -642,6 +643,13 @@ export class UberEatsService {
       );
     }
     this.oauthStateSecret = secret;
+
+    const webhookCurrentClientSecret =
+      process.env.UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET?.trim() || '';
+    if (!webhookCurrentClientSecret) {
+      throw new Error('UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET 未配置');
+    }
+    this.webhookCurrentClientSecret = webhookCurrentClientSecret;
   }
 
   private get uberMerchantConnectionDelegate(): UberMerchantConnectionDelegate | null {
@@ -6237,18 +6245,12 @@ export class UberEatsService {
   ) {
     // Uber signs the exact UTF-8 request body with the app client secret and
     // sends the lowercase hexadecimal HMAC-SHA256 in X-Uber-Signature.
-    const currentClientSecret =
-      process.env.UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET?.trim();
-    if (!currentClientSecret) {
-      throw new Error('UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET 未配置');
-    }
-
     const receivedSignature = this.readHeader(headers, 'x-uber-signature');
     if (!receivedSignature) {
       throw new UnauthorizedException('Missing Uber signature header');
     }
 
-    const candidateClientSecrets = [currentClientSecret];
+    const candidateClientSecrets = [this.webhookCurrentClientSecret];
     const previousClientSecret =
       process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET?.trim();
     const previousValidUntil =
