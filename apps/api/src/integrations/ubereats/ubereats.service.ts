@@ -3046,7 +3046,13 @@ export class UberEatsService {
     const rawText = await response.text();
     const parsed = this.tryParseJson(rawText);
     if (!response.ok) {
-      const detail = this.summarizeDebugResponse(parsed, rawText);
+      const authenticationError =
+        response.status === 401 || response.status === 403
+          ? this.buildUberAuthenticationError(parsed, response.status)
+          : undefined;
+      const detail = authenticationError
+        ? JSON.stringify(authenticationError)
+        : this.summarizeDebugResponse(parsed, rawText);
       this.logger.error(
         `[ubereats api] ${options.method} ${path} failed status=${response.status} detail=${JSON.stringify(detail)}`,
       );
@@ -3054,6 +3060,7 @@ export class UberEatsService {
         ok: false,
         status: response.status,
         detail,
+        ...(authenticationError ? { error: authenticationError } : {}),
       });
     }
 
@@ -5353,12 +5360,12 @@ export class UberEatsService {
     uberStoreId: string,
     payload: UberMenuUploadPayload,
   ): Promise<Record<string, unknown>> {
-    const connection = await this.resolveMerchantConnection();
+    const accessToken = await this.uberAuthService.getAccessToken('eats.store');
 
     return this.callUberApi(
       `/v2/eats/stores/${encodeURIComponent(uberStoreId)}/menus`,
       {
-        accessToken: connection.accessToken,
+        accessToken,
         method: 'PUT',
         body: payload as unknown as Record<string, unknown>,
       },
@@ -5382,10 +5389,11 @@ export class UberEatsService {
     requested: UberMenuUploadPayload,
   ): Promise<'SUBMITTED' | 'SUCCEEDED' | 'FAILED'> {
     try {
-      const connection = await this.resolveMerchantConnection();
+      const accessToken =
+        await this.uberAuthService.getAccessToken('eats.store');
       const response = await this.callUberApi(
         `/v2/eats/stores/${encodeURIComponent(uberStoreId)}/menus`,
-        { accessToken: connection.accessToken, method: 'GET' },
+        { accessToken, method: 'GET' },
       );
       const readPayload = this.asObject(response.menu ?? response) ?? {};
       const expectedIds = requested.items.map((item) => item.id);
@@ -6087,6 +6095,29 @@ export class UberEatsService {
     }
 
     return rawText.slice(0, 500) || 'empty response body';
+  }
+
+  private buildUberAuthenticationError(parsed: unknown, status: number) {
+    const body = this.asObject(parsed);
+    const nestedError = this.asObject(body?.error);
+    const code =
+      this.readString(body?.code, nestedError?.code, body?.error) ??
+      `UBER_HTTP_${status}`;
+    const unsafeMessage =
+      this.readString(
+        body?.message,
+        nestedError?.message,
+        body?.error_description,
+      ) ?? 'Uber authentication request was rejected';
+    const message = unsafeMessage
+      .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [REDACTED]')
+      .replace(
+        /\b(access[_ -]?token|client[_ -]?secret)\s*[:=]\s*\S+/gi,
+        '$1=[REDACTED]',
+      )
+      .slice(0, 500);
+
+    return { upstreamStatus: status, code: code.slice(0, 100), message };
   }
 
   private extractCreatedOrders(
