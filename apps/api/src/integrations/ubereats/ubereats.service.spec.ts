@@ -982,7 +982,10 @@ describe('UberEatsService', () => {
   });
 
   it('菜单成功通知会将已提交版本标记为最终成功', async () => {
-    const rawBody = '{"event_type":"menus.notification"}';
+    const rawBody = `{
+  "data": { "status": "SUCCEEDED", "resource_id": "menu_resource_1", "store_id": "uber_store_1" },
+  "event_type": "menus.notification"
+}`;
     const signature = createHmac('sha256', clientSecret)
       .update(rawBody, 'utf8')
       .digest('hex');
@@ -1028,7 +1031,15 @@ describe('UberEatsService', () => {
   });
 
   it('菜单失败通知会保存 Uber 错误代码、字段路径和说明', async () => {
-    const rawBody = '{"event_type":"menus.notification"}';
+    const rawBody = `{
+  "event_type": "menus.notification",
+  "data": {
+    "store_id": "uber_store_1",
+    "resource_id": "menu_resource_2",
+    "status": "FAILED",
+    "errors": [{ "code": "INVALID_PRICE", "field_path": "items[0].price_info.price", "description": "price is invalid" }]
+  }
+}`;
     const signature = createHmac('sha256', clientSecret)
       .update(rawBody, 'utf8')
       .digest('hex');
@@ -1091,7 +1102,10 @@ describe('UberEatsService', () => {
   });
 
   it('菜单通知先于 PUT response 回写时仍按 request 中的 resource ID 命中版本', async () => {
-    const rawBody = '{"event_type":"menus.notification"}';
+    const rawBody = `{
+  "event_type": "menus.notification",
+  "data": { "store_id": "uber_store_1", "resource_id": "uber_menu_resource", "status": "SUCCEEDED" }
+}`;
     const signature = createHmac('sha256', clientSecret)
       .update(rawBody, 'utf8')
       .digest('hex');
