@@ -386,40 +386,40 @@ model UserAddress {
 }
 
 model Order {
-  id                         String            @id @default(uuid()) @db.Uuid
-  channel                    Channel           @default(web)
-  fulfillmentType            FulfillmentType   @default(pickup)
+  id                         String                  @id @default(uuid()) @db.Uuid
+  channel                    Channel                 @default(web)
+  fulfillmentType            FulfillmentType         @default(pickup)
   userId                     String?
-  clientRequestId            String?           @unique
-  status                     OrderStatus       @default(pending)
-  createdAt                  DateTime          @default(now())
-  subtotalCents              Int               @default(0)
-  taxCents                   Int               @default(0)
-  totalCents                 Int               @default(0)
-  paymentTotalCents          Int               @default(0)
-  creditCardSurchargeCents   Int               @default(0)
+  clientRequestId            String?                 @unique
+  status                     OrderStatus             @default(pending)
+  createdAt                  DateTime                @default(now())
+  subtotalCents              Int                     @default(0)
+  taxCents                   Int                     @default(0)
+  totalCents                 Int                     @default(0)
+  paymentTotalCents          Int                     @default(0)
+  creditCardSurchargeCents   Int                     @default(0)
   pickupCode                 String?
   deliveryType               DeliveryType?
   deliveryProvider           DeliveryProvider?
   deliveryEtaMinMinutes      Int?
   deliveryEtaMaxMinutes      Int?
   externalDeliveryId         String?
-  deliveryFeeCents           Int               @default(0) // 顾客运费
-  deliveryCostCents          Int               @default(0) // 第三方成本
-  deliverySubsidyCents       Int               @default(0) // max(0, cost - fee)
-  loyaltyRedeemCents         Int               @default(0)
-  subtotalAfterDiscountCents Int               @default(0)
+  deliveryFeeCents           Int                     @default(0) // 顾客运费
+  deliveryCostCents          Int                     @default(0) // 第三方成本
+  deliverySubsidyCents       Int                     @default(0) // max(0, cost - fee)
+  loyaltyRedeemCents         Int                     @default(0)
+  subtotalAfterDiscountCents Int                     @default(0)
   couponCodeSnapshot         String?
-  couponDiscountCents        Int               @default(0)
+  couponDiscountCents        Int                     @default(0)
   couponExpiresAt            DateTime?
-  couponId                   String?           @db.Uuid
+  couponId                   String?                 @db.Uuid
   couponMinSpendCents        Int?
   couponTitleSnapshot        String?
   contactName                String?
   contactEmail               String?
   contactPhone               String?
   placeId                    String?
-  orderStableId              String            @unique @default(cuid())
+  orderStableId              String                  @unique @default(cuid())
   rebillGroupId              String?
   paidAt                     DateTime
   makingAt                   DateTime?
@@ -428,9 +428,10 @@ model Order {
   externalDisplayId          String?
   externalOrderNotes         String?
   externalEstimatedReadyAt   DateTime?
-  externalPriceVarianceCents Int               @default(0)
+  externalPriceVarianceCents Int                     @default(0)
   amendments                 OrderAmendment[]
   items                      OrderItem[]
+  uberCancellations          UberOrderCancellation[]
 
   @@index([createdAt])
   @@index([contactPhone, createdAt])
@@ -584,6 +585,8 @@ model UberOrderAction {
   reasonDetail    String?
   uberHttpStatus  Int?
   response        Json?
+  lastError       String?
+  uberRequestId   String?
   retryable       Boolean   @default(false)
   attemptCount    Int       @default(0)
   completedAt     DateTime?
@@ -592,6 +595,24 @@ model UberOrderAction {
 
   @@unique([externalOrderId, action])
   @@index([status, retryable, updatedAt])
+}
+
+/// Uber cancellation/rejection is a channel event, not a local refund.
+model UberOrderCancellation {
+  id              String   @id @default(uuid()) @db.Uuid
+  orderId         String   @db.Uuid
+  externalOrderId String
+  eventId         String   @unique
+  kind            String
+  cancelledBy     String?
+  reasonCode      String?
+  reasonDetail    String?
+  occurredAt      DateTime
+  createdAt       DateTime @default(now())
+  order           Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, occurredAt])
+  @@index([externalOrderId, occurredAt])
 }
 
 model OrderAmendment {
