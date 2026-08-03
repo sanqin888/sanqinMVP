@@ -869,10 +869,10 @@ describe('UberEatsService', () => {
     ).rejects.toThrow('未识别的 Uber 订单事件类型');
     expect(inbox.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
-        eventId: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+        eventId: expect.stringMatching(/^sha256:[0-9a-f]{64}$/) as unknown,
         payload: body,
         status: 'RECEIVED',
-      }),
+      }) as unknown,
     });
     expect(opsEvent.create).toHaveBeenCalled();
     expect(inbox.updateMany).toHaveBeenLastCalledWith(
