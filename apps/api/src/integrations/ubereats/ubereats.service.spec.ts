@@ -151,11 +151,14 @@ describe('UberEatsService 门店状态同步', () => {
   beforeEach(() => {
     process.env.UBER_EATS_OAUTH_STATE_SECRET =
       'high-entropy-test-secret-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    process.env.UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET =
+      'test-ubereats-secret';
   });
 
   afterEach(() => {
     jest.restoreAllMocks();
     delete process.env.UBER_EATS_OAUTH_STATE_SECRET;
+    delete process.env.UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET;
   });
 
   it('逐个同步多个门店，并在部分失败和未 provision 时返回失败明细及运营告警', async () => {
@@ -386,6 +389,14 @@ describe('UberEatsService', () => {
       rawBody,
       body: { event_type: 'orders.notification', event_id: 'fixed-event' },
     });
+
+  it('初始化时缺少 webhook 当前 client secret 会立即失败', () => {
+    delete process.env.UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET;
+
+    expect(() => new UberEatsService({} as never, createAuthService())).toThrow(
+      'UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET 未配置',
+    );
+  });
 
   it('接受 Uber 文档算法的固定 UTF-8/HMAC-SHA256 十六进制签名向量', async () => {
     const rawBody =
