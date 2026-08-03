@@ -238,7 +238,7 @@ describe('toUberServiceAvailability', () => {
       ]),
     ).toEqual([
       {
-        day_of_week: 'MONDAY',
+        day_of_week: 'monday',
         time_periods: [{ start_time: '09:00', end_time: '18:00' }],
       },
     ]);
@@ -260,11 +260,11 @@ describe('toUberServiceAvailability', () => {
       ]),
     ).toEqual([
       {
-        day_of_week: 'SUNDAY',
+        day_of_week: 'sunday',
         time_periods: [{ start_time: '00:00', end_time: '02:00' }],
       },
       {
-        day_of_week: 'SATURDAY',
+        day_of_week: 'saturday',
         time_periods: [{ start_time: '22:00', end_time: '24:00' }],
       },
     ]);
@@ -279,14 +279,14 @@ describe('toUberServiceAvailability', () => {
       ]),
     ).toEqual([
       {
-        day_of_week: 'WEDNESDAY',
+        day_of_week: 'wednesday',
         time_periods: [
           { start_time: '08:00', end_time: '12:00' },
           { start_time: '17:00', end_time: '21:00' },
         ],
       },
       {
-        day_of_week: 'THURSDAY',
+        day_of_week: 'thursday',
         time_periods: [{ start_time: '00:00', end_time: '24:00' }],
       },
     ]);
@@ -299,11 +299,11 @@ describe('toUberServiceAvailability', () => {
       ]),
     ).toEqual([
       {
-        day_of_week: 'SUNDAY',
+        day_of_week: 'sunday',
         time_periods: [{ start_time: '23:00', end_time: '24:00' }],
       },
       {
-        day_of_week: 'MONDAY',
+        day_of_week: 'monday',
         time_periods: [{ start_time: '00:00', end_time: '01:00' }],
       },
     ]);
@@ -1918,7 +1918,7 @@ describe('UberEatsService', () => {
     };
     expect(payload.menus[0].service_availability).toEqual([
       {
-        day_of_week: 'MONDAY',
+        day_of_week: 'monday',
         time_periods: [{ start_time: '09:00', end_time: '18:00' }],
       },
     ]);
@@ -2043,7 +2043,7 @@ describe('UberEatsService', () => {
       items: Array<{
         id: string;
         title: { translations: { en_us: string } };
-        modifier_group_ids: string[];
+        modifier_group_ids: { ids: string[] | null; overrides: [] };
       }>;
       modifier_groups: Array<{ modifier_options: Array<{ id: string }> }>;
     };
@@ -2058,7 +2058,9 @@ describe('UberEatsService', () => {
 
     expect(referencedItems).not.toHaveLength(0);
     expect(
-      referencedItems.every((item) => item.modifier_group_ids.length === 0),
+      referencedItems.every(
+        (item) => (item.modifier_group_ids.ids?.length ?? 0) === 0,
+      ),
     ).toBe(true);
     expect(
       referencedItems.some(
@@ -2518,7 +2520,7 @@ describe('UberEatsService', () => {
           category_ids: ['cat'],
           service_availability: [
             {
-              day_of_week: 'MONDAY',
+              day_of_week: 'monday',
               time_periods: [{ start_time: '09:00', end_time: '18:00' }],
             },
           ],
@@ -2535,18 +2537,18 @@ describe('UberEatsService', () => {
         {
           id: 'dish',
           title: { translations: { en_us: 'Dish' } },
-          price_info: { price: 100 },
-          tax_info: { tax_rate: 13 },
-          modifier_group_ids: ['group'],
-          suspension_info: { suspended_until: null },
+          price_info: { price: 100, overrides: [] },
+          tax_info: { tax_rate: 13, vat_rate_percentage: null },
+          modifier_group_ids: { ids: ['group'], overrides: [] },
+          suspension_info: null,
         },
         {
           id: 'option',
           title: { translations: { en_us: 'Option' } },
-          price_info: { price: 0 },
-          tax_info: { tax_rate: 13 },
-          modifier_group_ids: [],
-          suspension_info: { suspended_until: null },
+          price_info: { price: 0, overrides: [] },
+          tax_info: { tax_rate: 13, vat_rate_percentage: null },
+          modifier_group_ids: { ids: null, overrides: [] },
+          suspension_info: null,
         },
       ],
       modifier_groups: [
@@ -2708,7 +2710,7 @@ describe('UberEatsService', () => {
       [
         'UBER_OPTION_ITEM_HAS_MODIFIER_GROUP',
         (p: ReturnType<typeof validPayload>) => {
-          p.items[1].modifier_group_ids = ['group'];
+          p.items[1].modifier_group_ids.ids = ['group'];
         },
       ],
       [
