@@ -1563,6 +1563,12 @@ describe('UberEatsService', () => {
       },
     ]);
     expect(result.serviceAvailabilityTimezone).toBe('America/Toronto');
+    expect(result.taxRate).toEqual({
+      percentage: 13,
+      source: 'BusinessConfig.salesTaxRate',
+      requiresAdminConfirmation: true,
+      confirmed: false,
+    });
     const itemIds = new Set(payload.items.map((item) => item.id));
     expect(payload.items.every((item) => item.tax_info.tax_rate === 13)).toBe(
       true,
@@ -1700,6 +1706,26 @@ describe('UberEatsService', () => {
       ),
     ).toBe(true);
     expect(result.mappingErrors).toEqual([]);
+    expect(result.modifierFlattening.combinations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourcePath: ['combo_a', 'cola', 'medium'],
+          combinedPriceCents: 350,
+        }),
+      ]),
+    );
+  });
+
+  it('正式发布要求管理员明确确认 dry-run 中展示的门店税率', async () => {
+    const prisma = createNestedMenuPrisma([]);
+    const service = new UberEatsService(prisma as never, createAuthService());
+
+    await expect(
+      service.publishUberMenu({ storeId: 's1', dryRun: false }),
+    ).rejects.toThrow(
+      '正式发布前必须由管理员确认税率 13%（来源：BusinessConfig.salesTaxRate）',
+    );
+    expect(prisma.uberMenuPublishVersion.create).not.toHaveBeenCalled();
   });
 
   it('拒绝将百分数格式的站内税率再次转换后发布到 Uber', async () => {
@@ -2165,7 +2191,7 @@ describe('UberEatsService', () => {
       );
     });
 
-    it('合法公网 HTTPS 图片仅产生不可阻断的元数据 warning', () => {
+    it('合法公网 HTTPS 图片由异步发布前检查负责，静态结构校验通过', () => {
       const payload = validPayload();
       (
         payload.items[0] as (typeof payload.items)[number] & {
@@ -2173,11 +2199,43 @@ describe('UberEatsService', () => {
         }
       ).image_url = 'https://cdn.example.com/menu/dish.jpg';
       const service = new UberEatsService({} as never, createAuthService());
-      expect(service.validateUberMenuPayload(payload as never)).toEqual([
+      expect(service.validateUberMenuPayload(payload as never)).toEqual([]);
+    });
+
+    it('图片预检记录重定向后的 origin、类型和大小', async () => {
+      const payload = validPayload();
+      (
+        payload.items[0] as (typeof payload.items)[number] & {
+          image_url?: string;
+        }
+      ).image_url = 'https://images.example.com/dish.jpg';
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        url: 'https://cdn.example.net/public/dish.jpg',
+        headers: new Headers({
+          'content-type': 'image/jpeg',
+          'content-length': '2048',
+        }),
+      });
+      const service = new UberEatsService({} as never, createAuthService());
+      const preflight = await (
+        service as unknown as {
+          validateUberMenuImages(input: unknown): Promise<{
+            issues: unknown[];
+            results: Array<Record<string, unknown>>;
+          }>;
+        }
+      ).validateUberMenuImages(payload);
+
+      expect(preflight.issues).toEqual([]);
+      expect(preflight.results).toEqual([
         expect.objectContaining({
-          code: 'UBER_IMAGE_METADATA_UNVERIFIED',
-          severity: 'WARNING',
-          path: '$.items[0].image_url',
+          finalOrigin: 'https://cdn.example.net',
+          redirected: true,
+          contentType: 'image/jpeg',
+          sizeBytes: 2048,
+          ok: true,
         }),
       ]);
     });

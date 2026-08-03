@@ -219,6 +219,7 @@ type UpdateDraftOptionInput = UberStoreScopedInput & {
 type PublishMenuInput = UberStoreScopedInput & {
   dryRun?: boolean;
   timezoneConfirmed?: boolean;
+  taxRateConfirmed?: boolean;
   excludedCategoryIds?: string[];
   excludedGroupIds?: string[];
   excludedMenuItemStableIds?: string[];
@@ -380,6 +381,7 @@ export type UberMenuPayloadValidationIssue = {
 };
 
 const UBER_IMAGE_URL_MAX_LENGTH = 2_000;
+const UBER_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 export const UBER_ITEM_DESCRIPTION_MAX_LENGTH = 300;
 const EXPIRING_IMAGE_QUERY_KEYS = new Set([
   'expires',
@@ -2215,7 +2217,11 @@ export class UberEatsService {
       schedule.serviceAvailability,
       schedule.taxRatePercentage,
     );
-    const payloadValidation = this.validateUberMenuPayload(payload);
+    const imageValidation = await this.validateUberMenuImages(payload);
+    const payloadValidation = [
+      ...this.validateUberMenuPayload(payload),
+      ...imageValidation.issues,
+    ];
     const validationErrors = [...normalized.errors, ...payloadValidation];
     const summary = this.summarizePublishGraph(normalized.graph);
 
@@ -2241,6 +2247,17 @@ export class UberEatsService {
         summary,
         serviceAvailability: schedule.serviceAvailability,
         serviceAvailabilityTimezone: schedule.timezone,
+        taxRate: {
+          percentage: schedule.taxRatePercentage,
+          source: schedule.taxRateSource,
+          requiresAdminConfirmation: true,
+          confirmed: input.taxRateConfirmed === true,
+        },
+        imageValidation: imageValidation.results,
+        modifierFlattening: this.buildModifierFlatteningReport(
+          normalized.graph,
+          graph.optionMappings,
+        ),
         payload,
         mappingErrors: graph.mappingErrors,
         validation: {
@@ -2248,6 +2265,12 @@ export class UberEatsService {
           errors: validationErrors,
         },
       };
+    }
+
+    if (input.taxRateConfirmed !== true) {
+      throw new BadRequestException(
+        `正式发布前必须由管理员确认税率 ${schedule.taxRatePercentage}%（来源：${schedule.taxRateSource}）。`,
+      );
     }
 
     await this.assertUberStoreTimezone(
@@ -4577,13 +4600,6 @@ export class UberEatsService {
             item.id,
             `图片地址必须是不超过 ${UBER_IMAGE_URL_MAX_LENGTH} 个字符、不含临时签名的永久公网 HTTPS URL。`,
           );
-        else
-          warning(
-            'UBER_IMAGE_METADATA_UNVERIFIED',
-            imagePath,
-            item.id,
-            '未下载远程图片，无法确认内容类型和文件大小；这不会阻断发布。',
-          );
       }
       if (
         !Number.isInteger(item.price_info?.price) ||
@@ -4706,6 +4722,156 @@ export class UberEatsService {
     return issues;
   }
 
+  private async validateUberMenuImages(payload: UberMenuUploadPayload) {
+    const issues: UberMenuPayloadValidationIssue[] = [];
+    const results: Array<{
+      itemId: string;
+      requestedUrl: string;
+      finalUrl: string | null;
+      finalOrigin: string | null;
+      redirected: boolean;
+      contentType: string | null;
+      sizeBytes: number | null;
+      method: 'HEAD' | 'GET';
+      ok: boolean;
+    }> = [];
+    for (const [index, item] of payload.items.entries()) {
+      if (!item.image_url) continue;
+      const path = `$.items[${index}].image_url`;
+      const requestedUrl = item.image_url;
+      let method: 'HEAD' | 'GET' = 'HEAD';
+      try {
+        let response = await fetch(requestedUrl, {
+          method: 'HEAD',
+          redirect: 'follow',
+          signal: AbortSignal.timeout(5_000),
+        });
+        if (response.status === 405 || response.status === 501) {
+          method = 'GET';
+          response = await fetch(requestedUrl, {
+            method: 'GET',
+            headers: { Range: `bytes=0-${UBER_IMAGE_MAX_BYTES}` },
+            redirect: 'follow',
+            signal: AbortSignal.timeout(8_000),
+          });
+        }
+        const finalUrl = response.url || requestedUrl;
+        const finalOrigin = new URL(finalUrl).origin;
+        const redirected = finalUrl !== requestedUrl;
+        const contentType =
+          response.headers.get('content-type')?.split(';')[0] ?? null;
+        const declaredSize = Number(response.headers.get('content-length'));
+        let sizeBytes =
+          Number.isFinite(declaredSize) && declaredSize >= 0
+            ? declaredSize
+            : null;
+        if (method === 'GET' && sizeBytes === null && response.body) {
+          const reader = response.body.getReader();
+          let received = 0;
+          while (received <= UBER_IMAGE_MAX_BYTES) {
+            const chunk = await reader.read();
+            if (chunk.done) break;
+            received += chunk.value.byteLength;
+          }
+          await reader.cancel();
+          sizeBytes = received;
+        }
+        const errors: string[] = [];
+        if (!response.ok) errors.push(`HTTP ${response.status}`);
+        if (!isPermanentPublicHttpsUrl(finalUrl))
+          errors.push('重定向后的地址不是永久公网 HTTPS URL');
+        if (!contentType?.toLowerCase().startsWith('image/'))
+          errors.push(`Content-Type 不是 image/*（${contentType ?? '缺失'}）`);
+        if (sizeBytes === null)
+          errors.push('无法通过 HEAD 或受限 GET 确认文件大小');
+        else if (sizeBytes > UBER_IMAGE_MAX_BYTES)
+          errors.push(`文件超过 ${UBER_IMAGE_MAX_BYTES} bytes`);
+        if (errors.length) {
+          issues.push({
+            code: 'UBER_IMAGE_PREFLIGHT_FAILED',
+            severity: 'ERROR',
+            path,
+            sourceStableId: item.id,
+            message: `图片发布前校验失败：${errors.join('；')}。`,
+          });
+        }
+        results.push({
+          itemId: item.id,
+          requestedUrl,
+          finalUrl,
+          finalOrigin,
+          redirected,
+          contentType,
+          sizeBytes,
+          method,
+          ok: errors.length === 0,
+        });
+      } catch (error) {
+        issues.push({
+          code: 'UBER_IMAGE_NOT_PUBLIC',
+          severity: 'ERROR',
+          path,
+          sourceStableId: item.id,
+          message: `图片无法公开访问：${error instanceof Error ? error.message : String(error)}`,
+        });
+        results.push({
+          itemId: item.id,
+          requestedUrl,
+          finalUrl: null,
+          finalOrigin: null,
+          redirected: false,
+          contentType: null,
+          sizeBytes: null,
+          method,
+          ok: false,
+        });
+      }
+    }
+    return { issues, results };
+  }
+
+  private buildModifierFlatteningReport(
+    graph: {
+      items: Array<{ id: string; priceCents: number }>;
+      groups: Array<{
+        id: string;
+        minSelect: number;
+        maxSelect: number;
+        optionItemIds: string[];
+      }>;
+    },
+    mappings: Array<{
+      sourceOptionChoiceStableId: string;
+      compositeOptionItemId: string;
+      sourcePath: string[];
+    }>,
+  ) {
+    const priceById = new Map(
+      graph.items.map((item) => [item.id, item.priceCents]),
+    );
+    return {
+      reference:
+        'Uber example menu payload: modifier_options reference ITEM ids',
+      optionIdSemantics: 'modifier_options[].id === items[].id',
+      groups: graph.groups.map((group) => ({
+        groupId: group.id,
+        minPermitted: group.minSelect,
+        maxPermitted: group.maxSelect,
+        optionCount: group.optionItemIds.length,
+        valid:
+          group.minSelect >= 0 &&
+          group.minSelect <= group.maxSelect &&
+          group.maxSelect <= group.optionItemIds.length &&
+          group.optionItemIds.every((id) => priceById.has(id)),
+      })),
+      combinations: mappings.map((mapping) => ({
+        ...mapping,
+        combinedPriceCents:
+          priceById.get(mapping.compositeOptionItemId) ?? null,
+      })),
+    };
+  }
+
   private buildUberUploadMenuPayload(
     graph: {
       menuId: string;
@@ -4808,6 +4974,7 @@ export class UberEatsService {
     timezone: string;
     serviceAvailability: UberServiceAvailability[];
     taxRatePercentage: number;
+    taxRateSource: string;
   }> {
     const [config, hours] = await Promise.all([
       this.prisma.businessConfig.findUnique({
@@ -4843,7 +5010,12 @@ export class UberEatsService {
         '发布 Uber 菜单前必须至少配置一个合法可售营业时段；全天营业请明确配置 00:00–24:00。',
       );
     }
-    return { timezone, serviceAvailability, taxRatePercentage };
+    return {
+      timezone,
+      serviceAvailability,
+      taxRatePercentage,
+      taxRateSource: 'BusinessConfig.salesTaxRate',
+    };
   }
 
   private async assertUberStoreTimezone(

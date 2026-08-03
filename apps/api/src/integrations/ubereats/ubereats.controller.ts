@@ -207,6 +207,10 @@ class PublishUberMenuDto {
   timezoneConfirmed?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  taxRateConfirmed?: boolean;
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   excludedCategoryIds?: string[];
@@ -659,6 +663,7 @@ export class UberEatsController {
       storeId: dto.storeId,
       dryRun: dto.dryRun,
       timezoneConfirmed: dto.timezoneConfirmed,
+      taxRateConfirmed: dto.taxRateConfirmed,
       excludedCategoryIds: dto.excludedCategoryIds,
       excludedGroupIds: dto.excludedGroupIds,
       excludedMenuItemStableIds: dto.excludedMenuItemStableIds,
