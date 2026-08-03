@@ -16,6 +16,8 @@ jest.mock('../../auth/roles.guard', () => ({
   RolesGuard: class RolesGuard {},
 }));
 import { GUARDS_METADATA } from '@nestjs/common/constants';
+import { UnauthorizedException } from '@nestjs/common';
+import { createHmac } from 'crypto';
 import { AdminMfaGuard } from '../../auth/admin-mfa.guard';
 import { ROLES_KEY } from '../../auth/roles.decorator';
 import { RolesGuard } from '../../auth/roles.guard';
@@ -245,5 +247,71 @@ describe('UberEatsController OAuth callback', () => {
     expect(logs).not.toContain('session=must-not-be-logged');
     expect(logs).not.toContain('Bearer must-not-be-logged');
     expect(logs).not.toContain('Basic must-not-be-logged');
+  });
+
+  it('将带空格和原始排版的 JSON 字节原样用于验签和解析', async () => {
+    const secret = 'static-webhook-secret';
+    const rawBody = Buffer.from(
+      '{\n  "data": { "status": "SUCCEEDED" },\n  "event_type": "menus.notification"\n}',
+      'utf8',
+    );
+    const signature = createHmac('sha256', secret)
+      .update(rawBody)
+      .digest('hex');
+    const handleWebhook = jest.fn(
+      ({
+        headers,
+        rawBody: received,
+      }: {
+        headers: Record<string, string>;
+        rawBody: Buffer;
+      }) => {
+        const expected = createHmac('sha256', secret)
+          .update(received)
+          .digest('hex');
+        if (headers['x-uber-signature'] !== expected) {
+          throw new UnauthorizedException();
+        }
+      },
+    );
+    const controller = new UberEatsController({ handleWebhook } as never);
+
+    await expect(
+      controller.webhook({
+        body: rawBody,
+        headers: {
+          'content-type': 'application/json',
+          'x-uber-signature': signature,
+        },
+      } as never),
+    ).resolves.toEqual({ ok: true });
+    expect(handleWebhook).toHaveBeenCalledWith(
+      expect.objectContaining({ rawBody }),
+    );
+
+    const modifiedBody = Buffer.from(rawBody);
+    modifiedBody[5] = modifiedBody[5] === 0x20 ? 0x09 : 0x20;
+    await expect(
+      controller.webhook({
+        body: modifiedBody,
+        headers: {
+          'content-type': 'application/json',
+          'x-uber-signature': signature,
+        },
+      } as never),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('拒绝已被 JSON parser 消费、无法取得原始字节的请求', async () => {
+    const controller = new UberEatsController({
+      handleWebhook: jest.fn(),
+    } as never);
+
+    await expect(
+      controller.webhook({
+        body: { event_type: 'menus.notification' },
+        headers: {},
+      } as never),
+    ).rejects.toThrow('Uber webhook raw body 不可用');
   });
 });

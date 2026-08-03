@@ -1,5 +1,6 @@
 //apps/api/src/integrations/ubereats/ubereats.controller.ts
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -545,14 +546,10 @@ export class UberEatsController {
   @Post('webhook')
   @HttpCode(200)
   async webhook(@Req() req: Request) {
-    const rawBuffer = Buffer.isBuffer(req.body)
-      ? req.body
-      : Buffer.from(
-          typeof req.body === 'string'
-            ? req.body
-            : JSON.stringify(req.body ?? {}),
-          'utf8',
-        );
+    if (!Buffer.isBuffer(req.body)) {
+      throw new BadRequestException('Uber webhook raw body 不可用');
+    }
+    const rawBuffer = req.body;
 
     const rawBody = rawBuffer.toString('utf8');
 
@@ -578,8 +575,7 @@ export class UberEatsController {
 
     await this.uberEatsService.handleWebhook({
       headers: req.headers as Record<string, unknown>,
-      body: parsedBody,
-      rawBody,
+      rawBody: rawBuffer,
     });
 
     return { ok: true };
