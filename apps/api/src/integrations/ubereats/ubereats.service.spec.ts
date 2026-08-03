@@ -312,6 +312,11 @@ describe('toUberServiceAvailability', () => {
 
 describe('UberEatsService', () => {
   const clientSecret = 'test-ubereats-secret';
+  const createInboxMock = () => ({
+    create: jest.fn().mockResolvedValue({ id: 'inbox_1' }),
+    updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    upsert: jest.fn().mockResolvedValue({ id: 'inbox_1' }),
+  });
   const createAuthService = () =>
     ({
       getAccessToken: jest.fn().mockResolvedValue('token_debug_1234567890'),
@@ -362,8 +367,12 @@ describe('UberEatsService', () => {
   });
 
   const createSignatureOnlyPrisma = () => ({
+    uberWebhookInbox: {
+      create: jest.fn().mockRejectedValue({ code: 'P2002' }),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
     opsEvent: {
-      findFirst: jest.fn().mockResolvedValue({ id: 'already-seen' }),
+      create: jest.fn().mockResolvedValue(null),
     },
   });
 
@@ -504,7 +513,7 @@ describe('UberEatsService', () => {
       menuItem: { findFirst: jest.fn() },
       uberItemChannelConfig: { findFirst: jest.fn() },
       uberOrderItemModifier: { createMany: jest.fn() },
-      uberWebhookInbox: { upsert: jest.fn() },
+      uberWebhookInbox: createInboxMock(),
       businessConfig: {
         findUnique: jest.fn().mockResolvedValue({ isTemporarilyClosed: false }),
       },
@@ -652,6 +661,7 @@ describe('UberEatsService', () => {
       .update(rawBody, 'utf8')
       .digest('hex');
     const prisma = {
+      uberWebhookInbox: createInboxMock(),
       opsEvent: { findFirst: jest.fn().mockResolvedValue(null) },
     };
     const service = new UberEatsService(prisma as never, createAuthService());
@@ -678,6 +688,7 @@ describe('UberEatsService', () => {
       .update(rawBody, 'utf8')
       .digest('hex');
     const prisma = {
+      uberWebhookInbox: createInboxMock(),
       opsEvent: {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn(),
@@ -711,8 +722,12 @@ describe('UberEatsService', () => {
       .update(rawBody, 'utf8')
       .digest('hex');
     const fetchSpy = jest.spyOn(global, 'fetch');
+    const duplicateInbox = createInboxMock();
+    duplicateInbox.create.mockRejectedValue({ code: 'P2002' });
+    duplicateInbox.updateMany.mockResolvedValue({ count: 0 });
     const service = new UberEatsService(
       {
+        uberWebhookInbox: duplicateInbox,
         opsEvent: { findFirst: jest.fn().mockResolvedValue({ id: 1 }) },
       } as never,
       createAuthService(),
@@ -724,6 +739,147 @@ describe('UberEatsService', () => {
     });
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
+  });
+
+  it('并发重复投递只有一个请求取得 PROCESSING 所有权', async () => {
+    const inbox = createInboxMock();
+    inbox.create
+      .mockResolvedValueOnce({ id: 'owner' })
+      .mockRejectedValueOnce({ code: 'P2002' });
+    inbox.updateMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+    const service = new UberEatsService(
+      { uberWebhookInbox: inbox } as never,
+      createAuthService(),
+    ) as unknown as {
+      claimWebhookEvent: (
+        id: string,
+        type: string,
+        orderId: string | null,
+        payload: unknown,
+      ) => Promise<boolean>;
+    };
+
+    await expect(
+      Promise.all([
+        service.claimWebhookEvent('evt_concurrent', 'store.provisioned', null, {
+          value: 1,
+        }),
+        service.claimWebhookEvent('evt_concurrent', 'store.provisioned', null, {
+          value: 1,
+        }),
+      ]),
+    ).resolves.toEqual([true, false]);
+  });
+
+  it('首次失败后可由后续投递重新取得处理权', async () => {
+    const inbox = createInboxMock();
+    inbox.create.mockRejectedValue({ code: 'P2002' });
+    inbox.updateMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 1 });
+    const service = new UberEatsService(
+      { uberWebhookInbox: inbox } as never,
+      createAuthService(),
+    ) as unknown as {
+      claimWebhookEvent: (
+        id: string,
+        type: string,
+        orderId: string | null,
+        payload: unknown,
+      ) => Promise<boolean>;
+    };
+
+    await expect(
+      service.claimWebhookEvent('evt_retry', 'store.provisioned', null, {}),
+    ).resolves.toBe(true);
+    expect(inbox.updateMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({ status: 'FAILED' }) as unknown,
+      }),
+    );
+  });
+
+  it('inbox 数据库中断时不确认 webhook', async () => {
+    const inbox = createInboxMock();
+    inbox.create.mockRejectedValue(new Error('database unavailable'));
+    const service = new UberEatsService(
+      { uberWebhookInbox: inbox } as never,
+      createAuthService(),
+    ) as unknown as {
+      claimWebhookEvent: (
+        id: string,
+        type: string,
+        orderId: string | null,
+        payload: unknown,
+      ) => Promise<boolean>;
+    };
+    await expect(
+      service.claimWebhookEvent('evt_db_down', 'store.provisioned', null, {}),
+    ).rejects.toThrow('database unavailable');
+  });
+
+  it('进程重启后由数据库唯一键继续阻止已持久化事件重复处理', async () => {
+    const inbox = createInboxMock();
+    inbox.create.mockRejectedValue({ code: 'P2002' });
+    inbox.updateMany.mockResolvedValue({ count: 0 });
+    const restartedService = new UberEatsService(
+      { uberWebhookInbox: inbox } as never,
+      createAuthService(),
+    ) as unknown as {
+      claimWebhookEvent: (
+        id: string,
+        type: string,
+        orderId: string | null,
+        payload: unknown,
+      ) => Promise<boolean>;
+    };
+    await expect(
+      restartedService.claimWebhookEvent(
+        'evt_before_restart',
+        'store.provisioned',
+        null,
+        {},
+      ),
+    ).resolves.toBe(false);
+  });
+
+  it('未知订单 schema 会告警、保留 payload 并返回非 2xx 语义错误', async () => {
+    const body = { event_type: 'orders.future_schema', opaque: { keep: true } };
+    const rawBody = JSON.stringify(body);
+    const inbox = createInboxMock();
+    const opsEvent = { create: jest.fn().mockResolvedValue(null) };
+    const service = new UberEatsService(
+      { uberWebhookInbox: inbox, opsEvent } as never,
+      createAuthService(),
+    );
+
+    await expect(
+      service.handleWebhook({
+        headers: {
+          'x-uber-signature': createHmac('sha256', clientSecret)
+            .update(rawBody)
+            .digest('hex'),
+        },
+        rawBody,
+        body,
+      }),
+    ).rejects.toThrow('未识别的 Uber 订单事件类型');
+    expect(inbox.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        eventId: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+        payload: body,
+        status: 'RECEIVED',
+      }),
+    });
+    expect(opsEvent.create).toHaveBeenCalled();
+    expect(inbox.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'FAILED' }) as unknown,
+      }),
+    );
   });
 
   it('下载成功但订单解析失败时按原因拒单且不记录为已处理', async () => {
@@ -748,6 +904,7 @@ describe('UberEatsService', () => {
         }),
         update: jest.fn(),
       },
+      uberWebhookInbox: createInboxMock(),
       opsEvent: {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn(),
@@ -786,6 +943,7 @@ describe('UberEatsService', () => {
       uberStoreMapping: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
+      uberWebhookInbox: createInboxMock(),
       opsEvent: {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue(null),
@@ -828,6 +986,7 @@ describe('UberEatsService', () => {
         ]),
         update: jest.fn().mockResolvedValue(null),
       },
+      uberWebhookInbox: createInboxMock(),
       opsEvent: {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue(null),
@@ -874,6 +1033,7 @@ describe('UberEatsService', () => {
         ]),
         update: jest.fn().mockResolvedValue(null),
       },
+      uberWebhookInbox: createInboxMock(),
       opsEvent: {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue(null),
@@ -938,6 +1098,7 @@ describe('UberEatsService', () => {
         ]),
         update,
       },
+      uberWebhookInbox: createInboxMock(),
       opsEvent: {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue(null),
@@ -980,6 +1141,7 @@ describe('UberEatsService', () => {
         ]),
         update,
       },
+      uberWebhookInbox: createInboxMock(),
       opsEvent: {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue(null),
