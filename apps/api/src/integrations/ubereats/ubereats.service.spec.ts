@@ -156,14 +156,13 @@ describe('UberEatsService 门店状态同步', () => {
   beforeEach(() => {
     process.env.UBER_EATS_OAUTH_STATE_SECRET =
       'high-entropy-test-secret-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    process.env.UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET =
-      'test-ubereats-secret';
+    process.env.UBER_EATS_WEBHOOK_SIGNING_KEY = 'test-ubereats-secret';
   });
 
   afterEach(() => {
     jest.restoreAllMocks();
     delete process.env.UBER_EATS_OAUTH_STATE_SECRET;
-    delete process.env.UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET;
+    delete process.env.UBER_EATS_WEBHOOK_SIGNING_KEY;
   });
 
   it('逐个同步多个门店，并在部分失败和未 provision 时返回失败明细及运营告警', async () => {
@@ -358,7 +357,7 @@ describe('UberEatsService', () => {
 
   beforeEach(() => {
     process.env.UBER_EATS_CLIENT_SECRET = clientSecret;
-    process.env.UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET = clientSecret;
+    process.env.UBER_EATS_WEBHOOK_SIGNING_KEY = clientSecret;
     process.env.UBER_EATS_OAUTH_STATE_SECRET =
       'high-entropy-test-secret-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   });
@@ -366,9 +365,7 @@ describe('UberEatsService', () => {
   afterEach(() => {
     jest.restoreAllMocks();
     delete process.env.UBER_EATS_CLIENT_SECRET;
-    delete process.env.UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET;
-    delete process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET;
-    delete process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET_VALID_UNTIL;
+    delete process.env.UBER_EATS_WEBHOOK_SIGNING_KEY;
     delete process.env.UBER_EATS_API_BASE_URL;
     delete process.env.UBER_EATS_OAUTH_STATE_SECRET;
     delete process.env.PUBLIC_BASE_URL;
@@ -397,18 +394,40 @@ describe('UberEatsService', () => {
       body: { event_type: 'orders.notification', event_id: 'fixed-event' },
     });
 
-  it('初始化时缺少 webhook 当前 client secret 会立即失败', () => {
-    delete process.env.UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET;
+  it('初始化时缺少 webhook signing key 会立即失败', () => {
+    delete process.env.UBER_EATS_WEBHOOK_SIGNING_KEY;
 
     expect(() => new UberEatsService({} as never, createAuthService())).toThrow(
-      'UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET 未配置',
+      'UBER_EATS_WEBHOOK_SIGNING_KEY 未配置',
     );
+  });
+
+  it('使用 Uber webhook signing key 验签', async () => {
+    const rawBody =
+      '{"event_type":"orders.notification","event_id":"signing-key-event"}';
+    process.env.UBER_EATS_WEBHOOK_SIGNING_KEY = 'uber-webhook-signing-key';
+    const signature = createHmac(
+      'sha256',
+      process.env.UBER_EATS_WEBHOOK_SIGNING_KEY,
+    )
+      .update(rawBody)
+      .digest('hex');
+    const service = new UberEatsService(
+      createSignatureOnlyPrisma() as never,
+      createAuthService(),
+    );
+
+    await expect(
+      verifySignature(service, rawBody, {
+        'x-uber-signature': signature,
+      }),
+    ).resolves.toBeUndefined();
   });
 
   it('接受 Uber 文档算法的固定 UTF-8/HMAC-SHA256 十六进制签名向量', async () => {
     const rawBody =
       '{"event_type":"orders.notification","event_id":"d4e4a8b1-3b7d-4f61-9e4b-123456789abc"}';
-    process.env.UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET = 'uber-client-secret';
+    process.env.UBER_EATS_WEBHOOK_SIGNING_KEY = 'uber-client-secret';
     const documentedVector =
       '552930492844589395696d9784bab01a2205c2d9ff3aeffc9a1bcb154217d3e1';
     const service = new UberEatsService(
@@ -505,12 +524,8 @@ describe('UberEatsService', () => {
     expect(logs).not.toContain(rawBody);
   });
 
-  it('HMAC 不匹配时记录 current/previous 状态但不泄露敏感数据', async () => {
+  it('HMAC 不匹配时记录 current 状态但不泄露敏感数据', async () => {
     const rawBody = '{"private":"order-payload-must-not-be-logged"}';
-    const previousSecret = 'previous-secret-must-not-be-logged';
-    process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET = previousSecret;
-    process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET_VALID_UNTIL =
-      '2099-01-01T00:00:00.000Z';
     const signature = createHmac('sha256', 'unrelated-secret')
       .update(rawBody)
       .digest('hex');
@@ -529,16 +544,7 @@ describe('UberEatsService', () => {
     const logs = warnSpy.mock.calls.flat().join(' ');
     expect(logs).toContain('signatureEncoding=hex');
     expect(logs).toContain('currentSecretMatched=false');
-    expect(logs).toContain('previousSecretConfigured=true');
-    expect(logs).toContain('previousSecretValidUntilConfigured=true');
-    expect(logs).toContain('previousSecretWindowValid=true');
-    expect(logs).toContain('previousSecretMatched=false');
-    for (const sensitive of [
-      signature,
-      clientSecret,
-      previousSecret,
-      rawBody,
-    ]) {
+    for (const sensitive of [signature, clientSecret, rawBody]) {
       expect(logs).not.toContain(sensitive);
     }
   });
@@ -557,49 +563,6 @@ describe('UberEatsService', () => {
         'X-UbEr-SiGnAtUrE': signature,
       }),
     ).resolves.toBeUndefined();
-  });
-
-  it('仅在显式过渡期内接受 previous client secret', async () => {
-    const rawBody = '{"event_type":"orders.notification"}';
-    process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET = 'previous-client-secret';
-    process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET_VALID_UNTIL =
-      '2099-01-01T00:00:00.000Z';
-    const signature = createHmac('sha256', 'previous-client-secret')
-      .update(rawBody, 'utf8')
-      .digest('hex');
-    const service = new UberEatsService(
-      createSignatureOnlyPrisma() as never,
-      createAuthService(),
-    );
-    const warnSpy = jest
-      .spyOn(AppLogger.prototype, 'warn')
-      .mockImplementation();
-    await expect(
-      verifySignature(service, rawBody, { 'x-uber-signature': signature }),
-    ).resolves.toBeUndefined();
-    const successLogs = warnSpy.mock.calls.flat().join(' ');
-    expect(successLogs).toContain('verified using previous secret');
-    expect(successLogs).toContain('previousSecretWindowValid=true');
-    expect(successLogs).toContain('previousSecretMatched=true');
-    for (const sensitive of [
-      signature,
-      clientSecret,
-      'previous-client-secret',
-      rawBody,
-    ]) {
-      expect(successLogs).not.toContain(sensitive);
-    }
-
-    warnSpy.mockClear();
-    process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET_VALID_UNTIL =
-      '2020-01-01T00:00:00.000Z';
-    await expect(
-      verifySignature(service, rawBody, { 'x-uber-signature': signature }),
-    ).rejects.toThrow('Invalid Uber signature');
-    const expiredLogs = warnSpy.mock.calls.flat().join(' ');
-    expect(expiredLogs).toContain('previousSecretWindowValid=false');
-    expect(expiredLogs).toContain('previousSecretMatched=false');
-    expect(expiredLogs).not.toContain('verified using previous secret');
   });
 
   it('标准资源引用通知会下载完整订单后写入 ubereats 订单', async () => {
