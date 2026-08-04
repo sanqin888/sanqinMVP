@@ -32,6 +32,7 @@ jest.mock('@prisma/client', () => ({
 }));
 
 import { createHash, createHmac } from 'crypto';
+import { AppLogger } from '../../common/app-logger';
 import {
   resolveUberImageUrl,
   toUberServiceAvailability,
@@ -414,11 +415,17 @@ describe('UberEatsService', () => {
       createSignatureOnlyPrisma() as never,
       createAuthService(),
     );
+    const warnSpy = jest
+      .spyOn(AppLogger.prototype, 'warn')
+      .mockImplementation();
     await expect(
       verifySignature(service, rawBody, {
         'x-uber-signature': documentedVector,
       }),
     ).resolves.toBeUndefined();
+    expect(warnSpy.mock.calls.flat().join(' ')).not.toContain(
+      'signature verification',
+    );
   });
 
   it.each([
@@ -445,6 +452,9 @@ describe('UberEatsService', () => {
   });
 
   it('拒绝缺少唯一 X-Uber-Signature header 的请求', async () => {
+    const warnSpy = jest
+      .spyOn(AppLogger.prototype, 'warn')
+      .mockImplementation();
     const service = new UberEatsService(
       createSignatureOnlyPrisma() as never,
       createAuthService(),
@@ -459,6 +469,78 @@ describe('UberEatsService', () => {
           .digest('hex'),
       }),
     ).rejects.toThrow('Missing Uber signature header');
+
+    const logs = warnSpy.mock.calls.flat().join(' ');
+    expect(logs).toContain('signaturePresent=false');
+    expect(logs).not.toContain(clientSecret);
+    expect(logs).not.toContain('{}');
+  });
+
+  it('拒绝非 64 位 hex 签名并仅记录安全的格式诊断', async () => {
+    const rawBody = '{"private":"order-payload-must-not-be-logged"}';
+    const invalidSignature = 'not-a-valid-signature';
+    const warnSpy = jest
+      .spyOn(AppLogger.prototype, 'warn')
+      .mockImplementation();
+    const service = new UberEatsService(
+      createSignatureOnlyPrisma() as never,
+      createAuthService(),
+    );
+
+    await expect(
+      verifySignature(service, rawBody, {
+        'x-uber-signature': `  ${invalidSignature}  `,
+      }),
+    ).rejects.toThrow('Invalid Uber signature');
+
+    const logs = warnSpy.mock.calls.flat().join(' ');
+    expect(logs).toContain('signaturePresent=true');
+    expect(logs).toContain(`signatureLength=${invalidSignature.length}`);
+    expect(logs).toContain('signatureEncoding=invalid');
+    expect(logs).toContain(
+      `rawBodyBytes=${Buffer.byteLength(rawBody, 'utf8')}`,
+    );
+    expect(logs).not.toContain(invalidSignature);
+    expect(logs).not.toContain(clientSecret);
+    expect(logs).not.toContain(rawBody);
+  });
+
+  it('HMAC 不匹配时记录 current/previous 状态但不泄露敏感数据', async () => {
+    const rawBody = '{"private":"order-payload-must-not-be-logged"}';
+    const previousSecret = 'previous-secret-must-not-be-logged';
+    process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET = previousSecret;
+    process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET_VALID_UNTIL =
+      '2099-01-01T00:00:00.000Z';
+    const signature = createHmac('sha256', 'unrelated-secret')
+      .update(rawBody)
+      .digest('hex');
+    const warnSpy = jest
+      .spyOn(AppLogger.prototype, 'warn')
+      .mockImplementation();
+    const service = new UberEatsService(
+      createSignatureOnlyPrisma() as never,
+      createAuthService(),
+    );
+
+    await expect(
+      verifySignature(service, rawBody, { 'x-uber-signature': signature }),
+    ).rejects.toThrow('Invalid Uber signature');
+
+    const logs = warnSpy.mock.calls.flat().join(' ');
+    expect(logs).toContain('signatureEncoding=hex');
+    expect(logs).toContain('currentSecretMatched=false');
+    expect(logs).toContain('previousSecretConfigured=true');
+    expect(logs).toContain('previousSecretValidUntilConfigured=true');
+    expect(logs).toContain('previousSecretWindowValid=true');
+    expect(logs).toContain('previousSecretMatched=false');
+    for (const sensitive of [
+      signature,
+      clientSecret,
+      previousSecret,
+      rawBody,
+    ]) {
+      expect(logs).not.toContain(sensitive);
+    }
   });
 
   it('按 HTTP 规则不区分签名 header 名称大小写', async () => {
@@ -489,14 +571,35 @@ describe('UberEatsService', () => {
       createSignatureOnlyPrisma() as never,
       createAuthService(),
     );
+    const warnSpy = jest
+      .spyOn(AppLogger.prototype, 'warn')
+      .mockImplementation();
     await expect(
       verifySignature(service, rawBody, { 'x-uber-signature': signature }),
     ).resolves.toBeUndefined();
+    const successLogs = warnSpy.mock.calls.flat().join(' ');
+    expect(successLogs).toContain('verified using previous secret');
+    expect(successLogs).toContain('previousSecretWindowValid=true');
+    expect(successLogs).toContain('previousSecretMatched=true');
+    for (const sensitive of [
+      signature,
+      clientSecret,
+      'previous-client-secret',
+      rawBody,
+    ]) {
+      expect(successLogs).not.toContain(sensitive);
+    }
+
+    warnSpy.mockClear();
     process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET_VALID_UNTIL =
       '2020-01-01T00:00:00.000Z';
     await expect(
       verifySignature(service, rawBody, { 'x-uber-signature': signature }),
     ).rejects.toThrow('Invalid Uber signature');
+    const expiredLogs = warnSpy.mock.calls.flat().join(' ');
+    expect(expiredLogs).toContain('previousSecretWindowValid=false');
+    expect(expiredLogs).toContain('previousSecretMatched=false');
+    expect(expiredLogs).not.toContain('verified using previous secret');
   });
 
   it('标准资源引用通知会下载完整订单后写入 ubereats 订单', async () => {
