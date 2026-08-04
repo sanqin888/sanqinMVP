@@ -6261,37 +6261,79 @@ export class UberEatsService {
     // sends the lowercase hexadecimal HMAC-SHA256 in X-Uber-Signature.
     const receivedSignature = this.readHeader(headers, 'x-uber-signature');
     if (!receivedSignature) {
+      this.logger.warn(
+        'Uber webhook signature verification failed signaturePresent=false',
+      );
       throw new UnauthorizedException('Missing Uber signature header');
     }
 
-    const candidateClientSecrets = [this.webhookCurrentClientSecret];
+    const normalizedSignature = receivedSignature.trim().toLowerCase();
+    const signatureLength = normalizedSignature.length;
+    const rawBodyBytes = Buffer.isBuffer(rawBody)
+      ? rawBody.length
+      : Buffer.byteLength(rawBody, 'utf8');
+    if (!/^[0-9a-f]{64}$/.test(normalizedSignature)) {
+      this.logger.warn(
+        `Uber webhook signature verification failed signaturePresent=true signatureLength=${signatureLength} signatureEncoding=invalid rawBodyBytes=${rawBodyBytes}`,
+      );
+      throw new UnauthorizedException('Invalid Uber signature');
+    }
+
     const previousClientSecret =
       process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET?.trim();
     const previousValidUntil =
       process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET_VALID_UNTIL?.trim();
-    if (previousClientSecret && previousValidUntil) {
-      const validUntilMs = Date.parse(previousValidUntil);
-      if (Number.isFinite(validUntilMs) && Date.now() < validUntilMs) {
-        candidateClientSecrets.push(previousClientSecret);
-      }
-    }
-
-    const normalizedSignature = receivedSignature.trim().toLowerCase();
-    if (!/^[0-9a-f]{64}$/.test(normalizedSignature)) {
-      throw new UnauthorizedException('Invalid Uber signature');
-    }
+    const previousSecretConfigured = Boolean(previousClientSecret);
+    const previousSecretValidUntilConfigured = Boolean(previousValidUntil);
+    const previousValidUntilMs = previousValidUntil
+      ? Date.parse(previousValidUntil)
+      : Number.NaN;
+    const previousSecretWindowValid =
+      previousSecretConfigured &&
+      previousSecretValidUntilConfigured &&
+      Number.isFinite(previousValidUntilMs) &&
+      Date.now() < previousValidUntilMs;
 
     const receivedBuffer = Buffer.from(normalizedSignature, 'hex');
-    const isMatched = candidateClientSecrets.some((clientSecret) => {
-      const expectedBuffer = createHmac('sha256', clientSecret)
+    const currentExpectedBuffer = createHmac(
+      'sha256',
+      this.webhookCurrentClientSecret,
+    )
+      .update(rawBody)
+      .digest();
+    const currentSecretMatched = timingSafeEqual(
+      currentExpectedBuffer,
+      receivedBuffer,
+    );
+    if (currentSecretMatched) return;
+
+    let previousSecretMatched = false;
+    if (previousSecretWindowValid && previousClientSecret) {
+      const previousExpectedBuffer = createHmac('sha256', previousClientSecret)
         .update(rawBody)
         .digest();
-      return timingSafeEqual(expectedBuffer, receivedBuffer);
-    });
-
-    if (!isMatched) {
-      throw new UnauthorizedException('Invalid Uber signature');
+      previousSecretMatched = timingSafeEqual(
+        previousExpectedBuffer,
+        receivedBuffer,
+      );
     }
+
+    const diagnostic =
+      `signaturePresent=true signatureLength=${signatureLength} signatureEncoding=hex rawBodyBytes=${rawBodyBytes} ` +
+      `currentSecretMatched=${currentSecretMatched} previousSecretConfigured=${previousSecretConfigured} ` +
+      `previousSecretValidUntilConfigured=${previousSecretValidUntilConfigured} ` +
+      `previousSecretWindowValid=${previousSecretWindowValid} previousSecretMatched=${previousSecretMatched}`;
+    if (previousSecretMatched) {
+      this.logger.warn(
+        `Uber webhook signature verified using previous secret ${diagnostic}`,
+      );
+      return;
+    }
+
+    this.logger.warn(
+      `Uber webhook signature verification failed ${diagnostic}`,
+    );
+    throw new UnauthorizedException('Invalid Uber signature');
   }
 
   private readEventId(
