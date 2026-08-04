@@ -6280,10 +6280,7 @@ export class UberEatsService {
     }
 
     const receivedBuffer = Buffer.from(normalizedSignature, 'hex');
-    const currentExpectedBuffer = createHmac(
-      'sha256',
-      this.webhookSigningKey,
-    )
+    const currentExpectedBuffer = createHmac('sha256', this.webhookSigningKey)
       .update(rawBody)
       .digest();
     const currentSecretMatched = timingSafeEqual(
