@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '@/lib/api/client';
 
@@ -999,7 +1000,19 @@ export default function UberEatsAdminPage() {
                   {descriptionWarnings.length > 0 ? <div className="mt-3 space-y-1">{descriptionWarnings.map(({ item, message }) => <div key={item.id} className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800"><strong>WARNING</strong> · {item.displayName}：{message}</div>)}</div> : null}
                   <h5 className="mt-4 text-sm font-semibold">菜品发布预览</h5>
                   <div className="mt-2 grid max-h-80 grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
-                    {publishPreviewItems.map((item) => <div key={item.id} className="rounded border p-2 text-xs">{item.imageUrl ? <img src={item.imageUrl} alt={item.displayName} className="mb-1 aspect-square w-full rounded object-cover" /> : <div className="mb-1 flex aspect-square w-full items-center justify-center rounded bg-slate-100 text-slate-500">缺少图片</div>}<p className="truncate font-medium" title={item.displayName}>{item.displayName}</p><p className="mt-1 line-clamp-3 whitespace-pre-wrap text-slate-600" title={item.displayDescription?.trim() || '缺少描述'}>{item.displayDescription?.trim() || '缺少描述'}</p></div>)}
+                    {publishPreviewItems.map((item) => (
+                      <div key={item.id} className="rounded border p-2 text-xs">
+                        {item.imageUrl ? (
+                          <div className="relative mb-1 aspect-square w-full overflow-hidden rounded">
+                            <Image src={item.imageUrl} alt={item.displayName} fill className="object-cover" sizes="(min-width: 1024px) 160px, (min-width: 768px) 25vw, 50vw" />
+                          </div>
+                        ) : (
+                          <div className="mb-1 flex aspect-square w-full items-center justify-center rounded bg-slate-100 text-slate-500">缺少图片</div>
+                        )}
+                        <p className="truncate font-medium" title={item.displayName}>{item.displayName}</p>
+                        <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-slate-600" title={item.displayDescription?.trim() || '缺少描述'}>{item.displayDescription?.trim() || '缺少描述'}</p>
+                      </div>
+                    ))}
                   </div>
                   <h5 className="mt-4 text-sm font-semibold">最终发布营业时段（门店本地时间）</h5>
                   <p className="mt-1 text-xs text-slate-500">时区：{dryRunSchedule?.serviceAvailabilityTimezone ?? menuDraft?.serviceAvailabilityTimezone ?? '-'}</p>
