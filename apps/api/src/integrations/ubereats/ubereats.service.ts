@@ -641,7 +641,7 @@ export class UberEatsService {
   private readonly uberApiBaseUrl =
     process.env.UBER_EATS_API_BASE_URL?.trim() || 'https://api.uber.com';
   private readonly oauthStateSecret: string;
-  private readonly webhookCurrentClientSecret: string;
+  private readonly webhookSigningKey: string;
   private readonly oauthStateRequests = new Map<
     string,
     {
@@ -664,12 +664,12 @@ export class UberEatsService {
     }
     this.oauthStateSecret = secret;
 
-    const webhookCurrentClientSecret =
-      process.env.UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET?.trim() || '';
-    if (!webhookCurrentClientSecret) {
-      throw new Error('UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET 未配置');
+    const webhookSigningKey =
+      process.env.UBER_EATS_WEBHOOK_SIGNING_KEY?.trim() || '';
+    if (!webhookSigningKey) {
+      throw new Error('UBER_EATS_WEBHOOK_SIGNING_KEY 未配置');
     }
-    this.webhookCurrentClientSecret = webhookCurrentClientSecret;
+    this.webhookSigningKey = webhookSigningKey;
   }
 
   private get uberMerchantConnectionDelegate(): UberMerchantConnectionDelegate | null {
@@ -6257,8 +6257,8 @@ export class UberEatsService {
     headers: Record<string, unknown>,
     rawBody: string | Buffer,
   ) {
-    // Uber signs the exact UTF-8 request body with the app client secret and
-    // sends the lowercase hexadecimal HMAC-SHA256 in X-Uber-Signature.
+    // Uber signs the exact UTF-8 request body with the webhook signing key
+    // and sends the lowercase hexadecimal HMAC-SHA256 in X-Uber-Signature.
     const receivedSignature = this.readHeader(headers, 'x-uber-signature');
     if (!receivedSignature) {
       this.logger.warn(
@@ -6279,25 +6279,10 @@ export class UberEatsService {
       throw new UnauthorizedException('Invalid Uber signature');
     }
 
-    const previousClientSecret =
-      process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET?.trim();
-    const previousValidUntil =
-      process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET_VALID_UNTIL?.trim();
-    const previousSecretConfigured = Boolean(previousClientSecret);
-    const previousSecretValidUntilConfigured = Boolean(previousValidUntil);
-    const previousValidUntilMs = previousValidUntil
-      ? Date.parse(previousValidUntil)
-      : Number.NaN;
-    const previousSecretWindowValid =
-      previousSecretConfigured &&
-      previousSecretValidUntilConfigured &&
-      Number.isFinite(previousValidUntilMs) &&
-      Date.now() < previousValidUntilMs;
-
     const receivedBuffer = Buffer.from(normalizedSignature, 'hex');
     const currentExpectedBuffer = createHmac(
       'sha256',
-      this.webhookCurrentClientSecret,
+      this.webhookSigningKey,
     )
       .update(rawBody)
       .digest();
@@ -6307,28 +6292,9 @@ export class UberEatsService {
     );
     if (currentSecretMatched) return;
 
-    let previousSecretMatched = false;
-    if (previousSecretWindowValid && previousClientSecret) {
-      const previousExpectedBuffer = createHmac('sha256', previousClientSecret)
-        .update(rawBody)
-        .digest();
-      previousSecretMatched = timingSafeEqual(
-        previousExpectedBuffer,
-        receivedBuffer,
-      );
-    }
-
     const diagnostic =
       `signaturePresent=true signatureLength=${signatureLength} signatureEncoding=hex rawBodyBytes=${rawBodyBytes} ` +
-      `currentSecretMatched=${currentSecretMatched} previousSecretConfigured=${previousSecretConfigured} ` +
-      `previousSecretValidUntilConfigured=${previousSecretValidUntilConfigured} ` +
-      `previousSecretWindowValid=${previousSecretWindowValid} previousSecretMatched=${previousSecretMatched}`;
-    if (previousSecretMatched) {
-      this.logger.warn(
-        `Uber webhook signature verified using previous secret ${diagnostic}`,
-      );
-      return;
-    }
+      `currentSecretMatched=${currentSecretMatched}`;
 
     this.logger.warn(
       `Uber webhook signature verification failed ${diagnostic}`,
