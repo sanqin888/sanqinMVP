@@ -558,6 +558,9 @@ describe('UberEatsService', () => {
       createSignatureOnlyPrisma() as never,
       createAuthService(),
     );
+    const warnSpy = jest
+      .spyOn(AppLogger.prototype, 'warn')
+      .mockImplementation();
     await expect(
       verifySignature(service, rawBody, {
         'X-UbEr-SiGnAtUrE': signature,

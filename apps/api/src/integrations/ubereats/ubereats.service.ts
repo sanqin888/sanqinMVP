@@ -5982,6 +5982,21 @@ export class UberEatsService {
       throw new UnauthorizedException('Invalid Uber signature');
     }
 
+    const previousClientSecret =
+      process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET?.trim();
+    const previousValidUntil =
+      process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET_VALID_UNTIL?.trim();
+    const previousSecretConfigured = Boolean(previousClientSecret);
+    const previousSecretValidUntilConfigured = Boolean(previousValidUntil);
+    const previousValidUntilMs = previousValidUntil
+      ? Date.parse(previousValidUntil)
+      : Number.NaN;
+    const previousSecretWindowValid =
+      previousSecretConfigured &&
+      previousSecretValidUntilConfigured &&
+      Number.isFinite(previousValidUntilMs) &&
+      Date.now() < previousValidUntilMs;
+
     const receivedBuffer = Buffer.from(normalizedSignature, 'hex');
     const currentExpectedBuffer = createHmac('sha256', this.webhookSigningKey)
       .update(rawBody)
