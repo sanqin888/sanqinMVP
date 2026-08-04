@@ -818,8 +818,11 @@ export default function LocalOrderPage() {
       selectedCount > 0;
     
     const requirementLabel = (() => {
-        if (group.minSelect > 0 && group.maxSelect === 1) return locale === "zh" ? "必选 1 项" : "Required: 1";
-        if (group.minSelect > 0 && group.maxSelect) return locale === "zh" ? `必选 ${group.minSelect}-${group.maxSelect} 项` : `Required: ${group.minSelect}-${group.maxSelect}`;
+        if (group.minSelect > 0 && group.maxSelect) {
+          return locale === "zh"
+            ? `必选 ${group.minSelect} 项，最多 ${group.maxSelect} 项`
+            : `Required: ${group.minSelect}-${group.maxSelect}`;
+        }
         if (group.minSelect > 0) return locale === "zh" ? `至少选择 ${group.minSelect} 项` : `Pick at least ${group.minSelect}`;
         if (group.maxSelect) return locale === "zh" ? `最多选择 ${group.maxSelect} 项` : `Up to ${group.maxSelect}`;
         return locale === "zh" ? "可选" : "Optional";
@@ -846,7 +849,9 @@ export default function LocalOrderPage() {
                 <h4 className="text-base font-semibold text-slate-900">
                 {locale === "zh" && group.template.nameZh ? group.template.nameZh : group.template.nameEn}
                 </h4>
-                <p className="text-xs text-slate-500">{requirementLabel}</p>
+                <p className={`text-xs ${isRequiredGroup ? "text-rose-500" : "text-slate-500"}`}>
+                  {requirementLabel}
+                </p>
             </div>
             <span className="flex items-center gap-2">
                 {!isRequiredGroup ? (

@@ -32,7 +32,11 @@ jest.mock('@prisma/client', () => ({
 }));
 
 import { createHash, createHmac } from 'crypto';
-import { toUberServiceAvailability, UberEatsService } from './ubereats.service';
+import {
+  resolveUberImageUrl,
+  toUberServiceAvailability,
+  UberEatsService,
+} from './ubereats.service';
 
 type MenuConfirmationTestApi = {
   confirmUploadedMenu: (
@@ -366,6 +370,8 @@ describe('UberEatsService', () => {
     delete process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET_VALID_UNTIL;
     delete process.env.UBER_EATS_API_BASE_URL;
     delete process.env.UBER_EATS_OAUTH_STATE_SECRET;
+    delete process.env.PUBLIC_BASE_URL;
+    delete process.env.WEB_BASE_URL;
     jest.restoreAllMocks();
   });
 
@@ -2648,6 +2654,33 @@ describe('UberEatsService', () => {
     ).resolves.toMatchObject({
       ok: true,
       priority: 'MEDIUM',
+    });
+  });
+
+  describe('Uber 菜单图片 URL', () => {
+    it('使用网站公网域名补全数据库中的 /uploads 相对路径', () => {
+      process.env.PUBLIC_BASE_URL = 'https://menu.sanq.ca/';
+
+      expect(resolveUberImageUrl('/uploads/images/dish.jpg')).toBe(
+        'https://menu.sanq.ca/uploads/images/dish.jpg',
+      );
+    });
+
+    it('保留已经是绝对地址的图片 URL', () => {
+      process.env.PUBLIC_BASE_URL = 'https://menu.sanq.ca';
+
+      expect(resolveUberImageUrl('https://cdn.example.com/dish.jpg')).toBe(
+        'https://cdn.example.com/dish.jpg',
+      );
+    });
+
+    it('未配置公网域名时使用生产网站域名补全路径', () => {
+      delete process.env.PUBLIC_BASE_URL;
+      delete process.env.WEB_BASE_URL;
+
+      expect(resolveUberImageUrl('/uploads/images/dish.jpg')).toBe(
+        'https://sanq.ca/uploads/images/dish.jpg',
+      );
     });
   });
 

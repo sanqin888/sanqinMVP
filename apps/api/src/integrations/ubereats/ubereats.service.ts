@@ -434,6 +434,25 @@ function isPermanentPublicHttpsUrl(value: string): boolean {
   }
 }
 
+/** Convert the site's stored image path into the public URL Uber can fetch. */
+export function resolveUberImageUrl(value: string | null): string | null {
+  const imageUrl = value?.trim();
+  if (!imageUrl) return null;
+  if (!imageUrl.startsWith('/')) return imageUrl;
+
+  const publicBaseUrl =
+    process.env.PUBLIC_BASE_URL?.trim() ||
+    process.env.WEB_BASE_URL?.trim() ||
+    'https://sanq.ca';
+  try {
+    return new URL(imageUrl, publicBaseUrl).toString();
+  } catch {
+    // Keep the invalid value so payload validation blocks the publish instead
+    // of silently dropping the image from the menu.
+    return imageUrl;
+  }
+}
+
 type SyncAvailabilityInput = UberStoreScopedInput & {
   menuItemStableId: string;
   isAvailable: boolean;
@@ -5062,9 +5081,8 @@ export class UberEatsService {
               },
             },
         ...(item.sourceType === 'MENU_ITEM' &&
-        item.imageUrl &&
-        isPermanentPublicHttpsUrl(item.imageUrl)
-          ? { image_url: item.imageUrl }
+        resolveUberImageUrl(item.imageUrl)
+          ? { image_url: resolveUberImageUrl(item.imageUrl) as string }
           : {}),
       })),
       modifier_groups: graph.groups.map((group) => ({
