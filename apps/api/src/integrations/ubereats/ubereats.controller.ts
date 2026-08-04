@@ -8,7 +8,6 @@ import {
   Head,
   Header,
   HttpCode,
-  NotFoundException,
   Patch,
   Param,
   ParseEnumPipe,
@@ -52,8 +51,6 @@ type OAuthRequestContext = {
   user?: { userStableId?: string };
   signedCookies?: Record<string, string | undefined>;
 };
-
-const UBER_EATS_DEBUG_FEATURE_FLAG = 'UBER_EATS_DEBUG_ENABLED';
 
 function escapeHtml(value: string): string {
   return value.replace(
@@ -288,25 +285,6 @@ class ProvisionUberStoreDto {
   payload?: Record<string, unknown>;
 }
 
-class VerifyUberScopesDto {
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  scopes?: string[];
-
-  @IsOptional()
-  @IsString()
-  storeId?: string;
-
-  @IsOptional()
-  @IsString()
-  orderId?: string;
-
-  @IsOptional()
-  @IsBoolean()
-  forceRefresh?: boolean;
-}
-
 class CreateUberOpsTicketDto {
   @IsEnum(UberOpsTicketType)
   type!: UberOpsTicketType;
@@ -441,26 +419,6 @@ export class UberEatsController {
     return sessionId;
   }
 
-  private requireDebugFeature(): void {
-    if (!this.isDebugFeatureEnabled()) {
-      throw new NotFoundException();
-    }
-  }
-
-  private isDebugFeatureEnabled(): boolean {
-    return (
-      process.env.NODE_ENV !== 'production' &&
-      process.env[UBER_EATS_DEBUG_FEATURE_FLAG] === 'true'
-    );
-  }
-
-  @Get('debug/status')
-  @UseGuards(SessionAuthGuard, RolesGuard)
-  @Roles('ADMIN')
-  debugFeatureStatus() {
-    return { enabled: this.isDebugFeatureEnabled() };
-  }
-
   @Get('oauth/stores')
   @UseGuards(SessionAuthGuard, RolesGuard)
   @Roles('ADMIN')
@@ -495,38 +453,6 @@ export class UberEatsController {
       dto.payload ?? {},
       dto.merchantUberUserId,
     );
-  }
-
-  @Get('debug/token')
-  @UseGuards(SessionAuthGuard, RolesGuard)
-  @Roles('ADMIN')
-  async debugAccessToken(
-    @Query('scope') scope?: string,
-    @Query('forceRefresh') forceRefresh?: string,
-  ) {
-    this.requireDebugFeature();
-    const shouldForceRefresh = forceRefresh === 'true' || forceRefresh === '1';
-    return this.uberEatsService.debugAccessToken(scope, shouldForceRefresh);
-  }
-
-  @Get('debug/created-orders')
-  @UseGuards(SessionAuthGuard, RolesGuard)
-  @Roles('ADMIN')
-  async debugCreatedOrders(@Query('storeId') storeId?: string) {
-    this.requireDebugFeature();
-    return this.uberEatsService.debugCreatedOrders(storeId);
-  }
-
-  @Post('debug/scopes/verify')
-  @UseGuards(SessionAuthGuard, RolesGuard)
-  @Roles('ADMIN')
-  async verifyScopes(@Body() dto: VerifyUberScopesDto) {
-    this.requireDebugFeature();
-    return this.uberEatsService.verifyScopes(dto.scopes, {
-      storeId: dto.storeId,
-      orderId: dto.orderId,
-      forceRefresh: dto.forceRefresh,
-    });
   }
 
   @Get('webhook')
