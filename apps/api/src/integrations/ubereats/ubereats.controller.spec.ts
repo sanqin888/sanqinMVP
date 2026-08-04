@@ -49,8 +49,6 @@ describe('UberEatsController 权限边界', () => {
     'oauthStart',
     'oauthStores',
     'oauthProvision',
-    'debugFeatureStatus',
-    'debugAccessToken',
     'listPendingOrders',
     'listItemChannelConfigs',
     'generateReconciliationReport',
@@ -90,47 +88,11 @@ describe('UberEatsController 权限边界', () => {
       expect.arrayContaining([SessionAuthGuard, RolesGuard]),
     );
   });
-
-  it('生产环境和未开启 flag 时 debug 路由表现为不存在', async () => {
-    const service = { debugAccessToken: jest.fn() };
-    const controller = new UberEatsController(service as never);
-
-    process.env.NODE_ENV = 'production';
-    process.env.UBER_EATS_DEBUG_ENABLED = 'true';
-    await expect(controller.debugAccessToken()).rejects.toMatchObject({
-      status: 404,
-    });
-
-    process.env.NODE_ENV = 'test';
-    delete process.env.UBER_EATS_DEBUG_ENABLED;
-    await expect(controller.debugAccessToken()).rejects.toMatchObject({
-      status: 404,
-    });
-
-    process.env.UBER_EATS_DEBUG_ENABLED = 'true';
-    service.debugAccessToken.mockResolvedValue({ ok: true });
-    await expect(controller.debugAccessToken()).resolves.toEqual({ ok: true });
-  });
-
-  it('debug 状态端点在不暴露调试数据的情况下报告功能是否可用', () => {
-    const controller = new UberEatsController({} as never);
-
-    process.env.NODE_ENV = 'production';
-    process.env.UBER_EATS_DEBUG_ENABLED = 'true';
-    expect(controller.debugFeatureStatus()).toEqual({ enabled: false });
-
-    process.env.NODE_ENV = 'test';
-    expect(controller.debugFeatureStatus()).toEqual({ enabled: true });
-
-    delete process.env.NODE_ENV;
-    delete process.env.UBER_EATS_DEBUG_ENABLED;
-  });
 });
 
 describe('UberEatsController OAuth callback', () => {
   afterEach(() => {
     delete process.env.NODE_ENV;
-    delete process.env.UBER_EATS_DEBUG_ENABLED;
     jest.restoreAllMocks();
   });
 

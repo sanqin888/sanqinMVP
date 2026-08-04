@@ -1382,39 +1382,6 @@ describe('UberEatsService', () => {
     jest.restoreAllMocks();
   });
 
-  it('debugAccessToken 会返回请求 scope 且不暴露 token 元数据', async () => {
-    const service = new UberEatsService({} as never, createAuthService());
-
-    await expect(service.debugAccessToken()).resolves.toEqual({
-      ok: true,
-      requestedScope: null,
-      normalizedScope: 'eats.store.orders.read',
-      usedDefaultScopes: true,
-      forceRefreshed: false,
-      cached: 'cache_or_fetch',
-    });
-  });
-
-  it('scope 验证不产生任何 POST，write scope 明确标记未执行写验证', async () => {
-    const fetchSpy = jest.spyOn(global, 'fetch');
-    const service = new UberEatsService({} as never, createAuthService());
-
-    await expect(
-      service.verifyScope('eats.order', { orderId: 'ue_1' }),
-    ).resolves.toMatchObject({
-      tokenIssued: true,
-      apiSkipped: true,
-      reason: expect.stringContaining('未执行写验证') as unknown,
-    });
-    await expect(
-      service.verifyScope('eats.store.status.write', { dryRun: false }),
-    ).resolves.toMatchObject({
-      apiSkipped: true,
-      reason: expect.stringContaining('未执行写验证') as unknown,
-    });
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
   const createActionPrisma = (
     localOrder: object | null = { id: 'local_1' },
   ) => {
@@ -1658,90 +1625,6 @@ describe('UberEatsService', () => {
       );
     },
   );
-
-  it('debugCreatedOrders 会返回请求 URL 与订单摘要且不暴露完整 token', async () => {
-    const fetchMock: jest.MockedFunction<typeof fetch> = jest.fn();
-    fetchMock.mockResolvedValue({
-      ok: true,
-      text: jest.fn().mockResolvedValue(
-        JSON.stringify({
-          orders: [
-            {
-              id: 'ord_1',
-              current_state: 'CREATED',
-              placed_at: '2026-03-19T00:00:00Z',
-            },
-          ],
-        }),
-      ),
-    } as Response);
-    global.fetch = fetchMock;
-
-    const authService = createAuthService();
-
-    const service = new UberEatsService({} as never, authService);
-
-    await expect(service.debugCreatedOrders('store_1')).resolves.toEqual({
-      ok: true,
-      storeId: 'store_1',
-      requestUrl: 'https://api.uber.com/v1/eats/stores/store_1/created-orders',
-      orderCount: 1,
-      orders: [
-        {
-          id: 'ord_1',
-          currentState: 'CREATED',
-          placedAt: '2026-03-19T00:00:00Z',
-        },
-      ],
-    });
-
-    expect(authService.getAccessToken).toHaveBeenCalledWith(
-      'eats.store.orders.read',
-    );
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://api.uber.com/v1/eats/stores/store_1/created-orders',
-      expect.anything(),
-    );
-
-    const [, requestInit] = fetchMock.mock.calls[0];
-    expect(requestInit).toMatchObject({
-      method: 'GET',
-      headers: {
-        Authorization: 'Bearer token_debug_1234567890',
-      },
-    });
-  });
-
-  it('debugCreatedOrders 在未传 storeId 时会回退到环境变量', async () => {
-    process.env.UBER_EATS_STORE_ID = 'store_env';
-    const fetchMock: jest.MockedFunction<typeof fetch> = jest.fn();
-    fetchMock.mockResolvedValue({
-      ok: true,
-      text: jest.fn().mockResolvedValue(JSON.stringify({ orders: [] })),
-    } as Response);
-    global.fetch = fetchMock;
-
-    const authService = createAuthService();
-
-    const service = new UberEatsService({} as never, authService);
-
-    await expect(service.debugCreatedOrders()).resolves.toMatchObject({
-      ok: true,
-      storeId: 'store_env',
-      requestUrl:
-        'https://api.uber.com/v1/eats/stores/store_env/created-orders',
-      orderCount: 0,
-    });
-  });
-
-  it('debugCreatedOrders 在缺少 storeId 时会直接报错', async () => {
-    delete process.env.UBER_EATS_STORE_ID;
-    const service = new UberEatsService({} as never, createAuthService());
-
-    await expect(service.debugCreatedOrders()).rejects.toThrow(
-      '缺少 storeId，请通过 query 传入或配置 UBER_EATS_STORE_ID',
-    );
-  });
 
   describe('OAuth state 安全校验', () => {
     const stateInternals = (service: UberEatsService) =>
