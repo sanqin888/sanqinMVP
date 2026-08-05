@@ -23,7 +23,7 @@ type BoardOrder = {
   orderStableId: string; // ✅ 非空
 
   channel: "web" | "in_store" | "ubereats";
-  status: "paid" | "making" | "ready" | "completed" | "refunded";
+  status: "pending" | "paid" | "making" | "ready" | "completed" | "refunded";
 
   subtotalCents: number;
   taxCents: number;
@@ -52,6 +52,8 @@ function pickItemName(item: BoardOrderItem, locale: Locale): string {
 function formatStatus(status: BoardOrder["status"], locale: Locale): string {
   const isZh = locale === "zh";
   switch (status) {
+    case "pending":
+      return isZh ? "待接单" : "Pending";
     case "paid":
       return isZh ? "已支付" : "Paid";
     case "making":
@@ -139,6 +141,7 @@ const STRINGS = {
 } as const;
 
 const NEXT_STATUS: Record<BoardOrder["status"], BoardOrder["status"] | null> = {
+  pending: "paid",
   paid: "making",
   making: "ready",
   ready: "completed",
@@ -162,7 +165,11 @@ function shouldShowOnBoard(order: BoardOrder): boolean {
 }
 
 function isAutoAcceptCandidate(order: BoardOrder): boolean {
-  return (order.channel === "web" || order.channel === "ubereats") && order.status === "paid";
+  return (
+    (order.channel === "web" && order.status === "paid") ||
+    (order.channel === "ubereats" &&
+      (order.status === "pending" || order.status === "paid"))
+  );
 }
 
 function readProcessedMap(): ProcessedMap {
@@ -208,7 +215,7 @@ export function StoreBoardWidget(props: { locale: Locale }) {
   const isZh = locale === "zh";
 
   const query = useMemo(
-    () => "/pos/orders/board?status=paid,making,ready&sinceMinutes=180&limit=80",
+    () => "/pos/orders/board?status=pending,paid,making,ready&sinceMinutes=180&limit=80",
     [],
   );
 
@@ -686,14 +693,15 @@ export function StoreBoardWidget(props: { locale: Locale }) {
                   : formatStatus(next, locale)
                 : t.terminal;
 
-              const isWeb = order.channel === "web";
+              const isPendingUberEats = order.channel === "ubereats" && order.status === "pending";
+              const isHighlightedChannel = order.channel === "web" || isPendingUberEats;
 
               return (
                 <div
                   key={sid}
                   className={[
                     "rounded-2xl border p-3 bg-slate-950/30",
-                    isWeb ? "border-amber-400/70" : "border-slate-800",
+                    isHighlightedChannel ? "border-amber-400/70" : "border-slate-800",
                     highlightedOrders[sid] ? "animate-pulse ring-2 ring-amber-400/40" : "",
                   ].join(" ")}
                 >

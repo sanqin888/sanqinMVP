@@ -4,6 +4,7 @@ import {
   BadGatewayException,
   Injectable,
   NotImplementedException,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import {
@@ -29,6 +30,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { UberAuthService } from './uber-auth.service';
 import { UberWebhookEnvelopeDto } from './dto/uber-webhook-envelope.dto';
 import { UberMenuNotificationDto } from './dto/uber-menu-notification.dto';
+import { OrderEventsBus } from '../../messaging/order-events.bus';
 
 class UberWebhookNonRetryableError extends Error {
   constructor(
@@ -58,6 +60,13 @@ type UberMenuPublishError = {
 
 type UberOrderMoneyDto = number | { amount?: number; value?: number };
 
+type UberOrderItemPriceDto =
+  | UberOrderMoneyDto
+  | {
+      unit_price?: UberOrderMoneyDto;
+      total_price?: UberOrderMoneyDto;
+    };
+
 type UberOrderModifierDto = {
   id?: string;
   modifier_id?: string;
@@ -73,13 +82,14 @@ type UberOrderModifierDto = {
 
 type UberOrderItemDto = {
   id?: string;
+  instance_id?: string;
   line_item_id?: string;
   item_id?: string;
   external_data?: string;
   title?: string;
   name?: string;
   quantity?: number;
-  price?: UberOrderMoneyDto;
+  price?: UberOrderItemPriceDto;
   unit_price?: UberOrderMoneyDto;
   total_price?: UberOrderMoneyDto;
   special_instructions?: string;
@@ -97,7 +107,11 @@ type UberOrderDetailDto = {
   external_order_id?: string;
   display_id?: string;
   store_id?: string;
+  store?: {
+    id?: string;
+  };
   subtotal?: UberOrderMoneyDto;
+  sub_total?: UberOrderMoneyDto;
   subtotal_cents?: number;
   tax?: UberOrderMoneyDto;
   tax_cents?: number;
@@ -106,8 +120,27 @@ type UberOrderDetailDto = {
   discount?: UberOrderMoneyDto;
   discount_cents?: number;
   delivery_fee?: UberOrderMoneyDto;
+  payment?: {
+    charges?: {
+      total?: UberOrderMoneyDto;
+      sub_total?: UberOrderMoneyDto;
+      subtotal?: UberOrderMoneyDto;
+      tax?: UberOrderMoneyDto;
+      delivery_fee?: UberOrderMoneyDto;
+      total_fee?: UberOrderMoneyDto;
+      total_promo_applied?: UberOrderMoneyDto;
+      sub_total_promo_applied?: UberOrderMoneyDto;
+      tax_promo_applied?: UberOrderMoneyDto;
+    };
+    promotions?: {
+      promotions?: Array<{
+        promo_discount_value?: number;
+        promo_delivery_fee_value?: number;
+      }>;
+    } | null;
+  };
   items?: UberOrderItemDto[];
-  cart?: { items?: UberOrderItemDto[] };
+  cart?: { items?: UberOrderItemDto[]; special_instructions?: string };
   customer?: {
     name?: string;
     full_name?: string;
@@ -115,6 +148,8 @@ type UberOrderDetailDto = {
     phone_number?: string;
   };
   eater?: {
+    first_name?: string;
+    last_name?: string;
     name?: string;
     full_name?: string;
     phone?: string;
@@ -681,6 +716,7 @@ export class UberEatsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly uberAuthService: UberAuthService,
+    @Optional() private readonly orderEventsBus?: OrderEventsBus,
   ) {
     const secret = process.env.UBER_EATS_OAUTH_STATE_SECRET?.trim() || '';
     if (secret.length < 32 || new Set(secret).size < 12) {
@@ -959,6 +995,7 @@ export class UberEatsService {
         case 'orders.ready_for_pickup':
         case 'orders.completed':
         case 'orders.cancelled':
+        case 'orders.cancel':
         case 'orders.rejected':
           await this.handleOrderWebhook(eventType, eventId, envelope);
           break;
@@ -3095,7 +3132,12 @@ export class UberEatsService {
       return;
     }
 
-    let order: { orderStableId: string };
+    let order: {
+      action: 'created' | 'updated';
+      status: OrderStatus;
+      orderId: string;
+      orderStableId: string;
+    };
     try {
       order = await this.upsertUberOrder(parsedOrder, eventType, eventId);
     } catch (error) {
@@ -3114,6 +3156,21 @@ export class UberEatsService {
       // Database/local infrastructure errors deliberately remain pending so
       // the webhook/job can retry; accepting before commit would lose orders.
       throw error;
+    }
+
+    if (
+      order.action === 'created' &&
+      order.status === OrderStatus.paid &&
+      this.normalizeEventType(eventType) === 'orders.notification'
+    ) {
+      this.orderEventsBus?.emitOrderPaidVerified({
+        orderId: order.orderId,
+        amountCents: Math.max(
+          0,
+          parsedOrder.subtotalCents - parsedOrder.discountCents,
+        ),
+        redeemValueCents: 0,
+      });
     }
 
     await this.enqueueAndBestEffortAcceptUberOrder(
@@ -3356,6 +3413,9 @@ export class UberEatsService {
       record?.status === 'SUCCEEDED' ||
       (record?.status === 'PENDING' && !processPending)
     ) {
+      if (action === 'ACCEPT' && record.status === 'SUCCEEDED') {
+        await this.advanceLocalUberOrderStatusAfterAccept(externalOrderId);
+      }
       return { ok: record.status === 'SUCCEEDED', duplicate: true, action };
     }
     if (record && !record.retryable && !processPending) {
@@ -3504,12 +3564,17 @@ export class UberEatsService {
     const orderDelegate = this.prisma.order as unknown as {
       findUnique?: (args: {
         where: { clientRequestId: string };
-        select: { id: true; status: true };
-      }) => Promise<{ id: string; status: OrderStatus } | null>;
+        select: { id: true; orderStableId: true; status: true; paidAt: true };
+      }) => Promise<{
+        id: string;
+        orderStableId: string | null;
+        status: OrderStatus;
+        paidAt: Date | null;
+      } | null>;
       updateMany?: (args: {
         where: { id: string; status: OrderStatus };
-        data: { status: OrderStatus; paidAt: Date };
-      }) => Promise<unknown>;
+        data: { status: OrderStatus; paidAt?: Date; makingAt?: Date };
+      }) => Promise<{ count: number }>;
     };
     if (
       typeof orderDelegate.findUnique !== 'function' ||
@@ -3521,20 +3586,34 @@ export class UberEatsService {
     const clientRequestId = this.toClientRequestId(externalOrderId);
     const existing = await orderDelegate.findUnique({
       where: { clientRequestId },
-      select: { id: true, status: true },
+      select: { id: true, orderStableId: true, status: true, paidAt: true },
     });
 
-    if (
-      !existing ||
-      !this.shouldAdvanceOrderStatus(existing.status, OrderStatus.paid)
-    ) {
+    if (!existing || existing.status !== OrderStatus.pending) {
       return;
     }
 
-    await orderDelegate.updateMany({
-      where: { id: existing.id, status: existing.status },
-      data: { status: OrderStatus.paid, paidAt: new Date() },
+    const advancedAt = new Date();
+    const targetStatus = OrderStatus.making;
+    const result = await orderDelegate.updateMany({
+      where: { id: existing.id, status: OrderStatus.pending },
+      data: {
+        status: targetStatus,
+        paidAt: existing.paidAt ?? advancedAt,
+        makingAt: advancedAt,
+      },
     });
+
+    if (result.count === 0) {
+      return;
+    }
+
+    if (existing.orderStableId) {
+      this.orderEventsBus?.emitOrderAccepted({
+        orderId: existing.id,
+        stableId: existing.orderStableId,
+      });
+    }
   }
 
   private redactUberResponse(value: unknown): Prisma.InputJsonValue {
@@ -5843,6 +5922,7 @@ export class UberEatsService {
       const normalizedEvent = this.normalizeEventType(eventType);
       if (
         normalizedEvent === 'orders.cancelled' ||
+        normalizedEvent === 'orders.cancel' ||
         normalizedEvent === 'orders.rejected'
       ) {
         const cancellation = order.cancellation ?? {
@@ -5926,9 +6006,10 @@ export class UberEatsService {
         },
       });
       return {
+        orderId: saved.id,
         orderStableId: saved.orderStableId,
         status: saved.status,
-        action: existing ? 'updated' : 'created',
+        action: existing ? ('updated' as const) : ('created' as const),
       };
     });
 
@@ -5945,7 +6026,7 @@ export class UberEatsService {
       action: result.action,
       ...validation,
     });
-    return { orderStableId: result.orderStableId };
+    return result;
   }
 
   private async resolveUberProductStableId(
@@ -6046,39 +6127,80 @@ export class UberEatsService {
     if (!payload || typeof payload !== 'object' || Array.isArray(payload))
       return null;
     const dto = payload as UberOrderDetailDto;
+    const charges = dto.payment?.charges;
+    const promotions = dto.payment?.promotions;
     const externalOrderId = this.readString(
       dto.order_id,
       dto.id,
       dto.external_order_id,
     );
-    if (
-      !externalOrderId ||
-      (dto.total === undefined && dto.total_cents === undefined)
-    )
-      return null;
-    const subtotalCents = this.readCents(dto.subtotal, dto.subtotal_cents, 0);
-    const taxCents = this.readCents(dto.tax, dto.tax_cents, 0);
-    const discountCents = this.readCents(dto.discount, dto.discount_cents, 0);
-    const deliveryFeeCents = this.readCents(dto.delivery_fee, undefined, 0);
+    const totalSource =
+      dto.total ??
+      dto.total_cents ??
+      charges?.total ??
+      charges?.total_promo_applied;
+    if (!externalOrderId || totalSource === undefined) return null;
+    const subtotalCents = this.readCents(
+      dto.subtotal ?? dto.sub_total ?? charges?.sub_total ?? charges?.subtotal,
+      dto.subtotal_cents,
+      0,
+    );
+    const taxCents = this.readCents(
+      dto.tax ?? charges?.tax_promo_applied ?? charges?.tax,
+      dto.tax_cents,
+      0,
+    );
+    const promoSubtotalCents = this.readOptionalCents(
+      charges?.sub_total_promo_applied,
+    );
+    const promotionSavingsCents =
+      promotions?.promotions?.reduce(
+        (sum, promotion) =>
+          sum +
+          Math.max(0, promotion.promo_discount_value ?? 0) +
+          Math.max(0, promotion.promo_delivery_fee_value ?? 0),
+        0,
+      ) ?? 0;
+    const discountCents =
+      dto.discount !== undefined || dto.discount_cents !== undefined
+        ? this.readCents(dto.discount, dto.discount_cents, 0)
+        : promoSubtotalCents !== null
+          ? Math.max(0, subtotalCents - promoSubtotalCents)
+          : promotionSavingsCents;
+    const deliveryFeeCents = this.readCents(
+      dto.delivery_fee ?? charges?.total_fee ?? charges?.delivery_fee,
+      undefined,
+      0,
+    );
     const items = (dto.items ?? dto.cart?.items ?? []).map((item) =>
       this.parseUberOrderItem(item),
     );
     const totalCents = this.readCents(
-      dto.total,
+      dto.total ?? charges?.total ?? charges?.total_promo_applied,
       dto.total_cents,
       subtotalCents - discountCents + taxCents + deliveryFeeCents,
     );
     const customer = dto.customer ?? dto.eater ?? {};
+    const eaterName = [
+      this.readString(dto.eater?.first_name),
+      this.readString(dto.eater?.last_name),
+    ]
+      .filter((value): value is string => !!value)
+      .join(' ');
     return {
       externalOrderId,
       displayId: this.readString(dto.display_id) ?? externalOrderId,
-      storeId: this.readString(dto.store_id),
+      storeId: this.readString(dto.store_id, dto.store?.id),
       subtotalCents,
       taxCents,
       totalCents,
       discountCents,
       deliveryFeeCents,
-      contactName: this.readString(customer.name, customer.full_name),
+      contactName: this.readString(
+        customer.name,
+        customer.full_name,
+        eaterName,
+      ),
       contactPhone: this.readString(customer.phone, customer.phone_number),
       paidAt:
         this.readDate(dto.paid_at, dto.created_at, dto.placed_at) ?? new Date(),
@@ -6091,7 +6213,10 @@ export class UberEatsService {
         dto.estimated_ready_for_pickup_at,
         dto.estimated_delivery_at,
       ),
-      specialInstructions: this.readString(dto.special_instructions),
+      specialInstructions: this.readString(
+        dto.special_instructions,
+        dto.cart?.special_instructions,
+      ),
       cancellation:
         dto.cancellation || dto.cancelled_at || dto.canceled_at
           ? {
@@ -6114,6 +6239,7 @@ export class UberEatsService {
 
   private parseUberOrderItem(item: UberOrderItemDto): ParsedUberOrderItem {
     const quantity = Math.max(1, Math.round(item.quantity ?? 1));
+    const price = this.asObject(item.price);
     const modifiers = [
       ...(item.modifiers ?? []).map((modifier) =>
         this.parseUberModifier(modifier, null),
@@ -6128,15 +6254,23 @@ export class UberEatsService {
       (sum, modifier) => sum + modifier.priceDeltaCents * modifier.quantity,
       0,
     );
-    const suppliedUnit = this.readCents(item.unit_price, item.price, 0);
+    const suppliedUnit = this.readCents(
+      item.unit_price ?? price?.unit_price,
+      item.price,
+      0,
+    );
     const suppliedLine = this.readCents(
-      item.total_price,
+      item.total_price ?? price?.total_price,
       undefined,
       suppliedUnit * quantity,
     );
     const unitPriceCents = suppliedUnit || Math.round(suppliedLine / quantity);
     return {
-      externalLineId: this.readString(item.line_item_id, item.id),
+      externalLineId: this.readString(
+        item.line_item_id,
+        item.instance_id,
+        item.id,
+      ),
       externalItemId: this.readString(item.item_id, item.id),
       stableIdHint: this.readString(item.external_data),
       displayName:
@@ -6620,10 +6754,29 @@ export class UberEatsService {
     const direct = this.toFiniteNumber(primary);
     if (direct !== null) return Math.max(0, Math.round(direct));
 
+    const money = this.asObject(primary);
+    const amount = this.toFiniteNumber(money?.amount);
+    if (amount !== null) return Math.max(0, Math.round(amount));
+    const value = this.toFiniteNumber(money?.value);
+    if (value !== null) return Math.max(0, Math.round(value));
+
     const second = this.toFiniteNumber(fallback);
     if (second !== null) return Math.max(0, Math.round(second));
 
     return Math.max(0, Math.round(defaultValue));
+  }
+
+  private readOptionalCents(value: unknown): number | null {
+    const direct = this.toFiniteNumber(value);
+    if (direct !== null) return Math.max(0, Math.round(direct));
+
+    const money = this.asObject(value);
+    const amount = this.toFiniteNumber(money?.amount);
+    if (amount !== null) return Math.max(0, Math.round(amount));
+    const nestedValue = this.toFiniteNumber(money?.value);
+    if (nestedValue !== null) return Math.max(0, Math.round(nestedValue));
+
+    return null;
   }
 
   private toFiniteNumber(value: unknown): number | null {
