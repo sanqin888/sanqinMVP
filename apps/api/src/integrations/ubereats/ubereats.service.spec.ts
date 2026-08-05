@@ -357,6 +357,9 @@ describe('UberEatsService', () => {
 
   beforeEach(() => {
     process.env.UBER_EATS_CLIENT_SECRET = clientSecret;
+    process.env.UBER_EATS_API_BASE_URL = 'https://api.uber.com';
+    process.env.UBER_EATS_RESOURCE_HREF_ALLOWED_ORIGINS =
+      'https://api.uber.com';
     process.env.UBER_EATS_WEBHOOK_SIGNING_KEY = clientSecret;
     process.env.UBER_EATS_OAUTH_STATE_SECRET =
       'high-entropy-test-secret-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -367,6 +370,7 @@ describe('UberEatsService', () => {
     delete process.env.UBER_EATS_CLIENT_SECRET;
     delete process.env.UBER_EATS_WEBHOOK_SIGNING_KEY;
     delete process.env.UBER_EATS_API_BASE_URL;
+    delete process.env.UBER_EATS_RESOURCE_HREF_ALLOWED_ORIGINS;
     delete process.env.UBER_EATS_OAUTH_STATE_SECRET;
     delete process.env.PUBLIC_BASE_URL;
     delete process.env.WEB_BASE_URL;
@@ -732,8 +736,103 @@ describe('UberEatsService', () => {
     expect(parsed.items[0].modifiers[0].children).toHaveLength(1);
   });
 
+  it('sandbox 下允许 production resource_href 但请求 test-api', async () => {
+    process.env.UBER_EATS_API_BASE_URL = 'https://test-api.uber.com';
+    process.env.UBER_EATS_RESOURCE_HREF_ALLOWED_ORIGINS =
+      'https://api.uber.com';
+    const body = {
+      event_type: 'orders.notification',
+      resource_href: 'https://api.uber.com/v2/eats/order/ue_sandbox',
+      meta: { resource_id: 'ue_sandbox', user_id: 'user_1' },
+      event_id: 'evt_sandbox_href',
+    };
+    const rawBody = JSON.stringify(body);
+    const signature = createHmac('sha256', clientSecret)
+      .update(rawBody, 'utf8')
+      .digest('hex');
+    const prisma = {
+      uberWebhookInbox: createInboxMock(),
+      opsEvent: { findFirst: jest.fn().mockResolvedValue(null) },
+    };
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response('upstream unavailable', { status: 503 }),
+      );
+    const service = new UberEatsService(prisma as never, createAuthService());
+
+    await expect(
+      service.handleWebhook({
+        headers: { 'x-uber-signature': signature },
+        rawBody,
+        body,
+      }),
+    ).rejects.toThrow('Uber 订单详情接口返回错误');
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://test-api.uber.com/v2/eats/order/ue_sandbox',
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+
+  it('production 下允许并请求 api.uber.com resource_href', async () => {
+    process.env.UBER_EATS_API_BASE_URL = 'https://api.uber.com';
+    process.env.UBER_EATS_RESOURCE_HREF_ALLOWED_ORIGINS =
+      'https://api.uber.com';
+    const body = {
+      event_type: 'orders.notification',
+      resource_href: 'https://api.uber.com/v2/eats/order/ue_prod',
+      meta: { resource_id: 'ue_prod', user_id: 'user_1' },
+      event_id: 'evt_prod_href',
+    };
+    const rawBody = JSON.stringify(body);
+    const signature = createHmac('sha256', clientSecret)
+      .update(rawBody, 'utf8')
+      .digest('hex');
+    const prisma = {
+      uberWebhookInbox: createInboxMock(),
+      opsEvent: { findFirst: jest.fn().mockResolvedValue(null) },
+    };
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response('upstream unavailable', { status: 503 }),
+      );
+    const service = new UberEatsService(prisma as never, createAuthService());
+
+    await expect(
+      service.handleWebhook({
+        headers: { 'x-uber-signature': signature },
+        rawBody,
+        body,
+      }),
+    ).rejects.toThrow('Uber 订单详情接口返回错误');
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://api.uber.com/v2/eats/order/ue_prod',
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+
+  it('拒绝带 username/password 的 resource_href', () => {
+    const service = new UberEatsService(
+      createSignatureOnlyPrisma() as never,
+      createAuthService(),
+    ) as unknown as {
+      buildUberApiUrlFromResourceHref(resourceHref: string): string;
+    };
+
+    expect(() =>
+      service.buildUberApiUrlFromResourceHref(
+        'https://user:pass@api.uber.com/v2/eats/order/ue_credential',
+      ),
+    ).toThrow('Uber resource_href 不属于允许的来源');
+  });
+
   it('origin 不匹配时拒绝 resource_href，并只记录 origin/path 非敏感信息', async () => {
-    process.env.UBER_EATS_API_BASE_URL = 'https://api.uber.com/v2';
+    process.env.UBER_EATS_API_BASE_URL = 'https://api.uber.com';
+    process.env.UBER_EATS_RESOURCE_HREF_ALLOWED_ORIGINS =
+      'https://api.uber.com, https://test-api.uber.com';
     const warnSpy = jest
       .spyOn(AppLogger.prototype, 'warn')
       .mockImplementation();
@@ -760,14 +859,16 @@ describe('UberEatsService', () => {
         rawBody,
         body,
       }),
-    ).rejects.toThrow('Uber resource_href 不属于配置的 API base');
+    ).rejects.toThrow('Uber resource_href 不属于允许的来源');
 
     const logs = warnSpy.mock.calls.flat().join(' ');
     expect(logs).toContain('ubereats webhook resource_href rejected');
     expect(logs).toContain('resourceOrigin=https://evil.example');
     expect(logs).toContain('resourcePathname=/v2/eats/order/ue_123');
-    expect(logs).toContain('baseOrigin=https://api.uber.com');
-    expect(logs).toContain('basePathname=/v2');
+    expect(logs).toContain(
+      'allowedOrigins=https://api.uber.com,https://test-api.uber.com',
+    );
+    expect(logs).toContain('uberApiOrigin=https://api.uber.com');
     for (const sensitive of [
       'customer_name',
       'Alice',
