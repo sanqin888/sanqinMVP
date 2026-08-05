@@ -1392,6 +1392,86 @@ describe('UberEatsService', () => {
     expect(parsed.items[0].modifiers[0].children).toHaveLength(1);
   });
 
+  it('解析 Uber v2 订单详情中的 payment.charges 金额和 cart 商品', () => {
+    const service = new UberEatsService(
+      createSignatureOnlyPrisma() as never,
+      createAuthService(),
+    );
+    const parsed = (
+      service as unknown as {
+        parseOrderPayload(payload: unknown): {
+          externalOrderId: string;
+          storeId: string;
+          contactName: string;
+          specialInstructions: string;
+          subtotalCents: number;
+          discountCents: number;
+          taxCents: number;
+          totalCents: number;
+          deliveryFeeCents: number;
+          items: Array<{
+            externalLineId: string;
+            externalItemId: string;
+            stableIdHint: string;
+            unitPriceCents: number;
+            lineTotalCents: number;
+          }>;
+        };
+      }
+    ).parseOrderPayload({
+      id: 'ue_v2',
+      display_id: 'ABCDE',
+      store: { id: 'store_v2' },
+      eater: { first_name: 'Test', last_name: 'Eater', phone: '+10000000000' },
+      cart: {
+        special_instructions: '少辣',
+        items: [
+          {
+            id: 'menu_item_1',
+            instance_id: 'line_v2_1',
+            external_data: 'local_stable_1',
+            title: 'Liang Pi',
+            quantity: 2,
+            price: {
+              unit_price: { amount: 1200 },
+              total_price: { amount: 2400 },
+            },
+          },
+        ],
+      },
+      payment: {
+        charges: {
+          sub_total: { amount: 2400 },
+          sub_total_promo_applied: { amount: 2200 },
+          tax_promo_applied: { amount: 286 },
+          tax: { amount: 312 },
+          delivery_fee: { amount: 0 },
+          total: { amount: 2486 },
+        },
+      },
+      placed_at: '2026-08-05T13:23:40+00:00',
+    });
+
+    expect(parsed).toMatchObject({
+      externalOrderId: 'ue_v2',
+      storeId: 'store_v2',
+      contactName: 'Test Eater',
+      specialInstructions: '少辣',
+      subtotalCents: 2400,
+      discountCents: 200,
+      taxCents: 286,
+      deliveryFeeCents: 0,
+      totalCents: 2486,
+    });
+    expect(parsed.items[0]).toMatchObject({
+      externalLineId: 'line_v2_1',
+      externalItemId: 'menu_item_1',
+      stableIdHint: 'local_stable_1',
+      unitPriceCents: 1200,
+      lineTotalCents: 2400,
+    });
+  });
+
   it('sandbox 下允许 production resource_href 但请求 test-api', async () => {
     process.env.UBER_EATS_API_BASE_URL = 'https://test-api.uber.com';
     process.env.UBER_EATS_RESOURCE_HREF_ALLOWED_ORIGINS =
