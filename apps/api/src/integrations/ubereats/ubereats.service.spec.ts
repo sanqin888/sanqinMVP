@@ -783,6 +783,99 @@ describe('UberEatsService', () => {
     delete process.env.UBER_EATS_API_BASE_URL;
   });
 
+  it.each([401, 403])(
+    '订单详情 GET 返回 %i 时抛出结构化认证错误并脱敏日志',
+    async (status) => {
+      const body = {
+        event_type: 'orders.notification',
+        resource_href:
+          'https://api.uber.com/v2/eats/order/ue_auth?customer_name=Alice&phone=4165551234&access_token=query-secret',
+        meta: { resource_id: 'ue_auth', user_id: 'user_1' },
+        event_id: `evt_auth_${status}`,
+      };
+      const rawBody = JSON.stringify(body);
+      const signature = createHmac('sha256', clientSecret)
+        .update(rawBody, 'utf8')
+        .digest('hex');
+      const prisma = {
+        uberWebhookInbox: createInboxMock(),
+        opsEvent: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn(),
+        },
+      };
+      const errorSpy = jest
+        .spyOn(AppLogger.prototype, 'error')
+        .mockImplementation();
+      jest.spyOn(global, 'fetch').mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 'insufficient_scope',
+            message:
+              'Bearer upstream-secret access_token=body-secret client_secret=client-secret missing store authorization',
+            customer: {
+              name: 'Alice',
+              phone: '4165551234',
+              address: '1 Main St',
+            },
+          }),
+          {
+            status,
+            headers: { 'x-uber-request-id': 'uber_req_auth' },
+          },
+        ),
+      );
+      const service = new UberEatsService(prisma as never, createAuthService());
+
+      let thrown: unknown;
+      try {
+        await service.handleWebhook({
+          headers: { 'x-uber-signature': signature },
+          rawBody,
+          body,
+        });
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toMatchObject({
+        status: 502,
+        response: {
+          ok: false,
+          status,
+          message: 'Uber 订单详情接口返回错误',
+          error: {
+            upstreamStatus: status,
+            code: 'insufficient_scope',
+          },
+        },
+      });
+      expect(JSON.stringify(thrown)).toContain('missing store authorization');
+
+      const logs = errorSpy.mock.calls.flat().join(' ');
+      expect(logs).toContain(`status=${status}`);
+      expect(logs).toContain('eventId=evt_auth_');
+      expect(logs).toContain('resourceId=ue_auth');
+      expect(logs).toContain(
+        'resourceUrl=https://api.uber.com/v2/eats/order/ue_auth',
+      );
+      expect(logs).toContain('uberRequestId=uber_req_auth');
+      expect(logs).toContain('insufficient_scope');
+      for (const sensitive of [
+        'upstream-secret',
+        'body-secret',
+        'client-secret',
+        'customer_name',
+        'Alice',
+        '4165551234',
+        '1 Main St',
+        'query-secret',
+      ]) {
+        expect(logs).not.toContain(sensitive);
+      }
+    },
+  );
+
   it.each([429, 503])('Uber %i 时保留通知为可重试失败', async (status) => {
     const body = {
       event_type: 'orders.notification',

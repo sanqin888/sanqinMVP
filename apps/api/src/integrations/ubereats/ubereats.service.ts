@@ -176,6 +176,12 @@ type ParsedUberOrder = {
   } | null;
 };
 
+type UberAuthenticationError = {
+  upstreamStatus: number;
+  code: string;
+  message: string;
+};
+
 type UberStoreScopedInput = {
   storeId?: string;
 };
@@ -2952,45 +2958,11 @@ export class UberEatsService {
     const token = await this.uberAuthService.getAccessToken(
       'eats.store.orders.read',
     );
-    let response: Response;
-    try {
-      response = await fetch(resourceUrl, {
-        method: 'GET',
-        redirect: 'error',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json',
-        },
-      });
-    } catch (error) {
-      throw new BadGatewayException({
-        ok: false,
-        message: '下载 Uber 订单详情失败',
-        detail: error instanceof Error ? error.message : String(error),
-      });
-    }
-
-    const rawText = await response.text();
-    const orderPayload = this.tryParseJson(rawText);
-    if (!response.ok) {
-      const resource = new URL(resourceUrl);
-      const detail = this.summarizeDebugResponse(orderPayload, rawText);
-      const uberRequestId =
-        response.headers.get('x-uber-request-id') ??
-        response.headers.get('x-request-id') ??
-        response.headers.get('trace-id');
-
-      this.logger.error(
-        `[ubereats order] detail fetch failed status=${response.status} eventType=${eventType} eventId=${eventId} resourceId=${envelope.resourceId ?? 'unknown'} resourceUrl=${resource.origin}${resource.pathname} uberRequestId=${uberRequestId ?? 'unknown'} detail=${this.redactSensitiveLogText(detail)}`,
-      );
-
-      throw new BadGatewayException({
-        ok: false,
-        status: response.status,
-        message: 'Uber 订单详情接口返回错误',
-        detail,
-      });
-    }
+    const orderPayload = await this.fetchUberOrderDetail(resourceUrl, token, {
+      eventType,
+      eventId,
+      resourceId: envelope.resourceId,
+    });
 
     const parsedOrder = this.parseOrderPayload(orderPayload);
 
@@ -3044,6 +3016,65 @@ export class UberEatsService {
       externalOrderId: parsedOrder.externalOrderId,
       orderStableId: order.orderStableId,
       storeId: parsedOrder.storeId ?? this.normalizeStoreId(undefined),
+    });
+  }
+
+  private async fetchUberOrderDetail(
+    resourceUrl: string,
+    token: string,
+    context: {
+      eventType: string;
+      eventId: string;
+      resourceId?: string | null;
+    },
+  ): Promise<unknown> {
+    let response: Response;
+    try {
+      response = await fetch(resourceUrl, {
+        method: 'GET',
+        redirect: 'error',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+        },
+      });
+    } catch (error) {
+      throw new BadGatewayException({
+        ok: false,
+        message: '下载 Uber 订单详情失败',
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    const rawText = await response.text();
+    const parsed = this.tryParseJson(rawText);
+    if (response.ok) {
+      return parsed;
+    }
+
+    const authenticationError =
+      response.status === 401 || response.status === 403
+        ? this.buildUberAuthenticationError(parsed, response.status)
+        : undefined;
+    const detail = authenticationError
+      ? JSON.stringify(authenticationError)
+      : this.summarizeDebugResponse(parsed, rawText);
+    const resource = new URL(resourceUrl);
+    const uberRequestId =
+      response.headers.get('x-uber-request-id') ??
+      response.headers.get('x-request-id') ??
+      response.headers.get('trace-id');
+
+    this.logger.error(
+      `[ubereats order] detail fetch failed status=${response.status} eventType=${context.eventType} eventId=${context.eventId} resourceId=${context.resourceId ?? 'unknown'} resourceUrl=${resource.origin}${resource.pathname} uberRequestId=${uberRequestId ?? 'unknown'} detail=${this.redactSensitiveLogText(detail)}`,
+    );
+
+    throw new BadGatewayException({
+      ok: false,
+      status: response.status,
+      message: 'Uber 订单详情接口返回错误',
+      detail,
+      ...(authenticationError ? { error: authenticationError } : {}),
     });
   }
 
@@ -5880,7 +5911,10 @@ export class UberEatsService {
       );
   }
 
-  private buildUberAuthenticationError(parsed: unknown, status: number) {
+  private buildUberAuthenticationError(
+    parsed: unknown,
+    status: number,
+  ): UberAuthenticationError {
     const body = this.asObject(parsed);
     const nestedError = this.asObject(body?.error);
     const code =
