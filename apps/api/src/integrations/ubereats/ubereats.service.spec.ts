@@ -801,6 +801,120 @@ describe('UberEatsService', () => {
     fetchSpy.mockRestore();
   });
 
+  it.each(['orders.cancelled', 'orders.cancel'] as const)(
+    '%s webhook 会成功处理并保存取消记录',
+    async (eventType) => {
+      const body = {
+        event_type: eventType,
+        resource_href: 'https://api.uber.com/v2/eats/order/ue_cancel_1',
+        meta: { resource_id: 'ue_cancel_1', user_id: 'user_1' },
+        event_id: `evt_${eventType.replace('.', '_')}`,
+      };
+      const rawBody = JSON.stringify(body);
+      const signature = createHmac('sha256', clientSecret)
+        .update(rawBody, 'utf8')
+        .digest('hex');
+      const prisma = {
+        order: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'order-db-id',
+            orderStableId: 'order-stable-id',
+            status: 'paid',
+          }),
+          update: jest.fn().mockResolvedValue({
+            id: 'order-db-id',
+            orderStableId: 'order-stable-id',
+            status: 'paid',
+          }),
+        },
+        orderItem: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        uberOrderItemModifier: { createMany: jest.fn() },
+        uberOrderCancellation: {
+          upsert: jest.fn().mockResolvedValue({ id: 'cancel_1' }),
+        },
+        uberWebhookInbox: createInboxMock(),
+        businessConfig: {
+          findUnique: jest
+            .fn()
+            .mockResolvedValue({ isTemporarilyClosed: false }),
+        },
+        uberOrderAction: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'action_1',
+            externalOrderId: 'ue_cancel_1',
+            action: 'ACCEPT',
+            status: 'PENDING',
+            retryable: false,
+          }),
+          upsert: jest.fn().mockResolvedValue({ id: 'action_1' }),
+          update: jest.fn().mockResolvedValue({ id: 'action_1' }),
+        },
+        opsEvent: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue(null),
+        },
+      };
+      Object.assign(prisma, {
+        $transaction: jest.fn(
+          (callback: (transaction: typeof prisma) => unknown) =>
+            callback(prisma),
+        ),
+      });
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              order_id: 'ue_cancel_1',
+              subtotal_cents: 1000,
+              tax_cents: 130,
+              total_cents: 1130,
+              cancelled_at: '2026-08-05T12:00:00.000Z',
+              cancellation: {
+                cancelled_by: 'CUSTOMER',
+                reason_code: 'CUSTOMER_CANCELLED',
+                reason: 'Customer cancelled the order',
+              },
+              items: [],
+            }),
+            { status: 200 },
+          ),
+        )
+        .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+
+      await expect(
+        new UberEatsService(prisma as never, createAuthService()).handleWebhook(
+          {
+            headers: { 'x-uber-signature': signature },
+            rawBody,
+            body,
+          },
+        ),
+      ).resolves.toBeUndefined();
+
+      expect(prisma.uberOrderCancellation.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { eventId: body.event_id },
+          create: expect.objectContaining({
+            orderId: 'order-db-id',
+            externalOrderId: 'ue_cancel_1',
+            eventId: body.event_id,
+            kind: 'CANCELLED',
+            cancelledBy: 'CUSTOMER',
+            reasonCode: 'CUSTOMER_CANCELLED',
+            reasonDetail: 'Customer cancelled the order',
+          }) as unknown,
+        }),
+      );
+      expect(prisma.uberWebhookInbox.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'PROCESSED' }) as unknown,
+        }),
+      );
+      fetchSpy.mockRestore();
+    },
+  );
+
   it('自动拒单遇到 Uber 400 不抛 502 并保存失败详情', async () => {
     const body = {
       event_type: 'orders.notification',
