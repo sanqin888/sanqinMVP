@@ -3217,6 +3217,13 @@ export class UberEatsService {
       resource.password ||
       !belongsToBasePath
     ) {
+      this.logger.warn(
+        'ubereats webhook resource_href rejected ' +
+          `resourceOrigin=${resource.origin} ` +
+          `resourcePathname=${resource.pathname} ` +
+          `baseOrigin=${base.origin} ` +
+          `basePathname=${base.pathname}`,
+      );
       throw new BadRequestException('Uber resource_href 不属于配置的 API base');
     }
 
