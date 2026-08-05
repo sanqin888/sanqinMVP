@@ -1828,6 +1828,56 @@ describe('UberEatsService', () => {
     );
   });
 
+  it('Uber action endpoint 返回非 2xx 时记录 action/status/request id 的脱敏日志', async () => {
+    const prisma = createActionPrisma();
+    jest.spyOn(global, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: 'invalid_order',
+          message:
+            'Bearer upstream-secret access_token=body-secret customer_name=Alice phone=4165551234 address=1 Main St',
+          customer: {
+            name: 'Alice',
+            phone: '4165551234',
+            address: '1 Main St',
+          },
+        }),
+        {
+          status: 429,
+          headers: { 'x-request-id': 'uber-action-request-1' },
+        },
+      ),
+    );
+    const errorSpy = jest
+      .spyOn(AppLogger.prototype, 'error')
+      .mockImplementation();
+    const service = new UberEatsService(prisma as never, createAuthService());
+
+    await expect(service.acceptUberOrder('ue_failed')).rejects.toMatchObject({
+      status: 502,
+    });
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('action=ACCEPT'),
+    );
+    const logs = errorSpy.mock.calls
+      .map(([message]) => String(message))
+      .join('\n');
+    expect(logs).toContain('status=429');
+    expect(logs).toContain('retryable=true');
+    expect(logs).toContain('uberRequestId=uber-action-request-1');
+    expect(logs).toContain('accept_pos_order');
+    for (const sensitive of [
+      'upstream-secret',
+      'body-secret',
+      'Alice',
+      '4165551234',
+      '1 Main St',
+    ]) {
+      expect(logs).not.toContain(sensitive);
+    }
+  });
+
   const createReadyPrisma = (initialStatus = 'making') => {
     let localStatus = initialStatus;
     let action: Record<string, unknown> | null = null;

@@ -3213,19 +3213,26 @@ export class UberEatsService {
         },
       );
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      const errorType = error instanceof Error ? error.name : typeof error;
+      const redactedError = this.redactSensitiveLogText(errorMessage);
       await delegate.update({
         where: { id: record.id },
         data: {
           status: 'FAILED',
           retryable: true,
-          lastError: (error instanceof Error ? error.message : String(error))
+          lastError: redactedError
             .replace(/(token|secret|authorization)=?[^\s&]*/gi, '$1=[REDACTED]')
             .slice(0, 2_000),
           response: this.redactUberResponse({
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage,
           }),
         },
       });
+      this.logger.error(
+        `[ubereats order action] request failed action=${action} externalOrderId=${externalOrderId} endpoint=${endpoint} errorType=${errorType} error=${redactedError}`,
+      );
       throw new BadGatewayException({
         ok: false,
         retryable: true,
@@ -3261,6 +3268,9 @@ export class UberEatsService {
       },
     });
     if (!succeeded) {
+      this.logger.error(
+        `[ubereats order action] upstream failed action=${action} externalOrderId=${externalOrderId} endpoint=${endpoint} status=${response.status} retryable=${retryable} uberRequestId=${uberRequestId ?? 'unknown'} detail=${this.redactSensitiveLogText(this.summarizeDebugResponse(parsed, rawText))}`,
+      );
       throw new BadGatewayException({
         ok: false,
         status: response.status,
@@ -5977,6 +5987,7 @@ export class UberEatsService {
 
   private redactSensitiveLogText(text: string): string {
     return text
+      .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [REDACTED]')
       .replace(
         /(authorization|token)(["']?\s*[:=]\s*["']?)[^"'&,}\s]+/gi,
         '$1$2[REDACTED]',
