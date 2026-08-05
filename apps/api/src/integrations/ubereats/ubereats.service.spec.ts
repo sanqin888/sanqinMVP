@@ -1996,9 +1996,30 @@ describe('UberEatsService', () => {
       .mockImplementation();
     const service = new UberEatsService(prisma as never, createAuthService());
 
-    await expect(service.acceptUberOrder('ue_failed')).rejects.toMatchObject({
-      status: 502,
-    });
+    try {
+      await service.acceptUberOrder('ue_failed');
+      throw new Error('expected acceptUberOrder to reject');
+    } catch (error) {
+      expect(error).toMatchObject({ status: 502 });
+      expect(
+        typeof (error as { getResponse?: unknown }).getResponse === 'function'
+          ? (error as { getResponse: () => unknown }).getResponse()
+          : null,
+      ).toMatchObject({
+        ok: false,
+        externalOrderId: 'ue_failed',
+        action: 'ACCEPT',
+        endpoint: 'accept_pos_order',
+        status: 429,
+        uberRequestId: 'uber-action-request-1',
+        retryable: true,
+      });
+      expect(
+        JSON.stringify(
+          (error as { getResponse: () => unknown }).getResponse(),
+        ),
+      ).not.toContain('Alice');
+    }
 
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining('action=ACCEPT'),

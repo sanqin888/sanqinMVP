@@ -3314,8 +3314,12 @@ export class UberEatsService {
       );
       throw new BadGatewayException({
         ok: false,
+        externalOrderId,
+        action,
+        endpoint,
         retryable: true,
         message: 'Uber 订单动作网络请求失败或超时',
+        detail: redactedError,
       });
     } finally {
       clearTimeout(timeout);
@@ -3352,9 +3356,15 @@ export class UberEatsService {
       );
       throw new BadGatewayException({
         ok: false,
+        externalOrderId,
+        action,
+        endpoint,
         status: response.status,
+        uberRequestId,
         retryable,
-        detail: this.summarizeDebugResponse(parsed, rawText),
+        detail: this.redactSensitiveLogText(
+          this.summarizeDebugResponse(parsed, rawText),
+        ),
       });
     }
     return { ok: true, duplicate: false, action, status: response.status };
