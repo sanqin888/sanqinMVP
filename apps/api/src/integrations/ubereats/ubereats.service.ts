@@ -3074,10 +3074,11 @@ export class UberEatsService {
     if (!parsedOrder) {
       const externalOrderId = envelope.resourceId;
       if (externalOrderId) {
-        await this.denyUberOrder(
+        await this.autoDenyUberOrderForWebhook(
           externalOrderId,
           'INVALID_ORDER',
           '订单详情无法解析',
+          { eventType, eventId },
         );
       }
       return;
@@ -3085,10 +3086,11 @@ export class UberEatsService {
 
     const config = await this.ensureBusinessConfig();
     if (config.isTemporarilyClosed) {
-      await this.denyUberOrder(
+      await this.autoDenyUberOrderForWebhook(
         parsedOrder.externalOrderId,
         'STORE_CLOSED',
         config.temporaryCloseReason ?? '门店暂停营业',
+        { eventType, eventId },
       );
       return;
     }
@@ -3101,10 +3103,11 @@ export class UberEatsService {
         error instanceof BadRequestException &&
         error.message.includes('菜单映射')
       ) {
-        await this.denyUberOrder(
+        await this.autoDenyUberOrderForWebhook(
           parsedOrder.externalOrderId,
           'ITEM_UNAVAILABLE',
           error.message,
+          { eventType, eventId },
         );
         return;
       }
@@ -3129,6 +3132,56 @@ export class UberEatsService {
       orderStableId: order.orderStableId,
       storeId: parsedOrder.storeId ?? this.normalizeStoreId(undefined),
     });
+  }
+
+  private async autoDenyUberOrderForWebhook(
+    externalOrderId: string,
+    reasonCode: string,
+    reasonDetail: string,
+    context: { eventType: string; eventId: string },
+  ) {
+    try {
+      await this.denyUberOrder(externalOrderId, reasonCode, reasonDetail);
+    } catch (error) {
+      const response =
+        error instanceof BadGatewayException ? error.getResponse() : null;
+      const responseObject = this.asObject(response);
+      const status =
+        typeof responseObject?.status === 'number'
+          ? responseObject.status
+          : undefined;
+      const retryable = responseObject?.retryable === true;
+      const detail = this.readString(responseObject?.detail);
+
+      if (
+        status !== undefined &&
+        this.isNonRetryableOrderActionStatus(status) &&
+        !retryable
+      ) {
+        const redactedDetail = detail
+          ? this.redactSensitiveLogText(detail)
+          : undefined;
+        this.logger.warn(
+          `[ubereats webhook deny] non-retryable upstream failure swallowed externalOrderId=${externalOrderId} eventType=${context.eventType} eventId=${context.eventId} status=${status} retryable=false detail=${redactedDetail ?? 'unknown'}`,
+        );
+        await this.captureEvent('ubereats_webhook_auto_deny_failed', {
+          externalOrderId,
+          eventType: context.eventType,
+          eventId: context.eventId,
+          reasonCode,
+          status,
+          retryable: false,
+          ...(redactedDetail ? { detail: redactedDetail } : {}),
+        });
+        return;
+      }
+
+      throw error;
+    }
+  }
+
+  private isNonRetryableOrderActionStatus(status: number): boolean {
+    return [400, 401, 403, 404].includes(status);
   }
 
   private async enqueueAndBestEffortAcceptUberOrder(
