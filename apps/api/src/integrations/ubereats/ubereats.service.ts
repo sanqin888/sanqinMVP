@@ -518,6 +518,16 @@ type UberOrderActionDelegate = {
     where: { id: string };
     data: Record<string, unknown>;
   }): Promise<UberOrderActionRecord>;
+  upsert(args: {
+    where: {
+      externalOrderId_action: {
+        externalOrderId: string;
+        action: UberOrderActionName;
+      };
+    };
+    create: Record<string, unknown>;
+    update: Record<string, unknown>;
+  }): Promise<UberOrderActionRecord>;
   findMany(args: {
     where: Record<string, unknown>;
     orderBy: { updatedAt: 'asc' | 'desc' };
@@ -3033,7 +3043,14 @@ export class UberEatsService {
       throw error;
     }
 
-    await this.acceptUberOrder(parsedOrder.externalOrderId);
+    await this.enqueueAndBestEffortAcceptUberOrder(
+      parsedOrder.externalOrderId,
+      {
+        eventType,
+        eventId,
+        orderStableId: order.orderStableId,
+      },
+    );
 
     await this.captureEvent('ubereats_webhook_processed', {
       eventType,
@@ -3042,6 +3059,68 @@ export class UberEatsService {
       orderStableId: order.orderStableId,
       storeId: parsedOrder.storeId ?? this.normalizeStoreId(undefined),
     });
+  }
+
+  private async enqueueAndBestEffortAcceptUberOrder(
+    externalOrderId: string,
+    context: {
+      eventType: string;
+      eventId: string;
+      orderStableId: string;
+    },
+  ) {
+    await this.uberOrderActionDelegate.upsert({
+      where: { externalOrderId_action: { externalOrderId, action: 'ACCEPT' } },
+      create: {
+        externalOrderId,
+        action: 'ACCEPT',
+        status: 'PENDING',
+        reasonCode: 'accepted',
+      },
+      update: {},
+    });
+
+    try {
+      await this.executeUberOrderAction(
+        externalOrderId,
+        'ACCEPT',
+        { reason: 'accepted' },
+        true,
+      );
+    } catch (error) {
+      const response =
+        error instanceof BadGatewayException ? error.getResponse() : null;
+      const responseObject = this.asObject(response);
+      const retryable = responseObject?.retryable === true;
+      const status =
+        typeof responseObject?.status === 'number'
+          ? responseObject.status
+          : error instanceof BadGatewayException
+            ? error.getStatus()
+            : undefined;
+      const detail = this.readString(responseObject?.detail);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
+      this.logger.error(
+        `[ubereats webhook accept] best-effort accept failed externalOrderId=${externalOrderId} eventId=${context.eventId} retryable=${retryable} status=${status ?? 'unknown'} error=${this.redactSensitiveLogText(detail || errorMessage)}`,
+      );
+
+      await this.captureEvent(
+        retryable
+          ? 'ubereats_order_accept_retry_queued'
+          : 'ubereats_order_accept_manual_review_required',
+        {
+          externalOrderId,
+          eventType: context.eventType,
+          eventId: context.eventId,
+          orderStableId: context.orderStableId,
+          retryable,
+          ...(status !== undefined ? { status } : {}),
+          ...(detail ? { detail: this.redactSensitiveLogText(detail) } : {}),
+        },
+      );
+    }
   }
 
   private async fetchUberOrderDetail(
@@ -3213,23 +3292,34 @@ export class UberEatsService {
         },
       );
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      const errorType = error instanceof Error ? error.name : typeof error;
+      const redactedError = this.redactSensitiveLogText(errorMessage);
       await delegate.update({
         where: { id: record.id },
         data: {
           status: 'FAILED',
           retryable: true,
-          lastError: (error instanceof Error ? error.message : String(error))
+          lastError: redactedError
             .replace(/(token|secret|authorization)=?[^\s&]*/gi, '$1=[REDACTED]')
             .slice(0, 2_000),
           response: this.redactUberResponse({
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage,
           }),
         },
       });
+      this.logger.error(
+        `[ubereats order action] request failed action=${action} externalOrderId=${externalOrderId} endpoint=${endpoint} errorType=${errorType} error=${redactedError}`,
+      );
       throw new BadGatewayException({
         ok: false,
+        externalOrderId,
+        action,
+        endpoint,
         retryable: true,
         message: 'Uber 订单动作网络请求失败或超时',
+        detail: redactedError,
       });
     } finally {
       clearTimeout(timeout);
@@ -3261,11 +3351,20 @@ export class UberEatsService {
       },
     });
     if (!succeeded) {
+      this.logger.error(
+        `[ubereats order action] upstream failed action=${action} externalOrderId=${externalOrderId} endpoint=${endpoint} status=${response.status} retryable=${retryable} uberRequestId=${uberRequestId ?? 'unknown'} detail=${this.redactSensitiveLogText(this.summarizeDebugResponse(parsed, rawText))}`,
+      );
       throw new BadGatewayException({
         ok: false,
+        externalOrderId,
+        action,
+        endpoint,
         status: response.status,
+        uberRequestId,
         retryable,
-        detail: this.summarizeDebugResponse(parsed, rawText),
+        detail: this.redactSensitiveLogText(
+          this.summarizeDebugResponse(parsed, rawText),
+        ),
       });
     }
     return { ok: true, duplicate: false, action, status: response.status };
@@ -5977,6 +6076,7 @@ export class UberEatsService {
 
   private redactSensitiveLogText(text: string): string {
     return text
+      .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [REDACTED]')
       .replace(
         /(authorization|token)(["']?\s*[:=]\s*["']?)[^"'&,}\s]+/gi,
         '$1$2[REDACTED]',

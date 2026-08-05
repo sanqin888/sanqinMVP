@@ -606,14 +606,36 @@ describe('UberEatsService', () => {
         findUnique: jest.fn().mockResolvedValue({ isTemporarilyClosed: false }),
       },
       uberOrderAction: {
-        findUnique: jest.fn().mockResolvedValue(null),
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'action_1',
+          externalOrderId: 'ue_123',
+          action: 'ACCEPT',
+          status: 'PENDING',
+          retryable: false,
+          uberHttpStatus: null,
+        }),
+        upsert: jest.fn().mockResolvedValue({
+          id: 'action_1',
+          externalOrderId: 'ue_123',
+          action: 'ACCEPT',
+          status: 'PENDING',
+          retryable: false,
+          uberHttpStatus: null,
+        }),
         create: jest.fn().mockResolvedValue({
           id: 'action_1',
           status: 'PENDING',
           retryable: false,
           uberHttpStatus: null,
         }),
-        update: jest.fn(),
+        update: jest.fn().mockResolvedValue({
+          id: 'action_1',
+          externalOrderId: 'ue_123',
+          action: 'ACCEPT',
+          status: 'SUCCEEDED',
+          retryable: false,
+          uberHttpStatus: 200,
+        }),
       },
       opsEvent: {
         findFirst: jest.fn().mockResolvedValue(null),
@@ -664,6 +686,127 @@ describe('UberEatsService', () => {
       expect.objectContaining({ where: { eventId: 'evt_123' } }),
     );
     fetchSpy.mockRestore();
+  });
+
+  it('本地订单落库后 Uber 接单 500 不再使 webhook 失败并保留可重试 outbox', async () => {
+    const body = {
+      event_type: 'orders.notification',
+      resource_href: 'https://api.uber.com/v2/eats/order/ue_accept_500',
+      meta: { resource_id: 'ue_accept_500', user_id: 'user_1' },
+      event_id: 'evt_accept_500',
+    };
+    const rawBody = JSON.stringify(body);
+    const signature = createHmac('sha256', clientSecret)
+      .update(rawBody, 'utf8')
+      .digest('hex');
+    let action: Record<string, unknown> | null = null;
+    const prisma = {
+      order: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValue({ id: 'order-db-id' }),
+        create: jest.fn().mockResolvedValue({
+          id: 'order-db-id',
+          orderStableId: 'ord_uber_retry',
+          status: 'paid',
+        }),
+      },
+      orderItem: { deleteMany: jest.fn(), create: jest.fn() },
+      menuItem: { findFirst: jest.fn() },
+      uberItemChannelConfig: { findFirst: jest.fn() },
+      uberOrderItemModifier: { createMany: jest.fn() },
+      uberWebhookInbox: createInboxMock(),
+      businessConfig: {
+        findUnique: jest.fn().mockResolvedValue({ isTemporarilyClosed: false }),
+      },
+      uberOrderAction: {
+        findUnique: jest.fn().mockImplementation(() => Promise.resolve(action)),
+        upsert: jest
+          .fn()
+          .mockImplementation(
+            ({ create }: { create: Record<string, unknown> }) => {
+              action ??= {
+                id: 'accept_action',
+                retryable: false,
+                uberHttpStatus: null,
+                attemptCount: 0,
+                ...create,
+              };
+              return Promise.resolve(action);
+            },
+          ),
+        create: jest.fn(),
+        update: jest
+          .fn()
+          .mockImplementation(({ data }: { data: Record<string, unknown> }) => {
+            action = { ...action, ...data };
+            return Promise.resolve(action);
+          }),
+      },
+      opsEvent: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue(null),
+      },
+    };
+    Object.assign(prisma, {
+      $transaction: jest.fn(
+        (callback: (transaction: typeof prisma) => unknown) => callback(prisma),
+      ),
+    });
+    jest.spyOn(AppLogger.prototype, 'error').mockImplementation();
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            order_id: 'ue_accept_500',
+            subtotal_cents: 1000,
+            tax_cents: 130,
+            total_cents: 1130,
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response('{"error":"temporary"}', { status: 500 }),
+      );
+
+    const service = new UberEatsService(prisma as never, createAuthService());
+    await expect(
+      service.handleWebhook({
+        headers: { 'x-uber-signature': signature },
+        rawBody,
+        body,
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(prisma.uberOrderAction.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          externalOrderId_action: {
+            externalOrderId: 'ue_accept_500',
+            action: 'ACCEPT',
+          },
+        },
+        create: expect.objectContaining({ status: 'PENDING' }) as unknown,
+      }),
+    );
+    expect(prisma.uberOrderAction.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'FAILED',
+          retryable: true,
+        }) as unknown,
+      }),
+    );
+    expect(prisma.opsEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          eventName: 'ubereats_order_accept_retry_queued',
+        }) as unknown,
+      }),
+    );
+    jest.restoreAllMocks();
   });
 
   it('解析多数量、嵌套 modifier、特殊说明、折扣、税费和未知商品快照', () => {
@@ -1826,6 +1969,75 @@ describe('UberEatsService', () => {
         data: expect.objectContaining({ retryable: true }) as unknown,
       }),
     );
+  });
+
+  it('Uber action endpoint 返回非 2xx 时记录 action/status/request id 的脱敏日志', async () => {
+    const prisma = createActionPrisma();
+    jest.spyOn(global, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: 'invalid_order',
+          message:
+            'Bearer upstream-secret access_token=body-secret customer_name=Alice phone=4165551234 address=1 Main St',
+          customer: {
+            name: 'Alice',
+            phone: '4165551234',
+            address: '1 Main St',
+          },
+        }),
+        {
+          status: 429,
+          headers: { 'x-request-id': 'uber-action-request-1' },
+        },
+      ),
+    );
+    const errorSpy = jest
+      .spyOn(AppLogger.prototype, 'error')
+      .mockImplementation();
+    const service = new UberEatsService(prisma as never, createAuthService());
+
+    try {
+      await service.acceptUberOrder('ue_failed');
+      throw new Error('expected acceptUberOrder to reject');
+    } catch (error) {
+      expect(error).toMatchObject({ status: 502 });
+      expect(
+        typeof (error as { getResponse?: unknown }).getResponse === 'function'
+          ? (error as { getResponse: () => unknown }).getResponse()
+          : null,
+      ).toMatchObject({
+        ok: false,
+        externalOrderId: 'ue_failed',
+        action: 'ACCEPT',
+        endpoint: 'accept_pos_order',
+        status: 429,
+        uberRequestId: 'uber-action-request-1',
+        retryable: true,
+      });
+      expect(
+        JSON.stringify((error as { getResponse: () => unknown }).getResponse()),
+      ).not.toContain('Alice');
+    }
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('action=ACCEPT'),
+    );
+    const logs = errorSpy.mock.calls
+      .map(([message]) => String(message))
+      .join('\n');
+    expect(logs).toContain('status=429');
+    expect(logs).toContain('retryable=true');
+    expect(logs).toContain('uberRequestId=uber-action-request-1');
+    expect(logs).toContain('accept_pos_order');
+    for (const sensitive of [
+      'upstream-secret',
+      'body-secret',
+      'Alice',
+      '4165551234',
+      '1 Main St',
+    ]) {
+      expect(logs).not.toContain(sensitive);
+    }
   });
 
   const createReadyPrisma = (initialStatus = 'making') => {
