@@ -1498,7 +1498,19 @@ describe('UberEatsService', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           reasonCode: 'INVALID_ORDER',
+          reasonDetail: '订单详情无法解析',
         }) as unknown,
+      }),
+    );
+    expect(global.fetch).toHaveBeenLastCalledWith(
+      'https://api.uber.com/v1/eats/orders/ue_invalid/deny_pos_order',
+      expect.objectContaining({
+        body: JSON.stringify({
+          reason: {
+            code: 'OTHER',
+            explanation: '订单详情无法解析',
+          },
+        }),
       }),
     );
     expect(prisma.opsEvent.create).not.toHaveBeenCalled();
@@ -1950,10 +1962,49 @@ describe('UberEatsService', () => {
     expect(fetchSpy).toHaveBeenCalledWith(
       'https://api.uber.com/v1/eats/orders/ue_deny/deny_pos_order',
       expect.objectContaining({
-        body: '{"reason":"STORE_CLOSED","details":"门店暂停"}',
+        body: JSON.stringify({
+          reason: {
+            code: 'STORE_CLOSED',
+            explanation: '门店暂停',
+          },
+        }),
+      }),
+    );
+    expect(prisma.uberOrderAction.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          reasonCode: 'STORE_CLOSED',
+          reasonDetail: '门店暂停',
+        }) as unknown,
       }),
     );
   });
+
+  it.each([
+    ['STORE_CLOSED', 'STORE_CLOSED'],
+    ['ITEM_UNAVAILABLE', 'ITEM_AVAILABILITY'],
+    ['INVALID_ORDER', 'OTHER'],
+  ])(
+    '拒单原因 %s 通过同一个 builder 映射为 Uber code %s',
+    async (localReason, uberReason) => {
+      const prisma = createActionPrisma();
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+      const service = new UberEatsService(prisma as never, createAuthService());
+
+      await service.denyUberOrder(`ue_${localReason}`, localReason, '业务原因');
+
+      const requestBody = fetchSpy.mock.calls[0]?.[1]?.body;
+      expect(typeof requestBody).toBe('string');
+      expect(JSON.parse(requestBody as string)).toEqual({
+        reason: {
+          code: uberReason,
+          explanation: '业务原因',
+        },
+      });
+    },
+  );
 
   it('Uber 超时/网络错误标记为可重试并保存脱敏错误', async () => {
     const prisma = createActionPrisma();

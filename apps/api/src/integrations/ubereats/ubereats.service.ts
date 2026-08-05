@@ -500,7 +500,22 @@ type UberOrderActionRecord = {
   status: string;
   retryable: boolean;
   uberHttpStatus: number | null;
+  reasonCode?: string | null;
+  reasonDetail?: string | null;
 };
+
+type UberDenyReasonCode =
+  | 'STORE_CLOSED'
+  | 'POS_NOT_READY'
+  | 'POS_OFFLINE'
+  | 'ITEM_AVAILABILITY'
+  | 'MISSING_ITEM'
+  | 'MISSING_INFO'
+  | 'PRICING'
+  | 'CAPACITY'
+  | 'ADDRESS'
+  | 'SPECIAL_INSTRUCTIONS'
+  | 'OTHER';
 
 type UberOrderActionDelegate = {
   findUnique(args: {
@@ -1094,9 +1109,21 @@ export class UberEatsService {
       take: limit,
     });
     return Promise.all(
-      rows.map((row) =>
-        this.executeUberOrderAction(row.externalOrderId, row.action, {}, true),
-      ),
+      rows.map((row) => {
+        const retryPayload =
+          row.action === 'DENY'
+            ? this.buildUberDenyOrderPayload(
+                row.reasonCode ?? 'OTHER',
+                row.reasonDetail ?? undefined,
+              )
+            : {};
+        return this.executeUberOrderAction(
+          row.externalOrderId,
+          row.action,
+          retryPayload,
+          true,
+        );
+      }),
     );
   }
 
@@ -1125,10 +1152,53 @@ export class UberEatsService {
     if (!normalizedReason) {
       throw new BadRequestException('拒单原因不能为空');
     }
-    return this.executeUberOrderAction(externalOrderId.trim(), 'DENY', {
-      reason: normalizedReason,
-      ...(reasonDetail?.trim() ? { details: reasonDetail.trim() } : {}),
-    });
+    return this.executeUberOrderAction(
+      externalOrderId.trim(),
+      'DENY',
+      this.buildUberDenyOrderPayload(normalizedReason, reasonDetail),
+      false,
+      {
+        reasonCode: normalizedReason,
+        reasonDetail: reasonDetail?.trim() || undefined,
+      },
+    );
+  }
+
+  private buildUberDenyOrderPayload(
+    reasonCode: string,
+    reasonDetail?: string,
+  ): { reason: { code: UberDenyReasonCode; explanation: string } } {
+    const normalizedReason = reasonCode.trim();
+    const detail = reasonDetail?.trim();
+    const uberReasonCode = this.toUberDenyReasonCode(normalizedReason);
+
+    return {
+      reason: {
+        code: uberReasonCode,
+        explanation: detail || normalizedReason || uberReasonCode,
+      },
+    };
+  }
+
+  private toUberDenyReasonCode(reasonCode: string): UberDenyReasonCode {
+    switch (reasonCode.trim().toUpperCase()) {
+      case 'STORE_CLOSED':
+      case 'POS_NOT_READY':
+      case 'POS_OFFLINE':
+      case 'MISSING_ITEM':
+      case 'MISSING_INFO':
+      case 'PRICING':
+      case 'CAPACITY':
+      case 'ADDRESS':
+      case 'SPECIAL_INSTRUCTIONS':
+        return reasonCode.trim().toUpperCase() as UberDenyReasonCode;
+      case 'ITEM_UNAVAILABLE':
+      case 'ITEM_AVAILABILITY':
+        return 'ITEM_AVAILABILITY';
+      case 'INVALID_ORDER':
+      default:
+        return 'OTHER';
+    }
   }
 
   async listPendingUberOrders() {
@@ -3219,6 +3289,7 @@ export class UberEatsService {
     action: UberOrderActionName,
     payload: Record<string, unknown>,
     processPending = false,
+    audit?: { reasonCode?: string; reasonDetail?: string },
   ) {
     if (!externalOrderId) {
       throw new BadRequestException('externalOrderId 不能为空');
@@ -3243,8 +3314,9 @@ export class UberEatsService {
           data: {
             ...key,
             status: 'PENDING',
-            reasonCode: this.readString(payload.reason),
-            reasonDetail: this.readString(payload.details),
+            reasonCode: audit?.reasonCode ?? this.readString(payload.reason),
+            reasonDetail:
+              audit?.reasonDetail ?? this.readString(payload.details),
             attemptCount: 1,
           },
         });
