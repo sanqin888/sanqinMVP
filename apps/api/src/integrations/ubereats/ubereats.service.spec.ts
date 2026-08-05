@@ -732,11 +732,15 @@ describe('UberEatsService', () => {
     expect(parsed.items[0].modifiers[0].children).toHaveLength(1);
   });
 
-  it('拒绝 origin 或 base 路径不匹配的 resource_href', async () => {
+  it('origin 不匹配时拒绝 resource_href，并只记录 origin/path 非敏感信息', async () => {
     process.env.UBER_EATS_API_BASE_URL = 'https://api.uber.com/v2';
+    const warnSpy = jest
+      .spyOn(AppLogger.prototype, 'warn')
+      .mockImplementation();
     const body = {
       event_type: 'orders.notification',
-      resource_href: 'https://evil.example/v2/eats/order/ue_123',
+      resource_href:
+        'https://evil.example/v2/eats/order/ue_123?customer_name=Alice&phone=4165551234&address=1%20Main%20St&Authorization=Bearer%20secret-token',
       meta: { resource_id: 'ue_123', user_id: 'user_1' },
       event_id: 'evt_bad_href',
     };
@@ -756,7 +760,26 @@ describe('UberEatsService', () => {
         rawBody,
         body,
       }),
-    ).rejects.toThrow('不属于配置的 API base');
+    ).rejects.toThrow('Uber resource_href 不属于配置的 API base');
+
+    const logs = warnSpy.mock.calls.flat().join(' ');
+    expect(logs).toContain('ubereats webhook resource_href rejected');
+    expect(logs).toContain('resourceOrigin=https://evil.example');
+    expect(logs).toContain('resourcePathname=/v2/eats/order/ue_123');
+    expect(logs).toContain('baseOrigin=https://api.uber.com');
+    expect(logs).toContain('basePathname=/v2');
+    for (const sensitive of [
+      'customer_name',
+      'Alice',
+      'phone',
+      '4165551234',
+      'address',
+      '1%20Main%20St',
+      'Authorization',
+      'secret-token',
+    ]) {
+      expect(logs).not.toContain(sensitive);
+    }
     delete process.env.UBER_EATS_API_BASE_URL;
   });
 
