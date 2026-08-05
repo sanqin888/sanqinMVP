@@ -1,30 +1,11 @@
 'use client';
 
+import Image from 'next/image';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '@/lib/api/client';
 
-type ModuleKey = 'dashboard' | 'auth' | 'testing' | 'store-menu' | 'orders-ops' | 'reconciliation-tickets';
+type ModuleKey = 'dashboard' | 'auth' | 'store-menu' | 'orders-ops' | 'reconciliation-tickets';
 
-type ScopeResult = {
-  scope: string;
-  tokenIssued: boolean;
-  apiValidated?: boolean;
-  apiSkipped?: boolean;
-  status?: number;
-  detail?: string;
-  reason?: string;
-};
-
-type ScopesVerifyResponse = { ok: boolean; results: ScopeResult[] };
-type DebugFeatureStatusResponse = { enabled: boolean };
-type DebugTokenResponse = {
-  requestedScope: string | null;
-  normalizedScope: string;
-  tokenPrefix: string;
-  tokenLength: number;
-  usedDefaultScopes: boolean;
-  forceRefreshed: boolean;
-};
 type OAuthConnectUrlResponse = { authorizeUrl: string; state: string };
 type OAuthConnectionResponse = {
   merchantUberUserId: string;
@@ -81,15 +62,6 @@ type ReconciliationResponse = {
     discrepancyOrders: number;
     createdAt: string;
   }>;
-};
-
-type CreatedOrdersResponse = {
-  storeId: string;
-  orderCount: number;
-  requestUrl: string;
-  tokenPrefix: string;
-  tokenLength: number;
-  orders: Array<{ id: string; currentState: string; placedAt: string }>;
 };
 
 type StoreMenuTabKey = 'overview' | 'mapping' | 'editor' | 'publish';
@@ -224,13 +196,11 @@ type UberMenuDraftDiffResponse = {
 const MODULES: Array<{ key: ModuleKey; label: string }> = [
   { key: 'dashboard', label: '总览 Dashboard' },
   { key: 'auth', label: '接入与授权' },
-  { key: 'testing', label: '测试中心' },
   { key: 'store-menu', label: '门店与菜单' },
   { key: 'orders-ops', label: '订单与运营' },
   { key: 'reconciliation-tickets', label: '对账与工单' },
 ];
 
-const DEFAULT_SCOPES = ['eats.store', 'eats.order', 'eats.report', 'eats.store.orders.read', 'eats.store.status.write'];
 const UBER_ITEM_DESCRIPTION_MAX_LENGTH = 300;
 const STORE_MENU_TABS: Array<{ key: StoreMenuTabKey; label: string }> = [
   { key: 'overview', label: '概览' },
@@ -254,17 +224,10 @@ export default function UberEatsAdminPage() {
   const [connectUrl, setConnectUrl] = useState<OAuthConnectUrlResponse | null>(null);
   const [connection, setConnection] = useState<OAuthConnectionResponse | null>(null);
   const [stores, setStores] = useState<OAuthStoresResponse['stores']>([]);
-  const [scopes, setScopes] = useState<ScopeResult[]>([]);
-  const [tokenDebug, setTokenDebug] = useState<DebugTokenResponse | null>(null);
   const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
   const [tickets, setTickets] = useState<TicketsResponse['items']>([]);
   const [reports, setReports] = useState<ReconciliationResponse['items']>([]);
-  const [createdOrders, setCreatedOrders] = useState<CreatedOrdersResponse | null>(null);
-  const [debugFeatureEnabled, setDebugFeatureEnabled] = useState(false);
 
-  const [scopeInput, setScopeInput] = useState('');
-  const [verifyStoreId, setVerifyStoreId] = useState('');
-  const [verifyOrderId, setVerifyOrderId] = useState('');
   const [integratorStoreId, setIntegratorStoreId] = useState('');
   const [provisionPayload, setProvisionPayload] = useState('{\n  "is_order_manager": true\n}');
   const [ticketStoreFilter, setTicketStoreFilter] = useState('');
@@ -311,19 +274,6 @@ export default function UberEatsAdminPage() {
     const tasks = await Promise.allSettled([
       apiFetch<OAuthConnectUrlResponse>('/integrations/ubereats/oauth/connect-url'),
       apiFetch<OAuthConnectionResponse>('/integrations/ubereats/oauth/connection'),
-      (async () => {
-        const status = await apiFetch<DebugFeatureStatusResponse>('/integrations/ubereats/debug/status');
-        if (!status.enabled) return { enabled: false, scopes: [], createdOrders: null };
-        const [scopeResult, createdOrdersResult] = await Promise.all([
-          apiFetch<ScopesVerifyResponse>('/integrations/ubereats/debug/scopes/verify', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ scopes: DEFAULT_SCOPES, forceRefresh: false, storeId: verifyStoreId || undefined, orderId: verifyOrderId || undefined }),
-          }),
-          apiFetch<CreatedOrdersResponse>('/integrations/ubereats/debug/created-orders'),
-        ]);
-        return { enabled: true, scopes: scopeResult.results ?? [], createdOrders: createdOrdersResult };
-      })(),
       apiFetch<TicketsResponse>(`/integrations/ubereats/ops/tickets${ticketStoreFilter || ticketStatusFilter ? `?${new URLSearchParams({ ...(ticketStoreFilter ? { storeId: ticketStoreFilter } : {}), ...(ticketStatusFilter ? { status: ticketStatusFilter } : {}) }).toString()}` : ''}`),
       apiFetch<ReconciliationResponse>('/integrations/ubereats/reports/reconciliation?limit=20'),
       apiFetch<PendingOrdersResponse>('/integrations/ubereats/orders/pending'),
@@ -331,20 +281,10 @@ export default function UberEatsAdminPage() {
     ]);
 
     const errors: string[] = [];
-    const [connect, conn, debug, ticketRes, reportRes, orderRes, storeRes] = tasks;
+    const [connect, conn, ticketRes, reportRes, orderRes, storeRes] = tasks;
 
     if (connect.status === 'fulfilled') setConnectUrl(connect.value); else errors.push('connect-url');
     if (conn.status === 'fulfilled') setConnection(conn.value); else setConnection(null);
-    if (debug.status === 'fulfilled') {
-      setDebugFeatureEnabled(debug.value.enabled);
-      setScopes(debug.value.scopes);
-      setCreatedOrders(debug.value.createdOrders);
-    } else {
-      setDebugFeatureEnabled(false);
-      setScopes([]);
-      setCreatedOrders(null);
-      errors.push('debug status');
-    }
     if (ticketRes.status === 'fulfilled') setTickets(ticketRes.value.items ?? []); else errors.push('tickets');
     if (reportRes.status === 'fulfilled') setReports(reportRes.value.items ?? []); else errors.push('reports');
     if (orderRes.status === 'fulfilled') setPendingOrders(orderRes.value.items ?? []); else errors.push('orders');
@@ -357,7 +297,7 @@ export default function UberEatsAdminPage() {
     }
 
     setLoading(false);
-  }, [ticketStatusFilter, ticketStoreFilter, verifyOrderId, verifyStoreId]);
+  }, [ticketStatusFilter, ticketStoreFilter]);
 
   const loadStoreMenuDraft = useCallback(async (storeId: string, options?: { keepSelection?: boolean }) => {
     if (!storeId) {
@@ -411,8 +351,6 @@ export default function UberEatsAdminPage() {
   }, [selectedStoreId]);
 
   const openTickets = useMemo(() => tickets.filter((t) => t.status !== 'RESOLVED').length, [tickets]);
-  const verifiedCount = scopes.filter((s) => s.apiValidated || s.apiSkipped).length;
-  const failedCount = scopes.filter((s) => !s.tokenIssued || s.apiValidated === false).length;
   const provisionedCount = stores.filter((s) => s.isProvisioned).length;
   const draftCategories = useMemo(
     () => menuDraft?.uberDraft.tree.categories ?? [],
@@ -832,7 +770,6 @@ export default function UberEatsAdminPage() {
           <section className="space-y-4">
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-500">连接状态</p><p className="mt-2 text-xl font-semibold">{connection?.merchantUberUserId ? '已授权' : '未授权'}</p><p className="text-xs text-slate-500">expiresAt: {safeTime(connection?.expiresAt)}</p></div>
-              <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-500">App Scopes 状态</p><p className="mt-2 text-xl font-semibold">已验证 {verifiedCount} / 失败 {failedCount}</p></div>
               <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-500">门店绑定状态</p><p className="mt-2 text-xl font-semibold">已发现 {stores.length} / 已 provision {provisionedCount}</p></div>
               <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-500">Webhook 状态</p><p className="mt-2 text-xl font-semibold">200 ACK + 去重处理</p></div>
               <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-500">菜单状态</p><p className="mt-2 text-xl font-semibold">{reports[0] ? '有发布/对账记录' : '暂无发布记录'}</p></div>
@@ -904,47 +841,6 @@ export default function UberEatsAdminPage() {
                     ))}
                   </tbody>
                 </table>
-              </div>
-            </div>
-          </section>
-        )}
-
-        {active === 'testing' && (
-          <section className="space-y-4">
-            {!debugFeatureEnabled ? <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">当前环境未开启 Uber 调试功能；Scopes、Token 和 Sandbox created-orders 检查已停用，不影响菜单、订单和对账模块。</div> : null}
-            <div className="rounded-xl border bg-white p-4">
-              <h3 className="text-lg font-semibold">Scopes 验证</h3>
-              <div className="mt-2 grid gap-2 md:grid-cols-3">
-                <input className="rounded border px-3 py-2 text-sm" placeholder="storeId（可选）" value={verifyStoreId} onChange={(e) => setVerifyStoreId(e.target.value)} />
-                <input className="rounded border px-3 py-2 text-sm" placeholder="orderId（可选）" value={verifyOrderId} onChange={(e) => setVerifyOrderId(e.target.value)} />
-                <button type="button" disabled={!debugFeatureEnabled} className="rounded border px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void runAction('verify-scope', async () => {
-                  const res = await apiFetch<ScopesVerifyResponse>('/integrations/ubereats/debug/scopes/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scopes: DEFAULT_SCOPES, forceRefresh: true, storeId: verifyStoreId || undefined, orderId: verifyOrderId || undefined }) });
-                  setScopes(res.results ?? []);
-                }, 'Scopes 验证完成', false)}>重新验证</button>
-              </div>
-              <table className="mt-3 min-w-full text-sm"><thead><tr className="border-b text-left text-slate-500"><th className="px-2 py-2">Scope</th><th className="px-2 py-2">Token</th><th className="px-2 py-2">API</th><th className="px-2 py-2">status</th><th className="px-2 py-2">detail</th></tr></thead><tbody>{scopes.map((s) => <tr key={s.scope} className="border-b"><td className="px-2 py-2">{s.scope}</td><td className="px-2 py-2">{s.tokenIssued ? '✅' : '❌'}</td><td className="px-2 py-2">{s.apiValidated ? '✅' : s.apiSkipped ? '⏭️' : '❌'}</td><td className="px-2 py-2">{s.status ?? '-'}</td><td className="px-2 py-2">{s.detail ?? s.reason ?? '-'}</td></tr>)}</tbody></table>
-            </div>
-
-            <div className="grid gap-4 lg:grid-cols-2">
-              <div className="rounded-xl border bg-white p-4">
-                <h3 className="text-lg font-semibold">Token 调试</h3>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <button type="button" disabled={!debugFeatureEnabled} className="rounded border px-3 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void runAction('token-default', async () => setTokenDebug(await apiFetch<DebugTokenResponse>('/integrations/ubereats/debug/token')), '默认 Token 获取成功', false)}>获取默认 token</button>
-                  <button type="button" disabled={!debugFeatureEnabled} className="rounded border px-3 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void runAction('token-refresh', async () => setTokenDebug(await apiFetch<DebugTokenResponse>('/integrations/ubereats/debug/token?forceRefresh=true')), 'Token 强制刷新成功', false)}>Force refresh</button>
-                </div>
-                <div className="mt-2 flex gap-2"><input className="flex-1 rounded border px-3 py-2 text-sm" placeholder="指定 scope" value={scopeInput} onChange={(e) => setScopeInput(e.target.value)} /><button type="button" disabled={!debugFeatureEnabled} className="rounded border px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void runAction('token-scope', async () => setTokenDebug(await apiFetch<DebugTokenResponse>(`/integrations/ubereats/debug/token?scope=${encodeURIComponent(scopeInput)}`)), '自定义 scope Token 获取成功', false)}>测试</button></div>
-                {tokenDebug ? <div className="mt-2 text-sm"><p>requestedScope: {tokenDebug.requestedScope ?? '-'}</p><p>normalizedScope: {tokenDebug.normalizedScope}</p><p>tokenPrefix: {tokenDebug.tokenPrefix}</p><p>tokenLength: {tokenDebug.tokenLength}</p></div> : null}
-              </div>
-
-              <div className="rounded-xl border bg-white p-4">
-                <h3 className="text-lg font-semibold">Webhook / 状态联调 / Sandbox 订单</h3>
-                <button type="button" className="mt-2 rounded border px-3 py-1 text-sm" onClick={() => void runAction('status-sync', () => apiFetch('/integrations/ubereats/store/status/sync', { method: 'POST' }).then(() => {}), '已完成本地状态同步预览')}>{actionLoading['status-sync'] ? '处理中...' : '本地状态同步预览'}</button>
-                <div className="mt-3 text-sm">
-                  <p>storeId: {createdOrders?.storeId ?? '-'}</p>
-                  <p>requestUrl: {createdOrders?.requestUrl ?? '-'}</p>
-                  <p>tokenPrefix/tokenLength: {createdOrders ? `${createdOrders.tokenPrefix} / ${createdOrders.tokenLength}` : '-'}</p>
-                  <p>created-orders count: {createdOrders?.orderCount ?? 0}</p>
-                </div>
               </div>
             </div>
           </section>
@@ -1104,7 +1000,19 @@ export default function UberEatsAdminPage() {
                   {descriptionWarnings.length > 0 ? <div className="mt-3 space-y-1">{descriptionWarnings.map(({ item, message }) => <div key={item.id} className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800"><strong>WARNING</strong> · {item.displayName}：{message}</div>)}</div> : null}
                   <h5 className="mt-4 text-sm font-semibold">菜品发布预览</h5>
                   <div className="mt-2 grid max-h-80 grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
-                    {publishPreviewItems.map((item) => <div key={item.id} className="rounded border p-2 text-xs">{item.imageUrl ? <img src={item.imageUrl} alt={item.displayName} className="mb-1 aspect-square w-full rounded object-cover" /> : <div className="mb-1 flex aspect-square w-full items-center justify-center rounded bg-slate-100 text-slate-500">缺少图片</div>}<p className="truncate font-medium" title={item.displayName}>{item.displayName}</p><p className="mt-1 line-clamp-3 whitespace-pre-wrap text-slate-600" title={item.displayDescription?.trim() || '缺少描述'}>{item.displayDescription?.trim() || '缺少描述'}</p></div>)}
+                    {publishPreviewItems.map((item) => (
+                      <div key={item.id} className="rounded border p-2 text-xs">
+                        {item.imageUrl ? (
+                          <div className="relative mb-1 aspect-square w-full overflow-hidden rounded">
+                            <Image src={item.imageUrl} alt={item.displayName} fill className="object-cover" sizes="(min-width: 1024px) 160px, (min-width: 768px) 25vw, 50vw" />
+                          </div>
+                        ) : (
+                          <div className="mb-1 flex aspect-square w-full items-center justify-center rounded bg-slate-100 text-slate-500">缺少图片</div>
+                        )}
+                        <p className="truncate font-medium" title={item.displayName}>{item.displayName}</p>
+                        <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-slate-600" title={item.displayDescription?.trim() || '缺少描述'}>{item.displayDescription?.trim() || '缺少描述'}</p>
+                      </div>
+                    ))}
                   </div>
                   <h5 className="mt-4 text-sm font-semibold">最终发布营业时段（门店本地时间）</h5>
                   <p className="mt-1 text-xs text-slate-500">时区：{dryRunSchedule?.serviceAvailabilityTimezone ?? menuDraft?.serviceAvailabilityTimezone ?? '-'}</p>

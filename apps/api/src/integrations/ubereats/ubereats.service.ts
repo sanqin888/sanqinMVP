@@ -468,24 +468,6 @@ type GenerateReconciliationReportInput = UberStoreScopedInput & {
   rangeEnd?: string;
 };
 
-type VerifyScopeInput = {
-  storeId?: string;
-  orderId?: string;
-  dryRun?: boolean;
-  forceRefresh?: boolean;
-};
-
-type ScopeVerificationResult = {
-  scope: string;
-  tokenIssued: boolean;
-  tokenError?: string;
-  apiValidated?: boolean;
-  apiSkipped?: boolean;
-  reason?: string;
-  status?: number;
-  detail?: string;
-};
-
 type UberOrderActionName = 'ACCEPT' | 'DENY' | 'READY_FOR_PICKUP';
 
 const UBER_ACTION_BY_LOCAL_STATUS: Partial<
@@ -641,7 +623,7 @@ export class UberEatsService {
   private readonly uberApiBaseUrl =
     process.env.UBER_EATS_API_BASE_URL?.trim() || 'https://api.uber.com';
   private readonly oauthStateSecret: string;
-  private readonly webhookCurrentClientSecret: string;
+  private readonly webhookSigningKey: string;
   private readonly oauthStateRequests = new Map<
     string,
     {
@@ -664,12 +646,12 @@ export class UberEatsService {
     }
     this.oauthStateSecret = secret;
 
-    const webhookCurrentClientSecret =
-      process.env.UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET?.trim() || '';
-    if (!webhookCurrentClientSecret) {
-      throw new Error('UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET 未配置');
+    const webhookSigningKey =
+      process.env.UBER_EATS_WEBHOOK_SIGNING_KEY?.trim() || '';
+    if (!webhookSigningKey) {
+      throw new Error('UBER_EATS_WEBHOOK_SIGNING_KEY 未配置');
     }
-    this.webhookCurrentClientSecret = webhookCurrentClientSecret;
+    this.webhookSigningKey = webhookSigningKey;
   }
 
   private get uberMerchantConnectionDelegate(): UberMerchantConnectionDelegate | null {
@@ -698,200 +680,6 @@ export class UberEatsService {
       throw new Error('UberOrderAction 数据表不可用');
     }
     return delegate;
-  }
-
-  async debugAccessToken(scope?: string, forceRefresh = false) {
-    const normalizedScopes = this.uberAuthService.normalizeScopesToArray(scope);
-    const normalizedScope = normalizedScopes.join(' ');
-    const usedDefaultScopes = !scope?.trim();
-    if (forceRefresh) {
-      await this.uberAuthService.forceRefreshAccessToken(scope);
-    } else {
-      await this.uberAuthService.getAccessToken(scope);
-    }
-
-    return {
-      ok: true,
-      requestedScope: scope?.trim() || null,
-      normalizedScope,
-      usedDefaultScopes,
-      forceRefreshed: forceRefresh,
-      cached: !forceRefresh ? 'cache_or_fetch' : 'skipped_by_force_refresh',
-    };
-  }
-
-  async debugCreatedOrders(storeId?: string) {
-    const normalizedStoreId = this.resolveDebugStoreId(storeId);
-    const token = await this.uberAuthService.getAccessToken(
-      'eats.store.orders.read',
-    );
-    const url = this.buildCreatedOrdersUrl(normalizedStoreId);
-
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json',
-        },
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(
-        `[ubereats debug] created-orders request failed storeId=${normalizedStoreId} message=${message}`,
-      );
-      throw new BadRequestException({
-        ok: false,
-        storeId: normalizedStoreId,
-        message: '调用 Uber created-orders 接口失败',
-        detail: message,
-      });
-    }
-
-    const rawText = await response.text();
-    const parsed = this.tryParseJson(rawText);
-
-    if (!response.ok) {
-      const detail = this.summarizeDebugResponse(parsed, rawText);
-      this.logger.error(
-        `[ubereats debug] created-orders upstream error storeId=${normalizedStoreId} status=${response.status} detail=${detail}`,
-      );
-      throw new BadRequestException({
-        ok: false,
-        storeId: normalizedStoreId,
-        status: response.status,
-        message: 'Uber created-orders 接口返回错误',
-        detail,
-      });
-    }
-
-    const orders = this.extractCreatedOrders(parsed);
-
-    this.logger.log(
-      `[ubereats debug] created-orders success storeId=${normalizedStoreId} count=${orders.length}`,
-    );
-
-    return {
-      ok: true,
-      storeId: normalizedStoreId,
-      requestUrl: url,
-      orderCount: orders.length,
-      orders: orders.map((order) => ({
-        id: order.id,
-        currentState: order.current_state,
-        placedAt: order.placed_at,
-      })),
-    };
-  }
-
-  async verifyScope(
-    scope: string,
-    input: VerifyScopeInput = {},
-  ): Promise<ScopeVerificationResult> {
-    const normalizedScope = scope.trim();
-    if (!normalizedScope) {
-      throw new BadRequestException('scope 不能为空');
-    }
-
-    let token = '';
-    try {
-      token = input.forceRefresh
-        ? await this.uberAuthService.forceRefreshAccessToken(normalizedScope)
-        : await this.uberAuthService.getAccessToken(normalizedScope);
-    } catch (error) {
-      return {
-        scope: normalizedScope,
-        tokenIssued: false,
-        tokenError: error instanceof Error ? error.message : `${error}`,
-      };
-    }
-
-    const baseResult: ScopeVerificationResult = {
-      scope: normalizedScope,
-      tokenIssued: true,
-    };
-
-    if (normalizedScope === 'eats.store') {
-      const storeId = this.resolveDebugStoreId(input.storeId);
-      return await this.verifyScopeByRequest(
-        baseResult,
-        `/v1/eats/stores/${encodeURIComponent(storeId)}`,
-        token,
-      );
-    }
-
-    if (normalizedScope === 'eats.store.orders.read') {
-      try {
-        const payload = await this.debugCreatedOrders(input.storeId);
-        return {
-          ...baseResult,
-          apiValidated: true,
-          status: 200,
-          detail: `created-orders count=${payload.orderCount}`,
-        };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return {
-          ...baseResult,
-          apiValidated: false,
-          detail: message,
-        };
-      }
-    }
-
-    if (normalizedScope === 'eats.store.status.write') {
-      return {
-        ...baseResult,
-        apiSkipped: true,
-        reason: '未执行写验证：scope 验证不得改变门店状态',
-      };
-    }
-
-    if (normalizedScope === 'eats.order') {
-      return {
-        ...baseResult,
-        apiSkipped: true,
-        reason: '未执行写验证：仅以 token scope 声明验证 eats.order',
-      };
-    }
-
-    if (normalizedScope === 'eats.report') {
-      return {
-        ...baseResult,
-        apiSkipped: true,
-        reason: 'reporting endpoint 待接入',
-      };
-    }
-
-    return {
-      ...baseResult,
-      apiSkipped: true,
-      reason: '未配置该 scope 的最小 API 校验',
-    };
-  }
-
-  async verifyScopes(scopes?: string[], input: VerifyScopeInput = {}) {
-    const requestedScopes =
-      scopes?.filter((scope) => typeof scope === 'string' && scope.trim()) ??
-      [];
-    const finalScopes =
-      requestedScopes.length > 0
-        ? requestedScopes
-        : this.uberAuthService.getDefaultAppScopes();
-
-    const results: ScopeVerificationResult[] = [];
-    for (const scope of finalScopes) {
-      const result = await this.verifyScope(scope, input);
-      results.push(result);
-    }
-
-    return {
-      ok: results.every((item) => item.tokenIssued),
-      storeId:
-        input.storeId?.trim() || process.env.UBER_EATS_STORE_ID?.trim() || null,
-      results,
-    };
   }
 
   buildMerchantAuthorizeUrl(adminSessionId: string, merchantContext?: string) {
@@ -3088,45 +2876,6 @@ export class UberEatsService {
     }
 
     return this.asObject(parsed) ?? {};
-  }
-
-  private async verifyScopeByRequest(
-    baseResult: ScopeVerificationResult,
-    path: string,
-    token: string,
-    method: 'GET' | 'POST' = 'GET',
-    body?: Record<string, unknown>,
-  ): Promise<ScopeVerificationResult> {
-    const response = await fetch(
-      `${this.uberApiBaseUrl.replace(/\/$/, '')}${path}`,
-      {
-        method,
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json',
-          ...(body ? { 'Content-Type': 'application/json' } : {}),
-        },
-        ...(body ? { body: JSON.stringify(body) } : {}),
-      },
-    );
-
-    const rawText = await response.text();
-    const parsed = this.tryParseJson(rawText);
-
-    if (!response.ok) {
-      return {
-        ...baseResult,
-        apiValidated: false,
-        status: response.status,
-        detail: this.summarizeDebugResponse(parsed, rawText),
-      };
-    }
-
-    return {
-      ...baseResult,
-      apiValidated: true,
-      status: response.status,
-    };
   }
 
   private extractMerchantStores(
@@ -6081,24 +5830,6 @@ export class UberEatsService {
     return `ubereats:${externalOrderId}`;
   }
 
-  private resolveDebugStoreId(storeId?: string): string {
-    const normalizedStoreId =
-      storeId?.trim() || process.env.UBER_EATS_STORE_ID?.trim();
-
-    if (!normalizedStoreId) {
-      throw new BadRequestException(
-        '缺少 storeId，请通过 query 传入或配置 UBER_EATS_STORE_ID',
-      );
-    }
-
-    return normalizedStoreId;
-  }
-
-  private buildCreatedOrdersUrl(storeId: string): string {
-    const base = this.uberApiBaseUrl.replace(/\/$/, '');
-    return `${base}/v1/eats/stores/${encodeURIComponent(storeId)}/created-orders`;
-  }
-
   private tryParseJson(rawText: string): unknown {
     if (!rawText) {
       return null;
@@ -6140,34 +5871,6 @@ export class UberEatsService {
       .slice(0, 500);
 
     return { upstreamStatus: status, code: code.slice(0, 100), message };
-  }
-
-  private extractCreatedOrders(
-    payload: unknown,
-  ): Array<{ id?: string; current_state?: string; placed_at?: string }> {
-    if (!payload || typeof payload !== 'object') {
-      return [];
-    }
-
-    const orders = (payload as { orders?: unknown }).orders;
-    if (!Array.isArray(orders)) {
-      return [];
-    }
-
-    return orders
-      .filter(
-        (order): order is Record<string, unknown> =>
-          !!order && typeof order === 'object',
-      )
-      .map((order) => ({
-        id: typeof order.id === 'string' ? order.id : undefined,
-        current_state:
-          typeof order.current_state === 'string'
-            ? order.current_state
-            : undefined,
-        placed_at:
-          typeof order.placed_at === 'string' ? order.placed_at : undefined,
-      }));
   }
 
   private normalizeStoreId(storeId?: string): string {
@@ -6257,8 +5960,8 @@ export class UberEatsService {
     headers: Record<string, unknown>,
     rawBody: string | Buffer,
   ) {
-    // Uber signs the exact UTF-8 request body with the app client secret and
-    // sends the lowercase hexadecimal HMAC-SHA256 in X-Uber-Signature.
+    // Uber signs the exact UTF-8 request body with the webhook signing key
+    // and sends the lowercase hexadecimal HMAC-SHA256 in X-Uber-Signature.
     const receivedSignature = this.readHeader(headers, 'x-uber-signature');
     if (!receivedSignature) {
       this.logger.warn(
@@ -6279,26 +5982,8 @@ export class UberEatsService {
       throw new UnauthorizedException('Invalid Uber signature');
     }
 
-    const previousClientSecret =
-      process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET?.trim();
-    const previousValidUntil =
-      process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET_VALID_UNTIL?.trim();
-    const previousSecretConfigured = Boolean(previousClientSecret);
-    const previousSecretValidUntilConfigured = Boolean(previousValidUntil);
-    const previousValidUntilMs = previousValidUntil
-      ? Date.parse(previousValidUntil)
-      : Number.NaN;
-    const previousSecretWindowValid =
-      previousSecretConfigured &&
-      previousSecretValidUntilConfigured &&
-      Number.isFinite(previousValidUntilMs) &&
-      Date.now() < previousValidUntilMs;
-
     const receivedBuffer = Buffer.from(normalizedSignature, 'hex');
-    const currentExpectedBuffer = createHmac(
-      'sha256',
-      this.webhookCurrentClientSecret,
-    )
+    const currentExpectedBuffer = createHmac('sha256', this.webhookSigningKey)
       .update(rawBody)
       .digest();
     const currentSecretMatched = timingSafeEqual(
@@ -6307,28 +5992,9 @@ export class UberEatsService {
     );
     if (currentSecretMatched) return;
 
-    let previousSecretMatched = false;
-    if (previousSecretWindowValid && previousClientSecret) {
-      const previousExpectedBuffer = createHmac('sha256', previousClientSecret)
-        .update(rawBody)
-        .digest();
-      previousSecretMatched = timingSafeEqual(
-        previousExpectedBuffer,
-        receivedBuffer,
-      );
-    }
-
     const diagnostic =
       `signaturePresent=true signatureLength=${signatureLength} signatureEncoding=hex rawBodyBytes=${rawBodyBytes} ` +
-      `currentSecretMatched=${currentSecretMatched} previousSecretConfigured=${previousSecretConfigured} ` +
-      `previousSecretValidUntilConfigured=${previousSecretValidUntilConfigured} ` +
-      `previousSecretWindowValid=${previousSecretWindowValid} previousSecretMatched=${previousSecretMatched}`;
-    if (previousSecretMatched) {
-      this.logger.warn(
-        `Uber webhook signature verified using previous secret ${diagnostic}`,
-      );
-      return;
-    }
+      `currentSecretMatched=${currentSecretMatched}`;
 
     this.logger.warn(
       `Uber webhook signature verification failed ${diagnostic}`,

@@ -156,14 +156,13 @@ describe('UberEatsService 门店状态同步', () => {
   beforeEach(() => {
     process.env.UBER_EATS_OAUTH_STATE_SECRET =
       'high-entropy-test-secret-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    process.env.UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET =
-      'test-ubereats-secret';
+    process.env.UBER_EATS_WEBHOOK_SIGNING_KEY = 'test-ubereats-secret';
   });
 
   afterEach(() => {
     jest.restoreAllMocks();
     delete process.env.UBER_EATS_OAUTH_STATE_SECRET;
-    delete process.env.UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET;
+    delete process.env.UBER_EATS_WEBHOOK_SIGNING_KEY;
   });
 
   it('逐个同步多个门店，并在部分失败和未 provision 时返回失败明细及运营告警', async () => {
@@ -358,7 +357,7 @@ describe('UberEatsService', () => {
 
   beforeEach(() => {
     process.env.UBER_EATS_CLIENT_SECRET = clientSecret;
-    process.env.UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET = clientSecret;
+    process.env.UBER_EATS_WEBHOOK_SIGNING_KEY = clientSecret;
     process.env.UBER_EATS_OAUTH_STATE_SECRET =
       'high-entropy-test-secret-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   });
@@ -366,9 +365,7 @@ describe('UberEatsService', () => {
   afterEach(() => {
     jest.restoreAllMocks();
     delete process.env.UBER_EATS_CLIENT_SECRET;
-    delete process.env.UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET;
-    delete process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET;
-    delete process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET_VALID_UNTIL;
+    delete process.env.UBER_EATS_WEBHOOK_SIGNING_KEY;
     delete process.env.UBER_EATS_API_BASE_URL;
     delete process.env.UBER_EATS_OAUTH_STATE_SECRET;
     delete process.env.PUBLIC_BASE_URL;
@@ -397,18 +394,40 @@ describe('UberEatsService', () => {
       body: { event_type: 'orders.notification', event_id: 'fixed-event' },
     });
 
-  it('初始化时缺少 webhook 当前 client secret 会立即失败', () => {
-    delete process.env.UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET;
+  it('初始化时缺少 webhook signing key 会立即失败', () => {
+    delete process.env.UBER_EATS_WEBHOOK_SIGNING_KEY;
 
     expect(() => new UberEatsService({} as never, createAuthService())).toThrow(
-      'UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET 未配置',
+      'UBER_EATS_WEBHOOK_SIGNING_KEY 未配置',
     );
+  });
+
+  it('使用 Uber webhook signing key 验签', async () => {
+    const rawBody =
+      '{"event_type":"orders.notification","event_id":"signing-key-event"}';
+    process.env.UBER_EATS_WEBHOOK_SIGNING_KEY = 'uber-webhook-signing-key';
+    const signature = createHmac(
+      'sha256',
+      process.env.UBER_EATS_WEBHOOK_SIGNING_KEY,
+    )
+      .update(rawBody)
+      .digest('hex');
+    const service = new UberEatsService(
+      createSignatureOnlyPrisma() as never,
+      createAuthService(),
+    );
+
+    await expect(
+      verifySignature(service, rawBody, {
+        'x-uber-signature': signature,
+      }),
+    ).resolves.toBeUndefined();
   });
 
   it('接受 Uber 文档算法的固定 UTF-8/HMAC-SHA256 十六进制签名向量', async () => {
     const rawBody =
       '{"event_type":"orders.notification","event_id":"d4e4a8b1-3b7d-4f61-9e4b-123456789abc"}';
-    process.env.UBER_EATS_WEBHOOK_CURRENT_CLIENT_SECRET = 'uber-client-secret';
+    process.env.UBER_EATS_WEBHOOK_SIGNING_KEY = 'uber-client-secret';
     const documentedVector =
       '552930492844589395696d9784bab01a2205c2d9ff3aeffc9a1bcb154217d3e1';
     const service = new UberEatsService(
@@ -505,12 +524,8 @@ describe('UberEatsService', () => {
     expect(logs).not.toContain(rawBody);
   });
 
-  it('HMAC 不匹配时记录 current/previous 状态但不泄露敏感数据', async () => {
+  it('HMAC 不匹配时记录 current 状态但不泄露敏感数据', async () => {
     const rawBody = '{"private":"order-payload-must-not-be-logged"}';
-    const previousSecret = 'previous-secret-must-not-be-logged';
-    process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET = previousSecret;
-    process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET_VALID_UNTIL =
-      '2099-01-01T00:00:00.000Z';
     const signature = createHmac('sha256', 'unrelated-secret')
       .update(rawBody)
       .digest('hex');
@@ -529,16 +544,7 @@ describe('UberEatsService', () => {
     const logs = warnSpy.mock.calls.flat().join(' ');
     expect(logs).toContain('signatureEncoding=hex');
     expect(logs).toContain('currentSecretMatched=false');
-    expect(logs).toContain('previousSecretConfigured=true');
-    expect(logs).toContain('previousSecretValidUntilConfigured=true');
-    expect(logs).toContain('previousSecretWindowValid=true');
-    expect(logs).toContain('previousSecretMatched=false');
-    for (const sensitive of [
-      signature,
-      clientSecret,
-      previousSecret,
-      rawBody,
-    ]) {
+    for (const sensitive of [signature, clientSecret, rawBody]) {
       expect(logs).not.toContain(sensitive);
     }
   });
@@ -552,54 +558,12 @@ describe('UberEatsService', () => {
       createSignatureOnlyPrisma() as never,
       createAuthService(),
     );
+    jest.spyOn(AppLogger.prototype, 'warn').mockImplementation();
     await expect(
       verifySignature(service, rawBody, {
         'X-UbEr-SiGnAtUrE': signature,
       }),
     ).resolves.toBeUndefined();
-  });
-
-  it('仅在显式过渡期内接受 previous client secret', async () => {
-    const rawBody = '{"event_type":"orders.notification"}';
-    process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET = 'previous-client-secret';
-    process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET_VALID_UNTIL =
-      '2099-01-01T00:00:00.000Z';
-    const signature = createHmac('sha256', 'previous-client-secret')
-      .update(rawBody, 'utf8')
-      .digest('hex');
-    const service = new UberEatsService(
-      createSignatureOnlyPrisma() as never,
-      createAuthService(),
-    );
-    const warnSpy = jest
-      .spyOn(AppLogger.prototype, 'warn')
-      .mockImplementation();
-    await expect(
-      verifySignature(service, rawBody, { 'x-uber-signature': signature }),
-    ).resolves.toBeUndefined();
-    const successLogs = warnSpy.mock.calls.flat().join(' ');
-    expect(successLogs).toContain('verified using previous secret');
-    expect(successLogs).toContain('previousSecretWindowValid=true');
-    expect(successLogs).toContain('previousSecretMatched=true');
-    for (const sensitive of [
-      signature,
-      clientSecret,
-      'previous-client-secret',
-      rawBody,
-    ]) {
-      expect(successLogs).not.toContain(sensitive);
-    }
-
-    warnSpy.mockClear();
-    process.env.UBER_EATS_PREVIOUS_CLIENT_SECRET_VALID_UNTIL =
-      '2020-01-01T00:00:00.000Z';
-    await expect(
-      verifySignature(service, rawBody, { 'x-uber-signature': signature }),
-    ).rejects.toThrow('Invalid Uber signature');
-    const expiredLogs = warnSpy.mock.calls.flat().join(' ');
-    expect(expiredLogs).toContain('previousSecretWindowValid=false');
-    expect(expiredLogs).toContain('previousSecretMatched=false');
-    expect(expiredLogs).not.toContain('verified using previous secret');
   });
 
   it('标准资源引用通知会下载完整订单后写入 ubereats 订单', async () => {
@@ -1419,39 +1383,6 @@ describe('UberEatsService', () => {
     jest.restoreAllMocks();
   });
 
-  it('debugAccessToken 会返回请求 scope 且不暴露 token 元数据', async () => {
-    const service = new UberEatsService({} as never, createAuthService());
-
-    await expect(service.debugAccessToken()).resolves.toEqual({
-      ok: true,
-      requestedScope: null,
-      normalizedScope: 'eats.store.orders.read',
-      usedDefaultScopes: true,
-      forceRefreshed: false,
-      cached: 'cache_or_fetch',
-    });
-  });
-
-  it('scope 验证不产生任何 POST，write scope 明确标记未执行写验证', async () => {
-    const fetchSpy = jest.spyOn(global, 'fetch');
-    const service = new UberEatsService({} as never, createAuthService());
-
-    await expect(
-      service.verifyScope('eats.order', { orderId: 'ue_1' }),
-    ).resolves.toMatchObject({
-      tokenIssued: true,
-      apiSkipped: true,
-      reason: expect.stringContaining('未执行写验证') as unknown,
-    });
-    await expect(
-      service.verifyScope('eats.store.status.write', { dryRun: false }),
-    ).resolves.toMatchObject({
-      apiSkipped: true,
-      reason: expect.stringContaining('未执行写验证') as unknown,
-    });
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
   const createActionPrisma = (
     localOrder: object | null = { id: 'local_1' },
   ) => {
@@ -1695,90 +1626,6 @@ describe('UberEatsService', () => {
       );
     },
   );
-
-  it('debugCreatedOrders 会返回请求 URL 与订单摘要且不暴露完整 token', async () => {
-    const fetchMock: jest.MockedFunction<typeof fetch> = jest.fn();
-    fetchMock.mockResolvedValue({
-      ok: true,
-      text: jest.fn().mockResolvedValue(
-        JSON.stringify({
-          orders: [
-            {
-              id: 'ord_1',
-              current_state: 'CREATED',
-              placed_at: '2026-03-19T00:00:00Z',
-            },
-          ],
-        }),
-      ),
-    } as Response);
-    global.fetch = fetchMock;
-
-    const authService = createAuthService();
-
-    const service = new UberEatsService({} as never, authService);
-
-    await expect(service.debugCreatedOrders('store_1')).resolves.toEqual({
-      ok: true,
-      storeId: 'store_1',
-      requestUrl: 'https://api.uber.com/v1/eats/stores/store_1/created-orders',
-      orderCount: 1,
-      orders: [
-        {
-          id: 'ord_1',
-          currentState: 'CREATED',
-          placedAt: '2026-03-19T00:00:00Z',
-        },
-      ],
-    });
-
-    expect(authService.getAccessToken).toHaveBeenCalledWith(
-      'eats.store.orders.read',
-    );
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://api.uber.com/v1/eats/stores/store_1/created-orders',
-      expect.anything(),
-    );
-
-    const [, requestInit] = fetchMock.mock.calls[0];
-    expect(requestInit).toMatchObject({
-      method: 'GET',
-      headers: {
-        Authorization: 'Bearer token_debug_1234567890',
-      },
-    });
-  });
-
-  it('debugCreatedOrders 在未传 storeId 时会回退到环境变量', async () => {
-    process.env.UBER_EATS_STORE_ID = 'store_env';
-    const fetchMock: jest.MockedFunction<typeof fetch> = jest.fn();
-    fetchMock.mockResolvedValue({
-      ok: true,
-      text: jest.fn().mockResolvedValue(JSON.stringify({ orders: [] })),
-    } as Response);
-    global.fetch = fetchMock;
-
-    const authService = createAuthService();
-
-    const service = new UberEatsService({} as never, authService);
-
-    await expect(service.debugCreatedOrders()).resolves.toMatchObject({
-      ok: true,
-      storeId: 'store_env',
-      requestUrl:
-        'https://api.uber.com/v1/eats/stores/store_env/created-orders',
-      orderCount: 0,
-    });
-  });
-
-  it('debugCreatedOrders 在缺少 storeId 时会直接报错', async () => {
-    delete process.env.UBER_EATS_STORE_ID;
-    const service = new UberEatsService({} as never, createAuthService());
-
-    await expect(service.debugCreatedOrders()).rejects.toThrow(
-      '缺少 storeId，请通过 query 传入或配置 UBER_EATS_STORE_ID',
-    );
-  });
 
   describe('OAuth state 安全校验', () => {
     const stateInternals = (service: UberEatsService) =>
