@@ -518,6 +518,16 @@ type UberOrderActionDelegate = {
     where: { id: string };
     data: Record<string, unknown>;
   }): Promise<UberOrderActionRecord>;
+  upsert(args: {
+    where: {
+      externalOrderId_action: {
+        externalOrderId: string;
+        action: UberOrderActionName;
+      };
+    };
+    create: Record<string, unknown>;
+    update: Record<string, unknown>;
+  }): Promise<UberOrderActionRecord>;
   findMany(args: {
     where: Record<string, unknown>;
     orderBy: { updatedAt: 'asc' | 'desc' };
@@ -3033,7 +3043,14 @@ export class UberEatsService {
       throw error;
     }
 
-    await this.acceptUberOrder(parsedOrder.externalOrderId);
+    await this.enqueueAndBestEffortAcceptUberOrder(
+      parsedOrder.externalOrderId,
+      {
+        eventType,
+        eventId,
+        orderStableId: order.orderStableId,
+      },
+    );
 
     await this.captureEvent('ubereats_webhook_processed', {
       eventType,
@@ -3042,6 +3059,68 @@ export class UberEatsService {
       orderStableId: order.orderStableId,
       storeId: parsedOrder.storeId ?? this.normalizeStoreId(undefined),
     });
+  }
+
+  private async enqueueAndBestEffortAcceptUberOrder(
+    externalOrderId: string,
+    context: {
+      eventType: string;
+      eventId: string;
+      orderStableId: string;
+    },
+  ) {
+    await this.uberOrderActionDelegate.upsert({
+      where: { externalOrderId_action: { externalOrderId, action: 'ACCEPT' } },
+      create: {
+        externalOrderId,
+        action: 'ACCEPT',
+        status: 'PENDING',
+        reasonCode: 'accepted',
+      },
+      update: {},
+    });
+
+    try {
+      await this.executeUberOrderAction(
+        externalOrderId,
+        'ACCEPT',
+        { reason: 'accepted' },
+        true,
+      );
+    } catch (error) {
+      const response =
+        error instanceof BadGatewayException ? error.getResponse() : null;
+      const responseObject = this.asObject(response);
+      const retryable = responseObject?.retryable === true;
+      const status =
+        typeof responseObject?.status === 'number'
+          ? responseObject.status
+          : error instanceof BadGatewayException
+            ? error.getStatus()
+            : undefined;
+      const detail = this.readString(responseObject?.detail);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
+      this.logger.error(
+        `[ubereats webhook accept] best-effort accept failed externalOrderId=${externalOrderId} eventId=${context.eventId} retryable=${retryable} status=${status ?? 'unknown'} error=${this.redactSensitiveLogText(detail || errorMessage)}`,
+      );
+
+      await this.captureEvent(
+        retryable
+          ? 'ubereats_order_accept_retry_queued'
+          : 'ubereats_order_accept_manual_review_required',
+        {
+          externalOrderId,
+          eventType: context.eventType,
+          eventId: context.eventId,
+          orderStableId: context.orderStableId,
+          retryable,
+          ...(status !== undefined ? { status } : {}),
+          ...(detail ? { detail: this.redactSensitiveLogText(detail) } : {}),
+        },
+      );
+    }
   }
 
   private async fetchUberOrderDetail(
