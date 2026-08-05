@@ -129,7 +129,6 @@ async function loadSocketIoFromCdn(): Promise<SocketIoBrowserGlobal["io"] | null
 const STRINGS = {
   zh: {
     title: "门店点单 · POS",
-    subtitle: "触摸屏点单界面 · 大按钮方便操作。",
     pickup: "到店自取",
     dineIn: "堂食",
     fulfillmentLabel: "取餐方式",
@@ -178,7 +177,6 @@ const STRINGS = {
   },
   en: {
     title: "Store POS",
-    subtitle: "Touch-friendly POS screen with large buttons.",
     pickup: "Pickup",
     dineIn: "Dine-in",
     fulfillmentLabel: "Fulfillment",
@@ -928,7 +926,6 @@ export default function StorePosPage() {
       <header className="flex items-center justify-between px-6 py-4 border-b border-slate-700">
         <div>
           <h1 className="text-2xl font-semibold">{t.title}</h1>
-          <p className="text-sm text-slate-300">{t.subtitle}</p>
           {storeStatusDetail && (
             <p className="mt-1 max-w-xl text-xs text-rose-200">
               {storeStatusDetail}
@@ -1357,7 +1354,11 @@ export default function StorePosPage() {
                 return (
                   <div
                     key={key}
-                    className="rounded-2xl border border-slate-700 bg-slate-800/70 p-4"
+                    className={`rounded-2xl border p-4 ${
+                      minSelect > 0
+                        ? "border-amber-400/60 bg-amber-500/15 shadow-[0_0_0_1px_rgba(251,191,36,0.12)]"
+                        : "border-slate-700 bg-slate-800/70"
+                    }`}
                   >
                     <div className="flex items-center justify-between">
                       <div>
