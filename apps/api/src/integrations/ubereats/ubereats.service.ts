@@ -638,7 +638,9 @@ export class UberEatsService {
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
   private readonly logger = new AppLogger(UberEatsService.name);
   private readonly uberApiBaseUrl =
-    process.env.UBER_EATS_API_BASE_URL?.trim() || 'https://api.uber.com';
+    process.env.UBER_EATS_API_BASE_URL?.trim() || '';
+  private readonly uberResourceHrefAllowedOrigins =
+    process.env.UBER_EATS_RESOURCE_HREF_ALLOWED_ORIGINS?.trim() || '';
   private readonly oauthStateSecret: string;
   private readonly webhookSigningKey: string;
   private readonly oauthStateRequests = new Map<
@@ -3294,37 +3296,56 @@ export class UberEatsService {
   }
 
   private validateOrderResourceHref(resourceHref: string): string {
-    let base: URL;
+    return this.buildUberApiUrlFromResourceHref(resourceHref);
+  }
+
+  private buildUberApiUrlFromResourceHref(resourceHref: string): string {
     let resource: URL;
+    let base: URL;
     try {
-      base = new URL(this.uberApiBaseUrl);
       resource = new URL(resourceHref);
+      base = new URL(this.uberApiBaseUrl);
     } catch {
       throw new BadRequestException('Uber resource_href 无效');
     }
 
-    const basePath = base.pathname.replace(/\/$/, '');
-    const belongsToBasePath =
-      !basePath ||
-      resource.pathname === basePath ||
-      resource.pathname.startsWith(`${basePath}/`);
+    const allowedOrigins = this.parseUberResourceHrefAllowedOrigins();
     if (
-      resource.origin !== base.origin ||
+      !allowedOrigins.has(resource.origin) ||
       resource.username ||
-      resource.password ||
-      !belongsToBasePath
+      resource.password
     ) {
       this.logger.warn(
         'ubereats webhook resource_href rejected ' +
           `resourceOrigin=${resource.origin} ` +
           `resourcePathname=${resource.pathname} ` +
-          `baseOrigin=${base.origin} ` +
-          `basePathname=${base.pathname}`,
+          `allowedOrigins=${[...allowedOrigins].join(',') || 'none'} ` +
+          `uberApiOrigin=${base.origin}`,
       );
-      throw new BadRequestException('Uber resource_href 不属于配置的 API base');
+      throw new BadRequestException('Uber resource_href 不属于允许的来源');
     }
 
-    return resource.toString();
+    const mappedUrl = new URL(base.origin);
+    mappedUrl.pathname = resource.pathname;
+    mappedUrl.search = resource.search;
+    return mappedUrl.toString();
+  }
+
+  private parseUberResourceHrefAllowedOrigins(): Set<string> {
+    const origins = this.uberResourceHrefAllowedOrigins
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean)
+      .map((origin) => {
+        try {
+          return new URL(origin).origin;
+        } catch {
+          return null;
+        }
+      })
+      .filter((origin): origin is string => Boolean(origin));
+
+    return new Set(origins);
   }
 
   private async handleMenuNotificationWebhook(
