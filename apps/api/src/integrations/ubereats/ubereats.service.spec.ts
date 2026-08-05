@@ -582,25 +582,42 @@ describe('UberEatsService', () => {
       .update(rawBody, 'utf8')
       .digest('hex');
 
-    let savedOrder:
-      | {
-          id: string;
-          orderStableId: string;
-          status: string;
-          clientRequestId: string;
-          channel: string;
-          items: Array<Record<string, unknown>>;
-        }
-      | null = null;
+    type SavedUberOrder = {
+      id: string;
+      orderStableId: string;
+      status: string;
+      clientRequestId: string;
+      channel: string;
+      items: Array<Record<string, unknown>>;
+    };
+    type OrderFindUniqueArgs = { where: { clientRequestId?: string } };
+    type OrderCreateArgs = {
+      data: { status: string; clientRequestId: string; channel: string };
+    };
+    type OrderUpdateManyArgs = {
+      where: { id: string; status: string };
+      data: Partial<SavedUberOrder>;
+    };
+    type OrderFindManyArgs = {
+      where?: {
+        status?: { in?: string[] };
+        channel?: { in?: string[] };
+      };
+    };
+    type OrderItemCreateArgs = { data: Record<string, unknown> };
+
+    let savedOrder: SavedUberOrder | null = null;
     const prisma = {
       order: {
-        findUnique: jest.fn().mockImplementation(({ where }) => {
-          if (where.clientRequestId === 'ubereats:ue_123') {
-            return Promise.resolve(savedOrder);
-          }
-          return Promise.resolve(null);
-        }),
-        create: jest.fn().mockImplementation(({ data }) => {
+        findUnique: jest
+          .fn()
+          .mockImplementation(({ where }: OrderFindUniqueArgs) => {
+            if (where.clientRequestId === 'ubereats:ue_123') {
+              return Promise.resolve(savedOrder);
+            }
+            return Promise.resolve(null);
+          }),
+        create: jest.fn().mockImplementation(({ data }: OrderCreateArgs) => {
           savedOrder = {
             id: 'order-db-id',
             orderStableId: 'ord_uber_1',
@@ -611,36 +628,42 @@ describe('UberEatsService', () => {
           };
           return Promise.resolve(savedOrder);
         }),
-        updateMany: jest.fn().mockImplementation(({ where, data }) => {
-          if (
-            savedOrder &&
-            savedOrder.id === where.id &&
-            savedOrder.status === where.status
-          ) {
-            savedOrder = { ...savedOrder, ...data };
-            return Promise.resolve({ count: 1 });
-          }
-          return Promise.resolve({ count: 0 });
-        }),
-        findMany: jest.fn().mockImplementation(({ where }) => {
-          const statusIn = where?.status?.in ?? [];
-          const channelIn = where?.channel?.in ?? [];
-          return Promise.resolve(
-            savedOrder &&
-              statusIn.includes(savedOrder.status) &&
-              channelIn.includes(savedOrder.channel) &&
-              savedOrder.items.length > 0
-              ? [savedOrder]
-              : [],
-          );
-        }),
+        updateMany: jest
+          .fn()
+          .mockImplementation(({ where, data }: OrderUpdateManyArgs) => {
+            if (
+              savedOrder &&
+              savedOrder.id === where.id &&
+              savedOrder.status === where.status
+            ) {
+              savedOrder = { ...savedOrder, ...data };
+              return Promise.resolve({ count: 1 });
+            }
+            return Promise.resolve({ count: 0 });
+          }),
+        findMany: jest
+          .fn()
+          .mockImplementation(({ where }: OrderFindManyArgs) => {
+            const statusIn = where?.status?.in ?? [];
+            const channelIn = where?.channel?.in ?? [];
+            return Promise.resolve(
+              savedOrder &&
+                statusIn.includes(savedOrder.status) &&
+                channelIn.includes(savedOrder.channel) &&
+                savedOrder.items.length > 0
+                ? [savedOrder]
+                : [],
+            );
+          }),
       },
       orderItem: {
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
-        create: jest.fn().mockImplementation(({ data }) => {
-          savedOrder?.items.push(data);
-          return Promise.resolve({ id: 'item-db-id', ...data });
-        }),
+        create: jest
+          .fn()
+          .mockImplementation(({ data }: OrderItemCreateArgs) => {
+            savedOrder?.items.push(data);
+            return Promise.resolve({ id: 'item-db-id', ...data });
+          }),
       },
       menuItem: {
         findFirst: jest
