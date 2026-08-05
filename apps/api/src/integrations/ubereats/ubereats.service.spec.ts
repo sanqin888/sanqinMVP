@@ -2015,9 +2015,7 @@ describe('UberEatsService', () => {
         retryable: true,
       });
       expect(
-        JSON.stringify(
-          (error as { getResponse: () => unknown }).getResponse(),
-        ),
+        JSON.stringify((error as { getResponse: () => unknown }).getResponse()),
       ).not.toContain('Alice');
     }
 
