@@ -325,6 +325,10 @@ export class UberAuthService {
       );
     }
 
+    this.logger.debug(
+      `[token.response] requestedScope=${scope} responseScope=${data.scope || ''} tokenType=${data.token_type || ''} expiresIn=${data.expires_in ?? ''}`,
+    );
+
     const expiresInSec =
       typeof data.expires_in === 'number' && data.expires_in > 0
         ? data.expires_in
