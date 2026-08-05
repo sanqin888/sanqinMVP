@@ -2973,11 +2973,22 @@ export class UberEatsService {
     const rawText = await response.text();
     const orderPayload = this.tryParseJson(rawText);
     if (!response.ok) {
+      const resource = new URL(resourceUrl);
+      const detail = this.summarizeDebugResponse(orderPayload, rawText);
+      const uberRequestId =
+        response.headers.get('x-uber-request-id') ??
+        response.headers.get('x-request-id') ??
+        response.headers.get('trace-id');
+
+      this.logger.error(
+        `[ubereats order] detail fetch failed status=${response.status} eventType=${eventType} eventId=${eventId} resourceId=${envelope.resourceId ?? 'unknown'} resourceUrl=${resource.origin}${resource.pathname} uberRequestId=${uberRequestId ?? 'unknown'} detail=${this.redactSensitiveLogText(detail)}`,
+      );
+
       throw new BadGatewayException({
         ok: false,
         status: response.status,
         message: 'Uber 订单详情接口返回错误',
-        detail: this.summarizeDebugResponse(orderPayload, rawText),
+        detail,
       });
     }
 
@@ -5855,6 +5866,18 @@ export class UberEatsService {
     }
 
     return rawText.slice(0, 500) || 'empty response body';
+  }
+
+  private redactSensitiveLogText(text: string): string {
+    return text
+      .replace(
+        /(authorization|token)(["']?\s*[:=]\s*["']?)[^"'&,}\s]+/gi,
+        '$1$2[REDACTED]',
+      )
+      .replace(
+        /(customer|eater)?_?(phone_number|formatted_address|address|phone|name)(["']?\s*[:=]\s*["']?)[^"',}]+/gi,
+        '$1$2$3[REDACTED]',
+      );
   }
 
   private buildUberAuthenticationError(parsed: unknown, status: number) {
