@@ -30,6 +30,17 @@ import { UberAuthService } from './uber-auth.service';
 import { UberWebhookEnvelopeDto } from './dto/uber-webhook-envelope.dto';
 import { UberMenuNotificationDto } from './dto/uber-menu-notification.dto';
 
+class UberWebhookNonRetryableError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly detail: string,
+  ) {
+    super(message);
+    this.name = 'UberWebhookNonRetryableError';
+  }
+}
+
 type UberWebhookInput = {
   headers: Record<string, unknown>;
   /** @deprecated The service always parses the signed rawBody instead. */
@@ -174,6 +185,12 @@ type ParsedUberOrder = {
     reasonDetail: string | null;
     occurredAt: Date;
   } | null;
+};
+
+type UberAuthenticationError = {
+  upstreamStatus: number;
+  code: string;
+  message: string;
 };
 
 type UberStoreScopedInput = {
@@ -961,7 +978,19 @@ export class UberEatsService {
         },
       });
     } catch (error) {
-      await this.markWebhookFailed(eventId, error);
+      const nonRetryable = error instanceof UberWebhookNonRetryableError;
+      await this.markWebhookFailed(eventId, error, {
+        retryable: !nonRetryable,
+      });
+      if (nonRetryable) {
+        await this.captureEvent('ubereats_webhook_non_retryable_failed', {
+          eventType,
+          eventId,
+          status: error.status,
+          detail: error.detail,
+        });
+        return;
+      }
       throw error;
     }
   }
@@ -2952,34 +2981,11 @@ export class UberEatsService {
     const token = await this.uberAuthService.getAccessToken(
       'eats.store.orders.read',
     );
-    let response: Response;
-    try {
-      response = await fetch(resourceUrl, {
-        method: 'GET',
-        redirect: 'error',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json',
-        },
-      });
-    } catch (error) {
-      throw new BadGatewayException({
-        ok: false,
-        message: '下载 Uber 订单详情失败',
-        detail: error instanceof Error ? error.message : String(error),
-      });
-    }
-
-    const rawText = await response.text();
-    const orderPayload = this.tryParseJson(rawText);
-    if (!response.ok) {
-      throw new BadGatewayException({
-        ok: false,
-        status: response.status,
-        message: 'Uber 订单详情接口返回错误',
-        detail: this.summarizeDebugResponse(orderPayload, rawText),
-      });
-    }
+    const orderPayload = await this.fetchUberOrderDetail(resourceUrl, token, {
+      eventType,
+      eventId,
+      resourceId: envelope.resourceId,
+    });
 
     const parsedOrder = this.parseOrderPayload(orderPayload);
 
@@ -3034,6 +3040,97 @@ export class UberEatsService {
       orderStableId: order.orderStableId,
       storeId: parsedOrder.storeId ?? this.normalizeStoreId(undefined),
     });
+  }
+
+  private async fetchUberOrderDetail(
+    resourceUrl: string,
+    token: string,
+    context: {
+      eventType: string;
+      eventId: string;
+      resourceId?: string | null;
+    },
+  ): Promise<unknown> {
+    let response = await this.requestUberOrderDetail(resourceUrl, token);
+    let rawText = await response.text();
+    let parsed = this.tryParseJson(rawText);
+
+    if (
+      (response.status === 401 || response.status === 403) &&
+      typeof this.uberAuthService.forceRefreshAccessToken === 'function'
+    ) {
+      const refreshedToken = await this.uberAuthService.forceRefreshAccessToken(
+        'eats.store.orders.read',
+      );
+      response = await this.requestUberOrderDetail(resourceUrl, refreshedToken);
+      rawText = await response.text();
+      parsed = this.tryParseJson(rawText);
+    }
+
+    if (response.ok) {
+      return parsed;
+    }
+
+    const authenticationError =
+      response.status === 401 || response.status === 403
+        ? this.buildUberAuthenticationError(parsed, response.status)
+        : undefined;
+    const detail = authenticationError
+      ? JSON.stringify(authenticationError)
+      : this.summarizeDebugResponse(parsed, rawText);
+    const resource = new URL(resourceUrl);
+    const uberRequestId =
+      response.headers.get('x-uber-request-id') ??
+      response.headers.get('x-request-id') ??
+      response.headers.get('trace-id');
+
+    this.logger.error(
+      `[ubereats order] detail fetch failed status=${response.status} eventType=${context.eventType} eventId=${context.eventId} resourceId=${context.resourceId ?? 'unknown'} resourceUrl=${resource.origin}${resource.pathname} uberRequestId=${uberRequestId ?? 'unknown'} detail=${this.redactSensitiveLogText(detail)}`,
+    );
+
+    const payload = {
+      ok: false,
+      status: response.status,
+      message: 'Uber 订单详情接口返回错误',
+      detail,
+      ...(authenticationError ? { error: authenticationError } : {}),
+    };
+
+    if (this.isNonRetryableOrderDetailStatus(response.status)) {
+      throw new UberWebhookNonRetryableError(
+        JSON.stringify(payload),
+        response.status,
+        detail,
+      );
+    }
+
+    throw new BadGatewayException(payload);
+  }
+
+  private async requestUberOrderDetail(
+    resourceUrl: string,
+    token: string,
+  ): Promise<Response> {
+    try {
+      return await fetch(resourceUrl, {
+        method: 'GET',
+        redirect: 'error',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+        },
+      });
+    } catch (error) {
+      throw new BadGatewayException({
+        ok: false,
+        message: '下载 Uber 订单详情失败',
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private isNonRetryableOrderDetailStatus(status: number): boolean {
+    return [400, 401, 403, 404].includes(status);
   }
 
   private async executeUberOrderAction(
@@ -5857,7 +5954,22 @@ export class UberEatsService {
     return rawText.slice(0, 500) || 'empty response body';
   }
 
-  private buildUberAuthenticationError(parsed: unknown, status: number) {
+  private redactSensitiveLogText(text: string): string {
+    return text
+      .replace(
+        /(authorization|token)(["']?\s*[:=]\s*["']?)[^"'&,}\s]+/gi,
+        '$1$2[REDACTED]',
+      )
+      .replace(
+        /(customer|eater)?_?(phone_number|formatted_address|address|phone|name)(["']?\s*[:=]\s*["']?)[^"',}]+/gi,
+        '$1$2$3[REDACTED]',
+      );
+  }
+
+  private buildUberAuthenticationError(
+    parsed: unknown,
+    status: number,
+  ): UberAuthenticationError {
     const body = this.asObject(parsed);
     const nestedError = this.asObject(body?.error);
     const code =
@@ -6059,6 +6171,7 @@ export class UberEatsService {
         where: {
           eventId,
           status: 'FAILED',
+          nextRetryAt: { not: null },
         },
         data: {
           status: 'RECEIVED',
@@ -6080,18 +6193,38 @@ export class UberEatsService {
     return processing.count === 1;
   }
 
-  private async markWebhookFailed(eventId: string, error: unknown) {
-    const summary = (error instanceof Error ? error.message : String(error))
-      .replace(/\s+/g, ' ')
-      .slice(0, 500);
+  private async markWebhookFailed(
+    eventId: string,
+    error: unknown,
+    options: { retryable?: boolean } = {},
+  ) {
+    const retryable = options.retryable ?? true;
+    const summary = this.summarizeWebhookError(error);
     await this.prisma.uberWebhookInbox.updateMany({
       where: { eventId, status: 'PROCESSING' },
       data: {
         status: 'FAILED',
         errorSummary: summary || 'unknown error',
-        nextRetryAt: new Date(Date.now() + 1_000),
+        nextRetryAt: retryable ? new Date(Date.now() + 1_000) : null,
       },
     });
+  }
+
+  private summarizeWebhookError(error: unknown): string {
+    const nestResponse =
+      error &&
+      typeof error === 'object' &&
+      'getResponse' in error &&
+      typeof (error as { getResponse?: unknown }).getResponse === 'function'
+        ? (error as { getResponse: () => unknown }).getResponse()
+        : null;
+    const rawSummary = nestResponse
+      ? JSON.stringify(nestResponse)
+      : error instanceof Error
+        ? error.message
+        : String(error);
+
+    return rawSummary.replace(/\s+/g, ' ').slice(0, 500) || 'unknown error';
   }
 
   private isPrismaUniqueConstraintError(error: unknown): boolean {
