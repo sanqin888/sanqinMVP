@@ -747,7 +747,12 @@ describe('UberEatsService', () => {
         ),
       )
       .mockResolvedValueOnce(new Response('{}', { status: 200 }));
-    const service = new UberEatsService(prisma as never, auth as never);
+    const orderEventsBus = { emitOrderPaidVerified: jest.fn() };
+    const service = new UberEatsService(
+      prisma as never,
+      auth as never,
+      orderEventsBus as never,
+    );
     await service.handleWebhook({
       headers: {
         'x-uber-signature': signature,
@@ -765,7 +770,7 @@ describe('UberEatsService', () => {
     expect(prisma.order.findUnique).toHaveBeenCalled();
     expect(prisma.order.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ status: 'pending' }) as unknown,
+        data: expect.objectContaining({ status: 'paid' }) as unknown,
       }),
     );
     expect(prisma.order.updateMany).toHaveBeenCalledWith(
@@ -784,6 +789,14 @@ describe('UberEatsService', () => {
     ).resolves.toHaveLength(1);
     expect(prisma.uberWebhookInbox.upsert).toHaveBeenCalledWith(
       expect.objectContaining({ where: { eventId: 'evt_123' } }),
+    );
+    expect(orderEventsBus.emitOrderPaidVerified).toHaveBeenCalledTimes(1);
+    expect(orderEventsBus.emitOrderPaidVerified).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderId: 'order-db-id',
+        amountCents: 1000,
+        redeemValueCents: 0,
+      }),
     );
     fetchSpy.mockRestore();
   });
@@ -1374,12 +1387,14 @@ describe('UberEatsService', () => {
     const duplicateInbox = createInboxMock();
     duplicateInbox.create.mockRejectedValue({ code: 'P2002' });
     duplicateInbox.updateMany.mockResolvedValue({ count: 0 });
+    const orderEventsBus = { emitOrderPaidVerified: jest.fn() };
     const service = new UberEatsService(
       {
         uberWebhookInbox: duplicateInbox,
         opsEvent: { findFirst: jest.fn().mockResolvedValue({ id: 1 }) },
       } as never,
       createAuthService(),
+      orderEventsBus as never,
     );
     await service.handleWebhook({
       headers: { 'x-uber-signature': signature },
@@ -1387,6 +1402,7 @@ describe('UberEatsService', () => {
       body,
     });
     expect(fetchSpy).not.toHaveBeenCalled();
+    expect(orderEventsBus.emitOrderPaidVerified).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
   });
 

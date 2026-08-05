@@ -4,6 +4,7 @@ import {
   BadGatewayException,
   Injectable,
   NotImplementedException,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import {
@@ -29,6 +30,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { UberAuthService } from './uber-auth.service';
 import { UberWebhookEnvelopeDto } from './dto/uber-webhook-envelope.dto';
 import { UberMenuNotificationDto } from './dto/uber-menu-notification.dto';
+import { OrderEventsBus } from '../../messaging/order-events.bus';
 
 class UberWebhookNonRetryableError extends Error {
   constructor(
@@ -681,6 +683,7 @@ export class UberEatsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly uberAuthService: UberAuthService,
+    @Optional() private readonly orderEventsBus?: OrderEventsBus,
   ) {
     const secret = process.env.UBER_EATS_OAUTH_STATE_SECRET?.trim() || '';
     if (secret.length < 32 || new Set(secret).size < 12) {
@@ -3095,7 +3098,12 @@ export class UberEatsService {
       return;
     }
 
-    let order: { orderStableId: string };
+    let order: {
+      action: 'created' | 'updated';
+      status: OrderStatus;
+      orderId: string;
+      orderStableId: string;
+    };
     try {
       order = await this.upsertUberOrder(parsedOrder, eventType, eventId);
     } catch (error) {
@@ -3114,6 +3122,21 @@ export class UberEatsService {
       // Database/local infrastructure errors deliberately remain pending so
       // the webhook/job can retry; accepting before commit would lose orders.
       throw error;
+    }
+
+    if (
+      order.action === 'created' &&
+      order.status === OrderStatus.paid &&
+      this.normalizeEventType(eventType) === 'orders.notification'
+    ) {
+      this.orderEventsBus?.emitOrderPaidVerified({
+        orderId: order.orderId,
+        amountCents: Math.max(
+          0,
+          parsedOrder.subtotalCents - parsedOrder.discountCents,
+        ),
+        redeemValueCents: 0,
+      });
     }
 
     await this.enqueueAndBestEffortAcceptUberOrder(
@@ -5926,9 +5949,10 @@ export class UberEatsService {
         },
       });
       return {
+        orderId: saved.id,
         orderStableId: saved.orderStableId,
         status: saved.status,
-        action: existing ? 'updated' : 'created',
+        action: existing ? ('updated' as const) : ('created' as const),
       };
     });
 
@@ -5945,7 +5969,7 @@ export class UberEatsService {
       action: result.action,
       ...validation,
     });
-    return { orderStableId: result.orderStableId };
+    return result;
   }
 
   private async resolveUberProductStableId(
@@ -6196,7 +6220,7 @@ export class UberEatsService {
     if (normalized.includes('cancel') || normalized.includes('reject'))
       return null;
     if (normalized.includes('accept')) return OrderStatus.paid;
-    if (normalized.includes('notification')) return OrderStatus.pending;
+    if (normalized.includes('notification')) return OrderStatus.paid;
 
     return OrderStatus.pending;
   }
