@@ -589,6 +589,8 @@ describe('UberEatsService', () => {
       clientRequestId: string;
       channel: string;
       items: Array<Record<string, unknown>>;
+      paidAt?: Date;
+      makingAt?: Date;
     };
     type OrderFindUniqueArgs = { where: { clientRequestId?: string } };
     type OrderCreateArgs = {
@@ -747,7 +749,10 @@ describe('UberEatsService', () => {
         ),
       )
       .mockResolvedValueOnce(new Response('{}', { status: 200 }));
-    const orderEventsBus = { emitOrderPaidVerified: jest.fn() };
+    const orderEventsBus = {
+      emitOrderPaidVerified: jest.fn(),
+      emitOrderAccepted: jest.fn(),
+    };
     const service = new UberEatsService(
       prisma as never,
       auth as never,
@@ -770,12 +775,15 @@ describe('UberEatsService', () => {
     expect(prisma.order.findUnique).toHaveBeenCalled();
     expect(prisma.order.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ status: 'paid' }) as unknown,
+        data: expect.objectContaining({ status: 'pending' }) as unknown,
       }),
     );
     expect(prisma.order.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ status: 'paid' }) as unknown,
+        data: expect.objectContaining({
+          status: 'making',
+          makingAt: expect.any(Date) as Date,
+        }) as unknown,
       }),
     );
     await expect(
@@ -790,12 +798,182 @@ describe('UberEatsService', () => {
     expect(prisma.uberWebhookInbox.upsert).toHaveBeenCalledWith(
       expect.objectContaining({ where: { eventId: 'evt_123' } }),
     );
-    expect(orderEventsBus.emitOrderPaidVerified).toHaveBeenCalledTimes(1);
-    expect(orderEventsBus.emitOrderPaidVerified).toHaveBeenCalledWith(
+    expect(orderEventsBus.emitOrderPaidVerified).not.toHaveBeenCalled();
+    expect(orderEventsBus.emitOrderAccepted).toHaveBeenCalledTimes(1);
+    expect(orderEventsBus.emitOrderAccepted).toHaveBeenCalledWith({
+      orderId: 'order-db-id',
+      stableId: 'ord_uber_1',
+    });
+    fetchSpy.mockRestore();
+  });
+
+  it('ACCEPT 失败但入 retry outbox 时不会把本地订单推进到 making 或触发打印', async () => {
+    const body = {
+      event_type: 'orders.notification',
+      resource_href: 'https://api.uber.com/v2/eats/order/ue_retry_accept',
+      meta: { resource_id: 'ue_retry_accept', user_id: 'user_1' },
+      event_id: 'evt_retry_accept',
+    };
+    const rawBody = JSON.stringify(body);
+    const signature = createHmac('sha256', clientSecret)
+      .update(rawBody, 'utf8')
+      .digest('hex');
+
+    type RetrySavedUberOrder = {
+      id: string;
+      orderStableId: string;
+      status: string;
+      clientRequestId: string;
+      channel: string;
+      items: Array<Record<string, unknown>>;
+    };
+    type RetryOrderFindUniqueArgs = { where: { clientRequestId?: string } };
+    type RetryOrderCreateArgs = {
+      data: { status: string; clientRequestId: string; channel: string };
+    };
+    type RetryOrderUpdateManyArgs = {
+      where: { id: string; status: string };
+      data: Partial<RetrySavedUberOrder>;
+    };
+    type RetryOrderItemCreateArgs = { data: Record<string, unknown> };
+
+    let savedOrder: RetrySavedUberOrder | null = null;
+    const prisma = {
+      order: {
+        findUnique: jest
+          .fn()
+          .mockImplementation(({ where }: RetryOrderFindUniqueArgs) =>
+            Promise.resolve(
+              where.clientRequestId === 'ubereats:ue_retry_accept'
+                ? savedOrder
+                : null,
+            ),
+          ),
+        create: jest
+          .fn()
+          .mockImplementation(({ data }: RetryOrderCreateArgs) => {
+            savedOrder = {
+              id: 'order-retry-id',
+              orderStableId: 'ord_retry_accept',
+              status: data.status,
+              clientRequestId: data.clientRequestId,
+              channel: data.channel,
+              items: [],
+            };
+            return Promise.resolve(savedOrder);
+          }),
+        updateMany: jest
+          .fn()
+          .mockImplementation(({ where, data }: RetryOrderUpdateManyArgs) => {
+            if (
+              savedOrder &&
+              savedOrder.id === where.id &&
+              savedOrder.status === where.status
+            ) {
+              savedOrder = { ...savedOrder, ...data };
+              return Promise.resolve({ count: 1 });
+            }
+            return Promise.resolve({ count: 0 });
+          }),
+      },
+      orderItem: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        create: jest
+          .fn()
+          .mockImplementation(({ data }: RetryOrderItemCreateArgs) => {
+            savedOrder?.items.push(data);
+            return Promise.resolve({ id: 'item-retry-id', ...data });
+          }),
+      },
+      menuItem: {
+        findFirst: jest.fn().mockResolvedValue({ stableId: 'menu_item_retry' }),
+      },
+      uberItemChannelConfig: { findFirst: jest.fn() },
+      uberOrderItemModifier: { createMany: jest.fn() },
+      uberWebhookInbox: createInboxMock(),
+      businessConfig: {
+        findUnique: jest.fn().mockResolvedValue({ isTemporarilyClosed: false }),
+      },
+      uberOrderAction: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'action_retry',
+          externalOrderId: 'ue_retry_accept',
+          action: 'ACCEPT',
+          status: 'PENDING',
+          retryable: false,
+          uberHttpStatus: null,
+        }),
+        upsert: jest.fn().mockResolvedValue({ id: 'action_retry' }),
+        update: jest.fn().mockResolvedValue({ id: 'action_retry' }),
+      },
+      opsEvent: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue(null),
+      },
+    };
+    Object.assign(prisma, {
+      $transaction: jest.fn(
+        (callback: (transaction: typeof prisma) => unknown) => callback(prisma),
+      ),
+    });
+
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            order_id: 'ue_retry_accept',
+            subtotal_cents: 1000,
+            tax_cents: 130,
+            total_cents: 1130,
+            items: [
+              {
+                line_item_id: 'line_retry',
+                item_id: 'uber_item_retry',
+                external_data: 'menu_item_retry',
+                title: 'Retry Noodles',
+                quantity: 1,
+                unit_price: 1000,
+                total_price: 1000,
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response('temporarily unavailable', { status: 503 }),
+      );
+    const orderEventsBus = {
+      emitOrderPaidVerified: jest.fn(),
+      emitOrderAccepted: jest.fn(),
+    };
+
+    const service = new UberEatsService(
+      prisma as never,
+      createAuthService(),
+      orderEventsBus as never,
+    );
+
+    await service.handleWebhook({
+      headers: { 'x-uber-signature': signature },
+      rawBody,
+      body,
+    });
+
+    expect(prisma.uberOrderAction.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        orderId: 'order-db-id',
-        amountCents: 1000,
-        redeemValueCents: 0,
+        data: expect.objectContaining({
+          status: 'FAILED',
+          retryable: true,
+        }) as unknown,
+      }),
+    );
+    expect(savedOrder?.status).toBe('pending');
+    expect(orderEventsBus.emitOrderAccepted).not.toHaveBeenCalled();
+    expect(prisma.order.updateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'making' }) as unknown,
       }),
     );
     fetchSpy.mockRestore();

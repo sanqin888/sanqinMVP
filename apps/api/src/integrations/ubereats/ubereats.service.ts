@@ -3380,6 +3380,9 @@ export class UberEatsService {
       record?.status === 'SUCCEEDED' ||
       (record?.status === 'PENDING' && !processPending)
     ) {
+      if (action === 'ACCEPT' && record.status === 'SUCCEEDED') {
+        await this.advanceLocalUberOrderStatusAfterAccept(externalOrderId);
+      }
       return { ok: record.status === 'SUCCEEDED', duplicate: true, action };
     }
     if (record && !record.retryable && !processPending) {
@@ -3528,12 +3531,17 @@ export class UberEatsService {
     const orderDelegate = this.prisma.order as unknown as {
       findUnique?: (args: {
         where: { clientRequestId: string };
-        select: { id: true; status: true };
-      }) => Promise<{ id: string; status: OrderStatus } | null>;
+        select: { id: true; orderStableId: true; status: true; paidAt: true };
+      }) => Promise<{
+        id: string;
+        orderStableId: string | null;
+        status: OrderStatus;
+        paidAt: Date | null;
+      } | null>;
       updateMany?: (args: {
         where: { id: string; status: OrderStatus };
-        data: { status: OrderStatus; paidAt: Date };
-      }) => Promise<unknown>;
+        data: { status: OrderStatus; paidAt?: Date; makingAt?: Date };
+      }) => Promise<{ count: number }>;
     };
     if (
       typeof orderDelegate.findUnique !== 'function' ||
@@ -3545,20 +3553,34 @@ export class UberEatsService {
     const clientRequestId = this.toClientRequestId(externalOrderId);
     const existing = await orderDelegate.findUnique({
       where: { clientRequestId },
-      select: { id: true, status: true },
+      select: { id: true, orderStableId: true, status: true, paidAt: true },
     });
 
-    if (
-      !existing ||
-      !this.shouldAdvanceOrderStatus(existing.status, OrderStatus.paid)
-    ) {
+    if (!existing || existing.status !== OrderStatus.pending) {
       return;
     }
 
-    await orderDelegate.updateMany({
-      where: { id: existing.id, status: existing.status },
-      data: { status: OrderStatus.paid, paidAt: new Date() },
+    const advancedAt = new Date();
+    const targetStatus = OrderStatus.making;
+    const result = await orderDelegate.updateMany({
+      where: { id: existing.id, status: OrderStatus.pending },
+      data: {
+        status: targetStatus,
+        paidAt: existing.paidAt ?? advancedAt,
+        makingAt: advancedAt,
+      },
     });
+
+    if (result.count === 0) {
+      return;
+    }
+
+    if (existing.orderStableId) {
+      this.orderEventsBus?.emitOrderAccepted({
+        orderId: existing.id,
+        stableId: existing.orderStableId,
+      });
+    }
   }
 
   private redactUberResponse(value: unknown): Prisma.InputJsonValue {
@@ -6222,7 +6244,7 @@ export class UberEatsService {
     if (normalized.includes('cancel') || normalized.includes('reject'))
       return null;
     if (normalized.includes('accept')) return OrderStatus.paid;
-    if (normalized.includes('notification')) return OrderStatus.paid;
+    if (normalized.includes('notification')) return OrderStatus.pending;
 
     return OrderStatus.pending;
   }
