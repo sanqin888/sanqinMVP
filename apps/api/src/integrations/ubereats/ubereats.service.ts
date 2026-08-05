@@ -962,6 +962,7 @@ export class UberEatsService {
         case 'orders.ready_for_pickup':
         case 'orders.completed':
         case 'orders.cancelled':
+        case 'orders.cancel':
         case 'orders.rejected':
           await this.handleOrderWebhook(eventType, eventId, envelope);
           break;
@@ -5866,6 +5867,7 @@ export class UberEatsService {
       const normalizedEvent = this.normalizeEventType(eventType);
       if (
         normalizedEvent === 'orders.cancelled' ||
+        normalizedEvent === 'orders.cancel' ||
         normalizedEvent === 'orders.rejected'
       ) {
         const cancellation = order.cancellation ?? {
