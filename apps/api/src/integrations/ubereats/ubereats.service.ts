@@ -30,6 +30,17 @@ import { UberAuthService } from './uber-auth.service';
 import { UberWebhookEnvelopeDto } from './dto/uber-webhook-envelope.dto';
 import { UberMenuNotificationDto } from './dto/uber-menu-notification.dto';
 
+class UberWebhookNonRetryableError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly detail: string,
+  ) {
+    super(message);
+    this.name = 'UberWebhookNonRetryableError';
+  }
+}
+
 type UberWebhookInput = {
   headers: Record<string, unknown>;
   /** @deprecated The service always parses the signed rawBody instead. */
@@ -967,7 +978,19 @@ export class UberEatsService {
         },
       });
     } catch (error) {
-      await this.markWebhookFailed(eventId, error);
+      const nonRetryable = error instanceof UberWebhookNonRetryableError;
+      await this.markWebhookFailed(eventId, error, {
+        retryable: !nonRetryable,
+      });
+      if (nonRetryable) {
+        await this.captureEvent('ubereats_webhook_non_retryable_failed', {
+          eventType,
+          eventId,
+          status: error.status,
+          detail: error.detail,
+        });
+        return;
+      }
       throw error;
     }
   }
@@ -3028,26 +3051,22 @@ export class UberEatsService {
       resourceId?: string | null;
     },
   ): Promise<unknown> {
-    let response: Response;
-    try {
-      response = await fetch(resourceUrl, {
-        method: 'GET',
-        redirect: 'error',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json',
-        },
-      });
-    } catch (error) {
-      throw new BadGatewayException({
-        ok: false,
-        message: '下载 Uber 订单详情失败',
-        detail: error instanceof Error ? error.message : String(error),
-      });
+    let response = await this.requestUberOrderDetail(resourceUrl, token);
+    let rawText = await response.text();
+    let parsed = this.tryParseJson(rawText);
+
+    if (
+      (response.status === 401 || response.status === 403) &&
+      typeof this.uberAuthService.forceRefreshAccessToken === 'function'
+    ) {
+      const refreshedToken = await this.uberAuthService.forceRefreshAccessToken(
+        'eats.store.orders.read',
+      );
+      response = await this.requestUberOrderDetail(resourceUrl, refreshedToken);
+      rawText = await response.text();
+      parsed = this.tryParseJson(rawText);
     }
 
-    const rawText = await response.text();
-    const parsed = this.tryParseJson(rawText);
     if (response.ok) {
       return parsed;
     }
@@ -3069,13 +3088,49 @@ export class UberEatsService {
       `[ubereats order] detail fetch failed status=${response.status} eventType=${context.eventType} eventId=${context.eventId} resourceId=${context.resourceId ?? 'unknown'} resourceUrl=${resource.origin}${resource.pathname} uberRequestId=${uberRequestId ?? 'unknown'} detail=${this.redactSensitiveLogText(detail)}`,
     );
 
-    throw new BadGatewayException({
+    const payload = {
       ok: false,
       status: response.status,
       message: 'Uber 订单详情接口返回错误',
       detail,
       ...(authenticationError ? { error: authenticationError } : {}),
-    });
+    };
+
+    if (this.isNonRetryableOrderDetailStatus(response.status)) {
+      throw new UberWebhookNonRetryableError(
+        JSON.stringify(payload),
+        response.status,
+        detail,
+      );
+    }
+
+    throw new BadGatewayException(payload);
+  }
+
+  private async requestUberOrderDetail(
+    resourceUrl: string,
+    token: string,
+  ): Promise<Response> {
+    try {
+      return await fetch(resourceUrl, {
+        method: 'GET',
+        redirect: 'error',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+        },
+      });
+    } catch (error) {
+      throw new BadGatewayException({
+        ok: false,
+        message: '下载 Uber 订单详情失败',
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private isNonRetryableOrderDetailStatus(status: number): boolean {
+    return [400, 401, 403, 404].includes(status);
   }
 
   private async executeUberOrderAction(
@@ -6116,6 +6171,7 @@ export class UberEatsService {
         where: {
           eventId,
           status: 'FAILED',
+          nextRetryAt: { not: null },
         },
         data: {
           status: 'RECEIVED',
@@ -6137,18 +6193,38 @@ export class UberEatsService {
     return processing.count === 1;
   }
 
-  private async markWebhookFailed(eventId: string, error: unknown) {
-    const summary = (error instanceof Error ? error.message : String(error))
-      .replace(/\s+/g, ' ')
-      .slice(0, 500);
+  private async markWebhookFailed(
+    eventId: string,
+    error: unknown,
+    options: { retryable?: boolean } = {},
+  ) {
+    const retryable = options.retryable ?? true;
+    const summary = this.summarizeWebhookError(error);
     await this.prisma.uberWebhookInbox.updateMany({
       where: { eventId, status: 'PROCESSING' },
       data: {
         status: 'FAILED',
         errorSummary: summary || 'unknown error',
-        nextRetryAt: new Date(Date.now() + 1_000),
+        nextRetryAt: retryable ? new Date(Date.now() + 1_000) : null,
       },
     });
+  }
+
+  private summarizeWebhookError(error: unknown): string {
+    const nestResponse =
+      error &&
+      typeof error === 'object' &&
+      'getResponse' in error &&
+      typeof (error as { getResponse?: unknown }).getResponse === 'function'
+        ? (error as { getResponse: () => unknown }).getResponse()
+        : null;
+    const rawSummary = nestResponse
+      ? JSON.stringify(nestResponse)
+      : error instanceof Error
+        ? error.message
+        : String(error);
+
+    return rawSummary.replace(/\s+/g, ' ').slice(0, 500) || 'unknown error';
   }
 
   private isPrismaUniqueConstraintError(error: unknown): boolean {
