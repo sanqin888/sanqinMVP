@@ -582,23 +582,71 @@ describe('UberEatsService', () => {
       .update(rawBody, 'utf8')
       .digest('hex');
 
+    let savedOrder:
+      | {
+          id: string;
+          orderStableId: string;
+          status: string;
+          clientRequestId: string;
+          channel: string;
+          items: Array<Record<string, unknown>>;
+        }
+      | null = null;
     const prisma = {
       order: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValueOnce(null)
-          .mockResolvedValue({ id: 'order-db-id' }),
-        create: jest.fn().mockResolvedValue({
-          id: 'order-db-id',
-          orderStableId: 'ord_uber_1',
-          status: 'paid',
+        findUnique: jest.fn().mockImplementation(({ where }) => {
+          if (where.clientRequestId === 'ubereats:ue_123') {
+            return Promise.resolve(savedOrder);
+          }
+          return Promise.resolve(null);
+        }),
+        create: jest.fn().mockImplementation(({ data }) => {
+          savedOrder = {
+            id: 'order-db-id',
+            orderStableId: 'ord_uber_1',
+            status: data.status,
+            clientRequestId: data.clientRequestId,
+            channel: data.channel,
+            items: [],
+          };
+          return Promise.resolve(savedOrder);
+        }),
+        updateMany: jest.fn().mockImplementation(({ where, data }) => {
+          if (
+            savedOrder &&
+            savedOrder.id === where.id &&
+            savedOrder.status === where.status
+          ) {
+            savedOrder = { ...savedOrder, ...data };
+            return Promise.resolve({ count: 1 });
+          }
+          return Promise.resolve({ count: 0 });
+        }),
+        findMany: jest.fn().mockImplementation(({ where }) => {
+          const statusIn = where?.status?.in ?? [];
+          const channelIn = where?.channel?.in ?? [];
+          return Promise.resolve(
+            savedOrder &&
+              statusIn.includes(savedOrder.status) &&
+              channelIn.includes(savedOrder.channel) &&
+              savedOrder.items.length > 0
+              ? [savedOrder]
+              : [],
+          );
         }),
       },
       orderItem: {
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
-        create: jest.fn(),
+        create: jest.fn().mockImplementation(({ data }) => {
+          savedOrder?.items.push(data);
+          return Promise.resolve({ id: 'item-db-id', ...data });
+        }),
       },
-      menuItem: { findFirst: jest.fn() },
+      menuItem: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ stableId: 'menu_item_uber_1' }),
+      },
       uberItemChannelConfig: { findFirst: jest.fn() },
       uberOrderItemModifier: { createMany: jest.fn() },
       uberWebhookInbox: createInboxMock(),
@@ -660,6 +708,17 @@ describe('UberEatsService', () => {
             subtotal_cents: 1000,
             tax_cents: 130,
             total_cents: 1130,
+            items: [
+              {
+                line_item_id: 'line_1',
+                item_id: 'uber_item_1',
+                external_data: 'menu_item_uber_1',
+                title: 'Biang Biang Noodles',
+                quantity: 1,
+                unit_price: 1000,
+                total_price: 1000,
+              },
+            ],
           }),
           { status: 200 },
         ),
@@ -681,7 +740,25 @@ describe('UberEatsService', () => {
       expect.objectContaining({ method: 'GET' }),
     );
     expect(prisma.order.findUnique).toHaveBeenCalled();
-    expect(prisma.order.create).toHaveBeenCalled();
+    expect(prisma.order.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'pending' }) as unknown,
+      }),
+    );
+    expect(prisma.order.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'paid' }) as unknown,
+      }),
+    );
+    await expect(
+      prisma.order.findMany({
+        where: {
+          status: { in: ['paid', 'making', 'ready'] },
+          channel: { in: ['ubereats'] },
+          items: { some: {} },
+        },
+      }),
+    ).resolves.toHaveLength(1);
     expect(prisma.uberWebhookInbox.upsert).toHaveBeenCalledWith(
       expect.objectContaining({ where: { eventId: 'evt_123' } }),
     );
