@@ -50,6 +50,14 @@ class CreateFullRefundDto {
   refundMethod!: PaymentMethod;
 }
 
+class RecordManualUberRefundDto {
+  @IsString()
+  reason!: string;
+
+  @IsString()
+  evidence!: string;
+}
+
 @Controller('pos/orders')
 @UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
 @Roles('ADMIN', 'STAFF')
@@ -213,5 +221,14 @@ export class PosOrdersController {
     body: CreateFullRefundDto,
   ) {
     return this.orders.createFullRefund({ orderStableId, ...body });
+  }
+
+  @Post(':orderStableId/uber-manual-refund')
+  @HttpCode(201)
+  recordManualUberRefund(
+    @Param('orderStableId', StableIdPipe) orderStableId: string,
+    @Body() body: RecordManualUberRefundDto,
+  ): Promise<OrderDto> {
+    return this.posOrders.recordManualUberRefund(orderStableId, body);
   }
 }

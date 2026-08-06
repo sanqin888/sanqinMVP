@@ -22,7 +22,11 @@ describe('PosOrdersService', () => {
       syncOrderStatusToUber: jest.fn().mockResolvedValue({ ok: true }),
     };
     return {
-      service: new PosOrdersService(orders as never, uberEats as never),
+      service: new PosOrdersService(
+        orders as never,
+        uberEats as never,
+        {} as never,
+      ),
       orders,
       uberEats,
     };
@@ -114,5 +118,60 @@ describe('PosOrdersService', () => {
       'cancelUberOrder' in (service as unknown as Record<string, unknown>),
     ).toBe(false);
     expect('denyUberOrder' in uberEats).toBe(false);
+  });
+
+  it('接单后人工退款要求凭证并在同一事务写入全额调整', async () => {
+    const current = order({
+      channel: 'ubereats',
+      clientRequestId: 'ubereats:external-123',
+      status: 'completed',
+    });
+    const orders = { getByStableId: jest.fn().mockResolvedValue(current) };
+    const tx = {
+      order: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'order-db-id',
+          orderStableId: 'order_1',
+          channel: 'ubereats',
+          status: 'completed',
+          totalCents: 2599,
+        }),
+        update: jest.fn(),
+      },
+      orderAmendment: { upsert: jest.fn() },
+    };
+    const prisma = {
+      $transaction: jest.fn((callback: (client: typeof tx) => unknown) =>
+        callback(tx),
+      ),
+    };
+    const service = new PosOrdersService(
+      orders as never,
+      {} as never,
+      prisma as never,
+    );
+
+    await expect(
+      service.recordManualUberRefund('order_1', {
+        reason: '顾客取消',
+        evidence: 'Uber case UE-42, staff Li, 12:30 UTC',
+      }),
+    ).resolves.toBe(current);
+    expect(tx.orderAmendment.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          refundCents: 2599,
+          deltaCents: -2599,
+          summaryJson: expect.objectContaining({
+            status: 'CONFIRMED',
+            evidence: 'Uber case UE-42, staff Li, 12:30 UTC',
+          }) as unknown,
+        }) as unknown,
+      }),
+    );
+    expect(tx.order.update).toHaveBeenCalledWith({
+      where: { id: 'order-db-id' },
+      data: { status: 'refunded' },
+    });
   });
 });

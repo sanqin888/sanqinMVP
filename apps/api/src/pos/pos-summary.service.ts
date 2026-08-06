@@ -192,7 +192,6 @@ export class PosSummaryService {
     const where: Prisma.OrderWhereInput = {
       paidAt: { gte: start, lt: end },
       ...(fulfillmentFilter ? { fulfillmentType: fulfillmentFilter } : {}),
-      ...(statusFilter ? {} : { status: { not: 'refunded' } }),
     };
 
     const orders = (await this.prisma.order.findMany({
@@ -311,7 +310,9 @@ export class PosSummaryService {
         salesCentsForOrder +
         this.cents(o.taxCents) +
         deliveryFeeCents -
-        deliveryCostCents;
+        deliveryCostCents -
+        amend.refundCents +
+        amend.additionalChargeCents;
 
       if (!o.orderStableId) {
         throw new BadRequestException('orderStableId missing');
@@ -341,10 +342,11 @@ export class PosSummaryService {
         salesCents: salesCentsForOrder,
       };
 
-      // 默认当日小结只统计有效收款订单；退款/取消订单仅在明确筛选时展示，避免关店结算重复计入。
+      // 已确认的退款必须保留在默认小结中，才能从原销售额扣除；待平台或
+      // 人工确认的 amendment refundCents 为 0，因此不会提前影响财务数字。
       if (statusFilter) {
         if (row.statusBucket !== statusFilter) continue;
-      } else if (row.statusBucket !== 'paid') {
+      } else if (row.statusBucket === 'void') {
         continue;
       }
       if (paymentFilter && row.payment !== paymentFilter) continue;
