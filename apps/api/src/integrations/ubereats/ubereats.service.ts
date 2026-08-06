@@ -119,6 +119,7 @@ type UberOrderDetailDto = {
   total_cents?: number;
   discount?: UberOrderMoneyDto;
   discount_cents?: number;
+  discountCents?: number;
   delivery_fee?: UberOrderMoneyDto;
   payment?: {
     charges?: {
@@ -206,6 +207,7 @@ type ParsedUberOrder = {
   taxCents: number;
   totalCents: number;
   discountCents: number;
+  hasPromotion: boolean;
   deliveryFeeCents: number;
   fulfillmentType: 'pickup' | 'delivery';
   estimatedReadyAt: Date | null;
@@ -5948,7 +5950,15 @@ export class UberEatsService {
   ) {
     const clientRequestId = this.toClientRequestId(order.externalOrderId);
     const mappedStatus = this.mapEventTypeToOrderStatus(eventType);
-    const validation = this.validateOrderAmounts(order);
+    const amountValidation = this.validateOrderAmounts(order);
+    const itemPriceComparisons: Array<{
+      externalLineId: string | null;
+      uberItemId: string | null;
+      publishedPriceCents: number | null;
+      uberBasePriceCents: number;
+      priceVarianceCents: number | null;
+      quantity: number;
+    }> = [];
 
     const result = await this.prisma.$transaction(async (tx) => {
       const existing = await tx.order.findUnique({
@@ -5985,7 +5995,7 @@ export class UberEatsService {
         externalDisplayId: order.displayId,
         externalOrderNotes: order.specialInstructions,
         externalEstimatedReadyAt: order.estimatedReadyAt,
-        externalPriceVarianceCents: validation.totalVarianceCents,
+        externalPriceVarianceCents: amountValidation.totalVarianceCents,
       };
       const saved = existing
         ? await tx.order.update({ where: { id: existing.id }, data: header })
@@ -6025,7 +6035,26 @@ export class UberEatsService {
           tx,
           order.storeId,
           item,
+          order.paidAt,
         );
+        const publishedPriceCents = await this.resolvePublishedPriceCents(
+          tx,
+          order.storeId,
+          item.externalItemId,
+          order.paidAt,
+        );
+        const priceVarianceCents =
+          publishedPriceCents === null
+            ? null
+            : item.baseUnitPriceCents - publishedPriceCents;
+        itemPriceComparisons.push({
+          externalLineId: item.externalLineId,
+          uberItemId: item.externalItemId,
+          publishedPriceCents,
+          uberBasePriceCents: item.baseUnitPriceCents,
+          priceVarianceCents,
+          quantity: item.quantity,
+        });
         const createdItem = await tx.orderItem.create({
           data: {
             orderId: saved.id,
@@ -6040,6 +6069,9 @@ export class UberEatsService {
             externalLineId: item.externalLineId,
             externalSpecialInstructions: item.specialInstructions,
             externalLineTotalCents: item.lineTotalCents,
+            publishedPriceCents,
+            uberBasePriceCents: item.baseUnitPriceCents,
+            priceVarianceCents,
           },
         });
         const modifiers = this.flattenUberModifiers(item.modifiers);
@@ -6068,7 +6100,7 @@ export class UberEatsService {
           status: 'PROCESSED',
           attemptCount: 1,
           processedAt: new Date(),
-          payload: validation as unknown as Prisma.InputJsonValue,
+          payload: amountValidation as unknown as Prisma.InputJsonValue,
         },
         update: {
           status: 'PROCESSED',
@@ -6085,9 +6117,18 @@ export class UberEatsService {
       };
     });
 
-    if (validation.hasMaterialVariance) {
+    const menuPriceVarianceCents = itemPriceComparisons.reduce(
+      (sum, item) => sum + (item.priceVarianceCents ?? 0) * item.quantity,
+      0,
+    );
+    const hasMenuPriceVariance = itemPriceComparisons.some(
+      (item) =>
+        item.priceVarianceCents !== null &&
+        Math.abs(item.priceVarianceCents) > 1,
+    );
+    if (amountValidation.hasMaterialVariance || hasMenuPriceVariance) {
       this.logger.warn(
-        `[ubereats order] amount variance externalOrderId=${order.externalOrderId} line=${validation.lineVarianceCents} total=${validation.totalVarianceCents}`,
+        `[ubereats order] amount variance externalOrderId=${order.externalOrderId} line=${amountValidation.lineVarianceCents} total=${amountValidation.totalVarianceCents} menu=${menuPriceVarianceCents}`,
       );
     }
     await this.captureEvent('ubereats_order_upserted', {
@@ -6096,15 +6137,59 @@ export class UberEatsService {
       orderStableId: result.orderStableId,
       mappedStatus: result.status,
       action: result.action,
-      ...validation,
+      ...amountValidation,
+      priceValidationPolicy: 'WARN_AND_ACCEPT',
+      hasPromotion: order.hasPromotion,
+      promotionDiscountCents: order.discountCents,
+      menuPriceVarianceCents,
+      hasMenuPriceVariance,
+      itemPriceComparisons,
     });
     return result;
+  }
+
+  private async resolvePublishedPriceCents(
+    tx: Prisma.TransactionClient,
+    storeId: string | null | undefined,
+    uberItemId: string | null,
+    orderedAt: Date,
+  ): Promise<number | null> {
+    if (!storeId || !uberItemId) return null;
+    const delegate = (
+      tx as unknown as {
+        uberPublishedMenuItem?: {
+          findFirst: (args: unknown) => Promise<{
+            publishedPriceCents: number;
+          } | null>;
+        };
+      }
+    ).uberPublishedMenuItem;
+    if (!delegate) return null;
+    const snapshot = await delegate.findFirst({
+      where: {
+        uberStoreId: storeId,
+        uberItemId,
+        publishedAt: { lte: orderedAt },
+        publishVersion: {
+          status: {
+            in: [
+              UberMenuPublishStatus.SUBMITTED,
+              UberMenuPublishStatus.SUCCEEDED,
+            ],
+          },
+        },
+      },
+      orderBy: { publishedAt: 'desc' },
+      select: { publishedPriceCents: true },
+    });
+    return snapshot?.publishedPriceCents ?? null;
   }
 
   private async resolveUberProductStableId(
     tx: Prisma.TransactionClient,
     storeId: string | null | undefined,
     item: ParsedUberOrderItem,
+    orderedAt: Date,
   ): Promise<string> {
     if (item.externalItemId?.startsWith('sanq:')) {
       if (storeId) {
@@ -6120,6 +6205,7 @@ export class UberEatsService {
           where: {
             uberStoreId: storeId,
             uberItemId: item.externalItemId,
+            publishedAt: { lte: orderedAt },
             publishVersion: {
               status: {
                 in: [
@@ -6277,11 +6363,21 @@ export class UberEatsService {
         0,
       ) ?? 0;
     const discountCents =
-      dto.discount !== undefined || dto.discount_cents !== undefined
-        ? this.readCents(dto.discount, dto.discount_cents, 0)
+      dto.discount !== undefined ||
+      dto.discount_cents !== undefined ||
+      dto.discountCents !== undefined
+        ? this.readCents(
+            dto.discount,
+            dto.discount_cents ?? dto.discountCents,
+            0,
+          )
         : promoSubtotalCents !== null
           ? Math.max(0, subtotalCents - promoSubtotalCents)
           : promotionSavingsCents;
+    const hasPromotion =
+      discountCents > 0 ||
+      promoSubtotalCents !== null ||
+      (promotions?.promotions?.length ?? 0) > 0;
     const deliveryFeeCents = this.readCents(
       dto.delivery_fee ?? charges?.total_fee ?? charges?.delivery_fee,
       undefined,
@@ -6310,6 +6406,7 @@ export class UberEatsService {
       taxCents,
       totalCents,
       discountCents,
+      hasPromotion,
       deliveryFeeCents,
       contactName: this.readString(
         customer.name,

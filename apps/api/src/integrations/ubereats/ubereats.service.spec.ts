@@ -673,6 +673,12 @@ describe('UberEatsService', () => {
           .mockResolvedValue({ stableId: 'menu_item_uber_1' }),
       },
       uberItemChannelConfig: { findFirst: jest.fn() },
+      uberPublishedMenuItem: {
+        findFirst: jest.fn().mockResolvedValue({
+          menuItemStableId: 'menu_item_uber_1',
+          publishedPriceCents: 800,
+        }),
+      },
       uberOrderItemModifier: { createMany: jest.fn() },
       uberWebhookInbox: createInboxMock(),
       businessConfig: {
@@ -730,6 +736,7 @@ describe('UberEatsService', () => {
         new Response(
           JSON.stringify({
             order_id: 'ue_123',
+            store_id: 'uber-store-1',
             subtotal_cents: 1000,
             tax_cents: 130,
             total_cents: 1130,
@@ -804,7 +811,178 @@ describe('UberEatsService', () => {
       orderId: 'order-db-id',
       stableId: 'ord_uber_1',
     });
+    expect(prisma.orderItem.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          publishedPriceCents: 800,
+          uberBasePriceCents: 1000,
+          priceVarianceCents: 200,
+        }) as unknown,
+      }),
+    );
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://api.uber.com/v1/eats/orders/ue_123/accept_pos_order',
+      expect.objectContaining({ method: 'POST' }),
+    );
     fetchSpy.mockRestore();
+  });
+
+  it.each([
+    {
+      name: '正常促销不改变商品基础价格校验',
+      publishedPriceCents: 1000,
+      uberBasePriceCents: 1000,
+      discountCents: 200,
+      hasPromotion: true,
+      expectedVariance: 0,
+      expectedMaterial: false,
+    },
+    {
+      name: '使用下单时的上一版本菜单价格而不是当前菜单价格',
+      publishedPriceCents: 900,
+      uberBasePriceCents: 900,
+      discountCents: 0,
+      hasPromotion: false,
+      expectedVariance: 0,
+      expectedMaterial: false,
+    },
+    {
+      name: '无折扣时记录基础价格异常',
+      publishedPriceCents: 900,
+      uberBasePriceCents: 1100,
+      discountCents: 0,
+      hasPromotion: false,
+      expectedVariance: 200,
+      expectedMaterial: true,
+    },
+    {
+      name: '一分钱舍入误差只记录而不标记为实质异常',
+      publishedPriceCents: 1000,
+      uberBasePriceCents: 1001,
+      discountCents: 0,
+      hasPromotion: false,
+      expectedVariance: 1,
+      expectedMaterial: false,
+    },
+  ])('$name', async (scenario) => {
+    const orderedAt = new Date('2026-08-05T12:00:00.000Z');
+    const createdItems: Array<Record<string, unknown>> = [];
+    const events: Array<Record<string, unknown>> = [];
+    const prisma = {
+      order: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest
+          .fn()
+          .mockImplementation(({ data }: { data: Record<string, unknown> }) =>
+            Promise.resolve({
+              ...data,
+              id: 'order-price-check',
+              orderStableId: 'ord-price-check',
+            }),
+          ),
+      },
+      orderItem: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        create: jest
+          .fn()
+          .mockImplementation(({ data }: { data: Record<string, unknown> }) => {
+            createdItems.push(data);
+            return Promise.resolve({ ...data, id: 'order-item-price-check' });
+          }),
+      },
+      menuItem: {
+        findFirst: jest.fn().mockResolvedValue({ stableId: 'menu-item-1' }),
+      },
+      uberItemChannelConfig: { findFirst: jest.fn() },
+      uberPublishedMenuItem: {
+        findFirst: jest.fn().mockResolvedValue({
+          publishedPriceCents: scenario.publishedPriceCents,
+        }),
+      },
+      uberOrderItemModifier: { createMany: jest.fn() },
+      uberWebhookInbox: createInboxMock(),
+      opsEvent: {
+        create: jest
+          .fn()
+          .mockImplementation(({ data }: { data: Record<string, unknown> }) => {
+            events.push(data);
+            return Promise.resolve(data);
+          }),
+      },
+    };
+    Object.assign(prisma, {
+      $transaction: jest.fn(
+        (callback: (transaction: typeof prisma) => unknown) => callback(prisma),
+      ),
+    });
+    const service = new UberEatsService(prisma as never, createAuthService());
+    await (
+      service as unknown as {
+        upsertUberOrder: (
+          order: Record<string, unknown>,
+          eventType: string,
+          eventId: string,
+        ) => Promise<unknown>;
+      }
+    ).upsertUberOrder(
+      {
+        externalOrderId: `order-${scenario.expectedVariance}`,
+        displayId: 'PRICE',
+        storeId: 'uber-store-1',
+        subtotalCents: scenario.uberBasePriceCents,
+        taxCents: 0,
+        totalCents: scenario.uberBasePriceCents - scenario.discountCents,
+        discountCents: scenario.discountCents,
+        hasPromotion: scenario.hasPromotion,
+        deliveryFeeCents: 0,
+        fulfillmentType: 'pickup',
+        estimatedReadyAt: null,
+        specialInstructions: null,
+        contactName: null,
+        contactPhone: null,
+        paidAt: orderedAt,
+        cancellation: null,
+        items: [
+          {
+            externalLineId: 'line-1',
+            externalItemId: 'uber-item-1',
+            stableIdHint: 'menu-item-1',
+            displayName: 'Noodles',
+            quantity: 1,
+            baseUnitPriceCents: scenario.uberBasePriceCents,
+            optionsUnitPriceCents: 0,
+            unitPriceCents: scenario.uberBasePriceCents,
+            lineTotalCents: scenario.uberBasePriceCents,
+            specialInstructions: null,
+            modifiers: [],
+          },
+        ],
+      },
+      'orders.notification',
+      `event-${scenario.expectedVariance}`,
+    );
+
+    expect(prisma.uberPublishedMenuItem.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          uberItemId: 'uber-item-1',
+          publishedAt: { lte: orderedAt },
+        }) as unknown,
+        orderBy: { publishedAt: 'desc' },
+      }),
+    );
+    expect(createdItems[0]).toMatchObject({
+      publishedPriceCents: scenario.publishedPriceCents,
+      uberBasePriceCents: scenario.uberBasePriceCents,
+      priceVarianceCents: scenario.expectedVariance,
+    });
+    expect(events.at(-1)?.payload).toMatchObject({
+      priceValidationPolicy: 'WARN_AND_ACCEPT',
+      hasPromotion: scenario.hasPromotion,
+      promotionDiscountCents: scenario.discountCents,
+      menuPriceVarianceCents: scenario.expectedVariance,
+      hasMenuPriceVariance: scenario.expectedMaterial,
+    });
   });
 
   it('ACCEPT 失败但入 retry outbox 时不会把本地订单推进到 making 或触发打印', async () => {
