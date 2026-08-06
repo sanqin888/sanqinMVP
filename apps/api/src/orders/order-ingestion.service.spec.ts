@@ -1,0 +1,122 @@
+jest.mock('@prisma/client', () => ({
+  PrismaClient: class {},
+  Channel: { web: 'web', ubereats: 'ubereats' },
+  FulfillmentType: { pickup: 'pickup' },
+  OrderStatus: {
+    pending: 'pending',
+    paid: 'paid',
+    making: 'making',
+    ready: 'ready',
+    completed: 'completed',
+    cancelled: 'cancelled',
+    refunded: 'refunded',
+  },
+  PaymentMethod: { UBEREATS: 'UBEREATS' },
+}));
+
+import { OrderIngestionService } from './order-ingestion.service';
+
+describe('OrderIngestionService', () => {
+  const input = {
+    channel: 'ubereats',
+    paymentMethod: 'UBEREATS',
+    clientRequestId: 'UBER:1',
+    status: 'pending',
+    paidAt: new Date('2026-01-01T00:00:00Z'),
+    fulfillmentType: 'pickup',
+    amounts: {
+      subtotalCents: 1000,
+      subtotalAfterDiscountCents: 1000,
+      couponDiscountCents: 0,
+      taxCents: 130,
+      deliveryFeeCents: 0,
+      totalCents: 1130,
+      paymentTotalCents: 1130,
+    },
+    contact: { name: null },
+    externalSnapshot: {},
+    items: [
+      {
+        productStableId: 'dish',
+        quantity: 1,
+        displayName: 'Dish',
+        unitPriceCents: 1000,
+      },
+    ],
+  } as never;
+  const policies = {
+    verifyWebPayment: false,
+    applyMembershipPoints: false,
+    applyCoupons: false,
+    persistExternalSnapshot: true,
+    emitPaidLifecycleEvent: false,
+  };
+
+  it('重复接入替换菜品但只保留一个订单', async () => {
+    let existing: null | {
+      id: string;
+      orderStableId: string;
+      status: string;
+      pickupCode: null;
+    } = null;
+    const tx = {
+      order: {
+        findUnique: jest.fn(() => existing),
+        create: jest.fn(
+          () =>
+            (existing = {
+              id: 'o1',
+              orderStableId: 's1',
+              status: 'pending',
+              pickupCode: null,
+            }),
+        ),
+        update: jest.fn(() => existing),
+        updateMany: jest.fn(),
+      },
+      orderItem: {
+        deleteMany: jest.fn(),
+        create: jest.fn().mockResolvedValue({ id: 'i1' }),
+      },
+      uberOrderItemModifier: { createMany: jest.fn() },
+    };
+    const prisma = {
+      $transaction: (fn: (client: unknown) => unknown) => fn(tx),
+    };
+    const service = new OrderIngestionService(prisma as never, {} as never);
+    await service.ingest(input, policies);
+    await service.ingest(input, policies);
+    expect(tx.order.create).toHaveBeenCalledTimes(1);
+    expect(tx.order.update).toHaveBeenCalledTimes(1);
+    expect(tx.orderItem.deleteMany).toHaveBeenCalledTimes(2);
+  });
+
+  it('不会把 Web 支付校验套用到 Uber 订单', async () => {
+    const service = new OrderIngestionService({} as never, {} as never);
+    await expect(
+      service.ingest(input, { ...policies, verifyWebPayment: true }),
+    ).rejects.toThrow('only be enabled for web orders');
+  });
+
+  it('并发接单状态更新只发出一次 accepted', async () => {
+    const bus = { emitOrderAccepted: jest.fn() };
+    const prisma = {
+      order: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'o1',
+          orderStableId: 's1',
+          status: 'pending',
+          paidAt: new Date(),
+        }),
+        updateMany: jest
+          .fn()
+          .mockResolvedValueOnce({ count: 1 })
+          .mockResolvedValueOnce({ count: 0 }),
+      },
+    };
+    const service = new OrderIngestionService(prisma as never, bus as never);
+    await service.markAccepted('UBER:1');
+    await service.markAccepted('UBER:1');
+    expect(bus.emitOrderAccepted).toHaveBeenCalledTimes(1);
+  });
+});

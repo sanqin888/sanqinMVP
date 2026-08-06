@@ -31,6 +31,10 @@ import { UberAuthService } from './uber-auth.service';
 import { UberWebhookEnvelopeDto } from './dto/uber-webhook-envelope.dto';
 import { UberMenuNotificationDto } from './dto/uber-menu-notification.dto';
 import { OrderEventsBus } from '../../messaging/order-events.bus';
+import {
+  OrderIngestionService,
+  NormalizedOrderItem,
+} from '../../orders/order-ingestion.service';
 
 class UberWebhookNonRetryableError extends Error {
   constructor(
@@ -721,6 +725,7 @@ export class UberEatsService {
     private readonly prisma: PrismaService,
     private readonly uberAuthService: UberAuthService,
     @Optional() private readonly orderEventsBus?: OrderEventsBus,
+    @Optional() private readonly orderIngestionService?: OrderIngestionService,
   ) {
     const secret = process.env.UBER_EATS_OAUTH_STATE_SECRET?.trim() || '';
     if (secret.length < 32 || new Set(secret).size < 12) {
@@ -3611,6 +3616,12 @@ export class UberEatsService {
   private async advanceLocalUberOrderStatusAfterAccept(
     externalOrderId: string,
   ): Promise<void> {
+    if (this.orderIngestionService) {
+      await this.orderIngestionService.markAccepted(
+        this.toClientRequestId(externalOrderId),
+      );
+      return;
+    }
     const orderDelegate = this.prisma.order as unknown as {
       findUnique?: (args: {
         where: { clientRequestId: string };
@@ -5971,182 +5982,175 @@ export class UberEatsService {
       quantity: number;
     }> = [];
 
-    const result = await this.prisma.$transaction(async (tx) => {
-      const existing = await tx.order.findUnique({
-        where: { clientRequestId },
-        select: {
-          id: true,
-          orderStableId: true,
-          status: true,
-          pickupCode: true,
-        },
+    const storeId = await this.resolvePosStoreId(order.storeId ?? '');
+    const txLike = this.prisma as unknown as Prisma.TransactionClient;
+    const normalizedItems: NormalizedOrderItem[] = [];
+    for (const item of order.items) {
+      const productStableId = await this.resolveUberProductStableId(
+        txLike,
+        order.storeId,
+        item,
+        order.paidAt,
+      );
+      const product = await txLike.menuItem.findFirst({
+        where: { stableId: productStableId },
+        select: { nameEn: true, nameZh: true },
       });
-      const nextStatus = !mappedStatus
-        ? (existing?.status ?? OrderStatus.pending)
-        : existing &&
-            !this.shouldAdvanceOrderStatus(existing.status, mappedStatus)
-          ? existing.status
-          : mappedStatus;
-      const header = {
-        channel: Channel.ubereats,
-        status: nextStatus,
-        paidAt: order.paidAt,
-        paymentMethod: PaymentMethod.UBEREATS,
-        fulfillmentType:
-          order.fulfillmentType === 'delivery'
-            ? FulfillmentType.delivery
-            : FulfillmentType.pickup,
-        subtotalCents: order.subtotalCents,
-        subtotalAfterDiscountCents: Math.max(
-          0,
-          order.subtotalCents - order.discountCents,
+      const publishedPriceCents = await this.resolvePublishedPriceCents(
+        txLike,
+        order.storeId,
+        item.externalItemId,
+        order.paidAt,
+      );
+      const priceVarianceCents =
+        publishedPriceCents === null
+          ? null
+          : item.baseUnitPriceCents - publishedPriceCents;
+      itemPriceComparisons.push({
+        externalLineId: item.externalLineId,
+        uberItemId: item.externalItemId,
+        publishedPriceCents,
+        uberBasePriceCents: item.baseUnitPriceCents,
+        priceVarianceCents,
+        quantity: item.quantity,
+      });
+      normalizedItems.push({
+        productStableId,
+        quantity: item.quantity,
+        displayName: item.displayName,
+        nameEn: product?.nameEn?.trim() || null,
+        nameZh: product?.nameZh?.trim() || null,
+        baseUnitPriceCents: item.baseUnitPriceCents,
+        optionsUnitPriceCents: item.optionsUnitPriceCents,
+        unitPriceCents: item.unitPriceCents,
+        options: await this.toOrderOptionsSnapshot(
+          txLike,
+          order.storeId,
+          item.modifiers,
         ),
-        couponDiscountCents: order.discountCents,
-        taxCents: order.taxCents,
-        deliveryFeeCents: order.deliveryFeeCents,
-        totalCents: order.totalCents,
-        paymentTotalCents: order.totalCents,
-        contactName: order.contactName,
-        contactPhone: order.contactPhone,
-        // Uber's pickup_code is the canonical customer/courier-facing code.
-        // Keep an existing valid code when a later webhook omits both it and
-        // the legacy display_id fallback.
-        pickupCode: order.pickupCode ?? existing?.pickupCode ?? undefined,
-        externalDisplayId: order.displayId,
-        externalOrderNotes: order.specialInstructions,
-        externalEstimatedReadyAt: order.estimatedReadyAt,
-        externalPriceVarianceCents: amountValidation.totalVarianceCents,
-        storeId: await this.resolvePosStoreId(order.storeId ?? ''),
-      };
-      const saved = existing
-        ? await tx.order.update({ where: { id: existing.id }, data: header })
-        : await tx.order.create({ data: { ...header, clientRequestId } });
-
-      const normalizedEvent = this.normalizeEventType(eventType);
-      if (
-        normalizedEvent === 'orders.cancelled' ||
-        normalizedEvent === 'orders.cancel' ||
-        normalizedEvent === 'orders.rejected'
-      ) {
-        const cancellation = order.cancellation ?? {
-          cancelledBy: null,
-          reasonCode: null,
-          reasonDetail: null,
-          occurredAt: new Date(),
-        };
-        await tx.uberOrderCancellation.upsert({
-          where: { eventId },
-          create: {
-            orderId: saved.id,
-            externalOrderId: order.externalOrderId,
-            eventId,
-            kind: normalizedEvent.endsWith('rejected')
-              ? 'REJECTED'
-              : 'CANCELLED',
-            ...cancellation,
-          },
-          update: {},
-        });
-      }
-
-      // Replacing the externally-owned snapshot makes repeated deliveries idempotent.
-      await tx.orderItem.deleteMany({ where: { orderId: saved.id } });
-      for (const item of order.items) {
-        const productStableId = await this.resolveUberProductStableId(
-          tx,
-          order.storeId,
-          item,
-          order.paidAt,
-        );
-        const product = await tx.menuItem.findFirst({
-          where: { stableId: productStableId },
-          select: { nameEn: true, nameZh: true },
-        });
-        const publishedPriceCents = await this.resolvePublishedPriceCents(
-          tx,
-          order.storeId,
-          item.externalItemId,
-          order.paidAt,
-        );
-        const priceVarianceCents =
-          publishedPriceCents === null
-            ? null
-            : item.baseUnitPriceCents - publishedPriceCents;
-        itemPriceComparisons.push({
-          externalLineId: item.externalLineId,
-          uberItemId: item.externalItemId,
+        external: {
+          itemId: item.externalItemId,
+          lineId: item.externalLineId,
+          instructions: item.specialInstructions,
+          lineTotalCents: item.lineTotalCents,
           publishedPriceCents,
-          uberBasePriceCents: item.baseUnitPriceCents,
+          channelBasePriceCents: item.baseUnitPriceCents,
           priceVarianceCents,
-          quantity: item.quantity,
-        });
-        const createdItem = await tx.orderItem.create({
-          data: {
-            orderId: saved.id,
-            productStableId,
-            nameEn: product?.nameEn?.trim() || null,
-            nameZh: product?.nameZh?.trim() || null,
-            displayName: item.displayName,
-            qty: item.quantity,
-            baseUnitPriceCents: item.baseUnitPriceCents,
-            optionsUnitPriceCents: item.optionsUnitPriceCents,
-            unitPriceCents: item.unitPriceCents,
-            optionsJson: await this.toOrderOptionsSnapshot(
-              tx,
-              order.storeId,
-              item.modifiers,
-            ),
-            externalItemId: item.externalItemId,
-            externalLineId: item.externalLineId,
-            externalSpecialInstructions: item.specialInstructions,
-            externalLineTotalCents: item.lineTotalCents,
-            publishedPriceCents,
-            uberBasePriceCents: item.baseUnitPriceCents,
-            priceVarianceCents,
-          },
-        });
-        const modifiers = this.flattenUberModifiers(item.modifiers);
-        if (modifiers.length) {
-          await tx.uberOrderItemModifier.createMany({
-            data: modifiers.map((modifier, sortOrder) => ({
-              orderItemId: createdItem.id,
-              externalModifierId: modifier.externalId,
+          modifiers: this.flattenUberModifiers(item.modifiers).map(
+            (modifier) => ({
+              externalId: modifier.externalId,
               parentExternalId: modifier.parentExternalId,
               displayName: modifier.displayName,
               quantity: modifier.quantity,
               priceDeltaCents: modifier.priceDeltaCents,
               specialInstructions: modifier.specialInstructions,
-              sortOrder,
               snapshot: modifier as unknown as Prisma.InputJsonValue,
-            })),
-          });
-        }
-      }
-      await tx.uberWebhookInbox.upsert({
-        where: { eventId },
-        create: {
-          eventId,
-          eventType,
-          externalOrderId: order.externalOrderId,
-          status: 'PROCESSED',
-          attemptCount: 1,
-          processedAt: new Date(),
-          payload: amountValidation as unknown as Prisma.InputJsonValue,
-        },
-        update: {
-          status: 'PROCESSED',
-          processedAt: new Date(),
-          errorSummary: null,
-          nextRetryAt: null,
+            }),
+          ),
         },
       });
-      return {
-        orderId: saved.id,
-        orderStableId: saved.orderStableId,
-        status: saved.status,
-        action: existing ? ('updated' as const) : ('created' as const),
-      };
-    });
+    }
+
+    // Nest always injects this boundary. The fallback keeps isolated adapter
+    // unit tests backwards compatible without returning to direct persistence.
+    const ingestion =
+      this.orderIngestionService ??
+      new OrderIngestionService(
+        this.prisma,
+        (this.orderEventsBus ?? {
+          emitOrderPaidVerified: () => undefined,
+          emitOrderAccepted: () => undefined,
+        }) as OrderEventsBus,
+      );
+    const result = await ingestion.ingest(
+      {
+        channel: Channel.ubereats,
+        paymentMethod: PaymentMethod.UBEREATS,
+        externalOrderId: order.externalOrderId,
+        clientRequestId,
+        storeId,
+        status: mappedStatus ?? OrderStatus.pending,
+        paidAt: order.paidAt,
+        fulfillmentType:
+          order.fulfillmentType === 'delivery'
+            ? FulfillmentType.delivery
+            : FulfillmentType.pickup,
+        pickupCode: order.pickupCode,
+        amounts: {
+          subtotalCents: order.subtotalCents,
+          subtotalAfterDiscountCents: Math.max(
+            0,
+            order.subtotalCents - order.discountCents,
+          ),
+          couponDiscountCents: order.discountCents,
+          taxCents: order.taxCents,
+          deliveryFeeCents: order.deliveryFeeCents,
+          totalCents: order.totalCents,
+          paymentTotalCents: order.totalCents,
+        },
+        contact: { name: order.contactName, phone: order.contactPhone },
+        externalSnapshot: {
+          displayId: order.displayId,
+          notes: order.specialInstructions,
+          estimatedReadyAt: order.estimatedReadyAt,
+          priceVarianceCents: amountValidation.totalVarianceCents,
+        },
+        items: normalizedItems,
+      },
+      {
+        verifyWebPayment: false,
+        applyMembershipPoints: false,
+        applyCoupons: false,
+        persistExternalSnapshot: true,
+        emitPaidLifecycleEvent: false,
+      },
+      async (tx, saved) => {
+        const normalizedEvent = this.normalizeEventType(eventType);
+        if (
+          normalizedEvent === 'orders.cancelled' ||
+          normalizedEvent === 'orders.cancel' ||
+          normalizedEvent === 'orders.rejected'
+        ) {
+          const cancellation = order.cancellation ?? {
+            cancelledBy: null,
+            reasonCode: null,
+            reasonDetail: null,
+            occurredAt: new Date(),
+          };
+          await tx.uberOrderCancellation.upsert({
+            where: { eventId },
+            create: {
+              orderId: saved.orderId,
+              externalOrderId: order.externalOrderId,
+              eventId,
+              kind: normalizedEvent.endsWith('rejected')
+                ? 'REJECTED'
+                : 'CANCELLED',
+              ...cancellation,
+            },
+            update: {},
+          });
+        }
+        await tx.uberWebhookInbox.upsert({
+          where: { eventId },
+          create: {
+            eventId,
+            eventType,
+            externalOrderId: order.externalOrderId,
+            status: 'PROCESSED',
+            attemptCount: 1,
+            processedAt: new Date(),
+            payload: amountValidation as unknown as Prisma.InputJsonValue,
+          },
+          update: {
+            status: 'PROCESSED',
+            processedAt: new Date(),
+            errorSummary: null,
+            nextRetryAt: null,
+          },
+        });
+      },
+    );
 
     const menuPriceVarianceCents = itemPriceComparisons.reduce(
       (sum, item) => sum + (item.priceVarianceCents ?? 0) * item.quantity,
