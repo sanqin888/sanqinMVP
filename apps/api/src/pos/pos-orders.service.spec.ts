@@ -158,12 +158,13 @@ describe('PosOrdersService', () => {
         status: 'pending',
       }),
     );
-    prisma.uberOrderAction.findUnique.mockImplementation(({ where }) =>
-      Promise.resolve(
-        where.externalOrderId_action.action === 'DENY'
-          ? { status: 'SUCCEEDED', retryable: false }
-          : null,
-      ),
+    prisma.uberOrderAction.findUnique.mockImplementation(
+      ({ where }: { where: { externalOrderId_action: { action: string } } }) =>
+        Promise.resolve(
+          where.externalOrderId_action.action === 'DENY'
+            ? { status: 'SUCCEEDED', retryable: false }
+            : null,
+        ),
     );
     uberEats.denyUberOrder.mockResolvedValue({ ok: true, duplicate: true });
 
