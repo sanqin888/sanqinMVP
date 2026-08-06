@@ -823,18 +823,34 @@ if (STORE_ID) {
     socket.emit("joinStore", { storeId: STORE_ID });
   });
 
-  socket.on("Disconnect", (reason) => {
+  socket.on("disconnect", (reason) => {
     console.warn(`[Cloud] Disconnect: ${reason}`);
   });
 
   // 核心：监听云端指令
-  socket.on("PRINT_JOB", async (formattedPayload) => {
+  socket.on("PRINT_JOB", async (job) => {
+    const { jobId, target, payload: formattedPayload } = job || {};
+    const ack = (success, error) =>
+      socket.emit("PRINT_JOB_ACK", {
+        jobId,
+        target,
+        success,
+        ...(error ? { error: String(error.message || error) } : {}),
+      });
+    if (
+      !jobId ||
+      !["customer", "kitchen"].includes(target) ||
+      !formattedPayload
+    ) {
+      console.error("[Cloud] Invalid PRINT_JOB envelope", job);
+      return;
+    }
     // 这里的 formattedPayload 已经是后端 PrintPosPayloadService 生成好的完美格式
     // 直接包含 { orderNumber, snapshot: { ... } }
 
     const orderId = formattedPayload.orderNumber || "Unknown";
-    const targetCustomer = formattedPayload?.targets?.customer ?? true;
-    const targetKitchen = formattedPayload?.targets?.kitchen ?? true;
+    const targetCustomer = target === "customer";
+    const targetKitchen = target === "kitchen";
     console.log(`[Cloud] 收到打印任务: ${orderId}`);
 
     try {
@@ -849,7 +865,7 @@ if (STORE_ID) {
           console.log(`Cashier Print -> ${frontPrinterName}`);
           await printEscPosTo(frontPrinterName, customerBuffer);
         } else {
-          console.warn(`No cashier printer found (POS_FRONT_PRINTER)`);
+          throw new Error("POS_FRONT_PRINTER_NOT_CONFIGURED");
         }
       }
 
@@ -863,13 +879,15 @@ if (STORE_ID) {
           console.log(`kitchen print -> ${kitchenPrinterName}`);
           await printEscPosTo(kitchenPrinterName, kitchenBuffer);
         } else {
-          console.log(`No kitchen printer found (POS_KITCHEN_PRINTER)，pass。`);
+          throw new Error("POS_KITCHEN_PRINTER_NOT_CONFIGURED");
         }
       }
 
       console.log(` [Cloud] Print workflow over`);
+      ack(true);
     } catch (err) {
       console.error(`[Cloud] Failed print:`, err);
+      ack(false, err);
     }
   });
 
