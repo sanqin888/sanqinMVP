@@ -20,6 +20,7 @@ describe('PosOrdersService', () => {
     };
     const uberEats = {
       syncOrderStatusToUber: jest.fn().mockResolvedValue({ ok: true }),
+      acceptUberOrder: jest.fn().mockResolvedValue({ ok: true }),
     };
     return {
       service: new PosOrdersService(
@@ -39,6 +40,62 @@ describe('PosOrdersService', () => {
 
     expect(orders.advance).toHaveBeenCalledWith('order_1');
     expect(uberEats.syncOrderStatusToUber).not.toHaveBeenCalled();
+  });
+
+  it('Uber pending 使用 ACCEPT 并直接重新读取 making 订单', async () => {
+    const pending = order({
+      channel: 'ubereats',
+      clientRequestId: 'ubereats:external-123',
+      status: 'pending',
+    });
+    const making = order({
+      channel: 'ubereats',
+      clientRequestId: 'ubereats:external-123',
+      status: 'making',
+    });
+    const { service, orders, uberEats } = setup(pending);
+    orders.getByStableId
+      .mockResolvedValueOnce(pending)
+      .mockResolvedValueOnce(making);
+
+    await expect(service.advance('order_1')).resolves.toBe(making);
+
+    expect(uberEats.acceptUberOrder).toHaveBeenCalledWith('external-123');
+    expect(orders.advance).not.toHaveBeenCalled();
+  });
+
+  it('Uber ACCEPT 失败时不提前推进本地 pending 状态', async () => {
+    const pending = order({
+      channel: 'ubereats',
+      clientRequestId: 'ubereats:external-123',
+      status: 'pending',
+    });
+    const { service, orders, uberEats } = setup(pending);
+    uberEats.acceptUberOrder.mockResolvedValue({ ok: false });
+
+    await expect(service.advance('order_1')).resolves.toBe(pending);
+
+    expect(orders.getByStableId).toHaveBeenCalledTimes(1);
+    expect(orders.advance).not.toHaveBeenCalled();
+  });
+
+  it('两个终端同时点击时都复用 Uber ACCEPT/outbox 而不走通用推进', async () => {
+    const pending = order({
+      channel: 'ubereats',
+      clientRequestId: 'ubereats:external-123',
+      status: 'pending',
+    });
+    const making = { ...pending, status: 'making' } as OrderDto;
+    const { service, orders, uberEats } = setup(pending);
+    orders.getByStableId
+      .mockResolvedValueOnce(pending)
+      .mockResolvedValueOnce(pending)
+      .mockResolvedValue(making);
+
+    await Promise.all([service.advance('order_1'), service.advance('order_1')]);
+
+    expect(uberEats.acceptUberOrder).toHaveBeenCalledTimes(2);
+    expect(orders.advance).not.toHaveBeenCalled();
   });
 
   it('Uber webhook 订单从 making 到 ready 时委托原子 outbox 同步', async () => {

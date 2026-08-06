@@ -3023,6 +3023,58 @@ describe('UberEatsService', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
+  it('fallback 可将并发 paid 订单推进到 making，重复 ACCEPT 只发送一次 accepted', async () => {
+    const prisma = createActionPrisma({
+      id: 'order_1',
+      orderStableId: 'stable_1',
+      status: 'paid',
+      paidAt: new Date('2026-08-03T12:00:00Z'),
+    }) as ReturnType<typeof createActionPrisma> & {
+      order: {
+        findUnique: jest.Mock;
+        updateMany: jest.Mock;
+      };
+    };
+    let localStatus = 'paid';
+    prisma.order.findUnique.mockImplementation(() =>
+      Promise.resolve({
+        id: 'order_1',
+        orderStableId: 'stable_1',
+        status: localStatus,
+        paidAt: new Date('2026-08-03T12:00:00Z'),
+      }),
+    );
+    prisma.order.updateMany = jest.fn().mockImplementation(({ where }) => {
+      const canAccept = where.status.in.includes(localStatus);
+      if (canAccept) localStatus = 'making';
+      return Promise.resolve({ count: canAccept ? 1 : 0 });
+    });
+    const bus = { emitOrderAccepted: jest.fn() };
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    const service = new UberEatsService(
+      prisma as never,
+      createAuthService(),
+      bus as never,
+    );
+
+    await service.acceptUberOrder('ue_paid');
+    await service.acceptUberOrder('ue_paid');
+
+    expect(localStatus).toBe('making');
+    expect(prisma.order.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: 'order_1',
+          status: { in: ['pending', 'paid'] },
+        },
+      }),
+    );
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(bus.emitOrderAccepted).toHaveBeenCalledTimes(1);
+  });
+
   it('拒单 endpoint 保存业务原因 payload', async () => {
     const prisma = createActionPrisma();
     const fetchSpy = jest

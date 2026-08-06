@@ -187,6 +187,40 @@ describe('OrderIngestionService', () => {
     const service = new OrderIngestionService(prisma as never, bus as never);
     await service.markAccepted('UBER:1');
     await service.markAccepted('UBER:1');
+    expect(prisma.order.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: 'o1',
+          status: { in: ['pending', 'paid'] },
+        },
+      }),
+    );
+    expect(bus.emitOrderAccepted).toHaveBeenCalledTimes(1);
+  });
+
+  it('POS 并发推进到 paid 后仍可原子接单且只发一次 accepted', async () => {
+    const bus = { emitOrderAccepted: jest.fn() };
+    const prisma = {
+      order: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'o1',
+          orderStableId: 's1',
+          status: 'paid',
+          paidAt: new Date('2026-01-01T00:00:00Z'),
+        }),
+        updateMany: jest
+          .fn()
+          .mockResolvedValueOnce({ count: 1 })
+          .mockResolvedValueOnce({ count: 0 }),
+      },
+    };
+    const service = new OrderIngestionService(prisma as never, bus as never);
+
+    await Promise.all([
+      service.markAccepted('UBER:1'),
+      service.markAccepted('UBER:1'),
+    ]);
+
     expect(bus.emitOrderAccepted).toHaveBeenCalledTimes(1);
   });
 });
