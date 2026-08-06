@@ -24,6 +24,7 @@ import {
 import type { CreateOrderAmendmentInput } from "@/lib/api/pos";
 import { apiFetch } from "@/lib/api/client";
 import { parseBackendDate, ymdInTimeZone } from "@/lib/time/tz";
+import { getUberCancellationErrorMessage } from "./uber-cancellation";
 
 const COPY = {
   zh: {
@@ -1240,6 +1241,7 @@ export default function PosOrdersPage() {
     () => orders.find((order) => order.stableId === selectedId) ?? null,
     [orders, selectedId],
   );
+  const canDenySelectedUberOrder = selectedOrder?.status === "pending";
 
   useEffect(() => {
     setSelectedPaymentMethod(null);
