@@ -6202,6 +6202,41 @@ export class UberEatsService {
             },
             update: {},
           });
+
+          // Uber cancellation callbacks are the settlement confirmation for
+          // this integration: Uber will not settle the cancelled order. Keep
+          // the audit record, financial amendment and terminal order status in
+          // the same transaction. A deterministic amendmentStableId makes a
+          // replay harmless even if the inbox claim is retried after a crash.
+          const refundCents = Math.max(0, order.totalCents);
+          await tx.orderAmendment.upsert({
+            where: {
+              amendmentStableId: this.uberCancellationAmendmentId(eventId),
+            },
+            create: {
+              amendmentStableId: this.uberCancellationAmendmentId(eventId),
+              orderId: saved.orderId,
+              type: 'RETENDER',
+              paymentMethod: PaymentMethod.UBEREATS,
+              reason:
+                cancellation.reasonDetail ??
+                cancellation.reasonCode ??
+                'Uber cancellation confirmed',
+              deltaCents: -refundCents,
+              refundCents,
+              summaryJson: {
+                kind: 'UBER_CANCELLATION',
+                status: 'CONFIRMED',
+                eventId,
+                externalOrderId: order.externalOrderId,
+              },
+            },
+            update: {},
+          });
+          await tx.order.update({
+            where: { id: saved.orderId },
+            data: { status: OrderStatus.refunded },
+          });
         }
         await tx.uberWebhookInbox.upsert({
           where: { eventId },
@@ -6253,6 +6288,10 @@ export class UberEatsService {
       itemPriceComparisons,
     });
     return result;
+  }
+
+  private uberCancellationAmendmentId(eventId: string): string {
+    return `uber_cancel_${createHash('sha256').update(eventId).digest('hex')}`;
   }
 
   private async resolvePosStoreId(uberStoreId: string): Promise<string> {

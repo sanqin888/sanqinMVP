@@ -91,6 +91,76 @@ describe('OrderIngestionService', () => {
     expect(tx.orderItem.deleteMany).toHaveBeenCalledTimes(2);
   });
 
+  it('显式映射 modifier 的持久化字段', async () => {
+    type ModifierCreateManyArgs = {
+      data: Array<{
+        externalModifierId: string | null;
+        parentExternalId: string | null;
+        snapshot: unknown;
+        sortOrder: number;
+        externalId?: string;
+      }>;
+    };
+    let createManyArgs: ModifierCreateManyArgs | undefined;
+    const createMany = jest.fn((args: ModifierCreateManyArgs) => {
+      createManyArgs = args;
+    });
+    const tx = {
+      order: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({
+          id: 'o1',
+          orderStableId: 's1',
+          status: 'pending',
+        }),
+      },
+      orderItem: {
+        deleteMany: jest.fn(),
+        create: jest.fn().mockResolvedValue({ id: 'i1' }),
+      },
+      uberOrderItemModifier: { createMany },
+    };
+    const prisma = {
+      $transaction: (fn: (client: unknown) => unknown) => fn(tx),
+    };
+    const service = new OrderIngestionService(prisma as never, {} as never);
+    const snapshot = { source: 'uber', nested: { value: 1 } };
+    const modifierInput = {
+      ...input,
+      items: [
+        {
+          productStableId: 'dish',
+          quantity: 1,
+          displayName: 'Dish',
+          unitPriceCents: 1000,
+          external: {
+            modifiers: [
+              {
+                externalId: 'modifier-1',
+                parentExternalId: 'parent-1',
+                displayName: 'Extra cheese',
+                quantity: 2,
+                priceDeltaCents: 150,
+                specialInstructions: 'On the side',
+                snapshot,
+              },
+            ],
+          },
+        },
+      ],
+    } as never;
+
+    await service.ingest(modifierInput, policies);
+
+    expect(createManyArgs).toBeDefined();
+    const data = createManyArgs!.data;
+    expect(data[0].externalModifierId).toBe('modifier-1');
+    expect(data[0]).not.toHaveProperty('externalId');
+    expect(data[0].parentExternalId).toBe('parent-1');
+    expect(data[0].snapshot).toBe(snapshot);
+    expect(data[0].sortOrder).toBe(0);
+  });
+
   it('不会把 Web 支付校验套用到 Uber 订单', async () => {
     const service = new OrderIngestionService({} as never, {} as never);
     await expect(

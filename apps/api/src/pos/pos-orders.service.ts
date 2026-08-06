@@ -1,4 +1,14 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+} from '@nestjs/common';
+import {
+  Channel,
+  OrderAmendmentType,
+  OrderStatus as PrismaOrderStatus,
+  PaymentMethod,
+} from '@prisma/client';
 import { OrdersService } from '../orders/orders.service';
 import {
   ORDER_STATUS_ADVANCE_FLOW,
@@ -7,6 +17,7 @@ import {
 import type { OrderDto } from '../orders/dto/order.dto';
 import { UberEatsService } from '../integrations/ubereats/ubereats.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { createHash } from 'crypto';
 
 const UBER_EATS_CLIENT_REQUEST_PREFIX = 'ubereats:';
 
@@ -17,71 +28,6 @@ export class PosOrdersService {
     private readonly uberEats: UberEatsService,
     private readonly prisma: PrismaService,
   ) {}
-
-  async cancelUberOrder(
-    orderStableId: string,
-    reasonCode: string,
-    reasonDetail: string,
-  ): Promise<{
-    ok: boolean;
-    outcome: 'confirmed' | 'queued';
-    duplicate: boolean;
-  }> {
-    const order = await this.orders.getByStableId(orderStableId);
-    const externalOrderId = this.getUberWebhookExternalOrderId(order);
-    if (!externalOrderId) {
-      throw new ConflictException({
-        code: 'NOT_UBER_ORDER',
-        message: '该接口仅用于由 Uber webhook 创建的订单',
-      });
-    }
-
-    const [acceptAction, denyAction] = await Promise.all([
-      this.prisma.uberOrderAction.findUnique({
-        where: {
-          externalOrderId_action: { externalOrderId, action: 'ACCEPT' },
-        },
-        select: { status: true },
-      }),
-      this.prisma.uberOrderAction.findUnique({
-        where: { externalOrderId_action: { externalOrderId, action: 'DENY' } },
-        select: { status: true, retryable: true },
-      }),
-    ]);
-
-    // A prior DENY always wins this decision race and is safely replayed via
-    // the integration service's (externalOrderId, DENY) idempotency key.
-    if (!denyAction && (acceptAction || order.status !== 'pending')) {
-      throw new ConflictException({
-        code: 'UBER_ACCEPTED_CANCELLATION_UNSUPPORTED',
-        message:
-          '该 Uber 订单已接单；当前商户权限/API 不支持接单后直接取消或退款，请联系 Uber 支持人工处理。订单本地状态未更改。',
-        manualActionRequired: true,
-      });
-    }
-
-    try {
-      const result = await this.uberEats.denyUberOrder(
-        externalOrderId,
-        reasonCode,
-        reasonDetail,
-      );
-      return {
-        ok: true,
-        outcome: result.ok ? 'confirmed' : 'queued',
-        duplicate: result.duplicate,
-      };
-    } catch (error) {
-      const queued = await this.prisma.uberOrderAction.findUnique({
-        where: { externalOrderId_action: { externalOrderId, action: 'DENY' } },
-        select: { status: true, retryable: true },
-      });
-      if (queued?.status === 'FAILED' && queued.retryable) {
-        return { ok: true, outcome: 'queued', duplicate: false };
-      }
-      throw error;
-    }
-  }
 
   async advance(orderStableId: string): Promise<OrderDto> {
     const order = await this.orders.getByStableId(orderStableId);
@@ -105,6 +51,61 @@ export class PosOrdersService {
     // particular, ready -> completed remains local-only; all ordinary orders
     // and other transitions continue through the existing local state flow.
     return this.orders.advance(orderStableId);
+  }
+
+  /** Records the local financial result only after staff handled it in Uber. */
+  async recordManualUberRefund(
+    orderStableId: string,
+    input: { reason: string; evidence: string },
+  ): Promise<OrderDto> {
+    const reason = input.reason?.trim();
+    const evidence = input.evidence?.trim();
+    if (!reason) throw new BadRequestException('reason is required');
+    if (!evidence) throw new BadRequestException('manual evidence is required');
+
+    await this.prisma.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({ where: { orderStableId } });
+      if (!order) throw new BadRequestException('order not found');
+      if (order.channel !== Channel.ubereats) {
+        throw new BadRequestException(
+          'manual Uber refund requires an Uber order',
+        );
+      }
+      if (order.status === PrismaOrderStatus.pending) {
+        throw new BadRequestException(
+          'order must be accepted before cancellation',
+        );
+      }
+      if (order.status === PrismaOrderStatus.refunded) {
+        throw new ConflictException('order is already refunded');
+      }
+      const amendmentStableId = `uber_manual_${createHash('sha256')
+        .update(`${order.id}:${evidence}`)
+        .digest('hex')}`;
+      await tx.orderAmendment.upsert({
+        where: { amendmentStableId },
+        create: {
+          amendmentStableId,
+          orderId: order.id,
+          type: OrderAmendmentType.RETENDER,
+          paymentMethod: PaymentMethod.UBEREATS,
+          reason,
+          deltaCents: -order.totalCents,
+          refundCents: order.totalCents,
+          summaryJson: {
+            kind: 'UBER_MANUAL_REFUND',
+            status: 'CONFIRMED',
+            evidence,
+          },
+        },
+        update: {},
+      });
+      await tx.order.update({
+        where: { id: order.id },
+        data: { status: PrismaOrderStatus.refunded },
+      });
+    });
+    return this.orders.getByStableId(orderStableId);
   }
 
   private getUberWebhookExternalOrderId(order: OrderDto): string | null {
