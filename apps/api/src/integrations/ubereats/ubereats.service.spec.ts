@@ -1637,7 +1637,9 @@ describe('UberEatsService', () => {
     };
     const prisma = {
       ...createSignatureOnlyPrisma(),
-      $transaction: jest.fn((callback) => callback(tx)),
+      $transaction: jest.fn((callback: (client: typeof tx) => unknown) =>
+        callback(tx),
+      ),
     };
     const service = new UberEatsService(prisma as never, createAuthService());
     const api = service as unknown as {
@@ -1665,7 +1667,7 @@ describe('UberEatsService', () => {
         data: expect.objectContaining({
           pickupCode: 'PIN-NEW',
           externalDisplayId: 'DISPLAY-NEW',
-        }),
+        }) as unknown,
       }),
     );
 
@@ -1677,7 +1679,7 @@ describe('UberEatsService', () => {
     await api.upsertUberOrder(withoutCodes, 'orders.notification', 'event-2');
     expect(update).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ pickupCode: 'PIN-NEW' }),
+        data: expect.objectContaining({ pickupCode: 'PIN-NEW' }) as unknown,
       }),
     );
   });
