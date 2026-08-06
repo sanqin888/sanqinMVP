@@ -318,6 +318,67 @@ describe('toUberServiceAvailability', () => {
 });
 
 describe('UberEatsService', () => {
+  it('为嵌套 Uber modifier 快照补齐本地中英文名称并保留外部标题回退', async () => {
+    const service = new UberEatsService(
+      createSignatureOnlyPrisma() as never,
+      createAuthService(),
+    );
+    const tx = {
+      menuOptionGroupTemplate: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { stableId: 'group-spice', nameEn: 'Spice', nameZh: '辣度' },
+          ]),
+      },
+      menuOptionTemplateChoice: {
+        findMany: jest.fn().mockResolvedValue([
+          { stableId: 'mild', nameEn: 'Mild', nameZh: '微辣' },
+          { stableId: 'extra', nameEn: 'Extra topping', nameZh: null },
+        ]),
+      },
+      uberModifierGroupConfig: { findFirst: jest.fn().mockResolvedValue(null) },
+      uberOptionItemConfig: { findFirst: jest.fn().mockResolvedValue(null) },
+    };
+    const snapshot = await (
+      service as unknown as {
+        toOrderOptionsSnapshot(
+          tx: unknown,
+          storeId: string,
+          items: unknown[],
+        ): Promise<unknown[]>;
+      }
+    ).toOrderOptionsSnapshot(tx, 'store-1', [
+      {
+        externalId: 'mild',
+        parentExternalId: 'group-spice',
+        displayName: 'Uber Mild',
+        quantity: 1,
+        priceDeltaCents: 0,
+        specialInstructions: null,
+        children: [
+          {
+            externalId: 'extra',
+            parentExternalId: 'child-group-unmapped',
+            displayName: 'Uber Extra',
+            quantity: 1,
+            priceDeltaCents: 100,
+            specialInstructions: null,
+            children: [],
+          },
+        ],
+      },
+    ]);
+
+    expect(snapshot[0]).toMatchObject({
+      nameEn: 'Spice',
+      nameZh: '辣度',
+      choices: [
+        { nameEn: 'Mild', nameZh: '微辣', displayName: 'Uber Mild' },
+        { nameEn: 'Extra topping', nameZh: null, displayName: 'Uber Extra' },
+      ],
+    });
+  });
   const clientSecret = 'test-ubereats-secret';
   const createInboxMock = () => ({
     create: jest.fn().mockResolvedValue({ id: 'inbox_1' }),
@@ -4456,6 +4517,11 @@ describe('UberEatsService 已发布菜单商品映射', () => {
     });
     return { value, tx };
   };
+
+  it('无法映射的历史外部菜品保留外部 ID 以便 displayName 回退展示', async () => {
+    const { value } = await resolve('legacy-external-item');
+    expect(value).toBe('legacy-external-item');
+  });
 
   it.each([
     ['当前版本', 'menu-current'],

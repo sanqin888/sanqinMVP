@@ -120,6 +120,7 @@ export class PosOrdersController {
     @Param('orderStableId', StableIdPipe) orderStableId: string,
     @Body()
     body?: {
+      locale?: 'zh' | 'en';
       targets?: { customer?: boolean; kitchen?: boolean };
       cashReceivedCents?: number;
       cashChangeCents?: number;
@@ -127,6 +128,7 @@ export class PosOrdersController {
   ) {
     this.eventEmitter.emit('order.reprint', {
       orderStableId,
+      locale: body?.locale === 'en' ? 'en' : 'zh',
       targets: {
         customer: body?.targets?.customer ?? true,
         kitchen: body?.targets?.kitchen ?? false,

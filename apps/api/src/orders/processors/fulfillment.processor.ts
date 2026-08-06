@@ -166,6 +166,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
   @OnEvent('order.reprint')
   async handleOrderReprint(payload: {
     orderStableId: string;
+    locale?: 'zh' | 'en';
     targets?: { customer?: boolean; kitchen?: boolean };
     cashReceivedCents?: number;
     cashChangeCents?: number;
@@ -176,7 +177,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
 
     const printPayload = await this.printPosPayloadService.getByStableId(
       payload.orderStableId,
-      'zh',
+      payload.locale ?? 'zh',
     );
 
     const order = await this.prisma.order.findUnique({

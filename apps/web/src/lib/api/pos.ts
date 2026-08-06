@@ -111,6 +111,7 @@ export async function createOrderAmendment<T = unknown>(
 export async function printOrderCloud<T = unknown>(
   stableId: string,
   payload?: {
+    locale?: 'zh' | 'en';
     targets?: { customer?: boolean; kitchen?: boolean };
     cashReceivedCents?: number;
     cashChangeCents?: number;
