@@ -118,6 +118,17 @@ export async function createFullRefund<T = unknown>(
   );
 }
 
+export async function recordManualUberRefund<T = unknown>(
+  orderStableId: string,
+  payload: { reason: string; evidence: string },
+) {
+  return apiFetch<T>(`/pos/orders/${enc(orderStableId)}/uber-manual-refund`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
 export type CreateOrderAmendmentInput = {
   type: CreateOrderAmendmentType;
   reason: string;

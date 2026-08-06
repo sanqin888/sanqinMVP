@@ -1351,6 +1351,9 @@ describe('UberEatsService', () => {
         uberOrderCancellation: {
           upsert: jest.fn().mockResolvedValue({ id: 'cancel_1' }),
         },
+        orderAmendment: {
+          upsert: jest.fn().mockResolvedValue({ id: 'amendment_1' }),
+        },
         uberWebhookInbox: createInboxMock(),
         businessConfig: {
           findUnique: jest
@@ -1425,6 +1428,23 @@ describe('UberEatsService', () => {
           }) as unknown,
         }),
       );
+      expect(prisma.orderAmendment.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({
+            orderId: 'order-db-id',
+            refundCents: 1130,
+            deltaCents: -1130,
+            summaryJson: expect.objectContaining({
+              eventId: body.event_id,
+              status: 'CONFIRMED',
+            }) as unknown,
+          }) as unknown,
+        }),
+      );
+      expect(prisma.order.update).toHaveBeenCalledWith({
+        where: { id: 'order-db-id' },
+        data: { status: 'refunded' },
+      });
       expect(prisma.uberWebhookInbox.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ status: 'PROCESSED' }) as unknown,

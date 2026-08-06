@@ -16,6 +16,7 @@ import {
 import {
   advanceOrder,
   createFullRefund,
+  recordManualUberRefund,
   createOrderAmendment,
   fetchRecentOrders,
   printOrderCloud,
@@ -1604,16 +1605,43 @@ export default function PosOrdersPage() {
       void (async () => {
         try {
           setIsSubmitting(true);
+          if (selectedOrder.channel === "ubereats") {
+            const confirmed = window.confirm(
+              locale === "zh"
+                ? "此操作仅记录已在 Uber 后台人工完成的退款，不会调用拒单接口。确认继续？"
+                : "This only records a refund already completed manually in Uber; it will not call the deny API. Continue?",
+            );
+            if (!confirmed) return;
+            const evidence = window
+              .prompt(
+                locale === "zh"
+                  ? "请输入 Uber 人工处理凭证（工单号、操作员及时间等，必填）"
+                  : "Enter required Uber handling evidence (ticket, operator and time)",
+              )
+              ?.trim();
+            if (!evidence) return;
+            const updated = await recordManualUberRefund<BackendOrder>(
+              selectedOrder.stableId,
+              { reason: reason.trim(), evidence },
+            );
+            const mapped = mapOrder(updated, storeTimezone);
+            setOrders((prev) =>
+              prev.map((order) =>
+                order.stableId === mapped.stableId ? mapped : order,
+              ),
+            );
+            setSelectedId(mapped.stableId);
+            showToast(copy.actionSuccess, "success");
+            return;
+          }
           const originalPaymentMethod =
-            selectedOrder.channel === "ubereats"
-              ? "UBEREATS"
-              : selectedOrder.paymentMethod === "cash"
-                ? "CASH"
-                : selectedOrder.paymentMethod === "wechat_alipay"
-                  ? "WECHAT_ALIPAY"
-                  : selectedOrder.paymentMethod === "store_balance"
-                    ? "STORE_BALANCE"
-                    : "CARD";
+            selectedOrder.paymentMethod === "cash"
+              ? "CASH"
+              : selectedOrder.paymentMethod === "wechat_alipay"
+                ? "WECHAT_ALIPAY"
+                : selectedOrder.paymentMethod === "store_balance"
+                  ? "STORE_BALANCE"
+                  : "CARD";
           const result = await createFullRefund<BackendOrder>(
             selectedOrder.stableId,
             {
