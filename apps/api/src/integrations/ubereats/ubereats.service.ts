@@ -3579,19 +3579,20 @@ export class UberEatsService {
       });
     }
 
-    const endpoint =
-      action === 'ACCEPT'
-        ? 'accept_pos_order'
-        : action === 'DENY'
-          ? 'deny_pos_order'
-          : 'ready_for_pickup';
+    const encodedOrderId = encodeURIComponent(externalOrderId);
+    const pathnameByAction: Record<UberOrderActionName, string> = {
+      ACCEPT: `/v1/eats/orders/${encodedOrderId}/accept_pos_order`,
+      DENY: `/v1/eats/orders/${encodedOrderId}/deny_pos_order`,
+      READY_FOR_PICKUP: `/v1/delivery/order/${encodedOrderId}/ready`,
+    };
+    const pathname = pathnameByAction[action];
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10_000);
     let response: Response;
     try {
       const token = await this.uberAuthService.getAccessToken('eats.order');
       response = await fetch(
-        `${this.uberApiBaseUrl.replace(/\/$/, '')}/v1/eats/orders/${encodeURIComponent(externalOrderId)}/${endpoint}`,
+        `${this.uberApiBaseUrl.replace(/\/$/, '')}${pathname}`,
         {
           method: 'POST',
           signal: controller.signal,
@@ -3622,13 +3623,13 @@ export class UberEatsService {
         },
       });
       this.logger.error(
-        `[ubereats order action] request failed action=${action} externalOrderId=${externalOrderId} endpoint=${endpoint} errorType=${errorType} error=${redactedError}`,
+        `[ubereats order action] request failed action=${action} externalOrderId=${externalOrderId} endpoint=${pathname} errorType=${errorType} error=${redactedError}`,
       );
       throw new BadGatewayException({
         ok: false,
         externalOrderId,
         action,
-        endpoint,
+        endpoint: pathname,
         retryable: true,
         message: 'Uber 订单动作网络请求失败或超时',
         detail: redactedError,
@@ -3664,13 +3665,13 @@ export class UberEatsService {
     });
     if (!succeeded) {
       this.logger.error(
-        `[ubereats order action] upstream failed action=${action} externalOrderId=${externalOrderId} endpoint=${endpoint} status=${response.status} retryable=${retryable} uberRequestId=${uberRequestId ?? 'unknown'} detail=${this.redactSensitiveLogText(this.summarizeDebugResponse(parsed, rawText))}`,
+        `[ubereats order action] upstream failed action=${action} externalOrderId=${externalOrderId} endpoint=${pathname} status=${response.status} retryable=${retryable} uberRequestId=${uberRequestId ?? 'unknown'} detail=${this.redactSensitiveLogText(this.summarizeDebugResponse(parsed, rawText))}`,
       );
       throw new BadGatewayException({
         ok: false,
         externalOrderId,
         action,
-        endpoint,
+        endpoint: pathname,
         status: response.status,
         uberRequestId,
         retryable,

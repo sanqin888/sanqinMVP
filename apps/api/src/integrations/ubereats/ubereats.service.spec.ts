@@ -3214,7 +3214,7 @@ describe('UberEatsService', () => {
         ok: false,
         externalOrderId: 'ue_failed',
         action: 'ACCEPT',
-        endpoint: 'accept_pos_order',
+        endpoint: '/v1/eats/orders/ue_failed/accept_pos_order',
         status: 429,
         uberRequestId: 'uber-action-request-1',
         retryable: true,
@@ -3233,7 +3233,9 @@ describe('UberEatsService', () => {
     expect(logs).toContain('status=429');
     expect(logs).toContain('retryable=true');
     expect(logs).toContain('uberRequestId=uber-action-request-1');
-    expect(logs).toContain('accept_pos_order');
+    expect(logs).toContain(
+      'endpoint=/v1/eats/orders/ue_failed/accept_pos_order',
+    );
     for (const sensitive of [
       'upstream-secret',
       'body-secret',
@@ -3338,7 +3340,7 @@ describe('UberEatsService', () => {
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(fetchSpy).toHaveBeenCalledWith(
-      expect.stringMatching(/\/ue_ready\/ready_for_pickup$/),
+      'https://api.uber.com/v1/delivery/order/ue_ready/ready',
       expect.objectContaining({ method: 'POST' }),
     );
     expect(uberOrderAction.update).toHaveBeenCalledWith(
@@ -3348,6 +3350,49 @@ describe('UberEatsService', () => {
           uberRequestId: 'uber-request-1',
         }) as unknown,
       }),
+    );
+  });
+
+  it('sandbox ready 使用 delivery order 路由和 test-api base URL', async () => {
+    process.env.UBER_EATS_API_BASE_URL = 'https://test-api.uber.com';
+    const { prisma } = createReadyPrisma();
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    const service = new UberEatsService(prisma as never, createAuthService());
+
+    await service.syncOrderStatusToUber('ue_ready/test', 'ready');
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://test-api.uber.com/v1/delivery/order/ue_ready%2Ftest/ready',
+      expect.objectContaining({ method: 'POST', body: '{}' }),
+    );
+  });
+
+  it('ready 路由变更不影响 accept_pos_order 和 deny_pos_order', async () => {
+    const acceptFetch = jest
+      .spyOn(global, 'fetch')
+      .mockImplementation(() =>
+        Promise.resolve(new Response('{}', { status: 200 })),
+      );
+    const acceptService = new UberEatsService(
+      createActionPrisma() as never,
+      createAuthService(),
+    );
+    await acceptService.acceptUberOrder('ue_accept/regression');
+    expect(acceptFetch).toHaveBeenLastCalledWith(
+      'https://api.uber.com/v1/eats/orders/ue_accept%2Fregression/accept_pos_order',
+      expect.objectContaining({ method: 'POST' }),
+    );
+
+    const denyService = new UberEatsService(
+      createActionPrisma() as never,
+      createAuthService(),
+    );
+    await denyService.denyUberOrder('ue_deny/regression', 'STORE_CLOSED');
+    expect(acceptFetch).toHaveBeenLastCalledWith(
+      'https://api.uber.com/v1/eats/orders/ue_deny%2Fregression/deny_pos_order',
+      expect.objectContaining({ method: 'POST' }),
     );
   });
 
