@@ -106,6 +106,7 @@ type UberOrderDetailDto = {
   order_id?: string;
   external_order_id?: string;
   display_id?: string;
+  pickup_code?: string;
   store_id?: string;
   store?: {
     id?: string;
@@ -201,7 +202,8 @@ type ParsedUberOrderItem = {
 
 type ParsedUberOrder = {
   externalOrderId: string;
-  displayId: string;
+  displayId: string | null;
+  pickupCode: string | null;
   storeId?: string | null;
   subtotalCents: number;
   taxCents: number;
@@ -5963,7 +5965,12 @@ export class UberEatsService {
     const result = await this.prisma.$transaction(async (tx) => {
       const existing = await tx.order.findUnique({
         where: { clientRequestId },
-        select: { id: true, orderStableId: true, status: true },
+        select: {
+          id: true,
+          orderStableId: true,
+          status: true,
+          pickupCode: true,
+        },
       });
       const nextStatus = !mappedStatus
         ? (existing?.status ?? OrderStatus.pending)
@@ -5992,6 +5999,10 @@ export class UberEatsService {
         paymentTotalCents: order.totalCents,
         contactName: order.contactName,
         contactPhone: order.contactPhone,
+        // Uber's pickup_code is the canonical customer/courier-facing code.
+        // Keep an existing valid code when a later webhook omits both it and
+        // the legacy display_id fallback.
+        pickupCode: order.pickupCode ?? existing?.pickupCode ?? undefined,
         externalDisplayId: order.displayId,
         externalOrderNotes: order.specialInstructions,
         externalEstimatedReadyAt: order.estimatedReadyAt,
@@ -6419,7 +6430,8 @@ export class UberEatsService {
       .join(' ');
     return {
       externalOrderId,
-      displayId: this.readString(dto.display_id) ?? externalOrderId,
+      displayId: this.readString(dto.display_id),
+      pickupCode: this.readString(dto.pickup_code, dto.display_id),
       storeId: this.readString(dto.store_id, dto.store?.id),
       subtotalCents,
       taxCents,

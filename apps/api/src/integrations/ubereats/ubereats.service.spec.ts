@@ -1570,6 +1570,118 @@ describe('UberEatsService', () => {
     expect(parsed.items[0].modifiers[0].children).toHaveLength(1);
   });
 
+  it.each([
+    [
+      '优先使用官方 pickup_code',
+      { pickup_code: 'PIN-2468', display_id: 'DISPLAY-99' },
+      'PIN-2468',
+      'DISPLAY-99',
+    ],
+    [
+      '缺少官方字段时使用 display_id',
+      { display_id: 'DISPLAY-99' },
+      'DISPLAY-99',
+      'DISPLAY-99',
+    ],
+    ['两个字段均缺失时不回退到 order_id', {}, null, null],
+  ])('%s', (_label, identifiers, pickupCode, displayId) => {
+    const service = new UberEatsService(
+      createSignatureOnlyPrisma() as never,
+      createAuthService(),
+    );
+    const parsed = (
+      service as unknown as {
+        parseOrderPayload(payload: unknown): {
+          externalOrderId: string;
+          pickupCode: string | null;
+          displayId: string | null;
+        };
+      }
+    ).parseOrderPayload({
+      order_id: 'uber-uuid-must-not-be-a-pickup-code',
+      total_cents: 100,
+      ...identifiers,
+    });
+
+    expect(parsed).toMatchObject({
+      externalOrderId: 'uber-uuid-must-not-be-a-pickup-code',
+      pickupCode,
+      displayId,
+    });
+  });
+
+  it('重复 webhook 更新取餐码，缺失取餐码的后续通知不清空已有值', async () => {
+    const update = jest.fn().mockImplementation(({ data }) =>
+      Promise.resolve({
+        id: 'db-order-1',
+        orderStableId: 'internal-stable-id',
+        status: 'pending',
+        ...data,
+      }),
+    );
+    let existingPickupCode: string | null = 'DISPLAY-OLD';
+    const tx = {
+      order: {
+        findUnique: jest.fn().mockImplementation(() =>
+          Promise.resolve({
+            id: 'db-order-1',
+            orderStableId: 'internal-stable-id',
+            status: 'pending',
+            pickupCode: existingPickupCode,
+          }),
+        ),
+        update,
+      },
+      orderItem: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      uberWebhookInbox: { upsert: jest.fn().mockResolvedValue(null) },
+    };
+    const prisma = {
+      ...createSignatureOnlyPrisma(),
+      $transaction: jest.fn((callback) => callback(tx)),
+    };
+    const service = new UberEatsService(prisma as never, createAuthService());
+    const api = service as unknown as {
+      parseOrderPayload(payload: unknown): unknown;
+      upsertUberOrder(
+        order: unknown,
+        eventType: string,
+        eventId: string,
+      ): Promise<unknown>;
+    };
+
+    const withOfficialCode = api.parseOrderPayload({
+      order_id: 'uber-order-1',
+      pickup_code: 'PIN-NEW',
+      display_id: 'DISPLAY-NEW',
+      total_cents: 100,
+    });
+    await api.upsertUberOrder(
+      withOfficialCode,
+      'orders.notification',
+      'event-1',
+    );
+    expect(update).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          pickupCode: 'PIN-NEW',
+          externalDisplayId: 'DISPLAY-NEW',
+        }),
+      }),
+    );
+
+    existingPickupCode = 'PIN-NEW';
+    const withoutCodes = api.parseOrderPayload({
+      order_id: 'uber-order-1',
+      total_cents: 100,
+    });
+    await api.upsertUberOrder(withoutCodes, 'orders.notification', 'event-2');
+    expect(update).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ pickupCode: 'PIN-NEW' }),
+      }),
+    );
+  });
+
   it('解析 Uber v2 订单详情中的 payment.charges 金额和 cart 商品', () => {
     const service = new UberEatsService(
       createSignatureOnlyPrisma() as never,

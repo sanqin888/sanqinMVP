@@ -1087,10 +1087,12 @@ const mapOrder = useCallback(
     const taxCents = order.taxCents ?? 0;
     const deliveryFeeCents = order.deliveryFeeCents ?? 0;
     const displayNumber =
-      order.clientRequestId?.trim() ||
-      order.orderNumber?.trim() ||
-      order.pickupCode?.trim() ||
-      order.orderStableId;
+      order.channel === "ubereats"
+        ? order.pickupCode?.trim() || null
+        : order.clientRequestId?.trim() ||
+          order.orderNumber?.trim() ||
+          order.pickupCode?.trim() ||
+          order.orderStableId;
 
     const items = order.items.map((item, index) => {
       const unitPriceCents = item.unitPriceCents ?? 0;
@@ -1955,7 +1957,7 @@ const handleSubmit = () => {
               >
                 <div>
                 <div className="text-sm font-semibold">
-                  {order.clientRequestId ?? order.stableId}
+                  {order.clientRequestId}
                 </div>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
                     <span className="rounded-full border border-slate-600 px-2 py-0.5">
@@ -2005,10 +2007,7 @@ const handleSubmit = () => {
                     {copy.orderNumberLabel}
                   </div>
                   <div className="text-2xl font-semibold">
-                    {selectedOrder.clientRequestId ?? selectedOrder.stableId}
-                  </div>
-                  <div className="mt-1 text-[11px] text-slate-400">
-                    {copy.stableIdLabel}: {selectedOrder.stableId}
+                    {selectedOrder.clientRequestId}
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-2">
