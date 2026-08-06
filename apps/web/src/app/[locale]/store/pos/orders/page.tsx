@@ -1693,7 +1693,7 @@ const handleSubmit = () => {
       );
 
       if (selectedAction === "void_item" || selectedAction === "swap_item") {
-        await printOrderCloud(selectedOrder.stableId);
+        await printOrderCloud(selectedOrder.stableId, { locale });
       }
 
       showToast(copy.actionSuccess, "success");
@@ -1734,13 +1734,13 @@ const handleSubmit = () => {
     if (!selectedOrder) return;
 
     try {
-      await printOrderCloud(selectedOrder.stableId);
+      await printOrderCloud(selectedOrder.stableId, { locale });
       showToast(copy.actionSuccess, "success");
     } catch (error) {
       console.error("Failed to send cloud print request:", error);
       showToast(copy.advanceFailed, "error");
     }
-  }, [copy.actionSuccess, copy.advanceFailed, selectedOrder, showToast]);
+  }, [copy.actionSuccess, copy.advanceFailed, locale, selectedOrder, showToast]);
 
   const advanceLabel = useMemo(() => {
     if (!selectedOrder) return copy.advanceStatus;

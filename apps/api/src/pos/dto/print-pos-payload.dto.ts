@@ -39,8 +39,9 @@ type PrintPosOrderSnapshot = {
 };
 
 export type PrintPosPayloadDto = {
-  locale: string;
+  locale: 'zh' | 'en';
   orderNumber: string;
+  customerName: string | null;
   pickupCode: string | null;
   fulfillment: FulfillmentType;
   paymentMethod: PrintPosPaymentMethod;

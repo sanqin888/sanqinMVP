@@ -1,3 +1,15 @@
+jest.mock('@prisma/client', () => ({
+  PrismaClient: class {},
+  Channel: { ubereats: 'ubereats', web: 'web', in_store: 'in_store' },
+  PaymentMethod: {
+    UBEREATS: 'UBEREATS',
+    CARD: 'CARD',
+    CASH: 'CASH',
+    WECHAT_ALIPAY: 'WECHAT_ALIPAY',
+    STORE_BALANCE: 'STORE_BALANCE',
+  },
+}));
+
 import { Channel, PaymentMethod } from '@prisma/client';
 import { PrintPosPayloadService } from './print-pos-payload.service';
 
@@ -18,6 +30,7 @@ describe('PrintPosPayloadService', () => {
           totalCents: 1000,
           paymentMethod: PaymentMethod.UBEREATS,
           channel: Channel.ubereats,
+          contactName: 'Uber Customer',
           pickupCode: 'PIN-2468',
           fulfillmentType: 'pickup',
           taxCents: 0,
@@ -33,6 +46,7 @@ describe('PrintPosPayloadService', () => {
     const payload = await service.getByStableId('ord_1');
 
     expect(payload.paymentMethod).toBe('ubereats');
+    expect(payload.customerName).toBe('Uber Customer');
     expect(payload.pickupCode).toBe('PIN-2468');
     expect(payload.pickupCode).not.toBe(payload.orderNumber);
   });
@@ -158,4 +172,52 @@ describe('PrintPosPayloadService', () => {
       summary: '筷子1份',
     });
   });
+
+  it.each([
+    ['zh-CN', 'zh'],
+    ['en-CA', 'en'],
+  ] as const)(
+    '将 POS 页面语言 %s 明确规范为打印语言 %s',
+    async (locale, expected) => {
+      const prisma = {
+        order: {
+          findUnique: jest.fn().mockResolvedValue({
+            orderStableId: 'ord_locale',
+            clientRequestId: 'REQ-locale',
+            items: [
+              {
+                productStableId: 'item-1',
+                displayName: 'Uber historical title',
+                nameEn: null,
+                nameZh: null,
+                qty: 1,
+                unitPriceCents: 100,
+                optionsJson: [],
+              },
+            ],
+            subtotalCents: 100,
+            subtotalAfterDiscountCents: 100,
+            paymentTotalCents: 100,
+            totalCents: 100,
+            paymentMethod: PaymentMethod.UBEREATS,
+            channel: Channel.ubereats,
+            fulfillmentType: 'pickup',
+            taxCents: 0,
+          }),
+        },
+        checkoutIntent: { findFirst: jest.fn().mockResolvedValue(null) },
+      };
+
+      const payload = await new PrintPosPayloadService(
+        prisma as never,
+      ).getByStableId('ord_locale', locale);
+
+      expect(payload.locale).toBe(expected);
+      expect(payload.snapshot.items[0]).toMatchObject({
+        displayName: 'Uber historical title',
+        nameEn: null,
+        nameZh: null,
+      });
+    },
+  );
 });
