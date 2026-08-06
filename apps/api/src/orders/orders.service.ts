@@ -3051,6 +3051,103 @@ export class OrdersService {
   // =========================
 
   /**
+   * Records a full-refund request without pretending that money has moved.
+   * Uber refunds currently require platform processing, so the order remains
+   * non-terminal until a future platform callback/outbox worker confirms it.
+   */
+  async createFullRefund(params: {
+    orderStableId: string;
+    reason: string;
+    refundAmountCents: number;
+    originalPaymentMethod: PaymentMethod;
+    refundMethod: PaymentMethod;
+  }): Promise<{
+    order: OrderDto;
+    outcome: 'pending_platform' | 'pending_manual' | 'refunded';
+  }> {
+    if (!params.reason?.trim()) {
+      throw new BadRequestException('reason is required');
+    }
+    if (
+      !Number.isInteger(params.refundAmountCents) ||
+      params.refundAmountCents <= 0
+    ) {
+      throw new BadRequestException(
+        'refundAmountCents must be a positive integer',
+      );
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const resolved = await this.resolveInternalOrderIdByStableIdOrThrow(
+        params.orderStableId,
+        tx,
+      );
+      const order = await tx.order.findUnique({
+        where: { id: resolved.id },
+        include: { items: true },
+      });
+      if (!order) throw new NotFoundException('order not found');
+      if (order.status === 'refunded') {
+        throw new ConflictException('order is already refunded');
+      }
+      if (order.paymentMethod !== params.originalPaymentMethod) {
+        throw new BadRequestException(
+          'originalPaymentMethod does not match order',
+        );
+      }
+      const isUber = order.channel === Channel.ubereats;
+      if (
+        isUber &&
+        (params.originalPaymentMethod !== PaymentMethod.UBEREATS ||
+          params.refundMethod !== PaymentMethod.UBEREATS)
+      ) {
+        throw new BadRequestException(
+          'UberEats refunds must return through UBEREATS',
+        );
+      }
+      if (!isUber && params.refundMethod === PaymentMethod.UBEREATS) {
+        throw new BadRequestException(
+          'UBEREATS refund method is only valid for UberEats orders',
+        );
+      }
+      if (params.refundAmountCents !== order.totalCents) {
+        throw new BadRequestException(
+          'full refund amount must equal order total',
+        );
+      }
+
+      await tx.orderAmendment.create({
+        data: {
+          orderId: order.id,
+          type: OrderAmendmentType.RETENDER,
+          paymentMethod: params.refundMethod,
+          reason: params.reason.trim(),
+          // No financial settlement has occurred yet; requested value and state
+          // live in summaryJson until platform/manual confirmation.
+          refundCents: 0,
+          summaryJson: {
+            kind: 'FULL_REFUND',
+            status: isUber ? 'PENDING_PLATFORM' : 'PENDING_MANUAL',
+            requestedRefundCents: params.refundAmountCents,
+            originalPaymentMethod: params.originalPaymentMethod,
+            refundMethod: params.refundMethod,
+            originalChannel: order.channel,
+          },
+        },
+      });
+      return order;
+    });
+
+    return {
+      order: this.toOrderDto(updated),
+      outcome:
+        updated.channel === Channel.ubereats
+          ? 'pending_platform'
+          : 'pending_manual',
+    };
+  }
+
+  /**
    * 退菜/改价：创建 OrderAmendment（方案 B）
    */
   async createAmendment(params: {
