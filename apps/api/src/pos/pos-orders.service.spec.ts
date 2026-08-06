@@ -20,11 +20,22 @@ describe('PosOrdersService', () => {
     };
     const uberEats = {
       syncOrderStatusToUber: jest.fn().mockResolvedValue({ ok: true }),
+      denyUberOrder: jest
+        .fn()
+        .mockResolvedValue({ ok: true, duplicate: false }),
+    };
+    const prisma = {
+      uberOrderAction: { findUnique: jest.fn().mockResolvedValue(null) },
     };
     return {
-      service: new PosOrdersService(orders as never, uberEats as never),
+      service: new PosOrdersService(
+        orders as never,
+        uberEats as never,
+        prisma as never,
+      ),
       orders,
       uberEats,
+      prisma,
     };
   };
 
@@ -99,5 +110,93 @@ describe('PosOrdersService', () => {
 
     expect(orders.advance).toHaveBeenCalledWith('order_1');
     expect(uberEats.syncOrderStatusToUber).not.toHaveBeenCalled();
+  });
+
+  it('接单前使用 DENY outbox 拒绝 Uber 订单', async () => {
+    const { service, uberEats } = setup(
+      order({
+        channel: 'ubereats',
+        clientRequestId: 'ubereats:external-123',
+        status: 'pending',
+      }),
+    );
+
+    await expect(
+      service.cancelUberOrder('order_1', 'ITEM_SOLD_OUT', '午餐已售罄'),
+    ).resolves.toEqual({ ok: true, outcome: 'confirmed', duplicate: false });
+    expect(uberEats.denyUberOrder).toHaveBeenCalledWith(
+      'external-123',
+      'ITEM_SOLD_OUT',
+      '午餐已售罄',
+    );
+  });
+
+  it('已有 ACCEPT 记录时返回人工处理边界且不修改本地状态', async () => {
+    const { service, orders, uberEats, prisma } = setup(
+      order({
+        channel: 'ubereats',
+        clientRequestId: 'ubereats:external-123',
+        status: 'making',
+      }),
+    );
+    prisma.uberOrderAction.findUnique
+      .mockResolvedValueOnce({ status: 'SUCCEEDED' })
+      .mockResolvedValueOnce(null);
+
+    await expect(
+      service.cancelUberOrder('order_1', 'TOO_BUSY', '门店繁忙'),
+    ).rejects.toMatchObject({ response: { manualActionRequired: true } });
+    expect(uberEats.denyUberOrder).not.toHaveBeenCalled();
+    expect(orders.advance).not.toHaveBeenCalled();
+  });
+
+  it('重复请求复用已有 DENY 幂等动作', async () => {
+    const { service, uberEats, prisma } = setup(
+      order({
+        channel: 'ubereats',
+        clientRequestId: 'ubereats:external-123',
+        status: 'pending',
+      }),
+    );
+    prisma.uberOrderAction.findUnique.mockImplementation(({ where }) =>
+      Promise.resolve(
+        where.externalOrderId_action.action === 'DENY'
+          ? { status: 'SUCCEEDED', retryable: false }
+          : null,
+      ),
+    );
+    uberEats.denyUberOrder.mockResolvedValue({ ok: true, duplicate: true });
+
+    await expect(
+      service.cancelUberOrder('order_1', 'TOO_BUSY', '门店繁忙'),
+    ).resolves.toMatchObject({ duplicate: true, outcome: 'confirmed' });
+  });
+
+  it('Uber 临时失败仅返回可靠入队，不把本地订单标为取消', async () => {
+    const { service, orders, uberEats, prisma } = setup(
+      order({
+        channel: 'ubereats',
+        clientRequestId: 'ubereats:external-123',
+        status: 'pending',
+      }),
+    );
+    uberEats.denyUberOrder.mockRejectedValue(new Error('Uber timeout'));
+    prisma.uberOrderAction.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ status: 'FAILED', retryable: true });
+
+    await expect(
+      service.cancelUberOrder('order_1', 'TOO_BUSY', '门店繁忙'),
+    ).resolves.toMatchObject({ outcome: 'queued' });
+    expect(orders.advance).not.toHaveBeenCalled();
+  });
+
+  it('非 Uber 订单不能调用专用接口', async () => {
+    const { service, uberEats } = setup(order());
+    await expect(
+      service.cancelUberOrder('order_1', 'TOO_BUSY', '门店繁忙'),
+    ).rejects.toMatchObject({ response: { code: 'NOT_UBER_ORDER' } });
+    expect(uberEats.denyUberOrder).not.toHaveBeenCalled();
   });
 });
