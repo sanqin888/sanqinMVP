@@ -197,8 +197,14 @@ export class OrderIngestionService {
         if (item.external?.modifiers?.length) {
           await tx.uberOrderItemModifier.createMany({
             data: item.external.modifiers.map((modifier, sortOrder) => ({
+              externalModifierId: modifier.externalId,
+              parentExternalId: modifier.parentExternalId,
+              displayName: modifier.displayName,
+              quantity: modifier.quantity,
+              priceDeltaCents: modifier.priceDeltaCents,
+              specialInstructions: modifier.specialInstructions,
+              snapshot: modifier.snapshot,
               orderItemId: created.id,
-              ...modifier,
               sortOrder,
             })),
           });
