@@ -120,6 +120,71 @@ const createNestedMenuPrisma = (templates: unknown[]) => ({
   opsEvent: { create: jest.fn().mockResolvedValue(null) },
 });
 
+describe('UberEatsService 订单菜单映射', () => {
+  beforeEach(() => {
+    process.env.UBER_EATS_OAUTH_STATE_SECRET =
+      'high-entropy-test-secret-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    process.env.UBER_EATS_WEBHOOK_SIGNING_KEY = 'test-ubereats-secret';
+  });
+
+  afterEach(() => {
+    delete process.env.UBER_EATS_OAUTH_STATE_SECRET;
+    delete process.env.UBER_EATS_WEBHOOK_SIGNING_KEY;
+  });
+
+  it('没有频道配置时仍可通过已发布的 sanq item id 映射菜单项', async () => {
+    const stableId = 'menu_item_without_channel_config';
+    const publishedItemId = `sanq:${createHash('sha1')
+      .update(`item:default:${stableId}`)
+      .digest('hex')
+      .slice(0, 24)}`;
+    const prisma = {
+      menuItem: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([{ stableId }]),
+      },
+      uberItemChannelConfig: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+      uberStoreMapping: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ posExternalStoreId: 'default' }),
+      },
+    };
+    const service = new UberEatsService(
+      prisma as never,
+      { getAccessToken: jest.fn() } as never,
+    ) as unknown as {
+      resolveUberProductStableId: (
+        tx: typeof prisma,
+        storeId: string,
+        item: {
+          stableIdHint: null;
+          externalItemId: string;
+          displayName: string;
+        },
+      ) => Promise<string>;
+    };
+
+    await expect(
+      service.resolveUberProductStableId(prisma, 'uber_store_1', {
+        stableIdHint: null,
+        externalItemId: publishedItemId,
+        displayName: 'Published item',
+      }),
+    ).resolves.toBe(stableId);
+    expect(prisma.menuItem.findMany).toHaveBeenCalledWith({
+      where: {
+        deletedAt: null,
+        visibility: 'PUBLIC',
+        publishToUberEats: true,
+      },
+      select: { stableId: true },
+    });
+  });
+});
+
 describe('UberEatsService 门店状态同步', () => {
   const auth = () =>
     ({ getAccessToken: jest.fn().mockResolvedValue('status-token') }) as never;

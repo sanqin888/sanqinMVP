@@ -6060,6 +6060,49 @@ export class UberEatsService {
         select: { menuItemStableId: true },
       });
       if (config) return config.menuItemStableId;
+
+      // Channel config rows are optional: an item can be published with its
+      // base menu price without ever receiving a store-specific override.
+      // Uber returns the deterministic `sanq:*` item id from the published
+      // menu, so resolve that id directly against eligible local menu items.
+      const publishedNodeId = candidates.find((value) =>
+        value.startsWith('sanq:'),
+      );
+      if (publishedNodeId) {
+        const storeIds = new Set<string>([
+          this.normalizeStoreId(undefined),
+          ...(storeId ? [this.normalizeStoreId(storeId)] : []),
+        ]);
+        if (storeId) {
+          const storeMapping = await tx.uberStoreMapping.findFirst({
+            where: { uberStoreId: storeId, isProvisioned: true },
+            select: { posExternalStoreId: true },
+          });
+          if (storeMapping?.posExternalStoreId) {
+            storeIds.add(this.normalizeStoreId(storeMapping.posExternalStoreId));
+          }
+        }
+
+        const publishedItems = await tx.menuItem.findMany({
+          where: {
+            deletedAt: null,
+            visibility: 'PUBLIC',
+            publishToUberEats: true,
+          },
+          select: { stableId: true },
+        });
+        const matchedItem = publishedItems.find((menuItem) =>
+          [...storeIds].some(
+            (publishedStoreId) =>
+              this.buildStableUberNodeId(
+                'item',
+                publishedStoreId,
+                menuItem.stableId,
+              ) === publishedNodeId,
+          ),
+        );
+        if (matchedItem) return matchedItem.stableId;
+      }
     }
     throw new BadRequestException(
       `Uber 菜单映射失败：${item.externalItemId ?? item.displayName}`,
