@@ -760,7 +760,7 @@ describe('UberEatsService', () => {
       data: { status: string; clientRequestId: string; channel: string };
     };
     type OrderUpdateManyArgs = {
-      where: { id: string; status: string };
+      where: { id: string; status: string | { in: string[] } };
       data: Partial<SavedUberOrder>;
     };
     type OrderFindManyArgs = {
@@ -796,10 +796,14 @@ describe('UberEatsService', () => {
         updateMany: jest
           .fn()
           .mockImplementation(({ where, data }: OrderUpdateManyArgs) => {
+            const expectedStatuses =
+              typeof where.status === 'string'
+                ? [where.status]
+                : where.status.in;
             if (
               savedOrder &&
               savedOrder.id === where.id &&
-              savedOrder.status === where.status
+              expectedStatuses.includes(savedOrder.status)
             ) {
               savedOrder = { ...savedOrder, ...data };
               return Promise.resolve({ count: 1 });
