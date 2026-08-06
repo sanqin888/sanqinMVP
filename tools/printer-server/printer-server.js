@@ -79,9 +79,47 @@ function cmd(...bytes) {
   return Buffer.from(bytes);
 }
 
+function pickLocalizedName(value, locale, fallback = "") {
+  if (!value || typeof value !== "object") return String(fallback || "").trim();
+  const zh = typeof value.nameZh === "string" ? value.nameZh.trim() : "";
+  const en = typeof value.nameEn === "string" ? value.nameEn.trim() : "";
+  const display =
+    typeof value.displayName === "string" ? value.displayName.trim() : "";
+  const stableId =
+    typeof value.productStableId === "string"
+      ? value.productStableId.trim()
+      : typeof value.stableId === "string"
+        ? value.stableId.trim()
+        : "";
+  return locale === "zh"
+    ? zh || display || en || stableId || fallback
+    : en || display || zh || stableId || fallback;
+}
+
+function pickBilingualNames(value) {
+  if (!value || typeof value !== "object") return [];
+  const zh = typeof value.nameZh === "string" ? value.nameZh.trim() : "";
+  const en = typeof value.nameEn === "string" ? value.nameEn.trim() : "";
+  const display =
+    typeof value.displayName === "string" ? value.displayName.trim() : "";
+  const stableId =
+    typeof value.productStableId === "string"
+      ? value.productStableId.trim()
+      : typeof value.stableId === "string"
+        ? value.stableId.trim()
+        : "";
+  return [
+    ...new Set(
+      [zh, en].filter(Boolean).length
+        ? [zh, en].filter(Boolean)
+        : [display || stableId].filter(Boolean),
+    ),
+  ];
+}
+
 function getOptionLines(
   item,
-  { includeEnglish = false, includePrice = true } = {},
+  { locale = "zh", bilingual = false, includePrice = true } = {},
 ) {
   if (!item || typeof item !== "object") return [];
   if (!Array.isArray(item.options)) return [];
@@ -93,10 +131,6 @@ function getOptionLines(
     return choices
       .map((choice) => {
         if (!choice || typeof choice !== "object") return "";
-        const nameZh =
-          typeof choice.nameZh === "string" ? choice.nameZh.trim() : "";
-        const nameEn =
-          typeof choice.nameEn === "string" ? choice.nameEn.trim() : "";
         const priceDeltaCents =
           typeof choice.priceDeltaCents === "number" &&
           Number.isFinite(choice.priceDeltaCents)
@@ -108,19 +142,10 @@ function getOptionLines(
             ? ` (${priceDeltaCents > 0 ? "+" : "-"}${money(Math.abs(priceDeltaCents))})`
             : "";
 
-        if (includeEnglish && nameZh && nameEn)
-          return `${nameZh} ${nameEn}${priceSuffix}`;
-        if (nameZh) return `${nameZh}${priceSuffix}`;
-        if (includeEnglish && nameEn) return `${nameEn}${priceSuffix}`;
-
-        if (!includeEnglish) return "";
-
-        const displayName =
-          typeof choice.displayName === "string"
-            ? choice.displayName.trim()
-            : "";
-        if (!displayName) return "";
-        return `${displayName}${priceSuffix}`;
+        const name = bilingual
+          ? pickBilingualNames(choice).join(" ")
+          : pickLocalizedName(choice, locale);
+        return name ? `${name}${priceSuffix}` : "";
       })
       .filter(Boolean);
   });
@@ -308,6 +333,8 @@ function printEscPosTo(printerName, dataBuffer) {
 async function buildCustomerReceiptEscPos(params) {
   const { orderNumber, pickupCode, fulfillment, paymentMethod, snapshot } =
     params;
+  const customerName =
+    typeof params.customerName === "string" ? params.customerName.trim() : "";
 
   const f = String(fulfillment || "").toLowerCase();
   const isDelivery = f === "delivery";
@@ -360,6 +387,15 @@ async function buildCustomerReceiptEscPos(params) {
 
   // ✅ 行距调紧（减少整体留白）
   chunks.push(cmd(ESC, 0x33, 42));
+
+  // ==== 顾客姓名（如果有的话） ====
+  if (customerName) {
+    chunks.push(cmd(ESC, 0x61, 0x01)); // 居中
+    chunks.push(cmd(ESC, 0x45, 0x01)); // 加粗
+    chunks.push(encLine(`顾客 / Customer: ${customerName}`));
+    chunks.push(cmd(ESC, 0x45, 0x00));
+    chunks.push(encLine(""));
+  }
 
   // ==== 取餐码（如果有的话） ====
   if (pickupCode) {
@@ -433,15 +469,13 @@ async function buildCustomerReceiptEscPos(params) {
   // ==== 菜品列表 ====
   if (Array.isArray(snapshot.items)) {
     snapshot.items.forEach((item) => {
-      const nameZh = item.nameZh || "";
-      const nameEn = item.nameEn || "";
+      const itemNames = pickBilingualNames(item);
 
       // 菜名：加粗 + 双倍高度
       chunks.push(cmd(ESC, 0x45, 0x01)); // bold on
       chunks.push(cmd(GS, 0x21, 0x01)); // double-height only
 
-      if (nameZh) chunks.push(encLine(nameZh));
-      if (nameEn) chunks.push(encLine(nameEn));
+      itemNames.forEach((name) => chunks.push(encLine(name)));
 
       // 恢复正常字号
       chunks.push(cmd(GS, 0x21, 0x00));
@@ -456,7 +490,7 @@ async function buildCustomerReceiptEscPos(params) {
       chunks.push(encLine(qtyPadded + pricePadded));
 
       // 选项
-      const optionLines = getOptionLines(item, { includeEnglish: true });
+      const optionLines = getOptionLines(item, { bilingual: true });
 
       if (optionLines.length > 0) {
         optionLines.forEach((opt) => {
@@ -549,9 +583,20 @@ async function buildCustomerReceiptEscPos(params) {
 // 后厨联
 function buildKitchenReceiptEscPos(params) {
   const { fulfillment, snapshot } = params;
+  const locale = params.locale === "en" ? "en" : "zh";
 
-  const dineZh = fulfillment === "pickup" ? "外带" : "堂食";
-  const dineEn = fulfillment === "pickup" ? "TAKE-OUT" : "DINE-IN";
+  const dineZh =
+    fulfillment === "delivery"
+      ? "配送"
+      : fulfillment === "pickup"
+        ? "外带"
+        : "堂食";
+  const dineEn =
+    fulfillment === "delivery"
+      ? "DELIVERY"
+      : fulfillment === "pickup"
+        ? "TAKE-OUT"
+        : "DINE-IN";
 
   const chunks = [];
 
@@ -563,8 +608,7 @@ function buildKitchenReceiptEscPos(params) {
   chunks.push(cmd(ESC, 0x61, 0x01)); // 居中
   chunks.push(cmd(ESC, 0x45, 0x01)); // 加粗
   chunks.push(cmd(GS, 0x21, 0x11)); // 双倍宽高
-  chunks.push(encLine(dineZh));
-  chunks.push(encLine(dineEn));
+  chunks.push(encLine(locale === "zh" ? dineZh : dineEn));
   chunks.push(cmd(GS, 0x21, 0x00)); // 恢复正常大小
   chunks.push(cmd(ESC, 0x45, 0x00)); // 取消加粗
   chunks.push(encLine(""));
@@ -574,21 +618,21 @@ function buildKitchenReceiptEscPos(params) {
   // ==== 菜品（放大 + 加粗） ====
   if (Array.isArray(snapshot.items)) {
     snapshot.items.forEach((item) => {
-      const nameZh = item.nameZh || "";
+      const itemName = pickLocalizedName(item, locale);
       const qty = item.quantity ?? 0;
 
       chunks.push(cmd(ESC, 0x45, 0x01)); // 加粗
       chunks.push(cmd(GS, 0x21, 0x11)); // 双倍高度
 
-      if (nameZh) {
-        chunks.push(encLine(`${qty}  ${nameZh}`));
+      if (itemName) {
+        chunks.push(encLine(`${qty}  ${itemName}`));
       }
 
       chunks.push(cmd(GS, 0x21, 0x00));
       chunks.push(cmd(ESC, 0x45, 0x00));
 
       const optionLines = getOptionLines(item, {
-        includeEnglish: false,
+        locale,
         includePrice: false,
       });
       if (optionLines.length > 0) {
@@ -608,8 +652,10 @@ function buildKitchenReceiptEscPos(params) {
   // ==== 底部 ====
   chunks.push(encLine(makeLine("-")));
   chunks.push(cmd(ESC, 0x61, 0x01)); // 居中
-  chunks.push(encLine("后厨联 KITCHEN COPY"));
-  chunks.push(encLine(`打印时间 Print: ${formatPrintTime()}`));
+  chunks.push(encLine(locale === "zh" ? "后厨联" : "KITCHEN COPY"));
+  chunks.push(
+    encLine(`${locale === "zh" ? "打印时间" : "Print"}: ${formatPrintTime()}`),
+  );
   chunks.push(encLine(""));
   chunks.push(cmd(ESC, 0x61, 0x00)); // 左对齐
 
@@ -823,18 +869,34 @@ if (STORE_ID) {
     socket.emit("joinStore", { storeId: STORE_ID });
   });
 
-  socket.on("Disconnect", (reason) => {
+  socket.on("disconnect", (reason) => {
     console.warn(`[Cloud] Disconnect: ${reason}`);
   });
 
   // 核心：监听云端指令
-  socket.on("PRINT_JOB", async (formattedPayload) => {
+  socket.on("PRINT_JOB", async (job) => {
+    const { jobId, target, payload: formattedPayload } = job || {};
+    const ack = (success, error) =>
+      socket.emit("PRINT_JOB_ACK", {
+        jobId,
+        target,
+        success,
+        ...(error ? { error: String(error.message || error) } : {}),
+      });
+    if (
+      !jobId ||
+      !["customer", "kitchen"].includes(target) ||
+      !formattedPayload
+    ) {
+      console.error("[Cloud] Invalid PRINT_JOB envelope", job);
+      return;
+    }
     // 这里的 formattedPayload 已经是后端 PrintPosPayloadService 生成好的完美格式
     // 直接包含 { orderNumber, snapshot: { ... } }
 
     const orderId = formattedPayload.orderNumber || "Unknown";
-    const targetCustomer = formattedPayload?.targets?.customer ?? true;
-    const targetKitchen = formattedPayload?.targets?.kitchen ?? true;
+    const targetCustomer = target === "customer";
+    const targetKitchen = target === "kitchen";
     console.log(`[Cloud] 收到打印任务: ${orderId}`);
 
     try {
@@ -849,7 +911,7 @@ if (STORE_ID) {
           console.log(`Cashier Print -> ${frontPrinterName}`);
           await printEscPosTo(frontPrinterName, customerBuffer);
         } else {
-          console.warn(`No cashier printer found (POS_FRONT_PRINTER)`);
+          throw new Error("POS_FRONT_PRINTER_NOT_CONFIGURED");
         }
       }
 
@@ -863,13 +925,15 @@ if (STORE_ID) {
           console.log(`kitchen print -> ${kitchenPrinterName}`);
           await printEscPosTo(kitchenPrinterName, kitchenBuffer);
         } else {
-          console.log(`No kitchen printer found (POS_KITCHEN_PRINTER)，pass。`);
+          throw new Error("POS_KITCHEN_PRINTER_NOT_CONFIGURED");
         }
       }
 
       console.log(` [Cloud] Print workflow over`);
+      ack(true);
     } catch (err) {
       console.error(`[Cloud] Failed print:`, err);
+      ack(false, err);
     }
   });
 

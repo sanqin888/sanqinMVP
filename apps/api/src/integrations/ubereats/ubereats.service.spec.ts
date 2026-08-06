@@ -318,6 +318,67 @@ describe('toUberServiceAvailability', () => {
 });
 
 describe('UberEatsService', () => {
+  it('为嵌套 Uber modifier 快照补齐本地中英文名称并保留外部标题回退', async () => {
+    const service = new UberEatsService(
+      createSignatureOnlyPrisma() as never,
+      createAuthService(),
+    );
+    const tx = {
+      menuOptionGroupTemplate: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { stableId: 'group-spice', nameEn: 'Spice', nameZh: '辣度' },
+          ]),
+      },
+      menuOptionTemplateChoice: {
+        findMany: jest.fn().mockResolvedValue([
+          { stableId: 'mild', nameEn: 'Mild', nameZh: '微辣' },
+          { stableId: 'extra', nameEn: 'Extra topping', nameZh: null },
+        ]),
+      },
+      uberModifierGroupConfig: { findFirst: jest.fn().mockResolvedValue(null) },
+      uberOptionItemConfig: { findFirst: jest.fn().mockResolvedValue(null) },
+    };
+    const snapshot = await (
+      service as unknown as {
+        toOrderOptionsSnapshot(
+          tx: unknown,
+          storeId: string,
+          items: unknown[],
+        ): Promise<unknown[]>;
+      }
+    ).toOrderOptionsSnapshot(tx, 'store-1', [
+      {
+        externalId: 'mild',
+        parentExternalId: 'group-spice',
+        displayName: 'Uber Mild',
+        quantity: 1,
+        priceDeltaCents: 0,
+        specialInstructions: null,
+        children: [
+          {
+            externalId: 'extra',
+            parentExternalId: 'child-group-unmapped',
+            displayName: 'Uber Extra',
+            quantity: 1,
+            priceDeltaCents: 100,
+            specialInstructions: null,
+            children: [],
+          },
+        ],
+      },
+    ]);
+
+    expect(snapshot[0]).toMatchObject({
+      nameEn: 'Spice',
+      nameZh: '辣度',
+      choices: [
+        { nameEn: 'Mild', nameZh: '微辣', displayName: 'Uber Mild' },
+        { nameEn: 'Extra topping', nameZh: null, displayName: 'Uber Extra' },
+      ],
+    });
+  });
   const clientSecret = 'test-ubereats-secret';
   const createInboxMock = () => ({
     create: jest.fn().mockResolvedValue({ id: 'inbox_1' }),
@@ -1568,6 +1629,120 @@ describe('UberEatsService', () => {
       optionsUnitPriceCents: 350,
     });
     expect(parsed.items[0].modifiers[0].children).toHaveLength(1);
+  });
+
+  it.each([
+    [
+      '优先使用官方 pickup_code',
+      { pickup_code: 'PIN-2468', display_id: 'DISPLAY-99' },
+      'PIN-2468',
+      'DISPLAY-99',
+    ],
+    [
+      '缺少官方字段时使用 display_id',
+      { display_id: 'DISPLAY-99' },
+      'DISPLAY-99',
+      'DISPLAY-99',
+    ],
+    ['两个字段均缺失时不回退到 order_id', {}, null, null],
+  ])('%s', (_label, identifiers, pickupCode, displayId) => {
+    const service = new UberEatsService(
+      createSignatureOnlyPrisma() as never,
+      createAuthService(),
+    );
+    const parsed = (
+      service as unknown as {
+        parseOrderPayload(payload: unknown): {
+          externalOrderId: string;
+          pickupCode: string | null;
+          displayId: string | null;
+        };
+      }
+    ).parseOrderPayload({
+      order_id: 'uber-uuid-must-not-be-a-pickup-code',
+      total_cents: 100,
+      ...identifiers,
+    });
+
+    expect(parsed).toMatchObject({
+      externalOrderId: 'uber-uuid-must-not-be-a-pickup-code',
+      pickupCode,
+      displayId,
+    });
+  });
+
+  it('重复 webhook 更新取餐码，缺失取餐码的后续通知不清空已有值', async () => {
+    const update = jest.fn().mockImplementation(({ data }) =>
+      Promise.resolve({
+        id: 'db-order-1',
+        orderStableId: 'internal-stable-id',
+        status: 'pending',
+        ...data,
+      }),
+    );
+    let existingPickupCode: string | null = 'DISPLAY-OLD';
+    const tx = {
+      order: {
+        findUnique: jest.fn().mockImplementation(() =>
+          Promise.resolve({
+            id: 'db-order-1',
+            orderStableId: 'internal-stable-id',
+            status: 'pending',
+            pickupCode: existingPickupCode,
+          }),
+        ),
+        update,
+      },
+      orderItem: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      uberWebhookInbox: { upsert: jest.fn().mockResolvedValue(null) },
+    };
+    const prisma = {
+      ...createSignatureOnlyPrisma(),
+      $transaction: jest.fn((callback: (client: typeof tx) => unknown) =>
+        callback(tx),
+      ),
+    };
+    const service = new UberEatsService(prisma as never, createAuthService());
+    const api = service as unknown as {
+      parseOrderPayload(payload: unknown): unknown;
+      upsertUberOrder(
+        order: unknown,
+        eventType: string,
+        eventId: string,
+      ): Promise<unknown>;
+    };
+
+    const withOfficialCode = api.parseOrderPayload({
+      order_id: 'uber-order-1',
+      pickup_code: 'PIN-NEW',
+      display_id: 'DISPLAY-NEW',
+      total_cents: 100,
+    });
+    await api.upsertUberOrder(
+      withOfficialCode,
+      'orders.notification',
+      'event-1',
+    );
+    expect(update).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          pickupCode: 'PIN-NEW',
+          externalDisplayId: 'DISPLAY-NEW',
+        }) as unknown,
+      }),
+    );
+
+    existingPickupCode = 'PIN-NEW';
+    const withoutCodes = api.parseOrderPayload({
+      order_id: 'uber-order-1',
+      total_cents: 100,
+    });
+    await api.upsertUberOrder(withoutCodes, 'orders.notification', 'event-2');
+    expect(update).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ pickupCode: 'PIN-NEW' }) as unknown,
+      }),
+    );
   });
 
   it('解析 Uber v2 订单详情中的 payment.charges 金额和 cart 商品', () => {
@@ -2941,6 +3116,11 @@ describe('UberEatsService', () => {
           async (callback: (tx: unknown) => Promise<unknown>) =>
             callback({
               order: {
+                findUnique: jest
+                  .fn()
+                  .mockImplementation(() =>
+                    Promise.resolve({ status: localStatus }),
+                  ),
                 updateMany: jest.fn().mockImplementation(() => {
                   if (!['paid', 'making'].includes(localStatus)) {
                     return Promise.resolve({ count: 0 });
@@ -2985,6 +3165,32 @@ describe('UberEatsService', () => {
           status: 'SUCCEEDED',
           uberRequestId: 'uber-request-1',
         }) as unknown,
+      }),
+    );
+  });
+
+  it('并发推进 ready 时保持幂等且不会把状态回退', async () => {
+    const { prisma } = createReadyPrisma();
+    jest
+      .spyOn(global, 'fetch')
+      .mockImplementation(() =>
+        Promise.resolve(new Response('{}', { status: 200 })),
+      );
+    const service = new UberEatsService(prisma as never, createAuthService());
+
+    const results = await Promise.all([
+      service.syncOrderStatusToUber('ue_ready', 'ready'),
+      service.syncOrderStatusToUber('ue_ready', 'ready'),
+    ]);
+
+    expect(results).toHaveLength(2);
+    expect(results).toEqual([
+      expect.objectContaining({ status: 'ready' }),
+      expect.objectContaining({ status: 'ready' }),
+    ]);
+    expect(prisma.order.findUnique).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: { clientRequestId: 'ubereats:ue_ready' },
       }),
     );
   });
@@ -4342,6 +4548,11 @@ describe('UberEatsService 已发布菜单商品映射', () => {
     });
     return { value, tx };
   };
+
+  it('无法映射的历史外部菜品保留外部 ID 以便 displayName 回退展示', async () => {
+    const { value } = await resolve('legacy-external-item');
+    expect(value).toBe('legacy-external-item');
+  });
 
   it.each([
     ['当前版本', 'menu-current'],

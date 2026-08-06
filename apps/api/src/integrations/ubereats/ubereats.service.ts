@@ -106,6 +106,7 @@ type UberOrderDetailDto = {
   order_id?: string;
   external_order_id?: string;
   display_id?: string;
+  pickup_code?: string;
   store_id?: string;
   store?: {
     id?: string;
@@ -201,7 +202,8 @@ type ParsedUberOrderItem = {
 
 type ParsedUberOrder = {
   externalOrderId: string;
-  displayId: string;
+  displayId: string | null;
+  pickupCode: string | null;
   storeId?: string | null;
   subtotalCents: number;
   taxCents: number;
@@ -1100,10 +1102,19 @@ export class UberEatsService {
         },
         data: { status, readyAt: new Date() },
       });
-      if (!transition.count && order.status !== OrderStatus.ready) {
-        throw new BadRequestException(
-          'Uber 订单必须先接单，且状态不能并发回退',
-        );
+      if (!transition.count) {
+        // The status read before opening the transaction can be stale when two
+        // POS devices click at once. Re-read under this transaction so an
+        // already-ready order is an idempotent success, never a regression.
+        const current = await tx.order.findUnique({
+          where: { id: order.id },
+          select: { status: true },
+        });
+        if (current?.status !== OrderStatus.ready) {
+          throw new BadRequestException(
+            'Uber 订单必须先接单，且状态不能并发回退',
+          );
+        }
       }
       await tx.uberOrderAction.upsert({
         where: { externalOrderId_action: { externalOrderId, action } },
@@ -5963,7 +5974,12 @@ export class UberEatsService {
     const result = await this.prisma.$transaction(async (tx) => {
       const existing = await tx.order.findUnique({
         where: { clientRequestId },
-        select: { id: true, orderStableId: true, status: true },
+        select: {
+          id: true,
+          orderStableId: true,
+          status: true,
+          pickupCode: true,
+        },
       });
       const nextStatus = !mappedStatus
         ? (existing?.status ?? OrderStatus.pending)
@@ -5992,10 +6008,15 @@ export class UberEatsService {
         paymentTotalCents: order.totalCents,
         contactName: order.contactName,
         contactPhone: order.contactPhone,
+        // Uber's pickup_code is the canonical customer/courier-facing code.
+        // Keep an existing valid code when a later webhook omits both it and
+        // the legacy display_id fallback.
+        pickupCode: order.pickupCode ?? existing?.pickupCode ?? undefined,
         externalDisplayId: order.displayId,
         externalOrderNotes: order.specialInstructions,
         externalEstimatedReadyAt: order.estimatedReadyAt,
         externalPriceVarianceCents: amountValidation.totalVarianceCents,
+        storeId: await this.resolvePosStoreId(order.storeId ?? ''),
       };
       const saved = existing
         ? await tx.order.update({ where: { id: existing.id }, data: header })
@@ -6037,6 +6058,10 @@ export class UberEatsService {
           item,
           order.paidAt,
         );
+        const product = await tx.menuItem.findFirst({
+          where: { stableId: productStableId },
+          select: { nameEn: true, nameZh: true },
+        });
         const publishedPriceCents = await this.resolvePublishedPriceCents(
           tx,
           order.storeId,
@@ -6059,12 +6084,18 @@ export class UberEatsService {
           data: {
             orderId: saved.id,
             productStableId,
+            nameEn: product?.nameEn?.trim() || null,
+            nameZh: product?.nameZh?.trim() || null,
             displayName: item.displayName,
             qty: item.quantity,
             baseUnitPriceCents: item.baseUnitPriceCents,
             optionsUnitPriceCents: item.optionsUnitPriceCents,
             unitPriceCents: item.unitPriceCents,
-            optionsJson: this.toOrderOptionsSnapshot(item.modifiers),
+            optionsJson: await this.toOrderOptionsSnapshot(
+              tx,
+              order.storeId,
+              item.modifiers,
+            ),
             externalItemId: item.externalItemId,
             externalLineId: item.externalLineId,
             externalSpecialInstructions: item.specialInstructions,
@@ -6148,6 +6179,24 @@ export class UberEatsService {
     return result;
   }
 
+  private async resolvePosStoreId(uberStoreId: string): Promise<string> {
+    const delegate = (
+      this.prisma as unknown as {
+        uberStoreMapping?: {
+          findUnique(
+            args: unknown,
+          ): Promise<{ posExternalStoreId: string | null } | null>;
+        };
+      }
+    ).uberStoreMapping;
+    if (!delegate) return uberStoreId;
+    const mapping = await delegate.findUnique({
+      where: { uberStoreId },
+      select: { posExternalStoreId: true },
+    });
+    return mapping?.posExternalStoreId?.trim() || uberStoreId;
+  }
+
   private async resolvePublishedPriceCents(
     tx: Prisma.TransactionClient,
     storeId: string | null | undefined,
@@ -6191,6 +6240,7 @@ export class UberEatsService {
     item: ParsedUberOrderItem,
     orderedAt: Date,
   ): Promise<string> {
+    let stableId: string | null = null;
     if (item.externalItemId?.startsWith('sanq:')) {
       if (storeId) {
         const snapshot = await (
@@ -6218,53 +6268,70 @@ export class UberEatsService {
           orderBy: { publishedAt: 'desc' },
           select: { menuItemStableId: true },
         });
-        if (snapshot) return snapshot.menuItemStableId;
+        if (snapshot) stableId = snapshot.menuItemStableId;
       }
 
-      const localItems = await tx.menuItem.findMany({
-        select: { stableId: true },
-      });
-      const deterministic = localItems.find(
-        (candidate) =>
-          this.buildStableUberNodeId(
-            'item',
-            storeId ?? 'default',
-            candidate.stableId,
-          ) === item.externalItemId,
-      );
-      if (deterministic) return deterministic.stableId;
+      if (!stableId) {
+        const localItems = await tx.menuItem.findMany({
+          select: { stableId: true },
+        });
+        const deterministic = localItems.find(
+          (candidate) =>
+            this.buildStableUberNodeId(
+              'item',
+              storeId ?? 'default',
+              candidate.stableId,
+            ) === item.externalItemId,
+        );
+        if (deterministic) stableId = deterministic.stableId;
+      }
     }
 
     const candidates = [item.stableIdHint, item.externalItemId].filter(
       (value): value is string => !!value,
     );
-    if (candidates.length) {
+    if (!stableId && candidates.length) {
       const local = await tx.menuItem.findFirst({
         where: { stableId: { in: candidates } },
         select: { stableId: true },
       });
-      if (local) return local.stableId;
-      const config = await tx.uberItemChannelConfig.findFirst({
-        where: {
-          AND: [
-            ...(storeId
-              ? [{ OR: [{ storeId }, { uberStoreId: storeId }] }]
-              : []),
-            {
-              OR: [
-                { externalItemId: { in: candidates } },
-                { menuItemStableId: { in: candidates } },
-              ],
-            },
-          ],
-        },
-        select: { menuItemStableId: true },
-      });
-      if (config) return config.menuItemStableId;
+      if (local) stableId = local.stableId;
+      const config =
+        !stableId &&
+        (await tx.uberItemChannelConfig.findFirst({
+          where: {
+            AND: [
+              ...(storeId
+                ? [{ OR: [{ storeId }, { uberStoreId: storeId }] }]
+                : []),
+              {
+                OR: [
+                  { externalItemId: { in: candidates } },
+                  { menuItemStableId: { in: candidates } },
+                ],
+              },
+            ],
+          },
+          select: { menuItemStableId: true },
+        }));
+      if (config) stableId = config.menuItemStableId;
     }
-    throw new BadRequestException(
-      `Uber 菜单映射失败：${item.externalItemId ?? item.displayName}`,
-    );
+    if (!stableId) {
+      // Historical/external items can outlive the menu/config that originally
+      // published them. Keep the order consumable and let displayName remain
+      // the immutable Uber snapshot used by every UI/print fallback.
+      stableId =
+        item.stableIdHint?.trim() ||
+        item.externalItemId?.trim() ||
+        `uber-unmapped-${createHash('sha256')
+          .update(item.displayName)
+          .digest('hex')
+          .slice(0, 20)}`;
+      this.logger?.warn(
+        `[ubereats order] unmapped item retained externalItemId=${item.externalItemId ?? 'missing'}`,
+      );
+    }
+    return stableId;
   }
 
   private flattenUberModifiers(
@@ -6276,27 +6343,135 @@ export class UberEatsService {
     ]);
   }
 
-  private toOrderOptionsSnapshot(
+  private async toOrderOptionsSnapshot(
+    tx: Prisma.TransactionClient,
+    storeId: string | null | undefined,
     items: ParsedUberModifier[],
-  ): Prisma.InputJsonValue {
-    return items.map((item, index) => ({
-      templateGroupStableId: item.parentExternalId ?? `uber-group-${index}`,
-      nameEn: item.displayName,
-      nameZh: null,
-      minSelect: 0,
-      maxSelect: null,
-      sortOrder: index,
-      choices: this.flattenUberModifiers([item]).map((choice, choiceIndex) => ({
-        stableId: choice.externalId ?? `uber-option-${index}-${choiceIndex}`,
-        templateGroupStableId: choice.parentExternalId ?? `uber-group-${index}`,
-        nameEn: choice.displayName,
-        nameZh: null,
-        priceDeltaCents: choice.priceDeltaCents,
-        quantity: choice.quantity,
-        specialInstructions: choice.specialInstructions,
-        sortOrder: choiceIndex,
-      })),
-    }));
+  ): Promise<Prisma.InputJsonValue> {
+    return Promise.all(
+      items.map(async (item, index) => {
+        const group = await this.resolveUberModifierGroup(
+          tx,
+          storeId,
+          item.parentExternalId,
+        );
+        const choices = await Promise.all(
+          this.flattenUberModifiers([item]).map(async (choice, choiceIndex) => {
+            const mapped = await this.resolveUberModifierChoice(
+              tx,
+              storeId,
+              choice.externalId,
+            );
+            return {
+              stableId:
+                mapped?.stableId ??
+                choice.externalId ??
+                `uber-option-${index}-${choiceIndex}`,
+              templateGroupStableId:
+                group?.stableId ??
+                choice.parentExternalId ??
+                `uber-group-${index}`,
+              nameEn: mapped?.nameEn ?? null,
+              nameZh: mapped?.nameZh ?? null,
+              displayName: choice.displayName,
+              priceDeltaCents: choice.priceDeltaCents,
+              quantity: choice.quantity,
+              specialInstructions: choice.specialInstructions,
+              sortOrder: choiceIndex,
+            };
+          }),
+        );
+        return {
+          templateGroupStableId:
+            group?.stableId ?? item.parentExternalId ?? `uber-group-${index}`,
+          nameEn: group?.nameEn ?? null,
+          nameZh: group?.nameZh ?? null,
+          displayName: group ? null : item.displayName,
+          minSelect: 0,
+          maxSelect: null,
+          sortOrder: index,
+          choices,
+        };
+      }),
+    );
+  }
+
+  private async resolveUberModifierGroup(
+    tx: Prisma.TransactionClient,
+    storeId: string | null | undefined,
+    externalId: string | null,
+  ) {
+    if (!externalId) return null;
+    const templates = await tx.menuOptionGroupTemplate.findMany({
+      select: { stableId: true, nameEn: true, nameZh: true },
+    });
+    let stableId = templates.find(
+      (template) =>
+        template.stableId === externalId ||
+        this.buildStableUberNodeId(
+          'group',
+          storeId ?? 'default',
+          template.stableId,
+        ) === externalId,
+    )?.stableId;
+    if (!stableId) {
+      const config = await tx.uberModifierGroupConfig.findFirst({
+        where: {
+          ...(storeId ? { OR: [{ storeId }, { uberStoreId: storeId }] } : {}),
+          externalModifierGroupId: externalId,
+        },
+        select: { templateGroupStableId: true },
+      });
+      stableId = config?.templateGroupStableId;
+    }
+    const template = templates.find(
+      (candidate) => candidate.stableId === stableId,
+    );
+    return template
+      ? {
+          stableId: template.stableId,
+          nameEn: template.nameEn,
+          nameZh: template.nameZh,
+        }
+      : null;
+  }
+
+  private async resolveUberModifierChoice(
+    tx: Prisma.TransactionClient,
+    storeId: string | null | undefined,
+    externalId: string | null,
+  ) {
+    if (!externalId) return null;
+    const choices = await tx.menuOptionTemplateChoice.findMany({
+      select: { stableId: true, nameEn: true, nameZh: true },
+    });
+    let stableId = choices.find(
+      (choice) =>
+        choice.stableId === externalId ||
+        this.buildStableUberNodeId(
+          'item',
+          storeId ?? 'default',
+          choice.stableId,
+        ) === externalId,
+    )?.stableId;
+    if (!stableId) {
+      const config = await tx.uberOptionItemConfig.findFirst({
+        where: {
+          ...(storeId ? { OR: [{ storeId }, { uberStoreId: storeId }] } : {}),
+          externalItemId: externalId,
+        },
+        select: { optionChoiceStableId: true },
+      });
+      stableId = config?.optionChoiceStableId;
+    }
+    const choice = choices.find((candidate) => candidate.stableId === stableId);
+    return choice
+      ? {
+          stableId: choice.stableId,
+          nameEn: choice.nameEn,
+          nameZh: choice.nameZh,
+        }
+      : null;
   }
 
   private validateOrderAmounts(order: ParsedUberOrder) {
@@ -6400,7 +6575,8 @@ export class UberEatsService {
       .join(' ');
     return {
       externalOrderId,
-      displayId: this.readString(dto.display_id) ?? externalOrderId,
+      displayId: this.readString(dto.display_id),
+      pickupCode: this.readString(dto.pickup_code, dto.display_id),
       storeId: this.readString(dto.store_id, dto.store?.id),
       subtotalCents,
       taxCents,

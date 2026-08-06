@@ -15,10 +15,11 @@ import {
 } from "@/lib/menu/menu-transformer";
 import {
   advanceOrder,
+  cancelUberOrder,
+  createFullRefund,
   createOrderAmendment,
   fetchRecentOrders,
   printOrderCloud,
-  updateOrderStatus,
 } from "@/lib/api/pos";
 import type { CreateOrderAmendmentInput } from "@/lib/api/pos";
 import { apiFetch } from "@/lib/api/client";
@@ -98,6 +99,10 @@ const COPY = {
     actionExecute: "执行操作",
     actionProcessing: "处理中...",
     actionSuccess: "已提交订单操作。",
+    refundPendingPlatform:
+      "退款申请已记录，等待 Uber Eats 平台处理；订单尚未标记为已退款。",
+    refundPendingManual:
+      "退款申请已记录，等待原支付渠道确认；订单尚未标记为已退款。",
     advanceStatus: "推进状态",
     advanceProcessing: "推进中...",
     advanceSuccess: "订单状态已推进。",
@@ -113,6 +118,7 @@ const COPY = {
       CARD: "银行卡",
       WECHAT_ALIPAY: "微信/支付宝",
       STORE_BALANCE: "储值余额",
+      UBEREATS: "Uber Eats 原支付渠道（平台处理）",
     },
     reasonPresets: ["顾客取消", "商品售罄", "操作失误", "支付方式调整"],
     itemSelectTitle: "选择退/换菜品",
@@ -235,6 +241,10 @@ const COPY = {
     actionExecute: "Execute action",
     actionProcessing: "Processing...",
     actionSuccess: "Order action submitted.",
+    refundPendingPlatform:
+      "Refund request recorded and pending Uber Eats processing; the order is not marked refunded.",
+    refundPendingManual:
+      "Refund request recorded and awaiting confirmation from the original payment channel; the order is not marked refunded.",
     advanceStatus: "Advance status",
     advanceProcessing: "Advancing...",
     advanceSuccess: "Order status advanced.",
@@ -250,6 +260,7 @@ const COPY = {
       CARD: "Card",
       WECHAT_ALIPAY: "WeChat / Alipay",
       STORE_BALANCE: "Store balance",
+      UBEREATS: "Original Uber Eats payment (platform processing)",
     },
     reasonPresets: [
       "Customer cancellation",
@@ -334,9 +345,8 @@ function calcSwapTotalCents(selection: SwapSelection | null): number {
 type OrderStatusKey = keyof (typeof COPY)["zh"]["status"];
 type ActionKey = keyof (typeof COPY)["zh"]["actionLabels"];
 type PaymentMethodKey = keyof (typeof COPY)["zh"]["paymentMethod"];
-type AmendmentPaymentMethod = Exclude<
-  NonNullable<CreateOrderAmendmentInput["paymentMethod"]>,
-  "UBEREATS"
+type AmendmentPaymentMethod = NonNullable<
+  CreateOrderAmendmentInput["paymentMethod"]
 >;
 
 const PAYMENT_METHOD_OPTIONS: AmendmentPaymentMethod[] = [
@@ -344,10 +354,14 @@ const PAYMENT_METHOD_OPTIONS: AmendmentPaymentMethod[] = [
   "CARD",
   "WECHAT_ALIPAY",
   "STORE_BALANCE",
+  "UBEREATS",
 ];
 
 function pickItemName(
-  item: Pick<BackendOrderItem, "displayName" | "nameEn" | "nameZh" | "productStableId">,
+  item: Pick<
+    BackendOrderItem,
+    "displayName" | "nameEn" | "nameZh" | "productStableId"
+  >,
   locale: Locale,
 ): string {
   const display = item.displayName?.trim() ?? "";
@@ -358,7 +372,11 @@ function pickItemName(
     : en || display || zh || item.productStableId;
 }
 
-function formatOrderTime(value: string, locale: Locale, timeZone: string): string {
+function formatOrderTime(
+  value: string,
+  locale: Locale,
+  timeZone: string,
+): string {
   const date = parseBackendDate(value);
   return new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-CA", {
     timeZone,
@@ -390,7 +408,6 @@ function mapPaymentMethod(order: BackendOrder): PaymentMethodKey {
       return "card";
   }
 }
-
 
 function statusTone(status: OrderStatusKey): string {
   switch (status) {
@@ -497,13 +514,7 @@ type BackendOrder = {
   pickupCode?: string | null;
   channel: "web" | "in_store" | "ubereats";
   fulfillmentType: "pickup" | "dine_in" | "delivery";
-  status:
-    | "pending"
-    | "paid"
-    | "making"
-    | "ready"
-    | "completed"
-    | "refunded";
+  status: "pending" | "paid" | "making" | "ready" | "completed" | "refunded";
   subtotalCents?: number | null;
   subtotalAfterDiscountCents?: number | null;
   couponDiscountCents?: number | null;
@@ -631,6 +642,10 @@ function ActionContent({
   onSwapChoose,
   onSwapClear,
 }: ActionContentProps) {
+  const paymentMethodOptions =
+    order.channel === "ubereats"
+      ? (["UBEREATS"] as AmendmentPaymentMethod[])
+      : PAYMENT_METHOD_OPTIONS.filter((method) => method !== "UBEREATS");
   const guide =
     order.paymentMethod === "cash"
       ? copy.cashGuide[selectedAction ?? "retender"]
@@ -646,7 +661,8 @@ function ActionContent({
           {copy.orderMetaTitle}
         </div>
         <div className="mt-1 text-xs text-slate-200">
-          {copy.orderCard[order.type]} · {copy.paymentMethod[order.paymentMethod]} ·{" "}
+          {copy.orderCard[order.type]} ·{" "}
+          {copy.paymentMethod[order.paymentMethod]} ·{" "}
           {copy.status[order.status]}
         </div>
       </div>
@@ -854,7 +870,6 @@ function ActionContent({
             </div>
           )}
 
-
           <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-3 text-xs text-slate-200">
             <label className="text-[11px] font-semibold uppercase text-slate-400">
               {copy.reasonLabel}
@@ -879,7 +894,6 @@ function ActionContent({
             />
           </div>
 
-
           {shouldShowPaymentMethodPicker && (
             <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-3 text-xs text-slate-200">
               <label className="text-[11px] font-semibold uppercase text-slate-400">
@@ -887,15 +901,18 @@ function ActionContent({
               </label>
               <select
                 value={selectedPaymentMethod ?? ""}
+                disabled={order.channel === "ubereats"}
                 onChange={(event) =>
-                  onPaymentMethodChange(event.target.value as AmendmentPaymentMethod)
+                  onPaymentMethodChange(
+                    event.target.value as AmendmentPaymentMethod,
+                  )
                 }
                 className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs text-slate-100 focus:border-emerald-400 focus:outline-none"
               >
                 <option value="" disabled>
                   {copy.methodPlaceholder}
                 </option>
-                {PAYMENT_METHOD_OPTIONS.map((option) => (
+                {paymentMethodOptions.map((option) => (
                   <option key={option} value={option}>
                     {copy.methodOptions[option]}
                   </option>
@@ -965,9 +982,7 @@ function ActionContent({
                 {summary.refundCents === 0 &&
                   summary.additionalChargeCents === 0 &&
                   summary.newChargeCents === 0 && (
-                    <div className="text-slate-400">
-                      {copy.summaryNoChange}
-                    </div>
+                    <div className="text-slate-400">{copy.summaryNoChange}</div>
                   )}
                 <div className="flex items-center justify-between border-t border-slate-700 pt-2 text-slate-100">
                   <span>{copy.summaryNewTotal}</span>
@@ -1018,9 +1033,14 @@ export default function PosOrdersPage() {
   const [selectedPaymentMethod, setSelectedPaymentMethod] =
     useState<AmendmentPaymentMethod | null>(null);
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
-  const [selectedItemQtyMap, setSelectedItemQtyMap] = useState<Record<string, number>>({});
+  const [selectedItemQtyMap, setSelectedItemQtyMap] = useState<
+    Record<string, number>
+  >({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAdvancing, setIsAdvancing] = useState(false);
+  const [uberReasonCode, setUberReasonCode] = useState("ITEM_SOLD_OUT");
+  const [uberReasonDetail, setUberReasonDetail] = useState("");
+  const [isCancellingUber, setIsCancellingUber] = useState(false);
   const [menuCategories, setMenuCategories] = useState<PublicMenuCategory[]>(
     [],
   );
@@ -1076,58 +1096,60 @@ export default function PosOrdersPage() {
     setFilters(createInitialFilters());
   };
 
-const mapOrder = useCallback(
-  (order: BackendOrder, timeZone: string): OrderRecord => {
-    const subtotalCents = order.subtotalCents ?? order.totalCents ?? 0;
-    const discountCents =
-      (order.couponDiscountCents ?? 0) + (order.loyaltyRedeemCents ?? 0);
-    const subtotalAfterDiscountCents =
-      order.subtotalAfterDiscountCents ??
-      Math.max(0, subtotalCents - discountCents);
-    const taxCents = order.taxCents ?? 0;
-    const deliveryFeeCents = order.deliveryFeeCents ?? 0;
-    const displayNumber =
-      order.clientRequestId?.trim() ||
-      order.orderNumber?.trim() ||
-      order.pickupCode?.trim() ||
-      order.orderStableId;
+  const mapOrder = useCallback(
+    (order: BackendOrder, timeZone: string): OrderRecord => {
+      const subtotalCents = order.subtotalCents ?? order.totalCents ?? 0;
+      const discountCents =
+        (order.couponDiscountCents ?? 0) + (order.loyaltyRedeemCents ?? 0);
+      const subtotalAfterDiscountCents =
+        order.subtotalAfterDiscountCents ??
+        Math.max(0, subtotalCents - discountCents);
+      const taxCents = order.taxCents ?? 0;
+      const deliveryFeeCents = order.deliveryFeeCents ?? 0;
+      const displayNumber =
+        order.channel === "ubereats"
+          ? order.pickupCode?.trim() || null
+          : order.clientRequestId?.trim() ||
+            order.orderNumber?.trim() ||
+            order.pickupCode?.trim() ||
+            order.orderStableId;
 
-    const items = order.items.map((item, index) => {
-      const unitPriceCents = item.unitPriceCents ?? 0;
+      const items = order.items.map((item, index) => {
+        const unitPriceCents = item.unitPriceCents ?? 0;
+        return {
+          lineId: `${item.productStableId}:${index}`,
+          stableId: item.productStableId,
+          name: pickItemName(item, locale),
+          nameEn: item.nameEn ?? null,
+          nameZh: item.nameZh ?? null,
+          displayName: item.displayName ?? null,
+          qty: item.qty,
+          unitPriceCents,
+          totalCents: unitPriceCents * item.qty,
+        };
+      });
+
       return {
-        lineId: `${item.productStableId}:${index}`,
-        stableId: item.productStableId,
-        name: pickItemName(item, locale),
-        nameEn: item.nameEn ?? null,
-        nameZh: item.nameZh ?? null,
-        displayName: item.displayName ?? null,
-        qty: item.qty,
-        unitPriceCents,
-        totalCents: unitPriceCents * item.qty,
+        stableId: order.orderStableId,
+        pickupCode: order.pickupCode ?? null,
+        clientRequestId: displayNumber,
+        type: order.fulfillmentType,
+        status: order.status,
+        amountCents: order.totalCents ?? 0,
+        subtotalCents,
+        discountCents,
+        subtotalAfterDiscountCents,
+        taxCents,
+        deliveryFeeCents,
+        items,
+        time: formatOrderTime(order.createdAt, locale, timeZone),
+        channel: order.channel,
+        paymentMethod: mapPaymentMethod(order),
+        createdAt: order.createdAt,
       };
-    });
-
-    return {
-      stableId: order.orderStableId,
-      pickupCode: order.pickupCode ?? null,
-      clientRequestId: displayNumber,
-      type: order.fulfillmentType,
-      status: order.status,
-      amountCents: order.totalCents ?? 0,
-      subtotalCents,
-      discountCents,
-      subtotalAfterDiscountCents,
-      taxCents,
-      deliveryFeeCents,
-      items,
-      time: formatOrderTime(order.createdAt, locale, timeZone),
-      channel: order.channel,
-      paymentMethod: mapPaymentMethod(order),
-      createdAt: order.createdAt,
-    };
-  },
-  [locale],
-);
+    },
+    [locale],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -1137,7 +1159,9 @@ const mapOrder = useCallback(
         setIsLoading(true);
         setErrorMessage(null);
         const [configRes, data] = await Promise.all([
-          apiFetch<BusinessConfigLite>("/admin/business/config").catch(() => null),
+          apiFetch<BusinessConfigLite>("/admin/business/config").catch(
+            () => null,
+          ),
           fetchRecentOrders<BackendOrder[]>(30),
         ]);
 
@@ -1145,7 +1169,8 @@ const mapOrder = useCallback(
 
         const tz =
           configRes?.timezone?.trim() ||
-          (Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+          Intl.DateTimeFormat().resolvedOptions().timeZone ||
+          "UTC";
 
         setStoreTimezone(tz);
 
@@ -1394,10 +1419,7 @@ const mapOrder = useCallback(
     if (key.type === "status") {
       setFilters((prev) => ({
         ...prev,
-        statuses: toggleArrayValue(
-          prev.statuses,
-          key.value as OrderStatusKey,
-        ),
+        statuses: toggleArrayValue(prev.statuses, key.value as OrderStatusKey),
       }));
       return;
     }
@@ -1469,6 +1491,17 @@ const mapOrder = useCallback(
     ((selectedAction === "void_item" || selectedAction === "swap_item") &&
       (summary?.refundCents ?? 0) > 0);
 
+  useEffect(() => {
+    if (!shouldShowPaymentMethodPicker || !selectedOrder) return;
+    if (selectedOrder.channel === "ubereats") {
+      setSelectedPaymentMethod("UBEREATS");
+    } else {
+      setSelectedPaymentMethod((current) =>
+        current === "UBEREATS" ? null : current,
+      );
+    }
+  }, [selectedOrder, shouldShowPaymentMethodPicker]);
+
   const canSubmit =
     Boolean(selectedAction) &&
     reason.trim().length > 0 &&
@@ -1477,9 +1510,7 @@ const mapOrder = useCallback(
     (!shouldShowPaymentMethodPicker || Boolean(selectedPaymentMethod)) &&
     (selectedAction ? !isActionDisabled(selectedAction) : false);
 
-  const openSwapItemDialog = (
-    item: PublicMenuCategory["items"][number],
-  ) => {
+  const openSwapItemDialog = (item: PublicMenuCategory["items"][number]) => {
     setSwapActiveItem({
       item,
       options: {},
@@ -1510,7 +1541,10 @@ const mapOrder = useCallback(
       } else {
         if (maxSelect === 1) {
           next = [optionId];
-        } else if (typeof maxSelect === "number" && current.length >= maxSelect) {
+        } else if (
+          typeof maxSelect === "number" &&
+          current.length >= maxSelect
+        ) {
           next = [...current.slice(1), optionId];
         } else {
           next = [...current, optionId];
@@ -1543,167 +1577,193 @@ const mapOrder = useCallback(
     setSwapActiveItem(null);
   };
 
-const handleSubmit = () => {
-  if (!selectedOrder || !selectedAction) return;
-  if (!canSubmit) return;
+  const handleSubmit = () => {
+    if (!selectedOrder || !selectedAction) return;
+    if (!canSubmit) return;
 
-  const selectedItems = selectedOrder.items
-    .filter((item) => selectedItemIds.includes(item.lineId))
-    .map((item) => ({
-      ...item,
-      selectedQty: Math.max(
-        1,
-        Math.min(item.qty, selectedItemQtyMap[item.lineId] ?? 1),
-      ),
-    }));
+    const selectedItems = selectedOrder.items
+      .filter((item) => selectedItemIds.includes(item.lineId))
+      .map((item) => ({
+        ...item,
+        selectedQty: Math.max(
+          1,
+          Math.min(item.qty, selectedItemQtyMap[item.lineId] ?? 1),
+        ),
+      }));
 
-  const completeReset = () => {
-    setSelectedId(null);
-    setSelectedAction(null);
-    setReason("");
-    setSelectedPaymentMethod(null);
-    setSelectedItemIds([]);
-    setSelectedItemQtyMap({});
-    setSwapSelection(null);
-    setSwapActiveItem(null);
-  };
+    const completeReset = () => {
+      setSelectedId(null);
+      setSelectedAction(null);
+      setReason("");
+      setSelectedPaymentMethod(null);
+      setSelectedItemIds([]);
+      setSelectedItemQtyMap({});
+      setSwapSelection(null);
+      setSwapActiveItem(null);
+    };
 
-  // === full_refund：按你原逻辑（改订单状态） ===
-  if (selectedAction === "full_refund") {
-    if (isActionDisabled("full_refund")) return;
+    if (selectedAction === "full_refund") {
+      if (isActionDisabled("full_refund")) return;
 
+      void (async () => {
+        try {
+          setIsSubmitting(true);
+          const originalPaymentMethod =
+            selectedOrder.channel === "ubereats"
+              ? "UBEREATS"
+              : selectedOrder.paymentMethod === "cash"
+                ? "CASH"
+                : selectedOrder.paymentMethod === "wechat_alipay"
+                  ? "WECHAT_ALIPAY"
+                  : selectedOrder.paymentMethod === "store_balance"
+                    ? "STORE_BALANCE"
+                    : "CARD";
+          const result = await createFullRefund<BackendOrder>(
+            selectedOrder.stableId,
+            {
+              reason: reason.trim(),
+              refundAmountCents: selectedOrder.amountCents,
+              originalPaymentMethod,
+              refundMethod: selectedPaymentMethod!,
+            },
+          );
+          const mapped = mapOrder(result.order, storeTimezone);
+          setOrders((prev) =>
+            prev.map((order) =>
+              order.stableId === mapped.stableId ? mapped : order,
+            ),
+          );
+          setSelectedId(mapped.stableId);
+          showToast(
+            result.outcome === "pending_platform"
+              ? copy.refundPendingPlatform
+              : result.outcome === "pending_manual"
+                ? copy.refundPendingManual
+                : copy.actionSuccess,
+            "success",
+          );
+        } catch (error) {
+          console.error("Failed to refund order:", error);
+          showToast(copy.refundFailed, "error");
+        } finally {
+          setIsSubmitting(false);
+        }
+      })();
+
+      return;
+    }
+
+    // === 其他动作：create amendment ===
     void (async () => {
       try {
         setIsSubmitting(true);
-        const updated = await updateOrderStatus<BackendOrder>(
+
+        if (!summary) throw new Error("summary is missing");
+
+        // 1) action -> amendment type（关键：显式标注类型，避免变成 string）
+        const amendmentType: CreateOrderAmendmentInput["type"] =
+          selectedAction === "retender"
+            ? "RETENDER"
+            : selectedAction === "void_item"
+              ? "VOID_ITEM"
+              : selectedAction === "swap_item"
+                ? "SWAP_ITEM"
+                : "ADDITIONAL_CHARGE";
+
+        // 2) items
+        const voidItems =
+          selectedAction === "void_item" || selectedAction === "swap_item"
+            ? selectedItems.map((it) => ({
+                action: "VOID" as const,
+                productStableId: it.stableId,
+                qty: it.selectedQty,
+                unitPriceCents: it.unitPriceCents,
+                displayName: it.displayName ?? it.name,
+                nameEn: it.nameEn ?? null,
+                nameZh: it.nameZh ?? null,
+              }))
+            : [];
+
+        const addItems =
+          selectedAction === "swap_item" && swapSelection
+            ? [
+                {
+                  action: "ADD" as const,
+                  productStableId: swapSelection.item.stableId,
+                  qty: swapSelection.quantity,
+                  unitPriceCents:
+                    Math.round(swapSelection.item.price * 100) +
+                    calcOptionDeltaCents(
+                      swapSelection.item,
+                      swapSelection.options,
+                    ),
+                  displayName: swapSelection.item.name,
+                  nameEn: swapSelection.item.nameEn ?? null,
+                  nameZh: swapSelection.item.nameZh ?? null,
+                  optionsJson: swapSelection.options, // dev: raw
+                },
+              ]
+            : [];
+
+        // ✅ RETENDER：必须 items 为空（按后端校验）
+        const items =
+          selectedAction === "retender" ? [] : [...voidItems, ...addItems];
+
+        // 3) 金额口径（对齐后端字段语义）
+        let refundGrossCents = 0;
+        let additionalChargeCents = 0;
+
+        if (selectedAction === "retender") {
+          refundGrossCents = Math.max(0, Math.round(summary.baseTotal));
+          additionalChargeCents = Math.max(
+            0,
+            Math.round(summary.newChargeCents),
+          );
+        } else {
+          refundGrossCents = Math.max(0, Math.round(summary.refundCents));
+          additionalChargeCents = Math.max(
+            0,
+            Math.round(summary.additionalChargeCents),
+          );
+        }
+
+        const payload: CreateOrderAmendmentInput = {
+          type: amendmentType,
+          reason: reason.trim(),
+          paymentMethod: shouldShowPaymentMethodPicker
+            ? selectedPaymentMethod
+            : null,
+          refundGrossCents,
+          additionalChargeCents,
+          items,
+        };
+
+        const updated = await createOrderAmendment<BackendOrder>(
           selectedOrder.stableId,
-          "refunded",
+          payload,
         );
+
         const mapped = mapOrder(updated, storeTimezone);
         setOrders((prev) =>
           prev.map((order) =>
             order.stableId === mapped.stableId ? mapped : order,
           ),
         );
-        setSelectedId(mapped.stableId);
+
+        if (selectedAction === "void_item" || selectedAction === "swap_item") {
+          await printOrderCloud(selectedOrder.stableId, { locale });
+        }
+
         showToast(copy.actionSuccess, "success");
+        completeReset();
       } catch (error) {
-        console.error("Failed to refund order:", error);
+        console.error("Failed to submit amendment:", error);
         showToast(copy.refundFailed, "error");
       } finally {
         setIsSubmitting(false);
       }
     })();
-
-    return;
-  }
-
-  // === 其他动作：create amendment ===
-  void (async () => {
-    try {
-      setIsSubmitting(true);
-
-      if (!summary) throw new Error("summary is missing");
-
-      // 1) action -> amendment type（关键：显式标注类型，避免变成 string）
-      const amendmentType: CreateOrderAmendmentInput["type"] =
-        selectedAction === "retender"
-          ? "RETENDER"
-          : selectedAction === "void_item"
-            ? "VOID_ITEM"
-            : selectedAction === "swap_item"
-              ? "SWAP_ITEM"
-              : "ADDITIONAL_CHARGE";
-
-      // 2) items
-      const voidItems =
-        selectedAction === "void_item" || selectedAction === "swap_item"
-          ? selectedItems.map((it) => ({
-              action: "VOID" as const,
-              productStableId: it.stableId,
-              qty: it.selectedQty,
-              unitPriceCents: it.unitPriceCents,
-              displayName: it.displayName ?? it.name,
-              nameEn: it.nameEn ?? null,
-              nameZh: it.nameZh ?? null,
-            }))
-          : [];
-
-      const addItems =
-        selectedAction === "swap_item" && swapSelection
-          ? [
-              {
-                action: "ADD" as const,
-                productStableId: swapSelection.item.stableId,
-                qty: swapSelection.quantity,
-                unitPriceCents:
-                  Math.round(swapSelection.item.price * 100) +
-                  calcOptionDeltaCents(
-                    swapSelection.item,
-                    swapSelection.options,
-                  ),
-                displayName: swapSelection.item.name,
-                nameEn: swapSelection.item.nameEn ?? null,
-                nameZh: swapSelection.item.nameZh ?? null,
-                optionsJson: swapSelection.options, // dev: raw
-              },
-            ]
-          : [];
-
-      // ✅ RETENDER：必须 items 为空（按后端校验）
-      const items =
-        selectedAction === "retender" ? [] : [...voidItems, ...addItems];
-
-      // 3) 金额口径（对齐后端字段语义）
-      let refundGrossCents = 0;
-      let additionalChargeCents = 0;
-
-      if (selectedAction === "retender") {
-        refundGrossCents = Math.max(0, Math.round(summary.baseTotal));
-        additionalChargeCents = Math.max(0, Math.round(summary.newChargeCents));
-      } else {
-        refundGrossCents = Math.max(0, Math.round(summary.refundCents));
-        additionalChargeCents = Math.max(
-          0,
-          Math.round(summary.additionalChargeCents),
-        );
-      }
-
-      const payload: CreateOrderAmendmentInput = {
-        type: amendmentType,
-        reason: reason.trim(),
-        paymentMethod: shouldShowPaymentMethodPicker ? selectedPaymentMethod : null,
-        refundGrossCents,
-        additionalChargeCents,
-        items,
-      };
-
-      const updated = await createOrderAmendment<BackendOrder>(
-        selectedOrder.stableId,
-        payload,
-      );
-
-      const mapped = mapOrder(updated, storeTimezone);
-      setOrders((prev) =>
-        prev.map((order) =>
-          order.stableId === mapped.stableId ? mapped : order,
-        ),
-      );
-
-      if (selectedAction === "void_item" || selectedAction === "swap_item") {
-        await printOrderCloud(selectedOrder.stableId);
-      }
-
-      showToast(copy.actionSuccess, "success");
-      completeReset();
-    } catch (error) {
-      console.error("Failed to submit amendment:", error);
-      showToast(copy.refundFailed, "error");
-    } finally {
-      setIsSubmitting(false);
-    }
-  })();
-};
+  };
 
   const handleAdvanceStatus = async () => {
     if (!selectedOrder || isAdvancing) return;
@@ -1711,14 +1771,14 @@ const handleSubmit = () => {
     if (!nextStatus) return;
     try {
       setIsAdvancing(true);
-    const updated = await advanceOrder<BackendOrder>(selectedOrder.stableId);
-    const mapped = mapOrder(updated, storeTimezone);
-    setOrders((prev) =>
-      prev.map((order) =>
-        order.stableId === mapped.stableId ? mapped : order,
-      ),
-    );
-    setSelectedId(mapped.stableId);
+      const updated = await advanceOrder<BackendOrder>(selectedOrder.stableId);
+      const mapped = mapOrder(updated, storeTimezone);
+      setOrders((prev) =>
+        prev.map((order) =>
+          order.stableId === mapped.stableId ? mapped : order,
+        ),
+      );
+      setSelectedId(mapped.stableId);
       showToast(copy.advanceSuccess, "success");
     } catch (error) {
       console.error("Failed to advance order status:", error);
@@ -1728,17 +1788,57 @@ const handleSubmit = () => {
     }
   };
 
+  const handleCancelUberOrder = async () => {
+    if (!selectedOrder || selectedOrder.channel !== "ubereats") return;
+    if (!uberReasonDetail.trim() || isCancellingUber) return;
+    setIsCancellingUber(true);
+    try {
+      const result = await cancelUberOrder(selectedOrder.stableId, {
+        reasonCode: uberReasonCode,
+        reasonDetail: uberReasonDetail.trim(),
+      });
+      // Only reflect an Uber confirmation or a durable DENY outbox result.
+      // Never synthesize a local cancelled/refunded order state here.
+      showToast(
+        result.outcome === "confirmed"
+          ? locale === "zh"
+            ? "Uber 已确认拒单。"
+            : "Uber confirmed the rejection."
+          : locale === "zh"
+            ? "Uber 暂时不可用，拒单已可靠入队等待重试。"
+            : "Uber is unavailable; the rejection is queued for retry.",
+        "success",
+      );
+    } catch (error) {
+      console.error("Failed to reject/cancel Uber order:", error);
+      showToast(
+        locale === "zh"
+          ? "无法取消：订单可能已接单，请按错误提示联系 Uber 支持人工处理。"
+          : "Unable to cancel. The order may be accepted; contact Uber Support as instructed.",
+        "error",
+      );
+    } finally {
+      setIsCancellingUber(false);
+    }
+  };
+
   const handlePrintReceipt = useCallback(async () => {
     if (!selectedOrder) return;
 
     try {
-      await printOrderCloud(selectedOrder.stableId);
+      await printOrderCloud(selectedOrder.stableId, { locale });
       showToast(copy.actionSuccess, "success");
     } catch (error) {
       console.error("Failed to send cloud print request:", error);
       showToast(copy.advanceFailed, "error");
     }
-  }, [copy.actionSuccess, copy.advanceFailed, selectedOrder, showToast]);
+  }, [
+    copy.actionSuccess,
+    copy.advanceFailed,
+    locale,
+    selectedOrder,
+    showToast,
+  ]);
 
   const advanceLabel = useMemo(() => {
     if (!selectedOrder) return copy.advanceStatus;
@@ -1831,7 +1931,9 @@ const handleSubmit = () => {
           </div>
           <div className="mt-4 grid gap-3 text-xs text-slate-300">
             <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-3">
-              <div className="text-[11px] uppercase text-slate-400">{copy.filterDateLabel}</div>
+              <div className="text-[11px] uppercase text-slate-400">
+                {copy.filterDateLabel}
+              </div>
               <div className="mt-2">
                 <input
                   type="date"
@@ -1850,7 +1952,9 @@ const handleSubmit = () => {
               </div>
             </div>
             <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-3">
-              <div className="text-[11px] uppercase text-slate-400">Channels</div>
+              <div className="text-[11px] uppercase text-slate-400">
+                Channels
+              </div>
               <div className="mt-2 flex flex-wrap gap-2">
                 {(
                   [
@@ -1954,9 +2058,9 @@ const handleSubmit = () => {
                 }`}
               >
                 <div>
-                <div className="text-sm font-semibold">
-                  {order.clientRequestId ?? order.stableId}
-                </div>
+                  <div className="text-sm font-semibold">
+                    {order.clientRequestId}
+                  </div>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
                     <span className="rounded-full border border-slate-600 px-2 py-0.5">
                       {copy.orderCard[order.type]}
@@ -2005,10 +2109,7 @@ const handleSubmit = () => {
                     {copy.orderNumberLabel}
                   </div>
                   <div className="text-2xl font-semibold">
-                    {selectedOrder.clientRequestId ?? selectedOrder.stableId}
-                  </div>
-                  <div className="mt-1 text-[11px] text-slate-400">
-                    {copy.stableIdLabel}: {selectedOrder.stableId}
+                    {selectedOrder.clientRequestId}
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-2">
@@ -2029,12 +2130,10 @@ const handleSubmit = () => {
                     type="button"
                     onClick={handleAdvanceStatus}
                     disabled={
-                      isAdvancing ||
-                      NEXT_STATUS[selectedOrder.status] === null
+                      isAdvancing || NEXT_STATUS[selectedOrder.status] === null
                     }
                     className={`rounded-md border px-4 py-2 text-sm font-semibold transition ${
-                      isAdvancing ||
-                      NEXT_STATUS[selectedOrder.status] === null
+                      isAdvancing || NEXT_STATUS[selectedOrder.status] === null
                         ? "cursor-not-allowed border-slate-700 bg-slate-900/60 text-slate-500"
                         : "border-slate-500 bg-slate-900/40 text-slate-100 hover:bg-slate-800/60"
                     }`}
@@ -2057,6 +2156,73 @@ const handleSubmit = () => {
                   {formatMoney(selectedOrder.amountCents)}
                 </span>
               </div>
+              {selectedOrder.channel === "ubereats" ? (
+                <section className="rounded-xl border border-orange-400/40 bg-orange-500/10 p-4">
+                  <h3 className="text-sm font-semibold text-orange-100">
+                    {locale === "zh"
+                      ? "拒绝/取消 Uber 订单"
+                      : "Reject/cancel Uber order"}
+                  </h3>
+                  <p className="mt-1 text-xs text-orange-100/80">
+                    {locale === "zh"
+                      ? "接单前将向 Uber 发起拒单；接单后不会伪造本地退款状态，需按接口提示人工处理。"
+                      : "Before acceptance this rejects through Uber. Accepted orders are never marked locally refunded; follow the API guidance for manual handling."}
+                  </p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <label className="text-xs text-slate-200">
+                      {locale === "zh" ? "原因码" : "Reason code"}
+                      <select
+                        value={uberReasonCode}
+                        onChange={(event) =>
+                          setUberReasonCode(event.target.value)
+                        }
+                        disabled={isCancellingUber}
+                        className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 text-sm"
+                      >
+                        <option value="ITEM_SOLD_OUT">
+                          {locale === "zh" ? "商品售罄" : "Item sold out"}
+                        </option>
+                        <option value="STORE_CLOSED">
+                          {locale === "zh" ? "门店关闭" : "Store closed"}
+                        </option>
+                        <option value="TOO_BUSY">
+                          {locale === "zh" ? "门店繁忙" : "Store too busy"}
+                        </option>
+                        <option value="INVALID_ORDER">
+                          {locale === "zh" ? "订单无效" : "Invalid order"}
+                        </option>
+                      </select>
+                    </label>
+                    <label className="text-xs text-slate-200">
+                      {locale === "zh"
+                        ? "原因说明（必填）"
+                        : "Explanation (required)"}
+                      <input
+                        value={uberReasonDetail}
+                        onChange={(event) =>
+                          setUberReasonDetail(event.target.value)
+                        }
+                        disabled={isCancellingUber}
+                        className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 text-sm"
+                      />
+                    </label>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCancelUberOrder}
+                    disabled={isCancellingUber || !uberReasonDetail.trim()}
+                    className="mt-3 rounded-md border border-orange-300/50 bg-orange-500/20 px-4 py-2 text-sm font-semibold text-orange-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isCancellingUber
+                      ? locale === "zh"
+                        ? "处理中..."
+                        : "Processing..."
+                      : locale === "zh"
+                        ? "拒绝/取消 Uber 订单"
+                        : "Reject/cancel Uber order"}
+                  </button>
+                </section>
+              ) : null}
               <ActionContent
                 copy={copy}
                 order={selectedOrder}
@@ -2137,9 +2303,7 @@ const handleSubmit = () => {
                           </div>
                           {item.optionGroups && item.optionGroups.length > 0 ? (
                             <div className="mt-1 text-[11px] text-slate-400">
-                              {locale === "zh"
-                                ? "含可选项"
-                                : "Has options"}
+                              {locale === "zh" ? "含可选项" : "Has options"}
                             </div>
                           ) : null}
                         </button>
@@ -2290,9 +2454,7 @@ const handleSubmit = () => {
                     type="button"
                     onClick={() =>
                       setSwapActiveItem((prev) =>
-                        prev
-                          ? { ...prev, quantity: prev.quantity + 1 }
-                          : prev,
+                        prev ? { ...prev, quantity: prev.quantity + 1 } : prev,
                       )
                     }
                     className="w-8 h-8 rounded-full bg-emerald-500 text-slate-900 flex items-center justify-center text-lg leading-none"

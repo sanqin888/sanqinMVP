@@ -29,6 +29,26 @@ import type { PrintPosPayloadDto } from './dto/print-pos-payload.dto';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { PrintPosPayloadService } from '../orders/print-pos-payload.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { PosGateway } from './pos.gateway';
+import { PosOrdersService } from './pos-orders.service';
+import { Type } from 'class-transformer';
+import { IsEnum, IsInt, IsString, Min } from 'class-validator';
+
+class CreateFullRefundDto {
+  @IsString()
+  reason!: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  refundAmountCents!: number;
+
+  @IsEnum(PaymentMethod)
+  originalPaymentMethod!: PaymentMethod;
+
+  @IsEnum(PaymentMethod)
+  refundMethod!: PaymentMethod;
+}
 
 @Controller('pos/orders')
 @UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
@@ -38,6 +58,8 @@ export class PosOrdersController {
     private readonly orders: OrdersService,
     private readonly printPosPayloadService: PrintPosPayloadService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly posGateway: PosGateway,
+    private readonly posOrders: PosOrdersService,
   ) {}
 
   @Post()
@@ -107,12 +129,18 @@ export class PosOrdersController {
     return this.printPosPayloadService.getByStableId(orderStableId, locale);
   }
 
+  @Get(':orderStableId/print-status')
+  getPrintStatus(@Param('orderStableId', StableIdPipe) orderStableId: string) {
+    return this.posGateway.getOrderPrintStatus(orderStableId);
+  }
+
   @Post(':orderStableId/print')
   @HttpCode(200)
   reprint(
     @Param('orderStableId', StableIdPipe) orderStableId: string,
     @Body()
     body?: {
+      locale?: 'zh' | 'en';
       targets?: { customer?: boolean; kitchen?: boolean };
       cashReceivedCents?: number;
       cashChangeCents?: number;
@@ -120,6 +148,7 @@ export class PosOrdersController {
   ) {
     this.eventEmitter.emit('order.reprint', {
       orderStableId,
+      locale: body?.locale === 'en' ? 'en' : 'zh',
       targets: {
         customer: body?.targets?.customer ?? true,
         kitchen: body?.targets?.kitchen ?? false,
@@ -147,7 +176,23 @@ export class PosOrdersController {
   advance(
     @Param('orderStableId', StableIdPipe) orderStableId: string,
   ): Promise<OrderDto> {
-    return this.orders.advance(orderStableId);
+    return this.posOrders.advance(orderStableId);
+  }
+
+  @Post(':orderStableId/uber-cancellation')
+  @HttpCode(200)
+  cancelUberOrder(
+    @Param('orderStableId', StableIdPipe) orderStableId: string,
+    @Body() body: { reasonCode: string; reasonDetail: string },
+  ) {
+    if (!body?.reasonCode?.trim() || !body?.reasonDetail?.trim()) {
+      throw new BadRequestException('Uber 拒单原因码和说明均为必填项');
+    }
+    return this.posOrders.cancelUberOrder(
+      orderStableId,
+      body.reasonCode.trim(),
+      body.reasonDetail.trim(),
+    );
   }
 
   @Post(':orderStableId/amendments')
@@ -174,5 +219,15 @@ export class PosOrdersController {
       additionalChargeCents: body.additionalChargeCents ?? 0,
       items: body.items ?? [],
     });
+  }
+
+  @Post(':orderStableId/full-refund')
+  @HttpCode(201)
+  fullRefund(
+    @Param('orderStableId', StableIdPipe) orderStableId: string,
+    @Body()
+    body: CreateFullRefundDto,
+  ) {
+    return this.orders.createFullRefund({ orderStableId, ...body });
   }
 }

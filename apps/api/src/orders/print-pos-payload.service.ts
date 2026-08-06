@@ -84,8 +84,9 @@ export class PrintPosPayloadService {
     })();
 
     return {
-      locale: locale ?? 'zh',
+      locale: locale?.toLowerCase().startsWith('en') ? 'en' : 'zh',
       orderNumber,
+      customerName: order.contactName?.trim() || null,
       pickupCode: order.pickupCode ?? null,
       fulfillment: order.fulfillmentType,
       paymentMethod,

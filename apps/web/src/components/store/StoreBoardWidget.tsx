@@ -4,20 +4,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Locale } from "@/lib/i18n/locales";
 import { apiFetch } from "@/lib/api/client";
-import { advanceOrder, printOrderCloud } from "@/lib/api/pos";
+import {
+  advanceOrder,
+  fetchOrderPrintStatus,
+  printOrderCloud,
+  type OrderPrintStatus,
+} from "@/lib/api/pos";
 import { parseBackendDateMs } from "@/lib/time/tz";
 
 const ALARM_LOOP_SRC = "/sounds/pos-alarm-loop.mp3";
 
 type BoardOrderItem = {
-  productStableId: string
+  productStableId: string;
   qty: number;
   displayName?: string | null;
   nameEn?: string | null;
   nameZh?: string | null;
   unitPriceCents?: number | null;
 };
-
 
 type BoardOrder = {
   orderStableId: string; // ✅ 非空
@@ -45,7 +49,8 @@ function pickItemName(item: BoardOrderItem, locale: Locale): string {
   const trimmedDisplay = item.displayName?.trim() ?? "";
   const trimmedEn = item.nameEn?.trim() ?? "";
   const trimmedZh = item.nameZh?.trim() ?? "";
-  if (locale === "zh") return trimmedZh || trimmedDisplay || trimmedEn || item.productStableId;
+  if (locale === "zh")
+    return trimmedZh || trimmedDisplay || trimmedEn || item.productStableId;
   return trimmedEn || trimmedDisplay || trimmedZh || item.productStableId;
 }
 
@@ -84,11 +89,7 @@ function formatChannel(channel: BoardOrder["channel"], locale: Locale): string {
 }
 
 // 浏览器语音提醒
-function speak(
-  text: string,
-  locale: Locale,
-  onEnd?: () => void,
-) {
+function speak(text: string, locale: Locale, onEnd?: () => void) {
   if (typeof window === "undefined") return;
   if (!("speechSynthesis" in window)) return;
   const utter = new SpeechSynthesisUtterance(text);
@@ -113,6 +114,9 @@ const STRINGS = {
     terminal: "终态",
     reprintFront: "重打前台",
     printKitchen: "后厨小票",
+    printPending: "待打印",
+    printCompleted: "已打印",
+    printFailed: "打印失败",
     autoAccept: "自动接单",
     autoAcceptOn: "已开启",
     autoAcceptOff: "已关闭",
@@ -132,6 +136,9 @@ const STRINGS = {
     terminal: "Terminal",
     reprintFront: "Reprint front",
     printKitchen: "Kitchen",
+    printPending: "Pending print",
+    printCompleted: "Printed",
+    printFailed: "Print failed",
     autoAccept: "Auto accept",
     autoAcceptOn: "On",
     autoAcceptOff: "Off",
@@ -182,7 +189,8 @@ function readProcessedMap(): ProcessedMap {
     const now = Date.now();
     const next: ProcessedMap = {};
     for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
-      const ts = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
+      const ts =
+        typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
       if (!Number.isFinite(ts)) continue;
       if (now - ts > PRINTED_TTL_MS) continue;
       next[k] = ts;
@@ -213,9 +221,13 @@ export function StoreBoardWidget(props: { locale: Locale }) {
   const locale = props.locale ?? "zh";
   const t = STRINGS[locale];
   const isZh = locale === "zh";
+  const [printStatuses, setPrintStatuses] = useState<
+    Record<string, OrderPrintStatus>
+  >({});
 
   const query = useMemo(
-    () => "/pos/orders/board?status=pending,paid,making,ready&sinceMinutes=180&limit=80",
+    () =>
+      "/pos/orders/board?status=pending,paid,making,ready&sinceMinutes=180&limit=80",
     [],
   );
 
@@ -228,7 +240,9 @@ export function StoreBoardWidget(props: { locale: Locale }) {
   // ✅ 增强1：新 web 订单到达时，高亮闪烁（并自动展开）
   const [flash, setFlash] = useState(false);
   const [pop, setPop] = useState(false);
-  const [highlightedOrders, setHighlightedOrders] = useState<Record<string, boolean>>({});
+  const [highlightedOrders, setHighlightedOrders] = useState<
+    Record<string, boolean>
+  >({});
 
   const processedRef = useRef<ProcessedMap>({});
   const processedSetRef = useRef<Set<string>>(new Set());
@@ -357,38 +371,47 @@ export function StoreBoardWidget(props: { locale: Locale }) {
     }
   }, []);
 
-  const handlePrintFront = useCallback(
-    async (orderStableId: string) => {
-      try {
-        await printOrderCloud(orderStableId, {
-          targets: { customer: true, kitchen: false },
-        });
-      } catch (error) {
-        console.error("Failed to print front receipt via cloud:", error);
-      }
-    },
-    [],
-  );
+  const handlePrintFront = useCallback(async (orderStableId: string) => {
+    try {
+      await printOrderCloud(orderStableId, {
+        locale,
+        targets: { customer: true, kitchen: false },
+      });
+    } catch (error) {
+      console.error("Failed to print front receipt via cloud:", error);
+    }
+  }, [locale]);
 
-  const handlePrintKitchen = useCallback(
-    async (orderStableId: string) => {
-      try {
-        await printOrderCloud(orderStableId, {
-          targets: { customer: false, kitchen: true },
-        });
-      } catch (error) {
-        console.error("Failed to print kitchen ticket via cloud:", error);
-      }
-    },
-    [],
-  );
+  const handlePrintKitchen = useCallback(async (orderStableId: string) => {
+    try {
+      await printOrderCloud(orderStableId, {
+        locale,
+        targets: { customer: false, kitchen: true },
+      });
+    } catch (error) {
+      console.error("Failed to print kitchen ticket via cloud:", error);
+    }
+  }, [locale]);
 
   const fetchOrdersAndProcess = useCallback(async () => {
     const data = await apiFetch<BoardOrder[]>(query);
     const visibleOrders = data
       .filter(shouldShowOnBoard)
-      .sort((a, b) => safeParseCreatedAtMs(a.createdAt) - safeParseCreatedAtMs(b.createdAt));
+      .sort(
+        (a, b) =>
+          safeParseCreatedAtMs(a.createdAt) - safeParseCreatedAtMs(b.createdAt),
+      );
     setOrders(visibleOrders);
+    const statuses = await Promise.all(
+      visibleOrders.map(
+        async (order) =>
+          [
+            order.orderStableId,
+            await fetchOrderPrintStatus(order.orderStableId),
+          ] as const,
+      ),
+    );
+    setPrintStatuses(Object.fromEntries(statuses));
 
     const processedSet = processedSetRef.current;
     const processedMap = processedRef.current;
@@ -403,7 +426,8 @@ export function StoreBoardWidget(props: { locale: Locale }) {
         for (const o of visibleOrders) {
           const sid = o.orderStableId;
           processedSet.add(sid);
-          if (!processedMap[sid]) processedMap[sid] = safeParseCreatedAtMs(o.createdAt);
+          if (!processedMap[sid])
+            processedMap[sid] = safeParseCreatedAtMs(o.createdAt);
         }
         writeProcessedMap(processedMap);
         return;
@@ -444,7 +468,11 @@ export function StoreBoardWidget(props: { locale: Locale }) {
             // 仅推进到 making，后端会在 accepted 事件中统一触发打印，避免重复出单。
             await advanceOrder(order.orderStableId);
           } catch (error) {
-            console.error("Failed to auto-accept order:", order.orderStableId, error);
+            console.error(
+              "Failed to auto-accept order:",
+              order.orderStableId,
+              error,
+            );
           }
         }
       }
@@ -466,7 +494,11 @@ export function StoreBoardWidget(props: { locale: Locale }) {
         await fetchOrdersAndProcess();
       } catch (error) {
         console.error("Failed to advance order:", error);
-        alert(isZh ? "推进订单状态失败，请稍后重试。" : "Failed to update order status.");
+        alert(
+          isZh
+            ? "推进订单状态失败，请稍后重试。"
+            : "Failed to update order status.",
+        );
       }
     },
     [fetchOrdersAndProcess, isZh],
@@ -585,14 +617,18 @@ export function StoreBoardWidget(props: { locale: Locale }) {
           className={[
             "pointer-events-auto w-[420px] max-w-[calc(100vw-2rem)] h-[640px] max-h-[calc(100vh-2rem)]",
             "rounded-2xl border bg-slate-900/95 shadow-2xl overflow-hidden transition-transform duration-300",
-            flash ? "border-amber-400/70 ring-2 ring-amber-400/40" : "border-slate-700",
+            flash
+              ? "border-amber-400/70 ring-2 ring-amber-400/40"
+              : "border-slate-700",
             pop ? "scale-[1.03]" : "scale-100",
           ].join(" ")}
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
             <div>
               <div className="flex items-center gap-2">
-                <div className="text-base font-semibold text-slate-100">{t.title}</div>
+                <div className="text-base font-semibold text-slate-100">
+                  {t.title}
+                </div>
 
                 {pendingAcceptCount > 0 && (
                   <span className="inline-flex items-center gap-1 rounded-full border border-rose-400/60 bg-rose-500/15 px-2 py-0.5 text-xs font-semibold text-rose-200">
@@ -616,7 +652,10 @@ export function StoreBoardWidget(props: { locale: Locale }) {
                   const next = !autoAcceptEnabled;
                   setAutoAcceptEnabled(next);
                   if (typeof window !== "undefined") {
-                    window.localStorage.setItem(AUTO_ACCEPT_STORAGE_KEY, next ? "1" : "0");
+                    window.localStorage.setItem(
+                      AUTO_ACCEPT_STORAGE_KEY,
+                      next ? "1" : "0",
+                    );
                   }
                 }}
                 className="rounded-full border border-slate-700 bg-slate-950/40 px-2 py-1 text-xs text-slate-100 transition hover:bg-slate-800/50"
@@ -681,11 +720,15 @@ export function StoreBoardWidget(props: { locale: Locale }) {
 
           <div className="p-3 space-y-3 overflow-auto h-[calc(640px-56px)] max-h-[calc(100vh-2rem-56px)]">
             {orders.length === 0 && (
-              <div className="text-center text-slate-400 py-10">{t.noOrders}</div>
+              <div className="text-center text-slate-400 py-10">
+                {t.noOrders}
+              </div>
             )}
 
             {orders.map((order) => {
               const sid = order.orderStableId;
+              const operatorOrderTitle =
+                order.channel === "ubereats" ? order.pickupCode : sid;
               const next = NEXT_STATUS[order.status];
               const advanceLabel = next
                 ? order.status === "paid"
@@ -693,23 +736,48 @@ export function StoreBoardWidget(props: { locale: Locale }) {
                   : formatStatus(next, locale)
                 : t.terminal;
 
-              const isPendingUberEats = order.channel === "ubereats" && order.status === "pending";
-              const isHighlightedChannel = order.channel === "web" || isPendingUberEats;
+              const isPendingUberEats =
+                order.channel === "ubereats" && order.status === "pending";
+              const isHighlightedChannel =
+                order.channel === "web" || isPendingUberEats;
+              const printStatus = printStatuses[sid];
+              const targetStatuses = printStatus
+                ? [printStatus.customerStatus, printStatus.kitchenStatus]
+                : [];
+              const hasPrintFailure = targetStatuses.includes("FAILED");
+              const hasPrinted =
+                targetStatuses.length > 0 &&
+                targetStatuses.every(
+                  (status) => status === "COMPLETED" || status === "SKIPPED",
+                );
+              const printLabel = hasPrintFailure
+                ? t.printFailed
+                : hasPrinted
+                  ? t.printCompleted
+                  : t.printPending;
 
               return (
                 <div
                   key={sid}
                   className={[
                     "rounded-2xl border p-3 bg-slate-950/30",
-                    isHighlightedChannel ? "border-amber-400/70" : "border-slate-800",
-                    highlightedOrders[sid] ? "animate-pulse ring-2 ring-amber-400/40" : "",
+                    isHighlightedChannel
+                      ? "border-amber-400/70"
+                      : "border-slate-800",
+                    highlightedOrders[sid]
+                      ? "animate-pulse ring-2 ring-amber-400/40"
+                      : "",
                   ].join(" ")}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-xs text-slate-400">{sid}</div>
+                      {operatorOrderTitle && (
+                        <div className="text-2xl font-bold text-emerald-200">
+                          {operatorOrderTitle}
+                        </div>
+                      )}
 
-                      {order.pickupCode && (
+                      {order.channel !== "ubereats" && order.pickupCode && (
                         <div className="mt-2 text-sm text-emerald-300">
                           {t.pickupCodeLabel}：
                           <span className="ml-1 text-2xl font-bold text-emerald-200">
@@ -720,6 +788,28 @@ export function StoreBoardWidget(props: { locale: Locale }) {
 
                       <div className="mt-2 text-sm text-slate-100">
                         {t.statusLabel}: {formatStatus(order.status, locale)}
+                      </div>
+                      <div
+                        className={[
+                          "mt-1 text-xs font-semibold",
+                          hasPrintFailure
+                            ? "text-rose-300"
+                            : hasPrinted
+                              ? "text-emerald-300"
+                              : "text-amber-300",
+                        ].join(" ")}
+                        title={
+                          hasPrintFailure
+                            ? [
+                                printStatus?.customerFailureReason,
+                                printStatus?.kitchenFailureReason,
+                              ]
+                                .filter(Boolean)
+                                .join(" / ")
+                            : undefined
+                        }
+                      >
+                        {printLabel}
                       </div>
                     </div>
 
@@ -735,20 +825,23 @@ export function StoreBoardWidget(props: { locale: Locale }) {
 
                   <div className="border-t border-slate-800 my-2" />
 
-<ul className="space-y-1 text-sm max-h-28 overflow-auto pr-1">
-  {order.items.map((item, idx) => (
-    <li key={`${sid}:${idx}`} className="flex justify-between gap-2">
-      <span className="truncate">
-        x{item.qty} · {pickItemName(item, locale)}
-      </span>
-      {typeof item.unitPriceCents === "number" && (
-        <span className="text-slate-400 whitespace-nowrap">
-          {formatMoney(item.unitPriceCents * item.qty)}
-        </span>
-      )}
-    </li>
-  ))}
-</ul>
+                  <ul className="space-y-1 text-sm max-h-28 overflow-auto pr-1">
+                    {order.items.map((item, idx) => (
+                      <li
+                        key={`${sid}:${idx}`}
+                        className="flex justify-between gap-2"
+                      >
+                        <span className="truncate">
+                          x{item.qty} · {pickItemName(item, locale)}
+                        </span>
+                        {typeof item.unitPriceCents === "number" && (
+                          <span className="text-slate-400 whitespace-nowrap">
+                            {formatMoney(item.unitPriceCents * item.qty)}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
 
                   <div className="mt-3 flex items-center justify-between gap-2">
                     <button
