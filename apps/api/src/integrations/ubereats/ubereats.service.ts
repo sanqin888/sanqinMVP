@@ -518,6 +518,23 @@ type SyncAvailabilityInput = UberStoreScopedInput & {
   isAvailable: boolean;
 };
 
+export type UberAvailabilitySyncStatus =
+  | 'SYNCED'
+  | 'PENDING'
+  | 'SKIPPED_NOT_PUBLISHED'
+  | 'FAILED';
+
+export type UberAvailabilitySyncResult = {
+  status: UberAvailabilitySyncStatus;
+  stores: Array<{
+    storeId: string;
+    uberStoreId: string | null;
+    status: UberAvailabilitySyncStatus;
+    versionStableId?: string;
+    error?: string;
+  }>;
+};
+
 type SyncOptionAvailabilityInput = UberStoreScopedInput & {
   optionChoiceStableId: string;
   isAvailable: boolean;
@@ -2375,53 +2392,108 @@ export class UberEatsService {
     }
   }
 
-  async syncUberMenuItemAvailability(input: SyncAvailabilityInput) {
-    const normalizedStoreId = this.normalizeStoreId(input.storeId);
+  async syncUberMenuItemAvailability(
+    input: SyncAvailabilityInput,
+  ): Promise<UberAvailabilitySyncResult> {
     await this.ensureMenuItemExists(input.menuItemStableId);
-
-    const itemConfig = await this.prisma.uberItemChannelConfig.findUnique({
+    const requestedStoreId = input.storeId?.trim();
+    const configs = await this.prisma.uberItemChannelConfig.findMany({
       where: {
-        storeId_menuItemStableId: {
-          storeId: normalizedStoreId,
-          menuItemStableId: input.menuItemStableId,
-        },
+        menuItemStableId: input.menuItemStableId,
+        ...(requestedStoreId ? { storeId: requestedStoreId } : {}),
       },
     });
-
-    if (!itemConfig) {
-      throw new BadRequestException(
-        `未找到 ${input.menuItemStableId} 的 Uber 商品配置，请先配置`,
-      );
+    if (configs.length === 0) {
+      return { status: 'SKIPPED_NOT_PUBLISHED', stores: [] };
     }
 
-    const updated = await this.prisma.uberItemChannelConfig.update({
-      where: {
-        storeId_menuItemStableId: {
-          storeId: normalizedStoreId,
-          menuItemStableId: input.menuItemStableId,
+    const mappings = await this.prisma.uberStoreMapping.findMany({
+      where: { isProvisioned: true },
+      select: { posExternalStoreId: true, uberStoreId: true },
+    });
+    const stores: UberAvailabilitySyncResult['stores'] = [];
+    for (const config of configs) {
+      const mapping = mappings.find(
+        (candidate) =>
+          candidate.posExternalStoreId === config.storeId ||
+          candidate.uberStoreId === config.uberStoreId,
+      );
+      if (!mapping || !config.externalItemId) {
+        stores.push({
+          storeId: config.storeId,
+          uberStoreId: mapping?.uberStoreId ?? config.uberStoreId ?? null,
+          status: 'SKIPPED_NOT_PUBLISHED',
+        });
+        continue;
+      }
+
+      await this.prisma.uberItemChannelConfig.update({
+        where: {
+          storeId_menuItemStableId: {
+            storeId: config.storeId,
+            menuItemStableId: input.menuItemStableId,
+          },
         },
-      },
-      data: {
-        isAvailable: input.isAvailable,
-      },
-      select: {
-        menuItemStableId: true,
-        isAvailable: true,
-        updatedAt: true,
-      },
-    });
+        data: { isAvailable: input.isAvailable },
+      });
+      try {
+        // This integration currently supports Uber's asynchronous full-menu upload.
+        // Every upload creates a durable publish version and is completed by the
+        // notification handler or the polling confirmation task.
+        const published = await this.publishUberMenu({
+          storeId: config.storeId,
+          dryRun: false,
+          taxRateConfirmed: true,
+          timezoneConfirmed: true,
+        });
+        stores.push({
+          storeId: config.storeId,
+          uberStoreId: mapping.uberStoreId,
+          status: 'PENDING',
+          versionStableId: published.versionStableId,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await this.prisma.uberOpsTicket.create({
+          data: {
+            storeId: config.storeId,
+            type: UberOpsTicketType.MENU_PUBLISH,
+            status: UberOpsTicketStatus.OPEN,
+            priority: UberOpsTicketPriority.HIGH,
+            title: `Uber 商品可售状态同步失败：${input.menuItemStableId}`,
+            description: '本地状态已保存；请重试整份菜单发布。',
+            menuItemStableId: input.menuItemStableId,
+            lastError: message,
+            context: {
+              uberStoreId: mapping.uberStoreId,
+              externalItemId: config.externalItemId,
+              isAvailable: input.isAvailable,
+            },
+          },
+        });
+        stores.push({
+          storeId: config.storeId,
+          uberStoreId: mapping.uberStoreId,
+          status: 'FAILED',
+          error: message,
+        });
+      }
+    }
 
-    await this.captureEvent('ubereats_menu_item_availability_synced', {
-      storeId: normalizedStoreId,
+    const status: UberAvailabilitySyncStatus = stores.some(
+      (store) => store.status === 'FAILED',
+    )
+      ? 'FAILED'
+      : stores.some((store) => store.status === 'PENDING')
+        ? 'PENDING'
+        : 'SKIPPED_NOT_PUBLISHED';
+    await this.captureEvent('ubereats_menu_item_availability_sync_requested', {
       menuItemStableId: input.menuItemStableId,
-      isAvailable: updated.isAvailable,
+      isAvailable: input.isAvailable,
+      status,
+      stores,
     });
-
-    return {
-      ok: true,
-      storeId: normalizedStoreId,
-      item: updated,
-    };
+    return { status, stores };
   }
 
   async syncUberOptionItemAvailability(input: SyncOptionAvailabilityInput) {

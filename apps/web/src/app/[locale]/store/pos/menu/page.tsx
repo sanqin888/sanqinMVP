@@ -15,6 +15,7 @@ import type {
 } from '@shared/menu';
 
 type AvailabilityMode = 'ON' | 'TEMP_TODAY_OFF' | 'PERMANENT_OFF';
+type UberSyncStatus = 'SYNCED' | 'PENDING' | 'SKIPPED_NOT_PUBLISHED' | 'FAILED';
 
 const COPY = {
   zh: {
@@ -165,6 +166,7 @@ export default function PosMenuManagementPage() {
   const [categories, setCategories] = useState<AdminMenuCategoryDto[]>([]);
   const [templates, setTemplates] = useState<TemplateGroupFullDto[]>([]);
   const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [uberSyncByItem, setUberSyncByItem] = useState<Record<string, UberSyncStatus>>({});
   const [activeSection, setActiveSection] = useState<SectionKey>('items');
   const [expandedCategoryIds, setExpandedCategoryIds] = useState<Set<string>>(new Set());
   const [expandedTemplateGroupIds, setExpandedTemplateGroupIds] = useState<Set<string>>(new Set());
@@ -194,11 +196,12 @@ export default function PosMenuManagementPage() {
   async function setItemAvailability(itemStableId: string, mode: AvailabilityMode) {
     setSavingKey(`item-${itemStableId}`);
     try {
-      await apiFetch(`/admin/menu/items/${encodeURIComponent(itemStableId)}/availability`, {
+      const result = await apiFetch<{ uberSync: { status: UberSyncStatus } }>(`/admin/menu/items/${encodeURIComponent(itemStableId)}/availability`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode }),
       });
+      setUberSyncByItem((current) => ({ ...current, [itemStableId]: result.uberSync.status }));
       await load();
     } finally {
       setSavingKey(null);
@@ -406,6 +409,17 @@ export default function PosMenuManagementPage() {
                                       >
                                         {label}
                                       </span>
+                                      {uberSyncByItem[item.stableId] && (
+                                        <div className="mt-1 text-xs text-sky-300" role="status">
+                                          {uberSyncByItem[item.stableId] === 'PENDING'
+                                            ? safeLocale === 'zh' ? '本地已下架、Uber 同步中' : 'Saved locally; syncing with Uber'
+                                            : uberSyncByItem[item.stableId] === 'FAILED'
+                                              ? safeLocale === 'zh' ? 'Uber 同步失败，可重试' : 'Uber sync failed; retry available'
+                                              : uberSyncByItem[item.stableId] === 'SYNCED'
+                                                ? safeLocale === 'zh' ? 'Uber 同步成功' : 'Uber sync succeeded'
+                                                : safeLocale === 'zh' ? '未发布到 Uber' : 'Not published to Uber'}
+                                        </div>
+                                      )}
                                     </div>
                                     <AvailabilityActions
                                       labels={copy.actions}
