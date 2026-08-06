@@ -562,6 +562,18 @@ type UberOrderActionRecord = {
   uberHttpStatus: number | null;
   reasonCode?: string | null;
   reasonDetail?: string | null;
+  lastError?: string | null;
+};
+
+export type UberOrderActionResult = {
+  ok: boolean;
+  action: UberOrderActionName;
+  actionId: string;
+  status: 'PENDING' | 'SUCCEEDED' | 'FAILED';
+  retryable: boolean;
+  duplicate: boolean;
+  uberHttpStatus?: number | null;
+  errorSummary?: string;
 };
 
 type UberDenyReasonCode =
@@ -1167,8 +1179,35 @@ export class UberEatsService {
       orderStableId: updated.orderStableId,
       status: updated.status,
       action,
+      localStatus: updated.status,
+      uberSyncStatus: result.status,
       actionResult: result,
     };
+  }
+
+  async getReadyForPickupAction(externalOrderId: string) {
+    return this.uberOrderActionDelegate.findUnique({
+      where: {
+        externalOrderId_action: {
+          externalOrderId,
+          action: 'READY_FOR_PICKUP',
+        },
+      },
+    });
+  }
+
+  async retryReadyForPickup(externalOrderId: string) {
+    const record = await this.getReadyForPickupAction(externalOrderId);
+    if (!record) throw new BadRequestException('没有可重试的 Uber 就绪动作');
+    if (record.status === 'FAILED' && !record.retryable) {
+      return this.toUberOrderActionResult(record, true);
+    }
+    return this.executeUberOrderAction(
+      externalOrderId,
+      'READY_FOR_PICKUP',
+      {},
+      true,
+    );
   }
 
   /** Queue workers can periodically drain retryable/PENDING outbox rows. */
@@ -3543,10 +3582,10 @@ export class UberEatsService {
       if (action === 'ACCEPT' && record.status === 'SUCCEEDED') {
         await this.advanceLocalUberOrderStatusAfterAccept(externalOrderId);
       }
-      return { ok: record.status === 'SUCCEEDED', duplicate: true, action };
+      return this.toUberOrderActionResult(record, true);
     }
     if (record && !record.retryable && !processPending) {
-      return { ok: false, duplicate: true, action, retryable: false };
+      return this.toUberOrderActionResult(record, true);
     }
     if (!record) {
       try {
@@ -3566,7 +3605,8 @@ export class UberEatsService {
         record = await delegate.findUnique({
           where: { externalOrderId_action: key },
         });
-        return { ok: record?.status === 'SUCCEEDED', duplicate: true, action };
+        if (!record) throw error;
+        return this.toUberOrderActionResult(record, true);
       }
     } else {
       record = await delegate.update({
@@ -3625,15 +3665,26 @@ export class UberEatsService {
       this.logger.error(
         `[ubereats order action] request failed action=${action} externalOrderId=${externalOrderId} endpoint=${pathname} errorType=${errorType} error=${redactedError}`,
       );
-      throw new BadGatewayException({
+      if (action !== 'READY_FOR_PICKUP') {
+        throw new BadGatewayException({
+          ok: false,
+          externalOrderId,
+          action,
+          endpoint: pathname,
+          retryable: true,
+          message: 'Uber 订单动作网络请求失败或超时',
+          detail: redactedError,
+        });
+      }
+      return {
         ok: false,
-        externalOrderId,
         action,
-        endpoint: pathname,
+        actionId: record.id,
+        status: 'FAILED' as const,
         retryable: true,
-        message: 'Uber 订单动作网络请求失败或超时',
-        detail: redactedError,
-      });
+        duplicate: false,
+        errorSummary: 'Uber 订单动作网络请求失败或超时',
+      };
     } finally {
       clearTimeout(timeout);
     }
@@ -3667,23 +3718,60 @@ export class UberEatsService {
       this.logger.error(
         `[ubereats order action] upstream failed action=${action} externalOrderId=${externalOrderId} endpoint=${pathname} status=${response.status} retryable=${retryable} uberRequestId=${uberRequestId ?? 'unknown'} detail=${this.redactSensitiveLogText(this.summarizeDebugResponse(parsed, rawText))}`,
       );
-      throw new BadGatewayException({
+      if (action !== 'READY_FOR_PICKUP') {
+        throw new BadGatewayException({
+          ok: false,
+          externalOrderId,
+          action,
+          endpoint: pathname,
+          status: response.status,
+          uberRequestId,
+          retryable,
+          detail: this.redactSensitiveLogText(
+            this.summarizeDebugResponse(parsed, rawText),
+          ),
+        });
+      }
+      return {
         ok: false,
-        externalOrderId,
         action,
-        endpoint: pathname,
-        status: response.status,
-        uberRequestId,
+        actionId: record.id,
+        status: 'FAILED' as const,
         retryable,
-        detail: this.redactSensitiveLogText(
-          this.summarizeDebugResponse(parsed, rawText),
-        ),
-      });
+        duplicate: false,
+        uberHttpStatus: response.status,
+        errorSummary: `Uber 返回 HTTP ${response.status}`,
+      };
     }
     if (action === 'ACCEPT') {
       await this.advanceLocalUberOrderStatusAfterAccept(externalOrderId);
     }
-    return { ok: true, duplicate: false, action, status: response.status };
+    return {
+      ok: true,
+      duplicate: false,
+      action,
+      actionId: record.id,
+      status: 'SUCCEEDED' as const,
+      retryable: false,
+      uberHttpStatus: response.status,
+    };
+  }
+
+  private toUberOrderActionResult(
+    record: UberOrderActionRecord,
+    duplicate: boolean,
+  ): UberOrderActionResult {
+    const status = record.status as UberOrderActionResult['status'];
+    return {
+      ok: status === 'SUCCEEDED',
+      action: record.action,
+      actionId: record.id,
+      status,
+      retryable: record.retryable,
+      duplicate,
+      uberHttpStatus: record.uberHttpStatus,
+      ...(record.lastError ? { errorSummary: 'Uber 同步失败' } : {}),
+    };
   }
 
   private async advanceLocalUberOrderStatusAfterAccept(

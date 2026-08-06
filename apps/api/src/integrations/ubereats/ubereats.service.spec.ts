@@ -3436,6 +3436,7 @@ describe('UberEatsService', () => {
 
   it.each([
     [409, false, 'SUCCEEDED'],
+    [404, false, 'FAILED'],
     [429, true, 'FAILED'],
     [500, true, 'FAILED'],
   ])(
@@ -3450,9 +3451,12 @@ describe('UberEatsService', () => {
       );
       const service = new UberEatsService(prisma as never, createAuthService());
       const promise = service.syncOrderStatusToUber(`ue_${status}`, 'ready');
-      if (retryable)
-        await expect(promise).rejects.toMatchObject({ status: 502 });
-      else await expect(promise).resolves.toMatchObject({ ok: true });
+      await expect(promise).resolves.toMatchObject({
+        ok: true,
+        localStatus: 'ready',
+        uberSyncStatus: savedStatus,
+        actionResult: expect.objectContaining({ retryable }),
+      });
       expect(uberOrderAction.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -3464,6 +3468,54 @@ describe('UberEatsService', () => {
       );
     },
   );
+
+  it('ready 网络超时保留本地 ready 并返回可重试动作结果', async () => {
+    const { prisma, uberOrderAction } = createReadyPrisma();
+    jest
+      .spyOn(global, 'fetch')
+      .mockRejectedValueOnce(
+        Object.assign(new Error('request timed out'), { name: 'AbortError' }),
+      );
+    const service = new UberEatsService(prisma as never, createAuthService());
+
+    await expect(
+      service.syncOrderStatusToUber('ue_timeout_ready', 'ready'),
+    ).resolves.toMatchObject({
+      localStatus: 'ready',
+      uberSyncStatus: 'FAILED',
+      actionResult: expect.objectContaining({
+        status: 'FAILED',
+        retryable: true,
+        actionId: 'ready_action',
+      }),
+    });
+    expect(uberOrderAction.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'FAILED', retryable: true }),
+      }),
+    );
+  });
+
+  it('ready 失败后成功重试复用同一个 outbox 动作', async () => {
+    const { prisma, uberOrderAction } = createReadyPrisma();
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response('{}', { status: 500 }))
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    const service = new UberEatsService(prisma as never, createAuthService());
+
+    await service.syncOrderStatusToUber('ue_retry_ready', 'ready');
+    await expect(
+      service.retryReadyForPickup('ue_retry_ready'),
+    ).resolves.toMatchObject({
+      ok: true,
+      actionId: 'ready_action',
+      status: 'SUCCEEDED',
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(uberOrderAction.upsert).toHaveBeenCalledTimes(1);
+  });
 
   describe('OAuth state 安全校验', () => {
     const stateInternals = (service: UberEatsService) =>

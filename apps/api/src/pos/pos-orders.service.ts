@@ -29,7 +29,7 @@ export class PosOrdersService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async advance(orderStableId: string): Promise<OrderDto> {
+  async advance(orderStableId: string): Promise<PosOrderAdvanceResult> {
     const order = await this.orders.getByStableId(orderStableId);
     const nextStatus = ORDER_STATUS_ADVANCE_FLOW[order.status];
     const externalOrderId = this.getUberWebhookExternalOrderId(order);
@@ -39,8 +39,10 @@ export class PosOrdersService {
 
       // ACCEPT owns both the durable outbox action and the atomic pending/paid
       // -> making transition. Never run the generic pending -> paid path.
-      if (!result.ok) return order;
-      return this.orders.getByStableId(orderStableId);
+      const current = result.ok
+        ? await this.orders.getByStableId(orderStableId)
+        : order;
+      return this.advanceResult(current, result);
     }
 
     if (nextStatus === 'ready' && externalOrderId) {
@@ -52,14 +54,56 @@ export class PosOrdersService {
       // syncOrderStatusToUber owns the atomic local transition and durable
       // Uber action outbox. Read the committed order rather than advancing it
       // separately, which could otherwise lose the retryable action on failure.
-      if (!result.ok) return order;
-      return this.orders.getByStableId(orderStableId);
+      const current = await this.orders.getByStableId(orderStableId);
+      return this.advanceResult(current, result.actionResult);
+    }
+
+    if (order.status === 'ready' && externalOrderId) {
+      const action =
+        await this.uberEats.getReadyForPickupAction(externalOrderId);
+      if (action && action.status !== 'SUCCEEDED') {
+        return this.advanceResult(order, {
+          actionId: action.id,
+          status: action.status,
+          retryable: action.retryable,
+          errorSummary: action.lastError ? 'Uber 同步失败' : undefined,
+        });
+      }
     }
 
     // Uber does not document a merchant "complete" order action. In
     // particular, ready -> completed remains local-only; all ordinary orders
     // and other transitions continue through the existing local state flow.
-    return this.orders.advance(orderStableId);
+    return this.advanceResult(await this.orders.advance(orderStableId));
+  }
+
+  async retryUberSync(orderStableId: string): Promise<PosOrderAdvanceResult> {
+    const order = await this.orders.getByStableId(orderStableId);
+    const externalOrderId = this.getUberWebhookExternalOrderId(order);
+    if (!externalOrderId || order.status !== 'ready') {
+      throw new BadRequestException('只有已就绪的 Uber 订单可以重试同步');
+    }
+    const result = await this.uberEats.retryReadyForPickup(externalOrderId);
+    return this.advanceResult(order, result);
+  }
+
+  private advanceResult(
+    order: OrderDto,
+    action?: {
+      actionId?: string;
+      status?: string;
+      retryable?: boolean;
+      errorSummary?: string;
+    },
+  ): PosOrderAdvanceResult {
+    return {
+      ...order,
+      status: order.status,
+      uberActionStatus: action?.status ?? null,
+      retryable: action?.retryable ?? false,
+      actionId: action?.actionId ?? null,
+      errorSummary: action?.errorSummary ?? null,
+    };
   }
 
   /** Records the local financial result only after staff handled it in Uber. */
@@ -129,3 +173,10 @@ export class PosOrdersService {
     return externalOrderId || null;
   }
 }
+
+export type PosOrderAdvanceResult = OrderDto & {
+  uberActionStatus: string | null;
+  retryable: boolean;
+  actionId: string | null;
+  errorSummary: string | null;
+};

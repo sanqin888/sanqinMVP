@@ -15,6 +15,7 @@ import {
 } from "@/lib/menu/menu-transformer";
 import {
   advanceOrder,
+  retryUberOrderSync,
   createFullRefund,
   recordManualUberRefund,
   createOrderAmendment,
@@ -1797,7 +1798,12 @@ export default function PosOrdersPage() {
     if (!nextStatus) return;
     try {
       setIsAdvancing(true);
-      const updated = await advanceOrder<BackendOrder>(selectedOrder.stableId);
+      const updated = await advanceOrder<
+        BackendOrder & {
+          uberActionStatus?: string | null;
+          retryable?: boolean;
+        }
+      >(selectedOrder.stableId);
       const mapped = mapOrder(updated, storeTimezone);
       setOrders((prev) =>
         prev.map((order) =>
@@ -1805,7 +1811,38 @@ export default function PosOrdersPage() {
         ),
       );
       setSelectedId(mapped.stableId);
-      showToast(copy.advanceSuccess, "success");
+      if (updated.uberActionStatus === "FAILED") {
+        showToast(
+          locale.startsWith("zh")
+            ? "本地已就绪，但 Uber 同步失败"
+            : "Ready locally, but Uber sync failed",
+          "error",
+        );
+        if (
+          updated.retryable &&
+          window.confirm(
+            locale.startsWith("zh")
+              ? "是否重试 Uber 同步？这不会推进订单状态。"
+              : "Retry Uber sync? This will not advance the order.",
+          )
+        ) {
+          const retried = await retryUberOrderSync<BackendOrder>(
+            selectedOrder.stableId,
+          );
+          showToast(
+            retried.uberActionStatus === "SUCCEEDED"
+              ? locale.startsWith("zh")
+                ? "Uber 同步成功"
+                : "Uber sync succeeded"
+              : locale.startsWith("zh")
+                ? "Uber 同步仍失败"
+                : "Uber sync is still failing",
+            retried.uberActionStatus === "SUCCEEDED" ? "success" : "error",
+          );
+        }
+      } else {
+        showToast(copy.advanceSuccess, "success");
+      }
     } catch (error) {
       console.error("Failed to advance order status:", error);
       showToast(copy.advanceFailed, "error");
