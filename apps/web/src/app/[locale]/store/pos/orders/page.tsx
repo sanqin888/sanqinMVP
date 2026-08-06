@@ -24,6 +24,7 @@ import {
 import type { CreateOrderAmendmentInput } from "@/lib/api/pos";
 import { apiFetch } from "@/lib/api/client";
 import { parseBackendDate, ymdInTimeZone } from "@/lib/time/tz";
+import { getUberCancellationErrorMessage } from "./uber-cancellation";
 
 const COPY = {
   zh: {
@@ -1243,6 +1244,7 @@ export default function PosOrdersPage() {
     () => orders.find((order) => order.stableId === selectedId) ?? null,
     [orders, selectedId],
   );
+  const canDenySelectedUberOrder = selectedOrder?.status === "pending";
 
   useEffect(() => {
     setSelectedPaymentMethod(null);
@@ -1790,6 +1792,7 @@ export default function PosOrdersPage() {
 
   const handleCancelUberOrder = async () => {
     if (!selectedOrder || selectedOrder.channel !== "ubereats") return;
+    if (selectedOrder.status !== "pending") return;
     if (!uberReasonDetail.trim() || isCancellingUber) return;
     setIsCancellingUber(true);
     try {
@@ -1812,9 +1815,12 @@ export default function PosOrdersPage() {
     } catch (error) {
       console.error("Failed to reject/cancel Uber order:", error);
       showToast(
-        locale === "zh"
-          ? "无法取消：订单可能已接单，请按错误提示联系 Uber 支持人工处理。"
-          : "Unable to cancel. The order may be accepted; contact Uber Support as instructed.",
+        getUberCancellationErrorMessage(
+          error,
+          locale === "zh"
+            ? "拒绝 Uber 订单失败，请稍后重试。"
+            : "Failed to reject the Uber order. Please retry.",
+        ),
         "error",
       );
     } finally {
@@ -2159,68 +2165,80 @@ export default function PosOrdersPage() {
               {selectedOrder.channel === "ubereats" ? (
                 <section className="rounded-xl border border-orange-400/40 bg-orange-500/10 p-4">
                   <h3 className="text-sm font-semibold text-orange-100">
-                    {locale === "zh"
-                      ? "拒绝/取消 Uber 订单"
-                      : "Reject/cancel Uber order"}
+                    {canDenySelectedUberOrder
+                      ? locale === "zh"
+                        ? "拒绝 Uber 订单"
+                        : "Reject Uber order"
+                      : locale === "zh"
+                        ? "已接单订单需人工处理"
+                        : "Accepted order requires manual handling"}
                   </h3>
                   <p className="mt-1 text-xs text-orange-100/80">
-                    {locale === "zh"
-                      ? "接单前将向 Uber 发起拒单；接单后不会伪造本地退款状态，需按接口提示人工处理。"
-                      : "Before acceptance this rejects through Uber. Accepted orders are never marked locally refunded; follow the API guidance for manual handling."}
-                  </p>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    <label className="text-xs text-slate-200">
-                      {locale === "zh" ? "原因码" : "Reason code"}
-                      <select
-                        value={uberReasonCode}
-                        onChange={(event) =>
-                          setUberReasonCode(event.target.value)
-                        }
-                        disabled={isCancellingUber}
-                        className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 text-sm"
-                      >
-                        <option value="ITEM_SOLD_OUT">
-                          {locale === "zh" ? "商品售罄" : "Item sold out"}
-                        </option>
-                        <option value="STORE_CLOSED">
-                          {locale === "zh" ? "门店关闭" : "Store closed"}
-                        </option>
-                        <option value="TOO_BUSY">
-                          {locale === "zh" ? "门店繁忙" : "Store too busy"}
-                        </option>
-                        <option value="INVALID_ORDER">
-                          {locale === "zh" ? "订单无效" : "Invalid order"}
-                        </option>
-                      </select>
-                    </label>
-                    <label className="text-xs text-slate-200">
-                      {locale === "zh"
-                        ? "原因说明（必填）"
-                        : "Explanation (required)"}
-                      <input
-                        value={uberReasonDetail}
-                        onChange={(event) =>
-                          setUberReasonDetail(event.target.value)
-                        }
-                        disabled={isCancellingUber}
-                        className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 text-sm"
-                      />
-                    </label>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleCancelUberOrder}
-                    disabled={isCancellingUber || !uberReasonDetail.trim()}
-                    className="mt-3 rounded-md border border-orange-300/50 bg-orange-500/20 px-4 py-2 text-sm font-semibold text-orange-50 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {isCancellingUber
+                    {canDenySelectedUberOrder
                       ? locale === "zh"
-                        ? "处理中..."
-                        : "Processing..."
+                        ? "该订单尚未接单，可通过 Uber DENY 接口拒绝。"
+                        : "This order has not been accepted and can be rejected through the Uber DENY API."
                       : locale === "zh"
-                        ? "拒绝/取消 Uber 订单"
-                        : "Reject/cancel Uber order"}
-                  </button>
+                        ? "该订单已经接单，POS 无法直接取消或退款。请联系 Uber 支持人工处理；订单本地状态不会更改。"
+                        : "This order has been accepted. POS cannot cancel or refund it directly. Contact Uber Support for manual handling; the local order status will not change."}
+                  </p>
+                  {canDenySelectedUberOrder ? (
+                    <>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        <label className="text-xs text-slate-200">
+                          {locale === "zh" ? "原因码" : "Reason code"}
+                          <select
+                            value={uberReasonCode}
+                            onChange={(event) =>
+                              setUberReasonCode(event.target.value)
+                            }
+                            disabled={isCancellingUber}
+                            className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 text-sm"
+                          >
+                            <option value="ITEM_SOLD_OUT">
+                              {locale === "zh" ? "商品售罄" : "Item sold out"}
+                            </option>
+                            <option value="STORE_CLOSED">
+                              {locale === "zh" ? "门店关闭" : "Store closed"}
+                            </option>
+                            <option value="TOO_BUSY">
+                              {locale === "zh" ? "门店繁忙" : "Store too busy"}
+                            </option>
+                            <option value="INVALID_ORDER">
+                              {locale === "zh" ? "订单无效" : "Invalid order"}
+                            </option>
+                          </select>
+                        </label>
+                        <label className="text-xs text-slate-200">
+                          {locale === "zh"
+                            ? "原因说明（必填）"
+                            : "Explanation (required)"}
+                          <input
+                            value={uberReasonDetail}
+                            onChange={(event) =>
+                              setUberReasonDetail(event.target.value)
+                            }
+                            disabled={isCancellingUber}
+                            className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 text-sm"
+                          />
+                        </label>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleCancelUberOrder}
+                        disabled={isCancellingUber || !uberReasonDetail.trim()}
+                        className="mt-3 rounded-md border border-orange-300/50 bg-orange-500/20 px-4 py-2 text-sm font-semibold text-orange-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {isCancellingUber
+                          ? locale === "zh"
+                            ? "处理中..."
+                            : "Processing..."
+                          : locale === "zh"
+                            ? "拒绝 Uber 订单"
+                            : "Reject Uber order"}
+                      </button>
+                    </>
+                  ) : null}
                 </section>
               ) : null}
               <ActionContent
