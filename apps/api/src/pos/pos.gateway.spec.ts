@@ -119,6 +119,14 @@ describe('PosGateway durable print delivery', () => {
       }),
     );
     expect(emit).not.toHaveBeenCalled();
+    expect(baseJob.customerAttempts).toBe(0);
+    expect(posPrintJob.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          customerAttempts: { increment: 1 },
+        }) as unknown,
+      }),
+    );
 
     setConnected(true);
     await (
@@ -159,6 +167,93 @@ describe('PosGateway durable print delivery', () => {
     expect(emit).toHaveBeenCalledWith(
       'PRINT_JOB',
       expect.objectContaining({ target: 'kitchen' }),
+    );
+  });
+
+  it('ACK 超时后只重试超时目标并保留超时原因', async () => {
+    const { gateway, posPrintJob, emit } = setup();
+
+    await (
+      gateway as unknown as {
+        markTimeoutAndRetry(
+          jobId: string,
+          target: 'customer' | 'kitchen',
+        ): Promise<void>;
+      }
+    ).markTimeoutAndRetry('job-1', 'customer');
+
+    expect(posPrintJob.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          customerStatus: 'FAILED',
+          customerFailureReason: 'ACK_TIMEOUT',
+        }) as unknown,
+      }),
+    );
+    expect(emit).toHaveBeenCalledTimes(1);
+    expect(emit).toHaveBeenCalledWith(
+      'PRINT_JOB',
+      expect.objectContaining({ target: 'customer' }),
+    );
+  });
+
+  it('达到真实发送上限后停止重试并可由 REPRINT 新建任务恢复', async () => {
+    const { gateway, posPrintJob, emit } = setup();
+    const job = await posPrintJob.findUnique();
+    job.customerAttempts = 3;
+    job.customerFailureReason = 'ACK_TIMEOUT';
+
+    await (
+      gateway as unknown as {
+        dispatchTarget(
+          jobId: string,
+          target: 'customer' | 'kitchen',
+        ): Promise<void>;
+      }
+    ).dispatchTarget('job-1', 'customer');
+    expect(emit).not.toHaveBeenCalled();
+
+    await gateway.sendPrintJob({
+      orderId: 'order-1',
+      orderStableId: 'stable-1',
+      storeId: 'store-1',
+      kind: 'REPRINT:manual-1',
+      data: baseJob.payload,
+    });
+    expect(posPrintJob.upsert).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: {
+          orderStableId_kind: {
+            orderStableId: 'stable-1',
+            kind: 'REPRINT:manual-1',
+          },
+        },
+      }),
+    );
+  });
+
+  it('旧版离线耗尽次数的任务在客户端上线后重置并恢复投递', async () => {
+    const { gateway, posPrintJob, emit } = setup();
+    const job = await posPrintJob.findUnique();
+    job.customerAttempts = 3;
+    job.customerFailureReason = 'CLIENT_OFFLINE';
+
+    await (
+      gateway as unknown as {
+        dispatchTarget(
+          jobId: string,
+          target: 'customer' | 'kitchen',
+        ): Promise<void>;
+      }
+    ).dispatchTarget('job-1', 'customer');
+
+    expect(posPrintJob.update).toHaveBeenCalledWith({
+      where: { jobId: 'job-1' },
+      data: { customerAttempts: 0, customerStatus: 'PENDING' },
+    });
+    expect(emit).toHaveBeenCalledWith(
+      'PRINT_JOB',
+      expect.objectContaining({ target: 'customer' }),
     );
   });
 });
