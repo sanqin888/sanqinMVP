@@ -60,6 +60,7 @@ describe('PosGateway durable print delivery', () => {
     } as never;
     return {
       gateway,
+      job,
       posPrintJob,
       emit,
       setConnected: (value: boolean) => {
@@ -198,8 +199,7 @@ describe('PosGateway durable print delivery', () => {
   });
 
   it('达到真实发送上限后停止重试并可由 REPRINT 新建任务恢复', async () => {
-    const { gateway, posPrintJob, emit } = setup();
-    const job = await posPrintJob.findUnique();
+    const { gateway, job, posPrintJob, emit } = setup();
     job.customerAttempts = 3;
     job.customerFailureReason = 'ACK_TIMEOUT';
 
@@ -233,8 +233,7 @@ describe('PosGateway durable print delivery', () => {
   });
 
   it('旧版离线耗尽次数的任务在客户端上线后重置并恢复投递', async () => {
-    const { gateway, posPrintJob, emit } = setup();
-    const job = await posPrintJob.findUnique();
+    const { gateway, job, posPrintJob, emit } = setup();
     job.customerAttempts = 3;
     job.customerFailureReason = 'CLIENT_OFFLINE';
 
