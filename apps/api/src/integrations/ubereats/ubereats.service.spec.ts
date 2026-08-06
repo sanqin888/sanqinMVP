@@ -3116,6 +3116,11 @@ describe('UberEatsService', () => {
           async (callback: (tx: unknown) => Promise<unknown>) =>
             callback({
               order: {
+                findUnique: jest
+                  .fn()
+                  .mockImplementation(() =>
+                    Promise.resolve({ status: localStatus }),
+                  ),
                 updateMany: jest.fn().mockImplementation(() => {
                   if (!['paid', 'making'].includes(localStatus)) {
                     return Promise.resolve({ count: 0 });
@@ -3160,6 +3165,32 @@ describe('UberEatsService', () => {
           status: 'SUCCEEDED',
           uberRequestId: 'uber-request-1',
         }) as unknown,
+      }),
+    );
+  });
+
+  it('并发推进 ready 时保持幂等且不会把状态回退', async () => {
+    const { prisma } = createReadyPrisma();
+    jest
+      .spyOn(global, 'fetch')
+      .mockImplementation(() =>
+        Promise.resolve(new Response('{}', { status: 200 })),
+      );
+    const service = new UberEatsService(prisma as never, createAuthService());
+
+    const results = await Promise.all([
+      service.syncOrderStatusToUber('ue_ready', 'ready'),
+      service.syncOrderStatusToUber('ue_ready', 'ready'),
+    ]);
+
+    expect(results).toHaveLength(2);
+    expect(results).toEqual([
+      expect.objectContaining({ status: 'ready' }),
+      expect.objectContaining({ status: 'ready' }),
+    ]);
+    expect(prisma.order.findUnique).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: { clientRequestId: 'ubereats:ue_ready' },
       }),
     );
   });
