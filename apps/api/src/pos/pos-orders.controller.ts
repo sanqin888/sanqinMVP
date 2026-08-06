@@ -31,6 +31,24 @@ import { PrintPosPayloadService } from '../orders/print-pos-payload.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PosGateway } from './pos.gateway';
 import { PosOrdersService } from './pos-orders.service';
+import { Type } from 'class-transformer';
+import { IsEnum, IsInt, IsString, Min } from 'class-validator';
+
+class CreateFullRefundDto {
+  @IsString()
+  reason!: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  refundAmountCents!: number;
+
+  @IsEnum(PaymentMethod)
+  originalPaymentMethod!: PaymentMethod;
+
+  @IsEnum(PaymentMethod)
+  refundMethod!: PaymentMethod;
+}
 
 @Controller('pos/orders')
 @UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
@@ -201,5 +219,15 @@ export class PosOrdersController {
       additionalChargeCents: body.additionalChargeCents ?? 0,
       items: body.items ?? [],
     });
+  }
+
+  @Post(':orderStableId/full-refund')
+  @HttpCode(201)
+  fullRefund(
+    @Param('orderStableId', StableIdPipe) orderStableId: string,
+    @Body()
+    body: CreateFullRefundDto,
+  ) {
+    return this.orders.createFullRefund({ orderStableId, ...body });
   }
 }

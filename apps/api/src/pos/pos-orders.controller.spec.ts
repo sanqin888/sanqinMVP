@@ -2,9 +2,10 @@ import { BadRequestException } from '@nestjs/common';
 import { PosOrdersController } from './pos-orders.controller';
 
 describe('PosOrdersController Uber cancellation', () => {
+  const orders = { createFullRefund: jest.fn() };
   const posOrders = { cancelUberOrder: jest.fn() };
   const controller = new PosOrdersController(
-    {} as never,
+    orders as never,
     {} as never,
     {} as never,
     {} as never,
@@ -12,6 +13,28 @@ describe('PosOrdersController Uber cancellation', () => {
   );
 
   beforeEach(() => jest.clearAllMocks());
+
+  it('将 Uber 全额退款金额、原因和渠道原样提交给订单服务', async () => {
+    orders.createFullRefund.mockResolvedValue({
+      order: { orderStableId: 'order_1', status: 'completed' },
+      outcome: 'pending_platform',
+    });
+
+    await controller.fullRefund('order_1', {
+      reason: '顾客取消',
+      refundAmountCents: 2599,
+      originalPaymentMethod: 'UBEREATS' as never,
+      refundMethod: 'UBEREATS' as never,
+    });
+
+    expect(orders.createFullRefund).toHaveBeenCalledWith({
+      orderStableId: 'order_1',
+      reason: '顾客取消',
+      refundAmountCents: 2599,
+      originalPaymentMethod: 'UBEREATS',
+      refundMethod: 'UBEREATS',
+    });
+  });
 
   it('转交原因码和说明给服务层', async () => {
     posOrders.cancelUberOrder.mockResolvedValue({

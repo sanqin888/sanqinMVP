@@ -1,4 +1,4 @@
-import { apiFetch } from '@/lib/api/client';
+import { apiFetch } from "@/lib/api/client";
 
 /**
  * =========================
@@ -24,10 +24,13 @@ export async function fetchOrderById<T = unknown>(id: string) {
 }
 
 // POS: 更新订单状态
-export async function updateOrderStatus<T = unknown>(id: string, status: string) {
+export async function updateOrderStatus<T = unknown>(
+  id: string,
+  status: string,
+) {
   return apiFetch<T>(`/pos/orders/${enc(id)}/status`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status }),
   });
 }
@@ -35,13 +38,13 @@ export async function updateOrderStatus<T = unknown>(id: string, status: string)
 // POS: 推进状态（如 making -> ready -> completed）
 export async function advanceOrder<T = unknown>(id: string) {
   return apiFetch<T>(`/pos/orders/${enc(id)}/advance`, {
-    method: 'POST',
+    method: "POST",
   });
 }
 
 export type CancelUberOrderResult = {
   ok: boolean;
-  outcome: 'confirmed' | 'queued';
+  outcome: "confirmed" | "queued";
   duplicate: boolean;
 };
 
@@ -49,11 +52,14 @@ export async function cancelUberOrder(
   id: string,
   input: { reasonCode: string; reasonDetail: string },
 ) {
-  return apiFetch<CancelUberOrderResult>(`/pos/orders/${enc(id)}/uber-cancellation`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
+  return apiFetch<CancelUberOrderResult>(
+    `/pos/orders/${enc(id)}/uber-cancellation`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 // POS: 看板/队列（如果你前端有用到）
@@ -64,20 +70,20 @@ export async function fetchOrderBoard<T = unknown>(params: {
   sinceMinutes?: number;
 }) {
   const qs = new URLSearchParams();
-  if (params.status) qs.set('status', params.status);
-  if (params.channel) qs.set('channel', params.channel);
-  if (typeof params.limit === 'number') qs.set('limit', String(params.limit));
-  if (typeof params.sinceMinutes === 'number') {
-    qs.set('sinceMinutes', String(params.sinceMinutes));
+  if (params.status) qs.set("status", params.status);
+  if (params.channel) qs.set("channel", params.channel);
+  if (typeof params.limit === "number") qs.set("limit", String(params.limit));
+  if (typeof params.sinceMinutes === "number") {
+    qs.set("sinceMinutes", String(params.sinceMinutes));
   }
 
-  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
   return apiFetch<T>(`/pos/orders/board${suffix}`);
 }
 
 /* ========= Amendments ========= */
 
-export type OrderAmendmentItemAction = 'VOID' | 'ADD';
+export type OrderAmendmentItemAction = "VOID" | "ADD";
 
 export type CreateOrderAmendmentItemInput = {
   action: OrderAmendmentItemAction;
@@ -93,13 +99,44 @@ export type CreateOrderAmendmentItemInput = {
 };
 
 export type CreateOrderAmendmentType =
-  | 'RETENDER'
-  | 'VOID_ITEM'
-  | 'SWAP_ITEM'
-  | 'ADDITIONAL_CHARGE';
+  | "RETENDER"
+  | "VOID_ITEM"
+  | "SWAP_ITEM"
+  | "ADDITIONAL_CHARGE";
 
 // ✅ 直接对齐后端枚举（无需映射）
-export type PaymentMethod = 'CASH' | 'CARD' | 'WECHAT_ALIPAY' | 'STORE_BALANCE' | 'UBEREATS';
+export type PaymentMethod =
+  | "CASH"
+  | "CARD"
+  | "WECHAT_ALIPAY"
+  | "STORE_BALANCE"
+  | "UBEREATS";
+
+export type CreateFullRefundInput = {
+  reason: string;
+  refundAmountCents: number;
+  originalPaymentMethod: PaymentMethod;
+  refundMethod: PaymentMethod;
+};
+
+export type FullRefundResult<T> = {
+  order: T;
+  outcome: "pending_platform" | "pending_manual" | "refunded";
+};
+
+export async function createFullRefund<T = unknown>(
+  orderStableId: string,
+  payload: CreateFullRefundInput,
+) {
+  return apiFetch<FullRefundResult<T>>(
+    `/pos/orders/${enc(orderStableId)}/full-refund`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+}
 
 export type CreateOrderAmendmentInput = {
   type: CreateOrderAmendmentType;
@@ -118,8 +155,8 @@ export async function createOrderAmendment<T = unknown>(
   payload: CreateOrderAmendmentInput,
 ) {
   return apiFetch<T>(`/pos/orders/${enc(orderId)}/amendments`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
 }
@@ -128,15 +165,15 @@ export async function createOrderAmendment<T = unknown>(
 export async function printOrderCloud<T = unknown>(
   stableId: string,
   payload?: {
-    locale?: 'zh' | 'en';
+    locale?: "zh" | "en";
     targets?: { customer?: boolean; kitchen?: boolean };
     cashReceivedCents?: number;
     cashChangeCents?: number;
   },
 ) {
   return apiFetch<T>(`/pos/orders/${enc(stableId)}/print`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload ?? {}),
   });
 }
@@ -149,17 +186,20 @@ export type OrderPrintStatus = {
 } | null;
 
 export async function fetchOrderPrintStatus(stableId: string) {
-  return apiFetch<OrderPrintStatus>(`/pos/orders/${enc(stableId)}/print-status`);
+  return apiFetch<OrderPrintStatus>(
+    `/pos/orders/${enc(stableId)}/print-status`,
+  );
 }
 
 // POS: 云端打印当日小结
-export async function printSummaryCloud<T = unknown>(params: Record<string, string>) {
+export async function printSummaryCloud<T = unknown>(
+  params: Record<string, string>,
+) {
   const qs = new URLSearchParams(params).toString();
   return apiFetch<T>(`/pos/summary/print?${qs}`, {
-    method: 'POST',
+    method: "POST",
   });
 }
-
 
 export type PosCustomerOrderingStatus = {
   isTemporarilyClosed: boolean;
@@ -167,22 +207,22 @@ export type PosCustomerOrderingStatus = {
 };
 
 export async function fetchPosCustomerOrderingStatus() {
-  return apiFetch<PosCustomerOrderingStatus>('/pos/store-status');
+  return apiFetch<PosCustomerOrderingStatus>("/pos/store-status");
 }
 
 export async function pauseCustomerOrderingFromPos(payload: {
   durationMinutes?: number;
   untilTomorrow?: boolean;
 }) {
-  return apiFetch<PosCustomerOrderingStatus>('/pos/store-status/pause', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+  return apiFetch<PosCustomerOrderingStatus>("/pos/store-status/pause", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
 }
 
 export async function resumeCustomerOrderingFromPos() {
-  return apiFetch<PosCustomerOrderingStatus>('/pos/store-status/resume', {
-    method: 'POST',
+  return apiFetch<PosCustomerOrderingStatus>("/pos/store-status/resume", {
+    method: "POST",
   });
 }
