@@ -3367,7 +3367,7 @@ describe('UberEatsService', () => {
       uberPublishedMenuItem: {
         createMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
-      $transaction: jest.fn(async (callback: (tx: unknown) => unknown) =>
+      $transaction: jest.fn((callback: (tx: unknown) => unknown) =>
         callback(prisma),
       ),
     });
