@@ -25,20 +25,25 @@ describe('PosGateway durable print delivery', () => {
   };
 
   function setup(connected = true) {
-    let job = { ...baseJob } as Record<string, any>;
+    const job: Record<string, unknown> = { ...baseJob };
     const emit = jest.fn();
     const posPrintJob = {
       upsert: jest.fn().mockImplementation(() => Promise.resolve(job)),
       findUnique: jest.fn().mockImplementation(() => Promise.resolve(job)),
       findMany: jest.fn().mockImplementation(() => Promise.resolve([job])),
       findFirst: jest.fn().mockImplementation(() => Promise.resolve(job)),
-      update: jest.fn().mockImplementation(({ data }) => {
+      update: jest.fn().mockImplementation(({ data }: { data: unknown }) => {
         for (const [key, value] of Object.entries(
-          data as Record<string, any>,
+          data as Record<string, unknown>,
         )) {
+          const currentValue = job[key];
           job[key] =
-            value && typeof value === 'object' && 'increment' in value
-              ? (job[key] ?? 0) + value.increment
+            value !== null &&
+            typeof value === 'object' &&
+            'increment' in value &&
+            typeof value.increment === 'number' &&
+            typeof currentValue === 'number'
+              ? currentValue + value.increment
               : value;
         }
         return Promise.resolve(job);
@@ -84,7 +89,7 @@ describe('PosGateway durable print delivery', () => {
         create: expect.objectContaining({
           customerRequested: true,
           kitchenRequested: true,
-        }),
+        }) as unknown,
       }),
     );
     expect(emit).toHaveBeenCalledWith(
@@ -110,7 +115,7 @@ describe('PosGateway durable print delivery', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           customerFailureReason: 'CLIENT_OFFLINE',
-        }),
+        }) as unknown,
       }),
     );
     expect(emit).not.toHaveBeenCalled();
@@ -138,12 +143,16 @@ describe('PosGateway durable print delivery', () => {
 
     expect(posPrintJob.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ customerStatus: 'COMPLETED' }),
+        data: expect.objectContaining({
+          customerStatus: 'COMPLETED',
+        }) as unknown,
       }),
     );
     expect(posPrintJob.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ kitchenFailureReason: 'paper jam' }),
+        data: expect.objectContaining({
+          kitchenFailureReason: 'paper jam',
+        }) as unknown,
       }),
     );
     expect(emit).toHaveBeenCalledTimes(1);
