@@ -538,6 +538,9 @@ model OrderItem {
   externalLineId              String?
   externalSpecialInstructions String?
   externalLineTotalCents      Int?
+  publishedPriceCents         Int?
+  uberBasePriceCents          Int?
+  priceVarianceCents          Int?
   order                       Order                   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   uberModifiers               UberOrderItemModifier[]
 
