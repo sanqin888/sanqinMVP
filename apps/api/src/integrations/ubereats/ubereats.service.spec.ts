@@ -3455,7 +3455,7 @@ describe('UberEatsService', () => {
         ok: true,
         localStatus: 'ready',
         uberSyncStatus: savedStatus,
-        actionResult: expect.objectContaining({ retryable }),
+        actionResult: expect.objectContaining({ retryable }) as unknown,
       });
       expect(uberOrderAction.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -3487,11 +3487,14 @@ describe('UberEatsService', () => {
         status: 'FAILED',
         retryable: true,
         actionId: 'ready_action',
-      }),
+      }) as unknown,
     });
     expect(uberOrderAction.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ status: 'FAILED', retryable: true }),
+        data: expect.objectContaining({
+          status: 'FAILED',
+          retryable: true,
+        }) as unknown,
       }),
     );
   });
