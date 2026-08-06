@@ -350,6 +350,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
     return {
       locale: 'zh',
       orderNumber: order.clientRequestId ?? order.orderStableId,
+      customerName: null,
       pickupCode: order.pickupCode,
       fulfillment: order.fulfillmentType,
       paymentMethod,

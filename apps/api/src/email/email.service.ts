@@ -282,14 +282,26 @@ export class EmailService {
                 .map((group) => {
                   const groupName =
                     locale === 'zh'
-                      ? (group.nameZh ?? group.nameEn)
-                      : group.nameEn;
+                      ? (group.nameZh ??
+                        group.displayName ??
+                        group.nameEn ??
+                        group.templateGroupStableId)
+                      : (group.nameEn ??
+                        group.displayName ??
+                        group.nameZh ??
+                        group.templateGroupStableId);
                   const choices = group.choices
                     .map((choice) => {
                       const choiceName =
                         locale === 'zh'
-                          ? (choice.nameZh ?? choice.nameEn)
-                          : choice.nameEn;
+                          ? (choice.nameZh ??
+                            choice.displayName ??
+                            choice.nameEn ??
+                            choice.stableId)
+                          : (choice.nameEn ??
+                            choice.displayName ??
+                            choice.nameZh ??
+                            choice.stableId);
                       const delta =
                         choice.priceDeltaCents !== 0
                           ? ` (${choice.priceDeltaCents > 0 ? '+' : '-'}${this.formatCurrency(
@@ -495,13 +507,27 @@ export class EmailService {
         const optionLines = options
           .map((group) => {
             const groupName =
-              locale === 'zh' ? (group.nameZh ?? group.nameEn) : group.nameEn;
+              locale === 'zh'
+                ? (group.nameZh ??
+                  group.displayName ??
+                  group.nameEn ??
+                  group.templateGroupStableId)
+                : (group.nameEn ??
+                  group.displayName ??
+                  group.nameZh ??
+                  group.templateGroupStableId);
             const choices = group.choices
               .map((choice) => {
                 const choiceName =
                   locale === 'zh'
-                    ? (choice.nameZh ?? choice.nameEn)
-                    : choice.nameEn;
+                    ? (choice.nameZh ??
+                      choice.displayName ??
+                      choice.nameEn ??
+                      choice.stableId)
+                    : (choice.nameEn ??
+                      choice.displayName ??
+                      choice.nameZh ??
+                      choice.stableId);
                 const delta =
                   choice.priceDeltaCents !== 0
                     ? ` (${choice.priceDeltaCents > 0 ? '+' : '-'}${this.formatCurrency(
