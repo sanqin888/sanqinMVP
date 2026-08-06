@@ -120,6 +120,108 @@ const createNestedMenuPrisma = (templates: unknown[]) => ({
   opsEvent: { create: jest.fn().mockResolvedValue(null) },
 });
 
+describe('syncUberMenuItemAvailability', () => {
+  beforeEach(() => {
+    process.env.UBER_EATS_OAUTH_STATE_SECRET =
+      'high-entropy-test-secret-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    process.env.UBER_EATS_WEBHOOK_SIGNING_KEY = 'test-ubereats-secret';
+  });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  function subject(configs: Array<Record<string, unknown>>) {
+    const prisma = {
+      menuItem: {
+        findUnique: jest.fn().mockResolvedValue({ stableId: 'dish-1' }),
+      },
+      uberItemChannelConfig: {
+        findMany: jest.fn().mockResolvedValue(configs),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      uberStoreMapping: {
+        findMany: jest.fn().mockResolvedValue([
+          { posExternalStoreId: 'pos-1', uberStoreId: 'uber-1' },
+          { posExternalStoreId: 'pos-2', uberStoreId: 'uber-2' },
+        ]),
+      },
+      uberOpsTicket: { create: jest.fn().mockResolvedValue({}) },
+      opsEvent: { create: jest.fn().mockResolvedValue({}) },
+    };
+    const service = new UberEatsService(prisma as never, {} as never);
+    return { prisma, service };
+  }
+
+  it.each([
+    ['当日售罄', false],
+    ['永久下架', false],
+    ['恢复销售', true],
+  ])('%s 会保存状态并提交可靠的菜单发布任务', async (_name, available) => {
+    const { prisma, service } = subject([
+      { storeId: 'pos-1', uberStoreId: 'uber-1', externalItemId: 'item-1' },
+    ]);
+    jest.spyOn(service, 'publishUberMenu').mockResolvedValue({
+      versionStableId: 'version-1',
+    } as never);
+
+    const result = await service.syncUberMenuItemAvailability({
+      menuItemStableId: 'dish-1',
+      isAvailable: available,
+    });
+
+    expect(result.status).toBe('PENDING');
+    expect(prisma.uberItemChannelConfig.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { isAvailable: available } }),
+    );
+  });
+
+  it('未配置 Uber 商品时明确跳过，而不使用 default 门店', async () => {
+    const { prisma, service } = subject([]);
+    const result = await service.syncUberMenuItemAvailability({
+      menuItemStableId: 'dish-1',
+      isAvailable: false,
+    });
+    expect(result).toEqual({ status: 'SKIPPED_NOT_PUBLISHED', stores: [] });
+    expect(prisma.uberItemChannelConfig.findMany).toHaveBeenCalledWith({
+      where: { menuItemStableId: 'dish-1' },
+    });
+  });
+
+  it('上游失败会返回 FAILED 并保留可重试运营工单', async () => {
+    const { prisma, service } = subject([
+      { storeId: 'pos-1', uberStoreId: 'uber-1', externalItemId: 'item-1' },
+    ]);
+    jest
+      .spyOn(service, 'publishUberMenu')
+      .mockRejectedValue(new Error('upstream'));
+    const result = await service.syncUberMenuItemAvailability({
+      menuItemStableId: 'dish-1',
+      isAvailable: false,
+    });
+    expect(result.status).toBe('FAILED');
+    expect(prisma.uberOpsTicket.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ lastError: 'upstream' }) as unknown,
+      }),
+    );
+  });
+
+  it('多门店会向每个已 provision 的商品映射分别发布', async () => {
+    const { service } = subject([
+      { storeId: 'pos-1', uberStoreId: 'uber-1', externalItemId: 'item-1' },
+      { storeId: 'pos-2', uberStoreId: 'uber-2', externalItemId: 'item-2' },
+    ]);
+    const publish = jest.spyOn(service, 'publishUberMenu').mockResolvedValue({
+      versionStableId: 'version',
+    } as never);
+    const result = await service.syncUberMenuItemAvailability({
+      menuItemStableId: 'dish-1',
+      isAvailable: true,
+    });
+    expect(result.stores).toHaveLength(2);
+    expect(publish).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('UberEatsService 门店状态同步', () => {
   const auth = () =>
     ({ getAccessToken: jest.fn().mockResolvedValue('status-token') }) as never;
