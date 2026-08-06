@@ -30,6 +30,7 @@ import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { PrintPosPayloadService } from '../orders/print-pos-payload.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PosGateway } from './pos.gateway';
+import { PosOrdersService } from './pos-orders.service';
 
 @Controller('pos/orders')
 @UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
@@ -40,6 +41,7 @@ export class PosOrdersController {
     private readonly printPosPayloadService: PrintPosPayloadService,
     private readonly eventEmitter: EventEmitter2,
     private readonly posGateway: PosGateway,
+    private readonly posOrders: PosOrdersService,
   ) {}
 
   @Post()
@@ -156,7 +158,7 @@ export class PosOrdersController {
   advance(
     @Param('orderStableId', StableIdPipe) orderStableId: string,
   ): Promise<OrderDto> {
-    return this.orders.advance(orderStableId);
+    return this.posOrders.advance(orderStableId);
   }
 
   @Post(':orderStableId/amendments')

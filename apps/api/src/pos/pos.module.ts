@@ -11,6 +11,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { PosStoreStatusController } from './pos-store-status.controller';
 import { PosStoreStatusService } from './pos-store-status.service';
 import { UberEatsModule } from '../integrations/ubereats/ubereats.module';
+import { PosOrdersService } from './pos-orders.service';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { UberEatsModule } from '../integrations/ubereats/ubereats.module';
   providers: [
     PosSummaryService,
     PosStoreStatusService,
+    PosOrdersService,
     // PosDeviceService, PosDeviceGuard 已经移走
     RolesGuard,
   ],

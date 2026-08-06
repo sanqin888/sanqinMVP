@@ -1102,10 +1102,19 @@ export class UberEatsService {
         },
         data: { status, readyAt: new Date() },
       });
-      if (!transition.count && order.status !== OrderStatus.ready) {
-        throw new BadRequestException(
-          'Uber 订单必须先接单，且状态不能并发回退',
-        );
+      if (!transition.count) {
+        // The status read before opening the transaction can be stale when two
+        // POS devices click at once. Re-read under this transaction so an
+        // already-ready order is an idempotent success, never a regression.
+        const current = await tx.order.findUnique({
+          where: { id: order.id },
+          select: { status: true },
+        });
+        if (current?.status !== OrderStatus.ready) {
+          throw new BadRequestException(
+            'Uber 订单必须先接单，且状态不能并发回退',
+          );
+        }
       }
       await tx.uberOrderAction.upsert({
         where: { externalOrderId_action: { externalOrderId, action } },
