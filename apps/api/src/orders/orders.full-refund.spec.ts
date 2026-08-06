@@ -61,8 +61,8 @@ describe('OrdersService.createFullRefund', () => {
           originalChannel: Channel.ubereats,
           originalPaymentMethod: PaymentMethod.UBEREATS,
           refundMethod: PaymentMethod.UBEREATS,
-        }),
-      }),
+        }) as unknown,
+      }) as unknown,
     });
     expect(result.outcome).toBe('pending_platform');
     expect(result.order.status).toBe('completed');
