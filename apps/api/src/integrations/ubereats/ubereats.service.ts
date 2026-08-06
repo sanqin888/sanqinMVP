@@ -3705,7 +3705,7 @@ export class UberEatsService {
         paidAt: Date | null;
       } | null>;
       updateMany?: (args: {
-        where: { id: string; status: OrderStatus };
+        where: { id: string; status: { in: OrderStatus[] } };
         data: { status: OrderStatus; paidAt?: Date; makingAt?: Date };
       }) => Promise<{ count: number }>;
     };
@@ -3722,14 +3722,21 @@ export class UberEatsService {
       select: { id: true, orderStableId: true, status: true, paidAt: true },
     });
 
-    if (!existing || existing.status !== OrderStatus.pending) {
+    if (
+      !existing ||
+      (existing.status !== OrderStatus.pending &&
+        existing.status !== OrderStatus.paid)
+    ) {
       return;
     }
 
     const advancedAt = new Date();
     const targetStatus = OrderStatus.making;
     const result = await orderDelegate.updateMany({
-      where: { id: existing.id, status: OrderStatus.pending },
+      where: {
+        id: existing.id,
+        status: { in: [OrderStatus.pending, OrderStatus.paid] },
+      },
       data: {
         status: targetStatus,
         paidAt: existing.paidAt ?? advancedAt,

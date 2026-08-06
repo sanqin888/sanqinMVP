@@ -34,6 +34,15 @@ export class PosOrdersService {
     const nextStatus = ORDER_STATUS_ADVANCE_FLOW[order.status];
     const externalOrderId = this.getUberWebhookExternalOrderId(order);
 
+    if (order.status === 'pending' && externalOrderId) {
+      const result = await this.uberEats.acceptUberOrder(externalOrderId);
+
+      // ACCEPT owns both the durable outbox action and the atomic pending/paid
+      // -> making transition. Never run the generic pending -> paid path.
+      if (!result.ok) return order;
+      return this.orders.getByStableId(orderStableId);
+    }
+
     if (nextStatus === 'ready' && externalOrderId) {
       const result = await this.uberEats.syncOrderStatusToUber(
         externalOrderId,

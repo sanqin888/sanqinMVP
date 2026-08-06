@@ -1836,8 +1836,14 @@ export default function PosOrdersPage() {
     if (!selectedOrder) return copy.advanceStatus;
     const nextStatus = NEXT_STATUS[selectedOrder.status];
     if (!nextStatus) return copy.advanceTerminal;
+    if (
+      selectedOrder.channel === "ubereats" &&
+      selectedOrder.status === "pending"
+    ) {
+      return locale === "zh" ? "接单" : "Accept";
+    }
     return `→ ${copy.status[nextStatus]}`;
-  }, [copy, selectedOrder]);
+  }, [copy, locale, selectedOrder]);
 
   return (
     <main className="min-h-screen bg-slate-900 text-slate-50">

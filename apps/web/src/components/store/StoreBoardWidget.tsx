@@ -731,7 +731,8 @@ export function StoreBoardWidget(props: { locale: Locale }) {
                 order.channel === "ubereats" ? order.pickupCode : sid;
               const next = NEXT_STATUS[order.status];
               const advanceLabel = next
-                ? order.status === "paid"
+                ? (order.channel === "ubereats" && order.status === "pending") ||
+                  order.status === "paid"
                   ? t.acceptOrder
                   : formatStatus(next, locale)
                 : t.terminal;
