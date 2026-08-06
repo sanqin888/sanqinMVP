@@ -200,7 +200,7 @@ describe('syncUberMenuItemAvailability', () => {
     expect(result.status).toBe('FAILED');
     expect(prisma.uberOpsTicket.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ lastError: 'upstream' }),
+        data: expect.objectContaining({ lastError: 'upstream' }) as unknown,
       }),
     );
   });
