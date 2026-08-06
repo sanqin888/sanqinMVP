@@ -14,6 +14,7 @@ import { MessagingModule } from '../messaging/messaging.module';
 import { NotificationProcessor } from './processors/notification.processor';
 import { FulfillmentProcessor } from './processors/fulfillment.processor';
 import { PrintPosPayloadService } from './print-pos-payload.service';
+import { OrderIngestionService } from './order-ingestion.service';
 
 @Module({
   imports: [
@@ -30,10 +31,11 @@ import { PrintPosPayloadService } from './print-pos-payload.service';
   controllers: [OrdersController],
   providers: [
     OrdersService,
+    OrderIngestionService,
     PrintPosPayloadService,
     NotificationProcessor,
     FulfillmentProcessor,
   ],
-  exports: [OrdersService, PrintPosPayloadService],
+  exports: [OrdersService, OrderIngestionService, PrintPosPayloadService],
 })
 export class OrdersModule {}
