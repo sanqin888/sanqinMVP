@@ -368,7 +368,10 @@ export default function StoreBoardPage() {
       <section className="p-4 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
         {orders.map((order) => {
           const stableId = order.orderStableId;
-          const displayOrderNumber = order.orderNumber ?? stableId;
+          const displayOrderNumber =
+            order.channel === "ubereats"
+              ? order.pickupCode
+              : order.orderNumber ?? stableId;
           const isWeb = order.channel === "web";
           const nextStatus = NEXT_STATUS[order.status];
           const advanceLabel = nextStatus
@@ -391,11 +394,13 @@ export default function StoreBoardPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-xs text-slate-400">{t.orderIdLabel}</div>
-                  <div className="text-sm font-medium text-slate-200">
-                    {displayOrderNumber}
-                  </div>
+                  {displayOrderNumber && (
+                    <div className="text-sm font-medium text-slate-200">
+                      {displayOrderNumber}
+                    </div>
+                  )}
 
-                  {order.pickupCode && (
+                  {order.channel !== "ubereats" && order.pickupCode && (
                     <div className="mt-2 text-sm text-emerald-300">
                       {t.pickupCodeLabel}：
                       <span className="ml-1 text-3xl font-bold text-emerald-200">

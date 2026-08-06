@@ -2,7 +2,7 @@ import { Channel, PaymentMethod } from '@prisma/client';
 import { PrintPosPayloadService } from './print-pos-payload.service';
 
 describe('PrintPosPayloadService', () => {
-  it('maps UBEREATS payment method to ubereats for receipt payload', async () => {
+  it('Uber 收银小票和厨房单共用的打印载荷包含规范取餐码', async () => {
     const prisma = {
       order: {
         findUnique: jest.fn().mockResolvedValue({
@@ -18,7 +18,7 @@ describe('PrintPosPayloadService', () => {
           totalCents: 1000,
           paymentMethod: PaymentMethod.UBEREATS,
           channel: Channel.ubereats,
-          pickupCode: null,
+          pickupCode: 'PIN-2468',
           fulfillmentType: 'pickup',
           taxCents: 0,
           creditCardSurchargeCents: 0,
@@ -33,6 +33,8 @@ describe('PrintPosPayloadService', () => {
     const payload = await service.getByStableId('ord_1');
 
     expect(payload.paymentMethod).toBe('ubereats');
+    expect(payload.pickupCode).toBe('PIN-2468');
+    expect(payload.pickupCode).not.toBe(payload.orderNumber);
   });
 
   it('当存在信用卡附加费时，打印载荷会包含附加费并将总额展示为支付总额', async () => {

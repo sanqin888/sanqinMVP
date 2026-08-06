@@ -725,6 +725,8 @@ export function StoreBoardWidget(props: { locale: Locale }) {
 
             {orders.map((order) => {
               const sid = order.orderStableId;
+              const operatorOrderTitle =
+                order.channel === "ubereats" ? order.pickupCode : sid;
               const next = NEXT_STATUS[order.status];
               const advanceLabel = next
                 ? order.status === "paid"
@@ -767,9 +769,13 @@ export function StoreBoardWidget(props: { locale: Locale }) {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-xs text-slate-400">{sid}</div>
+                      {operatorOrderTitle && (
+                        <div className="text-2xl font-bold text-emerald-200">
+                          {operatorOrderTitle}
+                        </div>
+                      )}
 
-                      {order.pickupCode && (
+                      {order.channel !== "ubereats" && order.pickupCode && (
                         <div className="mt-2 text-sm text-emerald-300">
                           {t.pickupCodeLabel}：
                           <span className="ml-1 text-2xl font-bold text-emerald-200">
