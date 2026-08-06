@@ -161,6 +161,22 @@ export class PosOrdersController {
     return this.posOrders.advance(orderStableId);
   }
 
+  @Post(':orderStableId/uber-cancellation')
+  @HttpCode(200)
+  cancelUberOrder(
+    @Param('orderStableId', StableIdPipe) orderStableId: string,
+    @Body() body: { reasonCode: string; reasonDetail: string },
+  ) {
+    if (!body?.reasonCode?.trim() || !body?.reasonDetail?.trim()) {
+      throw new BadRequestException('Uber 拒单原因码和说明均为必填项');
+    }
+    return this.posOrders.cancelUberOrder(
+      orderStableId,
+      body.reasonCode.trim(),
+      body.reasonDetail.trim(),
+    );
+  }
+
   @Post(':orderStableId/amendments')
   @HttpCode(201)
   createAmendment(
