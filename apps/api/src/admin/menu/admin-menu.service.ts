@@ -23,6 +23,7 @@ import {
 import type { Prisma } from '@prisma/client';
 import { SpecialPricingMode } from '@prisma/client';
 import { UberEatsService } from '../../integrations/ubereats/ubereats.service';
+import type { UberAvailabilitySyncResult } from '../../integrations/ubereats/ubereats.service';
 
 type AvailabilityMode = 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF';
 
@@ -588,7 +589,7 @@ export class AdminMenuService {
       },
     });
 
-    await this.syncUberMenuItemAvailabilitySafely(
+    const uberSync = await this.syncUberMenuItemAvailabilitySafely(
       updated.stableId,
       isAvailableNow(
         availabilityFromDb(updated.isAvailable, updated.tempUnavailableUntil),
@@ -601,6 +602,7 @@ export class AdminMenuService {
       visibility: updated.visibility,
       isVisibleOnMainMenu: updated.isVisibleOnMainMenu,
       tempUnavailableUntil: toIso(updated.tempUnavailableUntil),
+      uberSync,
     };
   }
 
@@ -1034,9 +1036,9 @@ export class AdminMenuService {
   private async syncUberMenuItemAvailabilitySafely(
     menuItemStableId: string,
     isAvailable: boolean,
-  ) {
+  ): Promise<UberAvailabilitySyncResult> {
     try {
-      await this.uberEatsService.syncUberMenuItemAvailability({
+      return await this.uberEatsService.syncUberMenuItemAvailability({
         menuItemStableId,
         isAvailable,
       });
@@ -1045,6 +1047,17 @@ export class AdminMenuService {
       this.logger.warn(
         `Failed to sync Uber menu item availability: item=${menuItemStableId}, isAvailable=${isAvailable}, error=${message}`,
       );
+      return {
+        status: 'FAILED',
+        stores: [
+          {
+            storeId: 'unknown',
+            uberStoreId: null,
+            status: 'FAILED',
+            error: message,
+          },
+        ],
+      };
     }
   }
 

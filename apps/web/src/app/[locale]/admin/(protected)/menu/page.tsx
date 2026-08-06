@@ -19,6 +19,7 @@ type SavingState = {
   itemStableId: string | null;
   error: string | null;
 };
+type UberSyncStatus = 'SYNCED' | 'PENDING' | 'SKIPPED_NOT_PUBLISHED' | 'FAILED';
 
 type AvailabilityTarget = {
   stableId: string;
@@ -124,6 +125,7 @@ export default function AdminMenuPage() {
 
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState<SavingState>({ itemStableId: null, error: null });
+  const [uberSyncByItem, setUberSyncByItem] = useState<Record<string, UberSyncStatus>>({});
 
   const [editingCategoryStableId, setEditingCategoryStableId] = useState<string | null>(null);
   const [categoryEditDrafts, setCategoryEditDrafts] = useState<
@@ -452,11 +454,12 @@ export default function AdminMenuPage() {
     mode: 'ON' | 'TEMP_TODAY_OFF' | 'PERMANENT_OFF',
   ): Promise<void> {
     try {
-      await apiFetch(`/admin/menu/items/${encodeURIComponent(itemStableId)}/availability`, {
+      const result = await apiFetch<{ uberSync: { status: UberSyncStatus } }>(`/admin/menu/items/${encodeURIComponent(itemStableId)}/availability`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode }),
       });
+      setUberSyncByItem((current) => ({ ...current, [itemStableId]: result.uberSync.status }));
       await load();
     } catch (e) {
       alert(e instanceof Error ? e.message : String(e));
@@ -949,6 +952,17 @@ export default function AdminMenuPage() {
                         <div className="text-sm font-semibold">
                           {isZh ? item.nameZh ?? item.nameEn : item.nameEn}
                         </div>
+                        {uberSyncByItem[item.stableId] && (
+                          <div className="mt-1 text-xs text-sky-700" role="status">
+                            {uberSyncByItem[item.stableId] === 'PENDING'
+                              ? isZh ? '本地已下架、Uber 同步中' : 'Saved locally; syncing with Uber'
+                              : uberSyncByItem[item.stableId] === 'FAILED'
+                                ? isZh ? 'Uber 同步失败，可重试' : 'Uber sync failed; retry available'
+                                : uberSyncByItem[item.stableId] === 'SYNCED'
+                                  ? isZh ? 'Uber 同步成功' : 'Uber sync succeeded'
+                                  : isZh ? '未发布到 Uber' : 'Not published to Uber'}
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex gap-2">
