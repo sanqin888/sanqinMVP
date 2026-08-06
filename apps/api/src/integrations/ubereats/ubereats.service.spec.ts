@@ -3044,11 +3044,15 @@ describe('UberEatsService', () => {
         paidAt: new Date('2026-08-03T12:00:00Z'),
       }),
     );
-    prisma.order.updateMany = jest.fn().mockImplementation(({ where }) => {
-      const canAccept = where.status.in.includes(localStatus);
-      if (canAccept) localStatus = 'making';
-      return Promise.resolve({ count: canAccept ? 1 : 0 });
-    });
+    prisma.order.updateMany = jest
+      .fn()
+      .mockImplementation(
+        ({ where }: { where: { status: { in: string[] } } }) => {
+          const canAccept = where.status.in.includes(localStatus);
+          if (canAccept) localStatus = 'making';
+          return Promise.resolve({ count: canAccept ? 1 : 0 });
+        },
+      );
     const bus = { emitOrderAccepted: jest.fn() };
     const fetchSpy = jest
       .spyOn(global, 'fetch')
