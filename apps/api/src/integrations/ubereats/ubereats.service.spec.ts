@@ -3363,6 +3363,14 @@ describe('UberEatsService', () => {
     Object.assign(prisma.uberMenuPublishVersion, {
       update: jest.fn().mockResolvedValue(null),
     });
+    Object.assign(prisma, {
+      uberPublishedMenuItem: {
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      $transaction: jest.fn(async (callback: (tx: unknown) => unknown) =>
+        callback(prisma),
+      ),
+    });
     const authService = createAuthService() as unknown as {
       getAccessToken: jest.Mock<Promise<string>, [string?]>;
     };
@@ -4122,5 +4130,88 @@ describe('UberEatsService', () => {
       );
       expect(issue).toHaveProperty('sourceStableId');
     });
+  });
+});
+
+describe('UberEatsService 已发布菜单商品映射', () => {
+  const resolve = async (
+    externalItemId: string,
+    overrides: Record<string, unknown> = {},
+    stableIdHint?: string,
+  ) => {
+    const tx = {
+      uberPublishedMenuItem: { findFirst: jest.fn().mockResolvedValue(null) },
+      menuItem: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+      uberItemChannelConfig: { findFirst: jest.fn().mockResolvedValue(null) },
+      ...overrides,
+    };
+    const service = Object.create(UberEatsService.prototype) as UberEatsService;
+    const value = await (
+      service as unknown as {
+        resolveUberProductStableId: (
+          client: unknown,
+          storeId: string,
+          item: unknown,
+        ) => Promise<string>;
+      }
+    ).resolveUberProductStableId(tx, 'uber-store-1', {
+      externalItemId,
+      stableIdHint,
+      displayName: '商品',
+    });
+    return { value, tx };
+  };
+
+  it.each([
+    ['当前版本', 'menu-current'],
+    ['上一发布版本', 'menu-previous'],
+  ])('优先使用%s的最近快照', async (_label, stableId) => {
+    const findFirst = jest
+      .fn()
+      .mockResolvedValue({ menuItemStableId: stableId });
+    const { value } = await resolve('sanq:item-id', {
+      uberPublishedMenuItem: { findFirst },
+    });
+
+    expect(value).toBe(stableId);
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { publishedAt: 'desc' } }),
+    );
+  });
+
+  it('同一商品多版本价格不影响最近快照的稳定 ID 映射', async () => {
+    const { value } = await resolve('sanq:item-id', {
+      uberPublishedMenuItem: {
+        findFirst: jest.fn().mockResolvedValue({ menuItemStableId: 'menu-1' }),
+      },
+    });
+    expect(value).toBe('menu-1');
+  });
+
+  it('快照缺失时回退到确定性 hash', async () => {
+    const stableId = 'menu-hash';
+    const externalItemId = `sanq:${createHash('sha1')
+      .update(`item:uber-store-1:${stableId}`)
+      .digest('hex')
+      .slice(0, 24)}`;
+    const { value } = await resolve(externalItemId, {
+      menuItem: {
+        findMany: jest.fn().mockResolvedValue([{ stableId }]),
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+    });
+    expect(value).toBe(stableId);
+  });
+
+  it('未知 sanq ID 最后仍可使用历史渠道配置', async () => {
+    const { value } = await resolve('sanq:unknown', {
+      uberItemChannelConfig: {
+        findFirst: jest.fn().mockResolvedValue({ menuItemStableId: 'legacy' }),
+      },
+    });
+    expect(value).toBe('legacy');
   });
 });
