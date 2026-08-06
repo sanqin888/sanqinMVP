@@ -42,6 +42,20 @@ export async function advanceOrder<T = unknown>(id: string) {
   });
 }
 
+export type PosAdvanceResult<T> = T & {
+  uberActionStatus: "PENDING" | "SUCCEEDED" | "FAILED" | null;
+  retryable: boolean;
+  actionId: string | null;
+  errorSummary: string | null;
+};
+
+export async function retryUberOrderSync<T = unknown>(id: string) {
+  return apiFetch<PosAdvanceResult<T>>(
+    `/pos/orders/${enc(id)}/uber-sync/retry`,
+    { method: "POST" },
+  );
+}
+
 // POS: 看板/队列（如果你前端有用到）
 export async function fetchOrderBoard<T = unknown>(params: {
   status?: string; // comma-separated
