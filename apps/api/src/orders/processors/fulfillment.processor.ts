@@ -106,8 +106,10 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
     const order = await this.prisma.order.findUnique({
       where: { id: payload.orderId },
       select: {
+        id: true,
         orderStableId: true,
         channel: true,
+        storeId: true,
       },
     });
 
@@ -128,8 +130,19 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       'zh',
     );
 
-    const storeId = process.env.STORE_ID || 'default_store';
-    this.posGateway.sendPrintJob(storeId, printPayload);
+    if (!order.storeId) {
+      this.logger.error(
+        `[Fulfillment] Order has no POS store mapping: ${payload.orderId}`,
+      );
+      return;
+    }
+    await this.posGateway.sendPrintJob({
+      orderId: order.id,
+      orderStableId: order.orderStableId,
+      storeId: order.storeId,
+      kind: 'AUTO',
+      data: { ...printPayload, targets: { customer: true, kitchen: true } },
+    });
   };
 
   constructor(
@@ -166,16 +179,31 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       'zh',
     );
 
-    const storeId = process.env.STORE_ID || 'default_store';
-    this.posGateway.sendPrintJob(storeId, {
-      ...printPayload,
-      ...(payload.targets ? { targets: payload.targets } : {}),
-      ...(typeof payload.cashReceivedCents === 'number'
-        ? { cashReceivedCents: payload.cashReceivedCents }
-        : {}),
-      ...(typeof payload.cashChangeCents === 'number'
-        ? { cashChangeCents: payload.cashChangeCents }
-        : {}),
+    const order = await this.prisma.order.findUnique({
+      where: { orderStableId: payload.orderStableId },
+      select: { id: true, storeId: true },
+    });
+    if (!order?.storeId) {
+      this.logger.error(
+        `[Fulfillment] Order has no POS store mapping: ${payload.orderStableId}`,
+      );
+      return;
+    }
+    await this.posGateway.sendPrintJob({
+      orderId: order.id,
+      orderStableId: payload.orderStableId,
+      storeId: order.storeId,
+      kind: `REPRINT:${Date.now()}`,
+      data: {
+        ...printPayload,
+        ...(payload.targets ? { targets: payload.targets } : {}),
+        ...(typeof payload.cashReceivedCents === 'number'
+          ? { cashReceivedCents: payload.cashReceivedCents }
+          : {}),
+        ...(typeof payload.cashChangeCents === 'number'
+          ? { cashChangeCents: payload.cashChangeCents }
+          : {}),
+      },
     });
   }
 

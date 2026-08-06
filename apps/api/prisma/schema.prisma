@@ -429,6 +429,9 @@ model Order {
   externalOrderNotes         String?
   externalEstimatedReadyAt   DateTime?
   externalPriceVarianceCents Int                     @default(0)
+  /// POS room identifier; for Uber orders this is UberStoreMapping.posExternalStoreId.
+  storeId                    String?
+  printJobs                  PosPrintJob[]
   amendments                 OrderAmendment[]
   items                      OrderItem[]
   uberCancellations          UberOrderCancellation[]
@@ -437,6 +440,33 @@ model Order {
   @@index([contactPhone, createdAt])
   @@index([rebillGroupId])
   @@index([userId, createdAt])
+}
+
+model PosPrintJob {
+  id                    String    @id @default(uuid()) @db.Uuid
+  jobId                 String    @unique
+  orderId               String    @db.Uuid
+  orderStableId         String
+  storeId               String
+  kind                  String    @default("AUTO")
+  payload               Json
+  customerRequested     Boolean   @default(true)
+  kitchenRequested      Boolean   @default(true)
+  customerStatus        String    @default("PENDING")
+  kitchenStatus         String    @default("PENDING")
+  customerAttempts      Int       @default(0)
+  kitchenAttempts       Int       @default(0)
+  customerFailureReason String?
+  kitchenFailureReason  String?
+  customerCompletedAt   DateTime?
+  kitchenCompletedAt    DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  order                 Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderStableId, kind])
+  @@index([storeId, customerStatus, kitchenStatus])
+  @@index([orderStableId, createdAt])
 }
 
 model Coupon {

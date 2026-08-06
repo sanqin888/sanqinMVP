@@ -29,6 +29,7 @@ import type { PrintPosPayloadDto } from './dto/print-pos-payload.dto';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { PrintPosPayloadService } from '../orders/print-pos-payload.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { PosGateway } from './pos.gateway';
 
 @Controller('pos/orders')
 @UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
@@ -38,6 +39,7 @@ export class PosOrdersController {
     private readonly orders: OrdersService,
     private readonly printPosPayloadService: PrintPosPayloadService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly posGateway: PosGateway,
   ) {}
 
   @Post()
@@ -105,6 +107,11 @@ export class PosOrdersController {
     @Query('locale') locale?: string,
   ): Promise<PrintPosPayloadDto> {
     return this.printPosPayloadService.getByStableId(orderStableId, locale);
+  }
+
+  @Get(':orderStableId/print-status')
+  getPrintStatus(@Param('orderStableId', StableIdPipe) orderStableId: string) {
+    return this.posGateway.getOrderPrintStatus(orderStableId);
   }
 
   @Post(':orderStableId/print')

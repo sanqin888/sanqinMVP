@@ -123,6 +123,17 @@ export async function printOrderCloud<T = unknown>(
   });
 }
 
+export type OrderPrintStatus = {
+  customerStatus: string;
+  kitchenStatus: string;
+  customerFailureReason?: string | null;
+  kitchenFailureReason?: string | null;
+} | null;
+
+export async function fetchOrderPrintStatus(stableId: string) {
+  return apiFetch<OrderPrintStatus>(`/pos/orders/${enc(stableId)}/print-status`);
+}
+
 // POS: 云端打印当日小结
 export async function printSummaryCloud<T = unknown>(params: Record<string, string>) {
   const qs = new URLSearchParams(params).toString();

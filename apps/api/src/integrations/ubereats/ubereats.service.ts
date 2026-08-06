@@ -5996,6 +5996,7 @@ export class UberEatsService {
         externalOrderNotes: order.specialInstructions,
         externalEstimatedReadyAt: order.estimatedReadyAt,
         externalPriceVarianceCents: amountValidation.totalVarianceCents,
+        storeId: await this.resolvePosStoreId(order.storeId ?? ''),
       };
       const saved = existing
         ? await tx.order.update({ where: { id: existing.id }, data: header })
@@ -6146,6 +6147,24 @@ export class UberEatsService {
       itemPriceComparisons,
     });
     return result;
+  }
+
+  private async resolvePosStoreId(uberStoreId: string): Promise<string> {
+    const delegate = (
+      this.prisma as unknown as {
+        uberStoreMapping?: {
+          findUnique(
+            args: unknown,
+          ): Promise<{ posExternalStoreId: string | null } | null>;
+        };
+      }
+    ).uberStoreMapping;
+    if (!delegate) return uberStoreId;
+    const mapping = await delegate.findUnique({
+      where: { uberStoreId },
+      select: { posExternalStoreId: true },
+    });
+    return mapping?.posExternalStoreId?.trim() || uberStoreId;
   }
 
   private async resolvePublishedPriceCents(
