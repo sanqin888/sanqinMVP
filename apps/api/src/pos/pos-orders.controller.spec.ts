@@ -1,20 +1,24 @@
-import { BadRequestException } from '@nestjs/common';
 import { PosOrdersController } from './pos-orders.controller';
 
-describe('PosOrdersController Uber cancellation', () => {
+describe('PosOrdersController Uber orders', () => {
   const orders = { createFullRefund: jest.fn() };
-  const posOrders = { cancelUberOrder: jest.fn() };
   const controller = new PosOrdersController(
     orders as never,
     {} as never,
     {} as never,
     {} as never,
-    posOrders as never,
+    {} as never,
   );
 
   beforeEach(() => jest.clearAllMocks());
 
-  it('将 Uber 全额退款金额、原因和渠道原样提交给订单服务', async () => {
+  it('Uber 新订单由 webhook 自动接单，POS 不暴露拒单端点', () => {
+    expect(
+      'cancelUberOrder' in (controller as unknown as Record<string, unknown>),
+    ).toBe(false);
+  });
+
+  it('接单后的 Uber 全额退款仍提交给订单服务处理', async () => {
     orders.createFullRefund.mockResolvedValue({
       order: { orderStableId: 'order_1', status: 'completed' },
       outcome: 'pending_platform',
@@ -34,32 +38,5 @@ describe('PosOrdersController Uber cancellation', () => {
       originalPaymentMethod: 'UBEREATS',
       refundMethod: 'UBEREATS',
     });
-  });
-
-  it('转交原因码和说明给服务层', async () => {
-    posOrders.cancelUberOrder.mockResolvedValue({
-      ok: true,
-      outcome: 'confirmed',
-      duplicate: false,
-    });
-    await controller.cancelUberOrder('order_1', {
-      reasonCode: ' ITEM_SOLD_OUT ',
-      reasonDetail: ' 午餐售罄 ',
-    });
-    expect(posOrders.cancelUberOrder).toHaveBeenCalledWith(
-      'order_1',
-      'ITEM_SOLD_OUT',
-      '午餐售罄',
-    );
-  });
-
-  it.each([
-    { reasonCode: '', reasonDetail: '说明' },
-    { reasonCode: 'TOO_BUSY', reasonDetail: ' ' },
-  ])('拒绝缺失原因字段：%p', (body) => {
-    expect(() => controller.cancelUberOrder('order_1', body)).toThrow(
-      BadRequestException,
-    );
-    expect(posOrders.cancelUberOrder).not.toHaveBeenCalled();
   });
 });

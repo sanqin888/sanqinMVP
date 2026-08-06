@@ -42,26 +42,6 @@ export async function advanceOrder<T = unknown>(id: string) {
   });
 }
 
-export type CancelUberOrderResult = {
-  ok: boolean;
-  outcome: "confirmed" | "queued";
-  duplicate: boolean;
-};
-
-export async function cancelUberOrder(
-  id: string,
-  input: { reasonCode: string; reasonDetail: string },
-) {
-  return apiFetch<CancelUberOrderResult>(
-    `/pos/orders/${enc(id)}/uber-cancellation`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    },
-  );
-}
-
 // POS: 看板/队列（如果你前端有用到）
 export async function fetchOrderBoard<T = unknown>(params: {
   status?: string; // comma-separated
