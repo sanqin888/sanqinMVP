@@ -99,9 +99,10 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
   };
 
   private readonly onAccepted = async (payload: { orderId: string }) => {
-    this.logger.log(
-      `[Fulfillment] Order accepted: ${payload.orderId}. Triggering POS print.`,
-    );
+    this.logger.log({
+      event: 'accepted_order_processing_started',
+      orderId: payload.orderId,
+    });
 
     const order = await this.prisma.order.findUnique({
       where: { id: payload.orderId },
@@ -125,24 +126,60 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const printPayload = await this.printPosPayloadService.getByStableId(
-      order.orderStableId,
-      'zh',
-    );
-
     if (!order.storeId) {
-      this.logger.error(
-        `[Fulfillment] Order has no POS store mapping: ${payload.orderId}`,
-      );
+      this.logger.error({
+        event: 'accepted_print_store_missing',
+        orderId: order.id,
+        orderStableId: order.orderStableId,
+        reason: 'STORE_ID_MISSING',
+      });
       return;
     }
-    await this.posGateway.sendPrintJob({
-      orderId: order.id,
-      orderStableId: order.orderStableId,
-      storeId: order.storeId,
-      kind: 'AUTO',
-      data: { ...printPayload, targets: { customer: true, kitchen: true } },
-    });
+
+    let printPayload: PrintPosPayloadDto;
+    try {
+      printPayload = await this.printPosPayloadService.getByStableId(
+        order.orderStableId,
+        'zh',
+      );
+    } catch (error) {
+      this.logger.error({
+        event: 'accepted_print_payload_failed',
+        orderId: order.id,
+        orderStableId: order.orderStableId,
+        storeId: order.storeId,
+        reason: 'PAYLOAD_BUILD_FAILED',
+        errorType: error instanceof Error ? error.name : 'UnknownError',
+      });
+      return;
+    }
+
+    const targets = { customer: true, kitchen: true };
+    try {
+      const job = await this.posGateway.sendPrintJob({
+        orderId: order.id,
+        orderStableId: order.orderStableId,
+        storeId: order.storeId,
+        kind: 'AUTO',
+        data: { ...printPayload, targets },
+      });
+      this.logger.log({
+        event: 'accepted_print_job_created',
+        orderStableId: order.orderStableId,
+        storeId: order.storeId,
+        jobId: job.jobId,
+        targets,
+      });
+    } catch (error) {
+      this.logger.error({
+        event: 'accepted_print_job_failed',
+        orderId: order.id,
+        orderStableId: order.orderStableId,
+        storeId: order.storeId,
+        reason: 'PRINT_JOB_CREATE_FAILED',
+        errorType: error instanceof Error ? error.name : 'UnknownError',
+      });
+    }
   };
 
   constructor(
@@ -184,16 +221,29 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       where: { orderStableId: payload.orderStableId },
       select: { id: true, storeId: true },
     });
-    if (!order?.storeId) {
+    if (!order) {
       this.logger.error(
-        `[Fulfillment] Order has no POS store mapping: ${payload.orderStableId}`,
+        `[Fulfillment] Reprint order not found: ${payload.orderStableId}`,
       );
       return;
+    }
+    // Orders created before store mapping was persisted have a null storeId.
+    // Keep their established reprint route compatible with the configured POS.
+    const storeId = order.storeId ?? process.env.STORE_ID ?? 'default_store';
+    if (!order.storeId) {
+      this.logger.warn({
+        event: 'reprint_legacy_store_fallback',
+        orderStableId: payload.orderStableId,
+        storeId,
+        reason: process.env.STORE_ID
+          ? 'ORDER_STORE_ID_MISSING_USING_CONFIGURED_STORE'
+          : 'ORDER_STORE_ID_MISSING_USING_DEFAULT_STORE',
+      });
     }
     await this.posGateway.sendPrintJob({
       orderId: order.id,
       orderStableId: payload.orderStableId,
-      storeId: order.storeId,
+      storeId,
       kind: `REPRINT:${Date.now()}`,
       data: {
         ...printPayload,
