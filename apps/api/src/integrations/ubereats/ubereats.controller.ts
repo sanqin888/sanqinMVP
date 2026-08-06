@@ -540,6 +540,13 @@ export class UberEatsController {
     return await this.uberEatsService.listUberItemChannelConfigs(storeId);
   }
 
+  @Get('menu/published/items')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  async listPublishedMenuItems(@Query('storeId') storeId?: string) {
+    return await this.uberEatsService.listUberPublishedMenuItems(storeId);
+  }
+
   @Post('menu/channel/items/:menuItemStableId')
   @UseGuards(SessionAuthGuard, RolesGuard)
   @Roles('ADMIN')

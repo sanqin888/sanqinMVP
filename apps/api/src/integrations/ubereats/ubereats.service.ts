@@ -1469,6 +1469,42 @@ export class UberEatsService {
     };
   }
 
+  async listUberPublishedMenuItems(storeId?: string) {
+    const normalizedStoreId = this.normalizeStoreId(storeId);
+    const items = await (
+      this.prisma as unknown as {
+        uberPublishedMenuItem: { findMany: (args: unknown) => Promise<any[]> };
+      }
+    ).uberPublishedMenuItem.findMany({
+      where: {
+        storeId: normalizedStoreId,
+        publishVersion: {
+          status: {
+            in: [
+              UberMenuPublishStatus.SUBMITTED,
+              UberMenuPublishStatus.SUCCEEDED,
+            ],
+          },
+        },
+      },
+      orderBy: { publishedAt: 'desc' },
+      take: 1000,
+      select: {
+        publishVersionId: true,
+        uberStoreId: true,
+        uberItemId: true,
+        menuItemStableId: true,
+        publishedPriceCents: true,
+        publishedIsAvailable: true,
+        publishedName: true,
+        publishedAt: true,
+        publishVersion: { select: { versionStableId: true, status: true } },
+      },
+    });
+
+    return { storeId: normalizedStoreId, count: items.length, items };
+  }
+
   async listUberOptionItemConfigs(storeId?: string) {
     const normalizedStoreId = this.normalizeStoreId(storeId);
     const items = await this.prisma.uberOptionItemConfig.findMany({
@@ -2273,6 +2309,7 @@ export class UberEatsService {
       uberStoreId,
       summary,
       payload,
+      normalized.graph,
     );
 
     try {
@@ -5726,23 +5763,58 @@ export class UberEatsService {
     uberStoreId: string,
     summary: { totalItems: number; changedItems: number },
     payload: UberMenuUploadPayload,
+    graph: {
+      items: Array<{
+        id: string;
+        sourceStableId: string;
+        priceCents: number;
+        isAvailable: boolean;
+        title: string;
+      }>;
+    },
   ) {
     const checksum = createHash('sha256')
       .update(JSON.stringify(payload))
       .digest('hex');
 
-    const version = await this.prisma.uberMenuPublishVersion.create({
-      data: {
-        storeId,
-        uberStoreId,
-        status: UberMenuPublishStatus.SUBMITTED,
-        totalItems: summary.totalItems,
-        changedItems: summary.changedItems,
-        requestPayload: payload as Prisma.InputJsonValue,
-        payload: payload as Prisma.InputJsonValue,
-        checksum,
-      },
-      select: { id: true, versionStableId: true, createdAt: true },
+    const payloadItemIds = new Set(payload.items.map((item) => item.id));
+    const publishedAt = new Date();
+    const version = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.uberMenuPublishVersion.create({
+        data: {
+          storeId,
+          uberStoreId,
+          status: UberMenuPublishStatus.SUBMITTED,
+          totalItems: summary.totalItems,
+          changedItems: summary.changedItems,
+          requestPayload: payload as Prisma.InputJsonValue,
+          payload: payload as Prisma.InputJsonValue,
+          checksum,
+        },
+        select: { id: true, versionStableId: true, createdAt: true },
+      });
+      await (
+        tx as unknown as {
+          uberPublishedMenuItem: {
+            createMany: (args: unknown) => Promise<unknown>;
+          };
+        }
+      ).uberPublishedMenuItem.createMany({
+        data: graph.items
+          .filter((item) => payloadItemIds.has(item.id))
+          .map((item) => ({
+            publishVersionId: created.id,
+            storeId,
+            uberStoreId,
+            uberItemId: item.id,
+            menuItemStableId: item.sourceStableId,
+            publishedPriceCents: item.priceCents,
+            publishedIsAvailable: item.isAvailable,
+            publishedName: item.title,
+            publishedAt,
+          })),
+      });
+      return created;
     });
 
     return version;
@@ -6034,6 +6106,49 @@ export class UberEatsService {
     storeId: string | null | undefined,
     item: ParsedUberOrderItem,
   ): Promise<string> {
+    if (item.externalItemId?.startsWith('sanq:')) {
+      if (storeId) {
+        const snapshot = await (
+          tx as unknown as {
+            uberPublishedMenuItem: {
+              findFirst: (
+                args: unknown,
+              ) => Promise<{ menuItemStableId: string } | null>;
+            };
+          }
+        ).uberPublishedMenuItem.findFirst({
+          where: {
+            uberStoreId: storeId,
+            uberItemId: item.externalItemId,
+            publishVersion: {
+              status: {
+                in: [
+                  UberMenuPublishStatus.SUBMITTED,
+                  UberMenuPublishStatus.SUCCEEDED,
+                ],
+              },
+            },
+          },
+          orderBy: { publishedAt: 'desc' },
+          select: { menuItemStableId: true },
+        });
+        if (snapshot) return snapshot.menuItemStableId;
+      }
+
+      const localItems = await tx.menuItem.findMany({
+        select: { stableId: true },
+      });
+      const deterministic = localItems.find(
+        (candidate) =>
+          this.buildStableUberNodeId(
+            'item',
+            storeId ?? 'default',
+            candidate.stableId,
+          ) === item.externalItemId,
+      );
+      if (deterministic) return deterministic.stableId;
+    }
+
     const candidates = [item.stableIdHint, item.externalItemId].filter(
       (value): value is string => !!value,
     );
