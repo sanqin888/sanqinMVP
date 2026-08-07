@@ -686,6 +686,9 @@ type UberMerchantConnectionDelegate = {
 };
 
 type UberStoreMappingDelegate = {
+  findUnique(args: {
+    where: { uberStoreId: string };
+  }): Promise<UberStoreMappingRecord | null>;
   findMany(args: {
     orderBy: { uberStoreId: 'asc' | 'desc' };
   }): Promise<UberStoreMappingRecord[]>;
@@ -718,6 +721,10 @@ type UberStoreMappingDelegate = {
       provisionedAt: Date | null;
     };
   }): Promise<{ count: number }>;
+  update(args: {
+    where: { uberStoreId: string };
+    data: { posExternalStoreId: string };
+  }): Promise<UberStoreMappingRecord>;
 };
 
 type CreateOpsTicketInput = UberStoreScopedInput & {
@@ -916,6 +923,48 @@ export class UberEatsService {
         timezone: store.timezone,
       })),
       raw: response,
+    };
+  }
+
+  async updatePosExternalStoreId(
+    uberStoreId: string,
+    posExternalStoreId: string,
+  ) {
+    const normalizedUberStoreId = uberStoreId.trim();
+    const normalizedPosStoreId = posExternalStoreId.trim();
+    if (!normalizedUberStoreId) {
+      throw new BadRequestException('Uber Store ID 不能为空');
+    }
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(normalizedPosStoreId)) {
+      throw new BadRequestException(
+        'POS External Store ID 只能包含字母、数字、下划线和连字符',
+      );
+    }
+
+    const storeMapping = this.uberStoreMappingDelegate;
+    if (!storeMapping) {
+      throw new BadRequestException('Prisma 未配置 uberStoreMapping 模型');
+    }
+    const existing = await storeMapping.findUnique({
+      where: { uberStoreId: normalizedUberStoreId },
+    });
+    if (!existing) {
+      throw new BadRequestException('Uber 门店映射不存在');
+    }
+
+    const mapping = await storeMapping.update({
+      where: { uberStoreId: normalizedUberStoreId },
+      data: { posExternalStoreId: normalizedPosStoreId },
+    });
+    await this.captureEvent('ubereats_pos_store_mapping_updated', {
+      uberStoreId: normalizedUberStoreId,
+      previousPosExternalStoreId: existing.posExternalStoreId,
+      posExternalStoreId: normalizedPosStoreId,
+    });
+    return {
+      ok: true,
+      storeId: mapping.uberStoreId,
+      posExternalStoreId: mapping.posExternalStoreId,
     };
   }
 
@@ -3096,7 +3145,11 @@ export class UberEatsService {
         ...(integrationEnabled
           ? { isProvisioned: true, provisionedAt: new Date() }
           : {}),
-        ...(posExternalStoreId ? { posExternalStoreId } : {}),
+        // Store discovery reports Uber's order-manager client id as the POS
+        // external id. It is useful as an initial fallback, but it must not
+        // overwrite the locally configured POS room used by printer clients.
+        // An explicit provision operation remains authoritative and can still
+        // update this field through upsertStoreMapping.
         rawPayload,
       },
     });
