@@ -3451,19 +3451,23 @@ describe('UberEatsService', () => {
       );
       const service = new UberEatsService(prisma as never, createAuthService());
       const promise = service.syncOrderStatusToUber(`ue_${status}`, 'ready');
+      const actionResultMatcher: unknown = expect.objectContaining({
+        retryable,
+      });
+      const updateDataMatcher: unknown = expect.objectContaining({
+        status: savedStatus,
+        retryable,
+        uberRequestId: `request-${status}`,
+      });
       await expect(promise).resolves.toMatchObject({
         ok: true,
         localStatus: 'ready',
         uberSyncStatus: savedStatus,
-        actionResult: expect.objectContaining({ retryable }) as unknown,
+        actionResult: actionResultMatcher,
       });
       expect(uberOrderAction.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({
-            status: savedStatus,
-            retryable,
-            uberRequestId: `request-${status}`,
-          }) as unknown,
+          data: updateDataMatcher,
         }),
       );
     },
@@ -3477,24 +3481,26 @@ describe('UberEatsService', () => {
         Object.assign(new Error('request timed out'), { name: 'AbortError' }),
       );
     const service = new UberEatsService(prisma as never, createAuthService());
+    const actionResultMatcher: unknown = expect.objectContaining({
+      status: 'FAILED',
+      retryable: true,
+      actionId: 'ready_action',
+    });
+    const updateDataMatcher: unknown = expect.objectContaining({
+      status: 'FAILED',
+      retryable: true,
+    });
 
     await expect(
       service.syncOrderStatusToUber('ue_timeout_ready', 'ready'),
     ).resolves.toMatchObject({
       localStatus: 'ready',
       uberSyncStatus: 'FAILED',
-      actionResult: expect.objectContaining({
-        status: 'FAILED',
-        retryable: true,
-        actionId: 'ready_action',
-      }) as unknown,
+      actionResult: actionResultMatcher,
     });
     expect(uberOrderAction.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
-          status: 'FAILED',
-          retryable: true,
-        }) as unknown,
+        data: updateDataMatcher,
       }),
     );
   });
