@@ -803,13 +803,14 @@ export default function UberEatsAdminPage() {
 
             <div className="rounded-xl border bg-white p-4">
               <h3 className="text-lg font-semibold">C. 商户门店发现 + D. Provision</h3>
+              <p className="mt-1 text-xs text-slate-500">本地打印房间 Store ID 只用于将 Uber 订单路由到打印机，不会修改 Uber 门店的 External Store ID 或 Provision 配置。</p>
               <div className="mt-2 grid gap-2 md:grid-cols-2">
                 <input className="rounded border px-3 py-2" placeholder="SANQ Store ID（integrator_store_id）" value={integratorStoreId} onChange={(e) => setIntegratorStoreId(e.target.value)} />
                 <textarea rows={5} className="rounded border px-3 py-2 font-mono text-xs" value={provisionPayload} onChange={(e) => setProvisionPayload(e.target.value)} />
               </div>
               <div className="mt-3 overflow-x-auto">
                 <table className="min-w-full text-sm">
-                  <thead><tr className="border-b text-left text-slate-500"><th className="px-2 py-2">Uber Store ID</th><th className="px-2 py-2">Store Name</th><th className="px-2 py-2">Location</th><th className="px-2 py-2">Provision</th><th className="px-2 py-2">POS External Store ID</th><th className="px-2 py-2">操作</th></tr></thead>
+                  <thead><tr className="border-b text-left text-slate-500"><th className="px-2 py-2">Uber Store ID</th><th className="px-2 py-2">Store Name</th><th className="px-2 py-2">Location</th><th className="px-2 py-2">Provision</th><th className="px-2 py-2">本地打印房间 Store ID</th><th className="px-2 py-2">操作</th></tr></thead>
                   <tbody>
                     {stores.map((s) => (
                       <tr key={s.storeId} className="border-b last:border-0">
@@ -819,7 +820,7 @@ export default function UberEatsAdminPage() {
                         <td className="px-2 py-2">{s.isProvisioned ? '已 provision' : '未 provision'}</td>
                         <td className="min-w-56 px-2 py-2">
                           <div className="flex gap-2">
-                            <input aria-label={`${s.storeName ?? s.storeId} POS External Store ID`} className="min-w-0 flex-1 rounded border px-2 py-1 font-mono text-xs" value={posStoreIdDrafts[s.storeId] ?? s.posExternalStoreId ?? ''} placeholder="例如 4750_Yonge_Street" onChange={(event) => setPosStoreIdDrafts((current) => ({ ...current, [s.storeId]: event.target.value }))} />
+                            <input aria-label={`${s.storeName ?? s.storeId} 本地打印房间 Store ID`} className="min-w-0 flex-1 rounded border px-2 py-1 font-mono text-xs" value={posStoreIdDrafts[s.storeId] ?? s.posExternalStoreId ?? ''} placeholder="例如 4750_Yonge_Street" onChange={(event) => setPosStoreIdDrafts((current) => ({ ...current, [s.storeId]: event.target.value }))} />
                             <button
                               type="button"
                               className="rounded border px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-40"

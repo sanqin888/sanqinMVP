@@ -1754,10 +1754,7 @@ export class UberEatsService {
     const normalizedStoreId = this.normalizeStoreId(storeId);
     const storeMapping = await this.prisma.uberStoreMapping.findFirst({
       where: {
-        OR: [
-          { posExternalStoreId: normalizedStoreId },
-          { uberStoreId: normalizedStoreId },
-        ],
+        uberStoreId: normalizedStoreId,
         isProvisioned: true,
       },
       select: { uberStoreId: true },
@@ -2497,13 +2494,13 @@ export class UberEatsService {
 
     const mappings = await this.prisma.uberStoreMapping.findMany({
       where: { isProvisioned: true },
-      select: { posExternalStoreId: true, uberStoreId: true },
+      select: { uberStoreId: true },
     });
     const stores: UberAvailabilitySyncResult['stores'] = [];
     for (const config of configs) {
       const mapping = mappings.find(
         (candidate) =>
-          candidate.posExternalStoreId === config.storeId ||
+          candidate.uberStoreId === config.storeId ||
           candidate.uberStoreId === config.uberStoreId,
       );
       if (!mapping || !config.externalItemId) {
@@ -2585,51 +2582,67 @@ export class UberEatsService {
   }
 
   async syncUberOptionItemAvailability(input: SyncOptionAvailabilityInput) {
-    const normalizedStoreId = this.normalizeStoreId(input.storeId);
     await this.ensureOptionChoiceExists(input.optionChoiceStableId);
 
-    const optionConfig = await this.prisma.uberOptionItemConfig.findUnique({
+    const requestedStoreId = input.storeId?.trim();
+    const mappings = await this.prisma.uberStoreMapping.findMany({
       where: {
-        storeId_optionChoiceStableId: {
-          storeId: normalizedStoreId,
-          optionChoiceStableId: input.optionChoiceStableId,
-        },
+        isProvisioned: true,
+        ...(requestedStoreId ? { uberStoreId: requestedStoreId } : {}),
       },
+      select: { uberStoreId: true },
     });
-
-    if (!optionConfig) {
-      throw new BadRequestException(
-        `未找到 ${input.optionChoiceStableId} 的 Uber option 配置，请先配置`,
-      );
+    if (mappings.length === 0) {
+      throw new BadRequestException('未找到已 provision 的 Uber 门店');
+    }
+    const stores: Array<{
+      storeId: string;
+      uberStoreId: string;
+      versionStableId?: string;
+    }> = [];
+    for (const mapping of mappings) {
+      await this.prisma.uberOptionItemConfig.upsert({
+        where: {
+          storeId_optionChoiceStableId: {
+            storeId: mapping.uberStoreId,
+            optionChoiceStableId: input.optionChoiceStableId,
+          },
+        },
+        create: {
+          storeId: mapping.uberStoreId,
+          uberStoreId: mapping.uberStoreId,
+          optionChoiceStableId: input.optionChoiceStableId,
+          isAvailable: input.isAvailable,
+        },
+        update: {
+          uberStoreId: mapping.uberStoreId,
+          isAvailable: input.isAvailable,
+        },
+      });
+      const published = await this.publishUberMenu({
+        storeId: mapping.uberStoreId,
+        dryRun: false,
+        taxRateConfirmed: true,
+        timezoneConfirmed: true,
+      });
+      stores.push({
+        storeId: mapping.uberStoreId,
+        uberStoreId: mapping.uberStoreId,
+        versionStableId: published.versionStableId,
+      });
     }
 
-    const updated = await this.prisma.uberOptionItemConfig.update({
-      where: {
-        storeId_optionChoiceStableId: {
-          storeId: normalizedStoreId,
-          optionChoiceStableId: input.optionChoiceStableId,
-        },
-      },
-      data: {
-        isAvailable: input.isAvailable,
-      },
-      select: {
-        optionChoiceStableId: true,
-        isAvailable: true,
-        updatedAt: true,
-      },
-    });
-
     await this.captureEvent('ubereats_option_item_availability_synced', {
-      storeId: normalizedStoreId,
+      storeId: requestedStoreId ?? null,
       optionChoiceStableId: input.optionChoiceStableId,
-      isAvailable: updated.isAvailable,
+      isAvailable: input.isAvailable,
+      stores,
     });
 
     return {
       ok: true,
-      storeId: normalizedStoreId,
-      item: updated,
+      storeId: requestedStoreId ?? null,
+      stores,
     };
   }
 
@@ -7078,7 +7091,7 @@ export class UberEatsService {
 
     const row = await this.prisma.uberStoreMapping.findFirst({
       where: {
-        OR: [{ posExternalStoreId: storeId }, { uberStoreId: storeId }],
+        uberStoreId: storeId,
         isProvisioned: true,
       },
       select: { uberStoreId: true },
