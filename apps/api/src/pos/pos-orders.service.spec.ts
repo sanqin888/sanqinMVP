@@ -19,7 +19,13 @@ describe('PosOrdersService', () => {
       advance: jest.fn().mockResolvedValue({ ...current, status: 'ready' }),
     };
     const uberEats = {
-      syncOrderStatusToUber: jest.fn().mockResolvedValue({ ok: true }),
+      syncOrderStatusToUber: jest.fn().mockResolvedValue({
+        ok: true,
+        actionResult: { status: 'SUCCEEDED', actionId: 'action_1' },
+      }),
+      acceptUberOrder: jest.fn().mockResolvedValue({ ok: true }),
+      getReadyForPickupAction: jest.fn().mockResolvedValue(null),
+      retryReadyForPickup: jest.fn(),
     };
     return {
       service: new PosOrdersService(
@@ -41,6 +47,62 @@ describe('PosOrdersService', () => {
     expect(uberEats.syncOrderStatusToUber).not.toHaveBeenCalled();
   });
 
+  it('Uber pending 使用 ACCEPT 并直接重新读取 making 订单', async () => {
+    const pending = order({
+      channel: 'ubereats',
+      clientRequestId: 'ubereats:external-123',
+      status: 'pending',
+    });
+    const making = order({
+      channel: 'ubereats',
+      clientRequestId: 'ubereats:external-123',
+      status: 'making',
+    });
+    const { service, orders, uberEats } = setup(pending);
+    orders.getByStableId
+      .mockResolvedValueOnce(pending)
+      .mockResolvedValueOnce(making);
+
+    await expect(service.advance('order_1')).resolves.toMatchObject(making);
+
+    expect(uberEats.acceptUberOrder).toHaveBeenCalledWith('external-123');
+    expect(orders.advance).not.toHaveBeenCalled();
+  });
+
+  it('Uber ACCEPT 失败时不提前推进本地 pending 状态', async () => {
+    const pending = order({
+      channel: 'ubereats',
+      clientRequestId: 'ubereats:external-123',
+      status: 'pending',
+    });
+    const { service, orders, uberEats } = setup(pending);
+    uberEats.acceptUberOrder.mockResolvedValue({ ok: false });
+
+    await expect(service.advance('order_1')).resolves.toMatchObject(pending);
+
+    expect(orders.getByStableId).toHaveBeenCalledTimes(1);
+    expect(orders.advance).not.toHaveBeenCalled();
+  });
+
+  it('两个终端同时点击时都复用 Uber ACCEPT/outbox 而不走通用推进', async () => {
+    const pending = order({
+      channel: 'ubereats',
+      clientRequestId: 'ubereats:external-123',
+      status: 'pending',
+    });
+    const making = { ...pending, status: 'making' } as OrderDto;
+    const { service, orders, uberEats } = setup(pending);
+    orders.getByStableId
+      .mockResolvedValueOnce(pending)
+      .mockResolvedValueOnce(pending)
+      .mockResolvedValue(making);
+
+    await Promise.all([service.advance('order_1'), service.advance('order_1')]);
+
+    expect(uberEats.acceptUberOrder).toHaveBeenCalledTimes(2);
+    expect(orders.advance).not.toHaveBeenCalled();
+  });
+
   it('Uber webhook 订单从 making 到 ready 时委托原子 outbox 同步', async () => {
     const ready = order({
       channel: 'ubereats',
@@ -55,7 +117,7 @@ describe('PosOrdersService', () => {
     );
     orders.getByStableId.mockResolvedValueOnce(ready);
 
-    await expect(service.advance('order_1')).resolves.toBe(ready);
+    await expect(service.advance('order_1')).resolves.toMatchObject(ready);
 
     expect(uberEats.syncOrderStatusToUber).toHaveBeenCalledWith(
       'external-123',
@@ -76,18 +138,65 @@ describe('PosOrdersService', () => {
     expect(orders.advance).not.toHaveBeenCalled();
   });
 
-  it('Uber 临时失败时不绕过 outbox 执行本地推进', async () => {
+  it('Uber 临时失败返回部分成功契约而不是通用 502', async () => {
     const { service, orders, uberEats } = setup(
       order({ channel: 'ubereats', clientRequestId: 'ubereats:external-123' }),
     );
-    uberEats.syncOrderStatusToUber.mockRejectedValue(
-      new Error('temporary Uber failure'),
-    );
+    uberEats.syncOrderStatusToUber.mockResolvedValue({
+      ok: true,
+      actionResult: {
+        status: 'FAILED',
+        retryable: true,
+        actionId: 'ready_action',
+        errorSummary: 'Uber 返回 HTTP 500',
+      },
+    });
+    orders.getByStableId
+      .mockResolvedValueOnce(
+        order({
+          channel: 'ubereats',
+          clientRequestId: 'ubereats:external-123',
+          status: 'making',
+        }),
+      )
+      .mockResolvedValueOnce(
+        order({
+          channel: 'ubereats',
+          clientRequestId: 'ubereats:external-123',
+          status: 'ready',
+        }),
+      );
 
-    await expect(service.advance('order_1')).rejects.toThrow(
-      'temporary Uber failure',
-    );
+    await expect(service.advance('order_1')).resolves.toMatchObject({
+      status: 'ready',
+      uberActionStatus: 'FAILED',
+      retryable: true,
+      actionId: 'ready_action',
+    });
     expect(orders.advance).not.toHaveBeenCalled();
+  });
+
+  it('ready 同步失败后重复点击不会推进 completed', async () => {
+    const ready = order({
+      channel: 'ubereats',
+      clientRequestId: 'ubereats:external-123',
+      status: 'ready',
+    });
+    const { service, orders, uberEats } = setup(ready);
+    uberEats.getReadyForPickupAction.mockResolvedValue({
+      id: 'ready_action',
+      status: 'FAILED',
+      retryable: true,
+      lastError: 'timeout',
+    });
+
+    await expect(service.advance('order_1')).resolves.toMatchObject({
+      status: 'ready',
+      uberActionStatus: 'FAILED',
+      actionId: 'ready_action',
+    });
+    expect(orders.advance).not.toHaveBeenCalled();
+    expect(uberEats.syncOrderStatusToUber).not.toHaveBeenCalled();
   });
 
   it('Uber ready 到 completed 只在本地完成，不构造外部动作', async () => {

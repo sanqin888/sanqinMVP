@@ -68,7 +68,7 @@ export class PosGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const target = payload.target as 'customer' | 'kitchen';
     clearTimeout(this.timers.get(`${payload.jobId}:${target}`));
     this.timers.delete(`${payload.jobId}:${target}`);
-    await this.prisma.posPrintJob.update({
+    const job = await this.prisma.posPrintJob.update({
       where: { jobId: payload.jobId },
       data: payload.success
         ? {
@@ -80,6 +80,16 @@ export class PosGateway implements OnGatewayConnection, OnGatewayDisconnect {
             [`${target}Status`]: 'FAILED',
             [`${target}FailureReason`]: payload.error || 'PRINT_EXCEPTION',
           },
+    });
+    this.logger.log({
+      event: 'pos_print_ack_received',
+      jobId: job.jobId,
+      orderStableId: job.orderStableId,
+      storeId: job.storeId,
+      target,
+      attempt: job[`${target}Attempts`],
+      status: payload.success ? 'COMPLETED' : 'FAILED',
+      reason: payload.success ? null : payload.error || 'PRINT_EXCEPTION',
     });
     if (!payload.success) await this.dispatchTarget(payload.jobId, target);
   }
@@ -115,6 +125,17 @@ export class PosGateway implements OnGatewayConnection, OnGatewayDisconnect {
       },
       update: {},
     });
+    this.logger.log({
+      event: 'pos_print_job_upserted',
+      jobId: job.jobId,
+      orderStableId: job.orderStableId,
+      storeId: job.storeId,
+      targets: {
+        customer: job.customerRequested,
+        kitchen: job.kitchenRequested,
+      },
+      status: { customer: job.customerStatus, kitchen: job.kitchenStatus },
+    });
     await Promise.all(
       (['customer', 'kitchen'] as const).map((target) =>
         this.dispatchTarget(job.jobId, target),
@@ -135,6 +156,12 @@ export class PosGateway implements OnGatewayConnection, OnGatewayDisconnect {
       orderBy: { createdAt: 'asc' },
       take: 100,
     });
+    this.logger.log({
+      event: 'pos_print_pending_dispatch',
+      storeId,
+      status: 'STARTED',
+      jobCount: jobs.length,
+    });
     await Promise.all(
       jobs.flatMap((job) =>
         (['customer', 'kitchen'] as const).map((target) =>
@@ -154,21 +181,83 @@ export class PosGateway implements OnGatewayConnection, OnGatewayDisconnect {
     )
       return;
     const attemptsKey = `${target}Attempts` as const;
-    if (job[attemptsKey] >= this.maxAttempts) return;
+    let attempt = job[attemptsKey];
+    if (attempt >= this.maxAttempts) {
+      // Older versions counted an offline lookup as a send. Such jobs were never
+      // delivered and are safe to recover; a REPRINT creates a fresh kind/job too.
+      if (job[`${target}FailureReason`] === 'CLIENT_OFFLINE') {
+        await this.prisma.posPrintJob.update({
+          where: { jobId },
+          data: { [attemptsKey]: 0, [`${target}Status`]: 'PENDING' },
+        });
+        attempt = 0;
+        this.logger.warn({
+          event: 'pos_print_legacy_offline_recovered',
+          jobId,
+          orderStableId: job.orderStableId,
+          storeId: job.storeId,
+          target,
+          attempt,
+          status: 'PENDING',
+          reason: 'LEGACY_OFFLINE_ATTEMPTS_RESET',
+        });
+      } else {
+        this.logger.warn({
+          event: 'pos_print_retry_stopped',
+          jobId,
+          orderStableId: job.orderStableId,
+          storeId: job.storeId,
+          target,
+          attempt,
+          status: job[`${target}Status`],
+          reason: 'MAX_SEND_ATTEMPTS_REACHED',
+          recovery: 'REQUEST_ORDER_REPRINT',
+        });
+        return;
+      }
+    }
     const sockets = await this.server.in(`store:${job.storeId}`).fetchSockets();
-    const reason = sockets.length ? null : 'CLIENT_OFFLINE';
+    if (!sockets.length) {
+      await this.prisma.posPrintJob.update({
+        where: { jobId },
+        data: {
+          [`${target}Status`]: 'PENDING',
+          [`${target}FailureReason`]: 'CLIENT_OFFLINE',
+        },
+      });
+      this.logger.warn({
+        event: 'pos_print_dispatch_deferred',
+        jobId,
+        orderStableId: job.orderStableId,
+        storeId: job.storeId,
+        target,
+        attempt,
+        status: 'PENDING',
+        reason: 'CLIENT_OFFLINE',
+      });
+      return;
+    }
+    this.server
+      .to(`store:${job.storeId}`)
+      .emit('PRINT_JOB', { jobId, target, payload: job.payload });
     await this.prisma.posPrintJob.update({
       where: { jobId },
       data: {
         [attemptsKey]: { increment: 1 },
-        [`${target}Status`]: reason ? 'FAILED' : 'DELIVERED',
-        [`${target}FailureReason`]: reason,
+        [`${target}Status`]: 'DELIVERED',
+        [`${target}FailureReason`]: null,
       },
     });
-    if (reason) return;
-    this.server
-      .to(`store:${job.storeId}`)
-      .emit('PRINT_JOB', { jobId, target, payload: job.payload });
+    this.logger.log({
+      event: 'pos_print_job_emitted',
+      jobId,
+      orderStableId: job.orderStableId,
+      storeId: job.storeId,
+      target,
+      attempt: attempt + 1,
+      status: 'DELIVERED',
+      reason: null,
+    });
     const timerKey = `${jobId}:${target}`;
     clearTimeout(this.timers.get(timerKey));
     this.timers.set(
@@ -185,12 +274,22 @@ export class PosGateway implements OnGatewayConnection, OnGatewayDisconnect {
     target: 'customer' | 'kitchen',
   ) {
     this.timers.delete(`${jobId}:${target}`);
-    await this.prisma.posPrintJob.update({
+    const job = await this.prisma.posPrintJob.update({
       where: { jobId },
       data: {
         [`${target}Status`]: 'FAILED',
         [`${target}FailureReason`]: 'ACK_TIMEOUT',
       },
+    });
+    this.logger.warn({
+      event: 'pos_print_ack_timeout',
+      jobId: job.jobId,
+      orderStableId: job.orderStableId,
+      storeId: job.storeId,
+      target,
+      attempt: job[`${target}Attempts`],
+      status: 'FAILED',
+      reason: 'ACK_TIMEOUT',
     });
     await this.dispatchTarget(jobId, target);
   }

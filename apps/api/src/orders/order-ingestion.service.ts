@@ -239,10 +239,18 @@ export class OrderIngestionService {
       where: { clientRequestId },
       select: { id: true, orderStableId: true, status: true, paidAt: true },
     });
-    if (!existing || existing.status !== OrderStatus.pending) return false;
+    if (
+      !existing ||
+      (existing.status !== OrderStatus.pending &&
+        existing.status !== OrderStatus.paid)
+    )
+      return false;
     const acceptedAt = new Date();
     const updated = await this.prisma.order.updateMany({
-      where: { id: existing.id, status: OrderStatus.pending },
+      where: {
+        id: existing.id,
+        status: { in: [OrderStatus.pending, OrderStatus.paid] },
+      },
       data: {
         status: OrderStatus.making,
         paidAt: existing.paidAt ?? acceptedAt,

@@ -760,7 +760,7 @@ describe('UberEatsService', () => {
       data: { status: string; clientRequestId: string; channel: string };
     };
     type OrderUpdateManyArgs = {
-      where: { id: string; status: string };
+      where: { id: string; status: string | { in: string[] } };
       data: Partial<SavedUberOrder>;
     };
     type OrderFindManyArgs = {
@@ -796,10 +796,14 @@ describe('UberEatsService', () => {
         updateMany: jest
           .fn()
           .mockImplementation(({ where, data }: OrderUpdateManyArgs) => {
+            const expectedStatuses =
+              typeof where.status === 'string'
+                ? [where.status]
+                : where.status.in;
             if (
               savedOrder &&
               savedOrder.id === where.id &&
-              savedOrder.status === where.status
+              expectedStatuses.includes(savedOrder.status)
             ) {
               savedOrder = { ...savedOrder, ...data };
               return Promise.resolve({ count: 1 });
@@ -3023,6 +3027,62 @@ describe('UberEatsService', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
+  it('fallback 可将并发 paid 订单推进到 making，重复 ACCEPT 只发送一次 accepted', async () => {
+    const prisma = createActionPrisma({
+      id: 'order_1',
+      orderStableId: 'stable_1',
+      status: 'paid',
+      paidAt: new Date('2026-08-03T12:00:00Z'),
+    }) as ReturnType<typeof createActionPrisma> & {
+      order: {
+        findUnique: jest.Mock;
+        updateMany: jest.Mock;
+      };
+    };
+    let localStatus = 'paid';
+    prisma.order.findUnique.mockImplementation(() =>
+      Promise.resolve({
+        id: 'order_1',
+        orderStableId: 'stable_1',
+        status: localStatus,
+        paidAt: new Date('2026-08-03T12:00:00Z'),
+      }),
+    );
+    prisma.order.updateMany = jest
+      .fn()
+      .mockImplementation(
+        ({ where }: { where: { status: { in: string[] } } }) => {
+          const canAccept = where.status.in.includes(localStatus);
+          if (canAccept) localStatus = 'making';
+          return Promise.resolve({ count: canAccept ? 1 : 0 });
+        },
+      );
+    const bus = { emitOrderAccepted: jest.fn() };
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    const service = new UberEatsService(
+      prisma as never,
+      createAuthService(),
+      bus as never,
+    );
+
+    await service.acceptUberOrder('ue_paid');
+    await service.acceptUberOrder('ue_paid');
+
+    expect(localStatus).toBe('making');
+    expect(prisma.order.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: 'order_1',
+          status: { in: ['pending', 'paid'] },
+        },
+      }),
+    );
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(bus.emitOrderAccepted).toHaveBeenCalledTimes(1);
+  });
+
   it('拒单 endpoint 保存业务原因 payload', async () => {
     const prisma = createActionPrisma();
     const fetchSpy = jest
@@ -3154,7 +3214,7 @@ describe('UberEatsService', () => {
         ok: false,
         externalOrderId: 'ue_failed',
         action: 'ACCEPT',
-        endpoint: 'accept_pos_order',
+        endpoint: '/v1/eats/orders/ue_failed/accept_pos_order',
         status: 429,
         uberRequestId: 'uber-action-request-1',
         retryable: true,
@@ -3173,7 +3233,9 @@ describe('UberEatsService', () => {
     expect(logs).toContain('status=429');
     expect(logs).toContain('retryable=true');
     expect(logs).toContain('uberRequestId=uber-action-request-1');
-    expect(logs).toContain('accept_pos_order');
+    expect(logs).toContain(
+      'endpoint=/v1/eats/orders/ue_failed/accept_pos_order',
+    );
     for (const sensitive of [
       'upstream-secret',
       'body-secret',
@@ -3278,7 +3340,7 @@ describe('UberEatsService', () => {
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(fetchSpy).toHaveBeenCalledWith(
-      expect.stringMatching(/\/ue_ready\/ready_for_pickup$/),
+      'https://api.uber.com/v1/delivery/order/ue_ready/ready',
       expect.objectContaining({ method: 'POST' }),
     );
     expect(uberOrderAction.update).toHaveBeenCalledWith(
@@ -3288,6 +3350,49 @@ describe('UberEatsService', () => {
           uberRequestId: 'uber-request-1',
         }) as unknown,
       }),
+    );
+  });
+
+  it('sandbox ready 使用 delivery order 路由和 test-api base URL', async () => {
+    process.env.UBER_EATS_API_BASE_URL = 'https://test-api.uber.com';
+    const { prisma } = createReadyPrisma();
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    const service = new UberEatsService(prisma as never, createAuthService());
+
+    await service.syncOrderStatusToUber('ue_ready/test', 'ready');
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://test-api.uber.com/v1/delivery/order/ue_ready%2Ftest/ready',
+      expect.objectContaining({ method: 'POST', body: '{}' }),
+    );
+  });
+
+  it('ready 路由变更不影响 accept_pos_order 和 deny_pos_order', async () => {
+    const acceptFetch = jest
+      .spyOn(global, 'fetch')
+      .mockImplementation(() =>
+        Promise.resolve(new Response('{}', { status: 200 })),
+      );
+    const acceptService = new UberEatsService(
+      createActionPrisma() as never,
+      createAuthService(),
+    );
+    await acceptService.acceptUberOrder('ue_accept/regression');
+    expect(acceptFetch).toHaveBeenLastCalledWith(
+      'https://api.uber.com/v1/eats/orders/ue_accept%2Fregression/accept_pos_order',
+      expect.objectContaining({ method: 'POST' }),
+    );
+
+    const denyService = new UberEatsService(
+      createActionPrisma() as never,
+      createAuthService(),
+    );
+    await denyService.denyUberOrder('ue_deny/regression', 'STORE_CLOSED');
+    expect(acceptFetch).toHaveBeenLastCalledWith(
+      'https://api.uber.com/v1/eats/orders/ue_deny%2Fregression/deny_pos_order',
+      expect.objectContaining({ method: 'POST' }),
     );
   });
 
@@ -3331,6 +3436,7 @@ describe('UberEatsService', () => {
 
   it.each([
     [409, false, 'SUCCEEDED'],
+    [404, false, 'FAILED'],
     [429, true, 'FAILED'],
     [500, true, 'FAILED'],
   ])(
@@ -3345,20 +3451,80 @@ describe('UberEatsService', () => {
       );
       const service = new UberEatsService(prisma as never, createAuthService());
       const promise = service.syncOrderStatusToUber(`ue_${status}`, 'ready');
-      if (retryable)
-        await expect(promise).rejects.toMatchObject({ status: 502 });
-      else await expect(promise).resolves.toMatchObject({ ok: true });
+      const actionResultMatcher: unknown = expect.objectContaining({
+        retryable,
+      });
+      const updateDataMatcher: unknown = expect.objectContaining({
+        status: savedStatus,
+        retryable,
+        uberRequestId: `request-${status}`,
+      });
+      await expect(promise).resolves.toMatchObject({
+        ok: true,
+        localStatus: 'ready',
+        uberSyncStatus: savedStatus,
+        actionResult: actionResultMatcher,
+      });
       expect(uberOrderAction.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({
-            status: savedStatus,
-            retryable,
-            uberRequestId: `request-${status}`,
-          }) as unknown,
+          data: updateDataMatcher,
         }),
       );
     },
   );
+
+  it('ready 网络超时保留本地 ready 并返回可重试动作结果', async () => {
+    const { prisma, uberOrderAction } = createReadyPrisma();
+    jest
+      .spyOn(global, 'fetch')
+      .mockRejectedValueOnce(
+        Object.assign(new Error('request timed out'), { name: 'AbortError' }),
+      );
+    const service = new UberEatsService(prisma as never, createAuthService());
+    const actionResultMatcher: unknown = expect.objectContaining({
+      status: 'FAILED',
+      retryable: true,
+      actionId: 'ready_action',
+    });
+    const updateDataMatcher: unknown = expect.objectContaining({
+      status: 'FAILED',
+      retryable: true,
+    });
+
+    await expect(
+      service.syncOrderStatusToUber('ue_timeout_ready', 'ready'),
+    ).resolves.toMatchObject({
+      localStatus: 'ready',
+      uberSyncStatus: 'FAILED',
+      actionResult: actionResultMatcher,
+    });
+    expect(uberOrderAction.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: updateDataMatcher,
+      }),
+    );
+  });
+
+  it('ready 失败后成功重试复用同一个 outbox 动作', async () => {
+    const { prisma, uberOrderAction } = createReadyPrisma();
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response('{}', { status: 500 }))
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    const service = new UberEatsService(prisma as never, createAuthService());
+
+    await service.syncOrderStatusToUber('ue_retry_ready', 'ready');
+    await expect(
+      service.retryReadyForPickup('ue_retry_ready'),
+    ).resolves.toMatchObject({
+      ok: true,
+      actionId: 'ready_action',
+      status: 'SUCCEEDED',
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(uberOrderAction.upsert).toHaveBeenCalledTimes(1);
+  });
 
   describe('OAuth state 安全校验', () => {
     const stateInternals = (service: UberEatsService) =>

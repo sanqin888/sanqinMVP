@@ -181,10 +181,14 @@ export class PosOrdersController {
 
   @Post(':orderStableId/advance')
   @HttpCode(200)
-  advance(
-    @Param('orderStableId', StableIdPipe) orderStableId: string,
-  ): Promise<OrderDto> {
+  advance(@Param('orderStableId', StableIdPipe) orderStableId: string) {
     return this.posOrders.advance(orderStableId);
+  }
+
+  @Post(':orderStableId/uber-sync/retry')
+  @HttpCode(200)
+  retryUberSync(@Param('orderStableId', StableIdPipe) orderStableId: string) {
+    return this.posOrders.retryUberSync(orderStableId);
   }
 
   @Post(':orderStableId/amendments')
