@@ -161,7 +161,7 @@ const STRINGS = {
     storeStatusClosed: "顾客端暂停接单",
     storeStatusHoliday: "节假日休息",
     storeStatusTemporaryClosed: "当前门店已暂停接单。",
-    storeStatusClosedBySchedule: "当前不在营业时间内，暂时不支持新建订单。",
+    storeStatusClosedBySchedule: "当前不在营业时间内。",
     storeStatusNextOpenPrefix: "下次营业时间：",
     storeStatusLoading: "正在获取门店状态…",
     storeStatusError: "门店状态获取失败，请以店内实际情况为准。",
