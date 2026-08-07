@@ -48,6 +48,7 @@ describe('UberEatsController 权限边界', () => {
   const protectedRoutes: ControllerMethod[] = [
     'oauthStart',
     'oauthStores',
+    'updatePosExternalStoreId',
     'oauthProvision',
     'listPendingOrders',
     'listItemChannelConfigs',

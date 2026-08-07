@@ -3621,7 +3621,7 @@ describe('UberEatsService', () => {
     expect(upsertCallArg?.update).not.toHaveProperty('isProvisioned');
   });
 
-  it('获取商户门店列表时会识别 integration_enabled 并同步为已 provision', async () => {
+  it('获取商户门店列表时识别 provision 状态但不覆盖本地 POS 门店映射', async () => {
     const fetchMock: jest.MockedFunction<typeof fetch> = jest.fn();
     const upsertMock = jest
       .fn<Promise<Record<string, never>>, [unknown]>()
@@ -3671,8 +3671,74 @@ describe('UberEatsService', () => {
       | undefined;
     expect(upsertCallArg?.update).toMatchObject({
       isProvisioned: true,
+    });
+    expect(upsertCallArg?.update).not.toHaveProperty('posExternalStoreId');
+    expect(upsertCallArg?.create).toMatchObject({
       posExternalStoreId: 'client_1',
     });
+  });
+
+  it('管理员更新 POS 门店映射时会规范化输入并记录审计事件', async () => {
+    const mapping = {
+      merchantUberUserId: 'merchant_1',
+      uberStoreId: 'uber_store_1',
+      storeName: 'Main Store',
+      locationSummary: 'Toronto, CA',
+      isProvisioned: true,
+      provisionedAt: new Date(),
+      posExternalStoreId: 'uber_client_id',
+    };
+    const update = jest.fn().mockResolvedValue({
+      ...mapping,
+      posExternalStoreId: '4750_Yonge_Street',
+    });
+    const prisma = {
+      uberStoreMapping: {
+        findUnique: jest.fn().mockResolvedValue(mapping),
+        update,
+      },
+      opsEvent: { create: jest.fn().mockResolvedValue({}) },
+    };
+    const service = new UberEatsService(prisma as never, createAuthService());
+
+    await expect(
+      service.updatePosExternalStoreId(' uber_store_1 ', ' 4750_Yonge_Street '),
+    ).resolves.toEqual({
+      ok: true,
+      storeId: 'uber_store_1',
+      posExternalStoreId: '4750_Yonge_Street',
+    });
+    expect(update).toHaveBeenCalledWith({
+      where: { uberStoreId: 'uber_store_1' },
+      data: { posExternalStoreId: '4750_Yonge_Street' },
+    });
+    expect(prisma.opsEvent.create).toHaveBeenCalledWith({
+      data: {
+        eventName: 'ubereats_pos_store_mapping_updated',
+        source: 'ubereats',
+        payload: {
+          uberStoreId: 'uber_store_1',
+          previousPosExternalStoreId: 'uber_client_id',
+          posExternalStoreId: '4750_Yonge_Street',
+        },
+      },
+    });
+  });
+
+  it('拒绝更新不存在或格式无效的 POS 门店映射', async () => {
+    const prisma = {
+      uberStoreMapping: {
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
+    };
+    const service = new UberEatsService(prisma as never, createAuthService());
+
+    await expect(
+      service.updatePosExternalStoreId('uber_store_1', 'invalid room'),
+    ).rejects.toThrow('POS External Store ID 只能包含');
+    await expect(
+      service.updatePosExternalStoreId('missing_store', 'valid_store'),
+    ).rejects.toThrow('Uber 门店映射不存在');
   });
 
   it('provisionStore 会调用 Uber provision 接口并标记门店已激活', async () => {
