@@ -31,7 +31,9 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Matches,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -285,6 +287,15 @@ class ProvisionUberStoreDto {
   payload?: Record<string, unknown>;
 }
 
+class UpdatePosExternalStoreIdDto {
+  @IsString()
+  @MaxLength(128)
+  @Matches(/^[A-Za-z0-9_-]+$/, {
+    message: 'posExternalStoreId 只能包含字母、数字、下划线和连字符',
+  })
+  posExternalStoreId!: string;
+}
+
 class CreateUberOpsTicketDto {
   @IsEnum(UberOpsTicketType)
   type!: UberOpsTicketType;
@@ -429,6 +440,19 @@ export class UberEatsController {
     return await this.uberEatsService.getMerchantStores(
       accessToken,
       merchantUberUserId,
+    );
+  }
+
+  @Patch('oauth/stores/:storeId/pos-external-store-id')
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  async updatePosExternalStoreId(
+    @Param('storeId') storeId: string,
+    @Body() dto: UpdatePosExternalStoreIdDto,
+  ) {
+    return await this.uberEatsService.updatePosExternalStoreId(
+      storeId,
+      dto.posExternalStoreId,
     );
   }
 

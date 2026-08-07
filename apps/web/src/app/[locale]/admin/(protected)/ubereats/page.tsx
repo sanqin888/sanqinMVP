@@ -229,6 +229,7 @@ export default function UberEatsAdminPage() {
   const [reports, setReports] = useState<ReconciliationResponse['items']>([]);
 
   const [integratorStoreId, setIntegratorStoreId] = useState('');
+  const [posStoreIdDrafts, setPosStoreIdDrafts] = useState<Record<string, string>>({});
   const [provisionPayload, setProvisionPayload] = useState('{\n  "is_order_manager": true\n}');
   const [ticketStoreFilter, setTicketStoreFilter] = useState('');
   const [ticketStatusFilter, setTicketStatusFilter] = useState<TicketStatus | ''>('');
@@ -816,7 +817,26 @@ export default function UberEatsAdminPage() {
                         <td className="px-2 py-2">{s.storeName ?? '-'}</td>
                         <td className="break-all whitespace-pre-wrap px-2 py-2">{s.locationSummary ?? '-'}</td>
                         <td className="px-2 py-2">{s.isProvisioned ? '已 provision' : '未 provision'}</td>
-                        <td className="break-all whitespace-pre-wrap px-2 py-2">{s.posExternalStoreId ?? '-'}</td>
+                        <td className="min-w-56 px-2 py-2">
+                          <div className="flex gap-2">
+                            <input aria-label={`${s.storeName ?? s.storeId} POS External Store ID`} className="min-w-0 flex-1 rounded border px-2 py-1 font-mono text-xs" value={posStoreIdDrafts[s.storeId] ?? s.posExternalStoreId ?? ''} placeholder="例如 4750_Yonge_Street" onChange={(event) => setPosStoreIdDrafts((current) => ({ ...current, [s.storeId]: event.target.value }))} />
+                            <button
+                              type="button"
+                              className="rounded border px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-40"
+                              disabled={actionLoading[`pos-store-${s.storeId}`] || !(posStoreIdDrafts[s.storeId] ?? s.posExternalStoreId ?? '').trim() || (posStoreIdDrafts[s.storeId] ?? s.posExternalStoreId ?? '').trim() === (s.posExternalStoreId ?? '')}
+                              onClick={() => {
+                                const posExternalStoreId = (posStoreIdDrafts[s.storeId] ?? '').trim();
+                                void runAction(`pos-store-${s.storeId}`, () => apiFetch(`/integrations/ubereats/oauth/stores/${encodeURIComponent(s.storeId)}/pos-external-store-id`, {
+                                  method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ posExternalStoreId }),
+                                }).then(() => {
+                                  setPosStoreIdDrafts((current) => { const next = { ...current }; delete next[s.storeId]; return next; });
+                                }), `已更新 ${s.storeName ?? s.storeId} 的 POS Store ID`);
+                              }}
+                            >
+                              {actionLoading[`pos-store-${s.storeId}`] ? '保存中...' : '保存'}
+                            </button>
+                          </div>
+                        </td>
                         <td className="px-2 py-2">
                           <button
                             type="button"

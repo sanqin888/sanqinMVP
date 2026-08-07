@@ -644,10 +644,7 @@ function ActionContent({
   onSwapChoose,
   onSwapClear,
 }: ActionContentProps) {
-  const paymentMethodOptions =
-    order.channel === "ubereats"
-      ? (["UBEREATS"] as AmendmentPaymentMethod[])
-      : PAYMENT_METHOD_OPTIONS.filter((method) => method !== "UBEREATS");
+  const isUberEatsOrder = order.channel === "ubereats";
   const guide =
     order.paymentMethod === "cash"
       ? copy.cashGuide[selectedAction ?? "retender"]
@@ -903,7 +900,6 @@ function ActionContent({
               </label>
               <select
                 value={selectedPaymentMethod ?? ""}
-                disabled={order.channel === "ubereats"}
                 onChange={(event) =>
                   onPaymentMethodChange(
                     event.target.value as AmendmentPaymentMethod,
@@ -914,8 +910,16 @@ function ActionContent({
                 <option value="" disabled>
                   {copy.methodPlaceholder}
                 </option>
-                {paymentMethodOptions.map((option) => (
-                  <option key={option} value={option}>
+                {PAYMENT_METHOD_OPTIONS.map((option) => (
+                  <option
+                    key={option}
+                    value={option}
+                    disabled={
+                      isUberEatsOrder
+                        ? option !== "UBEREATS"
+                        : option === "UBEREATS"
+                    }
+                  >
                     {copy.methodOptions[option]}
                   </option>
                 ))}
