@@ -161,61 +161,6 @@ export class PosOrdersService {
     return this.orders.getByStableId(orderStableId);
   }
 
-  /** Records the local financial result only after staff handled it in Uber. */
-  async recordManualUberRefund(
-    orderStableId: string,
-    input: { reason: string; evidence: string },
-  ): Promise<OrderDto> {
-    const reason = input.reason?.trim();
-    const evidence = input.evidence?.trim();
-    if (!reason) throw new BadRequestException('reason is required');
-    if (!evidence) throw new BadRequestException('manual evidence is required');
-
-    await this.prisma.$transaction(async (tx) => {
-      const order = await tx.order.findUnique({ where: { orderStableId } });
-      if (!order) throw new BadRequestException('order not found');
-      if (order.channel !== Channel.ubereats) {
-        throw new BadRequestException(
-          'manual Uber refund requires an Uber order',
-        );
-      }
-      if (order.status === PrismaOrderStatus.pending) {
-        throw new BadRequestException(
-          'order must be accepted before cancellation',
-        );
-      }
-      if (order.status === PrismaOrderStatus.refunded) {
-        throw new ConflictException('order is already refunded');
-      }
-      const amendmentStableId = `uber_manual_${createHash('sha256')
-        .update(`${order.id}:${evidence}`)
-        .digest('hex')}`;
-      await tx.orderAmendment.upsert({
-        where: { amendmentStableId },
-        create: {
-          amendmentStableId,
-          orderId: order.id,
-          type: OrderAmendmentType.RETENDER,
-          paymentMethod: PaymentMethod.UBEREATS,
-          reason,
-          deltaCents: -order.totalCents,
-          refundCents: order.totalCents,
-          summaryJson: {
-            kind: 'UBER_MANUAL_REFUND',
-            status: 'CONFIRMED',
-            evidence,
-          },
-        },
-        update: {},
-      });
-      await tx.order.update({
-        where: { id: order.id },
-        data: { status: PrismaOrderStatus.refunded },
-      });
-    });
-    return this.orders.getByStableId(orderStableId);
-  }
-
   private getUberWebhookExternalOrderId(order: OrderDto): string | null {
     if (order.channel !== 'ubereats') return null;
     if (!order.clientRequestId?.startsWith(UBER_EATS_CLIENT_REQUEST_PREFIX)) {
