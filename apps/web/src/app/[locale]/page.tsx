@@ -1011,7 +1011,7 @@ export default function LocalOrderPage() {
 
       <section className="relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm min-h-[260px] lg:min-h-[320px]">
         <div className="hidden lg:block pointer-events-none absolute top-1/2 -translate-y-1/2 left-[700px] z-0 opacity-100">
-          <Image src="/images/hero.png" alt="Illustration" width={320} height={350} className="object-contain" />
+          <Image src="/images/hero.png" alt="Illustration" width={320} height={350} className="object-contain" loading="eager"/>
         </div>
         <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">{strings.tagline}</p>
         <div className="mt-6 flex flex-col gap-8 lg:flex-row lg:justify-between">
