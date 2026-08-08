@@ -3544,16 +3544,16 @@ describe('UberEatsService', () => {
         prisma: {
           uberOAuthStateRequest: {
             create: jest.fn(
-              async ({ data }: { data: Omit<StateRecord, 'consumedAt'> }) => {
+              ({ data }: { data: Omit<StateRecord, 'consumedAt'> }) => {
                 records.set(data.nonce, { ...data, consumedAt: null });
               },
             ),
             findUnique: jest.fn(
-              async ({ where }: { where: { nonce: string } }) =>
+              ({ where }: { where: { nonce: string } }) =>
                 records.get(where.nonce) ?? null,
             ),
             updateMany: jest.fn(
-              async ({
+              ({
                 where,
                 data,
               }: {
@@ -3580,7 +3580,7 @@ describe('UberEatsService', () => {
               },
             ),
             deleteMany: jest.fn(
-              async ({ where }: { where: { expiresAt: { lte: Date } } }) => {
+              ({ where }: { where: { expiresAt: { lte: Date } } }) => {
                 let count = 0;
                 for (const [nonce, record] of records) {
                   if (record.expiresAt <= where.expiresAt.lte) {
