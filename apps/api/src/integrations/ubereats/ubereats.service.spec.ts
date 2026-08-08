@@ -2005,12 +2005,15 @@ describe('UberEatsService', () => {
       .digest('hex');
     const prisma = {
       uberWebhookInbox: createInboxMock(),
-      opsEvent: { findFirst: jest.fn().mockResolvedValue(null) },
+      opsEvent: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue(null),
+      },
     };
     const fetchSpy = jest
       .spyOn(global, 'fetch')
-      .mockResolvedValueOnce(
-        new Response('upstream unavailable', { status: 503 }),
+      .mockImplementation(() =>
+        Promise.resolve(new Response('upstream unavailable', { status: 503 })),
       );
     const service = new UberEatsService(prisma as never, createAuthService());
 
@@ -2044,12 +2047,15 @@ describe('UberEatsService', () => {
       .digest('hex');
     const prisma = {
       uberWebhookInbox: createInboxMock(),
-      opsEvent: { findFirst: jest.fn().mockResolvedValue(null) },
+      opsEvent: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue(null),
+      },
     };
     const fetchSpy = jest
       .spyOn(global, 'fetch')
-      .mockResolvedValueOnce(
-        new Response('upstream unavailable', { status: 503 }),
+      .mockImplementation(() =>
+        Promise.resolve(new Response('upstream unavailable', { status: 503 })),
       );
     const service = new UberEatsService(prisma as never, createAuthService());
 
@@ -2247,7 +2253,9 @@ describe('UberEatsService', () => {
     };
     jest
       .spyOn(global, 'fetch')
-      .mockResolvedValueOnce(new Response('upstream unavailable', { status }));
+      .mockImplementation(() =>
+        Promise.resolve(new Response('upstream unavailable', { status })),
+      );
     const service = new UberEatsService(prisma as never, createAuthService());
 
     await expect(
@@ -2473,7 +2481,9 @@ describe('UberEatsService', () => {
           .mockResolvedValueOnce(new Response(responseBody, { status }))
           .mockResolvedValueOnce(new Response(responseBody, { status }));
       } else {
-        fetchSpy.mockResolvedValueOnce(new Response(responseBody, { status }));
+        fetchSpy.mockImplementation(() =>
+          Promise.resolve(new Response(responseBody, { status })),
+        );
       }
 
       const service = new UberEatsService(prisma as never, auth);
