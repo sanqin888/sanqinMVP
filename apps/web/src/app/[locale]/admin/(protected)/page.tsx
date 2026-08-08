@@ -415,7 +415,7 @@ export default function AdminDashboard() {
         <p className="text-sm text-slate-600">
           {isZh
             ? "配置周一到周日的特价菜。特价只作用于主菜，选项加价不参与。"
-            : "Configure Monday–Friday specials. Specials apply to the main dish only; options remain full price."}
+            : "Configure Monday–Sunday specials. Specials apply to the main dish only; options remain full price."}
         </p>
       </SectionCard>
 

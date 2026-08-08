@@ -1210,14 +1210,14 @@ export class AdminMenuService {
   async getDailySpecials(
     weekday?: number,
   ): Promise<{ specials: DailySpecialDto[] }> {
-    if (weekday !== undefined && (weekday < 1 || weekday > 5)) {
-      throw new BadRequestException('weekday must be between 1 and 5');
+    if (weekday !== undefined && (weekday < 1 || weekday > 7)) {
+      throw new BadRequestException('weekday must be between 1 and 7');
     }
 
     const specials = await this.prisma.menuDailySpecial.findMany({
       where: {
         deletedAt: null,
-        ...(weekday ? { weekday } : { weekday: { in: [1, 2, 3, 4, 5] } }),
+        ...(weekday ? { weekday } : { weekday: { in: [1, 2, 3, 4, 5, 6, 7] } }),
       },
       include: {
         item: {
@@ -1283,8 +1283,8 @@ export class AdminMenuService {
 
     const normalized = payload.specials.map((raw) => {
       const weekday = Number(raw.weekday);
-      if (!Number.isInteger(weekday) || weekday < 1 || weekday > 5) {
-        throw new BadRequestException('weekday must be between 1 and 5');
+      if (!Number.isInteger(weekday) || weekday < 1 || weekday > 7) {
+        throw new BadRequestException('weekday must be between 1 and 7');
       }
       const itemStableId = raw.itemStableId?.trim();
       if (!itemStableId) {

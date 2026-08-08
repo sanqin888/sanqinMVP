@@ -70,3 +70,41 @@ describe('AdminMenuService availability Uber status', () => {
     );
   });
 });
+
+describe('AdminMenuService daily specials weekdays', () => {
+  it('loads specials for all seven weekdays when no weekday is specified', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const service = new AdminMenuService(
+      { menuDailySpecial: { findMany } } as never,
+      {} as never,
+    );
+
+    await service.getDailySpecials();
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          deletedAt: null,
+          weekday: { in: [1, 2, 3, 4, 5, 6, 7] },
+        },
+      }),
+    );
+  });
+
+  it.each([6, 7])('accepts weekend weekday %i', async (weekday) => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const service = new AdminMenuService(
+      { menuDailySpecial: { findMany } } as never,
+      {} as never,
+    );
+
+    await expect(service.getDailySpecials(weekday)).resolves.toEqual({
+      specials: [],
+    });
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { deletedAt: null, weekday },
+      }),
+    );
+  });
+});
