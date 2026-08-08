@@ -35,6 +35,7 @@ import {
   OrderIngestionService,
   NormalizedOrderItem,
 } from '../../orders/order-ingestion.service';
+import { UberHttpClient, UberHttpResult } from './uber-http.client';
 
 class UberWebhookNonRetryableError extends Error {
   constructor(
@@ -785,6 +786,7 @@ export class UberEatsService {
     private readonly uberAuthService: UberAuthService,
     @Optional() private readonly orderEventsBus?: OrderEventsBus,
     @Optional() private readonly orderIngestionService?: OrderIngestionService,
+    @Optional() private readonly httpClient = new UberHttpClient(),
   ) {
     const secret = process.env.UBER_EATS_OAUTH_STATE_SECRET?.trim() || '';
     if (secret.length < 32 || new Set(secret).size < 12) {
@@ -1529,20 +1531,15 @@ export class UberEatsService {
         const token = await this.uberAuthService.getAccessToken(
           'eats.store.status.write',
         );
-        const response = await fetch(
-          `${this.uberApiBaseUrl.replace(/\/$/, '')}/v1/eats/stores/${encodeURIComponent(uberStoreId)}/status`,
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${token}`,
-              Accept: 'application/json',
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(payload),
-          },
-        );
+        const { response, text: rawText } = await this.httpClient.request({
+          path: `/v1/eats/stores/${encodeURIComponent(uberStoreId)}/status`,
+          baseUrl: this.uberApiBaseUrl,
+          method: 'POST',
+          accessToken: token,
+          json: payload,
+          kind: 'api',
+        });
         lastStatus = response.status;
-        const rawText = await response.text();
         lastError = response.ok
           ? ''
           : this.summarizeDebugResponse(this.tryParseJson(rawText), rawText);
@@ -3288,24 +3285,24 @@ export class UberEatsService {
         : options.body
           ? JSON.stringify(options.body)
           : undefined;
-    const response = await fetch(
-      `${this.uberApiBaseUrl.replace(/\/$/, '')}${path}`,
-      {
-        method: options.method,
-        headers: {
-          Authorization: `Bearer ${options.accessToken}`,
-          Accept: 'application/json',
-          ...(options.body && !options.rawBody
-            ? { 'Content-Type': 'application/json' }
-            : {}),
-          ...(options.extraHeaders ?? {}),
-        },
-        ...(resolvedBody !== undefined ? { body: resolvedBody } : {}),
+    const {
+      response,
+      text: rawText,
+      data: parsed,
+    } = await this.httpClient.request({
+      path,
+      baseUrl: this.uberApiBaseUrl,
+      method: options.method,
+      accessToken: options.accessToken,
+      headers: {
+        ...(options.body && !options.rawBody
+          ? { 'Content-Type': 'application/json' }
+          : {}),
+        ...options.extraHeaders,
       },
-    );
-
-    const rawText = await response.text();
-    const parsed = this.tryParseJson(rawText);
+      body: resolvedBody,
+      kind: 'api',
+    });
     if (!response.ok) {
       const authenticationError =
         response.status === 401 || response.status === 403
@@ -3614,9 +3611,8 @@ export class UberEatsService {
       resourceId?: string | null;
     },
   ): Promise<unknown> {
-    let response = await this.requestUberOrderDetail(resourceUrl, token);
-    let rawText = await response.text();
-    let parsed = this.tryParseJson(rawText);
+    let result = await this.requestUberOrderDetail(resourceUrl, token);
+    let { response, text: rawText, data: parsed } = result;
 
     if (
       (response.status === 401 || response.status === 403) &&
@@ -3625,9 +3621,8 @@ export class UberEatsService {
       const refreshedToken = await this.uberAuthService.forceRefreshAccessToken(
         'eats.store.orders.read',
       );
-      response = await this.requestUberOrderDetail(resourceUrl, refreshedToken);
-      rawText = await response.text();
-      parsed = this.tryParseJson(rawText);
+      result = await this.requestUberOrderDetail(resourceUrl, refreshedToken);
+      ({ response, text: rawText, data: parsed } = result);
     }
 
     if (response.ok) {
@@ -3673,15 +3668,14 @@ export class UberEatsService {
   private async requestUberOrderDetail(
     resourceUrl: string,
     token: string,
-  ): Promise<Response> {
+  ): Promise<UberHttpResult> {
     try {
-      return await fetch(resourceUrl, {
+      return await this.httpClient.request({
+        url: resourceUrl,
         method: 'GET',
         redirect: 'error',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json',
-        },
+        accessToken: token,
+        kind: 'orderDetail',
       });
     } catch (error) {
       throw new BadGatewayException({
@@ -3762,24 +3756,23 @@ export class UberEatsService {
       READY_FOR_PICKUP: `/v1/delivery/order/${encodedOrderId}/ready`,
     };
     const pathname = pathnameByAction[action];
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10_000);
     let response: Response;
+    let rawText = '';
+    let parsed: unknown = {};
     try {
       const token = await this.uberAuthService.getAccessToken('eats.order');
-      response = await fetch(
-        `${this.uberApiBaseUrl.replace(/\/$/, '')}${pathname}`,
-        {
-          method: 'POST',
-          signal: controller.signal,
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(payload),
-        },
-      );
+      ({
+        response,
+        text: rawText,
+        data: parsed,
+      } = await this.httpClient.request({
+        path: pathname,
+        baseUrl: this.uberApiBaseUrl,
+        method: 'POST',
+        accessToken: token,
+        json: payload,
+        kind: 'api',
+      }));
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
@@ -3821,12 +3814,8 @@ export class UberEatsService {
         duplicate: false,
         errorSummary: 'Uber 订单动作网络请求失败或超时',
       };
-    } finally {
-      clearTimeout(timeout);
     }
 
-    const rawText = await response.text();
-    const parsed = this.tryParseJson(rawText);
     // Uber may answer 409 when a retried ready action has already won upstream.
     const succeeded =
       response.ok || (action === 'READY_FOR_PICKUP' && response.status === 409);
@@ -5449,19 +5438,24 @@ export class UberEatsService {
       const requestedUrl = item.image_url;
       let method: 'HEAD' | 'GET' = 'HEAD';
       try {
-        let response = await fetch(requestedUrl, {
+        let result = await this.httpClient.request({
+          url: requestedUrl,
           method: 'HEAD',
           redirect: 'follow',
-          signal: AbortSignal.timeout(5_000),
+          kind: 'imageProbe',
         });
+        let response = result.response;
         if (response.status === 405 || response.status === 501) {
           method = 'GET';
-          response = await fetch(requestedUrl, {
+          result = await this.httpClient.request({
+            url: requestedUrl,
             method: 'GET',
             headers: { Range: `bytes=0-${UBER_IMAGE_MAX_BYTES}` },
             redirect: 'follow',
-            signal: AbortSignal.timeout(8_000),
+            kind: 'imageProbe',
+            maxResponseBytes: UBER_IMAGE_MAX_BYTES + 1,
           });
+          response = result.response;
         }
         const finalUrl = response.url || requestedUrl;
         const finalOrigin = new URL(finalUrl).origin;
@@ -5473,17 +5467,8 @@ export class UberEatsService {
           Number.isFinite(declaredSize) && declaredSize >= 0
             ? declaredSize
             : null;
-        if (method === 'GET' && sizeBytes === null && response.body) {
-          const reader = response.body.getReader();
-          let received = 0;
-          while (received <= UBER_IMAGE_MAX_BYTES) {
-            const chunk = await reader.read();
-            if (chunk.done) break;
-            received += chunk.value.byteLength;
-          }
-          await reader.cancel();
-          sizeBytes = received;
-        }
+        if (method === 'GET' && sizeBytes === null)
+          sizeBytes = new TextEncoder().encode(result.text).byteLength;
         const errors: string[] = [];
         if (!response.ok) errors.push(`HTTP ${response.status}`);
         if (!isPermanentPublicHttpsUrl(finalUrl))

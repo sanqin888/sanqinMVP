@@ -30,6 +30,7 @@ jest.mock('@prisma/client', () => ({
   UberOpsTicketType: { STORE_STATUS_SYNC: 'STORE_STATUS_SYNC' },
   PaymentMethod: { UBEREATS: 'UBEREATS' },
 }));
+import { UberHttpClient } from './uber-http.client';
 
 import { createHash, createHmac } from 'crypto';
 import { AppLogger } from '../../common/app-logger';
@@ -118,6 +119,43 @@ const createNestedMenuPrisma = (templates: unknown[]) => ({
   },
   uberMenuPublishVersion: { create: jest.fn() },
   opsEvent: { create: jest.fn().mockResolvedValue(null) },
+});
+
+describe('UberHttpClient（业务请求重试策略）', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+    delete process.env.UBER_EATS_HTTP_MAX_ATTEMPTS;
+  });
+
+  it('GET 遇到可重试网络错误会自动重试', async () => {
+    process.env.UBER_EATS_HTTP_MAX_ATTEMPTS = '2';
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockRejectedValueOnce(new Error('connection reset'))
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    await expect(
+      new UberHttpClient().request({
+        url: 'https://example.com/orders/1',
+        method: 'GET',
+      }),
+    ).resolves.toMatchObject({ data: {} });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('没有幂等键的 POST 网络失败时不会重试', async () => {
+    process.env.UBER_EATS_HTTP_MAX_ATTEMPTS = '3';
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockRejectedValue(new Error('connection reset'));
+    await expect(
+      new UberHttpClient().request({
+        url: 'https://example.com/orders/1/accept',
+        method: 'POST',
+        json: {},
+      }),
+    ).rejects.toMatchObject({ retryable: true });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('syncUberMenuItemAvailability', () => {
