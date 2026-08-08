@@ -103,20 +103,18 @@ describe('UberHttpClient（认证请求）', () => {
   it('超时会中止请求并转换为可重试领域错误', async () => {
     jest.useFakeTimers();
     process.env.UBER_EATS_TOKEN_TIMEOUT_MS = '100';
-    jest
-      .spyOn(global, 'fetch')
-      .mockImplementation(
-        (_, init) =>
-          new Promise((_, reject) =>
-            init?.signal?.addEventListener('abort', () =>
-              reject(
-                Object.assign(new Error('secret=leaked'), {
-                  name: 'AbortError',
-                }),
-              ),
+    jest.spyOn(global, 'fetch').mockImplementation(
+      (_, init) =>
+        new Promise((_, reject) =>
+          init?.signal?.addEventListener('abort', () =>
+            reject(
+              Object.assign(new Error('secret=leaked'), {
+                name: 'AbortError',
+              }),
             ),
           ),
-      );
+        ),
+    );
     const pending = expect(
       new UberHttpClient().request({
         url: 'https://auth.uber.com/token',

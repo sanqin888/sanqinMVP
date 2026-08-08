@@ -384,7 +384,7 @@ export class UberAuthService {
       );
     }
 
-    return (data || {}) as UberTokenResponse;
+    return data || {};
   }
 
   private safeTokenErrorValue(value: unknown, fallback: string): string {
