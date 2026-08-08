@@ -255,4 +255,15 @@ describe('PosGateway durable print delivery', () => {
       expect.objectContaining({ target: 'customer' }),
     );
   });
+
+  it('查询订单打印状态时返回最新任务且兼容店内 REPRINT 任务', async () => {
+    const { gateway, posPrintJob } = setup();
+
+    await gateway.getOrderPrintStatus('stable-1');
+
+    expect(posPrintJob.findFirst).toHaveBeenCalledWith({
+      where: { orderStableId: 'stable-1' },
+      orderBy: { createdAt: 'desc' },
+    });
+  });
 });
