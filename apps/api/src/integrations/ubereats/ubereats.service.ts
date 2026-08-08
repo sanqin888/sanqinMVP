@@ -737,6 +737,38 @@ type CreateOpsTicketInput = UberStoreScopedInput & {
   context?: Prisma.JsonObject;
 };
 
+type UberOAuthStateRequestRecord = {
+  nonce: string;
+  adminSessionId: string;
+  redirectUri: string;
+  merchantContext: string | null;
+  issuedAt: Date;
+  expiresAt: Date;
+  consumedAt: Date | null;
+};
+
+type UberOAuthStateRequestDelegate = {
+  create(args: {
+    data: Omit<UberOAuthStateRequestRecord, 'consumedAt'>;
+  }): Promise<unknown>;
+  findUnique(args: {
+    where: { nonce: string };
+  }): Promise<UberOAuthStateRequestRecord | null>;
+  updateMany(args: {
+    where: {
+      nonce: string;
+      adminSessionId: string;
+      issuedAt: Date;
+      expiresAt: { gt: Date };
+      consumedAt: null;
+    };
+    data: { consumedAt: Date };
+  }): Promise<{ count: number }>;
+  deleteMany(args: {
+    where: { expiresAt: { lte: Date } };
+  }): Promise<{ count: number }>;
+};
+
 @Injectable()
 export class UberEatsService {
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
@@ -747,15 +779,6 @@ export class UberEatsService {
     process.env.UBER_EATS_RESOURCE_HREF_ALLOWED_ORIGINS?.trim() || '';
   private readonly oauthStateSecret: string;
   private readonly webhookSigningKey: string;
-  private readonly oauthStateRequests = new Map<
-    string,
-    {
-      adminSessionId: string;
-      redirectUri: string;
-      createdAt: number;
-      merchantContext: string | null;
-    }
-  >();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -787,6 +810,18 @@ export class UberEatsService {
     return prismaWithUber.uberMerchantConnection ?? null;
   }
 
+  private get uberOAuthStateRequestDelegate(): UberOAuthStateRequestDelegate {
+    const delegate = (
+      this.prisma as PrismaService & {
+        uberOAuthStateRequest?: UberOAuthStateRequestDelegate;
+      }
+    ).uberOAuthStateRequest;
+    if (!delegate) {
+      throw new Error('UberOAuthStateRequest 数据表不可用');
+    }
+    return delegate;
+  }
+
   private get uberStoreMappingDelegate(): UberStoreMappingDelegate | null {
     const prismaWithUber = this.prisma as PrismaService & {
       uberStoreMapping?: UberStoreMappingDelegate;
@@ -807,8 +842,11 @@ export class UberEatsService {
     return delegate;
   }
 
-  buildMerchantAuthorizeUrl(adminSessionId: string, merchantContext?: string) {
-    const state = this.createOAuthState(adminSessionId, merchantContext);
+  async buildMerchantAuthorizeUrl(
+    adminSessionId: string,
+    merchantContext?: string,
+  ) {
+    const state = await this.createOAuthState(adminSessionId, merchantContext);
     const authorizeUrl = this.uberAuthService.buildMerchantAuthorizeUrl(state);
 
     this.logger.log(
@@ -822,7 +860,7 @@ export class UberEatsService {
     };
   }
 
-  startMerchantOAuth(adminSessionId: string, merchantContext?: string) {
+  async startMerchantOAuth(adminSessionId: string, merchantContext?: string) {
     return this.buildMerchantAuthorizeUrl(adminSessionId, merchantContext);
   }
 
@@ -831,7 +869,7 @@ export class UberEatsService {
     state: string | undefined,
     adminSessionId: string | undefined,
   ) {
-    const stateRequest = this.consumeOAuthState(state, adminSessionId);
+    const stateRequest = await this.consumeOAuthState(state, adminSessionId);
 
     const tokenResult = await this.uberAuthService.exchangeAuthorizationCode(
       code,
@@ -2919,10 +2957,10 @@ export class UberEatsService {
     };
   }
 
-  private createOAuthState(
+  private async createOAuthState(
     adminSessionId: string,
     merchantContext?: string,
-  ): string {
+  ): Promise<string> {
     if (!adminSessionId.trim()) {
       throw new UnauthorizedException('缺少发起 OAuth 的管理员会话');
     }
@@ -2932,16 +2970,26 @@ export class UberEatsService {
     const signature = createHmac('sha256', this.oauthStateSecret)
       .update(payload)
       .digest('hex');
-    this.oauthStateRequests.set(nonce, {
-      adminSessionId: adminSessionId.trim(),
-      redirectUri: this.uberAuthService.getMerchantRedirectUri(),
-      createdAt: Number(timestamp),
-      merchantContext: merchantContext?.trim() || null,
+    const issuedAt = new Date(Number(timestamp));
+    const expiresAt = new Date(issuedAt.getTime() + 10 * 60 * 1000);
+    // 在签发路径顺带批量清理过期记录，避免依赖单进程内存定时器。
+    await this.uberOAuthStateRequestDelegate.deleteMany({
+      where: { expiresAt: { lte: issuedAt } },
+    });
+    await this.uberOAuthStateRequestDelegate.create({
+      data: {
+        nonce,
+        adminSessionId: adminSessionId.trim(),
+        redirectUri: this.uberAuthService.getMerchantRedirectUri(),
+        issuedAt,
+        expiresAt,
+        merchantContext: merchantContext?.trim() || null,
+      },
     });
     return `${payload}.${signature}`;
   }
 
-  private consumeOAuthState(
+  private async consumeOAuthState(
     state: string | undefined,
     adminSessionId: string | undefined,
   ) {
@@ -2988,8 +3036,14 @@ export class UberEatsService {
       throw new BadRequestException('OAuth state 已过期');
     }
 
-    const request = this.oauthStateRequests.get(nonce);
-    if (!request || request.createdAt !== issuedAt) {
+    const request = await this.uberOAuthStateRequestDelegate.findUnique({
+      where: { nonce },
+    });
+    if (
+      !request ||
+      request.issuedAt.getTime() !== issuedAt ||
+      request.consumedAt
+    ) {
       throw new BadRequestException('OAuth state 不存在或已使用');
     }
     if (
@@ -2999,8 +3053,24 @@ export class UberEatsService {
       throw new UnauthorizedException('OAuth state 与管理员会话不匹配');
     }
 
-    // Map.delete 与前面的读取在同一个同步执行段完成；在任何异步 token 请求前消费 nonce。
-    this.oauthStateRequests.delete(nonce);
+    if (request.expiresAt.getTime() <= now) {
+      throw new BadRequestException('OAuth state 已过期');
+    }
+
+    // 条件更新是数据库级 compare-and-set；并发回调中只有一个请求能消费成功。
+    const consumed = await this.uberOAuthStateRequestDelegate.updateMany({
+      where: {
+        nonce,
+        adminSessionId: adminSessionId.trim(),
+        issuedAt: new Date(issuedAt),
+        expiresAt: { gt: new Date(now) },
+        consumedAt: null,
+      },
+      data: { consumedAt: new Date(now) },
+    });
+    if (consumed.count !== 1) {
+      throw new BadRequestException('OAuth state 不存在或已使用');
+    }
     return request;
   }
 

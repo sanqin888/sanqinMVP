@@ -333,7 +333,7 @@ export class UberEatsController {
   @Get('oauth/connect-url')
   @UseGuards(SessionAuthGuard, RolesGuard)
   @Roles('ADMIN')
-  oauthConnectUrl(@Req() req: Request & OAuthRequestContext) {
+  async oauthConnectUrl(@Req() req: Request & OAuthRequestContext) {
     return this.uberEatsService.buildMerchantAuthorizeUrl(
       this.requireAdminSession(req),
       req.user?.userStableId,
@@ -343,8 +343,11 @@ export class UberEatsController {
   @Get('oauth/start')
   @UseGuards(SessionAuthGuard, RolesGuard)
   @Roles('ADMIN')
-  oauthStart(@Req() req: Request & OAuthRequestContext, @Res() res: Response) {
-    const result = this.uberEatsService.startMerchantOAuth(
+  async oauthStart(
+    @Req() req: Request & OAuthRequestContext,
+    @Res() res: Response,
+  ) {
+    const result = await this.uberEatsService.startMerchantOAuth(
       this.requireAdminSession(req),
       req.user?.userStableId,
     );
