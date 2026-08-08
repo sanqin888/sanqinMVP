@@ -36,6 +36,7 @@ import {
   NormalizedOrderItem,
 } from '../../orders/order-ingestion.service';
 import { UberHttpClient, UberHttpResult } from './uber-http.client';
+import { UberConfigService } from './uber-config.service';
 
 class UberWebhookNonRetryableError extends Error {
   constructor(
@@ -774,10 +775,8 @@ type UberOAuthStateRequestDelegate = {
 export class UberEatsService {
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
   private readonly logger = new AppLogger(UberEatsService.name);
-  private readonly uberApiBaseUrl =
-    process.env.UBER_EATS_API_BASE_URL?.trim() || '';
-  private readonly uberResourceHrefAllowedOrigins =
-    process.env.UBER_EATS_RESOURCE_HREF_ALLOWED_ORIGINS?.trim() || '';
+  private readonly uberApiBaseUrl: string;
+  private readonly uberResourceHrefAllowedOrigins: string;
   private readonly oauthStateSecret: string;
   private readonly webhookSigningKey: string;
 
@@ -787,8 +786,11 @@ export class UberEatsService {
     @Optional() private readonly orderEventsBus?: OrderEventsBus,
     @Optional() private readonly orderIngestionService?: OrderIngestionService,
     @Optional() private readonly httpClient = new UberHttpClient(),
+    @Optional() private readonly config = new UberConfigService(),
   ) {
-    const secret = process.env.UBER_EATS_OAUTH_STATE_SECRET?.trim() || '';
+    this.uberApiBaseUrl = config.apiBaseUrl;
+    this.uberResourceHrefAllowedOrigins = config.resourceHrefAllowedOrigins;
+    const secret = config.oauthStateSecret;
     if (secret.length < 32 || new Set(secret).size < 12) {
       throw new Error(
         'UBER_EATS_OAUTH_STATE_SECRET 必须配置为至少 32 个字符的高熵密钥',
@@ -796,8 +798,7 @@ export class UberEatsService {
     }
     this.oauthStateSecret = secret;
 
-    const webhookSigningKey =
-      process.env.UBER_EATS_WEBHOOK_SIGNING_KEY?.trim() || '';
+    const webhookSigningKey = config.webhookSigningKey;
     if (!webhookSigningKey) {
       throw new Error('UBER_EATS_WEBHOOK_SIGNING_KEY 未配置');
     }
@@ -5969,9 +5970,7 @@ export class UberEatsService {
    * through the read API instead of treating the PUT response as completion.
    */
   private hasMenuNotificationCapability(): boolean {
-    return /^(1|true|yes)$/i.test(
-      process.env.UBER_EATS_MENU_NOTIFICATIONS_ENABLED?.trim() ?? '',
-    );
+    return this.config.menuNotificationsEnabled;
   }
 
   private async confirmUploadedMenu(
@@ -6021,14 +6020,8 @@ export class UberEatsService {
     uberStoreId: string,
     requested: UberMenuUploadPayload,
   ): Promise<void> {
-    const timeoutMs = Math.max(
-      1,
-      Number(process.env.UBER_EATS_MENU_CONFIRM_TIMEOUT_MS ?? 120_000),
-    );
-    const initialDelayMs = Math.max(
-      1,
-      Number(process.env.UBER_EATS_MENU_CONFIRM_INITIAL_DELAY_MS ?? 1_000),
-    );
+    const timeoutMs = this.config.menuConfirmTimeoutMs;
+    const initialDelayMs = this.config.menuConfirmInitialDelayMs;
     const startedAt = Date.now();
     let delayMs = initialDelayMs;
     while (Date.now() - startedAt < timeoutMs) {
@@ -6048,7 +6041,7 @@ export class UberEatsService {
         requested,
       );
       if (status !== 'SUBMITTED') return;
-      delayMs = Math.min(delayMs * 2, 30_000);
+      delayMs = Math.min(delayMs * 2, this.config.menuConfirmMaxDelayMs);
     }
 
     // Timeout is deliberately not success: retain SUBMITTED and make the
