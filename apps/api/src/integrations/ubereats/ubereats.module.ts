@@ -6,11 +6,12 @@ import { UberEatsController } from './ubereats.controller';
 import { UberEatsService } from './ubereats.service';
 import { MessagingModule } from '../../messaging/messaging.module';
 import { OrdersModule } from '../../orders/orders.module';
+import { UberHttpClient } from './uber-http.client';
 
 @Module({
   imports: [PrismaModule, AuthModule, MessagingModule, OrdersModule],
   controllers: [UberEatsController],
-  providers: [UberEatsService, UberAuthService],
+  providers: [UberEatsService, UberAuthService, UberHttpClient],
   exports: [UberAuthService, UberEatsService],
 })
 export class UberEatsModule {}

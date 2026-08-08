@@ -1,6 +1,7 @@
 //apps/api/src/integrations/ubereats/uber-auth.service.ts
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { AppLogger } from '../../common/app-logger';
+import { UberHttpClient } from './uber-http.client';
 
 type UberTokenResponse = {
   access_token?: string;
@@ -64,6 +65,8 @@ export class UberAuthService {
     string,
     Promise<CachedToken>
   >();
+
+  constructor(@Optional() private readonly httpClient = new UberHttpClient()) {}
 
   private resolveOAuthClientCredentials(): {
     clientId: string;
@@ -349,17 +352,17 @@ export class UberAuthService {
       `[token.request] endpoint=${this.tokenEndpoint} grant_type=${params.get('grant_type') || ''} scope=${params.get('scope') || ''}`,
     );
 
-    const response = await fetch(this.tokenEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        Accept: 'application/json',
+    const { response, data } = await this.httpClient.request<UberTokenResponse>(
+      {
+        url: this.tokenEndpoint,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body,
+        kind: 'token',
       },
-      body,
-    });
-
-    const text = await response.text();
-    const data = text ? this.tryParseJson(text) : {};
+    );
 
     if (!response.ok) {
       const error = (
