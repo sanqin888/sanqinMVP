@@ -2,6 +2,7 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { AppLogger } from '../../common/app-logger';
 import { UberHttpClient } from './uber-http.client';
+import { UberConfigService } from './uber-config.service';
 
 type UberTokenResponse = {
   access_token?: string;
@@ -35,29 +36,6 @@ export type UberMerchantTokenExchangeResult = {
 export class UberAuthService {
   private readonly logger = new AppLogger(UberAuthService.name);
 
-  private readonly clientId = process.env.UBER_EATS_CLIENT_ID?.trim() || '';
-  private readonly clientSecret =
-    process.env.UBER_EATS_CLIENT_SECRET?.trim() || '';
-
-  private readonly tokenEndpoint =
-    process.env.UBER_EATS_TOKEN_ENDPOINT?.trim() ||
-    'https://auth.uber.com/oauth/v2/token';
-
-  private readonly authorizeEndpoint =
-    process.env.UBER_EATS_AUTHORIZE_ENDPOINT?.trim() ||
-    'https://auth.uber.com/oauth/v2/authorize';
-
-  private readonly defaultAppScopes =
-    process.env.UBER_EATS_APP_SCOPES?.trim() ||
-    process.env.UBER_EATS_SCOPES?.trim() ||
-    'eats.store eats.order';
-
-  private readonly defaultMerchantScopes =
-    process.env.UBER_EATS_USER_AUTH_SCOPES?.trim() || 'eats.pos_provisioning';
-
-  private readonly redirectUri =
-    process.env.UBER_EATS_REDIRECT_URI?.trim() || '';
-
   private readonly accessTokenSkewMs = 60_000;
 
   private readonly tokenCache = new Map<string, CachedToken>();
@@ -66,14 +44,17 @@ export class UberAuthService {
     Promise<CachedToken>
   >();
 
-  constructor(@Optional() private readonly httpClient = new UberHttpClient()) {}
+  constructor(
+    @Optional() private readonly httpClient = new UberHttpClient(),
+    @Optional() private readonly config = new UberConfigService(),
+  ) {}
 
   private resolveOAuthClientCredentials(): {
     clientId: string;
     clientSecret: string;
   } {
-    const clientId = this.clientId;
-    const clientSecret = this.clientSecret;
+    const clientId = this.config.clientId;
+    const clientSecret = this.config.clientSecret;
 
     if (!clientId) {
       throw new Error('UBER_EATS_CLIENT_ID 未配置');
@@ -99,7 +80,7 @@ export class UberAuthService {
   getDefaultAppScopes(): string[] {
     return Array.from(
       new Set(
-        (this.defaultAppScopes || '')
+        (this.config.defaultAppScopes || '')
           .split(/\s+/)
           .map((item) => item.trim())
           .filter(Boolean),
@@ -108,7 +89,9 @@ export class UberAuthService {
   }
 
   normalizeScopesToArray(scope?: string): string[] {
-    const source = (scope?.trim() ? scope : this.defaultAppScopes || '').trim();
+    const source = (
+      scope?.trim() ? scope : this.config.defaultAppScopes || ''
+    ).trim();
 
     return Array.from(
       new Set(
@@ -121,7 +104,7 @@ export class UberAuthService {
   }
 
   private normalizeMerchantScopes(scope?: string): string {
-    const source = (scope || this.defaultMerchantScopes || '').trim();
+    const source = (scope || this.config.defaultMerchantScopes || '').trim();
 
     const deduped = Array.from(
       new Set(
@@ -140,7 +123,7 @@ export class UberAuthService {
   }
 
   private resolveMerchantRedirectUri(override?: string): string {
-    const redirectUri = (override || this.redirectUri || '').trim();
+    const redirectUri = (override || this.config.redirectUri || '').trim();
 
     if (!redirectUri) {
       throw new Error('UBER_EATS_REDIRECT_URI 未配置');
@@ -224,7 +207,7 @@ export class UberAuthService {
       state: state.trim(),
     });
 
-    return `${this.authorizeEndpoint}?${params.toString()}`;
+    return `${this.config.authorizeEndpoint}?${params.toString()}`;
   }
 
   async exchangeAuthorizationCode(
@@ -349,12 +332,12 @@ export class UberAuthService {
     const body = params.toString();
 
     this.logger.debug(
-      `[token.request] endpoint=${this.tokenEndpoint} grant_type=${params.get('grant_type') || ''} scope=${params.get('scope') || ''}`,
+      `[token.request] endpoint=${this.config.tokenEndpoint} grant_type=${params.get('grant_type') || ''} scope=${params.get('scope') || ''}`,
     );
 
     const { response, data } = await this.httpClient.request<UberTokenResponse>(
       {
-        url: this.tokenEndpoint,
+        url: this.config.tokenEndpoint,
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',

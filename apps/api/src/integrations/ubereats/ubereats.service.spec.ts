@@ -31,6 +31,7 @@ jest.mock('@prisma/client', () => ({
   PaymentMethod: { UBEREATS: 'UBEREATS' },
 }));
 import { UberHttpClient } from './uber-http.client';
+import { UberConfigService } from './uber-config.service';
 
 import { createHash, createHmac } from 'crypto';
 import { AppLogger } from '../../common/app-logger';
@@ -2967,9 +2968,15 @@ describe('UberEatsService', () => {
 
   it('发布确认超时保持 SUBMITTED 并创建 TIMED_OUT 运营工单', async () => {
     jest.useFakeTimers();
-    process.env.UBER_EATS_MENU_CONFIRM_TIMEOUT_MS = '1';
-    process.env.UBER_EATS_MENU_CONFIRM_INITIAL_DELAY_MS = '1';
     const create = jest.fn().mockResolvedValue(null);
+    const config = new UberConfigService({
+      UBER_EATS_OAUTH_STATE_SECRET:
+        'high-entropy-test-secret-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+      UBER_EATS_WEBHOOK_SIGNING_KEY: 'test-ubereats-secret',
+      UBER_EATS_MENU_CONFIRM_TIMEOUT_MS: '100',
+      UBER_EATS_MENU_CONFIRM_INITIAL_DELAY_MS: '10',
+      UBER_EATS_MENU_CONFIRM_MAX_DELAY_MS: '20',
+    });
     const service = new UberEatsService(
       {
         uberMenuPublishVersion: {
@@ -2979,6 +2986,10 @@ describe('UberEatsService', () => {
         opsEvent: { create: jest.fn().mockResolvedValue(null) },
       } as never,
       createAuthService(),
+      undefined,
+      undefined,
+      new UberHttpClient(),
+      config,
     );
     jest
       .spyOn(service as never, 'confirmUploadedMenu' as never)
@@ -2990,7 +3001,7 @@ describe('UberEatsService', () => {
       'uber_store',
       { menus: [], categories: [], items: [], modifier_groups: [] },
     );
-    await jest.advanceTimersByTimeAsync(2);
+    await jest.advanceTimersByTimeAsync(150);
     await polling;
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -3000,8 +3011,6 @@ describe('UberEatsService', () => {
         }) as unknown,
       }),
     );
-    delete process.env.UBER_EATS_MENU_CONFIRM_TIMEOUT_MS;
-    delete process.env.UBER_EATS_MENU_CONFIRM_INITIAL_DELAY_MS;
     jest.useRealTimers();
     jest.restoreAllMocks();
   });
