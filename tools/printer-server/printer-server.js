@@ -411,6 +411,9 @@ async function buildCustomerReceiptEscPos(params) {
 
     chunks.push(cmd(ESC, 0x61, 0x01)); // ESC a 1 -> 居中
     chunks.push(cmd(GS, 0x21, 0x11)); // GS ! 0x11 -> 双倍宽高
+    chunks.push(encLine("取餐码"));
+    chunks.push(encLine("PICKUP CODE"));
+    chunks.push(encLine(String(pickupCode)));
     chunks.push(cmd(GS, 0x42, 0x01)); // GS B 1 -> 黑底白字
     chunks.push(encLine(pickupCodeLine));
     chunks.push(cmd(GS, 0x42, 0x00)); // GS B 0 -> 恢复黑字白底
