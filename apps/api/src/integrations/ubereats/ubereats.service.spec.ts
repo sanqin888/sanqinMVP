@@ -3527,48 +3527,168 @@ describe('UberEatsService', () => {
   });
 
   describe('OAuth state 安全校验', () => {
+    type StateRecord = {
+      nonce: string;
+      adminSessionId: string;
+      redirectUri: string;
+      merchantContext: string | null;
+      issuedAt: Date;
+      expiresAt: Date;
+      consumedAt: Date | null;
+    };
+
+    const createStatePrisma = () => {
+      const records = new Map<string, StateRecord>();
+      return {
+        records,
+        prisma: {
+          uberOAuthStateRequest: {
+            create: jest.fn(
+              async ({ data }: { data: Omit<StateRecord, 'consumedAt'> }) => {
+                records.set(data.nonce, { ...data, consumedAt: null });
+              },
+            ),
+            findUnique: jest.fn(
+              async ({ where }: { where: { nonce: string } }) =>
+                records.get(where.nonce) ?? null,
+            ),
+            updateMany: jest.fn(
+              async ({
+                where,
+                data,
+              }: {
+                where: {
+                  nonce: string;
+                  adminSessionId: string;
+                  issuedAt: Date;
+                  expiresAt: { gt: Date };
+                  consumedAt: null;
+                };
+                data: { consumedAt: Date };
+              }) => {
+                const record = records.get(where.nonce);
+                if (
+                  !record ||
+                  record.consumedAt ||
+                  record.adminSessionId !== where.adminSessionId ||
+                  record.issuedAt.getTime() !== where.issuedAt.getTime() ||
+                  record.expiresAt <= where.expiresAt.gt
+                )
+                  return { count: 0 };
+                record.consumedAt = data.consumedAt;
+                return { count: 1 };
+              },
+            ),
+            deleteMany: jest.fn(
+              async ({ where }: { where: { expiresAt: { lte: Date } } }) => {
+                let count = 0;
+                for (const [nonce, record] of records) {
+                  if (record.expiresAt <= where.expiresAt.lte) {
+                    records.delete(nonce);
+                    count += 1;
+                  }
+                }
+                return { count };
+              },
+            ),
+          },
+        },
+      };
+    };
     const stateInternals = (service: UberEatsService) =>
       service as unknown as {
-        consumeOAuthState: (state: string, sessionId: string) => unknown;
+        consumeOAuthState: (
+          state: string,
+          sessionId: string,
+        ) => Promise<unknown>;
       };
 
-    it('拒绝过期与未来时间的 state', () => {
-      const service = new UberEatsService({} as never, createAuthService());
-      const nowSpy = jest.spyOn(Date, 'now');
-      nowSpy.mockReturnValue(1_700_000_000_000);
-      const expired = service.buildMerchantAuthorizeUrl('session_1').state;
-      nowSpy.mockReturnValue(1_700_000_000_000 + 10 * 60 * 1000 + 1);
-      expect(() =>
-        stateInternals(service).consumeOAuthState(expired, 'session_1'),
-      ).toThrow('OAuth state 已过期');
+    it('可由共享持久层上的另一个 service 实例消费，并保留上下文', async () => {
+      const { prisma } = createStatePrisma();
+      const issuer = new UberEatsService(prisma as never, createAuthService());
+      const consumer = new UberEatsService(
+        prisma as never,
+        createAuthService(),
+      );
+      const issued = await issuer.buildMerchantAuthorizeUrl(
+        'session_1',
+        'merchant_1',
+      );
 
-      nowSpy.mockReturnValue(1_700_000_000_000 + 120_000);
-      const future = service.buildMerchantAuthorizeUrl('session_1').state;
-      nowSpy.mockReturnValue(1_700_000_000_000);
-      expect(() =>
-        stateInternals(service).consumeOAuthState(future, 'session_1'),
-      ).toThrow('OAuth state 时间戳来自未来');
+      await expect(
+        stateInternals(consumer).consumeOAuthState(issued.state, 'session_1'),
+      ).resolves.toMatchObject({ merchantContext: 'merchant_1' });
     });
 
-    it('拒绝伪造、会话不匹配和二次使用的 state', () => {
-      const service = new UberEatsService({} as never, createAuthService());
-      const forged = service.buildMerchantAuthorizeUrl('session_1').state;
-      expect(() =>
+    it('拒绝过期与未来时间的 state，并在签发时清理过期记录', async () => {
+      const { prisma, records } = createStatePrisma();
+      const service = new UberEatsService(prisma as never, createAuthService());
+      const nowSpy = jest.spyOn(Date, 'now');
+      nowSpy.mockReturnValue(1_700_000_000_000);
+      const expired = (await service.buildMerchantAuthorizeUrl('session_1'))
+        .state;
+      nowSpy.mockReturnValue(1_700_000_000_000 + 10 * 60 * 1000 + 1);
+      await expect(
+        stateInternals(service).consumeOAuthState(expired, 'session_1'),
+      ).rejects.toThrow('OAuth state 已过期');
+
+      const future = (await service.buildMerchantAuthorizeUrl('session_1'))
+        .state;
+      nowSpy.mockReturnValue(1_700_000_000_000);
+      await expect(
+        stateInternals(service).consumeOAuthState(future, 'session_1'),
+      ).rejects.toThrow('OAuth state 时间戳来自未来');
+      expect(records.size).toBe(1);
+    });
+
+    it('拒绝伪造、会话不匹配和二次使用的 state', async () => {
+      const { prisma } = createStatePrisma();
+      const service = new UberEatsService(prisma as never, createAuthService());
+      const forged = (await service.buildMerchantAuthorizeUrl('session_1'))
+        .state;
+      await expect(
         stateInternals(service).consumeOAuthState(`${forged}x`, 'session_1'),
-      ).toThrow('OAuth state 校验失败');
+      ).rejects.toThrow('OAuth state 校验失败');
 
-      const mismatched = service.buildMerchantAuthorizeUrl('session_1').state;
-      expect(() =>
+      const mismatched = (await service.buildMerchantAuthorizeUrl('session_1'))
+        .state;
+      await expect(
         stateInternals(service).consumeOAuthState(mismatched, 'session_2'),
-      ).toThrow('OAuth state 与管理员会话不匹配');
+      ).rejects.toThrow('OAuth state 与管理员会话不匹配');
 
-      const oneTime = service.buildMerchantAuthorizeUrl('session_1').state;
-      expect(() =>
+      const oneTime = (await service.buildMerchantAuthorizeUrl('session_1'))
+        .state;
+      await expect(
         stateInternals(service).consumeOAuthState(oneTime, 'session_1'),
-      ).not.toThrow();
-      expect(() =>
+      ).resolves.toBeDefined();
+      await expect(
         stateInternals(service).consumeOAuthState(oneTime, 'session_1'),
-      ).toThrow('OAuth state 不存在或已使用');
+      ).rejects.toThrow('OAuth state 不存在或已使用');
+    });
+
+    it('并发消费时仅允许一个回调成功', async () => {
+      const { prisma } = createStatePrisma();
+      const serviceA = new UberEatsService(
+        prisma as never,
+        createAuthService(),
+      );
+      const serviceB = new UberEatsService(
+        prisma as never,
+        createAuthService(),
+      );
+      const state = (await serviceA.buildMerchantAuthorizeUrl('session_1'))
+        .state;
+
+      const results = await Promise.allSettled([
+        stateInternals(serviceA).consumeOAuthState(state, 'session_1'),
+        stateInternals(serviceB).consumeOAuthState(state, 'session_1'),
+      ]);
+      expect(
+        results.filter(({ status }) => status === 'fulfilled'),
+      ).toHaveLength(1);
+      expect(
+        results.filter(({ status }) => status === 'rejected'),
+      ).toHaveLength(1);
     });
   });
 
