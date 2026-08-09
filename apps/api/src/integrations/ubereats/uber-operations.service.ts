@@ -1109,4 +1109,34 @@ export class UberOperationsService {
       },
     });
   }
+
+  generateReconciliationReport(
+    ...args: Parameters<UberIntegrationRuntime['generateReconciliationReport']>
+  ): ReturnType<UberIntegrationRuntime['generateReconciliationReport']> {
+    return this.runtime.generateReconciliationReport(...args);
+  }
+
+  listReconciliationReports(
+    ...args: Parameters<UberIntegrationRuntime['listReconciliationReports']>
+  ): ReturnType<UberIntegrationRuntime['listReconciliationReports']> {
+    return this.runtime.listReconciliationReports(...args);
+  }
+
+  createOpsTicket(
+    ...args: Parameters<UberIntegrationRuntime['createOpsTicket']>
+  ): ReturnType<UberIntegrationRuntime['createOpsTicket']> {
+    return this.runtime.createOpsTicket(...args);
+  }
+
+  listOpsTickets(
+    ...args: Parameters<UberIntegrationRuntime['listOpsTickets']>
+  ): ReturnType<UberIntegrationRuntime['listOpsTickets']> {
+    return this.runtime.listOpsTickets(...args);
+  }
+
+  retryOpsTicket(
+    ...args: Parameters<UberIntegrationRuntime['retryOpsTicket']>
+  ): ReturnType<UberIntegrationRuntime['retryOpsTicket']> {
+    return this.runtime.retryOpsTicket(...args);
+  }
 }
