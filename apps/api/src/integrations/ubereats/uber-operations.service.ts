@@ -1,28 +1,30 @@
-import { Injectable } from '@nestjs/common';
-import { UberEatsService } from './ubereats.service';
+import { Injectable, Optional } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+import { OrderEventsBus } from '../../messaging/order-events.bus';
+import { OrderIngestionService } from '../../orders/order-ingestion.service';
+import { UberAuthService } from './uber-auth.service';
+import { UberConfigService } from './uber-config.service';
+import { UberHttpClient } from './uber-http.client';
+import { UberIntegrationBase } from './uber-integration.base';
 
-/** Reconciliation, operations tickets and audit-event boundary. */
+/** Reconciliation reports, operations tickets, retries and auditing. */
 @Injectable()
-export class UberOperationsService {
-  constructor(private readonly facade: UberEatsService) {}
-
-  generateReconciliationReport(
-    ...args: Parameters<UberEatsService['generateReconciliationReport']>
+export class UberOperationsService extends UberIntegrationBase {
+  constructor(
+    prisma: PrismaService,
+    uberAuthService: UberAuthService,
+    @Optional() orderEventsBus?: OrderEventsBus,
+    @Optional() orderIngestionService?: OrderIngestionService,
+    @Optional() httpClient?: UberHttpClient,
+    @Optional() config?: UberConfigService,
   ) {
-    return this.facade.generateReconciliationReport(...args);
-  }
-  listReconciliationReports(
-    ...args: Parameters<UberEatsService['listReconciliationReports']>
-  ) {
-    return this.facade.listReconciliationReports(...args);
-  }
-  createOpsTicket(...args: Parameters<UberEatsService['createOpsTicket']>) {
-    return this.facade.createOpsTicket(...args);
-  }
-  listOpsTickets(...args: Parameters<UberEatsService['listOpsTickets']>) {
-    return this.facade.listOpsTickets(...args);
-  }
-  retryOpsTicket(...args: Parameters<UberEatsService['retryOpsTicket']>) {
-    return this.facade.retryOpsTicket(...args);
+    super(
+      prisma,
+      uberAuthService,
+      orderEventsBus,
+      orderIngestionService,
+      httpClient,
+      config,
+    );
   }
 }

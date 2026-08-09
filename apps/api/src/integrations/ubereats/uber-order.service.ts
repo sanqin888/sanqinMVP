@@ -1,31 +1,30 @@
-import { Injectable } from '@nestjs/common';
-import { OrderStatus } from '@prisma/client';
-import { UberEatsService } from './ubereats.service';
+import { Injectable, Optional } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+import { OrderEventsBus } from '../../messaging/order-events.bus';
+import { OrderIngestionService } from '../../orders/order-ingestion.service';
+import { UberAuthService } from './uber-auth.service';
+import { UberConfigService } from './uber-config.service';
+import { UberHttpClient } from './uber-http.client';
+import { UberIntegrationBase } from './uber-integration.base';
 
-/** Order ingestion and outbound action boundary. */
+/** Order ingestion, parsing, persistence and outbound order actions. */
 @Injectable()
-export class UberOrderService {
-  constructor(private readonly facade: UberEatsService) {}
-
-  syncOrderStatusToUber(externalOrderId: string, status: OrderStatus) {
-    return this.facade.syncOrderStatusToUber(externalOrderId, status);
-  }
-  getReadyForPickupAction(externalOrderId: string) {
-    return this.facade.getReadyForPickupAction(externalOrderId);
-  }
-  retryReadyForPickup(externalOrderId: string) {
-    return this.facade.retryReadyForPickup(externalOrderId);
-  }
-  processPendingUberOrderActions(limit = 50) {
-    return this.facade.processPendingUberOrderActions(limit);
-  }
-  acceptUberOrder(externalOrderId: string) {
-    return this.facade.acceptUberOrder(externalOrderId);
-  }
-  denyUberOrder(...args: Parameters<UberEatsService['denyUberOrder']>) {
-    return this.facade.denyUberOrder(...args);
-  }
-  listPendingUberOrders() {
-    return this.facade.listPendingUberOrders();
+export class UberOrderService extends UberIntegrationBase {
+  constructor(
+    prisma: PrismaService,
+    uberAuthService: UberAuthService,
+    @Optional() orderEventsBus?: OrderEventsBus,
+    @Optional() orderIngestionService?: OrderIngestionService,
+    @Optional() httpClient?: UberHttpClient,
+    @Optional() config?: UberConfigService,
+  ) {
+    super(
+      prisma,
+      uberAuthService,
+      orderEventsBus,
+      orderIngestionService,
+      httpClient,
+      config,
+    );
   }
 }
