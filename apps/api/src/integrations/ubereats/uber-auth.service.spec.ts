@@ -1,4 +1,6 @@
 import { UberAuthService } from './uber-auth.service';
+import { UberHttpClient, UberHttpError } from './uber-http.client';
+import { AppLogger } from '../../common/app-logger';
 
 describe('UberAuthService', () => {
   const originalEnv = { ...process.env };
@@ -88,5 +90,56 @@ describe('UberAuthService', () => {
     expect(logged).toContain('description=[redacted] credential rejected');
     expect(logged).not.toContain('leaked');
     expect(logged).not.toContain('must-not-appear');
+  });
+});
+
+describe('UberHttpClient（认证请求）', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+    delete process.env.UBER_EATS_TOKEN_TIMEOUT_MS;
+  });
+
+  it('超时会中止请求并转换为可重试领域错误', async () => {
+    jest.useFakeTimers();
+    process.env.UBER_EATS_TOKEN_TIMEOUT_MS = '100';
+    jest.spyOn(global, 'fetch').mockImplementation(
+      (_, init) =>
+        new Promise((_, reject) =>
+          init?.signal?.addEventListener('abort', () =>
+            reject(
+              Object.assign(new Error('secret=leaked'), {
+                name: 'AbortError',
+              }),
+            ),
+          ),
+        ),
+    );
+    const pending = expect(
+      new UberHttpClient().request({
+        url: 'https://auth.uber.com/token',
+        method: 'POST',
+        kind: 'token',
+      }),
+    ).rejects.toMatchObject<UberHttpError>({
+      reason: 'timeout',
+      retryable: true,
+    });
+    await jest.advanceTimersByTimeAsync(101);
+    await pending;
+  });
+
+  it('日志会脱敏 URL 中的敏感信息', async () => {
+    const errorSpy = jest
+      .spyOn(AppLogger.prototype, 'error')
+      .mockImplementation();
+    jest.spyOn(global, 'fetch').mockRejectedValue(new Error('offline'));
+    await expect(
+      new UberHttpClient().request({
+        url: 'https://example.com/a?access_token=leaked',
+        method: 'POST',
+      }),
+    ).rejects.toBeInstanceOf(UberHttpError);
+    expect(errorSpy.mock.calls.flat().join(' ')).not.toContain('leaked');
   });
 });

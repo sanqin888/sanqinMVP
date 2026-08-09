@@ -1440,6 +1440,19 @@ model UberOpsTicket {
   @@index([externalOrderId])
 }
 
+model UberOAuthStateRequest {
+  nonce           String    @id
+  adminSessionId  String
+  redirectUri     String
+  merchantContext String?
+  issuedAt        DateTime
+  expiresAt       DateTime
+  consumedAt      DateTime?
+
+  @@index([expiresAt])
+  @@index([consumedAt, expiresAt])
+}
+
 enum OrderStatus {
   pending
   paid

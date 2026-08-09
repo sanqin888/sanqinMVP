@@ -35,6 +35,8 @@ import {
   OrderIngestionService,
   NormalizedOrderItem,
 } from '../../orders/order-ingestion.service';
+import { UberHttpClient, UberHttpResult } from './uber-http.client';
+import { UberConfigService } from './uber-config.service';
 
 class UberWebhookNonRetryableError extends Error {
   constructor(
@@ -737,33 +739,58 @@ type CreateOpsTicketInput = UberStoreScopedInput & {
   context?: Prisma.JsonObject;
 };
 
+type UberOAuthStateRequestRecord = {
+  nonce: string;
+  adminSessionId: string;
+  redirectUri: string;
+  merchantContext: string | null;
+  issuedAt: Date;
+  expiresAt: Date;
+  consumedAt: Date | null;
+};
+
+type UberOAuthStateRequestDelegate = {
+  create(args: {
+    data: Omit<UberOAuthStateRequestRecord, 'consumedAt'>;
+  }): Promise<unknown>;
+  findUnique(args: {
+    where: { nonce: string };
+  }): Promise<UberOAuthStateRequestRecord | null>;
+  updateMany(args: {
+    where: {
+      nonce: string;
+      adminSessionId: string;
+      issuedAt: Date;
+      expiresAt: { gt: Date };
+      consumedAt: null;
+    };
+    data: { consumedAt: Date };
+  }): Promise<{ count: number }>;
+  deleteMany(args: {
+    where: { expiresAt: { lte: Date } };
+  }): Promise<{ count: number }>;
+};
+
 @Injectable()
 export class UberEatsService {
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
   private readonly logger = new AppLogger(UberEatsService.name);
-  private readonly uberApiBaseUrl =
-    process.env.UBER_EATS_API_BASE_URL?.trim() || '';
-  private readonly uberResourceHrefAllowedOrigins =
-    process.env.UBER_EATS_RESOURCE_HREF_ALLOWED_ORIGINS?.trim() || '';
+  private readonly uberApiBaseUrl: string;
+  private readonly uberResourceHrefAllowedOrigins: string;
   private readonly oauthStateSecret: string;
   private readonly webhookSigningKey: string;
-  private readonly oauthStateRequests = new Map<
-    string,
-    {
-      adminSessionId: string;
-      redirectUri: string;
-      createdAt: number;
-      merchantContext: string | null;
-    }
-  >();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly uberAuthService: UberAuthService,
     @Optional() private readonly orderEventsBus?: OrderEventsBus,
     @Optional() private readonly orderIngestionService?: OrderIngestionService,
+    @Optional() private readonly httpClient = new UberHttpClient(),
+    @Optional() private readonly config = new UberConfigService(),
   ) {
-    const secret = process.env.UBER_EATS_OAUTH_STATE_SECRET?.trim() || '';
+    this.uberApiBaseUrl = config.apiBaseUrl;
+    this.uberResourceHrefAllowedOrigins = config.resourceHrefAllowedOrigins;
+    const secret = config.oauthStateSecret;
     if (secret.length < 32 || new Set(secret).size < 12) {
       throw new Error(
         'UBER_EATS_OAUTH_STATE_SECRET 必须配置为至少 32 个字符的高熵密钥',
@@ -771,8 +798,7 @@ export class UberEatsService {
     }
     this.oauthStateSecret = secret;
 
-    const webhookSigningKey =
-      process.env.UBER_EATS_WEBHOOK_SIGNING_KEY?.trim() || '';
+    const webhookSigningKey = config.webhookSigningKey;
     if (!webhookSigningKey) {
       throw new Error('UBER_EATS_WEBHOOK_SIGNING_KEY 未配置');
     }
@@ -785,6 +811,18 @@ export class UberEatsService {
     };
 
     return prismaWithUber.uberMerchantConnection ?? null;
+  }
+
+  private get uberOAuthStateRequestDelegate(): UberOAuthStateRequestDelegate {
+    const delegate = (
+      this.prisma as PrismaService & {
+        uberOAuthStateRequest?: UberOAuthStateRequestDelegate;
+      }
+    ).uberOAuthStateRequest;
+    if (!delegate) {
+      throw new Error('UberOAuthStateRequest 数据表不可用');
+    }
+    return delegate;
   }
 
   private get uberStoreMappingDelegate(): UberStoreMappingDelegate | null {
@@ -807,8 +845,11 @@ export class UberEatsService {
     return delegate;
   }
 
-  buildMerchantAuthorizeUrl(adminSessionId: string, merchantContext?: string) {
-    const state = this.createOAuthState(adminSessionId, merchantContext);
+  async buildMerchantAuthorizeUrl(
+    adminSessionId: string,
+    merchantContext?: string,
+  ) {
+    const state = await this.createOAuthState(adminSessionId, merchantContext);
     const authorizeUrl = this.uberAuthService.buildMerchantAuthorizeUrl(state);
 
     this.logger.log(
@@ -822,7 +863,7 @@ export class UberEatsService {
     };
   }
 
-  startMerchantOAuth(adminSessionId: string, merchantContext?: string) {
+  async startMerchantOAuth(adminSessionId: string, merchantContext?: string) {
     return this.buildMerchantAuthorizeUrl(adminSessionId, merchantContext);
   }
 
@@ -831,7 +872,7 @@ export class UberEatsService {
     state: string | undefined,
     adminSessionId: string | undefined,
   ) {
-    const stateRequest = this.consumeOAuthState(state, adminSessionId);
+    const stateRequest = await this.consumeOAuthState(state, adminSessionId);
 
     const tokenResult = await this.uberAuthService.exchangeAuthorizationCode(
       code,
@@ -1130,15 +1171,22 @@ export class UberEatsService {
       });
     } catch (error) {
       const nonRetryable = error instanceof UberWebhookNonRetryableError;
+      const retryable =
+        !nonRetryable &&
+        (!error ||
+          typeof error !== 'object' ||
+          !('retryable' in error) ||
+          (error as { retryable?: unknown }).retryable === true);
       await this.markWebhookFailed(eventId, error, {
-        retryable: !nonRetryable,
+        retryable,
       });
-      if (nonRetryable) {
+      if (!retryable) {
         await this.captureEvent('ubereats_webhook_non_retryable_failed', {
           eventType,
           eventId,
-          status: error.status,
-          detail: error.detail,
+          ...(nonRetryable
+            ? { status: error.status, detail: error.detail }
+            : this.safeStructuredError(error)),
         });
         return;
       }
@@ -1491,20 +1539,16 @@ export class UberEatsService {
         const token = await this.uberAuthService.getAccessToken(
           'eats.store.status.write',
         );
-        const response = await fetch(
-          `${this.uberApiBaseUrl.replace(/\/$/, '')}/v1/eats/stores/${encodeURIComponent(uberStoreId)}/status`,
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${token}`,
-              Accept: 'application/json',
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(payload),
-          },
-        );
+        const { response, text: rawText } = await this.httpClient.request({
+          returnErrorResponse: true,
+          path: `/v1/eats/stores/${encodeURIComponent(uberStoreId)}/status`,
+          baseUrl: this.uberApiBaseUrl,
+          method: 'POST',
+          accessToken: token,
+          json: payload,
+          kind: 'api',
+        });
         lastStatus = response.status;
-        const rawText = await response.text();
         lastError = response.ok
           ? ''
           : this.summarizeDebugResponse(this.tryParseJson(rawText), rawText);
@@ -1559,8 +1603,12 @@ export class UberEatsService {
         status: UberOpsTicketStatus.OPEN,
         priority: UberOpsTicketPriority.HIGH,
         title: 'Uber 门店状态同步需要运营处理',
-        description: error,
-        context: { uberStoreId, uberHttpStatus: status },
+        description: this.redactSensitiveLogText(error).slice(0, 500),
+        context: {
+          uberStoreId,
+          uberHttpStatus: status,
+          errorCode: `UBER_HTTP_${status}`,
+        },
       },
     });
   }
@@ -2538,7 +2586,7 @@ export class UberEatsService {
           versionStableId: published.versionStableId,
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = this.summarizeWebhookError(error);
         await this.prisma.uberOpsTicket.create({
           data: {
             storeId: config.storeId,
@@ -2919,10 +2967,10 @@ export class UberEatsService {
     };
   }
 
-  private createOAuthState(
+  private async createOAuthState(
     adminSessionId: string,
     merchantContext?: string,
-  ): string {
+  ): Promise<string> {
     if (!adminSessionId.trim()) {
       throw new UnauthorizedException('缺少发起 OAuth 的管理员会话');
     }
@@ -2932,16 +2980,26 @@ export class UberEatsService {
     const signature = createHmac('sha256', this.oauthStateSecret)
       .update(payload)
       .digest('hex');
-    this.oauthStateRequests.set(nonce, {
-      adminSessionId: adminSessionId.trim(),
-      redirectUri: this.uberAuthService.getMerchantRedirectUri(),
-      createdAt: Number(timestamp),
-      merchantContext: merchantContext?.trim() || null,
+    const issuedAt = new Date(Number(timestamp));
+    const expiresAt = new Date(issuedAt.getTime() + 10 * 60 * 1000);
+    // 在签发路径顺带批量清理过期记录，避免依赖单进程内存定时器。
+    await this.uberOAuthStateRequestDelegate.deleteMany({
+      where: { expiresAt: { lte: issuedAt } },
+    });
+    await this.uberOAuthStateRequestDelegate.create({
+      data: {
+        nonce,
+        adminSessionId: adminSessionId.trim(),
+        redirectUri: this.uberAuthService.getMerchantRedirectUri(),
+        issuedAt,
+        expiresAt,
+        merchantContext: merchantContext?.trim() || null,
+      },
     });
     return `${payload}.${signature}`;
   }
 
-  private consumeOAuthState(
+  private async consumeOAuthState(
     state: string | undefined,
     adminSessionId: string | undefined,
   ) {
@@ -2988,8 +3046,14 @@ export class UberEatsService {
       throw new BadRequestException('OAuth state 已过期');
     }
 
-    const request = this.oauthStateRequests.get(nonce);
-    if (!request || request.createdAt !== issuedAt) {
+    const request = await this.uberOAuthStateRequestDelegate.findUnique({
+      where: { nonce },
+    });
+    if (
+      !request ||
+      request.issuedAt.getTime() !== issuedAt ||
+      request.consumedAt
+    ) {
       throw new BadRequestException('OAuth state 不存在或已使用');
     }
     if (
@@ -2999,8 +3063,24 @@ export class UberEatsService {
       throw new UnauthorizedException('OAuth state 与管理员会话不匹配');
     }
 
-    // Map.delete 与前面的读取在同一个同步执行段完成；在任何异步 token 请求前消费 nonce。
-    this.oauthStateRequests.delete(nonce);
+    if (request.expiresAt.getTime() <= now) {
+      throw new BadRequestException('OAuth state 已过期');
+    }
+
+    // 条件更新是数据库级 compare-and-set；并发回调中只有一个请求能消费成功。
+    const consumed = await this.uberOAuthStateRequestDelegate.updateMany({
+      where: {
+        nonce,
+        adminSessionId: adminSessionId.trim(),
+        issuedAt: new Date(issuedAt),
+        expiresAt: { gt: new Date(now) },
+        consumedAt: null,
+      },
+      data: { consumedAt: new Date(now) },
+    });
+    if (consumed.count !== 1) {
+      throw new BadRequestException('OAuth state 不存在或已使用');
+    }
     return request;
   }
 
@@ -3218,24 +3298,25 @@ export class UberEatsService {
         : options.body
           ? JSON.stringify(options.body)
           : undefined;
-    const response = await fetch(
-      `${this.uberApiBaseUrl.replace(/\/$/, '')}${path}`,
-      {
-        method: options.method,
-        headers: {
-          Authorization: `Bearer ${options.accessToken}`,
-          Accept: 'application/json',
-          ...(options.body && !options.rawBody
-            ? { 'Content-Type': 'application/json' }
-            : {}),
-          ...(options.extraHeaders ?? {}),
-        },
-        ...(resolvedBody !== undefined ? { body: resolvedBody } : {}),
+    const {
+      response,
+      text: rawText,
+      data: parsed,
+    } = await this.httpClient.request({
+      path,
+      baseUrl: this.uberApiBaseUrl,
+      method: options.method,
+      operation: `${options.method} ${path}`,
+      accessToken: options.accessToken,
+      headers: {
+        ...(options.body && !options.rawBody
+          ? { 'Content-Type': 'application/json' }
+          : {}),
+        ...options.extraHeaders,
       },
-    );
-
-    const rawText = await response.text();
-    const parsed = this.tryParseJson(rawText);
+      body: resolvedBody,
+      kind: 'api',
+    });
     if (!response.ok) {
       const authenticationError =
         response.status === 401 || response.status === 403
@@ -3544,9 +3625,8 @@ export class UberEatsService {
       resourceId?: string | null;
     },
   ): Promise<unknown> {
-    let response = await this.requestUberOrderDetail(resourceUrl, token);
-    let rawText = await response.text();
-    let parsed = this.tryParseJson(rawText);
+    let result = await this.requestUberOrderDetail(resourceUrl, token);
+    let { response, text: rawText, data: parsed } = result;
 
     if (
       (response.status === 401 || response.status === 403) &&
@@ -3555,9 +3635,8 @@ export class UberEatsService {
       const refreshedToken = await this.uberAuthService.forceRefreshAccessToken(
         'eats.store.orders.read',
       );
-      response = await this.requestUberOrderDetail(resourceUrl, refreshedToken);
-      rawText = await response.text();
-      parsed = this.tryParseJson(rawText);
+      result = await this.requestUberOrderDetail(resourceUrl, refreshedToken);
+      ({ response, text: rawText, data: parsed } = result);
     }
 
     if (response.ok) {
@@ -3603,15 +3682,15 @@ export class UberEatsService {
   private async requestUberOrderDetail(
     resourceUrl: string,
     token: string,
-  ): Promise<Response> {
+  ): Promise<UberHttpResult> {
     try {
-      return await fetch(resourceUrl, {
+      return await this.httpClient.request({
+        returnErrorResponse: true,
+        url: resourceUrl,
         method: 'GET',
         redirect: 'error',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json',
-        },
+        accessToken: token,
+        kind: 'orderDetail',
       });
     } catch (error) {
       throw new BadGatewayException({
@@ -3692,24 +3771,24 @@ export class UberEatsService {
       READY_FOR_PICKUP: `/v1/delivery/order/${encodedOrderId}/ready`,
     };
     const pathname = pathnameByAction[action];
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10_000);
     let response: Response;
+    let rawText = '';
+    let parsed: unknown = {};
     try {
       const token = await this.uberAuthService.getAccessToken('eats.order');
-      response = await fetch(
-        `${this.uberApiBaseUrl.replace(/\/$/, '')}${pathname}`,
-        {
-          method: 'POST',
-          signal: controller.signal,
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(payload),
-        },
-      );
+      ({
+        response,
+        text: rawText,
+        data: parsed,
+      } = await this.httpClient.request({
+        returnErrorResponse: true,
+        path: pathname,
+        baseUrl: this.uberApiBaseUrl,
+        method: 'POST',
+        accessToken: token,
+        json: payload,
+        kind: 'api',
+      }));
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
@@ -3751,12 +3830,8 @@ export class UberEatsService {
         duplicate: false,
         errorSummary: 'Uber 订单动作网络请求失败或超时',
       };
-    } finally {
-      clearTimeout(timeout);
     }
 
-    const rawText = await response.text();
-    const parsed = this.tryParseJson(rawText);
     // Uber may answer 409 when a retried ready action has already won upstream.
     const succeeded =
       response.ok || (action === 'READY_FOR_PICKUP' && response.status === 409);
@@ -5379,19 +5454,26 @@ export class UberEatsService {
       const requestedUrl = item.image_url;
       let method: 'HEAD' | 'GET' = 'HEAD';
       try {
-        let response = await fetch(requestedUrl, {
+        let result = await this.httpClient.request({
+          returnErrorResponse: true,
+          url: requestedUrl,
           method: 'HEAD',
           redirect: 'follow',
-          signal: AbortSignal.timeout(5_000),
+          kind: 'imageProbe',
         });
+        let response = result.response;
         if (response.status === 405 || response.status === 501) {
           method = 'GET';
-          response = await fetch(requestedUrl, {
+          result = await this.httpClient.request({
+            returnErrorResponse: true,
+            url: requestedUrl,
             method: 'GET',
             headers: { Range: `bytes=0-${UBER_IMAGE_MAX_BYTES}` },
             redirect: 'follow',
-            signal: AbortSignal.timeout(8_000),
+            kind: 'imageProbe',
+            maxResponseBytes: UBER_IMAGE_MAX_BYTES + 1,
           });
+          response = result.response;
         }
         const finalUrl = response.url || requestedUrl;
         const finalOrigin = new URL(finalUrl).origin;
@@ -5403,17 +5485,8 @@ export class UberEatsService {
           Number.isFinite(declaredSize) && declaredSize >= 0
             ? declaredSize
             : null;
-        if (method === 'GET' && sizeBytes === null && response.body) {
-          const reader = response.body.getReader();
-          let received = 0;
-          while (received <= UBER_IMAGE_MAX_BYTES) {
-            const chunk = await reader.read();
-            if (chunk.done) break;
-            received += chunk.value.byteLength;
-          }
-          await reader.cancel();
-          sizeBytes = received;
-        }
+        if (method === 'GET' && sizeBytes === null)
+          sizeBytes = new TextEncoder().encode(result.text).byteLength;
         const errors: string[] = [];
         if (!response.ok) errors.push(`HTTP ${response.status}`);
         if (!isPermanentPublicHttpsUrl(finalUrl))
@@ -5914,9 +5987,7 @@ export class UberEatsService {
    * through the read API instead of treating the PUT response as completion.
    */
   private hasMenuNotificationCapability(): boolean {
-    return /^(1|true|yes)$/i.test(
-      process.env.UBER_EATS_MENU_NOTIFICATIONS_ENABLED?.trim() ?? '',
-    );
+    return this.config.menuNotificationsEnabled;
   }
 
   private async confirmUploadedMenu(
@@ -5966,14 +6037,8 @@ export class UberEatsService {
     uberStoreId: string,
     requested: UberMenuUploadPayload,
   ): Promise<void> {
-    const timeoutMs = Math.max(
-      1,
-      Number(process.env.UBER_EATS_MENU_CONFIRM_TIMEOUT_MS ?? 120_000),
-    );
-    const initialDelayMs = Math.max(
-      1,
-      Number(process.env.UBER_EATS_MENU_CONFIRM_INITIAL_DELAY_MS ?? 1_000),
-    );
+    const timeoutMs = this.config.menuConfirmTimeoutMs;
+    const initialDelayMs = this.config.menuConfirmInitialDelayMs;
     const startedAt = Date.now();
     let delayMs = initialDelayMs;
     while (Date.now() - startedAt < timeoutMs) {
@@ -5993,7 +6058,7 @@ export class UberEatsService {
         requested,
       );
       if (status !== 'SUBMITTED') return;
-      delayMs = Math.min(delayMs * 2, 30_000);
+      delayMs = Math.min(delayMs * 2, this.config.menuConfirmMaxDelayMs);
     }
 
     // Timeout is deliberately not success: retain SUBMITTED and make the
@@ -7298,6 +7363,13 @@ export class UberEatsService {
   }
 
   private summarizeWebhookError(error: unknown): string {
+    const structured = this.safeStructuredError(error);
+    if (structured.code) {
+      return `${structured.code}: ${structured.detail ?? 'Uber request failed'}`.slice(
+        0,
+        500,
+      );
+    }
     const nestResponse =
       error &&
       typeof error === 'object' &&
@@ -7311,7 +7383,25 @@ export class UberEatsService {
         ? error.message
         : String(error);
 
-    return rawSummary.replace(/\s+/g, ' ').slice(0, 500) || 'unknown error';
+    return this.redactSensitiveLogText(rawSummary).slice(0, 500);
+  }
+
+  private safeStructuredError(error: unknown): {
+    code?: string;
+    detail?: string;
+    operation?: string;
+  } {
+    if (!error || typeof error !== 'object') return {};
+    const value = error as Record<string, unknown>;
+    return {
+      ...(typeof value.uberCode === 'string' ? { code: value.uberCode } : {}),
+      ...(typeof value.safeDetail === 'string'
+        ? { detail: this.redactSensitiveLogText(value.safeDetail) }
+        : {}),
+      ...(typeof value.operation === 'string'
+        ? { operation: value.operation }
+        : {}),
+    };
   }
 
   private isPrismaUniqueConstraintError(error: unknown): boolean {

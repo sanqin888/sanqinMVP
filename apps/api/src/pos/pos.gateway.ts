@@ -296,7 +296,12 @@ export class PosGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   async getOrderPrintStatus(orderStableId: string) {
     return this.prisma.posPrintJob.findFirst({
-      where: { orderStableId, kind: 'AUTO' },
+      // In-store orders are printed through the explicit REPRINT flow and do
+      // not create an AUTO job when they are accepted. Looking up AUTO only
+      // therefore made the board poll forever even after both ACKs completed.
+      // The newest job is the authoritative status for both automatic prints
+      // and operator-requested prints.
+      where: { orderStableId },
       orderBy: { createdAt: 'desc' },
     });
   }

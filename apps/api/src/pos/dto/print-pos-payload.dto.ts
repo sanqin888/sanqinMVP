@@ -16,6 +16,7 @@ type PrintPosItemSnapshot = {
   displayName: string | null;
   quantity: number;
   lineTotalCents: number;
+  specialInstructions: string | null;
   options: OrderItemOptionsSnapshot | null;
 };
 

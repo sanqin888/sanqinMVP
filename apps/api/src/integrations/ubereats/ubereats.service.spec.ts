@@ -30,6 +30,8 @@ jest.mock('@prisma/client', () => ({
   UberOpsTicketType: { STORE_STATUS_SYNC: 'STORE_STATUS_SYNC' },
   PaymentMethod: { UBEREATS: 'UBEREATS' },
 }));
+import { UberHttpClient } from './uber-http.client';
+import { UberConfigService } from './uber-config.service';
 
 import { createHash, createHmac } from 'crypto';
 import { AppLogger } from '../../common/app-logger';
@@ -118,6 +120,43 @@ const createNestedMenuPrisma = (templates: unknown[]) => ({
   },
   uberMenuPublishVersion: { create: jest.fn() },
   opsEvent: { create: jest.fn().mockResolvedValue(null) },
+});
+
+describe('UberHttpClient（业务请求重试策略）', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+    delete process.env.UBER_EATS_HTTP_MAX_ATTEMPTS;
+  });
+
+  it('GET 遇到可重试网络错误会自动重试', async () => {
+    process.env.UBER_EATS_HTTP_MAX_ATTEMPTS = '2';
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockRejectedValueOnce(new Error('connection reset'))
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    await expect(
+      new UberHttpClient().request({
+        url: 'https://example.com/orders/1',
+        method: 'GET',
+      }),
+    ).resolves.toMatchObject({ data: {} });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('没有幂等键的 POST 网络失败时不会重试', async () => {
+    process.env.UBER_EATS_HTTP_MAX_ATTEMPTS = '3';
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockRejectedValue(new Error('connection reset'));
+    await expect(
+      new UberHttpClient().request({
+        url: 'https://example.com/orders/1/accept',
+        method: 'POST',
+        json: {},
+      }),
+    ).rejects.toMatchObject({ retryable: true });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('syncUberMenuItemAvailability', () => {
@@ -1967,12 +2006,15 @@ describe('UberEatsService', () => {
       .digest('hex');
     const prisma = {
       uberWebhookInbox: createInboxMock(),
-      opsEvent: { findFirst: jest.fn().mockResolvedValue(null) },
+      opsEvent: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue(null),
+      },
     };
     const fetchSpy = jest
       .spyOn(global, 'fetch')
-      .mockResolvedValueOnce(
-        new Response('upstream unavailable', { status: 503 }),
+      .mockImplementation(() =>
+        Promise.resolve(new Response('upstream unavailable', { status: 503 })),
       );
     const service = new UberEatsService(prisma as never, createAuthService());
 
@@ -2006,12 +2048,15 @@ describe('UberEatsService', () => {
       .digest('hex');
     const prisma = {
       uberWebhookInbox: createInboxMock(),
-      opsEvent: { findFirst: jest.fn().mockResolvedValue(null) },
+      opsEvent: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue(null),
+      },
     };
     const fetchSpy = jest
       .spyOn(global, 'fetch')
-      .mockResolvedValueOnce(
-        new Response('upstream unavailable', { status: 503 }),
+      .mockImplementation(() =>
+        Promise.resolve(new Response('upstream unavailable', { status: 503 })),
       );
     const service = new UberEatsService(prisma as never, createAuthService());
 
@@ -2209,7 +2254,9 @@ describe('UberEatsService', () => {
     };
     jest
       .spyOn(global, 'fetch')
-      .mockResolvedValueOnce(new Response('upstream unavailable', { status }));
+      .mockImplementation(() =>
+        Promise.resolve(new Response('upstream unavailable', { status })),
+      );
     const service = new UberEatsService(prisma as never, createAuthService());
 
     await expect(
@@ -2435,7 +2482,9 @@ describe('UberEatsService', () => {
           .mockResolvedValueOnce(new Response(responseBody, { status }))
           .mockResolvedValueOnce(new Response(responseBody, { status }));
       } else {
-        fetchSpy.mockResolvedValueOnce(new Response(responseBody, { status }));
+        fetchSpy.mockImplementation(() =>
+          Promise.resolve(new Response(responseBody, { status })),
+        );
       }
 
       const service = new UberEatsService(prisma as never, auth);
@@ -2877,9 +2926,12 @@ describe('UberEatsService', () => {
     jest.restoreAllMocks();
   });
 
-  it.each([401, 403])(
+  it.each([
+    [401, 'UBER_ACCESS_TOKEN_INVALID'],
+    [403, 'UBER_SCOPE_INSUFFICIENT'],
+  ] as const)(
     '菜单 API 的 %s 鉴权失败保留结构化且脱敏的上游错误',
-    async (status) => {
+    async (status, code) => {
       jest.spyOn(global, 'fetch').mockResolvedValue(
         new Response(
           JSON.stringify({
@@ -2904,13 +2956,13 @@ describe('UberEatsService', () => {
           method: 'GET',
         }),
       ).rejects.toMatchObject({
+        httpStatus: status,
+        uberCode: code,
+        retryable: false,
         response: {
-          status,
-          error: {
-            upstreamStatus: status,
-            code: 'invalid_scope',
-            message: 'missing eats.store; access_token=[REDACTED]',
-          },
+          statusCode: status,
+          code,
+          message: 'missing eats.store; token=[REDACTED]',
         },
       });
       jest.restoreAllMocks();
@@ -2919,9 +2971,15 @@ describe('UberEatsService', () => {
 
   it('发布确认超时保持 SUBMITTED 并创建 TIMED_OUT 运营工单', async () => {
     jest.useFakeTimers();
-    process.env.UBER_EATS_MENU_CONFIRM_TIMEOUT_MS = '1';
-    process.env.UBER_EATS_MENU_CONFIRM_INITIAL_DELAY_MS = '1';
     const create = jest.fn().mockResolvedValue(null);
+    const config = new UberConfigService({
+      UBER_EATS_OAUTH_STATE_SECRET:
+        'high-entropy-test-secret-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+      UBER_EATS_WEBHOOK_SIGNING_KEY: 'test-ubereats-secret',
+      UBER_EATS_MENU_CONFIRM_TIMEOUT_MS: '100',
+      UBER_EATS_MENU_CONFIRM_INITIAL_DELAY_MS: '10',
+      UBER_EATS_MENU_CONFIRM_MAX_DELAY_MS: '20',
+    });
     const service = new UberEatsService(
       {
         uberMenuPublishVersion: {
@@ -2931,6 +2989,10 @@ describe('UberEatsService', () => {
         opsEvent: { create: jest.fn().mockResolvedValue(null) },
       } as never,
       createAuthService(),
+      undefined,
+      undefined,
+      new UberHttpClient(),
+      config,
     );
     jest
       .spyOn(service as never, 'confirmUploadedMenu' as never)
@@ -2942,7 +3004,7 @@ describe('UberEatsService', () => {
       'uber_store',
       { menus: [], categories: [], items: [], modifier_groups: [] },
     );
-    await jest.advanceTimersByTimeAsync(2);
+    await jest.advanceTimersByTimeAsync(150);
     await polling;
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -2952,8 +3014,6 @@ describe('UberEatsService', () => {
         }) as unknown,
       }),
     );
-    delete process.env.UBER_EATS_MENU_CONFIRM_TIMEOUT_MS;
-    delete process.env.UBER_EATS_MENU_CONFIRM_INITIAL_DELAY_MS;
     jest.useRealTimers();
     jest.restoreAllMocks();
   });
@@ -3527,48 +3587,168 @@ describe('UberEatsService', () => {
   });
 
   describe('OAuth state 安全校验', () => {
+    type StateRecord = {
+      nonce: string;
+      adminSessionId: string;
+      redirectUri: string;
+      merchantContext: string | null;
+      issuedAt: Date;
+      expiresAt: Date;
+      consumedAt: Date | null;
+    };
+
+    const createStatePrisma = () => {
+      const records = new Map<string, StateRecord>();
+      return {
+        records,
+        prisma: {
+          uberOAuthStateRequest: {
+            create: jest.fn(
+              ({ data }: { data: Omit<StateRecord, 'consumedAt'> }) => {
+                records.set(data.nonce, { ...data, consumedAt: null });
+              },
+            ),
+            findUnique: jest.fn(
+              ({ where }: { where: { nonce: string } }) =>
+                records.get(where.nonce) ?? null,
+            ),
+            updateMany: jest.fn(
+              ({
+                where,
+                data,
+              }: {
+                where: {
+                  nonce: string;
+                  adminSessionId: string;
+                  issuedAt: Date;
+                  expiresAt: { gt: Date };
+                  consumedAt: null;
+                };
+                data: { consumedAt: Date };
+              }) => {
+                const record = records.get(where.nonce);
+                if (
+                  !record ||
+                  record.consumedAt ||
+                  record.adminSessionId !== where.adminSessionId ||
+                  record.issuedAt.getTime() !== where.issuedAt.getTime() ||
+                  record.expiresAt <= where.expiresAt.gt
+                )
+                  return { count: 0 };
+                record.consumedAt = data.consumedAt;
+                return { count: 1 };
+              },
+            ),
+            deleteMany: jest.fn(
+              ({ where }: { where: { expiresAt: { lte: Date } } }) => {
+                let count = 0;
+                for (const [nonce, record] of records) {
+                  if (record.expiresAt <= where.expiresAt.lte) {
+                    records.delete(nonce);
+                    count += 1;
+                  }
+                }
+                return { count };
+              },
+            ),
+          },
+        },
+      };
+    };
     const stateInternals = (service: UberEatsService) =>
       service as unknown as {
-        consumeOAuthState: (state: string, sessionId: string) => unknown;
+        consumeOAuthState: (
+          state: string,
+          sessionId: string,
+        ) => Promise<unknown>;
       };
 
-    it('拒绝过期与未来时间的 state', () => {
-      const service = new UberEatsService({} as never, createAuthService());
-      const nowSpy = jest.spyOn(Date, 'now');
-      nowSpy.mockReturnValue(1_700_000_000_000);
-      const expired = service.buildMerchantAuthorizeUrl('session_1').state;
-      nowSpy.mockReturnValue(1_700_000_000_000 + 10 * 60 * 1000 + 1);
-      expect(() =>
-        stateInternals(service).consumeOAuthState(expired, 'session_1'),
-      ).toThrow('OAuth state 已过期');
+    it('可由共享持久层上的另一个 service 实例消费，并保留上下文', async () => {
+      const { prisma } = createStatePrisma();
+      const issuer = new UberEatsService(prisma as never, createAuthService());
+      const consumer = new UberEatsService(
+        prisma as never,
+        createAuthService(),
+      );
+      const issued = await issuer.buildMerchantAuthorizeUrl(
+        'session_1',
+        'merchant_1',
+      );
 
-      nowSpy.mockReturnValue(1_700_000_000_000 + 120_000);
-      const future = service.buildMerchantAuthorizeUrl('session_1').state;
-      nowSpy.mockReturnValue(1_700_000_000_000);
-      expect(() =>
-        stateInternals(service).consumeOAuthState(future, 'session_1'),
-      ).toThrow('OAuth state 时间戳来自未来');
+      await expect(
+        stateInternals(consumer).consumeOAuthState(issued.state, 'session_1'),
+      ).resolves.toMatchObject({ merchantContext: 'merchant_1' });
     });
 
-    it('拒绝伪造、会话不匹配和二次使用的 state', () => {
-      const service = new UberEatsService({} as never, createAuthService());
-      const forged = service.buildMerchantAuthorizeUrl('session_1').state;
-      expect(() =>
+    it('拒绝过期与未来时间的 state，并在签发时清理过期记录', async () => {
+      const { prisma, records } = createStatePrisma();
+      const service = new UberEatsService(prisma as never, createAuthService());
+      const nowSpy = jest.spyOn(Date, 'now');
+      nowSpy.mockReturnValue(1_700_000_000_000);
+      const expired = (await service.buildMerchantAuthorizeUrl('session_1'))
+        .state;
+      nowSpy.mockReturnValue(1_700_000_000_000 + 10 * 60 * 1000 + 1);
+      await expect(
+        stateInternals(service).consumeOAuthState(expired, 'session_1'),
+      ).rejects.toThrow('OAuth state 已过期');
+
+      const future = (await service.buildMerchantAuthorizeUrl('session_1'))
+        .state;
+      nowSpy.mockReturnValue(1_700_000_000_000);
+      await expect(
+        stateInternals(service).consumeOAuthState(future, 'session_1'),
+      ).rejects.toThrow('OAuth state 时间戳来自未来');
+      expect(records.size).toBe(1);
+    });
+
+    it('拒绝伪造、会话不匹配和二次使用的 state', async () => {
+      const { prisma } = createStatePrisma();
+      const service = new UberEatsService(prisma as never, createAuthService());
+      const forged = (await service.buildMerchantAuthorizeUrl('session_1'))
+        .state;
+      await expect(
         stateInternals(service).consumeOAuthState(`${forged}x`, 'session_1'),
-      ).toThrow('OAuth state 校验失败');
+      ).rejects.toThrow('OAuth state 校验失败');
 
-      const mismatched = service.buildMerchantAuthorizeUrl('session_1').state;
-      expect(() =>
+      const mismatched = (await service.buildMerchantAuthorizeUrl('session_1'))
+        .state;
+      await expect(
         stateInternals(service).consumeOAuthState(mismatched, 'session_2'),
-      ).toThrow('OAuth state 与管理员会话不匹配');
+      ).rejects.toThrow('OAuth state 与管理员会话不匹配');
 
-      const oneTime = service.buildMerchantAuthorizeUrl('session_1').state;
-      expect(() =>
+      const oneTime = (await service.buildMerchantAuthorizeUrl('session_1'))
+        .state;
+      await expect(
         stateInternals(service).consumeOAuthState(oneTime, 'session_1'),
-      ).not.toThrow();
-      expect(() =>
+      ).resolves.toBeDefined();
+      await expect(
         stateInternals(service).consumeOAuthState(oneTime, 'session_1'),
-      ).toThrow('OAuth state 不存在或已使用');
+      ).rejects.toThrow('OAuth state 不存在或已使用');
+    });
+
+    it('并发消费时仅允许一个回调成功', async () => {
+      const { prisma } = createStatePrisma();
+      const serviceA = new UberEatsService(
+        prisma as never,
+        createAuthService(),
+      );
+      const serviceB = new UberEatsService(
+        prisma as never,
+        createAuthService(),
+      );
+      const state = (await serviceA.buildMerchantAuthorizeUrl('session_1'))
+        .state;
+
+      const results = await Promise.allSettled([
+        stateInternals(serviceA).consumeOAuthState(state, 'session_1'),
+        stateInternals(serviceB).consumeOAuthState(state, 'session_1'),
+      ]);
+      expect(
+        results.filter(({ status }) => status === 'fulfilled'),
+      ).toHaveLength(1);
+      expect(
+        results.filter(({ status }) => status === 'rejected'),
+      ).toHaveLength(1);
     });
   });
 
