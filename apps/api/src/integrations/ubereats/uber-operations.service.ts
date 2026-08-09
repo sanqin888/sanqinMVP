@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Optional } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import {
   Channel,
   OrderStatus,
@@ -45,13 +45,13 @@ export class UberOperationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly uberAuthService: UberAuthService,
-    @Optional() private readonly orderEventsBus?: OrderEventsBus,
-    @Optional() private readonly orderIngestionService?: OrderIngestionService,
-    @Optional() private readonly httpClient = new UberHttpClient(),
-    @Optional() private readonly config = new UberConfigService(),
-    @Optional() private readonly orders?: UberOrderService,
-    @Optional() private readonly menu?: UberMenuService,
-    @Optional() private readonly merchant?: UberMerchantService,
+    private readonly orderEventsBus: OrderEventsBus,
+    private readonly orderIngestionService: OrderIngestionService,
+    private readonly httpClient: UberHttpClient,
+    private readonly config: UberConfigService,
+    private readonly orders: UberOrderService,
+    private readonly menu: UberMenuService,
+    private readonly merchant: UberMerchantService,
   ) {
     this.uberApiBaseUrl = config.apiBaseUrl;
     this.uberResourceHrefAllowedOrigins = config.resourceHrefAllowedOrigins;
@@ -329,7 +329,6 @@ export class UberOperationsService {
         if (!ticket.externalOrderId) {
           throw new BadRequestException('订单状态同步工单缺少 externalOrderId');
         }
-        if (!this.orders) throw new Error('UberOrderService 未配置');
         const context = this.parseOrderStatusSyncContext(ticket.context);
         await this.orders.syncOrderStatusToUber(
           ticket.externalOrderId,
@@ -337,19 +336,16 @@ export class UberOperationsService {
         );
       } else if (ticket.type === UberOpsTicketType.STORE_STATUS_SYNC) {
         const context = this.parseStoreStatusSyncContext(ticket.context);
-        if (!this.merchant) throw new Error('UberMerchantService 未配置');
         const result = await this.merchant.syncStoreStatusToUber(context);
         if (!result.ok) throw new Error('Uber 门店状态同步失败');
       } else if (ticket.type === UberOpsTicketType.MENU_PUBLISH) {
         const context = this.parseMenuPublishContext(ticket.context);
-        if (!this.menu) throw new Error('UberMenuService 未配置');
         await this.menu.publishUberMenu(context.publish);
       } else if (ticket.type === UberOpsTicketType.MENU_ITEM_AVAILABILITY) {
         if (!ticket.menuItemStableId) {
           throw new BadRequestException('商品状态工单缺少 menuItemStableId');
         }
         const context = this.parseMenuItemAvailabilityContext(ticket.context);
-        if (!this.menu) throw new Error('UberMenuService 未配置');
         await this.menu.syncUberMenuItemAvailability({
           storeId: ticket.storeId,
           menuItemStableId: ticket.menuItemStableId,

@@ -32,6 +32,7 @@ jest.mock('@prisma/client', () => ({
 }));
 
 import { UberMerchantService } from './uber-merchant.service';
+import { createUberMerchantService } from './uber-service-test.helpers';
 
 describe('UberMerchantService 门店状态同步', () => {
   const auth = () =>
@@ -92,7 +93,7 @@ describe('UberMerchantService 门店状态同步', () => {
       .mockResolvedValueOnce(
         new Response('{"message":"missing scope"}', { status: 403 }),
       );
-    const service = new UberMerchantService(
+    const service = createUberMerchantService(
       db as unknown as ConstructorParameters<typeof UberMerchantService>[0],
       auth(),
     );
@@ -120,7 +121,7 @@ describe('UberMerchantService 门店状态同步', () => {
       .mockResolvedValue(
         new Response('{"message":"already paused"}', { status: 409 }),
       );
-    const service = new UberMerchantService(
+    const service = createUberMerchantService(
       db as unknown as ConstructorParameters<typeof UberMerchantService>[0],
       auth(),
     );
@@ -139,7 +140,7 @@ describe('UberMerchantService 门店状态同步', () => {
       .mockResolvedValueOnce(new Response('{}', { status: 429 }))
       .mockResolvedValueOnce(new Response('{}', { status: 503 }))
       .mockResolvedValueOnce(new Response('{}', { status: 200 }));
-    const service = new UberMerchantService(
+    const service = createUberMerchantService(
       db as unknown as ConstructorParameters<typeof UberMerchantService>[0],
       auth(),
     );
@@ -292,13 +293,13 @@ describe('UberMerchantService', () => {
 
     it('可由共享持久层上的另一个 service 实例消费，并保留上下文', async () => {
       const { prisma } = createStatePrisma();
-      const issuer = new UberMerchantService(
+      const issuer = createUberMerchantService(
         prisma as unknown as ConstructorParameters<
           typeof UberMerchantService
         >[0],
         createAuthService(),
       );
-      const consumer = new UberMerchantService(
+      const consumer = createUberMerchantService(
         prisma as unknown as ConstructorParameters<
           typeof UberMerchantService
         >[0],
@@ -316,7 +317,7 @@ describe('UberMerchantService', () => {
 
     it('拒绝过期与未来时间的 state，并在签发时清理过期记录', async () => {
       const { prisma, records } = createStatePrisma();
-      const service = new UberMerchantService(
+      const service = createUberMerchantService(
         prisma as unknown as ConstructorParameters<
           typeof UberMerchantService
         >[0],
@@ -342,7 +343,7 @@ describe('UberMerchantService', () => {
 
     it('拒绝伪造、会话不匹配和二次使用的 state', async () => {
       const { prisma } = createStatePrisma();
-      const service = new UberMerchantService(
+      const service = createUberMerchantService(
         prisma as unknown as ConstructorParameters<
           typeof UberMerchantService
         >[0],
@@ -372,13 +373,13 @@ describe('UberMerchantService', () => {
 
     it('并发消费时仅允许一个回调成功', async () => {
       const { prisma } = createStatePrisma();
-      const serviceA = new UberMerchantService(
+      const serviceA = createUberMerchantService(
         prisma as unknown as ConstructorParameters<
           typeof UberMerchantService
         >[0],
         createAuthService(),
       );
-      const serviceB = new UberMerchantService(
+      const serviceB = createUberMerchantService(
         prisma as unknown as ConstructorParameters<
           typeof UberMerchantService
         >[0],
@@ -435,7 +436,7 @@ describe('UberMerchantService', () => {
       },
     };
 
-    const service = new UberMerchantService(
+    const service = createUberMerchantService(
       prisma as unknown as ConstructorParameters<typeof UberMerchantService>[0],
       createAuthService(),
     );
@@ -491,7 +492,7 @@ describe('UberMerchantService', () => {
       },
     };
 
-    const service = new UberMerchantService(
+    const service = createUberMerchantService(
       prisma as unknown as ConstructorParameters<typeof UberMerchantService>[0],
       createAuthService(),
     );
@@ -533,7 +534,7 @@ describe('UberMerchantService', () => {
       },
       opsEvent: { create: jest.fn().mockResolvedValue({}) },
     };
-    const service = new UberMerchantService(
+    const service = createUberMerchantService(
       prisma as unknown as ConstructorParameters<typeof UberMerchantService>[0],
       createAuthService(),
     );
@@ -568,7 +569,7 @@ describe('UberMerchantService', () => {
         findUnique: jest.fn().mockResolvedValue(null),
       },
     };
-    const service = new UberMerchantService(
+    const service = createUberMerchantService(
       prisma as unknown as ConstructorParameters<typeof UberMerchantService>[0],
       createAuthService(),
     );
@@ -612,7 +613,7 @@ describe('UberMerchantService', () => {
       },
     };
 
-    const service = new UberMerchantService(
+    const service = createUberMerchantService(
       prisma as unknown as ConstructorParameters<typeof UberMerchantService>[0],
       createAuthService(),
     );

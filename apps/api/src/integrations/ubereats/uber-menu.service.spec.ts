@@ -37,6 +37,7 @@ import {
   toUberServiceAvailability,
 } from './uber-payload.utils';
 import { UberMenuService } from './uber-menu.service';
+import { createUberMenuService } from './uber-service-test.helpers';
 
 const openSchedulePrisma = {
   businessConfig: {
@@ -122,7 +123,7 @@ describe('syncUberMenuItemAvailability', () => {
       uberOpsTicket: { create: jest.fn().mockResolvedValue({}) },
       opsEvent: { create: jest.fn().mockResolvedValue({}) },
     };
-    const service = new UberMenuService(
+    const service = createUberMenuService(
       prisma as unknown as ConstructorParameters<typeof UberMenuService>[0],
       {} as unknown as ConstructorParameters<typeof UberMenuService>[0],
     );
@@ -427,7 +428,7 @@ describe('UberMenuService', () => {
       },
     };
 
-    const service = new UberMenuService(
+    const service = createUberMenuService(
       prisma as unknown as ConstructorParameters<typeof UberMenuService>[0],
       createAuthService(),
     );
@@ -569,7 +570,7 @@ describe('UberMenuService', () => {
       },
     ];
     const prisma = createNestedMenuPrisma(templates);
-    const service = new UberMenuService(
+    const service = createUberMenuService(
       prisma as unknown as ConstructorParameters<typeof UberMenuService>[0],
       createAuthService(),
     );
@@ -619,7 +620,7 @@ describe('UberMenuService', () => {
 
   it('正式发布要求管理员明确确认 dry-run 中展示的门店税率', async () => {
     const prisma = createNestedMenuPrisma([]);
-    const service = new UberMenuService(
+    const service = createUberMenuService(
       prisma as unknown as ConstructorParameters<typeof UberMenuService>[0],
       createAuthService(),
     );
@@ -663,7 +664,7 @@ describe('UberMenuService', () => {
         getAccessToken: jest.Mock<Promise<string>, [string?]>;
       };
       authService.getAccessToken.mockResolvedValue('eats-store-app-token');
-      const service = new UberMenuService(
+      const service = createUberMenuService(
         prisma as unknown as ConstructorParameters<typeof UberMenuService>[0],
         authService as unknown as ConstructorParameters<
           typeof UberMenuService
@@ -730,7 +731,7 @@ describe('UberMenuService', () => {
     const authService = createAuthService() as unknown as {
       getAccessToken: jest.Mock<Promise<string>, [string?]>;
     };
-    const service = new UberMenuService(
+    const service = createUberMenuService(
       prisma as unknown as ConstructorParameters<typeof UberMenuService>[0],
       authService as unknown as ConstructorParameters<
         typeof UberMenuService
@@ -757,7 +758,7 @@ describe('UberMenuService', () => {
       timezone: 'America/Toronto',
       salesTaxRate: 13,
     });
-    const service = new UberMenuService(
+    const service = createUberMenuService(
       prisma as unknown as ConstructorParameters<typeof UberMenuService>[0],
       createAuthService(),
     );
@@ -775,7 +776,7 @@ describe('UberMenuService', () => {
       timezone: 'America/Toronto',
       salesTaxRate: 13,
     });
-    const service = new UberMenuService(
+    const service = createUberMenuService(
       prisma as unknown as ConstructorParameters<typeof UberMenuService>[0],
       createAuthService(),
     );
@@ -835,7 +836,7 @@ describe('UberMenuService', () => {
       },
     ];
     const prisma = createNestedMenuPrisma(templates);
-    const service = new UberMenuService(
+    const service = createUberMenuService(
       prisma as unknown as ConstructorParameters<typeof UberMenuService>[0],
       createAuthService(),
     );
@@ -908,7 +909,7 @@ describe('UberMenuService', () => {
       },
     ];
     const prisma = createNestedMenuPrisma(templates);
-    const service = new UberMenuService(
+    const service = createUberMenuService(
       prisma as unknown as ConstructorParameters<typeof UberMenuService>[0],
       createAuthService(),
     );
@@ -939,7 +940,7 @@ describe('UberMenuService', () => {
   });
 
   it('归一化会删除空可选组和孤立模板，但阻止空必选组', () => {
-    const service = new UberMenuService(
+    const service = createUberMenuService(
       {} as unknown as ConstructorParameters<typeof UberMenuService>[0],
       createAuthService(),
     );
@@ -1000,7 +1001,7 @@ describe('UberMenuService', () => {
   });
 
   it('剩余可选项少于 minSelect 时报错，不会篡改上限', () => {
-    const service = new UberMenuService(
+    const service = createUberMenuService(
       {} as unknown as ConstructorParameters<typeof UberMenuService>[0],
       createAuthService(),
     );
@@ -1055,7 +1056,7 @@ describe('UberMenuService', () => {
   });
 
   it('悬空 category、group 和 option ID 都会被报告', () => {
-    const service = new UberMenuService(
+    const service = createUberMenuService(
       {} as unknown as ConstructorParameters<typeof UberMenuService>[0],
       createAuthService(),
     );
@@ -1172,7 +1173,7 @@ describe('UberMenuService', () => {
     });
 
     it('完整合法 payload 通过校验', () => {
-      const service = new UberMenuService(
+      const service = createUberMenuService(
         {} as unknown as ConstructorParameters<typeof UberMenuService>[0],
         createAuthService(),
       );
@@ -1192,7 +1193,7 @@ describe('UberMenuService', () => {
           image_url?: string;
         }
       ).image_url = 'https://cdn.example.com/menu/dish.jpg';
-      const service = new UberMenuService(
+      const service = createUberMenuService(
         {} as unknown as ConstructorParameters<typeof UberMenuService>[0],
         createAuthService(),
       );
@@ -1221,7 +1222,7 @@ describe('UberMenuService', () => {
           'content-length': '2048',
         }),
       });
-      const service = new UberMenuService(
+      const service = createUberMenuService(
         {} as unknown as ConstructorParameters<typeof UberMenuService>[0],
         createAuthService(),
       );
@@ -1255,7 +1256,7 @@ describe('UberMenuService', () => {
       ).description = {
         translations: { en_us: `  ${'a'.repeat(299)}  b  ` },
       };
-      const service = new UberMenuService(
+      const service = createUberMenuService(
         {} as unknown as ConstructorParameters<typeof UberMenuService>[0],
         createAuthService(),
       );
@@ -1288,7 +1289,7 @@ describe('UberMenuService', () => {
         description?: { translations: { en_us: string } };
       };
       item.description = { translations: { en_us: ' \n\t ' } };
-      const service = new UberMenuService(
+      const service = createUberMenuService(
         {} as unknown as ConstructorParameters<typeof UberMenuService>[0],
         createAuthService(),
       );
@@ -1320,7 +1321,7 @@ describe('UberMenuService', () => {
           image_url?: string;
         }
       ).image_url = imageUrl;
-      const service = new UberMenuService(
+      const service = createUberMenuService(
         {} as unknown as ConstructorParameters<typeof UberMenuService>[0],
         createAuthService(),
       );
@@ -1414,7 +1415,7 @@ describe('UberMenuService', () => {
     ])('%s 约束失败时返回可定位的结构化错误', (code, mutate) => {
       const payload = validPayload();
       mutate(payload);
-      const service = new UberMenuService(
+      const service = createUberMenuService(
         {} as unknown as ConstructorParameters<typeof UberMenuService>[0],
         createAuthService(),
       );

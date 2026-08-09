@@ -34,6 +34,7 @@ jest.mock('@prisma/client', () => ({
 import { createHmac } from 'crypto';
 import { AppLogger } from '../../common/app-logger';
 import { UberOrderService } from './uber-order.service';
+import { createUberOrderService } from './uber-service-test.helpers';
 import { UberWebhookEnvelopeDto } from './dto/uber-webhook-envelope.dto';
 
 async function dispatchOrderWebhook(
@@ -58,7 +59,7 @@ async function dispatchOrderWebhook(
 
 describe('UberOrderService', () => {
   it('为嵌套 Uber modifier 快照补齐本地中英文名称并保留外部标题回退', async () => {
-    const service = new UberOrderService(
+    const service = createUberOrderService(
       createSignatureOnlyPrisma() as unknown as ConstructorParameters<
         typeof UberOrderService
       >[0],
@@ -383,7 +384,7 @@ describe('UberOrderService', () => {
       emitOrderPaidVerified: jest.fn(),
       emitOrderAccepted: jest.fn(),
     };
-    const service = new UberOrderService(
+    const service = createUberOrderService(
       prisma as unknown as ConstructorParameters<typeof UberOrderService>[0],
       auth as unknown as ConstructorParameters<typeof UberOrderService>[0],
       orderEventsBus as unknown as ConstructorParameters<
@@ -540,7 +541,7 @@ describe('UberOrderService', () => {
         (callback: (transaction: typeof prisma) => unknown) => callback(prisma),
       ),
     });
-    const service = new UberOrderService(
+    const service = createUberOrderService(
       prisma as unknown as ConstructorParameters<typeof UberOrderService>[0],
       createAuthService(),
     );
@@ -755,7 +756,7 @@ describe('UberOrderService', () => {
       emitOrderAccepted: jest.fn(),
     };
 
-    const service = new UberOrderService(
+    const service = createUberOrderService(
       prisma as unknown as ConstructorParameters<typeof UberOrderService>[0],
       createAuthService(),
       orderEventsBus as unknown as ConstructorParameters<
@@ -873,7 +874,7 @@ describe('UberOrderService', () => {
 
       await expect(
         dispatchOrderWebhook(
-          new UberOrderService(
+          createUberOrderService(
             prisma as unknown as ConstructorParameters<
               typeof UberOrderService
             >[0],
@@ -995,7 +996,7 @@ describe('UberOrderService', () => {
         new Response('{"error":"already rejected"}', { status: 400 }),
       );
 
-    const service = new UberOrderService(
+    const service = createUberOrderService(
       prisma as unknown as ConstructorParameters<typeof UberOrderService>[0],
       createAuthService(),
     );
@@ -1109,7 +1110,7 @@ describe('UberOrderService', () => {
         new Response('{"error":"temporary"}', { status: 500 }),
       );
 
-    const service = new UberOrderService(
+    const service = createUberOrderService(
       prisma as unknown as ConstructorParameters<typeof UberOrderService>[0],
       createAuthService(),
     );
@@ -1151,7 +1152,7 @@ describe('UberOrderService', () => {
   });
 
   it('解析多数量、嵌套 modifier、特殊说明、折扣、税费和未知商品快照', () => {
-    const service = new UberOrderService(
+    const service = createUberOrderService(
       createSignatureOnlyPrisma() as unknown as ConstructorParameters<
         typeof UberOrderService
       >[0],
@@ -1237,7 +1238,7 @@ describe('UberOrderService', () => {
     ],
     ['两个字段均缺失时不回退到 order_id', {}, null, null],
   ])('%s', (_label, identifiers, pickupCode, displayId) => {
-    const service = new UberOrderService(
+    const service = createUberOrderService(
       createSignatureOnlyPrisma() as unknown as ConstructorParameters<
         typeof UberOrderService
       >[0],
@@ -1295,7 +1296,7 @@ describe('UberOrderService', () => {
         callback(tx),
       ),
     };
-    const service = new UberOrderService(
+    const service = createUberOrderService(
       prisma as unknown as ConstructorParameters<typeof UberOrderService>[0],
       createAuthService(),
     );
@@ -1342,7 +1343,7 @@ describe('UberOrderService', () => {
   });
 
   it('解析 Uber v2 订单详情中的 payment.charges 金额和 cart 商品', () => {
-    const service = new UberOrderService(
+    const service = createUberOrderService(
       createSignatureOnlyPrisma() as unknown as ConstructorParameters<
         typeof UberOrderService
       >[0],
@@ -1449,7 +1450,7 @@ describe('UberOrderService', () => {
       .mockImplementation(() =>
         Promise.resolve(new Response('upstream unavailable', { status: 503 })),
       );
-    const service = new UberOrderService(
+    const service = createUberOrderService(
       prisma as unknown as ConstructorParameters<typeof UberOrderService>[0],
       createAuthService(),
     );
@@ -1494,7 +1495,7 @@ describe('UberOrderService', () => {
       .mockImplementation(() =>
         Promise.resolve(new Response('upstream unavailable', { status: 503 })),
       );
-    const service = new UberOrderService(
+    const service = createUberOrderService(
       prisma as unknown as ConstructorParameters<typeof UberOrderService>[0],
       createAuthService(),
     );
@@ -1514,7 +1515,7 @@ describe('UberOrderService', () => {
   });
 
   it('拒绝带 username/password 的 resource_href', () => {
-    const service = new UberOrderService(
+    const service = createUberOrderService(
       createSignatureOnlyPrisma() as unknown as ConstructorParameters<
         typeof UberOrderService
       >[0],
@@ -1552,7 +1553,7 @@ describe('UberOrderService', () => {
       uberWebhookInbox: createInboxMock(),
       opsEvent: { findFirst: jest.fn().mockResolvedValue(null) },
     };
-    const service = new UberOrderService(
+    const service = createUberOrderService(
       prisma as unknown as ConstructorParameters<typeof UberOrderService>[0],
       createAuthService(),
     );
@@ -1632,7 +1633,7 @@ describe('UberOrderService', () => {
         .spyOn(global, 'fetch')
         .mockResolvedValueOnce(authErrorResponse)
         .mockResolvedValueOnce(authErrorResponse.clone());
-      const service = new UberOrderService(
+      const service = createUberOrderService(
         prisma as unknown as ConstructorParameters<typeof UberOrderService>[0],
         createAuthService(),
       );
@@ -1692,7 +1693,7 @@ describe('UberOrderService', () => {
       .mockImplementation(() =>
         Promise.resolve(new Response('upstream unavailable', { status })),
       );
-    const service = new UberOrderService(
+    const service = createUberOrderService(
       prisma as unknown as ConstructorParameters<typeof UberOrderService>[0],
       createAuthService(),
     );
@@ -1739,7 +1740,7 @@ describe('UberOrderService', () => {
 
   it('只有本地订单完整落库后才调用 Uber 接单 endpoint', async () => {
     const missing = createActionPrisma(null);
-    const service = new UberOrderService(
+    const service = createUberOrderService(
       missing as unknown as ConstructorParameters<typeof UberOrderService>[0],
       createAuthService(),
     );
@@ -1751,7 +1752,7 @@ describe('UberOrderService', () => {
 
     const prisma = createActionPrisma();
     fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 200 }));
-    const persisted = new UberOrderService(
+    const persisted = createUberOrderService(
       prisma as unknown as ConstructorParameters<typeof UberOrderService>[0],
       createAuthService(),
     );
@@ -1773,7 +1774,7 @@ describe('UberOrderService', () => {
     const fetchSpy = jest
       .spyOn(global, 'fetch')
       .mockResolvedValueOnce(new Response('{}', { status: 200 }));
-    const service = new UberOrderService(
+    const service = createUberOrderService(
       prisma as unknown as ConstructorParameters<typeof UberOrderService>[0],
       createAuthService(),
     );
@@ -1820,7 +1821,7 @@ describe('UberOrderService', () => {
     const fetchSpy = jest
       .spyOn(global, 'fetch')
       .mockResolvedValueOnce(new Response('{}', { status: 200 }));
-    const service = new UberOrderService(
+    const service = createUberOrderService(
       prisma as unknown as ConstructorParameters<typeof UberOrderService>[0],
       createAuthService(),
       bus as unknown as ConstructorParameters<typeof UberOrderService>[0],
@@ -1847,7 +1848,7 @@ describe('UberOrderService', () => {
     const fetchSpy = jest
       .spyOn(global, 'fetch')
       .mockResolvedValueOnce(new Response('{}', { status: 200 }));
-    const service = new UberOrderService(
+    const service = createUberOrderService(
       prisma as unknown as ConstructorParameters<typeof UberOrderService>[0],
       createAuthService(),
     );
@@ -1884,7 +1885,7 @@ describe('UberOrderService', () => {
       const fetchSpy = jest
         .spyOn(global, 'fetch')
         .mockResolvedValueOnce(new Response('{}', { status: 200 }));
-      const service = new UberOrderService(
+      const service = createUberOrderService(
         prisma as unknown as ConstructorParameters<typeof UberOrderService>[0],
         createAuthService(),
       );
@@ -1907,7 +1908,7 @@ describe('UberOrderService', () => {
     jest
       .spyOn(global, 'fetch')
       .mockRejectedValueOnce(new Error('timeout token=secret'));
-    const service = new UberOrderService(
+    const service = createUberOrderService(
       prisma as unknown as ConstructorParameters<typeof UberOrderService>[0],
       createAuthService(),
     );
@@ -1928,7 +1929,7 @@ describe('UberOrderService', () => {
       .mockResolvedValueOnce(
         new Response('{"error":"invalid deny"}', { status: 400 }),
       );
-    const service = new UberOrderService(
+    const service = createUberOrderService(
       prisma as unknown as ConstructorParameters<typeof UberOrderService>[0],
       createAuthService(),
     );
@@ -1970,7 +1971,7 @@ describe('UberOrderService', () => {
     const errorSpy = jest
       .spyOn(AppLogger.prototype, 'error')
       .mockImplementation();
-    const service = new UberOrderService(
+    const service = createUberOrderService(
       prisma as unknown as ConstructorParameters<typeof UberOrderService>[0],
       createAuthService(),
     );
@@ -2102,7 +2103,7 @@ describe('UberOrderService', () => {
         headers: { 'x-request-id': 'uber-request-1' },
       }),
     );
-    const service = new UberOrderService(
+    const service = createUberOrderService(
       prisma as unknown as ConstructorParameters<typeof UberOrderService>[0],
       createAuthService(),
     );
@@ -2136,7 +2137,7 @@ describe('UberOrderService', () => {
     const fetchSpy = jest
       .spyOn(global, 'fetch')
       .mockResolvedValueOnce(new Response('{}', { status: 200 }));
-    const service = new UberOrderService(
+    const service = createUberOrderService(
       prisma as unknown as ConstructorParameters<typeof UberOrderService>[0],
       createAuthService(),
     );
@@ -2155,7 +2156,7 @@ describe('UberOrderService', () => {
       .mockImplementation(() =>
         Promise.resolve(new Response('{}', { status: 200 })),
       );
-    const acceptService = new UberOrderService(
+    const acceptService = createUberOrderService(
       createActionPrisma() as unknown as ConstructorParameters<
         typeof UberOrderService
       >[0],
@@ -2167,7 +2168,7 @@ describe('UberOrderService', () => {
       expect.objectContaining({ method: 'POST' }),
     );
 
-    const denyService = new UberOrderService(
+    const denyService = createUberOrderService(
       createActionPrisma() as unknown as ConstructorParameters<
         typeof UberOrderService
       >[0],
@@ -2187,7 +2188,7 @@ describe('UberOrderService', () => {
       .mockImplementation(() =>
         Promise.resolve(new Response('{}', { status: 200 })),
       );
-    const service = new UberOrderService(
+    const service = createUberOrderService(
       prisma as unknown as ConstructorParameters<typeof UberOrderService>[0],
       createAuthService(),
     );
@@ -2212,7 +2213,7 @@ describe('UberOrderService', () => {
   it('ready 前未 accept 或发生并发状态变化时拒绝且不请求 Uber', async () => {
     for (const state of ['pending', 'completed']) {
       const { prisma } = createReadyPrisma(state);
-      const service = new UberOrderService(
+      const service = createUberOrderService(
         prisma as unknown as ConstructorParameters<typeof UberOrderService>[0],
         createAuthService(),
       );
@@ -2239,7 +2240,7 @@ describe('UberOrderService', () => {
           headers: { 'uber-request-id': `request-${status}` },
         }),
       );
-      const service = new UberOrderService(
+      const service = createUberOrderService(
         prisma as unknown as ConstructorParameters<typeof UberOrderService>[0],
         createAuthService(),
       );
@@ -2273,7 +2274,7 @@ describe('UberOrderService', () => {
       .mockRejectedValueOnce(
         Object.assign(new Error('request timed out'), { name: 'AbortError' }),
       );
-    const service = new UberOrderService(
+    const service = createUberOrderService(
       prisma as unknown as ConstructorParameters<typeof UberOrderService>[0],
       createAuthService(),
     );
@@ -2307,7 +2308,7 @@ describe('UberOrderService', () => {
       .spyOn(global, 'fetch')
       .mockResolvedValueOnce(new Response('{}', { status: 500 }))
       .mockResolvedValueOnce(new Response('{}', { status: 200 }));
-    const service = new UberOrderService(
+    const service = createUberOrderService(
       prisma as unknown as ConstructorParameters<typeof UberOrderService>[0],
       createAuthService(),
     );
@@ -2335,7 +2336,7 @@ describe('UberOrderService', () => {
       },
     };
 
-    const service = new UberOrderService(
+    const service = createUberOrderService(
       prisma as unknown as ConstructorParameters<typeof UberOrderService>[0],
       createAuthService(),
     );
