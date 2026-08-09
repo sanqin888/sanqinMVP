@@ -49,6 +49,7 @@ export class UberMenuService {
     const runtimeMethod = (
       UberIntegrationRuntime.prototype as unknown as {
         resolveUberProductStableId: (
+          this: UberIntegrationRuntime,
           client: unknown,
           targetStoreId: string | null | undefined,
           parsedItem: unknown,
@@ -60,7 +61,14 @@ export class UberMenuService {
       Object.create(UberIntegrationRuntime.prototype) as UberIntegrationRuntime,
       this,
     );
-    return runtimeMethod.call(runtimeContext, tx, storeId, item, new Date());
+    const resolvedStableId = runtimeMethod.call(
+      runtimeContext,
+      tx,
+      storeId,
+      item,
+      new Date(),
+    ) as Promise<string>;
+    return resolvedStableId;
   }
 
   listUberItemChannelConfigs(
