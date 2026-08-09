@@ -8,7 +8,13 @@ export type UberMenuPublishError = {
   localId?: string;
 };
 
-type UberStoreScopedInput = {
+export type UberAuthenticationError = {
+  upstreamStatus: number;
+  code: string;
+  message: string;
+};
+
+export type UberStoreScopedInput = {
   storeId?: string;
 };
 
