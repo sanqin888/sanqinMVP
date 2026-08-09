@@ -373,7 +373,7 @@ export class UberHttpClient {
         /\b(?:authorization|client[_-]?secret|secret)\s*[:=]\s*[^\s,;"}]+/gi,
         'credential=[REDACTED]',
       )
-      .replace(/Bearer\s+[A-Za-z0-9._~+\/-]+/gi, 'Bearer [REDACTED]')
+      .replace(/Bearer\s+[A-Za-z0-9._~+/-]+/gi, 'Bearer [REDACTED]')
       .replace(/\s+/g, ' ')
       .slice(0, 500);
   }
