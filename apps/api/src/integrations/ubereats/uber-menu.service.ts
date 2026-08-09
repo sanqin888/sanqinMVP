@@ -1750,6 +1750,12 @@ export class UberMenuService {
             menuItemStableId: input.menuItemStableId,
             lastError: message,
             context: {
+              publish: {
+                storeId: config.storeId,
+                dryRun: false,
+                taxRateConfirmed: true,
+                timezoneConfirmed: true,
+              },
               uberStoreId: mapping.uberStoreId,
               externalItemId: config.externalItemId,
               isAvailable: input.isAvailable,
@@ -3875,7 +3881,12 @@ export class UberMenuService {
         priority: UberOpsTicketPriority.HIGH,
         title: `Uber 菜单发布确认超时：${versionId}`,
         description: `在 ${timeoutMs}ms 内未确认 Uber 菜单发布结果。`,
-        context: { versionId, uberStoreId, state: 'TIMED_OUT' },
+        context: {
+          versionId,
+          uberStoreId,
+          state: 'TIMED_OUT',
+          publish: { storeId, dryRun: false },
+        },
       },
     });
     await this.captureEvent('ubereats_menu_confirmation_timed_out', {
