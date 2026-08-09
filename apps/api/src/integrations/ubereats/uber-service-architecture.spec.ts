@@ -9,6 +9,28 @@ const DOMAIN_SERVICES = [
   'webhook',
 ] as const;
 
+const EXTRACTED_ENTRY_IDENTIFIERS = {
+  menu: [
+    'buildUberUploadMenuPayload',
+    'validateUberMenuPayload(',
+    'buildUberDraftEdges',
+    'menuVersionHasResourceId',
+    'syncUberMenuItemAvailability(',
+  ],
+  order: [
+    'parseOrderPayload',
+    'executeUberOrderAction',
+    'processPendingUberOrderActions(',
+    'mapEventTypeToOrderStatus',
+  ],
+  merchant: [
+    'extractMerchantStores',
+    'upsertStoreMapping',
+    'exchangeAuthorizationCode(',
+    'provisionStore(',
+  ],
+} as const;
+
 describe('Uber Eats domain service architecture', () => {
   it.each(DOMAIN_SERVICES)(
     'keeps %s service declarations in focused shared modules',
@@ -26,6 +48,16 @@ describe('Uber Eats domain service architecture', () => {
         /(?:^|\n)(?:export\s+)?(?:class|interface|type|const|function)\s+Uber/,
       );
       expect(serviceHeader.split('\n').length).toBeLessThan(100);
+      if (domain in EXTRACTED_ENTRY_IDENTIFIERS) {
+        expect(source.split('\n').length).toBeLessThanOrEqual(20);
+      }
+      for (const identifier of domain in EXTRACTED_ENTRY_IDENTIFIERS
+        ? EXTRACTED_ENTRY_IDENTIFIERS[
+            domain as keyof typeof EXTRACTED_ENTRY_IDENTIFIERS
+          ]
+        : []) {
+        expect(source).not.toContain(identifier);
+      }
     },
   );
 
