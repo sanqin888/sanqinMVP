@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common';
+export * from './uber-integration.runtime';
+
 import { UberWebhookService } from './uber-webhook.service';
 import { UberOrderService } from './uber-order.service';
 import { UberMenuService } from './uber-menu.service';
 import { UberMerchantService } from './uber-merchant.service';
 import { UberOperationsService } from './uber-operations.service';
-
-export * from './uber-integration.base';
 
 /**
  * Backwards-compatible integration facade.

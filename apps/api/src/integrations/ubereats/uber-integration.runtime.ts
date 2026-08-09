@@ -771,9 +771,9 @@ type UberOAuthStateRequestDelegate = {
 };
 
 @Injectable()
-export class UberIntegrationBase {
+export class UberIntegrationRuntime {
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
-  private readonly logger = new AppLogger(UberIntegrationBase.name);
+  private readonly logger = new AppLogger(UberIntegrationRuntime.name);
   private readonly uberApiBaseUrl: string;
   private readonly uberResourceHrefAllowedOrigins: string;
   private readonly oauthStateSecret: string;
@@ -4850,12 +4850,12 @@ export class UberIntegrationBase {
         );
         if (
           combinations.length >
-          UberIntegrationBase.UBER_MODIFIER_COMBINATION_LIMIT
+          UberIntegrationRuntime.UBER_MODIFIER_COMBINATION_LIMIT
         ) {
           mappingErrors.push({
             code: 'UBER_MODIFIER_COMBINATION_LIMIT_EXCEEDED',
             sourceOptionChoiceStableId: parent.sourceStableId,
-            message: `选项 ${parent.title} 展开后产生 ${combinations.length} 个组合，超过上限 ${UberIntegrationBase.UBER_MODIFIER_COMBINATION_LIMIT}。`,
+            message: `选项 ${parent.title} 展开后产生 ${combinations.length} 个组合，超过上限 ${UberIntegrationRuntime.UBER_MODIFIER_COMBINATION_LIMIT}。`,
           });
           continue;
         }

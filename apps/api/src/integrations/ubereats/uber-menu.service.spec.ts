@@ -35,7 +35,7 @@ import { createHash } from 'crypto';
 import {
   resolveUberImageUrl,
   toUberServiceAvailability,
-} from './uber-integration.base';
+} from './uber-integration.runtime';
 import { UberMenuService } from './uber-menu.service';
 
 const openSchedulePrisma = {
