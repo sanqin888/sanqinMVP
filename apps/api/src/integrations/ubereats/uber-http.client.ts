@@ -1,16 +1,68 @@
-import { Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { AppLogger } from '../../common/app-logger';
 
 export type UberRequestKind = 'token' | 'api' | 'orderDetail' | 'imageProbe';
 
-export class UberHttpError extends Error {
+export type UberApiErrorCategory =
+  | 'authentication'
+  | 'permission'
+  | 'business'
+  | 'upstream';
+
+/** A safe, stable error contract shared by every Uber HTTP integration. */
+export class UberApiError extends HttpException {
+  constructor(
+    readonly httpStatus: number | null,
+    readonly uberCode: string,
+    readonly safeDetail: string,
+    readonly operation: string,
+    readonly retryable: boolean,
+    readonly category: UberApiErrorCategory,
+    readonly retryAfterMs: number | null = null,
+    readonly cause?: unknown,
+  ) {
+    const exposedStatus = retryable
+      ? HttpStatus.SERVICE_UNAVAILABLE
+      : category === 'upstream'
+        ? HttpStatus.BAD_GATEWAY
+        : httpStatus === 401 || httpStatus === 403
+          ? httpStatus
+          : HttpStatus.BAD_REQUEST;
+    super(
+      {
+        statusCode: exposedStatus,
+        code: uberCode,
+        message: safeDetail,
+        operation,
+        retryable,
+      },
+      exposedStatus,
+    );
+    this.name = 'UberApiError';
+  }
+}
+
+export class UberHttpError extends UberApiError {
   constructor(
     message: string,
     readonly retryable: boolean,
     readonly reason: 'timeout' | 'network' | 'response_too_large',
     readonly cause?: unknown,
   ) {
-    super(message);
+    super(
+      null,
+      reason === 'timeout'
+        ? 'UBER_TIMEOUT'
+        : reason === 'network'
+          ? 'UBER_NETWORK_ERROR'
+          : 'UBER_RESPONSE_TOO_LARGE',
+      message,
+      'uber.http',
+      retryable,
+      'upstream',
+      null,
+      cause,
+    );
     this.name = 'UberHttpError';
   }
 }
@@ -34,6 +86,9 @@ type UberHttpRequest = {
   redirect?: RequestRedirect;
   idempotencyKey?: string;
   maxResponseBytes?: number;
+  operation?: string;
+  /** Compatibility escape hatch for callers which explicitly inspect statuses. */
+  returnErrorResponse?: boolean;
 };
 
 const DEFAULT_TIMEOUTS: Record<UberRequestKind, number> = {
@@ -94,11 +149,21 @@ export class UberHttpClient {
           await this.backoff(attempt);
           continue;
         }
+        if (!result.response.ok && !options.returnErrorResponse) {
+          throw this.fromResponse(
+            result.response,
+            result.data,
+            options.operation ?? `${method} ${this.safePath(url)}`,
+          );
+        }
         return result;
       } catch (error) {
-        const domainError = this.toDomainError(error);
+        const domainError = this.toDomainError(
+          error,
+          options.operation ?? `${method} ${this.safePath(url)}`,
+        );
         this.logger.error(
-          `[uber http] ${method} ${this.redact(url)} failed reason=${domainError.reason} retryable=${domainError.retryable}`,
+          `[uber http] operation=${domainError.operation} url=${this.redact(url)} failed code=${domainError.uberCode} retryable=${domainError.retryable}`,
         );
         if (!domainError.retryable || attempt >= attempts) throw domainError;
         await this.backoff(attempt);
@@ -156,7 +221,10 @@ export class UberHttpClient {
       }
       return { response, text, data: data as T };
     } catch (error) {
-      throw this.toDomainError(error);
+      throw this.toDomainError(
+        error,
+        options.operation ?? `${method} ${this.safePath(url)}`,
+      );
     } finally {
       clearTimeout(timeout);
     }
@@ -226,15 +294,97 @@ export class UberHttpClient {
       : fallback;
   }
 
-  private toDomainError(error: unknown): UberHttpError {
-    if (error instanceof UberHttpError) return error;
+  private toDomainError(error: unknown, operation: string): UberApiError {
+    if (error instanceof UberApiError) return error;
     const timeout = error instanceof Error && error.name === 'AbortError';
-    return new UberHttpError(
+    const domainError = new UberHttpError(
       timeout ? 'Uber 请求超时' : 'Uber 网络请求失败',
       true,
       timeout ? 'timeout' : 'network',
       error,
     );
+    Object.defineProperty(domainError, 'operation', { value: operation });
+    return domainError;
+  }
+
+  private fromResponse(
+    response: Response,
+    data: unknown,
+    operation: string,
+  ): UberApiError {
+    const body =
+      data && typeof data === 'object' ? (data as Record<string, unknown>) : {};
+    const rawCode = [body.code, body.error_code, body.error].find(
+      (value): value is string => typeof value === 'string' && value.length > 0,
+    );
+    const rawDetail = [body.message, body.error_description, body.detail].find(
+      (value): value is string => typeof value === 'string' && value.length > 0,
+    );
+    const status = response.status;
+    const scopeFailure =
+      status === 403 ||
+      /scope|permission|insufficient/i.test(
+        `${rawCode ?? ''} ${rawDetail ?? ''}`,
+      );
+    const category: UberApiErrorCategory =
+      status === 401
+        ? 'authentication'
+        : scopeFailure
+          ? 'permission'
+          : status === 408 || status === 429 || status >= 500
+            ? 'upstream'
+            : 'business';
+    const stableCode =
+      status === 401
+        ? 'UBER_ACCESS_TOKEN_INVALID'
+        : scopeFailure
+          ? 'UBER_SCOPE_INSUFFICIENT'
+          : rawCode
+            ? `UBER_${rawCode.replace(/[^A-Za-z0-9]+/g, '_').toUpperCase()}`
+            : `UBER_HTTP_${status}`;
+    const retryable = status === 408 || status === 429 || status >= 500;
+    return new UberApiError(
+      status,
+      stableCode,
+      this.sanitize(rawDetail ?? `Uber 返回 HTTP ${status}`),
+      operation,
+      retryable,
+      category,
+      this.parseRetryAfter(response.headers.get('retry-after')),
+    );
+  }
+
+  private parseRetryAfter(value: string | null): number | null {
+    if (!value) return null;
+    const seconds = Number(value);
+    if (Number.isFinite(seconds) && seconds >= 0)
+      return Math.round(seconds * 1_000);
+    const date = Date.parse(value);
+    return Number.isFinite(date) ? Math.max(0, date - Date.now()) : null;
+  }
+
+  private sanitize(value: string): string {
+    return value
+      .replace(
+        /\b(?:access[_-]?token|refresh[_-]?token|token)\s*[:=]\s*[^\s,;"}]+/gi,
+        'token=[REDACTED]',
+      )
+      .replace(
+        /\b(?:authorization|client[_-]?secret|secret)\s*[:=]\s*[^\s,;"}]+/gi,
+        'credential=[REDACTED]',
+      )
+      .replace(/Bearer\s+[A-Za-z0-9._~+\/-]+/gi, 'Bearer [REDACTED]')
+      .replace(/\s+/g, ' ')
+      .slice(0, 500);
+  }
+
+  private safePath(value: string): string {
+    try {
+      const url = new URL(value);
+      return `${url.origin}${url.pathname}`;
+    } catch {
+      return value.split('?')[0];
+    }
   }
 
   private async backoff(attempt: number): Promise<void> {

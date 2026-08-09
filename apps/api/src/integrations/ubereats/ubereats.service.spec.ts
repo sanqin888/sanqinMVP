@@ -2926,9 +2926,12 @@ describe('UberEatsService', () => {
     jest.restoreAllMocks();
   });
 
-  it.each([401, 403])(
+  it.each([
+    [401, 'UBER_ACCESS_TOKEN_INVALID'],
+    [403, 'UBER_SCOPE_INSUFFICIENT'],
+  ] as const)(
     '菜单 API 的 %s 鉴权失败保留结构化且脱敏的上游错误',
-    async (status) => {
+    async (status, code) => {
       jest.spyOn(global, 'fetch').mockResolvedValue(
         new Response(
           JSON.stringify({
@@ -2953,13 +2956,13 @@ describe('UberEatsService', () => {
           method: 'GET',
         }),
       ).rejects.toMatchObject({
+        httpStatus: status,
+        uberCode: code,
+        retryable: false,
         response: {
-          status,
-          error: {
-            upstreamStatus: status,
-            code: 'invalid_scope',
-            message: 'missing eats.store; access_token=[REDACTED]',
-          },
+          statusCode: status,
+          code,
+          message: 'missing eats.store; token=[REDACTED]',
         },
       });
       jest.restoreAllMocks();
