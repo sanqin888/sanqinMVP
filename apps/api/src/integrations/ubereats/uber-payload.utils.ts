@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars -- Domain services retain shared runtime types while the integration is split. */
 import { BadRequestException } from '@nestjs/common';
 
 export type LocalBusinessHour = {
@@ -92,18 +91,7 @@ export function toUberServiceAvailability(
   );
 }
 
-type UberMenuGraphValidationIssue = {
-  code: string;
-  message: string;
-  severity?: 'ERROR' | 'WARNING';
-  path?: string;
-  sourceStableId?: string;
-  itemId?: string;
-  itemStableId?: string;
-  groupId?: string;
-  groupStableId?: string;
-  optionItemId?: string;
-};
+export const UBER_ITEM_DESCRIPTION_MAX_LENGTH = 300;
 
 export type UberMenuPayloadValidationIssue = {
   code: string;
@@ -112,55 +100,6 @@ export type UberMenuPayloadValidationIssue = {
   sourceStableId: string | null;
   message: string;
 };
-
-const UBER_IMAGE_URL_MAX_LENGTH = 2_000;
-const UBER_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
-export const UBER_ITEM_DESCRIPTION_MAX_LENGTH = 300;
-const EXPIRING_IMAGE_QUERY_KEYS = new Set([
-  'expires',
-  'x-amz-expires',
-  'x-amz-signature',
-  'signature',
-  'token',
-]);
-
-function isPermanentPublicHttpsUrl(value: string): boolean {
-  if (!value || value.length > UBER_IMAGE_URL_MAX_LENGTH) return false;
-  try {
-    const url = new URL(value);
-    if (url.protocol !== 'https:' || url.username || url.password) return false;
-    const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
-    if (
-      hostname === 'localhost' ||
-      hostname.endsWith('.localhost') ||
-      hostname.endsWith('.local') ||
-      hostname === '::1' ||
-      hostname.startsWith('fc') ||
-      hostname.startsWith('fd') ||
-      hostname.startsWith('fe80:')
-    )
-      return false;
-    const octets = hostname.split('.').map(Number);
-    if (
-      octets.length === 4 &&
-      octets.every(
-        (part) => Number.isInteger(part) && part >= 0 && part <= 255,
-      ) &&
-      (octets[0] === 10 ||
-        octets[0] === 127 ||
-        octets[0] === 0 ||
-        (octets[0] === 169 && octets[1] === 254) ||
-        (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) ||
-        (octets[0] === 192 && octets[1] === 168))
-    )
-      return false;
-    return !Array.from(url.searchParams.keys()).some((key) =>
-      EXPIRING_IMAGE_QUERY_KEYS.has(key.toLowerCase()),
-    );
-  } catch {
-    return false;
-  }
-}
 
 /** Convert the site's stored image path into the public URL Uber can fetch. */
 export function resolveUberImageUrl(value: string | null): string | null {
@@ -180,14 +119,6 @@ export function resolveUberImageUrl(value: string | null): string | null {
     return imageUrl;
   }
 }
-
-type SyncAvailabilityInput = {
-  storeId?: string;
-  menuItemStableId: string;
-  isAvailable: boolean;
-};
-
-/* eslint-enable @typescript-eslint/no-unused-vars */
 
 export type UberAvailabilitySyncStatus =
   | 'SYNCED'
