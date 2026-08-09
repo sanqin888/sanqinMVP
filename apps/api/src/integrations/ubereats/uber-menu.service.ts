@@ -1,695 +1,59 @@
-/* eslint-disable @typescript-eslint/no-unused-vars -- Domain services retain shared runtime types while the integration is split. */
+import { BadRequestException, Injectable, Optional } from '@nestjs/common';
 import {
-  BadRequestException,
-  BadGatewayException,
-  Injectable,
-  NotImplementedException,
-  Optional,
-  UnauthorizedException,
-} from '@nestjs/common';
-import {
-  Channel,
-  FulfillmentType,
-  OrderStatus,
-  PaymentMethod,
   UberMenuPublishStatus,
   UberOpsTicketPriority,
   UberOpsTicketStatus,
   UberOpsTicketType,
   type Prisma,
 } from '@prisma/client';
-import {
-  createHash,
-  createHmac,
-  randomBytes,
-  randomUUID,
-  timingSafeEqual,
-} from 'crypto';
+import { createHash } from 'crypto';
 import { AppLogger } from '../../common/app-logger';
-import { PrismaService } from '../../prisma/prisma.service';
-import { UberAuthService } from './uber-auth.service';
-import { UberWebhookEnvelopeDto } from './dto/uber-webhook-envelope.dto';
-import { UberMenuNotificationDto } from './dto/uber-menu-notification.dto';
 import { OrderEventsBus } from '../../messaging/order-events.bus';
-import {
-  OrderIngestionService,
-  NormalizedOrderItem,
-} from '../../orders/order-ingestion.service';
-import { UberHttpClient, UberHttpResult } from './uber-http.client';
+import { OrderIngestionService } from '../../orders/order-ingestion.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { UberMenuNotificationDto } from './dto/uber-menu-notification.dto';
+import { UberAuthService } from './uber-auth.service';
 import { UberConfigService } from './uber-config.service';
+import { UberHttpClient } from './uber-http.client';
+import {
+  normalizeUberStoreId,
+  redactUberLogText,
+  summarizeUberDebugResponse,
+} from './uber-integration.utils';
+import type {
+  ParsedUberOrderItem,
+  PublishMenuInput,
+  SyncAvailabilityInput,
+  SyncOptionAvailabilityInput,
+  UberAuthenticationError,
+  UberAvailabilitySyncResult,
+  UberAvailabilitySyncStatus,
+  UberMenuGraphValidationIssue,
+  UberMenuPublishError,
+  UberMenuUploadPayload,
+  UpdateDraftGroupInput,
+  UpdateDraftItemInput,
+  UpdateDraftOptionInput,
+  UpsertOptionItemConfigInput,
+  UpsertPriceBookItemInput,
+} from './uber-menu.types';
+import {
+  isPermanentPublicHttpsUrl,
+  UBER_IMAGE_MAX_BYTES,
+  UBER_IMAGE_URL_MAX_LENGTH,
+} from './uber-menu.types';
+import type { UberMerchantConnectionRecord } from './uber-merchant.types';
 import {
   resolveUberImageUrl,
   toUberServiceAvailability,
   UBER_ITEM_DESCRIPTION_MAX_LENGTH,
 } from './uber-payload.utils';
-
-class UberWebhookNonRetryableError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-    readonly detail: string,
-  ) {
-    super(message);
-    this.name = 'UberWebhookNonRetryableError';
-  }
-}
-
-type UberWebhookInput = {
-  headers: Record<string, unknown>;
-  /** @deprecated The service always parses the signed rawBody instead. */
-  body?: unknown;
-  rawBody: string | Buffer;
-};
-
-type UberMenuPublishError = {
-  code: string;
-  path: string | null;
-  message: string;
-  entityType?: 'item' | 'category' | 'modifier';
-  localId?: string;
-};
-
-type UberOrderMoneyDto = number | { amount?: number; value?: number };
-
-type UberOrderItemPriceDto =
-  | UberOrderMoneyDto
-  | {
-      unit_price?: UberOrderMoneyDto;
-      total_price?: UberOrderMoneyDto;
-    };
-
-type UberOrderModifierDto = {
-  id?: string;
-  modifier_id?: string;
-  title?: string;
-  name?: string;
-  quantity?: number;
-  price?: UberOrderMoneyDto;
-  price_delta?: UberOrderMoneyDto;
-  special_instructions?: string;
-  modifiers?: UberOrderModifierDto[];
-  selected_items?: UberOrderModifierDto[];
-};
-
-type UberOrderItemDto = {
-  id?: string;
-  instance_id?: string;
-  line_item_id?: string;
-  item_id?: string;
-  external_data?: string;
-  title?: string;
-  name?: string;
-  quantity?: number;
-  price?: UberOrderItemPriceDto;
-  unit_price?: UberOrderMoneyDto;
-  total_price?: UberOrderMoneyDto;
-  special_instructions?: string;
-  modifiers?: UberOrderModifierDto[];
-  selected_modifier_groups?: Array<{
-    id?: string;
-    title?: string;
-    selected_items?: UberOrderModifierDto[];
-  }>;
-};
-
-type UberOrderDetailDto = {
-  id?: string;
-  order_id?: string;
-  external_order_id?: string;
-  display_id?: string;
-  pickup_code?: string;
-  store_id?: string;
-  store?: {
-    id?: string;
-  };
-  subtotal?: UberOrderMoneyDto;
-  sub_total?: UberOrderMoneyDto;
-  subtotal_cents?: number;
-  tax?: UberOrderMoneyDto;
-  tax_cents?: number;
-  total?: UberOrderMoneyDto;
-  total_cents?: number;
-  discount?: UberOrderMoneyDto;
-  discount_cents?: number;
-  discountCents?: number;
-  delivery_fee?: UberOrderMoneyDto;
-  payment?: {
-    charges?: {
-      total?: UberOrderMoneyDto;
-      sub_total?: UberOrderMoneyDto;
-      subtotal?: UberOrderMoneyDto;
-      tax?: UberOrderMoneyDto;
-      delivery_fee?: UberOrderMoneyDto;
-      total_fee?: UberOrderMoneyDto;
-      total_promo_applied?: UberOrderMoneyDto;
-      sub_total_promo_applied?: UberOrderMoneyDto;
-      tax_promo_applied?: UberOrderMoneyDto;
-    };
-    promotions?: {
-      promotions?: Array<{
-        promo_discount_value?: number;
-        promo_delivery_fee_value?: number;
-      }>;
-    } | null;
-  };
-  items?: UberOrderItemDto[];
-  cart?: { items?: UberOrderItemDto[]; special_instructions?: string };
-  customer?: {
-    name?: string;
-    full_name?: string;
-    phone?: string;
-    phone_number?: string;
-  };
-  eater?: {
-    first_name?: string;
-    last_name?: string;
-    name?: string;
-    full_name?: string;
-    phone?: string;
-    phone_number?: string;
-  };
-  fulfillment_type?: string;
-  type?: string;
-  estimated_ready_for_pickup_at?: string;
-  estimated_delivery_at?: string;
-  special_instructions?: string;
-  paid_at?: string;
-  created_at?: string;
-  placed_at?: string;
-  cancelled_at?: string;
-  canceled_at?: string;
-  cancellation?: {
-    cancelled_by?: string;
-    canceled_by?: string;
-    reason?: string;
-    reason_code?: string;
-    details?: string;
-  };
-};
-
-type ParsedUberModifier = {
-  externalId: string | null;
-  parentExternalId: string | null;
-  displayName: string;
-  quantity: number;
-  priceDeltaCents: number;
-  specialInstructions: string | null;
-  children: ParsedUberModifier[];
-};
-
-type ParsedUberOrderItem = {
-  externalLineId: string | null;
-  externalItemId: string | null;
-  stableIdHint: string | null;
-  displayName: string;
-  quantity: number;
-  baseUnitPriceCents: number;
-  optionsUnitPriceCents: number;
-  unitPriceCents: number;
-  lineTotalCents: number;
-  specialInstructions: string | null;
-  modifiers: ParsedUberModifier[];
-};
-
-type ParsedUberOrder = {
-  externalOrderId: string;
-  displayId: string | null;
-  pickupCode: string | null;
-  storeId?: string | null;
-  subtotalCents: number;
-  taxCents: number;
-  totalCents: number;
-  discountCents: number;
-  hasPromotion: boolean;
-  deliveryFeeCents: number;
-  fulfillmentType: 'pickup' | 'delivery';
-  estimatedReadyAt: Date | null;
-  specialInstructions: string | null;
-  items: ParsedUberOrderItem[];
-  contactName?: string | null;
-  contactPhone?: string | null;
-  paidAt: Date;
-  cancellation: {
-    cancelledBy: string | null;
-    reasonCode: string | null;
-    reasonDetail: string | null;
-    occurredAt: Date;
-  } | null;
-};
-
-type UberAuthenticationError = {
-  upstreamStatus: number;
-  code: string;
-  message: string;
-};
-
-type UberStoreScopedInput = {
-  storeId?: string;
-};
-
-type UpsertPriceBookItemInput = UberStoreScopedInput & {
-  menuItemStableId: string;
-  priceCents: number;
-  isAvailable?: boolean;
-  displayName?: string;
-  displayDescription?: string;
-};
-
-type UpsertOptionItemConfigInput = UberStoreScopedInput & {
-  optionChoiceStableId: string;
-  priceDeltaCents?: number;
-  isAvailable?: boolean;
-  displayName?: string;
-  displayDescription?: string;
-};
-
-type UpdateDraftItemInput = UberStoreScopedInput & {
-  displayName?: string;
-  displayDescription?: string;
-  priceCents?: number;
-  isAvailable?: boolean;
-  sortOrder?: number;
-};
-
-type UpdateDraftGroupInput = UberStoreScopedInput & {
-  name?: string;
-  minSelect?: number;
-  maxSelect?: number;
-  required?: boolean;
-  sortOrder?: number;
-};
-
-type UpdateDraftOptionInput = UberStoreScopedInput & {
-  displayName?: string;
-  priceDeltaCents?: number;
-  isAvailable?: boolean;
-  sortOrder?: number;
-};
-
-type PublishMenuInput = UberStoreScopedInput & {
-  dryRun?: boolean;
-  timezoneConfirmed?: boolean;
-  taxRateConfirmed?: boolean;
-  excludedCategoryIds?: string[];
-  excludedGroupIds?: string[];
-  excludedMenuItemStableIds?: string[];
-  excludedOptionChoiceStableIds?: string[];
-};
-
-type UberCategoryEntityRef = {
-  id: string;
-  type: 'ITEM';
-};
-
-type UberModifierOptionRef = {
-  id: string;
-  type: 'ITEM';
-};
-
-type UberMenuUploadPayload = {
-  menus: Array<{
-    id: string;
-    title: { translations: { en_us: string } };
-    category_ids: string[];
-    service_availability: UberServiceAvailability[];
-  }>;
-  categories: Array<{
-    id: string;
-    title: { translations: { en_us: string } };
-    entities: UberCategoryEntityRef[];
-  }>;
-  items: Array<{
-    id: string;
-    title: { translations: { en_us: string } };
-    description?: { translations: { en_us: string } };
-    price_info: { price: number; overrides: [] };
-    tax_info: { tax_rate: number; vat_rate_percentage: null };
-    modifier_group_ids: { ids: string[] | null; overrides: [] };
-    suspension_info: null | {
-      suspension: { suspend_until: number; reason: string };
-    };
-    image_url?: string;
-  }>;
-  modifier_groups: Array<{
-    id: string;
-    title: { translations: { en_us: string } };
-    quantity_info: {
-      quantity: { min_permitted: number; max_permitted: number };
-    };
-    modifier_options: UberModifierOptionRef[];
-  }>;
-};
-
-export type LocalBusinessHour = {
-  weekday: number;
-  openMinutes: number | null;
-  closeMinutes: number | null;
-  isClosed: boolean;
-};
-
-export type UberServiceAvailability = {
-  day_of_week: string;
-  time_periods: Array<{ start_time: string; end_time: string }>;
-};
-
-const UBER_WEEKDAYS = [
-  'SUNDAY',
-  'MONDAY',
-  'TUESDAY',
-  'WEDNESDAY',
-  'THURSDAY',
-  'FRIDAY',
-  'SATURDAY',
-] as const;
-
-/** Convert recurring store-local hours without applying the server/UTC clock. */
-type UberMenuGraphValidationIssue = {
-  code: string;
-  message: string;
-  severity?: 'ERROR' | 'WARNING';
-  path?: string;
-  sourceStableId?: string;
-  itemId?: string;
-  itemStableId?: string;
-  groupId?: string;
-  groupStableId?: string;
-  optionItemId?: string;
-};
-
-export type UberMenuPayloadValidationIssue = {
-  code: string;
-  severity: 'ERROR' | 'WARNING';
-  path: string;
-  sourceStableId: string | null;
-  message: string;
-};
-
-const UBER_IMAGE_URL_MAX_LENGTH = 2_000;
-const UBER_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
-const EXPIRING_IMAGE_QUERY_KEYS = new Set([
-  'expires',
-  'x-amz-expires',
-  'x-amz-signature',
-  'signature',
-  'token',
-]);
-
-function isPermanentPublicHttpsUrl(value: string): boolean {
-  if (!value || value.length > UBER_IMAGE_URL_MAX_LENGTH) return false;
-  try {
-    const url = new URL(value);
-    if (url.protocol !== 'https:' || url.username || url.password) return false;
-    const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
-    if (
-      hostname === 'localhost' ||
-      hostname.endsWith('.localhost') ||
-      hostname.endsWith('.local') ||
-      hostname === '::1' ||
-      hostname.startsWith('fc') ||
-      hostname.startsWith('fd') ||
-      hostname.startsWith('fe80:')
-    )
-      return false;
-    const octets = hostname.split('.').map(Number);
-    if (
-      octets.length === 4 &&
-      octets.every(
-        (part) => Number.isInteger(part) && part >= 0 && part <= 255,
-      ) &&
-      (octets[0] === 10 ||
-        octets[0] === 127 ||
-        octets[0] === 0 ||
-        (octets[0] === 169 && octets[1] === 254) ||
-        (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) ||
-        (octets[0] === 192 && octets[1] === 168))
-    )
-      return false;
-    return !Array.from(url.searchParams.keys()).some((key) =>
-      EXPIRING_IMAGE_QUERY_KEYS.has(key.toLowerCase()),
-    );
-  } catch {
-    return false;
-  }
-}
-
-/** Convert the site's stored image path into the public URL Uber can fetch. */
-type SyncAvailabilityInput = UberStoreScopedInput & {
-  menuItemStableId: string;
-  isAvailable: boolean;
-};
-
-export type UberAvailabilitySyncStatus =
-  | 'SYNCED'
-  | 'PENDING'
-  | 'SKIPPED_NOT_PUBLISHED'
-  | 'FAILED';
-
-export type UberAvailabilitySyncResult = {
-  status: UberAvailabilitySyncStatus;
-  stores: Array<{
-    storeId: string;
-    uberStoreId: string | null;
-    status: UberAvailabilitySyncStatus;
-    versionStableId?: string;
-    error?: string;
-  }>;
-};
-
-type SyncOptionAvailabilityInput = UberStoreScopedInput & {
-  optionChoiceStableId: string;
-  isAvailable: boolean;
-};
-
-type GenerateReconciliationReportInput = UberStoreScopedInput & {
-  rangeStart?: string;
-  rangeEnd?: string;
-};
-
-type UberOrderActionName = 'ACCEPT' | 'DENY' | 'READY_FOR_PICKUP';
-
-const UBER_ACTION_BY_LOCAL_STATUS: Partial<
-  Record<OrderStatus, UberOrderActionName>
-> = {
-  [OrderStatus.ready]: 'READY_FOR_PICKUP',
-};
-
-type UberOrderActionRecord = {
-  id: string;
-  externalOrderId: string;
-  action: UberOrderActionName;
-  status: string;
-  retryable: boolean;
-  uberHttpStatus: number | null;
-  reasonCode?: string | null;
-  reasonDetail?: string | null;
-  lastError?: string | null;
-};
-
-export type UberOrderActionResult = {
-  ok: boolean;
-  action: UberOrderActionName;
-  actionId: string;
-  status: 'PENDING' | 'SUCCEEDED' | 'FAILED';
-  retryable: boolean;
-  duplicate: boolean;
-  uberHttpStatus?: number | null;
-  errorSummary?: string;
-};
-
-type UberDenyReasonCode =
-  | 'STORE_CLOSED'
-  | 'POS_NOT_READY'
-  | 'POS_OFFLINE'
-  | 'ITEM_AVAILABILITY'
-  | 'MISSING_ITEM'
-  | 'MISSING_INFO'
-  | 'PRICING'
-  | 'CAPACITY'
-  | 'ADDRESS'
-  | 'SPECIAL_INSTRUCTIONS'
-  | 'OTHER';
-
-type UberOrderActionDelegate = {
-  findUnique(args: {
-    where: {
-      externalOrderId_action: {
-        externalOrderId: string;
-        action: UberOrderActionName;
-      };
-    };
-  }): Promise<UberOrderActionRecord | null>;
-  create(args: {
-    data: Record<string, unknown>;
-  }): Promise<UberOrderActionRecord>;
-  update(args: {
-    where: { id: string };
-    data: Record<string, unknown>;
-  }): Promise<UberOrderActionRecord>;
-  upsert(args: {
-    where: {
-      externalOrderId_action: {
-        externalOrderId: string;
-        action: UberOrderActionName;
-      };
-    };
-    create: Record<string, unknown>;
-    update: Record<string, unknown>;
-  }): Promise<UberOrderActionRecord>;
-  findMany(args: {
-    where: Record<string, unknown>;
-    orderBy: { updatedAt: 'asc' | 'desc' };
-    take: number;
-  }): Promise<UberOrderActionRecord[]>;
-};
-
-type UberMerchantStore = {
-  storeId: string;
-  storeName: string | null;
-  locationSummary: string | null;
-  integrationEnabled: boolean;
-  posExternalStoreId: string | null;
-  timezone: string | null;
-  raw: Record<string, unknown>;
-};
-
-type UberMerchantConnectionRecord = {
-  merchantUberUserId: string;
-  accessToken: string;
-  refreshToken: string | null;
-  expiresAt: Date | null;
-  scope: string | null;
-  tokenType: string | null;
-  connectedAt: Date;
-  rawStoresSnapshot?: unknown;
-};
-
-type UberStoreMappingRecord = {
-  merchantUberUserId: string;
-  uberStoreId: string;
-  storeName: string | null;
-  locationSummary: string | null;
-  isProvisioned: boolean;
-  provisionedAt: Date | null;
-  posExternalStoreId: string | null;
-  rawPayload?: unknown;
-};
-
-type UpsertStoreMappingInput = {
-  merchantUberUserId: string;
-  uberStoreId: string;
-  storeName: string | null;
-  locationSummary: string | null;
-  isProvisioned: boolean;
-  posExternalStoreId: string | null;
-  raw: Record<string, unknown>;
-};
-
-type UberMerchantConnectionDelegate = {
-  findUnique(args: {
-    where: { merchantUberUserId: string };
-  }): Promise<UberMerchantConnectionRecord | null>;
-  findFirst(args: {
-    orderBy: { connectedAt: 'desc' | 'asc' };
-  }): Promise<UberMerchantConnectionRecord | null>;
-  upsert(args: {
-    where: { merchantUberUserId: string };
-    create: UberMerchantConnectionRecord;
-    update: Omit<
-      UberMerchantConnectionRecord,
-      'merchantUberUserId' | 'rawStoresSnapshot'
-    >;
-  }): Promise<UberMerchantConnectionRecord>;
-  update(args: {
-    where: { merchantUberUserId: string };
-    data: { rawStoresSnapshot: Record<string, unknown> };
-  }): Promise<unknown>;
-};
-
-type UberStoreMappingDelegate = {
-  findUnique(args: {
-    where: { uberStoreId: string };
-  }): Promise<UberStoreMappingRecord | null>;
-  findMany(args: {
-    orderBy: { uberStoreId: 'asc' | 'desc' };
-  }): Promise<UberStoreMappingRecord[]>;
-  upsert(args: {
-    where: { uberStoreId: string };
-    create: {
-      merchantUberUserId: string;
-      uberStoreId: string;
-      storeName: string | null;
-      locationSummary: string | null;
-      isProvisioned: boolean;
-      provisionedAt: Date | null;
-      posExternalStoreId: string | null;
-      rawPayload: Record<string, unknown>;
-    };
-    update: {
-      merchantUberUserId: string;
-      storeName: string | null;
-      locationSummary: string | null;
-      isProvisioned?: boolean;
-      provisionedAt?: Date | undefined;
-      posExternalStoreId?: string | null;
-      rawPayload: Record<string, unknown>;
-    };
-  }): Promise<UberStoreMappingRecord>;
-  updateMany(args: {
-    where: { uberStoreId: string };
-    data: {
-      isProvisioned: boolean;
-      provisionedAt: Date | null;
-    };
-  }): Promise<{ count: number }>;
-  update(args: {
-    where: { uberStoreId: string };
-    data: { posExternalStoreId: string };
-  }): Promise<UberStoreMappingRecord>;
-};
-
-type CreateOpsTicketInput = UberStoreScopedInput & {
-  type: UberOpsTicketType;
-  title: string;
-  description?: string;
-  priority?: UberOpsTicketPriority;
-  externalOrderId?: string;
-  menuItemStableId?: string;
-  context?: Prisma.JsonObject;
-};
-
-type UberOAuthStateRequestRecord = {
-  nonce: string;
-  adminSessionId: string;
-  redirectUri: string;
-  merchantContext: string | null;
-  issuedAt: Date;
-  expiresAt: Date;
-  consumedAt: Date | null;
-};
-
-type UberOAuthStateRequestDelegate = {
-  create(args: {
-    data: Omit<UberOAuthStateRequestRecord, 'consumedAt'>;
-  }): Promise<unknown>;
-  findUnique(args: {
-    where: { nonce: string };
-  }): Promise<UberOAuthStateRequestRecord | null>;
-  updateMany(args: {
-    where: {
-      nonce: string;
-      adminSessionId: string;
-      issuedAt: Date;
-      expiresAt: { gt: Date };
-      consumedAt: null;
-    };
-    data: { consumedAt: Date };
-  }): Promise<{ count: number }>;
-  deleteMany(args: {
-    where: { expiresAt: { lte: Date } };
-  }): Promise<{ count: number }>;
-};
-
-/* eslint-enable @typescript-eslint/no-unused-vars */
+import type {
+  UberMerchantConnectionDelegate,
+  UberOAuthStateRequestDelegate,
+  UberOrderActionDelegate,
+  UberStoreMappingDelegate,
+} from './uber-prisma.types';
 
 @Injectable()
 export class UberMenuService {
@@ -766,7 +130,7 @@ export class UberMenuService {
   }
 
   async listUberItemChannelConfigs(storeId?: string) {
-    const normalizedStoreId = this.normalizeStoreId(storeId);
+    const normalizedStoreId = normalizeUberStoreId(storeId);
     const items = await this.prisma.uberItemChannelConfig.findMany({
       where: { storeId: normalizedStoreId },
       orderBy: { updatedAt: 'desc' },
@@ -793,7 +157,7 @@ export class UberMenuService {
   }
 
   async listUberPublishedMenuItems(storeId?: string) {
-    const normalizedStoreId = this.normalizeStoreId(storeId);
+    const normalizedStoreId = normalizeUberStoreId(storeId);
     const items = await (
       this.prisma as unknown as {
         uberPublishedMenuItem: { findMany: (args: unknown) => Promise<any[]> };
@@ -829,7 +193,7 @@ export class UberMenuService {
   }
 
   async listUberOptionItemConfigs(storeId?: string) {
-    const normalizedStoreId = this.normalizeStoreId(storeId);
+    const normalizedStoreId = normalizeUberStoreId(storeId);
     const items = await this.prisma.uberOptionItemConfig.findMany({
       where: { storeId: normalizedStoreId },
       orderBy: { updatedAt: 'desc' },
@@ -855,7 +219,7 @@ export class UberMenuService {
   }
 
   async upsertUberItemChannelConfig(input: UpsertPriceBookItemInput) {
-    const normalizedStoreId = this.normalizeStoreId(input.storeId);
+    const normalizedStoreId = normalizeUberStoreId(input.storeId);
     await this.ensureMenuItemExists(input.menuItemStableId);
 
     const row = await this.prisma.uberItemChannelConfig.upsert({
@@ -902,7 +266,7 @@ export class UberMenuService {
   }
 
   async upsertUberOptionItemConfig(input: UpsertOptionItemConfigInput) {
-    const normalizedStoreId = this.normalizeStoreId(input.storeId);
+    const normalizedStoreId = normalizeUberStoreId(input.storeId);
     await this.ensureOptionChoiceExists(input.optionChoiceStableId);
 
     const row = await this.prisma.uberOptionItemConfig.upsert({
@@ -951,7 +315,7 @@ export class UberMenuService {
   }
 
   async getUberMenuDraft(storeId?: string) {
-    const normalizedStoreId = this.normalizeStoreId(storeId);
+    const normalizedStoreId = normalizeUberStoreId(storeId);
     const storeMapping = await this.prisma.uberStoreMapping.findFirst({
       where: {
         uberStoreId: normalizedStoreId,
@@ -1160,7 +524,7 @@ export class UberMenuService {
   }
 
   async updateUberDraftItem(itemId: string, input: UpdateDraftItemInput) {
-    const normalizedStoreId = this.normalizeStoreId(input.storeId);
+    const normalizedStoreId = normalizeUberStoreId(input.storeId);
     await this.ensureMenuItemExists(itemId);
 
     const menuItem = await this.prisma.menuItem.findUnique({
@@ -1218,7 +582,7 @@ export class UberMenuService {
   }
 
   async updateUberDraftGroup(groupId: string, input: UpdateDraftGroupInput) {
-    const normalizedStoreId = this.normalizeStoreId(input.storeId);
+    const normalizedStoreId = normalizeUberStoreId(input.storeId);
     const template = await this.prisma.menuOptionGroupTemplate.findUnique({
       where: { stableId: groupId },
       select: {
@@ -1284,7 +648,7 @@ export class UberMenuService {
     optionItemId: string,
     input: UpdateDraftOptionInput,
   ) {
-    const normalizedStoreId = this.normalizeStoreId(input.storeId);
+    const normalizedStoreId = normalizeUberStoreId(input.storeId);
     await this.ensureOptionChoiceExists(optionItemId);
     const choice = await this.prisma.menuOptionTemplateChoice.findUnique({
       where: { stableId: optionItemId },
@@ -1342,7 +706,7 @@ export class UberMenuService {
     groupId: string,
     storeId?: string,
   ) {
-    const normalizedStoreId = this.normalizeStoreId(storeId);
+    const normalizedStoreId = normalizeUberStoreId(storeId);
     const parentChoice = await this.prisma.menuOptionTemplateChoice.findUnique({
       where: { stableId: optionItemId },
       select: { stableId: true },
@@ -1391,7 +755,7 @@ export class UberMenuService {
     groupId: string,
     storeId?: string,
   ) {
-    const normalizedStoreId = this.normalizeStoreId(storeId);
+    const normalizedStoreId = normalizeUberStoreId(storeId);
     const parentChoice = await this.prisma.menuOptionTemplateChoice.findUnique({
       where: { stableId: optionItemId },
       select: { stableId: true },
@@ -1442,7 +806,7 @@ export class UberMenuService {
   }
 
   async getUberMenuDraftDiff(storeId?: string) {
-    const normalizedStoreId = this.normalizeStoreId(storeId);
+    const normalizedStoreId = normalizeUberStoreId(storeId);
     const draft = await this.getUberMenuDraft(normalizedStoreId);
     const lastSuccess = await this.prisma.uberMenuPublishVersion.findFirst({
       where: {
@@ -1539,7 +903,7 @@ export class UberMenuService {
   }
 
   async publishUberMenu(input: PublishMenuInput) {
-    const normalizedStoreId = this.normalizeStoreId(input.storeId);
+    const normalizedStoreId = normalizeUberStoreId(input.storeId);
     const uberStoreId = await this.resolveUberStoreIdOrThrow(normalizedStoreId);
     const graph = await this.buildUberMenuGraphWithFilters(
       normalizedStoreId,
@@ -1992,7 +1356,7 @@ export class UberMenuService {
           : undefined;
       const detail = authenticationError
         ? JSON.stringify(authenticationError)
-        : this.summarizeDebugResponse(parsed, rawText);
+        : summarizeUberDebugResponse(parsed, rawText);
       this.logger.error(
         `[ubereats api] ${options.method} ${path} failed status=${response.status} detail=${JSON.stringify(detail)}`,
       );
@@ -4106,27 +3470,6 @@ export class UberMenuService {
     return stableId;
   }
 
-  private summarizeDebugResponse(parsed: unknown, rawText: string): string {
-    if (parsed && typeof parsed === 'object') {
-      return JSON.stringify(parsed).slice(0, 500);
-    }
-
-    return rawText.slice(0, 500) || 'empty response body';
-  }
-
-  private redactSensitiveLogText(text: string): string {
-    return text
-      .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [REDACTED]')
-      .replace(
-        /(authorization|token)(["']?\s*[:=]\s*["']?)[^"'&,}\s]+/gi,
-        '$1$2[REDACTED]',
-      )
-      .replace(
-        /(customer|eater)?_?(phone_number|formatted_address|address|phone|name)(["']?\s*[:=]\s*["']?)[^"',}]+/gi,
-        '$1$2$3[REDACTED]',
-      );
-  }
-
   private buildUberAuthenticationError(
     parsed: unknown,
     status: number,
@@ -4151,10 +3494,6 @@ export class UberMenuService {
       .slice(0, 500);
 
     return { upstreamStatus: status, code: code.slice(0, 100), message };
-  }
-
-  private normalizeStoreId(storeId?: string): string {
-    return storeId?.trim() || 'default';
   }
 
   private async resolveUberStoreIdOrThrow(storeId: string): Promise<string> {
@@ -4242,7 +3581,7 @@ export class UberMenuService {
         ? error.message
         : String(error);
 
-    return this.redactSensitiveLogText(rawSummary).slice(0, 500);
+    return redactUberLogText(rawSummary).slice(0, 500);
   }
 
   private safeStructuredError(error: unknown): {
@@ -4255,7 +3594,7 @@ export class UberMenuService {
     return {
       ...(typeof value.uberCode === 'string' ? { code: value.uberCode } : {}),
       ...(typeof value.safeDetail === 'string'
-        ? { detail: this.redactSensitiveLogText(value.safeDetail) }
+        ? { detail: redactUberLogText(value.safeDetail) }
         : {}),
       ...(typeof value.operation === 'string'
         ? { operation: value.operation }
