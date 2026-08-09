@@ -5,11 +5,13 @@ import { OrderIngestionService } from '../../orders/order-ingestion.service';
 import { UberAuthService } from './uber-auth.service';
 import { UberConfigService } from './uber-config.service';
 import { UberHttpClient } from './uber-http.client';
-import { UberIntegrationBase } from './uber-integration.base';
+import { UberIntegrationRuntime } from './uber-integration.runtime';
 
 /** Reconciliation reports, operations tickets, retries and auditing. */
 @Injectable()
-export class UberOperationsService extends UberIntegrationBase {
+export class UberOperationsService {
+  private readonly runtime: UberIntegrationRuntime;
+
   constructor(
     prisma: PrismaService,
     uberAuthService: UberAuthService,
@@ -18,7 +20,7 @@ export class UberOperationsService extends UberIntegrationBase {
     @Optional() httpClient?: UberHttpClient,
     @Optional() config?: UberConfigService,
   ) {
-    super(
+    this.runtime = new UberIntegrationRuntime(
       prisma,
       uberAuthService,
       orderEventsBus,
@@ -26,5 +28,35 @@ export class UberOperationsService extends UberIntegrationBase {
       httpClient,
       config,
     );
+  }
+
+  generateReconciliationReport(
+    ...args: Parameters<UberIntegrationRuntime['generateReconciliationReport']>
+  ): ReturnType<UberIntegrationRuntime['generateReconciliationReport']> {
+    return this.runtime.generateReconciliationReport(...args);
+  }
+
+  listReconciliationReports(
+    ...args: Parameters<UberIntegrationRuntime['listReconciliationReports']>
+  ): ReturnType<UberIntegrationRuntime['listReconciliationReports']> {
+    return this.runtime.listReconciliationReports(...args);
+  }
+
+  createOpsTicket(
+    ...args: Parameters<UberIntegrationRuntime['createOpsTicket']>
+  ): ReturnType<UberIntegrationRuntime['createOpsTicket']> {
+    return this.runtime.createOpsTicket(...args);
+  }
+
+  listOpsTickets(
+    ...args: Parameters<UberIntegrationRuntime['listOpsTickets']>
+  ): ReturnType<UberIntegrationRuntime['listOpsTickets']> {
+    return this.runtime.listOpsTickets(...args);
+  }
+
+  retryOpsTicket(
+    ...args: Parameters<UberIntegrationRuntime['retryOpsTicket']>
+  ): ReturnType<UberIntegrationRuntime['retryOpsTicket']> {
+    return this.runtime.retryOpsTicket(...args);
   }
 }

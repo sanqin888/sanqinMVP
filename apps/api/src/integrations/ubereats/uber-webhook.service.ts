@@ -5,11 +5,15 @@ import { OrderIngestionService } from '../../orders/order-ingestion.service';
 import { UberAuthService } from './uber-auth.service';
 import { UberConfigService } from './uber-config.service';
 import { UberHttpClient } from './uber-http.client';
-import { UberIntegrationBase } from './uber-integration.base';
+import { UberIntegrationRuntime } from './uber-integration.runtime';
+import { UberOrderService } from './uber-order.service';
+import { UberMenuService } from './uber-menu.service';
 
 /** Webhook signature verification, durable inbox claiming and event routing. */
 @Injectable()
-export class UberWebhookService extends UberIntegrationBase {
+export class UberWebhookService {
+  private readonly runtime: UberIntegrationRuntime;
+
   constructor(
     prisma: PrismaService,
     uberAuthService: UberAuthService,
@@ -17,8 +21,10 @@ export class UberWebhookService extends UberIntegrationBase {
     @Optional() orderIngestionService?: OrderIngestionService,
     @Optional() httpClient?: UberHttpClient,
     @Optional() config?: UberConfigService,
+    @Optional() private readonly orders?: UberOrderService,
+    @Optional() private readonly menu?: UberMenuService,
   ) {
-    super(
+    this.runtime = new UberIntegrationRuntime(
       prisma,
       uberAuthService,
       orderEventsBus,
@@ -26,5 +32,14 @@ export class UberWebhookService extends UberIntegrationBase {
       httpClient,
       config,
     );
+    // Keep domain collaborators explicit; webhook routing can evolve without inheritance.
+    void this.orders;
+    void this.menu;
+  }
+
+  handleWebhook(
+    ...args: Parameters<UberIntegrationRuntime['handleWebhook']>
+  ): ReturnType<UberIntegrationRuntime['handleWebhook']> {
+    return this.runtime.handleWebhook(...args);
   }
 }

@@ -5,11 +5,13 @@ import { OrderIngestionService } from '../../orders/order-ingestion.service';
 import { UberAuthService } from './uber-auth.service';
 import { UberConfigService } from './uber-config.service';
 import { UberHttpClient } from './uber-http.client';
-import { UberIntegrationBase } from './uber-integration.base';
+import { UberIntegrationRuntime } from './uber-integration.runtime';
 
 /** Order ingestion, parsing, persistence and outbound order actions. */
 @Injectable()
-export class UberOrderService extends UberIntegrationBase {
+export class UberOrderService {
+  private readonly runtime: UberIntegrationRuntime;
+
   constructor(
     prisma: PrismaService,
     uberAuthService: UberAuthService,
@@ -18,7 +20,7 @@ export class UberOrderService extends UberIntegrationBase {
     @Optional() httpClient?: UberHttpClient,
     @Optional() config?: UberConfigService,
   ) {
-    super(
+    this.runtime = new UberIntegrationRuntime(
       prisma,
       uberAuthService,
       orderEventsBus,
@@ -26,5 +28,49 @@ export class UberOrderService extends UberIntegrationBase {
       httpClient,
       config,
     );
+  }
+
+  syncOrderStatusToUber(
+    ...args: Parameters<UberIntegrationRuntime['syncOrderStatusToUber']>
+  ): ReturnType<UberIntegrationRuntime['syncOrderStatusToUber']> {
+    return this.runtime.syncOrderStatusToUber(...args);
+  }
+
+  getReadyForPickupAction(
+    ...args: Parameters<UberIntegrationRuntime['getReadyForPickupAction']>
+  ): ReturnType<UberIntegrationRuntime['getReadyForPickupAction']> {
+    return this.runtime.getReadyForPickupAction(...args);
+  }
+
+  retryReadyForPickup(
+    ...args: Parameters<UberIntegrationRuntime['retryReadyForPickup']>
+  ): ReturnType<UberIntegrationRuntime['retryReadyForPickup']> {
+    return this.runtime.retryReadyForPickup(...args);
+  }
+
+  processPendingUberOrderActions(
+    ...args: Parameters<
+      UberIntegrationRuntime['processPendingUberOrderActions']
+    >
+  ): ReturnType<UberIntegrationRuntime['processPendingUberOrderActions']> {
+    return this.runtime.processPendingUberOrderActions(...args);
+  }
+
+  acceptUberOrder(
+    ...args: Parameters<UberIntegrationRuntime['acceptUberOrder']>
+  ): ReturnType<UberIntegrationRuntime['acceptUberOrder']> {
+    return this.runtime.acceptUberOrder(...args);
+  }
+
+  denyUberOrder(
+    ...args: Parameters<UberIntegrationRuntime['denyUberOrder']>
+  ): ReturnType<UberIntegrationRuntime['denyUberOrder']> {
+    return this.runtime.denyUberOrder(...args);
+  }
+
+  listPendingUberOrders(
+    ...args: Parameters<UberIntegrationRuntime['listPendingUberOrders']>
+  ): ReturnType<UberIntegrationRuntime['listPendingUberOrders']> {
+    return this.runtime.listPendingUberOrders(...args);
   }
 }
