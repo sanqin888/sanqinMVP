@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '@/lib/api/client';
+import { MenuDraftPanel, OAuthConnectionPanel, OperationsTicketsPanel, OrdersPanel, PublishHistoryPanel, ReconciliationPanel, StoreMappingPanel } from './components';
 
 type ModuleKey = 'dashboard' | 'auth' | 'store-menu' | 'orders-ops' | 'reconciliation-tickets';
 
@@ -780,7 +781,7 @@ export default function UberEatsAdminPage() {
         )}
 
         {active === 'auth' && (
-          <section className="space-y-4">
+          <OAuthConnectionPanel>
             <div className="rounded-xl border bg-white p-4">
               <h3 className="text-lg font-semibold">A. 环境配置</h3>
               <p className="break-all whitespace-pre-wrap text-sm text-slate-600">Authorize URL: {connectUrl?.authorizeUrl ?? '-'}</p>
@@ -864,11 +865,11 @@ export default function UberEatsAdminPage() {
                 </table>
               </div>
             </div>
-          </section>
+          </OAuthConnectionPanel>
         )}
 
         {active === 'store-menu' && (
-          <section className="space-y-4">
+          <StoreMappingPanel>
             <div className="rounded-xl border bg-white p-4">
               <h3 className="text-lg font-semibold">Uber 菜单工作台</h3>
               <div className="mt-3 grid gap-2 xl:grid-cols-[2fr_repeat(6,minmax(0,1fr))]">
@@ -904,6 +905,7 @@ export default function UberEatsAdminPage() {
             )}
 
             {storeMenuTab === 'mapping' && (
+              <MenuDraftPanel>
               <div className="grid gap-4 xl:grid-cols-[1fr_360px_1fr]">
                 <div className="rounded-xl border bg-white p-4">
                   <h4 className="font-semibold">网站菜单树（来源）</h4>
@@ -939,6 +941,7 @@ export default function UberEatsAdminPage() {
                   <div className="mt-3 max-h-[520px] overflow-auto">{renderDraftTree('uber-mapping', filteredUberTree)}</div>
                 </div>
               </div>
+              </MenuDraftPanel>
             )}
 
             {storeMenuTab === 'editor' && (
@@ -1003,6 +1006,7 @@ export default function UberEatsAdminPage() {
             )}
 
             {storeMenuTab === 'publish' && (
+              <PublishHistoryPanel>
               <div className="grid gap-4 xl:grid-cols-2">
                 <div className="rounded-xl border bg-white p-4">
                   <h4 className="font-semibold">发布前 Diff 摘要</h4>
@@ -1077,29 +1081,30 @@ export default function UberEatsAdminPage() {
                   </div>
                 </div>
               </div>
+              </PublishHistoryPanel>
             )}
-          </section>
+          </StoreMappingPanel>
         )}
 
         {active === 'orders-ops' && (
-          <section className="rounded-xl border bg-white p-4">
+          <OrdersPanel>
             <h3 className="text-lg font-semibold">订单与运营</h3>
             <table className="mt-3 min-w-full text-sm"><thead><tr className="border-b text-left text-slate-500"><th className="px-2 py-2">externalOrderId</th><th className="px-2 py-2">orderStableId</th><th className="px-2 py-2">status</th><th className="px-2 py-2">金额</th><th className="px-2 py-2">createdAt</th></tr></thead><tbody>{pendingOrders.map((o) => <tr key={o.externalOrderId} className="border-b"><td className="px-2 py-2">{o.externalOrderId}</td><td className="px-2 py-2">{o.orderStableId}</td><td className="px-2 py-2">{o.status}</td><td className="px-2 py-2">${(o.totalCents / 100).toFixed(2)}</td><td className="px-2 py-2">{safeTime(o.createdAt)}</td></tr>)}</tbody></table>
-          </section>
+          </OrdersPanel>
         )}
 
         {active === 'reconciliation-tickets' && (
           <section className="grid gap-4 lg:grid-cols-2">
-            <div className="rounded-xl border bg-white p-4">
+            <ReconciliationPanel><div className="rounded-xl border bg-white p-4">
               <h3 className="text-lg font-semibold">Reconciliation Reports</h3>
               <button type="button" className="mt-2 rounded border px-3 py-1 text-sm" onClick={() => void runAction('gen-report', () => apiFetch('/integrations/ubereats/reports/reconciliation/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) }).then(() => {}), '已生成对账报告')}>生成对账报告</button>
               <div className="mt-3 space-y-2 text-sm">{reports.map((r) => <div key={r.reportStableId} className="rounded border p-2"><p>{r.reportStableId}</p><p>totalOrders: {r.totalOrders} / amount: {r.totalAmountCents}</p></div>)}</div>
-            </div>
-            <div className="rounded-xl border bg-white p-4">
+            </div></ReconciliationPanel>
+            <OperationsTicketsPanel><div className="rounded-xl border bg-white p-4">
               <h3 className="text-lg font-semibold">Ops Tickets</h3>
               <div className="mt-2 grid grid-cols-2 gap-2"><input className="rounded border px-2 py-1 text-sm" placeholder="按 storeId 过滤" value={ticketStoreFilter} onChange={(e) => setTicketStoreFilter(e.target.value)} /><select className="rounded border px-2 py-1 text-sm" value={ticketStatusFilter} onChange={(e) => setTicketStatusFilter(e.target.value as TicketStatus | '')}><option value="">全部状态</option><option value="OPEN">OPEN</option><option value="IN_PROGRESS">IN_PROGRESS</option><option value="RESOLVED">RESOLVED</option></select></div>
               <div className="mt-3 space-y-2 text-sm">{tickets.map((t) => <div key={t.ticketStableId} className="rounded border p-2"><div className="flex items-center justify-between"><p>{t.ticketStableId}</p><button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => void runAction(`retry-${t.ticketStableId}`, () => apiFetch(`/integrations/ubereats/ops/tickets/${t.ticketStableId}/retry`, { method: 'POST' }).then(() => {}), `${t.ticketStableId} 已触发重试`)}>Retry</button></div><p>{t.type} / {t.priority} / {t.status}</p><p>{t.title}</p></div>)}</div>
-            </div>
+            </div></OperationsTicketsPanel>
           </section>
         )}
       </main>

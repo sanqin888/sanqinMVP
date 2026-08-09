@@ -8,6 +8,11 @@ import { MessagingModule } from '../../messaging/messaging.module';
 import { OrdersModule } from '../../orders/orders.module';
 import { UberHttpClient } from './uber-http.client';
 import { UberConfigService } from './uber-config.service';
+import { UberWebhookService } from './uber-webhook.service';
+import { UberOrderService } from './uber-order.service';
+import { UberMenuService } from './uber-menu.service';
+import { UberMerchantService } from './uber-merchant.service';
+import { UberOperationsService } from './uber-operations.service';
 
 @Module({
   imports: [PrismaModule, AuthModule, MessagingModule, OrdersModule],
@@ -17,7 +22,20 @@ import { UberConfigService } from './uber-config.service';
     UberEatsService,
     UberAuthService,
     UberHttpClient,
+    UberWebhookService,
+    UberOrderService,
+    UberMenuService,
+    UberMerchantService,
+    UberOperationsService,
   ],
-  exports: [UberAuthService, UberEatsService],
+  exports: [
+    UberAuthService,
+    UberEatsService,
+    UberWebhookService,
+    UberOrderService,
+    UberMenuService,
+    UberMerchantService,
+    UberOperationsService,
+  ],
 })
 export class UberEatsModule {}
