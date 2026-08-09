@@ -13,6 +13,7 @@ import { UberOrderService } from './uber-order.service';
 import { UberMenuService } from './uber-menu.service';
 import { UberMerchantService } from './uber-merchant.service';
 import { UberOperationsService } from './uber-operations.service';
+import { UberPrismaAccessService } from './uber-prisma-access.service';
 
 @Module({
   imports: [PrismaModule, AuthModule, MessagingModule, OrdersModule],
@@ -23,6 +24,7 @@ import { UberOperationsService } from './uber-operations.service';
       useFactory: () => new UberConfigService(process.env),
     },
     UberEatsService,
+    UberPrismaAccessService,
     UberAuthService,
     UberHttpClient,
     UberWebhookService,

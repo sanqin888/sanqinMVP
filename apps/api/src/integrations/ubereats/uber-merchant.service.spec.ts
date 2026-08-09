@@ -633,7 +633,7 @@ describe('UberMerchantService', () => {
 
 describe('UberMerchantService 最小依赖装配', () => {
   it('构造函数只声明 Prisma、认证、HTTP 与 OAuth 配置', () => {
-    expect(UberMerchantService.length).toBe(4);
+    expect(UberMerchantService.length).toBe(5);
   });
   it('OAuth 能力缺少 state 密钥时在构造边界快速失败，但不要求 webhook 密钥', () => {
     const valid = new UberConfigService({

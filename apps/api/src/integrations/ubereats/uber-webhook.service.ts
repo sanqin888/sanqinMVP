@@ -20,12 +20,7 @@ import {
 } from './uber-integration.utils';
 import { UberMenuService } from './uber-menu.service';
 import { UberOrderService } from './uber-order.service';
-import type {
-  UberMerchantConnectionDelegate,
-  UberOAuthStateRequestDelegate,
-  UberOrderActionDelegate,
-  UberStoreMappingDelegate,
-} from './uber-prisma.types';
+import { UberPrismaAccessService } from './uber-prisma-access.service';
 import type { UberWebhookInput } from './uber-webhook.types';
 
 @Injectable()
@@ -39,48 +34,9 @@ export class UberWebhookService {
     @Inject(UberConfigService) config: UberWebhookConfig,
     private readonly orders: UberOrderService,
     private readonly menu: UberMenuService,
+    private readonly prismaAccess: UberPrismaAccessService,
   ) {
     this.webhookSigningKey = config.getWebhookSigningKey();
-  }
-
-  private get uberMerchantConnectionDelegate(): UberMerchantConnectionDelegate | null {
-    const prismaWithUber = this.prisma as PrismaService & {
-      uberMerchantConnection?: UberMerchantConnectionDelegate;
-    };
-
-    return prismaWithUber.uberMerchantConnection ?? null;
-  }
-
-  private get uberOAuthStateRequestDelegate(): UberOAuthStateRequestDelegate {
-    const delegate = (
-      this.prisma as PrismaService & {
-        uberOAuthStateRequest?: UberOAuthStateRequestDelegate;
-      }
-    ).uberOAuthStateRequest;
-    if (!delegate) {
-      throw new Error('UberOAuthStateRequest 数据表不可用');
-    }
-    return delegate;
-  }
-
-  private get uberStoreMappingDelegate(): UberStoreMappingDelegate | null {
-    const prismaWithUber = this.prisma as PrismaService & {
-      uberStoreMapping?: UberStoreMappingDelegate;
-    };
-
-    return prismaWithUber.uberStoreMapping ?? null;
-  }
-
-  private get uberOrderActionDelegate(): UberOrderActionDelegate {
-    const delegate = (
-      this.prisma as PrismaService & {
-        uberOrderAction?: UberOrderActionDelegate;
-      }
-    ).uberOrderAction;
-    if (!delegate) {
-      throw new Error('UberOrderAction 数据表不可用');
-    }
-    return delegate;
   }
 
   async handleWebhook(input: UberWebhookInput): Promise<void> {
@@ -250,7 +206,7 @@ export class UberWebhookService {
     storeId: string,
     isProvisioned: boolean,
   ): Promise<void> {
-    const storeMapping = this.uberStoreMappingDelegate;
+    const storeMapping = this.prismaAccess.uberStoreMappingDelegate;
     if (!storeMapping) {
       throw new BadRequestException('Prisma 未配置 uberStoreMapping 模型');
     }

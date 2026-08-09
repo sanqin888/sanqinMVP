@@ -31,12 +31,7 @@ import type {
   UberStoreMappingRecord,
   UpsertStoreMappingInput,
 } from './uber-merchant.types';
-import type {
-  UberMerchantConnectionDelegate,
-  UberOAuthStateRequestDelegate,
-  UberOrderActionDelegate,
-  UberStoreMappingDelegate,
-} from './uber-prisma.types';
+import { UberPrismaAccessService } from './uber-prisma-access.service';
 
 @Injectable()
 export class UberMerchantService {
@@ -50,49 +45,10 @@ export class UberMerchantService {
     private readonly uberAuthService: UberAuthService,
     private readonly httpClient: UberHttpClient,
     @Inject(UberConfigService) private readonly config: UberOAuthStateConfig,
+    private readonly prismaAccess: UberPrismaAccessService,
   ) {
     this.uberApiBaseUrl = config.apiBaseUrl;
     this.oauthStateSecret = config.getOAuthStateSecret();
-  }
-
-  private get uberMerchantConnectionDelegate(): UberMerchantConnectionDelegate | null {
-    const prismaWithUber = this.prisma as PrismaService & {
-      uberMerchantConnection?: UberMerchantConnectionDelegate;
-    };
-
-    return prismaWithUber.uberMerchantConnection ?? null;
-  }
-
-  private get uberOAuthStateRequestDelegate(): UberOAuthStateRequestDelegate {
-    const delegate = (
-      this.prisma as PrismaService & {
-        uberOAuthStateRequest?: UberOAuthStateRequestDelegate;
-      }
-    ).uberOAuthStateRequest;
-    if (!delegate) {
-      throw new Error('UberOAuthStateRequest 数据表不可用');
-    }
-    return delegate;
-  }
-
-  private get uberStoreMappingDelegate(): UberStoreMappingDelegate | null {
-    const prismaWithUber = this.prisma as PrismaService & {
-      uberStoreMapping?: UberStoreMappingDelegate;
-    };
-
-    return prismaWithUber.uberStoreMapping ?? null;
-  }
-
-  private get uberOrderActionDelegate(): UberOrderActionDelegate {
-    const delegate = (
-      this.prisma as PrismaService & {
-        uberOrderAction?: UberOrderActionDelegate;
-      }
-    ).uberOrderAction;
-    if (!delegate) {
-      throw new Error('UberOrderAction 数据表不可用');
-    }
-    return delegate;
   }
 
   async buildMerchantAuthorizeUrl(
@@ -232,7 +188,7 @@ export class UberMerchantService {
       );
     }
 
-    const storeMapping = this.uberStoreMappingDelegate;
+    const storeMapping = this.prismaAccess.uberStoreMappingDelegate;
     if (!storeMapping) {
       throw new BadRequestException('Prisma 未配置 uberStoreMapping 模型');
     }
@@ -338,7 +294,7 @@ export class UberMerchantService {
     pauseUntil?: string;
   }) {
     const config = await this.ensureBusinessConfig();
-    const mappingDelegate = this.uberStoreMappingDelegate;
+    const mappingDelegate = this.prismaAccess.uberStoreMappingDelegate;
     if (!mappingDelegate) {
       throw new BadRequestException('UberStoreMapping 数据表不可用');
     }
@@ -540,10 +496,10 @@ export class UberMerchantService {
     const issuedAt = new Date(Number(timestamp));
     const expiresAt = new Date(issuedAt.getTime() + 10 * 60 * 1000);
     // 在签发路径顺带批量清理过期记录，避免依赖单进程内存定时器。
-    await this.uberOAuthStateRequestDelegate.deleteMany({
+    await this.prismaAccess.uberOAuthStateRequestDelegate.deleteMany({
       where: { expiresAt: { lte: issuedAt } },
     });
-    await this.uberOAuthStateRequestDelegate.create({
+    await this.prismaAccess.uberOAuthStateRequestDelegate.create({
       data: {
         nonce,
         adminSessionId: adminSessionId.trim(),
@@ -603,9 +559,10 @@ export class UberMerchantService {
       throw new BadRequestException('OAuth state 已过期');
     }
 
-    const request = await this.uberOAuthStateRequestDelegate.findUnique({
-      where: { nonce },
-    });
+    const request =
+      await this.prismaAccess.uberOAuthStateRequestDelegate.findUnique({
+        where: { nonce },
+      });
     if (
       !request ||
       request.issuedAt.getTime() !== issuedAt ||
@@ -625,16 +582,17 @@ export class UberMerchantService {
     }
 
     // 条件更新是数据库级 compare-and-set；并发回调中只有一个请求能消费成功。
-    const consumed = await this.uberOAuthStateRequestDelegate.updateMany({
-      where: {
-        nonce,
-        adminSessionId: adminSessionId.trim(),
-        issuedAt: new Date(issuedAt),
-        expiresAt: { gt: new Date(now) },
-        consumedAt: null,
-      },
-      data: { consumedAt: new Date(now) },
-    });
+    const consumed =
+      await this.prismaAccess.uberOAuthStateRequestDelegate.updateMany({
+        where: {
+          nonce,
+          adminSessionId: adminSessionId.trim(),
+          issuedAt: new Date(issuedAt),
+          expiresAt: { gt: new Date(now) },
+          consumedAt: null,
+        },
+        data: { consumedAt: new Date(now) },
+      });
     if (consumed.count !== 1) {
       throw new BadRequestException('OAuth state 不存在或已使用');
     }
@@ -657,7 +615,7 @@ export class UberMerchantService {
       };
     }
 
-    const merchantConnection = this.uberMerchantConnectionDelegate;
+    const merchantConnection = this.prismaAccess.uberMerchantConnectionDelegate;
     const row = merchantUberUserId?.trim()
       ? await merchantConnection?.findUnique({
           where: { merchantUberUserId: merchantUberUserId.trim() },
@@ -716,7 +674,7 @@ export class UberMerchantService {
   private upsertMerchantConnection(
     input: UberMerchantConnectionRecord,
   ): Promise<UberMerchantConnectionRecord> {
-    const merchantConnection = this.uberMerchantConnectionDelegate;
+    const merchantConnection = this.prismaAccess.uberMerchantConnectionDelegate;
     if (!merchantConnection) {
       throw new BadRequestException(
         'Prisma 未配置 uberMerchantConnection 模型',
@@ -742,7 +700,7 @@ export class UberMerchantService {
     stores: UberMerchantStore[],
     raw: Record<string, unknown>,
   ) {
-    const merchantConnection = this.uberMerchantConnectionDelegate;
+    const merchantConnection = this.prismaAccess.uberMerchantConnectionDelegate;
     await merchantConnection?.update({
       where: { merchantUberUserId },
       data: { rawStoresSnapshot: raw },
@@ -771,7 +729,7 @@ export class UberMerchantService {
     const rawPayload = this.asObject(input.raw) ?? {};
     const integrationEnabled = this.readStoreIntegrationEnabled(rawPayload);
     const posExternalStoreId = this.readStorePosExternalStoreId(rawPayload);
-    const storeMapping = this.uberStoreMappingDelegate;
+    const storeMapping = this.prismaAccess.uberStoreMappingDelegate;
     if (!storeMapping) {
       throw new BadRequestException('Prisma 未配置 uberStoreMapping 模型');
     }
@@ -808,7 +766,7 @@ export class UberMerchantService {
   private upsertStoreMapping(
     input: UpsertStoreMappingInput,
   ): Promise<UberStoreMappingRecord> {
-    const storeMapping = this.uberStoreMappingDelegate;
+    const storeMapping = this.prismaAccess.uberStoreMappingDelegate;
     if (!storeMapping) {
       throw new BadRequestException('Prisma 未配置 uberStoreMapping 模型');
     }

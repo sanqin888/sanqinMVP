@@ -45,12 +45,7 @@ import type {
   UberOrderModifierDto,
 } from './uber-order.types';
 import { UBER_ACTION_BY_LOCAL_STATUS } from './uber-order.types';
-import type {
-  UberMerchantConnectionDelegate,
-  UberOAuthStateRequestDelegate,
-  UberOrderActionDelegate,
-  UberStoreMappingDelegate,
-} from './uber-prisma.types';
+import { UberPrismaAccessService } from './uber-prisma-access.service';
 
 @Injectable()
 export class UberOrderService {
@@ -66,49 +61,10 @@ export class UberOrderService {
     private readonly orderIngestionService: OrderIngestionService,
     private readonly httpClient: UberHttpClient,
     @Inject(UberConfigService) private readonly config: UberOrderConfig,
+    private readonly prismaAccess: UberPrismaAccessService,
   ) {
     this.uberApiBaseUrl = config.apiBaseUrl;
     this.uberResourceHrefAllowedOrigins = config.resourceHrefAllowedOrigins;
-  }
-
-  private get uberMerchantConnectionDelegate(): UberMerchantConnectionDelegate | null {
-    const prismaWithUber = this.prisma as PrismaService & {
-      uberMerchantConnection?: UberMerchantConnectionDelegate;
-    };
-
-    return prismaWithUber.uberMerchantConnection ?? null;
-  }
-
-  private get uberOAuthStateRequestDelegate(): UberOAuthStateRequestDelegate {
-    const delegate = (
-      this.prisma as PrismaService & {
-        uberOAuthStateRequest?: UberOAuthStateRequestDelegate;
-      }
-    ).uberOAuthStateRequest;
-    if (!delegate) {
-      throw new Error('UberOAuthStateRequest 数据表不可用');
-    }
-    return delegate;
-  }
-
-  private get uberStoreMappingDelegate(): UberStoreMappingDelegate | null {
-    const prismaWithUber = this.prisma as PrismaService & {
-      uberStoreMapping?: UberStoreMappingDelegate;
-    };
-
-    return prismaWithUber.uberStoreMapping ?? null;
-  }
-
-  private get uberOrderActionDelegate(): UberOrderActionDelegate {
-    const delegate = (
-      this.prisma as PrismaService & {
-        uberOrderAction?: UberOrderActionDelegate;
-      }
-    ).uberOrderAction;
-    if (!delegate) {
-      throw new Error('UberOrderAction 数据表不可用');
-    }
-    return delegate;
   }
 
   async syncOrderStatusToUber(externalOrderId: string, status: OrderStatus) {
@@ -200,7 +156,7 @@ export class UberOrderService {
   }
 
   async getReadyForPickupAction(externalOrderId: string) {
-    return this.uberOrderActionDelegate.findUnique({
+    return this.prismaAccess.uberOrderActionDelegate.findUnique({
       where: {
         externalOrderId_action: {
           externalOrderId,
@@ -227,7 +183,7 @@ export class UberOrderService {
   /** Queue workers can periodically drain retryable/PENDING outbox rows. */
 
   async processPendingUberOrderActions(limit = 50) {
-    const rows = await this.uberOrderActionDelegate.findMany({
+    const rows = await this.prismaAccess.uberOrderActionDelegate.findMany({
       where: {
         OR: [{ status: 'PENDING' }, { status: 'FAILED', retryable: true }],
       },
@@ -520,7 +476,7 @@ export class UberOrderService {
       orderStableId: string;
     },
   ) {
-    await this.uberOrderActionDelegate.upsert({
+    await this.prismaAccess.uberOrderActionDelegate.upsert({
       where: { externalOrderId_action: { externalOrderId, action: 'ACCEPT' } },
       create: {
         externalOrderId,
@@ -673,7 +629,7 @@ export class UberOrderService {
     if (!externalOrderId) {
       throw new BadRequestException('externalOrderId 不能为空');
     }
-    const delegate = this.uberOrderActionDelegate;
+    const delegate = this.prismaAccess.uberOrderActionDelegate;
     const key = { externalOrderId, action };
     let record = await delegate.findUnique({
       where: { externalOrderId_action: key },

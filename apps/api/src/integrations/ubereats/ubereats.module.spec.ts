@@ -10,6 +10,7 @@ import { UberHttpClient } from './uber-http.client';
 import { UberMenuService } from './uber-menu.service';
 import { UberMerchantService } from './uber-merchant.service';
 import { UberOperationsService } from './uber-operations.service';
+import { UberPrismaAccessService } from './uber-prisma-access.service';
 import { UberOrderService } from './uber-order.service';
 import { UberWebhookService } from './uber-webhook.service';
 
@@ -20,6 +21,7 @@ const sharedProviders = [
   OrderIngestionService,
   UberHttpClient,
   UberConfigService,
+  UberPrismaAccessService,
 ] as const;
 const domainProviders = [
   UberOrderService,
