@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { PosGateway } from './pos.gateway';
 
 describe('PosGateway durable print delivery', () => {
@@ -5,6 +6,7 @@ describe('PosGateway durable print delivery', () => {
   afterEach(() => {
     jest.clearAllTimers();
     jest.useRealTimers();
+    jest.restoreAllMocks();
   });
   const baseJob = {
     jobId: 'job-1',
@@ -172,6 +174,10 @@ describe('PosGateway durable print delivery', () => {
   });
 
   it('ACK 超时后只重试超时目标并保留超时原因', async () => {
+    const warnSpy = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
     const { gateway, posPrintJob, emit } = setup();
 
     await (
@@ -196,9 +202,19 @@ describe('PosGateway durable print delivery', () => {
       'PRINT_JOB',
       expect.objectContaining({ target: 'customer' }),
     );
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'pos_print_ack_timeout',
+        reason: 'ACK_TIMEOUT',
+      }),
+    );
   });
 
   it('达到真实发送上限后停止重试并可由 REPRINT 新建任务恢复', async () => {
+    const warnSpy = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
     const { gateway, job, posPrintJob, emit } = setup();
     job.customerAttempts = 3;
     job.customerFailureReason = 'ACK_TIMEOUT';
@@ -212,6 +228,12 @@ describe('PosGateway durable print delivery', () => {
       }
     ).dispatchTarget('job-1', 'customer');
     expect(emit).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'pos_print_retry_stopped',
+        reason: 'MAX_SEND_ATTEMPTS_REACHED',
+      }),
+    );
 
     await gateway.sendPrintJob({
       orderId: 'order-1',
