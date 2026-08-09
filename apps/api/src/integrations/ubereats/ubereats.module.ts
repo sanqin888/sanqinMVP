@@ -11,6 +11,10 @@ import { UberConfigService } from './uber-config.service';
 import { UberWebhookService } from './uber-webhook.service';
 import { UberOrderService } from './uber-order.service';
 import { UberMenuService } from './uber-menu.service';
+import { UberMenuWorkflowCore } from './uber-menu.workflow';
+import { UberMenuDraftService } from './uber-menu-draft.service';
+import { UberMenuPublishService } from './uber-menu-publish.service';
+import { UberMenuAvailabilityService } from './uber-menu-availability.service';
 import { UberMerchantService } from './uber-merchant.service';
 import { UberOperationsService } from './uber-operations.service';
 import { UberPrismaAccessService } from './uber-prisma-access.service';
@@ -29,6 +33,10 @@ import { UberPrismaAccessService } from './uber-prisma-access.service';
     UberHttpClient,
     UberWebhookService,
     UberOrderService,
+    UberMenuWorkflowCore,
+    UberMenuDraftService,
+    UberMenuPublishService,
+    UberMenuAvailabilityService,
     UberMenuService,
     UberMerchantService,
     UberOperationsService,

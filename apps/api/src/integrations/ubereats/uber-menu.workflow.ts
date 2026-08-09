@@ -51,11 +51,16 @@ import type {
   UberServiceAvailability,
 } from './uber-payload.utils';
 import { UberPrismaAccessService } from './uber-prisma-access.service';
+import {
+  composeUberDisplayName,
+  buildUberUploadMenuPayload,
+  validateUberMenuPayload,
+} from './uber-menu.payload';
 
 @Injectable()
-export class UberMenuService {
+export class UberMenuWorkflowCore {
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
-  private readonly logger = new AppLogger(UberMenuService.name);
+  private readonly logger = new AppLogger(UberMenuWorkflowCore.name);
   private readonly uberApiBaseUrl: string;
 
   constructor(
@@ -267,12 +272,12 @@ export class UberMenuService {
     const graph = await this.buildUberMenuGraph(normalizedStoreId, uberStoreId);
     const normalized = this.normalizeAndValidateUberMenuGraph(graph);
     const schedule = await this.getUberMenuSchedule();
-    const payload = this.buildUberUploadMenuPayload(
+    const payload = buildUberUploadMenuPayload(
       normalized.graph,
       schedule.serviceAvailability,
       schedule.taxRatePercentage,
     );
-    const payloadValidation = this.validateUberMenuPayload(payload);
+    const payloadValidation = validateUberMenuPayload(payload);
     const summary = this.summarizePublishGraph(normalized.graph);
     const lastPublishedVersion =
       await this.prisma.uberMenuPublishVersion.findFirst({
@@ -860,14 +865,14 @@ export class UberMenuService {
     );
     const normalized = this.normalizeAndValidateUberMenuGraph(graph);
     const schedule = await this.getUberMenuSchedule();
-    const payload = this.buildUberUploadMenuPayload(
+    const payload = buildUberUploadMenuPayload(
       normalized.graph,
       schedule.serviceAvailability,
       schedule.taxRatePercentage,
     );
     const imageValidation = await this.validateUberMenuImages(payload);
     const payloadValidation = [
-      ...this.validateUberMenuPayload(payload),
+      ...validateUberMenuPayload(payload),
       ...imageValidation.issues,
     ];
     const validationErrors = [...normalized.errors, ...payloadValidation];
@@ -1441,16 +1446,6 @@ export class UberMenuService {
     });
   }
 
-  private composeUberDisplayName(
-    nameEn?: string | null,
-    nameZh?: string | null,
-  ) {
-    const en = (nameEn ?? '').trim();
-    const zh = (nameZh ?? '').trim();
-    if (en && zh) return `${en} ${zh}`;
-    return en || zh;
-  }
-
   private async buildUberMenuGraphWithFilters(
     storeId: string,
     uberStoreId: string,
@@ -1737,7 +1732,7 @@ export class UberMenuService {
           sourceStableId: choice.stableId,
           title:
             optionConfig?.displayName ||
-            this.composeUberDisplayName(choice.nameEn, choice.nameZh),
+            composeUberDisplayName(choice.nameEn, choice.nameZh),
           description: optionConfig?.displayDescription || null,
           basePriceCents: choice.priceDeltaCents,
           priceCents: optionPriceCents,
@@ -1755,7 +1750,7 @@ export class UberMenuService {
         sourceStableId: template.stableId,
         title:
           groupConfig?.displayName ||
-          this.composeUberDisplayName(template.nameEn, template.nameZh),
+          composeUberDisplayName(template.nameEn, template.nameZh),
         minSelect,
         maxSelect,
         isAvailable: template.isAvailable,
@@ -1797,7 +1792,7 @@ export class UberMenuService {
         sourceStableId: menuItem.stableId,
         title:
           itemConfig?.displayName ||
-          this.composeUberDisplayName(menuItem.nameEn, menuItem.nameZh),
+          composeUberDisplayName(menuItem.nameEn, menuItem.nameZh),
         // Website ingredients are reusable English description copy, not a
         // legally complete allergen declaration. Never emit ingredientsZh.
         description:
@@ -1840,7 +1835,7 @@ export class UberMenuService {
           sourceStableId: category.stableId,
           title:
             categoryConfig?.displayName ||
-            this.composeUberDisplayName(category.nameEn, category.nameZh),
+            composeUberDisplayName(category.nameEn, category.nameZh),
           sortOrder: categoryConfig?.sortOrder ?? category.sortOrder,
           entities: categoryItemIds,
         };
@@ -1961,12 +1956,13 @@ export class UberMenuService {
           [[]],
         );
         if (
-          combinations.length > UberMenuService.UBER_MODIFIER_COMBINATION_LIMIT
+          combinations.length >
+          UberMenuWorkflowCore.UBER_MODIFIER_COMBINATION_LIMIT
         ) {
           mappingErrors.push({
             code: 'UBER_MODIFIER_COMBINATION_LIMIT_EXCEEDED',
             sourceOptionChoiceStableId: parent.sourceStableId,
-            message: `选项 ${parent.title} 展开后产生 ${combinations.length} 个组合，超过上限 ${UberMenuService.UBER_MODIFIER_COMBINATION_LIMIT}。`,
+            message: `选项 ${parent.title} 展开后产生 ${combinations.length} 个组合，超过上限 ${UberMenuWorkflowCore.UBER_MODIFIER_COMBINATION_LIMIT}。`,
           });
           continue;
         }
@@ -2275,278 +2271,6 @@ export class UberMenuService {
 
   /** Validate the final wire payload. Both preview and upload must pass here. */
 
-  validateUberMenuPayload(
-    payload: UberMenuUploadPayload,
-  ): UberMenuPayloadValidationIssue[] {
-    const issues: UberMenuPayloadValidationIssue[] = [];
-    const error = (
-      code: string,
-      path: string,
-      sourceStableId: string | null,
-      message: string,
-    ) =>
-      issues.push({ code, severity: 'ERROR', path, sourceStableId, message });
-    const warning = (
-      code: string,
-      path: string,
-      sourceStableId: string | null,
-      message: string,
-    ) =>
-      issues.push({ code, severity: 'WARNING', path, sourceStableId, message });
-    const collections: Array<
-      readonly [
-        string,
-        Array<{
-          id: string;
-          title: { translations: { en_us: string } };
-        }>,
-      ]
-    > = [
-      ['menus', payload.menus],
-      ['categories', payload.categories],
-      ['items', payload.items],
-      ['modifier_groups', payload.modifier_groups],
-    ] as const;
-    const ids = new Map<string, string>();
-    for (const [name, nodes] of collections) {
-      nodes.forEach((node, index) => {
-        const path = `$.${name}[${index}]`;
-        if (!node.id || ids.has(node.id)) {
-          error(
-            'UBER_ID_NOT_GLOBALLY_UNIQUE',
-            `${path}.id`,
-            node.id || null,
-            node.id ? `ID“${node.id}”在顶层实体中重复。` : '实体 ID 不能为空。',
-          );
-        } else ids.set(node.id, path);
-        const title = node.title?.translations?.en_us;
-        if (typeof title !== 'string' || !title.trim() || title.length > 300)
-          error(
-            'UBER_TITLE_INVALID',
-            `${path}.title.translations.en_us`,
-            node.id || null,
-            '标题不能为空且长度不得超过 300 个字符。',
-          );
-      });
-    }
-    const categoryIds = new Set(payload.categories.map((x) => x.id));
-    const itemIds = new Set(payload.items.map((x) => x.id));
-    const groupIds = new Set(payload.modifier_groups.map((x) => x.id));
-    payload.menus.forEach((menu, mi) => {
-      if (!menu.category_ids.length)
-        error(
-          'UBER_MENU_CATEGORY_EMPTY',
-          `$.menus[${mi}].category_ids`,
-          menu.id,
-          '菜单至少需要一个分类。',
-        );
-      menu.category_ids.forEach((id, i) => {
-        if (!categoryIds.has(id))
-          error(
-            'UBER_REFERENCE_UNRESOLVED',
-            `$.menus[${mi}].category_ids[${i}]`,
-            menu.id,
-            `引用的分类“${id}”不存在。`,
-          );
-      });
-    });
-    payload.categories.forEach((category, ci) => {
-      if (!category.entities.length)
-        error(
-          'UBER_CATEGORY_ITEM_EMPTY',
-          `$.categories[${ci}].entities`,
-          category.id,
-          '分类至少需要一个菜品。',
-        );
-      category.entities.forEach((ref, ri) => {
-        const path = `$.categories[${ci}].entities[${ri}]`;
-        if (ref.type !== 'ITEM')
-          error(
-            'UBER_CATEGORY_ENTITY_TYPE_INVALID',
-            `${path}.type`,
-            category.id,
-            '分类实体类型必须为 ITEM。',
-          );
-        if (!itemIds.has(ref.id))
-          error(
-            'UBER_REFERENCE_UNRESOLVED',
-            `${path}.id`,
-            category.id,
-            `引用的菜品“${ref.id}”不存在。`,
-          );
-      });
-    });
-    payload.items.forEach((item, ii) => {
-      const descriptionPath = `$.items[${ii}].description.translations.en_us`;
-      const descriptionNode = item.description;
-      if (descriptionNode !== undefined) {
-        const description = descriptionNode.translations?.en_us;
-        if (typeof description !== 'string') {
-          error(
-            'UBER_DESCRIPTION_INVALID',
-            descriptionPath,
-            item.id,
-            '描述必须是字符串。',
-          );
-        } else {
-          const cleanedDescription = description.replace(/\s+/g, ' ').trim();
-          if (!cleanedDescription) {
-            delete item.description;
-            warning(
-              'UBER_DESCRIPTION_EMPTY_REMOVED',
-              descriptionPath,
-              item.id,
-              '空白描述已从发布 payload 中移除。',
-            );
-          } else if (
-            cleanedDescription.length > UBER_ITEM_DESCRIPTION_MAX_LENGTH
-          ) {
-            descriptionNode.translations.en_us = cleanedDescription.slice(
-              0,
-              UBER_ITEM_DESCRIPTION_MAX_LENGTH,
-            );
-            warning(
-              'UBER_DESCRIPTION_TRUNCATED',
-              descriptionPath,
-              item.id,
-              `描述超过 Uber schema 的 ${UBER_ITEM_DESCRIPTION_MAX_LENGTH} 个字符限制，已清理并截断。`,
-            );
-          } else {
-            descriptionNode.translations.en_us = cleanedDescription;
-          }
-        }
-      }
-      if (item.image_url !== undefined) {
-        const imagePath = `$.items[${ii}].image_url`;
-        if (!isPermanentPublicHttpsUrl(item.image_url))
-          error(
-            'UBER_IMAGE_URL_INVALID',
-            imagePath,
-            item.id,
-            `图片地址必须是不超过 ${UBER_IMAGE_URL_MAX_LENGTH} 个字符、不含临时签名的永久公网 HTTPS URL。`,
-          );
-      }
-      if (
-        !Number.isInteger(item.price_info?.price) ||
-        item.price_info.price < 0
-      )
-        error(
-          'UBER_PRICE_INVALID',
-          `$.items[${ii}].price_info.price`,
-          item.id,
-          '价格必须为非负整数（分）。',
-        );
-      if (
-        !Number.isFinite(item.tax_info?.tax_rate) ||
-        item.tax_info.tax_rate < 0 ||
-        item.tax_info.tax_rate > 100
-      )
-        error(
-          'UBER_TAX_RATE_INVALID',
-          `$.items[${ii}].tax_info.tax_rate`,
-          item.id,
-          '税率必须使用 0～100 的百分数格式。',
-        );
-      (item.modifier_group_ids.ids ?? []).forEach((id, gi) => {
-        if (!groupIds.has(id))
-          error(
-            'UBER_REFERENCE_UNRESOLVED',
-            `$.items[${ii}].modifier_group_ids[${gi}]`,
-            item.id,
-            `引用的选项组“${id}”不存在。`,
-          );
-      });
-    });
-    const optionIds = new Set(
-      payload.modifier_groups.flatMap((g) =>
-        g.modifier_options.map((o) => o.id),
-      ),
-    );
-    payload.modifier_groups.forEach((group, gi) => {
-      const min = group.quantity_info?.quantity?.min_permitted;
-      const max = group.quantity_info?.quantity?.max_permitted;
-      if (
-        !Number.isInteger(min) ||
-        !Number.isInteger(max) ||
-        min < 0 ||
-        min > max ||
-        max > group.modifier_options.length
-      )
-        error(
-          'UBER_GROUP_QUANTITY_INVALID',
-          `$.modifier_groups[${gi}].quantity_info.quantity`,
-          group.id,
-          '组选取数量必须为整数，且满足 0 ≤ min ≤ max ≤ 可选项数量。',
-        );
-      if (min > 0 && group.modifier_options.length === 0)
-        error(
-          'UBER_REQUIRED_GROUP_EMPTY',
-          `$.modifier_groups[${gi}].modifier_options`,
-          group.id,
-          '必选组选项不能为空。',
-        );
-      group.modifier_options.forEach((ref, oi) => {
-        const path = `$.modifier_groups[${gi}].modifier_options[${oi}]`;
-        if (ref.type !== 'ITEM')
-          error(
-            'UBER_MODIFIER_OPTION_TYPE_INVALID',
-            `${path}.type`,
-            group.id,
-            'Modifier option 类型必须为 ITEM。',
-          );
-        if (!itemIds.has(ref.id))
-          error(
-            'UBER_REFERENCE_UNRESOLVED',
-            `${path}.id`,
-            group.id,
-            `引用的选项菜品“${ref.id}”不存在。`,
-          );
-      });
-    });
-    payload.items.forEach((item, ii) => {
-      if (optionIds.has(item.id) && (item.modifier_group_ids.ids?.length ?? 0))
-        error(
-          'UBER_OPTION_ITEM_HAS_MODIFIER_GROUP',
-          `$.items[${ii}].modifier_group_ids.ids`,
-          item.id,
-          'Option item 不得再引用 modifier group。',
-        );
-    });
-    const availability = payload.menus.flatMap(
-      (menu) => menu.service_availability ?? [],
-    );
-    if (
-      availability.length === 0 ||
-      availability.every((day) => day.time_periods.length === 0)
-    )
-      error(
-        'UBER_SERVICE_AVAILABILITY_EMPTY',
-        '$.menus[0].service_availability',
-        null,
-        '发布前必须至少配置一个合法可售营业时段。',
-      );
-    availability?.forEach((day, di) =>
-      day.time_periods?.forEach((period, pi) => {
-        const time = /^([01]\d|2[0-3]):[0-5]\d$/;
-        const validEnd =
-          time.test(period.end_time ?? '') || period.end_time === '24:00';
-        if (
-          !day.day_of_week ||
-          !time.test(period.start_time ?? '') ||
-          !validEnd ||
-          period.start_time >= period.end_time
-        )
-          error(
-            'UBER_SERVICE_AVAILABILITY_INVALID',
-            `$.menus[0].service_availability[${di}].time_periods[${pi}]`,
-            null,
-            '营业时段必须包含星期，并使用有效且起始早于结束的 HH:mm 时间（当日终点可为 24:00）。',
-          );
-      }),
-    );
-    return issues;
-  }
-
   private async validateUberMenuImages(payload: UberMenuUploadPayload) {
     const issues: UberMenuPayloadValidationIssue[] = [];
     const results: Array<{
@@ -2691,116 +2415,6 @@ export class UberMenuService {
         ...mapping,
         combinedPriceCents:
           priceById.get(mapping.compositeOptionItemId) ?? null,
-      })),
-    };
-  }
-
-  private buildUberUploadMenuPayload(
-    graph: {
-      menuId: string;
-      categories: Array<{
-        id: string;
-        title: string;
-        entities: string[];
-      }>;
-      items: Array<{
-        id: string;
-        sourceType: 'MENU_ITEM' | 'OPTION_ITEM';
-        sourceStableId: string;
-        title: string;
-        description: string | null;
-        priceCents: number;
-        isAvailable: boolean;
-        modifierGroupIds: string[];
-        imageUrl: string | null;
-      }>;
-      groups: Array<{
-        id: string;
-        title: string;
-        minSelect: number;
-        maxSelect: number;
-        optionItemIds: string[];
-      }>;
-    },
-    serviceAvailability: UberServiceAvailability[],
-    taxRatePercentage: number,
-  ): UberMenuUploadPayload {
-    return {
-      menus: [
-        {
-          id: graph.menuId,
-          title: {
-            translations: {
-              en_us: 'Main Menu',
-            },
-          },
-          category_ids: graph.categories.map((category) => category.id),
-          service_availability: serviceAvailability,
-        },
-      ],
-      categories: graph.categories.map((category) => ({
-        id: category.id,
-        title: { translations: { en_us: category.title } },
-        entities: category.entities.map((id) => ({ id, type: 'ITEM' })),
-      })),
-      items: graph.items.map((item) => ({
-        id: item.id,
-        title: {
-          translations: {
-            en_us: item.title || item.sourceStableId,
-          },
-        },
-        ...(item.description
-          ? {
-              description: {
-                translations: {
-                  en_us: item.description,
-                },
-              },
-            }
-          : {}),
-        price_info: { price: item.priceCents, overrides: [] },
-        tax_info: {
-          tax_rate: taxRatePercentage,
-          vat_rate_percentage: null,
-        },
-        modifier_group_ids: {
-          ids:
-            item.sourceType === 'OPTION_ITEM' || !item.modifierGroupIds.length
-              ? null
-              : item.modifierGroupIds,
-          overrides: [],
-        },
-        suspension_info: item.isAvailable
-          ? null
-          : {
-              suspension: {
-                suspend_until: Date.UTC(2099, 0, 1),
-                reason: 'Item unavailable',
-              },
-            },
-        ...(item.sourceType === 'MENU_ITEM' &&
-        resolveUberImageUrl(item.imageUrl)
-          ? { image_url: resolveUberImageUrl(item.imageUrl) as string }
-          : {}),
-      })),
-      modifier_groups: graph.groups.map((group) => ({
-        id: group.id,
-        title: {
-          translations: {
-            en_us: group.title,
-          },
-        },
-        quantity_info: {
-          quantity: {
-            min_permitted: group.minSelect,
-            max_permitted: group.maxSelect,
-          },
-        },
-        modifier_options: group.optionItemIds.map((optionItemId) => ({
-          type: 'ITEM',
-          id: optionItemId,
-        })),
       })),
     };
   }
