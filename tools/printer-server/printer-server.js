@@ -191,6 +191,18 @@ function buildCustomerServiceNoteBlockLines(params) {
   return lines;
 }
 
+function getItemSpecialInstructionLines(item, locale) {
+  const instructions =
+    typeof item?.specialInstructions === "string"
+      ? item.specialInstructions.trim()
+      : "";
+  if (!instructions) return [];
+  return wrapReceiptText(
+    locale === "en" ? "  Note: " : "  备注: ",
+    instructions,
+  );
+}
+
 // PNG/JPG -> ESC/POS Raster Bit Image (GS v 0)
 async function escposRasterFromImage(
   filePath,
@@ -510,6 +522,10 @@ async function buildCustomerReceiptEscPos(params) {
         });
       }
 
+      getItemSpecialInstructionLines(item, locale).forEach((line) => {
+        chunks.push(encLine(line));
+      });
+
       chunks.push(encLine(""));
     });
   }
@@ -654,6 +670,15 @@ function buildKitchenReceiptEscPos(params) {
           chunks.push(encLine(`  - ${opt}`));
         });
         chunks.push(cmd(GS, 0x21, 0x00));
+        chunks.push(cmd(ESC, 0x45, 0x00));
+      }
+      const specialInstructionLines = getItemSpecialInstructionLines(
+        item,
+        locale,
+      );
+      if (specialInstructionLines.length > 0) {
+        chunks.push(cmd(ESC, 0x45, 0x01));
+        specialInstructionLines.forEach((line) => chunks.push(encLine(line)));
         chunks.push(cmd(ESC, 0x45, 0x00));
       }
 

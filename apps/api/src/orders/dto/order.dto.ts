@@ -16,6 +16,7 @@ export type OrderItemDto = {
   nameEn: string | null;
   nameZh: string | null;
   unitPriceCents: number;
+  specialInstructions: string | null;
   optionsJson?: Prisma.InputJsonValue;
 };
 

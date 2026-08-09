@@ -47,6 +47,8 @@ export class PrintPosPayloadService {
         displayName: item.displayName ?? null,
         quantity: item.qty,
         lineTotalCents: unitPriceCents * item.qty,
+        specialInstructions:
+          item.externalSpecialInstructions?.trim() || null,
         options,
       };
     });
