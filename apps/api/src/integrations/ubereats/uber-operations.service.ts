@@ -20,6 +20,10 @@ import { UberMerchantService } from './uber-merchant.service';
 import type {
   CreateOpsTicketInput,
   GenerateReconciliationReportInput,
+  MenuItemAvailabilityContext,
+  MenuPublishContext,
+  OrderStatusSyncContext,
+  StoreStatusSyncContext,
 } from './uber-operations.types';
 import { UberOrderService } from './uber-order.service';
 import type {

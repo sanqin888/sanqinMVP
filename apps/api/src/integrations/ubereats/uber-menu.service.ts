@@ -21,7 +21,6 @@ import {
   summarizeUberDebugResponse,
 } from './uber-integration.utils';
 import type {
-  ParsedUberOrderItem,
   PublishMenuInput,
   SyncAvailabilityInput,
   SyncOptionAvailabilityInput,
@@ -43,10 +42,15 @@ import {
   UBER_IMAGE_URL_MAX_LENGTH,
 } from './uber-menu.types';
 import type { UberMerchantConnectionRecord } from './uber-merchant.types';
+import type { ParsedUberOrderItem } from './uber-order.types';
 import {
   resolveUberImageUrl,
   toUberServiceAvailability,
   UBER_ITEM_DESCRIPTION_MAX_LENGTH,
+} from './uber-payload.utils';
+import type {
+  UberMenuPayloadValidationIssue,
+  UberServiceAvailability,
 } from './uber-payload.utils';
 import type {
   UberMerchantConnectionDelegate,
