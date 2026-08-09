@@ -37,15 +37,10 @@ import type {
 import {
   isPermanentPublicHttpsUrl,
   UBER_IMAGE_MAX_BYTES,
-  UBER_IMAGE_URL_MAX_LENGTH,
 } from './uber-menu.types';
 import type { UberMerchantConnectionRecord } from './uber-merchant.types';
 import type { ParsedUberOrderItem } from './uber-order.types';
-import {
-  resolveUberImageUrl,
-  toUberServiceAvailability,
-  UBER_ITEM_DESCRIPTION_MAX_LENGTH,
-} from './uber-payload.utils';
+import { toUberServiceAvailability } from './uber-payload.utils';
 import type {
   UberMenuPayloadValidationIssue,
   UberServiceAvailability,
