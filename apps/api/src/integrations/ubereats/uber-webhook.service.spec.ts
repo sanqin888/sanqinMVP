@@ -33,12 +33,8 @@ jest.mock('@prisma/client', () => ({
 import { UberHttpClient } from './uber-http.client';
 import { UberConfigService } from './uber-config.service';
 
-import { createHash, createHmac } from 'crypto';
+import { createHmac } from 'crypto';
 import { AppLogger } from '../../common/app-logger';
-import {
-  resolveUberImageUrl,
-  toUberServiceAvailability,
-} from './uber-integration.base';
 import { UberWebhookService } from './uber-webhook.service';
 
 type MenuConfirmationTestApi = {
@@ -64,63 +60,6 @@ type MenuConfirmationTestApi = {
     },
   ) => Promise<void>;
 };
-
-const openSchedulePrisma = {
-  businessConfig: {
-    findUnique: jest
-      .fn()
-      .mockResolvedValue({ timezone: 'America/Toronto', salesTaxRate: 0.13 }),
-  },
-  businessHour: {
-    findMany: jest
-      .fn()
-      .mockResolvedValue([
-        { weekday: 1, openMinutes: 540, closeMinutes: 1080, isClosed: false },
-      ]),
-  },
-};
-
-const createNestedMenuPrisma = (templates: unknown[]) => ({
-  ...openSchedulePrisma,
-  menuCategory: {
-    findMany: jest.fn().mockResolvedValue([
-      {
-        id: 1,
-        stableId: 'cat_1',
-        nameEn: 'Category',
-        nameZh: '',
-        sortOrder: 1,
-        isActive: true,
-      },
-    ]),
-  },
-  menuItem: {
-    findMany: jest.fn().mockResolvedValue([
-      {
-        id: 1,
-        stableId: 'item_1',
-        categoryId: 1,
-        nameEn: 'Item',
-        nameZh: '',
-        basePriceCents: 1000,
-        isAvailable: true,
-        sortOrder: 1,
-        optionGroups: [{ templateGroup: { stableId: 'meal' }, sortOrder: 1 }],
-      },
-    ]),
-  },
-  menuOptionGroupTemplate: { findMany: jest.fn().mockResolvedValue(templates) },
-  uberItemChannelConfig: { findMany: jest.fn().mockResolvedValue([]) },
-  uberOptionItemConfig: { findMany: jest.fn().mockResolvedValue([]) },
-  uberModifierGroupConfig: { findMany: jest.fn().mockResolvedValue([]) },
-  uberCategoryConfig: { findMany: jest.fn().mockResolvedValue([]) },
-  uberOptionChildGroupBinding: { findMany: jest.fn().mockResolvedValue([]) },
-  uberStoreMapping: {
-    findFirst: jest.fn().mockResolvedValue({ uberStoreId: 'uber_store_1' }),
-  },
-  uberMenuPublishVersion: { create: jest.fn() },
-  opsEvent: { create: jest.fn().mockResolvedValue(null) },
-});
 
 describe('UberWebhookService', () => {
   const clientSecret = 'test-ubereats-secret';
@@ -691,6 +630,7 @@ describe('UberWebhookService', () => {
       create: jest.fn().mockResolvedValue(null),
     };
     const auth = createAuthService();
+    const forceRefreshAccessToken = jest.spyOn(auth, 'forceRefreshAccessToken');
     jest
       .spyOn(global, 'fetch')
       .mockResolvedValueOnce(
@@ -714,7 +654,7 @@ describe('UberWebhookService', () => {
         body,
       }),
     ).resolves.toBeUndefined();
-    expect(auth.forceRefreshAccessToken).toHaveBeenCalledWith(
+    expect(forceRefreshAccessToken).toHaveBeenCalledWith(
       'eats.store.orders.read',
     );
     expect(global.fetch).toHaveBeenCalledTimes(2);
@@ -1200,106 +1140,4 @@ describe('UberWebhookService', () => {
     jest.useRealTimers();
     jest.restoreAllMocks();
   });
-
-  const createActionPrisma = (
-    localOrder: object | null = { id: 'local_1' },
-  ) => {
-    let action: Record<string, unknown> | null = null;
-    return {
-      order: { findUnique: jest.fn().mockResolvedValue(localOrder) },
-      uberOrderAction: {
-        findUnique: jest.fn().mockImplementation(() => Promise.resolve(action)),
-        create: jest
-          .fn()
-          .mockImplementation(({ data }: { data: Record<string, unknown> }) => {
-            action = {
-              id: 'action_1',
-              retryable: false,
-              uberHttpStatus: null,
-              ...data,
-            };
-            return Promise.resolve(action);
-          }),
-        update: jest
-          .fn()
-          .mockImplementation(({ data }: { data: Record<string, unknown> }) => {
-            action = { ...action, ...data };
-            return Promise.resolve(action);
-          }),
-      },
-    };
-  };
-
-  const createReadyPrisma = (initialStatus = 'making') => {
-    let localStatus = initialStatus;
-    let action: Record<string, unknown> | null = null;
-    const uberOrderAction = {
-      findUnique: jest.fn().mockImplementation(() => Promise.resolve(action)),
-      upsert: jest
-        .fn()
-        .mockImplementation(
-          ({ create }: { create: Record<string, unknown> }) => {
-            action ??= {
-              id: 'ready_action',
-              retryable: false,
-              uberHttpStatus: null,
-              attemptCount: 0,
-              ...create,
-            };
-            return Promise.resolve(action);
-          },
-        ),
-      update: jest
-        .fn()
-        .mockImplementation(({ data }: { data: Record<string, unknown> }) => {
-          const attempt = data.attemptCount as
-            | { increment?: number }
-            | undefined;
-          action = {
-            ...action,
-            ...data,
-            attemptCount:
-              Number(action?.attemptCount ?? 0) + (attempt?.increment ?? 0),
-          };
-          return Promise.resolve(action);
-        }),
-      findMany: jest.fn().mockResolvedValue([]),
-    };
-    const prisma = {
-      order: {
-        findUnique: jest.fn().mockImplementation(() =>
-          Promise.resolve({
-            id: 'local_ready',
-            orderStableId: 'stable_ready',
-            status: localStatus,
-          }),
-        ),
-      },
-      uberOrderAction,
-      opsEvent: { create: jest.fn().mockResolvedValue(null) },
-      $transaction: jest
-        .fn()
-        .mockImplementation(
-          async (callback: (tx: unknown) => Promise<unknown>) =>
-            callback({
-              order: {
-                findUnique: jest
-                  .fn()
-                  .mockImplementation(() =>
-                    Promise.resolve({ status: localStatus }),
-                  ),
-                updateMany: jest.fn().mockImplementation(() => {
-                  if (!['paid', 'making'].includes(localStatus)) {
-                    return Promise.resolve({ count: 0 });
-                  }
-                  localStatus = 'ready';
-                  return Promise.resolve({ count: 1 });
-                }),
-              },
-              uberOrderAction,
-            }),
-        ),
-    };
-    return { prisma, uberOrderAction };
-  };
 });
