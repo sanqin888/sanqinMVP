@@ -1528,14 +1528,15 @@ describe('UberMenuService 已发布菜单商品映射', () => {
   });
 });
 
-describe('UberMenuService 配置能力隔离', () => {
+describe('UberMenuService 最小依赖装配', () => {
+  it('构造函数只声明 Prisma、认证、HTTP 与菜单配置', () => {
+    expect(UberMenuService.length).toBe(4);
+  });
   it('缺少 OAuth 与 webhook 密钥不影响菜单能力初始化', () => {
     expect(() =>
       createUberMenuService(
         {} as never,
         {} as never,
-        undefined,
-        undefined,
         undefined,
         new UberConfigService(),
       ),

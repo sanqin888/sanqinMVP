@@ -8,11 +8,7 @@ import {
   type Prisma,
 } from '@prisma/client';
 import { AppLogger } from '../../common/app-logger';
-import { OrderEventsBus } from '../../messaging/order-events.bus';
-import { OrderIngestionService } from '../../orders/order-ingestion.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { UberAuthService } from './uber-auth.service';
-import { UberHttpClient } from './uber-http.client';
 import { normalizeUberStoreId } from './uber-integration.utils';
 import { UberMenuService } from './uber-menu.service';
 import { UberMerchantService } from './uber-merchant.service';
@@ -39,10 +35,6 @@ export class UberOperationsService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly uberAuthService: UberAuthService,
-    private readonly orderEventsBus: OrderEventsBus,
-    private readonly orderIngestionService: OrderIngestionService,
-    private readonly httpClient: UberHttpClient,
     private readonly orders: UberOrderService,
     private readonly menu: UberMenuService,
     private readonly merchant: UberMerchantService,

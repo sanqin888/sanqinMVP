@@ -7,16 +7,12 @@ import {
 import { type Prisma } from '@prisma/client';
 import { createHash, createHmac, timingSafeEqual } from 'crypto';
 import { AppLogger } from '../../common/app-logger';
-import { OrderEventsBus } from '../../messaging/order-events.bus';
-import { OrderIngestionService } from '../../orders/order-ingestion.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UberWebhookEnvelopeDto } from './dto/uber-webhook-envelope.dto';
-import { UberAuthService } from './uber-auth.service';
 import {
   UberConfigService,
   type UberWebhookConfig,
 } from './uber-config.service';
-import { UberHttpClient } from './uber-http.client';
 import {
   normalizeUberEventType,
   redactUberLogText,
@@ -40,10 +36,6 @@ export class UberWebhookService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly uberAuthService: UberAuthService,
-    private readonly orderEventsBus: OrderEventsBus,
-    private readonly orderIngestionService: OrderIngestionService,
-    private readonly httpClient: UberHttpClient,
     @Inject(UberConfigService) config: UberWebhookConfig,
     private readonly orders: UberOrderService,
     private readonly menu: UberMenuService,
