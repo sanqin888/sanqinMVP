@@ -660,6 +660,28 @@ type CreateOpsTicketInput = UberStoreScopedInput & {
   context?: Prisma.JsonObject;
 };
 
+type OrderStatusSyncContext = { targetStatus: OrderStatus };
+type MenuItemAvailabilityContext = { isAvailable: boolean };
+type StoreStatusSyncContext = {
+  uberStoreId: string;
+  targetStatus: 'ONLINE' | 'PAUSED';
+  reason?: string;
+  pauseUntil?: string;
+};
+type MenuPublishContext = {
+  versionId?: string;
+  publish: {
+    storeId: string;
+    dryRun: false;
+    timezoneConfirmed?: boolean;
+    taxRateConfirmed?: boolean;
+    excludedCategoryIds?: string[];
+    excludedGroupIds?: string[];
+    excludedMenuItemStableIds?: string[];
+    excludedOptionChoiceStableIds?: string[];
+  };
+};
+
 type UberOAuthStateRequestRecord = {
   nonce: string;
   adminSessionId: string;
@@ -893,6 +915,10 @@ export class UberOperationsService {
   async createOpsTicket(input: CreateOpsTicketInput) {
     const normalizedStoreId = this.normalizeStoreId(input.storeId);
 
+    // Parse at creation time too, so manually-created tickets can never be
+    // persisted in a form which is known to be impossible to retry.
+    const context = this.parseOpsTicketContext(input.type, input.context);
+
     if (input.externalOrderId) {
       await this.ensureUberOrderExists(input.externalOrderId);
     }
@@ -910,7 +936,7 @@ export class UberOperationsService {
         description: input.description,
         externalOrderId: input.externalOrderId,
         menuItemStableId: input.menuItemStableId,
-        context: input.context,
+        context: context,
       },
       select: {
         ticketStableId: true,
@@ -987,28 +1013,30 @@ export class UberOperationsService {
           throw new BadRequestException('订单状态同步工单缺少 externalOrderId');
         }
         if (!this.orders) throw new Error('UberOrderService 未配置');
+        const context = this.parseOrderStatusSyncContext(ticket.context);
         await this.orders.syncOrderStatusToUber(
           ticket.externalOrderId,
-          OrderStatus.paid,
+          context.targetStatus,
         );
       } else if (ticket.type === UberOpsTicketType.STORE_STATUS_SYNC) {
+        const context = this.parseStoreStatusSyncContext(ticket.context);
         if (!this.merchant) throw new Error('UberMerchantService 未配置');
-        await this.merchant.syncStoreStatusToUber();
+        const result = await this.merchant.syncStoreStatusToUber(context);
+        if (!result.ok) throw new Error('Uber 门店状态同步失败');
       } else if (ticket.type === UberOpsTicketType.MENU_PUBLISH) {
+        const context = this.parseMenuPublishContext(ticket.context);
         if (!this.menu) throw new Error('UberMenuService 未配置');
-        await this.menu.publishUberMenu({
-          storeId: ticket.storeId,
-          dryRun: false,
-        });
+        await this.menu.publishUberMenu(context.publish);
       } else if (ticket.type === UberOpsTicketType.MENU_ITEM_AVAILABILITY) {
         if (!ticket.menuItemStableId) {
           throw new BadRequestException('商品状态工单缺少 menuItemStableId');
         }
+        const context = this.parseMenuItemAvailabilityContext(ticket.context);
         if (!this.menu) throw new Error('UberMenuService 未配置');
         await this.menu.syncUberMenuItemAvailability({
           storeId: ticket.storeId,
           menuItemStableId: ticket.menuItemStableId,
-          isAvailable: true,
+          isAvailable: context.isAvailable,
         });
       }
     } catch (error) {
@@ -1048,6 +1076,106 @@ export class UberOperationsService {
     return {
       ok: !updated.lastError,
       ...updated,
+    };
+  }
+
+  private parseOpsTicketContext(
+    type: UberOpsTicketType,
+    value: unknown,
+  ): Prisma.JsonObject {
+    if (type === UberOpsTicketType.ORDER_STATUS_SYNC)
+      return this.parseOrderStatusSyncContext(
+        value,
+      ) as unknown as Prisma.JsonObject;
+    if (type === UberOpsTicketType.MENU_ITEM_AVAILABILITY)
+      return this.parseMenuItemAvailabilityContext(
+        value,
+      ) as unknown as Prisma.JsonObject;
+    if (type === UberOpsTicketType.STORE_STATUS_SYNC)
+      return this.parseStoreStatusSyncContext(
+        value,
+      ) as unknown as Prisma.JsonObject;
+    if (type === UberOpsTicketType.MENU_PUBLISH)
+      return this.parseMenuPublishContext(
+        value,
+      ) as unknown as Prisma.JsonObject;
+    throw new BadRequestException('不支持的工单类型');
+  }
+
+  private requireContext(value: unknown): Record<string, unknown> {
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+      throw new BadRequestException('工单缺少合法的结构化 context');
+    return value as Record<string, unknown>;
+  }
+
+  private parseOrderStatusSyncContext(value: unknown): OrderStatusSyncContext {
+    const context = this.requireContext(value);
+    if (
+      !Object.values(OrderStatus).includes(context.targetStatus as OrderStatus)
+    )
+      throw new BadRequestException('订单状态同步工单的 targetStatus 非法');
+    return { targetStatus: context.targetStatus as OrderStatus };
+  }
+
+  private parseMenuItemAvailabilityContext(
+    value: unknown,
+  ): MenuItemAvailabilityContext {
+    const context = this.requireContext(value);
+    if (typeof context.isAvailable !== 'boolean')
+      throw new BadRequestException('商品状态工单缺少布尔值 isAvailable');
+    return { isAvailable: context.isAvailable };
+  }
+
+  private parseStoreStatusSyncContext(value: unknown): StoreStatusSyncContext {
+    const context = this.requireContext(value);
+    if (typeof context.uberStoreId !== 'string' || !context.uberStoreId.trim())
+      throw new BadRequestException('门店状态工单缺少 uberStoreId');
+    if (context.targetStatus !== 'ONLINE' && context.targetStatus !== 'PAUSED')
+      throw new BadRequestException('门店状态工单的 targetStatus 非法');
+    return {
+      uberStoreId: context.uberStoreId,
+      targetStatus: context.targetStatus,
+      ...(typeof context.reason === 'string' ? { reason: context.reason } : {}),
+      ...(typeof context.pauseUntil === 'string'
+        ? { pauseUntil: context.pauseUntil }
+        : {}),
+    };
+  }
+
+  private parseMenuPublishContext(value: unknown): MenuPublishContext {
+    const context = this.requireContext(value);
+    const publish = this.requireContext(context.publish);
+    if (
+      typeof publish.storeId !== 'string' ||
+      !publish.storeId.trim() ||
+      publish.dryRun !== false
+    )
+      throw new BadRequestException('菜单发布工单缺少完整的 publish 参数');
+    const arrayKeys = [
+      'excludedCategoryIds',
+      'excludedGroupIds',
+      'excludedMenuItemStableIds',
+      'excludedOptionChoiceStableIds',
+    ] as const;
+    for (const key of arrayKeys) {
+      if (
+        publish[key] !== undefined &&
+        (!Array.isArray(publish[key]) ||
+          !(publish[key] as unknown[]).every(
+            (item) => typeof item === 'string',
+          ))
+      )
+        throw new BadRequestException(`菜单发布工单的 ${key} 非法`);
+    }
+    for (const key of ['timezoneConfirmed', 'taxRateConfirmed'] as const) {
+      if (publish[key] !== undefined && typeof publish[key] !== 'boolean')
+        throw new BadRequestException(`菜单发布工单的 ${key} 非法`);
+    }
+    return {
+      ...(typeof context.versionId === 'string'
+        ? { versionId: context.versionId }
+        : {}),
+      publish: publish as MenuPublishContext['publish'],
     };
   }
 

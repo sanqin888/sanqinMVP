@@ -29,12 +29,14 @@ import {
   IsBoolean,
   IsEnum,
   IsInt,
+  IsIn,
   IsOptional,
   IsString,
   Matches,
   Max,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { randomUUID } from 'crypto';
@@ -322,6 +324,27 @@ class CreateUberOpsTicketDto {
   @IsOptional()
   @IsString()
   menuItemStableId?: string;
+
+  @IsOptional()
+  @IsEnum(OrderStatus)
+  targetOrderStatus?: OrderStatus;
+
+  @IsOptional()
+  @IsBoolean()
+  isAvailable?: boolean;
+
+  @IsOptional()
+  @IsIn(['ONLINE', 'PAUSED'])
+  targetStoreStatus?: 'ONLINE' | 'PAUSED';
+
+  @IsOptional()
+  @IsString()
+  uberStoreId?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PublishUberMenuDto)
+  publish?: PublishUberMenuDto;
 }
 
 @Controller('integrations/ubereats')
@@ -764,6 +787,25 @@ export class UberEatsController {
   @UseGuards(SessionAuthGuard, RolesGuard)
   @Roles('ADMIN')
   async createOpsTicket(@Body() dto: CreateUberOpsTicketDto): Promise<unknown> {
+    const context =
+      dto.type === UberOpsTicketType.ORDER_STATUS_SYNC
+        ? { targetStatus: dto.targetOrderStatus }
+        : dto.type === UberOpsTicketType.MENU_ITEM_AVAILABILITY
+          ? { isAvailable: dto.isAvailable }
+          : dto.type === UberOpsTicketType.STORE_STATUS_SYNC
+            ? {
+                uberStoreId: dto.uberStoreId,
+                targetStatus: dto.targetStoreStatus,
+              }
+            : dto.type === UberOpsTicketType.MENU_PUBLISH
+              ? {
+                  publish: {
+                    ...dto.publish,
+                    storeId: dto.publish?.storeId ?? dto.storeId,
+                    dryRun: false,
+                  },
+                }
+              : undefined;
     return await this.uberEatsService.createOpsTicket({
       type: dto.type,
       title: dto.title,
@@ -772,6 +814,7 @@ export class UberEatsController {
       storeId: dto.storeId,
       externalOrderId: dto.externalOrderId,
       menuItemStableId: dto.menuItemStableId,
+      context,
     });
   }
 

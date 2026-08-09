@@ -1001,7 +1001,12 @@ export class UberMerchantService {
     throw new NotImplementedException('deprovision MVP 暂未实现');
   }
 
-  async syncStoreStatusToUber() {
+  async syncStoreStatusToUber(target?: {
+    uberStoreId: string;
+    targetStatus: 'ONLINE' | 'PAUSED';
+    reason?: string;
+    pauseUntil?: string;
+  }) {
     const config = await this.ensureBusinessConfig();
     const mappingDelegate = this.uberStoreMappingDelegate;
     if (!mappingDelegate) {
@@ -1012,16 +1017,25 @@ export class UberMerchantService {
       orderBy: { uberStoreId: 'asc' },
     });
     const pause = this.parseUberPause(config.temporaryCloseReason);
-    const payload: Record<string, string> = config.isTemporarilyClosed
-      ? {
-          status: 'PAUSED',
-          reason: pause.reason,
-          ...(pause.pauseUntil ? { pause_until: pause.pauseUntil } : {}),
-        }
-      : { status: 'ONLINE' };
+    const payload: Record<string, string> = target
+      ? target.targetStatus === 'PAUSED'
+        ? {
+            status: 'PAUSED',
+            reason: target.reason ?? '运营手动暂停',
+            ...(target.pauseUntil ? { pause_until: target.pauseUntil } : {}),
+          }
+        : { status: 'ONLINE' }
+      : config.isTemporarilyClosed
+        ? {
+            status: 'PAUSED',
+            reason: pause.reason,
+            ...(pause.pauseUntil ? { pause_until: pause.pauseUntil } : {}),
+          }
+        : { status: 'ONLINE' };
     const results: Array<Record<string, unknown>> = [];
 
     for (const mapping of mappings) {
+      if (target && mapping.uberStoreId !== target.uberStoreId) continue;
       if (!mapping.isProvisioned) {
         const result = {
           uberStoreId: mapping.uberStoreId,
@@ -1036,6 +1050,7 @@ export class UberMerchantService {
           mapping.uberStoreId,
           result.error,
           422,
+          payload,
         );
         continue;
       }
@@ -1058,6 +1073,7 @@ export class UberMerchantService {
             ? result.error
             : 'Uber 门店状态写入被拒绝',
           result.status,
+          payload,
         );
       }
     }
@@ -1156,6 +1172,7 @@ export class UberMerchantService {
     uberStoreId: string,
     error: string,
     status: number,
+    payload: Record<string, string>,
   ) {
     await this.prisma.uberOpsTicket.create({
       data: {
@@ -1167,6 +1184,9 @@ export class UberMerchantService {
         description: this.redactSensitiveLogText(error).slice(0, 500),
         context: {
           uberStoreId,
+          targetStatus: payload.status,
+          ...(payload.reason ? { reason: payload.reason } : {}),
+          ...(payload.pause_until ? { pauseUntil: payload.pause_until } : {}),
           uberHttpStatus: status,
           errorCode: `UBER_HTTP_${status}`,
         },

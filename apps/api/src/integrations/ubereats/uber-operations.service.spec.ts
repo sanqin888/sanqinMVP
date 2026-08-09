@@ -27,7 +27,12 @@ jest.mock('@prisma/client', () => ({
     IN_PROGRESS: 'IN_PROGRESS',
     RESOLVED: 'RESOLVED',
   },
-  UberOpsTicketType: { STORE_STATUS_SYNC: 'STORE_STATUS_SYNC' },
+  UberOpsTicketType: {
+    STORE_STATUS_SYNC: 'STORE_STATUS_SYNC',
+    ORDER_STATUS_SYNC: 'ORDER_STATUS_SYNC',
+    MENU_PUBLISH: 'MENU_PUBLISH',
+    MENU_ITEM_AVAILABILITY: 'MENU_ITEM_AVAILABILITY',
+  },
   PaymentMethod: { UBEREATS: 'UBEREATS' },
 }));
 
@@ -135,6 +140,7 @@ describe('UberOperationsService', () => {
           ticketStableId: 'tic_1',
           type: 'STORE_STATUS_SYNC',
           storeId: 'default',
+          context: { uberStoreId: 'store_1', targetStatus: 'ONLINE' },
         }),
         update: jest
           .fn()
@@ -207,10 +213,144 @@ describe('UberOperationsService', () => {
         type: 'STORE_STATUS_SYNC',
         title: '门店状态同步失败',
         storeId: 'default',
+        context: { uberStoreId: 'store_1', targetStatus: 'ONLINE' },
       }),
     ).resolves.toMatchObject({
       ok: true,
       priority: 'MEDIUM',
     });
   });
+
+  it.each(['paid', 'ready', 'completed'])(
+    '按 context 中的目标状态重试订单：%s',
+    async (targetStatus) => {
+      const syncOrderStatusToUber = jest.fn().mockResolvedValue({ ok: true });
+      const prisma = retryPrisma({
+        type: 'ORDER_STATUS_SYNC',
+        externalOrderId: 'order_1',
+        context: { targetStatus },
+      });
+      const service = makeRetryService(prisma, {
+        orders: { syncOrderStatusToUber },
+      });
+      await service.retryOpsTicket('tic_retry');
+      expect(syncOrderStatusToUber).toHaveBeenCalledWith(
+        'order_1',
+        targetStatus,
+      );
+    },
+  );
+
+  it.each([true, false])(
+    '按 context 重试商品上/下架：%s',
+    async (isAvailable) => {
+      const syncUberMenuItemAvailability = jest
+        .fn()
+        .mockResolvedValue({ ok: true });
+      const prisma = retryPrisma({
+        type: 'MENU_ITEM_AVAILABILITY',
+        menuItemStableId: 'item_1',
+        context: { isAvailable },
+      });
+      const service = makeRetryService(prisma, {
+        menu: { syncUberMenuItemAvailability },
+      });
+      await service.retryOpsTicket('tic_retry');
+      expect(syncUberMenuItemAvailability).toHaveBeenCalledWith(
+        expect.objectContaining({ isAvailable }),
+      );
+    },
+  );
+
+  it.each([
+    ['ORDER_STATUS_SYNC', undefined],
+    ['ORDER_STATUS_SYNC', { targetStatus: 'not-a-status' }],
+    ['MENU_ITEM_AVAILABILITY', { isAvailable: 'yes' }],
+  ])('context 缺失或非法时保持 OPEN：%s', async (type, context) => {
+    const prisma = retryPrisma({
+      type,
+      externalOrderId: 'order_1',
+      menuItemStableId: 'item_1',
+      context,
+    });
+    const service = makeRetryService(prisma);
+    await expect(service.retryOpsTicket('tic_retry')).resolves.toMatchObject({
+      ok: false,
+      status: 'OPEN',
+    });
+    expect(prisma.uberOpsTicket.update).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        // Jest asymmetric matchers are intentionally typed as any.
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        data: expect.objectContaining({ status: 'OPEN' }),
+      }),
+    );
+  });
+
+  it('上游重试失败后仍保持 OPEN', async () => {
+    const prisma = retryPrisma({
+      type: 'ORDER_STATUS_SYNC',
+      externalOrderId: 'order_1',
+      context: { targetStatus: 'ready' },
+    });
+    const service = makeRetryService(prisma, {
+      orders: {
+        syncOrderStatusToUber: jest
+          .fn()
+          .mockRejectedValue(new Error('upstream failed')),
+      },
+    });
+    await expect(service.retryOpsTicket('tic_retry')).resolves.toMatchObject({
+      ok: false,
+      status: 'OPEN',
+      lastError: 'upstream failed',
+    });
+  });
+
+  function retryPrisma(ticket: Record<string, unknown>) {
+    return {
+      uberOpsTicket: {
+        findUnique: jest.fn().mockResolvedValue({
+          ticketStableId: 'tic_retry',
+          storeId: 'default',
+          ...ticket,
+        }),
+        update: jest
+          .fn()
+          .mockResolvedValueOnce({})
+          .mockImplementation(({ data }: { data: Record<string, unknown> }) =>
+            Promise.resolve({
+              ticketStableId: 'tic_retry',
+              status: data.status,
+              retryCount: 1,
+              lastError: data.lastError ?? null,
+              resolvedAt: data.resolvedAt ?? null,
+            }),
+          ),
+      },
+      opsEvent: { create: jest.fn().mockResolvedValue(null) },
+    };
+  }
+
+  function makeRetryService(
+    prisma: ReturnType<typeof retryPrisma>,
+    dependencies: { orders?: object; menu?: object } = {},
+  ) {
+    return new UberOperationsService(
+      prisma as unknown as ConstructorParameters<
+        typeof UberOperationsService
+      >[0],
+      createAuthService(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      dependencies.orders as ConstructorParameters<
+        typeof UberOperationsService
+      >[6],
+      dependencies.menu as ConstructorParameters<
+        typeof UberOperationsService
+      >[7],
+    );
+  }
 });
