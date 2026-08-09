@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars -- Domain services retain shared runtime types while the integration is split. */
 import { BadRequestException } from '@nestjs/common';
 
 export type LocalBusinessHour = {
@@ -185,6 +186,8 @@ type SyncAvailabilityInput = {
   menuItemStableId: string;
   isAvailable: boolean;
 };
+
+/* eslint-enable @typescript-eslint/no-unused-vars */
 
 export type UberAvailabilitySyncStatus =
   | 'SYNCED'

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars -- Domain services retain shared runtime types while the integration is split. */
 import {
   BadRequestException,
   BadGatewayException,
@@ -690,6 +691,8 @@ type UberOAuthStateRequestDelegate = {
   }): Promise<{ count: number }>;
 };
 
+/* eslint-enable @typescript-eslint/no-unused-vars */
+
 @Injectable()
 export class UberWebhookService {
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
@@ -1174,16 +1177,6 @@ export class UberWebhookService {
       'code' in error &&
       (error as { code?: unknown }).code === 'P2002'
     );
-    // Keep domain collaborators explicit; webhook routing can evolve without inheritance.
-    void this.orders;
-    void this.menu;
-    return this.runtime as unknown as UberWebhookService;
-  }
-
-  handleWebhook(
-    ...args: Parameters<UberIntegrationRuntime['handleWebhook']>
-  ): ReturnType<UberIntegrationRuntime['handleWebhook']> {
-    return this.runtime.handleWebhook(...args);
   }
 
   private isOrderRelatedEvent(eventType: string): boolean {
