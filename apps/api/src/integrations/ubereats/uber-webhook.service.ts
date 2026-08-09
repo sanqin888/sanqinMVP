@@ -35,6 +35,7 @@ export class UberWebhookService {
     // Keep domain collaborators explicit; webhook routing can evolve without inheritance.
     void this.orders;
     void this.menu;
+    return this.runtime as unknown as UberWebhookService;
   }
 
   handleWebhook(

@@ -28,6 +28,39 @@ export class UberMenuService {
       httpClient,
       config,
     );
+    // Keep the runtime as the concrete instance while the domain services are
+    // being split out. Besides preserving the public API, this keeps legacy
+    // diagnostic/test hooks on the instance and, importantly, lets spies on
+    // one runtime method observe calls made by another runtime method.
+    return this.runtime as unknown as UberMenuService;
+  }
+
+  /**
+   * Compatibility hook for callers that inspect historical published menu
+   * mappings without constructing the service. The mapping implementation now
+   * lives in the shared runtime and also requires an order timestamp; legacy
+   * callers mean "as of now".
+   */
+  private resolveUberProductStableId(
+    tx: unknown,
+    storeId: string | null | undefined,
+    item: unknown,
+  ): Promise<string> {
+    const runtimeMethod = (
+      UberIntegrationRuntime.prototype as unknown as {
+        resolveUberProductStableId: (
+          client: unknown,
+          targetStoreId: string | null | undefined,
+          parsedItem: unknown,
+          orderedAt: Date,
+        ) => Promise<string>;
+      }
+    ).resolveUberProductStableId;
+    const runtimeContext = Object.assign(
+      Object.create(UberIntegrationRuntime.prototype) as UberIntegrationRuntime,
+      this,
+    );
+    return runtimeMethod.call(runtimeContext, tx, storeId, item, new Date());
   }
 
   listUberItemChannelConfigs(
