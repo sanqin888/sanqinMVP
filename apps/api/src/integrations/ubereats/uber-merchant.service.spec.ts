@@ -31,6 +31,7 @@ jest.mock('@prisma/client', () => ({
   PaymentMethod: { UBEREATS: 'UBEREATS' },
 }));
 
+import { UberConfigService } from './uber-config.service';
 import { UberMerchantService } from './uber-merchant.service';
 import { createUberMerchantService } from './uber-service-test.helpers';
 
@@ -627,5 +628,33 @@ describe('UberMerchantService', () => {
     expect(result.ok).toBe(true);
     expect(result.isProvisioned).toBe(true);
     expect(prisma.uberStoreMapping.upsert).toHaveBeenCalled();
+  });
+});
+
+describe('UberMerchantService 配置能力隔离', () => {
+  it('OAuth 能力缺少 state 密钥时在构造边界快速失败，但不要求 webhook 密钥', () => {
+    const valid = new UberConfigService({
+      UBER_EATS_OAUTH_STATE_SECRET: '0123456789abcdef0123456789ABCDEF',
+    });
+    expect(() =>
+      createUberMerchantService(
+        {} as never,
+        {} as never,
+        undefined,
+        undefined,
+        undefined,
+        valid,
+      ),
+    ).not.toThrow();
+    expect(() =>
+      createUberMerchantService(
+        {} as never,
+        {} as never,
+        undefined,
+        undefined,
+        undefined,
+        new UberConfigService(),
+      ),
+    ).toThrow('UBER_EATS_OAUTH_STATE_SECRET');
   });
 });

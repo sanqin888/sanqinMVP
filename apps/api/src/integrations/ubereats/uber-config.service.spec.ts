@@ -77,15 +77,28 @@ describe('UberConfigService', () => {
     expect(() => create({ [key]: value })).toThrow(key);
   });
 
-  it('OAuth state 密钥错误不泄露密钥内容', () => {
+  it('只在读取 OAuth state 能力时校验密钥强度，且错误不泄露内容', () => {
     const secret = 'weak-secret';
-    expect(() => create({ UBER_EATS_OAUTH_STATE_SECRET: secret })).toThrow(
+    const config = create({ UBER_EATS_OAUTH_STATE_SECRET: secret });
+    expect(() => config.getOAuthStateSecret()).toThrow(
       'UBER_EATS_OAUTH_STATE_SECRET',
     );
     try {
-      create({ UBER_EATS_OAUTH_STATE_SECRET: secret });
+      config.getOAuthStateSecret();
     } catch (error) {
       expect((error as Error).message).not.toContain(secret);
     }
+  });
+
+  it('缺少敏感配置时普通配置仍可创建，各能力在自己的边界快速失败', () => {
+    const config = create();
+
+    expect(config.apiBaseUrl).toBe('');
+    expect(() => config.getOAuthStateSecret()).toThrow(
+      'UBER_EATS_OAUTH_STATE_SECRET',
+    );
+    expect(() => config.getWebhookSigningKey()).toThrow(
+      'UBER_EATS_WEBHOOK_SIGNING_KEY',
+    );
   });
 });

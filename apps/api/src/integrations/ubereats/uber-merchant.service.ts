@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   NotImplementedException,
   UnauthorizedException,
@@ -16,7 +17,10 @@ import { OrderEventsBus } from '../../messaging/order-events.bus';
 import { OrderIngestionService } from '../../orders/order-ingestion.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UberAuthService } from './uber-auth.service';
-import { UberConfigService } from './uber-config.service';
+import {
+  UberConfigService,
+  type UberOAuthStateConfig,
+} from './uber-config.service';
 import { UberHttpClient } from './uber-http.client';
 import {
   redactUberLogText,
@@ -41,9 +45,7 @@ export class UberMerchantService {
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
   private readonly logger = new AppLogger(UberMerchantService.name);
   private readonly uberApiBaseUrl: string;
-  private readonly uberResourceHrefAllowedOrigins: string;
   private readonly oauthStateSecret: string;
-  private readonly webhookSigningKey: string;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -51,23 +53,10 @@ export class UberMerchantService {
     private readonly orderEventsBus: OrderEventsBus,
     private readonly orderIngestionService: OrderIngestionService,
     private readonly httpClient: UberHttpClient,
-    private readonly config: UberConfigService,
+    @Inject(UberConfigService) private readonly config: UberOAuthStateConfig,
   ) {
     this.uberApiBaseUrl = config.apiBaseUrl;
-    this.uberResourceHrefAllowedOrigins = config.resourceHrefAllowedOrigins;
-    const secret = config.oauthStateSecret;
-    if (secret.length < 32 || new Set(secret).size < 12) {
-      throw new Error(
-        'UBER_EATS_OAUTH_STATE_SECRET 必须配置为至少 32 个字符的高熵密钥',
-      );
-    }
-    this.oauthStateSecret = secret;
-
-    const webhookSigningKey = config.webhookSigningKey;
-    if (!webhookSigningKey) {
-      throw new Error('UBER_EATS_WEBHOOK_SIGNING_KEY 未配置');
-    }
-    this.webhookSigningKey = webhookSigningKey;
+    this.oauthStateSecret = config.getOAuthStateSecret();
   }
 
   private get uberMerchantConnectionDelegate(): UberMerchantConnectionDelegate | null {

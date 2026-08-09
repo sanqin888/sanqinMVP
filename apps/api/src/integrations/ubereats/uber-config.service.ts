@@ -2,6 +2,29 @@ import { Injectable } from '@nestjs/common';
 
 export type UberEnvironment = Record<string, string | undefined>;
 
+export interface UberApiConfig {
+  readonly apiBaseUrl: string;
+}
+
+export interface UberOrderConfig extends UberApiConfig {
+  readonly resourceHrefAllowedOrigins: string;
+}
+
+export interface UberMenuConfig extends UberApiConfig {
+  readonly menuNotificationsEnabled: boolean;
+  readonly menuConfirmTimeoutMs: number;
+  readonly menuConfirmInitialDelayMs: number;
+  readonly menuConfirmMaxDelayMs: number;
+}
+
+export interface UberOAuthStateConfig extends UberApiConfig {
+  getOAuthStateSecret(): string;
+}
+
+export interface UberWebhookConfig {
+  getWebhookSigningKey(): string;
+}
+
 const MENU_CONFIRM_TIMEOUT_DEFAULT_MS = 120_000;
 const MENU_CONFIRM_INITIAL_DELAY_DEFAULT_MS = 1_000;
 const MENU_CONFIRM_MAX_DELAY_DEFAULT_MS = 30_000;
@@ -12,8 +35,8 @@ export class UberConfigService {
   readonly clientId: string;
   readonly clientSecret: string;
   readonly apiBaseUrl: string;
-  readonly oauthStateSecret: string;
-  readonly webhookSigningKey: string;
+  private readonly oauthStateSecret: string;
+  private readonly webhookSigningKey: string;
   readonly redirectUri: string;
   readonly resourceHrefAllowedOrigins: string;
   readonly tokenEndpoint: string;
@@ -51,16 +74,6 @@ export class UberConfigService {
     this.menuNotificationsEnabled = /^(1|true|yes)$/i.test(
       this.read(env, 'UBER_EATS_MENU_NOTIFICATIONS_ENABLED'),
     );
-
-    if (
-      this.oauthStateSecret &&
-      (this.oauthStateSecret.length < 32 ||
-        new Set(this.oauthStateSecret).size < 12)
-    ) {
-      throw new Error(
-        'Uber 配置 UBER_EATS_OAUTH_STATE_SECRET 必须是至少 32 个字符的高熵密钥',
-      );
-    }
 
     this.validateHttpUrl('UBER_EATS_API_BASE_URL', this.apiBaseUrl);
     this.validateHttpUrl('UBER_EATS_REDIRECT_URI', this.redirectUri);
@@ -111,6 +124,27 @@ export class UberConfigService {
       configuredMaxDelay,
       this.menuConfirmTimeoutMs,
     );
+  }
+
+  /** Read only at the OAuth state creation/consumption capability boundary. */
+  getOAuthStateSecret(): string {
+    if (
+      this.oauthStateSecret.length < 32 ||
+      new Set(this.oauthStateSecret).size < 12
+    ) {
+      throw new Error(
+        'Uber 配置 UBER_EATS_OAUTH_STATE_SECRET 必须是至少 32 个字符的高熵密钥',
+      );
+    }
+    return this.oauthStateSecret;
+  }
+
+  /** Read only by the webhook signature verification capability. */
+  getWebhookSigningKey(): string {
+    if (!this.webhookSigningKey) {
+      throw new Error('Uber 配置 UBER_EATS_WEBHOOK_SIGNING_KEY 未配置');
+    }
+    return this.webhookSigningKey;
   }
 
   private read(env: UberEnvironment, key: string): string {

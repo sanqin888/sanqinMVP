@@ -36,6 +36,7 @@ jest.mock('@prisma/client', () => ({
   PaymentMethod: { UBEREATS: 'UBEREATS' },
 }));
 
+import { UberConfigService } from './uber-config.service';
 import { UberOperationsService } from './uber-operations.service';
 import { createUberOperationsService } from './uber-service-test.helpers';
 
@@ -354,4 +355,19 @@ describe('UberOperationsService', () => {
       >[7],
     );
   }
+});
+
+describe('UberOperationsService 配置能力隔离', () => {
+  it('运营编排不读取任何 Uber 敏感配置', () => {
+    expect(() =>
+      createUberOperationsService(
+        {} as never,
+        {} as never,
+        undefined,
+        undefined,
+        undefined,
+        new UberConfigService(),
+      ),
+    ).not.toThrow();
+  });
 });
