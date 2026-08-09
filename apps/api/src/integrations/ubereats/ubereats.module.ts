@@ -18,7 +18,10 @@ import { UberOperationsService } from './uber-operations.service';
   imports: [PrismaModule, AuthModule, MessagingModule, OrdersModule],
   controllers: [UberEatsController],
   providers: [
-    UberConfigService,
+    {
+      provide: UberConfigService,
+      useFactory: () => new UberConfigService(process.env),
+    },
     UberEatsService,
     UberAuthService,
     UberHttpClient,
