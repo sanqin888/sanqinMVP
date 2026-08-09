@@ -30,97 +30,10 @@ jest.mock('@prisma/client', () => ({
   UberOpsTicketType: { STORE_STATUS_SYNC: 'STORE_STATUS_SYNC' },
   PaymentMethod: { UBEREATS: 'UBEREATS' },
 }));
-import { UberHttpClient } from './uber-http.client';
-import { UberConfigService } from './uber-config.service';
 
-import { createHash, createHmac } from 'crypto';
+import { createHmac } from 'crypto';
 import { AppLogger } from '../../common/app-logger';
-import {
-  resolveUberImageUrl,
-  toUberServiceAvailability,
-} from './uber-integration.base';
 import { UberOrderService } from './uber-order.service';
-
-type MenuConfirmationTestApi = {
-  confirmUploadedMenu: (
-    versionId: string,
-    uberStoreId: string,
-    requested: {
-      menus: unknown[];
-      categories: unknown[];
-      modifier_groups: unknown[];
-      items: Array<{ id: string }>;
-    },
-  ) => Promise<'SUBMITTED' | 'SUCCEEDED' | 'FAILED'>;
-  pollUploadedMenuUntilTerminal: (
-    versionId: string,
-    storeId: string,
-    uberStoreId: string,
-    requested: {
-      menus: unknown[];
-      categories: unknown[];
-      modifier_groups: unknown[];
-      items: unknown[];
-    },
-  ) => Promise<void>;
-};
-
-const openSchedulePrisma = {
-  businessConfig: {
-    findUnique: jest
-      .fn()
-      .mockResolvedValue({ timezone: 'America/Toronto', salesTaxRate: 0.13 }),
-  },
-  businessHour: {
-    findMany: jest
-      .fn()
-      .mockResolvedValue([
-        { weekday: 1, openMinutes: 540, closeMinutes: 1080, isClosed: false },
-      ]),
-  },
-};
-
-const createNestedMenuPrisma = (templates: unknown[]) => ({
-  ...openSchedulePrisma,
-  menuCategory: {
-    findMany: jest.fn().mockResolvedValue([
-      {
-        id: 1,
-        stableId: 'cat_1',
-        nameEn: 'Category',
-        nameZh: '',
-        sortOrder: 1,
-        isActive: true,
-      },
-    ]),
-  },
-  menuItem: {
-    findMany: jest.fn().mockResolvedValue([
-      {
-        id: 1,
-        stableId: 'item_1',
-        categoryId: 1,
-        nameEn: 'Item',
-        nameZh: '',
-        basePriceCents: 1000,
-        isAvailable: true,
-        sortOrder: 1,
-        optionGroups: [{ templateGroup: { stableId: 'meal' }, sortOrder: 1 }],
-      },
-    ]),
-  },
-  menuOptionGroupTemplate: { findMany: jest.fn().mockResolvedValue(templates) },
-  uberItemChannelConfig: { findMany: jest.fn().mockResolvedValue([]) },
-  uberOptionItemConfig: { findMany: jest.fn().mockResolvedValue([]) },
-  uberModifierGroupConfig: { findMany: jest.fn().mockResolvedValue([]) },
-  uberCategoryConfig: { findMany: jest.fn().mockResolvedValue([]) },
-  uberOptionChildGroupBinding: { findMany: jest.fn().mockResolvedValue([]) },
-  uberStoreMapping: {
-    findFirst: jest.fn().mockResolvedValue({ uberStoreId: 'uber_store_1' }),
-  },
-  uberMenuPublishVersion: { create: jest.fn() },
-  opsEvent: { create: jest.fn().mockResolvedValue(null) },
-});
 
 describe('UberOrderService', () => {
   it('为嵌套 Uber modifier 快照补齐本地中英文名称并保留外部标题回退', async () => {
@@ -254,17 +167,6 @@ describe('UberOrderService', () => {
       create: jest.fn().mockResolvedValue(null),
     },
   });
-
-  const verifySignature = (
-    service: UberOrderService,
-    rawBody: string,
-    headers: Record<string, unknown>,
-  ) =>
-    service.handleWebhook({
-      headers,
-      rawBody,
-      body: { event_type: 'orders.notification', event_id: 'fixed-event' },
-    });
 
   it('标准资源引用通知会下载完整订单后写入 ubereats 订单', async () => {
     const body = {
