@@ -324,7 +324,6 @@ describe('UberWebhookService', () => {
       >[0],
       createAuthService(),
     );
-    jest.spyOn(AppLogger.prototype, 'warn').mockImplementation();
     await expect(
       verifySignature(service, rawBody, {
         'X-UbEr-SiGnAtUrE': signature,
