@@ -337,6 +337,7 @@ export class UberAuthService {
 
     const { response, data } = await this.httpClient.request<UberTokenResponse>(
       {
+        returnErrorResponse: true,
         url: this.config.tokenEndpoint,
         method: 'POST',
         headers: {

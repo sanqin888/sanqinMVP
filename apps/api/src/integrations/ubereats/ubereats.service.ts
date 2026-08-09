@@ -1171,15 +1171,22 @@ export class UberEatsService {
       });
     } catch (error) {
       const nonRetryable = error instanceof UberWebhookNonRetryableError;
+      const retryable =
+        !nonRetryable &&
+        (!error ||
+          typeof error !== 'object' ||
+          !('retryable' in error) ||
+          (error as { retryable?: unknown }).retryable === true);
       await this.markWebhookFailed(eventId, error, {
-        retryable: !nonRetryable,
+        retryable,
       });
-      if (nonRetryable) {
+      if (!retryable) {
         await this.captureEvent('ubereats_webhook_non_retryable_failed', {
           eventType,
           eventId,
-          status: error.status,
-          detail: error.detail,
+          ...(nonRetryable
+            ? { status: error.status, detail: error.detail }
+            : this.safeStructuredError(error)),
         });
         return;
       }
@@ -1533,6 +1540,7 @@ export class UberEatsService {
           'eats.store.status.write',
         );
         const { response, text: rawText } = await this.httpClient.request({
+          returnErrorResponse: true,
           path: `/v1/eats/stores/${encodeURIComponent(uberStoreId)}/status`,
           baseUrl: this.uberApiBaseUrl,
           method: 'POST',
@@ -1595,8 +1603,12 @@ export class UberEatsService {
         status: UberOpsTicketStatus.OPEN,
         priority: UberOpsTicketPriority.HIGH,
         title: 'Uber 门店状态同步需要运营处理',
-        description: error,
-        context: { uberStoreId, uberHttpStatus: status },
+        description: this.redactSensitiveLogText(error).slice(0, 500),
+        context: {
+          uberStoreId,
+          uberHttpStatus: status,
+          errorCode: `UBER_HTTP_${status}`,
+        },
       },
     });
   }
@@ -2574,7 +2586,7 @@ export class UberEatsService {
           versionStableId: published.versionStableId,
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = this.summarizeWebhookError(error);
         await this.prisma.uberOpsTicket.create({
           data: {
             storeId: config.storeId,
@@ -3294,6 +3306,7 @@ export class UberEatsService {
       path,
       baseUrl: this.uberApiBaseUrl,
       method: options.method,
+      operation: `${options.method} ${path}`,
       accessToken: options.accessToken,
       headers: {
         ...(options.body && !options.rawBody
@@ -3672,6 +3685,7 @@ export class UberEatsService {
   ): Promise<UberHttpResult> {
     try {
       return await this.httpClient.request({
+        returnErrorResponse: true,
         url: resourceUrl,
         method: 'GET',
         redirect: 'error',
@@ -3767,6 +3781,7 @@ export class UberEatsService {
         text: rawText,
         data: parsed,
       } = await this.httpClient.request({
+        returnErrorResponse: true,
         path: pathname,
         baseUrl: this.uberApiBaseUrl,
         method: 'POST',
@@ -5440,6 +5455,7 @@ export class UberEatsService {
       let method: 'HEAD' | 'GET' = 'HEAD';
       try {
         let result = await this.httpClient.request({
+          returnErrorResponse: true,
           url: requestedUrl,
           method: 'HEAD',
           redirect: 'follow',
@@ -5449,6 +5465,7 @@ export class UberEatsService {
         if (response.status === 405 || response.status === 501) {
           method = 'GET';
           result = await this.httpClient.request({
+            returnErrorResponse: true,
             url: requestedUrl,
             method: 'GET',
             headers: { Range: `bytes=0-${UBER_IMAGE_MAX_BYTES}` },
@@ -7346,6 +7363,13 @@ export class UberEatsService {
   }
 
   private summarizeWebhookError(error: unknown): string {
+    const structured = this.safeStructuredError(error);
+    if (structured.code) {
+      return `${structured.code}: ${structured.detail ?? 'Uber request failed'}`.slice(
+        0,
+        500,
+      );
+    }
     const nestResponse =
       error &&
       typeof error === 'object' &&
@@ -7359,7 +7383,25 @@ export class UberEatsService {
         ? error.message
         : String(error);
 
-    return rawSummary.replace(/\s+/g, ' ').slice(0, 500) || 'unknown error';
+    return this.redactSensitiveLogText(rawSummary).slice(0, 500);
+  }
+
+  private safeStructuredError(error: unknown): {
+    code?: string;
+    detail?: string;
+    operation?: string;
+  } {
+    if (!error || typeof error !== 'object') return {};
+    const value = error as Record<string, unknown>;
+    return {
+      ...(typeof value.uberCode === 'string' ? { code: value.uberCode } : {}),
+      ...(typeof value.safeDetail === 'string'
+        ? { detail: this.redactSensitiveLogText(value.safeDetail) }
+        : {}),
+      ...(typeof value.operation === 'string'
+        ? { operation: value.operation }
+        : {}),
+    };
   }
 
   private isPrismaUniqueConstraintError(error: unknown): boolean {
