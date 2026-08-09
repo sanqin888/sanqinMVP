@@ -122,6 +122,9 @@ describe('UberEatsController OAuth callback', () => {
 
   it('callback 日志只记录 correlation ID 和必要参数是否存在', async () => {
     const logSpy = jest.spyOn(AppLogger.prototype, 'log').mockImplementation();
+    const errorSpy = jest
+      .spyOn(AppLogger.prototype, 'error')
+      .mockImplementation();
     const service = {
       exchangeAuthorizationCode: jest
         .fn()
@@ -148,9 +151,17 @@ describe('UberEatsController OAuth callback', () => {
     expect(logs).not.toContain('super-secret');
     expect(logs).not.toContain('state-secret');
     expect(logs).not.toContain('private');
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /\[ubereats oauth callback\] correlationId=[0-9a-f-]+ failed=true errorType=Error/,
+      ),
+    );
   });
 
   it('转义开发环境动态错误，并在生产环境隐藏错误细节', async () => {
+    const errorSpy = jest
+      .spyOn(AppLogger.prototype, 'error')
+      .mockImplementation();
     const service = {
       exchangeAuthorizationCode: jest
         .fn()
@@ -178,6 +189,10 @@ describe('UberEatsController OAuth callback', () => {
     expect(productionHtml).toContain('授权处理失败，请重试或联系管理员。');
     expect(productionHtml).not.toContain('script');
     expect(productionHtml).not.toContain('token');
+    expect(errorSpy).toHaveBeenCalledTimes(2);
+    expect(errorSpy).toHaveBeenLastCalledWith(
+      expect.stringContaining('failed=true errorType=Error'),
+    );
   });
 
   it('webhook 日志仅包含安全元数据，不包含认证 headers', async () => {

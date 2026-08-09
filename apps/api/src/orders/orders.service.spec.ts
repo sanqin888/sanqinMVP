@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
@@ -224,6 +224,10 @@ describe('OrdersService', () => {
     );
   });
 
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   it('sends order-ready notification with phone when pickup order is marked ready and no email exists', async () => {
     prisma.order.findUnique
       .mockResolvedValueOnce({
@@ -365,6 +369,9 @@ describe('OrdersService', () => {
   });
 
   it('does not send order-ready notification when pickup order has no email or phone', async () => {
+    const warnSpy = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
     prisma.order.findUnique
       .mockResolvedValueOnce({
         status: 'making',
@@ -392,6 +399,11 @@ describe('OrdersService', () => {
     await new Promise<void>((resolve) => process.nextTick(resolve));
 
     expect(notificationService.notifyOrderReady).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'No contact channel available; notification skipped for order order-pickup-ready-no-contact',
+      ),
+    );
   });
 
   it('does not send order-ready notification when delivery order is marked ready', async () => {
@@ -451,6 +463,9 @@ describe('OrdersService', () => {
   });
 
   it('creates order even when deliveryDestination is missing for priority orders', () => {
+    const warnSpy = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
     const dto: CreateOrderInput = {
       channel: 'web',
       fulfillmentType: 'pickup',
@@ -485,6 +500,9 @@ describe('OrdersService', () => {
       // ✅ 因为没有 deliveryDestination，不会调 Uber Direct
       expect(uberDirect.createDelivery).not.toHaveBeenCalled();
       expect(emitOrderAccepted).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(
+        'Priority delivery order is missing deliveryDestination.',
+      );
     });
   });
 
@@ -526,6 +544,9 @@ describe('OrdersService', () => {
   });
 
   it('emits paid-verified event for priority orders', () => {
+    const warnSpy = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
     const storedOrder = {
       id: 'order-1',
       orderStableId: 'cord-1',
@@ -588,10 +609,18 @@ describe('OrdersService', () => {
         }),
       );
       expect(uberDirect.createDelivery).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'Cannot calculate dynamic delivery fee (missing coords)',
+        ),
+      );
     });
   });
 
   it('keeps the order and still emits event when dispatch path errors are irrelevant', async () => {
+    const warnSpy = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
     const storedOrder = {
       id: 'order-err',
       orderStableId: 'cord-err',
@@ -658,6 +687,11 @@ describe('OrdersService', () => {
     expect(
       notificationService.notifyDeliveryDispatchFailed,
     ).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'Cannot calculate dynamic delivery fee (missing coords)',
+      ),
+    );
   });
 
   it('allows createImmediatePaid with a processing checkout intent from clover flow', async () => {

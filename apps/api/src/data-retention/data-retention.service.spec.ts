@@ -171,9 +171,17 @@ describe('DataRetentionService', () => {
 
   it('returns null when retention cleanup throws', async () => {
     const { service, prisma } = createService();
-    prisma.$transaction.mockRejectedValueOnce(new Error('boom'));
+    const error = new Error('boom');
+    const loggerErrorSpy = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+    prisma.$transaction.mockRejectedValueOnce(error);
 
     await expect(service.runCleanup()).resolves.toBeNull();
+    expect(loggerErrorSpy).toHaveBeenCalledWith(
+      'Retention cleanup failed',
+      error.stack,
+    );
   });
 
   it('logs cleanup summary when records are cleaned', async () => {

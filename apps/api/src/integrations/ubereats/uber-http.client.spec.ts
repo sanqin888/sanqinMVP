@@ -1,4 +1,5 @@
 import { UberApiError, UberHttpClient } from './uber-http.client';
+import { AppLogger } from '../../common/app-logger';
 
 describe('UberHttpClient structured error mapping', () => {
   beforeEach(() => {
@@ -22,6 +23,9 @@ describe('UberHttpClient structured error mapping', () => {
   ] as const)(
     'maps HTTP %i to a stable structured error',
     async (status, code, category, retryable, exposedStatus) => {
+      const errorSpy = jest
+        .spyOn(AppLogger.prototype, 'error')
+        .mockImplementation();
       jest.spyOn(global, 'fetch').mockResolvedValue(
         new Response(
           status === 400
@@ -51,10 +55,16 @@ describe('UberHttpClient structured error mapping', () => {
       });
       expect((error as UberApiError).getStatus()).toBe(exposedStatus);
       if (status === 429) expect(error).toMatchObject({ retryAfterMs: 2_000 });
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining(`code=${code} retryable=${retryable}`),
+      );
     },
   );
 
   it('redacts credentials from safeDetail', async () => {
+    const errorSpy = jest
+      .spyOn(AppLogger.prototype, 'error')
+      .mockImplementation();
     jest.spyOn(global, 'fetch').mockResolvedValue(
       new Response(
         JSON.stringify({ message: 'authorization=abc token=def secret=ghi' }),
@@ -67,5 +77,8 @@ describe('UberHttpClient structured error mapping', () => {
       .request({ url: 'https://api.uber.com/orders', operation: 'order.get' })
       .catch((value: unknown) => value as UberApiError);
     expect(error.safeDetail).not.toMatch(/abc|def|ghi/);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('code=UBER_HTTP_400 retryable=false'),
+    );
   });
 });
