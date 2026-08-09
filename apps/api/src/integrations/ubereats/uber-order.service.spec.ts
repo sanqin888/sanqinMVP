@@ -959,7 +959,6 @@ describe('UberOrderService', () => {
         (callback: (transaction: typeof prisma) => unknown) => callback(prisma),
       ),
     });
-    jest.spyOn(AppLogger.prototype, 'warn').mockImplementation();
     jest
       .spyOn(global, 'fetch')
       .mockResolvedValueOnce(
@@ -1080,7 +1079,6 @@ describe('UberOrderService', () => {
         (callback: (transaction: typeof prisma) => unknown) => callback(prisma),
       ),
     });
-    jest.spyOn(AppLogger.prototype, 'error').mockImplementation();
     jest
       .spyOn(global, 'fetch')
       .mockResolvedValueOnce(
