@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   Injectable,
-  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { type Prisma } from '@prisma/client';
@@ -41,12 +40,12 @@ export class UberWebhookService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly uberAuthService: UberAuthService,
-    @Optional() private readonly orderEventsBus?: OrderEventsBus,
-    @Optional() private readonly orderIngestionService?: OrderIngestionService,
-    @Optional() private readonly httpClient = new UberHttpClient(),
-    @Optional() private readonly config = new UberConfigService(),
-    @Optional() private readonly orders?: UberOrderService,
-    @Optional() private readonly menu?: UberMenuService,
+    private readonly orderEventsBus: OrderEventsBus,
+    private readonly orderIngestionService: OrderIngestionService,
+    private readonly httpClient: UberHttpClient,
+    private readonly config: UberConfigService,
+    private readonly orders: UberOrderService,
+    private readonly menu: UberMenuService,
   ) {
     this.uberApiBaseUrl = config.apiBaseUrl;
     this.uberResourceHrefAllowedOrigins = config.resourceHrefAllowedOrigins;
@@ -149,7 +148,6 @@ export class UberWebhookService {
         case 'orders.cancelled':
         case 'orders.cancel':
         case 'orders.rejected':
-          if (!this.orders) throw new Error('UberOrderService 未配置');
           await this.orders.processWebhookEvent(eventType, eventId, envelope);
           break;
 
@@ -166,7 +164,6 @@ export class UberWebhookService {
           break;
 
         case 'menus.notification':
-          if (!this.menu) throw new Error('UberMenuService 未配置');
           await this.menu.processWebhookEvent(eventType, eventId, body);
           break;
 

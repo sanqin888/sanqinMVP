@@ -2,7 +2,6 @@ import {
   BadRequestException,
   Injectable,
   NotImplementedException,
-  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import {
@@ -49,10 +48,10 @@ export class UberMerchantService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly uberAuthService: UberAuthService,
-    @Optional() private readonly orderEventsBus?: OrderEventsBus,
-    @Optional() private readonly orderIngestionService?: OrderIngestionService,
-    @Optional() private readonly httpClient = new UberHttpClient(),
-    @Optional() private readonly config = new UberConfigService(),
+    private readonly orderEventsBus: OrderEventsBus,
+    private readonly orderIngestionService: OrderIngestionService,
+    private readonly httpClient: UberHttpClient,
+    private readonly config: UberConfigService,
   ) {
     this.uberApiBaseUrl = config.apiBaseUrl;
     this.uberResourceHrefAllowedOrigins = config.resourceHrefAllowedOrigins;

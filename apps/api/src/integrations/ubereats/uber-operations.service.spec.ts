@@ -37,6 +37,7 @@ jest.mock('@prisma/client', () => ({
 }));
 
 import { UberOperationsService } from './uber-operations.service';
+import { createUberOperationsService } from './uber-service-test.helpers';
 
 describe('UberOperationsService', () => {
   const clientSecret = 'test-ubereats-secret';
@@ -116,7 +117,7 @@ describe('UberOperationsService', () => {
       },
     };
 
-    const service = new UberOperationsService(
+    const service = createUberOperationsService(
       prisma as unknown as ConstructorParameters<
         typeof UberOperationsService
       >[0],
@@ -166,7 +167,7 @@ describe('UberOperationsService', () => {
       },
     };
 
-    const service = new UberOperationsService(
+    const service = createUberOperationsService(
       prisma as unknown as ConstructorParameters<
         typeof UberOperationsService
       >[0],
@@ -202,7 +203,7 @@ describe('UberOperationsService', () => {
       },
     };
 
-    const service = new UberOperationsService(
+    const service = createUberOperationsService(
       prisma as unknown as ConstructorParameters<
         typeof UberOperationsService
       >[0],
@@ -336,7 +337,7 @@ describe('UberOperationsService', () => {
     prisma: ReturnType<typeof retryPrisma>,
     dependencies: { orders?: object; menu?: object } = {},
   ) {
-    return new UberOperationsService(
+    return createUberOperationsService(
       prisma as unknown as ConstructorParameters<
         typeof UberOperationsService
       >[0],

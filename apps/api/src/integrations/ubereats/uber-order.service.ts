@@ -2,7 +2,6 @@ import {
   BadGatewayException,
   BadRequestException,
   Injectable,
-  Optional,
 } from '@nestjs/common';
 import {
   Channel,
@@ -64,10 +63,10 @@ export class UberOrderService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly uberAuthService: UberAuthService,
-    @Optional() private readonly orderEventsBus?: OrderEventsBus,
-    @Optional() private readonly orderIngestionService?: OrderIngestionService,
-    @Optional() private readonly httpClient = new UberHttpClient(),
-    @Optional() private readonly config = new UberConfigService(),
+    private readonly orderEventsBus: OrderEventsBus,
+    private readonly orderIngestionService: OrderIngestionService,
+    private readonly httpClient: UberHttpClient,
+    private readonly config: UberConfigService,
   ) {
     this.uberApiBaseUrl = config.apiBaseUrl;
     this.uberResourceHrefAllowedOrigins = config.resourceHrefAllowedOrigins;
@@ -1122,18 +1121,7 @@ export class UberOrderService {
       });
     }
 
-    // Nest always injects this boundary. The fallback keeps isolated adapter
-    // unit tests backwards compatible without returning to direct persistence.
-    const ingestion =
-      this.orderIngestionService ??
-      new OrderIngestionService(
-        this.prisma,
-        (this.orderEventsBus ?? {
-          emitOrderPaidVerified: () => undefined,
-          emitOrderAccepted: () => undefined,
-        }) as OrderEventsBus,
-      );
-    const result = await ingestion.ingest(
+    const result = await this.orderIngestionService.ingest(
       {
         channel: Channel.ubereats,
         paymentMethod: PaymentMethod.UBEREATS,

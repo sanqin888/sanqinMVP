@@ -17,6 +17,7 @@ jest.mock('@prisma/client', () => ({
 import { createHmac } from 'crypto';
 import { UberConfigService } from './uber-config.service';
 import { UberWebhookService } from './uber-webhook.service';
+import { createUberWebhookService } from './uber-service-test.helpers';
 
 const signingKey = 'uber-webhook-signing-key';
 const config = () =>
@@ -47,7 +48,7 @@ describe('UberWebhookService', () => {
     const orders = {
       processWebhookEvent: jest.fn().mockResolvedValue(undefined),
     };
-    const service = new UberWebhookService(
+    const service = createUberWebhookService(
       {
         uberWebhookInbox,
         opsEvent: { create: jest.fn() },
@@ -86,7 +87,7 @@ describe('UberWebhookService', () => {
     const menu = {
       processWebhookEvent: jest.fn().mockResolvedValue(undefined),
     };
-    const service = new UberWebhookService(
+    const service = createUberWebhookService(
       { uberWebhookInbox } as unknown as ConstructorParameters<
         typeof UberWebhookService
       >[0],
@@ -111,7 +112,7 @@ describe('UberWebhookService', () => {
 
   it('拒绝无效签名且不会 claim inbox', async () => {
     const uberWebhookInbox = inbox();
-    const service = new UberWebhookService(
+    const service = createUberWebhookService(
       { uberWebhookInbox } as unknown as ConstructorParameters<
         typeof UberWebhookService
       >[0],
@@ -132,7 +133,7 @@ describe('UberWebhookService', () => {
   });
 
   it('只公开 webhook 领域入口，不暴露订单、菜单或运营 API', () => {
-    const service = new UberWebhookService(
+    const service = createUberWebhookService(
       { uberWebhookInbox: inbox() } as unknown as ConstructorParameters<
         typeof UberWebhookService
       >[0],
