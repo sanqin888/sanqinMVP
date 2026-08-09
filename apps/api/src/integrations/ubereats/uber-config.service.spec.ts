@@ -1,8 +1,23 @@
+import { Test } from '@nestjs/testing';
 import { UberConfigService, UberEnvironment } from './uber-config.service';
 
 describe('UberConfigService', () => {
   const create = (overrides: UberEnvironment = {}) =>
     new UberConfigService(overrides);
+
+  it('通过工厂 Provider 在 Nest 测试模块中完成实例化', async () => {
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        {
+          provide: UberConfigService,
+          useFactory: () => new UberConfigService(process.env),
+        },
+      ],
+    }).compile();
+
+    expect(moduleRef.get(UberConfigService)).toBeInstanceOf(UberConfigService);
+    await moduleRef.close();
+  });
 
   it('使用菜单轮询默认值', () => {
     const config = create();
