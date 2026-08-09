@@ -19,7 +19,7 @@ export class UberApiError extends HttpException {
     readonly retryable: boolean,
     readonly category: UberApiErrorCategory,
     readonly retryAfterMs: number | null = null,
-    readonly cause?: unknown,
+    cause?: unknown,
   ) {
     const exposedStatus = retryable
       ? HttpStatus.SERVICE_UNAVAILABLE
@@ -37,6 +37,7 @@ export class UberApiError extends HttpException {
         retryable,
       },
       exposedStatus,
+      { cause },
     );
     this.name = 'UberApiError';
   }
@@ -47,7 +48,7 @@ export class UberHttpError extends UberApiError {
     message: string,
     readonly retryable: boolean,
     readonly reason: 'timeout' | 'network' | 'response_too_large',
-    readonly cause?: unknown,
+    cause?: unknown,
   ) {
     super(
       null,
