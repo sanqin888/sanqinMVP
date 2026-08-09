@@ -34,6 +34,27 @@ jest.mock('@prisma/client', () => ({
 import { createHmac } from 'crypto';
 import { AppLogger } from '../../common/app-logger';
 import { UberOrderService } from './uber-order.service';
+import { UberWebhookEnvelopeDto } from './dto/uber-webhook-envelope.dto';
+
+async function dispatchOrderWebhook(
+  service: UberOrderService,
+  input: { rawBody: string | Buffer; body?: unknown },
+) {
+  const body =
+    input.body ??
+    JSON.parse(
+      Buffer.isBuffer(input.rawBody)
+        ? input.rawBody.toString('utf8')
+        : input.rawBody,
+    );
+  const envelope = UberWebhookEnvelopeDto.parse(body);
+  const record = body as { event_type?: string; event_id?: string };
+  return service.processWebhookEvent(
+    envelope?.eventType ?? record.event_type ?? '',
+    envelope?.eventId ?? record.event_id ?? 'test-event',
+    envelope,
+  );
+}
 
 describe('UberOrderService', () => {
   it('为嵌套 Uber modifier 快照补齐本地中英文名称并保留外部标题回退', async () => {
@@ -369,7 +390,7 @@ describe('UberOrderService', () => {
         typeof UberOrderService
       >[0],
     );
-    await service.handleWebhook({
+    await dispatchOrderWebhook(service, {
       headers: {
         'x-uber-signature': signature,
         'x-event-id': 'evt_123',
@@ -742,7 +763,7 @@ describe('UberOrderService', () => {
       >[0],
     );
 
-    await service.handleWebhook({
+    await dispatchOrderWebhook(service, {
       headers: { 'x-uber-signature': signature },
       rawBody,
       body,
@@ -851,16 +872,19 @@ describe('UberOrderService', () => {
         .mockResolvedValueOnce(new Response('{}', { status: 200 }));
 
       await expect(
-        new UberOrderService(
-          prisma as unknown as ConstructorParameters<
-            typeof UberOrderService
-          >[0],
-          createAuthService(),
-        ).handleWebhook({
-          headers: { 'x-uber-signature': signature },
-          rawBody,
-          body,
-        }),
+        dispatchOrderWebhook(
+          new UberOrderService(
+            prisma as unknown as ConstructorParameters<
+              typeof UberOrderService
+            >[0],
+            createAuthService(),
+          ),
+          {
+            headers: { 'x-uber-signature': signature },
+            rawBody,
+            body,
+          },
+        ),
       ).resolves.toBeUndefined();
 
       expect(prisma.uberOrderCancellation.upsert).toHaveBeenCalledWith(
@@ -894,11 +918,6 @@ describe('UberOrderService', () => {
         where: { id: 'order-db-id' },
         data: { status: 'refunded' },
       });
-      expect(prisma.uberWebhookInbox.updateMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ status: 'PROCESSED' }) as unknown,
-        }),
-      );
       fetchSpy.mockRestore();
     },
   );
@@ -981,7 +1000,7 @@ describe('UberOrderService', () => {
       createAuthService(),
     );
     await expect(
-      service.handleWebhook({
+      dispatchOrderWebhook(service, {
         headers: { 'x-uber-signature': signature },
         rawBody,
         body,
@@ -1003,11 +1022,6 @@ describe('UberOrderService', () => {
         data: expect.objectContaining({
           eventName: 'ubereats_webhook_auto_deny_failed',
         }) as unknown,
-      }),
-    );
-    expect(prisma.uberWebhookInbox.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ status: 'PROCESSED' }) as unknown,
       }),
     );
     jest.restoreAllMocks();
@@ -1100,7 +1114,7 @@ describe('UberOrderService', () => {
       createAuthService(),
     );
     await expect(
-      service.handleWebhook({
+      dispatchOrderWebhook(service, {
         headers: { 'x-uber-signature': signature },
         rawBody,
         body,
@@ -1441,7 +1455,7 @@ describe('UberOrderService', () => {
     );
 
     await expect(
-      service.handleWebhook({
+      dispatchOrderWebhook(service, {
         headers: { 'x-uber-signature': signature },
         rawBody,
         body,
@@ -1486,7 +1500,7 @@ describe('UberOrderService', () => {
     );
 
     await expect(
-      service.handleWebhook({
+      dispatchOrderWebhook(service, {
         headers: { 'x-uber-signature': signature },
         rawBody,
         body,
@@ -1544,7 +1558,7 @@ describe('UberOrderService', () => {
     );
 
     await expect(
-      service.handleWebhook({
+      dispatchOrderWebhook(service, {
         headers: { 'x-uber-signature': signature },
         rawBody,
         body,
@@ -1624,24 +1638,12 @@ describe('UberOrderService', () => {
       );
 
       await expect(
-        service.handleWebhook({
+        dispatchOrderWebhook(service, {
           headers: { 'x-uber-signature': signature },
           rawBody,
           body,
         }),
-      ).resolves.toBeUndefined();
-
-      expect(prisma.uberWebhookInbox.updateMany).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            status: 'FAILED',
-            errorSummary: expect.stringContaining(
-              'missing store authorization',
-            ) as unknown,
-            nextRetryAt: null,
-          }) as unknown,
-        }),
-      );
+      ).rejects.toMatchObject({ name: 'UberWebhookNonRetryableError' });
 
       const logs = errorSpy.mock.calls.flat().join(' ');
       expect(logs).toContain(`status=${status}`);
@@ -1696,7 +1698,7 @@ describe('UberOrderService', () => {
     );
 
     await expect(
-      service.handleWebhook({
+      dispatchOrderWebhook(service, {
         headers: { 'x-uber-signature': signature },
         rawBody,
         body,
