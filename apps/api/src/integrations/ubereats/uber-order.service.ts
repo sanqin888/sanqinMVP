@@ -73,4 +73,10 @@ export class UberOrderService {
   ): ReturnType<UberIntegrationRuntime['listPendingUberOrders']> {
     return this.runtime.listPendingUberOrders(...args);
   }
+
+  handleWebhook(
+    ...args: Parameters<UberIntegrationRuntime['handleWebhook']>
+  ): ReturnType<UberIntegrationRuntime['handleWebhook']> {
+    return this.runtime.handleWebhook(...args);
+  }
 }

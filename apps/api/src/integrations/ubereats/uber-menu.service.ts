@@ -129,4 +129,12 @@ export class UberMenuService {
   ): ReturnType<UberIntegrationRuntime['validateUberMenuPayload']> {
     return this.runtime.validateUberMenuPayload(...args);
   }
+
+  normalizeAndValidateUberMenuGraph(
+    ...args: Parameters<
+      UberIntegrationRuntime['normalizeAndValidateUberMenuGraph']
+    >
+  ): ReturnType<UberIntegrationRuntime['normalizeAndValidateUberMenuGraph']> {
+    return this.runtime.normalizeAndValidateUberMenuGraph(...args);
+  }
 }
