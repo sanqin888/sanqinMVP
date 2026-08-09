@@ -1,46 +1,30 @@
-import { Injectable } from '@nestjs/common';
-import { UberEatsService } from './ubereats.service';
+import { Injectable, Optional } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+import { OrderEventsBus } from '../../messaging/order-events.bus';
+import { OrderIngestionService } from '../../orders/order-ingestion.service';
+import { UberAuthService } from './uber-auth.service';
+import { UberConfigService } from './uber-config.service';
+import { UberHttpClient } from './uber-http.client';
+import { UberIntegrationBase } from './uber-integration.base';
 
-/** OAuth, discovery, provisioning and store-state boundary. */
+/** OAuth, merchant discovery, provisioning and store state. */
 @Injectable()
-export class UberMerchantService {
-  constructor(private readonly facade: UberEatsService) {}
-
-  buildMerchantAuthorizeUrl(
-    ...args: Parameters<UberEatsService['buildMerchantAuthorizeUrl']>
+export class UberMerchantService extends UberIntegrationBase {
+  constructor(
+    prisma: PrismaService,
+    uberAuthService: UberAuthService,
+    @Optional() orderEventsBus?: OrderEventsBus,
+    @Optional() orderIngestionService?: OrderIngestionService,
+    @Optional() httpClient?: UberHttpClient,
+    @Optional() config?: UberConfigService,
   ) {
-    return this.facade.buildMerchantAuthorizeUrl(...args);
-  }
-  startMerchantOAuth(
-    ...args: Parameters<UberEatsService['startMerchantOAuth']>
-  ) {
-    return this.facade.startMerchantOAuth(...args);
-  }
-  exchangeAuthorizationCode(
-    ...args: Parameters<UberEatsService['exchangeAuthorizationCode']>
-  ) {
-    return this.facade.exchangeAuthorizationCode(...args);
-  }
-  getMerchantStores(...args: Parameters<UberEatsService['getMerchantStores']>) {
-    return this.facade.getMerchantStores(...args);
-  }
-  updatePosExternalStoreId(
-    ...args: Parameters<UberEatsService['updatePosExternalStoreId']>
-  ) {
-    return this.facade.updatePosExternalStoreId(...args);
-  }
-  getMerchantConnectionStatus(
-    ...args: Parameters<UberEatsService['getMerchantConnectionStatus']>
-  ) {
-    return this.facade.getMerchantConnectionStatus(...args);
-  }
-  provisionStore(...args: Parameters<UberEatsService['provisionStore']>) {
-    return this.facade.provisionStore(...args);
-  }
-  revokeOrDeprovisionStore() {
-    return this.facade.revokeOrDeprovisionStore();
-  }
-  syncStoreStatusToUber() {
-    return this.facade.syncStoreStatusToUber();
+    super(
+      prisma,
+      uberAuthService,
+      orderEventsBus,
+      orderIngestionService,
+      httpClient,
+      config,
+    );
   }
 }

@@ -1,85 +1,30 @@
-import { Injectable } from '@nestjs/common';
-import { UberEatsService } from './ubereats.service';
+import { Injectable, Optional } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+import { OrderEventsBus } from '../../messaging/order-events.bus';
+import { OrderIngestionService } from '../../orders/order-ingestion.service';
+import { UberAuthService } from './uber-auth.service';
+import { UberConfigService } from './uber-config.service';
+import { UberHttpClient } from './uber-http.client';
+import { UberIntegrationBase } from './uber-integration.base';
 
-/** Menu graph, validation, publication and availability boundary. */
+/** Menu graph construction, validation, publication and availability. */
 @Injectable()
-export class UberMenuService {
-  constructor(private readonly facade: UberEatsService) {}
-
-  listUberItemChannelConfigs(
-    ...args: Parameters<UberEatsService['listUberItemChannelConfigs']>
+export class UberMenuService extends UberIntegrationBase {
+  constructor(
+    prisma: PrismaService,
+    uberAuthService: UberAuthService,
+    @Optional() orderEventsBus?: OrderEventsBus,
+    @Optional() orderIngestionService?: OrderIngestionService,
+    @Optional() httpClient?: UberHttpClient,
+    @Optional() config?: UberConfigService,
   ) {
-    return this.facade.listUberItemChannelConfigs(...args);
-  }
-  listUberPublishedMenuItems(
-    ...args: Parameters<UberEatsService['listUberPublishedMenuItems']>
-  ) {
-    return this.facade.listUberPublishedMenuItems(...args);
-  }
-  listUberOptionItemConfigs(
-    ...args: Parameters<UberEatsService['listUberOptionItemConfigs']>
-  ) {
-    return this.facade.listUberOptionItemConfigs(...args);
-  }
-  upsertUberItemChannelConfig(
-    ...args: Parameters<UberEatsService['upsertUberItemChannelConfig']>
-  ) {
-    return this.facade.upsertUberItemChannelConfig(...args);
-  }
-  upsertUberOptionItemConfig(
-    ...args: Parameters<UberEatsService['upsertUberOptionItemConfig']>
-  ) {
-    return this.facade.upsertUberOptionItemConfig(...args);
-  }
-  getUberMenuDraft(...args: Parameters<UberEatsService['getUberMenuDraft']>) {
-    return this.facade.getUberMenuDraft(...args);
-  }
-  updateUberDraftItem(
-    ...args: Parameters<UberEatsService['updateUberDraftItem']>
-  ) {
-    return this.facade.updateUberDraftItem(...args);
-  }
-  updateUberDraftGroup(
-    ...args: Parameters<UberEatsService['updateUberDraftGroup']>
-  ) {
-    return this.facade.updateUberDraftGroup(...args);
-  }
-  updateUberDraftOption(
-    ...args: Parameters<UberEatsService['updateUberDraftOption']>
-  ) {
-    return this.facade.updateUberDraftOption(...args);
-  }
-  bindUberDraftOptionChildGroup(
-    ...args: Parameters<UberEatsService['bindUberDraftOptionChildGroup']>
-  ) {
-    return this.facade.bindUberDraftOptionChildGroup(...args);
-  }
-  unbindUberDraftOptionChildGroup(
-    ...args: Parameters<UberEatsService['unbindUberDraftOptionChildGroup']>
-  ) {
-    return this.facade.unbindUberDraftOptionChildGroup(...args);
-  }
-  getUberMenuDraftDiff(
-    ...args: Parameters<UberEatsService['getUberMenuDraftDiff']>
-  ) {
-    return this.facade.getUberMenuDraftDiff(...args);
-  }
-  publishUberMenu(...args: Parameters<UberEatsService['publishUberMenu']>) {
-    return this.facade.publishUberMenu(...args);
-  }
-  syncUberMenuItemAvailability(
-    ...args: Parameters<UberEatsService['syncUberMenuItemAvailability']>
-  ) {
-    return this.facade.syncUberMenuItemAvailability(...args);
-  }
-  syncUberOptionItemAvailability(
-    ...args: Parameters<UberEatsService['syncUberOptionItemAvailability']>
-  ) {
-    return this.facade.syncUberOptionItemAvailability(...args);
-  }
-  validateUberMenuPayload(
-    ...args: Parameters<UberEatsService['validateUberMenuPayload']>
-  ) {
-    return this.facade.validateUberMenuPayload(...args);
+    super(
+      prisma,
+      uberAuthService,
+      orderEventsBus,
+      orderIngestionService,
+      httpClient,
+      config,
+    );
   }
 }
