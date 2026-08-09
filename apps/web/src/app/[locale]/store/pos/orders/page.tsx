@@ -535,6 +535,7 @@ type BackendOrderItem = {
   nameEn?: string | null;
   nameZh?: string | null;
   unitPriceCents?: number | null;
+  specialInstructions?: string | null;
 };
 
 type OrderRecord = {
@@ -566,6 +567,7 @@ type OrderItemRecord = {
   qty: number;
   unitPriceCents: number;
   totalCents: number;
+  specialInstructions: string | null;
 };
 
 type SwapSelection = {
@@ -1129,6 +1131,7 @@ export default function PosOrdersPage() {
           qty: item.qty,
           unitPriceCents,
           totalCents: unitPriceCents * item.qty,
+          specialInstructions: item.specialInstructions?.trim() || null,
         };
       });
 
@@ -2195,6 +2198,32 @@ export default function PosOrdersPage() {
                   {formatMoney(selectedOrder.amountCents)}
                 </span>
               </div>
+              {selectedOrder.items.some(
+                (item) => item.specialInstructions,
+              ) ? (
+                <section className="rounded-xl border border-amber-400/50 bg-amber-500/10 p-4">
+                  <h3 className="text-sm font-semibold text-amber-100">
+                    {locale === "zh" ? "餐品特殊要求" : "Item special requests"}
+                  </h3>
+                  <div className="mt-2 space-y-2">
+                    {selectedOrder.items
+                      .filter((item) => item.specialInstructions)
+                      .map((item) => (
+                        <div
+                          key={item.lineId}
+                          className="rounded-lg border border-amber-300/20 bg-slate-950/30 px-3 py-2 text-sm"
+                        >
+                          <div className="font-semibold text-slate-100">
+                            {item.qty} × {item.name}
+                          </div>
+                          <div className="mt-1 whitespace-pre-wrap text-amber-100">
+                            {item.specialInstructions}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </section>
+              ) : null}
               {selectedOrder.channel === "ubereats" ? (
                 <section className="rounded-xl border border-orange-400/40 bg-orange-500/10 p-4">
                   <h3 className="text-sm font-semibold text-orange-100">
