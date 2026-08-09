@@ -173,6 +173,46 @@ describe('PrintPosPayloadService', () => {
     });
   });
 
+  it('Uber 餐品特殊要求会进入收银小票和厨房单共用的打印载荷', async () => {
+    const prisma = {
+      order: {
+        findUnique: jest.fn().mockResolvedValue({
+          orderStableId: 'ord_uber_notes',
+          clientRequestId: 'ubereats:external-1',
+          items: [
+            {
+              productStableId: 'item-1',
+              displayName: '羊肉泡馍',
+              nameEn: null,
+              nameZh: '羊肉泡馍',
+              qty: 1,
+              unitPriceCents: 1599,
+              externalSpecialInstructions: '  不要香菜，多放辣椒  ',
+              optionsJson: [],
+            },
+          ],
+          subtotalCents: 1599,
+          subtotalAfterDiscountCents: 1599,
+          paymentTotalCents: 1599,
+          totalCents: 1599,
+          paymentMethod: PaymentMethod.UBEREATS,
+          channel: Channel.ubereats,
+          fulfillmentType: 'pickup',
+          taxCents: 0,
+        }),
+      },
+      checkoutIntent: { findFirst: jest.fn().mockResolvedValue(null) },
+    };
+
+    const payload = await new PrintPosPayloadService(
+      prisma as never,
+    ).getByStableId('ord_uber_notes');
+
+    expect(payload.snapshot.items[0].specialInstructions).toBe(
+      '不要香菜，多放辣椒',
+    );
+  });
+
   it.each([
     ['zh-CN', 'zh'],
     ['en-CA', 'en'],

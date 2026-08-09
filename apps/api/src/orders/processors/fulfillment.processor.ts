@@ -414,6 +414,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
           displayName: item.displayName,
           quantity: item.qty,
           lineTotalCents: (item.unitPriceCents ?? 0) * item.qty,
+          specialInstructions: null,
           options: this.parseOrderItemOptions(item.optionsJson),
         })),
         subtotalCents: order.subtotalCents ?? 0,

@@ -72,6 +72,7 @@ type OrderItemSnapshot = Prisma.OrderItemGetPayload<{
     nameEn: true;
     nameZh: true;
     unitPriceCents: true;
+    externalSpecialInstructions: true;
     optionsJson: true;
   };
 }>;
@@ -114,6 +115,7 @@ const orderDetailSelect = {
       nameEn: true,
       nameZh: true,
       unitPriceCents: true,
+      externalSpecialInstructions: true,
       optionsJson: true,
     },
   },
@@ -564,6 +566,7 @@ export class OrdersService {
       nameEn: it.nameEn ?? null,
       nameZh: it.nameZh ?? null,
       unitPriceCents: it.unitPriceCents ?? 0,
+      specialInstructions: it.externalSpecialInstructions?.trim() || null,
       optionsJson: it.optionsJson ?? undefined,
     }));
 
