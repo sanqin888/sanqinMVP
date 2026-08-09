@@ -141,7 +141,7 @@ describe('UberWebhookService', () => {
 
 describe('UberWebhookService 最小依赖装配', () => {
   it('构造函数只声明 Prisma、webhook 配置、订单与菜单服务', () => {
-    expect(UberWebhookService.length).toBe(4);
+    expect(UberWebhookService.length).toBe(5);
   });
   it('只要求 webhook 签名密钥，不要求 OAuth state 密钥', () => {
     const webhookOnly = new UberConfigService({

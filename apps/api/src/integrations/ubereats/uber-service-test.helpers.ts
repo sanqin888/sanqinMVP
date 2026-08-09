@@ -5,6 +5,7 @@ import { UberHttpClient } from './uber-http.client';
 import { UberMenuService } from './uber-menu.service';
 import { UberMerchantService } from './uber-merchant.service';
 import { UberOperationsService } from './uber-operations.service';
+import { UberPrismaAccessService } from './uber-prisma-access.service';
 import { UberOrderService } from './uber-order.service';
 import { UberWebhookService } from './uber-webhook.service';
 
@@ -34,6 +35,7 @@ export function createUberMenuService(
     auth,
     httpClient(http),
     settings ?? config(),
+    new UberPrismaAccessService(prisma),
   );
 }
 
@@ -49,6 +51,7 @@ export function createUberMerchantService(
     auth,
     httpClient(http),
     settings ?? config(),
+    new UberPrismaAccessService(prisma),
   );
 }
 
@@ -76,6 +79,7 @@ export function createUberOrderService(
     ingestionService,
     httpClient(http),
     settings ?? config(),
+    new UberPrismaAccessService(prisma),
   );
 }
 
@@ -91,6 +95,7 @@ export function createUberWebhookService(
     settings ?? config(),
     missing(orders),
     missing(menu),
+    new UberPrismaAccessService(prisma),
   );
 }
 

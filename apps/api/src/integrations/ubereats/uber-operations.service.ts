@@ -21,12 +21,6 @@ import type {
   StoreStatusSyncContext,
 } from './uber-operations.types';
 import { UberOrderService } from './uber-order.service';
-import type {
-  UberMerchantConnectionDelegate,
-  UberOAuthStateRequestDelegate,
-  UberOrderActionDelegate,
-  UberStoreMappingDelegate,
-} from './uber-prisma.types';
 
 @Injectable()
 export class UberOperationsService {
@@ -39,46 +33,6 @@ export class UberOperationsService {
     private readonly menu: UberMenuService,
     private readonly merchant: UberMerchantService,
   ) {}
-
-  private get uberMerchantConnectionDelegate(): UberMerchantConnectionDelegate | null {
-    const prismaWithUber = this.prisma as PrismaService & {
-      uberMerchantConnection?: UberMerchantConnectionDelegate;
-    };
-
-    return prismaWithUber.uberMerchantConnection ?? null;
-  }
-
-  private get uberOAuthStateRequestDelegate(): UberOAuthStateRequestDelegate {
-    const delegate = (
-      this.prisma as PrismaService & {
-        uberOAuthStateRequest?: UberOAuthStateRequestDelegate;
-      }
-    ).uberOAuthStateRequest;
-    if (!delegate) {
-      throw new Error('UberOAuthStateRequest 数据表不可用');
-    }
-    return delegate;
-  }
-
-  private get uberStoreMappingDelegate(): UberStoreMappingDelegate | null {
-    const prismaWithUber = this.prisma as PrismaService & {
-      uberStoreMapping?: UberStoreMappingDelegate;
-    };
-
-    return prismaWithUber.uberStoreMapping ?? null;
-  }
-
-  private get uberOrderActionDelegate(): UberOrderActionDelegate {
-    const delegate = (
-      this.prisma as PrismaService & {
-        uberOrderAction?: UberOrderActionDelegate;
-      }
-    ).uberOrderAction;
-    if (!delegate) {
-      throw new Error('UberOrderAction 数据表不可用');
-    }
-    return delegate;
-  }
 
   async generateReconciliationReport(input: GenerateReconciliationReportInput) {
     const normalizedStoreId = normalizeUberStoreId(input.storeId);
