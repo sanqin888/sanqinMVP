@@ -117,10 +117,10 @@ export function createUberOperationsService(
   events?: OperationsArgs[2],
   ingestion?: OperationsArgs[3],
   http?: OperationsArgs[4],
-  settings?: OperationsArgs[5],
-  orders?: OperationsArgs[6],
-  menu?: OperationsArgs[7],
-  merchant?: OperationsArgs[8],
+  _settings?: UberConfigService,
+  orders?: OperationsArgs[5],
+  menu?: OperationsArgs[6],
+  merchant?: OperationsArgs[7],
 ) {
   return new UberOperationsService(
     prisma,
@@ -128,7 +128,6 @@ export function createUberOperationsService(
     missing(events),
     missing(ingestion),
     httpClient(http),
-    settings ?? config(),
     missing(orders),
     missing(menu),
     missing(merchant),

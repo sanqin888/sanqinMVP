@@ -12,7 +12,6 @@ import { OrderEventsBus } from '../../messaging/order-events.bus';
 import { OrderIngestionService } from '../../orders/order-ingestion.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UberAuthService } from './uber-auth.service';
-import { UberConfigService } from './uber-config.service';
 import { UberHttpClient } from './uber-http.client';
 import { normalizeUberStoreId } from './uber-integration.utils';
 import { UberMenuService } from './uber-menu.service';
@@ -37,10 +36,6 @@ import type {
 export class UberOperationsService {
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
   private readonly logger = new AppLogger(UberOperationsService.name);
-  private readonly uberApiBaseUrl: string;
-  private readonly uberResourceHrefAllowedOrigins: string;
-  private readonly oauthStateSecret: string;
-  private readonly webhookSigningKey: string;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -48,27 +43,10 @@ export class UberOperationsService {
     private readonly orderEventsBus: OrderEventsBus,
     private readonly orderIngestionService: OrderIngestionService,
     private readonly httpClient: UberHttpClient,
-    private readonly config: UberConfigService,
     private readonly orders: UberOrderService,
     private readonly menu: UberMenuService,
     private readonly merchant: UberMerchantService,
-  ) {
-    this.uberApiBaseUrl = config.apiBaseUrl;
-    this.uberResourceHrefAllowedOrigins = config.resourceHrefAllowedOrigins;
-    const secret = config.oauthStateSecret;
-    if (secret.length < 32 || new Set(secret).size < 12) {
-      throw new Error(
-        'UBER_EATS_OAUTH_STATE_SECRET 必须配置为至少 32 个字符的高熵密钥',
-      );
-    }
-    this.oauthStateSecret = secret;
-
-    const webhookSigningKey = config.webhookSigningKey;
-    if (!webhookSigningKey) {
-      throw new Error('UBER_EATS_WEBHOOK_SIGNING_KEY 未配置');
-    }
-    this.webhookSigningKey = webhookSigningKey;
-  }
+  ) {}
 
   private get uberMerchantConnectionDelegate(): UberMerchantConnectionDelegate | null {
     const prismaWithUber = this.prisma as PrismaService & {

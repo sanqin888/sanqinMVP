@@ -37,6 +37,7 @@ import {
   toUberServiceAvailability,
 } from './uber-payload.utils';
 import { UberMenuService } from './uber-menu.service';
+import { UberConfigService } from './uber-config.service';
 import { createUberMenuService } from './uber-service-test.helpers';
 
 const openSchedulePrisma = {
@@ -1524,5 +1525,20 @@ describe('UberMenuService 已发布菜单商品映射', () => {
       },
     });
     expect(value).toBe('legacy');
+  });
+});
+
+describe('UberMenuService 配置能力隔离', () => {
+  it('缺少 OAuth 与 webhook 密钥不影响菜单能力初始化', () => {
+    expect(() =>
+      createUberMenuService(
+        {} as never,
+        {} as never,
+        undefined,
+        undefined,
+        undefined,
+        new UberConfigService(),
+      ),
+    ).not.toThrow();
   });
 });

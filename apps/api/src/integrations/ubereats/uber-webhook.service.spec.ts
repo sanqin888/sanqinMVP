@@ -155,3 +155,31 @@ describe('UberWebhookService', () => {
     }
   });
 });
+
+describe('UberWebhookService 配置能力隔离', () => {
+  it('只要求 webhook 签名密钥，不要求 OAuth state 密钥', () => {
+    const webhookOnly = new UberConfigService({
+      UBER_EATS_WEBHOOK_SIGNING_KEY: signingKey,
+    });
+    expect(() =>
+      createUberWebhookService(
+        {} as never,
+        auth,
+        undefined,
+        undefined,
+        undefined,
+        webhookOnly,
+      ),
+    ).not.toThrow();
+    expect(() =>
+      createUberWebhookService(
+        {} as never,
+        auth,
+        undefined,
+        undefined,
+        undefined,
+        new UberConfigService(),
+      ),
+    ).toThrow('UBER_EATS_WEBHOOK_SIGNING_KEY');
+  });
+});

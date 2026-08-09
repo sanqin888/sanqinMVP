@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import {
   UberMenuPublishStatus,
   UberOpsTicketPriority,
@@ -13,7 +13,7 @@ import { OrderIngestionService } from '../../orders/order-ingestion.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UberMenuNotificationDto } from './dto/uber-menu-notification.dto';
 import { UberAuthService } from './uber-auth.service';
-import { UberConfigService } from './uber-config.service';
+import { UberConfigService, type UberMenuConfig } from './uber-config.service';
 import { UberHttpClient } from './uber-http.client';
 import {
   normalizeUberStoreId,
@@ -64,9 +64,6 @@ export class UberMenuService {
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
   private readonly logger = new AppLogger(UberMenuService.name);
   private readonly uberApiBaseUrl: string;
-  private readonly uberResourceHrefAllowedOrigins: string;
-  private readonly oauthStateSecret: string;
-  private readonly webhookSigningKey: string;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -74,23 +71,9 @@ export class UberMenuService {
     private readonly orderEventsBus: OrderEventsBus,
     private readonly orderIngestionService: OrderIngestionService,
     private readonly httpClient: UberHttpClient,
-    private readonly config: UberConfigService,
+    @Inject(UberConfigService) private readonly config: UberMenuConfig,
   ) {
     this.uberApiBaseUrl = config.apiBaseUrl;
-    this.uberResourceHrefAllowedOrigins = config.resourceHrefAllowedOrigins;
-    const secret = config.oauthStateSecret;
-    if (secret.length < 32 || new Set(secret).size < 12) {
-      throw new Error(
-        'UBER_EATS_OAUTH_STATE_SECRET 必须配置为至少 32 个字符的高熵密钥',
-      );
-    }
-    this.oauthStateSecret = secret;
-
-    const webhookSigningKey = config.webhookSigningKey;
-    if (!webhookSigningKey) {
-      throw new Error('UBER_EATS_WEBHOOK_SIGNING_KEY 未配置');
-    }
-    this.webhookSigningKey = webhookSigningKey;
   }
 
   private get uberMerchantConnectionDelegate(): UberMerchantConnectionDelegate | null {

@@ -1,6 +1,7 @@
 import {
   BadGatewayException,
   BadRequestException,
+  Inject,
   Injectable,
 } from '@nestjs/common';
 import {
@@ -21,7 +22,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { UberWebhookEnvelopeDto } from './dto/uber-webhook-envelope.dto';
 import { UberAuthService } from './uber-auth.service';
-import { UberConfigService } from './uber-config.service';
+import { UberConfigService, type UberOrderConfig } from './uber-config.service';
 import { UberHttpClient, UberHttpResult } from './uber-http.client';
 import {
   normalizeUberEventType,
@@ -57,8 +58,6 @@ export class UberOrderService {
   private readonly logger = new AppLogger(UberOrderService.name);
   private readonly uberApiBaseUrl: string;
   private readonly uberResourceHrefAllowedOrigins: string;
-  private readonly oauthStateSecret: string;
-  private readonly webhookSigningKey: string;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -66,23 +65,10 @@ export class UberOrderService {
     private readonly orderEventsBus: OrderEventsBus,
     private readonly orderIngestionService: OrderIngestionService,
     private readonly httpClient: UberHttpClient,
-    private readonly config: UberConfigService,
+    @Inject(UberConfigService) private readonly config: UberOrderConfig,
   ) {
     this.uberApiBaseUrl = config.apiBaseUrl;
     this.uberResourceHrefAllowedOrigins = config.resourceHrefAllowedOrigins;
-    const secret = config.oauthStateSecret;
-    if (secret.length < 32 || new Set(secret).size < 12) {
-      throw new Error(
-        'UBER_EATS_OAUTH_STATE_SECRET 必须配置为至少 32 个字符的高熵密钥',
-      );
-    }
-    this.oauthStateSecret = secret;
-
-    const webhookSigningKey = config.webhookSigningKey;
-    if (!webhookSigningKey) {
-      throw new Error('UBER_EATS_WEBHOOK_SIGNING_KEY 未配置');
-    }
-    this.webhookSigningKey = webhookSigningKey;
   }
 
   private get uberMerchantConnectionDelegate(): UberMerchantConnectionDelegate | null {

@@ -33,6 +33,7 @@ jest.mock('@prisma/client', () => ({
 
 import { createHmac } from 'crypto';
 import { AppLogger } from '../../common/app-logger';
+import { UberConfigService } from './uber-config.service';
 import { UberOrderService } from './uber-order.service';
 import { createUberOrderService } from './uber-service-test.helpers';
 import { UberWebhookEnvelopeDto } from './dto/uber-webhook-envelope.dto';
@@ -2344,5 +2345,20 @@ describe('UberOrderService', () => {
 
     expect(result.ok).toBe(false);
     expect(result.reason).toBe('ORDER_NOT_FOUND');
+  });
+});
+
+describe('UberOrderService 配置能力隔离', () => {
+  it('缺少 OAuth 与 webhook 密钥不影响订单能力初始化', () => {
+    expect(() =>
+      createUberOrderService(
+        {} as never,
+        {} as never,
+        undefined,
+        undefined,
+        undefined,
+        new UberConfigService(),
+      ),
+    ).not.toThrow();
   });
 });
