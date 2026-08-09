@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars -- Domain services retain shared runtime types while the integration is split. */
 import {
   BadRequestException,
   BadGatewayException,
@@ -691,6 +692,8 @@ type UberOAuthStateRequestDelegate = {
   }): Promise<{ count: number }>;
 };
 
+/* eslint-enable @typescript-eslint/no-unused-vars */
+
 @Injectable()
 export class UberOperationsService {
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
@@ -1108,35 +1111,5 @@ export class UberOperationsService {
         payload,
       },
     });
-  }
-
-  generateReconciliationReport(
-    ...args: Parameters<UberIntegrationRuntime['generateReconciliationReport']>
-  ): ReturnType<UberIntegrationRuntime['generateReconciliationReport']> {
-    return this.runtime.generateReconciliationReport(...args);
-  }
-
-  listReconciliationReports(
-    ...args: Parameters<UberIntegrationRuntime['listReconciliationReports']>
-  ): ReturnType<UberIntegrationRuntime['listReconciliationReports']> {
-    return this.runtime.listReconciliationReports(...args);
-  }
-
-  createOpsTicket(
-    ...args: Parameters<UberIntegrationRuntime['createOpsTicket']>
-  ): ReturnType<UberIntegrationRuntime['createOpsTicket']> {
-    return this.runtime.createOpsTicket(...args);
-  }
-
-  listOpsTickets(
-    ...args: Parameters<UberIntegrationRuntime['listOpsTickets']>
-  ): ReturnType<UberIntegrationRuntime['listOpsTickets']> {
-    return this.runtime.listOpsTickets(...args);
-  }
-
-  retryOpsTicket(
-    ...args: Parameters<UberIntegrationRuntime['retryOpsTicket']>
-  ): ReturnType<UberIntegrationRuntime['retryOpsTicket']> {
-    return this.runtime.retryOpsTicket(...args);
   }
 }

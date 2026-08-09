@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars -- Domain services retain shared runtime types while the integration is split. */
 import {
   BadRequestException,
   BadGatewayException,
@@ -687,6 +688,8 @@ type UberOAuthStateRequestDelegate = {
     where: { expiresAt: { lte: Date } };
   }): Promise<{ count: number }>;
 };
+
+/* eslint-enable @typescript-eslint/no-unused-vars */
 
 @Injectable()
 export class UberMerchantService {

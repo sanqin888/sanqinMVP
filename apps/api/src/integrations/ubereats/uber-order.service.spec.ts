@@ -40,7 +40,7 @@ async function dispatchOrderWebhook(
   service: UberOrderService,
   input: { rawBody: string | Buffer; body?: unknown },
 ) {
-  const body =
+  const body: unknown =
     input.body ??
     JSON.parse(
       Buffer.isBuffer(input.rawBody)
