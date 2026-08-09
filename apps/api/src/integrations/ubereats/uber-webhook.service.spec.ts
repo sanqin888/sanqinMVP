@@ -76,7 +76,7 @@ describe('UberWebhookService', () => {
     expect(uberWebhookInbox.create).toHaveBeenCalledTimes(1);
     expect(uberWebhookInbox.updateMany).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ status: 'PROCESSED' }),
+        data: expect.objectContaining({ status: 'PROCESSED' }) as unknown,
       }),
     );
   });
