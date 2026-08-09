@@ -26,16 +26,12 @@ type MenuArgs = ConstructorParameters<typeof UberMenuService>;
 export function createUberMenuService(
   prisma: MenuArgs[0],
   auth: MenuArgs[1],
-  events?: MenuArgs[2],
-  ingestion?: MenuArgs[3],
-  http?: MenuArgs[4],
-  settings?: MenuArgs[5],
+  http?: MenuArgs[2],
+  settings?: MenuArgs[3],
 ) {
   return new UberMenuService(
     prisma,
     auth,
-    missing(events),
-    missing(ingestion),
     httpClient(http),
     settings ?? config(),
   );
@@ -45,16 +41,12 @@ type MerchantArgs = ConstructorParameters<typeof UberMerchantService>;
 export function createUberMerchantService(
   prisma: MerchantArgs[0],
   auth: MerchantArgs[1],
-  events?: MerchantArgs[2],
-  ingestion?: MerchantArgs[3],
-  http?: MerchantArgs[4],
-  settings?: MerchantArgs[5],
+  http?: MerchantArgs[2],
+  settings?: MerchantArgs[3],
 ) {
   return new UberMerchantService(
     prisma,
     auth,
-    missing(events),
-    missing(ingestion),
     httpClient(http),
     settings ?? config(),
   );
@@ -90,20 +82,12 @@ export function createUberOrderService(
 type WebhookArgs = ConstructorParameters<typeof UberWebhookService>;
 export function createUberWebhookService(
   prisma: WebhookArgs[0],
-  auth: WebhookArgs[1],
-  events?: WebhookArgs[2],
-  ingestion?: WebhookArgs[3],
-  http?: WebhookArgs[4],
-  settings?: WebhookArgs[5],
-  orders?: WebhookArgs[6],
-  menu?: WebhookArgs[7],
+  settings?: WebhookArgs[1],
+  orders?: WebhookArgs[2],
+  menu?: WebhookArgs[3],
 ) {
   return new UberWebhookService(
     prisma,
-    auth,
-    missing(events),
-    missing(ingestion),
-    httpClient(http),
     settings ?? config(),
     missing(orders),
     missing(menu),
@@ -113,21 +97,12 @@ export function createUberWebhookService(
 type OperationsArgs = ConstructorParameters<typeof UberOperationsService>;
 export function createUberOperationsService(
   prisma: OperationsArgs[0],
-  auth: OperationsArgs[1],
-  events?: OperationsArgs[2],
-  ingestion?: OperationsArgs[3],
-  http?: OperationsArgs[4],
-  _settings?: UberConfigService,
-  orders?: OperationsArgs[5],
-  menu?: OperationsArgs[6],
-  merchant?: OperationsArgs[7],
+  orders?: OperationsArgs[1],
+  menu?: OperationsArgs[2],
+  merchant?: OperationsArgs[3],
 ) {
   return new UberOperationsService(
     prisma,
-    auth,
-    missing(events),
-    missing(ingestion),
-    httpClient(http),
     missing(orders),
     missing(menu),
     missing(merchant),

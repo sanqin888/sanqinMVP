@@ -13,8 +13,6 @@ import {
 } from '@prisma/client';
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'crypto';
 import { AppLogger } from '../../common/app-logger';
-import { OrderEventsBus } from '../../messaging/order-events.bus';
-import { OrderIngestionService } from '../../orders/order-ingestion.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UberAuthService } from './uber-auth.service';
 import {
@@ -50,8 +48,6 @@ export class UberMerchantService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly uberAuthService: UberAuthService,
-    private readonly orderEventsBus: OrderEventsBus,
-    private readonly orderIngestionService: OrderIngestionService,
     private readonly httpClient: UberHttpClient,
     @Inject(UberConfigService) private readonly config: UberOAuthStateConfig,
   ) {

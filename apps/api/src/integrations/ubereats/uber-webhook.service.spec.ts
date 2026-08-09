@@ -25,7 +25,6 @@ const config = () =>
     UBER_EATS_OAUTH_STATE_SECRET: '0123456789abcdef0123456789ABCDEF',
     UBER_EATS_WEBHOOK_SIGNING_KEY: signingKey,
   });
-const auth = {} as ConstructorParameters<typeof UberWebhookService>[1];
 const inbox = () => ({
   create: jest.fn().mockResolvedValue({ id: 'inbox-1' }),
   updateMany: jest.fn().mockResolvedValue({ count: 1 }),
@@ -53,12 +52,8 @@ describe('UberWebhookService', () => {
         uberWebhookInbox,
         opsEvent: { create: jest.fn() },
       } as unknown as ConstructorParameters<typeof UberWebhookService>[0],
-      auth,
-      undefined,
-      undefined,
-      undefined,
       config(),
-      orders as unknown as ConstructorParameters<typeof UberWebhookService>[6],
+      orders as unknown as ConstructorParameters<typeof UberWebhookService>[2],
     );
     const body = {
       event_type: 'orders.notification',
@@ -91,13 +86,9 @@ describe('UberWebhookService', () => {
       { uberWebhookInbox } as unknown as ConstructorParameters<
         typeof UberWebhookService
       >[0],
-      auth,
-      undefined,
-      undefined,
-      undefined,
       config(),
       undefined,
-      menu as unknown as ConstructorParameters<typeof UberWebhookService>[7],
+      menu as unknown as ConstructorParameters<typeof UberWebhookService>[3],
     );
     const body = { event_type: 'menus.notification', event_id: 'evt-menu-1' };
 
@@ -116,10 +107,6 @@ describe('UberWebhookService', () => {
       { uberWebhookInbox } as unknown as ConstructorParameters<
         typeof UberWebhookService
       >[0],
-      auth,
-      undefined,
-      undefined,
-      undefined,
       config(),
     );
 
@@ -137,10 +124,6 @@ describe('UberWebhookService', () => {
       { uberWebhookInbox: inbox() } as unknown as ConstructorParameters<
         typeof UberWebhookService
       >[0],
-      auth,
-      undefined,
-      undefined,
-      undefined,
       config(),
     ) as unknown as Record<string, unknown>;
 
@@ -156,30 +139,19 @@ describe('UberWebhookService', () => {
   });
 });
 
-describe('UberWebhookService 配置能力隔离', () => {
+describe('UberWebhookService 最小依赖装配', () => {
+  it('构造函数只声明 Prisma、webhook 配置、订单与菜单服务', () => {
+    expect(UberWebhookService.length).toBe(4);
+  });
   it('只要求 webhook 签名密钥，不要求 OAuth state 密钥', () => {
     const webhookOnly = new UberConfigService({
       UBER_EATS_WEBHOOK_SIGNING_KEY: signingKey,
     });
     expect(() =>
-      createUberWebhookService(
-        {} as never,
-        auth,
-        undefined,
-        undefined,
-        undefined,
-        webhookOnly,
-      ),
+      createUberWebhookService({} as never, webhookOnly),
     ).not.toThrow();
     expect(() =>
-      createUberWebhookService(
-        {} as never,
-        auth,
-        undefined,
-        undefined,
-        undefined,
-        new UberConfigService(),
-      ),
+      createUberWebhookService({} as never, new UberConfigService()),
     ).toThrow('UBER_EATS_WEBHOOK_SIGNING_KEY');
   });
 });

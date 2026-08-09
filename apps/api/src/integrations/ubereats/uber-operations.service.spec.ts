@@ -36,43 +36,11 @@ jest.mock('@prisma/client', () => ({
   PaymentMethod: { UBEREATS: 'UBEREATS' },
 }));
 
-import { UberConfigService } from './uber-config.service';
 import { UberOperationsService } from './uber-operations.service';
 import { createUberOperationsService } from './uber-service-test.helpers';
 
 describe('UberOperationsService', () => {
   const clientSecret = 'test-ubereats-secret';
-  const createAuthService = () =>
-    ({
-      getAccessToken: jest.fn().mockResolvedValue('token_debug_1234567890'),
-      forceRefreshAccessToken: jest
-        .fn()
-        .mockResolvedValue('token_debug_1234567890'),
-      normalizeScopesToArray: jest.fn().mockImplementation((scope?: string) => {
-        if (!scope?.trim()) {
-          return ['eats.store.orders.read'];
-        }
-
-        return scope.trim().split(/\s+/).filter(Boolean);
-      }),
-      buildMerchantAuthorizeUrl: jest
-        .fn()
-        .mockResolvedValue(
-          'https://auth.uber.com/oauth/v2/authorize?state=test',
-        ),
-      getMerchantRedirectUri: jest
-        .fn()
-        .mockReturnValue('https://example.com/oauth/callback'),
-      exchangeAuthorizationCode: jest.fn().mockResolvedValue({
-        accessToken: 'merchant_token_123',
-        refreshToken: 'refresh_token_123',
-        expiresAt: new Date('2026-03-19T01:00:00Z'),
-        scope: 'eats.pos_provisioning',
-        tokenType: 'Bearer',
-      }),
-      getMerchantIdentity: jest.fn().mockResolvedValue({ id: 'merchant_1' }),
-    }) as unknown as ConstructorParameters<typeof UberOperationsService>[1];
-
   beforeEach(() => {
     process.env.UBER_EATS_CLIENT_SECRET = clientSecret;
     process.env.UBER_EATS_API_BASE_URL = 'https://api.uber.com';
@@ -122,7 +90,6 @@ describe('UberOperationsService', () => {
       prisma as unknown as ConstructorParameters<
         typeof UberOperationsService
       >[0],
-      createAuthService(),
     );
     const result = await service.generateReconciliationReport({
       storeId: 'default',
@@ -172,16 +139,11 @@ describe('UberOperationsService', () => {
       prisma as unknown as ConstructorParameters<
         typeof UberOperationsService
       >[0],
-      createAuthService(),
-      undefined,
-      undefined,
-      undefined,
-      undefined,
       undefined,
       undefined,
       {
         syncStoreStatusToUber: jest.fn().mockResolvedValue({ ok: true }),
-      } as unknown as ConstructorParameters<typeof UberOperationsService>[8],
+      } as unknown as ConstructorParameters<typeof UberOperationsService>[3],
     );
     await expect(service.retryOpsTicket('tic_1')).resolves.toMatchObject({
       ok: true,
@@ -208,7 +170,6 @@ describe('UberOperationsService', () => {
       prisma as unknown as ConstructorParameters<
         typeof UberOperationsService
       >[0],
-      createAuthService(),
     );
     await expect(
       service.createOpsTicket({
@@ -342,32 +303,21 @@ describe('UberOperationsService', () => {
       prisma as unknown as ConstructorParameters<
         typeof UberOperationsService
       >[0],
-      createAuthService(),
-      undefined,
-      undefined,
-      undefined,
-      undefined,
       dependencies.orders as ConstructorParameters<
         typeof UberOperationsService
-      >[6],
+      >[1],
       dependencies.menu as ConstructorParameters<
         typeof UberOperationsService
-      >[7],
+      >[2],
     );
   }
 });
 
-describe('UberOperationsService 配置能力隔离', () => {
+describe('UberOperationsService 最小依赖装配', () => {
+  it('构造函数只声明 Prisma、订单、菜单与商户服务', () => {
+    expect(UberOperationsService.length).toBe(4);
+  });
   it('运营编排不读取任何 Uber 敏感配置', () => {
-    expect(() =>
-      createUberOperationsService(
-        {} as never,
-        {} as never,
-        undefined,
-        undefined,
-        undefined,
-        new UberConfigService(),
-      ),
-    ).not.toThrow();
+    expect(() => createUberOperationsService({} as never)).not.toThrow();
   });
 });
