@@ -1,4 +1,5 @@
 import type { User } from '@prisma/client';
+import { Logger } from '@nestjs/common';
 import { NotificationService } from './notification.service';
 
 jest.mock('@prisma/client', () => ({
@@ -45,6 +46,10 @@ describe('NotificationService.notifyCouponIssued', () => {
     jest.clearAllMocks();
     templateRenderer.renderSms.mockResolvedValue('rendered sms');
     smsService.sendSms.mockResolvedValue({ ok: true, sendId: 'sid' });
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   it('uses english gift title for english users when both localized titles are available', async () => {
@@ -109,6 +114,9 @@ describe('NotificationService.notifyCouponIssued', () => {
   });
 
   it('order ready 邮件返回失败时改发短信并记录兜底原因', async () => {
+    const warnSpy = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
     templateRenderer.renderEmail.mockResolvedValue({
       subject: 'Ready',
       html: '<p>Ready</p>',
@@ -138,9 +146,17 @@ describe('NotificationService.notifyCouponIssued', () => {
       finalChannel: 'sms',
       attemptedChannels: ['email', 'sms'],
     });
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'email failed; attempting SMS fallback reason=suppressed:bounce',
+      ),
+    );
   });
 
   it('order ready 邮件抛出异常时仍改发短信', async () => {
+    const warnSpy = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
     templateRenderer.renderEmail.mockResolvedValue({
       subject: 'Ready',
       html: '<p>Ready</p>',
@@ -155,6 +171,11 @@ describe('NotificationService.notifyCouponIssued', () => {
     });
 
     expect(smsService.sendSms).toHaveBeenCalledTimes(1);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'email threw; attempting SMS fallback reason=provider unavailable',
+      ),
+    );
   });
 
   it('order ready 没有可信联系方式时返回结构化跳过结果', async () => {
@@ -175,6 +196,9 @@ describe('NotificationService.notifyCouponIssued', () => {
   });
 
   it('邮件失败且短信也失败时返回两个渠道均已尝试', async () => {
+    const warnSpy = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
     templateRenderer.renderEmail.mockResolvedValue({
       subject: 'Ready',
       html: '<p>Ready</p>',
@@ -202,5 +226,10 @@ describe('NotificationService.notifyCouponIssued', () => {
       attemptedChannels: ['email', 'sms'],
       fallbackReason: 'email unavailable',
     });
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'email failed; attempting SMS fallback reason=email unavailable',
+      ),
+    );
   });
 });
