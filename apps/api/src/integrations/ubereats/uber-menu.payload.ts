@@ -134,12 +134,17 @@ export function validateUberMenuPayload(
     message: string,
   ) => issues.push({ code, severity, path, sourceStableId, message });
   const ids = new Map<string, string>();
-  const collections = [
-    ['menus', payload.menus],
-    ['categories', payload.categories],
-    ['items', payload.items],
-    ['modifier_groups', payload.modifier_groups],
-  ] as const;
+  type TitledUberNode = {
+    id: string;
+    title: { translations: { en_us: string } };
+  };
+  const collections: readonly (readonly [string, readonly TitledUberNode[]])[] =
+    [
+      ['menus', payload.menus],
+      ['categories', payload.categories],
+      ['items', payload.items],
+      ['modifier_groups', payload.modifier_groups],
+    ];
   for (const [name, nodes] of collections)
     nodes.forEach((node, index) => {
       const path = `$.${name}[${index}]`;

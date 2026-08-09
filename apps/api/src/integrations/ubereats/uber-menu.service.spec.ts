@@ -36,6 +36,7 @@ import {
   resolveUberImageUrl,
   toUberServiceAvailability,
 } from './uber-payload.utils';
+import { validateUberMenuPayload } from './uber-menu.payload';
 import { UberMenuService } from './uber-menu.service';
 import { UberConfigService } from './uber-config.service';
 import { createUberMenuService } from './uber-service-test.helpers';
@@ -669,7 +670,7 @@ describe('UberMenuService', () => {
         prisma as unknown as ConstructorParameters<typeof UberMenuService>[0],
         authService as unknown as ConstructorParameters<
           typeof UberMenuService
-        >[0],
+        >[1],
       );
       const pollUploadedMenuSpy = jest
         .spyOn(
@@ -681,24 +682,17 @@ describe('UberMenuService', () => {
           'pollUploadedMenuUntilTerminal',
         )
         .mockResolvedValue();
+      const privateService = service as unknown as {
+        resolveMerchantConnection: (...args: unknown[]) => Promise<unknown>;
+        callUberApi: (...args: unknown[]) => Promise<unknown>;
+      };
       const merchantConnectionSpy = jest.spyOn(
-        service as unknown as ConstructorParameters<typeof UberMenuService>[0],
-        'resolveMerchantConnection' as unknown as ConstructorParameters<
-          typeof UberMenuService
-        >[0],
+        privateService,
+        'resolveMerchantConnection',
       );
       const uberApiSpy = jest
-        .spyOn(
-          service as unknown as ConstructorParameters<
-            typeof UberMenuService
-          >[0],
-          'callUberApi' as unknown as ConstructorParameters<
-            typeof UberMenuService
-          >[0],
-        )
-        .mockResolvedValue({
-          resource_id: 'uploaded_menu',
-        } as unknown as ConstructorParameters<typeof UberMenuService>[0]);
+        .spyOn(privateService, 'callUberApi')
+        .mockResolvedValue({ resource_id: 'uploaded_menu' });
       await expect(
         service.publishUberMenu({
           storeId: 's1',
@@ -1174,17 +1168,7 @@ describe('UberMenuService', () => {
     });
 
     it('完整合法 payload 通过校验', () => {
-      const service = createUberMenuService(
-        {} as unknown as ConstructorParameters<typeof UberMenuService>[0],
-        createAuthService(),
-      );
-      expect(
-        service.validateUberMenuPayload(
-          validPayload() as unknown as ConstructorParameters<
-            typeof UberMenuService
-          >[0],
-        ),
-      ).toEqual([]);
+      expect(validateUberMenuPayload(validPayload())).toEqual([]);
     });
 
     it('合法公网 HTTPS 图片由异步发布前检查负责，静态结构校验通过', () => {
@@ -1194,17 +1178,7 @@ describe('UberMenuService', () => {
           image_url?: string;
         }
       ).image_url = 'https://cdn.example.com/menu/dish.jpg';
-      const service = createUberMenuService(
-        {} as unknown as ConstructorParameters<typeof UberMenuService>[0],
-        createAuthService(),
-      );
-      expect(
-        service.validateUberMenuPayload(
-          payload as unknown as ConstructorParameters<
-            typeof UberMenuService
-          >[0],
-        ),
-      ).toEqual([]);
+      expect(validateUberMenuPayload(payload)).toEqual([]);
     });
 
     it('图片预检记录重定向后的 origin、类型和大小', async () => {
@@ -1223,10 +1197,7 @@ describe('UberMenuService', () => {
           'content-length': '2048',
         }),
       });
-      const service = createUberMenuService(
-        {} as unknown as ConstructorParameters<typeof UberMenuService>[0],
-        createAuthService(),
-      );
+      const service = createUberMenuService({}, createAuthService());
       const preflight = await (
         service as unknown as {
           validateUberMenuImages(input: unknown): Promise<{
@@ -1257,18 +1228,7 @@ describe('UberMenuService', () => {
       ).description = {
         translations: { en_us: `  ${'a'.repeat(299)}  b  ` },
       };
-      const service = createUberMenuService(
-        {} as unknown as ConstructorParameters<typeof UberMenuService>[0],
-        createAuthService(),
-      );
-
-      expect(
-        service.validateUberMenuPayload(
-          payload as unknown as ConstructorParameters<
-            typeof UberMenuService
-          >[0],
-        ),
-      ).toContainEqual(
+      expect(validateUberMenuPayload(payload)).toContainEqual(
         expect.objectContaining({
           code: 'UBER_DESCRIPTION_TRUNCATED',
           severity: 'WARNING',
@@ -1290,18 +1250,7 @@ describe('UberMenuService', () => {
         description?: { translations: { en_us: string } };
       };
       item.description = { translations: { en_us: ' \n\t ' } };
-      const service = createUberMenuService(
-        {} as unknown as ConstructorParameters<typeof UberMenuService>[0],
-        createAuthService(),
-      );
-
-      expect(
-        service.validateUberMenuPayload(
-          payload as unknown as ConstructorParameters<
-            typeof UberMenuService
-          >[0],
-        ),
-      ).toContainEqual(
+      expect(validateUberMenuPayload(payload)).toContainEqual(
         expect.objectContaining({
           code: 'UBER_DESCRIPTION_EMPTY_REMOVED',
           severity: 'WARNING',
@@ -1322,17 +1271,7 @@ describe('UberMenuService', () => {
           image_url?: string;
         }
       ).image_url = imageUrl;
-      const service = createUberMenuService(
-        {} as unknown as ConstructorParameters<typeof UberMenuService>[0],
-        createAuthService(),
-      );
-      expect(
-        service.validateUberMenuPayload(
-          payload as unknown as ConstructorParameters<
-            typeof UberMenuService
-          >[0],
-        ),
-      ).toContainEqual(
+      expect(validateUberMenuPayload(payload)).toContainEqual(
         expect.objectContaining({
           code: 'UBER_IMAGE_URL_INVALID',
           severity: 'ERROR',
@@ -1416,17 +1355,9 @@ describe('UberMenuService', () => {
     ])('%s 约束失败时返回可定位的结构化错误', (code, mutate) => {
       const payload = validPayload();
       mutate(payload);
-      const service = createUberMenuService(
-        {} as unknown as ConstructorParameters<typeof UberMenuService>[0],
-        createAuthService(),
+      const issue = validateUberMenuPayload(payload).find(
+        (entry) => entry.code === code,
       );
-      const issue = service
-        .validateUberMenuPayload(
-          payload as unknown as ConstructorParameters<
-            typeof UberMenuService
-          >[0],
-        )
-        .find((entry) => entry.code === code);
       expect(issue).toEqual(
         expect.objectContaining({
           code,
