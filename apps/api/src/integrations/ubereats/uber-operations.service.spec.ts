@@ -165,6 +165,15 @@ describe('UberOperationsService', () => {
         typeof UberOperationsService
       >[0],
       createAuthService(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        syncStoreStatusToUber: jest.fn().mockResolvedValue({ ok: true }),
+      } as unknown as ConstructorParameters<typeof UberOperationsService>[8],
     );
     await expect(service.retryOpsTicket('tic_1')).resolves.toMatchObject({
       ok: true,

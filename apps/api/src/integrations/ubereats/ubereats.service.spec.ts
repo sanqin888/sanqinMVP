@@ -133,3 +133,42 @@ describe('UberEatsService facade', () => {
     }
   });
 });
+
+describe('Uber 分域服务公共 API 边界', () => {
+  const absent = (service: Record<string, unknown>, names: string[]) => {
+    for (const name of names) expect(service[name]).toBeUndefined();
+  };
+
+  it('facade 保持纯委托，分域 provider 不暴露其他领域入口', () => {
+    // 公共方法边界由各 provider 的实例形状保证；私有实现不参与此断言。
+    const merchant = Object.create(UberMerchantService.prototype) as Record<
+      string,
+      unknown
+    >;
+    const orders = Object.create(UberOrderService.prototype) as Record<
+      string,
+      unknown
+    >;
+    const menu = Object.create(UberMenuService.prototype) as Record<
+      string,
+      unknown
+    >;
+    const operations = Object.create(UberOperationsService.prototype) as Record<
+      string,
+      unknown
+    >;
+
+    absent(merchant, ['acceptUberOrder', 'publishUberMenu', 'handleWebhook']);
+    absent(orders, [
+      'buildMerchantAuthorizeUrl',
+      'publishUberMenu',
+      'handleWebhook',
+    ]);
+    absent(menu, [
+      'acceptUberOrder',
+      'buildMerchantAuthorizeUrl',
+      'handleWebhook',
+    ]);
+    absent(operations, ['acceptUberOrder', 'publishUberMenu', 'handleWebhook']);
+  });
+});

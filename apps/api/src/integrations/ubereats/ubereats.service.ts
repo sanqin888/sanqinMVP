@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-export * from './uber-integration.runtime';
+export * from './uber-payload.utils';
 
 import { UberWebhookService } from './uber-webhook.service';
 import { UberOrderService } from './uber-order.service';
