@@ -57,7 +57,7 @@ describe('UberEatsModule 装配', () => {
       );
       await expect(
         Test.createTestingModule({
-          providers: [UberMenuService, ...mockProviders(available)],
+          providers: [UberOrderService, ...mockProviders(available)],
         }).compile(),
       ).rejects.toThrow();
     },
