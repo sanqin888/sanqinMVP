@@ -2,7 +2,7 @@ import { OrderEventsBus } from '../../messaging/order-events.bus';
 import { OrderIngestionService } from '../../orders/order-ingestion.service';
 import { UberConfigService } from './uber-config.service';
 import { UberHttpClient } from './uber-http.client';
-import { UberMenuService } from './uber-menu.service';
+import { UberMenuWorkflowCore } from './uber-menu.workflow';
 import { UberMerchantService } from './uber-merchant.service';
 import { UberOperationsService } from './uber-operations.service';
 import { UberPrismaAccessService } from './uber-prisma-access.service';
@@ -23,14 +23,14 @@ const missing = <T>(value: T | undefined) => value as T;
 const httpClient = <T>(value: T | undefined) =>
   value ?? (new UberHttpClient() as T);
 
-type MenuArgs = ConstructorParameters<typeof UberMenuService>;
+type MenuArgs = ConstructorParameters<typeof UberMenuWorkflowCore>;
 export function createUberMenuService(
   prisma: MenuArgs[0],
   auth: MenuArgs[1],
   http?: MenuArgs[2],
   settings?: MenuArgs[3],
 ) {
-  return new UberMenuService(
+  return new UberMenuWorkflowCore(
     prisma,
     auth,
     httpClient(http),
