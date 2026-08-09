@@ -633,73 +633,96 @@ describe('UberMenuService', () => {
   });
 
   it('正式发布使用 eats.store 应用 token 上传菜单，不读取商户连接 token', async () => {
-    const prisma = createNestedMenuPrisma([]);
-    prisma.uberStoreMapping.findFirst.mockResolvedValue({
-      uberStoreId: 'uber_store_1',
-      rawPayload: { timezone: 'America/Toronto' },
-    });
-    prisma.uberMenuPublishVersion.create.mockResolvedValue({
-      id: 'version_1',
-      versionStableId: 'menu_version_1',
-      createdAt: new Date('2026-08-03T00:00:00.000Z'),
-    });
-    Object.assign(prisma.uberMenuPublishVersion, {
-      update: jest.fn().mockResolvedValue(null),
-    });
-    Object.assign(prisma, {
-      uberPublishedMenuItem: {
-        createMany: jest.fn().mockResolvedValue({ count: 0 }),
-      },
-      $transaction: jest.fn((callback: (tx: unknown) => unknown) =>
-        callback(prisma),
-      ),
-    });
-    const authService = createAuthService() as unknown as {
-      getAccessToken: jest.Mock<Promise<string>, [string?]>;
-    };
-    authService.getAccessToken.mockResolvedValue('eats-store-app-token');
-    const service = new UberMenuService(
-      prisma as unknown as ConstructorParameters<typeof UberMenuService>[0],
-      authService as unknown as ConstructorParameters<
-        typeof UberMenuService
-      >[0],
-    );
-    const merchantConnectionSpy = jest.spyOn(
-      service as unknown as ConstructorParameters<typeof UberMenuService>[0],
-      'resolveMerchantConnection' as unknown as ConstructorParameters<
-        typeof UberMenuService
-      >[0],
-    );
-    const uberApiSpy = jest
-      .spyOn(
-        service as unknown as ConstructorParameters<typeof UberMenuService>[0],
-        'callUberApi' as unknown as ConstructorParameters<
-          typeof UberMenuService
-        >[0],
-      )
-      .mockResolvedValue({
-        resource_id: 'uploaded_menu',
-      } as unknown as ConstructorParameters<typeof UberMenuService>[0]);
+    const previousMenuNotificationsEnabled =
+      process.env.UBER_EATS_MENU_NOTIFICATIONS_ENABLED;
     process.env.UBER_EATS_MENU_NOTIFICATIONS_ENABLED = 'true';
 
-    await expect(
-      service.publishUberMenu({
-        storeId: 's1',
-        dryRun: false,
-        taxRateConfirmed: true,
-      }),
-    ).resolves.toMatchObject({ ok: true, dryRun: false });
+    try {
+      const prisma = createNestedMenuPrisma([]);
+      prisma.uberStoreMapping.findFirst.mockResolvedValue({
+        uberStoreId: 'uber_store_1',
+        rawPayload: { timezone: 'America/Toronto' },
+      });
+      prisma.uberMenuPublishVersion.create.mockResolvedValue({
+        id: 'version_1',
+        versionStableId: 'menu_version_1',
+        createdAt: new Date('2026-08-03T00:00:00.000Z'),
+      });
+      Object.assign(prisma.uberMenuPublishVersion, {
+        update: jest.fn().mockResolvedValue(null),
+      });
+      Object.assign(prisma, {
+        uberPublishedMenuItem: {
+          createMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
+        $transaction: jest.fn((callback: (tx: unknown) => unknown) =>
+          callback(prisma),
+        ),
+      });
+      const authService = createAuthService() as unknown as {
+        getAccessToken: jest.Mock<Promise<string>, [string?]>;
+      };
+      authService.getAccessToken.mockResolvedValue('eats-store-app-token');
+      const service = new UberMenuService(
+        prisma as unknown as ConstructorParameters<typeof UberMenuService>[0],
+        authService as unknown as ConstructorParameters<
+          typeof UberMenuService
+        >[0],
+      );
+      const pollUploadedMenuSpy = jest
+        .spyOn(
+          service as unknown as {
+            pollUploadedMenuUntilTerminal: (
+              ...args: unknown[]
+            ) => Promise<void>;
+          },
+          'pollUploadedMenuUntilTerminal',
+        )
+        .mockResolvedValue();
+      const merchantConnectionSpy = jest.spyOn(
+        service as unknown as ConstructorParameters<typeof UberMenuService>[0],
+        'resolveMerchantConnection' as unknown as ConstructorParameters<
+          typeof UberMenuService
+        >[0],
+      );
+      const uberApiSpy = jest
+        .spyOn(
+          service as unknown as ConstructorParameters<
+            typeof UberMenuService
+          >[0],
+          'callUberApi' as unknown as ConstructorParameters<
+            typeof UberMenuService
+          >[0],
+        )
+        .mockResolvedValue({
+          resource_id: 'uploaded_menu',
+        } as unknown as ConstructorParameters<typeof UberMenuService>[0]);
+      await expect(
+        service.publishUberMenu({
+          storeId: 's1',
+          dryRun: false,
+          taxRateConfirmed: true,
+        }),
+      ).resolves.toMatchObject({ ok: true, dryRun: false });
 
-    expect(authService.getAccessToken).toHaveBeenCalledWith('eats.store');
-    expect(uberApiSpy).toHaveBeenCalledWith(
-      '/v2/eats/stores/uber_store_1/menus',
-      expect.objectContaining({
-        accessToken: 'eats-store-app-token',
-        method: 'PUT',
-      }),
-    );
-    expect(merchantConnectionSpy).not.toHaveBeenCalled();
-    delete process.env.UBER_EATS_MENU_NOTIFICATIONS_ENABLED;
+      expect(authService.getAccessToken).toHaveBeenCalledWith('eats.store');
+      expect(uberApiSpy).toHaveBeenCalledWith(
+        '/v2/eats/stores/uber_store_1/menus',
+        expect.objectContaining({
+          accessToken: 'eats-store-app-token',
+          method: 'PUT',
+        }),
+      );
+      expect(merchantConnectionSpy).not.toHaveBeenCalled();
+      expect(pollUploadedMenuSpy).not.toHaveBeenCalled();
+    } finally {
+      if (previousMenuNotificationsEnabled === undefined) {
+        delete process.env.UBER_EATS_MENU_NOTIFICATIONS_ENABLED;
+      } else {
+        process.env.UBER_EATS_MENU_NOTIFICATIONS_ENABLED =
+          previousMenuNotificationsEnabled;
+      }
+    }
   });
 
   it('Dry Run 不请求 Uber token，也不调用菜单上传接口', async () => {
