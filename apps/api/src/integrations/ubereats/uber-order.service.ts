@@ -28,6 +28,7 @@ export class UberOrderService {
       httpClient,
       config,
     );
+    return this.runtime as unknown as UberOrderService;
   }
 
   syncOrderStatusToUber(
