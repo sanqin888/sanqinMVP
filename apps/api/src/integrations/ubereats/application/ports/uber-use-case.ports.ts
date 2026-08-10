@@ -2,6 +2,7 @@ import type { UberOrderStatus } from '../../domain/orders/uber-order.types';
 import type { UberWebhookInput } from '../../domain/webhook/uber-webhook.types';
 import type { UberOrderNotificationEventV1 } from '../../contracts/events/uber-order-notification.v1';
 import type { UberMenuNotificationEventV1 } from '../../contracts/events/uber-menu-notification.v1';
+import type { UberEventOrdering } from './uber-order-processing.ports';
 import type {
   PublishMenuInput,
   SyncAvailabilityInput,
@@ -74,6 +75,7 @@ export interface UberOrderImportPort {
     eventType: string,
     eventId: string,
     payload: UberOrderNotificationEventV1,
+    ordering?: UberEventOrdering,
   ): Promise<void>;
 }
 export interface UberOrderActionPort {
