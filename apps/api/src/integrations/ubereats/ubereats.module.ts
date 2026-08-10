@@ -16,10 +16,28 @@ import { UberMenuDraftService } from './uber-menu-draft.service';
 import { UberMenuPublishService } from './uber-menu-publish.service';
 import { UberMenuAvailabilityService } from './uber-menu-availability.service';
 import { UberMerchantService } from './uber-merchant.service';
-import { UberMerchantInternalService } from './uber-merchant-internal.service';
-import { UberMerchantOAuthService } from './uber-merchant-oauth.service';
-import { UberMerchantStoreMappingService } from './uber-merchant-store-mapping.service';
-import { UberMerchantProvisioningService } from './uber-merchant-provisioning.service';
+import { UberMerchantGateway } from './uber-merchant.gateway';
+import {
+  CompleteUberOAuthUseCase,
+  StartUberOAuthUseCase,
+  UberMerchantOAuthService,
+} from './uber-merchant-oauth.service';
+import {
+  DiscoverUberStoresUseCase,
+  MapUberStoreUseCase,
+  UberMerchantStoreMappingService,
+} from './uber-merchant-store-mapping.service';
+import {
+  DeprovisionUberStoreUseCase,
+  ProvisionUberStoreUseCase,
+  SyncUberStoreStatusUseCase,
+  UberMerchantProvisioningService,
+} from './uber-merchant-provisioning.service';
+import {
+  UberMerchantConnectionRepository,
+  UberOAuthStateRepository,
+  UberStoreMappingRepository,
+} from './uber-merchant.repositories';
 import { UberOperationsService } from './uber-operations.service';
 import { UberPrismaAccessService } from './uber-prisma-access.service';
 import { UberOrderActionService } from './uber-order-action.service';
@@ -50,7 +68,17 @@ import { UberCredentialVaultService } from '../../infrastructure/crypto/uber-cre
     UberMenuPublishService,
     UberMenuAvailabilityService,
     UberMenuService,
-    UberMerchantInternalService,
+    UberMerchantGateway,
+    UberMerchantConnectionRepository,
+    UberStoreMappingRepository,
+    UberOAuthStateRepository,
+    StartUberOAuthUseCase,
+    CompleteUberOAuthUseCase,
+    DiscoverUberStoresUseCase,
+    MapUberStoreUseCase,
+    ProvisionUberStoreUseCase,
+    DeprovisionUberStoreUseCase,
+    SyncUberStoreStatusUseCase,
     UberMerchantOAuthService,
     UberMerchantStoreMappingService,
     UberMerchantProvisioningService,
@@ -63,7 +91,6 @@ import { UberCredentialVaultService } from '../../infrastructure/crypto/uber-cre
     UberWebhookService,
     UberOrderService,
     UberMenuService,
-    UberMerchantInternalService,
     UberMerchantOAuthService,
     UberMerchantStoreMappingService,
     UberMerchantProvisioningService,

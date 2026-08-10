@@ -36,9 +36,9 @@ import { UberPrismaAccessService } from './uber-prisma-access.service';
 import { UberCredentialVaultService } from '../../infrastructure/crypto/uber-credential-vault.service';
 
 @Injectable()
-export class UberMerchantInternalService {
+export class UberMerchantGateway {
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
-  private readonly logger = new AppLogger(UberMerchantInternalService.name);
+  private readonly logger = new AppLogger(UberMerchantGateway.name);
   private readonly uberApiBaseUrl: string;
   private readonly oauthStateSecret: string;
 
@@ -81,8 +81,13 @@ export class UberMerchantInternalService {
     code: string,
     state: string | undefined,
     adminSessionId: string | undefined,
+    merchantContext?: string,
   ) {
-    const stateRequest = await this.consumeOAuthState(state, adminSessionId);
+    const stateRequest = await this.consumeOAuthState(
+      state,
+      adminSessionId,
+      merchantContext,
+    );
 
     const tokenResult = await this.uberAuthService.exchangeAuthorizationCode(
       code,
@@ -519,6 +524,7 @@ export class UberMerchantInternalService {
   private async consumeOAuthState(
     state: string | undefined,
     adminSessionId: string | undefined,
+    merchantContext?: string,
   ) {
     const normalizedState = state?.trim();
     if (!normalizedState) {
@@ -579,6 +585,16 @@ export class UberMerchantInternalService {
       request.adminSessionId !== adminSessionId.trim()
     ) {
       throw new UnauthorizedException('OAuth state 与管理员会话不匹配');
+    }
+
+    if (request.redirectUri !== this.uberAuthService.getMerchantRedirectUri()) {
+      throw new BadRequestException('OAuth state redirect URI 不匹配');
+    }
+    if (
+      merchantContext !== undefined &&
+      request.merchantContext !== (merchantContext.trim() || null)
+    ) {
+      throw new BadRequestException('OAuth state merchant context 不匹配');
     }
 
     if (request.expiresAt.getTime() <= now) {

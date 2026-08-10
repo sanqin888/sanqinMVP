@@ -1,19 +1,36 @@
 import { Injectable } from '@nestjs/common';
-import { UberMerchantInternalService } from './uber-merchant-internal.service';
+import { UberMerchantGateway } from './uber-merchant.gateway';
 
 /** Owns Uber store discovery, payload parsing, and local store mappings. */
 @Injectable()
-export class UberMerchantStoreMappingService {
-  constructor(private readonly internal: UberMerchantInternalService) {}
-
+export class DiscoverUberStoresUseCase {
+  constructor(private readonly gateway: UberMerchantGateway) {}
   getMerchantStores(merchantUberUserId?: string) {
-    return this.internal.getMerchantStores(merchantUberUserId);
+    return this.gateway.getMerchantStores(merchantUberUserId);
   }
+}
 
+@Injectable()
+export class MapUberStoreUseCase {
+  constructor(private readonly gateway: UberMerchantGateway) {}
   updatePosExternalStoreId(uberStoreId: string, posExternalStoreId: string) {
-    return this.internal.updatePosExternalStoreId(
+    return this.gateway.updatePosExternalStoreId(
       uberStoreId,
       posExternalStoreId,
     );
+  }
+}
+
+@Injectable()
+export class UberMerchantStoreMappingService {
+  constructor(
+    private readonly discover: DiscoverUberStoresUseCase,
+    private readonly map: MapUberStoreUseCase,
+  ) {}
+  getMerchantStores(merchantUberUserId?: string) {
+    return this.discover.getMerchantStores(merchantUberUserId);
+  }
+  updatePosExternalStoreId(uberStoreId: string, posExternalStoreId: string) {
+    return this.map.updatePosExternalStoreId(uberStoreId, posExternalStoreId);
   }
 }

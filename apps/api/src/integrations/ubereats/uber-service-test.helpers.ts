@@ -4,10 +4,23 @@ import { UberConfigService } from './uber-config.service';
 import { UberHttpClient } from './uber-http.client';
 import { UberMenuWorkflowCore } from './uber-menu.workflow';
 import { UberMerchantService } from './uber-merchant.service';
-import { UberMerchantInternalService } from './uber-merchant-internal.service';
-import { UberMerchantOAuthService } from './uber-merchant-oauth.service';
-import { UberMerchantStoreMappingService } from './uber-merchant-store-mapping.service';
-import { UberMerchantProvisioningService } from './uber-merchant-provisioning.service';
+import { UberMerchantGateway } from './uber-merchant.gateway';
+import {
+  CompleteUberOAuthUseCase,
+  StartUberOAuthUseCase,
+  UberMerchantOAuthService,
+} from './uber-merchant-oauth.service';
+import {
+  DiscoverUberStoresUseCase,
+  MapUberStoreUseCase,
+  UberMerchantStoreMappingService,
+} from './uber-merchant-store-mapping.service';
+import {
+  DeprovisionUberStoreUseCase,
+  ProvisionUberStoreUseCase,
+  SyncUberStoreStatusUseCase,
+  UberMerchantProvisioningService,
+} from './uber-merchant-provisioning.service';
 import { UberOperationsService } from './uber-operations.service';
 import { UberPrismaAccessService } from './uber-prisma-access.service';
 import { UberOrderService } from './uber-order.service';
@@ -43,26 +56,37 @@ export function createUberMenuService(
   );
 }
 
-type MerchantArgs = ConstructorParameters<typeof UberMerchantInternalService>;
+type MerchantArgs = ConstructorParameters<typeof UberMerchantGateway>;
 export function createUberMerchantService(
   prisma: MerchantArgs[0],
   auth: MerchantArgs[1],
   http?: MerchantArgs[2],
   settings?: MerchantArgs[3],
 ) {
-  const internal = new UberMerchantInternalService(
+  const internal = new UberMerchantGateway(
     prisma,
     auth,
     httpClient(http),
     settings ?? config(),
     new UberPrismaAccessService(prisma),
   );
-  return new UberMerchantService(
-    new UberMerchantOAuthService(internal),
-    new UberMerchantStoreMappingService(internal),
-    new UberMerchantProvisioningService(internal),
-    internal,
+  const service = new UberMerchantService(
+    new UberMerchantOAuthService(
+      new StartUberOAuthUseCase(internal),
+      new CompleteUberOAuthUseCase(internal),
+    ),
+    new UberMerchantStoreMappingService(
+      new DiscoverUberStoresUseCase(internal),
+      new MapUberStoreUseCase(internal),
+    ),
+    new UberMerchantProvisioningService(
+      new ProvisionUberStoreUseCase(internal),
+      new DeprovisionUberStoreUseCase(internal),
+      new SyncUberStoreStatusUseCase(internal),
+    ),
   );
+  Object.assign(service, { internal });
+  return service;
 }
 
 type OrderArgs = ConstructorParameters<typeof UberOrderService>;
