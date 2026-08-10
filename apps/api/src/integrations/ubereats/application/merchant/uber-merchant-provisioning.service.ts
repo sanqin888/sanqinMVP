@@ -1,5 +1,8 @@
-import { Injectable } from '@nestjs/common';
-import { UberMerchantGateway } from '../../infrastructure/uber-api/uber-merchant.gateway';
+import { Inject, Injectable } from '@nestjs/common';
+import {
+  UBER_MERCHANT_GATEWAY,
+  type UberMerchantGatewayPort,
+} from '../ports/uber-api.ports';
 
 export type UberStoreStatusTarget = {
   uberStoreId: string;
@@ -11,7 +14,10 @@ export type UberStoreStatusTarget = {
 /** Owns provisioning and Uber store-status synchronization. */
 @Injectable()
 export class ProvisionUberStoreUseCase {
-  constructor(private readonly gateway: UberMerchantGateway) {}
+  constructor(
+    @Inject(UBER_MERCHANT_GATEWAY)
+    private readonly gateway: UberMerchantGatewayPort,
+  ) {}
   provisionStore(
     storeId: string,
     payload: Record<string, unknown> | undefined,
@@ -27,7 +33,10 @@ export class ProvisionUberStoreUseCase {
 
 @Injectable()
 export class DeprovisionUberStoreUseCase {
-  constructor(private readonly gateway: UberMerchantGateway) {}
+  constructor(
+    @Inject(UBER_MERCHANT_GATEWAY)
+    private readonly gateway: UberMerchantGatewayPort,
+  ) {}
   revokeOrDeprovisionStore() {
     return this.gateway.revokeOrDeprovisionStore();
   }
@@ -35,7 +44,10 @@ export class DeprovisionUberStoreUseCase {
 
 @Injectable()
 export class SyncUberStoreStatusUseCase {
-  constructor(private readonly gateway: UberMerchantGateway) {}
+  constructor(
+    @Inject(UBER_MERCHANT_GATEWAY)
+    private readonly gateway: UberMerchantGatewayPort,
+  ) {}
   syncStoreStatusToUber(target?: UberStoreStatusTarget) {
     return this.gateway.syncStoreStatusToUber(target);
   }

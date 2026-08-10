@@ -80,19 +80,16 @@ export class UberOrderPrismaAdapter {
     private readonly prismaAccess: UberPrismaAccessService,
     private readonly orderGateway: UberOrderGateway,
     @Optional() actionService?: UberOrderActionService,
-    @Optional() outboxService?: UberOrderOutboxService,
-    @Optional() statusSyncService?: UberOrderStatusSyncService,
+    outboxService: UberOrderOutboxService,
+    statusSyncService: UberOrderStatusSyncService,
     @Optional() telemetry?: UberTelemetryService,
   ) {
     this.actionService =
       actionService ??
       new UberOrderActionService(uberAuthService, httpClient, config);
-    this.outboxService =
-      outboxService ??
-      new UberOrderOutboxService(prisma, prismaAccess, this.actionService);
+    this.outboxService = outboxService;
     this.telemetry = telemetry ?? new UberTelemetryService(prisma);
-    this.statusSyncService =
-      statusSyncService ?? new UberOrderStatusSyncService(prisma);
+    this.statusSyncService = statusSyncService;
   }
 
   async syncOrderStatusToUber(externalOrderId: string, status: OrderStatus) {
@@ -608,12 +605,8 @@ export class UberOrderPrismaAdapter {
       await delegate.update({
         where: { id: record.id },
         data: {
-          status:
-            (record.attemptCount ?? 1) >= UberOrderOutboxService.MAX_ATTEMPTS
-              ? 'DEAD'
-              : 'FAILED',
-          retryable:
-            (record.attemptCount ?? 1) < UberOrderOutboxService.MAX_ATTEMPTS,
+          status: (record.attemptCount ?? 1) >= 8 ? 'DEAD' : 'FAILED',
+          retryable: (record.attemptCount ?? 1) < 8,
           lastError: redactedError
             .replace(/(token|secret|authorization)=?[^\s&]*/gi, '$1=[REDACTED]')
             .slice(0, 2_000),
@@ -621,7 +614,7 @@ export class UberOrderPrismaAdapter {
             error: errorMessage,
           }),
           nextRetryAt:
-            (record.attemptCount ?? 1) >= UberOrderOutboxService.MAX_ATTEMPTS
+            (record.attemptCount ?? 1) >= 8
               ? null
               : new Date(
                   Date.now() +
@@ -673,14 +666,11 @@ export class UberOrderPrismaAdapter {
       data: {
         status: succeeded
           ? 'SUCCEEDED'
-          : retryable &&
-              (record.attemptCount ?? 1) >= UberOrderOutboxService.MAX_ATTEMPTS
+          : retryable && (record.attemptCount ?? 1) >= 8
             ? 'DEAD'
             : 'FAILED',
         uberHttpStatus: response.status,
-        retryable:
-          retryable &&
-          (record.attemptCount ?? 1) < UberOrderOutboxService.MAX_ATTEMPTS,
+        retryable: retryable && (record.attemptCount ?? 1) < 8,
         uberRequestId,
         lastError: succeeded
           ? null

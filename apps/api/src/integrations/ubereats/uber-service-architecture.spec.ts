@@ -34,7 +34,7 @@ const layerOf = (path: string): Layer | undefined =>
 
 const ALLOWED_LAYER_DEPENDENCIES: Record<Layer, readonly Layer[]> = {
   api: ['api', 'application', 'contracts'],
-  application: ['application', 'contracts', 'domain', 'infrastructure'],
+  application: ['application', 'contracts', 'domain'],
   contracts: ['contracts', 'domain'],
   domain: ['domain'],
   infrastructure: ['application', 'contracts', 'domain', 'infrastructure'],
