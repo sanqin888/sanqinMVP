@@ -35,6 +35,8 @@ export function createReceiveUberWebhookUseCase(
   orders: ImportUberOrderUseCase,
   menu?: UberMenuPublishService,
 ) {
+  void orders;
+  void menu;
   const access = new UberPrismaAccessService(prisma);
   const inbox: UberWebhookInboxPort = {
     async enqueue(input) {

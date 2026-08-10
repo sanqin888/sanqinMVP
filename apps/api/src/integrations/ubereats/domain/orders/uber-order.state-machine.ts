@@ -18,6 +18,17 @@ const canRequestOrderAction = (
   return status === UberOrderStatus.paid || status === UberOrderStatus.making;
 };
 
+const statusAfterCancellation = (
+  status: UberOrderStatus,
+): UberOrderStatus | null => {
+  const cancellable: UberOrderStatus[] = [
+    UberOrderStatus.pending,
+    UberOrderStatus.paid,
+    UberOrderStatus.making,
+  ];
+  return cancellable.includes(status) ? UberOrderStatus.refunded : null;
+};
+
 /** Pure decisions for the Uber order lifecycle. No caller may assign an arbitrary status. */
 export const UberOrderStateMachine = {
   acceptsEvent(input: {
@@ -33,7 +44,7 @@ export const UberOrderStateMachine = {
     )
       return false;
     if (input.nextStatus === null)
-      return this.afterCancellation(input.currentStatus) !== null;
+      return statusAfterCancellation(input.currentStatus) !== null;
     const rank: Record<UberOrderStatus, number> = {
       [UberOrderStatus.pending]: 0,
       [UberOrderStatus.paid]: 1,
@@ -108,12 +119,7 @@ export const UberOrderStateMachine = {
   },
 
   afterCancellation(status: UberOrderStatus): UberOrderStatus | null {
-    const cancellable: UberOrderStatus[] = [
-      UberOrderStatus.pending,
-      UberOrderStatus.paid,
-      UberOrderStatus.making,
-    ];
-    return cancellable.includes(status) ? UberOrderStatus.refunded : null;
+    return statusAfterCancellation(status);
   },
 
   idempotencyKey(externalOrderId: string, action: UberOrderActionName): string {

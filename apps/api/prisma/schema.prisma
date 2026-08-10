@@ -393,6 +393,7 @@ model Order {
   clientRequestId            String?                 @unique
   status                     OrderStatus             @default(pending)
   createdAt                  DateTime                @default(now())
+  updatedAt                  DateTime                @updatedAt
   subtotalCents              Int                     @default(0)
   taxCents                   Int                     @default(0)
   totalCents                 Int                     @default(0)
@@ -1428,6 +1429,7 @@ enum UberOpsTicketType {
   STORE_STATUS_SYNC
   MENU_PUBLISH
   MENU_ITEM_AVAILABILITY
+  RECONCILIATION
 }
 
 enum UberOpsTicketStatus {
@@ -1435,12 +1437,14 @@ enum UberOpsTicketStatus {
   IN_PROGRESS
   RESOLVED
   IGNORED
+  CLOSED
 }
 
 enum UberOpsTicketPriority {
   LOW
   MEDIUM
   HIGH
+  CRITICAL
 }
 
 model UberReconciliationReport {
