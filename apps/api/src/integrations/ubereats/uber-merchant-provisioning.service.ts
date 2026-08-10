@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { UberMerchantInternalService } from './uber-merchant-internal.service';
+import { UberMerchantGateway } from './uber-merchant.gateway';
 
 export type UberStoreStatusTarget = {
   uberStoreId: string;
@@ -10,22 +10,51 @@ export type UberStoreStatusTarget = {
 
 /** Owns provisioning and Uber store-status synchronization. */
 @Injectable()
-export class UberMerchantProvisioningService {
-  constructor(private readonly internal: UberMerchantInternalService) {}
-
+export class ProvisionUberStoreUseCase {
+  constructor(private readonly gateway: UberMerchantGateway) {}
   provisionStore(
     storeId: string,
     payload: Record<string, unknown> = {},
     merchantUberUserId?: string,
   ) {
-    return this.internal.provisionStore(storeId, payload, merchantUberUserId);
+    return this.gateway.provisionStore(storeId, payload, merchantUberUserId);
   }
+}
 
+@Injectable()
+export class DeprovisionUberStoreUseCase {
+  constructor(private readonly gateway: UberMerchantGateway) {}
   revokeOrDeprovisionStore() {
-    return this.internal.revokeOrDeprovisionStore();
+    return this.gateway.revokeOrDeprovisionStore();
   }
+}
 
+@Injectable()
+export class SyncUberStoreStatusUseCase {
+  constructor(private readonly gateway: UberMerchantGateway) {}
   syncStoreStatusToUber(target?: UberStoreStatusTarget) {
-    return this.internal.syncStoreStatusToUber(target);
+    return this.gateway.syncStoreStatusToUber(target);
+  }
+}
+
+@Injectable()
+export class UberMerchantProvisioningService {
+  constructor(
+    private readonly provision: ProvisionUberStoreUseCase,
+    private readonly deprovision: DeprovisionUberStoreUseCase,
+    private readonly syncStatus: SyncUberStoreStatusUseCase,
+  ) {}
+  provisionStore(
+    storeId: string,
+    payload: Record<string, unknown> = {},
+    merchantUberUserId?: string,
+  ) {
+    return this.provision.provisionStore(storeId, payload, merchantUberUserId);
+  }
+  revokeOrDeprovisionStore() {
+    return this.deprovision.revokeOrDeprovisionStore();
+  }
+  syncStoreStatusToUber(target?: UberStoreStatusTarget) {
+    return this.syncStatus.syncStoreStatusToUber(target);
   }
 }
