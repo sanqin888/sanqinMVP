@@ -1,4 +1,6 @@
 /** JSON values are owned by the application boundary, not by Prisma. */
+import type { UberWebhookInboxRecordV1 } from '../../contracts/events/uber-webhook-inbox-record.v1';
+
 export type UberJsonValue =
   | string
   | number
@@ -7,15 +9,10 @@ export type UberJsonValue =
   | UberJsonValue[]
   | { [key: string]: UberJsonValue };
 
-export type UberWebhookInbox = {
-  id: string;
-  eventId: string;
-  status: string;
-  attemptCount: number;
-  payload: UberJsonValue | null;
-  receivedAt: Date;
-  processedAt: Date | null;
-};
+export type UberWebhookInbox = Omit<
+  UberWebhookInboxRecordV1<UberJsonValue>,
+  'version' | 'eventType'
+>;
 
 export type UberOrderAction = {
   id: string;

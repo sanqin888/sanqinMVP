@@ -13,7 +13,7 @@ import {
 } from '@prisma/client';
 import { createHash } from 'crypto';
 import { PrismaService } from '../../../../prisma/prisma.service';
-import { UberMenuNotificationDto } from '../../contracts/dto/uber-menu-notification.dto';
+import type { UberMenuNotificationEventV1 } from '../../contracts/events/uber-menu-notification.v1';
 import { UberAuthService } from '../../infrastructure/uber-api/uber-token.provider';
 import {
   UberConfigService,
@@ -1334,16 +1334,8 @@ export class UberMenuPrismaAdapter {
   async processWebhookEvent(
     eventType: string,
     eventId: string,
-    payload: unknown,
+    notification: UberMenuNotificationEventV1,
   ) {
-    const notification = UberMenuNotificationDto.parse(payload);
-    if (!notification) {
-      await this.telemetry.captureEvent('ubereats_menu_notification_invalid', {
-        eventType,
-        eventId,
-      });
-      return;
-    }
     const candidates =
       await this.prismaAccess.uberMenuPublishRepository.findMany({
         where: {

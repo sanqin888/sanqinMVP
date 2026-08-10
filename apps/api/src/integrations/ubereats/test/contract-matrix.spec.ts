@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { acceptanceMatrix, ContractDomain } from './contract-matrix';
+import { parseUberWebhookEnvelopeV1 } from '../contracts/events/uber-webhook-envelope.v1';
 
 const domains: ContractDomain[] = [
   'merchant',
@@ -58,6 +59,7 @@ describe('Uber Eats sanitized payload fixtures', () => {
       'menu-nested-modifiers.json',
       'oauth-callback.json',
       'order-notification.json',
+      'public-response-contract.json',
       'store-operation.json',
       'webhook-order.json',
     ]);
@@ -76,4 +78,13 @@ describe('Uber Eats sanitized payload fixtures', () => {
       expect(text).not.toMatch(/bearer\s+|@|\+?\d{10,}/i);
     },
   );
+});
+
+describe('Uber Eats webhook contract matrix payload compatibility', () => {
+  it('keeps the webhook fixture compatible with the versioned envelope', () => {
+    const payload = JSON.parse(
+      readFileSync(join(__dirname, 'fixtures/webhook-order.json'), 'utf8'),
+    );
+    expect(parseUberWebhookEnvelopeV1(payload)).toMatchObject({ version: 1 });
+  });
 });
