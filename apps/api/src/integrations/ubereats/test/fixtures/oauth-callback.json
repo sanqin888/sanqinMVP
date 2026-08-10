@@ -1,0 +1,5 @@
+{
+  "code": "fixture-authorization-code",
+  "state": "fixture-signed-state",
+  "admin_session_id": "fixture-admin-session"
+}
