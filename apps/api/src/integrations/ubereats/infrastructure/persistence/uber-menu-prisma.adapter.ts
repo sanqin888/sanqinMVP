@@ -1244,20 +1244,18 @@ export class UberMenuPrismaAdapter {
           orderBy: { connectedAt: 'desc' },
         });
 
-    if (!row || (!row.encryptedAccessToken && !row.accessToken)) {
+    if (!row?.encryptedAccessToken) {
       throw new BadRequestException(
         '未找到 Uber 商户授权，请先调用 /oauth/connect-url 和 /oauth/callback 完成授权',
       );
     }
 
-    const resolvedAccessToken = row.encryptedAccessToken
-      ? this.credentialVault.decrypt(row.encryptedAccessToken)
-      : row.accessToken;
+    const resolvedAccessToken = this.credentialVault.decrypt(
+      row.encryptedAccessToken,
+    );
     const refreshToken = row.encryptedRefreshToken
       ? this.credentialVault.decrypt(row.encryptedRefreshToken)
-      : row.refreshToken;
-    if (!resolvedAccessToken)
-      throw new BadRequestException('Uber 商户凭据不可用');
+      : null;
     const resolvedRow = {
       ...row,
       accessToken: resolvedAccessToken,
@@ -1325,14 +1323,10 @@ export class UberMenuPrismaAdapter {
               JSON.stringify(input.rawStoresSnapshot),
             ) as Prisma.InputJsonValue)
           : undefined,
-        accessToken: null,
-        refreshToken: null,
         encryptedAccessToken,
         encryptedRefreshToken,
       },
       update: {
-        accessToken: null,
-        refreshToken: null,
         encryptedAccessToken,
         encryptedRefreshToken,
         expiresAt: input.expiresAt,
