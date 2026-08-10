@@ -152,16 +152,14 @@ export class UberMerchantConnectionPrismaAdapter implements UberMerchantConnecti
           orderBy: { connectedAt: 'desc' },
         });
     if (!row) return null;
-    const accessToken = row.encryptedAccessToken
-      ? this.vault.decrypt(row.encryptedAccessToken)
-      : row.accessToken;
-    if (!accessToken) return null;
+    if (!row.encryptedAccessToken) return null;
+    const accessToken = this.vault.decrypt(row.encryptedAccessToken);
     return {
       ...row,
       accessToken,
       refreshToken: row.encryptedRefreshToken
         ? this.vault.decrypt(row.encryptedRefreshToken)
-        : row.refreshToken,
+        : null,
     };
   }
   async upsertConnectionByUberUserId(
@@ -182,14 +180,10 @@ export class UberMerchantConnectionPrismaAdapter implements UberMerchantConnecti
         rawStoresSnapshot: input.rawStoresSnapshot
           ? json(input.rawStoresSnapshot)
           : undefined,
-        accessToken: null,
-        refreshToken: null,
         encryptedAccessToken,
         encryptedRefreshToken,
       },
       update: {
-        accessToken: null,
-        refreshToken: null,
         encryptedAccessToken,
         encryptedRefreshToken,
         expiresAt: input.expiresAt,
