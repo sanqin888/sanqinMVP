@@ -35,9 +35,9 @@ export function useUberAdminData(ticketStoreFilter: string, ticketStatusFilter: 
         setStores(storeRes.stores ?? []);
       } catch { errors.push('oauth stores'); }
     } else { setConnection(null); setStores([]); }
-    if (ticketRes.status === 'fulfilled') setTickets(ticketRes.value.items ?? []); else errors.push('tickets');
-    if (reportRes.status === 'fulfilled') setReports(reportRes.value.items ?? []); else errors.push('reports');
-    if (orderRes.status === 'fulfilled') setPendingOrders(orderRes.value.items ?? []); else errors.push('orders');
+    if (ticketRes.status === 'fulfilled') setTickets(ticketRes.value.items); else errors.push('tickets');
+    if (reportRes.status === 'fulfilled') setReports(reportRes.value.items); else errors.push('reports');
+    if (orderRes.status === 'fulfilled') setPendingOrders(orderRes.value.items); else errors.push('orders');
     if (errors.length) setGlobalError(`部分区块加载失败：${errors.join('、')}，其余模块仍可使用。`);
     setLoading(false);
   }, [ticketStatusFilter, ticketStoreFilter]);

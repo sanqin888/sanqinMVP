@@ -21,6 +21,10 @@ import { AppLogger } from '../../common/app-logger';
 import { SESSION_COOKIE_NAME } from '../../auth/session-auth.guard';
 import { ResourceIdPipe } from './contracts/requests/resource-id.pipe';
 import {
+  executeUberMutation,
+  toUberListResponse,
+} from './contracts/responses/ubereats.responses';
+import {
   UberAdminWrite,
   UberMfaAdminWrite,
   UberReadOnlyAdmin,
@@ -65,12 +69,27 @@ export class UberEatsOperationsController {
     });
   }
 
+  @Post('v2/reports/reconciliation/generate')
+  @UberAdminWrite()
+  async generateReconciliationReportV2(
+    @Body() dto: GenerateUberReconciliationReportDto,
+  ) {
+    return executeUberMutation(() =>
+      this.operations.generateReconciliationReport({
+        storeId: dto.storeId,
+        rangeStart: dto.rangeStart,
+        rangeEnd: dto.rangeEnd,
+      }),
+    );
+  }
+
   @Get('reports/reconciliation')
   async listReconciliationReports(@Query() query: ReportListQuery) {
-    return await this.operations.listReconciliationReports(
+    const result = await this.operations.listReconciliationReports(
       query.storeId,
       query.limit,
     );
+    return toUberListResponse(result.items, query.limit);
   }
 
   @Post('ops/tickets')
@@ -109,7 +128,25 @@ export class UberEatsOperationsController {
 
   @Get('ops/tickets')
   async listOpsTickets(@Query() query: OpsTicketListQuery): Promise<unknown> {
-    return await this.operations.listOpsTickets(query.storeId, query.status);
+    const result = await this.operations.listOpsTickets(
+      query.storeId,
+      query.status,
+    );
+    return toUberListResponse(
+      result.items.map((ticket) => ({
+        ticketStableId: ticket.ticketStableId,
+        type: ticket.type,
+        status: ticket.status,
+        priority: ticket.priority,
+        title: ticket.title,
+        externalOrderId: ticket.externalOrderId,
+        menuItemStableId: ticket.menuItemStableId,
+        retryCount: ticket.retryCount,
+        createdAt: ticket.createdAt,
+        updatedAt: ticket.updatedAt,
+      })),
+      200,
+    );
   }
 
   @Post('ops/tickets/:ticketStableId/retry')
@@ -118,5 +155,16 @@ export class UberEatsOperationsController {
     @Param('ticketStableId', ResourceIdPipe) ticketStableId: string,
   ): Promise<unknown> {
     return await this.operations.retryOpsTicket(ticketStableId);
+  }
+
+  @Post('v2/ops/tickets/:ticketStableId/retry')
+  @UberMfaAdminWrite()
+  async retryOpsTicketV2(
+    @Param('ticketStableId', ResourceIdPipe) ticketStableId: string,
+  ) {
+    return executeUberMutation(
+      () => this.operations.retryOpsTicket(ticketStableId),
+      { accepted: true },
+    );
   }
 }
