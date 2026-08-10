@@ -4,6 +4,10 @@ import { UberConfigService } from './uber-config.service';
 import { UberHttpClient } from './uber-http.client';
 import { UberMenuWorkflowCore } from './uber-menu.workflow';
 import { UberMerchantService } from './uber-merchant.service';
+import { UberMerchantInternalService } from './uber-merchant-internal.service';
+import { UberMerchantOAuthService } from './uber-merchant-oauth.service';
+import { UberMerchantStoreMappingService } from './uber-merchant-store-mapping.service';
+import { UberMerchantProvisioningService } from './uber-merchant-provisioning.service';
 import { UberOperationsService } from './uber-operations.service';
 import { UberPrismaAccessService } from './uber-prisma-access.service';
 import { UberOrderService } from './uber-order.service';
@@ -39,19 +43,25 @@ export function createUberMenuService(
   );
 }
 
-type MerchantArgs = ConstructorParameters<typeof UberMerchantService>;
+type MerchantArgs = ConstructorParameters<typeof UberMerchantInternalService>;
 export function createUberMerchantService(
   prisma: MerchantArgs[0],
   auth: MerchantArgs[1],
   http?: MerchantArgs[2],
   settings?: MerchantArgs[3],
 ) {
-  return new UberMerchantService(
+  const internal = new UberMerchantInternalService(
     prisma,
     auth,
     httpClient(http),
     settings ?? config(),
     new UberPrismaAccessService(prisma),
+  );
+  return new UberMerchantService(
+    new UberMerchantOAuthService(internal),
+    new UberMerchantStoreMappingService(internal),
+    new UberMerchantProvisioningService(internal),
+    internal,
   );
 }
 

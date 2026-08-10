@@ -16,6 +16,10 @@ import { UberMenuDraftService } from './uber-menu-draft.service';
 import { UberMenuPublishService } from './uber-menu-publish.service';
 import { UberMenuAvailabilityService } from './uber-menu-availability.service';
 import { UberMerchantService } from './uber-merchant.service';
+import { UberMerchantInternalService } from './uber-merchant-internal.service';
+import { UberMerchantOAuthService } from './uber-merchant-oauth.service';
+import { UberMerchantStoreMappingService } from './uber-merchant-store-mapping.service';
+import { UberMerchantProvisioningService } from './uber-merchant-provisioning.service';
 import { UberOperationsService } from './uber-operations.service';
 import { UberPrismaAccessService } from './uber-prisma-access.service';
 import { UberOrderActionService } from './uber-order-action.service';
@@ -44,6 +48,10 @@ import { UberOrderStatusSyncService } from './uber-order-status-sync.service';
     UberMenuPublishService,
     UberMenuAvailabilityService,
     UberMenuService,
+    UberMerchantInternalService,
+    UberMerchantOAuthService,
+    UberMerchantStoreMappingService,
+    UberMerchantProvisioningService,
     UberMerchantService,
     UberOperationsService,
   ],
@@ -53,6 +61,10 @@ import { UberOrderStatusSyncService } from './uber-order-status-sync.service';
     UberWebhookService,
     UberOrderService,
     UberMenuService,
+    UberMerchantInternalService,
+    UberMerchantOAuthService,
+    UberMerchantStoreMappingService,
+    UberMerchantProvisioningService,
     UberMerchantService,
     UberOperationsService,
   ],
