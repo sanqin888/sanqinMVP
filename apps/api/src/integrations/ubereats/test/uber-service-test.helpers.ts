@@ -2,6 +2,8 @@ import type { UberMenuAvailabilityService } from '../application/menu/uber-menu-
 import type { UberMenuPublishService } from '../application/menu/uber-menu-publish.service';
 import type { SyncUberStoreStatusUseCase } from '../application/merchant/uber-merchant-provisioning.service';
 import type { ImportUberOrderUseCase } from '../application/orders/uber-order.use-cases';
+import { SyncUberOrderStatusUseCase } from '../application/orders/uber-order.use-cases';
+import type { UberOrderSyncPort } from '../application/ports/uber-use-case.ports';
 import { ProcessUberWebhookInboxWorker } from '../application/orders/uber-webhook-inbox.worker';
 import type { UberWebhookInboxPort } from '../application/ports/uber-order-processing.ports';
 import type { UberConfigService } from '../infrastructure/config/uber-config.service';
@@ -13,13 +15,16 @@ const missing = <T>(): T => undefined as T;
 
 export function createUberOperationsPrismaAdapter(
   prisma: ConstructorParameters<typeof UberOperationsPrismaAdapter>[0],
+  orders?: UberOrderSyncPort,
+  menu?: UberMenuAvailabilityService,
+  store?: SyncUberStoreStatusUseCase,
 ) {
   return new UberOperationsPrismaAdapter(
     prisma,
-    missing(),
+    orders ? new SyncUberOrderStatusUseCase(orders) : missing(),
     missing<UberMenuPublishService>(),
-    missing<UberMenuAvailabilityService>(),
-    missing<SyncUberStoreStatusUseCase>(),
+    menu ?? missing<UberMenuAvailabilityService>(),
+    store ?? missing<SyncUberStoreStatusUseCase>(),
     new UberPrismaAccessService(prisma),
   );
 }

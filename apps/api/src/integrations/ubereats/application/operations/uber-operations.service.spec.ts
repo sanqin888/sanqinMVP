@@ -316,7 +316,7 @@ describe('UberOperationsPrismaAdapter', () => {
 
 describe('UberOperationsPrismaAdapter 最小依赖装配', () => {
   it('构造函数只声明 Prisma、订单、菜单与商户服务', () => {
-    expect(UberOperationsPrismaAdapter.length).toBe(4);
+    expect(UberOperationsPrismaAdapter.length).toBe(7);
   });
   it('运营编排不读取任何 Uber 敏感配置', () => {
     expect(() => createUberOperationsPrismaAdapter({} as never)).not.toThrow();
