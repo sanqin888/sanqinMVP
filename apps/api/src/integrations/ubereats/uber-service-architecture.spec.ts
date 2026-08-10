@@ -42,6 +42,92 @@ describe('Uber Eats bounded-context architecture', () => {
   });
   const allSourceFiles = scanTypeScript(SOURCE_ROOT, { productionOnly: true });
 
+  it('keeps persistence adapters limited to database I/O during facade migration', () => {
+    const persistenceRoot = join(
+      BOUNDED_CONTEXT_ROOT,
+      'infrastructure/persistence',
+    );
+    const persistenceFiles = scanTypeScript(persistenceRoot, {
+      productionOnly: true,
+    });
+
+    // Temporary, file-specific debt ledger. Delete each entry as its legacy
+    // facade is split; never replace these with a directory/pattern exemption.
+    const legacyFacadeExceptions: Readonly<Record<string, readonly string[]>> =
+      {
+        'uber-menu-prisma.adapter.ts': [
+          'uber-api import',
+          'UberHttpClient',
+          'UberImageValidator',
+          'new UberImageValidator',
+          'HTTP request call',
+          'setTimeout/publication confirmation polling',
+        ],
+        'uber-order-prisma.adapter.ts': [
+          'uber-api import',
+          'application service/use-case import',
+          'UberHttpClient',
+          'new UberOrderActionService',
+          'HTTP request call',
+        ],
+      };
+    const violations: string[] = [];
+    const report = (filePath: string, rule: string) => {
+      const filename = relative(persistenceRoot, filePath);
+      if (!legacyFacadeExceptions[filename]?.includes(rule)) {
+        violations.push(`${filename} -> ${rule}`);
+      }
+    };
+
+    for (const file of persistenceFiles) {
+      for (const specifier of importSpecifiers(file.source)) {
+        if (/(?:^|\/)infrastructure\/uber-api\//.test(specifier)) {
+          report(file.path, 'uber-api import');
+        }
+        if (
+          /(?:^|\/)application\/.*(?:\.service|\.use-case)(?:'|$)?/.test(
+            specifier,
+          )
+        ) {
+          report(file.path, 'application service/use-case import');
+        }
+      }
+
+      for (const symbol of [
+        'UberHttpClient',
+        'UberApiGatewayTransport',
+        'UberImageValidator',
+      ]) {
+        if (new RegExp(`\\b${symbol}\\b`).test(file.source)) {
+          report(file.path, symbol);
+        }
+      }
+      if (/\bfetch\s*\(/.test(file.source)) report(file.path, 'fetch');
+      if (/\bnew\s+UberImageValidator\b/.test(file.source)) {
+        report(file.path, 'new UberImageValidator');
+      }
+      if (/\bnew\s+UberOrderActionService\b/.test(file.source)) {
+        report(file.path, 'new UberOrderActionService');
+      }
+      if (
+        /\b(?:httpClient|gateway|menuGateway|orderGateway|actionService)\s*\.\s*(?:request|get|post|put|patch|delete|head)\s*\(/.test(
+          file.source,
+        )
+      ) {
+        report(file.path, 'HTTP request call');
+      }
+      if (
+        /\bsetTimeout\s*\(|\b(?:poll|waitFor)(?:Menu)?Publication(?:Confirmation|Status)?\b/i.test(
+          file.source,
+        )
+      ) {
+        report(file.path, 'setTimeout/publication confirmation polling');
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
   it('forbids callers outside UberEats from importing its infrastructure', () => {
     const externalFiles = allSourceFiles.filter(
       ({ path }) => !path.startsWith(`${BOUNDED_CONTEXT_ROOT}${sep}`),
