@@ -1,4 +1,5 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import { UberValidationError } from '../errors/uber-application.error';
 import {
   UBER_MERCHANT_API,
   UBER_OAUTH_TOKEN,
@@ -68,12 +69,25 @@ export class DiscoverUberStoresUseCase {
   }
   private async resolve(id?: string) {
     if (!id?.trim())
-      throw new BadRequestException('merchantUberUserId 不能为空');
+      throw new UberValidationError({
+        code: 'INVALID_REQUEST',
+        operation: 'merchant',
+        message: 'merchantUberUserId 不能为空',
+      });
     let row = await this.connections.findConnection(id.trim());
-    if (!row) throw new BadRequestException('未找到 Uber 商户授权');
+    if (!row)
+      throw new UberValidationError({
+        code: 'INVALID_REQUEST',
+        operation: 'merchant',
+        message: '未找到 Uber 商户授权',
+      });
     if (row.expiresAt && row.expiresAt.getTime() <= Date.now() + 60_000) {
       if (!row.refreshToken)
-        throw new BadRequestException('Uber 商户凭据已过期');
+        throw new UberValidationError({
+          code: 'INVALID_REQUEST',
+          operation: 'merchant',
+          message: 'Uber 商户凭据已过期',
+        });
       const fresh = await this.tokens.refreshAccessToken(
         row.refreshToken,
         row.scope ?? undefined,
@@ -98,9 +112,18 @@ export class MapUberStoreUseCase {
     const id = uberStoreId.trim(),
       pos = posExternalStoreId.trim();
     if (!id || !/^[A-Za-z0-9_-]{1,128}$/.test(pos))
-      throw new BadRequestException('门店 ID 非法');
+      throw new UberValidationError({
+        code: 'INVALID_REQUEST',
+        operation: 'merchant',
+        message: '门店 ID 非法',
+      });
     const mapping = await this.mappings.updatePosExternalStoreId(id, pos);
-    if (!mapping) throw new BadRequestException('Uber 门店映射不存在');
+    if (!mapping)
+      throw new UberValidationError({
+        code: 'INVALID_REQUEST',
+        operation: 'merchant',
+        message: 'Uber 门店映射不存在',
+      });
     return {
       ok: true,
       storeId: id,

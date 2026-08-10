@@ -1,5 +1,12 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
+import {
+  formatSourceViolation,
+  importSpecifiers,
+  importViolations,
+  scanTypeScript,
+  writeGatewayViolations,
+} from './test/architecture-test.utils';
 
 const SOURCE_ROOT = resolve(__dirname, '../..');
 const BOUNDED_CONTEXT_ROOT = resolve(__dirname);
@@ -9,28 +16,16 @@ const LAYERS = [
   'contracts',
   'domain',
   'infrastructure',
+  'composition',
 ] as const;
 type Layer = (typeof LAYERS)[number];
 
-const walk = (directory: string): string[] =>
-  readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const path = join(directory, entry.name);
-    return entry.isDirectory()
-      ? walk(path)
-      : entry.isFile() && path.endsWith('.ts')
-        ? [path]
-        : [];
-  });
-
-const importsOf = (source: string) =>
-  [
-    ...source.matchAll(
-      /(?:import|export)\s+(?:type\s+)?[\s\S]*?\sfrom\s+['"]([^'"]+)['"]/g,
-    ),
-  ].map(([, specifier]) => specifier);
-
 const layerOf = (path: string): Layer | undefined =>
-  LAYERS.find((layer) => path.startsWith(join(BOUNDED_CONTEXT_ROOT, layer)));
+  path === join(BOUNDED_CONTEXT_ROOT, 'ubereats.module.ts')
+    ? 'composition'
+    : LAYERS.find((layer) =>
+        path.startsWith(`${join(BOUNDED_CONTEXT_ROOT, layer)}${sep}`),
+      );
 
 const ALLOWED_LAYER_DEPENDENCIES: Record<Layer, readonly Layer[]> = {
   api: ['api', 'application', 'contracts'],
@@ -38,23 +33,20 @@ const ALLOWED_LAYER_DEPENDENCIES: Record<Layer, readonly Layer[]> = {
   contracts: ['contracts', 'domain'],
   domain: ['domain'],
   infrastructure: ['application', 'contracts', 'domain', 'infrastructure'],
+  composition: ['api', 'application', 'contracts', 'domain', 'infrastructure'],
 };
 
 describe('Uber Eats bounded-context architecture', () => {
-  const allBoundedContextFiles = walk(BOUNDED_CONTEXT_ROOT);
-  const boundedContextFiles = allBoundedContextFiles.filter(
-    (path) => !path.endsWith('.spec.ts'),
-  );
+  const boundedContextFiles = scanTypeScript(BOUNDED_CONTEXT_ROOT, {
+    productionOnly: true,
+  });
 
   it('keeps every UberEats production file under a named layer', () => {
-    const rootExceptions = new Set([
-      'ubereats.module.ts',
-      'uber-service-test.helpers.ts',
-    ]);
     const unlayered = boundedContextFiles
-      .filter((path) => dirname(path) === BOUNDED_CONTEXT_ROOT)
-      .map((path) => relative(BOUNDED_CONTEXT_ROOT, path))
-      .filter((path) => !rootExceptions.has(path));
+      .filter(
+        ({ path }) => dirname(path) === BOUNDED_CONTEXT_ROOT && !layerOf(path),
+      )
+      .map(({ path }) => relative(BOUNDED_CONTEXT_ROOT, path));
 
     expect(unlayered).toEqual([]);
   });
@@ -80,11 +72,11 @@ describe('Uber Eats bounded-context architecture', () => {
   it('limits cross-layer imports to the dependency policy', () => {
     const violations: string[] = [];
     for (const importer of boundedContextFiles) {
-      const importerLayer = layerOf(importer);
+      const importerLayer = layerOf(importer.path);
       if (!importerLayer) continue;
-      for (const specifier of importsOf(readFileSync(importer, 'utf8'))) {
+      for (const specifier of importSpecifiers(importer.source)) {
         if (!specifier.startsWith('.')) continue;
-        const importedPath = resolve(dirname(importer), specifier);
+        const importedPath = resolve(dirname(importer.path), specifier);
         if (!importedPath.startsWith(`${BOUNDED_CONTEXT_ROOT}${sep}`)) continue;
         const importedLayer = layerOf(importedPath);
         if (
@@ -92,7 +84,7 @@ describe('Uber Eats bounded-context architecture', () => {
           !ALLOWED_LAYER_DEPENDENCIES[importerLayer].includes(importedLayer)
         ) {
           violations.push(
-            `${relative(BOUNDED_CONTEXT_ROOT, importer)} -> ${specifier}`,
+            `${relative(BOUNDED_CONTEXT_ROOT, importer.path)} -> ${specifier}`,
           );
         }
       }
@@ -103,9 +95,9 @@ describe('Uber Eats bounded-context architecture', () => {
 
   it('keeps domain code independent from frameworks and infrastructure', () => {
     for (const path of boundedContextFiles.filter(
-      (file) => layerOf(file) === 'domain',
+      ({ path }) => layerOf(path) === 'domain',
     )) {
-      const source = readFileSync(path, 'utf8');
+      const source = path.source;
       expect(source).not.toMatch(/@nestjs\//);
       expect(source).not.toMatch(/@prisma\/client|PrismaService|ConfigService/);
       expect(source).not.toMatch(
@@ -137,7 +129,10 @@ describe('Uber Eats bounded-context architecture', () => {
       'application/orders/uber-order.use-cases.ts',
       'application/operations/uber-operations.use-cases.ts',
     ]) {
-      const source = readFileSync(join(BOUNDED_CONTEXT_ROOT, path), 'utf8');
+      const source =
+        scanTypeScript(BOUNDED_CONTEXT_ROOT, { productionOnly: true }).find(
+          (file) => file.path === join(BOUNDED_CONTEXT_ROOT, path),
+        )?.source ?? '';
       expect(source).not.toMatch(/PrismaService|UberHttpClient/);
       expect(source).toMatch(/PORT/);
     }
@@ -145,9 +140,9 @@ describe('Uber Eats bounded-context architecture', () => {
 
   it('forbids application imports of infrastructure and the removed merchant gateway', () => {
     for (const path of boundedContextFiles.filter(
-      (file) => layerOf(file) === 'application',
+      ({ path }) => layerOf(path) === 'application',
     )) {
-      const source = readFileSync(path, 'utf8');
+      const source = path.source;
       expect(source).not.toMatch(/(?:\.\.\/)+infrastructure\//);
       expect(source).not.toMatch(/\bUberMerchantGateway\b/);
     }
@@ -159,5 +154,98 @@ describe('Uber Eats bounded-context architecture', () => {
         ),
       ),
     ).toBe(false);
+  });
+
+  it('keeps application free of HTTP exceptions, Prisma and infrastructure', () => {
+    const applicationFiles = boundedContextFiles.filter(
+      ({ path }) => layerOf(path) === 'application',
+    );
+    const violations = importViolations(
+      applicationFiles,
+      BOUNDED_CONTEXT_ROOT,
+      (specifier) =>
+        specifier === '@prisma/client' ||
+        /prisma(?:\.service)?/i.test(specifier) ||
+        specifier.includes('/infrastructure/'),
+    );
+    for (const file of applicationFiles) {
+      if (
+        /\b(?:BadRequest|Unauthorized|Forbidden|NotFound|Conflict|Gone|PayloadTooLarge|UnsupportedMediaType|UnprocessableEntity|InternalServerError|NotImplemented|BadGateway|ServiceUnavailable|GatewayTimeout)Exception\b/.test(
+          file.source,
+        )
+      ) {
+        violations.push(
+          formatSourceViolation(
+            BOUNDED_CONTEXT_ROOT,
+            file,
+            '@nestjs/common HTTP exception',
+          ),
+        );
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it('keeps the Uber API adapter independent from persistence and Prisma', () => {
+    const files = scanTypeScript(
+      join(BOUNDED_CONTEXT_ROOT, 'infrastructure/uber-api'),
+      { productionOnly: true },
+    );
+    expect(
+      importViolations(
+        files,
+        BOUNDED_CONTEXT_ROOT,
+        (specifier) =>
+          specifier === '@prisma/client' ||
+          /prisma(?:\.service)?/i.test(specifier) ||
+          specifier.includes('/persistence/'),
+      ),
+    ).toEqual([]);
+  });
+
+  it('requires every write gateway call to carry an idempotency key', () => {
+    expect(
+      writeGatewayViolations(boundedContextFiles, BOUNDED_CONTEXT_ROOT),
+    ).toEqual([]);
+  });
+
+  it('keeps periodic timers inside infrastructure/workers', () => {
+    const violations = boundedContextFiles
+      .filter(
+        ({ path, source }) =>
+          !path.startsWith(
+            `${join(BOUNDED_CONTEXT_ROOT, 'infrastructure/workers')}${sep}`,
+          ) &&
+          /\bsetInterval\s*\(|@(?:Cron|Interval|Timeout)\s*\(|\bscheduleJob\s*\(/.test(
+            source,
+          ),
+      )
+      .map((file) =>
+        formatSourceViolation(BOUNDED_CONTEXT_ROOT, file, 'periodic timer'),
+      );
+    expect(violations).toEqual([]);
+  });
+
+  it('reports both importer and import specifier for dependency violations', () => {
+    const fixture = {
+      path: join(BOUNDED_CONTEXT_ROOT, 'application/fixture.ts'),
+      source: "import '@prisma/client';",
+    };
+    expect(
+      importViolations([fixture], BOUNDED_CONTEXT_ROOT, () => true),
+    ).toEqual(['application/fixture.ts -> @prisma/client']);
+    expect(
+      writeGatewayViolations(
+        [
+          {
+            path: fixture.path,
+            source: "gateway.request({\n  method: 'POST',\n});",
+          },
+        ],
+        BOUNDED_CONTEXT_ROOT,
+      ),
+    ).toEqual([
+      'application/fixture.ts -> POST gateway call without idempotencyKey',
+    ]);
   });
 });
