@@ -96,6 +96,16 @@ import {
   PrismaUberUnitOfWork,
   PrismaUberWebhookInboxAdapter,
 } from './infrastructure/persistence/uber-prisma.adapters';
+import {
+  ClaimAndExecuteUberOrderActionsUseCase,
+  ClaimAndProcessUberWebhookInboxUseCase,
+  ConfirmUberMenuPublicationsUseCase,
+} from './application/workers/uber-background-task.use-cases';
+import {
+  UberMenuPublishConfirmationWorkerAdapter,
+  UberOrderActionWorkerAdapter,
+  UberWebhookInboxWorkerAdapter,
+} from './infrastructure/workers/uber-worker.adapters';
 
 @Module({
   imports: [PrismaModule, AuthModule, MessagingModule, OrdersModule],
@@ -153,6 +163,12 @@ import {
     CancelUberOrderUseCase,
     RequestUberOrderActionUseCase,
     ExecuteUberOrderActionWorker,
+    ClaimAndProcessUberWebhookInboxUseCase,
+    ClaimAndExecuteUberOrderActionsUseCase,
+    ConfirmUberMenuPublicationsUseCase,
+    UberWebhookInboxWorkerAdapter,
+    UberOrderActionWorkerAdapter,
+    UberMenuPublishConfirmationWorkerAdapter,
     SyncUberOrderStatusUseCase,
     ListPendingUberOrdersQuery,
     UberMenuPrismaAdapter,

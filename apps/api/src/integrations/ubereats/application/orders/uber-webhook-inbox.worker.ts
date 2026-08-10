@@ -52,9 +52,7 @@ export class ProcessUberWebhookInboxWorker
   }
 
   onModuleInit(): void {
-    void this.runRecoveryScan();
-    this.workerTimer = setInterval(() => void this.runRecoveryScan(), 15_000);
-    this.workerTimer.unref?.();
+    // Polling is owned by the three explicit infrastructure worker adapters.
   }
 
   onModuleDestroy(): void {
