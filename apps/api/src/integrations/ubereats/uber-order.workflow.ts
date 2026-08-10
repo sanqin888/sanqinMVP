@@ -3,6 +3,7 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  Optional,
 } from '@nestjs/common';
 import {
   Channel,
@@ -36,16 +37,19 @@ import type {
   ParsedUberModifier,
   ParsedUberOrder,
   ParsedUberOrderItem,
-  UberDenyReasonCode,
   UberOrderActionName,
   UberOrderActionRecord,
   UberOrderActionResult,
-  UberOrderDetailDto,
-  UberOrderItemDto,
-  UberOrderModifierDto,
 } from './uber-order.types';
-import { UBER_ACTION_BY_LOCAL_STATUS } from './uber-order.types';
 import { UberPrismaAccessService } from './uber-prisma-access.service';
+import {
+  UberOrderPayloadParser,
+  mapUberEventTypeToOrderStatus,
+  validateUberOrderAmounts,
+} from './uber-order-payload.parser';
+import { UberOrderActionService } from './uber-order-action.service';
+import { UberOrderOutboxService } from './uber-order-outbox.service';
+import { UberOrderStatusSyncService } from './uber-order-status-sync.service';
 
 @Injectable()
 export class UberOrderService {
@@ -53,6 +57,10 @@ export class UberOrderService {
   private readonly logger = new AppLogger(UberOrderService.name);
   private readonly uberApiBaseUrl: string;
   private readonly uberResourceHrefAllowedOrigins: string;
+  private readonly payloadParser = new UberOrderPayloadParser();
+  private readonly actionService: UberOrderActionService;
+  private readonly outboxService: UberOrderOutboxService;
+  private readonly statusSyncService: UberOrderStatusSyncService;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -62,9 +70,20 @@ export class UberOrderService {
     private readonly httpClient: UberHttpClient,
     @Inject(UberConfigService) private readonly config: UberOrderConfig,
     private readonly prismaAccess: UberPrismaAccessService,
+    @Optional() actionService?: UberOrderActionService,
+    @Optional() outboxService?: UberOrderOutboxService,
+    @Optional() statusSyncService?: UberOrderStatusSyncService,
   ) {
     this.uberApiBaseUrl = config.apiBaseUrl;
     this.uberResourceHrefAllowedOrigins = config.resourceHrefAllowedOrigins;
+    this.actionService =
+      actionService ??
+      new UberOrderActionService(uberAuthService, httpClient, config);
+    this.outboxService =
+      outboxService ??
+      new UberOrderOutboxService(prismaAccess, this.actionService);
+    this.statusSyncService =
+      statusSyncService ?? new UberOrderStatusSyncService(prisma);
   }
 
   async syncOrderStatusToUber(externalOrderId: string, status: OrderStatus) {
@@ -88,7 +107,7 @@ export class UberOrderService {
       };
     }
 
-    const action = UBER_ACTION_BY_LOCAL_STATUS[status];
+    const action = this.statusSyncService.actionFor(status);
     if (!action) {
       throw new BadRequestException(
         `本地状态 ${status} 没有 Uber 文档支持的外部动作`,
@@ -183,29 +202,10 @@ export class UberOrderService {
   /** Queue workers can periodically drain retryable/PENDING outbox rows. */
 
   async processPendingUberOrderActions(limit = 50) {
-    const rows = await this.prismaAccess.uberOrderActionDelegate.findMany({
-      where: {
-        OR: [{ status: 'PENDING' }, { status: 'FAILED', retryable: true }],
-      },
-      orderBy: { updatedAt: 'asc' },
-      take: limit,
-    });
-    return Promise.all(
-      rows.map((row) => {
-        const retryPayload =
-          row.action === 'DENY'
-            ? this.buildUberDenyOrderPayload(
-                row.reasonCode ?? 'OTHER',
-                row.reasonDetail ?? undefined,
-              )
-            : {};
-        return this.executeUberOrderAction(
-          row.externalOrderId,
-          row.action,
-          retryPayload,
-          true,
-        );
-      }),
+    return this.outboxService.processPending(
+      limit,
+      (externalOrderId, action, payload) =>
+        this.executeUberOrderAction(externalOrderId, action, payload, true),
     );
   }
 
@@ -248,41 +248,8 @@ export class UberOrderService {
     );
   }
 
-  private buildUberDenyOrderPayload(
-    reasonCode: string,
-    reasonDetail?: string,
-  ): { reason: { code: UberDenyReasonCode; explanation: string } } {
-    const normalizedReason = reasonCode.trim();
-    const detail = reasonDetail?.trim();
-    const uberReasonCode = this.toUberDenyReasonCode(normalizedReason);
-
-    return {
-      reason: {
-        code: uberReasonCode,
-        explanation: detail || normalizedReason || uberReasonCode,
-      },
-    };
-  }
-
-  private toUberDenyReasonCode(reasonCode: string): UberDenyReasonCode {
-    switch (reasonCode.trim().toUpperCase()) {
-      case 'STORE_CLOSED':
-      case 'POS_NOT_READY':
-      case 'POS_OFFLINE':
-      case 'MISSING_ITEM':
-      case 'MISSING_INFO':
-      case 'PRICING':
-      case 'CAPACITY':
-      case 'ADDRESS':
-      case 'SPECIAL_INSTRUCTIONS':
-        return reasonCode.trim().toUpperCase() as UberDenyReasonCode;
-      case 'ITEM_UNAVAILABLE':
-      case 'ITEM_AVAILABILITY':
-        return 'ITEM_AVAILABILITY';
-      case 'INVALID_ORDER':
-      default:
-        return 'OTHER';
-    }
+  private buildUberDenyOrderPayload(reasonCode: string, reasonDetail?: string) {
+    return this.actionService.buildDenyPayload(reasonCode, reasonDetail);
   }
 
   async listPendingUberOrders() {
@@ -465,7 +432,7 @@ export class UberOrderService {
   }
 
   private isNonRetryableOrderActionStatus(status: number): boolean {
-    return [400, 401, 403, 404].includes(status);
+    return this.actionService.isNonRetryableStatus(status);
   }
 
   private async enqueueAndBestEffortAcceptUberOrder(
@@ -678,31 +645,16 @@ export class UberOrderService {
       });
     }
 
-    const encodedOrderId = encodeURIComponent(externalOrderId);
-    const pathnameByAction: Record<UberOrderActionName, string> = {
-      ACCEPT: `/v1/eats/orders/${encodedOrderId}/accept_pos_order`,
-      DENY: `/v1/eats/orders/${encodedOrderId}/deny_pos_order`,
-      READY_FOR_PICKUP: `/v1/delivery/order/${encodedOrderId}/ready`,
-    };
-    const pathname = pathnameByAction[action];
+    const pathname = this.actionService.buildPath(externalOrderId, action);
     let response: Response;
     let rawText = '';
     let parsed: unknown = {};
     try {
-      const token = await this.uberAuthService.getAccessToken('eats.order');
       ({
         response,
         text: rawText,
         data: parsed,
-      } = await this.httpClient.request({
-        returnErrorResponse: true,
-        path: pathname,
-        baseUrl: this.uberApiBaseUrl,
-        method: 'POST',
-        accessToken: token,
-        json: payload,
-        kind: 'api',
-      }));
+      } = await this.actionService.request(externalOrderId, action, payload));
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
@@ -747,9 +699,10 @@ export class UberOrderService {
     }
 
     // Uber may answer 409 when a retried ready action has already won upstream.
-    const succeeded =
-      response.ok || (action === 'READY_FOR_PICKUP' && response.status === 409);
-    const retryable = response.status === 429 || response.status >= 500;
+    const { succeeded, retryable } = this.actionService.classify(
+      action,
+      response,
+    );
     const uberRequestId =
       response.headers.get('x-request-id') ??
       response.headers.get('uber-request-id');
@@ -1519,240 +1472,15 @@ export class UberOrderService {
   }
 
   private validateOrderAmounts(order: ParsedUberOrder) {
-    const calculatedLinesCents = order.items.reduce(
-      (sum, item) => sum + item.lineTotalCents,
-      0,
-    );
-    const lineVarianceCents = order.subtotalCents - calculatedLinesCents;
-    const calculatedTotalCents =
-      order.subtotalCents -
-      order.discountCents +
-      order.taxCents +
-      order.deliveryFeeCents;
-    const totalVarianceCents = order.totalCents - calculatedTotalCents;
-    const roundingToleranceCents = Math.max(1, order.items.length);
-    return {
-      calculatedLinesCents,
-      calculatedTotalCents,
-      lineVarianceCents,
-      totalVarianceCents,
-      roundingToleranceCents,
-      hasMaterialVariance:
-        Math.abs(lineVarianceCents) > roundingToleranceCents ||
-        Math.abs(totalVarianceCents) > roundingToleranceCents,
-    };
+    return validateUberOrderAmounts(order);
   }
 
   private parseOrderPayload(payload: unknown): ParsedUberOrder | null {
-    if (!payload || typeof payload !== 'object' || Array.isArray(payload))
-      return null;
-    const dto = payload as UberOrderDetailDto;
-    const charges = dto.payment?.charges;
-    const promotions = dto.payment?.promotions;
-    const externalOrderId = this.readString(
-      dto.order_id,
-      dto.id,
-      dto.external_order_id,
-    );
-    const totalSource =
-      dto.total ??
-      dto.total_cents ??
-      charges?.total ??
-      charges?.total_promo_applied;
-    if (!externalOrderId || totalSource === undefined) return null;
-    const subtotalCents = this.readCents(
-      dto.subtotal ?? dto.sub_total ?? charges?.sub_total ?? charges?.subtotal,
-      dto.subtotal_cents,
-      0,
-    );
-    const taxCents = this.readCents(
-      dto.tax ?? charges?.tax_promo_applied ?? charges?.tax,
-      dto.tax_cents,
-      0,
-    );
-    const promoSubtotalCents = this.readOptionalCents(
-      charges?.sub_total_promo_applied,
-    );
-    const promotionSavingsCents =
-      promotions?.promotions?.reduce(
-        (sum, promotion) =>
-          sum +
-          Math.max(0, promotion.promo_discount_value ?? 0) +
-          Math.max(0, promotion.promo_delivery_fee_value ?? 0),
-        0,
-      ) ?? 0;
-    const discountCents =
-      dto.discount !== undefined ||
-      dto.discount_cents !== undefined ||
-      dto.discountCents !== undefined
-        ? this.readCents(
-            dto.discount,
-            dto.discount_cents ?? dto.discountCents,
-            0,
-          )
-        : promoSubtotalCents !== null
-          ? Math.max(0, subtotalCents - promoSubtotalCents)
-          : promotionSavingsCents;
-    const hasPromotion =
-      discountCents > 0 ||
-      promoSubtotalCents !== null ||
-      (promotions?.promotions?.length ?? 0) > 0;
-    const deliveryFeeCents = this.readCents(
-      dto.delivery_fee ?? charges?.total_fee ?? charges?.delivery_fee,
-      undefined,
-      0,
-    );
-    const items = (dto.items ?? dto.cart?.items ?? []).map((item) =>
-      this.parseUberOrderItem(item),
-    );
-    const totalCents = this.readCents(
-      dto.total ?? charges?.total ?? charges?.total_promo_applied,
-      dto.total_cents,
-      subtotalCents - discountCents + taxCents + deliveryFeeCents,
-    );
-    const customer = dto.customer ?? dto.eater ?? {};
-    const eaterName = [
-      this.readString(dto.eater?.first_name),
-      this.readString(dto.eater?.last_name),
-    ]
-      .filter((value): value is string => !!value)
-      .join(' ');
-    return {
-      externalOrderId,
-      displayId: this.readString(dto.display_id),
-      pickupCode: this.readString(dto.pickup_code, dto.display_id),
-      storeId: this.readString(dto.store_id, dto.store?.id),
-      subtotalCents,
-      taxCents,
-      totalCents,
-      discountCents,
-      hasPromotion,
-      deliveryFeeCents,
-      contactName: this.readString(
-        customer.name,
-        customer.full_name,
-        eaterName,
-      ),
-      contactPhone: this.readString(customer.phone, customer.phone_number),
-      paidAt:
-        this.readDate(dto.paid_at, dto.created_at, dto.placed_at) ?? new Date(),
-      fulfillmentType: this.readString(dto.fulfillment_type, dto.type)
-        ?.toLowerCase()
-        .includes('deliver')
-        ? 'delivery'
-        : 'pickup',
-      estimatedReadyAt: this.readDate(
-        dto.estimated_ready_for_pickup_at,
-        dto.estimated_delivery_at,
-      ),
-      specialInstructions: this.readString(
-        dto.special_instructions,
-        dto.cart?.special_instructions,
-      ),
-      cancellation:
-        dto.cancellation || dto.cancelled_at || dto.canceled_at
-          ? {
-              cancelledBy: this.readString(
-                dto.cancellation?.cancelled_by,
-                dto.cancellation?.canceled_by,
-              ),
-              reasonCode: this.readString(dto.cancellation?.reason_code),
-              reasonDetail: this.readString(
-                dto.cancellation?.reason,
-                dto.cancellation?.details,
-              ),
-              occurredAt:
-                this.readDate(dto.cancelled_at, dto.canceled_at) ?? new Date(),
-            }
-          : null,
-      items,
-    };
-  }
-
-  private parseUberOrderItem(item: UberOrderItemDto): ParsedUberOrderItem {
-    const quantity = Math.max(1, Math.round(item.quantity ?? 1));
-    const price = this.asObject(item.price);
-    const modifiers = [
-      ...(item.modifiers ?? []).map((modifier) =>
-        this.parseUberModifier(modifier, null),
-      ),
-      ...(item.selected_modifier_groups ?? []).flatMap((group) =>
-        (group.selected_items ?? []).map((modifier) =>
-          this.parseUberModifier(modifier, group.id ?? null),
-        ),
-      ),
-    ];
-    const optionsUnitPriceCents = this.flattenUberModifiers(modifiers).reduce(
-      (sum, modifier) => sum + modifier.priceDeltaCents * modifier.quantity,
-      0,
-    );
-    const suppliedUnit = this.readCents(
-      item.unit_price ?? price?.unit_price,
-      item.price,
-      0,
-    );
-    const suppliedLine = this.readCents(
-      item.total_price ?? price?.total_price,
-      undefined,
-      suppliedUnit * quantity,
-    );
-    const unitPriceCents = suppliedUnit || Math.round(suppliedLine / quantity);
-    return {
-      externalLineId: this.readString(
-        item.line_item_id,
-        item.instance_id,
-        item.id,
-      ),
-      externalItemId: this.readString(item.item_id, item.id),
-      stableIdHint: this.readString(item.external_data),
-      displayName:
-        this.readString(item.title, item.name) ?? 'Unknown Uber item',
-      quantity,
-      baseUnitPriceCents: Math.max(0, unitPriceCents - optionsUnitPriceCents),
-      optionsUnitPriceCents,
-      unitPriceCents,
-      lineTotalCents: suppliedLine,
-      specialInstructions: this.readString(item.special_instructions),
-      modifiers,
-    };
-  }
-
-  private parseUberModifier(
-    modifier: UberOrderModifierDto,
-    parentExternalId: string | null,
-  ): ParsedUberModifier {
-    const externalId = this.readString(modifier.modifier_id, modifier.id);
-    return {
-      externalId,
-      parentExternalId,
-      displayName:
-        this.readString(modifier.title, modifier.name) ?? 'Unknown modifier',
-      quantity: Math.max(1, Math.round(modifier.quantity ?? 1)),
-      priceDeltaCents: this.readCents(modifier.price_delta, modifier.price, 0),
-      specialInstructions: this.readString(modifier.special_instructions),
-      children: [
-        ...(modifier.modifiers ?? []),
-        ...(modifier.selected_items ?? []),
-      ].map((child) => this.parseUberModifier(child, externalId)),
-    };
+    return this.payloadParser.parse(payload);
   }
 
   private mapEventTypeToOrderStatus(eventType: string): OrderStatus | null {
-    const normalized = normalizeUberEventType(eventType);
-
-    if (normalized.includes('complete')) return OrderStatus.completed;
-    if (normalized.includes('ready')) return OrderStatus.ready;
-    if (normalized.includes('progress') || normalized.includes('making')) {
-      return OrderStatus.making;
-    }
-    // Cancellation/rejection is captured separately. Refund is a local money
-    // operation and must never be inferred from an Uber lifecycle event.
-    if (normalized.includes('cancel') || normalized.includes('reject'))
-      return null;
-    if (normalized.includes('accept')) return OrderStatus.paid;
-    if (normalized.includes('notification')) return OrderStatus.pending;
-
-    return OrderStatus.pending;
+    return mapUberEventTypeToOrderStatus(eventType);
   }
 
   private toClientRequestId(externalOrderId: string): string {
