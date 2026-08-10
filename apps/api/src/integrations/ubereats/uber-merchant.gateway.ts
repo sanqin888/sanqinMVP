@@ -713,7 +713,9 @@ export class UberMerchantGateway {
       create: {
         ...input,
         rawStoresSnapshot: input.rawStoresSnapshot
-          ? JSON.parse(JSON.stringify(input.rawStoresSnapshot))
+          ? (JSON.parse(
+              JSON.stringify(input.rawStoresSnapshot),
+            ) as Prisma.InputJsonValue)
           : undefined,
         accessToken: null,
         refreshToken: null,

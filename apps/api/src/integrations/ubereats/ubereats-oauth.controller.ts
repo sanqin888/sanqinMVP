@@ -1,12 +1,8 @@
 import {
-  BadRequestException,
   Body,
   Controller,
-  Delete,
   Get,
-  Head,
   Header,
-  HttpCode,
   Patch,
   Param,
   Post,
@@ -25,25 +21,10 @@ import {
   UberReadOnlyAdmin,
 } from './ubereats-access.decorator';
 import {
-  CreateUberOpsTicketDto,
-  GenerateUberReconciliationReportDto,
   MerchantQuery,
   OAuthCallbackQuery,
-  OpsTicketListQuery,
   ProvisionUberStoreDto,
-  PublishUberMenuDto,
-  ReportListQuery,
-  ResourceIdParam,
-  StoreIdQuery,
-  SyncUberMenuItemAvailabilityDto,
-  SyncUberOptionItemAvailabilityDto,
   UpdatePosExternalStoreIdDto,
-  UpdateUberDraftGroupDto,
-  UpdateUberDraftItemDto,
-  UpdateUberDraftOptionChildGroupDto,
-  UpdateUberDraftOptionDto,
-  UpsertUberOptionItemConfigDto,
-  UpsertUberPriceBookItemDto,
 } from './contracts/requests/ubereats.requests';
 import { UberMerchantService } from './uber-merchant.service';
 

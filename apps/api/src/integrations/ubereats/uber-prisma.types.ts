@@ -33,7 +33,7 @@ export type UberMenuPublishRepository = Pick<
 
 export type UberOpsTicketRepository = Pick<
   PrismaService['uberOpsTicket'],
-  'count' | 'create' | 'findMany' | 'findUnique' | 'update'
+  'count' | 'create' | 'findFirst' | 'findMany' | 'findUnique' | 'update'
 >;
 
 export type UberOAuthStateRepository = Pick<

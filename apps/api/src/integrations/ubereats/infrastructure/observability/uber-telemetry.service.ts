@@ -120,11 +120,9 @@ export class UberTelemetryService {
   }
 
   /** Compatibility sink for workflow diagnostics: intentionally discards free text. */
-  workflowLog(
-    level: LogLevel,
-    _message?: unknown,
-    ..._details: unknown[]
-  ): void {
+  workflowLog(level: LogLevel, message?: unknown, ...details: unknown[]): void {
+    void message;
+    void details;
     this.log(level, 'ubereats_workflow_diagnostic');
   }
 

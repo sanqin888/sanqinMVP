@@ -1,49 +1,19 @@
 import {
   BadRequestException,
-  Body,
   Controller,
-  Delete,
   Get,
   Head,
-  Header,
   HttpCode,
-  Patch,
-  Param,
   Post,
-  Query,
   Req,
   Res,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { randomUUID } from 'crypto';
+
 import { AppLogger } from '../../common/app-logger';
-import { SESSION_COOKIE_NAME } from '../../auth/session-auth.guard';
-import {
-  UberAdminWrite,
-  UberMfaAdminWrite,
-  UberReadOnlyAdmin,
-} from './ubereats-access.decorator';
-import {
-  CreateUberOpsTicketDto,
-  GenerateUberReconciliationReportDto,
-  MerchantQuery,
-  OAuthCallbackQuery,
-  OpsTicketListQuery,
-  ProvisionUberStoreDto,
-  PublishUberMenuDto,
-  ReportListQuery,
-  ResourceIdParam,
-  StoreIdQuery,
-  SyncUberMenuItemAvailabilityDto,
-  SyncUberOptionItemAvailabilityDto,
-  UpdatePosExternalStoreIdDto,
-  UpdateUberDraftGroupDto,
-  UpdateUberDraftItemDto,
-  UpdateUberDraftOptionChildGroupDto,
-  UpdateUberDraftOptionDto,
-  UpsertUberOptionItemConfigDto,
-  UpsertUberPriceBookItemDto,
-} from './contracts/requests/ubereats.requests';
+
+import { UberReadOnlyAdmin } from './ubereats-access.decorator';
+
 import { UberWebhookService } from './uber-webhook.service';
 
 @Controller('integrations/ubereats')

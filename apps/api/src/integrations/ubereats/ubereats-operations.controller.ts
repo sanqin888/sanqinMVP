@@ -1,24 +1,9 @@
-import {
-  BadRequestException,
-  Body,
-  Controller,
-  Delete,
-  Get,
-  Head,
-  Header,
-  HttpCode,
-  Patch,
-  Param,
-  Post,
-  Query,
-  Req,
-  Res,
-} from '@nestjs/common';
-import type { Request, Response } from 'express';
-import { UberOpsTicketStatus, UberOpsTicketType } from '@prisma/client';
-import { randomUUID } from 'crypto';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+
+import { UberOpsTicketType } from '@prisma/client';
+
 import { AppLogger } from '../../common/app-logger';
-import { SESSION_COOKIE_NAME } from '../../auth/session-auth.guard';
+
 import { ResourceIdPipe } from './contracts/requests/resource-id.pipe';
 import {
   executeUberMutation,
@@ -32,23 +17,8 @@ import {
 import {
   CreateUberOpsTicketDto,
   GenerateUberReconciliationReportDto,
-  MerchantQuery,
-  OAuthCallbackQuery,
   OpsTicketListQuery,
-  ProvisionUberStoreDto,
-  PublishUberMenuDto,
   ReportListQuery,
-  ResourceIdParam,
-  StoreIdQuery,
-  SyncUberMenuItemAvailabilityDto,
-  SyncUberOptionItemAvailabilityDto,
-  UpdatePosExternalStoreIdDto,
-  UpdateUberDraftGroupDto,
-  UpdateUberDraftItemDto,
-  UpdateUberDraftOptionChildGroupDto,
-  UpdateUberDraftOptionDto,
-  UpsertUberOptionItemConfigDto,
-  UpsertUberPriceBookItemDto,
 } from './contracts/requests/ubereats.requests';
 import { UberOperationsService } from './uber-operations.service';
 
