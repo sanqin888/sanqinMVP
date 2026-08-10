@@ -1,5 +1,5 @@
 import { OrderStatus } from '@prisma/client';
-import { normalizeUberEventType } from './uber-integration.utils';
+import { UberOrderStateMachine } from './uber-order.state-machine';
 import type {
   ParsedUberModifier,
   ParsedUberOrder,
@@ -193,43 +193,13 @@ export function parseUberModifier(
 }
 
 export function validateUberOrderAmounts(order: ParsedUberOrder) {
-  const calculatedLinesCents = order.items.reduce(
-    (sum, item) => sum + item.lineTotalCents,
-    0,
-  );
-  const calculatedTotalCents =
-    order.subtotalCents -
-    order.discountCents +
-    order.taxCents +
-    order.deliveryFeeCents;
-  const lineVarianceCents = order.subtotalCents - calculatedLinesCents;
-  const totalVarianceCents = order.totalCents - calculatedTotalCents;
-  const roundingToleranceCents = Math.max(1, order.items.length);
-  return {
-    calculatedLinesCents,
-    calculatedTotalCents,
-    lineVarianceCents,
-    totalVarianceCents,
-    roundingToleranceCents,
-    hasMaterialVariance:
-      Math.abs(lineVarianceCents) > roundingToleranceCents ||
-      Math.abs(totalVarianceCents) > roundingToleranceCents,
-  };
+  return UberOrderStateMachine.validateAmounts(order);
 }
 
 export function mapUberEventTypeToOrderStatus(
   eventType: string,
 ): OrderStatus | null {
-  const normalized = normalizeUberEventType(eventType);
-  if (normalized.includes('complete')) return OrderStatus.completed;
-  if (normalized.includes('ready')) return OrderStatus.ready;
-  if (normalized.includes('progress') || normalized.includes('making'))
-    return OrderStatus.making;
-  if (normalized.includes('cancel') || normalized.includes('reject'))
-    return null;
-  if (normalized.includes('accept')) return OrderStatus.paid;
-  if (normalized.includes('notification')) return OrderStatus.pending;
-  return OrderStatus.pending;
+  return UberOrderStateMachine.eventStatus(eventType);
 }
 
 export function readString(...values: unknown[]): string | null {

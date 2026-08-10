@@ -25,6 +25,13 @@ import { UberPrismaAccessService } from './uber-prisma-access.service';
 import { UberOrderActionService } from './uber-order-action.service';
 import { UberOrderOutboxService } from './uber-order-outbox.service';
 import { UberOrderStatusSyncService } from './uber-order-status-sync.service';
+import {
+  ExecuteUberOrderActionWorker,
+  HandleUberOrderCancellationUseCase,
+  ImportUberOrderUseCase,
+  PersistUberOrderUseCase,
+  RequestUberOrderActionUseCase,
+} from './uber-order.use-cases';
 import { UberCredentialVaultService } from '../../infrastructure/crypto/uber-credential-vault.service';
 
 @Module({
@@ -45,6 +52,11 @@ import { UberCredentialVaultService } from '../../infrastructure/crypto/uber-cre
     UberOrderActionService,
     UberOrderStatusSyncService,
     UberOrderOutboxService,
+    ImportUberOrderUseCase,
+    PersistUberOrderUseCase,
+    HandleUberOrderCancellationUseCase,
+    RequestUberOrderActionUseCase,
+    ExecuteUberOrderActionWorker,
     UberMenuWorkflowCore,
     UberMenuDraftService,
     UberMenuPublishService,
