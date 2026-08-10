@@ -1,4 +1,9 @@
-import { BadRequestException, Inject, Injectable, Optional } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Optional,
+} from '@nestjs/common';
 import {
   UberMenuPublishStatus,
   UberOpsTicketPriority,
@@ -1224,7 +1229,11 @@ export class UberMenuWorkflowCore {
       : row.refreshToken;
     if (!resolvedAccessToken)
       throw new BadRequestException('Uber 商户凭据不可用');
-    const resolvedRow = { ...row, accessToken: resolvedAccessToken, refreshToken };
+    const resolvedRow = {
+      ...row,
+      accessToken: resolvedAccessToken,
+      refreshToken,
+    };
     const now = Date.now();
     const skewMs = 60_000;
     const isExpired =
@@ -1276,7 +1285,9 @@ export class UberMenuWorkflowCore {
       );
     }
 
-    const encryptedAccessToken = this.credentialVault.encrypt(input.accessToken);
+    const encryptedAccessToken = this.credentialVault.encrypt(
+      input.accessToken,
+    );
     const encryptedRefreshToken = input.refreshToken
       ? this.credentialVault.encrypt(input.refreshToken)
       : null;
