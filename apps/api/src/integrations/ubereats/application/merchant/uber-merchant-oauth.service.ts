@@ -1,9 +1,8 @@
+import { Inject, Injectable } from '@nestjs/common';
 import {
-  BadRequestException,
-  Inject,
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
+  UberValidationError,
+  UberAuthenticationError,
+} from '../errors/uber-application.error';
 import { randomBytes, randomUUID } from 'crypto';
 import {
   UBER_OAUTH_TOKEN,
@@ -36,7 +35,11 @@ export class StartUberOAuthUseCase {
     merchantContext?: string,
   ) {
     if (!adminSessionId.trim())
-      throw new UnauthorizedException('缺少发起 OAuth 的管理员会话');
+      throw new UberAuthenticationError({
+        code: 'UNAUTHORIZED',
+        operation: 'merchant',
+        message: '缺少发起 OAuth 的管理员会话',
+      });
     const issuedAt = new Date();
     const nonce = randomBytes(32).toString('base64url');
     const payload = `${issuedAt.getTime()}.${nonce}`;
@@ -128,7 +131,12 @@ export class CompleteUberOAuthUseCase {
   }
   async getMerchantConnectionStatus(id?: string) {
     const row = await this.connections.findConnection(id);
-    if (!row) throw new BadRequestException('未找到 Uber 商户授权');
+    if (!row)
+      throw new UberValidationError({
+        code: 'INVALID_REQUEST',
+        operation: 'merchant',
+        message: '未找到 Uber 商户授权',
+      });
     return {
       ok: true,
       merchantUberUserId: row.merchantUberUserId,
@@ -144,7 +152,12 @@ export class CompleteUberOAuthUseCase {
     context?: string,
   ) {
     const parts = state?.trim().split('.') ?? [];
-    if (parts.length !== 3) throw new BadRequestException('OAuth state 非法');
+    if (parts.length !== 3)
+      throw new UberValidationError({
+        code: 'INVALID_REQUEST',
+        operation: 'merchant',
+        message: 'OAuth state 非法',
+      });
     const [timestamp, nonce, signature] = parts;
     const issuedAt = new Date(Number(timestamp));
     const now = new Date();
@@ -152,7 +165,11 @@ export class CompleteUberOAuthUseCase {
       !this.tokens.verifyState(`${timestamp}.${nonce}`, signature) ||
       Number.isNaN(issuedAt.getTime())
     )
-      throw new BadRequestException('OAuth state 校验失败');
+      throw new UberValidationError({
+        code: 'INVALID_REQUEST',
+        operation: 'merchant',
+        message: 'OAuth state 校验失败',
+      });
     const request = await this.states.findOAuthState(nonce);
     if (
       !request ||
@@ -160,18 +177,30 @@ export class CompleteUberOAuthUseCase {
       request.issuedAt.getTime() !== issuedAt.getTime() ||
       request.expiresAt <= now
     )
-      throw new BadRequestException('OAuth state 不存在、已使用或过期');
+      throw new UberValidationError({
+        code: 'INVALID_REQUEST',
+        operation: 'merchant',
+        message: 'OAuth state 不存在、已使用或过期',
+      });
     if (
       !adminSessionId?.trim() ||
       request.adminSessionId !== adminSessionId.trim()
     )
-      throw new UnauthorizedException('OAuth state 与管理员会话不匹配');
+      throw new UberAuthenticationError({
+        code: 'UNAUTHORIZED',
+        operation: 'merchant',
+        message: 'OAuth state 与管理员会话不匹配',
+      });
     if (
       request.redirectUri !== this.tokens.getRedirectUri() ||
       (context !== undefined &&
         request.merchantContext !== (context.trim() || null))
     )
-      throw new BadRequestException('OAuth state 上下文不匹配');
+      throw new UberValidationError({
+        code: 'INVALID_REQUEST',
+        operation: 'merchant',
+        message: 'OAuth state 上下文不匹配',
+      });
     if (
       !(await this.states.consumeOAuthState({
         nonce,
@@ -180,7 +209,11 @@ export class CompleteUberOAuthUseCase {
         now,
       }))
     )
-      throw new BadRequestException('OAuth state 已使用');
+      throw new UberValidationError({
+        code: 'INVALID_REQUEST',
+        operation: 'merchant',
+        message: 'OAuth state 已使用',
+      });
     return request;
   }
 }

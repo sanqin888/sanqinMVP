@@ -1,9 +1,5 @@
-import {
-  BadRequestException,
-  Inject,
-  Injectable,
-  NotImplementedException,
-} from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import { UberValidationError } from '../errors/uber-application.error';
 import { UBER_STORE_API, type UberStoreApiPort } from '../ports/uber-api.ports';
 import { createHash } from 'crypto';
 import { buildUberIdempotencyKey } from '../idempotency/uber-idempotency-key';
@@ -64,13 +60,31 @@ export class ProvisionUberStoreUseCase {
     merchantId?: string,
   ) {
     const id = storeId.trim();
-    if (!id) throw new BadRequestException('storeId 不能为空');
+    if (!id)
+      throw new UberValidationError({
+        code: 'INVALID_REQUEST',
+        operation: 'merchant',
+        message: 'storeId 不能为空',
+      });
     if (credentials(payload))
-      throw new BadRequestException('provision payload 不得包含 credential');
+      throw new UberValidationError({
+        code: 'INVALID_REQUEST',
+        operation: 'merchant',
+        message: 'provision payload 不得包含 credential',
+      });
     if (!merchantId?.trim())
-      throw new BadRequestException('merchantUberUserId 不能为空');
+      throw new UberValidationError({
+        code: 'INVALID_REQUEST',
+        operation: 'merchant',
+        message: 'merchantUberUserId 不能为空',
+      });
     const connection = await this.connections.findConnection(merchantId.trim());
-    if (!connection) throw new BadRequestException('未找到 Uber 商户授权');
+    if (!connection)
+      throw new UberValidationError({
+        code: 'INVALID_REQUEST',
+        operation: 'merchant',
+        message: '未找到 Uber 商户授权',
+      });
     const response = await this.api.provisionStore(
       connection.accessToken,
       id,
@@ -112,7 +126,11 @@ export class ProvisionUberStoreUseCase {
 @Injectable()
 export class DeprovisionUberStoreUseCase {
   revokeOrDeprovisionStore() {
-    throw new NotImplementedException('deprovision MVP 暂未实现');
+    throw new UberValidationError({
+      code: 'NOT_IMPLEMENTED',
+      operation: 'merchant',
+      message: 'deprovision MVP 暂未实现',
+    });
   }
 }
 
