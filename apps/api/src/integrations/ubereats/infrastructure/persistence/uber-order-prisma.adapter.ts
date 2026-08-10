@@ -20,7 +20,7 @@ import {
   OrderIngestionService,
 } from '../../../../orders/order-ingestion.service';
 import { PrismaService } from '../../../../prisma/prisma.service';
-import { UberWebhookEnvelopeDto } from '../../contracts/dto/uber-webhook-envelope.dto';
+import type { UberOrderNotificationEventV1 } from '../../contracts/events/uber-order-notification.v1';
 import { UberAuthService } from '../../infrastructure/uber-api/uber-token.provider';
 import {
   UberConfigService,
@@ -296,7 +296,7 @@ export class UberOrderPrismaAdapter {
   async processWebhookEvent(
     eventType: string,
     eventId: string,
-    envelope: UberWebhookEnvelopeDto | null,
+    envelope: UberOrderNotificationEventV1 | null,
   ) {
     if (!envelope) {
       throw new BadRequestException('Uber 订单 webhook envelope 无效');

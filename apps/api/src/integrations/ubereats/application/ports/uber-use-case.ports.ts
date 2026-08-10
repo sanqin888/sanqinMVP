@@ -1,5 +1,7 @@
 import type { OrderStatus } from '@prisma/client';
 import type { UberWebhookInput } from '../../domain/webhook/uber-webhook.types';
+import type { UberOrderNotificationEventV1 } from '../../contracts/events/uber-order-notification.v1';
+import type { UberMenuNotificationEventV1 } from '../../contracts/events/uber-menu-notification.v1';
 import type {
   PublishMenuInput,
   SyncAvailabilityInput,
@@ -58,7 +60,7 @@ export interface UberMenuPublishPort {
   processWebhookEvent(
     eventType: string,
     eventId: string,
-    payload: unknown,
+    payload: UberMenuNotificationEventV1,
   ): Promise<void>;
 }
 export interface UberMenuAvailabilityPort {
@@ -71,7 +73,7 @@ export interface UberOrderImportPort {
   processWebhookEvent(
     eventType: string,
     eventId: string,
-    payload: unknown,
+    payload: UberOrderNotificationEventV1,
   ): Promise<void>;
 }
 export interface UberOrderActionPort {

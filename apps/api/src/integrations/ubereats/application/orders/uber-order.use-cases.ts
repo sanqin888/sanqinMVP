@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { OrderStatus } from '@prisma/client';
+import type { UberOrderNotificationEventV1 } from '../../contracts/events/uber-order-notification.v1';
 import {
   UBER_ORDER_ACTION_PORT,
   UBER_ORDER_IMPORT_PORT,
@@ -16,7 +17,11 @@ export class ImportUberOrderUseCase {
     @Inject(UBER_ORDER_IMPORT_PORT)
     private readonly orders: UberOrderImportPort,
   ) {}
-  execute(eventType: string, eventId: string, payload: unknown) {
+  execute(
+    eventType: string,
+    eventId: string,
+    payload: UberOrderNotificationEventV1,
+  ) {
     return this.orders.processWebhookEvent(eventType, eventId, payload);
   }
 }

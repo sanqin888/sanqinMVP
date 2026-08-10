@@ -10,7 +10,10 @@ import {
 import { Prisma } from '@prisma/client';
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'crypto';
 import { PrismaService } from '../../../../prisma/prisma.service';
-import { UberWebhookEnvelopeDto } from '../../contracts/dto/uber-webhook-envelope.dto';
+import { parseUberWebhookEnvelopeV1 } from '../../contracts/events/uber-webhook-envelope.v1';
+import { parseUberOrderNotificationV1 } from '../../contracts/events/uber-order-notification.v1';
+import { parseUberMenuNotificationV1 } from '../../contracts/events/uber-menu-notification.v1';
+import type { UberWebhookWorkerTaskV1 } from '../../contracts/events/uber-worker-task.v1';
 import {
   UberConfigService,
   type UberWebhookConfig,
@@ -77,7 +80,7 @@ export class ProcessUberWebhookInboxWorker
       throw new BadRequestException('Uber webhook JSON 无效');
     }
 
-    const envelope = UberWebhookEnvelopeDto.parse(body);
+    const envelope = parseUberWebhookEnvelopeV1(body);
     const eventType = envelope?.eventType ?? this.readEventType(body);
     const eventId =
       this.readEventId(input.headers, body, envelope?.eventId) ??
@@ -129,7 +132,14 @@ export class ProcessUberWebhookInboxWorker
   ): Promise<void> {
     const { eventId, eventType } = row;
     const body = row.payload;
-    const envelope = UberWebhookEnvelopeDto.parse(body);
+    const orderEvent = parseUberOrderNotificationV1(body);
+    const task: UberWebhookWorkerTaskV1 = {
+      version: 1,
+      eventId,
+      eventType,
+      payload: body,
+      leaseToken,
+    };
     try {
       switch (normalizeUberEventType(eventType)) {
         case 'orders.notification':
@@ -141,7 +151,10 @@ export class ProcessUberWebhookInboxWorker
         case 'orders.cancelled':
         case 'orders.cancel':
         case 'orders.rejected':
-          await this.orders.execute(eventType, eventId, envelope);
+          if (!orderEvent) {
+            throw new BadRequestException('Uber 订单 webhook envelope 无效');
+          }
+          await this.orders.execute(task.eventType, task.eventId, orderEvent);
           break;
 
         case 'store.provisioned':
@@ -157,7 +170,13 @@ export class ProcessUberWebhookInboxWorker
           break;
 
         case 'menus.notification':
-          await this.menu.processWebhookEvent(eventType, eventId, body);
+          {
+            const menuEvent = parseUberMenuNotificationV1(body);
+            if (!menuEvent) {
+              throw new BadRequestException('Uber 菜单 webhook payload 无效');
+            }
+            await this.menu.processWebhookEvent(eventType, eventId, menuEvent);
+          }
           break;
 
         default:
