@@ -1,20 +1,15 @@
 import { Inject, Injectable } from '@nestjs/common';
-export type UberOpsTicketStatus =
-  | 'OPEN'
-  | 'IN_PROGRESS'
-  | 'RESOLVED'
-  | 'CLOSED'
-  | 'IGNORED';
 import type {
   CreateOpsTicketInput,
   GenerateReconciliationReportInput,
+  UberOpsTicketStatus,
 } from '../../domain/operations/uber-operations.types';
 
 export type CreateUberOpsTicketCommand = Omit<
   CreateOpsTicketInput,
   'context'
 > & {
-  targetOrderStatus?: string;
+  targetOrderStatus?: import('../../domain/orders/uber-order.types').UberOrderStatus;
   isAvailable?: boolean;
   uberStoreId?: string;
   targetStoreStatus?: 'ONLINE' | 'PAUSED';
