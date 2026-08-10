@@ -39,4 +39,26 @@ describe('Uber Eats API architecture', () => {
       );
     }
   });
+
+  it('requires controllers to pass application results through presenters', () => {
+    for (const path of productionFiles.filter((file) =>
+      file.endsWith('.controller.ts'),
+    )) {
+      const source = readFileSync(path, 'utf8');
+      expect(source).not.toMatch(/return\s+(?:await\s+)?this\.[\w.]+\s*\(/);
+      expect(source).not.toMatch(/\.json\s*\(\s*\{/);
+    }
+  });
+
+  it('keeps public DTOs independent from application and Prisma types', () => {
+    const responseRoot = resolve(API_ROOT, '../contracts/responses');
+    for (const name of readdirSync(responseRoot).filter((value) =>
+      value.endsWith('.responses.ts'),
+    )) {
+      const source = readFileSync(join(responseRoot, name), 'utf8');
+      expect(source).not.toMatch(
+        /@prisma\/client|\/application\/|Uber.*(?:Row|Payload|Result)/,
+      );
+    }
+  });
 });

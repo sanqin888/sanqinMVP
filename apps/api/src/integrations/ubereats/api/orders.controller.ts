@@ -1,7 +1,6 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 
 import { ResourceIdPipe } from '../contracts/requests/resource-id.pipe';
-import { toUberListResponse } from '../contracts/responses/ubereats.responses';
 import {
   UberMfaAdminWrite,
   UberReadOnlyAdmin,
@@ -11,6 +10,11 @@ import {
   ListPendingUberOrdersQuery,
   SyncUberOrderStatusUseCase,
 } from '../application/orders/uber-order.use-cases';
+import {
+  presentOrderMutation,
+  presentOrderSummary,
+  presentPendingOrders,
+} from './orders.presenter';
 
 @Controller('integrations/ubereats')
 @UberReadOnlyAdmin()
@@ -25,17 +29,18 @@ export class UberEatsOrdersController {
     @Param('externalOrderId', ResourceIdPipe) externalOrderId: string,
     @Body() dto: SyncOrderStatusDto,
   ) {
-    return await this.statusSync.execute(externalOrderId, dto.status);
+    await this.statusSync.execute(externalOrderId, dto.status);
+    return presentOrderMutation();
   }
 
   @Get('orders/pending')
   async listPendingOrders() {
     const result = await this.pendingOrders.list();
-    return toUberListResponse(result.items, 100);
+    return presentPendingOrders(result);
   }
 
   @Get('orders/pending/summary')
   async pendingOrdersSummary() {
-    return this.pendingOrders.summary();
+    return presentOrderSummary(await this.pendingOrders.summary());
   }
 }
