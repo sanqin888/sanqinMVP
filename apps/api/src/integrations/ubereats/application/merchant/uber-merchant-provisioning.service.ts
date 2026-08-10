@@ -14,10 +14,14 @@ export class ProvisionUberStoreUseCase {
   constructor(private readonly gateway: UberMerchantGateway) {}
   provisionStore(
     storeId: string,
-    payload: Record<string, unknown> = {},
+    payload: Record<string, unknown> | undefined,
     merchantUberUserId?: string,
   ) {
-    return this.gateway.provisionStore(storeId, payload, merchantUberUserId);
+    return this.gateway.provisionStore(
+      storeId,
+      payload ?? {},
+      merchantUberUserId,
+    );
   }
 }
 
@@ -46,7 +50,7 @@ export class UberMerchantProvisioningService {
   ) {}
   provisionStore(
     storeId: string,
-    payload: Record<string, unknown> = {},
+    payload: Record<string, unknown> | undefined,
     merchantUberUserId?: string,
   ) {
     return this.provision.provisionStore(storeId, payload, merchantUberUserId);

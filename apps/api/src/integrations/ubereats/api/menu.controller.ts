@@ -9,8 +9,6 @@ import {
   Query,
 } from '@nestjs/common';
 
-import { AppLogger } from '../../../common/app-logger';
-
 import {
   OptionalResourceIdPipe,
   ResourceIdPipe,
@@ -36,7 +34,6 @@ import { UberMenuService } from '../application/menu/uber-menu.service';
 @Controller('integrations/ubereats')
 @UberReadOnlyAdmin()
 export class UberEatsMenuController {
-  private readonly logger = new AppLogger(UberEatsMenuController.name);
   constructor(private readonly menu: UberMenuService) {}
   @Get('menu/channel/items')
   async listItemChannelConfigs(

@@ -45,7 +45,7 @@ export class UberMerchantService {
   }
   provisionStore(
     storeId: string,
-    payload: Record<string, unknown> = {},
+    payload: Record<string, unknown> | undefined,
     merchantUberUserId?: string,
   ) {
     return this.provisioning.provisionStore(
