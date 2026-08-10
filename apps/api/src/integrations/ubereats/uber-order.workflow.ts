@@ -258,6 +258,15 @@ export class UberOrderService {
     };
   }
 
+  async getPendingUberOrdersSummary() {
+    const where = { channel: Channel.ubereats, status: { in: [OrderStatus.pending, OrderStatus.paid, OrderStatus.making] } };
+    const [count, latest] = await Promise.all([
+      this.prisma.order.count({ where }),
+      this.prisma.order.findFirst({ where, orderBy: { updatedAt: 'desc' }, select: { updatedAt: true } }),
+    ]);
+    return { count, updatedAt: latest?.updatedAt ?? null };
+  }
+
   async processWebhookEvent(
     eventType: string,
     eventId: string,

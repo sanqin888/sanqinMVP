@@ -2,9 +2,9 @@
 
 import Image from 'next/image';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useUberAdminData, useUberMenuDraft, useUberMutationState, useUberPolling } from './hooks';
+import { useUberConnectionStores, useUberMenuDraft, useUberMutationState, useUberOperations, useUberOrders, useUberReports } from './hooks';
 import { apiFetch } from '@/lib/api/client';
-import { MenuDraftPanel, OAuthConnectionPanel, OperationsTicketsPanel, OrdersPanel, PublishHistoryPanel, ReconciliationPanel, StoreMappingPanel } from './components';
+import { MenuDraftPanel, OAuthConnectionPanel, OperationsTicketsPanel, OrdersPanel, PublishHistoryPanel, ReconciliationPanel, ResourceStatus, StoreMappingPanel } from './components';
 
 import type { DraftNode, DraftTreeKey, ModuleKey, StoreMenuTabKey, TicketStatus, UberDraftCategoryNode, UberDraftGroupNode, UberDryRunResponse } from './types';
 
@@ -33,8 +33,18 @@ export function UberEatsConsole() {
   const [active, setActive] = useState<ModuleKey>('dashboard');
   const [ticketStoreFilter, setTicketStoreFilter] = useState('');
   const [ticketStatusFilter, setTicketStatusFilter] = useState<TicketStatus | ''>('');
-  const { loading, globalError, connectUrl, connection, stores, pendingOrders, tickets, reports, loadAll } = useUberAdminData(ticketStoreFilter, ticketStatusFilter);
-  const { actionLoading, actionMessage, actionError, setActionError, runAction } = useUberMutationState(loadAll);
+  const connectionData = useUberConnectionStores(active === 'dashboard' || active === 'auth' || active === 'store-menu');
+  const { connectUrl, connection, stores } = connectionData.data;
+  const ordersData = useUberOrders(active === 'orders-ops');
+  const operationsData = useUberOperations(active === 'reconciliation-tickets', ticketStoreFilter, ticketStatusFilter);
+  const reportsData = useUberReports(active === 'reconciliation-tickets');
+  const pendingOrders = ordersData.data;
+  const tickets = operationsData.data;
+  const reports = reportsData.data;
+  const refreshVisible = useCallback(async () => {
+    await Promise.all([connectionData.retry(), ordersData.retry(), operationsData.retry(), reportsData.retry()]);
+  }, [connectionData, operationsData, ordersData, reportsData]);
+  const { operations, actionLoading, actionMessage, actionError, setActionError, runAction } = useUberMutationState(refreshVisible);
 
   const [integratorStoreId, setIntegratorStoreId] = useState('');
   const [posStoreIdDrafts, setPosStoreIdDrafts] = useState<Record<string, string>>({});
@@ -48,9 +58,7 @@ export function UberEatsConsole() {
   const [inspectorDraft, setInspectorDraft] = useState<Record<string, unknown>>({});
   const [expandedNodeKeys, setExpandedNodeKeys] = useState<Set<string>>(() => new Set());
   const [selectedSourceNodeIds, setSelectedSourceNodeIds] = useState<Set<string> | null>(null);
-  const reportMenuError = useCallback((message: string) => setActionError(message), [setActionError]);
-  const { menuDraft, menuDiff, menuLoading, menuFetchedAt, loadMenuDraft: loadStoreMenuDraft } = useUberMenuDraft(selectedStoreId, reportMenuError);
-  useUberPolling(loadAll, 30_000, true);
+  const { menuDraft, menuDiff, menuLoading, menuFetchedAt, menuError, loadMenuDraft: loadStoreMenuDraft } = useUberMenuDraft(selectedStoreId, active === 'store-menu');
 
   useEffect(() => {
     if (!selectedStoreId && stores[0]?.storeId) {
@@ -66,7 +74,6 @@ export function UberEatsConsole() {
     setDryRunSchedule(null);
   }, [selectedStoreId]);
 
-  const openTickets = useMemo(() => tickets.filter((t) => t.status !== 'RESOLVED').length, [tickets]);
   const provisionedCount = stores.filter((s) => s.isProvisioned).length;
   const draftCategories = useMemo(
     () => menuDraft?.uberDraft.tree.categories ?? [],
@@ -475,11 +482,11 @@ export function UberEatsConsole() {
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-bold">UberEats 集成控制台</h1>
-            <button type="button" onClick={() => void loadAll()} className="rounded-md border px-3 py-1 text-sm hover:bg-slate-100">{loading ? '刷新中…' : '刷新数据'}</button>
+            <button type="button" onClick={() => void refreshVisible()} className="rounded-md border px-3 py-1 text-sm hover:bg-slate-100">刷新当前模块</button>
           </div>
-          {globalError ? <p className="mt-2 text-sm text-amber-700">{globalError}</p> : null}
           {actionMessage ? <p className="mt-1 text-sm text-emerald-700">{actionMessage}</p> : null}
           {actionError ? <p className="mt-1 text-sm text-red-700">{actionError}</p> : null}
+          {Object.entries(operations).map(([key, phase]) => <p key={key} className="mt-1 text-xs text-slate-600">{key}：{{ QUEUED: '已排队', PROCESSING: '正在处理', WAITING_WEBHOOK: '等待 Uber webhook', RETRYABLE_FAILED: '可重试失败', MANUAL_REVIEW: '需要人工处理', COMPLETED: '完成' }[phase]}</p>)}
         </div>
 
         {active === 'dashboard' && (
@@ -488,8 +495,8 @@ export function UberEatsConsole() {
               <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-500">连接状态</p><p className="mt-2 text-xl font-semibold">{connection?.merchantUberUserId ? '已授权' : '未授权'}</p><p className="text-xs text-slate-500">expiresAt: {safeTime(connection?.expiresAt)}</p></div>
               <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-500">门店绑定状态</p><p className="mt-2 text-xl font-semibold">已发现 {stores.length} / 已 provision {provisionedCount}</p></div>
               <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-500">Webhook 状态</p><p className="mt-2 text-xl font-semibold">200 ACK + 去重处理</p></div>
-              <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-500">菜单状态</p><p className="mt-2 text-xl font-semibold">{reports[0] ? '有发布/对账记录' : '暂无发布记录'}</p></div>
-              <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-500">运营异常</p><p className="mt-2 text-xl font-semibold">Open Tickets {openTickets}</p></div>
+              <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-500">菜单状态</p><p className="mt-2 text-xl font-semibold">进入对账模块查看</p></div>
+              <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-500">运营异常</p><p className="mt-2 text-xl font-semibold">进入工单模块查看</p></div>
             </div>
           </section>
         )}
@@ -505,7 +512,7 @@ export function UberEatsConsole() {
               <div className="mt-2 flex flex-wrap gap-2">
                 <button type="button" className="rounded border px-3 py-1 text-sm" onClick={() => connectUrl?.authorizeUrl && navigator.clipboard.writeText(connectUrl.authorizeUrl)}>复制 Connect URL</button>
                 <button type="button" className="rounded border px-3 py-1 text-sm" onClick={() => window.open('/api/v1/integrations/ubereats/oauth/start', '_blank', 'noopener,noreferrer')}>打开 Uber OAuth</button>
-                <button type="button" className="rounded border px-3 py-1 text-sm" onClick={() => void loadAll()}>刷新授权状态</button>
+                <button type="button" className="rounded border px-3 py-1 text-sm" onClick={() => void connectionData.retry()}>刷新授权状态</button>
               </div>
               <div className="mt-2 grid gap-2 text-sm md:grid-cols-2">
                 <p className="break-all whitespace-pre-wrap">merchantUberUserId：{connection?.merchantUberUserId ?? '-'}</p>
@@ -599,7 +606,7 @@ export function UberEatsConsole() {
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => setStoreMenuTab('publish')}>查看本次 Diff</button>
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => setStoreMenuTab('overview')}>查看上次发布版本</button>
               </div>
-              <p className="mt-2 text-xs text-slate-500">{menuLoading ? '菜单模块加载中…' : `菜单模块最后刷新：${safeTime(menuFetchedAt)}`}</p>
+              <ResourceStatus state={{ loading: menuLoading, error: menuError, lastUpdated: menuFetchedAt }} retry={() => void loadStoreMenuDraft(selectedStoreId)} />
               <div className="mt-4 flex flex-wrap gap-2 text-sm">
                 {STORE_MENU_TABS.map((tab) => (
                   <button key={tab.key} type="button" onClick={() => setStoreMenuTab(tab.key)} className={`rounded-md px-3 py-1.5 ${storeMenuTab === tab.key ? 'bg-slate-900 text-white' : 'border hover:bg-slate-50'}`}>
@@ -803,6 +810,7 @@ export function UberEatsConsole() {
         {active === 'orders-ops' && (
           <OrdersPanel>
             <h3 className="text-lg font-semibold">订单与运营</h3>
+            <ResourceStatus state={ordersData} retry={() => void ordersData.retry()} />
             <table className="mt-3 min-w-full text-sm"><thead><tr className="border-b text-left text-slate-500"><th className="px-2 py-2">externalOrderId</th><th className="px-2 py-2">orderStableId</th><th className="px-2 py-2">status</th><th className="px-2 py-2">金额</th><th className="px-2 py-2">createdAt</th></tr></thead><tbody>{pendingOrders.map((o) => <tr key={o.externalOrderId} className="border-b"><td className="px-2 py-2">{o.externalOrderId}</td><td className="px-2 py-2">{o.orderStableId}</td><td className="px-2 py-2">{o.status}</td><td className="px-2 py-2">${(o.totalCents / 100).toFixed(2)}</td><td className="px-2 py-2">{safeTime(o.createdAt)}</td></tr>)}</tbody></table>
           </OrdersPanel>
         )}
@@ -811,11 +819,13 @@ export function UberEatsConsole() {
           <section className="grid gap-4 lg:grid-cols-2">
             <ReconciliationPanel><div className="rounded-xl border bg-white p-4">
               <h3 className="text-lg font-semibold">Reconciliation Reports</h3>
+              <ResourceStatus state={reportsData} retry={() => void reportsData.retry()} />
               <button type="button" className="mt-2 rounded border px-3 py-1 text-sm" onClick={() => void runAction('gen-report', () => apiFetch('/integrations/ubereats/v2/reports/reconciliation/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) }).then(() => {}), '已生成对账报告')}>生成对账报告</button>
               <div className="mt-3 space-y-2 text-sm">{reports.map((r) => <div key={r.reportStableId} className="rounded border p-2"><p>{r.reportStableId}</p><p>totalOrders: {r.totalOrders} / amount: {r.totalAmountCents}</p></div>)}</div>
             </div></ReconciliationPanel>
             <OperationsTicketsPanel><div className="rounded-xl border bg-white p-4">
               <h3 className="text-lg font-semibold">Ops Tickets</h3>
+              <ResourceStatus state={operationsData} retry={() => void operationsData.retry()} />
               <div className="mt-2 grid grid-cols-2 gap-2"><input className="rounded border px-2 py-1 text-sm" placeholder="按 storeId 过滤" value={ticketStoreFilter} onChange={(e) => setTicketStoreFilter(e.target.value)} /><select className="rounded border px-2 py-1 text-sm" value={ticketStatusFilter} onChange={(e) => setTicketStatusFilter(e.target.value as TicketStatus | '')}><option value="">全部状态</option><option value="OPEN">OPEN</option><option value="IN_PROGRESS">IN_PROGRESS</option><option value="RESOLVED">RESOLVED</option></select></div>
               <div className="mt-3 space-y-2 text-sm">{tickets.map((t) => <div key={t.ticketStableId} className="rounded border p-2"><div className="flex items-center justify-between"><p>{t.ticketStableId}</p><button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => void runAction(`retry-${t.ticketStableId}`, () => apiFetch(`/integrations/ubereats/v2/ops/tickets/${t.ticketStableId}/retry`, { method: 'POST' }).then(() => {}), `${t.ticketStableId} 已触发重试`)}>Retry</button></div><p>{t.type} / {t.priority} / {t.status}</p><p>{t.title}</p></div>)}</div>
             </div></OperationsTicketsPanel>

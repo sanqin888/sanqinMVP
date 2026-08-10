@@ -68,4 +68,9 @@ export class UberEatsOrdersController {
     const result = await this.orders.listPendingUberOrders();
     return toUberListResponse(result.items, 100);
   }
+
+  @Get('orders/pending/summary')
+  async pendingOrdersSummary() {
+    return this.orders.getPendingUberOrdersSummary();
+  }
 }
