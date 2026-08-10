@@ -4,7 +4,7 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import type { BusinessConfig, BusinessHour } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AppLogger } from '../../common/app-logger';
-import { UberMerchantService } from '../../integrations/ubereats/uber-merchant.service';
+import { UberMerchantService } from '../../integrations/ubereats/application/merchant/uber-merchant.service';
 
 export type DayConfigDto = {
   weekday: number; // 0-6
