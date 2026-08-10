@@ -63,6 +63,17 @@ import {
   UberMerchantGateway as UberMerchantApiGateway,
 } from './infrastructure/api/uber-resource.gateways';
 import { UberTelemetryService } from './infrastructure/observability/uber-telemetry.service';
+import { UBER_UNIT_OF_WORK } from './application/ports/uber-persistence.ports';
+import {
+  PrismaUberMenuPublishAdapter,
+  PrismaUberMerchantConnectionAdapter,
+  PrismaUberOAuthStateAdapter,
+  PrismaUberOperationsTicketAdapter,
+  PrismaUberOrderActionAdapter,
+  PrismaUberStoreMappingAdapter,
+  PrismaUberUnitOfWork,
+  PrismaUberWebhookInboxAdapter,
+} from './infrastructure/persistence/uber-prisma.adapters';
 
 @Module({
   imports: [PrismaModule, AuthModule, MessagingModule, OrdersModule],
@@ -81,6 +92,15 @@ import { UberTelemetryService } from './infrastructure/observability/uber-teleme
     BrowserWriteCsrfGuard,
     UberCredentialVaultService,
     UberPrismaAccessService,
+    PrismaUberWebhookInboxAdapter,
+    PrismaUberOrderActionAdapter,
+    PrismaUberMerchantConnectionAdapter,
+    PrismaUberStoreMappingAdapter,
+    PrismaUberOAuthStateAdapter,
+    PrismaUberMenuPublishAdapter,
+    PrismaUberOperationsTicketAdapter,
+    PrismaUberUnitOfWork,
+    { provide: UBER_UNIT_OF_WORK, useExisting: PrismaUberUnitOfWork },
     UberTelemetryService,
     UberAuthService,
     UberHttpClient,

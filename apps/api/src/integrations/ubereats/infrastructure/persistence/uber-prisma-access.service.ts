@@ -18,40 +18,24 @@ import type {
  */
 @Injectable()
 export class UberPrismaAccessService {
+  readonly uberWebhookInboxRepository: UberWebhookInboxRepository;
+  readonly uberOrderActionRepository: UberOrderActionRepository;
+  readonly uberMerchantConnectionRepository: UberMerchantConnectionRepository;
+  readonly uberStoreMappingRepository: UberStoreMappingRepository;
+  readonly uberMenuPublishRepository: UberMenuPublishRepository;
+  readonly uberOpsTicketRepository: UberOpsTicketRepository;
+  readonly uberOAuthStateRepository: UberOAuthStateRepository;
+
   constructor(
     @Inject(PrismaService)
     private readonly prisma: UberPrismaRepositories,
-  ) {}
-
-  get uberWebhookInboxRepository(): UberWebhookInboxRepository {
-    return this.repositories.uberWebhookInbox;
-  }
-
-  get uberOrderActionRepository(): UberOrderActionRepository {
-    return this.repositories.uberOrderAction;
-  }
-
-  get uberMerchantConnectionRepository(): UberMerchantConnectionRepository {
-    return this.repositories.uberMerchantConnection;
-  }
-
-  get uberStoreMappingRepository(): UberStoreMappingRepository {
-    return this.repositories.uberStoreMapping;
-  }
-
-  get uberMenuPublishRepository(): UberMenuPublishRepository {
-    return this.repositories.uberMenuPublishVersion;
-  }
-
-  get uberOpsTicketRepository(): UberOpsTicketRepository {
-    return this.repositories.uberOpsTicket;
-  }
-
-  get uberOAuthStateRepository(): UberOAuthStateRepository {
-    return this.repositories.uberOAuthStateRequest;
-  }
-
-  private get repositories(): UberPrismaRepositories {
-    return this.prisma;
+  ) {
+    this.uberWebhookInboxRepository = prisma.uberWebhookInbox;
+    this.uberOrderActionRepository = prisma.uberOrderAction;
+    this.uberMerchantConnectionRepository = prisma.uberMerchantConnection;
+    this.uberStoreMappingRepository = prisma.uberStoreMapping;
+    this.uberMenuPublishRepository = prisma.uberMenuPublishVersion;
+    this.uberOpsTicketRepository = prisma.uberOpsTicket;
+    this.uberOAuthStateRepository = prisma.uberOAuthStateRequest;
   }
 }
