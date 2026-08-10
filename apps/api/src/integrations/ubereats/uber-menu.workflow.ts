@@ -68,6 +68,10 @@ export class UberMenuWorkflowCore {
     this.uberApiBaseUrl = config.apiBaseUrl;
   }
 
+  validateUberMenuPayload(payload: UberMenuUploadPayload) {
+    return validateUberMenuPayload(payload);
+  }
+
   async listUberItemChannelConfigs(storeId?: string) {
     const normalizedStoreId = normalizeUberStoreId(storeId);
     const items = await this.prisma.uberItemChannelConfig.findMany({
