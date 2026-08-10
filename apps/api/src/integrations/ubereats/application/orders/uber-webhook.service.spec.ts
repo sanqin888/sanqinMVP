@@ -17,7 +17,7 @@ jest.mock('@prisma/client', () => ({
 import { createHmac } from 'crypto';
 import { UberConfigService } from '../../infrastructure/config/uber-config.service';
 import { ProcessUberWebhookInboxWorker } from './uber-webhook-inbox.worker';
-import { createProcessUberWebhookInboxWorker } from '../../uber-service-test.helpers';
+import { createProcessUberWebhookInboxWorker } from '../../test/uber-service-test.helpers';
 
 const signingKey = 'uber-webhook-signing-key';
 const config = () =>

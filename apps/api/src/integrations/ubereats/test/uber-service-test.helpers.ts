@@ -1,0 +1,53 @@
+import type { UberMenuAvailabilityService } from '../application/menu/uber-menu-availability.service';
+import type { UberMenuPublishService } from '../application/menu/uber-menu-publish.service';
+import type { SyncUberStoreStatusUseCase } from '../application/merchant/uber-merchant-provisioning.service';
+import type { ImportUberOrderUseCase } from '../application/orders/uber-order.use-cases';
+import { ProcessUberWebhookInboxWorker } from '../application/orders/uber-webhook-inbox.worker';
+import type { UberWebhookInboxPort } from '../application/ports/uber-order-processing.ports';
+import type { UberConfigService } from '../infrastructure/config/uber-config.service';
+import { HmacUberWebhookSignatureVerifier } from '../infrastructure/crypto/uber-webhook-signature-verifier';
+import { UberOperationsPrismaAdapter } from '../infrastructure/persistence/uber-operations-prisma.adapter';
+import { UberPrismaAccessService } from '../infrastructure/persistence/uber-prisma-access.service';
+
+const missing = <T>(): T => undefined as T;
+
+export function createUberOperationsPrismaAdapter(
+  prisma: ConstructorParameters<typeof UberOperationsPrismaAdapter>[0],
+) {
+  return new UberOperationsPrismaAdapter(
+    prisma,
+    missing(),
+    missing<UberMenuPublishService>(),
+    missing<UberMenuAvailabilityService>(),
+    missing<SyncUberStoreStatusUseCase>(),
+    new UberPrismaAccessService(prisma),
+  );
+}
+
+export function createProcessUberWebhookInboxWorker(
+  prisma: ConstructorParameters<typeof UberPrismaAccessService>[0],
+  config: UberConfigService,
+  orders: ImportUberOrderUseCase,
+  menu?: UberMenuPublishService,
+) {
+  const access = new UberPrismaAccessService(prisma);
+  const inbox: UberWebhookInboxPort = {
+    async enqueue(input) {
+      await access.uberWebhookInboxRepository.create({
+        data: { ...input, status: 'PENDING', payload: input.payload as never },
+      });
+      return true;
+    },
+    claimDue: () => Promise.resolve([]),
+    markSucceeded: () => Promise.resolve(),
+    markFailed: () => Promise.resolve(),
+    setStoreProvisioned: () => Promise.resolve(false),
+  };
+  return new ProcessUberWebhookInboxWorker(
+    inbox,
+    new HmacUberWebhookSignatureVerifier(config),
+    orders,
+    menu ?? missing(),
+    { captureEvent: () => Promise.resolve(), workflowLog: () => undefined },
+  );
+}

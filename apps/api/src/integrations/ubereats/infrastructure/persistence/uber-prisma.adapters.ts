@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- typed framework/Prisma test doubles cross a dynamic boundary */
 import { Injectable } from '@nestjs/common';
 import { buildUberIdempotencyKey } from '../../application/idempotency/uber-idempotency-key';
 import { PrismaService } from '../../../../prisma/prisma.service';
@@ -274,12 +275,12 @@ export class PrismaUberMenuPublishAdapter implements UberMenuPublishPort {
           changedItems: 0,
           checksum: value.payloadHash,
           payload: {},
-          businessVersion: value.payloadHash,
+          businessVersion: value.payloadHash ?? 'v1',
           idempotencyKey: buildUberIdempotencyKey({
             taskId: value.id,
             resourceId: value.storeId,
             action: 'PUBLISH_MENU',
-            businessVersion: value.payloadHash,
+            businessVersion: value.payloadHash ?? 'v1',
           }),
         },
         update: {

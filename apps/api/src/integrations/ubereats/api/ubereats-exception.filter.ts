@@ -28,7 +28,7 @@ export class UberEatsExceptionFilter implements ExceptionFilter<UberApplicationE
     const http = host.switchToHttp();
     const response = http.getResponse<Response>();
     const request = http.getRequest<Request>();
-    const correlationId = this.correlationId(request);
+    const correlationId: string = this.correlationId(request);
 
     response.setHeader('X-Correlation-Id', correlationId);
     if (error.retryAfterMs !== null) {

@@ -983,7 +983,15 @@ export class UberMenuPrismaAdapter {
       const response = await this.uploadUberMenu(
         uberStoreId,
         payload,
-        version.idempotencyKey,
+        version.idempotencyKey ??
+          buildUberIdempotencyKey({
+            taskId: version.id,
+            resourceId: `${normalizedStoreId}:${uberStoreId}`,
+            action: 'PUBLISH_MENU',
+            businessVersion: createHash('sha256')
+              .update(JSON.stringify(payload))
+              .digest('hex'),
+          }),
       );
       await this.markMenuPublishVersionSubmitted(version.id, response);
 
