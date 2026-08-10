@@ -25,7 +25,6 @@ import {
   redactUberLogText,
   summarizeUberDebugResponse,
 } from './uber-integration.utils';
-import type { UberAuthenticationError } from './uber-menu.types';
 import type {
   UberMerchantConnectionRecord,
   UberMerchantStore,
@@ -34,12 +33,13 @@ import type {
 } from './uber-merchant.types';
 import { UberPrismaAccessService } from './uber-prisma-access.service';
 import { UberCredentialVaultService } from '../../infrastructure/crypto/uber-credential-vault.service';
+import { UberMerchantGateway } from '../../infrastructure/uber-api/uber-api.gateway';
 
 @Injectable()
 export class UberMerchantInternalService {
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
   private readonly logger = new AppLogger(UberMerchantInternalService.name);
-  private readonly uberApiBaseUrl: string;
+  private readonly merchantGateway: UberMerchantGateway;
   private readonly oauthStateSecret: string;
 
   constructor(
@@ -50,8 +50,15 @@ export class UberMerchantInternalService {
     private readonly prismaAccess: UberPrismaAccessService,
     @Optional()
     private readonly credentialVault = new UberCredentialVaultService(),
+    @Optional() merchantGateway?: UberMerchantGateway,
   ) {
-    this.uberApiBaseUrl = config.apiBaseUrl;
+    this.merchantGateway =
+      merchantGateway ??
+      new UberMerchantGateway(
+        httpClient,
+        uberAuthService,
+        config as UberConfigService,
+      );
     this.oauthStateSecret = config.getOAuthStateSecret();
   }
 
@@ -123,7 +130,7 @@ export class UberMerchantInternalService {
 
   async getMerchantStores(merchantUberUserId?: string) {
     const connection = await this.resolveMerchantConnection(merchantUberUserId);
-    const response = await this.callUberApi('/v1/eats/stores', {
+    const response = await this.requestMerchantResource('/v1/eats/stores', {
       accessToken: connection.accessToken,
       method: 'GET',
     });
@@ -249,7 +256,7 @@ export class UberMerchantInternalService {
     }
 
     const connection = await this.resolveMerchantConnection(merchantUberUserId);
-    const response = await this.callUberApi(
+    const response = await this.requestMerchantResource(
       `/v1/eats/stores/${encodeURIComponent(storeId.trim())}/pos_data`,
       {
         method: 'POST',
@@ -403,22 +410,26 @@ export class UberMerchantInternalService {
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       attempts = attempt;
       try {
-        const token = await this.uberAuthService.getAccessToken(
-          'eats.store.status.write',
+        const {
+          response,
+          text: rawText,
+          data,
+        } = await this.merchantGateway.request(
+          `/v1/eats/stores/${encodeURIComponent(uberStoreId)}/status`,
+          {
+            returnErrorResponse: true,
+            method: 'POST',
+            scope: 'eats.store.status.write',
+            body: payload,
+            kind: 'api',
+            operation: 'store.status.write',
+            idempotencyKey: `status-${uberStoreId}-${payload.status ?? 'update'}`,
+          },
         );
-        const { response, text: rawText } = await this.httpClient.request({
-          returnErrorResponse: true,
-          path: `/v1/eats/stores/${encodeURIComponent(uberStoreId)}/status`,
-          baseUrl: this.uberApiBaseUrl,
-          method: 'POST',
-          accessToken: token,
-          json: payload,
-          kind: 'api',
-        });
         lastStatus = response.status;
         lastError = response.ok
           ? ''
-          : summarizeUberDebugResponse(this.tryParseJson(rawText), rawText);
+          : summarizeUberDebugResponse(data, rawText);
         // A repeated pause may race with/replay an already applied request.
         if (response.ok || response.status === 409) {
           return {
@@ -811,7 +822,7 @@ export class UberMerchantInternalService {
     });
   }
 
-  private async callUberApi(
+  private async requestMerchantResource(
     path: string,
     options: {
       accessToken: string;
@@ -829,13 +840,7 @@ export class UberMerchantInternalService {
         : options.body
           ? JSON.stringify(options.body)
           : undefined;
-    const {
-      response,
-      text: rawText,
-      data: parsed,
-    } = await this.httpClient.request({
-      path,
-      baseUrl: this.uberApiBaseUrl,
+    const { data: parsed } = await this.merchantGateway.request(path, {
       method: options.method,
       operation: `${options.method} ${path}`,
       accessToken: options.accessToken,
@@ -845,28 +850,9 @@ export class UberMerchantInternalService {
           : {}),
         ...options.extraHeaders,
       },
-      body: resolvedBody,
+      rawBody: resolvedBody,
       kind: 'api',
     });
-    if (!response.ok) {
-      const authenticationError =
-        response.status === 401 || response.status === 403
-          ? this.buildUberAuthenticationError(parsed, response.status)
-          : undefined;
-      const detail = authenticationError
-        ? JSON.stringify(authenticationError)
-        : summarizeUberDebugResponse(parsed, rawText);
-      this.logger.error(
-        `[ubereats api] ${options.method} ${path} failed status=${response.status} detail=${JSON.stringify(detail)}`,
-      );
-      throw new BadRequestException({
-        ok: false,
-        status: response.status,
-        detail,
-        ...(authenticationError ? { error: authenticationError } : {}),
-      });
-    }
-
     return this.asObject(parsed) ?? {};
   }
 
@@ -940,44 +926,6 @@ export class UberMerchantInternalService {
       location?.timezone,
       location?.time_zone,
     );
-  }
-
-  private tryParseJson(rawText: string): unknown {
-    if (!rawText) {
-      return null;
-    }
-
-    try {
-      return JSON.parse(rawText);
-    } catch {
-      return null;
-    }
-  }
-
-  private buildUberAuthenticationError(
-    parsed: unknown,
-    status: number,
-  ): UberAuthenticationError {
-    const body = this.asObject(parsed);
-    const nestedError = this.asObject(body?.error);
-    const code =
-      this.readString(body?.code, nestedError?.code, body?.error) ??
-      `UBER_HTTP_${status}`;
-    const unsafeMessage =
-      this.readString(
-        body?.message,
-        nestedError?.message,
-        body?.error_description,
-      ) ?? 'Uber authentication request was rejected';
-    const message = unsafeMessage
-      .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [REDACTED]')
-      .replace(
-        /\b(access[_ -]?token|client[_ -]?secret)\s*[:=]\s*\S+/gi,
-        '$1=[REDACTED]',
-      )
-      .slice(0, 500);
-
-    return { upstreamStatus: status, code: code.slice(0, 100), message };
   }
 
   private async ensureBusinessConfig() {

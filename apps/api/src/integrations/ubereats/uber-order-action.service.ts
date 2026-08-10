@@ -6,15 +6,21 @@ import type {
   UberDenyReasonCode,
   UberOrderActionName,
 } from './uber-order.types';
+import { UberOrderGateway } from '../../infrastructure/uber-api/uber-api.gateway';
 
 /** Owns Uber order action protocol details; persistence/idempotency stays in the outbox service. */
 @Injectable()
 export class UberOrderActionService {
+  private readonly gateway: UberOrderGateway;
   constructor(
     private readonly auth: UberAuthService,
     private readonly http: UberHttpClient,
     @Inject(UberConfigService) private readonly config: UberOrderConfig,
-  ) {}
+    gateway?: UberOrderGateway,
+  ) {
+    this.gateway =
+      gateway ?? new UberOrderGateway(http, auth, config as UberConfigService);
+  }
 
   buildDenyPayload(reasonCode: string, reasonDetail?: string) {
     const normalized = reasonCode.trim();
@@ -38,15 +44,14 @@ export class UberOrderActionService {
     action: UberOrderActionName,
     payload: Record<string, unknown>,
   ) {
-    const token = await this.auth.getAccessToken('eats.order');
-    return this.http.request({
+    return this.gateway.request(this.buildPath(externalOrderId, action), {
       returnErrorResponse: true,
-      path: this.buildPath(externalOrderId, action),
-      baseUrl: this.config.apiBaseUrl,
       method: 'POST',
-      accessToken: token,
-      json: payload,
+      scope: 'eats.order',
+      body: payload,
       kind: 'api',
+      operation: `order.${action.toLowerCase()}`,
+      idempotencyKey: `${externalOrderId}:${action}`,
     });
   }
 

@@ -26,6 +26,12 @@ import { UberOrderActionService } from './uber-order-action.service';
 import { UberOrderOutboxService } from './uber-order-outbox.service';
 import { UberOrderStatusSyncService } from './uber-order-status-sync.service';
 import { UberCredentialVaultService } from '../../infrastructure/crypto/uber-credential-vault.service';
+import {
+  UberMenuGateway,
+  UberMerchantGateway,
+  UberOrderGateway,
+  UberStoreGateway,
+} from '../../infrastructure/uber-api/uber-api.gateway';
 
 @Module({
   imports: [PrismaModule, AuthModule, MessagingModule, OrdersModule],
@@ -40,6 +46,10 @@ import { UberCredentialVaultService } from '../../infrastructure/crypto/uber-cre
     UberPrismaAccessService,
     UberAuthService,
     UberHttpClient,
+    UberMerchantGateway,
+    UberStoreGateway,
+    UberOrderGateway,
+    UberMenuGateway,
     UberWebhookService,
     UberOrderService,
     UberOrderActionService,
@@ -69,6 +79,10 @@ import { UberCredentialVaultService } from '../../infrastructure/crypto/uber-cre
     UberMerchantProvisioningService,
     UberMerchantService,
     UberOperationsService,
+    UberMerchantGateway,
+    UberStoreGateway,
+    UberOrderGateway,
+    UberMenuGateway,
   ],
 })
 export class UberEatsModule {}
