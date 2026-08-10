@@ -128,7 +128,7 @@ describe('UberMerchantStoreMappingService', () => {
       prisma as unknown as ConstructorParameters<typeof UberMerchantService>[0],
       createAuthService(),
     );
-    const result = await service.getMerchantStores(undefined, 'merchant_1');
+    const result = await service.getMerchantStores('merchant_1');
 
     expect(result.ok).toBe(true);
     expect(result.count).toBe(1);
@@ -184,7 +184,7 @@ describe('UberMerchantStoreMappingService', () => {
       prisma as unknown as ConstructorParameters<typeof UberMerchantService>[0],
       createAuthService(),
     );
-    const result = await service.getMerchantStores(undefined, 'merchant_1');
+    const result = await service.getMerchantStores('merchant_1');
 
     expect(result.stores[0]?.isProvisioned).toBe(true);
     expect(result.stores[0]?.posExternalStoreId).toBe('client_1');

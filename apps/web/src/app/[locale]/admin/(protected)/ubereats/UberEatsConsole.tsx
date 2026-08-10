@@ -566,7 +566,7 @@ export function UberEatsConsole() {
                                 return;
                               }
                               void runAction(`provision-${s.storeId}`, () => apiFetch('/integrations/ubereats/oauth/provision', {
-                                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: s.storeId, payload: { ...payload, integrator_store_id: integratorStoreId || undefined } }),
+                                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ merchantUberUserId: connection?.merchantUberUserId, storeId: s.storeId, payload: { ...payload, integrator_store_id: integratorStoreId || undefined } }),
                               }).then(() => {}), `已提交 ${s.storeId} 的 Provision`);
                             }}
                           >

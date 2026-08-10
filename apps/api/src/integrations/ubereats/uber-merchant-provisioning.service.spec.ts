@@ -250,7 +250,6 @@ describe('UberMerchantProvisioningService', () => {
       createAuthService(),
     );
     const result = await service.provisionStore(
-      undefined,
       'store_1',
       { pos_store_id: 'pos_1' },
       'merchant_1',

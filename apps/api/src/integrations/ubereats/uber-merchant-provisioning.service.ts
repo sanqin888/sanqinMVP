@@ -14,17 +14,11 @@ export class UberMerchantProvisioningService {
   constructor(private readonly internal: UberMerchantInternalService) {}
 
   provisionStore(
-    accessToken: string | undefined,
     storeId: string,
     payload: Record<string, unknown> = {},
     merchantUberUserId?: string,
   ) {
-    return this.internal.provisionStore(
-      accessToken,
-      storeId,
-      payload,
-      merchantUberUserId,
-    );
+    return this.internal.provisionStore(storeId, payload, merchantUberUserId);
   }
 
   revokeOrDeprovisionStore() {
