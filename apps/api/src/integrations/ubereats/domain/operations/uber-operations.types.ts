@@ -2,13 +2,32 @@ import type { UberOrderStatus } from '../orders/uber-order.types';
 import type { UberStoreScopedInput } from '../menu/uber-menu.types';
 
 export type OrderStatusSyncContext = { targetStatus: UberOrderStatus };
-export type UberOpsTicketPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+export const UberOpsTicketPriority = {
+  LOW: 'LOW',
+  MEDIUM: 'MEDIUM',
+  HIGH: 'HIGH',
+  CRITICAL: 'CRITICAL',
+} as const;
+export type UberOpsTicketPriority =
+  (typeof UberOpsTicketPriority)[keyof typeof UberOpsTicketPriority];
+export const UberOpsTicketType = {
+  ORDER_STATUS_SYNC: 'ORDER_STATUS_SYNC',
+  MENU_ITEM_AVAILABILITY: 'MENU_ITEM_AVAILABILITY',
+  STORE_STATUS_SYNC: 'STORE_STATUS_SYNC',
+  MENU_PUBLISH: 'MENU_PUBLISH',
+  RECONCILIATION: 'RECONCILIATION',
+} as const;
 export type UberOpsTicketType =
-  | 'ORDER_STATUS_SYNC'
-  | 'MENU_ITEM_AVAILABILITY'
-  | 'STORE_STATUS_SYNC'
-  | 'MENU_PUBLISH'
-  | 'RECONCILIATION';
+  (typeof UberOpsTicketType)[keyof typeof UberOpsTicketType];
+export const UberOpsTicketStatus = {
+  OPEN: 'OPEN',
+  IN_PROGRESS: 'IN_PROGRESS',
+  RESOLVED: 'RESOLVED',
+  CLOSED: 'CLOSED',
+  IGNORED: 'IGNORED',
+} as const;
+export type UberOpsTicketStatus =
+  (typeof UberOpsTicketStatus)[keyof typeof UberOpsTicketStatus];
 export type UberDomainJson =
   | string
   | number

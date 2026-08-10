@@ -19,7 +19,13 @@ import type {
   MenuPublishContext,
   OrderStatusSyncContext,
   StoreStatusSyncContext,
+  UberOpsTicketStatus as DomainTicketStatus,
 } from '../../domain/operations/uber-operations.types';
+import {
+  toPrismaTicketPriority,
+  toPrismaTicketStatus,
+  toPrismaTicketType,
+} from './uber-operations-enum.mapper';
 import { SyncUberOrderStatusUseCase } from '../../application/orders/uber-order.use-cases';
 import { UberPrismaAccessService } from '../../infrastructure/persistence/uber-prisma-access.service';
 
@@ -185,7 +191,7 @@ export class UberOperationsPrismaAdapter {
     // Parse at creation time too, so manually-created tickets can never be
     // persisted in a form which is known to be impossible to retry.
     const context = this.parseOpsTicketContext(
-      input.type as UberOpsTicketType,
+      toPrismaTicketType(input.type),
       input.context,
     );
 
@@ -199,10 +205,10 @@ export class UberOperationsPrismaAdapter {
     const ticket = await this.prismaAccess.uberOpsTicketRepository.create({
       data: {
         storeId: normalizedStoreId,
-        type: input.type as UberOpsTicketType,
+        type: toPrismaTicketType(input.type),
         status: UberOpsTicketStatus.OPEN,
         priority:
-          (input.priority as UberOpsTicketPriority | undefined) ??
+          (input.priority && toPrismaTicketPriority(input.priority)) ??
           UberOpsTicketPriority.MEDIUM,
         title: input.title,
         description: input.description,
@@ -232,12 +238,12 @@ export class UberOperationsPrismaAdapter {
     };
   }
 
-  async listOpsTickets(storeId?: string, status?: UberOpsTicketStatus) {
+  async listOpsTickets(storeId?: string, status?: DomainTicketStatus) {
     const normalizedStoreId = normalizeUberStoreId(storeId);
     const rows = await this.prismaAccess.uberOpsTicketRepository.findMany({
       where: {
         storeId: normalizedStoreId,
-        ...(status ? { status } : {}),
+        ...(status ? { status: toPrismaTicketStatus(status) } : {}),
       },
       orderBy: [{ status: 'asc' }, { priority: 'desc' }, { createdAt: 'desc' }],
       take: 200,
@@ -263,9 +269,12 @@ export class UberOperationsPrismaAdapter {
     };
   }
 
-  async getOpsTicketsSummary(storeId?: string, status?: UberOpsTicketStatus) {
+  async getOpsTicketsSummary(storeId?: string, status?: DomainTicketStatus) {
     const normalizedStoreId = normalizeUberStoreId(storeId);
-    const where = { storeId: normalizedStoreId, ...(status ? { status } : {}) };
+    const where = {
+      storeId: normalizedStoreId,
+      ...(status ? { status: toPrismaTicketStatus(status) } : {}),
+    };
     const [count, latest] = await Promise.all([
       this.prismaAccess.uberOpsTicketRepository.count({ where }),
       this.prismaAccess.uberOpsTicketRepository.findFirst({

@@ -186,6 +186,26 @@ describe('Uber Eats bounded-context architecture', () => {
     expect(violations).toEqual([]);
   });
 
+  it('keeps public and business layers independent from Prisma', () => {
+    const prismaFreeLayers: Layer[] = [
+      'api',
+      'contracts',
+      'application',
+      'domain',
+    ];
+    const files = boundedContextFiles.filter(({ path }) => {
+      const layer = layerOf(path);
+      return layer !== undefined && prismaFreeLayers.includes(layer);
+    });
+    expect(
+      importViolations(
+        files,
+        BOUNDED_CONTEXT_ROOT,
+        (specifier) => specifier === '@prisma/client',
+      ),
+    ).toEqual([]);
+  });
+
   it('keeps the Uber API adapter independent from persistence and Prisma', () => {
     const files = scanTypeScript(
       join(BOUNDED_CONTEXT_ROOT, 'infrastructure/uber-api'),

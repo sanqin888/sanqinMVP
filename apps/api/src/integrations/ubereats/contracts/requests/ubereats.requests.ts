@@ -24,12 +24,45 @@ import {
   ValidationArguments,
   ValidatorConstraintInterface,
 } from 'class-validator';
-import {
-  OrderStatus,
-  UberOpsTicketPriority,
-  UberOpsTicketStatus,
-  UberOpsTicketType,
-} from '@prisma/client';
+/** Stable public API values. These deliberately do not expose persistence enums. */
+export const OrderStatus = {
+  pending: 'pending',
+  paid: 'paid',
+  making: 'making',
+  ready: 'ready',
+  completed: 'completed',
+  refunded: 'refunded',
+} as const;
+export type OrderStatus = (typeof OrderStatus)[keyof typeof OrderStatus];
+
+export const UberOpsTicketType = {
+  ORDER_STATUS_SYNC: 'ORDER_STATUS_SYNC',
+  MENU_ITEM_AVAILABILITY: 'MENU_ITEM_AVAILABILITY',
+  STORE_STATUS_SYNC: 'STORE_STATUS_SYNC',
+  MENU_PUBLISH: 'MENU_PUBLISH',
+  RECONCILIATION: 'RECONCILIATION',
+} as const;
+export type UberOpsTicketType =
+  (typeof UberOpsTicketType)[keyof typeof UberOpsTicketType];
+
+export const UberOpsTicketStatus = {
+  OPEN: 'OPEN',
+  IN_PROGRESS: 'IN_PROGRESS',
+  RESOLVED: 'RESOLVED',
+  CLOSED: 'CLOSED',
+  IGNORED: 'IGNORED',
+} as const;
+export type UberOpsTicketStatus =
+  (typeof UberOpsTicketStatus)[keyof typeof UberOpsTicketStatus];
+
+export const UberOpsTicketPriority = {
+  LOW: 'LOW',
+  MEDIUM: 'MEDIUM',
+  HIGH: 'HIGH',
+  CRITICAL: 'CRITICAL',
+} as const;
+export type UberOpsTicketPriority =
+  (typeof UberOpsTicketPriority)[keyof typeof UberOpsTicketPriority];
 
 export const RESOURCE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 
