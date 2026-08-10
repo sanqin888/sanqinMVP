@@ -1,19 +1,34 @@
-import { OrderStatus } from '@prisma/client';
 import { createHash } from 'crypto';
 import { normalizeUberEventType } from '../shared/uber-integration.utils';
-import type { ParsedUberOrder, UberOrderActionName } from './uber-order.types';
+import { UberOrderActionNotAllowedError } from './uber-order.errors';
+import {
+  UberOrderStatus,
+  type ParsedUberOrder,
+  type UberOrderActionName,
+} from './uber-order.types';
+
+const canRequestOrderAction = (
+  status: UberOrderStatus,
+  action: UberOrderActionName,
+): boolean => {
+  if (action === 'ACCEPT' || action === 'DENY')
+    return (
+      status === UberOrderStatus.pending || status === UberOrderStatus.paid
+    );
+  return status === UberOrderStatus.paid || status === UberOrderStatus.making;
+};
 
 /** Pure decisions for the Uber order lifecycle. No caller may assign an arbitrary status. */
 export const UberOrderStateMachine = {
-  eventStatus(eventType: string): OrderStatus | null {
+  eventStatus(eventType: string): UberOrderStatus | null {
     const event = normalizeUberEventType(eventType);
     if (event.includes('cancel') || event.includes('reject')) return null;
-    if (event.includes('complete')) return OrderStatus.completed;
-    if (event.includes('ready')) return OrderStatus.ready;
+    if (event.includes('complete')) return UberOrderStatus.completed;
+    if (event.includes('ready')) return UberOrderStatus.ready;
     if (event.includes('progress') || event.includes('making'))
-      return OrderStatus.making;
-    if (event.includes('accept')) return OrderStatus.paid;
-    return OrderStatus.pending;
+      return UberOrderStatus.making;
+    if (event.includes('accept')) return UberOrderStatus.paid;
+    return UberOrderStatus.pending;
   },
 
   validateAmounts(order: ParsedUberOrder) {
@@ -41,33 +56,39 @@ export const UberOrderStateMachine = {
     };
   },
 
-  canRequestAction(status: OrderStatus, action: UberOrderActionName): boolean {
-    if (action === 'ACCEPT' || action === 'DENY')
-      return status === OrderStatus.pending || status === OrderStatus.paid;
-    return status === OrderStatus.paid || status === OrderStatus.making;
+  canRequestAction(
+    status: UberOrderStatus,
+    action: UberOrderActionName,
+  ): boolean {
+    return canRequestOrderAction(status, action);
+  },
+
+  assertCanRequestAction(status: UberOrderStatus, action: UberOrderActionName) {
+    if (!canRequestOrderAction(status, action))
+      throw new UberOrderActionNotAllowedError(status, action);
   },
 
   afterConfirmedAction(
-    status: OrderStatus,
+    status: UberOrderStatus,
     action: UberOrderActionName,
-  ): OrderStatus | null {
-    if (action === 'ACCEPT' && status === OrderStatus.pending)
-      return OrderStatus.making;
+  ): UberOrderStatus | null {
+    if (action === 'ACCEPT' && status === UberOrderStatus.pending)
+      return UberOrderStatus.making;
     if (
       action === 'READY_FOR_PICKUP' &&
-      (status === OrderStatus.paid || status === OrderStatus.making)
+      (status === UberOrderStatus.paid || status === UberOrderStatus.making)
     )
-      return OrderStatus.ready;
+      return UberOrderStatus.ready;
     return null;
   },
 
-  afterCancellation(status: OrderStatus): OrderStatus | null {
-    const cancellable: OrderStatus[] = [
-      OrderStatus.pending,
-      OrderStatus.paid,
-      OrderStatus.making,
+  afterCancellation(status: UberOrderStatus): UberOrderStatus | null {
+    const cancellable: UberOrderStatus[] = [
+      UberOrderStatus.pending,
+      UberOrderStatus.paid,
+      UberOrderStatus.making,
     ];
-    return cancellable.includes(status) ? OrderStatus.refunded : null;
+    return cancellable.includes(status) ? UberOrderStatus.refunded : null;
   },
 
   idempotencyKey(externalOrderId: string, action: UberOrderActionName): string {

@@ -1,4 +1,3 @@
-import { OrderStatus } from '@prisma/client';
 import { UberOrderStateMachine } from './uber-order.state-machine';
 import type {
   ParsedUberModifier,
@@ -8,6 +7,7 @@ import type {
   UberOrderItemDto,
   UberOrderModifierDto,
 } from './uber-order.types';
+import type { UberOrderStatus } from './uber-order.types';
 
 /** Database- and transport-free normalization of Uber webhook order bodies. */
 export class UberOrderPayloadParser {
@@ -198,7 +198,7 @@ export function validateUberOrderAmounts(order: ParsedUberOrder) {
 
 export function mapUberEventTypeToOrderStatus(
   eventType: string,
-): OrderStatus | null {
+): UberOrderStatus | null {
   return UberOrderStateMachine.eventStatus(eventType);
 }
 

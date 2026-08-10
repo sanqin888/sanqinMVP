@@ -6,6 +6,8 @@ import type {
 } from '../../domain/orders/uber-order.types';
 import { UberOrderPayloadParser } from '../../domain/orders/uber-order-payload.parser';
 import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
+import { toUberEatsHttpException } from '../uber-domain-error.mapper';
+import { toUberOrderStatus } from '../../infrastructure/persistence/uber-order-status.mapper';
 
 /** Fetches and normalizes input only; it deliberately performs no writes. */
 @Injectable()
@@ -35,7 +37,7 @@ export class PersistUberOrderUseCase {
 @Injectable()
 export class HandleUberOrderCancellationUseCase {
   targetStatus(current: OrderStatus) {
-    return UberOrderStateMachine.afterCancellation(current);
+    return UberOrderStateMachine.afterCancellation(toUberOrderStatus(current));
   }
 }
 
@@ -43,8 +45,14 @@ export class HandleUberOrderCancellationUseCase {
 @Injectable()
 export class RequestUberOrderActionUseCase {
   assertAllowed(status: OrderStatus, action: UberOrderActionName): void {
-    if (!UberOrderStateMachine.canRequestAction(status, action))
-      throw new BadRequestException(`订单状态 ${status} 不允许动作 ${action}`);
+    try {
+      UberOrderStateMachine.assertCanRequestAction(
+        toUberOrderStatus(status),
+        action,
+      );
+    } catch (error) {
+      throw toUberEatsHttpException(error);
+    }
   }
 }
 
