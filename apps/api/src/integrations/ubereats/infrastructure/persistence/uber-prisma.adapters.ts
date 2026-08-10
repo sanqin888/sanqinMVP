@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { buildUberIdempotencyKey } from '../../application/idempotency/uber-idempotency-key';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import type {
   UberJsonValue,
@@ -273,6 +274,13 @@ export class PrismaUberMenuPublishAdapter implements UberMenuPublishPort {
           changedItems: 0,
           checksum: value.payloadHash,
           payload: {},
+          businessVersion: value.payloadHash,
+          idempotencyKey: buildUberIdempotencyKey({
+            taskId: value.id,
+            resourceId: value.storeId,
+            action: 'PUBLISH_MENU',
+            businessVersion: value.payloadHash,
+          }),
         },
         update: {
           status: value.status as never,

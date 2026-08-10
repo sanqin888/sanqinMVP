@@ -5,6 +5,8 @@ import {
   NotImplementedException,
 } from '@nestjs/common';
 import { UBER_STORE_API, type UberStoreApiPort } from '../ports/uber-api.ports';
+import { createHash } from 'crypto';
+import { buildUberIdempotencyKey } from '../idempotency/uber-idempotency-key';
 import {
   UBER_MERCHANT_CONNECTION_REPOSITORY,
   UBER_OPERATIONS_ALERT_REPOSITORY,
@@ -73,6 +75,14 @@ export class ProvisionUberStoreUseCase {
       connection.accessToken,
       id,
       payload,
+      buildUberIdempotencyKey({
+        taskId: `store-provision:${connection.merchantUberUserId}:${id}`,
+        resourceId: id,
+        action: 'PROVISION_STORE',
+        businessVersion: createHash('sha256')
+          .update(JSON.stringify(payload))
+          .digest('hex'),
+      }),
     );
     const store = object(response.store);
     const location = object(response.location) ?? object(response.address);
@@ -134,6 +144,9 @@ export class SyncUberStoreStatusUseCase {
           }
         : { status: 'ONLINE' };
     const results: Record<string, unknown>[] = [];
+    const businessVersion = createHash('sha256')
+      .update(JSON.stringify(payload))
+      .digest('hex');
     for (const mapping of await this.mappings.listMappings()) {
       if (target && mapping.uberStoreId !== target.uberStoreId) continue;
       const result = !mapping.isProvisioned
@@ -145,7 +158,16 @@ export class SyncUberStoreStatusUseCase {
             attempts: 0,
             error: 'Uber 门店尚未 provision，未发送状态写请求',
           }
-        : await this.api.writeStatus(mapping.uberStoreId, payload);
+        : await this.api.writeStatus(
+            mapping.uberStoreId,
+            payload,
+            buildUberIdempotencyKey({
+              taskId: `store-status:${mapping.uberStoreId}:${businessVersion}`,
+              resourceId: mapping.uberStoreId,
+              action: 'WRITE_STATUS',
+              businessVersion,
+            }),
+          );
       results.push(result);
       await this.alerts.recordStoreStatusResult(result, payload);
       if (

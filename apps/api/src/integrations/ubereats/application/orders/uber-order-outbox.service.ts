@@ -29,6 +29,7 @@ export class UberOrderOutboxService {
       externalOrderId: string,
       action: UberOrderActionName,
       payload: Record<string, unknown>,
+      idempotencyKey: string,
     ) => Promise<unknown>,
   ) {
     const rows = await this.outbox.claimDue(limit);
@@ -44,6 +45,7 @@ export class UberOrderOutboxService {
                   row.reasonDetail ?? undefined,
                 )
               : {},
+            row.idempotencyKey,
           );
           await this.outbox.markSucceeded(row.externalOrderId, row.action);
           return result;

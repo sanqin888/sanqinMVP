@@ -11,7 +11,8 @@ import {
   UberOpsTicketType,
   type Prisma,
 } from '@prisma/client';
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
+import { buildUberIdempotencyKey } from '../../application/idempotency/uber-idempotency-key';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import type { UberMenuNotificationEventV1 } from '../../contracts/events/uber-menu-notification.v1';
 import { UberAuthService } from '../../infrastructure/uber-api/uber-token.provider';
@@ -979,7 +980,11 @@ export class UberMenuPrismaAdapter {
     );
 
     try {
-      const response = await this.uploadUberMenu(uberStoreId, payload);
+      const response = await this.uploadUberMenu(
+        uberStoreId,
+        payload,
+        version.idempotencyKey,
+      );
       await this.markMenuPublishVersionSubmitted(version.id, response);
 
       const finalStatus: 'SUBMITTED' | 'SUCCEEDED' | 'FAILED' = 'SUBMITTED';
@@ -2263,6 +2268,7 @@ export class UberMenuPrismaAdapter {
   private async uploadUberMenu(
     uberStoreId: string,
     payload: UberMenuUploadPayload,
+    idempotencyKey: string,
   ): Promise<Record<string, unknown>> {
     return this.menuGateway.request({
       path: `/v2/eats/stores/${encodeURIComponent(uberStoreId)}/menus`,
@@ -2270,6 +2276,7 @@ export class UberMenuPrismaAdapter {
       operation: 'uber.menu.upload',
       method: 'PUT',
       json: payload as unknown as Record<string, unknown>,
+      idempotencyKey,
     });
   }
 
@@ -2401,9 +2408,22 @@ export class UberMenuPrismaAdapter {
 
     const payloadItemIds = new Set(payload.items.map((item) => item.id));
     const publishedAt = new Date();
+    const id = randomUUID();
+    const versionStableId = randomUUID();
+    const businessVersion = checksum;
+    const idempotencyKey = buildUberIdempotencyKey({
+      taskId: id,
+      resourceId: `${storeId}:${uberStoreId}`,
+      action: 'PUBLISH_MENU',
+      businessVersion,
+    });
     const version = await this.prisma.$transaction(async (tx) => {
       const created = await tx.uberMenuPublishVersion.create({
         data: {
+          id,
+          versionStableId,
+          idempotencyKey,
+          businessVersion,
           storeId,
           uberStoreId,
           status: UberMenuPublishStatus.SUBMITTED,
@@ -2413,7 +2433,12 @@ export class UberMenuPrismaAdapter {
           payload: payload as Prisma.InputJsonValue,
           checksum,
         },
-        select: { id: true, versionStableId: true, createdAt: true },
+        select: {
+          id: true,
+          versionStableId: true,
+          idempotencyKey: true,
+          createdAt: true,
+        },
       });
       await tx.uberPublishedMenuItem.createMany({
         data: graph.items

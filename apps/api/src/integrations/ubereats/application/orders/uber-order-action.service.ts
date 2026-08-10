@@ -3,7 +3,6 @@ import type {
   UberDenyReasonCode,
   UberOrderActionName,
 } from '../../domain/orders/uber-order.types';
-import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
 import {
   UBER_ORDER_ACTION_GATEWAY,
   type UberGatewayOutcome,
@@ -39,12 +38,13 @@ export class UberOrderActionService {
     externalOrderId: string,
     action: UberOrderActionName,
     payload: Record<string, unknown>,
+    idempotencyKey: string,
   ) {
     return this.gateway.executeAction(
       externalOrderId,
       action,
       payload,
-      UberOrderStateMachine.idempotencyKey(externalOrderId, action),
+      idempotencyKey,
     );
   }
 

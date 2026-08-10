@@ -53,10 +53,12 @@ export interface UberStoreApiPort {
     accessToken: string,
     storeId: string,
     payload: Record<string, unknown>,
+    idempotencyKey: string,
   ): Promise<Record<string, unknown>>;
   writeStatus(
     storeId: string,
     payload: Record<string, string>,
+    idempotencyKey: string,
   ): Promise<UberStoreWriteResult>;
 }
 

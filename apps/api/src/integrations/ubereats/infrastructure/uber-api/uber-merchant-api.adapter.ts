@@ -108,16 +108,22 @@ export class UberMerchantApiAdapter
     accessToken: string,
     storeId: string,
     payload: Record<string, unknown>,
+    idempotencyKey: string,
   ) {
     return this.request(
       `/v1/eats/stores/${encodeURIComponent(storeId)}/pos_data`,
       'POST',
       accessToken,
       payload,
+      idempotencyKey,
     );
   }
 
-  async writeStatus(storeId: string, payload: Record<string, string>) {
+  async writeStatus(
+    storeId: string,
+    payload: Record<string, string>,
+    idempotencyKey: string,
+  ) {
     const maxAttempts = 3;
     let status: number | null = null;
     let error = '';
@@ -130,6 +136,7 @@ export class UberMerchantApiAdapter
           scope: 'eats.store.status.write',
           partitionKey: storeId,
           json: payload,
+          idempotencyKey,
         });
         status = result.response.status;
         if (result.response.ok || status === 409)
@@ -171,16 +178,21 @@ export class UberMerchantApiAdapter
     method: 'GET' | 'POST',
     accessToken: string,
     json?: Record<string, unknown>,
+    idempotencyKey?: string,
   ) {
     try {
-      return await this.transport.request<Record<string, unknown>>({
+      const common = {
         path,
-        method,
         operation: `${method} ${path}`,
         scope: 'eats.store',
         accessToken,
         json,
-      });
+      };
+      return await this.transport.request<Record<string, unknown>>(
+        method === 'POST'
+          ? { ...common, method, idempotencyKey: idempotencyKey! }
+          : { ...common, method },
+      );
     } catch (caught) {
       if (caught instanceof BadRequestException) throw caught;
       const error: UberAuthenticationError = {

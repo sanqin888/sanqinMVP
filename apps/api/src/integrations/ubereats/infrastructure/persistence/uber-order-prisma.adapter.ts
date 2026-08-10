@@ -55,6 +55,7 @@ import { UberOrderActionService } from '../../application/orders/uber-order-acti
 import { UberOrderOutboxService } from '../../application/orders/uber-order-outbox.service';
 import { UberOrderStatusSyncService } from '../../application/orders/uber-order-status-sync.service';
 import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
+import { buildUberIdempotencyKey } from '../../application/idempotency/uber-idempotency-key';
 import { UberOrderGateway } from '../../infrastructure/uber-api/uber-resource.gateways';
 import { toUberEatsHttpException } from '../../application/uber-domain-error.mapper';
 import { toUberOrderStatus } from '../../infrastructure/persistence/uber-order-status.mapper';
@@ -134,7 +135,18 @@ export class UberOrderPrismaAdapter {
     const updated = await this.prisma.$transaction(async (tx) => {
       await tx.uberOrderAction.upsert({
         where: { externalOrderId_action: { externalOrderId, action } },
-        create: { externalOrderId, action, status: 'PENDING' },
+        create: {
+          externalOrderId,
+          action,
+          status: 'PENDING',
+          businessVersion: 'v1',
+          idempotencyKey: buildUberIdempotencyKey({
+            taskId: `${externalOrderId}:${action}`,
+            resourceId: externalOrderId,
+            action,
+            businessVersion: 'v1',
+          }),
+        },
         update: {},
       });
       return { orderStableId: order.orderStableId, status: order.status };
@@ -192,8 +204,15 @@ export class UberOrderPrismaAdapter {
   async processPendingUberOrderActions(limit = 50) {
     return this.outboxService.processPending(
       limit,
-      (externalOrderId, action, payload) =>
-        this.executeUberOrderAction(externalOrderId, action, payload, true),
+      (externalOrderId, action, payload, idempotencyKey) =>
+        this.executeUberOrderAction(
+          externalOrderId,
+          action,
+          payload,
+          true,
+          undefined,
+          idempotencyKey,
+        ),
     );
   }
 
@@ -534,6 +553,7 @@ export class UberOrderPrismaAdapter {
     payload: Record<string, unknown>,
     processPending = false,
     audit?: { reasonCode?: string; reasonDetail?: string },
+    persistedIdempotencyKey?: string,
   ) {
     if (!externalOrderId) {
       throw new BadRequestException('externalOrderId 不能为空');
@@ -561,6 +581,13 @@ export class UberOrderPrismaAdapter {
           data: {
             ...key,
             status: 'PENDING',
+            businessVersion: 'v1',
+            idempotencyKey: buildUberIdempotencyKey({
+              taskId: `${externalOrderId}:${action}`,
+              resourceId: externalOrderId,
+              action,
+              businessVersion: 'v1',
+            }),
             reasonCode: audit?.reasonCode ?? this.readString(payload.reason),
             reasonDetail:
               audit?.reasonDetail ?? this.readString(payload.details),
@@ -596,7 +623,12 @@ export class UberOrderPrismaAdapter {
         response,
         text: rawText,
         data: parsed,
-      } = await this.actionService.request(externalOrderId, action, payload));
+      } = await this.actionService.request(
+        externalOrderId,
+        action,
+        payload,
+        persistedIdempotencyKey ?? record.idempotencyKey ?? '',
+      ));
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
@@ -1070,6 +1102,13 @@ export class UberOrderPrismaAdapter {
               action: 'ACCEPT',
               status: 'PENDING',
               reasonCode: 'accepted',
+              businessVersion: 'v1',
+              idempotencyKey: buildUberIdempotencyKey({
+                taskId: `${order.externalOrderId}:ACCEPT`,
+                resourceId: order.externalOrderId,
+                action: 'ACCEPT',
+                businessVersion: 'v1',
+              }),
             },
             update: {},
           });

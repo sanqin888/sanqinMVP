@@ -5,10 +5,13 @@ import type {
 import type { UberJsonValue } from './uber-persistence.ports';
 
 export type UberOrderOutboxItem = {
+  taskId: string;
   externalOrderId: string;
   action: UberOrderActionName;
   reasonCode: string | null;
   reasonDetail: string | null;
+  idempotencyKey: string;
+  businessVersion: string;
 };
 
 export interface UberOrderOutboxPort {
@@ -18,7 +21,10 @@ export interface UberOrderOutboxPort {
     audit?: { reasonCode?: string; reasonDetail?: string },
   ): Promise<any>;
   claimDue(limit: number): Promise<UberOrderOutboxItem[]>;
-  markSucceeded(externalOrderId: string, action: UberOrderActionName): Promise<void>;
+  markSucceeded(
+    externalOrderId: string,
+    action: UberOrderActionName,
+  ): Promise<void>;
   markFailed(
     externalOrderId: string,
     action: UberOrderActionName,
@@ -39,6 +45,8 @@ export type UberWebhookInboxItem = {
   eventType: string;
   payload: unknown;
   leaseToken: string;
+  idempotencyKey: string;
+  businessVersion: string;
 };
 
 export interface UberWebhookInboxPort {
@@ -55,7 +63,10 @@ export interface UberWebhookInboxPort {
     error: unknown,
     retryable: boolean,
   ): Promise<void>;
-  setStoreProvisioned(storeId: string, isProvisioned: boolean): Promise<boolean>;
+  setStoreProvisioned(
+    storeId: string,
+    isProvisioned: boolean,
+  ): Promise<boolean>;
 }
 export const UBER_WEBHOOK_INBOX_PORT = Symbol('UBER_WEBHOOK_INBOX_PORT');
 
@@ -67,8 +78,14 @@ export const UBER_WEBHOOK_SIGNATURE_VERIFIER = Symbol(
 );
 
 export interface UberTelemetryPort {
-  captureEvent(eventName: string, attributes?: Record<string, unknown>): Promise<void>;
-  workflowLog(level: 'debug' | 'log' | 'warn' | 'error', message?: unknown): void;
+  captureEvent(
+    eventName: string,
+    attributes?: Record<string, unknown>,
+  ): Promise<void>;
+  workflowLog(
+    level: 'debug' | 'log' | 'warn' | 'error',
+    message?: unknown,
+  ): void;
 }
 export const UBER_TELEMETRY_PORT = Symbol('UBER_TELEMETRY_PORT');
 
