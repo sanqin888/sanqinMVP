@@ -14,7 +14,6 @@ import {
   type Prisma,
 } from '@prisma/client';
 import { createHash } from 'crypto';
-import { AppLogger } from '../../common/app-logger';
 import { OrderEventsBus } from '../../messaging/order-events.bus';
 import {
   NormalizedOrderItem,
@@ -52,10 +51,12 @@ import { UberOrderStatusSyncService } from './uber-order-status-sync.service';
 import { UberOrderStateMachine } from './uber-order.state-machine';
 import { UberOrderGateway } from '../../infrastructure/uber-api/uber-resource.gateways';
 
+import { UberTelemetryService } from './infrastructure/observability/uber-telemetry.service';
+
 @Injectable()
 export class UberOrderService {
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
-  private readonly logger = new AppLogger(UberOrderService.name);
+  private readonly telemetry: UberTelemetryService;
   private readonly payloadParser = new UberOrderPayloadParser();
   private readonly actionService: UberOrderActionService;
   private readonly outboxService: UberOrderOutboxService;
@@ -73,6 +74,7 @@ export class UberOrderService {
     @Optional() actionService?: UberOrderActionService,
     @Optional() outboxService?: UberOrderOutboxService,
     @Optional() statusSyncService?: UberOrderStatusSyncService,
+    @Optional() telemetry?: UberTelemetryService,
   ) {
     this.actionService =
       actionService ??
@@ -80,6 +82,7 @@ export class UberOrderService {
     this.outboxService =
       outboxService ??
       new UberOrderOutboxService(prisma, prismaAccess, this.actionService);
+    this.telemetry = telemetry ?? new UberTelemetryService(prisma);
     this.statusSyncService =
       statusSyncService ?? new UberOrderStatusSyncService(prisma);
   }
@@ -92,7 +95,7 @@ export class UberOrderService {
     });
 
     if (!order) {
-      await this.captureEvent('ubereats_order_sync_failed', {
+      await this.telemetry.captureEvent('ubereats_order_sync_failed', {
         externalOrderId,
         status,
         reason: 'order_not_found',
@@ -129,7 +132,7 @@ export class UberOrderService {
     const queued = await this.outboxService.enqueue(externalOrderId, action);
     const result = this.toUberOrderActionResult(queued, true);
 
-    await this.captureEvent('ubereats_order_status_synced', {
+    await this.telemetry.captureEvent('ubereats_order_status_synced', {
       externalOrderId,
       orderStableId: updated.orderStableId,
       status,
@@ -259,10 +262,19 @@ export class UberOrderService {
   }
 
   async getPendingUberOrdersSummary() {
-    const where = { channel: Channel.ubereats, status: { in: [OrderStatus.pending, OrderStatus.paid, OrderStatus.making] } };
+    const where = {
+      channel: Channel.ubereats,
+      status: {
+        in: [OrderStatus.pending, OrderStatus.paid, OrderStatus.making],
+      },
+    };
     const [count, latest] = await Promise.all([
       this.prisma.order.count({ where }),
-      this.prisma.order.findFirst({ where, orderBy: { updatedAt: 'desc' }, select: { updatedAt: true } }),
+      this.prisma.order.findFirst({
+        where,
+        orderBy: { updatedAt: 'desc' },
+        select: { updatedAt: true },
+      }),
     ]);
     return { count, updatedAt: latest?.updatedAt ?? null };
   }
@@ -363,7 +375,7 @@ export class UberOrderService {
       );
     }
 
-    await this.captureEvent('ubereats_webhook_processed', {
+    await this.telemetry.captureEvent('ubereats_webhook_processed', {
       eventType,
       eventId,
       externalOrderId: parsedOrder.externalOrderId,
@@ -397,10 +409,11 @@ export class UberOrderService {
         !retryable
       ) {
         const redactedDetail = detail ? redactUberLogText(detail) : undefined;
-        this.logger.warn(
+        this.telemetry.workflowLog(
+          'warn',
           `[ubereats webhook deny] non-retryable upstream failure swallowed externalOrderId=${externalOrderId} eventType=${context.eventType} eventId=${context.eventId} status=${status} retryable=false detail=${redactedDetail ?? 'unknown'}`,
         );
-        await this.captureEvent('ubereats_webhook_auto_deny_failed', {
+        await this.telemetry.captureEvent('ubereats_webhook_auto_deny_failed', {
           externalOrderId,
           eventType: context.eventType,
           eventId: context.eventId,
@@ -428,7 +441,7 @@ export class UberOrderService {
       orderStableId: string;
     },
   ) {
-    await this.captureEvent('ubereats_order_accept_queued', {
+    await this.telemetry.captureEvent('ubereats_order_accept_queued', {
       externalOrderId,
       eventType: context.eventType,
       eventId: context.eventId,
@@ -457,7 +470,8 @@ export class UberOrderService {
       response.headers.get('x-request-id') ??
       response.headers.get('trace-id');
 
-    this.logger.error(
+    this.telemetry.workflowLog(
+      'error',
       `[ubereats order] detail fetch failed status=${response.status} eventType=${context.eventType} eventId=${context.eventId} resourceId=${context.resourceId ?? 'unknown'} resourcePath=${resourcePath.split('?')[0]} uberRequestId=${uberRequestId ?? 'unknown'} detail=${redactUberLogText(detail)}`,
     );
 
@@ -606,7 +620,8 @@ export class UberOrderService {
           leaseExpiresAt: null,
         },
       });
-      this.logger.error(
+      this.telemetry.workflowLog(
+        'error',
         `[ubereats order action] request failed action=${action} externalOrderId=${externalOrderId} endpoint=${pathname} errorType=${errorType} error=${redactedError}`,
       );
       if (action !== 'READY_FOR_PICKUP') {
@@ -674,7 +689,8 @@ export class UberOrderService {
       },
     });
     if (!succeeded) {
-      this.logger.error(
+      this.telemetry.workflowLog(
+        'error',
         `[ubereats order action] upstream failed action=${action} externalOrderId=${externalOrderId} endpoint=${pathname} status=${response.status} retryable=${retryable} uberRequestId=${uberRequestId ?? 'unknown'} detail=${redactUberLogText(summarizeUberDebugResponse(parsed, rawText))}`,
       );
       if (action !== 'READY_FOR_PICKUP') {
@@ -1067,11 +1083,12 @@ export class UberOrderService {
         Math.abs(item.priceVarianceCents) > 1,
     );
     if (amountValidation.hasMaterialVariance || hasMenuPriceVariance) {
-      this.logger.warn(
+      this.telemetry.workflowLog(
+        'warn',
         `[ubereats order] amount variance externalOrderId=${order.externalOrderId} line=${amountValidation.lineVarianceCents} total=${amountValidation.totalVarianceCents} menu=${menuPriceVarianceCents}`,
       );
     }
-    await this.captureEvent('ubereats_order_upserted', {
+    await this.telemetry.captureEvent('ubereats_order_upserted', {
       eventType,
       externalOrderId: order.externalOrderId,
       orderStableId: result.orderStableId,
@@ -1397,16 +1414,6 @@ export class UberOrderService {
       data: {
         id: 1,
         storeName: '',
-      },
-    });
-  }
-
-  private async captureEvent(eventName: string, payload: Prisma.JsonObject) {
-    await this.prisma.opsEvent.create({
-      data: {
-        eventName,
-        source: 'ubereats',
-        payload,
       },
     });
   }
