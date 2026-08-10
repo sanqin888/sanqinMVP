@@ -27,4 +27,14 @@ describe('UberEatsModule focused use-case contract', () => {
       /UberMerchantService|UberMenuService|UberOrderApplication|UberOperationsApplication/,
     );
   });
+
+  it('keeps polling providers out of the default HTTP module', () => {
+    const httpMetadata = source.slice(
+      source.indexOf('@Module('),
+      source.indexOf('export class'),
+    );
+    const workerMetadata = source.slice(source.indexOf('static withWorkers'));
+    expect(httpMetadata).not.toContain('UberWebhookInboxWorkerAdapter');
+    expect(workerMetadata).toContain('UberWebhookInboxWorkerAdapter');
+  });
 });

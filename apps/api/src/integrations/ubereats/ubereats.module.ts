@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { DynamicModule, Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { AuthModule } from '../../auth/auth.module';
 import { UberAuthService } from './infrastructure/uber-api/uber-token.provider';
@@ -209,12 +209,6 @@ import {
     CancelUberOrderUseCase,
     RequestUberOrderActionUseCase,
     ExecuteUberOrderActionWorker,
-    ClaimAndProcessUberWebhookInboxUseCase,
-    ClaimAndExecuteUberOrderActionsUseCase,
-    ConfirmUberMenuPublicationsUseCase,
-    UberWebhookInboxWorkerAdapter,
-    UberOrderActionWorkerAdapter,
-    UberMenuPublishConfirmationWorkerAdapter,
     SyncUberOrderStatusUseCase,
     ListPendingUberOrdersQuery,
     UberMenuPrismaAdapter,
@@ -289,4 +283,19 @@ import {
     QueryUberOperationsSummary,
   ],
 })
-export class UberEatsModule {}
+export class UberEatsModule {
+  /** Explicit opt-in boundary used by a dedicated application context. */
+  static withWorkers(): DynamicModule {
+    return {
+      module: UberEatsModule,
+      providers: [
+        ClaimAndProcessUberWebhookInboxUseCase,
+        ClaimAndExecuteUberOrderActionsUseCase,
+        ConfirmUberMenuPublicationsUseCase,
+        UberWebhookInboxWorkerAdapter,
+        UberOrderActionWorkerAdapter,
+        UberMenuPublishConfirmationWorkerAdapter,
+      ],
+    };
+  }
+}
