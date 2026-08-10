@@ -40,6 +40,19 @@ describe('Uber Eats bounded-context architecture', () => {
   const boundedContextFiles = scanTypeScript(BOUNDED_CONTEXT_ROOT, {
     productionOnly: true,
   });
+  const allSourceFiles = scanTypeScript(SOURCE_ROOT, { productionOnly: true });
+
+  it('forbids callers outside UberEats from importing its infrastructure', () => {
+    const externalFiles = allSourceFiles.filter(
+      ({ path }) => !path.startsWith(`${BOUNDED_CONTEXT_ROOT}${sep}`),
+    );
+
+    expect(
+      importViolations(externalFiles, SOURCE_ROOT, (specifier) =>
+        /integrations\/ubereats\/infrastructure(?:\/|$)/.test(specifier),
+      ),
+    ).toEqual([]);
+  });
 
   it('keeps every UberEats production file under a named layer', () => {
     const unlayered = boundedContextFiles

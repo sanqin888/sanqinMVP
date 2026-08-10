@@ -15,8 +15,10 @@ import { UberConfigService } from './infrastructure/config/uber-config.service';
 import { ProcessUberWebhookInboxUseCase } from './application/orders/process-uber-webhook-inbox.use-case';
 import { ReceiveUberWebhookUseCase } from './application/orders/uber-webhook-receiver.use-case';
 import { UberMenuPrismaAdapter } from './infrastructure/persistence/uber-menu-prisma.adapter';
+import { UberMenuRepository } from './infrastructure/persistence/uber-menu.repository';
 import { UberOrderPrismaAdapter } from './infrastructure/persistence/uber-order-prisma.adapter';
 import { UberMenuDraftService } from './application/menu/uber-menu-draft.service';
+import { UberMenuDraftConfigUseCase } from './application/menu/uber-menu-draft-config.use-case';
 import { UberMenuPublishService } from './application/menu/uber-menu-publish.service';
 import { UberMenuAvailabilityService } from './application/menu/uber-menu-availability.service';
 import {
@@ -74,6 +76,10 @@ import {
   UBER_ORDER_IMPORT_PORT,
   UBER_ORDER_SYNC_PORT,
 } from './application/ports/uber-use-case.ports';
+import {
+  UBER_MENU_DRAFT_COMMAND_PORT,
+  UBER_MENU_DRAFT_QUERY_PORT,
+} from './application/ports/uber-menu-draft.ports';
 import { UBER_ORDER_ACTION_GATEWAY } from './application/ports/uber-api.ports';
 import {
   UBER_MERCHANT_API,
@@ -216,6 +222,16 @@ import { HandleUberMerchantWebhookHandler } from './application/merchant/uber-me
       useExisting: UberMenuPrismaAdapter,
     },
     UberMenuDraftService,
+    UberMenuRepository,
+    {
+      provide: UBER_MENU_DRAFT_QUERY_PORT,
+      useExisting: UberMenuRepository,
+    },
+    {
+      provide: UBER_MENU_DRAFT_COMMAND_PORT,
+      useExisting: UberMenuRepository,
+    },
+    UberMenuDraftConfigUseCase,
     UberMenuPublishService,
     UberMenuAvailabilityService,
     UberOAuthTokenAdapter,
@@ -265,6 +281,7 @@ import { HandleUberMerchantWebhookHandler } from './application/merchant/uber-me
     SyncUberOrderStatusUseCase,
     ListPendingUberOrdersQuery,
     UberMenuDraftService,
+    UberMenuDraftConfigUseCase,
     UberMenuPublishService,
     UberMenuAvailabilityService,
     StartUberOAuthUseCase,

@@ -1,0 +1,73 @@
+import type { PrismaService } from '../../../../prisma/prisma.service';
+import { UberMenuRepository } from './uber-menu.repository';
+
+describe('UberMenuRepository contract', () => {
+  it('maps Prisma rows to an application DTO without persistence-only fields', async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        id: 'prisma-id',
+        storeId: 'store-1',
+        menuItemStableId: 'item-1',
+        priceCents: 1200,
+        isAvailable: true,
+        displayName: 'Noodles',
+        displayDescription: null,
+        createdAt: new Date(0),
+        updatedAt: new Date(0),
+      },
+    ]);
+    const prisma = { uberItemChannelConfig: { findMany } };
+    const repository = new UberMenuRepository(
+      prisma as unknown as PrismaService,
+    );
+
+    const result = await repository.listItemConfigs('store-1');
+
+    expect(result).toEqual([
+      {
+        storeId: 'store-1',
+        stableId: 'item-1',
+        priceCents: 1200,
+        isAvailable: true,
+        displayName: 'Noodles',
+        displayDescription: null,
+      },
+    ]);
+    expect(result[0]).not.toHaveProperty('id');
+    expect(result[0]).not.toHaveProperty('createdAt');
+    expect(result[0]).not.toHaveProperty('updatedAt');
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({ menuItemStableId: true }),
+      }),
+    );
+  });
+
+  it('maps command fields explicitly and does not expose the delegate result', async () => {
+    const update = jest.fn().mockResolvedValue({ id: 'prisma-id' });
+    const prisma = { uberOptionItemConfig: { update } };
+    const repository = new UberMenuRepository(
+      prisma as unknown as PrismaService,
+    );
+
+    await expect(
+      repository.updateOption('store-1', 'option-1', {
+        priceDeltaCents: 200,
+      }),
+    ).resolves.toBeUndefined();
+    expect(update).toHaveBeenCalledWith({
+      where: {
+        storeId_optionChoiceStableId: {
+          storeId: 'store-1',
+          optionChoiceStableId: 'option-1',
+        },
+      },
+      data: {
+        priceDeltaCents: 200,
+        isAvailable: undefined,
+        displayName: undefined,
+        displayDescription: undefined,
+      },
+    });
+  });
+});
