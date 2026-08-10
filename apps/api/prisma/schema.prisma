@@ -606,6 +606,9 @@ model UberWebhookInbox {
   nextRetryAt     DateTime?
   processingAt    DateTime?
   leaseToken      String?                @unique
+  /// Stable outbound-write key carried by work derived from this inbox event.
+  idempotencyKey  String?                @unique
+  businessVersion String                 @default("v1")
   leaseExpiresAt  DateTime?
   processedAt     DateTime?
   createdAt       DateTime               @default(now())
@@ -628,6 +631,9 @@ model UberOrderAction {
   response        Json?
   lastError       String?
   uberRequestId   String?
+  /// Stable across lease expiry, worker reclaims, auth refresh and HTTP retries.
+  idempotencyKey  String?                @unique
+  businessVersion String                 @default("v1")
   retryable       Boolean               @default(false)
   attemptCount    Int                   @default(0)
   nextRetryAt     DateTime?
@@ -1372,6 +1378,8 @@ model UberOptionChildGroupBinding {
 model UberMenuPublishVersion {
   id              String                  @id @default(uuid()) @db.Uuid
   versionStableId String                  @unique @default(cuid())
+  idempotencyKey  String?                 @unique
+  businessVersion String                  @default("v1")
   /// POS store ID (not tenant/business ID). Legacy "default" rows must be backfilled before removing the default.
   storeId         String                  @default("default")
   uberStoreId     String?

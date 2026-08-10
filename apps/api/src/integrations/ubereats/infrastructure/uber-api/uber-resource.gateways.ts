@@ -8,7 +8,6 @@ import {
 } from './uber-api.gateway';
 import type { UberOrderActionGatewayPort } from '../../application/ports/uber-api.ports';
 import type { UberOrderActionName } from '../../domain/orders/uber-order.types';
-import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
 
 abstract class PrefixGateway implements UberResourceGateway {
   protected abstract readonly prefixes: readonly string[];
@@ -118,9 +117,7 @@ export class UberOrderGateway
       scope: 'eats.order',
       partitionKey: externalOrderId,
       json: payload,
-      idempotencyKey:
-        idempotencyKey ||
-        UberOrderStateMachine.idempotencyKey(externalOrderId, action),
+      idempotencyKey,
     });
     return {
       ok: result.response.ok,

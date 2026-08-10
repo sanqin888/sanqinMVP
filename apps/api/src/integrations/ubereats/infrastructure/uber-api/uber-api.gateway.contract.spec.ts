@@ -31,14 +31,34 @@ describe('Uber API gateway contract', () => {
         scope: 'eats.order',
         partitionKey: 'store-1',
         json: {},
+        idempotencyKey: 'order-task-1:v1',
       }),
     ).resolves.toEqual({ accepted: true });
 
     expect(auth.forceRefreshAccessToken).toHaveBeenCalledWith('eats.order');
     const [first, second] = http.request.mock.calls.map(([request]) => request);
-    expect(first.idempotencyKey).toMatch(/^uber-[a-f0-9]{64}$/);
+    expect(first.idempotencyKey).toBe('order-task-1:v1');
     expect(second.idempotencyKey).toBe(first.idempotencyKey);
     expect(second.accessToken).toBe('fresh');
+  });
+
+  it('fails before auth/network when a write has no idempotency key', async () => {
+    const http = { request: jest.fn(), ensureSuccess: jest.fn() };
+    const auth = { getAccessToken: jest.fn() };
+    const gateway = new UberApiGatewayTransport(http as never, auth as never, {
+      apiBaseUrl: 'https://api.uber.com',
+    });
+
+    await expect(
+      gateway.request({
+        path: '/v1/eats/stores/store-1/status',
+        method: 'POST',
+        operation: 'uber.store.status',
+        scope: 'eats.store.status.write',
+      } as never),
+    ).rejects.toThrow('缺少幂等键');
+    expect(auth.getAccessToken).not.toHaveBeenCalled();
+    expect(http.request).not.toHaveBeenCalled();
   });
 
   it.each([

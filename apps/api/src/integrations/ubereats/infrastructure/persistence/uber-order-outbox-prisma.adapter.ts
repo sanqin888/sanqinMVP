@@ -7,6 +7,7 @@ import type {
 import type { UberOrderActionName } from '../../domain/orders/uber-order.types';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { UberPrismaAccessService } from './uber-prisma-access.service';
+import { buildUberIdempotencyKey } from '../../application/idempotency/uber-idempotency-key';
 
 @Injectable()
 export class UberOrderOutboxPrismaAdapter implements UberOrderOutboxPort {
@@ -23,9 +24,23 @@ export class UberOrderOutboxPrismaAdapter implements UberOrderOutboxPort {
     action: UberOrderActionName,
     audit: { reasonCode?: string; reasonDetail?: string } = {},
   ) {
+    const businessVersion = 'v1';
+    const taskId = `${externalOrderId}:${action}`;
     return this.prismaAccess.uberOrderActionRepository.upsert({
       where: { externalOrderId_action: { externalOrderId, action } },
-      create: { externalOrderId, action, status: 'PENDING', ...audit },
+      create: {
+        externalOrderId,
+        action,
+        status: 'PENDING',
+        businessVersion,
+        idempotencyKey: buildUberIdempotencyKey({
+          taskId,
+          resourceId: externalOrderId,
+          action,
+          businessVersion,
+        }),
+        ...audit,
+      },
       update: {},
     });
   }
@@ -34,10 +49,13 @@ export class UberOrderOutboxPrismaAdapter implements UberOrderOutboxPort {
     const leaseToken = randomUUID();
     return this.prisma.$queryRaw<
       Array<{
+        taskId: string;
         externalOrderId: string;
         action: UberOrderActionName;
         reasonCode: string | null;
         reasonDetail: string | null;
+        idempotencyKey: string;
+        businessVersion: string;
       }>
     >`
       WITH candidates AS (
@@ -53,23 +71,36 @@ export class UberOrderOutboxPrismaAdapter implements UberOrderOutboxPort {
         "leaseExpiresAt" = NOW() + (${UberOrderOutboxPrismaAdapter.LEASE_MS} * INTERVAL '1 millisecond'),
         "attemptCount" = action."attemptCount" + 1
       FROM candidates WHERE action.id = candidates.id
-      RETURNING action."externalOrderId", action.action, action."reasonCode", action."reasonDetail"
+      RETURNING action.id AS "taskId", action."externalOrderId", action.action,
+        action."reasonCode", action."reasonDetail", action."idempotencyKey", action."businessVersion"
     `;
   }
 
   async markSucceeded(externalOrderId: string, action: UberOrderActionName) {
     await this.prismaAccess.uberOrderActionRepository.updateMany({
       where: { externalOrderId, action, status: 'PROCESSING' },
-      data: { status: 'SUCCEEDED', retryable: false, leaseToken: null, leaseExpiresAt: null },
+      data: {
+        status: 'SUCCEEDED',
+        retryable: false,
+        leaseToken: null,
+        leaseExpiresAt: null,
+      },
     });
   }
 
-  async markFailed(externalOrderId: string, action: UberOrderActionName, error: unknown) {
+  async markFailed(
+    externalOrderId: string,
+    action: UberOrderActionName,
+    error: unknown,
+  ) {
     await this.prismaAccess.uberOrderActionRepository.updateMany({
       where: { externalOrderId, action, status: 'PROCESSING' },
       data: {
         status: 'FAILED',
-        lastError: error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500),
+        lastError:
+          error instanceof Error
+            ? error.message.slice(0, 500)
+            : String(error).slice(0, 500),
         leaseToken: null,
         leaseExpiresAt: null,
       },
@@ -78,9 +109,7 @@ export class UberOrderOutboxPrismaAdapter implements UberOrderOutboxPort {
 }
 
 @Injectable()
-export class UberOrderStatusAuditPrismaAdapter
-  implements UberOrderStatusAuditPort
-{
+export class UberOrderStatusAuditPrismaAdapter implements UberOrderStatusAuditPort {
   constructor(private readonly prisma: PrismaService) {}
   async record(eventName: string, payload: any): Promise<void> {
     await this.prisma.opsEvent.create({

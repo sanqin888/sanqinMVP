@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { createHash, randomUUID } from 'crypto';
+import { randomUUID } from 'crypto';
 import { AppLogger } from '../../../../common/app-logger';
 import { UberAuthService } from './uber-token.provider';
 import {
@@ -8,7 +8,7 @@ import {
   type UberHttpResult,
 } from './uber-http.client';
 
-export type UberGatewayRequest = Pick<
+type UberGatewayRequestBase = Pick<
   UberHttpRequest,
   | 'method'
   | 'json'
@@ -26,6 +26,16 @@ export type UberGatewayRequest = Pick<
   /** Explicit merchant token; app-scoped calls obtain one from UberAuthService. */
   accessToken?: string;
 };
+
+export type UberGatewayRequest =
+  | (UberGatewayRequestBase & {
+      method?: 'GET' | 'HEAD';
+      idempotencyKey?: never;
+    })
+  | (UberGatewayRequestBase & {
+      method: 'POST' | 'PUT';
+      idempotencyKey: string;
+    });
 
 /** Contract mocked by application tests; global fetch belongs below this boundary. */
 export interface UberResourceGateway {
@@ -46,12 +56,12 @@ export class UberApiGatewayTransport {
   ) {}
 
   async request<T>(request: UberGatewayRequest): Promise<T> {
+    this.assertIdempotencyKey(request);
     const release = await this.acquire(request);
     const startedAt = Date.now();
     try {
       const path = this.normalizePath(request.path);
       const requestId = randomUUID();
-      request = this.withIdempotencyKey(request, requestId);
       let token =
         request.accessToken ?? (await this.auth.getAccessToken(request.scope));
       let result = await this.send<T>(request, path, token, requestId);
@@ -74,6 +84,7 @@ export class UberApiGatewayTransport {
   }
 
   async inspect<T>(request: UberGatewayRequest): Promise<UberHttpResult<T>> {
+    this.assertIdempotencyKey(request);
     const path = this.normalizePath(request.path);
     const requestId = randomUUID();
     let token =
@@ -106,23 +117,20 @@ export class UberApiGatewayTransport {
     });
   }
 
-  /** Every non-read call gets one key here and keeps it across auth refresh/retries. */
-  private withIdempotencyKey(
-    request: UberGatewayRequest,
-    requestId: string,
-  ): UberGatewayRequest {
+  private assertIdempotencyKey(request: UberGatewayRequest): void {
     if (
       request.method === undefined ||
-      ['GET', 'HEAD'].includes(request.method)
+      request.method === 'GET' ||
+      request.method === 'HEAD'
     )
-      return request;
-    if (request.idempotencyKey) return request;
-    const digest = createHash('sha256')
-      .update(
-        `${request.operation}:${request.partitionKey ?? 'global'}:${requestId}`,
-      )
-      .digest('hex');
-    return { ...request, idempotencyKey: `uber-${digest}` };
+      return;
+    if (
+      typeof request.idempotencyKey !== 'string' ||
+      !request.idempotencyKey.trim()
+    )
+      throw new Error(
+        `Uber 写请求缺少幂等键（operation=${request.operation}）；这是配置或编程错误`,
+      );
   }
 
   private partition(request: UberGatewayRequest): string {
