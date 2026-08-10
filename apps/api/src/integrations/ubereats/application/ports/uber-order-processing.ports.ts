@@ -8,6 +8,7 @@ import type { UberWebhookVerificationInput } from '../../domain/webhook/uber-web
 
 export type UberOrderOutboxItem = {
   taskId: string;
+  leaseToken: string;
   externalOrderId: string;
   action: UberOrderActionName;
   reasonCode: string | null;
@@ -23,15 +24,8 @@ export interface UberOrderOutboxPort {
     audit?: { reasonCode?: string; reasonDetail?: string },
   ): Promise<UberOrderActionRecord>;
   claimDue(limit: number): Promise<UberOrderOutboxItem[]>;
-  markSucceeded(
-    externalOrderId: string,
-    action: UberOrderActionName,
-  ): Promise<void>;
-  markFailed(
-    externalOrderId: string,
-    action: UberOrderActionName,
-    error: unknown,
-  ): Promise<void>;
+  markSucceeded(item: UberOrderOutboxItem): Promise<boolean>;
+  markFailed(item: UberOrderOutboxItem, error: unknown): Promise<boolean>;
 }
 export const UBER_ORDER_OUTBOX_PORT = Symbol('UBER_ORDER_OUTBOX_PORT');
 
