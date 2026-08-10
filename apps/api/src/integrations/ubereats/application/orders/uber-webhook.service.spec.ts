@@ -113,7 +113,7 @@ describe('ProcessUberWebhookInboxWorker', () => {
         rawBody: '{}',
         headers: { 'x-uber-signature': '0'.repeat(64) },
       }),
-    ).rejects.toThrow('Invalid Uber signature');
+    ).rejects.toThrow('Uber webhook signature is invalid');
     expect(uberWebhookInbox.create).not.toHaveBeenCalled();
   });
 
@@ -139,7 +139,7 @@ describe('ProcessUberWebhookInboxWorker', () => {
 
 describe('ProcessUberWebhookInboxWorker 最小依赖装配', () => {
   it('构造函数只声明工作流依赖与统一 telemetry service', () => {
-    expect(ProcessUberWebhookInboxWorker.length).toBe(6);
+    expect(ProcessUberWebhookInboxWorker.length).toBe(5);
   });
   it('只要求 webhook 签名密钥，不要求 OAuth state 密钥', () => {
     const webhookOnly = new UberConfigService({

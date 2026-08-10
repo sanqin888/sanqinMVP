@@ -18,7 +18,7 @@ jest.mock(
   { virtual: true },
 );
 jest.mock(
-  '../../integrations/ubereats/application/menu/uber-menu.service',
+  '../../integrations/ubereats/application/menu/uber-menu-availability.service',
   () => ({
     UberMenuAvailabilityService: class {},
   }),

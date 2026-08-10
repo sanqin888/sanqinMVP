@@ -1,67 +1,54 @@
-/* eslint-disable @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- typed framework/Prisma test doubles cross a dynamic boundary */
 import {
   ExecuteUberOrderActionWorker,
-  PersistUberOrderUseCase,
   RequestUberOrderActionUseCase,
 } from './uber-order.use-cases';
-import type { Prisma } from '@prisma/client';
+import type { UberOrderActionPort } from '../ports/uber-use-case.ports';
 
 describe('Uber order use-case boundaries', () => {
-  it('commits order, inbox and outbox through one transaction callback', async () => {
-    const transactionClient = {
-      marker: 'tx',
-    } as unknown as Prisma.TransactionClient;
-    const transaction = jest.fn(
-      <Result>(
-        work: (tx: Prisma.TransactionClient) => Promise<Result>,
-      ): Promise<Result> => work(transactionClient),
-    );
-    const persist = jest.fn((tx: Prisma.TransactionClient) => {
-      void tx;
-      return Promise.resolve({
-        order: true,
-        inbox: true,
-        outbox: true,
-      });
-    });
-    await expect(
-      new PersistUberOrderUseCase().execute(transaction, persist),
-    ).resolves.toEqual({ order: true, inbox: true, outbox: true });
-    expect(transaction).toHaveBeenCalledTimes(1);
-    expect(persist).toHaveBeenCalledWith(transactionClient);
-  });
+  const actions = (overrides: Partial<UberOrderActionPort> = {}) =>
+    ({
+      acceptUberOrder: jest.fn(),
+      denyUberOrder: jest.fn(),
+      retryReadyForPickup: jest.fn(),
+      getReadyForPickupAction: jest.fn(),
+      processPendingUberOrderActions: jest.fn(),
+      ...overrides,
+    }) as UberOrderActionPort;
 
-  it('makes two POS requests converge on the same atomic upsert intent', async () => {
-    const useCase = new RequestUberOrderActionUseCase();
-    const intents = new Map<string, string>();
-    const request = () => {
-      useCase.assertAllowed('making' as never, 'READY_FOR_PICKUP');
-      intents.set('order-1:READY_FOR_PICKUP', 'PENDING');
-      return Promise.resolve();
-    };
-    await Promise.all([request(), request()]);
-    expect(intents).toEqual(new Map([['order-1:READY_FOR_PICKUP', 'PENDING']]));
+  it('delegates POS action requests to the atomic action port', async () => {
+    const acceptUberOrder = jest.fn().mockResolvedValue({ status: 'PENDING' });
+    const useCase = new RequestUberOrderActionUseCase(
+      actions({ acceptUberOrder }),
+    );
+
+    await expect(useCase.accept('order-1')).resolves.toEqual({
+      status: 'PENDING',
+    });
+    expect(acceptUberOrder).toHaveBeenCalledWith('order-1');
   });
 
   it('leaves leased work retryable when the worker crashes before or after request', async () => {
-    const worker = new ExecuteUberOrderActionWorker();
-    await expect(
-      worker.execute(() => Promise.reject(new Error('crash-before'))),
-    ).rejects.toThrow('crash-before');
+    const processPendingUberOrderActions = jest
+      .fn()
+      .mockRejectedValue(new Error('crash-before'));
+    const worker = new ExecuteUberOrderActionWorker(
+      actions({ processPendingUberOrderActions }),
+    );
+    await expect(worker.execute()).rejects.toThrow('crash-before');
+    expect(processPendingUberOrderActions).toHaveBeenCalledWith(50);
     const row = { status: 'PROCESSING', leaseExpiresAt: new Date(0) };
     expect(row.leaseExpiresAt.getTime()).toBeLessThan(Date.now());
   });
 
   it('does not claim local success when Uber succeeded but result commit failed', async () => {
     const local = { status: 'making' };
+    const processPendingUberOrderActions = jest
+      .fn()
+      .mockRejectedValue(new Error('database unavailable'));
     await expect(
-      new ExecuteUberOrderActionWorker().execute(() => {
-        const uberSucceeded = true;
-        if (uberSucceeded) {
-          return Promise.reject(new Error('database unavailable'));
-        }
-        return Promise.resolve();
-      }),
+      new ExecuteUberOrderActionWorker(
+        actions({ processPendingUberOrderActions }),
+      ).execute(),
     ).rejects.toThrow('database unavailable');
     expect(local.status).toBe('making');
   });
