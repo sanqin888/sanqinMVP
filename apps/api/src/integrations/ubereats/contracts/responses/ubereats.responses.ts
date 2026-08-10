@@ -61,7 +61,7 @@ export function toUberListResponse<T>(
 
 export function toUberMutationResponse(
   status: UberOperationStatus = 'SUCCEEDED',
-  operationId = randomUUID(),
+  operationId: string = randomUUID(),
 ): UberMutationResponse {
   return {
     operationId,

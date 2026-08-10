@@ -272,12 +272,11 @@ export class UberOrderService {
       this.prisma.order.count({ where }),
       this.prisma.order.findFirst({
         where,
-        orderBy: { updatedAt: 'desc' },
-        select: { updatedAt: true },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
       }),
     ]);
-    const latestOrder = latest as unknown as { updatedAt: Date } | null;
-    return { count, updatedAt: latestOrder?.updatedAt ?? null };
+    return { count, updatedAt: latest?.createdAt ?? null };
   }
 
   async processWebhookEvent(
