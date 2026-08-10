@@ -24,7 +24,7 @@ abstract class PrefixGateway implements UberResourceGateway {
 }
 
 @Injectable()
-export class UberMerchantGateway extends PrefixGateway {
+export class UberMerchantResourceGateway extends PrefixGateway {
   protected readonly prefixes = ['/v1/eats/stores'] as const;
 }
 

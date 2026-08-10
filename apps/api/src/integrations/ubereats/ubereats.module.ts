@@ -19,7 +19,6 @@ import { UberOrderPrismaAdapter } from './infrastructure/persistence/uber-order-
 import { UberMenuDraftService } from './application/menu/uber-menu-draft.service';
 import { UberMenuPublishService } from './application/menu/uber-menu-publish.service';
 import { UberMenuAvailabilityService } from './application/menu/uber-menu-availability.service';
-import { UberMerchantGateway } from './infrastructure/uber-api/uber-merchant.gateway';
 import {
   CompleteUberOAuthUseCase,
   StartUberOAuthUseCase,
@@ -33,12 +32,6 @@ import {
   ProvisionUberStoreUseCase,
   SyncUberStoreStatusUseCase,
 } from './application/merchant/uber-merchant-provisioning.service';
-import {
-  UberMerchantConnectionRepository,
-  UberOAuthStateRepository,
-  UberStoreMappingRepository,
-  UberMerchantWorkflowRepository,
-} from './infrastructure/persistence/uber-merchant.repositories';
 import { UberOperationsPrismaAdapter } from './infrastructure/persistence/uber-operations-prisma.adapter';
 import {
   CreateUberOpsTicketUseCase,
@@ -65,7 +58,7 @@ import {
   UberMenuGateway,
   UberOrderGateway,
   UberStoreGateway,
-  UberMerchantGateway as UberMerchantApiGateway,
+  UberMerchantResourceGateway,
 } from './infrastructure/uber-api/uber-resource.gateways';
 import { UberTelemetryService } from './infrastructure/observability/uber-telemetry.service';
 import { UBER_UNIT_OF_WORK } from './application/ports/uber-persistence.ports';
@@ -79,7 +72,27 @@ import {
   UBER_WEBHOOK_INBOX_RECEIVER_PORT,
 } from './application/ports/uber-use-case.ports';
 import { UBER_ORDER_ACTION_GATEWAY } from './application/ports/uber-api.ports';
-import { UBER_MERCHANT_GATEWAY } from './application/ports/uber-api.ports';
+import {
+  UBER_MERCHANT_API,
+  UBER_OAUTH_TOKEN,
+  UBER_STORE_API,
+} from './application/ports/uber-api.ports';
+import {
+  UberMerchantApiAdapter,
+  UberOAuthTokenAdapter,
+} from './infrastructure/uber-api/uber-merchant-api.adapter';
+import {
+  UberMerchantConnectionPrismaAdapter,
+  UberOAuthStatePrismaAdapter,
+  UberOperationsAlertPrismaAdapter,
+  UberStoreMappingPrismaAdapter,
+} from './infrastructure/persistence/uber-merchant-persistence.adapter';
+import {
+  UBER_MERCHANT_CONNECTION_REPOSITORY,
+  UBER_OAUTH_STATE_REPOSITORY,
+  UBER_OPERATIONS_ALERT_REPOSITORY,
+  UBER_STORE_MAPPING_REPOSITORY,
+} from './application/ports/uber-persistence.ports';
 import {
   UBER_ORDER_OUTBOX_PORT,
   UBER_ORDER_STATUS_AUDIT_PORT,
@@ -168,7 +181,7 @@ import {
     UberAuthService,
     UberHttpClient,
     UberApiGatewayTransport,
-    UberMerchantApiGateway,
+    UberMerchantResourceGateway,
     UberStoreGateway,
     UberOrderGateway,
     { provide: UBER_ORDER_ACTION_GATEWAY, useExisting: UberOrderGateway },
@@ -208,12 +221,31 @@ import {
     UberMenuDraftService,
     UberMenuPublishService,
     UberMenuAvailabilityService,
-    UberMerchantGateway,
-    { provide: UBER_MERCHANT_GATEWAY, useExisting: UberMerchantGateway },
-    UberMerchantConnectionRepository,
-    UberMerchantWorkflowRepository,
-    UberStoreMappingRepository,
-    UberOAuthStateRepository,
+    UberOAuthTokenAdapter,
+    { provide: UBER_OAUTH_TOKEN, useExisting: UberOAuthTokenAdapter },
+    UberMerchantApiAdapter,
+    { provide: UBER_MERCHANT_API, useExisting: UberMerchantApiAdapter },
+    { provide: UBER_STORE_API, useExisting: UberMerchantApiAdapter },
+    UberOAuthStatePrismaAdapter,
+    {
+      provide: UBER_OAUTH_STATE_REPOSITORY,
+      useExisting: UberOAuthStatePrismaAdapter,
+    },
+    UberMerchantConnectionPrismaAdapter,
+    {
+      provide: UBER_MERCHANT_CONNECTION_REPOSITORY,
+      useExisting: UberMerchantConnectionPrismaAdapter,
+    },
+    UberStoreMappingPrismaAdapter,
+    {
+      provide: UBER_STORE_MAPPING_REPOSITORY,
+      useExisting: UberStoreMappingPrismaAdapter,
+    },
+    UberOperationsAlertPrismaAdapter,
+    {
+      provide: UBER_OPERATIONS_ALERT_REPOSITORY,
+      useExisting: UberOperationsAlertPrismaAdapter,
+    },
     StartUberOAuthUseCase,
     CompleteUberOAuthUseCase,
     DiscoverUberStoresUseCase,

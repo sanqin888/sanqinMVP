@@ -1,18 +1,63 @@
+import type { UberMerchantStore } from '../../domain/merchant/uber-merchant.types';
 import type { UberOrderActionName } from '../../domain/orders/uber-order.types';
 
+export const UBER_MERCHANT_API = Symbol('UBER_MERCHANT_API');
+export const UBER_STORE_API = Symbol('UBER_STORE_API');
+export const UBER_OAUTH_TOKEN = Symbol('UBER_OAUTH_TOKEN');
 export const UBER_ORDER_ACTION_GATEWAY = Symbol('UBER_ORDER_ACTION_GATEWAY');
-export const UBER_MERCHANT_GATEWAY = Symbol('UBER_MERCHANT_GATEWAY');
 
-export interface UberMerchantGatewayPort {
-  buildMerchantAuthorizeUrl(...args: any[]): any;
-  startMerchantOAuth(...args: any[]): Promise<any>;
-  exchangeAuthorizationCode(...args: any[]): Promise<any>;
-  getMerchantConnectionStatus(...args: any[]): any;
-  getMerchantStores(...args: any[]): any;
-  updatePosExternalStoreId(...args: any[]): any;
-  provisionStore(...args: any[]): any;
-  revokeOrDeprovisionStore(...args: any[]): any;
-  syncStoreStatusToUber(...args: any[]): any;
+export type UberOAuthTokens = {
+  accessToken: string;
+  refreshToken: string | null;
+  expiresAt: Date | null;
+  scope: string | null;
+  tokenType: string | null;
+};
+
+/** OAuth capability. Configuration and token endpoint details remain outside application. */
+export interface UberOAuthTokenPort {
+  getRedirectUri(): string;
+  signState(payload: string): string;
+  verifyState(payload: string, signature: string): boolean;
+  buildAuthorizeUrl(state: string): string;
+  exchangeAuthorizationCode(
+    code: string,
+    redirectUri: string,
+  ): Promise<UberOAuthTokens>;
+  refreshAccessToken(
+    refreshToken: string,
+    scope?: string,
+  ): Promise<UberOAuthTokens>;
+}
+
+/** Merchant discovery capability; it translates the upstream wire model. */
+export interface UberMerchantApiPort {
+  discoverStores(accessToken: string): Promise<{
+    stores: UberMerchantStore[];
+    raw: Record<string, unknown>;
+  }>;
+}
+
+export type UberStoreWriteResult = {
+  uberStoreId: string;
+  ok: boolean;
+  status: number | null;
+  attempts: number;
+  duplicate?: boolean;
+  error?: string;
+};
+
+/** Store mutation capability; URL/request construction belongs to its adapter. */
+export interface UberStoreApiPort {
+  provisionStore(
+    accessToken: string,
+    storeId: string,
+    payload: Record<string, unknown>,
+  ): Promise<Record<string, unknown>>;
+  writeStatus(
+    storeId: string,
+    payload: Record<string, string>,
+  ): Promise<UberStoreWriteResult>;
 }
 
 export type UberGatewayOutcome<T = unknown> = {
@@ -20,8 +65,6 @@ export type UberGatewayOutcome<T = unknown> = {
   status: number;
   data: T;
 };
-
-/** Narrow application-owned boundary; HTTP, URL, token and Response stay outside. */
 export interface UberOrderActionGatewayPort {
   executeAction(
     externalOrderId: string,

@@ -23,6 +23,8 @@ export type UberGatewayRequest = Pick<
   scope: string;
   /** Merchant/store identifier used to isolate noisy tenants. */
   partitionKey?: string;
+  /** Explicit merchant token; app-scoped calls obtain one from UberAuthService. */
+  accessToken?: string;
 };
 
 /** Contract mocked by application tests; global fetch belongs below this boundary. */
@@ -50,10 +52,12 @@ export class UberApiGatewayTransport {
       const path = this.normalizePath(request.path);
       const requestId = randomUUID();
       request = this.withIdempotencyKey(request, requestId);
-      let token = await this.auth.getAccessToken(request.scope);
+      let token =
+        request.accessToken ?? (await this.auth.getAccessToken(request.scope));
       let result = await this.send<T>(request, path, token, requestId);
       if (
         (result.response.status === 401 || result.response.status === 403) &&
+        !request.accessToken &&
         typeof this.auth.forceRefreshAccessToken === 'function'
       ) {
         token = await this.auth.forceRefreshAccessToken(request.scope);
@@ -72,10 +76,12 @@ export class UberApiGatewayTransport {
   async inspect<T>(request: UberGatewayRequest): Promise<UberHttpResult<T>> {
     const path = this.normalizePath(request.path);
     const requestId = randomUUID();
-    let token = await this.auth.getAccessToken(request.scope);
+    let token =
+      request.accessToken ?? (await this.auth.getAccessToken(request.scope));
     let result = await this.send<T>(request, path, token, requestId);
     if (
       (result.response.status === 401 || result.response.status === 403) &&
+      !request.accessToken &&
       typeof this.auth.forceRefreshAccessToken === 'function'
     ) {
       token = await this.auth.forceRefreshAccessToken(request.scope);

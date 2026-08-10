@@ -97,6 +97,15 @@ export interface UberOAuthStatePort {
     redirectUri: string;
     merchantContext: string | null;
   }): Promise<void>;
+  findOAuthState(nonce: string): Promise<{
+    nonce: string;
+    adminSessionId: string;
+    redirectUri: string;
+    issuedAt: Date;
+    expiresAt: Date;
+    consumedAt: Date | null;
+    merchantContext: string | null;
+  } | null>;
   consumeOAuthState(input: {
     nonce: string;
     adminSessionId: string;
@@ -104,6 +113,91 @@ export interface UberOAuthStatePort {
     now: Date;
   }): Promise<boolean>;
 }
+
+/** Semantic persistence boundary used by the merchant workflows. */
+export interface UberMerchantConnectionRepositoryPort {
+  findConnection(merchantUberUserId?: string): Promise<{
+    merchantUberUserId: string;
+    accessToken: string;
+    refreshToken: string | null;
+    expiresAt: Date | null;
+    scope: string | null;
+    tokenType: string | null;
+    connectedAt: Date;
+    rawStoresSnapshot: unknown;
+  } | null>;
+  upsertConnection(input: {
+    merchantUberUserId: string;
+    accessToken: string;
+    refreshToken: string | null;
+    expiresAt: Date | null;
+    scope: string | null;
+    tokenType: string | null;
+    connectedAt: Date;
+    rawStoresSnapshot?: unknown;
+  }): Promise<{ connectedAt: Date }>;
+  saveStoresSnapshot(
+    merchantUberUserId: string,
+    raw: Record<string, unknown>,
+  ): Promise<void>;
+}
+
+export type UberMerchantStoreMapping = {
+  merchantUberUserId: string;
+  uberStoreId: string;
+  storeName: string | null;
+  locationSummary: string | null;
+  isProvisioned: boolean;
+  provisionedAt: Date | null;
+  posExternalStoreId: string | null;
+  rawPayload?: unknown;
+};
+export interface UberStoreMappingRepositoryPort {
+  findMappings(
+    merchantUberUserId: string,
+    uberStoreIds: string[],
+  ): Promise<UberMerchantStoreMapping[]>;
+  listMappings(): Promise<UberMerchantStoreMapping[]>;
+  findMapping(uberStoreId: string): Promise<UberMerchantStoreMapping | null>;
+  saveDiscovery(input: UberMerchantStoreMapping): Promise<void>;
+  upsertMapping(
+    input: UberMerchantStoreMapping,
+  ): Promise<UberMerchantStoreMapping>;
+  updatePosExternalStoreId(
+    uberStoreId: string,
+    posExternalStoreId: string,
+  ): Promise<UberMerchantStoreMapping | null>;
+}
+
+export interface UberOperationsAlertRepositoryPort {
+  getStoreStatusSource(): Promise<{
+    isTemporarilyClosed: boolean;
+    temporaryCloseReason: string | null;
+  }>;
+  recordStoreStatusResult(
+    result: Record<string, unknown>,
+    payload: Record<string, string>,
+  ): Promise<void>;
+  createStoreStatusAlert(
+    uberStoreId: string,
+    error: string,
+    status: number,
+    payload: Record<string, string>,
+  ): Promise<void>;
+}
+
+export const UBER_OAUTH_STATE_REPOSITORY = Symbol(
+  'UBER_OAUTH_STATE_REPOSITORY',
+);
+export const UBER_MERCHANT_CONNECTION_REPOSITORY = Symbol(
+  'UBER_MERCHANT_CONNECTION_REPOSITORY',
+);
+export const UBER_STORE_MAPPING_REPOSITORY = Symbol(
+  'UBER_STORE_MAPPING_REPOSITORY',
+);
+export const UBER_OPERATIONS_ALERT_REPOSITORY = Symbol(
+  'UBER_OPERATIONS_ALERT_REPOSITORY',
+);
 
 export interface UberMenuPublishPort {
   findLatestPublishAttempt(
