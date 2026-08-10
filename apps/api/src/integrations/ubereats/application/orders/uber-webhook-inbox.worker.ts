@@ -35,13 +35,20 @@ export class ProcessUberWebhookInboxWorker {
   ) {}
 
   async handleWebhook(input: UberWebhookInput): Promise<void> {
-    this.signatures.verify(input.headers, input.rawBody);
+    this.signatures.verify({
+      version: 'hmac-sha256-hex-v1',
+      headers: input.headers,
+      rawBody:
+        typeof input.rawBody === 'string'
+          ? new TextEncoder().encode(input.rawBody)
+          : input.rawBody,
+    });
     let body: unknown;
     try {
       body = JSON.parse(
-        Buffer.isBuffer(input.rawBody)
-          ? input.rawBody.toString('utf8')
-          : input.rawBody,
+        typeof input.rawBody === 'string'
+          ? input.rawBody
+          : Buffer.from(input.rawBody).toString('utf8'),
       );
     } catch {
       throw new UberValidationError({

@@ -31,7 +31,12 @@ export interface UberOAuthStateConfig extends UberApiConfig {
 }
 
 export interface UberWebhookConfig {
-  getWebhookSigningKey(): string;
+  getWebhookSigningSecrets(): UberWebhookSigningSecrets;
+}
+
+export interface UberWebhookSigningSecrets {
+  readonly active: string;
+  readonly previous?: Readonly<{ secret: string; validUntilEpochMs: number }>;
 }
 
 export type UberWorkerKind =
@@ -56,7 +61,9 @@ export class UberConfigService {
   readonly clientSecret: string;
   readonly apiBaseUrl: string;
   private readonly oauthStateSecret: string;
-  private readonly webhookSigningKey: string;
+  private readonly webhookSigningKeyActive: string;
+  private readonly webhookSigningKeyPrevious: string;
+  private readonly webhookSigningKeyPreviousValidUntil: string;
   readonly redirectUri: string;
   readonly resourceHrefAllowedOrigins: string;
   readonly tokenEndpoint: string;
@@ -85,7 +92,17 @@ export class UberConfigService {
     this.clientSecret = this.read(env, 'UBER_EATS_CLIENT_SECRET');
     this.apiBaseUrl = this.read(env, 'UBER_EATS_API_BASE_URL');
     this.oauthStateSecret = this.read(env, 'UBER_EATS_OAUTH_STATE_SECRET');
-    this.webhookSigningKey = this.read(env, 'UBER_EATS_WEBHOOK_SIGNING_KEY');
+    this.webhookSigningKeyActive =
+      this.read(env, 'UBER_EATS_WEBHOOK_SIGNING_KEY_ACTIVE') ||
+      this.read(env, 'UBER_EATS_WEBHOOK_SIGNING_KEY');
+    this.webhookSigningKeyPrevious = this.read(
+      env,
+      'UBER_EATS_WEBHOOK_SIGNING_KEY_PREVIOUS',
+    );
+    this.webhookSigningKeyPreviousValidUntil = this.read(
+      env,
+      'UBER_EATS_WEBHOOK_SIGNING_KEY_PREVIOUS_VALID_UNTIL',
+    );
     this.redirectUri = this.read(env, 'UBER_EATS_REDIRECT_URI');
     this.resourceHrefAllowedOrigins = this.read(
       env,
@@ -249,11 +266,40 @@ export class UberConfigService {
   }
 
   /** Read only by the webhook signature verification capability. */
-  getWebhookSigningKey(): string {
-    if (!this.webhookSigningKey) {
-      throw new Error('Uber 配置 UBER_EATS_WEBHOOK_SIGNING_KEY 未配置');
+  getWebhookSigningSecrets(): UberWebhookSigningSecrets {
+    if (!this.webhookSigningKeyActive) {
+      throw new Error('Uber 配置 UBER_EATS_WEBHOOK_SIGNING_KEY_ACTIVE 未配置');
     }
-    return this.webhookSigningKey;
+    const hasPrevious = Boolean(this.webhookSigningKeyPrevious);
+    const hasDeadline = Boolean(this.webhookSigningKeyPreviousValidUntil);
+    if (hasPrevious !== hasDeadline) {
+      throw new Error(
+        'Uber 配置 previous signing secret 与有效截止时间必须同时配置',
+      );
+    }
+    if (!hasPrevious)
+      return Object.freeze({ active: this.webhookSigningKeyActive });
+
+    const validUntilEpochMs = Date.parse(
+      this.webhookSigningKeyPreviousValidUntil,
+    );
+    if (!Number.isFinite(validUntilEpochMs)) {
+      throw new Error(
+        'Uber 配置 UBER_EATS_WEBHOOK_SIGNING_KEY_PREVIOUS_VALID_UNTIL 必须是有效 ISO-8601 时间',
+      );
+    }
+    return Object.freeze({
+      active: this.webhookSigningKeyActive,
+      previous: Object.freeze({
+        secret: this.webhookSigningKeyPrevious,
+        validUntilEpochMs,
+      }),
+    });
+  }
+
+  /** @deprecated 使用 getWebhookSigningSecrets() 以支持受限轮换窗口。 */
+  getWebhookSigningKey(): string {
+    return this.getWebhookSigningSecrets().active;
   }
 
   private read(env: UberEnvironment, key: string): string {
