@@ -1,10 +1,6 @@
 import { UberOrderActionService } from './uber-order-action.service';
 
-const service = new UberOrderActionService(
-  {} as never,
-  {} as never,
-  { apiBaseUrl: 'https://api.uber.com' } as never,
-);
+const service = new UberOrderActionService({} as never);
 
 describe('UberOrderActionService', () => {
   it.each([
@@ -17,13 +13,14 @@ describe('UberOrderActionService', () => {
 
   it('classifies retryable failures and idempotent ready conflicts', () => {
     expect(
-      service.classify('ACCEPT', { ok: false, status: 503 } as Response),
+      service.classify('ACCEPT', { ok: false, status: 503, data: {} }),
     ).toEqual({ succeeded: false, retryable: true });
     expect(
       service.classify('READY_FOR_PICKUP', {
         ok: false,
         status: 409,
-      } as Response),
+        data: {},
+      }),
     ).toEqual({ succeeded: true, retryable: false });
   });
 });

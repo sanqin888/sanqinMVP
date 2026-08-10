@@ -14,13 +14,13 @@ import {
 import { createHash } from 'crypto';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { UberMenuNotificationDto } from '../../contracts/dto/uber-menu-notification.dto';
-import { UberAuthService } from '../../application/merchant/uber-auth.service';
+import { UberAuthService } from '../../infrastructure/uber-api/uber-token.provider';
 import {
   UberConfigService,
   type UberMenuConfig,
 } from '../../infrastructure/config/uber-config.service';
-import { UberMenuGateway } from '../../infrastructure/api/uber-resource.gateways';
-import { UberHttpClient } from '../../infrastructure/http/uber-http.client';
+import { UberMenuGateway } from '../../infrastructure/uber-api/uber-resource.gateways';
+import { UberHttpClient } from '../../infrastructure/uber-api/uber-http.client';
 import {
   normalizeUberStoreId,
   redactUberLogText,
@@ -55,7 +55,7 @@ import {
   validateUberMenuGraph,
   summarizeUberMenuGraph,
 } from '../../domain/menu/uber-menu-graph.service';
-import { UberImageValidator } from '../../application/menu/uber-image.validator';
+import { UberImageValidator } from '../../infrastructure/uber-api/uber-image.validator';
 
 import { UberTelemetryService } from '../../infrastructure/observability/uber-telemetry.service';
 

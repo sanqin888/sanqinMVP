@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { AuthModule } from '../../auth/auth.module';
-import { UberAuthService } from './application/merchant/uber-auth.service';
+import { UberAuthService } from './infrastructure/uber-api/uber-token.provider';
 import { UberEatsOAuthController } from './api/oauth.controller';
 import { UberEatsWebhookController } from './api/webhook.controller';
 import { UberEatsOrdersController } from './api/orders.controller';
@@ -10,7 +10,7 @@ import { UberEatsOperationsController } from './api/operations.controller';
 import { BrowserWriteCsrfGuard } from './api/ubereats-csrf.guard';
 import { MessagingModule } from '../../messaging/messaging.module';
 import { OrdersModule } from '../../orders/orders.module';
-import { UberHttpClient } from './infrastructure/http/uber-http.client';
+import { UberHttpClient } from './infrastructure/uber-api/uber-http.client';
 import { UberConfigService } from './infrastructure/config/uber-config.service';
 import { ProcessUberWebhookInboxWorker } from './application/orders/uber-webhook-inbox.worker';
 import { ReceiveUberWebhookUseCase } from './application/orders/uber-webhook-receiver.use-case';
@@ -22,7 +22,7 @@ import { UberMenuDraftService } from './application/menu/uber-menu-draft.service
 import { UberMenuPublishService } from './application/menu/uber-menu-publish.service';
 import { UberMenuAvailabilityService } from './application/menu/uber-menu-availability.service';
 import { UberMerchantService } from './application/merchant/uber-merchant.service';
-import { UberMerchantGateway } from './infrastructure/api/uber-merchant.gateway';
+import { UberMerchantGateway } from './infrastructure/uber-api/uber-merchant.gateway';
 import {
   CompleteUberOAuthUseCase,
   StartUberOAuthUseCase,
@@ -43,6 +43,7 @@ import {
   UberMerchantConnectionRepository,
   UberOAuthStateRepository,
   UberStoreMappingRepository,
+  UberMerchantWorkflowRepository,
 } from './infrastructure/persistence/uber-merchant.repositories';
 import { UberOperationsApplication } from './application/operations/uber-operations.service';
 import { UberOperationsPrismaAdapter } from './infrastructure/persistence/uber-operations-prisma.adapter';
@@ -66,13 +67,13 @@ import {
   SyncUberOrderStatusUseCase,
 } from './application/orders/uber-order.use-cases';
 import { UberCredentialVaultService } from './infrastructure/crypto/uber-credential-vault.service';
-import { UberApiGatewayTransport } from './infrastructure/api/uber-api.gateway';
+import { UberApiGatewayTransport } from './infrastructure/uber-api/uber-api.gateway';
 import {
   UberMenuGateway,
   UberOrderGateway,
   UberStoreGateway,
   UberMerchantGateway as UberMerchantApiGateway,
-} from './infrastructure/api/uber-resource.gateways';
+} from './infrastructure/uber-api/uber-resource.gateways';
 import { UberTelemetryService } from './infrastructure/observability/uber-telemetry.service';
 import { UBER_UNIT_OF_WORK } from './application/ports/uber-persistence.ports';
 import {
@@ -84,6 +85,7 @@ import {
   UBER_ORDER_SYNC_PORT,
   UBER_WEBHOOK_INBOX_RECEIVER_PORT,
 } from './application/ports/uber-use-case.ports';
+import { UBER_ORDER_ACTION_GATEWAY } from './application/ports/uber-api.ports';
 import {
   PrismaUberMenuPublishAdapter,
   PrismaUberMerchantConnectionAdapter,
@@ -131,6 +133,7 @@ import {
     UberMerchantApiGateway,
     UberStoreGateway,
     UberOrderGateway,
+    { provide: UBER_ORDER_ACTION_GATEWAY, useExisting: UberOrderGateway },
     UberMenuGateway,
     ProcessUberWebhookInboxWorker,
     {
@@ -165,6 +168,7 @@ import {
     UberMenuService,
     UberMerchantGateway,
     UberMerchantConnectionRepository,
+    UberMerchantWorkflowRepository,
     UberStoreMappingRepository,
     UberOAuthStateRepository,
     StartUberOAuthUseCase,

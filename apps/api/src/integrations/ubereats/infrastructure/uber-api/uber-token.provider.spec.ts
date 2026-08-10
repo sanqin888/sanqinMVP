@@ -1,8 +1,5 @@
-import { UberAuthService } from './uber-auth.service';
-import {
-  UberHttpClient,
-  UberHttpError,
-} from '../../infrastructure/http/uber-http.client';
+import { UberAuthService } from './uber-token.provider';
+import { UberHttpClient, UberHttpError } from './uber-http.client';
 import { AppLogger } from '../../../../common/app-logger';
 
 describe('UberAuthService', () => {

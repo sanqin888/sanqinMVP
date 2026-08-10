@@ -1,23 +1,21 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { UberAuthService } from '../merchant/uber-auth.service';
-import {
-  UberConfigService,
-  type UberOrderConfig,
-} from '../../infrastructure/config/uber-config.service';
-import { UberHttpClient } from '../../infrastructure/http/uber-http.client';
 import type {
   UberDenyReasonCode,
   UberOrderActionName,
 } from '../../domain/orders/uber-order.types';
 import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
+import {
+  UBER_ORDER_ACTION_GATEWAY,
+  type UberGatewayOutcome,
+  type UberOrderActionGatewayPort,
+} from '../ports/uber-api.ports';
 
 /** Owns Uber order action protocol details; persistence/idempotency stays in the outbox service. */
 @Injectable()
 export class UberOrderActionService {
   constructor(
-    private readonly auth: UberAuthService,
-    private readonly http: UberHttpClient,
-    @Inject(UberConfigService) private readonly config: UberOrderConfig,
+    @Inject(UBER_ORDER_ACTION_GATEWAY)
+    private readonly gateway: UberOrderActionGatewayPort,
   ) {}
 
   buildDenyPayload(reasonCode: string, reasonDetail?: string) {
@@ -42,23 +40,15 @@ export class UberOrderActionService {
     action: UberOrderActionName,
     payload: Record<string, unknown>,
   ) {
-    const token = await this.auth.getAccessToken('eats.order');
-    return this.http.request({
-      returnErrorResponse: true,
-      path: this.buildPath(externalOrderId, action),
-      baseUrl: this.config.apiBaseUrl,
-      method: 'POST',
-      accessToken: token,
-      json: payload,
-      idempotencyKey: UberOrderStateMachine.idempotencyKey(
-        externalOrderId,
-        action,
-      ),
-      kind: 'api',
-    });
+    return this.gateway.executeAction(
+      externalOrderId,
+      action,
+      payload,
+      UberOrderStateMachine.idempotencyKey(externalOrderId, action),
+    );
   }
 
-  classify(action: UberOrderActionName, response: Response) {
+  classify(action: UberOrderActionName, response: UberGatewayOutcome) {
     return {
       succeeded:
         response.ok ||

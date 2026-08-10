@@ -5,7 +5,7 @@ import {
   UBER_IMAGE_MAX_BYTES,
 } from '../../domain/menu/uber-menu.types';
 import type { UberMenuPayloadValidationIssue } from '../../domain/menu/uber-payload.utils';
-import { UberHttpClient } from '../../infrastructure/http/uber-http.client';
+import { UberHttpClient } from './uber-http.client';
 
 export interface UberImagePolicy {
   protocols: readonly string[];

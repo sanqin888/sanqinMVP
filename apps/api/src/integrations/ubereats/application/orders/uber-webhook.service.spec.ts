@@ -51,9 +51,13 @@ describe('ProcessUberWebhookInboxWorker', () => {
       {
         uberWebhookInbox,
         opsEvent: { create: jest.fn() },
-      } as unknown as ConstructorParameters<typeof ProcessUberWebhookInboxWorker>[0],
+      } as unknown as ConstructorParameters<
+        typeof ProcessUberWebhookInboxWorker
+      >[0],
       config(),
-      orders as unknown as ConstructorParameters<typeof ProcessUberWebhookInboxWorker>[2],
+      orders as unknown as ConstructorParameters<
+        typeof ProcessUberWebhookInboxWorker
+      >[2],
     );
     const body = {
       event_type: 'orders.notification',
@@ -84,7 +88,9 @@ describe('ProcessUberWebhookInboxWorker', () => {
       >[0],
       config(),
       undefined,
-      menu as unknown as ConstructorParameters<typeof ProcessUberWebhookInboxWorker>[3],
+      menu as unknown as ConstructorParameters<
+        typeof ProcessUberWebhookInboxWorker
+      >[3],
     );
     const body = { event_type: 'menus.notification', event_id: 'evt-menu-1' };
 

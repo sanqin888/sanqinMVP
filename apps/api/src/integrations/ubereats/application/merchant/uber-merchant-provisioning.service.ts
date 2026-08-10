@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { UberMerchantGateway } from '../../infrastructure/api/uber-merchant.gateway';
+import { UberMerchantGateway } from '../../infrastructure/uber-api/uber-merchant.gateway';
 
 export type UberStoreStatusTarget = {
   uberStoreId: string;

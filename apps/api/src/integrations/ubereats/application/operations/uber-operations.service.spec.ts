@@ -143,7 +143,9 @@ describe('UberOperationsPrismaAdapter', () => {
       undefined,
       {
         syncStoreStatusToUber: jest.fn().mockResolvedValue({ ok: true }),
-      } as unknown as ConstructorParameters<typeof UberOperationsPrismaAdapter>[3],
+      } as unknown as ConstructorParameters<
+        typeof UberOperationsPrismaAdapter
+      >[3],
     );
     await expect(service.retryOpsTicket('tic_1')).resolves.toMatchObject({
       ok: true,
