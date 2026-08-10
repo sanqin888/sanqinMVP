@@ -12,16 +12,17 @@ import {
   type Prisma,
 } from '@prisma/client';
 import { createHash, randomUUID } from 'crypto';
-import { buildUberIdempotencyKey } from '../../application/idempotency/uber-idempotency-key';
 import { PrismaService } from '../../../../prisma/prisma.service';
+import {
+  UBER_MENU_PUBLISH_COMMAND,
+  type UberMenuPublishCommandPort,
+} from '../../application/ports/uber-menu-publication.ports';
 import type { UberMenuNotificationEventV1 } from '../../contracts/events/uber-menu-notification.v1';
 import { UberAuthService } from '../../infrastructure/uber-api/uber-token.provider';
 import {
   UberConfigService,
   type UberMenuConfig,
 } from '../../infrastructure/config/uber-config.service';
-import { UberMenuGateway } from '../../infrastructure/uber-api/uber-resource.gateways';
-import { UberHttpClient } from '../../infrastructure/uber-api/uber-http.client';
 import {
   normalizeUberStoreId,
   redactUberLogText,
@@ -56,7 +57,6 @@ import {
   validateUberMenuGraph,
   summarizeUberMenuGraph,
 } from '../../domain/menu/uber-menu-graph.service';
-import { UberImageValidator } from '../../infrastructure/uber-api/uber-image.validator';
 
 import { UberTelemetryService } from '../../infrastructure/observability/uber-telemetry.service';
 
@@ -68,10 +68,10 @@ export class UberMenuPrismaAdapter {
   constructor(
     private readonly prisma: PrismaService,
     private readonly uberAuthService: UberAuthService,
-    private readonly menuGateway: UberMenuGateway,
     @Inject(UberConfigService) private readonly config: UberMenuConfig,
     private readonly prismaAccess: UberPrismaAccessService,
-    private readonly httpClient: UberHttpClient,
+    @Inject(UBER_MENU_PUBLISH_COMMAND)
+    private readonly publishMenu: UberMenuPublishCommandPort,
     @Optional()
     private readonly credentialVault = new UberCredentialVaultService(),
     @Optional() telemetry?: UberTelemetryService,
@@ -886,155 +886,7 @@ export class UberMenuPrismaAdapter {
   }
 
   async publishUberMenu(input: PublishMenuInput) {
-    const normalizedStoreId = normalizeUberStoreId(input.storeId);
-    const uberStoreId = await this.resolveUberStoreIdOrThrow(normalizedStoreId);
-    const graph = await this.buildUberMenuGraphWithFilters(
-      normalizedStoreId,
-      uberStoreId,
-      {
-        excludedCategoryIds: new Set(input.excludedCategoryIds ?? []),
-        excludedGroupIds: new Set(input.excludedGroupIds ?? []),
-        excludedMenuItemStableIds: new Set(
-          input.excludedMenuItemStableIds ?? [],
-        ),
-        excludedOptionChoiceStableIds: new Set(
-          input.excludedOptionChoiceStableIds ?? [],
-        ),
-      },
-    );
-    const normalized = this.normalizeAndValidateUberMenuGraph(graph);
-    const schedule = await this.getUberMenuSchedule();
-    const payload = buildUberUploadMenuPayload(
-      normalized.graph,
-      schedule.serviceAvailability,
-      schedule.taxRatePercentage,
-    );
-    const imageValidation = await this.validateUberMenuImages(payload);
-    const payloadValidation = [
-      ...validateUberMenuPayload(payload),
-      ...imageValidation.issues,
-    ];
-    const validationErrors = [...normalized.errors, ...payloadValidation];
-    const summary = this.summarizePublishGraph(normalized.graph);
-
-    if (validationErrors.length > 0) {
-      throw new BadRequestException({
-        message: 'Uber 菜单发布 payload 校验失败，已阻止请求。',
-        mappingErrors: graph.mappingErrors,
-        validation: { warnings: normalized.warnings, errors: validationErrors },
-      });
-    }
-
-    if (input.dryRun) {
-      await this.telemetry.captureEvent('ubereats_menu_publish_dry_run', {
-        storeId: normalizedStoreId,
-        uberStoreId,
-        summary: summary as unknown as Prisma.JsonValue,
-      });
-      return {
-        ok: true,
-        dryRun: true,
-        storeId: normalizedStoreId,
-        uberStoreId,
-        summary,
-        serviceAvailability: schedule.serviceAvailability,
-        serviceAvailabilityTimezone: schedule.timezone,
-        taxRate: {
-          percentage: schedule.taxRatePercentage,
-          source: schedule.taxRateSource,
-          requiresAdminConfirmation: true,
-          confirmed: input.taxRateConfirmed === true,
-        },
-        imageValidation: imageValidation.results,
-        modifierFlattening: this.buildModifierFlatteningReport(
-          normalized.graph,
-          graph.optionMappings,
-        ),
-        payload,
-        mappingErrors: graph.mappingErrors,
-        validation: {
-          warnings: normalized.warnings,
-          errors: validationErrors,
-        },
-      };
-    }
-
-    if (input.taxRateConfirmed !== true) {
-      throw new BadRequestException(
-        `正式发布前必须由管理员确认税率 ${schedule.taxRatePercentage}%（来源：${schedule.taxRateSource}）。`,
-      );
-    }
-
-    await this.assertUberStoreTimezone(
-      uberStoreId,
-      schedule.timezone,
-      input.timezoneConfirmed === true,
-    );
-
-    const version = await this.createMenuPublishVersionStarted(
-      normalizedStoreId,
-      uberStoreId,
-      summary,
-      payload,
-      normalized.graph,
-    );
-
-    try {
-      const response = await this.uploadUberMenu(
-        uberStoreId,
-        payload,
-        version.idempotencyKey ??
-          buildUberIdempotencyKey({
-            taskId: version.id,
-            resourceId: `${normalizedStoreId}:${uberStoreId}`,
-            action: 'PUBLISH_MENU',
-            businessVersion: createHash('sha256')
-              .update(JSON.stringify(payload))
-              .digest('hex'),
-          }),
-      );
-      await this.markMenuPublishVersionSubmitted(version.id, response);
-
-      const finalStatus: 'SUBMITTED' | 'SUCCEEDED' | 'FAILED' = 'SUBMITTED';
-      if (!this.hasMenuNotificationCapability()) {
-        void this.pollUploadedMenuUntilTerminal(
-          version.id,
-          normalizedStoreId,
-          uberStoreId,
-          payload,
-        ).catch((error) =>
-          this.telemetry.workflowLog(
-            'error',
-            `[ubereats menu] confirmation task failed versionId=${version.id}: ${error instanceof Error ? error.message : String(error)}`,
-          ),
-        );
-      }
-
-      await this.telemetry.captureEvent('ubereats_menu_published', {
-        storeId: normalizedStoreId,
-        uberStoreId,
-        versionStableId: version.versionStableId,
-        status: finalStatus,
-        totalItems: summary.totalItems,
-        changedItems: summary.changedItems,
-      });
-
-      return {
-        ok: true,
-        dryRun: false,
-        storeId: normalizedStoreId,
-        uberStoreId,
-        versionStableId: version.versionStableId,
-        createdAt: version.createdAt,
-        summary,
-      };
-    } catch (error) {
-      await this.markMenuPublishVersionFailed(
-        version.id,
-        error instanceof Error ? error.message : `${error}`,
-      );
-      throw error;
-    }
+    return this.publishMenu.execute(input);
   }
 
   async syncUberMenuItemAvailability(
@@ -1955,10 +1807,6 @@ export class UberMenuPrismaAdapter {
 
   /** Validate the final wire payload. Both preview and upload must pass here. */
 
-  private async validateUberMenuImages(payload: UberMenuUploadPayload) {
-    return new UberImageValidator(this.httpClient).validate(payload);
-  }
-
   private buildModifierFlatteningReport(
     graph: {
       items: Array<{ id: string; priceCents: number }>;
@@ -2265,218 +2113,6 @@ export class UberMenuPrismaAdapter {
     groups: unknown[];
   }) {
     return summarizeUberMenuGraph(graph as never);
-  }
-
-  private async uploadUberMenu(
-    uberStoreId: string,
-    payload: UberMenuUploadPayload,
-    idempotencyKey: string,
-  ): Promise<Record<string, unknown>> {
-    return this.menuGateway.request({
-      path: `/v2/eats/stores/${encodeURIComponent(uberStoreId)}/menus`,
-      scope: 'eats.store',
-      operation: 'uber.menu.upload',
-      method: 'PUT',
-      json: payload as unknown as Record<string, unknown>,
-      idempotencyKey,
-    });
-  }
-
-  /**
-   * Menu uploads are asynchronous at Uber. Accounts subscribed to menu
-   * notifications must wait for the webhook; other accounts verify the menu
-   * through the read API instead of treating the PUT response as completion.
-   */
-
-  private hasMenuNotificationCapability(): boolean {
-    return this.config.menuNotificationsEnabled;
-  }
-
-  private async confirmUploadedMenu(
-    versionId: string,
-    uberStoreId: string,
-    requested: UberMenuUploadPayload,
-  ): Promise<'SUBMITTED' | 'SUCCEEDED' | 'FAILED'> {
-    try {
-      const response = await this.menuGateway.request<Record<string, unknown>>({
-        path: `/v2/eats/stores/${encodeURIComponent(uberStoreId)}/menus`,
-        scope: 'eats.store',
-        operation: 'uber.menu.read',
-        method: 'GET',
-      });
-      const readPayload = this.asObject(response.menu ?? response) ?? {};
-      const expectedIds = requested.items.map((item) => item.id);
-      const actualIds = new Set(
-        (Array.isArray(readPayload.items) ? readPayload.items : [])
-          .map((item) => this.readString(this.asObject(item)?.id))
-          .filter((id): id is string => Boolean(id)),
-      );
-
-      // A readable response can still be the previous menu while Uber is
-      // processing. Only the uploaded entity set confirms this version.
-      if (
-        expectedIds.length === 0 ||
-        expectedIds.every((itemId) => actualIds.has(itemId))
-      ) {
-        await this.markMenuPublishVersionSuccess(versionId, response);
-        return 'SUCCEEDED';
-      }
-      return 'SUBMITTED';
-    } catch (error) {
-      // A transient read failure does not prove that asynchronous processing
-      // failed. Preserve SUBMITTED so a later refresh/reconciliation can retry.
-      await this.telemetry.captureEvent('ubereats_menu_confirmation_pending', {
-        uberStoreId,
-        reason: error instanceof Error ? error.message : `${error}`,
-      });
-      return 'SUBMITTED';
-    }
-  }
-
-  private async pollUploadedMenuUntilTerminal(
-    versionId: string,
-    storeId: string,
-    uberStoreId: string,
-    requested: UberMenuUploadPayload,
-  ): Promise<void> {
-    const timeoutMs = this.config.menuConfirmTimeoutMs;
-    const initialDelayMs = this.config.menuConfirmInitialDelayMs;
-    const startedAt = Date.now();
-    let delayMs = initialDelayMs;
-    while (Date.now() - startedAt < timeoutMs) {
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-      const current =
-        await this.prismaAccess.uberMenuPublishRepository.findUnique({
-          where: { id: versionId },
-          select: { status: true },
-        });
-      if (
-        current?.status === UberMenuPublishStatus.SUCCEEDED ||
-        current?.status === UberMenuPublishStatus.FAILED
-      )
-        return;
-      const status = await this.confirmUploadedMenu(
-        versionId,
-        uberStoreId,
-        requested,
-      );
-      if (status !== 'SUBMITTED') return;
-      delayMs = Math.min(delayMs * 2, this.config.menuConfirmMaxDelayMs);
-    }
-
-    // Timeout is deliberately not success: retain SUBMITTED and make the
-    // unresolved publication visible to operations without a schema change.
-    await this.prismaAccess.uberOpsTicketRepository.create({
-      data: {
-        storeId,
-        type: UberOpsTicketType.MENU_PUBLISH,
-        status: UberOpsTicketStatus.OPEN,
-        priority: UberOpsTicketPriority.HIGH,
-        title: `Uber 菜单发布确认超时：${versionId}`,
-        description: `在 ${timeoutMs}ms 内未确认 Uber 菜单发布结果。`,
-        context: {
-          versionId,
-          uberStoreId,
-          state: 'TIMED_OUT',
-          publish: { storeId, dryRun: false },
-        },
-      },
-    });
-    await this.telemetry.captureEvent('ubereats_menu_confirmation_timed_out', {
-      versionId,
-      uberStoreId,
-      timeoutMs,
-    });
-  }
-
-  private async createMenuPublishVersionStarted(
-    storeId: string,
-    uberStoreId: string,
-    summary: { totalItems: number; changedItems: number },
-    payload: UberMenuUploadPayload,
-    graph: {
-      items: Array<{
-        id: string;
-        sourceStableId: string;
-        priceCents: number;
-        isAvailable: boolean;
-        title: string;
-      }>;
-    },
-  ) {
-    const checksum = createHash('sha256')
-      .update(JSON.stringify(payload))
-      .digest('hex');
-
-    const payloadItemIds = new Set(payload.items.map((item) => item.id));
-    const publishedAt = new Date();
-    const id = randomUUID();
-    const versionStableId = randomUUID();
-    const businessVersion = checksum;
-    const idempotencyKey = buildUberIdempotencyKey({
-      taskId: id,
-      resourceId: `${storeId}:${uberStoreId}`,
-      action: 'PUBLISH_MENU',
-      businessVersion,
-    });
-    const version = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.uberMenuPublishVersion.create({
-        data: {
-          id,
-          versionStableId,
-          idempotencyKey,
-          businessVersion,
-          storeId,
-          uberStoreId,
-          status: UberMenuPublishStatus.SUBMITTED,
-          totalItems: summary.totalItems,
-          changedItems: summary.changedItems,
-          requestPayload: payload as Prisma.InputJsonValue,
-          payload: payload as Prisma.InputJsonValue,
-          checksum,
-        },
-        select: {
-          id: true,
-          versionStableId: true,
-          idempotencyKey: true,
-          createdAt: true,
-        },
-      });
-      await tx.uberPublishedMenuItem.createMany({
-        data: graph.items
-          .filter((item) => payloadItemIds.has(item.id))
-          .map((item) => ({
-            publishVersionId: created.id,
-            storeId,
-            uberStoreId,
-            uberItemId: item.id,
-            menuItemStableId: item.sourceStableId,
-            publishedPriceCents: item.priceCents,
-            publishedIsAvailable: item.isAvailable,
-            publishedName: item.title,
-            publishedAt,
-          })),
-      });
-      return created;
-    });
-
-    return version;
-  }
-
-  private async markMenuPublishVersionSubmitted(
-    id: string,
-    responsePayload: Record<string, unknown>,
-  ) {
-    await this.prismaAccess.uberMenuPublishRepository.update({
-      where: { id },
-      data: {
-        status: UberMenuPublishStatus.SUBMITTED,
-        responsePayload: responsePayload as Prisma.InputJsonValue,
-        errorMessage: null,
-        errorDetails: undefined,
-        finishedAt: null,
-      },
-    });
   }
 
   private async markMenuPublishVersionSuccess(

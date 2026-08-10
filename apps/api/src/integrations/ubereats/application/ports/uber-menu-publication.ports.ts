@@ -1,4 +1,10 @@
 import type { UberMenuUploadPayload } from '../../domain/menu/uber-menu.types';
+import type { PublishMenuInput } from '../../domain/menu/uber-menu.types';
+
+export interface UberMenuPublishCommandPort {
+  execute(input: PublishMenuInput): Promise<unknown>;
+}
+export const UBER_MENU_PUBLISH_COMMAND = Symbol('UBER_MENU_PUBLISH_COMMAND');
 
 export type UberMenuSnapshotItem = {
   stableId: string;
@@ -70,9 +76,12 @@ export interface UberMenuPublicationRepositoryPort {
   ): Promise<UberMenuPublicationAttempt | null>;
   createAttempt(input: {
     storeId: string;
+    uberStoreId: string;
     idempotencyKey: string;
     businessVersion: string;
     payloadHash: string;
+    payload: UberMenuUploadPayload;
+    totalItems: number;
   }): Promise<UberMenuPublicationAttempt>;
   markSubmitted(
     attemptId: string,
