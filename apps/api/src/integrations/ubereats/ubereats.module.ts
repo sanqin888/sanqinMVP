@@ -18,6 +18,9 @@ import { UberMenuAvailabilityService } from './uber-menu-availability.service';
 import { UberMerchantService } from './uber-merchant.service';
 import { UberOperationsService } from './uber-operations.service';
 import { UberPrismaAccessService } from './uber-prisma-access.service';
+import { UberOrderActionService } from './uber-order-action.service';
+import { UberOrderOutboxService } from './uber-order-outbox.service';
+import { UberOrderStatusSyncService } from './uber-order-status-sync.service';
 
 @Module({
   imports: [PrismaModule, AuthModule, MessagingModule, OrdersModule],
@@ -33,6 +36,9 @@ import { UberPrismaAccessService } from './uber-prisma-access.service';
     UberHttpClient,
     UberWebhookService,
     UberOrderService,
+    UberOrderActionService,
+    UberOrderStatusSyncService,
+    UberOrderOutboxService,
     UberMenuWorkflowCore,
     UberMenuDraftService,
     UberMenuPublishService,
