@@ -34,6 +34,17 @@ export interface UberWebhookConfig {
   getWebhookSigningKey(): string;
 }
 
+export type UberWorkerKind =
+  | 'webhookInbox'
+  | 'orderAction'
+  | 'menuConfirmation';
+
+export interface UberWorkerPolicy {
+  readonly concurrency: number;
+  readonly initialBackoffMs: number;
+  readonly maxBackoffMs: number;
+}
+
 const MENU_CONFIRM_TIMEOUT_DEFAULT_MS = 120_000;
 const MENU_CONFIRM_INITIAL_DELAY_DEFAULT_MS = 1_000;
 const MENU_CONFIRM_MAX_DELAY_DEFAULT_MS = 30_000;
@@ -61,6 +72,12 @@ export class UberConfigService {
   readonly uberApiBurst: number;
   readonly uberApiQueueLengthPerPartition: number;
   readonly uberApiQueueWaitTimeoutMs: number;
+  readonly workerEnabled: boolean;
+  readonly workerPollIntervalMs: number;
+  readonly workerBatchSize: number;
+  readonly workerLeaseDurationMs: number;
+  readonly workerShutdownTimeoutMs: number;
+  readonly workerPolicies: Readonly<Record<UberWorkerKind, UberWorkerPolicy>>;
   private readonly uberApiOperationWeights: Readonly<Record<string, number>>;
 
   constructor(env: UberEnvironment = process.env) {
@@ -89,6 +106,42 @@ export class UberConfigService {
     this.menuNotificationsEnabled = /^(1|true|yes)$/i.test(
       this.read(env, 'UBER_EATS_MENU_NOTIFICATIONS_ENABLED'),
     );
+    this.workerEnabled = /^(1|true|yes)$/i.test(
+      this.read(env, 'UBER_EATS_WORKER_ENABLED'),
+    );
+    this.workerPollIntervalMs = this.readMilliseconds(
+      env,
+      'UBER_EATS_WORKER_POLL_INTERVAL_MS',
+      15_000,
+      10,
+      3_600_000,
+    );
+    this.workerBatchSize = this.readInteger(
+      env,
+      'UBER_EATS_WORKER_BATCH_SIZE',
+      50,
+      1,
+      10_000,
+    );
+    this.workerLeaseDurationMs = this.readMilliseconds(
+      env,
+      'UBER_EATS_WORKER_LEASE_DURATION_MS',
+      60_000,
+      100,
+      3_600_000,
+    );
+    this.workerShutdownTimeoutMs = this.readMilliseconds(
+      env,
+      'UBER_EATS_WORKER_SHUTDOWN_TIMEOUT_MS',
+      30_000,
+      100,
+      600_000,
+    );
+    this.workerPolicies = Object.freeze({
+      webhookInbox: this.readWorkerPolicy(env, 'WEBHOOK_INBOX'),
+      orderAction: this.readWorkerPolicy(env, 'ORDER_ACTION'),
+      menuConfirmation: this.readWorkerPolicy(env, 'MENU_CONFIRMATION'),
+    });
 
     this.validateHttpUrl('UBER_EATS_API_BASE_URL', this.apiBaseUrl);
     this.validateHttpUrl('UBER_EATS_REDIRECT_URI', this.redirectUri);
@@ -278,6 +331,37 @@ export class UberConfigService {
         'Uber 配置 UBER_EATS_API_OPERATION_WEIGHTS 必须是值为正整数的 JSON 对象',
       );
     }
+  }
+
+  private readWorkerPolicy(
+    env: UberEnvironment,
+    name: string,
+  ): UberWorkerPolicy {
+    const prefix = `UBER_EATS_${name}_WORKER`;
+    const initialBackoffMs = this.readMilliseconds(
+      env,
+      `${prefix}_INITIAL_BACKOFF_MS`,
+      1_000,
+      10,
+      600_000,
+    );
+    const maxBackoffMs = this.readMilliseconds(
+      env,
+      `${prefix}_MAX_BACKOFF_MS`,
+      60_000,
+      10,
+      3_600_000,
+    );
+    if (initialBackoffMs > maxBackoffMs) {
+      throw new Error(
+        `Uber 配置 ${prefix}_INITIAL_BACKOFF_MS 不得大于 ${prefix}_MAX_BACKOFF_MS`,
+      );
+    }
+    return Object.freeze({
+      concurrency: this.readInteger(env, `${prefix}_CONCURRENCY`, 1, 1, 100),
+      initialBackoffMs,
+      maxBackoffMs,
+    });
   }
 
   private validateHttpUrl(

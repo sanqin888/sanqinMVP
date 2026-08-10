@@ -10,44 +10,166 @@ import {
   ClaimAndProcessUberWebhookInboxUseCase,
   ConfirmUberMenuPublicationsUseCase,
 } from '../../application/workers/uber-background-task.use-cases';
+import {
+  UberConfigService,
+  type UberWorkerKind,
+} from '../config/uber-config.service';
+
+export interface UberWorkerMetrics {
+  readonly lastSuccessfulAt: Date | null;
+  readonly claimed: number;
+  readonly failures: number;
+  readonly backlog: number;
+  readonly leaseRecoveries: number;
+}
+
+type DispatchResult =
+  | number
+  | unknown[]
+  | {
+      claimed: number;
+      backlog?: number;
+      leaseRecoveries?: number;
+    }
+  | void;
+type PollAggregate = {
+  claimed: number;
+  backlog: number;
+  leaseRecoveries: number;
+};
 
 abstract class UberPollingWorkerAdapter
   implements OnModuleInit, OnModuleDestroy
 {
   private timer?: NodeJS.Timeout;
-  private running = false;
+  private inFlight?: Promise<boolean>;
+  private stopping = false;
+  private consecutiveFailures = 0;
+  private metrics: UberWorkerMetrics = {
+    lastSuccessfulAt: null,
+    claimed: 0,
+    failures: 0,
+    backlog: 0,
+    leaseRecoveries: 0,
+  };
   protected abstract readonly logger: Logger;
 
-  protected constructor(private readonly intervalMs = 15_000) {}
+  protected constructor(
+    protected readonly config: UberConfigService,
+    private readonly kind: UberWorkerKind,
+  ) {}
 
   onModuleInit(): void {
-    void this.runOnce();
-    this.timer = setInterval(() => void this.runOnce(), this.intervalMs);
-    this.timer.unref?.();
+    if (!this.config.workerEnabled) return;
+    this.schedule(0);
   }
 
-  onModuleDestroy(): void {
-    if (this.timer) clearInterval(this.timer);
+  async onModuleDestroy(): Promise<void> {
+    this.stopping = true;
+    if (this.timer) clearTimeout(this.timer);
+    if (!this.inFlight) return;
+    await Promise.race([
+      this.inFlight.then(() => undefined),
+      new Promise<void>((resolve) => {
+        const timeout = setTimeout(
+          resolve,
+          this.config.workerShutdownTimeoutMs,
+        );
+        timeout.unref?.();
+      }),
+    ]);
   }
 
-  /** Prevents one process from overlapping polls; repository leases coordinate processes. */
-  async runOnce(): Promise<boolean> {
-    if (this.running) return false;
-    this.running = true;
+  getMetrics(): Readonly<UberWorkerMetrics> {
+    return { ...this.metrics };
+  }
+
+  /** Local guard plus repository leases prevent overlapping claims across instances. */
+  runOnce(): Promise<boolean> {
+    if (this.stopping || this.inFlight) return Promise.resolve(false);
+    const execution = this.executePoll();
+    this.inFlight = execution;
+    void execution.finally(() => {
+      if (this.inFlight === execution) this.inFlight = undefined;
+    });
+    return execution;
+  }
+
+  private async executePoll(): Promise<boolean> {
     try {
-      await this.dispatch();
+      const policy = this.config.workerPolicies[this.kind];
+      const laneSize = Math.ceil(
+        this.config.workerBatchSize / policy.concurrency,
+      );
+      const results = await Promise.all(
+        Array.from({ length: policy.concurrency }, (_, lane) => {
+          const remaining = this.config.workerBatchSize - lane * laneSize;
+          return remaining > 0
+            ? this.dispatch(Math.min(laneSize, remaining))
+            : Promise.resolve(0);
+        }),
+      );
+      const poll = results.reduce<PollAggregate>(
+        (total, result) => {
+          let normalized = { claimed: 0, backlog: 0, leaseRecoveries: 0 };
+          if (typeof result === 'number') {
+            normalized = { ...normalized, claimed: result };
+          } else if (Array.isArray(result)) {
+            normalized = { ...normalized, claimed: result.length };
+          } else if (result && typeof result === 'object') {
+            normalized = {
+              claimed: result.claimed,
+              backlog: result.backlog ?? 0,
+              leaseRecoveries: result.leaseRecoveries ?? 0,
+            };
+          }
+          return {
+            claimed: total.claimed + normalized.claimed,
+            backlog: total.backlog + normalized.backlog,
+            leaseRecoveries: total.leaseRecoveries + normalized.leaseRecoveries,
+          };
+        },
+        { claimed: 0, backlog: 0, leaseRecoveries: 0 },
+      );
+      this.metrics = {
+        lastSuccessfulAt: new Date(),
+        claimed: this.metrics.claimed + poll.claimed,
+        failures: this.metrics.failures,
+        backlog: poll.backlog,
+        leaseRecoveries: this.metrics.leaseRecoveries + poll.leaseRecoveries,
+      };
+      this.consecutiveFailures = 0;
       return true;
     } catch (error) {
+      this.consecutiveFailures += 1;
+      this.metrics = { ...this.metrics, failures: this.metrics.failures + 1 };
       this.logger.error(
         `Uber worker poll failed: ${error instanceof Error ? error.message : String(error)}`,
       );
       return false;
-    } finally {
-      this.running = false;
     }
   }
 
-  protected abstract dispatch(): Promise<unknown>;
+  private schedule(delayMs: number): void {
+    if (this.stopping) return;
+    this.timer = setTimeout(() => {
+      void this.runOnce().then((succeeded) => {
+        if (this.stopping) return;
+        const policy = this.config.workerPolicies[this.kind];
+        const retryDelay = Math.min(
+          policy.maxBackoffMs,
+          policy.initialBackoffMs *
+            2 ** Math.max(0, this.consecutiveFailures - 1),
+        );
+        this.schedule(
+          succeeded ? this.config.workerPollIntervalMs : retryDelay,
+        );
+      });
+    }, delayMs);
+    this.timer.unref?.();
+  }
+
+  protected abstract dispatch(limit: number): Promise<DispatchResult>;
 }
 
 @Injectable()
@@ -55,11 +177,12 @@ export class UberWebhookInboxWorkerAdapter extends UberPollingWorkerAdapter {
   protected readonly logger = new Logger(UberWebhookInboxWorkerAdapter.name);
   constructor(
     private readonly useCase: ClaimAndProcessUberWebhookInboxUseCase,
+    config: UberConfigService,
   ) {
-    super();
+    super(config, 'webhookInbox');
   }
-  protected dispatch() {
-    return this.useCase.execute();
+  protected dispatch(limit: number) {
+    return this.useCase.execute(limit);
   }
 }
 
@@ -68,11 +191,12 @@ export class UberOrderActionWorkerAdapter extends UberPollingWorkerAdapter {
   protected readonly logger = new Logger(UberOrderActionWorkerAdapter.name);
   constructor(
     private readonly useCase: ClaimAndExecuteUberOrderActionsUseCase,
+    config: UberConfigService,
   ) {
-    super();
+    super(config, 'orderAction');
   }
-  protected dispatch() {
-    return this.useCase.execute();
+  protected dispatch(limit: number) {
+    return this.useCase.execute(limit) as Promise<DispatchResult>;
   }
 }
 
@@ -81,10 +205,14 @@ export class UberMenuPublishConfirmationWorkerAdapter extends UberPollingWorkerA
   protected readonly logger = new Logger(
     UberMenuPublishConfirmationWorkerAdapter.name,
   );
-  constructor(private readonly useCase: ConfirmUberMenuPublicationsUseCase) {
-    super();
+  constructor(
+    private readonly useCase: ConfirmUberMenuPublicationsUseCase,
+    config: UberConfigService,
+  ) {
+    super(config, 'menuConfirmation');
   }
-  protected dispatch() {
+  protected dispatch(limit: number) {
+    void limit;
     return this.useCase.execute();
   }
 }

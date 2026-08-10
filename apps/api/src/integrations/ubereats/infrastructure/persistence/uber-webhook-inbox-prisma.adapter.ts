@@ -9,14 +9,15 @@ import { redactUberLogText } from '../../domain/shared/uber-integration.utils';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { UberPrismaAccessService } from './uber-prisma-access.service';
 import { buildUberIdempotencyKey } from '../../application/idempotency/uber-idempotency-key';
+import { UberConfigService } from '../config/uber-config.service';
 
 @Injectable()
 export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
   private static readonly MAX_ATTEMPTS = 8;
-  private static readonly LEASE_MS = 60_000;
   constructor(
     private readonly prisma: PrismaService,
     private readonly access: UberPrismaAccessService,
+    private readonly config: UberConfigService,
   ) {}
   async enqueue(input: {
     eventId: string;
@@ -72,7 +73,7 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
         ORDER BY "createdAt" ASC FOR UPDATE SKIP LOCKED LIMIT ${limit}
       )
       UPDATE "UberWebhookInbox" inbox SET status = 'PROCESSING', "processingAt" = NOW(), "leaseToken" = ${leaseToken},
-        "leaseExpiresAt" = NOW() + (${UberWebhookInboxPrismaAdapter.LEASE_MS} * INTERVAL '1 millisecond'), "attemptCount" = inbox."attemptCount" + 1
+        "leaseExpiresAt" = NOW() + (${this.config.workerLeaseDurationMs} * INTERVAL '1 millisecond'), "attemptCount" = inbox."attemptCount" + 1
       FROM candidates WHERE inbox.id = candidates.id RETURNING inbox."eventId", inbox."eventType", inbox.payload,
         inbox."idempotencyKey", inbox."businessVersion"
     `;
@@ -124,7 +125,12 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
         nextRetryAt: dead
           ? null
           : new Date(
-              Date.now() + Math.min(300_000, 1_000 * 2 ** (attempts - 1)),
+              Date.now() +
+                Math.min(
+                  this.config.workerPolicies.webhookInbox.maxBackoffMs,
+                  this.config.workerPolicies.webhookInbox.initialBackoffMs *
+                    2 ** (attempts - 1),
+                ),
             ),
         leaseToken: null,
         leaseExpiresAt: null,

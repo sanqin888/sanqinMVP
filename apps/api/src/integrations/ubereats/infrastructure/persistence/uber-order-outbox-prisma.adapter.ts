@@ -8,15 +8,15 @@ import type { UberOrderActionName } from '../../domain/orders/uber-order.types';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { UberPrismaAccessService } from './uber-prisma-access.service';
 import { buildUberIdempotencyKey } from '../../application/idempotency/uber-idempotency-key';
+import { UberConfigService } from '../config/uber-config.service';
 
 @Injectable()
 export class UberOrderOutboxPrismaAdapter implements UberOrderOutboxPort {
   private static readonly MAX_ATTEMPTS = 8;
-  private static readonly LEASE_MS = 60_000;
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly prismaAccess: UberPrismaAccessService,
+    private readonly config: UberConfigService,
   ) {}
 
   enqueue(
@@ -68,7 +68,7 @@ export class UberOrderOutboxPrismaAdapter implements UberOrderOutboxPort {
       )
       UPDATE "UberOrderAction" action SET status = 'PROCESSING',
         "leaseToken" = ${leaseToken},
-        "leaseExpiresAt" = NOW() + (${UberOrderOutboxPrismaAdapter.LEASE_MS} * INTERVAL '1 millisecond'),
+        "leaseExpiresAt" = NOW() + (${this.config.workerLeaseDurationMs} * INTERVAL '1 millisecond'),
         "attemptCount" = action."attemptCount" + 1
       FROM candidates WHERE action.id = candidates.id
       RETURNING action.id AS "taskId", action."externalOrderId", action.action,
