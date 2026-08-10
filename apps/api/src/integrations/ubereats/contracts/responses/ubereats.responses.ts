@@ -79,7 +79,7 @@ export function toUberPublicError(
   code: string,
   message: string,
   retryable: boolean,
-  correlationId = randomUUID(),
+  correlationId: string = randomUUID(),
   fieldErrors?: UberFieldErrorResponse[],
 ): UberPublicErrorResponse {
   return {

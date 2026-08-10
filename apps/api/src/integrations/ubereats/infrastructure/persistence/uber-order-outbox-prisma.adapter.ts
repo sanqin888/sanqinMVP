@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import type {
   UberOrderOutboxPort,
   UberOrderStatusAuditPort,
 } from '../../application/ports/uber-order-processing.ports';
+import type { UberJsonValue } from '../../application/ports/uber-persistence.ports';
 import type { UberOrderActionName } from '../../domain/orders/uber-order.types';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { UberPrismaAccessService } from './uber-prisma-access.service';
@@ -111,9 +113,13 @@ export class UberOrderOutboxPrismaAdapter implements UberOrderOutboxPort {
 @Injectable()
 export class UberOrderStatusAuditPrismaAdapter implements UberOrderStatusAuditPort {
   constructor(private readonly prisma: PrismaService) {}
-  async record(eventName: string, payload: any): Promise<void> {
+  async record(eventName: string, payload: UberJsonValue): Promise<void> {
     await this.prisma.opsEvent.create({
-      data: { eventName, source: 'ubereats', payload },
+      data: {
+        eventName,
+        source: 'ubereats',
+        payload: JSON.parse(JSON.stringify(payload)) as Prisma.InputJsonValue,
+      },
     });
   }
 }

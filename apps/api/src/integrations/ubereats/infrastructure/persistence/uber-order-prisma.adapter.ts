@@ -83,14 +83,13 @@ export class UberOrderPrismaAdapter {
     @Inject(UberConfigService) private readonly config: UberOrderConfig,
     private readonly prismaAccess: UberPrismaAccessService,
     private readonly orderGateway: UberOrderGateway,
-    @Optional() actionService?: UberOrderActionService,
     outboxService: UberOrderOutboxService,
     statusSyncService: UberOrderStatusSyncService,
+    @Optional() actionService?: UberOrderActionService,
     @Optional() telemetry?: UberTelemetryService,
   ) {
     this.actionService =
-      actionService ??
-      new UberOrderActionService(uberAuthService, httpClient, config);
+      actionService ?? new UberOrderActionService(orderGateway);
     this.outboxService = outboxService;
     this.telemetry = telemetry ?? new UberTelemetryService(prisma);
     this.statusSyncService = statusSyncService;
@@ -615,20 +614,14 @@ export class UberOrderPrismaAdapter {
     }
 
     const pathname = this.actionService.buildPath(externalOrderId, action);
-    let response: Response;
-    let rawText = '';
-    let parsed: unknown = {};
+    let outcome: Awaited<ReturnType<UberOrderActionService['request']>>;
     try {
-      ({
-        response,
-        text: rawText,
-        data: parsed,
-      } = await this.actionService.request(
+      outcome = await this.actionService.request(
         externalOrderId,
         action,
         payload,
         persistedIdempotencyKey ?? record.idempotencyKey ?? '',
-      ));
+      );
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
@@ -688,11 +681,9 @@ export class UberOrderPrismaAdapter {
     // Uber may answer 409 when a retried ready action has already won upstream.
     const { succeeded, retryable } = this.actionService.classify(
       action,
-      response,
+      outcome,
     );
-    const uberRequestId =
-      response.headers.get('x-request-id') ??
-      response.headers.get('uber-request-id');
+    const uberRequestId = null;
     await delegate.update({
       where: { id: record.id },
       data: {
@@ -701,15 +692,13 @@ export class UberOrderPrismaAdapter {
           : retryable && (record.attemptCount ?? 1) >= 8
             ? 'DEAD'
             : 'FAILED',
-        uberHttpStatus: response.status,
+        uberHttpStatus: outcome.status,
         retryable: retryable && (record.attemptCount ?? 1) < 8,
         uberRequestId,
         lastError: succeeded
           ? null
-          : summarizeUberDebugResponse(parsed, rawText).slice(0, 2_000),
-        response: this.redactUberResponse(
-          parsed ?? { body: rawText.slice(0, 2_000) },
-        ),
+          : summarizeUberDebugResponse(outcome.data, '').slice(0, 2_000),
+        response: this.redactUberResponse(outcome.data),
         ...(succeeded ? { completedAt: new Date() } : {}),
         nextRetryAt: retryable
           ? new Date(
@@ -727,7 +716,7 @@ export class UberOrderPrismaAdapter {
     if (!succeeded) {
       this.telemetry.workflowLog(
         'error',
-        `[ubereats order action] upstream failed action=${action} externalOrderId=${externalOrderId} endpoint=${pathname} status=${response.status} retryable=${retryable} uberRequestId=${uberRequestId ?? 'unknown'} detail=${redactUberLogText(summarizeUberDebugResponse(parsed, rawText))}`,
+        `[ubereats order action] upstream failed action=${action} externalOrderId=${externalOrderId} endpoint=${pathname} status=${outcome.status} retryable=${retryable} uberRequestId=${uberRequestId ?? 'unknown'} detail=${redactUberLogText(summarizeUberDebugResponse(outcome.data, ''))}`,
       );
       if (action !== 'READY_FOR_PICKUP') {
         throw new BadGatewayException({
@@ -735,11 +724,11 @@ export class UberOrderPrismaAdapter {
           externalOrderId,
           action,
           endpoint: pathname,
-          status: response.status,
+          status: outcome.status,
           uberRequestId,
           retryable,
           detail: redactUberLogText(
-            summarizeUberDebugResponse(parsed, rawText),
+            summarizeUberDebugResponse(outcome.data, ''),
           ),
         });
       }
@@ -750,8 +739,8 @@ export class UberOrderPrismaAdapter {
         status: 'FAILED' as const,
         retryable,
         duplicate: false,
-        uberHttpStatus: response.status,
-        errorSummary: `Uber 返回 HTTP ${response.status}`,
+        uberHttpStatus: outcome.status,
+        errorSummary: `Uber 返回 HTTP ${outcome.status}`,
       };
     }
     await this.advanceLocalUberOrderStatusAfterConfirmedAction(
@@ -765,7 +754,7 @@ export class UberOrderPrismaAdapter {
       actionId: record.id,
       status: 'SUCCEEDED' as const,
       retryable: false,
-      uberHttpStatus: response.status,
+      uberHttpStatus: outcome.status,
     };
   }
 

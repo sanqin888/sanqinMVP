@@ -13,7 +13,7 @@ export type UberWebhookInboxRepository = Pick<
 
 export type UberOrderActionRepository = Pick<
   PrismaService['uberOrderAction'],
-  'findUnique' | 'create' | 'update' | 'upsert' | 'findMany'
+  'findUnique' | 'create' | 'update' | 'updateMany' | 'upsert' | 'findMany'
 >;
 
 export type UberMerchantConnectionRepository = Pick<

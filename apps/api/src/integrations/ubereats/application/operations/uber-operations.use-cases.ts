@@ -1,5 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
-type UberOpsTicketStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+export type UberOpsTicketStatus =
+  | 'OPEN'
+  | 'IN_PROGRESS'
+  | 'RESOLVED'
+  | 'CLOSED'
+  | 'IGNORED';
 import type {
   CreateOpsTicketInput,
   GenerateReconciliationReportInput,

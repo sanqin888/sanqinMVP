@@ -1,5 +1,6 @@
 import type {
   UberOrderActionName,
+  UberOrderActionRecord,
   UberOrderStatus,
 } from '../../domain/orders/uber-order.types';
 import type { UberJsonValue } from './uber-persistence.ports';
@@ -19,7 +20,7 @@ export interface UberOrderOutboxPort {
     externalOrderId: string,
     action: UberOrderActionName,
     audit?: { reasonCode?: string; reasonDetail?: string },
-  ): Promise<any>;
+  ): Promise<UberOrderActionRecord>;
   claimDue(limit: number): Promise<UberOrderOutboxItem[]>;
   markSucceeded(
     externalOrderId: string,

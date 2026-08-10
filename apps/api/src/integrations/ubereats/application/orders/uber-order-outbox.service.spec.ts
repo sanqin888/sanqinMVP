@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access -- typed framework/Prisma test doubles cross a dynamic boundary */
 import { UberOrderOutboxService } from './uber-order-outbox.service';
 
 describe('UberOrderOutboxService', () => {

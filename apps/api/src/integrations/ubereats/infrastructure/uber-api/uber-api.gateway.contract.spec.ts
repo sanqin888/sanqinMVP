@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return -- typed framework/Prisma test doubles cross a dynamic boundary */
 import { UberApiGatewayTransport } from './uber-api.gateway';
 
 const result = (status: number, data: Record<string, unknown> = {}) => ({

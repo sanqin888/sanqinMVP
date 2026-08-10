@@ -94,7 +94,15 @@ export class CompleteUberOAuthUseCase {
     state: string | undefined,
     adminSessionId: string | undefined,
     merchantContext?: string,
-  ): Promise<UberOAuthResult<Record<string, unknown>>> {
+  ): Promise<
+    UberOAuthResult<{
+      merchantUberUserId: string;
+      scope: string | null;
+      tokenType: string | null;
+      expiresAt: Date | null;
+      connectedAt: Date;
+    }>
+  > {
     if (!code) return { ok: false, error: { code: 'OAUTH_CODE_MISSING' } };
     try {
       const request = await this.consume(
@@ -117,7 +125,6 @@ export class CompleteUberOAuthUseCase {
       return {
         ok: true,
         value: {
-          ok: true,
           merchantUberUserId,
           scope: token.scope,
           tokenType: token.tokenType,

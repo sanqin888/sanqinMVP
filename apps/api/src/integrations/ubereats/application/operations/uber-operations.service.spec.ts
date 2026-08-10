@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment -- Jest asymmetric matchers cross a dynamic boundary */
 jest.mock('@prisma/client', () => ({
   PrismaClient: class {},
   Channel: { ubereats: 'ubereats' },
@@ -37,7 +38,7 @@ jest.mock('@prisma/client', () => ({
 }));
 
 import { UberOperationsPrismaAdapter } from '../../infrastructure/persistence/uber-operations-prisma.adapter';
-import { createUberOperationsPrismaAdapter } from '../../uber-service-test.helpers';
+import { createUberOperationsPrismaAdapter } from '../../test/uber-service-test.helpers';
 
 describe('UberOperationsPrismaAdapter', () => {
   const clientSecret = 'test-ubereats-secret';
@@ -245,8 +246,6 @@ describe('UberOperationsPrismaAdapter', () => {
     });
     expect(prisma.uberOpsTicket.update).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        // Jest asymmetric matchers are intentionally typed as any.
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         data: expect.objectContaining({ status: 'OPEN' }),
       }),
     );
