@@ -1,5 +1,8 @@
 import { UberTransientUpstreamError } from '../errors/uber-application.error';
-import type { UberOAuthTokenPort } from '../ports/uber-api.ports';
+import type {
+  UberOAuthIdentityTokens,
+  UberOAuthTokenPort,
+} from '../ports/uber-api.ports';
 import type {
   UberMerchantConnectionRepositoryPort,
   UberOAuthStatePort,
@@ -20,7 +23,10 @@ describe('CompleteUberOAuthUseCase OAuth 状态机', () => {
   };
 
   const setup = () => {
-    const row: any = {
+    type OAuthState = NonNullable<
+      Awaited<ReturnType<UberOAuthStatePort['findOAuthState']>>
+    >;
+    const row: OAuthState = {
       nonce,
       adminSessionId: 'session-1',
       redirectUri: 'https://example.com/callback',
@@ -37,57 +43,69 @@ describe('CompleteUberOAuthUseCase OAuth 状态机', () => {
       tokenExpiresAt: null,
       connectedAt: null,
     };
-    let recovery: typeof token | null = null;
-    const states = {
-      findOAuthState: jest.fn(async () => ({ ...row })),
-      claimOAuthState: jest.fn(async () => {
-        if (row.status !== 'ISSUED') return false;
+    let recovery: UberOAuthIdentityTokens | null = null;
+    const states: UberOAuthStatePort = {
+      findOAuthState: jest.fn(() => Promise.resolve({ ...row })),
+      claimOAuthState: jest.fn(() => {
+        if (row.status !== 'ISSUED') return Promise.resolve(false);
         row.status = 'EXCHANGING';
-        return true;
+        return Promise.resolve(true);
       }),
-      releaseOAuthStateForRetry: jest.fn(async (_nonce, category) => {
+      releaseOAuthStateForRetry: jest.fn((_nonce, category) => {
         row.status = 'ISSUED';
         row.retryCount += 1;
         row.lastErrorCategory = category;
-        return true;
+        return Promise.resolve(true);
       }),
-      failOAuthState: jest.fn(async (_nonce, category) => {
+      failOAuthState: jest.fn((_nonce, category) => {
         row.status = 'FAILED';
         row.lastErrorCategory = category;
-        return true;
+        return Promise.resolve(true);
       }),
-      saveExchangedTokens: jest.fn(async (value) => {
+      saveExchangedTokens: jest.fn((value) => {
         recovery = { ...value };
         row.status = 'EXCHANGED';
         row.uberUserId = value.uberUserId;
         row.scope = value.scope;
         row.tokenType = value.tokenType;
         row.tokenExpiresAt = value.expiresAt;
-        return true;
+        return Promise.resolve(true);
       }),
-      loadExchangedTokens: jest.fn(async () => recovery),
-      completeOAuthState: jest.fn(async (_nonce, connectedAt) => {
+      loadExchangedTokens: jest.fn(() => Promise.resolve(recovery)),
+      completeOAuthState: jest.fn((_nonce, connectedAt) => {
         row.status = 'COMPLETED';
         row.connectedAt = connectedAt;
         recovery = null;
-        return true;
+        return Promise.resolve(true);
       }),
-    } as unknown as UberOAuthStatePort;
-    const tokens = {
+      saveOAuthState: jest.fn(() => Promise.resolve()),
+    };
+    const exchangeAuthorizationCode = jest.fn(() => Promise.resolve(token));
+    const tokens: UberOAuthTokenPort = {
       getRedirectUri: jest.fn(() => row.redirectUri),
+      signState: jest.fn(() => 'signature'),
       verifyState: jest.fn(() => true),
-      exchangeAuthorizationCode: jest.fn(async () => token),
-    } as unknown as UberOAuthTokenPort;
-    const connections = {
-      upsertConnectionByUberUserId: jest.fn(async () => ({
+      buildAuthorizeUrl: jest.fn(() => 'https://example.com/authorize'),
+      exchangeAuthorizationCode,
+      refreshAccessToken: jest.fn(() => Promise.resolve(token)),
+    };
+    const upsertConnectionByUberUserId = jest.fn(() =>
+      Promise.resolve({
         connectedAt: new Date(),
-      })),
-    } as unknown as UberMerchantConnectionRepositoryPort;
+      }),
+    );
+    const connections: UberMerchantConnectionRepositoryPort = {
+      findConnection: jest.fn(() => Promise.resolve(null)),
+      upsertConnectionByUberUserId,
+      saveStoresSnapshot: jest.fn(() => Promise.resolve()),
+    };
     return {
       row,
       states,
       tokens,
       connections,
+      exchangeAuthorizationCode,
+      upsertConnectionByUberUserId,
       useCase: new CompleteUberOAuthUseCase(tokens, states, connections),
     };
   };
@@ -106,7 +124,7 @@ describe('CompleteUberOAuthUseCase OAuth 状态机', () => {
         'session-1',
       ),
     ]);
-    expect(x.tokens.exchangeAuthorizationCode).toHaveBeenCalledTimes(1);
+    expect(x.exchangeAuthorizationCode).toHaveBeenCalledTimes(1);
     expect(results.filter((result) => result.ok)).toHaveLength(1);
     expect(results).toContainEqual({
       ok: false,
@@ -116,7 +134,7 @@ describe('CompleteUberOAuthUseCase OAuth 状态机', () => {
 
   it('token endpoint 超时释放为有限重试状态并记录错误类别', async () => {
     const x = setup();
-    jest.mocked(x.tokens.exchangeAuthorizationCode).mockRejectedValueOnce(
+    x.exchangeAuthorizationCode.mockRejectedValueOnce(
       new UberTransientUpstreamError({
         code: 'TIMEOUT',
         operation: 'token',
@@ -139,7 +157,7 @@ describe('CompleteUberOAuthUseCase OAuth 状态机', () => {
   it('token 成功后连接数据库失败会保留 EXCHANGED，并在重放时恢复而不重复兑换', async () => {
     const x = setup();
     jest
-      .mocked(x.connections.upsertConnectionByUberUserId)
+      .mocked(x.upsertConnectionByUberUserId)
       .mockRejectedValueOnce(new Error('database unavailable'));
     expect(
       await x.useCase.exchangeAuthorizationCode(
@@ -159,7 +177,7 @@ describe('CompleteUberOAuthUseCase OAuth 状态机', () => {
         'session-1',
       ),
     ).toMatchObject({ ok: true });
-    expect(x.tokens.exchangeAuthorizationCode).toHaveBeenCalledTimes(1);
+    expect(x.exchangeAuthorizationCode).toHaveBeenCalledTimes(1);
   });
 
   it('COMPLETED 成功重放返回已保存的安全结果且不再兑换 code', async () => {
@@ -178,7 +196,7 @@ describe('CompleteUberOAuthUseCase OAuth 状态机', () => {
         'session-1',
       ),
     ).toMatchObject({ ok: true, value: { uberUserId: token.uberUserId } });
-    expect(x.tokens.exchangeAuthorizationCode).toHaveBeenCalledTimes(1);
-    expect(x.connections.upsertConnectionByUberUserId).toHaveBeenCalledTimes(1);
+    expect(x.exchangeAuthorizationCode).toHaveBeenCalledTimes(1);
+    expect(x.upsertConnectionByUberUserId).toHaveBeenCalledTimes(1);
   });
 });

@@ -93,7 +93,7 @@ export function resolveUberWebhookEventId(
     const value = Object.entries(headers).find(
       ([name]) => name.toLowerCase() === expected,
     )?.[1];
-    const candidate = Array.isArray(value) ? value[0] : value;
+    const candidate = typeof value === 'string' ? value : value?.[0];
     if (typeof candidate === 'string' && candidate.trim())
       return candidate.trim();
   }

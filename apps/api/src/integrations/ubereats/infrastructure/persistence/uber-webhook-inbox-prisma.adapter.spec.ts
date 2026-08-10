@@ -9,9 +9,9 @@ describe('UberWebhookInboxPrismaAdapter claim concurrency', () => {
   it('claims only the oldest unfinished event per resource while allowing other resources', async () => {
     let sql = '';
     const prisma = {
-      $queryRaw: jest.fn(async (parts: TemplateStringsArray) => {
+      $queryRaw: jest.fn((parts: TemplateStringsArray) => {
         sql = parts.join('?');
-        return [
+        return Promise.resolve([
           {
             eventId: 'order-a-1',
             eventType: 'orders.notification',
@@ -28,7 +28,7 @@ describe('UberWebhookInboxPrismaAdapter claim concurrency', () => {
             businessVersion: 'v1',
             resourceKey: 'order:b',
           },
-        ];
+        ]);
       }),
     };
     const adapter = new UberWebhookInboxPrismaAdapter(
