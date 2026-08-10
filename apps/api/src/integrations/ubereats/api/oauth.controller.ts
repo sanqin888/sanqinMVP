@@ -38,6 +38,12 @@ import {
   SyncUberStoreStatusUseCase,
 } from '../application/merchant/uber-merchant-provisioning.service';
 import { presentOAuthCallback, presentOAuthStart } from './oauth.presenter';
+import {
+  presentMerchantConnection,
+  presentMerchantMutation,
+  presentMerchantStores,
+  presentOAuthConnect,
+} from './merchant.presenter';
 
 type OAuthRequestContext = {
   session?: { sessionId?: string };
@@ -57,9 +63,11 @@ export class UberEatsOAuthController {
   @Get('oauth/connect-url')
   @UberReadOnlyAdmin()
   async oauthConnectUrl(@Req() req: Request & OAuthRequestContext) {
-    return this.oauthStart.buildMerchantAuthorizeUrl(
-      this.requireAdminSession(req),
-      req.user?.userStableId,
+    return presentOAuthConnect(
+      await this.oauthStart.buildMerchantAuthorizeUrl(
+        this.requireAdminSession(req),
+        req.user?.userStableId,
+      ),
     );
   }
 
@@ -103,8 +111,8 @@ export class UberEatsOAuthController {
   @Get('oauth/stores')
   @UberReadOnlyAdmin()
   async oauthStores(@Query() query: MerchantQuery) {
-    return await this.storeDiscovery.getMerchantStores(
-      query.merchantUberUserId,
+    return presentMerchantStores(
+      await this.storeDiscovery.getMerchantStores(query.merchantUberUserId),
     );
   }
 
@@ -114,33 +122,38 @@ export class UberEatsOAuthController {
     @Param('storeId', ResourceIdPipe) storeId: string,
     @Body() dto: UpdatePosExternalStoreIdDto,
   ) {
-    return await this.storeMapping.updatePosExternalStoreId(
+    await this.storeMapping.updatePosExternalStoreId(
       storeId,
       dto.posExternalStoreId,
     );
+    return presentMerchantMutation();
   }
 
   @Get('oauth/connection')
   @UberReadOnlyAdmin()
   async oauthConnection(@Query() query: MerchantQuery) {
-    return await this.oauthComplete.getMerchantConnectionStatus(
-      query.merchantUberUserId,
+    return presentMerchantConnection(
+      await this.oauthComplete.getMerchantConnectionStatus(
+        query.merchantUberUserId,
+      ),
     );
   }
 
   @Post('oauth/provision')
   @UberMfaAdminWrite()
   async oauthProvision(@Body() dto: ProvisionUberStoreDto) {
-    return await this.storeProvisioning.provisionStore(
+    await this.storeProvisioning.provisionStore(
       dto.storeId,
       dto.payload,
       dto.merchantUberUserId,
     );
+    return presentMerchantMutation();
   }
 
   @Post('store/status/sync')
   @UberMfaAdminWrite()
   async syncStoreStatus() {
-    return await this.storeStatusSync.syncStoreStatusToUber();
+    await this.storeStatusSync.syncStoreStatusToUber();
+    return presentMerchantMutation();
   }
 }

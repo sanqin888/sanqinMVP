@@ -13,6 +13,7 @@ import type { Request, Response } from 'express';
 import { UberReadOnlyAdmin } from './ubereats-access.decorator';
 
 import { ReceiveUberWebhookUseCase } from '../application/orders/uber-webhook-receiver.use-case';
+import { presentWebhookHealth } from './webhook.presenter';
 
 @Controller('integrations/ubereats')
 export class UberEatsWebhookController {
@@ -20,7 +21,7 @@ export class UberEatsWebhookController {
   @Get('webhook')
   @UberReadOnlyAdmin()
   health(@Res() res: Response) {
-    return res.status(200).json({ ok: true });
+    return res.status(200).json(presentWebhookHealth());
   }
 
   @Head('webhook')
@@ -40,6 +41,6 @@ export class UberEatsWebhookController {
       rawBody: req.body,
     });
 
-    return { ok: true };
+    return presentWebhookHealth();
   }
 }
