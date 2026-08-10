@@ -79,6 +79,20 @@ import {
   UBER_WEBHOOK_INBOX_RECEIVER_PORT,
 } from './application/ports/uber-use-case.ports';
 import { UBER_ORDER_ACTION_GATEWAY } from './application/ports/uber-api.ports';
+import { UBER_MERCHANT_GATEWAY } from './application/ports/uber-api.ports';
+import {
+  UBER_ORDER_OUTBOX_PORT,
+  UBER_ORDER_STATUS_AUDIT_PORT,
+  UBER_TELEMETRY_PORT,
+  UBER_WEBHOOK_INBOX_PORT,
+  UBER_WEBHOOK_SIGNATURE_VERIFIER,
+} from './application/ports/uber-order-processing.ports';
+import {
+  UberOrderOutboxPrismaAdapter,
+  UberOrderStatusAuditPrismaAdapter,
+} from './infrastructure/persistence/uber-order-outbox-prisma.adapter';
+import { UberWebhookInboxPrismaAdapter } from './infrastructure/persistence/uber-webhook-inbox-prisma.adapter';
+import { HmacUberWebhookSignatureVerifier } from './infrastructure/crypto/uber-webhook-signature-verifier';
 import {
   PrismaUberMenuPublishAdapter,
   PrismaUberMerchantConnectionAdapter,
@@ -130,6 +144,27 @@ import {
     PrismaUberUnitOfWork,
     { provide: UBER_UNIT_OF_WORK, useExisting: PrismaUberUnitOfWork },
     UberTelemetryService,
+    { provide: UBER_TELEMETRY_PORT, useExisting: UberTelemetryService },
+    UberOrderOutboxPrismaAdapter,
+    {
+      provide: UBER_ORDER_OUTBOX_PORT,
+      useExisting: UberOrderOutboxPrismaAdapter,
+    },
+    UberOrderStatusAuditPrismaAdapter,
+    {
+      provide: UBER_ORDER_STATUS_AUDIT_PORT,
+      useExisting: UberOrderStatusAuditPrismaAdapter,
+    },
+    UberWebhookInboxPrismaAdapter,
+    {
+      provide: UBER_WEBHOOK_INBOX_PORT,
+      useExisting: UberWebhookInboxPrismaAdapter,
+    },
+    HmacUberWebhookSignatureVerifier,
+    {
+      provide: UBER_WEBHOOK_SIGNATURE_VERIFIER,
+      useExisting: HmacUberWebhookSignatureVerifier,
+    },
     UberAuthService,
     UberHttpClient,
     UberApiGatewayTransport,
@@ -174,6 +209,7 @@ import {
     UberMenuPublishService,
     UberMenuAvailabilityService,
     UberMerchantGateway,
+    { provide: UBER_MERCHANT_GATEWAY, useExisting: UberMerchantGateway },
     UberMerchantConnectionRepository,
     UberMerchantWorkflowRepository,
     UberStoreMappingRepository,

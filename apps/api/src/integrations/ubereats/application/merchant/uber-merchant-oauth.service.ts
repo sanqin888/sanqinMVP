@@ -1,5 +1,8 @@
-import { Injectable } from '@nestjs/common';
-import { UberMerchantGateway } from '../../infrastructure/uber-api/uber-merchant.gateway';
+import { Inject, Injectable } from '@nestjs/common';
+import {
+  UBER_MERCHANT_GATEWAY,
+  type UberMerchantGatewayPort,
+} from '../ports/uber-api.ports';
 
 export type UberOAuthErrorCode =
   | 'OAUTH_START_FAILED'
@@ -12,7 +15,10 @@ export type UberOAuthResult<T> =
 
 @Injectable()
 export class StartUberOAuthUseCase {
-  constructor(private readonly gateway: UberMerchantGateway) {}
+  constructor(
+    @Inject(UBER_MERCHANT_GATEWAY)
+    private readonly gateway: UberMerchantGatewayPort,
+  ) {}
 
   buildMerchantAuthorizeUrl(adminSessionId: string, merchantContext?: string) {
     return this.gateway.buildMerchantAuthorizeUrl(
@@ -26,7 +32,7 @@ export class StartUberOAuthUseCase {
     merchantContext?: string,
   ): Promise<
     UberOAuthResult<
-      Awaited<ReturnType<UberMerchantGateway['startMerchantOAuth']>>
+      Awaited<ReturnType<UberMerchantGatewayPort['startMerchantOAuth']>>
     >
   > {
     try {
@@ -45,7 +51,10 @@ export class StartUberOAuthUseCase {
 
 @Injectable()
 export class CompleteUberOAuthUseCase {
-  constructor(private readonly gateway: UberMerchantGateway) {}
+  constructor(
+    @Inject(UBER_MERCHANT_GATEWAY)
+    private readonly gateway: UberMerchantGatewayPort,
+  ) {}
   async exchangeAuthorizationCode(
     code: string | undefined,
     state: string | undefined,
@@ -53,7 +62,7 @@ export class CompleteUberOAuthUseCase {
     merchantContext?: string,
   ): Promise<
     UberOAuthResult<
-      Awaited<ReturnType<UberMerchantGateway['exchangeAuthorizationCode']>>
+      Awaited<ReturnType<UberMerchantGatewayPort['exchangeAuthorizationCode']>>
     >
   > {
     if (!code) return { ok: false, error: { code: 'OAUTH_CODE_MISSING' } };

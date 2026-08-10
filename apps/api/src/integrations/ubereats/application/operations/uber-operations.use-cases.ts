@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { UberOpsTicketStatus } from '@prisma/client';
+type UberOpsTicketStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
 import type {
   CreateOpsTicketInput,
   GenerateReconciliationReportInput,

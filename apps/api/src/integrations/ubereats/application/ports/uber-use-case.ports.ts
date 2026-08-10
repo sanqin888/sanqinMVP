@@ -1,4 +1,4 @@
-import type { OrderStatus } from '@prisma/client';
+import type { UberOrderStatus } from '../../domain/orders/uber-order.types';
 import type { UberWebhookInput } from '../../domain/webhook/uber-webhook.types';
 import type { UberOrderNotificationEventV1 } from '../../contracts/events/uber-order-notification.v1';
 import type { UberMenuNotificationEventV1 } from '../../contracts/events/uber-menu-notification.v1';
@@ -88,7 +88,7 @@ export interface UberOrderActionPort {
   getReadyForPickupAction(id: string): Promise<any>;
 }
 export interface UberOrderSyncPort {
-  syncOrderStatusToUber(id: string, status: OrderStatus): Promise<any>;
+  syncOrderStatusToUber(id: string, status: UberOrderStatus): Promise<any>;
   listPendingUberOrders(): Promise<any>;
   getPendingUberOrdersSummary(): Promise<any>;
 }

@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { OrderStatus } from '@prisma/client';
+import type { UberOrderStatus } from '../../domain/orders/uber-order.types';
 import type { UberOrderNotificationEventV1 } from '../../contracts/events/uber-order-notification.v1';
 import {
   UBER_ORDER_ACTION_PORT,
@@ -65,7 +65,7 @@ export class SyncUberOrderStatusUseCase {
   constructor(
     @Inject(UBER_ORDER_SYNC_PORT) private readonly orders: UberOrderSyncPort,
   ) {}
-  execute(id: string, status: OrderStatus) {
+  execute(id: string, status: UberOrderStatus) {
     return this.orders.syncOrderStatusToUber(id, status);
   }
 }

@@ -11,8 +11,11 @@ describe('UberOrderOutboxService', () => {
         status: 'FAILED',
       },
     ];
-    const prisma = { $queryRaw: jest.fn().mockResolvedValue(rows) };
-    const prismaAccess = { uberOrderActionRepository: {} };
+    const outbox = {
+      claimDue: jest.fn().mockResolvedValue(rows),
+      markSucceeded: jest.fn().mockResolvedValue(undefined),
+      markFailed: jest.fn().mockResolvedValue(undefined),
+    };
     const actions = {
       buildDenyPayload: jest
         .fn()
@@ -20,14 +23,14 @@ describe('UberOrderOutboxService', () => {
     };
     const execute = jest.fn().mockResolvedValue({ ok: true });
     const service = new UberOrderOutboxService(
-      prisma as never,
-      prismaAccess as never,
+      outbox as never,
       actions as never,
     );
     await service.processPending(10, execute);
-    expect(prisma.$queryRaw).toHaveBeenCalled();
+    expect(outbox.claimDue).toHaveBeenCalledWith(10);
     expect(execute).toHaveBeenCalledWith('order-1', 'DENY', {
       reason: { code: 'STORE_CLOSED' },
     });
+    expect(outbox.markSucceeded).toHaveBeenCalledWith('order-1', 'DENY');
   });
 });
