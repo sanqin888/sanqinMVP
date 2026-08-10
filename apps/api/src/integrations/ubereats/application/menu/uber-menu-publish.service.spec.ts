@@ -1,5 +1,5 @@
 import { UberMenuPublishService } from './uber-menu-publish.service';
-import type { UberMenuWorkflowCore } from './uber-menu.workflow';
+import type { UberMenuPrismaAdapter } from '../../infrastructure/persistence/uber-menu-prisma.adapter';
 
 describe('UberMenuPublishService', () => {
   it('delegates publishUberMenu to the menu workflow boundary', async () => {
@@ -7,7 +7,7 @@ describe('UberMenuPublishService', () => {
       publishUberMenu: jest.fn().mockResolvedValue({ ok: true }),
     };
     const service = new UberMenuPublishService(
-      workflow as unknown as UberMenuWorkflowCore,
+      workflow as unknown as UberMenuPrismaAdapter,
     );
     await expect(
       service.publishUberMenu('store-1', { dryRun: true }),

@@ -16,8 +16,8 @@ jest.mock('@prisma/client', () => ({
 
 import { createHmac } from 'crypto';
 import { UberConfigService } from '../../infrastructure/config/uber-config.service';
-import { UberWebhookService } from './uber-webhook.service';
-import { createUberWebhookService } from '../../uber-service-test.helpers';
+import { ProcessUberWebhookInboxWorker } from './uber-webhook-inbox.worker';
+import { createProcessUberWebhookInboxWorker } from '../../uber-service-test.helpers';
 
 const signingKey = 'uber-webhook-signing-key';
 const config = () =>
@@ -41,19 +41,19 @@ const signed = (body: unknown) => {
   };
 };
 
-describe('UberWebhookService', () => {
+describe('ProcessUberWebhookInboxWorker', () => {
   it('HTTP 阶段校验签名并持久化 inbox，但不执行业务用例', async () => {
     const uberWebhookInbox = inbox();
     const orders = {
       processWebhookEvent: jest.fn().mockResolvedValue(undefined),
     };
-    const service = createUberWebhookService(
+    const service = createProcessUberWebhookInboxWorker(
       {
         uberWebhookInbox,
         opsEvent: { create: jest.fn() },
-      } as unknown as ConstructorParameters<typeof UberWebhookService>[0],
+      } as unknown as ConstructorParameters<typeof ProcessUberWebhookInboxWorker>[0],
       config(),
-      orders as unknown as ConstructorParameters<typeof UberWebhookService>[2],
+      orders as unknown as ConstructorParameters<typeof ProcessUberWebhookInboxWorker>[2],
     );
     const body = {
       event_type: 'orders.notification',
@@ -78,13 +78,13 @@ describe('UberWebhookService', () => {
     const menu = {
       processWebhookEvent: jest.fn().mockResolvedValue(undefined),
     };
-    const service = createUberWebhookService(
+    const service = createProcessUberWebhookInboxWorker(
       { uberWebhookInbox } as unknown as ConstructorParameters<
-        typeof UberWebhookService
+        typeof ProcessUberWebhookInboxWorker
       >[0],
       config(),
       undefined,
-      menu as unknown as ConstructorParameters<typeof UberWebhookService>[3],
+      menu as unknown as ConstructorParameters<typeof ProcessUberWebhookInboxWorker>[3],
     );
     const body = { event_type: 'menus.notification', event_id: 'evt-menu-1' };
 
@@ -95,9 +95,9 @@ describe('UberWebhookService', () => {
 
   it('拒绝无效签名且不会 claim inbox', async () => {
     const uberWebhookInbox = inbox();
-    const service = createUberWebhookService(
+    const service = createProcessUberWebhookInboxWorker(
       { uberWebhookInbox } as unknown as ConstructorParameters<
-        typeof UberWebhookService
+        typeof ProcessUberWebhookInboxWorker
       >[0],
       config(),
     );
@@ -112,9 +112,9 @@ describe('UberWebhookService', () => {
   });
 
   it('只公开 webhook 领域入口，不暴露订单、菜单或运营 API', () => {
-    const service = createUberWebhookService(
+    const service = createProcessUberWebhookInboxWorker(
       { uberWebhookInbox: inbox() } as unknown as ConstructorParameters<
-        typeof UberWebhookService
+        typeof ProcessUberWebhookInboxWorker
       >[0],
       config(),
     ) as unknown as Record<string, unknown>;
@@ -131,19 +131,19 @@ describe('UberWebhookService', () => {
   });
 });
 
-describe('UberWebhookService 最小依赖装配', () => {
+describe('ProcessUberWebhookInboxWorker 最小依赖装配', () => {
   it('构造函数只声明工作流依赖与统一 telemetry service', () => {
-    expect(UberWebhookService.length).toBe(6);
+    expect(ProcessUberWebhookInboxWorker.length).toBe(6);
   });
   it('只要求 webhook 签名密钥，不要求 OAuth state 密钥', () => {
     const webhookOnly = new UberConfigService({
       UBER_EATS_WEBHOOK_SIGNING_KEY: signingKey,
     });
     expect(() =>
-      createUberWebhookService({} as never, webhookOnly),
+      createProcessUberWebhookInboxWorker({} as never, webhookOnly),
     ).not.toThrow();
     expect(() =>
-      createUberWebhookService({} as never, new UberConfigService()),
+      createProcessUberWebhookInboxWorker({} as never, new UberConfigService()),
     ).toThrow('UBER_EATS_WEBHOOK_SIGNING_KEY');
   });
 });

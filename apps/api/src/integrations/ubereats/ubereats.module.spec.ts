@@ -8,10 +8,10 @@ import { UberEatsModule } from './ubereats.module';
 import { UberHttpClient } from './infrastructure/http/uber-http.client';
 import { UberMenuService } from './application/menu/uber-menu.service';
 import { UberMerchantService } from './application/merchant/uber-merchant.service';
-import { UberOperationsService } from './application/operations/uber-operations.service';
+import { UberOperationsPrismaAdapter } from './infrastructure/persistence/uber-operations-prisma.adapter';
 import { UberPrismaAccessService } from './infrastructure/persistence/uber-prisma-access.service';
-import { UberOrderService } from './application/orders/uber-order.service';
-import { UberWebhookService } from './application/orders/uber-webhook.service';
+import { UberOrderPrismaAdapter } from './infrastructure/persistence/uber-order-prisma.adapter';
+import { ProcessUberWebhookInboxWorker } from './application/orders/uber-webhook-inbox.worker';
 
 const sharedProviders = [
   PrismaService,
@@ -23,7 +23,7 @@ const sharedProviders = [
   UberPrismaAccessService,
 ] as const;
 const domainProviders = [
-  UberOrderService,
+  UberOrderPrismaAdapter,
   UberMenuService,
   UberMerchantService,
 ] as const;
@@ -58,7 +58,7 @@ describe('UberEatsModule 装配', () => {
       );
       await expect(
         Test.createTestingModule({
-          providers: [UberOrderService, ...mockProviders(available)],
+          providers: [UberOrderPrismaAdapter, ...mockProviders(available)],
         }).compile(),
       ).rejects.toThrow();
     },
@@ -73,7 +73,7 @@ describe('UberEatsModule 装配', () => {
       await expect(
         Test.createTestingModule({
           providers: [
-            UberOperationsService,
+            UberOperationsPrismaAdapter,
             ...mockProviders(sharedProviders),
             ...mockProviders(available),
           ],
@@ -89,11 +89,11 @@ describe('UberEatsModule 装配', () => {
       .compile();
 
     for (const provider of [
-      UberWebhookService,
-      UberOrderService,
+      ProcessUberWebhookInboxWorker,
+      UberOrderPrismaAdapter,
       UberMenuService,
       UberMerchantService,
-      UberOperationsService,
+      UberOperationsPrismaAdapter,
     ]) {
       expect(module.get(provider)).toBeInstanceOf(provider);
     }

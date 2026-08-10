@@ -1,65 +1,79 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
-import type { OrderStatus, Prisma } from '@prisma/client';
-import type {
-  ParsedUberOrder,
-  UberOrderActionName,
-} from '../../domain/orders/uber-order.types';
-import { UberOrderPayloadParser } from '../../domain/orders/uber-order-payload.parser';
-import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
-import { toUberEatsHttpException } from '../uber-domain-error.mapper';
-import { toUberOrderStatus } from '../../infrastructure/persistence/uber-order-status.mapper';
+import { Inject, Injectable } from '@nestjs/common';
+import type { OrderStatus } from '@prisma/client';
+import {
+  UBER_ORDER_ACTION_PORT,
+  UBER_ORDER_IMPORT_PORT,
+  UBER_ORDER_SYNC_PORT,
+  type UberOrderActionPort,
+  type UberOrderImportPort,
+  type UberOrderSyncPort,
+} from '../ports/uber-use-case.ports';
 
-/** Fetches and normalizes input only; it deliberately performs no writes. */
+/** Imports an event once, keyed by the Uber event id; the adapter owns its graph transaction. */
 @Injectable()
 export class ImportUberOrderUseCase {
-  constructor(private readonly parser = new UberOrderPayloadParser()) {}
-  async execute(fetchDetail: () => Promise<unknown>): Promise<ParsedUberOrder> {
-    const parsed = this.parser.parse(await fetchDetail());
-    if (!parsed) throw new BadRequestException('Uber 订单详情无法解析');
-    return parsed;
+  constructor(
+    @Inject(UBER_ORDER_IMPORT_PORT)
+    private readonly orders: UberOrderImportPort,
+  ) {}
+  execute(eventType: string, eventId: string, payload: unknown) {
+    return this.orders.processWebhookEvent(eventType, eventId, payload);
   }
 }
-
-/** Defines the single transaction boundary for order graph, inbox and initial action. */
+/** Cancellation is an event-idempotent order import with its own transaction boundary. */
 @Injectable()
-export class PersistUberOrderUseCase {
-  async execute<T>(
-    transaction: <R>(
-      work: (tx: Prisma.TransactionClient) => Promise<R>,
-    ) => Promise<R>,
-    persist: (tx: Prisma.TransactionClient) => Promise<T>,
-  ): Promise<T> {
-    return transaction(persist);
-  }
-}
-
-/** Records a channel cancellation and conditionally applies its legal transition. */
-@Injectable()
-export class HandleUberOrderCancellationUseCase {
-  targetStatus(current: OrderStatus) {
-    return UberOrderStateMachine.afterCancellation(toUberOrderStatus(current));
-  }
-}
-
-/** Validates a POS command and atomically inserts its durable outbox intent. */
+export class CancelUberOrderUseCase extends ImportUberOrderUseCase {}
+/** Atomically creates an action intent; externalOrderId + action is the idempotency key. */
 @Injectable()
 export class RequestUberOrderActionUseCase {
-  assertAllowed(status: OrderStatus, action: UberOrderActionName): void {
-    try {
-      UberOrderStateMachine.assertCanRequestAction(
-        toUberOrderStatus(status),
-        action,
-      );
-    } catch (error) {
-      throw toUberEatsHttpException(error);
-    }
+  constructor(
+    @Inject(UBER_ORDER_ACTION_PORT)
+    private readonly actions: UberOrderActionPort,
+  ) {}
+  accept(id: string) {
+    return this.actions.acceptUberOrder(id);
+  }
+  deny(id: string, reasonCode: string, reasonDetail?: string) {
+    return this.actions.denyUberOrder(id, reasonCode, reasonDetail);
+  }
+  retryReadyForPickup(id: string) {
+    return this.actions.retryReadyForPickup(id);
+  }
+  getReadyForPickupAction(id: string) {
+    return this.actions.getReadyForPickupAction(id);
   }
 }
-
-/** Worker boundary: lease first, call Uber second, then persist a known/unknown result. */
+/** Claims durable action leases and records each gateway result in a separate transaction. */
 @Injectable()
 export class ExecuteUberOrderActionWorker {
-  execute<T>(drain: () => Promise<T>): Promise<T> {
-    return drain();
+  constructor(
+    @Inject(UBER_ORDER_ACTION_PORT)
+    private readonly actions: UberOrderActionPort,
+  ) {}
+  execute(limit = 50) {
+    return this.actions.processPendingUberOrderActions(limit);
+  }
+}
+/** Synchronizes one state transition, keyed by externalOrderId + target status. */
+@Injectable()
+export class SyncUberOrderStatusUseCase {
+  constructor(
+    @Inject(UBER_ORDER_SYNC_PORT) private readonly orders: UberOrderSyncPort,
+  ) {}
+  execute(id: string, status: OrderStatus) {
+    return this.orders.syncOrderStatusToUber(id, status);
+  }
+}
+/** Read-only pending-order query; it never starts a transaction. */
+@Injectable()
+export class ListPendingUberOrdersQuery {
+  constructor(
+    @Inject(UBER_ORDER_SYNC_PORT) private readonly orders: UberOrderSyncPort,
+  ) {}
+  list() {
+    return this.orders.listPendingUberOrders();
+  }
+  summary() {
+    return this.orders.getPendingUberOrdersSummary();
   }
 }

@@ -21,14 +21,16 @@ import {
   UberWebhookNonRetryableError,
 } from '../../domain/shared/uber-integration.utils';
 import { UberMenuService } from '../menu/uber-menu.service';
-import { UberOrderService } from './uber-order.service';
+import { UberOrderApplication } from './uber-order.service';
 import { UberPrismaAccessService } from '../../infrastructure/persistence/uber-prisma-access.service';
 import type { UberWebhookInput } from '../../domain/webhook/uber-webhook.types';
 
 import { UberTelemetryService } from '../../infrastructure/observability/uber-telemetry.service';
 
 @Injectable()
-export class UberWebhookService implements OnModuleInit, OnModuleDestroy {
+export class ProcessUberWebhookInboxWorker
+  implements OnModuleInit, OnModuleDestroy
+{
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
   private static readonly MAX_ATTEMPTS = 8;
   private static readonly LEASE_MS = 60_000;
@@ -40,7 +42,7 @@ export class UberWebhookService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(UberConfigService) config: UberWebhookConfig,
-    private readonly orders: UberOrderService,
+    private readonly orders: UberOrderApplication,
     private readonly menu: UberMenuService,
     private readonly prismaAccess: UberPrismaAccessService,
     @Optional() telemetry?: UberTelemetryService,
@@ -104,13 +106,13 @@ export class UberWebhookService implements OnModuleInit, OnModuleDestroy {
         SELECT id FROM "UberWebhookInbox"
         WHERE ((status IN ('PENDING', 'FAILED') AND ("nextRetryAt" IS NULL OR "nextRetryAt" <= NOW()))
           OR (status = 'PROCESSING' AND "leaseExpiresAt" <= NOW()))
-          AND "attemptCount" < ${UberWebhookService.MAX_ATTEMPTS}
+          AND "attemptCount" < ${ProcessUberWebhookInboxWorker.MAX_ATTEMPTS}
         ORDER BY "createdAt" ASC
         FOR UPDATE SKIP LOCKED LIMIT ${limit}
       )
       UPDATE "UberWebhookInbox" inbox SET status = 'PROCESSING',
         "processingAt" = NOW(), "leaseToken" = ${leaseToken},
-        "leaseExpiresAt" = NOW() + (${UberWebhookService.LEASE_MS} * INTERVAL '1 millisecond'),
+        "leaseExpiresAt" = NOW() + (${ProcessUberWebhookInboxWorker.LEASE_MS} * INTERVAL '1 millisecond'),
         "attemptCount" = inbox."attemptCount" + 1
       FROM candidates WHERE inbox.id = candidates.id
       RETURNING inbox."eventId", inbox."eventType", inbox.payload
@@ -461,7 +463,8 @@ export class UberWebhookService implements OnModuleInit, OnModuleDestroy {
       });
     const dead =
       !retryable ||
-      (current?.attemptCount ?? 0) >= UberWebhookService.MAX_ATTEMPTS;
+      (current?.attemptCount ?? 0) >=
+        ProcessUberWebhookInboxWorker.MAX_ATTEMPTS;
     const attempts = current?.attemptCount ?? 1;
     await this.prismaAccess.uberWebhookInboxRepository.updateMany({
       where: { eventId, status: 'PROCESSING', leaseToken },

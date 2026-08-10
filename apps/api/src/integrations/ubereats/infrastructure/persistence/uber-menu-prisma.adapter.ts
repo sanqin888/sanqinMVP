@@ -14,7 +14,7 @@ import {
 import { createHash } from 'crypto';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { UberMenuNotificationDto } from '../../contracts/dto/uber-menu-notification.dto';
-import { UberAuthService } from '../merchant/uber-auth.service';
+import { UberAuthService } from '../../application/merchant/uber-auth.service';
 import {
   UberConfigService,
   type UberMenuConfig,
@@ -55,12 +55,12 @@ import {
   validateUberMenuGraph,
   summarizeUberMenuGraph,
 } from '../../domain/menu/uber-menu-graph.service';
-import { UberImageValidator } from './uber-image.validator';
+import { UberImageValidator } from '../../application/menu/uber-image.validator';
 
 import { UberTelemetryService } from '../../infrastructure/observability/uber-telemetry.service';
 
 @Injectable()
-export class UberMenuWorkflowCore {
+export class UberMenuPrismaAdapter {
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
   private readonly telemetry: UberTelemetryService;
 

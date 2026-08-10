@@ -2,7 +2,7 @@ import { OrderEventsBus } from '../../messaging/order-events.bus';
 import { OrderIngestionService } from '../../orders/order-ingestion.service';
 import { UberConfigService } from './infrastructure/config/uber-config.service';
 import { UberHttpClient } from './infrastructure/http/uber-http.client';
-import { UberMenuWorkflowCore } from './application/menu/uber-menu.workflow';
+import { UberMenuPrismaAdapter } from './infrastructure/persistence/uber-menu-prisma.adapter';
 import { UberMerchantService } from './application/merchant/uber-merchant.service';
 import { UberMerchantGateway } from './infrastructure/api/uber-merchant.gateway';
 import {
@@ -21,10 +21,10 @@ import {
   SyncUberStoreStatusUseCase,
   UberMerchantProvisioningService,
 } from './application/merchant/uber-merchant-provisioning.service';
-import { UberOperationsService } from './application/operations/uber-operations.service';
+import { UberOperationsPrismaAdapter } from './infrastructure/persistence/uber-operations-prisma.adapter';
 import { UberPrismaAccessService } from './infrastructure/persistence/uber-prisma-access.service';
-import { UberOrderService } from './application/orders/uber-order.service';
-import { UberWebhookService } from './application/orders/uber-webhook.service';
+import { UberOrderPrismaAdapter } from './infrastructure/persistence/uber-order-prisma.adapter';
+import { ProcessUberWebhookInboxWorker } from './application/orders/uber-webhook-inbox.worker';
 import { UberApiGatewayTransport } from './infrastructure/api/uber-api.gateway';
 import {
   UberMenuGateway,
@@ -45,7 +45,7 @@ const missing = <T>(value: T | undefined) => value as T;
 const httpClient = <T>(value: T | undefined) =>
   value ?? (new UberHttpClient() as T);
 
-type MenuArgs = ConstructorParameters<typeof UberMenuWorkflowCore>;
+type MenuArgs = ConstructorParameters<typeof UberMenuPrismaAdapter>;
 export function createUberMenuService(
   prisma: MenuArgs[0],
   auth: MenuArgs[1],
@@ -57,7 +57,7 @@ export function createUberMenuService(
   const gateway = new UberMenuGateway(
     new UberApiGatewayTransport(rawHttp, auth, resolvedConfig),
   );
-  return new UberMenuWorkflowCore(
+  return new UberMenuPrismaAdapter(
     prisma,
     auth,
     gateway,
@@ -100,8 +100,8 @@ export function createUberMerchantService(
   return service;
 }
 
-type OrderArgs = ConstructorParameters<typeof UberOrderService>;
-export function createUberOrderService(
+type OrderArgs = ConstructorParameters<typeof UberOrderPrismaAdapter>;
+export function createUberOrderPrismaAdapter(
   prisma: OrderArgs[0],
   auth: OrderArgs[1],
   events?: OrderArgs[2],
@@ -120,7 +120,7 @@ export function createUberOrderService(
   const resolvedConfig = settings ?? config();
   const rawHttp = httpClient(http as unknown as UberHttpClient);
   const transport = new UberApiGatewayTransport(rawHttp, auth, resolvedConfig);
-  return new UberOrderService(
+  return new UberOrderPrismaAdapter(
     prisma,
     auth,
     eventBus,
@@ -132,14 +132,14 @@ export function createUberOrderService(
   );
 }
 
-type WebhookArgs = ConstructorParameters<typeof UberWebhookService>;
-export function createUberWebhookService(
+type WebhookArgs = ConstructorParameters<typeof ProcessUberWebhookInboxWorker>;
+export function createProcessUberWebhookInboxWorker(
   prisma: WebhookArgs[0],
   settings?: WebhookArgs[1],
   orders?: WebhookArgs[2],
   menu?: WebhookArgs[3],
 ) {
-  return new UberWebhookService(
+  return new ProcessUberWebhookInboxWorker(
     prisma,
     settings ?? config(),
     missing(orders),
@@ -148,14 +148,14 @@ export function createUberWebhookService(
   );
 }
 
-type OperationsArgs = ConstructorParameters<typeof UberOperationsService>;
-export function createUberOperationsService(
+type OperationsArgs = ConstructorParameters<typeof UberOperationsPrismaAdapter>;
+export function createUberOperationsPrismaAdapter(
   prisma: OperationsArgs[0],
   orders?: OperationsArgs[1],
   menu?: OperationsArgs[2],
   merchant?: OperationsArgs[3],
 ) {
-  return new UberOperationsService(
+  return new UberOperationsPrismaAdapter(
     prisma,
     missing(orders),
     missing(menu),
