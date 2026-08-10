@@ -167,7 +167,7 @@ export class UberWebhookService implements OnModuleInit, OnModuleDestroy {
 
       // Order persistence marks the inbox PROCESSED in the same transaction.
       // Other event families use this durable, retryable state-machine boundary.
-      await this.prisma.uberWebhookInbox.updateMany({
+      await this.prismaAccess.uberWebhookInboxRepository.updateMany({
         where: { eventId, status: 'PROCESSING', leaseToken },
         data: {
           status: 'PROCESSED',
@@ -307,10 +307,7 @@ export class UberWebhookService implements OnModuleInit, OnModuleDestroy {
     storeId: string,
     isProvisioned: boolean,
   ): Promise<void> {
-    const storeMapping = this.prismaAccess.uberStoreMappingDelegate;
-    if (!storeMapping) {
-      throw new BadRequestException('Prisma 未配置 uberStoreMapping 模型');
-    }
+    const storeMapping = this.prismaAccess.uberStoreMappingRepository;
 
     const updated = await storeMapping.updateMany({
       where: { uberStoreId: storeId },
@@ -421,7 +418,7 @@ export class UberWebhookService implements OnModuleInit, OnModuleDestroy {
     externalOrderId: string | null,
     payload: unknown,
   ): Promise<boolean> {
-    const data = {
+    const data: Prisma.UberWebhookInboxCreateArgs['data'] = {
       eventId,
       eventType,
       externalOrderId,
@@ -430,7 +427,7 @@ export class UberWebhookService implements OnModuleInit, OnModuleDestroy {
     };
 
     try {
-      await this.prisma.uberWebhookInbox.create({ data });
+      await this.prismaAccess.uberWebhookInboxRepository.create({ data });
     } catch (error) {
       if (!this.isPrismaUniqueConstraintError(error)) throw error;
 
@@ -447,15 +444,16 @@ export class UberWebhookService implements OnModuleInit, OnModuleDestroy {
   ) {
     const retryable = options.retryable ?? true;
     const summary = this.summarizeWebhookError(error);
-    const current = await this.prisma.uberWebhookInbox.findUnique({
-      where: { eventId },
-      select: { attemptCount: true },
-    });
+    const current =
+      await this.prismaAccess.uberWebhookInboxRepository.findUnique({
+        where: { eventId },
+        select: { attemptCount: true },
+      });
     const dead =
       !retryable ||
       (current?.attemptCount ?? 0) >= UberWebhookService.MAX_ATTEMPTS;
     const attempts = current?.attemptCount ?? 1;
-    await this.prisma.uberWebhookInbox.updateMany({
+    await this.prismaAccess.uberWebhookInboxRepository.updateMany({
       where: { eventId, status: 'PROCESSING', leaseToken },
       data: {
         status: dead ? 'DEAD' : 'FAILED',

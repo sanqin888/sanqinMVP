@@ -160,5 +160,6 @@ export function createUberOperationsService(
     missing(orders),
     missing(menu),
     missing(merchant),
+    new UberPrismaAccessService(prisma),
   );
 }

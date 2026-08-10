@@ -21,7 +21,7 @@ export class UberOrderOutboxService {
     action: UberOrderActionName,
     audit: { reasonCode?: string; reasonDetail?: string } = {},
   ) {
-    return this.prismaAccess.uberOrderActionDelegate.upsert({
+    return this.prismaAccess.uberOrderActionRepository.upsert({
       where: { externalOrderId_action: { externalOrderId, action } },
       create: { externalOrderId, action, status: 'PENDING', ...audit },
       update: {},

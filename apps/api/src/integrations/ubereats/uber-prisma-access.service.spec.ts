@@ -1,48 +1,35 @@
-import { PrismaService } from '../../prisma/prisma.service';
-import {
-  UberPrismaAccessService,
-  UberPrismaDelegateUnavailableError,
-} from './uber-prisma-access.service';
+import { UberPrismaAccessService } from './uber-prisma-access.service';
+import type { UberPrismaRepositories } from './uber-prisma.types';
 
 describe('UberPrismaAccessService', () => {
-  it('返回已存在的 delegate', () => {
-    const merchantConnection = {};
-    const oauthStateRequest = {};
-    const storeMapping = {};
-    const orderAction = {};
-    const access = new UberPrismaAccessService({
-      uberMerchantConnection: merchantConnection,
-      uberOAuthStateRequest: oauthStateRequest,
-      uberStoreMapping: storeMapping,
-      uberOrderAction: orderAction,
-    } as unknown as PrismaService);
+  it('把生成的 delegate 作为必需的窄 repository 暴露', () => {
+    const repositories = {
+      uberWebhookInbox: {},
+      uberMerchantConnection: {},
+      uberOAuthStateRequest: {},
+      uberStoreMapping: {},
+      uberOrderAction: {},
+      uberMenuPublishVersion: {},
+      uberOpsTicket: {},
+    } as UberPrismaRepositories;
+    const access = new UberPrismaAccessService(repositories);
 
-    expect(access.uberMerchantConnectionDelegate).toBe(merchantConnection);
-    expect(access.uberOAuthStateRequestDelegate).toBe(oauthStateRequest);
-    expect(access.uberStoreMappingDelegate).toBe(storeMapping);
-    expect(access.uberOrderActionDelegate).toBe(orderAction);
+    expect(access.uberWebhookInboxRepository).toBe(
+      repositories.uberWebhookInbox,
+    );
+    expect(access.uberMerchantConnectionRepository).toBe(
+      repositories.uberMerchantConnection,
+    );
+    expect(access.uberOAuthStateRepository).toBe(
+      repositories.uberOAuthStateRequest,
+    );
+    expect(access.uberStoreMappingRepository).toBe(
+      repositories.uberStoreMapping,
+    );
+    expect(access.uberOrderActionRepository).toBe(repositories.uberOrderAction);
+    expect(access.uberMenuPublishRepository).toBe(
+      repositories.uberMenuPublishVersion,
+    );
+    expect(access.uberOpsTicketRepository).toBe(repositories.uberOpsTicket);
   });
-
-  it('可选兼容 delegate 缺失时返回 null', () => {
-    const access = new UberPrismaAccessService({} as PrismaService);
-
-    expect(access.uberMerchantConnectionDelegate).toBeNull();
-    expect(access.uberStoreMappingDelegate).toBeNull();
-  });
-
-  it.each(['uberOAuthStateRequest', 'uberOrderAction'] as const)(
-    '必需 delegate %s 缺失时抛出统一错误',
-    (delegateName) => {
-      const access = new UberPrismaAccessService({} as PrismaService);
-      const readDelegate = () =>
-        delegateName === 'uberOAuthStateRequest'
-          ? access.uberOAuthStateRequestDelegate
-          : access.uberOrderActionDelegate;
-
-      expect(readDelegate).toThrow(UberPrismaDelegateUnavailableError);
-      expect(readDelegate).toThrow(
-        `Uber Prisma 必需 delegate 不可用: ${delegateName}`,
-      );
-    },
-  );
 });

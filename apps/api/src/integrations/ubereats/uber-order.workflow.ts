@@ -150,7 +150,7 @@ export class UberOrderService {
   }
 
   async getReadyForPickupAction(externalOrderId: string) {
-    return this.prismaAccess.uberOrderActionDelegate.findUnique({
+    return this.prismaAccess.uberOrderActionRepository.findUnique({
       where: {
         externalOrderId_action: {
           externalOrderId,
@@ -166,7 +166,7 @@ export class UberOrderService {
     if (record.status === 'FAILED' && !record.retryable) {
       return this.toUberOrderActionResult(record, true);
     }
-    const queued = await this.prismaAccess.uberOrderActionDelegate.update({
+    const queued = await this.prismaAccess.uberOrderActionRepository.update({
       where: { id: record.id },
       data: { status: 'PENDING', retryable: true, nextRetryAt: new Date() },
     });
@@ -504,7 +504,7 @@ export class UberOrderService {
     if (!externalOrderId) {
       throw new BadRequestException('externalOrderId 不能为空');
     }
-    const delegate = this.prismaAccess.uberOrderActionDelegate;
+    const delegate = this.prismaAccess.uberOrderActionRepository;
     const key = { externalOrderId, action };
     let record = await delegate.findUnique({
       where: { externalOrderId_action: key },
@@ -734,27 +734,7 @@ export class UberOrderService {
       );
       return;
     }
-    const orderDelegate = this.prisma.order as unknown as {
-      findUnique?: (args: {
-        where: { clientRequestId: string };
-        select: { id: true; orderStableId: true; status: true; paidAt: true };
-      }) => Promise<{
-        id: string;
-        orderStableId: string | null;
-        status: OrderStatus;
-        paidAt: Date | null;
-      } | null>;
-      updateMany?: (args: {
-        where: { id: string; status: { in: OrderStatus[] } };
-        data: { status: OrderStatus; paidAt?: Date; makingAt?: Date };
-      }) => Promise<{ count: number }>;
-    };
-    if (
-      typeof orderDelegate.findUnique !== 'function' ||
-      typeof orderDelegate.updateMany !== 'function'
-    ) {
-      return;
-    }
+    const orderDelegate = this.prisma.order;
 
     const clientRequestId = this.toClientRequestId(externalOrderId);
     const existing = await orderDelegate.findUnique({
@@ -856,7 +836,7 @@ export class UberOrderService {
     }> = [];
 
     const storeId = await this.resolvePosStoreId(order.storeId ?? '');
-    const txLike = this.prisma as unknown as Prisma.TransactionClient;
+    const txLike = this.prisma;
     const normalizedItems: NormalizedOrderItem[] = [];
     for (const item of order.items) {
       const productStableId = await this.resolveUberProductStableId(
@@ -1104,16 +1084,7 @@ export class UberOrderService {
   }
 
   private async resolvePosStoreId(uberStoreId: string): Promise<string> {
-    const delegate = (
-      this.prisma as unknown as {
-        uberStoreMapping?: {
-          findUnique(
-            args: unknown,
-          ): Promise<{ posExternalStoreId: string | null } | null>;
-        };
-      }
-    ).uberStoreMapping;
-    if (!delegate) return uberStoreId;
+    const delegate = this.prisma.uberStoreMapping;
     const mapping = await delegate.findUnique({
       where: { uberStoreId },
       select: { posExternalStoreId: true },
@@ -1128,16 +1099,7 @@ export class UberOrderService {
     orderedAt: Date,
   ): Promise<number | null> {
     if (!storeId || !uberItemId) return null;
-    const delegate = (
-      tx as unknown as {
-        uberPublishedMenuItem?: {
-          findFirst: (args: unknown) => Promise<{
-            publishedPriceCents: number;
-          } | null>;
-        };
-      }
-    ).uberPublishedMenuItem;
-    if (!delegate) return null;
+    const delegate = tx.uberPublishedMenuItem;
     const snapshot = await delegate.findFirst({
       where: {
         uberStoreId: storeId,
@@ -1167,15 +1129,7 @@ export class UberOrderService {
     let stableId: string | null = null;
     if (item.externalItemId?.startsWith('sanq:')) {
       if (storeId) {
-        const snapshot = await (
-          tx as unknown as {
-            uberPublishedMenuItem: {
-              findFirst: (
-                args: unknown,
-              ) => Promise<{ menuItemStableId: string } | null>;
-            };
-          }
-        ).uberPublishedMenuItem.findFirst({
+        const snapshot = await tx.uberPublishedMenuItem.findFirst({
           where: {
             uberStoreId: storeId,
             uberItemId: item.externalItemId,
