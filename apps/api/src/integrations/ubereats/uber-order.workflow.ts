@@ -712,7 +712,7 @@ export class UberOrderService {
     record: UberOrderActionRecord,
     duplicate: boolean,
   ): UberOrderActionResult {
-    const status = record.status as UberOrderActionResult['status'];
+    const status = record.status;
     return {
       ok: status === 'SUCCEEDED',
       action: record.action,

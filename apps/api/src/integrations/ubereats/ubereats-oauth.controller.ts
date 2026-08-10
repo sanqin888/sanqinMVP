@@ -169,7 +169,7 @@ export class UberEatsOAuthController {
   @Get('oauth/stores')
   @UberReadOnlyAdmin()
   async oauthStores(@Query() query: MerchantQuery) {
-    return await this.merchant.getMerchantStores(query.merchantUberUserId!);
+    return await this.merchant.getMerchantStores(query.merchantUberUserId);
   }
 
   @Patch('oauth/stores/:storeId/pos-external-store-id')
