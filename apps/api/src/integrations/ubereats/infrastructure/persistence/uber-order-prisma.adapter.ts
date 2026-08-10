@@ -35,8 +35,11 @@ import {
   normalizeUberStoreId,
   redactUberLogText,
   summarizeUberDebugResponse,
-  UberWebhookNonRetryableError,
 } from '../../domain/shared/uber-integration.utils';
+import {
+  UberNonRetryableUpstreamError,
+  UberTransientUpstreamError,
+} from '../../application/errors/uber-application.error';
 import type {
   ParsedUberModifier,
   ParsedUberOrder,
@@ -505,22 +508,19 @@ export class UberOrderPrismaAdapter {
       `[ubereats order] detail fetch failed status=${response.status} eventType=${context.eventType} eventId=${context.eventId} resourceId=${context.resourceId ?? 'unknown'} resourcePath=${resourcePath.split('?')[0]} uberRequestId=${uberRequestId ?? 'unknown'} detail=${redactUberLogText(detail)}`,
     );
 
-    const payload = {
-      ok: false,
-      status: response.status,
-      message: 'Uber 订单详情接口返回错误',
-      detail,
-    };
-
     if (this.isNonRetryableOrderDetailStatus(response.status)) {
-      throw new UberWebhookNonRetryableError(
-        JSON.stringify(payload),
-        response.status,
-        detail,
-      );
+      throw new UberNonRetryableUpstreamError({
+        code: `UBER_ORDER_DETAIL_HTTP_${response.status}`,
+        message: 'Uber 订单详情不可用',
+        operation: 'order.fetch-detail',
+      });
     }
 
-    throw new BadGatewayException(payload);
+    throw new UberTransientUpstreamError({
+      code: `UBER_ORDER_DETAIL_HTTP_${response.status}`,
+      message: 'Uber 订单详情暂时不可用',
+      operation: 'order.fetch-detail',
+    });
   }
 
   private async requestUberOrderDetail(

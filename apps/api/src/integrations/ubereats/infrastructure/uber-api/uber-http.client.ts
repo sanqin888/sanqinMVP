@@ -1,16 +1,16 @@
-import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { AppLogger } from '../../../../common/app-logger';
+import {
+  UberApplicationError,
+  type UberErrorCategory,
+} from '../../application/errors/uber-application.error';
 
 export type UberRequestKind = 'token' | 'api' | 'orderDetail' | 'imageProbe';
 
-export type UberApiErrorCategory =
-  | 'authentication'
-  | 'permission'
-  | 'business'
-  | 'upstream';
+export type UberApiErrorCategory = UberErrorCategory;
 
 /** A safe, stable error contract shared by every Uber HTTP integration. */
-export class UberApiError extends HttpException {
+export class UberApiError extends UberApplicationError {
   constructor(
     readonly httpStatus: number | null,
     readonly uberCode: string,
@@ -21,24 +21,10 @@ export class UberApiError extends HttpException {
     readonly retryAfterMs: number | null = null,
     cause?: unknown,
   ) {
-    const exposedStatus = retryable
-      ? HttpStatus.SERVICE_UNAVAILABLE
-      : category === 'upstream'
-        ? HttpStatus.BAD_GATEWAY
-        : httpStatus === 401 || httpStatus === 403
-          ? httpStatus
-          : HttpStatus.BAD_REQUEST;
-    super(
-      {
-        statusCode: exposedStatus,
-        code: uberCode,
-        message: safeDetail,
-        operation,
-        retryable,
-      },
-      exposedStatus,
-      { cause },
-    );
+    super(category, uberCode, safeDetail, operation, retryable, {
+      retryAfterMs,
+      cause,
+    });
     this.name = 'UberApiError';
   }
 }
@@ -60,7 +46,7 @@ export class UberHttpError extends UberApiError {
       message,
       'uber.http',
       retryable,
-      'upstream',
+      retryable ? 'transient-upstream' : 'non-retryable-upstream',
       null,
       cause,
     );
@@ -306,7 +292,11 @@ export class UberHttpClient {
   }
 
   private toDomainError(error: unknown, operation: string): UberApiError {
-    if (error instanceof UberApiError) return error;
+    if (error instanceof UberApiError) {
+      if (error.operation === 'uber.http')
+        Object.defineProperty(error, 'operation', { value: operation });
+      return error;
+    }
     const timeout = error instanceof Error && error.name === 'AbortError';
     const domainError = new UberHttpError(
       timeout ? 'Uber 请求超时' : 'Uber 网络请求失败',
@@ -341,10 +331,16 @@ export class UberHttpClient {
       status === 401
         ? 'authentication'
         : scopeFailure
-          ? 'permission'
-          : status === 408 || status === 429 || status >= 500
-            ? 'upstream'
-            : 'business';
+          ? 'authentication'
+          : status === 429
+            ? 'rate-limited'
+            : status === 408 || status >= 500
+              ? 'transient-upstream'
+              : status === 409 || status === 422
+                ? 'business-conflict'
+                : status >= 400 && status < 500
+                  ? 'validation'
+                  : 'non-retryable-upstream';
     const stableCode =
       status === 401
         ? 'UBER_ACCESS_TOKEN_INVALID'

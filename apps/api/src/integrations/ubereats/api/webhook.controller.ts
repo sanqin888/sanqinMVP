@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Controller,
   Get,
   Head,
@@ -7,6 +6,7 @@ import {
   Post,
   Req,
   Res,
+  UseFilters,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 
@@ -14,8 +14,11 @@ import { UberReadOnlyAdmin } from './ubereats-access.decorator';
 
 import { ReceiveUberWebhookUseCase } from '../application/orders/uber-webhook-receiver.use-case';
 import { presentWebhookHealth } from './webhook.presenter';
+import { UberValidationError } from '../application/errors/uber-application.error';
+import { UberEatsExceptionFilter } from './ubereats-exception.filter';
 
 @Controller('integrations/ubereats')
+@UseFilters(UberEatsExceptionFilter)
 export class UberEatsWebhookController {
   constructor(private readonly webhookService: ReceiveUberWebhookUseCase) {}
   @Get('webhook')
@@ -34,7 +37,11 @@ export class UberEatsWebhookController {
   @HttpCode(200)
   async webhook(@Req() req: Request) {
     if (!Buffer.isBuffer(req.body)) {
-      throw new BadRequestException('Uber webhook raw body 不可用');
+      throw new UberValidationError({
+        code: 'UBER_WEBHOOK_RAW_BODY_REQUIRED',
+        message: 'Uber webhook raw body 不可用',
+        operation: 'webhook.receive',
+      });
     }
     await this.webhookService.execute({
       headers: req.headers as Record<string, unknown>,

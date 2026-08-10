@@ -7,7 +7,9 @@ import {
   Param,
   Post,
   Query,
+  UseFilters,
 } from '@nestjs/common';
+import { UberEatsExceptionFilter } from './ubereats-exception.filter';
 
 import {
   OptionalResourceIdPipe,
@@ -40,6 +42,7 @@ import {
 } from './menu.presenter';
 
 @Controller('integrations/ubereats')
+@UseFilters(UberEatsExceptionFilter)
 @UberReadOnlyAdmin()
 export class UberEatsMenuController {
   constructor(
