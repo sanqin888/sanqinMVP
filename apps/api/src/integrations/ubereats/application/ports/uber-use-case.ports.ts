@@ -1,5 +1,4 @@
 import type { UberOrderStatus } from '../../domain/orders/uber-order.types';
-import type { UberWebhookInput } from '../../domain/webhook/uber-webhook.types';
 import type { UberOrderNotificationEventV1 } from '../../contracts/events/uber-order-notification.v1';
 import type { UberMenuNotificationEventV1 } from '../../contracts/events/uber-menu-notification.v1';
 import type { UberEventOrdering } from './uber-order-processing.ports';
@@ -22,14 +21,6 @@ export const UBER_MENU_AVAILABILITY_PORT = Symbol(
 export const UBER_ORDER_IMPORT_PORT = Symbol('UBER_ORDER_IMPORT_PORT');
 export const UBER_ORDER_ACTION_PORT = Symbol('UBER_ORDER_ACTION_PORT');
 export const UBER_ORDER_SYNC_PORT = Symbol('UBER_ORDER_SYNC_PORT');
-export const UBER_WEBHOOK_INBOX_RECEIVER_PORT = Symbol(
-  'UBER_WEBHOOK_INBOX_RECEIVER_PORT',
-);
-
-export interface UberWebhookInboxReceiverPort {
-  handleWebhook(input: UberWebhookInput): Promise<void>;
-}
-
 export interface UberMenuDraftPort {
   listUberItemChannelConfigs(storeId?: string): Promise<any>;
   listUberPublishedMenuItems(storeId?: string): Promise<any>;

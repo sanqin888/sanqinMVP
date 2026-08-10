@@ -12,7 +12,7 @@ import { MessagingModule } from '../../messaging/messaging.module';
 import { OrdersModule } from '../../orders/orders.module';
 import { UberHttpClient } from './infrastructure/uber-api/uber-http.client';
 import { UberConfigService } from './infrastructure/config/uber-config.service';
-import { ProcessUberWebhookInboxWorker } from './application/orders/uber-webhook-inbox.worker';
+import { ProcessUberWebhookInboxUseCase } from './application/orders/process-uber-webhook-inbox.use-case';
 import { ReceiveUberWebhookUseCase } from './application/orders/uber-webhook-receiver.use-case';
 import { UberMenuPrismaAdapter } from './infrastructure/persistence/uber-menu-prisma.adapter';
 import { UberOrderPrismaAdapter } from './infrastructure/persistence/uber-order-prisma.adapter';
@@ -73,7 +73,6 @@ import {
   UBER_ORDER_ACTION_PORT,
   UBER_ORDER_IMPORT_PORT,
   UBER_ORDER_SYNC_PORT,
-  UBER_WEBHOOK_INBOX_RECEIVER_PORT,
 } from './application/ports/uber-use-case.ports';
 import { UBER_ORDER_ACTION_GATEWAY } from './application/ports/uber-api.ports';
 import {
@@ -130,6 +129,7 @@ import {
   UberOrderActionWorkerAdapter,
   UberWebhookInboxWorkerAdapter,
 } from './infrastructure/workers/uber-worker.adapters';
+import { HandleUberMerchantWebhookHandler } from './application/merchant/uber-merchant-webhook.handler';
 
 @Module({
   imports: [PrismaModule, AuthModule, MessagingModule, OrdersModule],
@@ -192,12 +192,9 @@ import {
     UberOrderGateway,
     { provide: UBER_ORDER_ACTION_GATEWAY, useExisting: UberOrderGateway },
     UberMenuGateway,
-    ProcessUberWebhookInboxWorker,
-    {
-      provide: UBER_WEBHOOK_INBOX_RECEIVER_PORT,
-      useExisting: ProcessUberWebhookInboxWorker,
-    },
     ReceiveUberWebhookUseCase,
+    ProcessUberWebhookInboxUseCase,
+    HandleUberMerchantWebhookHandler,
     UberOrderPrismaAdapter,
     { provide: UBER_ORDER_IMPORT_PORT, useExisting: UberOrderPrismaAdapter },
     { provide: UBER_ORDER_ACTION_PORT, useExisting: UberOrderPrismaAdapter },

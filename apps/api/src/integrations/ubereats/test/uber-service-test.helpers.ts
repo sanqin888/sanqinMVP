@@ -4,7 +4,7 @@ import type { SyncUberStoreStatusUseCase } from '../application/merchant/uber-me
 import type { ImportUberOrderUseCase } from '../application/orders/uber-order.use-cases';
 import { SyncUberOrderStatusUseCase } from '../application/orders/uber-order.use-cases';
 import type { UberOrderSyncPort } from '../application/ports/uber-use-case.ports';
-import { ProcessUberWebhookInboxWorker } from '../application/orders/uber-webhook-inbox.worker';
+import { ReceiveUberWebhookUseCase } from '../application/orders/uber-webhook-receiver.use-case';
 import type { UberWebhookInboxPort } from '../application/ports/uber-order-processing.ports';
 import type { UberConfigService } from '../infrastructure/config/uber-config.service';
 import { HmacUberWebhookSignatureVerifier } from '../infrastructure/crypto/uber-webhook-signature-verifier';
@@ -29,7 +29,7 @@ export function createUberOperationsPrismaAdapter(
   );
 }
 
-export function createProcessUberWebhookInboxWorker(
+export function createReceiveUberWebhookUseCase(
   prisma: ConstructorParameters<typeof UberPrismaAccessService>[0],
   config: UberConfigService,
   orders: ImportUberOrderUseCase,
@@ -48,11 +48,9 @@ export function createProcessUberWebhookInboxWorker(
     markFailed: () => Promise.resolve(),
     setStoreProvisioned: () => Promise.resolve(false),
   };
-  return new ProcessUberWebhookInboxWorker(
+  return new ReceiveUberWebhookUseCase(
     inbox,
     new HmacUberWebhookSignatureVerifier(config),
-    orders,
-    menu ?? missing(),
     { captureEvent: () => Promise.resolve(), workflowLog: () => undefined },
   );
 }
