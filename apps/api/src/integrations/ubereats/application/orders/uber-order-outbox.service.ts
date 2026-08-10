@@ -47,10 +47,15 @@ export class UberOrderOutboxService {
               : {},
             row.idempotencyKey,
           );
-          await this.outbox.markSucceeded(row.externalOrderId, row.action);
+          const committed = await this.outbox.markSucceeded(row);
+          if (!committed) {
+            throw new Error(
+              `Uber order action lease lost before success commit: ${row.taskId}`,
+            );
+          }
           return result;
         } catch (error) {
-          await this.outbox.markFailed(row.externalOrderId, row.action, error);
+          await this.outbox.markFailed(row, error);
           throw error;
         }
       }),

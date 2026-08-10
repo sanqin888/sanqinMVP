@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import type {
   UberOrderOutboxPort,
+  UberOrderOutboxItem,
   UberOrderStatusAuditPort,
 } from '../../application/ports/uber-order-processing.ports';
 import type { UberJsonValue } from '../../application/ports/uber-persistence.ports';
@@ -15,6 +16,7 @@ import { UberConfigService } from '../config/uber-config.service';
 @Injectable()
 export class UberOrderOutboxPrismaAdapter implements UberOrderOutboxPort {
   private static readonly MAX_ATTEMPTS = 8;
+  private readonly logger = new Logger(UberOrderOutboxPrismaAdapter.name);
   constructor(
     private readonly prisma: PrismaService,
     private readonly prismaAccess: UberPrismaAccessService,
@@ -52,6 +54,7 @@ export class UberOrderOutboxPrismaAdapter implements UberOrderOutboxPort {
     return this.prisma.$queryRaw<
       Array<{
         taskId: string;
+        leaseToken: string;
         externalOrderId: string;
         action: UberOrderActionName;
         reasonCode: string | null;
@@ -74,39 +77,61 @@ export class UberOrderOutboxPrismaAdapter implements UberOrderOutboxPort {
         "attemptCount" = action."attemptCount" + 1
       FROM candidates WHERE action.id = candidates.id
       RETURNING action.id AS "taskId", action."externalOrderId", action.action,
-        action."reasonCode", action."reasonDetail", action."idempotencyKey", action."businessVersion"
+        action."reasonCode", action."reasonDetail", action."idempotencyKey", action."businessVersion",
+        action."leaseToken"
     `;
   }
 
-  async markSucceeded(externalOrderId: string, action: UberOrderActionName) {
-    await this.prismaAccess.uberOrderActionRepository.updateMany({
-      where: { externalOrderId, action, status: 'PROCESSING' },
-      data: {
-        status: 'SUCCEEDED',
-        retryable: false,
-        leaseToken: null,
-        leaseExpiresAt: null,
+  async markSucceeded(item: UberOrderOutboxItem): Promise<boolean> {
+    const result = await this.prismaAccess.uberOrderActionRepository.updateMany(
+      {
+        where: {
+          id: item.taskId,
+          status: 'PROCESSING',
+          leaseToken: item.leaseToken,
+        },
+        data: {
+          status: 'SUCCEEDED',
+          retryable: false,
+          leaseToken: null,
+          leaseExpiresAt: null,
+        },
       },
-    });
+    );
+    return this.verifyLease(result.count, item);
   }
 
   async markFailed(
-    externalOrderId: string,
-    action: UberOrderActionName,
+    item: UberOrderOutboxItem,
     error: unknown,
-  ) {
-    await this.prismaAccess.uberOrderActionRepository.updateMany({
-      where: { externalOrderId, action, status: 'PROCESSING' },
-      data: {
-        status: 'FAILED',
-        lastError:
-          error instanceof Error
-            ? error.message.slice(0, 500)
-            : String(error).slice(0, 500),
-        leaseToken: null,
-        leaseExpiresAt: null,
+  ): Promise<boolean> {
+    const result = await this.prismaAccess.uberOrderActionRepository.updateMany(
+      {
+        where: {
+          id: item.taskId,
+          status: 'PROCESSING',
+          leaseToken: item.leaseToken,
+        },
+        data: {
+          status: 'FAILED',
+          lastError:
+            error instanceof Error
+              ? error.message.slice(0, 500)
+              : String(error).slice(0, 500),
+          leaseToken: null,
+          leaseExpiresAt: null,
+        },
       },
-    });
+    );
+    return this.verifyLease(result.count, item);
+  }
+
+  private verifyLease(count: number, item: UberOrderOutboxItem): boolean {
+    if (count > 0) return true;
+    this.logger.warn(
+      `Uber order action lease lost; status update skipped (taskId=${item.taskId}, action=${item.action})`,
+    );
+    return false;
   }
 }
 
