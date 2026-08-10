@@ -14,30 +14,24 @@ import { UberHttpClient } from './infrastructure/uber-api/uber-http.client';
 import { UberConfigService } from './infrastructure/config/uber-config.service';
 import { ProcessUberWebhookInboxWorker } from './application/orders/uber-webhook-inbox.worker';
 import { ReceiveUberWebhookUseCase } from './application/orders/uber-webhook-receiver.use-case';
-import { UberOrderApplication } from './application/orders/uber-order.service';
-import { UberMenuService } from './application/menu/uber-menu.service';
 import { UberMenuPrismaAdapter } from './infrastructure/persistence/uber-menu-prisma.adapter';
 import { UberOrderPrismaAdapter } from './infrastructure/persistence/uber-order-prisma.adapter';
 import { UberMenuDraftService } from './application/menu/uber-menu-draft.service';
 import { UberMenuPublishService } from './application/menu/uber-menu-publish.service';
 import { UberMenuAvailabilityService } from './application/menu/uber-menu-availability.service';
-import { UberMerchantService } from './application/merchant/uber-merchant.service';
 import { UberMerchantGateway } from './infrastructure/uber-api/uber-merchant.gateway';
 import {
   CompleteUberOAuthUseCase,
   StartUberOAuthUseCase,
-  UberMerchantOAuthService,
 } from './application/merchant/uber-merchant-oauth.service';
 import {
   DiscoverUberStoresUseCase,
   MapUberStoreUseCase,
-  UberMerchantStoreMappingService,
 } from './application/merchant/uber-merchant-store-mapping.service';
 import {
   DeprovisionUberStoreUseCase,
   ProvisionUberStoreUseCase,
   SyncUberStoreStatusUseCase,
-  UberMerchantProvisioningService,
 } from './application/merchant/uber-merchant-provisioning.service';
 import {
   UberMerchantConnectionRepository,
@@ -45,7 +39,6 @@ import {
   UberStoreMappingRepository,
   UberMerchantWorkflowRepository,
 } from './infrastructure/persistence/uber-merchant.repositories';
-import { UberOperationsApplication } from './application/operations/uber-operations.service';
 import { UberOperationsPrismaAdapter } from './infrastructure/persistence/uber-operations-prisma.adapter';
 import {
   CreateUberOpsTicketUseCase,
@@ -155,7 +148,6 @@ import {
     { provide: UBER_ORDER_IMPORT_PORT, useExisting: UberOrderPrismaAdapter },
     { provide: UBER_ORDER_ACTION_PORT, useExisting: UberOrderPrismaAdapter },
     { provide: UBER_ORDER_SYNC_PORT, useExisting: UberOrderPrismaAdapter },
-    UberOrderApplication,
     UberOrderActionService,
     UberOrderStatusSyncService,
     UberOrderOutboxService,
@@ -181,7 +173,6 @@ import {
     UberMenuDraftService,
     UberMenuPublishService,
     UberMenuAvailabilityService,
-    UberMenuService,
     UberMerchantGateway,
     UberMerchantConnectionRepository,
     UberMerchantWorkflowRepository,
@@ -194,30 +185,34 @@ import {
     ProvisionUberStoreUseCase,
     DeprovisionUberStoreUseCase,
     SyncUberStoreStatusUseCase,
-    UberMerchantOAuthService,
-    UberMerchantStoreMappingService,
-    UberMerchantProvisioningService,
-    UberMerchantService,
     UberOperationsPrismaAdapter,
     { provide: UBER_OPERATIONS_PORT, useExisting: UberOperationsPrismaAdapter },
     GenerateUberReconciliationReportUseCase,
     CreateUberOpsTicketUseCase,
     RetryUberOpsTicketUseCase,
     QueryUberOperationsSummary,
-    UberOperationsApplication,
   ],
   exports: [
     UberAuthService,
     BrowserWriteCsrfGuard,
     ReceiveUberWebhookUseCase,
-    ReceiveUberWebhookUseCase,
-    UberOrderApplication,
-    UberMenuService,
-    UberMerchantOAuthService,
-    UberMerchantStoreMappingService,
-    UberMerchantProvisioningService,
-    UberMerchantService,
-    UberOperationsApplication,
+    RequestUberOrderActionUseCase,
+    SyncUberOrderStatusUseCase,
+    ListPendingUberOrdersQuery,
+    UberMenuDraftService,
+    UberMenuPublishService,
+    UberMenuAvailabilityService,
+    StartUberOAuthUseCase,
+    CompleteUberOAuthUseCase,
+    DiscoverUberStoresUseCase,
+    MapUberStoreUseCase,
+    ProvisionUberStoreUseCase,
+    DeprovisionUberStoreUseCase,
+    SyncUberStoreStatusUseCase,
+    GenerateUberReconciliationReportUseCase,
+    CreateUberOpsTicketUseCase,
+    RetryUberOpsTicketUseCase,
+    QueryUberOperationsSummary,
   ],
 })
 export class UberEatsModule {}

@@ -7,29 +7,35 @@ import {
   UberReadOnlyAdmin,
 } from './ubereats-access.decorator';
 import { SyncOrderStatusDto } from '../contracts/requests/ubereats.requests';
-import { UberOrderApplication } from '../application/orders/uber-order.service';
+import {
+  ListPendingUberOrdersQuery,
+  SyncUberOrderStatusUseCase,
+} from '../application/orders/uber-order.use-cases';
 
 @Controller('integrations/ubereats')
 @UberReadOnlyAdmin()
 export class UberEatsOrdersController {
-  constructor(private readonly orders: UberOrderApplication) {}
+  constructor(
+    private readonly statusSync: SyncUberOrderStatusUseCase,
+    private readonly pendingOrders: ListPendingUberOrdersQuery,
+  ) {}
   @Post('orders/:externalOrderId/status')
   @UberMfaAdminWrite()
   async syncOrderStatus(
     @Param('externalOrderId', ResourceIdPipe) externalOrderId: string,
     @Body() dto: SyncOrderStatusDto,
   ) {
-    return await this.orders.syncOrderStatusToUber(externalOrderId, dto.status);
+    return await this.statusSync.execute(externalOrderId, dto.status);
   }
 
   @Get('orders/pending')
   async listPendingOrders() {
-    const result = await this.orders.listPendingUberOrders();
+    const result = await this.pendingOrders.list();
     return toUberListResponse(result.items, 100);
   }
 
   @Get('orders/pending/summary')
   async pendingOrdersSummary() {
-    return this.orders.getPendingUberOrdersSummary();
+    return this.pendingOrders.summary();
   }
 }

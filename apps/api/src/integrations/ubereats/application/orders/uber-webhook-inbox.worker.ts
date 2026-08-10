@@ -20,8 +20,11 @@ import {
   redactUberLogText,
   UberWebhookNonRetryableError,
 } from '../../domain/shared/uber-integration.utils';
-import { UberMenuService } from '../menu/uber-menu.service';
-import { UberOrderApplication } from './uber-order.service';
+import { UberMenuPublishService } from '../menu/uber-menu-publish.service';
+import {
+  ExecuteUberOrderActionWorker,
+  ImportUberOrderUseCase,
+} from './uber-order.use-cases';
 import { UberPrismaAccessService } from '../../infrastructure/persistence/uber-prisma-access.service';
 import type { UberWebhookInput } from '../../domain/webhook/uber-webhook.types';
 
@@ -42,8 +45,9 @@ export class ProcessUberWebhookInboxWorker
   constructor(
     private readonly prisma: PrismaService,
     @Inject(UberConfigService) config: UberWebhookConfig,
-    private readonly orders: UberOrderApplication,
-    private readonly menu: UberMenuService,
+    private readonly orders: ImportUberOrderUseCase,
+    private readonly orderActions: ExecuteUberOrderActionWorker,
+    private readonly menu: UberMenuPublishService,
     private readonly prismaAccess: UberPrismaAccessService,
     @Optional() telemetry?: UberTelemetryService,
   ) {
@@ -137,7 +141,7 @@ export class ProcessUberWebhookInboxWorker
         case 'orders.cancelled':
         case 'orders.cancel':
         case 'orders.rejected':
-          await this.orders.processWebhookEvent(eventType, eventId, envelope);
+          await this.orders.execute(eventType, eventId, envelope);
           break;
 
         case 'store.provisioned':
@@ -220,7 +224,7 @@ export class ProcessUberWebhookInboxWorker
     this.workerRunning = true;
     try {
       await this.processDueWebhooks();
-      await this.orders.processPendingUberOrderActions();
+      await this.orderActions.execute();
       await this.menu.recoverTimedOutPublications();
       await this.reportQueueHealth();
     } catch (error) {

@@ -76,37 +76,3 @@ export class CompleteUberOAuthUseCase {
     return this.gateway.getMerchantConnectionStatus(merchantUberUserId);
   }
 }
-
-/** OAuth application boundary; the two flows remain independently injectable. */
-@Injectable()
-export class UberMerchantOAuthService {
-  constructor(
-    private readonly start: StartUberOAuthUseCase,
-    private readonly complete: CompleteUberOAuthUseCase,
-  ) {}
-  buildMerchantAuthorizeUrl(adminSessionId: string, merchantContext?: string) {
-    return this.start.buildMerchantAuthorizeUrl(
-      adminSessionId,
-      merchantContext,
-    );
-  }
-  startMerchantOAuth(adminSessionId: string, merchantContext?: string) {
-    return this.start.startMerchantOAuth(adminSessionId, merchantContext);
-  }
-  exchangeAuthorizationCode(
-    code: string | undefined,
-    state?: string,
-    adminSessionId?: string,
-    merchantContext?: string,
-  ) {
-    return this.complete.exchangeAuthorizationCode(
-      code,
-      state,
-      adminSessionId,
-      merchantContext,
-    );
-  }
-  getMerchantConnectionStatus(merchantUberUserId?: string) {
-    return this.complete.getMerchantConnectionStatus(merchantUberUserId);
-  }
-}

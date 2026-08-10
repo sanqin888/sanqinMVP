@@ -25,7 +25,18 @@ import {
   ProvisionUberStoreDto,
   UpdatePosExternalStoreIdDto,
 } from '../contracts/requests/ubereats.requests';
-import { UberMerchantService } from '../application/merchant/uber-merchant.service';
+import {
+  CompleteUberOAuthUseCase,
+  StartUberOAuthUseCase,
+} from '../application/merchant/uber-merchant-oauth.service';
+import {
+  DiscoverUberStoresUseCase,
+  MapUberStoreUseCase,
+} from '../application/merchant/uber-merchant-store-mapping.service';
+import {
+  ProvisionUberStoreUseCase,
+  SyncUberStoreStatusUseCase,
+} from '../application/merchant/uber-merchant-provisioning.service';
 import { presentOAuthCallback, presentOAuthStart } from './oauth.presenter';
 
 type OAuthRequestContext = {
@@ -35,11 +46,18 @@ type OAuthRequestContext = {
 };
 @Controller('integrations/ubereats')
 export class UberEatsOAuthController {
-  constructor(private readonly merchant: UberMerchantService) {}
+  constructor(
+    private readonly oauthStart: StartUberOAuthUseCase,
+    private readonly oauthComplete: CompleteUberOAuthUseCase,
+    private readonly storeDiscovery: DiscoverUberStoresUseCase,
+    private readonly storeMapping: MapUberStoreUseCase,
+    private readonly storeProvisioning: ProvisionUberStoreUseCase,
+    private readonly storeStatusSync: SyncUberStoreStatusUseCase,
+  ) {}
   @Get('oauth/connect-url')
   @UberReadOnlyAdmin()
   async oauthConnectUrl(@Req() req: Request & OAuthRequestContext) {
-    return this.merchant.buildMerchantAuthorizeUrl(
+    return this.oauthStart.buildMerchantAuthorizeUrl(
       this.requireAdminSession(req),
       req.user?.userStableId,
     );
@@ -47,11 +65,11 @@ export class UberEatsOAuthController {
 
   @Get('oauth/start')
   @UberReadOnlyAdmin()
-  async oauthStart(
+  async startOAuth(
     @Req() req: Request & OAuthRequestContext,
     @Res() res: Response,
   ) {
-    const result = await this.merchant.startMerchantOAuth(
+    const result = await this.oauthStart.startMerchantOAuth(
       this.requireAdminSession(req),
       req.user?.userStableId,
     );
@@ -68,7 +86,7 @@ export class UberEatsOAuthController {
       typeof req.signedCookies?.[SESSION_COOKIE_NAME] === 'string'
         ? req.signedCookies[SESSION_COOKIE_NAME]
         : undefined;
-    const result = await this.merchant.exchangeAuthorizationCode(
+    const result = await this.oauthComplete.exchangeAuthorizationCode(
       query.code,
       query.state,
       callbackSessionId,
@@ -85,7 +103,9 @@ export class UberEatsOAuthController {
   @Get('oauth/stores')
   @UberReadOnlyAdmin()
   async oauthStores(@Query() query: MerchantQuery) {
-    return await this.merchant.getMerchantStores(query.merchantUberUserId);
+    return await this.storeDiscovery.getMerchantStores(
+      query.merchantUberUserId,
+    );
   }
 
   @Patch('oauth/stores/:storeId/pos-external-store-id')
@@ -94,7 +114,7 @@ export class UberEatsOAuthController {
     @Param('storeId', ResourceIdPipe) storeId: string,
     @Body() dto: UpdatePosExternalStoreIdDto,
   ) {
-    return await this.merchant.updatePosExternalStoreId(
+    return await this.storeMapping.updatePosExternalStoreId(
       storeId,
       dto.posExternalStoreId,
     );
@@ -103,7 +123,7 @@ export class UberEatsOAuthController {
   @Get('oauth/connection')
   @UberReadOnlyAdmin()
   async oauthConnection(@Query() query: MerchantQuery) {
-    return await this.merchant.getMerchantConnectionStatus(
+    return await this.oauthComplete.getMerchantConnectionStatus(
       query.merchantUberUserId,
     );
   }
@@ -111,7 +131,7 @@ export class UberEatsOAuthController {
   @Post('oauth/provision')
   @UberMfaAdminWrite()
   async oauthProvision(@Body() dto: ProvisionUberStoreDto) {
-    return await this.merchant.provisionStore(
+    return await this.storeProvisioning.provisionStore(
       dto.storeId,
       dto.payload,
       dto.merchantUberUserId,
@@ -121,6 +141,6 @@ export class UberEatsOAuthController {
   @Post('store/status/sync')
   @UberMfaAdminWrite()
   async syncStoreStatus() {
-    return await this.merchant.syncStoreStatusToUber();
+    return await this.storeStatusSync.syncStoreStatusToUber();
   }
 }

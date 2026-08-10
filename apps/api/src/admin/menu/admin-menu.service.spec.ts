@@ -20,7 +20,7 @@ jest.mock(
 jest.mock(
   '../../integrations/ubereats/application/menu/uber-menu.service',
   () => ({
-    UberMenuService: class {},
+    UberMenuAvailabilityService: class {},
   }),
 );
 
