@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 
 import { UberMenuPublishService } from '../menu/uber-menu-publish.service';
 import { ExecuteUberOrderActionWorker } from '../orders/uber-order.use-cases';
-import { ProcessUberWebhookInboxWorker } from '../orders/uber-webhook-inbox.worker';
+import { ProcessUberWebhookInboxUseCase } from '../orders/process-uber-webhook-inbox.use-case';
 
 /**
  * Application entry points for durable background work.  Infrastructure timers
@@ -10,10 +10,10 @@ import { ProcessUberWebhookInboxWorker } from '../orders/uber-webhook-inbox.work
  */
 @Injectable()
 export class ClaimAndProcessUberWebhookInboxUseCase {
-  constructor(private readonly inbox: ProcessUberWebhookInboxWorker) {}
+  constructor(private readonly inbox: ProcessUberWebhookInboxUseCase) {}
 
   execute(limit = 50): Promise<number> {
-    return this.inbox.processDueWebhooks(limit);
+    return this.inbox.execute(limit);
   }
 }
 

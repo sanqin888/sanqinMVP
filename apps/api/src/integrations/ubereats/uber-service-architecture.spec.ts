@@ -246,6 +246,33 @@ describe('Uber Eats bounded-context architecture', () => {
     expect(violations).toEqual([]);
   });
 
+  it('keeps scheduler naming and files out of application', () => {
+    const applicationFiles = boundedContextFiles.filter(
+      ({ path }) => layerOf(path) === 'application',
+    );
+    expect(
+      applicationFiles
+        .filter(({ path }) => path.endsWith('.worker.ts'))
+        .map(({ path }) => relative(BOUNDED_CONTEXT_ROOT, path)),
+    ).toEqual([]);
+  });
+
+  it('lets the webhook controller depend only on the receiving use case', () => {
+    const controller = boundedContextFiles.find(
+      ({ path }) =>
+        path === join(BOUNDED_CONTEXT_ROOT, 'api/webhook.controller.ts'),
+    );
+    const applicationImports = importSpecifiers(
+      controller?.source ?? '',
+    ).filter((specifier) =>
+      /application\/.*(?:use-case|handler|service)/.test(specifier),
+    );
+    expect(applicationImports).toEqual([
+      '../application/orders/uber-webhook-receiver.use-case',
+    ]);
+    expect(controller?.source).toMatch(/ReceiveUberWebhookUseCase/);
+  });
+
   it('reports both importer and import specifier for dependency violations', () => {
     const fixture = {
       path: join(BOUNDED_CONTEXT_ROOT, 'application/fixture.ts'),
