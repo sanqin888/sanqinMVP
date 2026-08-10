@@ -6,6 +6,7 @@ import type {
   UberDenyReasonCode,
   UberOrderActionName,
 } from './uber-order.types';
+import { UberOrderStateMachine } from './uber-order.state-machine';
 
 /** Owns Uber order action protocol details; persistence/idempotency stays in the outbox service. */
 @Injectable()
@@ -46,6 +47,10 @@ export class UberOrderActionService {
       method: 'POST',
       accessToken: token,
       json: payload,
+      idempotencyKey: UberOrderStateMachine.idempotencyKey(
+        externalOrderId,
+        action,
+      ),
       kind: 'api',
     });
   }

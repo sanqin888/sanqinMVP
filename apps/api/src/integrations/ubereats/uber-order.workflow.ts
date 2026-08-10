@@ -50,6 +50,7 @@ import {
 import { UberOrderActionService } from './uber-order-action.service';
 import { UberOrderOutboxService } from './uber-order-outbox.service';
 import { UberOrderStatusSyncService } from './uber-order-status-sync.service';
+import { UberOrderStateMachine } from './uber-order.state-machine';
 
 @Injectable()
 export class UberOrderService {
@@ -114,37 +115,18 @@ export class UberOrderService {
       );
     }
 
-    // Local transition and the action outbox row commit atomically. A worker may
-    // call processPendingUberOrderActions after a crash; the eager call below is
-    // only a latency optimisation.
+    if (!UberOrderStateMachine.canRequestAction(order.status, action))
+      throw new BadRequestException('Uber 订单必须先接单，且状态不能并发回退');
+
+    // Commit only the durable intent. A confirmed worker response owns the
+    // local transition, so a timeout can never masquerade as Uber success.
     const updated = await this.prisma.$transaction(async (tx) => {
-      const transition = await tx.order.updateMany({
-        where: {
-          id: order.id,
-          status: { in: [OrderStatus.paid, OrderStatus.making] },
-        },
-        data: { status, readyAt: new Date() },
-      });
-      if (!transition.count) {
-        // The status read before opening the transaction can be stale when two
-        // POS devices click at once. Re-read under this transaction so an
-        // already-ready order is an idempotent success, never a regression.
-        const current = await tx.order.findUnique({
-          where: { id: order.id },
-          select: { status: true },
-        });
-        if (current?.status !== OrderStatus.ready) {
-          throw new BadRequestException(
-            'Uber 订单必须先接单，且状态不能并发回退',
-          );
-        }
-      }
       await tx.uberOrderAction.upsert({
         where: { externalOrderId_action: { externalOrderId, action } },
         create: { externalOrderId, action, status: 'PENDING' },
         update: {},
       });
-      return { orderStableId: order.orderStableId, status };
+      return { orderStableId: order.orderStableId, status: order.status };
     });
 
     const queued = await this.outboxService.enqueue(externalOrderId, action);
@@ -365,14 +347,16 @@ export class UberOrderService {
       });
     }
 
-    await this.enqueueAndBestEffortAcceptUberOrder(
-      parsedOrder.externalOrderId,
-      {
-        eventType,
-        eventId,
-        orderStableId: order.orderStableId,
-      },
-    );
+    if (mapUberEventTypeToOrderStatus(eventType) !== null) {
+      await this.enqueueAndBestEffortAcceptUberOrder(
+        parsedOrder.externalOrderId,
+        {
+          eventType,
+          eventId,
+          orderStableId: order.orderStableId,
+        },
+      );
+    }
 
     await this.captureEvent('ubereats_webhook_processed', {
       eventType,
@@ -439,17 +423,6 @@ export class UberOrderService {
       orderStableId: string;
     },
   ) {
-    await this.prismaAccess.uberOrderActionDelegate.upsert({
-      where: { externalOrderId_action: { externalOrderId, action: 'ACCEPT' } },
-      create: {
-        externalOrderId,
-        action: 'ACCEPT',
-        status: 'PENDING',
-        reasonCode: 'accepted',
-      },
-      update: {},
-    });
-
     await this.captureEvent('ubereats_order_accept_queued', {
       externalOrderId,
       eventType: context.eventType,
@@ -746,9 +719,10 @@ export class UberOrderService {
         errorSummary: `Uber 返回 HTTP ${response.status}`,
       };
     }
-    if (action === 'ACCEPT') {
-      await this.advanceLocalUberOrderStatusAfterAccept(externalOrderId);
-    }
+    await this.advanceLocalUberOrderStatusAfterConfirmedAction(
+      externalOrderId,
+      action,
+    );
     return {
       ok: true,
       duplicate: false,
@@ -846,6 +820,24 @@ export class UberOrderService {
         stableId: existing.orderStableId,
       });
     }
+  }
+
+  private async advanceLocalUberOrderStatusAfterConfirmedAction(
+    externalOrderId: string,
+    action: UberOrderActionName,
+  ): Promise<void> {
+    if (action === 'ACCEPT') {
+      await this.advanceLocalUberOrderStatusAfterAccept(externalOrderId);
+      return;
+    }
+    if (action !== 'READY_FOR_PICKUP') return;
+    await this.prisma.order.updateMany({
+      where: {
+        clientRequestId: this.toClientRequestId(externalOrderId),
+        status: { in: [OrderStatus.paid, OrderStatus.making] },
+      },
+      data: { status: OrderStatus.ready, readyAt: new Date() },
+    });
   }
 
   private redactUberResponse(value: unknown): Prisma.InputJsonValue {
@@ -1055,11 +1047,11 @@ export class UberOrderService {
       },
       async (tx, saved) => {
         const normalizedEvent = normalizeUberEventType(eventType);
-        if (
+        const isCancellation =
           normalizedEvent === 'orders.cancelled' ||
           normalizedEvent === 'orders.cancel' ||
-          normalizedEvent === 'orders.rejected'
-        ) {
+          normalizedEvent === 'orders.rejected';
+        if (isCancellation) {
           const cancellation = order.cancellation ?? {
             cancelledBy: null,
             reasonCode: null,
@@ -1133,6 +1125,25 @@ export class UberOrderService {
             nextRetryAt: null,
           },
         });
+        // The order graph, inbox result and first external intent become
+        // visible together. No process may call Uber before this commits.
+        if (!isCancellation) {
+          await tx.uberOrderAction.upsert({
+            where: {
+              externalOrderId_action: {
+                externalOrderId: order.externalOrderId,
+                action: 'ACCEPT',
+              },
+            },
+            create: {
+              externalOrderId: order.externalOrderId,
+              action: 'ACCEPT',
+              status: 'PENDING',
+              reasonCode: 'accepted',
+            },
+            update: {},
+          });
+        }
       },
     );
 
