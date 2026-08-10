@@ -20,6 +20,31 @@ const canRequestOrderAction = (
 
 /** Pure decisions for the Uber order lifecycle. No caller may assign an arbitrary status. */
 export const UberOrderStateMachine = {
+  acceptsEvent(input: {
+    currentStatus: UberOrderStatus;
+    nextStatus: UberOrderStatus | null;
+    currentUpdatedAt?: Date | null;
+    eventOccurredAt?: Date | null;
+  }): boolean {
+    if (
+      input.eventOccurredAt &&
+      input.currentUpdatedAt &&
+      input.eventOccurredAt.getTime() < input.currentUpdatedAt.getTime()
+    )
+      return false;
+    if (input.nextStatus === null)
+      return this.afterCancellation(input.currentStatus) !== null;
+    const rank: Record<UberOrderStatus, number> = {
+      [UberOrderStatus.pending]: 0,
+      [UberOrderStatus.paid]: 1,
+      [UberOrderStatus.making]: 2,
+      [UberOrderStatus.ready]: 3,
+      [UberOrderStatus.completed]: 4,
+      [UberOrderStatus.refunded]: 4,
+    };
+    return rank[input.nextStatus] >= rank[input.currentStatus];
+  },
+
   eventStatus(eventType: string): UberOrderStatus | null {
     const event = normalizeUberEventType(eventType);
     if (event.includes('cancel') || event.includes('reject')) return null;

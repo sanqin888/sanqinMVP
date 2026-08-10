@@ -67,15 +67,21 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
       }>
     >`
       WITH candidates AS (
-        SELECT id FROM "UberWebhookInbox"
-        WHERE ((status IN ('PENDING', 'FAILED') AND ("nextRetryAt" IS NULL OR "nextRetryAt" <= NOW())) OR (status = 'PROCESSING' AND "leaseExpiresAt" <= NOW()))
-          AND "attemptCount" < ${UberWebhookInboxPrismaAdapter.MAX_ATTEMPTS}
-        ORDER BY "createdAt" ASC FOR UPDATE SKIP LOCKED LIMIT ${limit}
+        SELECT candidate.id FROM "UberWebhookInbox" candidate
+        WHERE ((candidate.status IN ('PENDING', 'FAILED') AND (candidate."nextRetryAt" IS NULL OR candidate."nextRetryAt" <= NOW())) OR (candidate.status = 'PROCESSING' AND candidate."leaseExpiresAt" <= NOW()))
+          AND candidate."attemptCount" < ${UberWebhookInboxPrismaAdapter.MAX_ATTEMPTS}
+          AND NOT EXISTS (
+            SELECT 1 FROM "UberWebhookInbox" earlier
+            WHERE earlier."externalOrderId" = candidate."externalOrderId"
+              AND earlier.status NOT IN ('PROCESSED', 'DEAD')
+              AND (earlier."createdAt", earlier.id) < (candidate."createdAt", candidate.id)
+          )
+        ORDER BY candidate."createdAt" ASC, candidate.id ASC FOR UPDATE OF candidate SKIP LOCKED LIMIT ${limit}
       )
       UPDATE "UberWebhookInbox" inbox SET status = 'PROCESSING', "processingAt" = NOW(), "leaseToken" = ${leaseToken},
         "leaseExpiresAt" = NOW() + (${this.config.workerLeaseDurationMs} * INTERVAL '1 millisecond'), "attemptCount" = inbox."attemptCount" + 1
       FROM candidates WHERE inbox.id = candidates.id RETURNING inbox."eventId", inbox."eventType", inbox.payload,
-        inbox."idempotencyKey", inbox."businessVersion"
+        inbox."idempotencyKey", inbox."businessVersion", inbox."externalOrderId" AS "resourceKey"
     `;
     return rows.map((row) => ({ ...row, leaseToken }));
   }

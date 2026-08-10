@@ -21,6 +21,7 @@ import {
 } from '../../../../orders/order-ingestion.service';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import type { UberOrderNotificationEventV1 } from '../../contracts/events/uber-order-notification.v1';
+import type { UberEventOrdering } from '../../application/ports/uber-order-processing.ports';
 import { UberAuthService } from '../../infrastructure/uber-api/uber-token.provider';
 import {
   UberConfigService,
@@ -315,6 +316,7 @@ export class UberOrderPrismaAdapter {
     eventType: string,
     eventId: string,
     envelope: UberOrderNotificationEventV1 | null,
+    ordering?: UberEventOrdering,
   ) {
     if (!envelope) {
       throw new BadRequestException('Uber 订单 webhook envelope 无效');
@@ -341,6 +343,32 @@ export class UberOrderPrismaAdapter {
           { eventType, eventId },
         );
       }
+      return;
+    }
+
+    const existing = await this.prisma.order.findUnique({
+      where: {
+        clientRequestId: this.toClientRequestId(parsedOrder.externalOrderId),
+      },
+      select: { status: true, updatedAt: true },
+    });
+    const nextStatus = this.mapEventTypeToOrderStatus(eventType);
+    if (
+      existing &&
+      !UberOrderStateMachine.acceptsEvent({
+        currentStatus: toUberOrderStatus(existing.status),
+        nextStatus: nextStatus === null ? null : toUberOrderStatus(nextStatus),
+        currentUpdatedAt: existing.updatedAt,
+        eventOccurredAt: ordering?.occurredAt,
+      })
+    ) {
+      await this.telemetry.captureEvent('ubereats_order_event_stale', {
+        eventType,
+        eventId,
+        externalOrderId: parsedOrder.externalOrderId,
+        resourceVersion: ordering?.resourceVersion ?? null,
+        sequence: ordering?.sequence ?? null,
+      });
       return;
     }
 

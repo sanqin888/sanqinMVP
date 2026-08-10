@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { UberOrderStatus } from '../../domain/orders/uber-order.types';
 import type { UberOrderNotificationEventV1 } from '../../contracts/events/uber-order-notification.v1';
+import type { UberEventOrdering } from '../ports/uber-order-processing.ports';
 import {
   UBER_ORDER_ACTION_PORT,
   UBER_ORDER_IMPORT_PORT,
@@ -21,8 +22,14 @@ export class ImportUberOrderUseCase {
     eventType: string,
     eventId: string,
     payload: UberOrderNotificationEventV1,
+    ordering?: UberEventOrdering,
   ) {
-    return this.orders.processWebhookEvent(eventType, eventId, payload);
+    return this.orders.processWebhookEvent(
+      eventType,
+      eventId,
+      payload,
+      ordering,
+    );
   }
 }
 /** Cancellation is an event-idempotent order import with its own transaction boundary. */

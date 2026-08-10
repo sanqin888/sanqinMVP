@@ -65,7 +65,12 @@ export class ProcessUberWebhookInboxWorker {
     const inserted = await this.inbox.enqueue({
       eventId,
       eventType,
-      externalOrderId: envelope?.resourceId ?? null,
+      externalOrderId: this.resourceKey(
+        eventType,
+        eventId,
+        body,
+        envelope?.resourceId,
+      ),
       payload: body,
     });
     if (!inserted)
@@ -98,7 +103,12 @@ export class ProcessUberWebhookInboxWorker {
               message: 'Uber 订单 webhook envelope 无效',
               operation: 'webhook.route-order',
             });
-          await this.orders.execute(eventType, eventId, order);
+          await this.orders.execute(
+            eventType,
+            eventId,
+            order,
+            this.extractOrdering(payload),
+          );
           break;
         }
         case 'menus.notification': {
@@ -161,6 +171,28 @@ export class ProcessUberWebhookInboxWorker {
       this.readString(root.event_type, root.type, root.action) ?? 'unknown'
     );
   }
+  private resourceKey(
+    eventType: string,
+    eventId: string,
+    payload: unknown,
+    envelopeResourceId?: string | null,
+  ): string {
+    const normalized = normalizeUberEventType(eventType);
+    if (normalized.startsWith('orders.'))
+      return `order:${envelopeResourceId ?? this.readPayloadId(payload) ?? eventId}`;
+    if (normalized.startsWith('menus.'))
+      return `menu:${envelopeResourceId ?? this.extractStoreId(payload) ?? eventId}`;
+    if (normalized.startsWith('store.'))
+      return `store:${this.extractStoreId(payload) ?? envelopeResourceId ?? eventId}`;
+    return `event:${envelopeResourceId ?? this.readPayloadId(payload) ?? eventId}`;
+  }
+  private readPayloadId(payload: unknown): string | null {
+    const root = this.asObject(payload);
+    return this.readString(
+      root?.resource_id,
+      this.asObject(root?.meta)?.resource_id,
+    );
+  }
   private readEventId(
     headers: Record<string, unknown>,
     payload: unknown,
@@ -210,6 +242,37 @@ export class ProcessUberWebhookInboxWorker {
       data?.store_id,
       this.asObject(data?.store)?.id,
     );
+  }
+  private extractOrdering(payload: unknown) {
+    const root = this.asObject(payload);
+    const meta = this.asObject(root?.meta);
+    const timestamp = this.readString(
+      root?.event_time,
+      root?.event_timestamp,
+      root?.occurred_at,
+      root?.created_at,
+      meta?.event_time,
+    );
+    const occurredAt = timestamp ? new Date(timestamp) : null;
+    const sequenceValue =
+      root?.sequence ?? root?.sequence_number ?? meta?.sequence;
+    const sequence =
+      typeof sequenceValue === 'number' && Number.isSafeInteger(sequenceValue)
+        ? sequenceValue
+        : typeof sequenceValue === 'string' && /^\d+$/.test(sequenceValue)
+          ? Number(sequenceValue)
+          : null;
+    return {
+      occurredAt:
+        occurredAt && !Number.isNaN(occurredAt.getTime()) ? occurredAt : null,
+      resourceVersion: this.readString(
+        root?.resource_version,
+        root?.version,
+        meta?.resource_version,
+      ),
+      sequence:
+        sequence !== null && Number.isSafeInteger(sequence) ? sequence : null,
+    };
   }
   private asObject(value: unknown): Record<string, unknown> | null {
     return value && typeof value === 'object' && !Array.isArray(value)

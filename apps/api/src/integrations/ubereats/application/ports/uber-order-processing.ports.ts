@@ -48,6 +48,13 @@ export type UberWebhookInboxItem = {
   leaseToken: string;
   idempotencyKey: string;
   businessVersion: string;
+  resourceKey?: string | null;
+};
+
+export type UberEventOrdering = {
+  occurredAt: Date | null;
+  resourceVersion: string | null;
+  sequence: number | null;
 };
 
 export interface UberWebhookInboxPort {

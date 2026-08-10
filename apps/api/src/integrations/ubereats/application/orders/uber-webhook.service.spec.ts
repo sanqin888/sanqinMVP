@@ -42,6 +42,55 @@ const signed = (body: unknown) => {
 };
 
 describe('ProcessUberWebhookInboxWorker', () => {
+  it('routes Uber ordering metadata to the order use case', async () => {
+    const item = {
+      eventId: 'evt-order-ordered',
+      eventType: 'orders.ready_for_pickup',
+      payload: {
+        event_type: 'orders.ready_for_pickup',
+        event_id: 'evt-order-ordered',
+        resource_href: 'https://api.uber.com/v2/eats/order/order-1',
+        resource_id: 'order-1',
+        meta: { resource_id: 'store-1', user_id: 'user-1' },
+        event_time: '2026-08-10T12:00:00.000Z',
+        resource_version: '42',
+        sequence_number: '7',
+      },
+      leaseToken: 'lease',
+      idempotencyKey: 'key',
+      businessVersion: 'v1',
+    };
+    const inboxPort = {
+      claimDue: jest.fn().mockResolvedValue([item]),
+      markSucceeded: jest.fn().mockResolvedValue(undefined),
+      markFailed: jest.fn().mockResolvedValue(undefined),
+      enqueue: jest.fn(),
+      setStoreProvisioned: jest.fn(),
+    };
+    const orders = { execute: jest.fn().mockResolvedValue(undefined) };
+    const worker = new ProcessUberWebhookInboxWorker(
+      inboxPort,
+      { verify: jest.fn() },
+      orders as never,
+      {} as never,
+      { captureEvent: jest.fn(), workflowLog: jest.fn() },
+    );
+
+    await worker.processDueWebhooks();
+
+    expect(orders.execute).toHaveBeenCalledWith(
+      item.eventType,
+      item.eventId,
+      expect.objectContaining({ resourceId: 'order-1' }),
+      {
+        occurredAt: new Date('2026-08-10T12:00:00.000Z'),
+        resourceVersion: '42',
+        sequence: 7,
+      },
+    );
+    expect(inboxPort.markSucceeded).toHaveBeenCalledWith(item);
+  });
+
   it('HTTP 阶段校验签名并持久化 inbox，但不执行业务用例', async () => {
     const uberWebhookInbox = inbox();
     const orders = {

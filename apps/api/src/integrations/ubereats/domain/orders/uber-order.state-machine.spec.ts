@@ -41,4 +41,21 @@ describe('UberOrderStateMachine', () => {
       UberOrderStateMachine.idempotencyKey('order-1', 'DENY'),
     );
   });
+
+  it('rejects stale events and illegal status regressions', () => {
+    expect(
+      UberOrderStateMachine.acceptsEvent({
+        currentStatus: 'ready' as never,
+        nextStatus: 'making' as never,
+      }),
+    ).toBe(false);
+    expect(
+      UberOrderStateMachine.acceptsEvent({
+        currentStatus: 'making' as never,
+        nextStatus: 'ready' as never,
+        currentUpdatedAt: new Date('2026-08-10T12:00:00Z'),
+        eventOccurredAt: new Date('2026-08-10T11:59:59Z'),
+      }),
+    ).toBe(false);
+  });
 });
