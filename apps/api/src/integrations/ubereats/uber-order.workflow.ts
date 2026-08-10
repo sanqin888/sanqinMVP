@@ -32,7 +32,6 @@ import {
   summarizeUberDebugResponse,
   UberWebhookNonRetryableError,
 } from './uber-integration.utils';
-import type { UberAuthenticationError } from './uber-menu.types';
 import type {
   ParsedUberModifier,
   ParsedUberOrder,
@@ -51,13 +50,12 @@ import { UberOrderActionService } from './uber-order-action.service';
 import { UberOrderOutboxService } from './uber-order-outbox.service';
 import { UberOrderStatusSyncService } from './uber-order-status-sync.service';
 import { UberOrderStateMachine } from './uber-order.state-machine';
+import { UberOrderGateway } from '../../infrastructure/uber-api/uber-resource.gateways';
 
 @Injectable()
 export class UberOrderService {
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
   private readonly logger = new AppLogger(UberOrderService.name);
-  private readonly uberApiBaseUrl: string;
-  private readonly uberResourceHrefAllowedOrigins: string;
   private readonly payloadParser = new UberOrderPayloadParser();
   private readonly actionService: UberOrderActionService;
   private readonly outboxService: UberOrderOutboxService;
@@ -71,12 +69,11 @@ export class UberOrderService {
     private readonly httpClient: UberHttpClient,
     @Inject(UberConfigService) private readonly config: UberOrderConfig,
     private readonly prismaAccess: UberPrismaAccessService,
+    private readonly orderGateway: UberOrderGateway,
     @Optional() actionService?: UberOrderActionService,
     @Optional() outboxService?: UberOrderOutboxService,
     @Optional() statusSyncService?: UberOrderStatusSyncService,
   ) {
-    this.uberApiBaseUrl = config.apiBaseUrl;
-    this.uberResourceHrefAllowedOrigins = config.resourceHrefAllowedOrigins;
     this.actionService =
       actionService ??
       new UberOrderActionService(uberAuthService, httpClient, config);
@@ -270,11 +267,10 @@ export class UberOrderService {
       throw new BadRequestException('Uber 订单 webhook envelope 无效');
     }
 
-    const resourceUrl = this.validateOrderResourceHref(envelope.resourceHref);
-    const token = await this.uberAuthService.getAccessToken(
-      'eats.store.orders.read',
+    const resourcePath = await this.orderGateway.pathFromResourceHref(
+      envelope.resourceHref,
     );
-    const orderPayload = await this.fetchUberOrderDetail(resourceUrl, token, {
+    const orderPayload = await this.fetchUberOrderDetail(resourcePath, {
       eventType,
       eventId,
       resourceId: envelope.resourceId,
@@ -432,47 +428,28 @@ export class UberOrderService {
   }
 
   private async fetchUberOrderDetail(
-    resourceUrl: string,
-    token: string,
+    resourcePath: string,
     context: {
       eventType: string;
       eventId: string;
       resourceId?: string | null;
     },
   ): Promise<unknown> {
-    let result = await this.requestUberOrderDetail(resourceUrl, token);
-    let { response, text: rawText, data: parsed } = result;
-
-    if (
-      (response.status === 401 || response.status === 403) &&
-      typeof this.uberAuthService.forceRefreshAccessToken === 'function'
-    ) {
-      const refreshedToken = await this.uberAuthService.forceRefreshAccessToken(
-        'eats.store.orders.read',
-      );
-      result = await this.requestUberOrderDetail(resourceUrl, refreshedToken);
-      ({ response, text: rawText, data: parsed } = result);
-    }
+    const result = await this.requestUberOrderDetail(resourcePath);
+    const { response, text: rawText, data: parsed } = result;
 
     if (response.ok) {
       return parsed;
     }
 
-    const authenticationError =
-      response.status === 401 || response.status === 403
-        ? this.buildUberAuthenticationError(parsed, response.status)
-        : undefined;
-    const detail = authenticationError
-      ? JSON.stringify(authenticationError)
-      : summarizeUberDebugResponse(parsed, rawText);
-    const resource = new URL(resourceUrl);
+    const detail = summarizeUberDebugResponse(parsed, rawText);
     const uberRequestId =
       response.headers.get('x-uber-request-id') ??
       response.headers.get('x-request-id') ??
       response.headers.get('trace-id');
 
     this.logger.error(
-      `[ubereats order] detail fetch failed status=${response.status} eventType=${context.eventType} eventId=${context.eventId} resourceId=${context.resourceId ?? 'unknown'} resourceUrl=${resource.origin}${resource.pathname} uberRequestId=${uberRequestId ?? 'unknown'} detail=${redactUberLogText(detail)}`,
+      `[ubereats order] detail fetch failed status=${response.status} eventType=${context.eventType} eventId=${context.eventId} resourceId=${context.resourceId ?? 'unknown'} resourcePath=${resourcePath.split('?')[0]} uberRequestId=${uberRequestId ?? 'unknown'} detail=${redactUberLogText(detail)}`,
     );
 
     const payload = {
@@ -480,7 +457,6 @@ export class UberOrderService {
       status: response.status,
       message: 'Uber 订单详情接口返回错误',
       detail,
-      ...(authenticationError ? { error: authenticationError } : {}),
     };
 
     if (this.isNonRetryableOrderDetailStatus(response.status)) {
@@ -495,16 +471,14 @@ export class UberOrderService {
   }
 
   private async requestUberOrderDetail(
-    resourceUrl: string,
-    token: string,
+    resourcePath: string,
   ): Promise<UberHttpResult> {
     try {
-      return await this.httpClient.request({
-        returnErrorResponse: true,
-        url: resourceUrl,
+      return await this.orderGateway.inspect({
+        path: resourcePath,
         method: 'GET',
-        redirect: 'error',
-        accessToken: token,
+        operation: 'uber.order.detail',
+        scope: 'eats.store.orders.read',
         kind: 'orderDetail',
       });
     } catch (error) {
@@ -862,59 +836,6 @@ export class UberOrderService {
           : this.redactUberResponse(item),
       ]),
     );
-  }
-
-  private validateOrderResourceHref(resourceHref: string): string {
-    return this.buildUberApiUrlFromResourceHref(resourceHref);
-  }
-
-  private buildUberApiUrlFromResourceHref(resourceHref: string): string {
-    let resource: URL;
-    let base: URL;
-    try {
-      resource = new URL(resourceHref);
-      base = new URL(this.uberApiBaseUrl);
-    } catch {
-      throw new BadRequestException('Uber resource_href 无效');
-    }
-
-    const allowedOrigins = this.parseUberResourceHrefAllowedOrigins();
-    if (
-      !allowedOrigins.has(resource.origin) ||
-      resource.username ||
-      resource.password
-    ) {
-      this.logger.warn(
-        'ubereats webhook resource_href rejected ' +
-          `resourceOrigin=${resource.origin} ` +
-          `resourcePathname=${resource.pathname} ` +
-          `allowedOrigins=${[...allowedOrigins].join(',') || 'none'} ` +
-          `uberApiOrigin=${base.origin}`,
-      );
-      throw new BadRequestException('Uber resource_href 不属于允许的来源');
-    }
-
-    const mappedUrl = new URL(base.origin);
-    mappedUrl.pathname = resource.pathname;
-    mappedUrl.search = resource.search;
-    return mappedUrl.toString();
-  }
-
-  private parseUberResourceHrefAllowedOrigins(): Set<string> {
-    const origins = this.uberResourceHrefAllowedOrigins
-      .split(',')
-      .map((origin) => origin.trim())
-      .filter(Boolean)
-      .map((origin) => {
-        try {
-          return new URL(origin).origin;
-        } catch {
-          return null;
-        }
-      })
-      .filter((origin): origin is string => Boolean(origin));
-
-    return new Set(origins);
   }
 
   private async upsertUberOrder(
@@ -1491,32 +1412,6 @@ export class UberOrderService {
 
   private toClientRequestId(externalOrderId: string): string {
     return `ubereats:${externalOrderId}`;
-  }
-
-  private buildUberAuthenticationError(
-    parsed: unknown,
-    status: number,
-  ): UberAuthenticationError {
-    const body = this.asObject(parsed);
-    const nestedError = this.asObject(body?.error);
-    const code =
-      this.readString(body?.code, nestedError?.code, body?.error) ??
-      `UBER_HTTP_${status}`;
-    const unsafeMessage =
-      this.readString(
-        body?.message,
-        nestedError?.message,
-        body?.error_description,
-      ) ?? 'Uber authentication request was rejected';
-    const message = unsafeMessage
-      .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [REDACTED]')
-      .replace(
-        /\b(access[_ -]?token|client[_ -]?secret)\s*[:=]\s*\S+/gi,
-        '$1=[REDACTED]',
-      )
-      .slice(0, 500);
-
-    return { upstreamStatus: status, code: code.slice(0, 100), message };
   }
 
   private buildStableUberNodeId(
