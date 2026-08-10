@@ -12,7 +12,7 @@ describe('UberOrderOutboxService', () => {
       },
     ];
     const prisma = { $queryRaw: jest.fn().mockResolvedValue(rows) };
-    const prismaAccess = { uberOrderActionDelegate: {} };
+    const prismaAccess = { uberOrderActionRepository: {} };
     const actions = {
       buildDenyPayload: jest
         .fn()

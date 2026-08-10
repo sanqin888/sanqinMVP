@@ -1,59 +1,57 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import type {
-  UberMerchantConnectionDelegate,
-  UberOAuthStateRequestDelegate,
-  UberOrderActionDelegate,
-  UberStoreMappingDelegate,
+  UberMenuPublishRepository,
+  UberMerchantConnectionRepository,
+  UberOAuthStateRepository,
+  UberOpsTicketRepository,
+  UberOrderActionRepository,
+  UberPrismaRepositories,
+  UberStoreMappingRepository,
+  UberWebhookInboxRepository,
 } from './uber-prisma.types';
 
-type UberPrismaDelegates = {
-  uberMerchantConnection?: UberMerchantConnectionDelegate;
-  uberOAuthStateRequest?: UberOAuthStateRequestDelegate;
-  uberStoreMapping?: UberStoreMappingDelegate;
-  uberOrderAction?: UberOrderActionDelegate;
-};
-
-export class UberPrismaDelegateUnavailableError extends Error {
-  constructor(readonly delegateName: keyof UberPrismaDelegates) {
-    super(`Uber Prisma 必需 delegate 不可用: ${delegateName}`);
-    this.name = UberPrismaDelegateUnavailableError.name;
-  }
-}
-
+/**
+ * Typed adapter from generated Prisma delegates to narrow persistence ports.
+ * Every model is required at startup: rolling deploy compatibility belongs in
+ * the database migration sequence, not in optional runtime model discovery.
+ */
 @Injectable()
 export class UberPrismaAccessService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService)
+    private readonly prisma: UberPrismaRepositories,
+  ) {}
 
-  /** Compatibility delegates may be absent while an older Prisma client is deployed. */
-  get uberMerchantConnectionDelegate(): UberMerchantConnectionDelegate | null {
-    return this.delegates.uberMerchantConnection ?? null;
+  get uberWebhookInboxRepository(): UberWebhookInboxRepository {
+    return this.repositories.uberWebhookInbox;
   }
 
-  get uberStoreMappingDelegate(): UberStoreMappingDelegate | null {
-    return this.delegates.uberStoreMapping ?? null;
+  get uberOrderActionRepository(): UberOrderActionRepository {
+    return this.repositories.uberOrderAction;
   }
 
-  /** Required delegates fail consistently instead of causing an undefined access. */
-  get uberOAuthStateRequestDelegate(): UberOAuthStateRequestDelegate {
-    return this.required('uberOAuthStateRequest');
+  get uberMerchantConnectionRepository(): UberMerchantConnectionRepository {
+    return this.repositories.uberMerchantConnection;
   }
 
-  get uberOrderActionDelegate(): UberOrderActionDelegate {
-    return this.required('uberOrderAction');
+  get uberStoreMappingRepository(): UberStoreMappingRepository {
+    return this.repositories.uberStoreMapping;
   }
 
-  private get delegates(): UberPrismaDelegates {
-    return this.prisma as PrismaService & UberPrismaDelegates;
+  get uberMenuPublishRepository(): UberMenuPublishRepository {
+    return this.repositories.uberMenuPublishVersion;
   }
 
-  private required<K extends keyof UberPrismaDelegates>(
-    delegateName: K,
-  ): NonNullable<UberPrismaDelegates[K]> {
-    const delegate = this.delegates[delegateName];
-    if (!delegate) {
-      throw new UberPrismaDelegateUnavailableError(delegateName);
-    }
-    return delegate;
+  get uberOpsTicketRepository(): UberOpsTicketRepository {
+    return this.repositories.uberOpsTicket;
+  }
+
+  get uberOAuthStateRepository(): UberOAuthStateRepository {
+    return this.repositories.uberOAuthStateRequest;
+  }
+
+  private get repositories(): UberPrismaRepositories {
+    return this.prisma;
   }
 }

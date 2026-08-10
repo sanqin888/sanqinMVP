@@ -180,7 +180,7 @@ export type UberOrderActionRecord = {
   id: string;
   externalOrderId: string;
   action: UberOrderActionName;
-  status: string;
+  status: 'PENDING' | 'PROCESSING' | 'SUCCEEDED' | 'FAILED' | 'DEAD';
   retryable: boolean;
   uberHttpStatus: number | null;
   reasonCode?: string | null;

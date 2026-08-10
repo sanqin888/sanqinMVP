@@ -21,6 +21,7 @@ import type {
   StoreStatusSyncContext,
 } from './uber-operations.types';
 import { UberOrderService } from './uber-order.service';
+import { UberPrismaAccessService } from './uber-prisma-access.service';
 
 @Injectable()
 export class UberOperationsService {
@@ -32,6 +33,7 @@ export class UberOperationsService {
     private readonly orders: UberOrderService,
     private readonly menu: UberMenuService,
     private readonly merchant: UberMerchantService,
+    private readonly prismaAccess: UberPrismaAccessService,
   ) {}
 
   async generateReconciliationReport(input: GenerateReconciliationReportInput) {
@@ -68,7 +70,7 @@ export class UberOperationsService {
           },
         },
       }),
-      this.prisma.uberOpsTicket.count({
+      this.prismaAccess.uberOpsTicketRepository.count({
         where: {
           storeId: normalizedStoreId,
           status: {
@@ -167,7 +169,7 @@ export class UberOperationsService {
       await this.ensureMenuItemExists(input.menuItemStableId);
     }
 
-    const ticket = await this.prisma.uberOpsTicket.create({
+    const ticket = await this.prismaAccess.uberOpsTicketRepository.create({
       data: {
         storeId: normalizedStoreId,
         type: input.type,
@@ -203,7 +205,7 @@ export class UberOperationsService {
 
   async listOpsTickets(storeId?: string, status?: UberOpsTicketStatus) {
     const normalizedStoreId = normalizeUberStoreId(storeId);
-    const rows = await this.prisma.uberOpsTicket.findMany({
+    const rows = await this.prismaAccess.uberOpsTicketRepository.findMany({
       where: {
         storeId: normalizedStoreId,
         ...(status ? { status } : {}),
@@ -233,7 +235,7 @@ export class UberOperationsService {
   }
 
   async retryOpsTicket(ticketStableId: string) {
-    const ticket = await this.prisma.uberOpsTicket.findUnique({
+    const ticket = await this.prismaAccess.uberOpsTicketRepository.findUnique({
       where: { ticketStableId },
     });
 
@@ -244,7 +246,7 @@ export class UberOperationsService {
     let errorMessage: string | null = null;
 
     try {
-      await this.prisma.uberOpsTicket.update({
+      await this.prismaAccess.uberOpsTicketRepository.update({
         where: { ticketStableId },
         data: { status: UberOpsTicketStatus.IN_PROGRESS },
       });
@@ -280,7 +282,7 @@ export class UberOperationsService {
       errorMessage = error instanceof Error ? error.message : 'unknown_error';
     }
 
-    const updated = await this.prisma.uberOpsTicket.update({
+    const updated = await this.prismaAccess.uberOpsTicketRepository.update({
       where: { ticketStableId },
       data: errorMessage
         ? {

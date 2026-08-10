@@ -6,7 +6,7 @@ import { UberPrismaAccessService } from './uber-prisma-access.service';
 export class UberMerchantConnectionRepository {
   constructor(private readonly prisma: UberPrismaAccessService) {}
   get delegate() {
-    return this.prisma.uberMerchantConnectionDelegate;
+    return this.prisma.uberMerchantConnectionRepository;
   }
 }
 
@@ -15,7 +15,7 @@ export class UberMerchantConnectionRepository {
 export class UberStoreMappingRepository {
   constructor(private readonly prisma: UberPrismaAccessService) {}
   get delegate() {
-    return this.prisma.uberStoreMappingDelegate;
+    return this.prisma.uberStoreMappingRepository;
   }
 }
 
@@ -28,7 +28,7 @@ export class UberOAuthStateRepository {
   constructor(private readonly prisma: UberPrismaAccessService) {}
 
   get delegate() {
-    return this.prisma.uberOAuthStateRequestDelegate;
+    return this.prisma.uberOAuthStateRepository;
   }
 
   consume(input: {

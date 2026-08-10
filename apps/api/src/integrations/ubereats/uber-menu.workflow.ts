@@ -87,18 +87,20 @@ export class UberMenuWorkflowCore {
   /** Startup/periodic recovery for uploads whose confirmation loop was interrupted. */
   async recoverTimedOutPublications(timeoutMs = 30 * 60_000): Promise<number> {
     const cutoff = new Date(Date.now() - timeoutMs);
-    const result = await this.prisma.uberMenuPublishVersion.updateMany({
-      where: {
-        status: UberMenuPublishStatus.SUBMITTED,
-        startedAt: { lt: cutoff },
+    const result = await this.prismaAccess.uberMenuPublishRepository.updateMany(
+      {
+        where: {
+          status: UberMenuPublishStatus.SUBMITTED,
+          startedAt: { lt: cutoff },
+        },
+        data: {
+          status: UberMenuPublishStatus.FAILED,
+          finishedAt: new Date(),
+          errorMessage: '菜单发布确认超时；需要人工检查 Uber 后台状态后重试',
+          errorDetails: { code: 'CONFIRMATION_TIMEOUT', retryable: true },
+        },
       },
-      data: {
-        status: UberMenuPublishStatus.FAILED,
-        finishedAt: new Date(),
-        errorMessage: '菜单发布确认超时；需要人工检查 Uber 后台状态后重试',
-        errorDetails: { code: 'CONFIRMATION_TIMEOUT', retryable: true },
-      },
-    });
+    );
     if (result.count > 0) {
       this.logger.error(
         `[ubereats menu recovery] timedOutSubmitted=${result.count}`,
@@ -136,11 +138,7 @@ export class UberMenuWorkflowCore {
 
   async listUberPublishedMenuItems(storeId?: string) {
     const normalizedStoreId = normalizeUberStoreId(storeId);
-    const items = await (
-      this.prisma as unknown as {
-        uberPublishedMenuItem: { findMany: (args: unknown) => Promise<any[]> };
-      }
-    ).uberPublishedMenuItem.findMany({
+    const items = await this.prisma.uberPublishedMenuItem.findMany({
       where: {
         storeId: normalizedStoreId,
         publishVersion: {
@@ -314,7 +312,7 @@ export class UberMenuWorkflowCore {
     const payloadValidation = validateUberMenuPayload(payload);
     const summary = this.summarizePublishGraph(normalized.graph);
     const lastPublishedVersion =
-      await this.prisma.uberMenuPublishVersion.findFirst({
+      await this.prismaAccess.uberMenuPublishRepository.findFirst({
         where: { storeId: normalizedStoreId },
         orderBy: { createdAt: 'desc' },
         select: {
@@ -786,14 +784,15 @@ export class UberMenuWorkflowCore {
   async getUberMenuDraftDiff(storeId?: string) {
     const normalizedStoreId = normalizeUberStoreId(storeId);
     const draft = await this.getUberMenuDraft(normalizedStoreId);
-    const lastSuccess = await this.prisma.uberMenuPublishVersion.findFirst({
-      where: {
-        storeId: normalizedStoreId,
-        status: UberMenuPublishStatus.SUCCEEDED,
-      },
-      orderBy: { createdAt: 'desc' },
-      select: { createdAt: true, requestPayload: true, payload: true },
-    });
+    const lastSuccess =
+      await this.prismaAccess.uberMenuPublishRepository.findFirst({
+        where: {
+          storeId: normalizedStoreId,
+          status: UberMenuPublishStatus.SUCCEEDED,
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true, requestPayload: true, payload: true },
+      });
     const [itemConfigs, optionConfigs] = await Promise.all([
       this.prisma.uberItemChannelConfig.findMany({
         where: { storeId: normalizedStoreId, lastPublishedAt: { not: null } },
@@ -1081,7 +1080,7 @@ export class UberMenuWorkflowCore {
         });
       } catch (error) {
         const message = this.summarizeWebhookError(error);
-        await this.prisma.uberOpsTicket.create({
+        await this.prismaAccess.uberOpsTicketRepository.create({
           data: {
             storeId: config.storeId,
             type: UberOpsTicketType.MENU_PUBLISH,
@@ -1210,7 +1209,8 @@ export class UberMenuWorkflowCore {
       };
     }
 
-    const merchantConnection = this.prismaAccess.uberMerchantConnectionDelegate;
+    const merchantConnection =
+      this.prismaAccess.uberMerchantConnectionRepository;
     const row = merchantUberUserId?.trim()
       ? await merchantConnection?.findUnique({
           where: { merchantUberUserId: merchantUberUserId.trim() },
@@ -1282,12 +1282,8 @@ export class UberMenuWorkflowCore {
   private async upsertMerchantConnection(
     input: UberMerchantConnectionRecord,
   ): Promise<UberMerchantConnectionRecord> {
-    const merchantConnection = this.prismaAccess.uberMerchantConnectionDelegate;
-    if (!merchantConnection) {
-      throw new BadRequestException(
-        'Prisma 未配置 uberMerchantConnection 模型',
-      );
-    }
+    const merchantConnection =
+      this.prismaAccess.uberMerchantConnectionRepository;
 
     const encryptedAccessToken = this.credentialVault.encrypt(
       input.accessToken,
@@ -1299,11 +1295,14 @@ export class UberMenuWorkflowCore {
       where: { merchantUberUserId: input.merchantUberUserId },
       create: {
         ...input,
+        rawStoresSnapshot: input.rawStoresSnapshot
+          ? JSON.parse(JSON.stringify(input.rawStoresSnapshot))
+          : undefined,
         accessToken: null,
         refreshToken: null,
         encryptedAccessToken,
         encryptedRefreshToken,
-      } as unknown as UberMerchantConnectionRecord,
+      },
       update: {
         accessToken: null,
         refreshToken: null,
@@ -1331,26 +1330,27 @@ export class UberMenuWorkflowCore {
       });
       return;
     }
-    const candidates = await this.prisma.uberMenuPublishVersion.findMany({
-      where: {
-        uberStoreId: notification.storeId,
-        status: {
-          in: [
-            UberMenuPublishStatus.SUBMITTED,
-            UberMenuPublishStatus.SUCCEEDED,
-          ],
+    const candidates =
+      await this.prismaAccess.uberMenuPublishRepository.findMany({
+        where: {
+          uberStoreId: notification.storeId,
+          status: {
+            in: [
+              UberMenuPublishStatus.SUBMITTED,
+              UberMenuPublishStatus.SUCCEEDED,
+            ],
+          },
         },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 20,
-      select: {
-        id: true,
-        versionStableId: true,
-        requestPayload: true,
-        responsePayload: true,
-        status: true,
-      },
-    });
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        select: {
+          id: true,
+          versionStableId: true,
+          requestPayload: true,
+          responsePayload: true,
+          status: true,
+        },
+      });
     const version = candidates.find((candidate) =>
       this.menuVersionHasResourceId(candidate, notification.resourceId),
     );
@@ -2330,10 +2330,11 @@ export class UberMenuWorkflowCore {
     let delayMs = initialDelayMs;
     while (Date.now() - startedAt < timeoutMs) {
       await new Promise((resolve) => setTimeout(resolve, delayMs));
-      const current = await this.prisma.uberMenuPublishVersion.findUnique({
-        where: { id: versionId },
-        select: { status: true },
-      });
+      const current =
+        await this.prismaAccess.uberMenuPublishRepository.findUnique({
+          where: { id: versionId },
+          select: { status: true },
+        });
       if (
         current?.status === UberMenuPublishStatus.SUCCEEDED ||
         current?.status === UberMenuPublishStatus.FAILED
@@ -2350,7 +2351,7 @@ export class UberMenuWorkflowCore {
 
     // Timeout is deliberately not success: retain SUBMITTED and make the
     // unresolved publication visible to operations without a schema change.
-    await this.prisma.uberOpsTicket.create({
+    await this.prismaAccess.uberOpsTicketRepository.create({
       data: {
         storeId,
         type: UberOpsTicketType.MENU_PUBLISH,
@@ -2408,13 +2409,7 @@ export class UberMenuWorkflowCore {
         },
         select: { id: true, versionStableId: true, createdAt: true },
       });
-      await (
-        tx as unknown as {
-          uberPublishedMenuItem: {
-            createMany: (args: unknown) => Promise<unknown>;
-          };
-        }
-      ).uberPublishedMenuItem.createMany({
+      await tx.uberPublishedMenuItem.createMany({
         data: graph.items
           .filter((item) => payloadItemIds.has(item.id))
           .map((item) => ({
@@ -2439,7 +2434,7 @@ export class UberMenuWorkflowCore {
     id: string,
     responsePayload: Record<string, unknown>,
   ) {
-    await this.prisma.uberMenuPublishVersion.update({
+    await this.prismaAccess.uberMenuPublishRepository.update({
       where: { id },
       data: {
         status: UberMenuPublishStatus.SUBMITTED,
@@ -2455,7 +2450,7 @@ export class UberMenuWorkflowCore {
     id: string,
     responsePayload: Record<string, unknown>,
   ) {
-    await this.prisma.uberMenuPublishVersion.update({
+    await this.prismaAccess.uberMenuPublishRepository.update({
       where: { id },
       data: {
         status: UberMenuPublishStatus.SUCCEEDED,
@@ -2472,7 +2467,7 @@ export class UberMenuWorkflowCore {
     errorMessage: string,
     errors: UberMenuPublishError[] = [],
   ) {
-    await this.prisma.uberMenuPublishVersion.update({
+    await this.prismaAccess.uberMenuPublishRepository.update({
       where: { id },
       data: {
         status: UberMenuPublishStatus.FAILED,
@@ -2492,15 +2487,7 @@ export class UberMenuWorkflowCore {
     let stableId: string | null = null;
     if (item.externalItemId?.startsWith('sanq:')) {
       if (storeId) {
-        const snapshot = await (
-          tx as unknown as {
-            uberPublishedMenuItem: {
-              findFirst: (
-                args: unknown,
-              ) => Promise<{ menuItemStableId: string } | null>;
-            };
-          }
-        ).uberPublishedMenuItem.findFirst({
+        const snapshot = await tx.uberPublishedMenuItem.findFirst({
           where: {
             uberStoreId: storeId,
             uberItemId: item.externalItemId,
@@ -2584,10 +2571,7 @@ export class UberMenuWorkflowCore {
   }
 
   private async resolveUberStoreIdOrThrow(storeId: string): Promise<string> {
-    const mappingDelegate = this.prismaAccess.uberStoreMappingDelegate;
-    if (!mappingDelegate) {
-      throw new BadRequestException('Prisma 未配置 uberStoreMapping 模型');
-    }
+    const mappingDelegate = this.prismaAccess.uberStoreMappingRepository;
 
     const row = await this.prisma.uberStoreMapping.findFirst({
       where: {
