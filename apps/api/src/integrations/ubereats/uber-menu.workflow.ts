@@ -72,6 +72,29 @@ export class UberMenuWorkflowCore {
     return validateUberMenuPayload(payload);
   }
 
+  /** Startup/periodic recovery for uploads whose confirmation loop was interrupted. */
+  async recoverTimedOutPublications(timeoutMs = 30 * 60_000): Promise<number> {
+    const cutoff = new Date(Date.now() - timeoutMs);
+    const result = await this.prisma.uberMenuPublishVersion.updateMany({
+      where: {
+        status: UberMenuPublishStatus.SUBMITTED,
+        startedAt: { lt: cutoff },
+      },
+      data: {
+        status: UberMenuPublishStatus.FAILED,
+        finishedAt: new Date(),
+        errorMessage: '菜单发布确认超时；需要人工检查 Uber 后台状态后重试',
+        errorDetails: { code: 'CONFIRMATION_TIMEOUT', retryable: true },
+      },
+    });
+    if (result.count > 0) {
+      this.logger.error(
+        `[ubereats menu recovery] timedOutSubmitted=${result.count}`,
+      );
+    }
+    return result.count;
+  }
+
   async listUberItemChannelConfigs(storeId?: string) {
     const normalizedStoreId = normalizeUberStoreId(storeId);
     const items = await this.prisma.uberItemChannelConfig.findMany({

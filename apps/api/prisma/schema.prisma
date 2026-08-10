@@ -602,13 +602,16 @@ model UberWebhookInbox {
   payload         Json?
   attemptCount    Int       @default(0)
   errorSummary    String?
+  structuredError Json?
   nextRetryAt     DateTime?
   processingAt    DateTime?
+  leaseToken      String?   @unique
+  leaseExpiresAt  DateTime?
   processedAt     DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  @@index([status, createdAt])
+  @@index([status, nextRetryAt, createdAt])
   @@index([externalOrderId])
 }
 
@@ -626,12 +629,15 @@ model UberOrderAction {
   uberRequestId   String?
   retryable       Boolean   @default(false)
   attemptCount    Int       @default(0)
+  nextRetryAt     DateTime?
+  leaseToken      String?   @unique
+  leaseExpiresAt  DateTime?
   completedAt     DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   @@unique([externalOrderId, action])
-  @@index([status, retryable, updatedAt])
+  @@index([status, retryable, nextRetryAt, updatedAt])
 }
 
 /// Uber cancellation/rejection is a channel event, not a local refund.

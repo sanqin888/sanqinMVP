@@ -186,13 +186,16 @@ export type UberOrderActionRecord = {
   reasonCode?: string | null;
   reasonDetail?: string | null;
   lastError?: string | null;
+  attemptCount?: number;
+  leaseToken?: string | null;
+  nextRetryAt?: Date | null;
 };
 
 export type UberOrderActionResult = {
   ok: boolean;
   action: UberOrderActionName;
   actionId: string;
-  status: 'PENDING' | 'SUCCEEDED' | 'FAILED';
+  status: 'PENDING' | 'PROCESSING' | 'SUCCEEDED' | 'FAILED' | 'DEAD';
   retryable: boolean;
   duplicate: boolean;
   uberHttpStatus?: number | null;

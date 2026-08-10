@@ -42,7 +42,7 @@ const signed = (body: unknown) => {
 };
 
 describe('UberWebhookService', () => {
-  it('校验签名、claim inbox，并把订单事件路由给订单服务', async () => {
+  it('HTTP 阶段校验签名并持久化 inbox，但不执行业务用例', async () => {
     const uberWebhookInbox = inbox();
     const orders = {
       processWebhookEvent: jest.fn().mockResolvedValue(undefined),
@@ -64,20 +64,16 @@ describe('UberWebhookService', () => {
 
     await service.handleWebhook(signed(body));
 
-    expect(orders.processWebhookEvent).toHaveBeenCalledWith(
-      'orders.notification',
-      'evt-order-1',
-      null,
-    );
+    expect(orders.processWebhookEvent).not.toHaveBeenCalled();
     expect(uberWebhookInbox.create).toHaveBeenCalledTimes(1);
-    expect(uberWebhookInbox.updateMany).toHaveBeenLastCalledWith(
+    expect(uberWebhookInbox.create).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ status: 'PROCESSED' }) as unknown,
+        data: expect.objectContaining({ status: 'PENDING' }) as unknown,
       }),
     );
   });
 
-  it('把菜单通知路由给菜单服务', async () => {
+  it('HTTP 阶段不会同步路由菜单通知', async () => {
     const uberWebhookInbox = inbox();
     const menu = {
       processWebhookEvent: jest.fn().mockResolvedValue(undefined),
@@ -94,11 +90,7 @@ describe('UberWebhookService', () => {
 
     await service.handleWebhook(signed(body));
 
-    expect(menu.processWebhookEvent).toHaveBeenCalledWith(
-      'menus.notification',
-      'evt-menu-1',
-      body,
-    );
+    expect(menu.processWebhookEvent).not.toHaveBeenCalled();
   });
 
   it('拒绝无效签名且不会 claim inbox', async () => {
