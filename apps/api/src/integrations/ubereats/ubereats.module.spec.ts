@@ -5,7 +5,6 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { UberAuthService } from './uber-auth.service';
 import { UberConfigService } from './uber-config.service';
 import { UberEatsModule } from './ubereats.module';
-import { UberEatsService } from './ubereats.service';
 import { UberHttpClient } from './uber-http.client';
 import { UberMenuService } from './uber-menu.service';
 import { UberMerchantService } from './uber-merchant.service';
@@ -83,14 +82,13 @@ describe('UberEatsModule 装配', () => {
     },
   );
 
-  it('完整模块可解析 facade 与全部领域服务', async () => {
+  it('完整模块可解析全部领域服务', async () => {
     const module = await Test.createTestingModule({ imports: [UberEatsModule] })
       .overrideProvider(PrismaService)
       .useValue({})
       .compile();
 
     for (const provider of [
-      UberEatsService,
       UberWebhookService,
       UberOrderService,
       UberMenuService,

@@ -2,8 +2,12 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { AuthModule } from '../../auth/auth.module';
 import { UberAuthService } from './uber-auth.service';
-import { UberEatsController } from './ubereats.controller';
-import { UberEatsService } from './ubereats.service';
+import { UberEatsOAuthController } from './ubereats-oauth.controller';
+import { UberEatsWebhookController } from './ubereats-webhook.controller';
+import { UberEatsOrdersController } from './ubereats-orders.controller';
+import { UberEatsMenuController } from './ubereats-menu.controller';
+import { UberEatsOperationsController } from './ubereats-operations.controller';
+import { BrowserWriteCsrfGuard } from './ubereats-csrf.guard';
 import { MessagingModule } from '../../messaging/messaging.module';
 import { OrdersModule } from '../../orders/orders.module';
 import { UberHttpClient } from './uber-http.client';
@@ -61,13 +65,19 @@ import {
 
 @Module({
   imports: [PrismaModule, AuthModule, MessagingModule, OrdersModule],
-  controllers: [UberEatsController],
+  controllers: [
+    UberEatsOAuthController,
+    UberEatsWebhookController,
+    UberEatsOrdersController,
+    UberEatsMenuController,
+    UberEatsOperationsController,
+  ],
   providers: [
     {
       provide: UberConfigService,
       useFactory: () => new UberConfigService(process.env),
     },
-    UberEatsService,
+    BrowserWriteCsrfGuard,
     UberCredentialVaultService,
     UberPrismaAccessService,
     UberAuthService,
@@ -111,7 +121,7 @@ import {
   ],
   exports: [
     UberAuthService,
-    UberEatsService,
+    BrowserWriteCsrfGuard,
     UberWebhookService,
     UberOrderService,
     UberMenuService,
