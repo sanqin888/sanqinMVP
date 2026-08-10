@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { UberMenuRepository } from '../../infrastructure/persistence/uber-menu.repository';
+import { UberMenuRepository } from '../../integrations/ubereats/infrastructure/persistence/uber-menu.repository';
 /** Coordinates draft queries/commands; domain graph construction receives repository snapshots explicitly. */
 @Injectable()
 export class MenuDraftService {

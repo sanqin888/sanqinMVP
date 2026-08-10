@@ -17,9 +17,12 @@ jest.mock(
   }),
   { virtual: true },
 );
-jest.mock('../../integrations/ubereats/uber-menu.service', () => ({
-  UberMenuService: class {},
-}));
+jest.mock(
+  '../../integrations/ubereats/application/menu/uber-menu.service',
+  () => ({
+    UberMenuService: class {},
+  }),
+);
 
 import { AdminMenuService } from './admin-menu.service';
 

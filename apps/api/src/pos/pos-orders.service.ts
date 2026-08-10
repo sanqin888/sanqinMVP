@@ -15,7 +15,7 @@ import {
   type OrderStatus,
 } from '../orders/order-status';
 import type { OrderDto } from '../orders/dto/order.dto';
-import { UberOrderService } from '../integrations/ubereats/uber-order.service';
+import { UberOrderService } from '../integrations/ubereats/application/orders/uber-order.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { createHash } from 'crypto';
 

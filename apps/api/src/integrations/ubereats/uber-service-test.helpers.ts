@@ -1,35 +1,35 @@
 import { OrderEventsBus } from '../../messaging/order-events.bus';
 import { OrderIngestionService } from '../../orders/order-ingestion.service';
-import { UberConfigService } from './uber-config.service';
-import { UberHttpClient } from './uber-http.client';
-import { UberMenuWorkflowCore } from './uber-menu.workflow';
-import { UberMerchantService } from './uber-merchant.service';
-import { UberMerchantGateway } from './uber-merchant.gateway';
+import { UberConfigService } from './infrastructure/config/uber-config.service';
+import { UberHttpClient } from './infrastructure/http/uber-http.client';
+import { UberMenuWorkflowCore } from './application/menu/uber-menu.workflow';
+import { UberMerchantService } from './application/merchant/uber-merchant.service';
+import { UberMerchantGateway } from './infrastructure/api/uber-merchant.gateway';
 import {
   CompleteUberOAuthUseCase,
   StartUberOAuthUseCase,
   UberMerchantOAuthService,
-} from './uber-merchant-oauth.service';
+} from './application/merchant/uber-merchant-oauth.service';
 import {
   DiscoverUberStoresUseCase,
   MapUberStoreUseCase,
   UberMerchantStoreMappingService,
-} from './uber-merchant-store-mapping.service';
+} from './application/merchant/uber-merchant-store-mapping.service';
 import {
   DeprovisionUberStoreUseCase,
   ProvisionUberStoreUseCase,
   SyncUberStoreStatusUseCase,
   UberMerchantProvisioningService,
-} from './uber-merchant-provisioning.service';
-import { UberOperationsService } from './uber-operations.service';
-import { UberPrismaAccessService } from './uber-prisma-access.service';
-import { UberOrderService } from './uber-order.service';
-import { UberWebhookService } from './uber-webhook.service';
-import { UberApiGatewayTransport } from '../../infrastructure/uber-api/uber-api.gateway';
+} from './application/merchant/uber-merchant-provisioning.service';
+import { UberOperationsService } from './application/operations/uber-operations.service';
+import { UberPrismaAccessService } from './infrastructure/persistence/uber-prisma-access.service';
+import { UberOrderService } from './application/orders/uber-order.service';
+import { UberWebhookService } from './application/orders/uber-webhook.service';
+import { UberApiGatewayTransport } from './infrastructure/api/uber-api.gateway';
 import {
   UberMenuGateway,
   UberOrderGateway,
-} from '../../infrastructure/uber-api/uber-resource.gateways';
+} from './infrastructure/api/uber-resource.gateways';
 
 const config = () =>
   new UberConfigService({

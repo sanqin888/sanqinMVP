@@ -2,16 +2,16 @@ import { Test } from '@nestjs/testing';
 import { OrderEventsBus } from '../../messaging/order-events.bus';
 import { OrderIngestionService } from '../../orders/order-ingestion.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { UberAuthService } from './uber-auth.service';
-import { UberConfigService } from './uber-config.service';
+import { UberAuthService } from './application/merchant/uber-auth.service';
+import { UberConfigService } from './infrastructure/config/uber-config.service';
 import { UberEatsModule } from './ubereats.module';
-import { UberHttpClient } from './uber-http.client';
-import { UberMenuService } from './uber-menu.service';
-import { UberMerchantService } from './uber-merchant.service';
-import { UberOperationsService } from './uber-operations.service';
-import { UberPrismaAccessService } from './uber-prisma-access.service';
-import { UberOrderService } from './uber-order.service';
-import { UberWebhookService } from './uber-webhook.service';
+import { UberHttpClient } from './infrastructure/http/uber-http.client';
+import { UberMenuService } from './application/menu/uber-menu.service';
+import { UberMerchantService } from './application/merchant/uber-merchant.service';
+import { UberOperationsService } from './application/operations/uber-operations.service';
+import { UberPrismaAccessService } from './infrastructure/persistence/uber-prisma-access.service';
+import { UberOrderService } from './application/orders/uber-order.service';
+import { UberWebhookService } from './application/orders/uber-webhook.service';
 
 const sharedProviders = [
   PrismaService,

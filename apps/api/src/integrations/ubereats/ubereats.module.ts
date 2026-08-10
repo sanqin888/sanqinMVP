@@ -1,67 +1,67 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { AuthModule } from '../../auth/auth.module';
-import { UberAuthService } from './uber-auth.service';
-import { UberEatsOAuthController } from './ubereats-oauth.controller';
-import { UberEatsWebhookController } from './ubereats-webhook.controller';
-import { UberEatsOrdersController } from './ubereats-orders.controller';
-import { UberEatsMenuController } from './ubereats-menu.controller';
-import { UberEatsOperationsController } from './ubereats-operations.controller';
-import { BrowserWriteCsrfGuard } from './ubereats-csrf.guard';
+import { UberAuthService } from './application/merchant/uber-auth.service';
+import { UberEatsOAuthController } from './api/oauth.controller';
+import { UberEatsWebhookController } from './api/webhook.controller';
+import { UberEatsOrdersController } from './api/orders.controller';
+import { UberEatsMenuController } from './api/menu.controller';
+import { UberEatsOperationsController } from './api/operations.controller';
+import { BrowserWriteCsrfGuard } from './api/ubereats-csrf.guard';
 import { MessagingModule } from '../../messaging/messaging.module';
 import { OrdersModule } from '../../orders/orders.module';
-import { UberHttpClient } from './uber-http.client';
-import { UberConfigService } from './uber-config.service';
-import { UberWebhookService } from './uber-webhook.service';
-import { UberOrderService } from './uber-order.service';
-import { UberMenuService } from './uber-menu.service';
-import { UberMenuWorkflowCore } from './uber-menu.workflow';
-import { UberMenuDraftService } from './uber-menu-draft.service';
-import { UberMenuPublishService } from './uber-menu-publish.service';
-import { UberMenuAvailabilityService } from './uber-menu-availability.service';
-import { UberMerchantService } from './uber-merchant.service';
-import { UberMerchantGateway } from './uber-merchant.gateway';
+import { UberHttpClient } from './infrastructure/http/uber-http.client';
+import { UberConfigService } from './infrastructure/config/uber-config.service';
+import { UberWebhookService } from './application/orders/uber-webhook.service';
+import { UberOrderService } from './application/orders/uber-order.service';
+import { UberMenuService } from './application/menu/uber-menu.service';
+import { UberMenuWorkflowCore } from './application/menu/uber-menu.workflow';
+import { UberMenuDraftService } from './application/menu/uber-menu-draft.service';
+import { UberMenuPublishService } from './application/menu/uber-menu-publish.service';
+import { UberMenuAvailabilityService } from './application/menu/uber-menu-availability.service';
+import { UberMerchantService } from './application/merchant/uber-merchant.service';
+import { UberMerchantGateway } from './infrastructure/api/uber-merchant.gateway';
 import {
   CompleteUberOAuthUseCase,
   StartUberOAuthUseCase,
   UberMerchantOAuthService,
-} from './uber-merchant-oauth.service';
+} from './application/merchant/uber-merchant-oauth.service';
 import {
   DiscoverUberStoresUseCase,
   MapUberStoreUseCase,
   UberMerchantStoreMappingService,
-} from './uber-merchant-store-mapping.service';
+} from './application/merchant/uber-merchant-store-mapping.service';
 import {
   DeprovisionUberStoreUseCase,
   ProvisionUberStoreUseCase,
   SyncUberStoreStatusUseCase,
   UberMerchantProvisioningService,
-} from './uber-merchant-provisioning.service';
+} from './application/merchant/uber-merchant-provisioning.service';
 import {
   UberMerchantConnectionRepository,
   UberOAuthStateRepository,
   UberStoreMappingRepository,
-} from './uber-merchant.repositories';
-import { UberOperationsService } from './uber-operations.service';
-import { UberPrismaAccessService } from './uber-prisma-access.service';
-import { UberOrderActionService } from './uber-order-action.service';
-import { UberOrderOutboxService } from './uber-order-outbox.service';
-import { UberOrderStatusSyncService } from './uber-order-status-sync.service';
+} from './infrastructure/persistence/uber-merchant.repositories';
+import { UberOperationsService } from './application/operations/uber-operations.service';
+import { UberPrismaAccessService } from './infrastructure/persistence/uber-prisma-access.service';
+import { UberOrderActionService } from './application/orders/uber-order-action.service';
+import { UberOrderOutboxService } from './application/orders/uber-order-outbox.service';
+import { UberOrderStatusSyncService } from './application/orders/uber-order-status-sync.service';
 import {
   ExecuteUberOrderActionWorker,
   HandleUberOrderCancellationUseCase,
   ImportUberOrderUseCase,
   PersistUberOrderUseCase,
   RequestUberOrderActionUseCase,
-} from './uber-order.use-cases';
-import { UberCredentialVaultService } from '../../infrastructure/crypto/uber-credential-vault.service';
-import { UberApiGatewayTransport } from '../../infrastructure/uber-api/uber-api.gateway';
+} from './application/orders/uber-order.use-cases';
+import { UberCredentialVaultService } from './infrastructure/crypto/uber-credential-vault.service';
+import { UberApiGatewayTransport } from './infrastructure/api/uber-api.gateway';
 import {
   UberMenuGateway,
   UberOrderGateway,
   UberStoreGateway,
   UberMerchantGateway as UberMerchantApiGateway,
-} from '../../infrastructure/uber-api/uber-resource.gateways';
+} from './infrastructure/api/uber-resource.gateways';
 import { UberTelemetryService } from './infrastructure/observability/uber-telemetry.service';
 
 @Module({

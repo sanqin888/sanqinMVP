@@ -2,7 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import { PrismaService } from '../prisma/prisma.service';
 import { PosGateway } from './pos.gateway';
-import { UberMerchantService } from '../integrations/ubereats/uber-merchant.service';
+import { UberMerchantService } from '../integrations/ubereats/application/merchant/uber-merchant.service';
 import { AppLogger } from '../common/app-logger';
 
 const AUTO_UNTIL_PREFIX = '__AUTO_UNTIL__:';

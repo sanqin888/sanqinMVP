@@ -1,4 +1,4 @@
-import type { UberMenuUploadPayload } from '../../integrations/ubereats/uber-menu.types';
+import type { UberMenuUploadPayload } from '../../integrations/ubereats/domain/menu/uber-menu.types';
 export interface PreparedMenuPublish {
   storeId: string;
   uberStoreId: string;
