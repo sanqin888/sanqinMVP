@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { AppLogger } from '../../../../common/app-logger';
 import { UberAuthService } from './uber-token.provider';
@@ -7,6 +7,15 @@ import {
   type UberHttpRequest,
   type UberHttpResult,
 } from './uber-http.client';
+import {
+  UBER_RATE_LIMITER_PORT,
+  type UberRateLimiterPort,
+  type UberRateLimitLease,
+} from './uber-rate-limiter';
+import type {
+  UberApiConfig,
+  UberRateLimitConfig,
+} from '../config/uber-config.service';
 
 type UberGatewayRequestBase = Pick<
   UberHttpRequest,
@@ -45,64 +54,66 @@ export interface UberResourceGateway {
 @Injectable()
 export class UberApiGatewayTransport {
   private readonly logger = new AppLogger(UberApiGatewayTransport.name);
-  private readonly active = new Map<string, number>();
-  private readonly waiters = new Map<string, Array<() => void>>();
-  private readonly concurrencyLimit = this.readConcurrencyLimit();
 
   constructor(
     private readonly http: UberHttpClient,
     private readonly auth: UberAuthService,
-    private readonly config: { apiBaseUrl: string },
+    private readonly config: UberApiConfig & Partial<UberRateLimitConfig>,
+    @Optional()
+    @Inject(UBER_RATE_LIMITER_PORT)
+    private readonly limiter?: UberRateLimiterPort,
   ) {}
 
   async request<T>(request: UberGatewayRequest): Promise<T> {
+    return (await this.execute<T>(request, true)).data;
+  }
+
+  async inspect<T>(request: UberGatewayRequest): Promise<UberHttpResult<T>> {
+    return this.execute<T>(request, false);
+  }
+
+  private async execute<T>(
+    request: UberGatewayRequest,
+    translateError: boolean,
+  ): Promise<UberHttpResult<T>> {
     this.assertIdempotencyKey(request);
-    const release = await this.acquire(request);
+    const path = this.normalizePath(request.path);
+    const baseUrl = this.normalizeBaseUrl(this.config.apiBaseUrl);
+    const requestId = randomUUID();
+    const partition = request.partitionKey?.trim() || 'global';
+    const lease = await this.acquire(partition, request.operation);
     const startedAt = Date.now();
+    let status = 0;
     try {
-      const path = this.normalizePath(request.path);
-      const requestId = randomUUID();
       let token =
         request.accessToken ?? (await this.auth.getAccessToken(request.scope));
-      let result = await this.send<T>(request, path, token, requestId);
+      let result = await this.send<T>(request, baseUrl, path, token, requestId);
       if (
         (result.response.status === 401 || result.response.status === 403) &&
         !request.accessToken &&
         typeof this.auth.forceRefreshAccessToken === 'function'
       ) {
         token = await this.auth.forceRefreshAccessToken(request.scope);
-        result = await this.send<T>(request, path, token, requestId);
+        result = await this.send<T>(request, baseUrl, path, token, requestId);
       }
-      this.http.ensureSuccess(result, request.operation);
-      this.logger.log(
-        `[uber gateway metric] operation=${request.operation} partition=${this.partition(request)} requestId=${requestId} status=${result.response.status} latencyMs=${Date.now() - startedAt}`,
-      );
-      return result.data;
+      status = result.response.status;
+      lease.feedback({
+        status,
+        retryAfter: result.response.headers.get('retry-after'),
+      });
+      if (translateError) this.http.ensureSuccess(result, request.operation);
+      return result;
     } finally {
-      release();
+      this.logger.log(
+        `[uber gateway metric] operation=${request.operation} partition=${partition} requestId=${requestId} status=${status || 'error'} latencyMs=${Date.now() - startedAt}`,
+      );
+      lease.release();
     }
-  }
-
-  async inspect<T>(request: UberGatewayRequest): Promise<UberHttpResult<T>> {
-    this.assertIdempotencyKey(request);
-    const path = this.normalizePath(request.path);
-    const requestId = randomUUID();
-    let token =
-      request.accessToken ?? (await this.auth.getAccessToken(request.scope));
-    let result = await this.send<T>(request, path, token, requestId);
-    if (
-      (result.response.status === 401 || result.response.status === 403) &&
-      !request.accessToken &&
-      typeof this.auth.forceRefreshAccessToken === 'function'
-    ) {
-      token = await this.auth.forceRefreshAccessToken(request.scope);
-      result = await this.send<T>(request, path, token, requestId);
-    }
-    return result;
   }
 
   private send<T>(
     request: UberGatewayRequest,
+    baseUrl: string,
     path: string,
     token: string,
     requestId: string,
@@ -110,7 +121,7 @@ export class UberApiGatewayTransport {
     return this.http.request<T>({
       ...request,
       path,
-      baseUrl: this.normalizeBaseUrl(this.config.apiBaseUrl),
+      baseUrl,
       accessToken: token,
       returnErrorResponse: true,
       headers: { 'X-Request-ID': requestId, ...request.headers },
@@ -133,33 +144,20 @@ export class UberApiGatewayTransport {
       );
   }
 
-  private partition(request: UberGatewayRequest): string {
-    return `${request.operation}:${request.partitionKey ?? 'global'}`;
-  }
-
-  private async acquire(request: UberGatewayRequest): Promise<() => void> {
-    const key = this.partition(request);
-    if ((this.active.get(key) ?? 0) >= this.concurrencyLimit) {
-      await new Promise<void>((resolve) => {
-        const queue = this.waiters.get(key) ?? [];
-        queue.push(resolve);
-        this.waiters.set(key, queue);
+  private acquire(
+    partitionKey: string,
+    operation: string,
+  ): Promise<UberRateLimitLease> {
+    if (!this.limiter)
+      return Promise.resolve({
+        release: () => undefined,
+        feedback: () => undefined,
       });
-    }
-    this.active.set(key, (this.active.get(key) ?? 0) + 1);
-    return () => {
-      this.active.set(key, Math.max(0, (this.active.get(key) ?? 1) - 1));
-      this.waiters.get(key)?.shift()?.();
-    };
-  }
-
-  private readConcurrencyLimit(): number {
-    const configured = Number(
-      process.env.UBER_EATS_API_CONCURRENCY_PER_PARTITION,
-    );
-    return Number.isInteger(configured) && configured > 0
-      ? Math.min(configured, 50)
-      : 4;
+    return this.limiter.acquire({
+      partitionKey,
+      operation,
+      weight: this.config.operationWeight?.(operation) ?? 1,
+    });
   }
 
   private normalizeBaseUrl(value: string): string {

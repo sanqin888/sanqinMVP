@@ -55,6 +55,10 @@ import {
 import { UberCredentialVaultService } from './infrastructure/crypto/uber-credential-vault.service';
 import { UberApiGatewayTransport } from './infrastructure/uber-api/uber-api.gateway';
 import {
+  ProcessUberRateLimiter,
+  UBER_RATE_LIMITER_PORT,
+} from './infrastructure/uber-api/uber-rate-limiter';
+import {
   UberMenuGateway,
   UberOrderGateway,
   UberStoreGateway,
@@ -180,6 +184,8 @@ import {
     },
     UberAuthService,
     UberHttpClient,
+    ProcessUberRateLimiter,
+    { provide: UBER_RATE_LIMITER_PORT, useExisting: ProcessUberRateLimiter },
     UberApiGatewayTransport,
     UberMerchantResourceGateway,
     UberStoreGateway,

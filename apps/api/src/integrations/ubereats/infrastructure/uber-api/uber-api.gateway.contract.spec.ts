@@ -7,6 +7,48 @@ const result = (status: number, data: Record<string, unknown> = {}) => ({
 });
 
 describe('Uber API gateway contract', () => {
+  it('routes inspect through the same rate limiter and request-id pipeline', async () => {
+    const inspected = result(200, { ok: true });
+    const release = jest.fn();
+    const feedback = jest.fn();
+    const limiter = {
+      acquire: jest.fn().mockResolvedValue({ release, feedback }),
+    };
+    const http = {
+      request: jest.fn().mockResolvedValue(inspected),
+      ensureSuccess: jest.fn(),
+    };
+    const config = {
+      apiBaseUrl: 'https://api.uber.com',
+      operationWeight: () => 3,
+    };
+    const gateway = new UberApiGatewayTransport(
+      http as never,
+      { getAccessToken: jest.fn().mockResolvedValue('token') } as never,
+      config,
+      limiter,
+    );
+
+    await expect(
+      gateway.inspect({
+        path: '/v1/eats/stores/1',
+        operation: 'uber.store.inspect',
+        scope: 'eats.store',
+        partitionKey: 'store-1',
+      }),
+    ).resolves.toBe(inspected);
+    expect(limiter.acquire).toHaveBeenCalledWith({
+      partitionKey: 'store-1',
+      operation: 'uber.store.inspect',
+      weight: 3,
+    });
+    expect(http.request.mock.calls[0][0].headers['X-Request-ID']).toEqual(
+      expect.any(String),
+    );
+    expect(feedback).toHaveBeenCalledWith({ status: 200, retryAfter: null });
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
   it('refreshes the token once on 401/403 without changing the idempotency key', async () => {
     const http = {
       request: jest

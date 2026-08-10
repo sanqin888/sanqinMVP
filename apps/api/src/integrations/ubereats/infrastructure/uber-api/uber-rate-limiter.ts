@@ -1,0 +1,185 @@
+import { Inject, Injectable } from '@nestjs/common';
+import type { UberRateLimitConfig } from '../config/uber-config.service';
+import { UberConfigService } from '../config/uber-config.service';
+
+export const UBER_RATE_LIMITER_PORT = Symbol('UBER_RATE_LIMITER_PORT');
+
+export type UberRateLimitRequest = {
+  partitionKey: string;
+  operation: string;
+  weight: number;
+};
+export type UberRateLimitFeedback = {
+  status: number;
+  retryAfter: string | null;
+};
+export interface UberRateLimitLease {
+  release(): void;
+  feedback(value: UberRateLimitFeedback): void;
+}
+export interface UberRateLimiterPort {
+  acquire(request: UberRateLimitRequest): Promise<UberRateLimitLease>;
+}
+
+export class UberRateLimitRejectedError extends Error {
+  constructor(
+    readonly reason: 'queue_full' | 'wait_timeout',
+    partition: string,
+  ) {
+    super(
+      `Uber API 限流器拒绝请求（reason=${reason}, partition=${partition}）`,
+    );
+    this.name = 'UberRateLimitRejectedError';
+  }
+}
+
+type Waiter = {
+  request: UberRateLimitRequest;
+  resolve: (lease: UberRateLimitLease) => void;
+  reject: (error: Error) => void;
+  timeout: ReturnType<typeof setTimeout>;
+};
+type Partition = {
+  active: number;
+  tokens: number;
+  updatedAt: number;
+  cooldownUntil: number;
+  queue: Waiter[];
+  wakeup?: ReturnType<typeof setTimeout>;
+};
+
+/**
+ * Process-local token bucket. Deployment constraint: quotas are not shared across
+ * replicas. Until a shared atomic quota coordinator is available, configure the
+ * upstream quota divided by replica count; overload is rejected by bounded queue.
+ */
+@Injectable()
+export class ProcessUberRateLimiter implements UberRateLimiterPort {
+  private readonly partitions = new Map<string, Partition>();
+  constructor(
+    @Inject(UberConfigService) private readonly config: UberRateLimitConfig,
+  ) {}
+
+  acquire(request: UberRateLimitRequest): Promise<UberRateLimitLease> {
+    const state = this.state(request.partitionKey);
+    this.refill(state);
+    if (this.canRun(state, request.weight))
+      return Promise.resolve(this.grant(state, request));
+    if (state.queue.length >= this.config.uberApiQueueLengthPerPartition) {
+      return Promise.reject(
+        new UberRateLimitRejectedError('queue_full', request.partitionKey),
+      );
+    }
+    return new Promise((resolve, reject) => {
+      const waiter: Waiter = {
+        request,
+        resolve,
+        reject,
+        timeout: setTimeout(() => {
+          const index = state.queue.indexOf(waiter);
+          if (index >= 0) state.queue.splice(index, 1);
+          reject(
+            new UberRateLimitRejectedError(
+              'wait_timeout',
+              request.partitionKey,
+            ),
+          );
+          this.schedule(state);
+        }, this.config.uberApiQueueWaitTimeoutMs),
+      };
+      state.queue.push(waiter);
+      this.schedule(state);
+    });
+  }
+
+  private state(key: string): Partition {
+    let state = this.partitions.get(key);
+    if (!state) {
+      state = {
+        active: 0,
+        tokens: this.config.uberApiBurst,
+        updatedAt: Date.now(),
+        cooldownUntil: 0,
+        queue: [],
+      };
+      this.partitions.set(key, state);
+    }
+    return state;
+  }
+  private refill(state: Partition): void {
+    const now = Date.now();
+    state.tokens = Math.min(
+      this.config.uberApiBurst,
+      state.tokens +
+        ((now - state.updatedAt) / 1000) * this.config.uberApiRatePerSecond,
+    );
+    state.updatedAt = now;
+  }
+  private canRun(state: Partition, weight: number): boolean {
+    return (
+      state.active < this.config.uberApiConcurrencyPerPartition &&
+      state.tokens >= weight &&
+      Date.now() >= state.cooldownUntil
+    );
+  }
+  private grant(
+    state: Partition,
+    request: UberRateLimitRequest,
+  ): UberRateLimitLease {
+    state.tokens -= request.weight;
+    state.active += 1;
+    let released = false;
+    return {
+      release: () => {
+        if (!released) {
+          released = true;
+          state.active -= 1;
+          this.drain(state);
+        }
+      },
+      feedback: ({ status, retryAfter }) => {
+        if (status !== 429) return;
+        state.cooldownUntil = Math.max(
+          state.cooldownUntil,
+          Date.now() + this.retryAfterMs(retryAfter),
+        );
+        this.schedule(state);
+      },
+    };
+  }
+  private drain(state: Partition): void {
+    this.refill(state);
+    while (
+      state.queue.length &&
+      this.canRun(state, state.queue[0].request.weight)
+    ) {
+      const waiter = state.queue.shift()!;
+      clearTimeout(waiter.timeout);
+      waiter.resolve(this.grant(state, waiter.request));
+    }
+    this.schedule(state);
+  }
+  private schedule(state: Partition): void {
+    if (state.wakeup) clearTimeout(state.wakeup);
+    if (
+      !state.queue.length ||
+      state.active >= this.config.uberApiConcurrencyPerPartition
+    )
+      return;
+    const tokenDelay = Math.max(
+      0,
+      ((state.queue[0].request.weight - state.tokens) /
+        this.config.uberApiRatePerSecond) *
+        1000,
+    );
+    const delay = Math.max(1, tokenDelay, state.cooldownUntil - Date.now());
+    state.wakeup = setTimeout(() => this.drain(state), delay);
+  }
+  private retryAfterMs(value: string | null): number {
+    if (!value) return 1_000;
+    const seconds = Number(value);
+    if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+    const date = Date.parse(value);
+    return Number.isFinite(date) ? Math.max(0, date - Date.now()) : 1_000;
+  }
+}

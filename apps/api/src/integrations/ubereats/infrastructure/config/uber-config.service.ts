@@ -6,6 +6,15 @@ export interface UberApiConfig {
   readonly apiBaseUrl: string;
 }
 
+export interface UberRateLimitConfig {
+  readonly uberApiConcurrencyPerPartition: number;
+  readonly uberApiRatePerSecond: number;
+  readonly uberApiBurst: number;
+  readonly uberApiQueueLengthPerPartition: number;
+  readonly uberApiQueueWaitTimeoutMs: number;
+  operationWeight(operation: string): number;
+}
+
 export interface UberOrderConfig extends UberApiConfig {
   readonly resourceHrefAllowedOrigins: string;
 }
@@ -47,6 +56,12 @@ export class UberConfigService {
   readonly menuConfirmTimeoutMs: number;
   readonly menuConfirmInitialDelayMs: number;
   readonly menuConfirmMaxDelayMs: number;
+  readonly uberApiConcurrencyPerPartition: number;
+  readonly uberApiRatePerSecond: number;
+  readonly uberApiBurst: number;
+  readonly uberApiQueueLengthPerPartition: number;
+  readonly uberApiQueueWaitTimeoutMs: number;
+  private readonly uberApiOperationWeights: Readonly<Record<string, number>>;
 
   constructor(env: UberEnvironment = process.env) {
     this.clientId = this.read(env, 'UBER_EATS_CLIENT_ID');
@@ -124,6 +139,47 @@ export class UberConfigService {
       configuredMaxDelay,
       this.menuConfirmTimeoutMs,
     );
+
+    this.uberApiConcurrencyPerPartition = this.readInteger(
+      env,
+      'UBER_EATS_API_CONCURRENCY_PER_PARTITION',
+      4,
+      1,
+      50,
+    );
+    this.uberApiRatePerSecond = this.readInteger(
+      env,
+      'UBER_EATS_API_RATE_PER_SECOND',
+      20,
+      1,
+      10_000,
+    );
+    this.uberApiBurst = this.readInteger(
+      env,
+      'UBER_EATS_API_BURST',
+      40,
+      1,
+      10_000,
+    );
+    this.uberApiQueueLengthPerPartition = this.readInteger(
+      env,
+      'UBER_EATS_API_QUEUE_LENGTH_PER_PARTITION',
+      100,
+      0,
+      100_000,
+    );
+    this.uberApiQueueWaitTimeoutMs = this.readInteger(
+      env,
+      'UBER_EATS_API_QUEUE_WAIT_TIMEOUT_MS',
+      5_000,
+      1,
+      300_000,
+    );
+    this.uberApiOperationWeights = this.readOperationWeights(env);
+  }
+
+  operationWeight(operation: string): number {
+    return this.uberApiOperationWeights[operation] ?? 1;
   }
 
   /** Read only at the OAuth state creation/consumption capability boundary. */
@@ -173,6 +229,55 @@ export class UberConfigService {
       );
     }
     return value;
+  }
+
+  private readInteger(
+    env: UberEnvironment,
+    key: string,
+    defaultValue: number,
+    minimum: number,
+    maximum: number,
+  ): number {
+    const raw = env[key];
+    if (raw === undefined) return defaultValue;
+    const value = Number(raw);
+    if (
+      !raw.trim() ||
+      !Number.isInteger(value) ||
+      value < minimum ||
+      value > maximum
+    ) {
+      throw new Error(
+        `Uber 配置 ${key} 必须是 ${minimum} 到 ${maximum} 之间的整数`,
+      );
+    }
+    return value;
+  }
+
+  private readOperationWeights(
+    env: UberEnvironment,
+  ): Readonly<Record<string, number>> {
+    const raw = this.read(env, 'UBER_EATS_API_OPERATION_WEIGHTS');
+    if (!raw) return {};
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object')
+        throw new Error();
+      for (const [operation, weight] of Object.entries(parsed)) {
+        if (
+          !operation ||
+          !Number.isInteger(weight) ||
+          (weight as number) < 1 ||
+          (weight as number) > 10_000
+        )
+          throw new Error();
+      }
+      return Object.freeze(parsed as Record<string, number>);
+    } catch {
+      throw new Error(
+        'Uber 配置 UBER_EATS_API_OPERATION_WEIGHTS 必须是值为正整数的 JSON 对象',
+      );
+    }
   }
 
   private validateHttpUrl(
