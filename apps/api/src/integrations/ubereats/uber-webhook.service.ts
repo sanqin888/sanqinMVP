@@ -4,11 +4,11 @@ import {
   Injectable,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'crypto';
-import { AppLogger } from '../../common/app-logger';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UberWebhookEnvelopeDto } from './dto/uber-webhook-envelope.dto';
 import {
@@ -25,6 +25,8 @@ import { UberOrderService } from './uber-order.service';
 import { UberPrismaAccessService } from './uber-prisma-access.service';
 import type { UberWebhookInput } from './uber-webhook.types';
 
+import { UberTelemetryService } from './infrastructure/observability/uber-telemetry.service';
+
 @Injectable()
 export class UberWebhookService implements OnModuleInit, OnModuleDestroy {
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
@@ -32,7 +34,7 @@ export class UberWebhookService implements OnModuleInit, OnModuleDestroy {
   private static readonly LEASE_MS = 60_000;
   private workerTimer?: NodeJS.Timeout;
   private workerRunning = false;
-  private readonly logger = new AppLogger(UberWebhookService.name);
+  private readonly telemetry: UberTelemetryService;
   private readonly webhookSigningKey: string;
 
   constructor(
@@ -41,7 +43,9 @@ export class UberWebhookService implements OnModuleInit, OnModuleDestroy {
     private readonly orders: UberOrderService,
     private readonly menu: UberMenuService,
     private readonly prismaAccess: UberPrismaAccessService,
+    @Optional() telemetry?: UberTelemetryService,
   ) {
+    this.telemetry = telemetry ?? new UberTelemetryService(prisma);
     this.webhookSigningKey = config.getWebhookSigningKey();
   }
 
@@ -82,7 +86,8 @@ export class UberWebhookService implements OnModuleInit, OnModuleDestroy {
       body,
     );
     if (!persisted) {
-      this.logger.warn(
+      this.telemetry.workflowLog(
+        'warn',
         `[ubereats webhook] duplicate ignored eventType=${eventType} eventId=${eventId}`,
       );
       return;
@@ -152,7 +157,7 @@ export class UberWebhookService implements OnModuleInit, OnModuleDestroy {
           break;
 
         default:
-          await this.captureEvent('ubereats_webhook_unhandled', {
+          await this.telemetry.captureEvent('ubereats_webhook_unhandled', {
             eventType,
             eventId,
             orderRelated: this.isOrderRelatedEvent(eventType),
@@ -191,16 +196,22 @@ export class UberWebhookService implements OnModuleInit, OnModuleDestroy {
         retryable,
       });
       if (!retryable) {
-        await this.captureEvent('ubereats_webhook_non_retryable_failed', {
-          eventType,
-          eventId,
-          ...(nonRetryable
-            ? { status: error.status, detail: error.detail }
-            : this.safeStructuredError(error)),
-        });
+        await this.telemetry.captureEvent(
+          'ubereats_webhook_non_retryable_failed',
+          {
+            eventType,
+            eventId,
+            ...(nonRetryable
+              ? { status: error.status, detail: error.detail }
+              : this.safeStructuredError(error)),
+          },
+        );
         return;
       }
-      this.logger.error(`[ubereats webhook worker] eventId=${eventId} failed`);
+      this.telemetry.workflowLog(
+        'error',
+        `[ubereats webhook worker] eventId=${eventId} failed`,
+      );
     }
   }
 
@@ -213,7 +224,8 @@ export class UberWebhookService implements OnModuleInit, OnModuleDestroy {
       await this.menu.recoverTimedOutPublications();
       await this.reportQueueHealth();
     } catch (error) {
-      this.logger.error(
+      this.telemetry.workflowLog(
+        'error',
         `[ubereats recovery] ${this.summarizeWebhookError(error)}`,
       );
     } finally {
@@ -241,13 +253,17 @@ export class UberWebhookService implements OnModuleInit, OnModuleDestroy {
         Number(value ?? 0),
       ]),
     );
-    this.logger.log(`[ubereats queue metrics] ${JSON.stringify(normalized)}`);
+    this.telemetry.workflowLog(
+      'log',
+      `[ubereats queue metrics] ${JSON.stringify(normalized)}`,
+    );
     if (
       (normalized.webhookBacklog ?? 0) + (normalized.actionBacklog ?? 0) >=
         100 ||
       (normalized.recentFailures ?? 0) >= 5
     ) {
-      this.logger.error(
+      this.telemetry.workflowLog(
+        'error',
         `[ubereats queue alert] backlog_or_consecutive_failures ${JSON.stringify(normalized)}`,
       );
     }
@@ -264,7 +280,7 @@ export class UberWebhookService implements OnModuleInit, OnModuleDestroy {
       await this.updateStoreProvisioningState(storeId, true);
     }
 
-    await this.captureEvent('ubereats_store_provisioned', {
+    await this.telemetry.captureEvent('ubereats_store_provisioned', {
       eventType,
       eventId,
       storeId: storeId ?? 'unknown',
@@ -282,7 +298,7 @@ export class UberWebhookService implements OnModuleInit, OnModuleDestroy {
       await this.updateStoreProvisioningState(storeId, false);
     }
 
-    await this.captureEvent('ubereats_store_deprovisioned', {
+    await this.telemetry.captureEvent('ubereats_store_deprovisioned', {
       eventType,
       eventId,
       storeId: storeId ?? 'unknown',
@@ -296,7 +312,7 @@ export class UberWebhookService implements OnModuleInit, OnModuleDestroy {
   ) {
     const storeId = this.extractStoreId(payload);
 
-    await this.captureEvent('ubereats_store_status_changed', {
+    await this.telemetry.captureEvent('ubereats_store_status_changed', {
       eventType,
       eventId,
       storeId: storeId ?? 'unknown',
@@ -318,7 +334,8 @@ export class UberWebhookService implements OnModuleInit, OnModuleDestroy {
     });
 
     if (!updated.count) {
-      this.logger.warn(
+      this.telemetry.workflowLog(
+        'warn',
         `[ubereats webhook] store mapping not found for provisioning update storeId=${storeId} isProvisioned=${isProvisioned}`,
       );
     }
@@ -332,16 +349,6 @@ export class UberWebhookService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  private async captureEvent(eventName: string, payload: Prisma.JsonObject) {
-    await this.prisma.opsEvent.create({
-      data: {
-        eventName,
-        source: 'ubereats',
-        payload,
-      },
-    });
-  }
-
   private verifyWebhookSignature(
     headers: Record<string, unknown>,
     rawBody: string | Buffer,
@@ -350,7 +357,8 @@ export class UberWebhookService implements OnModuleInit, OnModuleDestroy {
     // and sends the lowercase hexadecimal HMAC-SHA256 in X-Uber-Signature.
     const receivedSignature = this.readHeader(headers, 'x-uber-signature');
     if (!receivedSignature) {
-      this.logger.warn(
+      this.telemetry.workflowLog(
+        'warn',
         'Uber webhook signature verification failed signaturePresent=false',
       );
       throw new UnauthorizedException('Missing Uber signature header');
@@ -362,7 +370,8 @@ export class UberWebhookService implements OnModuleInit, OnModuleDestroy {
       ? rawBody.length
       : Buffer.byteLength(rawBody, 'utf8');
     if (!/^[0-9a-f]{64}$/.test(normalizedSignature)) {
-      this.logger.warn(
+      this.telemetry.workflowLog(
+        'warn',
         `Uber webhook signature verification failed signaturePresent=true signatureLength=${signatureLength} signatureEncoding=invalid rawBodyBytes=${rawBodyBytes}`,
       );
       throw new UnauthorizedException('Invalid Uber signature');
@@ -382,7 +391,8 @@ export class UberWebhookService implements OnModuleInit, OnModuleDestroy {
       `signaturePresent=true signatureLength=${signatureLength} signatureEncoding=hex rawBodyBytes=${rawBodyBytes} ` +
       `currentSecretMatched=${currentSecretMatched}`;
 
-    this.logger.warn(
+    this.telemetry.workflowLog(
+      'warn',
       `Uber webhook signature verification failed ${diagnostic}`,
     );
     throw new UnauthorizedException('Invalid Uber signature');

@@ -12,7 +12,6 @@ import {
   type Prisma,
 } from '@prisma/client';
 import { createHash } from 'crypto';
-import { AppLogger } from '../../common/app-logger';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UberMenuNotificationDto } from './dto/uber-menu-notification.dto';
 import { UberAuthService } from './uber-auth.service';
@@ -64,10 +63,12 @@ import {
 } from '../../domain/menu/uber-menu-graph.service';
 import { UberImageValidator } from './uber-image.validator';
 
+import { UberTelemetryService } from './infrastructure/observability/uber-telemetry.service';
+
 @Injectable()
 export class UberMenuWorkflowCore {
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
-  private readonly logger = new AppLogger(UberMenuWorkflowCore.name);
+  private readonly telemetry: UberTelemetryService;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -78,7 +79,10 @@ export class UberMenuWorkflowCore {
     private readonly httpClient: UberHttpClient,
     @Optional()
     private readonly credentialVault = new UberCredentialVaultService(),
-  ) {}
+    @Optional() telemetry?: UberTelemetryService,
+  ) {
+    this.telemetry = telemetry ?? new UberTelemetryService(prisma);
+  }
 
   validateUberMenuPayload(payload: UberMenuUploadPayload) {
     return validateUberMenuPayload(payload);
@@ -102,7 +106,8 @@ export class UberMenuWorkflowCore {
       },
     );
     if (result.count > 0) {
-      this.logger.error(
+      this.telemetry.workflowLog(
+        'error',
         `[ubereats menu recovery] timedOutSubmitted=${result.count}`,
       );
     }
@@ -227,7 +232,7 @@ export class UberMenuWorkflowCore {
       },
     });
 
-    await this.captureEvent('ubereats_price_book_item_upserted', {
+    await this.telemetry.captureEvent('ubereats_price_book_item_upserted', {
       storeId: normalizedStoreId,
       menuItemStableId: input.menuItemStableId,
       priceCents: row.priceCents,
@@ -276,7 +281,7 @@ export class UberMenuWorkflowCore {
       },
     });
 
-    await this.captureEvent('ubereats_option_item_config_upserted', {
+    await this.telemetry.captureEvent('ubereats_option_item_config_upserted', {
       storeId: normalizedStoreId,
       optionChoiceStableId: input.optionChoiceStableId,
       priceDeltaCents: row.priceDeltaCents,
@@ -716,12 +721,15 @@ export class UberMenuWorkflowCore {
       update: { isBound: true },
     });
 
-    await this.captureEvent('ubereats_draft_option_child_group_bound', {
-      storeId: normalizedStoreId,
-      optionItemId,
-      groupId,
-      mode: 'uber_binding_only',
-    });
+    await this.telemetry.captureEvent(
+      'ubereats_draft_option_child_group_bound',
+      {
+        storeId: normalizedStoreId,
+        optionItemId,
+        groupId,
+        mode: 'uber_binding_only',
+      },
+    );
 
     return { ok: true, storeId: normalizedStoreId, optionItemId, groupId };
   }
@@ -765,12 +773,15 @@ export class UberMenuWorkflowCore {
       update: { isBound: false },
     });
 
-    await this.captureEvent('ubereats_draft_option_child_group_unbound', {
-      storeId: normalizedStoreId,
-      optionItemId,
-      groupId,
-      isBound: row.isBound,
-    });
+    await this.telemetry.captureEvent(
+      'ubereats_draft_option_child_group_unbound',
+      {
+        storeId: normalizedStoreId,
+        optionItemId,
+        groupId,
+        isBound: row.isBound,
+      },
+    );
 
     return {
       ok: true,
@@ -920,7 +931,7 @@ export class UberMenuWorkflowCore {
     }
 
     if (input.dryRun) {
-      await this.captureEvent('ubereats_menu_publish_dry_run', {
+      await this.telemetry.captureEvent('ubereats_menu_publish_dry_run', {
         storeId: normalizedStoreId,
         uberStoreId,
         summary: summary as unknown as Prisma.JsonValue,
@@ -985,13 +996,14 @@ export class UberMenuWorkflowCore {
           uberStoreId,
           payload,
         ).catch((error) =>
-          this.logger.error(
+          this.telemetry.workflowLog(
+            'error',
             `[ubereats menu] confirmation task failed versionId=${version.id}: ${error instanceof Error ? error.message : String(error)}`,
           ),
         );
       }
 
-      await this.captureEvent('ubereats_menu_published', {
+      await this.telemetry.captureEvent('ubereats_menu_published', {
         storeId: normalizedStoreId,
         uberStoreId,
         versionStableId: version.versionStableId,
@@ -1119,12 +1131,15 @@ export class UberMenuWorkflowCore {
       : stores.some((store) => store.status === 'PENDING')
         ? 'PENDING'
         : 'SKIPPED_NOT_PUBLISHED';
-    await this.captureEvent('ubereats_menu_item_availability_sync_requested', {
-      menuItemStableId: input.menuItemStableId,
-      isAvailable: input.isAvailable,
-      status,
-      stores,
-    });
+    await this.telemetry.captureEvent(
+      'ubereats_menu_item_availability_sync_requested',
+      {
+        menuItemStableId: input.menuItemStableId,
+        isAvailable: input.isAvailable,
+        status,
+        stores,
+      },
+    );
     return { status, stores };
   }
 
@@ -1179,12 +1194,15 @@ export class UberMenuWorkflowCore {
       });
     }
 
-    await this.captureEvent('ubereats_option_item_availability_synced', {
-      storeId: requestedStoreId ?? null,
-      optionChoiceStableId: input.optionChoiceStableId,
-      isAvailable: input.isAvailable,
-      stores,
-    });
+    await this.telemetry.captureEvent(
+      'ubereats_option_item_availability_synced',
+      {
+        storeId: requestedStoreId ?? null,
+        optionChoiceStableId: input.optionChoiceStableId,
+        isAvailable: input.isAvailable,
+        stores,
+      },
+    );
 
     return {
       ok: true,
@@ -1269,7 +1287,7 @@ export class UberMenuWorkflowCore {
       rawStoresSnapshot: row.rawStoresSnapshot,
     });
 
-    await this.captureEvent('ubereats_merchant_oauth_refreshed', {
+    await this.telemetry.captureEvent('ubereats_merchant_oauth_refreshed', {
       merchantUberUserId: row.merchantUberUserId,
       scope: refreshed.scope ?? '',
       tokenType: refreshed.tokenType ?? '',
@@ -1324,7 +1342,7 @@ export class UberMenuWorkflowCore {
   ) {
     const notification = UberMenuNotificationDto.parse(payload);
     if (!notification) {
-      await this.captureEvent('ubereats_menu_notification_invalid', {
+      await this.telemetry.captureEvent('ubereats_menu_notification_invalid', {
         eventType,
         eventId,
       });
@@ -1375,7 +1393,7 @@ export class UberMenuWorkflowCore {
       );
     }
 
-    await this.captureEvent('ubereats_menu_notification_processed', {
+    await this.telemetry.captureEvent('ubereats_menu_notification_processed', {
       eventType,
       eventId,
       uberStoreId: notification.storeId,
@@ -2310,7 +2328,7 @@ export class UberMenuWorkflowCore {
     } catch (error) {
       // A transient read failure does not prove that asynchronous processing
       // failed. Preserve SUBMITTED so a later refresh/reconciliation can retry.
-      await this.captureEvent('ubereats_menu_confirmation_pending', {
+      await this.telemetry.captureEvent('ubereats_menu_confirmation_pending', {
         uberStoreId,
         reason: error instanceof Error ? error.message : `${error}`,
       });
@@ -2367,7 +2385,7 @@ export class UberMenuWorkflowCore {
         },
       },
     });
-    await this.captureEvent('ubereats_menu_confirmation_timed_out', {
+    await this.telemetry.captureEvent('ubereats_menu_confirmation_timed_out', {
       versionId,
       uberStoreId,
       timeoutMs,
@@ -2619,16 +2637,6 @@ export class UberMenuWorkflowCore {
     if (!choice) {
       throw new BadRequestException(`选项 ${optionChoiceStableId} 不存在`);
     }
-  }
-
-  private async captureEvent(eventName: string, payload: Prisma.JsonObject) {
-    await this.prisma.opsEvent.create({
-      data: {
-        eventName,
-        source: 'ubereats',
-        payload,
-      },
-    });
   }
 
   private summarizeWebhookError(error: unknown): string {

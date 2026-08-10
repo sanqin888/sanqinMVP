@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Optional } from '@nestjs/common';
 import {
   Channel,
   OrderStatus,
@@ -7,7 +7,6 @@ import {
   UberOpsTicketType,
   type Prisma,
 } from '@prisma/client';
-import { AppLogger } from '../../common/app-logger';
 import { PrismaService } from '../../prisma/prisma.service';
 import { normalizeUberStoreId } from './uber-integration.utils';
 import { UberMenuService } from './uber-menu.service';
@@ -23,10 +22,12 @@ import type {
 import { UberOrderService } from './uber-order.service';
 import { UberPrismaAccessService } from './uber-prisma-access.service';
 
+import { UberTelemetryService } from './infrastructure/observability/uber-telemetry.service';
+
 @Injectable()
 export class UberOperationsService {
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
-  private readonly logger = new AppLogger(UberOperationsService.name);
+  private readonly telemetry: UberTelemetryService;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -34,7 +35,10 @@ export class UberOperationsService {
     private readonly menu: UberMenuService,
     private readonly merchant: UberMerchantService,
     private readonly prismaAccess: UberPrismaAccessService,
-  ) {}
+    @Optional() telemetry?: UberTelemetryService,
+  ) {
+    this.telemetry = telemetry ?? new UberTelemetryService(prisma);
+  }
 
   async generateReconciliationReport(input: GenerateReconciliationReportInput) {
     const normalizedStoreId = normalizeUberStoreId(input.storeId);
@@ -111,11 +115,14 @@ export class UberOperationsService {
       },
     });
 
-    await this.captureEvent('ubereats_reconciliation_report_generated', {
-      storeId: normalizedStoreId,
-      reportStableId: report.reportStableId,
-      ...summary,
-    });
+    await this.telemetry.captureEvent(
+      'ubereats_reconciliation_report_generated',
+      {
+        storeId: normalizedStoreId,
+        reportStableId: report.reportStableId,
+        ...summary,
+      },
+    );
 
     return {
       ok: true,
@@ -158,8 +165,14 @@ export class UberOperationsService {
   async getReconciliationSummary(storeId?: string) {
     const normalizedStoreId = normalizeUberStoreId(storeId);
     const [count, latest] = await Promise.all([
-      this.prisma.uberReconciliationReport.count({ where: { storeId: normalizedStoreId } }),
-      this.prisma.uberReconciliationReport.findFirst({ where: { storeId: normalizedStoreId }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } }),
+      this.prisma.uberReconciliationReport.count({
+        where: { storeId: normalizedStoreId },
+      }),
+      this.prisma.uberReconciliationReport.findFirst({
+        where: { storeId: normalizedStoreId },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      }),
     ]);
     return { count, updatedAt: latest?.createdAt ?? null };
   }
@@ -198,7 +211,7 @@ export class UberOperationsService {
       },
     });
 
-    await this.captureEvent('ubereats_ops_ticket_created', {
+    await this.telemetry.captureEvent('ubereats_ops_ticket_created', {
       storeId: normalizedStoreId,
       ticketStableId: ticket.ticketStableId,
       type: input.type,
@@ -248,7 +261,11 @@ export class UberOperationsService {
     const where = { storeId: normalizedStoreId, ...(status ? { status } : {}) };
     const [count, latest] = await Promise.all([
       this.prismaAccess.uberOpsTicketRepository.count({ where }),
-      this.prismaAccess.uberOpsTicketRepository.findFirst({ where, orderBy: { updatedAt: 'desc' }, select: { updatedAt: true } }),
+      this.prismaAccess.uberOpsTicketRepository.findFirst({
+        where,
+        orderBy: { updatedAt: 'desc' },
+        select: { updatedAt: true },
+      }),
     ]);
     return { count, updatedAt: latest?.updatedAt ?? null };
   }
@@ -324,7 +341,7 @@ export class UberOperationsService {
       },
     });
 
-    await this.captureEvent('ubereats_ops_ticket_retried', {
+    await this.telemetry.captureEvent('ubereats_ops_ticket_retried', {
       ticketStableId,
       status: updated.status,
       retryCount: updated.retryCount,
@@ -483,15 +500,5 @@ export class UberOperationsService {
     if (!menuItem) {
       throw new BadRequestException(`菜单项 ${menuItemStableId} 不存在`);
     }
-  }
-
-  private async captureEvent(eventName: string, payload: Prisma.JsonObject) {
-    await this.prisma.opsEvent.create({
-      data: {
-        eventName,
-        source: 'ubereats',
-        payload,
-      },
-    });
   }
 }

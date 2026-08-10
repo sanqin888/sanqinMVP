@@ -13,7 +13,6 @@ import {
   type Prisma,
 } from '@prisma/client';
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'crypto';
-import { AppLogger } from '../../common/app-logger';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UberAuthService } from './uber-auth.service';
 import {
@@ -35,10 +34,12 @@ import type {
 import { UberPrismaAccessService } from './uber-prisma-access.service';
 import { UberCredentialVaultService } from '../../infrastructure/crypto/uber-credential-vault.service';
 
+import { UberTelemetryService } from './infrastructure/observability/uber-telemetry.service';
+
 @Injectable()
 export class UberMerchantGateway {
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
-  private readonly logger = new AppLogger(UberMerchantGateway.name);
+  private readonly telemetry: UberTelemetryService;
   private readonly uberApiBaseUrl: string;
   private readonly oauthStateSecret: string;
 
@@ -54,7 +55,9 @@ export class UberMerchantGateway {
     private readonly prismaAccess: UberPrismaAccessService,
     @Optional()
     private readonly credentialVault = new UberCredentialVaultService(),
+    @Optional() telemetry?: UberTelemetryService,
   ) {
+    this.telemetry = telemetry ?? new UberTelemetryService(prisma);
     this.uberApiBaseUrl = config.apiBaseUrl;
     this.oauthStateSecret = config.getOAuthStateSecret();
   }
@@ -66,7 +69,8 @@ export class UberMerchantGateway {
     const state = await this.createOAuthState(adminSessionId, merchantContext);
     const authorizeUrl = this.uberAuthService.buildMerchantAuthorizeUrl(state);
 
-    this.logger.log(
+    this.telemetry.workflowLog(
+      'log',
       '[ubereats oauth start] stateIssued=true authorizeEndpointReady=true',
     );
 
@@ -98,7 +102,10 @@ export class UberMerchantGateway {
       stateRequest.redirectUri,
     );
 
-    this.logger.log('[ubereats oauth] tokenExchangeSucceeded=true');
+    this.telemetry.workflowLog(
+      'log',
+      '[ubereats oauth] tokenExchangeSucceeded=true',
+    );
 
     const merchantUberUserId = `oauth:${randomUUID()}`;
 
@@ -113,7 +120,7 @@ export class UberMerchantGateway {
       rawStoresSnapshot: null,
     });
 
-    await this.captureEvent('ubereats_merchant_oauth_connected', {
+    await this.telemetry.captureEvent('ubereats_merchant_oauth_connected', {
       merchantUberUserId,
       scope: tokenResult.scope ?? '',
       tokenType: tokenResult.tokenType ?? '',
@@ -209,7 +216,7 @@ export class UberMerchantGateway {
       where: { uberStoreId: normalizedUberStoreId },
       data: { posExternalStoreId: normalizedPosStoreId },
     });
-    await this.captureEvent('ubereats_pos_store_mapping_updated', {
+    await this.telemetry.captureEvent('ubereats_pos_store_mapping_updated', {
       uberStoreId: normalizedUberStoreId,
       previousPosExternalStoreId: existing.posExternalStoreId,
       posExternalStoreId: normalizedPosStoreId,
@@ -279,7 +286,7 @@ export class UberMerchantGateway {
       raw: response,
     });
 
-    await this.captureEvent('ubereats_store_provision_requested', {
+    await this.telemetry.captureEvent('ubereats_store_provision_requested', {
       merchantUberUserId: connection.merchantUberUserId,
       uberStoreId: storeId.trim(),
     });
@@ -456,7 +463,7 @@ export class UberMerchantGateway {
     result: Record<string, unknown>,
     payload: Record<string, string>,
   ) {
-    await this.captureEvent('ubereats_store_status_sync_result', {
+    await this.telemetry.captureEvent('ubereats_store_status_sync_result', {
       ...result,
       payload,
     } as Prisma.JsonObject);
@@ -679,7 +686,7 @@ export class UberMerchantGateway {
       rawStoresSnapshot: row.rawStoresSnapshot,
     });
 
-    await this.captureEvent('ubereats_merchant_oauth_refreshed', {
+    await this.telemetry.captureEvent('ubereats_merchant_oauth_refreshed', {
       merchantUberUserId: row.merchantUberUserId,
       scope: refreshed.scope ?? '',
       tokenType: refreshed.tokenType ?? '',
@@ -867,7 +874,8 @@ export class UberMerchantGateway {
       const detail = authenticationError
         ? JSON.stringify(authenticationError)
         : summarizeUberDebugResponse(parsed, rawText);
-      this.logger.error(
+      this.telemetry.workflowLog(
+        'error',
         `[ubereats api] ${options.method} ${path} failed status=${response.status} detail=${JSON.stringify(detail)}`,
       );
       throw new BadRequestException({
@@ -1002,16 +1010,6 @@ export class UberMerchantGateway {
       data: {
         id: 1,
         storeName: '',
-      },
-    });
-  }
-
-  private async captureEvent(eventName: string, payload: Prisma.JsonObject) {
-    await this.prisma.opsEvent.create({
-      data: {
-        eventName,
-        source: 'ubereats',
-        payload,
       },
     });
   }

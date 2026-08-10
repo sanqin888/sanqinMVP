@@ -62,6 +62,7 @@ import {
   UberStoreGateway,
   UberMerchantGateway as UberMerchantApiGateway,
 } from '../../infrastructure/uber-api/uber-resource.gateways';
+import { UberTelemetryService } from './infrastructure/observability/uber-telemetry.service';
 
 @Module({
   imports: [PrismaModule, AuthModule, MessagingModule, OrdersModule],
@@ -80,6 +81,7 @@ import {
     BrowserWriteCsrfGuard,
     UberCredentialVaultService,
     UberPrismaAccessService,
+    UberTelemetryService,
     UberAuthService,
     UberHttpClient,
     UberApiGatewayTransport,
