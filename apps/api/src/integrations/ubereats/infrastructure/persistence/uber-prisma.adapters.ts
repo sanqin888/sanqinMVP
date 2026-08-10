@@ -233,8 +233,8 @@ export class PrismaUberOAuthStateAdapter implements UberOAuthStatePort {
   findOAuthState(nonce: string) {
     return this.prisma.uberOAuthStateRequest.findUnique({ where: { nonce } });
   }
-  async consumeOAuthState(
-    input: Parameters<UberOAuthStatePort['consumeOAuthState']>[0],
+  async claimOAuthState(
+    input: Parameters<UberOAuthStatePort['claimOAuthState']>[0],
   ) {
     return (
       (
@@ -244,9 +244,57 @@ export class PrismaUberOAuthStateAdapter implements UberOAuthStatePort {
             adminSessionId: input.adminSessionId,
             issuedAt: input.issuedAt,
             expiresAt: { gt: input.now },
-            consumedAt: null,
+            status: 'ISSUED',
           },
-          data: { consumedAt: input.now },
+          data: { status: 'EXCHANGING', consumedAt: input.now },
+        })
+      ).count === 1
+    );
+  }
+  async releaseOAuthStateForRetry(nonce: string, category: string) {
+    return (
+      (
+        await this.prisma.uberOAuthStateRequest.updateMany({
+          where: { nonce, status: 'EXCHANGING', retryCount: { lt: 3 } },
+          data: {
+            status: 'ISSUED',
+            retryCount: { increment: 1 },
+            lastErrorCategory: category,
+          },
+        })
+      ).count === 1
+    );
+  }
+  async failOAuthState(nonce: string, category: string) {
+    return (
+      (
+        await this.prisma.uberOAuthStateRequest.updateMany({
+          where: { nonce, status: { in: ['ISSUED', 'EXCHANGING'] } },
+          data: { status: 'FAILED', lastErrorCategory: category },
+        })
+      ).count === 1
+    );
+  }
+  saveExchangedTokens(): Promise<boolean> {
+    throw new Error(
+      'OAuth exchange recovery requires the credential-vault adapter',
+    );
+  }
+  loadExchangedTokens(): Promise<null> {
+    throw new Error(
+      'OAuth exchange recovery requires the credential-vault adapter',
+    );
+  }
+  async completeOAuthState(nonce: string, connectedAt: Date) {
+    return (
+      (
+        await this.prisma.uberOAuthStateRequest.updateMany({
+          where: { nonce, status: 'EXCHANGED' },
+          data: {
+            status: 'COMPLETED',
+            connectedAt,
+            encryptedExchangeResult: null,
+          },
         })
       ).count === 1
     );

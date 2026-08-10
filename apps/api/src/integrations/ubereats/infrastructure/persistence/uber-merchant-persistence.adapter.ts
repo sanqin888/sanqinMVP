@@ -22,7 +22,10 @@ const json = (value: unknown) =>
 
 @Injectable()
 export class UberOAuthStatePrismaAdapter implements UberOAuthStatePort {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly vault: UberCredentialVaultService,
+  ) {}
   async saveOAuthState(
     input: Parameters<UberOAuthStatePort['saveOAuthState']>[0],
   ) {
@@ -34,8 +37,8 @@ export class UberOAuthStatePrismaAdapter implements UberOAuthStatePort {
   findOAuthState(nonce: string) {
     return this.prisma.uberOAuthStateRequest.findUnique({ where: { nonce } });
   }
-  async consumeOAuthState(
-    input: Parameters<UberOAuthStatePort['consumeOAuthState']>[0],
+  async claimOAuthState(
+    input: Parameters<UberOAuthStatePort['claimOAuthState']>[0],
   ) {
     return (
       (
@@ -45,9 +48,89 @@ export class UberOAuthStatePrismaAdapter implements UberOAuthStatePort {
             adminSessionId: input.adminSessionId,
             issuedAt: input.issuedAt,
             expiresAt: { gt: input.now },
-            consumedAt: null,
+            status: 'ISSUED',
           },
-          data: { consumedAt: input.now },
+          data: { status: 'EXCHANGING', consumedAt: input.now },
+        })
+      ).count === 1
+    );
+  }
+  async releaseOAuthStateForRetry(nonce: string, category: string) {
+    return (
+      (
+        await this.prisma.uberOAuthStateRequest.updateMany({
+          where: { nonce, status: 'EXCHANGING', retryCount: { lt: 3 } },
+          data: {
+            status: 'ISSUED',
+            retryCount: { increment: 1 },
+            lastErrorCategory: category,
+          },
+        })
+      ).count === 1
+    );
+  }
+  async failOAuthState(nonce: string, category: string) {
+    return (
+      (
+        await this.prisma.uberOAuthStateRequest.updateMany({
+          where: { nonce, status: { in: ['ISSUED', 'EXCHANGING'] } },
+          data: { status: 'FAILED', lastErrorCategory: category },
+        })
+      ).count === 1
+    );
+  }
+  async saveExchangedTokens(
+    input: Parameters<UberOAuthStatePort['saveExchangedTokens']>[0],
+  ) {
+    const { nonce, ...tokens } = input;
+    const encryptedExchangeResult = this.vault.encrypt(JSON.stringify(tokens));
+    return (
+      (
+        await this.prisma.uberOAuthStateRequest.updateMany({
+          where: { nonce, status: 'EXCHANGING' },
+          data: {
+            status: 'EXCHANGED',
+            encryptedExchangeResult,
+            uberUserId: tokens.uberUserId,
+            scope: tokens.scope,
+            tokenType: tokens.tokenType,
+            tokenExpiresAt: tokens.expiresAt,
+          },
+        })
+      ).count === 1
+    );
+  }
+  async loadExchangedTokens(nonce: string) {
+    const row = await this.prisma.uberOAuthStateRequest.findFirst({
+      where: { nonce, status: { in: ['EXCHANGED', 'COMPLETED'] } },
+    });
+    if (!row?.encryptedExchangeResult) return null;
+    const value = JSON.parse(
+      this.vault.decrypt(row.encryptedExchangeResult),
+    ) as {
+      uberUserId: string;
+      accessToken: string;
+      refreshToken: string | null;
+      expiresAt: string | null;
+      scope: string | null;
+      tokenType: string | null;
+    };
+    return {
+      ...value,
+      expiresAt: value.expiresAt ? new Date(value.expiresAt) : null,
+    };
+  }
+  async completeOAuthState(nonce: string, connectedAt: Date) {
+    return (
+      (
+        await this.prisma.uberOAuthStateRequest.updateMany({
+          where: { nonce, status: 'EXCHANGED' },
+          data: {
+            status: 'COMPLETED',
+            connectedAt,
+            encryptedExchangeResult: null,
+            lastErrorCategory: null,
+          },
         })
       ).count === 1
     );

@@ -68,6 +68,20 @@ export class UberNonRetryableUpstreamError extends defineError(
   false,
 ) {}
 
+export class UberOAuthStateError extends defineError('validation', false) {}
+export class UberOAuthSessionMismatchError extends defineError(
+  'authentication',
+  false,
+) {}
+export class UberOAuthTemporaryError extends defineError(
+  'transient-upstream',
+  true,
+) {}
+export class UberOAuthTerminalError extends defineError(
+  'non-retryable-upstream',
+  false,
+) {}
+
 export function isUberApplicationError(
   error: unknown,
 ): error is UberApplicationError {

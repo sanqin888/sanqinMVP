@@ -105,13 +105,41 @@ export interface UberOAuthStatePort {
     expiresAt: Date;
     consumedAt: Date | null;
     merchantContext: string | null;
+    status: string;
+    retryCount: number;
+    lastErrorCategory: string | null;
+    uberUserId: string | null;
+    scope: string | null;
+    tokenType: string | null;
+    tokenExpiresAt: Date | null;
+    connectedAt: Date | null;
   } | null>;
-  consumeOAuthState(input: {
+  claimOAuthState(input: {
     nonce: string;
     adminSessionId: string;
     issuedAt: Date;
     now: Date;
   }): Promise<boolean>;
+  releaseOAuthStateForRetry(nonce: string, category: string): Promise<boolean>;
+  failOAuthState(nonce: string, category: string): Promise<boolean>;
+  saveExchangedTokens(input: {
+    nonce: string;
+    uberUserId: string;
+    accessToken: string;
+    refreshToken: string | null;
+    expiresAt: Date | null;
+    scope: string | null;
+    tokenType: string | null;
+  }): Promise<boolean>;
+  loadExchangedTokens(nonce: string): Promise<{
+    uberUserId: string;
+    accessToken: string;
+    refreshToken: string | null;
+    expiresAt: Date | null;
+    scope: string | null;
+    tokenType: string | null;
+  } | null>;
+  completeOAuthState(nonce: string, connectedAt: Date): Promise<boolean>;
 }
 
 /** Semantic persistence boundary used by the merchant workflows. */
