@@ -116,15 +116,13 @@ describe('CompleteUberOAuthUseCase OAuth 状态机', () => {
 
   it('token endpoint 超时释放为有限重试状态并记录错误类别', async () => {
     const x = setup();
-    jest
-      .mocked(x.tokens.exchangeAuthorizationCode)
-      .mockRejectedValueOnce(
-        new UberTransientUpstreamError({
-          code: 'TIMEOUT',
-          operation: 'token',
-          message: 'timeout',
-        }),
-      );
+    jest.mocked(x.tokens.exchangeAuthorizationCode).mockRejectedValueOnce(
+      new UberTransientUpstreamError({
+        code: 'TIMEOUT',
+        operation: 'token',
+        message: 'timeout',
+      }),
+    );
     await expect(
       x.useCase.exchangeAuthorizationCode('code', stateValue, 'session-1'),
     ).resolves.toEqual({
