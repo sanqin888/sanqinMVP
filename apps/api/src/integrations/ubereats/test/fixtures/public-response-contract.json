@@ -1,0 +1,7 @@
+{
+  "list": ["items", "pageInfo", "contractVersion"],
+  "pageInfo": ["limit", "count", "hasNextPage", "nextCursor"],
+  "mutation": ["operationId", "status", "error", "contractVersion"],
+  "error": ["code", "message", "retryable", "correlationId"],
+  "forbidden": ["token", "accessToken", "refreshToken", "payload", "stack", "uberError", "lastError"]
+}

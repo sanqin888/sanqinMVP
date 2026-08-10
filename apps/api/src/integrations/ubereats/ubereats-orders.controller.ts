@@ -19,6 +19,7 @@ import { randomUUID } from 'crypto';
 import { AppLogger } from '../../common/app-logger';
 import { SESSION_COOKIE_NAME } from '../../auth/session-auth.guard';
 import { ResourceIdPipe } from './contracts/requests/resource-id.pipe';
+import { toUberListResponse } from './contracts/responses/ubereats.responses';
 import {
   UberAdminWrite,
   UberMfaAdminWrite,
@@ -64,6 +65,7 @@ export class UberEatsOrdersController {
 
   @Get('orders/pending')
   async listPendingOrders() {
-    return await this.orders.listPendingUberOrders();
+    const result = await this.orders.listPendingUberOrders();
+    return toUberListResponse(result.items, 100);
   }
 }
