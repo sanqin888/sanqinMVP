@@ -31,29 +31,25 @@ describe('PublishUberMenuUseCase', () => {
     };
     const publications = {
       findSucceededAttempt: jest.fn().mockResolvedValue(null),
-      createAttempt: jest
-        .fn()
-        .mockResolvedValue({
-          attemptId: 'attempt-1',
-          storeId: 'store-1',
-          idempotencyKey: 'key',
-          businessVersion: 'version-1',
-          status: 'CREATED',
-          uberRequestId: null,
-          uberResourceId: null,
-        }),
+      createAttempt: jest.fn().mockResolvedValue({
+        attemptId: 'attempt-1',
+        storeId: 'store-1',
+        idempotencyKey: 'key',
+        businessVersion: 'version-1',
+        status: 'CREATED',
+        uberRequestId: null,
+        uberResourceId: null,
+      }),
       markSubmitted: jest.fn().mockResolvedValue(true),
       markFailed: jest.fn().mockResolvedValue(true),
       claimDueConfirmations: jest.fn(),
       markConfirmed: jest.fn(),
     };
     const gateway = {
-      uploadMenu: jest
-        .fn()
-        .mockResolvedValue({
-          uberRequestId: 'request-1',
-          uberResourceId: 'resource-1',
-        }),
+      uploadMenu: jest.fn().mockResolvedValue({
+        uberRequestId: 'request-1',
+        uberResourceId: 'resource-1',
+      }),
       getMenuPublicationStatus: jest.fn(),
     };
     const images = {
