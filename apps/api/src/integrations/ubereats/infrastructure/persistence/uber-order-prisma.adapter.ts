@@ -21,7 +21,7 @@ import {
 } from '../../../../orders/order-ingestion.service';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { UberWebhookEnvelopeDto } from '../../contracts/dto/uber-webhook-envelope.dto';
-import { UberAuthService } from '../../application/merchant/uber-auth.service';
+import { UberAuthService } from '../../infrastructure/uber-api/uber-token.provider';
 import {
   UberConfigService,
   type UberOrderConfig,
@@ -29,7 +29,7 @@ import {
 import {
   UberHttpClient,
   UberHttpResult,
-} from '../../infrastructure/http/uber-http.client';
+} from '../../infrastructure/uber-api/uber-http.client';
 import {
   normalizeUberEventType,
   normalizeUberStoreId,
@@ -55,7 +55,7 @@ import { UberOrderActionService } from '../../application/orders/uber-order-acti
 import { UberOrderOutboxService } from '../../application/orders/uber-order-outbox.service';
 import { UberOrderStatusSyncService } from '../../application/orders/uber-order-status-sync.service';
 import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
-import { UberOrderGateway } from '../../infrastructure/api/uber-resource.gateways';
+import { UberOrderGateway } from '../../infrastructure/uber-api/uber-resource.gateways';
 import { toUberEatsHttpException } from '../../application/uber-domain-error.mapper';
 import { toUberOrderStatus } from '../../infrastructure/persistence/uber-order-status.mapper';
 

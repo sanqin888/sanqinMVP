@@ -13,13 +13,12 @@ import {
   type Prisma,
 } from '@prisma/client';
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'crypto';
-import { PrismaService } from '../../../../prisma/prisma.service';
-import { UberAuthService } from '../../application/merchant/uber-auth.service';
+import { UberAuthService } from './uber-token.provider';
 import {
   UberConfigService,
   type UberOAuthStateConfig,
 } from '../config/uber-config.service';
-import { UberHttpClient } from '../http/uber-http.client';
+import { UberHttpClient } from './uber-http.client';
 import {
   redactUberLogText,
   summarizeUberDebugResponse,
@@ -35,11 +34,11 @@ import { UberPrismaAccessService } from '../persistence/uber-prisma-access.servi
 import { UberCredentialVaultService } from '../crypto/uber-credential-vault.service';
 
 import { UberTelemetryService } from '../observability/uber-telemetry.service';
+import { UberMerchantWorkflowRepository } from '../persistence/uber-merchant.repositories';
 
 @Injectable()
 export class UberMerchantGateway {
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
-  private readonly telemetry: UberTelemetryService;
   private readonly uberApiBaseUrl: string;
   private readonly oauthStateSecret: string;
 
@@ -48,16 +47,15 @@ export class UberMerchantGateway {
   }
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly repository: UberMerchantWorkflowRepository,
     private readonly uberAuthService: UberAuthService,
     private readonly httpClient: UberHttpClient,
     @Inject(UberConfigService) private readonly config: UberOAuthStateConfig,
     private readonly prismaAccess: UberPrismaAccessService,
+    private readonly telemetry: UberTelemetryService,
     @Optional()
     private readonly credentialVault = new UberCredentialVaultService(),
-    @Optional() telemetry?: UberTelemetryService,
   ) {
-    this.telemetry = telemetry ?? new UberTelemetryService(prisma);
     this.uberApiBaseUrl = config.apiBaseUrl;
     this.oauthStateSecret = config.getOAuthStateSecret();
   }
@@ -145,18 +143,10 @@ export class UberMerchantGateway {
     });
 
     const stores = this.extractMerchantStores(response);
-    const mappingRows = await this.prisma.uberStoreMapping.findMany({
-      where: {
-        merchantUberUserId: connection.merchantUberUserId,
-        uberStoreId: { in: stores.map((store) => store.storeId) },
-      },
-      select: {
-        uberStoreId: true,
-        isProvisioned: true,
-        provisionedAt: true,
-        posExternalStoreId: true,
-      },
-    });
+    const mappingRows = await this.repository.findStoreMappings(
+      connection.merchantUberUserId,
+      stores.map((store) => store.storeId),
+    );
     const mappingByStoreId = new Map(
       mappingRows.map((row) => [row.uberStoreId, row]),
     );
@@ -475,22 +465,20 @@ export class UberMerchantGateway {
     status: number,
     payload: Record<string, string>,
   ) {
-    await this.prisma.uberOpsTicket.create({
-      data: {
-        storeId: uberStoreId,
-        type: UberOpsTicketType.STORE_STATUS_SYNC,
-        status: UberOpsTicketStatus.OPEN,
-        priority: UberOpsTicketPriority.HIGH,
-        title: 'Uber 门店状态同步需要运营处理',
-        description: redactUberLogText(error).slice(0, 500),
-        context: {
-          uberStoreId,
-          targetStatus: payload.status,
-          ...(payload.reason ? { reason: payload.reason } : {}),
-          ...(payload.pause_until ? { pauseUntil: payload.pause_until } : {}),
-          uberHttpStatus: status,
-          errorCode: `UBER_HTTP_${status}`,
-        },
+    await this.repository.createOpsTicket({
+      storeId: uberStoreId,
+      type: UberOpsTicketType.STORE_STATUS_SYNC,
+      status: UberOpsTicketStatus.OPEN,
+      priority: UberOpsTicketPriority.HIGH,
+      title: 'Uber 门店状态同步需要运营处理',
+      description: redactUberLogText(error).slice(0, 500),
+      context: {
+        uberStoreId,
+        targetStatus: payload.status,
+        ...(payload.reason ? { reason: payload.reason } : {}),
+        ...(payload.pause_until ? { pauseUntil: payload.pause_until } : {}),
+        uberHttpStatus: status,
+        errorCode: `UBER_HTTP_${status}`,
       },
     });
   }
@@ -1002,18 +990,7 @@ export class UberMerchantGateway {
   }
 
   private async ensureBusinessConfig() {
-    const config = await this.prisma.businessConfig.findUnique({
-      where: { id: 1 },
-    });
-
-    if (config) return config;
-
-    return this.prisma.businessConfig.create({
-      data: {
-        id: 1,
-        storeName: '',
-      },
-    });
+    return this.repository.ensureBusinessConfig();
   }
 
   private asObject(value: unknown): Record<string, unknown> | null {

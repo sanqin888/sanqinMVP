@@ -1,8 +1,8 @@
 //apps/api/src/integrations/ubereats/uber-auth.service.ts
 import { Injectable, Optional } from '@nestjs/common';
 import { AppLogger } from '../../../../common/app-logger';
-import { UberHttpClient } from '../../infrastructure/http/uber-http.client';
-import { UberConfigService } from '../../infrastructure/config/uber-config.service';
+import { UberHttpClient } from './uber-http.client';
+import { UberConfigService } from '../config/uber-config.service';
 
 type UberTokenResponse = {
   access_token?: string;

@@ -1,10 +1,11 @@
 import { OrderEventsBus } from '../../messaging/order-events.bus';
 import { OrderIngestionService } from '../../orders/order-ingestion.service';
 import { UberConfigService } from './infrastructure/config/uber-config.service';
-import { UberHttpClient } from './infrastructure/http/uber-http.client';
+import { UberHttpClient } from './infrastructure/uber-api/uber-http.client';
 import { UberMenuPrismaAdapter } from './infrastructure/persistence/uber-menu-prisma.adapter';
 import { UberMerchantService } from './application/merchant/uber-merchant.service';
-import { UberMerchantGateway } from './infrastructure/api/uber-merchant.gateway';
+import { UberMerchantGateway } from './infrastructure/uber-api/uber-merchant.gateway';
+import { UberMerchantWorkflowRepository } from './infrastructure/persistence/uber-merchant.repositories';
 import {
   CompleteUberOAuthUseCase,
   StartUberOAuthUseCase,
@@ -25,11 +26,11 @@ import { UberOperationsPrismaAdapter } from './infrastructure/persistence/uber-o
 import { UberPrismaAccessService } from './infrastructure/persistence/uber-prisma-access.service';
 import { UberOrderPrismaAdapter } from './infrastructure/persistence/uber-order-prisma.adapter';
 import { ProcessUberWebhookInboxWorker } from './application/orders/uber-webhook-inbox.worker';
-import { UberApiGatewayTransport } from './infrastructure/api/uber-api.gateway';
+import { UberApiGatewayTransport } from './infrastructure/uber-api/uber-api.gateway';
 import {
   UberMenuGateway,
   UberOrderGateway,
-} from './infrastructure/api/uber-resource.gateways';
+} from './infrastructure/uber-api/uber-resource.gateways';
 
 const config = () =>
   new UberConfigService({
@@ -67,19 +68,22 @@ export function createUberMenuService(
   );
 }
 
-type MerchantArgs = ConstructorParameters<typeof UberMerchantGateway>;
 export function createUberMerchantService(
-  prisma: MerchantArgs[0],
-  auth: MerchantArgs[1],
-  http?: MerchantArgs[2],
-  settings?: MerchantArgs[3],
+  prisma: any,
+  auth: any,
+  http?: any,
+  settings?: any,
 ) {
   const internal = new UberMerchantGateway(
-    prisma,
+    new UberMerchantWorkflowRepository(prisma),
     auth,
     httpClient(http),
     settings ?? config(),
     new UberPrismaAccessService(prisma),
+    {
+      workflowLog: jest.fn(),
+      captureEvent: jest.fn().mockResolvedValue(undefined),
+    } as never,
   );
   const service = new UberMerchantService(
     new UberMerchantOAuthService(

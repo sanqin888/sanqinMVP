@@ -6,6 +6,9 @@ import {
   type UberGatewayRequest,
   type UberResourceGateway,
 } from './uber-api.gateway';
+import type { UberOrderActionGatewayPort } from '../../application/ports/uber-api.ports';
+import type { UberOrderActionName } from '../../domain/orders/uber-order.types';
+import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
 
 abstract class PrefixGateway implements UberResourceGateway {
   protected abstract readonly prefixes: readonly string[];
@@ -36,7 +39,10 @@ export class UberMenuGateway extends PrefixGateway {
 }
 
 @Injectable()
-export class UberOrderGateway extends PrefixGateway {
+export class UberOrderGateway
+  extends PrefixGateway
+  implements UberOrderActionGatewayPort
+{
   protected readonly prefixes = [
     '/v1/eats/orders',
     '/v1/delivery/order',
@@ -91,6 +97,36 @@ export class UberOrderGateway extends PrefixGateway {
     if (!this.prefixes.some((prefix) => request.path.startsWith(prefix)))
       throw new BadRequestException('Uber order path 不受支持');
     return this.transport.inspect<T>(request);
+  }
+
+  async executeAction(
+    externalOrderId: string,
+    action: UberOrderActionName,
+    payload: Record<string, unknown>,
+    idempotencyKey: string,
+  ) {
+    const id = encodeURIComponent(externalOrderId);
+    const path = {
+      ACCEPT: `/v1/eats/orders/${id}/accept_pos_order`,
+      DENY: `/v1/eats/orders/${id}/deny_pos_order`,
+      READY_FOR_PICKUP: `/v1/delivery/order/${id}/ready`,
+    }[action];
+    const result = await this.inspect({
+      path,
+      method: 'POST',
+      operation: `uber.order.${action.toLowerCase()}`,
+      scope: 'eats.order',
+      partitionKey: externalOrderId,
+      json: payload,
+      idempotencyKey:
+        idempotencyKey ||
+        UberOrderStateMachine.idempotencyKey(externalOrderId, action),
+    });
+    return {
+      ok: result.response.ok,
+      status: result.response.status,
+      data: result.data,
+    };
   }
 
   private isPublic(address: string): boolean {

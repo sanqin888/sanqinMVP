@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { UberMerchantGateway } from '../../infrastructure/api/uber-merchant.gateway';
+import { UberMerchantGateway } from '../../infrastructure/uber-api/uber-merchant.gateway';
 
 /** Owns Uber store discovery, payload parsing, and local store mappings. */
 @Injectable()

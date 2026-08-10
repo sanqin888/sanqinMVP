@@ -1,5 +1,40 @@
 import { Injectable } from '@nestjs/common';
 import { UberPrismaAccessService } from './uber-prisma-access.service';
+import { PrismaService } from '../../../../prisma/prisma.service';
+
+/** Prisma details used by the legacy merchant workflow stay behind this repository. */
+@Injectable()
+export class UberMerchantWorkflowRepository {
+  constructor(private readonly prisma: PrismaService) {}
+
+  findStoreMappings(merchantUberUserId: string, uberStoreIds: string[]) {
+    return this.prisma.uberStoreMapping.findMany({
+      where: { merchantUberUserId, uberStoreId: { in: uberStoreIds } },
+      select: {
+        uberStoreId: true,
+        isProvisioned: true,
+        provisionedAt: true,
+        posExternalStoreId: true,
+      },
+    });
+  }
+
+  createOpsTicket(
+    data: Parameters<PrismaService['uberOpsTicket']['create']>[0]['data'],
+  ) {
+    return this.prisma.uberOpsTicket.create({ data });
+  }
+
+  async ensureBusinessConfig() {
+    const config = await this.prisma.businessConfig.findUnique({
+      where: { id: 1 },
+    });
+    return (
+      config ??
+      this.prisma.businessConfig.create({ data: { id: 1, storeName: '' } })
+    );
+  }
+}
 
 /** Persistence boundary for merchant credentials. */
 @Injectable()
