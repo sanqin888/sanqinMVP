@@ -13,15 +13,11 @@ describe('UberCredentialVaultService', () => {
     const envelope = JSON.parse(encrypted) as Record<string, unknown>;
 
     expect(encrypted).not.toContain(token);
-    expect(envelope).toEqual(
-      expect.objectContaining({
-        v: 2,
-        alg: 'A256GCM',
-        iv: expect.any(String),
-        tag: expect.any(String),
-        ciphertext: expect.any(String),
-      }),
-    );
+    expect(envelope.v).toBe(2);
+    expect(envelope.alg).toBe('A256GCM');
+    expect(typeof envelope.iv).toBe('string');
+    expect(typeof envelope.tag).toBe('string');
+    expect(typeof envelope.ciphertext).toBe('string');
     expect(vault.decrypt(encrypted)).toBe(token);
   });
 
@@ -45,7 +41,8 @@ describe('UberCredentialVaultService', () => {
     expect(rotatingVault.decrypt(rotated)).toBe('refresh-secret');
 
     const modified = JSON.parse(rotated) as { tag: string };
-    modified.tag = `${modified.tag.slice(0, -1)}A`;
+    const replacement = modified.tag.endsWith('A') ? 'B' : 'A';
+    modified.tag = `${modified.tag.slice(0, -1)}${replacement}`;
     expect(() => rotatingVault.decrypt(JSON.stringify(modified))).toThrow();
   });
 

@@ -276,7 +276,8 @@ export class UberOrderService {
         select: { updatedAt: true },
       }),
     ]);
-    return { count, updatedAt: latest?.updatedAt ?? null };
+    const latestOrder = latest as unknown as { updatedAt: Date } | null;
+    return { count, updatedAt: latestOrder?.updatedAt ?? null };
   }
 
   async processWebhookEvent(
@@ -1231,7 +1232,8 @@ export class UberOrderService {
           .update(item.displayName)
           .digest('hex')
           .slice(0, 20)}`;
-      this.logger?.warn(
+      this.telemetry.workflowLog(
+        'warn',
         `[ubereats order] unmapped item retained externalItemId=${item.externalItemId ?? 'missing'}`,
       );
     }

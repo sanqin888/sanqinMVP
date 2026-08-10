@@ -21,7 +21,6 @@ import { UberHttpClient } from './uber-http.client';
 import {
   normalizeUberStoreId,
   redactUberLogText,
-  summarizeUberDebugResponse,
 } from './uber-integration.utils';
 import type {
   PublishMenuInput,
@@ -29,7 +28,6 @@ import type {
   SyncOptionAvailabilityInput,
   UberAvailabilitySyncResult,
   UberAvailabilitySyncStatus,
-  UberMenuGraphValidationIssue,
   UberMenuPublishError,
   UberMenuUploadPayload,
   UpdateDraftGroupInput,
@@ -38,17 +36,10 @@ import type {
   UpsertOptionItemConfigInput,
   UpsertPriceBookItemInput,
 } from './uber-menu.types';
-import {
-  isPermanentPublicHttpsUrl,
-  UBER_IMAGE_MAX_BYTES,
-} from './uber-menu.types';
 import type { UberMerchantConnectionRecord } from './uber-merchant.types';
 import type { ParsedUberOrderItem } from './uber-order.types';
 import { toUberServiceAvailability } from './uber-payload.utils';
-import type {
-  UberMenuPayloadValidationIssue,
-  UberServiceAvailability,
-} from './uber-payload.utils';
+import type { UberServiceAvailability } from './uber-payload.utils';
 import { UberPrismaAccessService } from './uber-prisma-access.service';
 import { UberCredentialVaultService } from '../../infrastructure/crypto/uber-credential-vault.service';
 import {
@@ -1314,7 +1305,9 @@ export class UberMenuWorkflowCore {
       create: {
         ...input,
         rawStoresSnapshot: input.rawStoresSnapshot
-          ? JSON.parse(JSON.stringify(input.rawStoresSnapshot))
+          ? (JSON.parse(
+              JSON.stringify(input.rawStoresSnapshot),
+            ) as Prisma.InputJsonValue)
           : undefined,
         accessToken: null,
         refreshToken: null,
@@ -2581,7 +2574,8 @@ export class UberMenuWorkflowCore {
           .update(item.displayName)
           .digest('hex')
           .slice(0, 20)}`;
-      this.logger?.warn(
+      this.telemetry.workflowLog(
+        'warn',
         `[ubereats order] unmapped item retained externalItemId=${item.externalItemId ?? 'missing'}`,
       );
     }
@@ -2589,8 +2583,6 @@ export class UberMenuWorkflowCore {
   }
 
   private async resolveUberStoreIdOrThrow(storeId: string): Promise<string> {
-    const mappingDelegate = this.prismaAccess.uberStoreMappingRepository;
-
     const row = await this.prisma.uberStoreMapping.findFirst({
       where: {
         uberStoreId: storeId,
