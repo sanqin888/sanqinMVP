@@ -2,10 +2,12 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  OnModuleDestroy,
+  OnModuleInit,
   UnauthorizedException,
 } from '@nestjs/common';
-import { type Prisma } from '@prisma/client';
-import { createHash, createHmac, timingSafeEqual } from 'crypto';
+import { Prisma } from '@prisma/client';
+import { createHash, createHmac, randomUUID, timingSafeEqual } from 'crypto';
 import { AppLogger } from '../../common/app-logger';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UberWebhookEnvelopeDto } from './dto/uber-webhook-envelope.dto';
@@ -24,8 +26,12 @@ import { UberPrismaAccessService } from './uber-prisma-access.service';
 import type { UberWebhookInput } from './uber-webhook.types';
 
 @Injectable()
-export class UberWebhookService {
+export class UberWebhookService implements OnModuleInit, OnModuleDestroy {
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
+  private static readonly MAX_ATTEMPTS = 8;
+  private static readonly LEASE_MS = 60_000;
+  private workerTimer?: NodeJS.Timeout;
+  private workerRunning = false;
   private readonly logger = new AppLogger(UberWebhookService.name);
   private readonly webhookSigningKey: string;
 
@@ -37,6 +43,16 @@ export class UberWebhookService {
     private readonly prismaAccess: UberPrismaAccessService,
   ) {
     this.webhookSigningKey = config.getWebhookSigningKey();
+  }
+
+  onModuleInit(): void {
+    void this.runRecoveryScan();
+    this.workerTimer = setInterval(() => void this.runRecoveryScan(), 15_000);
+    this.workerTimer.unref?.();
+  }
+
+  onModuleDestroy(): void {
+    if (this.workerTimer) clearInterval(this.workerTimer);
   }
 
   async handleWebhook(input: UberWebhookInput): Promise<void> {
@@ -59,19 +75,52 @@ export class UberWebhookService {
       this.readEventId(input.headers, body, envelope?.eventId) ??
       `sha256:${this.hashCanonicalBody(body)}`;
 
-    const claimed = await this.claimWebhookEvent(
+    const persisted = await this.persistWebhookEvent(
       eventId,
       eventType,
       envelope?.resourceId ?? null,
       body,
     );
-    if (!claimed) {
+    if (!persisted) {
       this.logger.warn(
         `[ubereats webhook] duplicate ignored eventType=${eventType} eventId=${eventId}`,
       );
       return;
     }
+  }
 
+  /** Worker boundary: only this method is allowed to invoke webhook use cases. */
+  async processDueWebhooks(limit = 50): Promise<number> {
+    const leaseToken = randomUUID();
+    const rows = await this.prisma.$queryRaw<
+      Array<{ eventId: string; eventType: string; payload: unknown }>
+    >`
+      WITH candidates AS (
+        SELECT id FROM "UberWebhookInbox"
+        WHERE ((status IN ('PENDING', 'FAILED') AND ("nextRetryAt" IS NULL OR "nextRetryAt" <= NOW()))
+          OR (status = 'PROCESSING' AND "leaseExpiresAt" <= NOW()))
+          AND "attemptCount" < ${UberWebhookService.MAX_ATTEMPTS}
+        ORDER BY "createdAt" ASC
+        FOR UPDATE SKIP LOCKED LIMIT ${limit}
+      )
+      UPDATE "UberWebhookInbox" inbox SET status = 'PROCESSING',
+        "processingAt" = NOW(), "leaseToken" = ${leaseToken},
+        "leaseExpiresAt" = NOW() + (${UberWebhookService.LEASE_MS} * INTERVAL '1 millisecond'),
+        "attemptCount" = inbox."attemptCount" + 1
+      FROM candidates WHERE inbox.id = candidates.id
+      RETURNING inbox."eventId", inbox."eventType", inbox.payload
+    `;
+    for (const row of rows) await this.processClaimedWebhook(row, leaseToken);
+    return rows.length;
+  }
+
+  private async processClaimedWebhook(
+    row: { eventId: string; eventType: string; payload: unknown },
+    leaseToken: string,
+  ): Promise<void> {
+    const { eventId, eventType } = row;
+    const body = row.payload;
+    const envelope = UberWebhookEnvelopeDto.parse(body);
     try {
       switch (normalizeUberEventType(eventType)) {
         case 'orders.notification':
@@ -119,12 +168,15 @@ export class UberWebhookService {
       // Order persistence marks the inbox PROCESSED in the same transaction.
       // Other event families use this durable, retryable state-machine boundary.
       await this.prisma.uberWebhookInbox.updateMany({
-        where: { eventId, status: 'PROCESSING' },
+        where: { eventId, status: 'PROCESSING', leaseToken },
         data: {
           status: 'PROCESSED',
           processedAt: new Date(),
           errorSummary: null,
           nextRetryAt: null,
+          leaseToken: null,
+          leaseExpiresAt: null,
+          structuredError: Prisma.DbNull,
         },
       });
     } catch (error) {
@@ -135,7 +187,7 @@ export class UberWebhookService {
           typeof error !== 'object' ||
           !('retryable' in error) ||
           (error as { retryable?: unknown }).retryable === true);
-      await this.markWebhookFailed(eventId, error, {
+      await this.markWebhookFailed(eventId, leaseToken, error, {
         retryable,
       });
       if (!retryable) {
@@ -148,7 +200,56 @@ export class UberWebhookService {
         });
         return;
       }
-      throw error;
+      this.logger.error(`[ubereats webhook worker] eventId=${eventId} failed`);
+    }
+  }
+
+  private async runRecoveryScan(): Promise<void> {
+    if (this.workerRunning) return;
+    this.workerRunning = true;
+    try {
+      await this.processDueWebhooks();
+      await this.orders.processPendingUberOrderActions();
+      await this.menu.recoverTimedOutPublications();
+      await this.reportQueueHealth();
+    } catch (error) {
+      this.logger.error(
+        `[ubereats recovery] ${this.summarizeWebhookError(error)}`,
+      );
+    } finally {
+      this.workerRunning = false;
+    }
+  }
+
+  private async reportQueueHealth(): Promise<void> {
+    const [metrics] = await this.prisma.$queryRaw<
+      Array<Record<string, bigint | number | null>>
+    >`
+      SELECT
+        (SELECT COUNT(*) FROM "UberWebhookInbox" WHERE status IN ('PENDING','FAILED')) AS "webhookBacklog",
+        (SELECT COUNT(*) FROM "UberOrderAction" WHERE status IN ('PENDING','FAILED')) AS "actionBacklog",
+        (SELECT COUNT(*) FROM "UberWebhookInbox" WHERE status = 'DEAD') +
+          (SELECT COUNT(*) FROM "UberOrderAction" WHERE status = 'DEAD') AS "deadLetters",
+        (SELECT COALESCE(MAX(EXTRACT(EPOCH FROM (NOW() - "createdAt"))), 0) FROM "UberWebhookInbox" WHERE status IN ('PENDING','FAILED')) AS "oldestAgeSeconds",
+        (SELECT COALESCE(SUM("attemptCount"), 0) FROM "UberWebhookInbox") +
+          (SELECT COALESCE(SUM("attemptCount"), 0) FROM "UberOrderAction") AS retries,
+        (SELECT COUNT(*) FROM "UberWebhookInbox" WHERE status = 'FAILED' AND "updatedAt" > NOW() - INTERVAL '5 minutes') AS "recentFailures"
+    `;
+    const normalized = Object.fromEntries(
+      Object.entries(metrics ?? {}).map(([key, value]) => [
+        key,
+        Number(value ?? 0),
+      ]),
+    );
+    this.logger.log(`[ubereats queue metrics] ${JSON.stringify(normalized)}`);
+    if (
+      (normalized.webhookBacklog ?? 0) + (normalized.actionBacklog ?? 0) >=
+        100 ||
+      (normalized.recentFailures ?? 0) >= 5
+    ) {
+      this.logger.error(
+        `[ubereats queue alert] backlog_or_consecutive_failures ${JSON.stringify(normalized)}`,
+      );
     }
   }
 
@@ -314,7 +415,7 @@ export class UberWebhookService {
     );
   }
 
-  private async claimWebhookEvent(
+  private async persistWebhookEvent(
     eventId: string,
     eventType: string,
     externalOrderId: string | null,
@@ -324,7 +425,7 @@ export class UberWebhookService {
       eventId,
       eventType,
       externalOrderId,
-      status: 'RECEIVED',
+      status: 'PENDING',
       payload: this.toJsonValue(payload),
     };
 
@@ -333,48 +434,44 @@ export class UberWebhookService {
     } catch (error) {
       if (!this.isPrismaUniqueConstraintError(error)) throw error;
 
-      // A failed synchronous attempt returned non-2xx, so a later delivery is
-      // allowed to atomically reclaim it. All other conflicts are idempotent
-      // success, including concurrent deliveries while the owner is working.
-      const reclaimed = await this.prisma.uberWebhookInbox.updateMany({
-        where: {
-          eventId,
-          status: 'FAILED',
-          nextRetryAt: { not: null },
-        },
-        data: {
-          status: 'RECEIVED',
-          errorSummary: null,
-          nextRetryAt: null,
-        },
-      });
-      if (reclaimed.count === 0) return false;
+      return false;
     }
-
-    const processing = await this.prisma.uberWebhookInbox.updateMany({
-      where: { eventId, status: 'RECEIVED' },
-      data: {
-        status: 'PROCESSING',
-        processingAt: new Date(),
-        attemptCount: { increment: 1 },
-      },
-    });
-    return processing.count === 1;
+    return true;
   }
 
   private async markWebhookFailed(
     eventId: string,
+    leaseToken: string,
     error: unknown,
     options: { retryable?: boolean } = {},
   ) {
     const retryable = options.retryable ?? true;
     const summary = this.summarizeWebhookError(error);
+    const current = await this.prisma.uberWebhookInbox.findUnique({
+      where: { eventId },
+      select: { attemptCount: true },
+    });
+    const dead =
+      !retryable ||
+      (current?.attemptCount ?? 0) >= UberWebhookService.MAX_ATTEMPTS;
+    const attempts = current?.attemptCount ?? 1;
     await this.prisma.uberWebhookInbox.updateMany({
-      where: { eventId, status: 'PROCESSING' },
+      where: { eventId, status: 'PROCESSING', leaseToken },
       data: {
-        status: 'FAILED',
+        status: dead ? 'DEAD' : 'FAILED',
         errorSummary: summary || 'unknown error',
-        nextRetryAt: retryable ? new Date(Date.now() + 1_000) : null,
+        structuredError: this.toJsonValue({
+          message: summary,
+          ...this.safeStructuredError(error),
+          retryable,
+        }),
+        nextRetryAt: dead
+          ? null
+          : new Date(
+              Date.now() + Math.min(300_000, 1_000 * 2 ** (attempts - 1)),
+            ),
+        leaseToken: null,
+        leaseExpiresAt: null,
       },
     });
   }

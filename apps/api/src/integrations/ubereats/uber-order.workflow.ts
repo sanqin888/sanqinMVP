@@ -81,7 +81,7 @@ export class UberOrderService {
       new UberOrderActionService(uberAuthService, httpClient, config);
     this.outboxService =
       outboxService ??
-      new UberOrderOutboxService(prismaAccess, this.actionService);
+      new UberOrderOutboxService(prisma, prismaAccess, this.actionService);
     this.statusSyncService =
       statusSyncService ?? new UberOrderStatusSyncService(prisma);
   }
@@ -147,12 +147,8 @@ export class UberOrderService {
       return { orderStableId: order.orderStableId, status };
     });
 
-    const result = await this.executeUberOrderAction(
-      externalOrderId,
-      action,
-      {},
-      true,
-    );
+    const queued = await this.outboxService.enqueue(externalOrderId, action);
+    const result = this.toUberOrderActionResult(queued, true);
 
     await this.captureEvent('ubereats_order_status_synced', {
       externalOrderId,
@@ -191,12 +187,11 @@ export class UberOrderService {
     if (record.status === 'FAILED' && !record.retryable) {
       return this.toUberOrderActionResult(record, true);
     }
-    return this.executeUberOrderAction(
-      externalOrderId,
-      'READY_FOR_PICKUP',
-      {},
-      true,
-    );
+    const queued = await this.prismaAccess.uberOrderActionDelegate.update({
+      where: { id: record.id },
+      data: { status: 'PENDING', retryable: true, nextRetryAt: new Date() },
+    });
+    return this.toUberOrderActionResult(queued, true);
   }
 
   /** Queue workers can periodically drain retryable/PENDING outbox rows. */
@@ -220,9 +215,11 @@ export class UberOrderService {
     if (!localOrder) {
       throw new BadRequestException('订单尚未完整落库，禁止向 Uber 接单');
     }
-    return this.executeUberOrderAction(normalizedOrderId, 'ACCEPT', {
-      reason: 'accepted',
-    });
+    const record = await this.outboxService.enqueue(
+      normalizedOrderId,
+      'ACCEPT',
+    );
+    return this.toUberOrderActionResult(record, record.status !== 'PENDING');
   }
 
   /** Deny through Uber's POS decision endpoint with an auditable reason. */
@@ -236,16 +233,15 @@ export class UberOrderService {
     if (!normalizedReason) {
       throw new BadRequestException('拒单原因不能为空');
     }
-    return this.executeUberOrderAction(
+    const record = await this.outboxService.enqueue(
       externalOrderId.trim(),
       'DENY',
-      this.buildUberDenyOrderPayload(normalizedReason, reasonDetail),
-      false,
       {
         reasonCode: normalizedReason,
         reasonDetail: reasonDetail?.trim() || undefined,
       },
     );
+    return this.toUberOrderActionResult(record, record.status !== 'PENDING');
   }
 
   private buildUberDenyOrderPayload(reasonCode: string, reasonDetail?: string) {
@@ -454,47 +450,12 @@ export class UberOrderService {
       update: {},
     });
 
-    try {
-      await this.executeUberOrderAction(
-        externalOrderId,
-        'ACCEPT',
-        { reason: 'accepted' },
-        true,
-      );
-    } catch (error) {
-      const response =
-        error instanceof BadGatewayException ? error.getResponse() : null;
-      const responseObject = this.asObject(response);
-      const retryable = responseObject?.retryable === true;
-      const status =
-        typeof responseObject?.status === 'number'
-          ? responseObject.status
-          : error instanceof BadGatewayException
-            ? error.getStatus()
-            : undefined;
-      const detail = this.readString(responseObject?.detail);
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-
-      this.logger.error(
-        `[ubereats webhook accept] best-effort accept failed externalOrderId=${externalOrderId} eventId=${context.eventId} retryable=${retryable} status=${status ?? 'unknown'} error=${redactUberLogText(detail || errorMessage)}`,
-      );
-
-      await this.captureEvent(
-        retryable
-          ? 'ubereats_order_accept_retry_queued'
-          : 'ubereats_order_accept_manual_review_required',
-        {
-          externalOrderId,
-          eventType: context.eventType,
-          eventId: context.eventId,
-          orderStableId: context.orderStableId,
-          retryable,
-          ...(status !== undefined ? { status } : {}),
-          ...(detail ? { detail: redactUberLogText(detail) } : {}),
-        },
-      );
-    }
+    await this.captureEvent('ubereats_order_accept_queued', {
+      externalOrderId,
+      eventType: context.eventType,
+      eventId: context.eventId,
+      orderStableId: context.orderStableId,
+    });
   }
 
   private async fetchUberOrderDetail(
@@ -634,7 +595,7 @@ export class UberOrderService {
         if (!record) throw error;
         return this.toUberOrderActionResult(record, true);
       }
-    } else {
+    } else if (record.status !== 'PROCESSING') {
       record = await delegate.update({
         where: { id: record.id },
         data: {
@@ -663,14 +624,30 @@ export class UberOrderService {
       await delegate.update({
         where: { id: record.id },
         data: {
-          status: 'FAILED',
-          retryable: true,
+          status:
+            (record.attemptCount ?? 1) >= UberOrderOutboxService.MAX_ATTEMPTS
+              ? 'DEAD'
+              : 'FAILED',
+          retryable:
+            (record.attemptCount ?? 1) < UberOrderOutboxService.MAX_ATTEMPTS,
           lastError: redactedError
             .replace(/(token|secret|authorization)=?[^\s&]*/gi, '$1=[REDACTED]')
             .slice(0, 2_000),
           response: this.redactUberResponse({
             error: errorMessage,
           }),
+          nextRetryAt:
+            (record.attemptCount ?? 1) >= UberOrderOutboxService.MAX_ATTEMPTS
+              ? null
+              : new Date(
+                  Date.now() +
+                    Math.min(
+                      300_000,
+                      1_000 * 2 ** Math.max(0, (record.attemptCount ?? 1) - 1),
+                    ),
+                ),
+          leaseToken: null,
+          leaseExpiresAt: null,
         },
       });
       this.logger.error(
@@ -709,9 +686,16 @@ export class UberOrderService {
     await delegate.update({
       where: { id: record.id },
       data: {
-        status: succeeded ? 'SUCCEEDED' : 'FAILED',
+        status: succeeded
+          ? 'SUCCEEDED'
+          : retryable &&
+              (record.attemptCount ?? 1) >= UberOrderOutboxService.MAX_ATTEMPTS
+            ? 'DEAD'
+            : 'FAILED',
         uberHttpStatus: response.status,
-        retryable,
+        retryable:
+          retryable &&
+          (record.attemptCount ?? 1) < UberOrderOutboxService.MAX_ATTEMPTS,
         uberRequestId,
         lastError: succeeded
           ? null
@@ -720,6 +704,17 @@ export class UberOrderService {
           parsed ?? { body: rawText.slice(0, 2_000) },
         ),
         ...(succeeded ? { completedAt: new Date() } : {}),
+        nextRetryAt: retryable
+          ? new Date(
+              Date.now() +
+                Math.min(
+                  300_000,
+                  1_000 * 2 ** Math.max(0, (record.attemptCount ?? 1) - 1),
+                ),
+            )
+          : null,
+        leaseToken: null,
+        leaseExpiresAt: null,
       },
     });
     if (!succeeded) {
