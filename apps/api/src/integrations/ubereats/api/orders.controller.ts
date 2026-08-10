@@ -9,13 +9,13 @@ import {
   UberReadOnlyAdmin,
 } from './ubereats-access.decorator';
 import { SyncOrderStatusDto } from '../contracts/requests/ubereats.requests';
-import { UberOrderService } from '../application/orders/uber-order.service';
+import { UberOrderApplication } from '../application/orders/uber-order.service';
 
 @Controller('integrations/ubereats')
 @UberReadOnlyAdmin()
 export class UberEatsOrdersController {
   private readonly logger = new AppLogger(UberEatsOrdersController.name);
-  constructor(private readonly orders: UberOrderService) {}
+  constructor(private readonly orders: UberOrderApplication) {}
   @Post('orders/:externalOrderId/status')
   @UberMfaAdminWrite()
   async syncOrderStatus(

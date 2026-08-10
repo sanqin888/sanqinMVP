@@ -12,10 +12,12 @@ import { MessagingModule } from '../../messaging/messaging.module';
 import { OrdersModule } from '../../orders/orders.module';
 import { UberHttpClient } from './infrastructure/http/uber-http.client';
 import { UberConfigService } from './infrastructure/config/uber-config.service';
-import { UberWebhookService } from './application/orders/uber-webhook.service';
-import { UberOrderService } from './application/orders/uber-order.service';
+import { ProcessUberWebhookInboxWorker } from './application/orders/uber-webhook-inbox.worker';
+import { ReceiveUberWebhookUseCase } from './application/orders/uber-webhook-receiver.use-case';
+import { UberOrderApplication } from './application/orders/uber-order.service';
 import { UberMenuService } from './application/menu/uber-menu.service';
-import { UberMenuWorkflowCore } from './application/menu/uber-menu.workflow';
+import { UberMenuPrismaAdapter } from './infrastructure/persistence/uber-menu-prisma.adapter';
+import { UberOrderPrismaAdapter } from './infrastructure/persistence/uber-order-prisma.adapter';
 import { UberMenuDraftService } from './application/menu/uber-menu-draft.service';
 import { UberMenuPublishService } from './application/menu/uber-menu-publish.service';
 import { UberMenuAvailabilityService } from './application/menu/uber-menu-availability.service';
@@ -42,17 +44,26 @@ import {
   UberOAuthStateRepository,
   UberStoreMappingRepository,
 } from './infrastructure/persistence/uber-merchant.repositories';
-import { UberOperationsService } from './application/operations/uber-operations.service';
+import { UberOperationsApplication } from './application/operations/uber-operations.service';
+import { UberOperationsPrismaAdapter } from './infrastructure/persistence/uber-operations-prisma.adapter';
+import {
+  CreateUberOpsTicketUseCase,
+  GenerateUberReconciliationReportUseCase,
+  QueryUberOperationsSummary,
+  RetryUberOpsTicketUseCase,
+  UBER_OPERATIONS_PORT,
+} from './application/operations/uber-operations.use-cases';
 import { UberPrismaAccessService } from './infrastructure/persistence/uber-prisma-access.service';
 import { UberOrderActionService } from './application/orders/uber-order-action.service';
 import { UberOrderOutboxService } from './application/orders/uber-order-outbox.service';
 import { UberOrderStatusSyncService } from './application/orders/uber-order-status-sync.service';
 import {
   ExecuteUberOrderActionWorker,
-  HandleUberOrderCancellationUseCase,
+  CancelUberOrderUseCase,
   ImportUberOrderUseCase,
-  PersistUberOrderUseCase,
+  ListPendingUberOrdersQuery,
   RequestUberOrderActionUseCase,
+  SyncUberOrderStatusUseCase,
 } from './application/orders/uber-order.use-cases';
 import { UberCredentialVaultService } from './infrastructure/crypto/uber-credential-vault.service';
 import { UberApiGatewayTransport } from './infrastructure/api/uber-api.gateway';
@@ -64,6 +75,15 @@ import {
 } from './infrastructure/api/uber-resource.gateways';
 import { UberTelemetryService } from './infrastructure/observability/uber-telemetry.service';
 import { UBER_UNIT_OF_WORK } from './application/ports/uber-persistence.ports';
+import {
+  UBER_MENU_AVAILABILITY_PORT,
+  UBER_MENU_DRAFT_PORT,
+  UBER_MENU_PUBLISH_PORT,
+  UBER_ORDER_ACTION_PORT,
+  UBER_ORDER_IMPORT_PORT,
+  UBER_ORDER_SYNC_PORT,
+  UBER_WEBHOOK_INBOX_RECEIVER_PORT,
+} from './application/ports/uber-use-case.ports';
 import {
   PrismaUberMenuPublishAdapter,
   PrismaUberMerchantConnectionAdapter,
@@ -90,7 +110,10 @@ import {
       useFactory: () => new UberConfigService(process.env),
     },
     BrowserWriteCsrfGuard,
-    UberCredentialVaultService,
+    {
+      provide: UberCredentialVaultService,
+      useFactory: () => new UberCredentialVaultService(process.env),
+    },
     UberPrismaAccessService,
     PrismaUberWebhookInboxAdapter,
     PrismaUberOrderActionAdapter,
@@ -109,17 +132,33 @@ import {
     UberStoreGateway,
     UberOrderGateway,
     UberMenuGateway,
-    UberWebhookService,
-    UberOrderService,
+    ProcessUberWebhookInboxWorker,
+    {
+      provide: UBER_WEBHOOK_INBOX_RECEIVER_PORT,
+      useExisting: ProcessUberWebhookInboxWorker,
+    },
+    ReceiveUberWebhookUseCase,
+    UberOrderPrismaAdapter,
+    { provide: UBER_ORDER_IMPORT_PORT, useExisting: UberOrderPrismaAdapter },
+    { provide: UBER_ORDER_ACTION_PORT, useExisting: UberOrderPrismaAdapter },
+    { provide: UBER_ORDER_SYNC_PORT, useExisting: UberOrderPrismaAdapter },
+    UberOrderApplication,
     UberOrderActionService,
     UberOrderStatusSyncService,
     UberOrderOutboxService,
     ImportUberOrderUseCase,
-    PersistUberOrderUseCase,
-    HandleUberOrderCancellationUseCase,
+    CancelUberOrderUseCase,
     RequestUberOrderActionUseCase,
     ExecuteUberOrderActionWorker,
-    UberMenuWorkflowCore,
+    SyncUberOrderStatusUseCase,
+    ListPendingUberOrdersQuery,
+    UberMenuPrismaAdapter,
+    { provide: UBER_MENU_DRAFT_PORT, useExisting: UberMenuPrismaAdapter },
+    { provide: UBER_MENU_PUBLISH_PORT, useExisting: UberMenuPrismaAdapter },
+    {
+      provide: UBER_MENU_AVAILABILITY_PORT,
+      useExisting: UberMenuPrismaAdapter,
+    },
     UberMenuDraftService,
     UberMenuPublishService,
     UberMenuAvailabilityService,
@@ -139,19 +178,26 @@ import {
     UberMerchantStoreMappingService,
     UberMerchantProvisioningService,
     UberMerchantService,
-    UberOperationsService,
+    UberOperationsPrismaAdapter,
+    { provide: UBER_OPERATIONS_PORT, useExisting: UberOperationsPrismaAdapter },
+    GenerateUberReconciliationReportUseCase,
+    CreateUberOpsTicketUseCase,
+    RetryUberOpsTicketUseCase,
+    QueryUberOperationsSummary,
+    UberOperationsApplication,
   ],
   exports: [
     UberAuthService,
     BrowserWriteCsrfGuard,
-    UberWebhookService,
-    UberOrderService,
+    ReceiveUberWebhookUseCase,
+    ReceiveUberWebhookUseCase,
+    UberOrderApplication,
     UberMenuService,
     UberMerchantOAuthService,
     UberMerchantStoreMappingService,
     UberMerchantProvisioningService,
     UberMerchantService,
-    UberOperationsService,
+    UberOperationsApplication,
   ],
 })
 export class UberEatsModule {}

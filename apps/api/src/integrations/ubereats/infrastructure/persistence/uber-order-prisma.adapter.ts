@@ -21,7 +21,7 @@ import {
 } from '../../../../orders/order-ingestion.service';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { UberWebhookEnvelopeDto } from '../../contracts/dto/uber-webhook-envelope.dto';
-import { UberAuthService } from '../merchant/uber-auth.service';
+import { UberAuthService } from '../../application/merchant/uber-auth.service';
 import {
   UberConfigService,
   type UberOrderConfig,
@@ -51,18 +51,18 @@ import {
   mapUberEventTypeToOrderStatus,
   validateUberOrderAmounts,
 } from '../../domain/orders/uber-order-payload.parser';
-import { UberOrderActionService } from './uber-order-action.service';
-import { UberOrderOutboxService } from './uber-order-outbox.service';
-import { UberOrderStatusSyncService } from './uber-order-status-sync.service';
+import { UberOrderActionService } from '../../application/orders/uber-order-action.service';
+import { UberOrderOutboxService } from '../../application/orders/uber-order-outbox.service';
+import { UberOrderStatusSyncService } from '../../application/orders/uber-order-status-sync.service';
 import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
 import { UberOrderGateway } from '../../infrastructure/api/uber-resource.gateways';
-import { toUberEatsHttpException } from '../uber-domain-error.mapper';
+import { toUberEatsHttpException } from '../../application/uber-domain-error.mapper';
 import { toUberOrderStatus } from '../../infrastructure/persistence/uber-order-status.mapper';
 
 import { UberTelemetryService } from '../../infrastructure/observability/uber-telemetry.service';
 
 @Injectable()
-export class UberOrderService {
+export class UberOrderPrismaAdapter {
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
   private readonly telemetry: UberTelemetryService;
   private readonly payloadParser = new UberOrderPayloadParser();

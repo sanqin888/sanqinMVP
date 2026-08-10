@@ -113,4 +113,28 @@ describe('Uber Eats bounded-context architecture', () => {
       );
     }
   });
+
+  it('removes the legacy all-purpose Uber workflows', () => {
+    expect(
+      [
+        'application/menu/uber-menu.workflow.ts',
+        'application/orders/uber-order.workflow.ts',
+        'application/orders/uber-webhook.service.ts',
+      ].filter((path) => existsSync(join(BOUNDED_CONTEXT_ROOT, path))),
+    ).toEqual([]);
+  });
+
+  it('keeps focused use cases behind application-owned ports', () => {
+    for (const path of [
+      'application/menu/uber-menu-draft.service.ts',
+      'application/menu/uber-menu-publish.service.ts',
+      'application/menu/uber-menu-availability.service.ts',
+      'application/orders/uber-order.use-cases.ts',
+      'application/operations/uber-operations.use-cases.ts',
+    ]) {
+      const source = readFileSync(join(BOUNDED_CONTEXT_ROOT, path), 'utf8');
+      expect(source).not.toMatch(/PrismaService|UberHttpClient/);
+      expect(source).toMatch(/PORT/);
+    }
+  });
 });

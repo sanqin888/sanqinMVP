@@ -1,69 +1,63 @@
-import { Injectable } from '@nestjs/common';
-import { UberMenuWorkflowCore } from './uber-menu.workflow';
+import { Inject, Injectable } from '@nestjs/common';
+import {
+  UBER_MENU_DRAFT_PORT,
+  type UberMenuDraftPort,
+} from '../ports/uber-use-case.ports';
 
-/** Owns draft editing, graph preview, channel configuration and diff use cases. */
+/** Draft read/write and diff use cases. Every write is committed by the port in one transaction. */
 @Injectable()
 export class UberMenuDraftService {
-  constructor(private readonly workflow: UberMenuWorkflowCore) {}
-
-  listUberItemChannelConfigs(
-    ...args: Parameters<UberMenuWorkflowCore['listUberItemChannelConfigs']>
-  ) {
-    return this.workflow.listUberItemChannelConfigs(...args);
+  constructor(
+    @Inject(UBER_MENU_DRAFT_PORT) private readonly drafts: UberMenuDraftPort,
+  ) {}
+  listUberItemChannelConfigs(storeId?: string) {
+    return this.drafts.listUberItemChannelConfigs(storeId);
   }
-  listUberPublishedMenuItems(
-    ...args: Parameters<UberMenuWorkflowCore['listUberPublishedMenuItems']>
-  ) {
-    return this.workflow.listUberPublishedMenuItems(...args);
+  listUberPublishedMenuItems(storeId?: string) {
+    return this.drafts.listUberPublishedMenuItems(storeId);
   }
-  listUberOptionItemConfigs(
-    ...args: Parameters<UberMenuWorkflowCore['listUberOptionItemConfigs']>
-  ) {
-    return this.workflow.listUberOptionItemConfigs(...args);
+  listUberOptionItemConfigs(storeId?: string) {
+    return this.drafts.listUberOptionItemConfigs(storeId);
   }
   upsertUberItemChannelConfig(
-    ...args: Parameters<UberMenuWorkflowCore['upsertUberItemChannelConfig']>
+    input: Parameters<UberMenuDraftPort['upsertUberItemChannelConfig']>[0],
   ) {
-    return this.workflow.upsertUberItemChannelConfig(...args);
+    return this.drafts.upsertUberItemChannelConfig(input);
   }
   upsertUberOptionItemConfig(
-    ...args: Parameters<UberMenuWorkflowCore['upsertUberOptionItemConfig']>
+    input: Parameters<UberMenuDraftPort['upsertUberOptionItemConfig']>[0],
   ) {
-    return this.workflow.upsertUberOptionItemConfig(...args);
+    return this.drafts.upsertUberOptionItemConfig(input);
   }
-  getUberMenuDraft(
-    ...args: Parameters<UberMenuWorkflowCore['getUberMenuDraft']>
-  ) {
-    return this.workflow.getUberMenuDraft(...args);
+  getUberMenuDraft(storeId?: string) {
+    return this.drafts.getUberMenuDraft(storeId);
   }
   updateUberDraftItem(
-    ...args: Parameters<UberMenuWorkflowCore['updateUberDraftItem']>
+    ...args: Parameters<UberMenuDraftPort['updateUberDraftItem']>
   ) {
-    return this.workflow.updateUberDraftItem(...args);
+    return this.drafts.updateUberDraftItem(...args);
   }
   updateUberDraftGroup(
-    ...args: Parameters<UberMenuWorkflowCore['updateUberDraftGroup']>
+    ...args: Parameters<UberMenuDraftPort['updateUberDraftGroup']>
   ) {
-    return this.workflow.updateUberDraftGroup(...args);
+    return this.drafts.updateUberDraftGroup(...args);
   }
   updateUberDraftOption(
-    ...args: Parameters<UberMenuWorkflowCore['updateUberDraftOption']>
+    ...args: Parameters<UberMenuDraftPort['updateUberDraftOption']>
   ) {
-    return this.workflow.updateUberDraftOption(...args);
+    return this.drafts.updateUberDraftOption(...args);
   }
   bindUberDraftOptionChildGroup(
-    ...args: Parameters<UberMenuWorkflowCore['bindUberDraftOptionChildGroup']>
+    ...args: Parameters<UberMenuDraftPort['bindUberDraftOptionChildGroup']>
   ) {
-    return this.workflow.bindUberDraftOptionChildGroup(...args);
+    return this.drafts.bindUberDraftOptionChildGroup(...args);
   }
   unbindUberDraftOptionChildGroup(
-    ...args: Parameters<UberMenuWorkflowCore['unbindUberDraftOptionChildGroup']>
+    ...args: Parameters<UberMenuDraftPort['unbindUberDraftOptionChildGroup']>
   ) {
-    return this.workflow.unbindUberDraftOptionChildGroup(...args);
+    return this.drafts.unbindUberDraftOptionChildGroup(...args);
   }
-  getUberMenuDraftDiff(
-    ...args: Parameters<UberMenuWorkflowCore['getUberMenuDraftDiff']>
-  ) {
-    return this.workflow.getUberMenuDraftDiff(...args);
+  getUberMenuDraftDiff(storeId?: string) {
+    return this.drafts.getUberMenuDraftDiff(storeId);
   }
 }

@@ -1,18 +1,27 @@
-import { Injectable } from '@nestjs/common';
-import { UberMenuWorkflowCore } from './uber-menu.workflow';
-
-/** Owns item and option availability synchronization use cases. */
+import { Inject, Injectable } from '@nestjs/common';
+import {
+  UBER_MENU_AVAILABILITY_PORT,
+  type UberMenuAvailabilityPort,
+} from '../ports/uber-use-case.ports';
+/** Synchronizes availability with the stable menu-node id as idempotency key. */
 @Injectable()
 export class UberMenuAvailabilityService {
-  constructor(private readonly workflow: UberMenuWorkflowCore) {}
+  constructor(
+    @Inject(UBER_MENU_AVAILABILITY_PORT)
+    private readonly availability: UberMenuAvailabilityPort,
+  ) {}
   syncUberMenuItemAvailability(
-    ...args: Parameters<UberMenuWorkflowCore['syncUberMenuItemAvailability']>
+    ...args: Parameters<
+      UberMenuAvailabilityPort['syncUberMenuItemAvailability']
+    >
   ) {
-    return this.workflow.syncUberMenuItemAvailability(...args);
+    return this.availability.syncUberMenuItemAvailability(...args);
   }
   syncUberOptionItemAvailability(
-    ...args: Parameters<UberMenuWorkflowCore['syncUberOptionItemAvailability']>
+    ...args: Parameters<
+      UberMenuAvailabilityPort['syncUberOptionItemAvailability']
+    >
   ) {
-    return this.workflow.syncUberOptionItemAvailability(...args);
+    return this.availability.syncUberOptionItemAvailability(...args);
   }
 }

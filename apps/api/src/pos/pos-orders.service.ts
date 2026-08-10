@@ -15,7 +15,7 @@ import {
   type OrderStatus,
 } from '../orders/order-status';
 import type { OrderDto } from '../orders/dto/order.dto';
-import { UberOrderService } from '../integrations/ubereats/application/orders/uber-order.service';
+import { UberOrderApplication } from '../integrations/ubereats/application/orders/uber-order.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { createHash } from 'crypto';
 
@@ -25,7 +25,7 @@ const UBER_EATS_CLIENT_REQUEST_PREFIX = 'ubereats:';
 export class PosOrdersService {
   constructor(
     private readonly orders: OrdersService,
-    private readonly uberEats: UberOrderService,
+    private readonly uberEats: UberOrderApplication,
     private readonly prisma: PrismaService,
   ) {}
 

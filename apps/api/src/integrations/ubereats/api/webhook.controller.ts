@@ -14,12 +14,12 @@ import { AppLogger } from '../../../common/app-logger';
 
 import { UberReadOnlyAdmin } from './ubereats-access.decorator';
 
-import { UberWebhookService } from '../application/orders/uber-webhook.service';
+import { ReceiveUberWebhookUseCase } from '../application/orders/uber-webhook-receiver.use-case';
 
 @Controller('integrations/ubereats')
 export class UberEatsWebhookController {
   private readonly logger = new AppLogger(UberEatsWebhookController.name);
-  constructor(private readonly webhookService: UberWebhookService) {}
+  constructor(private readonly webhookService: ReceiveUberWebhookUseCase) {}
   private readRequestHeader(req: Request, name: string): string | null {
     const value = req.headers[name.toLowerCase()];
     if (typeof value === 'string' && value.trim()) return value.trim();
@@ -69,7 +69,7 @@ export class UberEatsWebhookController {
       `[ubereats webhook] requestId=${requestId} eventType=${eventType} contentType=${contentType} bodyBytes=${rawBuffer.length}`,
     );
 
-    await this.webhookService.handleWebhook({
+    await this.webhookService.execute({
       headers: req.headers as Record<string, unknown>,
       rawBody: rawBuffer,
     });

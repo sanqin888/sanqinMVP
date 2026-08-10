@@ -20,13 +20,13 @@ import {
   OpsTicketListQuery,
   ReportListQuery,
 } from '../contracts/requests/ubereats.requests';
-import { UberOperationsService } from '../application/operations/uber-operations.service';
+import { UberOperationsApplication } from '../application/operations/uber-operations.service';
 
 @Controller('integrations/ubereats')
 @UberReadOnlyAdmin()
 export class UberEatsOperationsController {
   private readonly logger = new AppLogger(UberEatsOperationsController.name);
-  constructor(private readonly operations: UberOperationsService) {}
+  constructor(private readonly operations: UberOperationsApplication) {}
   @Post('reports/reconciliation/generate')
   @UberAdminWrite()
   async generateReconciliationReport(
@@ -97,7 +97,7 @@ export class UberEatsOperationsController {
       storeId: dto.storeId,
       externalOrderId: dto.externalOrderId,
       menuItemStableId: dto.menuItemStableId,
-      context,
+      context: context as never,
     });
   }
 

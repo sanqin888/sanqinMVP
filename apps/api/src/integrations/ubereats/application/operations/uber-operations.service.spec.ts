@@ -36,10 +36,10 @@ jest.mock('@prisma/client', () => ({
   PaymentMethod: { UBEREATS: 'UBEREATS' },
 }));
 
-import { UberOperationsService } from './uber-operations.service';
-import { createUberOperationsService } from '../../uber-service-test.helpers';
+import { UberOperationsPrismaAdapter } from '../../infrastructure/persistence/uber-operations-prisma.adapter';
+import { createUberOperationsPrismaAdapter } from '../../uber-service-test.helpers';
 
-describe('UberOperationsService', () => {
+describe('UberOperationsPrismaAdapter', () => {
   const clientSecret = 'test-ubereats-secret';
   beforeEach(() => {
     process.env.UBER_EATS_CLIENT_SECRET = clientSecret;
@@ -86,9 +86,9 @@ describe('UberOperationsService', () => {
       },
     };
 
-    const service = createUberOperationsService(
+    const service = createUberOperationsPrismaAdapter(
       prisma as unknown as ConstructorParameters<
-        typeof UberOperationsService
+        typeof UberOperationsPrismaAdapter
       >[0],
     );
     const result = await service.generateReconciliationReport({
@@ -135,15 +135,15 @@ describe('UberOperationsService', () => {
       },
     };
 
-    const service = createUberOperationsService(
+    const service = createUberOperationsPrismaAdapter(
       prisma as unknown as ConstructorParameters<
-        typeof UberOperationsService
+        typeof UberOperationsPrismaAdapter
       >[0],
       undefined,
       undefined,
       {
         syncStoreStatusToUber: jest.fn().mockResolvedValue({ ok: true }),
-      } as unknown as ConstructorParameters<typeof UberOperationsService>[3],
+      } as unknown as ConstructorParameters<typeof UberOperationsPrismaAdapter>[3],
     );
     await expect(service.retryOpsTicket('tic_1')).resolves.toMatchObject({
       ok: true,
@@ -166,9 +166,9 @@ describe('UberOperationsService', () => {
       },
     };
 
-    const service = createUberOperationsService(
+    const service = createUberOperationsPrismaAdapter(
       prisma as unknown as ConstructorParameters<
-        typeof UberOperationsService
+        typeof UberOperationsPrismaAdapter
       >[0],
     );
     await expect(
@@ -299,25 +299,25 @@ describe('UberOperationsService', () => {
     prisma: ReturnType<typeof retryPrisma>,
     dependencies: { orders?: object; menu?: object } = {},
   ) {
-    return createUberOperationsService(
+    return createUberOperationsPrismaAdapter(
       prisma as unknown as ConstructorParameters<
-        typeof UberOperationsService
+        typeof UberOperationsPrismaAdapter
       >[0],
       dependencies.orders as ConstructorParameters<
-        typeof UberOperationsService
+        typeof UberOperationsPrismaAdapter
       >[1],
       dependencies.menu as ConstructorParameters<
-        typeof UberOperationsService
+        typeof UberOperationsPrismaAdapter
       >[2],
     );
   }
 });
 
-describe('UberOperationsService 最小依赖装配', () => {
+describe('UberOperationsPrismaAdapter 最小依赖装配', () => {
   it('构造函数只声明 Prisma、订单、菜单与商户服务', () => {
-    expect(UberOperationsService.length).toBe(4);
+    expect(UberOperationsPrismaAdapter.length).toBe(4);
   });
   it('运营编排不读取任何 Uber 敏感配置', () => {
-    expect(() => createUberOperationsService({} as never)).not.toThrow();
+    expect(() => createUberOperationsPrismaAdapter({} as never)).not.toThrow();
   });
 });
