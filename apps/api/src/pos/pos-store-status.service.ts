@@ -2,7 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import { PrismaService } from '../prisma/prisma.service';
 import { PosGateway } from './pos.gateway';
-import { UberMerchantService } from '../integrations/ubereats/application/merchant/uber-merchant.service';
+import { SyncUberStoreStatusUseCase } from '../integrations/ubereats/application/merchant/uber-merchant-provisioning.service';
 import { AppLogger } from '../common/app-logger';
 
 const AUTO_UNTIL_PREFIX = '__AUTO_UNTIL__:';
@@ -40,7 +40,7 @@ export class PosStoreStatusService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly posGateway: PosGateway,
-    private readonly uberEatsService: UberMerchantService,
+    private readonly uberEatsService: SyncUberStoreStatusUseCase,
   ) {}
 
   async getCustomerOrderingStatus() {

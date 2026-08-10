@@ -16,18 +16,28 @@ import {
   OpsTicketListQuery,
   ReportListQuery,
 } from '../contracts/requests/ubereats.requests';
-import { UberOperationsApplication } from '../application/operations/uber-operations.service';
+import {
+  CreateUberOpsTicketUseCase,
+  GenerateUberReconciliationReportUseCase,
+  QueryUberOperationsSummary,
+  RetryUberOpsTicketUseCase,
+} from '../application/operations/uber-operations.use-cases';
 
 @Controller('integrations/ubereats')
 @UberReadOnlyAdmin()
 export class UberEatsOperationsController {
-  constructor(private readonly operations: UberOperationsApplication) {}
+  constructor(
+    private readonly generateReport: GenerateUberReconciliationReportUseCase,
+    private readonly createTicket: CreateUberOpsTicketUseCase,
+    private readonly retryTicket: RetryUberOpsTicketUseCase,
+    private readonly queries: QueryUberOperationsSummary,
+  ) {}
   @Post('reports/reconciliation/generate')
   @UberAdminWrite()
   async generateReconciliationReport(
     @Body() dto: GenerateUberReconciliationReportDto,
   ) {
-    return await this.operations.generateReconciliationReport({
+    return await this.generateReport.execute({
       storeId: dto.storeId,
       rangeStart: dto.rangeStart,
       rangeEnd: dto.rangeEnd,
@@ -40,7 +50,7 @@ export class UberEatsOperationsController {
     @Body() dto: GenerateUberReconciliationReportDto,
   ) {
     return executeUberMutation(() =>
-      this.operations.generateReconciliationReport({
+      this.generateReport.execute({
         storeId: dto.storeId,
         rangeStart: dto.rangeStart,
         rangeEnd: dto.rangeEnd,
@@ -50,30 +60,24 @@ export class UberEatsOperationsController {
 
   @Get('reports/reconciliation')
   async listReconciliationReports(@Query() query: ReportListQuery) {
-    const result = await this.operations.listReconciliationReports(
-      query.storeId,
-      query.limit,
-    );
+    const result = await this.queries.listReports(query.storeId, query.limit);
     return toUberListResponse(result.items, query.limit);
   }
 
   @Get('reports/reconciliation/summary')
   async reconciliationSummary(@Query() query: ReportListQuery) {
-    return this.operations.getReconciliationSummary(query.storeId);
+    return this.queries.reconciliation(query.storeId);
   }
 
   @Post('ops/tickets')
   @UberAdminWrite()
   async createOpsTicket(@Body() dto: CreateUberOpsTicketDto): Promise<unknown> {
-    return await this.operations.createOpsTicket(dto);
+    return await this.createTicket.execute(dto);
   }
 
   @Get('ops/tickets')
   async listOpsTickets(@Query() query: OpsTicketListQuery): Promise<unknown> {
-    const result = await this.operations.listOpsTickets(
-      query.storeId,
-      query.status,
-    );
+    const result = await this.queries.listTickets(query.storeId, query.status);
     return toUberListResponse(
       result.items.map((ticket) => ({
         ticketStableId: ticket.ticketStableId,
@@ -93,7 +97,7 @@ export class UberEatsOperationsController {
 
   @Get('ops/tickets/summary')
   async opsTicketsSummary(@Query() query: OpsTicketListQuery) {
-    return this.operations.getOpsTicketsSummary(query.storeId, query.status);
+    return this.queries.tickets(query.storeId, query.status);
   }
 
   @Post('ops/tickets/:ticketStableId/retry')
@@ -101,7 +105,7 @@ export class UberEatsOperationsController {
   async retryOpsTicket(
     @Param('ticketStableId', ResourceIdPipe) ticketStableId: string,
   ): Promise<unknown> {
-    return await this.operations.retryOpsTicket(ticketStableId);
+    return await this.retryTicket.execute(ticketStableId);
   }
 
   @Post('v2/ops/tickets/:ticketStableId/retry')
@@ -109,9 +113,8 @@ export class UberEatsOperationsController {
   async retryOpsTicketV2(
     @Param('ticketStableId', ResourceIdPipe) ticketStableId: string,
   ) {
-    return executeUberMutation(
-      () => this.operations.retryOpsTicket(ticketStableId),
-      { accepted: true },
-    );
+    return executeUberMutation(() => this.retryTicket.execute(ticketStableId), {
+      accepted: true,
+    });
   }
 }

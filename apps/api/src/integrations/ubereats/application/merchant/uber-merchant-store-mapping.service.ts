@@ -20,17 +20,3 @@ export class MapUberStoreUseCase {
     );
   }
 }
-
-@Injectable()
-export class UberMerchantStoreMappingService {
-  constructor(
-    private readonly discover: DiscoverUberStoresUseCase,
-    private readonly map: MapUberStoreUseCase,
-  ) {}
-  getMerchantStores(merchantUberUserId?: string) {
-    return this.discover.getMerchantStores(merchantUberUserId);
-  }
-  updatePosExternalStoreId(uberStoreId: string, posExternalStoreId: string) {
-    return this.map.updatePosExternalStoreId(uberStoreId, posExternalStoreId);
-  }
-}

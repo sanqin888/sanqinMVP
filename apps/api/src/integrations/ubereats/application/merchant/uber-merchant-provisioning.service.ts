@@ -40,25 +40,3 @@ export class SyncUberStoreStatusUseCase {
     return this.gateway.syncStoreStatusToUber(target);
   }
 }
-
-@Injectable()
-export class UberMerchantProvisioningService {
-  constructor(
-    private readonly provision: ProvisionUberStoreUseCase,
-    private readonly deprovision: DeprovisionUberStoreUseCase,
-    private readonly syncStatus: SyncUberStoreStatusUseCase,
-  ) {}
-  provisionStore(
-    storeId: string,
-    payload: Record<string, unknown> | undefined,
-    merchantUberUserId?: string,
-  ) {
-    return this.provision.provisionStore(storeId, payload, merchantUberUserId);
-  }
-  revokeOrDeprovisionStore() {
-    return this.deprovision.revokeOrDeprovisionStore();
-  }
-  syncStoreStatusToUber(target?: UberStoreStatusTarget) {
-    return this.syncStatus.syncStoreStatusToUber(target);
-  }
-}

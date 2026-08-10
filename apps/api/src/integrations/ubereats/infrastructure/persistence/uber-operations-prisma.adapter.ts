@@ -9,8 +9,9 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { normalizeUberStoreId } from '../../domain/shared/uber-integration.utils';
-import { UberMenuService } from '../../application/menu/uber-menu.service';
-import { UberMerchantService } from '../../application/merchant/uber-merchant.service';
+import { UberMenuPublishService } from '../../application/menu/uber-menu-publish.service';
+import { UberMenuAvailabilityService } from '../../application/menu/uber-menu-availability.service';
+import { SyncUberStoreStatusUseCase } from '../../application/merchant/uber-merchant-provisioning.service';
 import type {
   CreateOpsTicketInput,
   GenerateReconciliationReportInput,
@@ -19,7 +20,7 @@ import type {
   OrderStatusSyncContext,
   StoreStatusSyncContext,
 } from '../../domain/operations/uber-operations.types';
-import { UberOrderApplication } from '../../application/orders/uber-order.service';
+import { SyncUberOrderStatusUseCase } from '../../application/orders/uber-order.use-cases';
 import { UberPrismaAccessService } from '../../infrastructure/persistence/uber-prisma-access.service';
 
 import { UberTelemetryService } from '../../infrastructure/observability/uber-telemetry.service';
@@ -31,9 +32,10 @@ export class UberOperationsPrismaAdapter {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly orders: UberOrderApplication,
-    private readonly menu: UberMenuService,
-    private readonly merchant: UberMerchantService,
+    private readonly orderStatusSync: SyncUberOrderStatusUseCase,
+    private readonly menuPublish: UberMenuPublishService,
+    private readonly menuAvailability: UberMenuAvailabilityService,
+    private readonly storeStatusSync: SyncUberStoreStatusUseCase,
     private readonly prismaAccess: UberPrismaAccessService,
     @Optional() telemetry?: UberTelemetryService,
   ) {
@@ -297,23 +299,24 @@ export class UberOperationsPrismaAdapter {
           throw new BadRequestException('订单状态同步工单缺少 externalOrderId');
         }
         const context = this.parseOrderStatusSyncContext(ticket.context);
-        await this.orders.syncOrderStatusToUber(
+        await this.orderStatusSync.execute(
           ticket.externalOrderId,
           context.targetStatus,
         );
       } else if (ticket.type === UberOpsTicketType.STORE_STATUS_SYNC) {
         const context = this.parseStoreStatusSyncContext(ticket.context);
-        const result = await this.merchant.syncStoreStatusToUber(context);
+        const result =
+          await this.storeStatusSync.syncStoreStatusToUber(context);
         if (!result.ok) throw new Error('Uber 门店状态同步失败');
       } else if (ticket.type === UberOpsTicketType.MENU_PUBLISH) {
         const context = this.parseMenuPublishContext(ticket.context);
-        await this.menu.publishUberMenu(context.publish);
+        await this.menuPublish.publishUberMenu(context.publish);
       } else if (ticket.type === UberOpsTicketType.MENU_ITEM_AVAILABILITY) {
         if (!ticket.menuItemStableId) {
           throw new BadRequestException('商品状态工单缺少 menuItemStableId');
         }
         const context = this.parseMenuItemAvailabilityContext(ticket.context);
-        await this.menu.syncUberMenuItemAvailability({
+        await this.menuAvailability.syncUberMenuItemAvailability({
           storeId: ticket.storeId,
           menuItemStableId: ticket.menuItemStableId,
           isAvailable: context.isAvailable,

@@ -15,7 +15,10 @@ import {
   type OrderStatus,
 } from '../orders/order-status';
 import type { OrderDto } from '../orders/dto/order.dto';
-import { UberOrderApplication } from '../integrations/ubereats/application/orders/uber-order.service';
+import {
+  RequestUberOrderActionUseCase,
+  SyncUberOrderStatusUseCase,
+} from '../integrations/ubereats/application/orders/uber-order.use-cases';
 import { PrismaService } from '../prisma/prisma.service';
 import { createHash } from 'crypto';
 
@@ -25,7 +28,8 @@ const UBER_EATS_CLIENT_REQUEST_PREFIX = 'ubereats:';
 export class PosOrdersService {
   constructor(
     private readonly orders: OrdersService,
-    private readonly uberEats: UberOrderApplication,
+    private readonly uberOrderActions: RequestUberOrderActionUseCase,
+    private readonly uberOrderStatusSync: SyncUberOrderStatusUseCase,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -35,7 +39,7 @@ export class PosOrdersService {
     const externalOrderId = this.getUberWebhookExternalOrderId(order);
 
     if (order.status === 'pending' && externalOrderId) {
-      const result = await this.uberEats.acceptUberOrder(externalOrderId);
+      const result = await this.uberOrderActions.accept(externalOrderId);
 
       // ACCEPT owns both the durable outbox action and the atomic pending/paid
       // -> making transition. Never run the generic pending -> paid path.
@@ -46,7 +50,7 @@ export class PosOrdersService {
     }
 
     if (nextStatus === 'ready' && externalOrderId) {
-      const result = await this.uberEats.syncOrderStatusToUber(
+      const result = await this.uberOrderStatusSync.execute(
         externalOrderId,
         'ready' satisfies OrderStatus,
       );
@@ -60,7 +64,7 @@ export class PosOrdersService {
 
     if (order.status === 'ready' && externalOrderId) {
       const action =
-        await this.uberEats.getReadyForPickupAction(externalOrderId);
+        await this.uberOrderActions.getReadyForPickupAction(externalOrderId);
       if (action && action.status !== 'SUCCEEDED') {
         return this.advanceResult(order, {
           actionId: action.id,
@@ -83,7 +87,8 @@ export class PosOrdersService {
     if (!externalOrderId || order.status !== 'ready') {
       throw new BadRequestException('只有已就绪的 Uber 订单可以重试同步');
     }
-    const result = await this.uberEats.retryReadyForPickup(externalOrderId);
+    const result =
+      await this.uberOrderActions.retryReadyForPickup(externalOrderId);
     return this.advanceResult(order, result);
   }
 

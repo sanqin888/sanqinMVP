@@ -117,9 +117,14 @@ describe('Uber Eats bounded-context architecture', () => {
   it('removes the legacy all-purpose Uber workflows', () => {
     expect(
       [
+        'application/merchant/uber-merchant.service.ts',
+        'application/menu/uber-menu.service.ts',
         'application/menu/uber-menu.workflow.ts',
+        'application/orders/uber-order.service.ts',
         'application/orders/uber-order.workflow.ts',
         'application/orders/uber-webhook.service.ts',
+        'application/operations/uber-operations.service.ts',
+        'domain/menu/uber-menu.payload.ts',
       ].filter((path) => existsSync(join(BOUNDED_CONTEXT_ROOT, path))),
     ).toEqual([]);
   });
