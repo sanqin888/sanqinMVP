@@ -17,6 +17,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { UberMenuNotificationDto } from './dto/uber-menu-notification.dto';
 import { UberAuthService } from './uber-auth.service';
 import { UberConfigService, type UberMenuConfig } from './uber-config.service';
+import { UberMenuGateway } from '../../infrastructure/uber-api/uber-resource.gateways';
 import { UberHttpClient } from './uber-http.client';
 import {
   normalizeUberStoreId,
@@ -27,7 +28,6 @@ import type {
   PublishMenuInput,
   SyncAvailabilityInput,
   SyncOptionAvailabilityInput,
-  UberAuthenticationError,
   UberAvailabilitySyncResult,
   UberAvailabilitySyncStatus,
   UberMenuGraphValidationIssue,
@@ -68,19 +68,17 @@ import { UberImageValidator } from './uber-image.validator';
 export class UberMenuWorkflowCore {
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
   private readonly logger = new AppLogger(UberMenuWorkflowCore.name);
-  private readonly uberApiBaseUrl: string;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly uberAuthService: UberAuthService,
-    private readonly httpClient: UberHttpClient,
+    private readonly menuGateway: UberMenuGateway,
     @Inject(UberConfigService) private readonly config: UberMenuConfig,
     private readonly prismaAccess: UberPrismaAccessService,
+    private readonly httpClient: UberHttpClient,
     @Optional()
     private readonly credentialVault = new UberCredentialVaultService(),
-  ) {
-    this.uberApiBaseUrl = config.apiBaseUrl;
-  }
+  ) {}
 
   validateUberMenuPayload(payload: UberMenuUploadPayload) {
     return validateUberMenuPayload(payload);
@@ -926,7 +924,7 @@ export class UberMenuWorkflowCore {
       await this.captureEvent('ubereats_menu_publish_dry_run', {
         storeId: normalizedStoreId,
         uberStoreId,
-        summary,
+        summary: summary as unknown as Prisma.JsonValue,
       });
       return {
         ok: true,
@@ -1318,65 +1316,6 @@ export class UberMenuWorkflowCore {
       } as never,
     });
     return { ...input, encryptedAccessToken, encryptedRefreshToken };
-  }
-
-  private async callUberApi(
-    path: string,
-    options: {
-      accessToken: string;
-      method: 'GET' | 'POST' | 'PUT';
-      body?: Record<string, unknown>;
-      rawBody?: string | Buffer;
-      extraHeaders?: Record<string, string>;
-    },
-  ): Promise<Record<string, unknown>> {
-    const resolvedBody: BodyInit | undefined =
-      options.rawBody !== undefined
-        ? typeof options.rawBody === 'string'
-          ? options.rawBody
-          : new Uint8Array(options.rawBody)
-        : options.body
-          ? JSON.stringify(options.body)
-          : undefined;
-    const {
-      response,
-      text: rawText,
-      data: parsed,
-    } = await this.httpClient.request({
-      path,
-      baseUrl: this.uberApiBaseUrl,
-      method: options.method,
-      operation: `${options.method} ${path}`,
-      accessToken: options.accessToken,
-      headers: {
-        ...(options.body && !options.rawBody
-          ? { 'Content-Type': 'application/json' }
-          : {}),
-        ...options.extraHeaders,
-      },
-      body: resolvedBody,
-      kind: 'api',
-    });
-    if (!response.ok) {
-      const authenticationError =
-        response.status === 401 || response.status === 403
-          ? this.buildUberAuthenticationError(parsed, response.status)
-          : undefined;
-      const detail = authenticationError
-        ? JSON.stringify(authenticationError)
-        : summarizeUberDebugResponse(parsed, rawText);
-      this.logger.error(
-        `[ubereats api] ${options.method} ${path} failed status=${response.status} detail=${JSON.stringify(detail)}`,
-      );
-      throw new BadRequestException({
-        ok: false,
-        status: response.status,
-        detail,
-        ...(authenticationError ? { error: authenticationError } : {}),
-      });
-    }
-
-    return this.asObject(parsed) ?? {};
   }
 
   async processWebhookEvent(
@@ -2319,16 +2258,13 @@ export class UberMenuWorkflowCore {
     uberStoreId: string,
     payload: UberMenuUploadPayload,
   ): Promise<Record<string, unknown>> {
-    const accessToken = await this.uberAuthService.getAccessToken('eats.store');
-
-    return this.callUberApi(
-      `/v2/eats/stores/${encodeURIComponent(uberStoreId)}/menus`,
-      {
-        accessToken,
-        method: 'PUT',
-        body: payload as unknown as Record<string, unknown>,
-      },
-    );
+    return this.menuGateway.request({
+      path: `/v2/eats/stores/${encodeURIComponent(uberStoreId)}/menus`,
+      scope: 'eats.store',
+      operation: 'uber.menu.upload',
+      method: 'PUT',
+      json: payload as unknown as Record<string, unknown>,
+    });
   }
 
   /**
@@ -2347,12 +2283,12 @@ export class UberMenuWorkflowCore {
     requested: UberMenuUploadPayload,
   ): Promise<'SUBMITTED' | 'SUCCEEDED' | 'FAILED'> {
     try {
-      const accessToken =
-        await this.uberAuthService.getAccessToken('eats.store');
-      const response = await this.callUberApi(
-        `/v2/eats/stores/${encodeURIComponent(uberStoreId)}/menus`,
-        { accessToken, method: 'GET' },
-      );
+      const response = await this.menuGateway.request<Record<string, unknown>>({
+        path: `/v2/eats/stores/${encodeURIComponent(uberStoreId)}/menus`,
+        scope: 'eats.store',
+        operation: 'uber.menu.read',
+        method: 'GET',
+      });
       const readPayload = this.asObject(response.menu ?? response) ?? {};
       const expectedIds = requested.items.map((item) => item.id);
       const actualIds = new Set(
@@ -2645,32 +2581,6 @@ export class UberMenuWorkflowCore {
       );
     }
     return stableId;
-  }
-
-  private buildUberAuthenticationError(
-    parsed: unknown,
-    status: number,
-  ): UberAuthenticationError {
-    const body = this.asObject(parsed);
-    const nestedError = this.asObject(body?.error);
-    const code =
-      this.readString(body?.code, nestedError?.code, body?.error) ??
-      `UBER_HTTP_${status}`;
-    const unsafeMessage =
-      this.readString(
-        body?.message,
-        nestedError?.message,
-        body?.error_description,
-      ) ?? 'Uber authentication request was rejected';
-    const message = unsafeMessage
-      .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [REDACTED]')
-      .replace(
-        /\b(access[_ -]?token|client[_ -]?secret)\s*[:=]\s*\S+/gi,
-        '$1=[REDACTED]',
-      )
-      .slice(0, 500);
-
-    return { upstreamStatus: status, code: code.slice(0, 100), message };
   }
 
   private async resolveUberStoreIdOrThrow(storeId: string): Promise<string> {

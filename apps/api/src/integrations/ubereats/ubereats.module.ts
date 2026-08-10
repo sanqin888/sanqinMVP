@@ -51,6 +51,13 @@ import {
   RequestUberOrderActionUseCase,
 } from './uber-order.use-cases';
 import { UberCredentialVaultService } from '../../infrastructure/crypto/uber-credential-vault.service';
+import { UberApiGatewayTransport } from '../../infrastructure/uber-api/uber-api.gateway';
+import {
+  UberMenuGateway,
+  UberOrderGateway,
+  UberStoreGateway,
+  UberMerchantGateway as UberMerchantApiGateway,
+} from '../../infrastructure/uber-api/uber-resource.gateways';
 
 @Module({
   imports: [PrismaModule, AuthModule, MessagingModule, OrdersModule],
@@ -65,6 +72,11 @@ import { UberCredentialVaultService } from '../../infrastructure/crypto/uber-cre
     UberPrismaAccessService,
     UberAuthService,
     UberHttpClient,
+    UberApiGatewayTransport,
+    UberMerchantApiGateway,
+    UberStoreGateway,
+    UberOrderGateway,
+    UberMenuGateway,
     UberWebhookService,
     UberOrderService,
     UberOrderActionService,

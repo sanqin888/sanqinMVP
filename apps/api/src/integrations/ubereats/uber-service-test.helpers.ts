@@ -25,6 +25,11 @@ import { UberOperationsService } from './uber-operations.service';
 import { UberPrismaAccessService } from './uber-prisma-access.service';
 import { UberOrderService } from './uber-order.service';
 import { UberWebhookService } from './uber-webhook.service';
+import { UberApiGatewayTransport } from '../../infrastructure/uber-api/uber-api.gateway';
+import {
+  UberMenuGateway,
+  UberOrderGateway,
+} from '../../infrastructure/uber-api/uber-resource.gateways';
 
 const config = () =>
   new UberConfigService({
@@ -47,12 +52,18 @@ export function createUberMenuService(
   http?: MenuArgs[2],
   settings?: MenuArgs[3],
 ) {
+  const resolvedConfig = settings ?? config();
+  const rawHttp = httpClient(http as unknown as UberHttpClient);
+  const gateway = new UberMenuGateway(
+    new UberApiGatewayTransport(rawHttp, auth, resolvedConfig),
+  );
   return new UberMenuWorkflowCore(
     prisma,
     auth,
-    httpClient(http),
-    settings ?? config(),
+    gateway,
+    resolvedConfig,
     new UberPrismaAccessService(prisma),
+    rawHttp,
   );
 }
 
@@ -106,14 +117,18 @@ export function createUberOrderService(
     } as unknown as OrderEventsBus);
   const ingestionService =
     ingestion ?? new OrderIngestionService(prisma, eventBus);
+  const resolvedConfig = settings ?? config();
+  const rawHttp = httpClient(http as unknown as UberHttpClient);
+  const transport = new UberApiGatewayTransport(rawHttp, auth, resolvedConfig);
   return new UberOrderService(
     prisma,
     auth,
     eventBus,
     ingestionService,
-    httpClient(http),
-    settings ?? config(),
+    rawHttp,
+    resolvedConfig,
     new UberPrismaAccessService(prisma),
+    new UberOrderGateway(transport, resolvedConfig),
   );
 }
 

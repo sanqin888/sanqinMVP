@@ -74,7 +74,7 @@ export type UberHttpResult<T = unknown> = {
   data: T;
 };
 
-type UberHttpRequest = {
+export type UberHttpRequest = {
   url?: string;
   path?: string;
   baseUrl?: string;
@@ -147,7 +147,10 @@ export class UberHttpClient {
           attempt < attempts &&
           (result.response.status === 429 || result.response.status >= 500)
         ) {
-          await this.backoff(attempt);
+          await this.backoff(
+            attempt,
+            this.parseRetryAfter(result.response.headers.get('retry-after')),
+          );
           continue;
         }
         if (!result.response.ok && !options.returnErrorResponse) {
@@ -170,6 +173,13 @@ export class UberHttpClient {
         await this.backoff(attempt);
       }
     }
+  }
+
+  /** Convert an inspected non-success response to the shared safe error contract. */
+  ensureSuccess(result: UberHttpResult, operation: string): UberHttpResult {
+    if (!result.response.ok)
+      throw this.fromResponse(result.response, result.data, operation);
+    return result;
   }
 
   private async requestOnce<T>(
@@ -388,8 +398,17 @@ export class UberHttpClient {
     }
   }
 
-  private async backoff(attempt: number): Promise<void> {
+  private async backoff(
+    attempt: number,
+    retryAfterMs: number | null = null,
+  ): Promise<void> {
     const ceiling = Math.min(this.maxRetryDelayMs, 100 * 2 ** (attempt - 1));
+    if (retryAfterMs !== null) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(retryAfterMs, this.maxRetryDelayMs)),
+      );
+      return;
+    }
     await new Promise((resolve) =>
       setTimeout(resolve, Math.floor(Math.random() * ceiling)),
     );
