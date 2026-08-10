@@ -22,8 +22,8 @@ import {
 } from '../../common/daily-specials';
 import type { Prisma } from '@prisma/client';
 import { SpecialPricingMode } from '@prisma/client';
-import { UberEatsService } from '../../integrations/ubereats/ubereats.service';
-import type { UberAvailabilitySyncResult } from '../../integrations/ubereats/ubereats.service';
+import { UberMenuService } from '../../integrations/ubereats/uber-menu.service';
+import type { UberAvailabilitySyncResult } from '../../integrations/ubereats/uber-menu.types';
 
 type AvailabilityMode = 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF';
 
@@ -69,7 +69,7 @@ export class AdminMenuService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly uberEatsService: UberEatsService,
+    private readonly uberEatsService: UberMenuService,
   ) {}
 
   async updateCategory(
