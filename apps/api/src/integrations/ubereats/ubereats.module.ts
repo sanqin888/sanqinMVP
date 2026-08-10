@@ -136,6 +136,22 @@ import {
   UberWebhookInboxWorkerAdapter,
 } from './infrastructure/workers/uber-worker.adapters';
 import { HandleUberMerchantWebhookHandler } from './application/merchant/uber-merchant-webhook.handler';
+import { PublishUberMenuUseCase } from './application/menu/publish-uber-menu.use-case';
+import { ConfirmUberMenuPublicationUseCase } from './application/menu/confirm-uber-menu-publication.use-case';
+import { UberMenuSnapshotPrismaAdapter } from './infrastructure/persistence/uber-menu-snapshot-prisma.adapter';
+import { UberMenuPublicationPrismaAdapter } from './infrastructure/persistence/uber-menu-publication-prisma.adapter';
+import {
+  UberMenuGatewayAdapter,
+  UberMenuImageProbeAdapter,
+} from './infrastructure/uber-api/uber-menu-publication.adapter';
+import { UberImageValidator } from './infrastructure/uber-api/uber-image.validator';
+import {
+  UBER_MENU_GATEWAY,
+  UBER_MENU_IMAGE_PROBE,
+  UBER_MENU_PUBLICATION_REPOSITORY,
+  UBER_MENU_PUBLISH_COMMAND,
+  UBER_MENU_SNAPSHOT_REPOSITORY,
+} from './application/ports/uber-menu-publication.ports';
 
 @Module({
   imports: [PrismaModule, AuthModule, MessagingModule, OrdersModule],
@@ -198,6 +214,21 @@ import { HandleUberMerchantWebhookHandler } from './application/merchant/uber-me
     UberOrderGateway,
     { provide: UBER_ORDER_ACTION_GATEWAY, useExisting: UberOrderGateway },
     UberMenuGateway,
+    UberImageValidator,
+    UberMenuSnapshotPrismaAdapter,
+    {
+      provide: UBER_MENU_SNAPSHOT_REPOSITORY,
+      useExisting: UberMenuSnapshotPrismaAdapter,
+    },
+    UberMenuPublicationPrismaAdapter,
+    {
+      provide: UBER_MENU_PUBLICATION_REPOSITORY,
+      useExisting: UberMenuPublicationPrismaAdapter,
+    },
+    UberMenuGatewayAdapter,
+    { provide: UBER_MENU_GATEWAY, useExisting: UberMenuGatewayAdapter },
+    UberMenuImageProbeAdapter,
+    { provide: UBER_MENU_IMAGE_PROBE, useExisting: UberMenuImageProbeAdapter },
     ReceiveUberWebhookUseCase,
     ProcessUberWebhookInboxUseCase,
     HandleUberMerchantWebhookHandler,
@@ -233,6 +264,9 @@ import { HandleUberMerchantWebhookHandler } from './application/merchant/uber-me
     },
     UberMenuDraftConfigUseCase,
     UberMenuPublishService,
+    PublishUberMenuUseCase,
+    { provide: UBER_MENU_PUBLISH_COMMAND, useExisting: PublishUberMenuUseCase },
+    ConfirmUberMenuPublicationUseCase,
     UberMenuAvailabilityService,
     UberOAuthTokenAdapter,
     { provide: UBER_OAUTH_TOKEN, useExisting: UberOAuthTokenAdapter },
