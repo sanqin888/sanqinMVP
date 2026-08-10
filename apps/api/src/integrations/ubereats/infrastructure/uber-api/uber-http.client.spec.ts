@@ -12,17 +12,17 @@ describe('UberHttpClient structured error mapping', () => {
   });
 
   it.each([
-    [400, 'UBER_INVALID_REQUEST', 'business', false, 400],
-    [401, 'UBER_ACCESS_TOKEN_INVALID', 'authentication', false, 401],
-    [403, 'UBER_SCOPE_INSUFFICIENT', 'permission', false, 403],
-    [404, 'UBER_HTTP_404', 'business', false, 400],
-    [408, 'UBER_HTTP_408', 'upstream', true, 503],
-    [429, 'UBER_HTTP_429', 'upstream', true, 503],
-    [500, 'UBER_HTTP_500', 'upstream', true, 503],
-    [503, 'UBER_HTTP_503', 'upstream', true, 503],
+    [400, 'UBER_INVALID_REQUEST', 'validation', false],
+    [401, 'UBER_ACCESS_TOKEN_INVALID', 'authentication', false],
+    [403, 'UBER_SCOPE_INSUFFICIENT', 'authentication', false],
+    [404, 'UBER_HTTP_404', 'validation', false],
+    [408, 'UBER_HTTP_408', 'transient-upstream', true],
+    [429, 'UBER_HTTP_429', 'rate-limited', true],
+    [500, 'UBER_HTTP_500', 'transient-upstream', true],
+    [503, 'UBER_HTTP_503', 'transient-upstream', true],
   ] as const)(
     'maps HTTP %i to a stable structured error',
-    async (status, code, category, retryable, exposedStatus) => {
+    async (status, code, category, retryable) => {
       const errorSpy = jest
         .spyOn(AppLogger.prototype, 'error')
         .mockImplementation();
@@ -53,7 +53,7 @@ describe('UberHttpClient structured error mapping', () => {
         retryable,
         operation: 'order.get',
       });
-      expect((error as UberApiError).getStatus()).toBe(exposedStatus);
+      expect(error).not.toHaveProperty('getStatus');
       if (status === 429) expect(error).toMatchObject({ retryAfterMs: 2_000 });
       expect(errorSpy).toHaveBeenCalledWith(
         expect.stringContaining(`code=${code} retryable=${retryable}`),

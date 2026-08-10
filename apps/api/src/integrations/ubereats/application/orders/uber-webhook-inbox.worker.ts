@@ -1,12 +1,9 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { parseUberWebhookEnvelopeV1 } from '../../contracts/events/uber-webhook-envelope.v1';
 import { parseUberOrderNotificationV1 } from '../../contracts/events/uber-order-notification.v1';
 import { parseUberMenuNotificationV1 } from '../../contracts/events/uber-menu-notification.v1';
-import {
-  normalizeUberEventType,
-  UberWebhookNonRetryableError,
-} from '../../domain/shared/uber-integration.utils';
+import { normalizeUberEventType } from '../../domain/shared/uber-integration.utils';
 import type { UberWebhookInput } from '../../domain/webhook/uber-webhook.types';
 import { UberMenuPublishService } from '../menu/uber-menu-publish.service';
 import {
@@ -19,6 +16,10 @@ import {
   type UberWebhookSignatureVerifier,
 } from '../ports/uber-order-processing.ports';
 import { ImportUberOrderUseCase } from './uber-order.use-cases';
+import {
+  UberApplicationError,
+  UberValidationError,
+} from '../errors/uber-application.error';
 
 /** Application use case that receives and routes durable webhook events. */
 @Injectable()
@@ -43,10 +44,21 @@ export class ProcessUberWebhookInboxWorker {
           : input.rawBody,
       );
     } catch {
-      throw new BadRequestException('Uber webhook JSON 无效');
+      throw new UberValidationError({
+        code: 'UBER_WEBHOOK_JSON_INVALID',
+        message: 'Uber webhook JSON 无效',
+        operation: 'webhook.parse-json',
+      });
     }
     const envelope = parseUberWebhookEnvelopeV1(body);
     const eventType = envelope?.eventType ?? this.readEventType(body);
+    if (eventType === 'unknown') {
+      throw new UberValidationError({
+        code: 'UBER_WEBHOOK_ENVELOPE_INVALID',
+        message: 'Uber webhook envelope 无效',
+        operation: 'webhook.parse-envelope',
+      });
+    }
     const eventId =
       this.readEventId(input.headers, body, envelope?.eventId) ??
       `sha256:${this.hashCanonicalBody(body)}`;
@@ -81,14 +93,22 @@ export class ProcessUberWebhookInboxWorker {
         case 'orders.rejected': {
           const order = parseUberOrderNotificationV1(payload);
           if (!order)
-            throw new BadRequestException('Uber 订单 webhook envelope 无效');
+            throw new UberValidationError({
+              code: 'UBER_ORDER_WEBHOOK_INVALID',
+              message: 'Uber 订单 webhook envelope 无效',
+              operation: 'webhook.route-order',
+            });
           await this.orders.execute(eventType, eventId, order);
           break;
         }
         case 'menus.notification': {
           const menu = parseUberMenuNotificationV1(payload);
           if (!menu)
-            throw new BadRequestException('Uber 菜单 webhook payload 无效');
+            throw new UberValidationError({
+              code: 'UBER_MENU_WEBHOOK_INVALID',
+              message: 'Uber 菜单 webhook payload 无效',
+              operation: 'webhook.route-menu',
+            });
           await this.menu.processWebhookEvent(eventType, eventId, menu);
           break;
         }
@@ -118,18 +138,16 @@ export class ProcessUberWebhookInboxWorker {
             eventId,
           });
           if (/(^|[._-])orders?([._-]|$)/i.test(eventType))
-            throw new BadRequestException(
-              `未识别的 Uber 订单事件类型: ${eventType}`,
-            );
+            throw new UberValidationError({
+              code: 'UBER_WEBHOOK_EVENT_UNSUPPORTED',
+              message: '未识别的 Uber 订单事件类型',
+              operation: 'webhook.route',
+            });
       }
       await this.inbox.markSucceeded(item);
     } catch (error) {
       const retryable =
-        !(error instanceof UberWebhookNonRetryableError) &&
-        (!error ||
-          typeof error !== 'object' ||
-          !('retryable' in error) ||
-          (error as { retryable?: unknown }).retryable === true);
+        error instanceof UberApplicationError ? error.retryable : true;
       await this.inbox.markFailed(item, error, retryable);
       if (retryable)
         this.telemetry.workflowLog('error', 'webhook processing failed');

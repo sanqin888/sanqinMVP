@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  UseFilters,
+} from '@nestjs/common';
+import { UberEatsExceptionFilter } from './ubereats-exception.filter';
 
 import { ResourceIdPipe } from '../contracts/requests/resource-id.pipe';
 import { executeUberMutation } from '../contracts/responses/ubereats.responses';
@@ -26,6 +35,7 @@ import {
 } from './operations.presenter';
 
 @Controller('integrations/ubereats')
+@UseFilters(UberEatsExceptionFilter)
 @UberReadOnlyAdmin()
 export class UberEatsOperationsController {
   constructor(
