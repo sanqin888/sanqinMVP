@@ -307,6 +307,14 @@ export function validateUberMenuPayload(
   payload.modifier_groups.forEach((group, gi) => {
     const { min_permitted: min, max_permitted: max } =
       group.quantity_info.quantity;
+    if (min > 0 && group.modifier_options.length === 0)
+      add(
+        'UBER_REQUIRED_GROUP_EMPTY',
+        'ERROR',
+        `$.modifier_groups[${gi}].modifier_options`,
+        group.id,
+        '必选组选项不能为空。',
+      );
     if (
       !Number.isInteger(min) ||
       !Number.isInteger(max) ||
