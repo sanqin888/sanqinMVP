@@ -23,7 +23,7 @@ export class UberMerchantStoresResponse {
 }
 
 export class UberMerchantConnectionResponse {
-  merchantUberUserId!: string;
+  uberUserId!: string;
   scope!: string | null;
   tokenType!: string | null;
   expiresAt!: string | null;

@@ -126,8 +126,8 @@ export interface UberMerchantConnectionRepositoryPort {
     connectedAt: Date;
     rawStoresSnapshot: unknown;
   } | null>;
-  upsertConnection(input: {
-    merchantUberUserId: string;
+  upsertConnectionByUberUserId(input: {
+    uberUserId: string;
     accessToken: string;
     refreshToken: string | null;
     expiresAt: Date | null;
