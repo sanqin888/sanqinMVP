@@ -228,6 +228,9 @@ export class PrismaUberOAuthStateAdapter implements UberOAuthStatePort {
   ) {
     await this.prisma.uberOAuthStateRequest.create({ data: input });
   }
+  findOAuthState(nonce: string) {
+    return this.prisma.uberOAuthStateRequest.findUnique({ where: { nonce } });
+  }
   async consumeOAuthState(
     input: Parameters<UberOAuthStatePort['consumeOAuthState']>[0],
   ) {

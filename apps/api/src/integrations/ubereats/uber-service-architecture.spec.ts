@@ -102,7 +102,7 @@ describe('Uber Eats bounded-context architecture', () => {
   });
 
   it('keeps domain code independent from frameworks and infrastructure', () => {
-    for (const path of allBoundedContextFiles.filter(
+    for (const path of boundedContextFiles.filter(
       (file) => layerOf(file) === 'domain',
     )) {
       const source = readFileSync(path, 'utf8');
@@ -141,5 +141,23 @@ describe('Uber Eats bounded-context architecture', () => {
       expect(source).not.toMatch(/PrismaService|UberHttpClient/);
       expect(source).toMatch(/PORT/);
     }
+  });
+
+  it('forbids application imports of infrastructure and the removed merchant gateway', () => {
+    for (const path of boundedContextFiles.filter(
+      (file) => layerOf(file) === 'application',
+    )) {
+      const source = readFileSync(path, 'utf8');
+      expect(source).not.toMatch(/(?:\.\.\/)+infrastructure\//);
+      expect(source).not.toMatch(/\bUberMerchantGateway\b/);
+    }
+    expect(
+      existsSync(
+        join(
+          BOUNDED_CONTEXT_ROOT,
+          'infrastructure/uber-api/uber-merchant.gateway.ts',
+        ),
+      ),
+    ).toBe(false);
   });
 });
