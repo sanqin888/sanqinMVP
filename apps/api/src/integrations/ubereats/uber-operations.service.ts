@@ -155,6 +155,15 @@ export class UberOperationsService {
     };
   }
 
+  async getReconciliationSummary(storeId?: string) {
+    const normalizedStoreId = normalizeUberStoreId(storeId);
+    const [count, latest] = await Promise.all([
+      this.prisma.uberReconciliationReport.count({ where: { storeId: normalizedStoreId } }),
+      this.prisma.uberReconciliationReport.findFirst({ where: { storeId: normalizedStoreId }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } }),
+    ]);
+    return { count, updatedAt: latest?.createdAt ?? null };
+  }
+
   async createOpsTicket(input: CreateOpsTicketInput) {
     const normalizedStoreId = normalizeUberStoreId(input.storeId);
 
@@ -232,6 +241,16 @@ export class UberOperationsService {
       count: rows.length,
       items: rows,
     };
+  }
+
+  async getOpsTicketsSummary(storeId?: string, status?: UberOpsTicketStatus) {
+    const normalizedStoreId = normalizeUberStoreId(storeId);
+    const where = { storeId: normalizedStoreId, ...(status ? { status } : {}) };
+    const [count, latest] = await Promise.all([
+      this.prismaAccess.uberOpsTicketRepository.count({ where }),
+      this.prismaAccess.uberOpsTicketRepository.findFirst({ where, orderBy: { updatedAt: 'desc' }, select: { updatedAt: true } }),
+    ]);
+    return { count, updatedAt: latest?.updatedAt ?? null };
   }
 
   async retryOpsTicket(ticketStableId: string) {

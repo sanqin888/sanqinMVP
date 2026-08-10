@@ -6,6 +6,9 @@ export type UberPublicError = { code: string; message: string; retryable: boolea
 export type UberPageInfo = { limit: number; count: number; hasNextPage: boolean; nextCursor: string | null };
 export type UberListResponse<T> = { items: T[]; pageInfo: UberPageInfo; contractVersion: '2' };
 export type UberMutationResponse = { operationId: string; status: 'ACCEPTED' | 'SUCCEEDED' | 'FAILED'; error: UberPublicError | null; contractVersion: '2' };
+export type ResourceState = { loading: boolean; error: string | null; lastUpdated: string | null };
+export type SummaryResponse = { count: number; updatedAt: string | null };
+export type OperationPhase = 'QUEUED' | 'PROCESSING' | 'WAITING_WEBHOOK' | 'RETRYABLE_FAILED' | 'MANUAL_REVIEW' | 'COMPLETED';
 
 export type OAuthConnectUrlResponse = { authorizeUrl: string; state: string };
 export type OAuthConnectionResponse = { merchantUberUserId: string; scope?: string | null; tokenType?: string | null; expiresAt?: string | null; connectedAt?: string | null };

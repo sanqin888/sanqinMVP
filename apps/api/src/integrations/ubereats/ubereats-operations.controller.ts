@@ -92,6 +92,11 @@ export class UberEatsOperationsController {
     return toUberListResponse(result.items, query.limit);
   }
 
+  @Get('reports/reconciliation/summary')
+  async reconciliationSummary(@Query() query: ReportListQuery) {
+    return this.operations.getReconciliationSummary(query.storeId);
+  }
+
   @Post('ops/tickets')
   @UberAdminWrite()
   async createOpsTicket(@Body() dto: CreateUberOpsTicketDto): Promise<unknown> {
@@ -147,6 +152,11 @@ export class UberEatsOperationsController {
       })),
       200,
     );
+  }
+
+  @Get('ops/tickets/summary')
+  async opsTicketsSummary(@Query() query: OpsTicketListQuery) {
+    return this.operations.getOpsTicketsSummary(query.storeId, query.status);
   }
 
   @Post('ops/tickets/:ticketStableId/retry')
