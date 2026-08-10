@@ -2,7 +2,9 @@ import {
   buildUberUploadMenuPayload,
   flattenUberModifierCombinations,
   validateUberMenuPayload,
-} from './uber-menu.payload';
+} from './uber-menu-payload.builder';
+import { UberMenuScheduleValidationError } from './uber-menu.errors';
+import { toUberServiceAvailability } from './uber-payload.utils';
 
 const graph = {
   menuId: 'menu-1',
@@ -31,7 +33,25 @@ const graph = {
   ],
 };
 
-describe('uber-menu.payload', () => {
+describe('uber-menu-payload.builder', () => {
+  it('reports invalid timezone and business hours as domain errors', () => {
+    expect(() => toUberServiceAvailability([], 'Not/A-Timezone')).toThrow(
+      UberMenuScheduleValidationError,
+    );
+    expect(() =>
+      toUberServiceAvailability(
+        [
+          {
+            weekday: 7,
+            openMinutes: 0,
+            closeMinutes: 60,
+            isClosed: false,
+          },
+        ],
+        'UTC',
+      ),
+    ).toThrow(UberMenuScheduleValidationError);
+  });
   it('builds the wire payload from a resolved menu graph', () => {
     const payload = buildUberUploadMenuPayload(graph, [], 13);
     expect(payload.menus[0]).toMatchObject({

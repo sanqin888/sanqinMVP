@@ -17,10 +17,6 @@ describe('Uber Eats persistence architecture', () => {
       'application/orders/uber-order.workflow.ts',
       'application/orders/uber-webhook.service.ts',
       'api/operations.controller.ts',
-      'domain/operations/uber-operations.types.ts',
-      'domain/orders/uber-order-payload.parser.ts',
-      'domain/orders/uber-order.state-machine.ts',
-      'domain/orders/uber-order.types.ts',
     ]);
     const root = join(__dirname);
     const files = ['application', 'domain', 'api'].flatMap((layer) =>

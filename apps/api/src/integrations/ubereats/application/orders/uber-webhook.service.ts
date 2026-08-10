@@ -23,7 +23,7 @@ import {
 import { UberMenuService } from '../menu/uber-menu.service';
 import { UberOrderService } from './uber-order.service';
 import { UberPrismaAccessService } from '../../infrastructure/persistence/uber-prisma-access.service';
-import type { UberWebhookInput } from '../../domain/orders/uber-webhook.types';
+import type { UberWebhookInput } from '../../domain/webhook/uber-webhook.types';
 
 import { UberTelemetryService } from '../../infrastructure/observability/uber-telemetry.service';
 

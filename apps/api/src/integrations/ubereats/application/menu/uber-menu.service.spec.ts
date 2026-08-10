@@ -33,7 +33,7 @@ jest.mock('@prisma/client', () => ({
 
 import { createHash } from 'crypto';
 import { resolveUberImageUrl } from '../../domain/menu/uber-payload.utils';
-import { validateUberMenuPayload } from '../../domain/menu/uber-menu.payload';
+import { validateUberMenuPayload } from '../../domain/menu/uber-menu-payload.builder';
 import { UberMenuService } from './uber-menu.service';
 import { UberConfigService } from '../../infrastructure/config/uber-config.service';
 import { createUberMenuService } from '../../uber-service-test.helpers';

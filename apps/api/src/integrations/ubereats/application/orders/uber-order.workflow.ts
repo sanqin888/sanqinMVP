@@ -56,6 +56,8 @@ import { UberOrderOutboxService } from './uber-order-outbox.service';
 import { UberOrderStatusSyncService } from './uber-order-status-sync.service';
 import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
 import { UberOrderGateway } from '../../infrastructure/api/uber-resource.gateways';
+import { toUberEatsHttpException } from '../uber-domain-error.mapper';
+import { toUberOrderStatus } from '../../infrastructure/persistence/uber-order-status.mapper';
 
 import { UberTelemetryService } from '../../infrastructure/observability/uber-telemetry.service';
 
@@ -121,8 +123,14 @@ export class UberOrderService {
       );
     }
 
-    if (!UberOrderStateMachine.canRequestAction(order.status, action))
-      throw new BadRequestException('Uber 订单必须先接单，且状态不能并发回退');
+    try {
+      UberOrderStateMachine.assertCanRequestAction(
+        toUberOrderStatus(order.status),
+        action,
+      );
+    } catch (error) {
+      throw toUberEatsHttpException(error);
+    }
 
     // Commit only the durable intent. A confirmed worker response owns the
     // local transition, so a timeout can never masquerade as Uber success.

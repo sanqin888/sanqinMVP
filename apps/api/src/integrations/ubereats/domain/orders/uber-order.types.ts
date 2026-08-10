@@ -1,4 +1,14 @@
-import { OrderStatus } from '@prisma/client';
+/** UberEats domain status. Persistence adapters translate this to storage enums. */
+export const UberOrderStatus = {
+  pending: 'pending',
+  paid: 'paid',
+  making: 'making',
+  ready: 'ready',
+  completed: 'completed',
+  refunded: 'refunded',
+} as const;
+export type UberOrderStatus =
+  (typeof UberOrderStatus)[keyof typeof UberOrderStatus];
 
 type UberOrderMoneyDto = number | { amount?: number; value?: number };
 
@@ -171,9 +181,9 @@ export type ParsedUberOrder = {
 export type UberOrderActionName = 'ACCEPT' | 'DENY' | 'READY_FOR_PICKUP';
 
 export const UBER_ACTION_BY_LOCAL_STATUS: Partial<
-  Record<OrderStatus, UberOrderActionName>
+  Record<UberOrderStatus, UberOrderActionName>
 > = {
-  [OrderStatus.ready]: 'READY_FOR_PICKUP',
+  [UberOrderStatus.ready]: 'READY_FOR_PICKUP',
 };
 
 export type UberOrderActionRecord = {

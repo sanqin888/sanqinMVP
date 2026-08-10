@@ -49,7 +49,7 @@ import {
   composeUberDisplayName,
   buildUberUploadMenuPayload,
   validateUberMenuPayload,
-} from '../../domain/menu/uber-menu.payload';
+} from '../../domain/menu/uber-menu-payload.builder';
 import {
   flattenNestedModifiersForUber,
   validateUberMenuGraph,

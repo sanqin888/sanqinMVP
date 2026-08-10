@@ -41,7 +41,8 @@ const ALLOWED_LAYER_DEPENDENCIES: Record<Layer, readonly Layer[]> = {
 };
 
 describe('Uber Eats bounded-context architecture', () => {
-  const boundedContextFiles = walk(BOUNDED_CONTEXT_ROOT).filter(
+  const allBoundedContextFiles = walk(BOUNDED_CONTEXT_ROOT);
+  const boundedContextFiles = allBoundedContextFiles.filter(
     (path) => !path.endsWith('.spec.ts'),
   );
 
@@ -100,14 +101,16 @@ describe('Uber Eats bounded-context architecture', () => {
     expect(violations).toEqual([]);
   });
 
-  it('keeps domain code independent from Nest, Prisma, config and HTTP clients', () => {
-    for (const path of boundedContextFiles.filter(
+  it('keeps domain code independent from frameworks and infrastructure', () => {
+    for (const path of allBoundedContextFiles.filter(
       (file) => layerOf(file) === 'domain',
     )) {
       const source = readFileSync(path, 'utf8');
       expect(source).not.toMatch(/@nestjs\//);
-      expect(source).not.toMatch(/PrismaService|ConfigService/);
-      expect(source).not.toMatch(/UberHttpClient|\bfetch\s*\(/);
+      expect(source).not.toMatch(/@prisma\/client|PrismaService|ConfigService/);
+      expect(source).not.toMatch(
+        /UberHttpClient|UberOrderGateway|UberApiGateway|\/infrastructure\/|\bfetch\s*\(/,
+      );
     }
   });
 });

@@ -28,7 +28,10 @@ export function toUberServiceAvailability(
   try {
     new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format();
   } catch {
-    throw new Error(`门店时区无效：${timezone}`);
+    throw new UberMenuScheduleValidationError(
+      `门店时区无效：${timezone}`,
+      'timezone',
+    );
   }
 
   const periods = Array.from(
@@ -57,7 +60,10 @@ export function toUberServiceAvailability(
       hour.closeMinutes < 0 ||
       hour.closeMinutes > 1440
     )
-      continue;
+      throw new UberMenuScheduleValidationError(
+        `营业时间无效：weekday=${hour.weekday}`,
+        'businessHours',
+      );
 
     const start = hour.openMinutes;
     const end = hour.closeMinutes;
@@ -134,3 +140,4 @@ export type UberAvailabilitySyncResult = {
     error?: string;
   }>;
 };
+import { UberMenuScheduleValidationError } from './uber-menu.errors';

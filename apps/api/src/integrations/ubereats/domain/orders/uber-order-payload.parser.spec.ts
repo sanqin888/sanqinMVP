@@ -1,15 +1,3 @@
-jest.mock('@prisma/client', () => ({
-  OrderStatus: {
-    pending: 'pending',
-    paid: 'paid',
-    making: 'making',
-    ready: 'ready',
-    completed: 'completed',
-    cancelled: 'cancelled',
-    refunded: 'refunded',
-  },
-}));
-
 import {
   mapUberEventTypeToOrderStatus,
   UberOrderPayloadParser,

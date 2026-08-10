@@ -1,12 +1,21 @@
-import type {
-  OrderStatus,
-  Prisma,
-  UberOpsTicketPriority,
-  UberOpsTicketType,
-} from '@prisma/client';
+import type { UberOrderStatus } from '../orders/uber-order.types';
 import type { UberStoreScopedInput } from '../menu/uber-menu.types';
 
-export type OrderStatusSyncContext = { targetStatus: OrderStatus };
+export type OrderStatusSyncContext = { targetStatus: UberOrderStatus };
+export type UberOpsTicketPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+export type UberOpsTicketType =
+  | 'ORDER_STATUS_SYNC'
+  | 'MENU_ITEM_AVAILABILITY'
+  | 'STORE_STATUS_SYNC'
+  | 'MENU_PUBLISH'
+  | 'RECONCILIATION';
+export type UberDomainJson =
+  | string
+  | number
+  | boolean
+  | null
+  | UberDomainJson[]
+  | { [key: string]: UberDomainJson };
 export type MenuItemAvailabilityContext = { isAvailable: boolean };
 export type StoreStatusSyncContext = {
   uberStoreId: string;
@@ -41,5 +50,5 @@ export type CreateOpsTicketInput = {
   priority?: UberOpsTicketPriority;
   externalOrderId?: string;
   menuItemStableId?: string;
-  context?: Prisma.JsonObject;
+  context?: { [key: string]: UberDomainJson };
 };
