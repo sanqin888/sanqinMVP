@@ -34,7 +34,7 @@ import {
   ProvisionUberStoreUseCase,
   SyncUberStoreStatusUseCase,
 } from './application/merchant/uber-merchant-provisioning.service';
-import { UberOperationsPrismaAdapter } from './infrastructure/persistence/uber-operations-prisma.adapter';
+import { UberOperationsPrismaAdapter } from './infrastructure/operations/uber-operations-prisma.adapter';
 import {
   CreateUberOpsTicketUseCase,
   GenerateUberReconciliationReportUseCase,

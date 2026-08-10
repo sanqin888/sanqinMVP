@@ -25,7 +25,7 @@ import {
   toPrismaTicketPriority,
   toPrismaTicketStatus,
   toPrismaTicketType,
-} from './uber-operations-enum.mapper';
+} from '../persistence/uber-operations-enum.mapper';
 import { SyncUberOrderStatusUseCase } from '../../application/orders/uber-order.use-cases';
 import { UberPrismaAccessService } from '../../infrastructure/persistence/uber-prisma-access.service';
 

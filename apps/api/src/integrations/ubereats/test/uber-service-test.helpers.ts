@@ -8,7 +8,7 @@ import { ReceiveUberWebhookUseCase } from '../application/orders/uber-webhook-re
 import type { UberWebhookInboxPort } from '../application/ports/uber-order-processing.ports';
 import type { UberConfigService } from '../infrastructure/config/uber-config.service';
 import { HmacUberWebhookSignatureVerifier } from '../infrastructure/crypto/uber-webhook-signature-verifier';
-import { UberOperationsPrismaAdapter } from '../infrastructure/persistence/uber-operations-prisma.adapter';
+import { UberOperationsPrismaAdapter } from '../infrastructure/operations/uber-operations-prisma.adapter';
 import { UberPrismaAccessService } from '../infrastructure/persistence/uber-prisma-access.service';
 
 const missing = <T>(): T => undefined as T;
