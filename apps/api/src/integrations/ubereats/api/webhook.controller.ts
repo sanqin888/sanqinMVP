@@ -10,23 +10,13 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 
-import { AppLogger } from '../../../common/app-logger';
-
 import { UberReadOnlyAdmin } from './ubereats-access.decorator';
 
 import { ReceiveUberWebhookUseCase } from '../application/orders/uber-webhook-receiver.use-case';
 
 @Controller('integrations/ubereats')
 export class UberEatsWebhookController {
-  private readonly logger = new AppLogger(UberEatsWebhookController.name);
   constructor(private readonly webhookService: ReceiveUberWebhookUseCase) {}
-  private readRequestHeader(req: Request, name: string): string | null {
-    const value = req.headers[name.toLowerCase()];
-    if (typeof value === 'string' && value.trim()) return value.trim();
-    if (Array.isArray(value))
-      return value.find((item) => item.trim())?.trim() || null;
-    return null;
-  }
   @Get('webhook')
   @UberReadOnlyAdmin()
   health(@Res() res: Response) {
@@ -45,33 +35,9 @@ export class UberEatsWebhookController {
     if (!Buffer.isBuffer(req.body)) {
       throw new BadRequestException('Uber webhook raw body 不可用');
     }
-    const rawBuffer = req.body;
-
-    const rawBody = rawBuffer.toString('utf8');
-
-    let parsedBody: unknown = null;
-    try {
-      parsedBody = rawBody ? JSON.parse(rawBody) : null;
-    } catch {
-      parsedBody = null;
-    }
-
-    const body =
-      parsedBody && typeof parsedBody === 'object'
-        ? (parsedBody as Record<string, unknown>)
-        : null;
-    const requestId = this.readRequestHeader(req, 'x-request-id') ?? 'unknown';
-    const eventType =
-      typeof body?.event_type === 'string' ? body.event_type : 'unknown';
-    const contentType =
-      this.readRequestHeader(req, 'content-type') ?? 'unknown';
-    this.logger.log(
-      `[ubereats webhook] requestId=${requestId} eventType=${eventType} contentType=${contentType} bodyBytes=${rawBuffer.length}`,
-    );
-
     await this.webhookService.execute({
       headers: req.headers as Record<string, unknown>,
-      rawBody: rawBuffer,
+      rawBody: req.body,
     });
 
     return { ok: true };

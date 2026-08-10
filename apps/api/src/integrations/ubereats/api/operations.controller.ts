@@ -1,9 +1,5 @@
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 
-import { UberOpsTicketType } from '@prisma/client';
-
-import { AppLogger } from '../../../common/app-logger';
-
 import { ResourceIdPipe } from '../contracts/requests/resource-id.pipe';
 import {
   executeUberMutation,
@@ -25,7 +21,6 @@ import { UberOperationsApplication } from '../application/operations/uber-operat
 @Controller('integrations/ubereats')
 @UberReadOnlyAdmin()
 export class UberEatsOperationsController {
-  private readonly logger = new AppLogger(UberEatsOperationsController.name);
   constructor(private readonly operations: UberOperationsApplication) {}
   @Post('reports/reconciliation/generate')
   @UberAdminWrite()
@@ -70,35 +65,7 @@ export class UberEatsOperationsController {
   @Post('ops/tickets')
   @UberAdminWrite()
   async createOpsTicket(@Body() dto: CreateUberOpsTicketDto): Promise<unknown> {
-    const context =
-      dto.type === UberOpsTicketType.ORDER_STATUS_SYNC
-        ? { targetStatus: dto.targetOrderStatus }
-        : dto.type === UberOpsTicketType.MENU_ITEM_AVAILABILITY
-          ? { isAvailable: dto.isAvailable }
-          : dto.type === UberOpsTicketType.STORE_STATUS_SYNC
-            ? {
-                uberStoreId: dto.uberStoreId,
-                targetStatus: dto.targetStoreStatus,
-              }
-            : dto.type === UberOpsTicketType.MENU_PUBLISH
-              ? {
-                  publish: {
-                    ...dto.publish,
-                    storeId: dto.publish?.storeId ?? dto.storeId,
-                    dryRun: false,
-                  },
-                }
-              : undefined;
-    return await this.operations.createOpsTicket({
-      type: dto.type,
-      title: dto.title,
-      description: dto.description,
-      priority: dto.priority,
-      storeId: dto.storeId,
-      externalOrderId: dto.externalOrderId,
-      menuItemStableId: dto.menuItemStableId,
-      context: context as never,
-    });
+    return await this.operations.createOpsTicket(dto);
   }
 
   @Get('ops/tickets')

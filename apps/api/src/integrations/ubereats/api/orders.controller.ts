@@ -1,7 +1,5 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 
-import { AppLogger } from '../../../common/app-logger';
-
 import { ResourceIdPipe } from '../contracts/requests/resource-id.pipe';
 import { toUberListResponse } from '../contracts/responses/ubereats.responses';
 import {
@@ -14,7 +12,6 @@ import { UberOrderApplication } from '../application/orders/uber-order.service';
 @Controller('integrations/ubereats')
 @UberReadOnlyAdmin()
 export class UberEatsOrdersController {
-  private readonly logger = new AppLogger(UberEatsOrdersController.name);
   constructor(private readonly orders: UberOrderApplication) {}
   @Post('orders/:externalOrderId/status')
   @UberMfaAdminWrite()

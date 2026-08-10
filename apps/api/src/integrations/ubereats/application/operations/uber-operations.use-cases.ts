@@ -4,6 +4,70 @@ import type {
   CreateOpsTicketInput,
   GenerateReconciliationReportInput,
 } from '../../domain/operations/uber-operations.types';
+
+export type CreateUberOpsTicketCommand = Omit<
+  CreateOpsTicketInput,
+  'context'
+> & {
+  targetOrderStatus?: string;
+  isAvailable?: boolean;
+  uberStoreId?: string;
+  targetStoreStatus?: 'ONLINE' | 'PAUSED';
+  publish?: {
+    storeId?: string;
+    timezoneConfirmed?: boolean;
+    taxRateConfirmed?: boolean;
+    excludedCategoryIds?: string[];
+    excludedGroupIds?: string[];
+    excludedMenuItemStableIds?: string[];
+    excludedOptionChoiceStableIds?: string[];
+  };
+};
+
+export const mapCreateUberOpsTicketCommand = (
+  command: CreateUberOpsTicketCommand,
+): CreateOpsTicketInput => {
+  const base = {
+    type: command.type,
+    title: command.title,
+    description: command.description,
+    priority: command.priority,
+    storeId: command.storeId,
+    externalOrderId: command.externalOrderId,
+    menuItemStableId: command.menuItemStableId,
+  };
+
+  switch (command.type) {
+    case 'ORDER_STATUS_SYNC':
+      return {
+        ...base,
+        context: { targetStatus: command.targetOrderStatus! },
+      };
+    case 'MENU_ITEM_AVAILABILITY':
+      return { ...base, context: { isAvailable: command.isAvailable! } };
+    case 'STORE_STATUS_SYNC':
+      return {
+        ...base,
+        context: {
+          uberStoreId: command.uberStoreId!,
+          targetStatus: command.targetStoreStatus!,
+        },
+      };
+    case 'MENU_PUBLISH':
+      return {
+        ...base,
+        context: {
+          publish: {
+            ...command.publish,
+            storeId: command.publish?.storeId ?? command.storeId!,
+            dryRun: false,
+          },
+        },
+      };
+    default:
+      return base;
+  }
+};
 export const UBER_OPERATIONS_PORT = Symbol('UBER_OPERATIONS_PORT');
 export interface UberOperationsPort {
   generateReconciliationReport(
@@ -35,8 +99,10 @@ export class CreateUberOpsTicketUseCase {
     @Inject(UBER_OPERATIONS_PORT)
     private readonly operations: UberOperationsPort,
   ) {}
-  execute(input: CreateOpsTicketInput) {
-    return this.operations.createOpsTicket(input);
+  execute(command: CreateUberOpsTicketCommand) {
+    return this.operations.createOpsTicket(
+      mapCreateUberOpsTicketCommand(command),
+    );
   }
 }
 @Injectable()
