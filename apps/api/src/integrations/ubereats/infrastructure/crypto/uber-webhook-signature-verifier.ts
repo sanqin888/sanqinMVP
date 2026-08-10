@@ -5,38 +5,72 @@ import { UberAuthenticationError } from '../../application/errors/uber-applicati
 import {
   UberConfigService,
   type UberWebhookConfig,
+  type UberWebhookSigningSecrets,
 } from '../config/uber-config.service';
+import {
+  UBER_WEBHOOK_SIGNATURE_VERSION,
+  type UberWebhookVerificationInput,
+} from '../../domain/webhook/uber-webhook.types';
 
 @Injectable()
 export class HmacUberWebhookSignatureVerifier implements UberWebhookSignatureVerifier {
-  private readonly signingKey: string;
-  constructor(@Inject(UberConfigService) config: UberWebhookConfig) {
-    this.signingKey = config.getWebhookSigningKey();
+  private readonly signingSecrets: UberWebhookSigningSecrets;
+  constructor(
+    @Inject(UberConfigService) config: UberWebhookConfig,
+    private readonly now: () => number = Date.now,
+  ) {
+    this.signingSecrets = config.getWebhookSigningSecrets();
   }
-  verify(headers: Record<string, unknown>, rawBody: string | Buffer): void {
-    const signature = Object.entries(headers).find(
-      ([key]) => key.toLowerCase() === 'x-uber-signature',
-    )?.[1];
-    const normalized =
-      typeof signature === 'string' ? signature.trim().toLowerCase() : '';
-    if (!/^[0-9a-f]{64}$/.test(normalized))
-      throw new UberAuthenticationError({
-        code: signature
-          ? 'UBER_WEBHOOK_SIGNATURE_INVALID'
-          : 'UBER_WEBHOOK_SIGNATURE_MISSING',
-        message: signature
-          ? 'Uber webhook signature is invalid'
-          : 'Uber webhook signature is required',
-        operation: 'webhook.verify-signature',
-      });
-    const expected = createHmac('sha256', this.signingKey)
-      .update(rawBody)
-      .digest();
-    if (!timingSafeEqual(expected, Buffer.from(normalized, 'hex')))
-      throw new UberAuthenticationError({
-        code: 'UBER_WEBHOOK_SIGNATURE_INVALID',
-        message: 'Uber webhook signature is invalid',
-        operation: 'webhook.verify-signature',
-      });
+
+  verify(input: UberWebhookVerificationInput): void {
+    if (input.version !== UBER_WEBHOOK_SIGNATURE_VERSION) {
+      this.reject('UBER_WEBHOOK_SIGNATURE_VERSION_UNSUPPORTED');
+    }
+    const matchingHeaders = Object.entries(input.headers).filter(
+      ([name]) => name.toLowerCase() === 'x-uber-signature',
+    );
+    if (matchingHeaders.length === 0)
+      this.reject('UBER_WEBHOOK_SIGNATURE_MISSING');
+    if (
+      matchingHeaders.length !== 1 ||
+      typeof matchingHeaders[0][1] !== 'string' ||
+      matchingHeaders[0][1].includes(',')
+    ) {
+      this.reject('UBER_WEBHOOK_SIGNATURE_AMBIGUOUS');
+    }
+
+    const signature = matchingHeaders[0][1].trim().toLowerCase();
+    // Uber v1 是 64 个十六进制字符；任何 sha512=、v2= 等前缀均明确拒绝。
+    if (!/^[0-9a-f]{64}$/.test(signature)) {
+      this.reject('UBER_WEBHOOK_SIGNATURE_FORMAT_INVALID');
+    }
+    const received = Buffer.from(signature, 'hex');
+    const candidates = [this.signingSecrets.active];
+    if (
+      this.signingSecrets.previous &&
+      this.now() <= this.signingSecrets.previous.validUntilEpochMs
+    ) {
+      candidates.push(this.signingSecrets.previous.secret);
+    }
+    let valid = false;
+    for (const secret of candidates) {
+      const expected = createHmac('sha256', secret)
+        .update(input.rawBody)
+        .digest();
+      // 不提前返回，避免从比较次数暴露当前使用 active 还是 previous。
+      valid = timingSafeEqual(expected, received) || valid;
+    }
+    if (!valid) this.reject('UBER_WEBHOOK_SIGNATURE_MISMATCH');
+  }
+
+  private reject(code: string): never {
+    throw new UberAuthenticationError({
+      code,
+      message:
+        code === 'UBER_WEBHOOK_SIGNATURE_MISSING'
+          ? 'Uber webhook signature is required'
+          : 'Uber webhook signature is invalid',
+      operation: 'webhook.verify-signature',
+    });
   }
 }

@@ -4,6 +4,7 @@ import type {
   UberOrderStatus,
 } from '../../domain/orders/uber-order.types';
 import type { UberJsonValue } from './uber-persistence.ports';
+import type { UberWebhookVerificationInput } from '../../domain/webhook/uber-webhook.types';
 
 export type UberOrderOutboxItem = {
   taskId: string;
@@ -79,7 +80,7 @@ export interface UberWebhookInboxPort {
 export const UBER_WEBHOOK_INBOX_PORT = Symbol('UBER_WEBHOOK_INBOX_PORT');
 
 export interface UberWebhookSignatureVerifier {
-  verify(headers: Record<string, unknown>, rawBody: string | Buffer): void;
+  verify(input: UberWebhookVerificationInput): void;
 }
 export const UBER_WEBHOOK_SIGNATURE_VERIFIER = Symbol(
   'UBER_WEBHOOK_SIGNATURE_VERIFIER',

@@ -63,6 +63,7 @@ describe('Uber Eats sanitized payload fixtures', () => {
       'public-response-contract.json',
       'store-operation.json',
       'webhook-order.json',
+      'webhook-signature-v1.json',
     ]);
   });
 
