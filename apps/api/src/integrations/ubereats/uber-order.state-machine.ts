@@ -67,9 +67,7 @@ export const UberOrderStateMachine = {
       OrderStatus.paid,
       OrderStatus.making,
     ];
-    return cancellable.includes(status)
-      ? OrderStatus.refunded
-      : null;
+    return cancellable.includes(status) ? OrderStatus.refunded : null;
   },
 
   idempotencyKey(externalOrderId: string, action: UberOrderActionName): string {
