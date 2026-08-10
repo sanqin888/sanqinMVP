@@ -1,0 +1,22 @@
+{
+  "menus": [
+    { "id": "menu_fixture_main", "category_ids": ["category_fixture_main"] }
+  ],
+  "categories": [
+    { "id": "category_fixture_main", "entity_ids": ["item_fixture_noodles"] }
+  ],
+  "items": [
+    {
+      "id": "item_fixture_noodles",
+      "title": { "translations": { "en": "Fixture noodles" } },
+      "price_info": { "price": 1200 },
+      "modifier_group_ids": { "ids": ["group_fixture_size"] }
+    }
+  ],
+  "modifier_groups": [
+    {
+      "id": "group_fixture_size",
+      "modifier_options": [{ "id": "option_fixture_large", "type": "ITEM" }]
+    }
+  ]
+}

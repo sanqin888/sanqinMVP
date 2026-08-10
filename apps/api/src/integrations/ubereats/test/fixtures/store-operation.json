@@ -1,0 +1,6 @@
+{
+  "store_id": "store_fixture_001",
+  "merchant_id": "merchant_fixture_001",
+  "operation": "PROVISION",
+  "correlation_id": "correlation_fixture_001"
+}

@@ -1,0 +1,23 @@
+{
+  "id": "order_fixture_001",
+  "store": { "id": "store_fixture_001" },
+  "cart": {
+    "items": [
+      {
+        "id": "item_fixture_noodles",
+        "title": "Fixture noodles",
+        "quantity": 1,
+        "price": 1200,
+        "selected_modifier_groups": [
+          {
+            "id": "group_fixture_size",
+            "selected_items": [
+              { "id": "option_fixture_large", "quantity": 1, "price": 200 }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "payment": { "charges": { "total": 1400 }, "currency_code": "CNY" }
+}
