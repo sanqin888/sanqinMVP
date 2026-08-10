@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { UberCredentialVaultService } from '../integrations/ubereats/infrastructure/crypto/uber-credential-vault.service';
+import { UberCredentialVaultService } from '../crypto/uber-credential-vault.service';
 
 type LegacyCredentialRow = {
   id: string;
