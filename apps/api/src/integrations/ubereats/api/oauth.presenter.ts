@@ -16,6 +16,10 @@ const escapeHtml = (value: string): string =>
 const errorMessages: Record<UberOAuthErrorCode, string> = {
   OAUTH_START_FAILED: '无法开始 Uber 授权，请重试或联系管理员。',
   OAUTH_CODE_MISSING: 'Uber 授权失败：缺少 code。',
+  OAUTH_STATE_INVALID_OR_EXPIRED: '授权请求非法或已过期，请重新发起授权。',
+  OAUTH_SESSION_MISMATCH: '当前会话与授权请求不匹配，请使用原管理员会话重试。',
+  OAUTH_TEMPORARY_FAILURE: 'Uber 或本服务暂时不可用，请稍后重试此回调。',
+  OAUTH_TERMINAL_FAILURE: '本次 Uber 授权无法完成，请重新发起授权。',
   OAUTH_COMPLETION_FAILED: '授权处理失败，请重试或联系管理员。',
 };
 
@@ -39,15 +43,11 @@ export const presentOAuthCallback = <
   if (!result.ok) {
     return `<!doctype html><html lang="zh-CN"><body><h2>Uber 授权失败</h2><p>${escapeHtml(errorMessages[result.error.code])}</p></body></html>`;
   }
-  const value = result.value;
   return `<!doctype html>
 <html lang="zh-CN">
   <body>
     <h2>Uber 授权成功</h2>
-    <p>uberUserId: ${escapeHtml(value.uberUserId)}</p>
-    <p>scope: ${escapeHtml(value.scope ?? '')}</p>
-    <p>expiresAt: ${value.expiresAt ? new Date(value.expiresAt).toISOString() : 'unknown'}</p>
-    <p>你现在可以关闭此页面，并继续调用 /integrations/ubereats/oauth/stores 或 /integrations/ubereats/oauth/provision。</p>
+    <p>连接已安全保存。你现在可以关闭此页面并返回管理后台。</p>
   </body>
 </html>`;
 };

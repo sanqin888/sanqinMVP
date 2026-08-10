@@ -1491,16 +1491,26 @@ model UberOpsTicket {
 }
 
 model UberOAuthStateRequest {
-  nonce           String    @id
-  adminSessionId  String
-  redirectUri     String
-  merchantContext String?
-  issuedAt        DateTime
-  expiresAt       DateTime
-  consumedAt      DateTime?
+  nonce                   String    @id
+  adminSessionId          String
+  redirectUri             String
+  merchantContext         String?
+  issuedAt                DateTime
+  expiresAt               DateTime
+  consumedAt              DateTime?
+  status                  String    @default("ISSUED")
+  retryCount              Int       @default(0)
+  lastErrorCategory       String?
+  encryptedExchangeResult String?
+  uberUserId              String?
+  scope                   String?
+  tokenType               String?
+  tokenExpiresAt          DateTime?
+  connectedAt             DateTime?
 
   @@index([expiresAt])
   @@index([consumedAt, expiresAt])
+  @@index([status, expiresAt])
 }
 
 enum OrderStatus {
