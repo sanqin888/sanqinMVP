@@ -3,6 +3,7 @@ import {
   Inject,
   Injectable,
   NotImplementedException,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import {
@@ -32,6 +33,7 @@ import type {
   UpsertStoreMappingInput,
 } from './uber-merchant.types';
 import { UberPrismaAccessService } from './uber-prisma-access.service';
+import { UberCredentialVaultService } from '../../infrastructure/crypto/uber-credential-vault.service';
 
 @Injectable()
 export class UberMerchantInternalService {
@@ -46,6 +48,8 @@ export class UberMerchantInternalService {
     private readonly httpClient: UberHttpClient,
     @Inject(UberConfigService) private readonly config: UberOAuthStateConfig,
     private readonly prismaAccess: UberPrismaAccessService,
+    @Optional()
+    private readonly credentialVault = new UberCredentialVaultService(),
   ) {
     this.uberApiBaseUrl = config.apiBaseUrl;
     this.oauthStateSecret = config.getOAuthStateSecret();
@@ -117,11 +121,8 @@ export class UberMerchantInternalService {
     };
   }
 
-  async getMerchantStores(accessToken?: string, merchantUberUserId?: string) {
-    const connection = await this.resolveMerchantConnection(
-      merchantUberUserId,
-      accessToken,
-    );
+  async getMerchantStores(merchantUberUserId?: string) {
+    const connection = await this.resolveMerchantConnection(merchantUberUserId);
     const response = await this.callUberApi('/v1/eats/stores', {
       accessToken: connection.accessToken,
       method: 'GET',
@@ -169,7 +170,6 @@ export class UberMerchantInternalService {
           store.posExternalStoreId,
         timezone: store.timezone,
       })),
-      raw: response,
     };
   }
 
@@ -216,10 +216,15 @@ export class UberMerchantInternalService {
   }
 
   async getMerchantConnectionStatus(merchantUberUserId?: string) {
-    const connection = await this.resolveMerchantConnection(
-      merchantUberUserId,
-      undefined,
-    );
+    const merchantConnection = this.prismaAccess.uberMerchantConnectionDelegate;
+    const connection = merchantUberUserId?.trim()
+      ? await merchantConnection?.findUnique({
+          where: { merchantUberUserId: merchantUberUserId.trim() },
+        })
+      : await merchantConnection?.findFirst({
+          orderBy: { connectedAt: 'desc' },
+        });
+    if (!connection) throw new BadRequestException('未找到 Uber 商户授权');
 
     return {
       ok: true,
@@ -232,7 +237,6 @@ export class UberMerchantInternalService {
   }
 
   async provisionStore(
-    accessToken: string | undefined,
     storeId: string,
     payload: Record<string, unknown> = {},
     merchantUberUserId?: string,
@@ -240,11 +244,11 @@ export class UberMerchantInternalService {
     if (!storeId.trim()) {
       throw new BadRequestException('storeId 不能为空');
     }
+    if (this.containsCredentialField(payload)) {
+      throw new BadRequestException('provision payload 不得包含 credential');
+    }
 
-    const connection = await this.resolveMerchantConnection(
-      merchantUberUserId,
-      accessToken,
-    );
+    const connection = await this.resolveMerchantConnection(merchantUberUserId);
     const response = await this.callUberApi(
       `/v1/eats/stores/${encodeURIComponent(storeId.trim())}/pos_data`,
       {
@@ -279,7 +283,7 @@ export class UberMerchantInternalService {
       storeId: storeId.trim(),
       isProvisioned: mapping.isProvisioned,
       provisionedAt: mapping.provisionedAt,
-      response,
+      response: this.removeCredentialFields(response),
     };
   }
 
@@ -601,52 +605,49 @@ export class UberMerchantInternalService {
 
   private async resolveMerchantConnection(
     merchantUberUserId?: string,
-    accessToken?: string,
   ): Promise<UberMerchantConnectionRecord> {
-    if (accessToken?.trim()) {
-      return {
-        merchantUberUserId: merchantUberUserId?.trim() || 'manual_token',
-        accessToken: accessToken.trim(),
-        refreshToken: null,
-        expiresAt: null,
-        scope: null,
-        tokenType: 'Bearer',
-        connectedAt: new Date(),
-      };
+    if (!merchantUberUserId?.trim()) {
+      throw new BadRequestException('merchantUberUserId 不能为空');
     }
-
     const merchantConnection = this.prismaAccess.uberMerchantConnectionDelegate;
-    const row = merchantUberUserId?.trim()
-      ? await merchantConnection?.findUnique({
-          where: { merchantUberUserId: merchantUberUserId.trim() },
-        })
-      : await merchantConnection?.findFirst({
-          orderBy: { connectedAt: 'desc' },
-        });
+    const row = await merchantConnection?.findUnique({
+      where: { merchantUberUserId: merchantUberUserId.trim() },
+    });
 
-    if (!row?.accessToken) {
+    if (!row || (!row.encryptedAccessToken && !row.accessToken)) {
       throw new BadRequestException(
         '未找到 Uber 商户授权，请先调用 /oauth/connect-url 和 /oauth/callback 完成授权',
       );
     }
 
+    // Compatibility window: encrypted value wins; plaintext is read only for
+    // rows awaiting backfill. All writes below are ciphertext-only.
+    const accessToken = row.encryptedAccessToken
+      ? this.credentialVault.decrypt(row.encryptedAccessToken)
+      : row.accessToken;
+    const refreshToken = row.encryptedRefreshToken
+      ? this.credentialVault.decrypt(row.encryptedRefreshToken)
+      : row.refreshToken;
+    if (!accessToken) throw new BadRequestException('Uber 商户凭据不可用');
+
+    const resolvedRow = { ...row, accessToken, refreshToken };
     const now = Date.now();
     const skewMs = 60_000;
     const isExpired =
       !!row.expiresAt && row.expiresAt.getTime() <= now + skewMs;
 
     if (!isExpired) {
-      return row;
+      return resolvedRow;
     }
 
-    if (!row.refreshToken) {
+    if (!refreshToken) {
       throw new BadRequestException(
         'Uber 商户 access token 已过期，且缺少 refresh token，请重新授权',
       );
     }
 
     const refreshed = await this.uberAuthService.refreshMerchantAccessToken(
-      row.refreshToken,
+      refreshToken,
       row.scope ?? undefined,
     );
 
@@ -671,7 +672,7 @@ export class UberMerchantInternalService {
     return updated;
   }
 
-  private upsertMerchantConnection(
+  private async upsertMerchantConnection(
     input: UberMerchantConnectionRecord,
   ): Promise<UberMerchantConnectionRecord> {
     const merchantConnection = this.prismaAccess.uberMerchantConnectionDelegate;
@@ -681,18 +682,33 @@ export class UberMerchantInternalService {
       );
     }
 
-    return merchantConnection.upsert({
+    const encryptedAccessToken = this.credentialVault.encrypt(
+      input.accessToken,
+    );
+    const encryptedRefreshToken = input.refreshToken
+      ? this.credentialVault.encrypt(input.refreshToken)
+      : null;
+    await merchantConnection.upsert({
       where: { merchantUberUserId: input.merchantUberUserId },
-      create: input,
+      create: {
+        ...input,
+        accessToken: null,
+        refreshToken: null,
+        encryptedAccessToken,
+        encryptedRefreshToken,
+      } as unknown as UberMerchantConnectionRecord,
       update: {
-        accessToken: input.accessToken,
-        refreshToken: input.refreshToken,
+        accessToken: null,
+        refreshToken: null,
+        encryptedAccessToken,
+        encryptedRefreshToken,
         expiresAt: input.expiresAt,
         scope: input.scope,
         tokenType: input.tokenType,
         connectedAt: input.connectedAt,
-      },
+      } as never,
     });
+    return { ...input, encryptedAccessToken, encryptedRefreshToken };
   }
 
   private async persistMerchantStores(
@@ -1004,5 +1020,28 @@ export class UberMerchantInternalService {
       }
     }
     return null;
+  }
+
+  private removeCredentialFields(value: unknown): unknown {
+    if (Array.isArray(value)) {
+      return value.map((item) => this.removeCredentialFields(item));
+    }
+    if (!value || typeof value !== 'object') return value;
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([key]) => !/(?:access|refresh)[_-]?token/i.test(key))
+        .map(([key, item]) => [key, this.removeCredentialFields(item)]),
+    );
+  }
+
+  private containsCredentialField(value: unknown): boolean {
+    if (Array.isArray(value))
+      return value.some((item) => this.containsCredentialField(item));
+    if (!value || typeof value !== 'object') return false;
+    return Object.entries(value as Record<string, unknown>).some(
+      ([key, item]) =>
+        /(?:access|refresh)[_-]?token/i.test(key) ||
+        this.containsCredentialField(item),
+    );
   }
 }

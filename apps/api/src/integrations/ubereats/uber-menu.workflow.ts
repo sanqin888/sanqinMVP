@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Optional } from '@nestjs/common';
 import {
   UberMenuPublishStatus,
   UberOpsTicketPriority,
@@ -46,6 +46,7 @@ import type {
   UberServiceAvailability,
 } from './uber-payload.utils';
 import { UberPrismaAccessService } from './uber-prisma-access.service';
+import { UberCredentialVaultService } from '../../infrastructure/crypto/uber-credential-vault.service';
 import {
   composeUberDisplayName,
   buildUberUploadMenuPayload,
@@ -64,6 +65,8 @@ export class UberMenuWorkflowCore {
     private readonly httpClient: UberHttpClient,
     @Inject(UberConfigService) private readonly config: UberMenuConfig,
     private readonly prismaAccess: UberPrismaAccessService,
+    @Optional()
+    private readonly credentialVault = new UberCredentialVaultService(),
   ) {
     this.uberApiBaseUrl = config.apiBaseUrl;
   }
@@ -1184,29 +1187,38 @@ export class UberMenuWorkflowCore {
           orderBy: { connectedAt: 'desc' },
         });
 
-    if (!row?.accessToken) {
+    if (!row || (!row.encryptedAccessToken && !row.accessToken)) {
       throw new BadRequestException(
         '未找到 Uber 商户授权，请先调用 /oauth/connect-url 和 /oauth/callback 完成授权',
       );
     }
 
+    const resolvedAccessToken = row.encryptedAccessToken
+      ? this.credentialVault.decrypt(row.encryptedAccessToken)
+      : row.accessToken;
+    const refreshToken = row.encryptedRefreshToken
+      ? this.credentialVault.decrypt(row.encryptedRefreshToken)
+      : row.refreshToken;
+    if (!resolvedAccessToken)
+      throw new BadRequestException('Uber 商户凭据不可用');
+    const resolvedRow = { ...row, accessToken: resolvedAccessToken, refreshToken };
     const now = Date.now();
     const skewMs = 60_000;
     const isExpired =
       !!row.expiresAt && row.expiresAt.getTime() <= now + skewMs;
 
     if (!isExpired) {
-      return row;
+      return resolvedRow;
     }
 
-    if (!row.refreshToken) {
+    if (!refreshToken) {
       throw new BadRequestException(
         'Uber 商户 access token 已过期，且缺少 refresh token，请重新授权',
       );
     }
 
     const refreshed = await this.uberAuthService.refreshMerchantAccessToken(
-      row.refreshToken,
+      refreshToken,
       row.scope ?? undefined,
     );
 
@@ -1231,7 +1243,7 @@ export class UberMenuWorkflowCore {
     return updated;
   }
 
-  private upsertMerchantConnection(
+  private async upsertMerchantConnection(
     input: UberMerchantConnectionRecord,
   ): Promise<UberMerchantConnectionRecord> {
     const merchantConnection = this.prismaAccess.uberMerchantConnectionDelegate;
@@ -1241,18 +1253,31 @@ export class UberMenuWorkflowCore {
       );
     }
 
-    return merchantConnection.upsert({
+    const encryptedAccessToken = this.credentialVault.encrypt(input.accessToken);
+    const encryptedRefreshToken = input.refreshToken
+      ? this.credentialVault.encrypt(input.refreshToken)
+      : null;
+    await merchantConnection.upsert({
       where: { merchantUberUserId: input.merchantUberUserId },
-      create: input,
+      create: {
+        ...input,
+        accessToken: null,
+        refreshToken: null,
+        encryptedAccessToken,
+        encryptedRefreshToken,
+      } as unknown as UberMerchantConnectionRecord,
       update: {
-        accessToken: input.accessToken,
-        refreshToken: input.refreshToken,
+        accessToken: null,
+        refreshToken: null,
+        encryptedAccessToken,
+        encryptedRefreshToken,
         expiresAt: input.expiresAt,
         scope: input.scope,
         tokenType: input.tokenType,
         connectedAt: input.connectedAt,
-      },
+      } as never,
     });
+    return { ...input, encryptedAccessToken, encryptedRefreshToken };
   }
 
   private async callUberApi(

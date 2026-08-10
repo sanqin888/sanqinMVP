@@ -33,8 +33,8 @@ export class UberMerchantService {
   ) {
     return this.oauth.exchangeAuthorizationCode(code, state, adminSessionId);
   }
-  getMerchantStores(accessToken?: string, merchantUberUserId?: string) {
-    return this.stores.getMerchantStores(accessToken, merchantUberUserId);
+  getMerchantStores(merchantUberUserId?: string) {
+    return this.stores.getMerchantStores(merchantUberUserId);
   }
   updatePosExternalStoreId(uberStoreId: string, posExternalStoreId: string) {
     return this.stores.updatePosExternalStoreId(
@@ -46,13 +46,11 @@ export class UberMerchantService {
     return this.internal.getMerchantConnectionStatus(merchantUberUserId);
   }
   provisionStore(
-    accessToken: string | undefined,
     storeId: string,
     payload: Record<string, unknown> = {},
     merchantUberUserId?: string,
   ) {
     return this.provisioning.provisionStore(
-      accessToken,
       storeId,
       payload,
       merchantUberUserId,

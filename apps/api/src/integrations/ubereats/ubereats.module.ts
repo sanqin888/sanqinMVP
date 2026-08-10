@@ -25,6 +25,7 @@ import { UberPrismaAccessService } from './uber-prisma-access.service';
 import { UberOrderActionService } from './uber-order-action.service';
 import { UberOrderOutboxService } from './uber-order-outbox.service';
 import { UberOrderStatusSyncService } from './uber-order-status-sync.service';
+import { UberCredentialVaultService } from '../../infrastructure/crypto/uber-credential-vault.service';
 
 @Module({
   imports: [PrismaModule, AuthModule, MessagingModule, OrdersModule],
@@ -35,6 +36,7 @@ import { UberOrderStatusSyncService } from './uber-order-status-sync.service';
       useFactory: () => new UberConfigService(process.env),
     },
     UberEatsService,
+    UberCredentialVaultService,
     UberPrismaAccessService,
     UberAuthService,
     UberHttpClient,

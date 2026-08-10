@@ -29,7 +29,6 @@ export type UberMerchantTokenExchangeResult = {
   expiresAt: Date | null;
   scope: string | null;
   tokenType: string | null;
-  raw: UberTokenResponse;
 };
 
 @Injectable()
@@ -249,7 +248,6 @@ export class UberAuthService {
       expiresAt,
       scope: data.scope?.trim() || resolvedScope,
       tokenType: data.token_type?.trim() || null,
-      raw: data,
     };
   }
 
@@ -289,7 +287,6 @@ export class UberAuthService {
       expiresAt,
       scope: data.scope?.trim() || resolvedScope,
       tokenType: data.token_type?.trim() || null,
-      raw: data,
     };
   }
 

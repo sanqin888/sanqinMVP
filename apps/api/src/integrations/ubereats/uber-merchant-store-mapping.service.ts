@@ -6,8 +6,8 @@ import { UberMerchantInternalService } from './uber-merchant-internal.service';
 export class UberMerchantStoreMappingService {
   constructor(private readonly internal: UberMerchantInternalService) {}
 
-  getMerchantStores(accessToken?: string, merchantUberUserId?: string) {
-    return this.internal.getMerchantStores(accessToken, merchantUberUserId);
+  getMerchantStores(merchantUberUserId?: string) {
+    return this.internal.getMerchantStores(merchantUberUserId);
   }
 
   updatePosExternalStoreId(uberStoreId: string, posExternalStoreId: string) {

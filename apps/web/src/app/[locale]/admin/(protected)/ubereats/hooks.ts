@@ -24,16 +24,20 @@ export function useUberAdminData(ticketStoreFilter: string, ticketStatusFilter: 
       apiFetch<TicketsResponse>(`/integrations/ubereats/ops/tickets${query}`),
       apiFetch<ReconciliationResponse>('/integrations/ubereats/reports/reconciliation?limit=20'),
       apiFetch<PendingOrdersResponse>('/integrations/ubereats/orders/pending'),
-      apiFetch<OAuthStoresResponse>('/integrations/ubereats/oauth/stores'),
     ]);
     const errors: string[] = [];
-    const [connect, conn, ticketRes, reportRes, orderRes, storeRes] = tasks;
+    const [connect, conn, ticketRes, reportRes, orderRes] = tasks;
     if (connect.status === 'fulfilled') setConnectUrl(connect.value); else errors.push('connect-url');
-    if (conn.status === 'fulfilled') setConnection(conn.value); else setConnection(null);
+    if (conn.status === 'fulfilled') {
+      setConnection(conn.value);
+      try {
+        const storeRes = await apiFetch<OAuthStoresResponse>(`/integrations/ubereats/oauth/stores?merchantUberUserId=${encodeURIComponent(conn.value.merchantUberUserId)}`);
+        setStores(storeRes.stores ?? []);
+      } catch { errors.push('oauth stores'); }
+    } else { setConnection(null); setStores([]); }
     if (ticketRes.status === 'fulfilled') setTickets(ticketRes.value.items ?? []); else errors.push('tickets');
     if (reportRes.status === 'fulfilled') setReports(reportRes.value.items ?? []); else errors.push('reports');
     if (orderRes.status === 'fulfilled') setPendingOrders(orderRes.value.items ?? []); else errors.push('orders');
-    if (storeRes.status === 'fulfilled') setStores(storeRes.value.stores ?? []); else errors.push('oauth stores');
     if (errors.length) setGlobalError(`部分区块加载失败：${errors.join('、')}，其余模块仍可使用。`);
     setLoading(false);
   }, [ticketStatusFilter, ticketStoreFilter]);

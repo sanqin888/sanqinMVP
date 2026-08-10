@@ -277,13 +277,8 @@ class ProvisionUberStoreDto {
   @IsString()
   storeId!: string;
 
-  @IsOptional()
   @IsString()
-  merchantUberUserId?: string;
-
-  @IsOptional()
-  @IsString()
-  accessToken?: string;
+  merchantUberUserId!: string;
 
   @IsOptional()
   payload?: Record<string, unknown>;
@@ -459,14 +454,8 @@ export class UberEatsController {
   @Get('oauth/stores')
   @UseGuards(SessionAuthGuard, RolesGuard)
   @Roles('ADMIN')
-  async oauthStores(
-    @Query('accessToken') accessToken?: string,
-    @Query('merchantUberUserId') merchantUberUserId?: string,
-  ) {
-    return await this.uberEatsService.getMerchantStores(
-      accessToken,
-      merchantUberUserId,
-    );
+  async oauthStores(@Query('merchantUberUserId') merchantUberUserId: string) {
+    return await this.uberEatsService.getMerchantStores(merchantUberUserId);
   }
 
   @Patch('oauth/stores/:storeId/pos-external-store-id')
@@ -498,7 +487,6 @@ export class UberEatsController {
   @Roles('ADMIN')
   async oauthProvision(@Body() dto: ProvisionUberStoreDto) {
     return await this.uberEatsService.provisionStore(
-      dto.accessToken,
       dto.storeId,
       dto.payload ?? {},
       dto.merchantUberUserId,

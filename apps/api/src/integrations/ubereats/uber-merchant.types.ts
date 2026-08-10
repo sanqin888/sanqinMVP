@@ -12,6 +12,8 @@ export type UberMerchantConnectionRecord = {
   merchantUberUserId: string;
   accessToken: string;
   refreshToken: string | null;
+  encryptedAccessToken?: string | null;
+  encryptedRefreshToken?: string | null;
   expiresAt: Date | null;
   scope: string | null;
   tokenType: string | null;
