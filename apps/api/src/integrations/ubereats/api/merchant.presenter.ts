@@ -52,7 +52,7 @@ export const presentMerchantConnection = (
 ): UberMerchantConnectionResponse => {
   const source = recordOf(result);
   return {
-    merchantUberUserId: textOf(source.merchantUberUserId) ?? '',
+    uberUserId: textOf(source.uberUserId) ?? '',
     scope: textOf(source.scope),
     tokenType: textOf(source.tokenType),
     expiresAt: dateOf(source.expiresAt),

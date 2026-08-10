@@ -3,7 +3,7 @@ import {
   UberValidationError,
   UberAuthenticationError,
 } from '../errors/uber-application.error';
-import { randomBytes, randomUUID } from 'crypto';
+import { randomBytes } from 'crypto';
 import {
   UBER_OAUTH_TOKEN,
   type UberOAuthTokenPort,
@@ -96,7 +96,7 @@ export class CompleteUberOAuthUseCase {
     merchantContext?: string,
   ): Promise<
     UberOAuthResult<{
-      merchantUberUserId: string;
+      uberUserId: string;
       scope: string | null;
       tokenType: string | null;
       expiresAt: Date | null;
@@ -114,10 +114,8 @@ export class CompleteUberOAuthUseCase {
         code,
         request.redirectUri,
       );
-      const merchantUberUserId = `oauth:${randomUUID()}`;
       const connectedAt = new Date();
-      await this.connections.upsertConnection({
-        merchantUberUserId,
+      await this.connections.upsertConnectionByUberUserId({
         ...token,
         connectedAt,
         rawStoresSnapshot: null,
@@ -125,7 +123,7 @@ export class CompleteUberOAuthUseCase {
       return {
         ok: true,
         value: {
-          merchantUberUserId,
+          uberUserId: token.uberUserId,
           scope: token.scope,
           tokenType: token.tokenType,
           expiresAt: token.expiresAt,
@@ -146,7 +144,7 @@ export class CompleteUberOAuthUseCase {
       });
     return {
       ok: true,
-      merchantUberUserId: row.merchantUberUserId,
+      uberUserId: row.merchantUberUserId,
       scope: row.scope,
       tokenType: row.tokenType,
       expiresAt: row.expiresAt,

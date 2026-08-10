@@ -29,7 +29,7 @@ export const presentOAuthStart = <T extends { authorizeUrl: string }>(
 
 export const presentOAuthCallback = <
   T extends {
-    merchantUberUserId: string;
+    uberUserId: string;
     scope?: string | null;
     expiresAt?: Date | null;
   },
@@ -44,7 +44,7 @@ export const presentOAuthCallback = <
 <html lang="zh-CN">
   <body>
     <h2>Uber 授权成功</h2>
-    <p>merchantUberUserId: ${escapeHtml(value.merchantUberUserId)}</p>
+    <p>uberUserId: ${escapeHtml(value.uberUserId)}</p>
     <p>scope: ${escapeHtml(value.scope ?? '')}</p>
     <p>expiresAt: ${value.expiresAt ? new Date(value.expiresAt).toISOString() : 'unknown'}</p>
     <p>你现在可以关闭此页面，并继续调用 /integrations/ubereats/oauth/stores 或 /integrations/ubereats/oauth/provision。</p>

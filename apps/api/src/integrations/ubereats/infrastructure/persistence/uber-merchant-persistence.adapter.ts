@@ -81,19 +81,21 @@ export class UberMerchantConnectionPrismaAdapter implements UberMerchantConnecti
         : row.refreshToken,
     };
   }
-  async upsertConnection(
+  async upsertConnectionByUberUserId(
     input: Parameters<
-      UberMerchantConnectionRepositoryPort['upsertConnection']
+      UberMerchantConnectionRepositoryPort['upsertConnectionByUberUserId']
     >[0],
   ) {
+    const { uberUserId, ...connection } = input;
     const encryptedAccessToken = this.vault.encrypt(input.accessToken);
     const encryptedRefreshToken = input.refreshToken
       ? this.vault.encrypt(input.refreshToken)
       : null;
     return this.prisma.uberMerchantConnection.upsert({
-      where: { merchantUberUserId: input.merchantUberUserId },
+      where: { merchantUberUserId: uberUserId },
       create: {
-        ...input,
+        ...connection,
+        merchantUberUserId: uberUserId,
         rawStoresSnapshot: input.rawStoresSnapshot
           ? json(input.rawStoresSnapshot)
           : undefined,

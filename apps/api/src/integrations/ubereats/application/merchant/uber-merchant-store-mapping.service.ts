@@ -92,7 +92,11 @@ export class DiscoverUberStoresUseCase {
         row.refreshToken,
         row.scope ?? undefined,
       );
-      await this.connections.upsertConnection({ ...row, ...fresh });
+      await this.connections.upsertConnectionByUberUserId({
+        ...row,
+        ...fresh,
+        uberUserId: row.merchantUberUserId,
+      });
       row = { ...row, ...fresh };
     }
     return row;
