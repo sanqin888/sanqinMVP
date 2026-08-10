@@ -44,7 +44,7 @@ export class UberEatsWebhookController {
       });
     }
     await this.webhookService.execute({
-      headers: req.headers as Record<string, unknown>,
+      headers: req.headers,
       rawBody: req.body,
     });
 
