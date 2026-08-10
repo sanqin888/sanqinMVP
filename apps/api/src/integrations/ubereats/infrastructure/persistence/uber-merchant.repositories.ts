@@ -5,8 +5,26 @@ import { UberPrismaAccessService } from './uber-prisma-access.service';
 @Injectable()
 export class UberMerchantConnectionRepository {
   constructor(private readonly prisma: UberPrismaAccessService) {}
-  get delegate() {
-    return this.prisma.uberMerchantConnectionRepository;
+  findUnique(
+    input: Parameters<
+      UberPrismaAccessService['uberMerchantConnectionRepository']['findUnique']
+    >[0],
+  ) {
+    return this.prisma.uberMerchantConnectionRepository.findUnique(input);
+  }
+  findFirst(
+    input: Parameters<
+      UberPrismaAccessService['uberMerchantConnectionRepository']['findFirst']
+    >[0],
+  ) {
+    return this.prisma.uberMerchantConnectionRepository.findFirst(input);
+  }
+  upsert(
+    input: Parameters<
+      UberPrismaAccessService['uberMerchantConnectionRepository']['upsert']
+    >[0],
+  ) {
+    return this.prisma.uberMerchantConnectionRepository.upsert(input);
   }
 }
 
@@ -14,8 +32,17 @@ export class UberMerchantConnectionRepository {
 @Injectable()
 export class UberStoreMappingRepository {
   constructor(private readonly prisma: UberPrismaAccessService) {}
-  get delegate() {
-    return this.prisma.uberStoreMappingRepository;
+  findStoreMapping(uberStoreId: string) {
+    return this.prisma.uberStoreMappingRepository.findUnique({
+      where: { uberStoreId },
+    });
+  }
+  saveStoreMapping(
+    input: Parameters<
+      UberPrismaAccessService['uberStoreMappingRepository']['upsert']
+    >[0],
+  ) {
+    return this.prisma.uberStoreMappingRepository.upsert(input);
   }
 }
 
@@ -27,17 +54,13 @@ export class UberStoreMappingRepository {
 export class UberOAuthStateRepository {
   constructor(private readonly prisma: UberPrismaAccessService) {}
 
-  get delegate() {
-    return this.prisma.uberOAuthStateRepository;
-  }
-
-  consume(input: {
+  consumeOAuthState(input: {
     nonce: string;
     adminSessionId: string;
     issuedAt: Date;
     now: Date;
   }) {
-    return this.delegate.updateMany({
+    return this.prisma.uberOAuthStateRepository.updateMany({
       where: {
         nonce: input.nonce,
         adminSessionId: input.adminSessionId,
