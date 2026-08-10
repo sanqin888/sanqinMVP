@@ -1,4 +1,15 @@
-import { OrderStatus } from '@prisma/client';
+jest.mock('@prisma/client', () => ({
+  OrderStatus: {
+    pending: 'pending',
+    paid: 'paid',
+    making: 'making',
+    ready: 'ready',
+    completed: 'completed',
+    cancelled: 'cancelled',
+    refunded: 'refunded',
+  },
+}));
+
 import {
   mapUberEventTypeToOrderStatus,
   UberOrderPayloadParser,
@@ -38,9 +49,7 @@ describe('UberOrderPayloadParser', () => {
   });
 
   it('maps lifecycle events while keeping cancellations out of local status transitions', () => {
-    expect(mapUberEventTypeToOrderStatus('orders.ready')).toBe(
-      OrderStatus.ready,
-    );
+    expect(mapUberEventTypeToOrderStatus('orders.ready')).toBe('ready');
     expect(mapUberEventTypeToOrderStatus('orders.cancelled')).toBeNull();
   });
 });
