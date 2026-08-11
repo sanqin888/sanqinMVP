@@ -143,6 +143,10 @@ import {
   UberWebhookInboxWorkerAdapter,
 } from './infrastructure/workers/uber-worker.adapters';
 import { UberWorkerHealthService } from './infrastructure/workers/uber-worker-health.service';
+
+// Worker process roots consume the health facade through the bounded-context
+// composition boundary rather than reaching into its infrastructure layer.
+export { UberWorkerHealthService };
 import { HandleUberMerchantWebhookHandler } from './application/merchant/uber-merchant-webhook.handler';
 import { PublishUberMenuUseCase } from './application/menu/publish-uber-menu.use-case';
 import { ConfirmUberMenuPublicationUseCase } from './application/menu/confirm-uber-menu-publication.use-case';
