@@ -2,7 +2,7 @@ import type { UberMenuUploadPayload } from '../../domain/menu/uber-menu.types';
 import type { PublishMenuInput } from '../../domain/menu/uber-menu.types';
 
 export interface UberMenuPublishCommandPort {
-  execute(input: PublishMenuInput): Promise<unknown>;
+  execute(input: PublishMenuInput): Promise<{ versionStableId?: string }>;
 }
 export const UBER_MENU_PUBLISH_COMMAND = Symbol('UBER_MENU_PUBLISH_COMMAND');
 

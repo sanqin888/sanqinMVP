@@ -11,7 +11,7 @@ import {
   UberOpsTicketType,
   type Prisma,
 } from '@prisma/client';
-import { createHash, randomUUID } from 'crypto';
+import { createHash } from 'crypto';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import {
   UBER_MENU_PUBLISH_COMMAND,

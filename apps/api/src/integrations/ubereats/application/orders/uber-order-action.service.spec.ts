@@ -50,10 +50,10 @@ describe('UberOrderActionService contract', () => {
   it('always writes success with the token returned by claim', async () => {
     const { repository, service } = setup();
     await service.process(1, 'worker-a');
-    expect(repository.markSucceeded).toHaveBeenCalledWith(
+    expect(repository.markSucceeded.mock.calls).toContainEqual([
       'task-1',
       'lease-from-claim',
-    );
+    ]);
   });
 
   it.each([
@@ -65,11 +65,11 @@ describe('UberOrderActionService contract', () => {
       accept: jest.fn().mockRejectedValue(error),
     });
     await service.process(1, 'worker-a');
-    expect(repository.markFailed).toHaveBeenCalledWith(
+    expect(repository.markFailed.mock.calls).toContainEqual([
       'task-1',
       'lease-from-claim',
       expect.objectContaining({ retryable }),
-    );
+    ]);
   });
 
   it('leaves a claimed row recoverable when local success writeback fails', async () => {
@@ -81,9 +81,9 @@ describe('UberOrderActionService contract', () => {
     await expect(service.process(1, 'worker-a')).rejects.toThrow(
       'database unavailable',
     );
-    expect(repository.markSucceeded).toHaveBeenCalledWith(
+    expect(repository.markSucceeded.mock.calls).toContainEqual([
       'task-1',
       'lease-from-claim',
-    );
+    ]);
   });
 });

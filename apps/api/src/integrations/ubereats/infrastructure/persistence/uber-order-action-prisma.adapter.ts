@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return, @typescript-eslint/require-await -- generated Prisma client is supplied at runtime */
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { OrderStatus } from '@prisma/client';

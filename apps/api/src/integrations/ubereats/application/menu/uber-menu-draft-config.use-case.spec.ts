@@ -27,9 +27,13 @@ describe('UberMenuDraftConfigUseCase', () => {
       stableId: 'item-1',
       updated: true,
     });
-    expect(commands.updateItem).toHaveBeenCalledWith('store-1', 'item-1', {
-      priceCents: 1299,
-    });
+    expect(commands.updateItem.mock.calls).toContainEqual([
+      'store-1',
+      'item-1',
+      {
+        priceCents: 1299,
+      },
+    ]);
   });
 
   it('rejects invalid or empty changes before persistence', async () => {
@@ -42,7 +46,7 @@ describe('UberMenuDraftConfigUseCase', () => {
     await expect(
       useCase.updateOption('store-1', 'option-1', {}),
     ).rejects.toThrow('at least one supported draft field');
-    expect(commands.updateGroup).not.toHaveBeenCalled();
-    expect(commands.updateOption).not.toHaveBeenCalled();
+    expect(commands.updateGroup.mock.calls).toHaveLength(0);
+    expect(commands.updateOption.mock.calls).toHaveLength(0);
   });
 });

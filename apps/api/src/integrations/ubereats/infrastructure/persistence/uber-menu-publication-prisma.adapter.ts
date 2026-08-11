@@ -4,22 +4,33 @@ import { UberMenuPublishStatus, type Prisma } from '@prisma/client';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import type {
   UberMenuPublicationAttempt,
+  UberMenuPublicationLease,
   UberMenuPublicationRepositoryPort,
 } from '../../application/ports/uber-menu-publication.ports';
+
+type PublicationRow = Prisma.UberMenuPublishVersionGetPayload<object>;
+
+function responseId(payload: Prisma.JsonValue | null, key: string) {
+  if (payload === null || Array.isArray(payload) || typeof payload !== 'object')
+    return null;
+  const value = payload[key];
+  return typeof value === 'string' ? value : null;
+}
 
 @Injectable()
 export class UberMenuPublicationPrismaAdapter implements UberMenuPublicationRepositoryPort {
   constructor(private readonly prisma: PrismaService) {}
-  private dto(row: any): UberMenuPublicationAttempt {
+  private dto(row: PublicationRow): UberMenuPublicationAttempt {
     return {
       attemptId: row.id,
       storeId: row.storeId,
       idempotencyKey: row.idempotencyKey || '',
       businessVersion: row.businessVersion,
       status: row.status,
-      uberRequestId: row.responsePayload?.request_id ?? null,
+      uberRequestId: responseId(row.responsePayload, 'request_id'),
       uberResourceId:
-        row.responsePayload?.resource_id ?? row.responsePayload?.id ?? null,
+        responseId(row.responsePayload, 'resource_id') ??
+        responseId(row.responsePayload, 'id'),
     };
   }
   async findSucceededAttempt(idempotencyKey: string) {
@@ -187,7 +198,7 @@ export class UberMenuPublicationPrismaAdapter implements UberMenuPublicationRepo
     lease: { owner: string; durationMs: number; now: Date },
     where: Record<string, unknown>,
   ) {
-    const claimed: any[] = [];
+    const claimed: UberMenuPublicationLease[] = [];
     const expiresAt = new Date(lease.now.getTime() + lease.durationMs);
     await this.prisma.$transaction(async (tx) => {
       const candidates = await tx.uberMenuPublishVersion.findMany({
