@@ -64,6 +64,8 @@ describe('Uber webhook use cases', () => {
     const inboxPort = {
       claimDue: jest.fn().mockResolvedValue([item]),
       markSucceeded: jest.fn().mockResolvedValue(undefined),
+      markUnsupported: jest.fn().mockResolvedValue(undefined),
+      requeueUnsupported: jest.fn().mockResolvedValue(0),
       markFailed: jest.fn().mockResolvedValue(undefined),
       enqueue: jest.fn(),
       setStoreProvisioned: jest.fn(),
@@ -90,6 +92,102 @@ describe('Uber webhook use cases', () => {
       },
     );
     expect(inboxPort.markSucceeded).toHaveBeenCalledWith(item);
+  });
+
+  it.each(['menus.deleted', 'store.mystery', 'completely.unknown'])(
+    '隔离未知事件 %s，不会错误标记为成功',
+    async (eventType) => {
+      const item = {
+        eventId: `evt-${eventType}`,
+        eventType,
+        payload: { secret: 'must-not-appear-in-alerts' },
+        leaseToken: 'lease',
+        idempotencyKey: 'stable-key',
+        businessVersion: 'v1',
+      };
+      const inboxPort = {
+        claimDue: jest.fn().mockResolvedValue([item]),
+        markSucceeded: jest.fn(),
+        markUnsupported: jest.fn().mockResolvedValue(undefined),
+        requeueUnsupported: jest.fn().mockResolvedValue(0),
+        markFailed: jest.fn(),
+        enqueue: jest.fn(),
+        setStoreProvisioned: jest.fn(),
+      };
+      const telemetry = {
+        captureEvent: jest.fn().mockResolvedValue(undefined),
+        workflowLog: jest.fn(),
+      };
+      const worker = new ProcessUberWebhookInboxUseCase(
+        inboxPort,
+        { execute: jest.fn() } as never,
+        { handle: jest.fn() } as never,
+        { execute: jest.fn() } as never,
+        telemetry,
+      );
+
+      await worker.execute();
+
+      expect(inboxPort.markSucceeded).not.toHaveBeenCalled();
+      expect(inboxPort.markFailed).not.toHaveBeenCalled();
+      expect(inboxPort.markUnsupported).toHaveBeenCalledWith(
+        item,
+        expect.objectContaining({
+          code: 'UBER_WEBHOOK_EVENT_UNSUPPORTED',
+          eventType,
+          businessVersion: 'v1',
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          safeSummary: expect.stringMatching(
+            /^type=.*;payloadSha256=[a-f0-9]{16}$/,
+          ),
+        }),
+      );
+      expect(telemetry.captureEvent).toHaveBeenCalledWith(
+        'ubereats_webhook_unsupported',
+        expect.objectContaining({ priority: 'high', eventType }),
+      );
+      expect(JSON.stringify(telemetry.captureEvent.mock.calls)).not.toContain(
+        'must-not-appear-in-alerts',
+      );
+    },
+  );
+
+  it('仍会完成已支持的 store 事件', async () => {
+    const item = {
+      eventId: 'evt-store',
+      eventType: 'store.provisioned',
+      payload: { resource_id: 'store-1' },
+      leaseToken: 'lease',
+      idempotencyKey: 'key',
+      businessVersion: 'v1',
+    };
+    const inboxPort = {
+      claimDue: jest.fn().mockResolvedValue([item]),
+      markSucceeded: jest.fn().mockResolvedValue(undefined),
+      markUnsupported: jest.fn(),
+      requeueUnsupported: jest.fn().mockResolvedValue(0),
+      markFailed: jest.fn(),
+      enqueue: jest.fn(),
+      setStoreProvisioned: jest.fn(),
+    };
+    const merchant = { execute: jest.fn().mockResolvedValue(undefined) };
+    const worker = new ProcessUberWebhookInboxUseCase(
+      inboxPort,
+      {} as never,
+      {} as never,
+      merchant as never,
+      { captureEvent: jest.fn(), workflowLog: jest.fn() },
+    );
+
+    await worker.execute();
+
+    expect(merchant.execute).toHaveBeenCalledWith(
+      item.eventType,
+      item.eventId,
+      item.payload,
+    );
+    expect(inboxPort.markSucceeded).toHaveBeenCalledWith(item);
+    expect(inboxPort.markUnsupported).not.toHaveBeenCalled();
   });
 
   it('HTTP 阶段校验签名并持久化 inbox，但不执行业务用例', async () => {

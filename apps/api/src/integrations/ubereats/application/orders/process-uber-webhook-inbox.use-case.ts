@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { parseUberOrderNotificationV1 } from '../../contracts/events/uber-order-notification.v1';
 import { parseUberMenuNotificationV1 } from '../../contracts/events/uber-menu-notification.v1';
 import { normalizeUberEventType } from '../../domain/shared/uber-integration.utils';
@@ -86,17 +87,27 @@ export class ProcessUberWebhookInboxUseCase {
         case 'store.status.changed':
           await this.merchant.execute(eventType, eventId, payload);
           break;
-        default:
-          await this.telemetry.captureEvent('ubereats_webhook_unhandled', {
+        default: {
+          const safeSummary = this.safeEventSummary(item);
+          await this.inbox.markUnsupported(item, {
+            code: 'UBER_WEBHOOK_EVENT_UNSUPPORTED',
+            eventType,
+            safeSummary,
+            businessVersion: item.businessVersion,
+          });
+          await this.telemetry.captureEvent('ubereats_webhook_unsupported', {
+            priority: 'high',
             eventType,
             eventId,
+            safeSummary,
+            businessVersion: item.businessVersion,
           });
-          if (/(^|[._-])orders?([._-]|$)/i.test(eventType))
-            throw new UberValidationError({
-              code: 'UBER_WEBHOOK_EVENT_UNSUPPORTED',
-              message: '未识别的 Uber 订单事件类型',
-              operation: 'webhook.route',
-            });
+          this.telemetry.workflowLog(
+            'error',
+            'HIGH: unsupported Uber webhook quarantined',
+          );
+          return;
+        }
       }
       await this.inbox.markSucceeded(item);
     } catch (error) {
@@ -106,6 +117,14 @@ export class ProcessUberWebhookInboxUseCase {
       if (retryable)
         this.telemetry.workflowLog('error', 'webhook processing failed');
     }
+  }
+
+  private safeEventSummary(item: UberWebhookInboxItem): string {
+    const digest = createHash('sha256')
+      .update(JSON.stringify(item.payload ?? null))
+      .digest('hex')
+      .slice(0, 16);
+    return `type=${item.eventType};payloadSha256=${digest}`;
   }
 
   private extractOrdering(payload: unknown) {
