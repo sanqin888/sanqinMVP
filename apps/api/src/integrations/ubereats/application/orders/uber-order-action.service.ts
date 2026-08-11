@@ -1,84 +1,91 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type {
-  UberDenyReasonCode,
-  UberOrderActionName,
-} from '../../domain/orders/uber-order.types';
+import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
+import type { UberOrderActionName } from '../../domain/orders/uber-order.types';
 import {
-  UBER_ORDER_ACTION_GATEWAY,
-  type UberGatewayOutcome,
+  UBER_ORDER_ACTION_COMMAND_GATEWAY,
+  UBER_ORDER_ACTION_REPOSITORY,
   type UberOrderActionGatewayPort,
-} from '../ports/uber-api.ports';
+  type UberOrderActionRepositoryPort,
+  type UberOrderActionTask,
+} from '../ports/uber-order.ports';
 
-/** Owns Uber order action protocol details; persistence/idempotency stays in the outbox service. */
 @Injectable()
 export class UberOrderActionService {
   constructor(
-    @Inject(UBER_ORDER_ACTION_GATEWAY)
+    @Inject(UBER_ORDER_ACTION_REPOSITORY)
+    private readonly repository: UberOrderActionRepositoryPort,
+    @Inject(UBER_ORDER_ACTION_COMMAND_GATEWAY)
     private readonly gateway: UberOrderActionGatewayPort,
   ) {}
 
-  buildDenyPayload(reasonCode: string, reasonDetail?: string) {
-    const normalized = reasonCode.trim();
-    const code = this.toDenyReasonCode(normalized);
-    return {
-      reason: { code, explanation: reasonDetail?.trim() || normalized || code },
-    };
-  }
-
-  buildPath(externalOrderId: string, action: UberOrderActionName): string {
-    const id = encodeURIComponent(externalOrderId);
-    return {
-      ACCEPT: `/v1/eats/orders/${id}/accept_pos_order`,
-      DENY: `/v1/eats/orders/${id}/deny_pos_order`,
-      READY_FOR_PICKUP: `/v1/delivery/order/${id}/ready`,
-    }[action];
-  }
-
-  async request(
+  request(
     externalOrderId: string,
     action: UberOrderActionName,
-    payload: Record<string, unknown>,
-    idempotencyKey: string,
+    denial?: { reasonCode: string; reasonDetail: string | null },
   ) {
-    return this.gateway.executeAction(
-      externalOrderId,
+    const id = externalOrderId.trim();
+    if (!id) throw new Error('externalOrderId 不能为空');
+    if (action === 'DENY' && !denial?.reasonCode.trim())
+      throw new Error('拒单原因不能为空');
+    return this.repository.enqueue({
+      externalOrderId: id,
       action,
-      payload,
-      idempotencyKey,
-    );
+      idempotencyKey: UberOrderStateMachine.idempotencyKey(id, action),
+      businessVersion: 'v1',
+      reasonCode: denial?.reasonCode.trim() ?? null,
+      reasonDetail: denial?.reasonDetail?.trim() || null,
+    });
   }
 
-  classify(action: UberOrderActionName, response: UberGatewayOutcome) {
-    return {
-      succeeded:
-        response.ok ||
-        (action === 'READY_FOR_PICKUP' && response.status === 409),
-      retryable: response.status === 429 || response.status >= 500,
-    };
+  async process(limit: number, owner: string): Promise<number> {
+    const tasks = await this.repository.claim({
+      limit,
+      owner,
+      now: new Date(),
+      leaseDurationMs: 30_000,
+    });
+    await Promise.all(tasks.map((task) => this.execute(task)));
+    return tasks.length;
   }
 
-  isNonRetryableStatus(status: number) {
-    return [400, 401, 403, 404].includes(status);
+  private async execute(task: UberOrderActionTask): Promise<void> {
+    try {
+      const common = {
+        externalOrderId: task.externalOrderId,
+        idempotencyKey: task.idempotencyKey,
+      };
+      if (task.action === 'ACCEPT') await this.gateway.accept(common);
+      else if (task.action === 'DENY')
+        await this.gateway.deny({
+          ...common,
+          denial: {
+            reasonCode: task.reasonCode ?? 'OTHER',
+            reasonDetail: task.reasonDetail,
+          },
+        });
+      else await this.gateway.readyForPickup(common);
+      // The exact lease returned by claim is mandatory. A false result means
+      // another worker owns the row; its local transition must remain untouched.
+      await this.repository.markSucceeded(task.taskId, task.leaseToken);
+    } catch (error) {
+      const upstream = this.asUpstreamError(error);
+      await this.repository.markFailed(task.taskId, task.leaseToken, {
+        retryable: upstream?.retryable ?? true,
+        code: upstream ? `HTTP_${upstream.status}` : 'UPSTREAM_ERROR',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
-  private toDenyReasonCode(reasonCode: string): UberDenyReasonCode {
-    const code = reasonCode.trim().toUpperCase();
-    if (
-      [
-        'STORE_CLOSED',
-        'POS_NOT_READY',
-        'POS_OFFLINE',
-        'MISSING_ITEM',
-        'MISSING_INFO',
-        'PRICING',
-        'CAPACITY',
-        'ADDRESS',
-        'SPECIAL_INSTRUCTIONS',
-      ].includes(code)
-    )
-      return code as UberDenyReasonCode;
-    if (code === 'ITEM_UNAVAILABLE' || code === 'ITEM_AVAILABILITY')
-      return 'ITEM_AVAILABILITY';
-    return 'OTHER';
+  private asUpstreamError(error: unknown): {
+    status: number;
+    retryable: boolean;
+  } | null {
+    if (!error || typeof error !== 'object') return null;
+    const value = error as { status?: unknown; retryable?: unknown };
+    return typeof value.status === 'number' &&
+      typeof value.retryable === 'boolean'
+      ? { status: value.status, retryable: value.retryable }
+      : null;
   }
 }
