@@ -9,6 +9,8 @@ on:
 jobs:
   build-test:
     runs-on: ubuntu-latest
+    env:
+      UBER_SANDBOX_CONFIGURED: ${{ secrets.UBER_SANDBOX_CLIENT_ID != '' && secrets.UBER_SANDBOX_CLIENT_SECRET != '' && secrets.UBER_SANDBOX_STORE_ID != '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -47,9 +49,7 @@ jobs:
       - name: Uber sandbox smoke (dedicated credentials only)
         if: >-
           matrix.app == 'api' &&
-          secrets.UBER_SANDBOX_CLIENT_ID != '' &&
-          secrets.UBER_SANDBOX_CLIENT_SECRET != '' &&
-          secrets.UBER_SANDBOX_STORE_ID != ''
+          env.UBER_SANDBOX_CONFIGURED == 'true'
         env:
           UBER_SANDBOX_SMOKE: "1"
           UBER_SANDBOX_CLIENT_ID: ${{ secrets.UBER_SANDBOX_CLIENT_ID }}
