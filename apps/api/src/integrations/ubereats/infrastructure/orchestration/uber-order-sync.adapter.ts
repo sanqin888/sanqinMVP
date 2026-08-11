@@ -28,7 +28,7 @@ import type {
   UberOrderActionRecord,
   UberOrderActionResult,
 } from '../../domain/orders/uber-order.types';
-import { UberPrismaAccessService } from './uber-prisma-access.service';
+import { UberPrismaAccessService } from '../persistence/uber-prisma-access.service';
 import {
   UberOrderPayloadParser,
   mapUberEventTypeToOrderStatus,
@@ -41,9 +41,9 @@ import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-mach
 import { buildUberIdempotencyKey } from '../../application/idempotency/uber-idempotency-key';
 import { UberOrderGateway } from '../uber-api/uber-resource.gateways';
 import { toUberEatsHttpException } from '../../application/uber-domain-error.mapper';
-import { toUberOrderStatus } from './uber-order-status.mapper';
+import { toUberOrderStatus } from '../persistence/uber-order-status.mapper';
 
-import { UberTelemetryService } from './uber-telemetry.service';
+import { UberTelemetryService } from '../persistence/uber-telemetry.service';
 
 @Injectable()
 export class UberOrderSyncAdapter {

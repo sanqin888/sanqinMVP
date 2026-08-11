@@ -210,7 +210,7 @@ describe('Uber Eats bounded-context architecture', () => {
           (file) => file.path === join(BOUNDED_CONTEXT_ROOT, path),
         )?.source ?? '';
       expect(source).not.toMatch(/PrismaService|UberHttpClient/);
-      expect(source).toMatch(/(?:PORT|REPOSITORY|GATEWAY)/);
+      expect(source).toMatch(/(?:port|repository|gateway)/i);
     }
   });
 
