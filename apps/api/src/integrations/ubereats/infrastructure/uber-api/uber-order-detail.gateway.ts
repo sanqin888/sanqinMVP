@@ -4,18 +4,18 @@ import {
   UberTransientUpstreamError,
 } from '../../application/errors/uber-application.error';
 import type { UberOrderDetailGatewayPort } from '../../application/ports/uber-api.ports';
+import type { UberTelemetryPort } from '../../application/ports/uber-order-processing.ports';
 import {
   redactUberLogText,
   summarizeUberDebugResponse,
 } from '../../domain/shared/uber-integration.utils';
-import { UberTelemetryService } from '../persistence/uber-telemetry.service';
 import { UberOrderGateway } from './uber-resource.gateways';
 
 @Injectable()
 export class UberOrderDetailGatewayAdapter implements UberOrderDetailGatewayPort {
   constructor(
     private readonly gateway: UberOrderGateway,
-    private readonly telemetry: UberTelemetryService,
+    private readonly telemetry: UberTelemetryPort,
   ) {}
 
   async fetchOrderDetail(input: {
