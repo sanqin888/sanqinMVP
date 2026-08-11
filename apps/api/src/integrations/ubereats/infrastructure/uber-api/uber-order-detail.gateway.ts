@@ -8,7 +8,7 @@ import {
   redactUberLogText,
   summarizeUberDebugResponse,
 } from '../../domain/shared/uber-integration.utils';
-import { UberTelemetryService } from '../observability/uber-telemetry.service';
+import { UberTelemetryService } from './uber-telemetry.service';
 import { UberOrderGateway } from './uber-resource.gateways';
 
 @Injectable()

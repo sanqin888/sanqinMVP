@@ -15,7 +15,7 @@ import type {
 } from '../../application/ports/uber-persistence.ports';
 import { redactUberLogText } from '../../domain/shared/uber-integration.utils';
 import { UberCredentialVaultService } from '../crypto/uber-credential-vault.service';
-import { UberTelemetryService } from '../observability/uber-telemetry.service';
+import { UberTelemetryService } from './uber-telemetry.service';
 
 const json = (value: unknown) =>
   JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;

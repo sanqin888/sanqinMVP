@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import {
+  formatSourceViolation,
   importViolations,
   scanTypeScript,
 } from './test/architecture-test.utils';
@@ -19,5 +20,30 @@ describe('Uber Eats persistence architecture', () => {
     );
 
     expect(violations).toEqual([]);
+  });
+
+  it('contains Prisma implementation details inside infrastructure/persistence', () => {
+    const root = join(__dirname);
+    const persistenceRoot = join(root, 'infrastructure', 'persistence');
+    const files = scanTypeScript(root, { productionOnly: true }).filter(
+      (file) =>
+        !file.path.startsWith(`${persistenceRoot}/`) &&
+        !file.path.includes(`${join(root, 'test')}/`),
+    );
+
+    const forbiddenImports = importViolations(files, root, (specifier) =>
+      [
+        '@prisma/client',
+        'uber-prisma-access.service',
+        'uber-prisma.types',
+      ].some((token) => specifier.includes(token)),
+    );
+    const leakedDelegateTypes = files.flatMap((file) =>
+      [...file.source.matchAll(/\bPrisma\.[A-Z]\w*(?:Delegate|Args|GetPayload)\b/g)].map(
+        (match) => formatSourceViolation(root, file, match[0]),
+      ),
+    );
+
+    expect([...forbiddenImports, ...leakedDelegateTypes]).toEqual([]);
   });
 });
