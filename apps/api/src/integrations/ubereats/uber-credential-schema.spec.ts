@@ -19,15 +19,12 @@ describe('Uber credential schema boundary', () => {
   });
 
   it('持久化适配器不读取或写入明文 token 列', () => {
-    const persistenceDirectory = resolve(
-      __dirname,
-      'infrastructure/persistence',
-    );
     const source = [
-      'uber-merchant-persistence.adapter.ts',
-      'uber-menu-prisma.adapter.ts',
+      'infrastructure/persistence/uber-merchant-persistence.adapter.ts',
+      'infrastructure/persistence/uber-prisma.adapters.ts',
+      'infrastructure/menu/uber-menu-draft.adapter.ts',
     ]
-      .map((file) => readFileSync(resolve(persistenceDirectory, file), 'utf8'))
+      .map((file) => readFileSync(resolve(__dirname, file), 'utf8'))
       .join('\n');
 
     expect(source).not.toMatch(/\brow\.(?:accessToken|refreshToken)\b/);
