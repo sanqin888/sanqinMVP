@@ -98,8 +98,11 @@ export class UberEatsOAuthController {
         ? req.signedCookies[SESSION_COOKIE_NAME]
         : undefined;
     const result = await this.oauthComplete.exchangeAuthorizationCode(
-      query.code,
-      query.state,
+      {
+        code: query.code,
+        state: query.state,
+        error: query.error,
+      },
       callbackSessionId,
     );
     return presentOAuthCallback(result);
