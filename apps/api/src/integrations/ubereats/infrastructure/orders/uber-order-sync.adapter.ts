@@ -14,12 +14,12 @@ import { createHash } from 'crypto';
 import { OrderEventsBus } from '../../../../messaging/order-events.bus';
 import { OrderIngestionService } from '../../../../orders/order-ingestion.service';
 import { PrismaService } from '../../../../prisma/prisma.service';
-import { UberAuthService } from '../../infrastructure/uber-api/uber-token.provider';
+import { UberAuthService } from '../uber-api/uber-token.provider';
 import {
   UberConfigService,
   type UberOrderConfig,
-} from '../../infrastructure/config/uber-config.service';
-import { UberHttpClient } from '../../infrastructure/uber-api/uber-http.client';
+} from '../config/uber-config.service';
+import { UberHttpClient } from '../uber-api/uber-http.client';
 import type {
   ParsedUberModifier,
   ParsedUberOrder,
@@ -28,7 +28,7 @@ import type {
   UberOrderActionRecord,
   UberOrderActionResult,
 } from '../../domain/orders/uber-order.types';
-import { UberPrismaAccessService } from '../../infrastructure/persistence/uber-prisma-access.service';
+import { UberPrismaAccessService } from '../persistence/uber-prisma-access.service';
 import {
   UberOrderPayloadParser,
   mapUberEventTypeToOrderStatus,
@@ -39,14 +39,14 @@ import { UberOrderOutboxService } from '../../application/orders/uber-order-outb
 import { UberOrderStatusSyncService } from '../../application/orders/uber-order-status-sync.service';
 import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
 import { buildUberIdempotencyKey } from '../../application/idempotency/uber-idempotency-key';
-import { UberOrderGateway } from '../../infrastructure/uber-api/uber-resource.gateways';
+import { UberOrderGateway } from '../uber-api/uber-resource.gateways';
 import { toUberEatsHttpException } from '../../application/uber-domain-error.mapper';
 import { toUberOrderStatus } from '../../infrastructure/persistence/uber-order-status.mapper';
 
-import { UberTelemetryService } from '../../infrastructure/observability/uber-telemetry.service';
+import { UberTelemetryService } from '../observability/uber-telemetry.service';
 
 @Injectable()
-export class UberOrderPrismaAdapter {
+export class UberOrderSyncAdapter {
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
   private readonly telemetry: UberTelemetryService;
   private readonly payloadParser = new UberOrderPayloadParser();

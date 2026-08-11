@@ -1,13 +1,13 @@
-import { UberMenuDraftService } from './uber-menu-draft.service';
-import type { UberMenuPrismaAdapter } from '../../infrastructure/persistence/uber-menu-prisma.adapter';
+import { UberMenuDraftUseCase } from './uber-menu-draft.use-case';
+import type { UberMenuDraftPort } from '../ports/uber-use-case.ports';
 
-describe('UberMenuDraftService', () => {
+describe('UberMenuDraftUseCase', () => {
   it('delegates getUberMenuDraft to the menu workflow boundary', async () => {
     const workflow = {
       getUberMenuDraft: jest.fn().mockResolvedValue({ ok: true }),
     };
-    const service = new UberMenuDraftService(
-      workflow as unknown as UberMenuPrismaAdapter,
+    const service = new UberMenuDraftUseCase(
+      workflow as unknown as UberMenuDraftPort,
     );
     await expect(service.getUberMenuDraft('store-1')).resolves.toEqual({
       ok: true,

@@ -9,8 +9,8 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { normalizeUberStoreId } from '../../domain/shared/uber-integration.utils';
-import { UberMenuPublishService } from '../../application/menu/uber-menu-publish.service';
-import { UberMenuAvailabilityService } from '../../application/menu/uber-menu-availability.service';
+import { PublishUberMenuUseCase } from '../../application/menu/publish-uber-menu.use-case';
+import { UberMenuAvailabilityUseCase } from '../../application/menu/uber-menu-availability.use-case';
 import { SyncUberStoreStatusUseCase } from '../../application/merchant/uber-merchant-provisioning.service';
 import type {
   CreateOpsTicketInput,
@@ -39,8 +39,8 @@ export class UberOperationsPrismaAdapter {
   constructor(
     private readonly prisma: PrismaService,
     private readonly orderStatusSync: SyncUberOrderStatusUseCase,
-    private readonly menuPublish: UberMenuPublishService,
-    private readonly menuAvailability: UberMenuAvailabilityService,
+    private readonly menuPublish: PublishUberMenuUseCase,
+    private readonly menuAvailability: UberMenuAvailabilityUseCase,
     private readonly storeStatusSync: SyncUberStoreStatusUseCase,
     private readonly prismaAccess: UberPrismaAccessService,
     @Optional() telemetry?: UberTelemetryService,
@@ -319,7 +319,7 @@ export class UberOperationsPrismaAdapter {
         if (!result.ok) throw new Error('Uber 门店状态同步失败');
       } else if (ticket.type === UberOpsTicketType.MENU_PUBLISH) {
         const context = this.parseMenuPublishContext(ticket.context);
-        await this.menuPublish.publishUberMenu(context.publish);
+        await this.menuPublish.execute(context.publish);
       } else if (ticket.type === UberOpsTicketType.MENU_ITEM_AVAILABILITY) {
         if (!ticket.menuItemStableId) {
           throw new BadRequestException('商品状态工单缺少 menuItemStableId');

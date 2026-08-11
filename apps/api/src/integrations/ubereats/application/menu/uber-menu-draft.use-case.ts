@@ -6,7 +6,7 @@ import {
 
 /** Draft read/write and diff use cases. Every write is committed by the port in one transaction. */
 @Injectable()
-export class UberMenuDraftService {
+export class UberMenuDraftUseCase {
   constructor(
     @Inject(UBER_MENU_DRAFT_PORT) private readonly drafts: UberMenuDraftPort,
   ) {}

@@ -31,9 +31,9 @@ import {
   UpsertUberOptionItemConfigDto,
   UpsertUberPriceBookItemDto,
 } from '../contracts/requests/ubereats.requests';
-import { UberMenuDraftService } from '../application/menu/uber-menu-draft.service';
-import { UberMenuPublishService } from '../application/menu/uber-menu-publish.service';
-import { UberMenuAvailabilityService } from '../application/menu/uber-menu-availability.service';
+import { UberMenuDraftUseCase } from '../application/menu/uber-menu-draft.use-case';
+import { PublishUberMenuUseCase } from '../application/menu/publish-uber-menu.use-case';
+import { UberMenuAvailabilityUseCase } from '../application/menu/uber-menu-availability.use-case';
 import {
   presentMenuDraft,
   presentMenuDiff,
@@ -46,9 +46,9 @@ import {
 @UberReadOnlyAdmin()
 export class UberEatsMenuController {
   constructor(
-    private readonly drafts: UberMenuDraftService,
-    private readonly publications: UberMenuPublishService,
-    private readonly availability: UberMenuAvailabilityService,
+    private readonly drafts: UberMenuDraftUseCase,
+    private readonly publications: PublishUberMenuUseCase,
+    private readonly availability: UberMenuAvailabilityUseCase,
   ) {}
   @Get('menu/channel/items')
   async listItemChannelConfigs(
@@ -192,7 +192,7 @@ export class UberEatsMenuController {
   @Post('menu/publish')
   @UberMfaAdminWrite()
   async publishMenu(@Body() dto: PublishUberMenuDto) {
-    await this.publications.publishUberMenu({
+    await this.publications.execute({
       storeId: dto.storeId,
       dryRun: dto.dryRun,
       timezoneConfirmed: dto.timezoneConfirmed,
