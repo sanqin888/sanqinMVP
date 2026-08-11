@@ -96,6 +96,12 @@ describe('CheckoutIntentsService', () => {
     expect(createArgs?.data.expiresAt.toISOString()).toBe(
       '2026-01-01T00:20:00.000Z',
     );
+    expect(createArgs?.data.metadataJson).toEqual(
+      expect.objectContaining({
+        serverVerifiedStoreId:
+          process.env.STORE_ID?.trim() || '4750_Yonge_Street',
+      }),
+    );
   });
 
   it('marks pending intent as expired when fetching an overdue intent', async () => {

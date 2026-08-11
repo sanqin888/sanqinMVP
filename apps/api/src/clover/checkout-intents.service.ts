@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { CheckoutIntent, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CheckoutMetadata } from './checkout-metadata';
+import { resolveConfiguredStoreId } from '../common/store-id';
 
 export type CheckoutIntentWithMetadata = CheckoutIntent & {
   metadata: CheckoutMetadata;
@@ -51,7 +52,13 @@ export class CheckoutIntentsService {
       orderId: null as string | null,
       processedAt: null as Date | null,
       expiresAt,
-      metadataJson: params.metadata as Prisma.InputJsonValue,
+      // Stamp routing context here, after request metadata validation. Keeping
+      // this at the persistence boundary covers every checkout flow and makes
+      // it impossible for a client-provided store ID to win.
+      metadataJson: {
+        ...params.metadata,
+        serverVerifiedStoreId: resolveConfiguredStoreId(),
+      } as Prisma.InputJsonValue,
     } satisfies Prisma.CheckoutIntentCreateInput;
 
     let record: CheckoutIntentRecord;
