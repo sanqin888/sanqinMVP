@@ -15,6 +15,7 @@ import { OrderEventsBus } from '../../messaging/order-events.bus';
 import { UberHttpClient } from './infrastructure/uber-api/uber-http.client';
 import { UberConfigService } from './infrastructure/config/uber-config.service';
 import { ProcessUberWebhookInboxUseCase } from './application/orders/process-uber-webhook-inbox.use-case';
+import { ReplayUnsupportedUberWebhooksUseCase } from './application/orders/replay-unsupported-uber-webhooks.use-case';
 import { ReceiveUberWebhookUseCase } from './application/orders/uber-webhook-receiver.use-case';
 import { UberMenuDraftAdapter } from './infrastructure/menu/uber-menu-draft.adapter';
 import { UberMenuRepository } from './infrastructure/persistence/uber-menu.repository';
@@ -264,6 +265,7 @@ const UBER_EATS_HTTP_METADATA = {
     { provide: UBER_MENU_IMAGE_PROBE, useExisting: UberMenuImageProbeAdapter },
     ReceiveUberWebhookUseCase,
     ProcessUberWebhookInboxUseCase,
+    ReplayUnsupportedUberWebhooksUseCase,
     HandleUberMerchantWebhookHandler,
     UberOrderSyncAdapter,
     UberOrderImportPrismaAdapter,

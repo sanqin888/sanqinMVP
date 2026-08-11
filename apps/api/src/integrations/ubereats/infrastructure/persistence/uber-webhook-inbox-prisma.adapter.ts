@@ -151,6 +151,51 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
       },
     });
   }
+  async markUnsupported(
+    item: UberWebhookInboxItem,
+    details: {
+      code: 'UBER_WEBHOOK_EVENT_UNSUPPORTED';
+      eventType: string;
+      safeSummary: string;
+      businessVersion: string;
+    },
+  ): Promise<void> {
+    await this.access.uberWebhookInboxRepository.updateMany({
+      where: {
+        eventId: item.eventId,
+        status: 'PROCESSING',
+        leaseToken: item.leaseToken,
+      },
+      data: {
+        status: 'DEAD',
+        errorSummary: details.safeSummary,
+        structuredError: { ...details, retryable: false },
+        nextRetryAt: null,
+        processingAt: null,
+        leaseToken: null,
+        leaseExpiresAt: null,
+      },
+    });
+  }
+
+  async requeueUnsupported(
+    eventIds: string[],
+    supportedEventTypes: string[],
+    businessVersion: string,
+  ): Promise<number> {
+    if (!eventIds.length || !supportedEventTypes.length) return 0;
+    return await this.prisma.$executeRaw`
+      UPDATE "UberWebhookInbox"
+      SET status = 'PENDING', "attemptCount" = 0, "errorSummary" = NULL,
+        "structuredError" = NULL, "nextRetryAt" = NULL, "processingAt" = NULL,
+        "leaseToken" = NULL, "leaseExpiresAt" = NULL, "processedAt" = NULL,
+        "businessVersion" = ${businessVersion}, "updatedAt" = NOW()
+      WHERE "eventId" IN (${Prisma.join(eventIds)})
+        AND "eventType" IN (${Prisma.join(supportedEventTypes)})
+        AND status = 'DEAD'
+        AND "structuredError"->>'code' = 'UBER_WEBHOOK_EVENT_UNSUPPORTED'
+    `;
+  }
   async markFailed(
     item: UberWebhookInboxItem,
     error: unknown,

@@ -61,6 +61,20 @@ export interface UberWebhookInboxPort {
   }): Promise<boolean>;
   claimDue(limit: number): Promise<UberWebhookInboxItem[]>;
   markSucceeded(item: UberWebhookInboxItem): Promise<void>;
+  markUnsupported(
+    item: UberWebhookInboxItem,
+    details: {
+      code: 'UBER_WEBHOOK_EVENT_UNSUPPORTED';
+      eventType: string;
+      safeSummary: string;
+      businessVersion: string;
+    },
+  ): Promise<void>;
+  requeueUnsupported(
+    eventIds: string[],
+    supportedEventTypes: string[],
+    businessVersion: string,
+  ): Promise<number>;
   markFailed(
     item: UberWebhookInboxItem,
     error: unknown,
