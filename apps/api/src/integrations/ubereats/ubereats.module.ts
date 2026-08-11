@@ -19,7 +19,7 @@ import { ReplayUnsupportedUberWebhooksUseCase } from './application/orders/repla
 import { ReceiveUberWebhookUseCase } from './application/orders/uber-webhook-receiver.use-case';
 import { UberMenuDraftAdapter } from './infrastructure/persistence/uber-menu-draft.adapter';
 import { UberMenuRepository } from './infrastructure/persistence/uber-menu.repository';
-import { UberOrderSyncAdapter } from './infrastructure/orchestration/uber-order-sync.adapter';
+import { UberOrderSyncAdapter } from './infrastructure/persistence/uber-order-sync.adapter';
 import { UberOrderImportPrismaAdapter } from './infrastructure/persistence/uber-order-import-prisma.adapter';
 import { UberOrderDetailGatewayAdapter } from './infrastructure/uber-api/uber-order-detail.gateway';
 import { UberOrderActionPrismaAdapter } from './infrastructure/persistence/uber-order-action-prisma.adapter';
@@ -40,7 +40,7 @@ import {
   ProvisionUberStoreUseCase,
   SyncUberStoreStatusUseCase,
 } from './application/merchant/uber-merchant-provisioning.service';
-import { UberOperationsPrismaAdapter } from './infrastructure/orchestration/uber-operations-prisma.adapter';
+import { UberOperationsPrismaAdapter } from './infrastructure/persistence/uber-operations-prisma.adapter';
 import {
   CreateUberOpsTicketUseCase,
   GenerateUberReconciliationReportUseCase,

@@ -37,7 +37,7 @@ jest.mock('@prisma/client', () => ({
   PaymentMethod: { UBEREATS: 'UBEREATS' },
 }));
 
-import { UberOperationsPrismaAdapter } from '../../infrastructure/orchestration/uber-operations-prisma.adapter';
+import { UberOperationsPrismaAdapter } from '../../infrastructure/persistence/uber-operations-prisma.adapter';
 import { createUberOperationsPrismaAdapter } from '../../test/uber-service-test.helpers';
 
 describe('UberOperationsPrismaAdapter', () => {
