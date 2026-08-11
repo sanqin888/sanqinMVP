@@ -1,12 +1,8 @@
-import { Inject, Injectable } from '@nestjs/common';
 import { UberValidationError } from '../errors/uber-application.error';
-import { UBER_STORE_API, type UberStoreApiPort } from '../ports/uber-api.ports';
+import { type UberStoreApiPort } from '../ports/uber-api.ports';
 import { createHash } from 'crypto';
 import { buildUberIdempotencyKey } from '../idempotency/uber-idempotency-key';
 import {
-  UBER_MERCHANT_CONNECTION_REPOSITORY,
-  UBER_OPERATIONS_ALERT_REPOSITORY,
-  UBER_STORE_MAPPING_REPOSITORY,
   type UberMerchantConnectionRepositoryPort,
   type UberOperationsAlertRepositoryPort,
   type UberStoreMappingRepositoryPort,
@@ -45,13 +41,10 @@ const sanitize = (v: unknown): unknown =>
             .map(([k, x]) => [k, sanitize(x)]),
         );
 
-@Injectable()
 export class ProvisionUberStoreUseCase {
   constructor(
-    @Inject(UBER_STORE_API) private readonly api: UberStoreApiPort,
-    @Inject(UBER_MERCHANT_CONNECTION_REPOSITORY)
+    private readonly api: UberStoreApiPort,
     private readonly connections: UberMerchantConnectionRepositoryPort,
-    @Inject(UBER_STORE_MAPPING_REPOSITORY)
     private readonly mappings: UberStoreMappingRepositoryPort,
   ) {}
   async provisionStore(
@@ -123,7 +116,6 @@ export class ProvisionUberStoreUseCase {
     };
   }
 }
-@Injectable()
 export class DeprovisionUberStoreUseCase {
   revokeOrDeprovisionStore() {
     throw new UberValidationError({
@@ -134,13 +126,10 @@ export class DeprovisionUberStoreUseCase {
   }
 }
 
-@Injectable()
 export class SyncUberStoreStatusUseCase {
   constructor(
-    @Inject(UBER_STORE_API) private readonly api: UberStoreApiPort,
-    @Inject(UBER_STORE_MAPPING_REPOSITORY)
+    private readonly api: UberStoreApiPort,
     private readonly mappings: UberStoreMappingRepositoryPort,
-    @Inject(UBER_OPERATIONS_ALERT_REPOSITORY)
     private readonly alerts: UberOperationsAlertRepositoryPort,
   ) {}
   async syncStoreStatusToUber(target?: UberStoreStatusTarget) {

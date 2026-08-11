@@ -1,21 +1,13 @@
-import { Inject, Injectable } from '@nestjs/common';
 import type { UberOrderStatus } from '../../domain/orders/uber-order.types';
 import type { UberOrderNotificationEventV1 } from '../../contracts/events/uber-order-notification.v1';
 import type { UberEventOrdering } from '../ports/uber-order-processing.ports';
-import {
-  UBER_ORDER_SYNC_PORT,
-  type UberOrderSyncPort,
-} from '../ports/uber-use-case.ports';
+import { type UberOrderSyncPort } from '../ports/uber-use-case.ports';
 import { UberOrderActionService } from './uber-order-action.service';
 import {
-  UBER_ORDER_IMPORT_REPOSITORY,
   type UberOrderEventCursor,
   type UberOrderImportRepositoryPort,
 } from '../ports/uber-order.ports';
-import {
-  UBER_ORDER_DETAIL_GATEWAY,
-  type UberOrderDetailGatewayPort,
-} from '../ports/uber-api.ports';
+import { type UberOrderDetailGatewayPort } from '../ports/uber-api.ports';
 import {
   UberOrderPayloadParser,
   validateUberOrderAmounts,
@@ -23,14 +15,11 @@ import {
 import { normalizeUberEventType } from '../../domain/shared/uber-integration.utils';
 
 /** Imports an event once, keyed by the Uber event id; the adapter owns its graph transaction. */
-@Injectable()
 export class ImportUberOrderUseCase {
   private readonly parser = new UberOrderPayloadParser();
 
   constructor(
-    @Inject(UBER_ORDER_IMPORT_REPOSITORY)
     private readonly repository: UberOrderImportRepositoryPort,
-    @Inject(UBER_ORDER_DETAIL_GATEWAY)
     private readonly detailGateway: UberOrderDetailGatewayPort,
     private readonly actions: UberOrderActionService,
   ) {}
@@ -179,10 +168,8 @@ export class ImportUberOrderUseCase {
   }
 }
 /** Cancellation is an event-idempotent order import with its own transaction boundary. */
-@Injectable()
 export class CancelUberOrderUseCase extends ImportUberOrderUseCase {}
 /** Atomically creates an action intent; externalOrderId + action is the idempotency key. */
-@Injectable()
 export class RequestUberOrderActionUseCase {
   constructor(private readonly actions: UberOrderActionService) {}
   async accept(id: string) {
@@ -223,7 +210,6 @@ export class RequestUberOrderActionUseCase {
   }
 }
 /** Claims durable action leases and records each gateway result in a separate transaction. */
-@Injectable()
 export class ExecuteUberOrderActionWorker {
   constructor(private readonly actions: UberOrderActionService) {}
   execute(limit = 50) {
@@ -231,21 +217,15 @@ export class ExecuteUberOrderActionWorker {
   }
 }
 /** Synchronizes one state transition, keyed by externalOrderId + target status. */
-@Injectable()
 export class SyncUberOrderStatusUseCase {
-  constructor(
-    @Inject(UBER_ORDER_SYNC_PORT) private readonly orders: UberOrderSyncPort,
-  ) {}
+  constructor(private readonly orders: UberOrderSyncPort) {}
   execute(id: string, status: UberOrderStatus) {
     return this.orders.syncOrderStatusToUber(id, status);
   }
 }
 /** Read-only pending-order query; it never starts a transaction. */
-@Injectable()
 export class ListPendingUberOrdersQuery {
-  constructor(
-    @Inject(UBER_ORDER_SYNC_PORT) private readonly orders: UberOrderSyncPort,
-  ) {}
+  constructor(private readonly orders: UberOrderSyncPort) {}
   list() {
     return this.orders.listPendingUberOrders();
   }

@@ -1,17 +1,9 @@
-import { Inject, Injectable } from '@nestjs/common';
 import type { UberOrderActionName } from '../../domain/orders/uber-order.types';
-import {
-  UBER_ORDER_OUTBOX_PORT,
-  type UberOrderOutboxPort,
-} from '../ports/uber-order-processing.ports';
+import { type UberOrderOutboxPort } from '../ports/uber-order-processing.ports';
 
 /** Selects retryable action rows and reconstructs their idempotent request payloads. */
-@Injectable()
 export class UberOrderOutboxService {
-  constructor(
-    @Inject(UBER_ORDER_OUTBOX_PORT)
-    private readonly outbox: UberOrderOutboxPort,
-  ) {}
+  constructor(private readonly outbox: UberOrderOutboxPort) {}
 
   async enqueue(
     externalOrderId: string,

@@ -1,15 +1,8 @@
-import { Inject, Injectable } from '@nestjs/common';
-import {
-  UBER_MENU_DRAFT_PORT,
-  type UberMenuDraftPort,
-} from '../ports/uber-use-case.ports';
+import { type UberMenuDraftPort } from '../ports/uber-use-case.ports';
 
 /** Draft read/write and diff use cases. Every write is committed by the port in one transaction. */
-@Injectable()
 export class UberMenuDraftUseCase {
-  constructor(
-    @Inject(UBER_MENU_DRAFT_PORT) private readonly drafts: UberMenuDraftPort,
-  ) {}
+  constructor(private readonly drafts: UberMenuDraftPort) {}
   listUberItemChannelConfigs(storeId?: string) {
     return this.drafts.listUberItemChannelConfigs(storeId);
   }

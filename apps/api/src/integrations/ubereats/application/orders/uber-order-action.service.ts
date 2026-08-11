@@ -1,20 +1,14 @@
-import { Inject, Injectable } from '@nestjs/common';
 import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
 import type { UberOrderActionName } from '../../domain/orders/uber-order.types';
 import {
-  UBER_ORDER_ACTION_COMMAND_GATEWAY,
-  UBER_ORDER_ACTION_REPOSITORY,
   type UberOrderActionGatewayPort,
   type UberOrderActionRepositoryPort,
   type UberOrderActionTask,
 } from '../ports/uber-order.ports';
 
-@Injectable()
 export class UberOrderActionService {
   constructor(
-    @Inject(UBER_ORDER_ACTION_REPOSITORY)
     private readonly repository: UberOrderActionRepositoryPort,
-    @Inject(UBER_ORDER_ACTION_COMMAND_GATEWAY)
     private readonly gateway: UberOrderActionGatewayPort,
   ) {}
 

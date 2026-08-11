@@ -1,17 +1,12 @@
-import { Inject, Injectable } from '@nestjs/common';
 import {
-  UBER_MENU_GATEWAY,
-  UBER_MENU_PUBLICATION_REPOSITORY,
   type UberMenuGatewayPort,
   type UberMenuPublicationRepositoryPort,
 } from '../ports/uber-menu-publication.ports';
 
-@Injectable()
 export class ConfirmUberMenuPublicationUseCase {
   constructor(
-    @Inject(UBER_MENU_PUBLICATION_REPOSITORY)
     private readonly publications: UberMenuPublicationRepositoryPort,
-    @Inject(UBER_MENU_GATEWAY) private readonly gateway: UberMenuGatewayPort,
+    private readonly gateway: UberMenuGatewayPort,
   ) {}
   async execute(
     limit = 20,

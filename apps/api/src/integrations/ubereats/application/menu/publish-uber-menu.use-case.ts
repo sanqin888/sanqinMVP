@@ -1,5 +1,4 @@
 import { createHash } from 'crypto';
-import { Inject, Injectable } from '@nestjs/common';
 import { UberValidationError } from '../errors/uber-application.error';
 import type { PublishMenuInput } from '../../domain/menu/uber-menu.types';
 import {
@@ -8,10 +7,6 @@ import {
 } from '../../domain/menu/uber-menu-payload.builder';
 import { buildUberIdempotencyKey } from '../idempotency/uber-idempotency-key';
 import {
-  UBER_MENU_GATEWAY,
-  UBER_MENU_IMAGE_PROBE,
-  UBER_MENU_PUBLICATION_REPOSITORY,
-  UBER_MENU_SNAPSHOT_REPOSITORY,
   type UberMenuGatewayPort,
   type UberMenuImageProbePort,
   type UberMenuPublicationRepositoryPort,
@@ -19,15 +14,11 @@ import {
   type UberMenuSnapshotRepositoryPort,
 } from '../ports/uber-menu-publication.ports';
 
-@Injectable()
 export class PublishUberMenuUseCase {
   constructor(
-    @Inject(UBER_MENU_SNAPSHOT_REPOSITORY)
     private readonly snapshots: UberMenuSnapshotRepositoryPort,
-    @Inject(UBER_MENU_PUBLICATION_REPOSITORY)
     private readonly publications: UberMenuPublicationRepositoryPort,
-    @Inject(UBER_MENU_GATEWAY) private readonly gateway: UberMenuGatewayPort,
-    @Inject(UBER_MENU_IMAGE_PROBE)
+    private readonly gateway: UberMenuGatewayPort,
     private readonly images: UberMenuImageProbePort,
   ) {}
 

@@ -1,22 +1,17 @@
-import { Inject, Injectable } from '@nestjs/common';
 import { normalizeUberEventType } from '../../domain/shared/uber-integration.utils';
 import {
   webhookObject,
   webhookText,
 } from '../../domain/webhook/uber-webhook-envelope';
 import {
-  UBER_TELEMETRY_PORT,
-  UBER_WEBHOOK_INBOX_PORT,
   type UberTelemetryPort,
   type UberWebhookInboxPort,
 } from '../ports/uber-order-processing.ports';
 
-@Injectable()
 export class HandleUberMerchantWebhookHandler {
   constructor(
-    @Inject(UBER_WEBHOOK_INBOX_PORT)
     private readonly inbox: UberWebhookInboxPort,
-    @Inject(UBER_TELEMETRY_PORT) private readonly telemetry: UberTelemetryPort,
+    private readonly telemetry: UberTelemetryPort,
   ) {}
 
   async execute(

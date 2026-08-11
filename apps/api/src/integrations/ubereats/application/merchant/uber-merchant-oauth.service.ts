@@ -1,4 +1,3 @@
-import { Inject, Injectable } from '@nestjs/common';
 import {
   UberValidationError,
   UberAuthenticationError,
@@ -9,13 +8,8 @@ import {
   isUberApplicationError,
 } from '../errors/uber-application.error';
 import { randomBytes } from 'crypto';
+import { type UberOAuthTokenPort } from '../ports/uber-api.ports';
 import {
-  UBER_OAUTH_TOKEN,
-  type UberOAuthTokenPort,
-} from '../ports/uber-api.ports';
-import {
-  UBER_MERCHANT_CONNECTION_REPOSITORY,
-  UBER_OAUTH_STATE_REPOSITORY,
   type UberMerchantConnectionRepositoryPort,
   type UberOAuthStatePort,
 } from '../ports/uber-persistence.ports';
@@ -41,11 +35,9 @@ export type UberOAuthCallback = {
   error?: string;
 };
 
-@Injectable()
 export class StartUberOAuthUseCase {
   constructor(
-    @Inject(UBER_OAUTH_TOKEN) private readonly tokens: UberOAuthTokenPort,
-    @Inject(UBER_OAUTH_STATE_REPOSITORY)
+    private readonly tokens: UberOAuthTokenPort,
     private readonly states: UberOAuthStatePort,
   ) {}
   async buildMerchantAuthorizeUrl(
@@ -98,13 +90,10 @@ export class StartUberOAuthUseCase {
   }
 }
 
-@Injectable()
 export class CompleteUberOAuthUseCase {
   constructor(
-    @Inject(UBER_OAUTH_TOKEN) private readonly tokens: UberOAuthTokenPort,
-    @Inject(UBER_OAUTH_STATE_REPOSITORY)
+    private readonly tokens: UberOAuthTokenPort,
     private readonly states: UberOAuthStatePort,
-    @Inject(UBER_MERCHANT_CONNECTION_REPOSITORY)
     private readonly connections: UberMerchantConnectionRepositoryPort,
   ) {}
   async exchangeAuthorizationCode(

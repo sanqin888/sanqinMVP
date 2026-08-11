@@ -1,5 +1,4 @@
 import { createHash } from 'crypto';
-import { Inject, Injectable } from '@nestjs/common';
 import {
   canonicalizeUberWebhookPayload,
   parseUberWebhookEnvelope,
@@ -10,23 +9,17 @@ import type { UberWebhookInput } from '../../domain/webhook/uber-webhook.types';
 import { normalizeUberEventType } from '../../domain/shared/uber-integration.utils';
 import { UberValidationError } from '../errors/uber-application.error';
 import {
-  UBER_TELEMETRY_PORT,
-  UBER_WEBHOOK_INBOX_PORT,
-  UBER_WEBHOOK_SIGNATURE_VERIFIER,
   type UberTelemetryPort,
   type UberWebhookInboxPort,
   type UberWebhookSignatureVerifier,
 } from '../ports/uber-order-processing.ports';
 
 /** Signature verification, contract parsing and one atomic inbox insert. */
-@Injectable()
 export class ReceiveUberWebhookUseCase {
   constructor(
-    @Inject(UBER_WEBHOOK_INBOX_PORT)
     private readonly inbox: UberWebhookInboxPort,
-    @Inject(UBER_WEBHOOK_SIGNATURE_VERIFIER)
     private readonly signatures: UberWebhookSignatureVerifier,
-    @Inject(UBER_TELEMETRY_PORT) private readonly telemetry: UberTelemetryPort,
+    private readonly telemetry: UberTelemetryPort,
   ) {}
 
   async execute(input: UberWebhookInput): Promise<void> {

@@ -1,26 +1,18 @@
-import { Inject, Injectable } from '@nestjs/common';
 import { UberValidationError } from '../errors/uber-application.error';
 import {
-  UBER_MERCHANT_API,
-  UBER_OAUTH_TOKEN,
   type UberMerchantApiPort,
   type UberOAuthTokenPort,
 } from '../ports/uber-api.ports';
 import {
-  UBER_MERCHANT_CONNECTION_REPOSITORY,
-  UBER_STORE_MAPPING_REPOSITORY,
   type UberMerchantConnectionRepositoryPort,
   type UberStoreMappingRepositoryPort,
 } from '../ports/uber-persistence.ports';
 
-@Injectable()
 export class DiscoverUberStoresUseCase {
   constructor(
-    @Inject(UBER_MERCHANT_API) private readonly api: UberMerchantApiPort,
-    @Inject(UBER_OAUTH_TOKEN) private readonly tokens: UberOAuthTokenPort,
-    @Inject(UBER_MERCHANT_CONNECTION_REPOSITORY)
+    private readonly api: UberMerchantApiPort,
+    private readonly tokens: UberOAuthTokenPort,
     private readonly connections: UberMerchantConnectionRepositoryPort,
-    @Inject(UBER_STORE_MAPPING_REPOSITORY)
     private readonly mappings: UberStoreMappingRepositoryPort,
   ) {}
   async getMerchantStores(id?: string) {
@@ -103,12 +95,8 @@ export class DiscoverUberStoresUseCase {
   }
 }
 
-@Injectable()
 export class MapUberStoreUseCase {
-  constructor(
-    @Inject(UBER_STORE_MAPPING_REPOSITORY)
-    private readonly mappings: UberStoreMappingRepositoryPort,
-  ) {}
+  constructor(private readonly mappings: UberStoreMappingRepositoryPort) {}
   async updatePosExternalStoreId(
     uberStoreId: string,
     posExternalStoreId: string,
