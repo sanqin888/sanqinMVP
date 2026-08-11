@@ -16,7 +16,6 @@ export const UBER_MENU_AVAILABILITY_PORT = Symbol(
   'UBER_MENU_AVAILABILITY_PORT',
 );
 export const UBER_ORDER_IMPORT_PORT = Symbol('UBER_ORDER_IMPORT_PORT');
-export const UBER_ORDER_SYNC_PORT = Symbol('UBER_ORDER_SYNC_PORT');
 export interface UberMenuDraftPort {
   listUberItemChannelConfigs(storeId?: string): Promise<any>;
   listUberPublishedMenuItems(storeId?: string): Promise<any>;
@@ -55,9 +54,4 @@ export interface UberOrderImportPort {
     payload: UberOrderNotificationEventV1,
     ordering?: UberEventOrdering,
   ): Promise<void>;
-}
-export interface UberOrderSyncPort {
-  syncOrderStatusToUber(id: string, status: UberOrderStatus): Promise<any>;
-  listPendingUberOrders(): Promise<any>;
-  getPendingUberOrdersSummary(): Promise<any>;
 }
