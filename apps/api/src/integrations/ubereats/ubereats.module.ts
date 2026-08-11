@@ -374,7 +374,7 @@ const UBER_EATS_HTTP_METADATA = {
     RetryUberOpsTicketUseCase,
     QueryUberOperationsSummary,
   ],
-} as const;
+} satisfies Omit<DynamicModule, 'module'>;
 
 @Module({})
 export class UberEatsModule {
