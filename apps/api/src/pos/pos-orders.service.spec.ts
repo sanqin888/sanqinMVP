@@ -19,17 +19,18 @@ describe('PosOrdersService', () => {
       advance: jest.fn().mockResolvedValue({ ...current, status: 'ready' }),
     };
     const uberEats = {
-      syncOrderStatusToUber: jest.fn().mockResolvedValue({
+      execute: jest.fn().mockResolvedValue({
         ok: true,
         actionResult: { status: 'SUCCEEDED', actionId: 'action_1' },
       }),
-      acceptUberOrder: jest.fn().mockResolvedValue({ ok: true }),
+      accept: jest.fn().mockResolvedValue({ ok: true }),
       getReadyForPickupAction: jest.fn().mockResolvedValue(null),
       retryReadyForPickup: jest.fn(),
     };
     return {
       service: new PosOrdersService(
         orders as never,
+        uberEats as never,
         uberEats as never,
         {} as never,
       ),
@@ -44,7 +45,7 @@ describe('PosOrdersService', () => {
     await service.advance('order_1');
 
     expect(orders.advance).toHaveBeenCalledWith('order_1');
-    expect(uberEats.syncOrderStatusToUber).not.toHaveBeenCalled();
+    expect(uberEats.execute).not.toHaveBeenCalled();
   });
 
   it('Uber pending 使用 ACCEPT 并直接重新读取 making 订单', async () => {
@@ -65,7 +66,7 @@ describe('PosOrdersService', () => {
 
     await expect(service.advance('order_1')).resolves.toMatchObject(making);
 
-    expect(uberEats.acceptUberOrder).toHaveBeenCalledWith('external-123');
+    expect(uberEats.accept).toHaveBeenCalledWith('external-123');
     expect(orders.advance).not.toHaveBeenCalled();
   });
 
@@ -76,7 +77,7 @@ describe('PosOrdersService', () => {
       status: 'pending',
     });
     const { service, orders, uberEats } = setup(pending);
-    uberEats.acceptUberOrder.mockResolvedValue({ ok: false });
+    uberEats.accept.mockResolvedValue({ ok: false });
 
     await expect(service.advance('order_1')).resolves.toMatchObject(pending);
 
@@ -99,7 +100,7 @@ describe('PosOrdersService', () => {
 
     await Promise.all([service.advance('order_1'), service.advance('order_1')]);
 
-    expect(uberEats.acceptUberOrder).toHaveBeenCalledTimes(2);
+    expect(uberEats.accept).toHaveBeenCalledTimes(2);
     expect(orders.advance).not.toHaveBeenCalled();
   });
 
@@ -119,10 +120,7 @@ describe('PosOrdersService', () => {
 
     await expect(service.advance('order_1')).resolves.toMatchObject(ready);
 
-    expect(uberEats.syncOrderStatusToUber).toHaveBeenCalledWith(
-      'external-123',
-      'ready',
-    );
+    expect(uberEats.execute).toHaveBeenCalledWith('external-123', 'ready');
     expect(orders.advance).not.toHaveBeenCalled();
   });
 
@@ -134,7 +132,7 @@ describe('PosOrdersService', () => {
     await service.advance('order_1');
     await service.advance('order_1');
 
-    expect(uberEats.syncOrderStatusToUber).toHaveBeenCalledTimes(2);
+    expect(uberEats.execute).toHaveBeenCalledTimes(2);
     expect(orders.advance).not.toHaveBeenCalled();
   });
 
@@ -142,7 +140,7 @@ describe('PosOrdersService', () => {
     const { service, orders, uberEats } = setup(
       order({ channel: 'ubereats', clientRequestId: 'ubereats:external-123' }),
     );
-    uberEats.syncOrderStatusToUber.mockResolvedValue({
+    uberEats.execute.mockResolvedValue({
       ok: true,
       actionResult: {
         status: 'FAILED',
@@ -196,7 +194,7 @@ describe('PosOrdersService', () => {
       actionId: 'ready_action',
     });
     expect(orders.advance).not.toHaveBeenCalled();
-    expect(uberEats.syncOrderStatusToUber).not.toHaveBeenCalled();
+    expect(uberEats.execute).not.toHaveBeenCalled();
   });
 
   it('Uber ready 到 completed 只在本地完成，不构造外部动作', async () => {
@@ -211,7 +209,7 @@ describe('PosOrdersService', () => {
     await service.advance('order_1');
 
     expect(orders.advance).toHaveBeenCalledWith('order_1');
-    expect(uberEats.syncOrderStatusToUber).not.toHaveBeenCalled();
+    expect(uberEats.execute).not.toHaveBeenCalled();
   });
 
   it('Uber 新订单由 webhook 落库后自动接单，POS 服务不承担 DENY 决策', () => {
@@ -256,6 +254,7 @@ describe('PosOrdersService', () => {
     };
     const service = new PosOrdersService(
       orders as never,
+      {} as never,
       {} as never,
       prisma as never,
     );

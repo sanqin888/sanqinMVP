@@ -62,6 +62,7 @@ import { EmailService } from '../email/email.service';
 import { OrderEventsBus } from '../messaging/order-events.bus';
 import type { OrderDto, OrderItemDto } from './dto/order.dto';
 import { PrintPosPayloadService } from './print-pos-payload.service';
+import { resolveConfiguredStoreId } from '../common/store-id';
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 type OrderItemSnapshot = Prisma.OrderItemGetPayload<{
@@ -200,6 +201,16 @@ type OrderContactPolicy = {
   requireDeliveryPhone: boolean;
   allowMemberVerifiedContactFallback: boolean;
   allowUnverifiedExternalContact: boolean;
+};
+
+type OrderReadyNotificationResult = {
+  ok: boolean;
+  finalChannel: 'email' | 'sms' | null;
+  attemptedChannels: readonly ('email' | 'sms')[];
+  reason?: string;
+  error?: string;
+  fallbackReason?: string;
+  sendId?: string;
 };
 
 export type OrderPricingQuote = {
@@ -848,7 +859,18 @@ export class OrdersService {
     } else if (next === 'refunded') {
       void this.loyalty.rollbackOnRefund(updated.id);
     } else if (next === 'ready') {
-      void this.notifyOrderReady(updated);
+      this.notifyOrderReady(updated)
+        .then((notificationResult) => {
+          this.logOrderReadyNotificationResult(updated, notificationResult);
+        })
+        .catch((error: unknown) => {
+          this.logOrderReadyNotificationResult(updated, {
+            ok: false,
+            finalChannel: null,
+            attemptedChannels: [],
+            reason: this.sanitizeNotificationFailure(error),
+          });
+        });
     } else if (next === 'making' && updated.orderStableId) {
       this.logger.log(`Event Emitted: order.accepted -> ${updated.id}`);
       this.orderEventsBus.emitOrderAccepted({
@@ -888,16 +910,66 @@ export class OrdersService {
     return Math.max(avg, 5);
   }
 
-  private async notifyOrderReady(order: OrderWithItems) {
+  private logOrderReadyNotificationResult(
+    order: Pick<OrderWithItems, 'id' | 'orderStableId'>,
+    result: OrderReadyNotificationResult,
+  ): void {
+    const failureReason =
+      result.reason ?? result.error ?? result.fallbackReason;
+    const fields = {
+      event: 'order_ready_notification_completed',
+      orderId: order.id,
+      orderStableId: order.orderStableId ?? null,
+      finalChannel: result.finalChannel,
+      attemptedChannels: [...result.attemptedChannels],
+      ok: result.ok,
+      ...(failureReason
+        ? {
+            failureReason: this.sanitizeNotificationFailure(failureReason),
+          }
+        : {}),
+    };
+
+    if (result.ok) this.logger.log(fields);
+    else this.logger.warn(fields);
+  }
+
+  private sanitizeNotificationFailure(reason: unknown): string {
+    const raw =
+      reason instanceof Error
+        ? reason.message
+        : typeof reason === 'string'
+          ? reason
+          : 'notification_failed';
+
+    return raw
+      .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted-email]')
+      .replace(/(?:\+?\d[\d\s().-]{7,}\d)/g, '[redacted-phone]')
+      .replace(/\s+/g, ' ')
+      .slice(0, 200);
+  }
+
+  private async notifyOrderReady(
+    order: OrderWithItems,
+  ): Promise<OrderReadyNotificationResult> {
     if (order.fulfillmentType === FulfillmentType.delivery) {
-      this.logger.log(
-        `[notifyOrderReady] Skip ready notification for delivery order: ${order.id}`,
-      );
-      return;
+      return {
+        ok: false,
+        finalChannel: null,
+        attemptedChannels: [],
+        reason: 'delivery_order',
+      };
     }
 
     const orderNumber = order.clientRequestId ?? order.orderStableId;
-    if (!orderNumber) return;
+    if (!orderNumber) {
+      return {
+        ok: false,
+        finalChannel: null,
+        attemptedChannels: [],
+        reason: 'missing_order_number',
+      };
+    }
 
     const locale = await this.resolveOrderReadyLocale(order);
     const checkoutIntent = await this.prisma.checkoutIntent.findFirst({
@@ -946,13 +1018,15 @@ export class OrdersService {
       (allowExternalContacts ? order.contactPhone?.trim() || null : null);
 
     if (!email && !phone) {
-      this.logger.warn(
-        `[notifyOrderReady] No contact channel available; notification skipped for order ${order.id}`,
-      );
-      return;
+      return {
+        ok: false,
+        finalChannel: null,
+        attemptedChannels: [],
+        reason: 'no_trusted_contact',
+      };
     }
 
-    await this.notificationService.notifyOrderReady({
+    return this.notificationService.notifyOrderReady({
       email,
       phone,
       orderNumber,
@@ -2046,6 +2120,7 @@ export class OrdersService {
       amountCents: number;
       creditCardSurchargeCents: number;
       paymentTotalCents: number;
+      storeId: string | null;
     } | null = null;
 
     if (requiresCheckoutIntentVerification) {
@@ -2118,12 +2193,24 @@ export class OrdersService {
         amountCents: intent.amountCents,
         creditCardSurchargeCents: surchargeCents,
         paymentTotalCents: intent.amountCents + surchargeCents,
+        storeId:
+          typeof intentMeta?.serverVerifiedStoreId === 'string' &&
+          intentMeta.serverVerifiedStoreId.trim()
+            ? intentMeta.serverVerifiedStoreId.trim()
+            : null,
       };
       idempotencyKey = idempotencyKey ?? intent.referenceId;
     }
 
     // ✅ 你的业务前提：只在“已收款/支付成功”后才创建订单记录
     const paidAt = new Date();
+    // Website orders never take their routing identity from the request DTO.
+    // Prefer the store stamped into the verified checkout context; cash and
+    // legacy checkout flows use the deployment's controlled single-store config.
+    const storeId =
+      dto.channel === Channel.web
+        ? (verifiedCheckoutIntent?.storeId ?? resolveConfiguredStoreId())
+        : undefined;
 
     if (
       dto.deliveryType === DeliveryType.PRIORITY &&
@@ -2578,6 +2665,7 @@ export class OrdersService {
                 ...(stableKey ? { orderStableId: stableKey } : {}),
                 clientRequestId,
                 channel: dto.channel,
+                ...(storeId ? { storeId } : {}),
                 fulfillmentType: dto.fulfillmentType,
                 contactName,
                 contactEmail,

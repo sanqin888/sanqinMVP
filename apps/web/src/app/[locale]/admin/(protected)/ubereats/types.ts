@@ -1,16 +1,26 @@
 export type ModuleKey = 'dashboard' | 'auth' | 'store-menu' | 'orders-ops' | 'reconciliation-tickets';
 
+/** Stable public API primitives; UI code must not import persistence models. */
+export type UberFieldError = { field: string; code: string; message: string };
+export type UberPublicError = { code: string; message: string; retryable: boolean; correlationId: string; fieldErrors?: UberFieldError[] };
+export type UberPageInfo = { limit: number; count: number; hasNextPage: boolean; nextCursor: string | null };
+export type UberListResponse<T> = { items: T[]; pageInfo: UberPageInfo; contractVersion: '2' };
+export type UberMutationResponse = { operationId: string; status: 'ACCEPTED' | 'SUCCEEDED' | 'FAILED'; error: UberPublicError | null; contractVersion: '2' };
+export type ResourceState = { loading: boolean; error: string | null; lastUpdated: string | null };
+export type SummaryResponse = { count: number; updatedAt: string | null };
+export type OperationPhase = 'QUEUED' | 'PROCESSING' | 'WAITING_WEBHOOK' | 'RETRYABLE_FAILED' | 'MANUAL_REVIEW' | 'COMPLETED';
+
 export type OAuthConnectUrlResponse = { authorizeUrl: string; state: string };
 export type OAuthConnectionResponse = { merchantUberUserId: string; scope?: string | null; tokenType?: string | null; expiresAt?: string | null; connectedAt?: string | null };
 export type UberStore = { storeId: string; storeName?: string; locationSummary?: string; isProvisioned?: boolean; provisionedAt?: string | null; posExternalStoreId?: string | null; timezone?: string | null };
 export type OAuthStoresResponse = { merchantUberUserId?: string; stores: UberStore[] };
 export type PendingOrder = { externalOrderId: string; orderStableId: string; status: string; totalCents: number; createdAt: string; sourceEventType?: string | null };
-export type PendingOrdersResponse = { items?: PendingOrder[] };
+export type PendingOrdersResponse = UberListResponse<PendingOrder>;
 export type TicketStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED';
-export type Ticket = { ticketStableId: string; type: string; title: string; priority: string; status: TicketStatus; retryCount: number; lastError?: string | null; createdAt: string };
-export type TicketsResponse = { items: Ticket[] };
+export type Ticket = { ticketStableId: string; type: string; title: string; priority: string; status: TicketStatus; retryCount: number; createdAt: string };
+export type TicketsResponse = UberListResponse<Ticket>;
 export type ReconciliationReport = { reportStableId: string; totalOrders: number; totalAmountCents: number; syncedOrders: number; pendingOrders: number; failedSyncEvents: number; discrepancyOrders: number; createdAt: string };
-export type ReconciliationResponse = { items: ReconciliationReport[] };
+export type ReconciliationResponse = UberListResponse<ReconciliationReport>;
 export type StoreMenuTabKey = 'overview' | 'mapping' | 'editor' | 'publish';
 export type DraftTreeKey = 'source' | 'uber-mapping' | 'uber-editor';
 export type DraftNodeType = 'category' | 'item' | 'group' | 'option';

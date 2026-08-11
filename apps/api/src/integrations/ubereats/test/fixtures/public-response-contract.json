@@ -1,0 +1,61 @@
+{
+  "list": ["items", "pageInfo", "contractVersion"],
+  "pageInfo": ["limit", "count", "hasNextPage", "nextCursor"],
+  "mutation": ["operationId", "status", "error", "contractVersion"],
+  "error": ["code", "message", "retryable", "correlationId"],
+  "merchantStore": [
+    "storeId",
+    "storeName",
+    "locationSummary",
+    "integrationEnabled",
+    "isProvisioned",
+    "provisionedAt",
+    "posExternalStoreId"
+  ],
+  "merchantConnection": [
+    "uberUserId",
+    "scope",
+    "tokenType",
+    "expiresAt",
+    "connectedAt",
+    "contractVersion"
+  ],
+  "menuItem": [
+    "menuItemStableId",
+    "priceCents",
+    "isAvailable",
+    "displayName",
+    "displayDescription",
+    "externalItemId",
+    "externalCategoryId",
+    "updatedAt"
+  ],
+  "pendingOrder": [
+    "externalOrderId",
+    "status",
+    "storeId",
+    "createdAt",
+    "updatedAt"
+  ],
+  "opsTicket": [
+    "ticketStableId",
+    "type",
+    "status",
+    "priority",
+    "title",
+    "externalOrderId",
+    "menuItemStableId",
+    "retryCount",
+    "createdAt",
+    "updatedAt"
+  ],
+  "forbidden": [
+    "token",
+    "accessToken",
+    "refreshToken",
+    "payload",
+    "stack",
+    "uberError",
+    "lastError"
+  ]
+}

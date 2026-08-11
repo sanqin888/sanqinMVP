@@ -4,7 +4,7 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import type { BusinessConfig, BusinessHour } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AppLogger } from '../../common/app-logger';
-import { UberEatsService } from '../../integrations/ubereats/ubereats.service';
+import { SyncUberStoreStatusUseCase } from '../../integrations/ubereats/application/merchant/uber-merchant-provisioning.service';
 
 export type DayConfigDto = {
   weekday: number; // 0-6
@@ -70,7 +70,7 @@ export class AdminBusinessService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly uberEatsService: UberEatsService,
+    private readonly uberEatsService: SyncUberStoreStatusUseCase,
   ) {}
 
   /**

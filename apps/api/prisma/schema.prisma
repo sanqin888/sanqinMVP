@@ -393,6 +393,7 @@ model Order {
   clientRequestId            String?                 @unique
   status                     OrderStatus             @default(pending)
   createdAt                  DateTime                @default(now())
+  updatedAt                  DateTime                @updatedAt
   subtotalCents              Int                     @default(0)
   taxCents                   Int                     @default(0)
   totalCents                 Int                     @default(0)
@@ -594,44 +595,80 @@ model UberOrderItemModifier {
 }
 
 model UberWebhookInbox {
-  id              String    @id @default(uuid()) @db.Uuid
-  eventId         String    @unique
+  id              String                 @id @default(uuid()) @db.Uuid
+  eventId         String                 @unique
   eventType       String
   externalOrderId String?
-  status          String
+  status          UberWebhookInboxStatus
   payload         Json?
-  attemptCount    Int       @default(0)
+  attemptCount    Int                    @default(0)
   errorSummary    String?
+  structuredError Json?
   nextRetryAt     DateTime?
   processingAt    DateTime?
+  leaseToken      String?                @unique
+  /// Stable outbound-write key carried by work derived from this inbox event.
+  idempotencyKey  String?                @unique
+  businessVersion String                 @default("v1")
+  leaseExpiresAt  DateTime?
   processedAt     DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
 
-  @@index([status, createdAt])
+  // Mirrors the worker claim predicate and its oldest-first scan.
+  @@index([status, nextRetryAt, leaseExpiresAt, attemptCount, createdAt])
   @@index([externalOrderId])
 }
 
 /// Durable idempotency/audit record for each mutating Uber order decision.
 model UberOrderAction {
-  id              String    @id @default(uuid()) @db.Uuid
+  id              String                @id @default(uuid()) @db.Uuid
   externalOrderId String
-  action          String
-  status          String
+  action          UberOrderActionType
+  status          UberOrderActionStatus
   reasonCode      String?
   reasonDetail    String?
   uberHttpStatus  Int?
   response        Json?
   lastError       String?
   uberRequestId   String?
-  retryable       Boolean   @default(false)
-  attemptCount    Int       @default(0)
+  /// Stable across lease expiry, worker reclaims, auth refresh and HTTP retries.
+  idempotencyKey  String?               @unique
+  businessVersion String                @default("v1")
+  retryable       Boolean               @default(false)
+  attemptCount    Int                   @default(0)
+  nextRetryAt     DateTime?
+  leaseToken      String?               @unique
+  leaseExpiresAt  DateTime?
   completedAt     DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
 
   @@unique([externalOrderId, action])
-  @@index([status, retryable, updatedAt])
+  // Mirrors PENDING/FAILED retry and expired PROCESSING lease claims.
+  @@index([status, retryable, nextRetryAt, leaseExpiresAt, attemptCount, updatedAt])
+}
+
+enum UberWebhookInboxStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+  DEAD
+}
+
+enum UberOrderActionType {
+  ACCEPT
+  DENY
+  READY_FOR_PICKUP
+}
+
+enum UberOrderActionStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  DEAD
 }
 
 /// Uber cancellation/rejection is a channel event, not a local refund.
@@ -1194,17 +1231,17 @@ model OpsEvent {
 }
 
 model UberMerchantConnection {
-  id                 String    @id @default(uuid()) @db.Uuid
-  merchantUberUserId String    @unique
-  accessToken        String
-  refreshToken       String?
-  expiresAt          DateTime?
-  scope              String?
-  tokenType          String?
-  connectedAt        DateTime  @default(now())
-  rawStoresSnapshot  Json?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  id                    String    @id @default(uuid()) @db.Uuid
+  merchantUberUserId    String    @unique
+  encryptedAccessToken  String?
+  encryptedRefreshToken String?
+  expiresAt             DateTime?
+  scope                 String?
+  tokenType             String?
+  connectedAt           DateTime  @default(now())
+  rawStoresSnapshot     Json?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   storeMappings UberStoreMapping[]
 
@@ -1232,6 +1269,7 @@ model UberStoreMapping {
 
 model UberItemChannelConfig {
   id                       String    @id @default(uuid()) @db.Uuid
+  /// POS store ID (not tenant/business ID). Legacy "default" rows must be backfilled before removing the default.
   storeId                  String    @default("default")
   uberStoreId              String?
   menuItemStableId         String
@@ -1256,6 +1294,7 @@ model UberItemChannelConfig {
 
 model UberCategoryConfig {
   id                   String    @id @default(uuid()) @db.Uuid
+  /// POS store ID (not tenant/business ID). Legacy "default" rows must be backfilled before removing the default.
   storeId              String    @default("default")
   uberStoreId          String?
   menuCategoryStableId String
@@ -1275,6 +1314,7 @@ model UberCategoryConfig {
 
 model UberModifierGroupConfig {
   id                      String    @id @default(uuid()) @db.Uuid
+  /// POS store ID (not tenant/business ID). Legacy "default" rows must be backfilled before removing the default.
   storeId                 String    @default("default")
   uberStoreId             String?
   templateGroupStableId   String
@@ -1295,6 +1335,7 @@ model UberModifierGroupConfig {
 
 model UberOptionItemConfig {
   id                           String    @id @default(uuid()) @db.Uuid
+  /// POS store ID (not tenant/business ID). Legacy "default" rows must be backfilled before removing the default.
   storeId                      String    @default("default")
   uberStoreId                  String?
   optionChoiceStableId         String
@@ -1318,6 +1359,7 @@ model UberOptionItemConfig {
 
 model UberOptionChildGroupBinding {
   id                         String   @id @default(uuid()) @db.Uuid
+  /// POS store ID (not tenant/business ID). Legacy "default" rows must be backfilled before removing the default.
   storeId                    String   @default("default")
   parentOptionChoiceStableId String
   childTemplateGroupStableId String
@@ -1331,27 +1373,33 @@ model UberOptionChildGroupBinding {
 }
 
 model UberMenuPublishVersion {
-  id              String                  @id @default(uuid()) @db.Uuid
-  versionStableId String                  @unique @default(cuid())
-  storeId         String                  @default("default")
-  uberStoreId     String?
-  status          UberMenuPublishStatus   @default(SUBMITTED)
-  totalItems      Int
-  changedItems    Int
-  requestPayload  Json?
-  responsePayload Json?
-  errorDetails    Json?
-  errorMessage    String?
-  publishedBy     String?
-  startedAt       DateTime                @default(now())
-  finishedAt      DateTime?
-  checksum        String?
-  payload         Json
-  createdAt       DateTime                @default(now())
-  publishedItems  UberPublishedMenuItem[]
+  id                         String                  @id @default(uuid()) @db.Uuid
+  versionStableId            String                  @unique @default(cuid())
+  idempotencyKey             String?                 @unique
+  businessVersion            String                  @default("v1")
+  /// POS store ID (not tenant/business ID). Legacy "default" rows must be backfilled before removing the default.
+  storeId                    String                  @default("default")
+  uberStoreId                String?
+  status                     UberMenuPublishStatus   @default(SUBMITTED)
+  totalItems                 Int
+  changedItems               Int
+  requestPayload             Json?
+  responsePayload            Json?
+  errorDetails               Json?
+  errorMessage               String?
+  publishedBy                String?
+  startedAt                  DateTime                @default(now())
+  finishedAt                 DateTime?
+  confirmationLeaseToken     String?                 @unique
+  confirmationLeaseExpiresAt DateTime?
+  nextConfirmationAt         DateTime?
+  checksum                   String?
+  payload                    Json
+  createdAt                  DateTime                @default(now())
+  publishedItems             UberPublishedMenuItem[]
 
   @@index([storeId, createdAt])
-  @@index([status, createdAt])
+  @@index([status, nextConfirmationAt, confirmationLeaseExpiresAt, createdAt])
 }
 
 model UberPublishedMenuItem {
@@ -1384,6 +1432,7 @@ enum UberOpsTicketType {
   STORE_STATUS_SYNC
   MENU_PUBLISH
   MENU_ITEM_AVAILABILITY
+  RECONCILIATION
 }
 
 enum UberOpsTicketStatus {
@@ -1391,17 +1440,20 @@ enum UberOpsTicketStatus {
   IN_PROGRESS
   RESOLVED
   IGNORED
+  CLOSED
 }
 
 enum UberOpsTicketPriority {
   LOW
   MEDIUM
   HIGH
+  CRITICAL
 }
 
 model UberReconciliationReport {
   id                String   @id @default(uuid()) @db.Uuid
   reportStableId    String   @unique @default(cuid())
+  /// POS store ID (not tenant/business ID). Legacy "default" rows must be backfilled before removing the default.
   storeId           String   @default("default")
   rangeStart        DateTime
   rangeEnd          DateTime
@@ -1421,6 +1473,7 @@ model UberReconciliationReport {
 model UberOpsTicket {
   id               String                @id @default(uuid()) @db.Uuid
   ticketStableId   String                @unique @default(cuid())
+  /// POS store ID (not tenant/business ID). Legacy "default" rows must be backfilled before removing the default.
   storeId          String                @default("default")
   type             UberOpsTicketType
   status           UberOpsTicketStatus   @default(OPEN)
@@ -1441,16 +1494,26 @@ model UberOpsTicket {
 }
 
 model UberOAuthStateRequest {
-  nonce           String    @id
-  adminSessionId  String
-  redirectUri     String
-  merchantContext String?
-  issuedAt        DateTime
-  expiresAt       DateTime
-  consumedAt      DateTime?
+  nonce                   String    @id
+  adminSessionId          String
+  redirectUri             String
+  merchantContext         String?
+  issuedAt                DateTime
+  expiresAt               DateTime
+  consumedAt              DateTime?
+  status                  String    @default("ISSUED")
+  retryCount              Int       @default(0)
+  lastErrorCategory       String?
+  encryptedExchangeResult String?
+  uberUserId              String?
+  scope                   String?
+  tokenType               String?
+  tokenExpiresAt          DateTime?
+  connectedAt             DateTime?
 
   @@index([expiresAt])
   @@index([consumedAt, expiresAt])
+  @@index([status, expiresAt])
 }
 
 enum OrderStatus {

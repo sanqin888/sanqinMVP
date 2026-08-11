@@ -177,7 +177,6 @@ describe('PosGateway durable print delivery', () => {
     const warnSpy = jest
       .spyOn(Logger.prototype, 'warn')
       .mockImplementation(() => undefined);
-    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
     const { gateway, posPrintJob, emit } = setup();
 
     await (
@@ -214,7 +213,6 @@ describe('PosGateway durable print delivery', () => {
     const warnSpy = jest
       .spyOn(Logger.prototype, 'warn')
       .mockImplementation(() => undefined);
-    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
     const { gateway, job, posPrintJob, emit } = setup();
     job.customerAttempts = 3;
     job.customerFailureReason = 'ACK_TIMEOUT';
