@@ -1,26 +1,89 @@
+import type {
+  UberOrderActionGatewayPort,
+  UberOrderActionRepositoryPort,
+  UberOrderActionTask,
+} from '../ports/uber-order.ports';
 import { UberOrderActionService } from './uber-order-action.service';
 
-const service = new UberOrderActionService({} as never);
+const task: UberOrderActionTask = {
+  taskId: 'task-1',
+  leaseToken: 'lease-from-claim',
+  externalOrderId: 'order-1',
+  action: 'ACCEPT',
+  idempotencyKey: 'key-1',
+  businessVersion: 'v1',
+  reasonCode: null,
+  reasonDetail: null,
+};
 
-describe('UberOrderActionService', () => {
-  it.each([
-    ['ACCEPT', '/v1/eats/orders/order%2F1/accept_pos_order'],
-    ['DENY', '/v1/eats/orders/order%2F1/deny_pos_order'],
-    ['READY_FOR_PICKUP', '/v1/delivery/order/order%2F1/ready'],
-  ] as const)('maps %s to its HTTP endpoint', (action, path) => {
-    expect(service.buildPath('order/1', action)).toBe(path);
+describe('UberOrderActionService contract', () => {
+  const setup = (overrides: Partial<UberOrderActionGatewayPort> = {}) => {
+    const repository = {
+      enqueue: jest.fn().mockResolvedValue({ taskId: 'task-1', created: true }),
+      claim: jest.fn().mockResolvedValue([task]),
+      markSucceeded: jest.fn().mockResolvedValue(true),
+      markFailed: jest.fn().mockResolvedValue(true),
+    } as jest.Mocked<UberOrderActionRepositoryPort>;
+    const gateway = {
+      accept: jest.fn().mockResolvedValue(undefined),
+      deny: jest.fn().mockResolvedValue(undefined),
+      cancel: jest.fn().mockResolvedValue(undefined),
+      readyForPickup: jest.fn().mockResolvedValue(undefined),
+      ...overrides,
+    } as jest.Mocked<UberOrderActionGatewayPort>;
+    return {
+      repository,
+      gateway,
+      service: new UberOrderActionService(repository, gateway),
+    };
+  };
+
+  it('creates the same durable intent for duplicate requests', async () => {
+    const { repository, service } = setup();
+    await service.request('order-1', 'ACCEPT');
+    await service.request('order-1', 'ACCEPT');
+    expect(repository.enqueue.mock.calls[0][0].idempotencyKey).toBe(
+      repository.enqueue.mock.calls[1][0].idempotencyKey,
+    );
   });
 
-  it('classifies retryable failures and idempotent ready conflicts', () => {
-    expect(
-      service.classify('ACCEPT', { ok: false, status: 503, data: {} }),
-    ).toEqual({ succeeded: false, retryable: true });
-    expect(
-      service.classify('READY_FOR_PICKUP', {
-        ok: false,
-        status: 409,
-        data: {},
-      }),
-    ).toEqual({ succeeded: true, retryable: false });
+  it('always writes success with the token returned by claim', async () => {
+    const { repository, service } = setup();
+    await service.process(1, 'worker-a');
+    expect(repository.markSucceeded).toHaveBeenCalledWith(
+      'task-1',
+      'lease-from-claim',
+    );
+  });
+
+  it.each([
+    [503, true],
+    [400, false],
+  ])('classifies HTTP %s failure retryable=%s', async (status, retryable) => {
+    const error = Object.assign(new Error('failed'), { status, retryable });
+    const { repository, service } = setup({
+      accept: jest.fn().mockRejectedValue(error),
+    });
+    await service.process(1, 'worker-a');
+    expect(repository.markFailed).toHaveBeenCalledWith(
+      'task-1',
+      'lease-from-claim',
+      expect.objectContaining({ retryable }),
+    );
+  });
+
+  it('leaves a claimed row recoverable when local success writeback fails', async () => {
+    const { repository, service } = setup();
+    repository.markSucceeded.mockRejectedValue(
+      new Error('database unavailable'),
+    );
+    repository.markFailed.mockRejectedValue(new Error('database unavailable'));
+    await expect(service.process(1, 'worker-a')).rejects.toThrow(
+      'database unavailable',
+    );
+    expect(repository.markSucceeded).toHaveBeenCalledWith(
+      'task-1',
+      'lease-from-claim',
+    );
   });
 });

@@ -1,6 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { UberOrderActionName } from '../../domain/orders/uber-order.types';
-import { UberOrderActionService } from './uber-order-action.service';
 import {
   UBER_ORDER_OUTBOX_PORT,
   type UberOrderOutboxPort,
@@ -12,7 +11,6 @@ export class UberOrderOutboxService {
   constructor(
     @Inject(UBER_ORDER_OUTBOX_PORT)
     private readonly outbox: UberOrderOutboxPort,
-    private readonly actions: UberOrderActionService,
   ) {}
 
   async enqueue(
@@ -40,10 +38,10 @@ export class UberOrderOutboxService {
             row.externalOrderId,
             row.action,
             row.action === 'DENY'
-              ? this.actions.buildDenyPayload(
-                  row.reasonCode ?? 'OTHER',
-                  row.reasonDetail ?? undefined,
-                )
+              ? {
+                  reasonCode: row.reasonCode ?? 'OTHER',
+                  reasonDetail: row.reasonDetail ?? undefined,
+                }
               : {},
             row.idempotencyKey,
           );

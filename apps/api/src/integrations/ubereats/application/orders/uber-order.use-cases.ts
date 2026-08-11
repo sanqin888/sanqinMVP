@@ -3,13 +3,12 @@ import type { UberOrderStatus } from '../../domain/orders/uber-order.types';
 import type { UberOrderNotificationEventV1 } from '../../contracts/events/uber-order-notification.v1';
 import type { UberEventOrdering } from '../ports/uber-order-processing.ports';
 import {
-  UBER_ORDER_ACTION_PORT,
   UBER_ORDER_IMPORT_PORT,
   UBER_ORDER_SYNC_PORT,
-  type UberOrderActionPort,
   type UberOrderImportPort,
   type UberOrderSyncPort,
 } from '../ports/uber-use-case.ports';
+import { UberOrderActionService } from './uber-order-action.service';
 
 /** Imports an event once, keyed by the Uber event id; the adapter owns its graph transaction. */
 @Injectable()
@@ -38,32 +37,42 @@ export class CancelUberOrderUseCase extends ImportUberOrderUseCase {}
 /** Atomically creates an action intent; externalOrderId + action is the idempotency key. */
 @Injectable()
 export class RequestUberOrderActionUseCase {
-  constructor(
-    @Inject(UBER_ORDER_ACTION_PORT)
-    private readonly actions: UberOrderActionPort,
-  ) {}
-  accept(id: string) {
-    return this.actions.acceptUberOrder(id);
+  constructor(private readonly actions: UberOrderActionService) {}
+  async accept(id: string) {
+    return this.present(await this.actions.request(id, 'ACCEPT'));
   }
-  deny(id: string, reasonCode: string, reasonDetail?: string) {
-    return this.actions.denyUberOrder(id, reasonCode, reasonDetail);
+  async deny(id: string, reasonCode: string, reasonDetail?: string) {
+    return this.present(
+      await this.actions.request(id, 'DENY', {
+        reasonCode,
+        reasonDetail: reasonDetail ?? null,
+      }),
+    );
   }
-  retryReadyForPickup(id: string) {
-    return this.actions.retryReadyForPickup(id);
+  async retryReadyForPickup(id: string) {
+    return this.present(await this.actions.request(id, 'READY_FOR_PICKUP'));
   }
-  getReadyForPickupAction(id: string) {
-    return this.actions.getReadyForPickupAction(id);
+  async getReadyForPickupAction(id: string) {
+    return this.present(await this.actions.request(id, 'READY_FOR_PICKUP'));
+  }
+  private present(intent: { taskId: string; created: boolean }) {
+    return {
+      ok: false,
+      id: intent.taskId,
+      actionId: intent.taskId,
+      status: 'PENDING' as const,
+      retryable: true,
+      duplicate: !intent.created,
+      lastError: null,
+    };
   }
 }
 /** Claims durable action leases and records each gateway result in a separate transaction. */
 @Injectable()
 export class ExecuteUberOrderActionWorker {
-  constructor(
-    @Inject(UBER_ORDER_ACTION_PORT)
-    private readonly actions: UberOrderActionPort,
-  ) {}
+  constructor(private readonly actions: UberOrderActionService) {}
   execute(limit = 50) {
-    return this.actions.processPendingUberOrderActions(limit);
+    return this.actions.process(limit, `worker-${process.pid}`);
   }
 }
 /** Synchronizes one state transition, keyed by externalOrderId + target status. */

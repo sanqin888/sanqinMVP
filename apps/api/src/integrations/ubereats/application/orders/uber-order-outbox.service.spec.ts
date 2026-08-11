@@ -36,9 +36,7 @@ describe('UberOrderOutboxService', () => {
     expect(execute).toHaveBeenCalledWith(
       'order-1',
       'DENY',
-      {
-        reason: { code: 'STORE_CLOSED' },
-      },
+      { reasonCode: 'STORE_CLOSED', reasonDetail: 'closing' },
       'stable-key-v1',
     );
     expect(outbox.markSucceeded).toHaveBeenCalledWith(rows[0]);

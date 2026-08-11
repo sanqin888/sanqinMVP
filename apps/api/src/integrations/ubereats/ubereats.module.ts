@@ -17,6 +17,8 @@ import { ReceiveUberWebhookUseCase } from './application/orders/uber-webhook-rec
 import { UberMenuPrismaAdapter } from './infrastructure/persistence/uber-menu-prisma.adapter';
 import { UberMenuRepository } from './infrastructure/persistence/uber-menu.repository';
 import { UberOrderPrismaAdapter } from './infrastructure/persistence/uber-order-prisma.adapter';
+import { UberOrderActionPrismaAdapter } from './infrastructure/persistence/uber-order-action-prisma.adapter';
+import { UberOrderActionGatewayAdapter } from './infrastructure/uber-api/uber-order-action.gateway';
 import { UberMenuDraftService } from './application/menu/uber-menu-draft.service';
 import { UberMenuDraftConfigUseCase } from './application/menu/uber-menu-draft-config.use-case';
 import { UberMenuPublishService } from './application/menu/uber-menu-publish.service';
@@ -158,6 +160,10 @@ import {
   UBER_MENU_PUBLISH_COMMAND,
   UBER_MENU_SNAPSHOT_REPOSITORY,
 } from './application/ports/uber-menu-publication.ports';
+import {
+  UBER_ORDER_ACTION_COMMAND_GATEWAY,
+  UBER_ORDER_ACTION_REPOSITORY,
+} from './application/ports/uber-order.ports';
 
 @Module({
   imports: [PrismaModule, AuthModule, MessagingModule, OrdersModule],
@@ -218,6 +224,16 @@ import {
     UberMerchantResourceGateway,
     UberStoreGateway,
     UberOrderGateway,
+    UberOrderActionGatewayAdapter,
+    {
+      provide: UBER_ORDER_ACTION_COMMAND_GATEWAY,
+      useExisting: UberOrderActionGatewayAdapter,
+    },
+    UberOrderActionPrismaAdapter,
+    {
+      provide: UBER_ORDER_ACTION_REPOSITORY,
+      useExisting: UberOrderActionPrismaAdapter,
+    },
     { provide: UBER_ORDER_ACTION_GATEWAY, useExisting: UberOrderGateway },
     UberMenuGateway,
     UberImageValidator,
@@ -240,7 +256,6 @@ import {
     HandleUberMerchantWebhookHandler,
     UberOrderPrismaAdapter,
     { provide: UBER_ORDER_IMPORT_PORT, useExisting: UberOrderPrismaAdapter },
-    { provide: UBER_ORDER_ACTION_PORT, useExisting: UberOrderPrismaAdapter },
     { provide: UBER_ORDER_SYNC_PORT, useExisting: UberOrderPrismaAdapter },
     UberOrderActionService,
     UberOrderStatusSyncService,

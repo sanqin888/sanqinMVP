@@ -86,11 +86,10 @@ export class UberOrderPrismaAdapter {
     private readonly orderGateway: UberOrderGateway,
     outboxService: UberOrderOutboxService,
     statusSyncService: UberOrderStatusSyncService,
-    @Optional() actionService?: UberOrderActionService,
+    actionService: UberOrderActionService,
     @Optional() telemetry?: UberTelemetryService,
   ) {
-    this.actionService =
-      actionService ?? new UberOrderActionService(orderGateway);
+    this.actionService = actionService;
     this.outboxService = outboxService;
     this.telemetry = telemetry ?? new UberTelemetryService(prisma);
     this.statusSyncService = statusSyncService;
@@ -178,89 +177,19 @@ export class UberOrderPrismaAdapter {
     };
   }
 
-  async getReadyForPickupAction(externalOrderId: string) {
-    return this.prismaAccess.uberOrderActionRepository.findUnique({
-      where: {
-        externalOrderId_action: {
-          externalOrderId,
-          action: 'READY_FOR_PICKUP',
-        },
-      },
-    });
-  }
-
-  async retryReadyForPickup(externalOrderId: string) {
-    const record = await this.getReadyForPickupAction(externalOrderId);
-    if (!record) throw new BadRequestException('没有可重试的 Uber 就绪动作');
-    if (record.status === 'FAILED' && !record.retryable) {
-      return this.toUberOrderActionResult(record, true);
-    }
-    const queued = await this.prismaAccess.uberOrderActionRepository.update({
-      where: { id: record.id },
-      data: { status: 'PENDING', retryable: true, nextRetryAt: new Date() },
-    });
-    return this.toUberOrderActionResult(queued, true);
-  }
-
-  /** Queue workers can periodically drain retryable/PENDING outbox rows. */
-
-  async processPendingUberOrderActions(limit = 50) {
-    return this.outboxService.processPending(
-      limit,
-      (externalOrderId, action, payload, idempotencyKey) =>
-        this.executeUberOrderAction(
-          externalOrderId,
-          action,
-          payload,
-          true,
-          undefined,
-          idempotencyKey,
-        ),
-    );
-  }
-
-  /** Accept only an order whose complete local transaction has committed. */
-
-  async acceptUberOrder(externalOrderId: string) {
-    const normalizedOrderId = externalOrderId.trim();
-    const localOrder = await this.prisma.order.findUnique({
-      where: { clientRequestId: this.toClientRequestId(normalizedOrderId) },
-      select: { id: true },
-    });
-    if (!localOrder) {
-      throw new BadRequestException('订单尚未完整落库，禁止向 Uber 接单');
-    }
-    const record = await this.outboxService.enqueue(
-      normalizedOrderId,
-      'ACCEPT',
-    );
-    return this.toUberOrderActionResult(record, record.status !== 'PENDING');
-  }
-
-  /** Deny through Uber's POS decision endpoint with an auditable reason. */
-
-  async denyUberOrder(
-    externalOrderId: string,
-    reasonCode: string,
-    reasonDetail?: string,
-  ) {
-    const normalizedReason = reasonCode.trim();
-    if (!normalizedReason) {
-      throw new BadRequestException('拒单原因不能为空');
-    }
-    const record = await this.outboxService.enqueue(
-      externalOrderId.trim(),
-      'DENY',
-      {
-        reasonCode: normalizedReason,
-        reasonDetail: reasonDetail?.trim() || undefined,
-      },
-    );
-    return this.toUberOrderActionResult(record, record.status !== 'PENDING');
-  }
-
-  private buildUberDenyOrderPayload(reasonCode: string, reasonDetail?: string) {
-    return this.actionService.buildDenyPayload(reasonCode, reasonDetail);
+  private toUberOrderActionResult(
+    record: UberOrderActionRecord,
+    duplicate: boolean,
+  ): UberOrderActionResult {
+    return {
+      ok: record.status === 'SUCCEEDED',
+      action: record.action,
+      actionId: record.id,
+      status: record.status,
+      retryable: record.retryable,
+      duplicate,
+      uberHttpStatus: record.uberHttpStatus,
+    };
   }
 
   async listPendingUberOrders() {
@@ -451,7 +380,10 @@ export class UberOrderPrismaAdapter {
     context: { eventType: string; eventId: string },
   ) {
     try {
-      await this.denyUberOrder(externalOrderId, reasonCode, reasonDetail);
+      await this.actionService.request(externalOrderId, 'DENY', {
+        reasonCode,
+        reasonDetail,
+      });
     } catch (error) {
       const response =
         error instanceof BadGatewayException ? error.getResponse() : null;
@@ -490,7 +422,7 @@ export class UberOrderPrismaAdapter {
   }
 
   private isNonRetryableOrderActionStatus(status: number): boolean {
-    return this.actionService.isNonRetryableStatus(status);
+    return [400, 401, 403, 404].includes(status);
   }
 
   private async enqueueAndBestEffortAcceptUberOrder(
@@ -572,235 +504,6 @@ export class UberOrderPrismaAdapter {
 
   private isNonRetryableOrderDetailStatus(status: number): boolean {
     return [400, 401, 403, 404].includes(status);
-  }
-
-  private async executeUberOrderAction(
-    externalOrderId: string,
-    action: UberOrderActionName,
-    payload: Record<string, unknown>,
-    processPending = false,
-    audit?: { reasonCode?: string; reasonDetail?: string },
-    persistedIdempotencyKey?: string,
-  ) {
-    if (!externalOrderId) {
-      throw new BadRequestException('externalOrderId 不能为空');
-    }
-    const delegate = this.prismaAccess.uberOrderActionRepository;
-    const key = { externalOrderId, action };
-    let record = await delegate.findUnique({
-      where: { externalOrderId_action: key },
-    });
-    if (
-      record?.status === 'SUCCEEDED' ||
-      (record?.status === 'PENDING' && !processPending)
-    ) {
-      if (action === 'ACCEPT' && record.status === 'SUCCEEDED') {
-        await this.advanceLocalUberOrderStatusAfterAccept(externalOrderId);
-      }
-      return this.toUberOrderActionResult(record, true);
-    }
-    if (record && !record.retryable && !processPending) {
-      return this.toUberOrderActionResult(record, true);
-    }
-    if (!record) {
-      try {
-        record = await delegate.create({
-          data: {
-            ...key,
-            status: 'PENDING',
-            businessVersion: 'v1',
-            idempotencyKey: buildUberIdempotencyKey({
-              taskId: `${externalOrderId}:${action}`,
-              resourceId: externalOrderId,
-              action,
-              businessVersion: 'v1',
-            }),
-            reasonCode: audit?.reasonCode ?? this.readString(payload.reason),
-            reasonDetail:
-              audit?.reasonDetail ?? this.readString(payload.details),
-            attemptCount: 1,
-          },
-        });
-      } catch (error) {
-        if (this.readString(this.asObject(error)?.code) !== 'P2002')
-          throw error;
-        record = await delegate.findUnique({
-          where: { externalOrderId_action: key },
-        });
-        if (!record) throw error;
-        return this.toUberOrderActionResult(record, true);
-      }
-    } else if (record.status !== 'PROCESSING') {
-      record = await delegate.update({
-        where: { id: record.id },
-        data: {
-          status: 'PENDING',
-          retryable: false,
-          attemptCount: { increment: 1 },
-        },
-      });
-    }
-
-    const pathname = this.actionService.buildPath(externalOrderId, action);
-    let outcome: Awaited<ReturnType<UberOrderActionService['request']>>;
-    try {
-      outcome = await this.actionService.request(
-        externalOrderId,
-        action,
-        payload,
-        persistedIdempotencyKey ?? record.idempotencyKey ?? '',
-      );
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      const errorType = error instanceof Error ? error.name : typeof error;
-      const redactedError = redactUberLogText(errorMessage);
-      await delegate.update({
-        where: { id: record.id },
-        data: {
-          status: (record.attemptCount ?? 1) >= 8 ? 'DEAD' : 'FAILED',
-          retryable: (record.attemptCount ?? 1) < 8,
-          lastError: redactedError
-            .replace(/(token|secret|authorization)=?[^\s&]*/gi, '$1=[REDACTED]')
-            .slice(0, 2_000),
-          response: this.redactUberResponse({
-            error: errorMessage,
-          }),
-          nextRetryAt:
-            (record.attemptCount ?? 1) >= 8
-              ? null
-              : new Date(
-                  Date.now() +
-                    Math.min(
-                      300_000,
-                      1_000 * 2 ** Math.max(0, (record.attemptCount ?? 1) - 1),
-                    ),
-                ),
-          leaseToken: null,
-          leaseExpiresAt: null,
-        },
-      });
-      this.telemetry.workflowLog(
-        'error',
-        `[ubereats order action] request failed action=${action} externalOrderId=${externalOrderId} endpoint=${pathname} errorType=${errorType} error=${redactedError}`,
-      );
-      if (action !== 'READY_FOR_PICKUP') {
-        throw new BadGatewayException({
-          ok: false,
-          externalOrderId,
-          action,
-          endpoint: pathname,
-          retryable: true,
-          message: 'Uber 订单动作网络请求失败或超时',
-          detail: redactedError,
-        });
-      }
-      return {
-        ok: false,
-        action,
-        actionId: record.id,
-        status: 'FAILED' as const,
-        retryable: true,
-        duplicate: false,
-        errorSummary: 'Uber 订单动作网络请求失败或超时',
-      };
-    }
-
-    // Uber may answer 409 when a retried ready action has already won upstream.
-    const { succeeded, retryable } = this.actionService.classify(
-      action,
-      outcome,
-    );
-    const uberRequestId = null;
-    await delegate.update({
-      where: { id: record.id },
-      data: {
-        status: succeeded
-          ? 'SUCCEEDED'
-          : retryable && (record.attemptCount ?? 1) >= 8
-            ? 'DEAD'
-            : 'FAILED',
-        uberHttpStatus: outcome.status,
-        retryable: retryable && (record.attemptCount ?? 1) < 8,
-        uberRequestId,
-        lastError: succeeded
-          ? null
-          : summarizeUberDebugResponse(outcome.data, '').slice(0, 2_000),
-        response: this.redactUberResponse(outcome.data),
-        ...(succeeded ? { completedAt: new Date() } : {}),
-        nextRetryAt: retryable
-          ? new Date(
-              Date.now() +
-                Math.min(
-                  300_000,
-                  1_000 * 2 ** Math.max(0, (record.attemptCount ?? 1) - 1),
-                ),
-            )
-          : null,
-        leaseToken: null,
-        leaseExpiresAt: null,
-      },
-    });
-    if (!succeeded) {
-      this.telemetry.workflowLog(
-        'error',
-        `[ubereats order action] upstream failed action=${action} externalOrderId=${externalOrderId} endpoint=${pathname} status=${outcome.status} retryable=${retryable} uberRequestId=${uberRequestId ?? 'unknown'} detail=${redactUberLogText(summarizeUberDebugResponse(outcome.data, ''))}`,
-      );
-      if (action !== 'READY_FOR_PICKUP') {
-        throw new BadGatewayException({
-          ok: false,
-          externalOrderId,
-          action,
-          endpoint: pathname,
-          status: outcome.status,
-          uberRequestId,
-          retryable,
-          detail: redactUberLogText(
-            summarizeUberDebugResponse(outcome.data, ''),
-          ),
-        });
-      }
-      return {
-        ok: false,
-        action,
-        actionId: record.id,
-        status: 'FAILED' as const,
-        retryable,
-        duplicate: false,
-        uberHttpStatus: outcome.status,
-        errorSummary: `Uber 返回 HTTP ${outcome.status}`,
-      };
-    }
-    await this.advanceLocalUberOrderStatusAfterConfirmedAction(
-      externalOrderId,
-      action,
-    );
-    return {
-      ok: true,
-      duplicate: false,
-      action,
-      actionId: record.id,
-      status: 'SUCCEEDED' as const,
-      retryable: false,
-      uberHttpStatus: outcome.status,
-    };
-  }
-
-  private toUberOrderActionResult(
-    record: UberOrderActionRecord,
-    duplicate: boolean,
-  ): UberOrderActionResult {
-    const status = record.status;
-    return {
-      ok: status === 'SUCCEEDED',
-      action: record.action,
-      actionId: record.id,
-      status,
-      retryable: record.retryable,
-      duplicate,
-      uberHttpStatus: record.uberHttpStatus,
-      ...(record.lastError ? { errorSummary: 'Uber 同步失败' } : {}),
-    };
   }
 
   private async advanceLocalUberOrderStatusAfterAccept(

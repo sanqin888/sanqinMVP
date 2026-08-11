@@ -60,7 +60,8 @@ describe('Uber Eats bounded-context architecture', () => {
           'uber-api import',
           'application service/use-case import',
           'UberHttpClient',
-          'new UberOrderActionService',
+          // Order-detail import remains in the legacy facade; order-action HTTP
+          // execution has moved to UberOrderActionGatewayAdapter.
           'HTTP request call',
         ],
       };
