@@ -1,7 +1,5 @@
-import type { UberOrderStatus } from '../../domain/orders/uber-order.types';
 import type { UberOrderNotificationEventV1 } from '../../contracts/events/uber-order-notification.v1';
 import type { UberEventOrdering } from '../ports/uber-order-processing.ports';
-import { type UberOrderSyncPort } from '../ports/uber-use-case.ports';
 import { UberOrderActionService } from './uber-order-action.service';
 import {
   type UberOrderEventCursor,
@@ -216,20 +214,8 @@ export class ExecuteUberOrderActionWorker {
     return this.actions.process(limit, `worker-${process.pid}`);
   }
 }
-/** Synchronizes one state transition, keyed by externalOrderId + target status. */
-export class SyncUberOrderStatusUseCase {
-  constructor(private readonly orders: UberOrderSyncPort) {}
-  execute(id: string, status: UberOrderStatus) {
-    return this.orders.syncOrderStatusToUber(id, status);
-  }
-}
-/** Read-only pending-order query; it never starts a transaction. */
-export class ListPendingUberOrdersQuery {
-  constructor(private readonly orders: UberOrderSyncPort) {}
-  list() {
-    return this.orders.listPendingUberOrders();
-  }
-  summary() {
-    return this.orders.getPendingUberOrdersSummary();
-  }
-}
+
+// Compatibility re-exports keep callers on the application boundary while the
+// focused implementations live in their own files.
+export { SyncUberOrderStatusUseCase } from './sync-uber-order-status.use-case';
+export { ListPendingUberOrdersQuery } from './list-pending-uber-orders.query';

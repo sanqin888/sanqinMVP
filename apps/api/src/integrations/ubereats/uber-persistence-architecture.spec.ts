@@ -36,12 +36,16 @@ describe('Uber Eats persistence architecture', () => {
         '@prisma/client',
         'uber-prisma-access.service',
         'uber-prisma.types',
+        'prisma.service',
       ].some((token) => specifier.includes(token)),
     );
     const leakedDelegateTypes = files.flatMap((file) =>
       [
         ...file.source.matchAll(
           /\bPrisma\.[A-Z]\w*(?:Delegate|Args|GetPayload)\b/g,
+        ),
+        ...file.source.matchAll(
+          /\b(?:prisma|tx|transaction)\.[a-z]\w*\.(?:findUnique|findFirst|findMany|create|update|updateMany|upsert|count)\s*\(/g,
         ),
       ].map((match) => formatSourceViolation(root, file, match[0])),
     );
