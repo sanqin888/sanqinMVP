@@ -1,4 +1,5 @@
 import { UberValidationError } from '../errors/uber-application.error';
+import type { UberMenuPublicationRepositoryPort } from '../ports/uber-menu-publication.ports';
 import { PublishUberMenuUseCase } from './publish-uber-menu.use-case';
 
 describe('PublishUberMenuUseCase', () => {
@@ -60,7 +61,7 @@ describe('PublishUberMenuUseCase', () => {
     return {
       useCase: new PublishUberMenuUseCase(
         snapshots,
-        publications as any,
+        publications as unknown as UberMenuPublicationRepositoryPort,
         gateway,
         images,
       ),

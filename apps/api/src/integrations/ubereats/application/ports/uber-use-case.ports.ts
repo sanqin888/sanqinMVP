@@ -2,7 +2,6 @@ import type { UberOrderStatus } from '../../domain/orders/uber-order.types';
 import type { UberOrderNotificationEventV1 } from '../../contracts/events/uber-order-notification.v1';
 import type { UberEventOrdering } from './uber-order-processing.ports';
 import type {
-  PublishMenuInput,
   SyncAvailabilityInput,
   SyncOptionAvailabilityInput,
   UpdateDraftGroupInput,

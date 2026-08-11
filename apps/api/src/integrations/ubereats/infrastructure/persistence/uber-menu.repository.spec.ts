@@ -3,19 +3,43 @@ import { UberMenuRepository } from './uber-menu.repository';
 
 describe('UberMenuRepository contract', () => {
   it('maps Prisma rows to an application DTO without persistence-only fields', async () => {
-    const findMany = jest.fn().mockResolvedValue([
-      {
-        id: 'prisma-id',
-        storeId: 'store-1',
-        menuItemStableId: 'item-1',
-        priceCents: 1200,
-        isAvailable: true,
-        displayName: 'Noodles',
-        displayDescription: null,
-        createdAt: new Date(0),
-        updatedAt: new Date(0),
-      },
-    ]);
+    const findMany = jest
+      .fn<
+        Promise<
+          Array<{
+            id: string;
+            storeId: string;
+            menuItemStableId: string;
+            priceCents: number;
+            isAvailable: boolean;
+            displayName: string;
+            displayDescription: string | null;
+            createdAt: Date;
+            updatedAt: Date;
+          }>
+        >,
+        [
+          {
+            select: Record<string, boolean>;
+            where: { storeId: string };
+            orderBy: { updatedAt: string };
+            take: number;
+          },
+        ]
+      >()
+      .mockResolvedValue([
+        {
+          id: 'prisma-id',
+          storeId: 'store-1',
+          menuItemStableId: 'item-1',
+          priceCents: 1200,
+          isAvailable: true,
+          displayName: 'Noodles',
+          displayDescription: null,
+          createdAt: new Date(0),
+          updatedAt: new Date(0),
+        },
+      ]);
     const prisma = { uberItemChannelConfig: { findMany } };
     const repository = new UberMenuRepository(
       prisma as unknown as PrismaService,
@@ -36,11 +60,7 @@ describe('UberMenuRepository contract', () => {
     expect(result[0]).not.toHaveProperty('id');
     expect(result[0]).not.toHaveProperty('createdAt');
     expect(result[0]).not.toHaveProperty('updatedAt');
-    expect(findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        select: expect.objectContaining({ menuItemStableId: true }),
-      }),
-    );
+    expect(findMany.mock.calls[0]?.[0].select.menuItemStableId).toBe(true);
   });
 
   it('maps command fields explicitly and does not expose the delegate result', async () => {

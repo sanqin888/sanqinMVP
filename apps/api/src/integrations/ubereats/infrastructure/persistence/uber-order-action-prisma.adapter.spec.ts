@@ -23,27 +23,34 @@ describe('UberOrderActionPrismaAdapter contract', () => {
   });
 
   it('uses one SKIP LOCKED statement for concurrent claims', async () => {
-    const prisma = { $queryRawUnsafe: jest.fn().mockResolvedValue([]) };
+    const queryRaw = jest
+      .fn<Promise<unknown[]>, [string, ...unknown[]]>()
+      .mockResolvedValue([]);
+    const prisma = { $queryRawUnsafe: queryRaw };
     await new UberOrderActionPrismaAdapter(prisma as never).claim({
       limit: 10,
       owner: 'worker-a',
       now: new Date(0),
       leaseDurationMs: 30_000,
     });
-    expect(prisma.$queryRawUnsafe).toHaveBeenCalledTimes(1);
-    expect(String(prisma.$queryRawUnsafe.mock.calls[0][0])).toContain('SKIP LOCKED');
+    expect(queryRaw.mock.calls).toHaveLength(1);
+    expect(queryRaw.mock.calls[0]?.[0]).toContain('SKIP LOCKED');
   });
 
   it.each(['markSucceeded', 'markFailed'] as const)(
     '%s rejects an expired or replaced lease by returning false',
     async (method) => {
-      const updateMany = jest.fn().mockResolvedValue({ count: 0 });
+      const updateMany = jest
+        .fn<Promise<{ count: number }>, [{ where: { leaseToken: string } }]>()
+        .mockResolvedValue({ count: 0 });
       const prisma = {
         uberOrderAction: { updateMany },
-        $transaction: jest.fn(async (work: (tx: unknown) => unknown) =>
-          work({
-            uberOrderAction: { findFirst: jest.fn().mockResolvedValue(null) },
-          }),
+        $transaction: jest.fn((work: (tx: unknown) => unknown) =>
+          Promise.resolve(
+            work({
+              uberOrderAction: { findFirst: jest.fn().mockResolvedValue(null) },
+            }),
+          ),
         ),
       };
       const adapter = new UberOrderActionPrismaAdapter(prisma as never);
@@ -57,10 +64,8 @@ describe('UberOrderActionPrismaAdapter contract', () => {
             });
       expect(result).toBe(false);
       if (method === 'markFailed')
-        expect(updateMany).toHaveBeenCalledWith(
-          expect.objectContaining({
-            where: expect.objectContaining({ leaseToken: 'expired-token' }),
-          }),
+        expect(updateMany.mock.calls[0]?.[0].where.leaseToken).toBe(
+          'expired-token',
         );
     },
   );
