@@ -10,6 +10,8 @@ import { UberEatsOperationsController } from './api/operations.controller';
 import { BrowserWriteCsrfGuard } from './api/ubereats-csrf.guard';
 import { MessagingModule } from '../../messaging/messaging.module';
 import { OrdersModule } from '../../orders/orders.module';
+import { OrderIngestionService } from '../../orders/order-ingestion.service';
+import { OrderEventsBus } from '../../messaging/order-events.bus';
 import { UberHttpClient } from './infrastructure/uber-api/uber-http.client';
 import { UberConfigService } from './infrastructure/config/uber-config.service';
 import { ProcessUberWebhookInboxUseCase } from './application/orders/process-uber-webhook-inbox.use-case';
@@ -139,6 +141,7 @@ import {
   UberOrderActionWorkerAdapter,
   UberWebhookInboxWorkerAdapter,
 } from './infrastructure/workers/uber-worker.adapters';
+import { UberWorkerHealthService } from './infrastructure/workers/uber-worker-health.service';
 import { HandleUberMerchantWebhookHandler } from './application/merchant/uber-merchant-webhook.handler';
 import { PublishUberMenuUseCase } from './application/menu/publish-uber-menu.use-case';
 import { ConfirmUberMenuPublicationUseCase } from './application/menu/confirm-uber-menu-publication.use-case';
@@ -168,7 +171,7 @@ import {
   UBER_ORDER_IMPORT_REPOSITORY,
 } from './application/ports/uber-order.ports';
 
-@Module({
+const UBER_EATS_HTTP_METADATA = {
   imports: [PrismaModule, AuthModule, MessagingModule, OrdersModule],
   controllers: [
     UberEatsOAuthController,
@@ -369,19 +372,41 @@ import {
     RetryUberOpsTicketUseCase,
     QueryUberOperationsSummary,
   ],
-})
+} as const;
+
+@Module({})
 export class UberEatsModule {
-  /** Explicit opt-in boundary used by a dedicated application context. */
+  /** HTTP composition boundary. Worker polling providers are deliberately absent. */
+  static forHttp(): DynamicModule {
+    return {
+      module: UberEatsModule,
+      ...UBER_EATS_HTTP_METADATA,
+    };
+  }
+
+  /** Explicit opt-in boundary used only by the dedicated worker context. */
   static withWorkers(): DynamicModule {
     return {
       module: UberEatsModule,
+      // Do not import HTTP feature modules here: several of them own controllers.
+      imports: [PrismaModule],
       providers: [
+        OrderEventsBus,
+        OrderIngestionService,
+        ...UBER_EATS_HTTP_METADATA.providers,
         ClaimAndProcessUberWebhookInboxUseCase,
         ClaimAndExecuteUberOrderActionsUseCase,
         ConfirmUberMenuPublicationsUseCase,
         UberWebhookInboxWorkerAdapter,
         UberOrderActionWorkerAdapter,
         UberMenuPublishConfirmationWorkerAdapter,
+        UberWorkerHealthService,
+      ],
+      exports: [
+        UberWebhookInboxWorkerAdapter,
+        UberOrderActionWorkerAdapter,
+        UberMenuPublishConfirmationWorkerAdapter,
+        UberWorkerHealthService,
       ],
     };
   }
