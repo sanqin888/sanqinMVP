@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import type {
@@ -10,15 +10,21 @@ import { PrismaService } from '../../../../prisma/prisma.service';
 import { UberPrismaAccessService } from './uber-prisma-access.service';
 import { buildUberIdempotencyKey } from '../../application/idempotency/uber-idempotency-key';
 import { UberConfigService } from '../config/uber-config.service';
+import { UberTelemetryService } from '../observability/uber-telemetry.service';
 
 @Injectable()
 export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
   private static readonly MAX_ATTEMPTS = 8;
+  private readonly telemetry: UberTelemetryService;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly access: UberPrismaAccessService,
     private readonly config: UberConfigService,
-  ) {}
+    @Optional() telemetry?: UberTelemetryService,
+  ) {
+    this.telemetry = telemetry ?? new UberTelemetryService(prisma);
+  }
   async enqueue(input: {
     eventId: string;
     eventType: string;
@@ -59,14 +65,25 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
     const leaseToken = randomUUID();
     const rows = await this.prisma.$queryRaw<
       Array<{
+        resultKind: 'CLAIMED' | 'AUTO_DEAD';
         eventId: string;
-        eventType: string;
+        eventType: string | null;
         payload: unknown;
-        idempotencyKey: string;
-        businessVersion: string;
+        idempotencyKey: string | null;
+        businessVersion: string | null;
+        resourceKey: string | null;
       }>
     >`
-      WITH candidates AS (
+      WITH exhausted AS (
+        UPDATE "UberWebhookInbox" exhausted SET status = 'DEAD', "processingAt" = NULL,
+          "leaseToken" = NULL, "leaseExpiresAt" = NULL, "nextRetryAt" = NULL,
+          "errorSummary" = 'Maximum webhook processing attempts exhausted',
+          "structuredError" = jsonb_build_object('message', 'Maximum webhook processing attempts exhausted', 'retryable', false, 'automatic', true)
+        WHERE exhausted."attemptCount" >= ${UberWebhookInboxPrismaAdapter.MAX_ATTEMPTS}
+          AND (exhausted.status IN ('PENDING', 'FAILED')
+            OR (exhausted.status = 'PROCESSING' AND exhausted."leaseExpiresAt" <= NOW()))
+        RETURNING exhausted."eventId"
+      ), candidates AS (
         SELECT candidate.id FROM "UberWebhookInbox" candidate
         WHERE ((candidate.status IN ('PENDING', 'FAILED') AND (candidate."nextRetryAt" IS NULL OR candidate."nextRetryAt" <= NOW())) OR (candidate.status = 'PROCESSING' AND candidate."leaseExpiresAt" <= NOW()))
           AND candidate."attemptCount" < ${UberWebhookInboxPrismaAdapter.MAX_ATTEMPTS}
@@ -74,16 +91,47 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
             SELECT 1 FROM "UberWebhookInbox" earlier
             WHERE earlier."externalOrderId" = candidate."externalOrderId"
               AND earlier.status NOT IN ('PROCESSED', 'DEAD')
+              AND NOT (earlier."attemptCount" >= ${UberWebhookInboxPrismaAdapter.MAX_ATTEMPTS}
+                AND (earlier.status IN ('PENDING', 'FAILED')
+                  OR (earlier.status = 'PROCESSING' AND earlier."leaseExpiresAt" <= NOW())))
               AND (earlier."createdAt", earlier.id) < (candidate."createdAt", candidate.id)
           )
         ORDER BY candidate."createdAt" ASC, candidate.id ASC FOR UPDATE OF candidate SKIP LOCKED LIMIT ${limit}
-      )
+      ), claimed AS (
       UPDATE "UberWebhookInbox" inbox SET status = 'PROCESSING', "processingAt" = NOW(), "leaseToken" = ${leaseToken},
         "leaseExpiresAt" = NOW() + (${this.config.workerLeaseDurationMs} * INTERVAL '1 millisecond'), "attemptCount" = inbox."attemptCount" + 1
       FROM candidates WHERE inbox.id = candidates.id RETURNING inbox."eventId", inbox."eventType", inbox.payload,
         inbox."idempotencyKey", inbox."businessVersion", inbox."externalOrderId" AS "resourceKey"
+      )
+      SELECT 'CLAIMED' AS "resultKind", claimed.* FROM claimed
+      UNION ALL
+      SELECT 'AUTO_DEAD' AS "resultKind", exhausted."eventId", NULL, NULL, NULL, NULL, NULL FROM exhausted
     `;
-    return rows.map((row) => ({ ...row, leaseToken }));
+    const autoDeadRows = rows.filter((row) => row.resultKind === 'AUTO_DEAD');
+    await Promise.allSettled(
+      autoDeadRows.map((row) =>
+        this.telemetry.captureEvent(
+          'ubereats_webhook_inbox_auto_dead',
+          {
+            attempt: UberWebhookInboxPrismaAdapter.MAX_ATTEMPTS,
+            reason: 'maximum_attempts_exhausted',
+          },
+          { eventId: row.eventId },
+        ),
+      ),
+    );
+
+    return rows
+      .filter((row) => row.resultKind === 'CLAIMED')
+      .map((row) => ({
+        eventId: row.eventId,
+        eventType: row.eventType!,
+        payload: row.payload,
+        idempotencyKey: row.idempotencyKey!,
+        businessVersion: row.businessVersion!,
+        resourceKey: row.resourceKey,
+        leaseToken,
+      }));
   }
   async markSucceeded(item: UberWebhookInboxItem): Promise<void> {
     await this.access.uberWebhookInboxRepository.updateMany({
