@@ -10,6 +10,14 @@ export type UberOrderMenuMapping = {
   expectedPriceCents: number;
 };
 
+export type UberOrderCancellationDecision = {
+  kind: 'CANCELLED' | 'REJECTED';
+  cancelledBy: string | null;
+  reasonCode: string | null;
+  reasonDetail: string | null;
+  occurredAt: Date;
+};
+
 export type UberOrderEventCursor = {
   eventId: string;
   occurredAt: Date | null;
@@ -29,7 +37,10 @@ export interface UberOrderImportRepositoryPort {
   } | null>;
   saveImportedOrder(input: {
     order: ParsedUberOrder;
+    eventType: string;
     cursor: UberOrderEventCursor;
+    menuMappings: UberOrderMenuMapping[];
+    cancellation: UberOrderCancellationDecision | null;
     receivedAt: Date;
   }): Promise<{ orderId: string; created: boolean }>;
 }
