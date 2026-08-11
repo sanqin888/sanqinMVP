@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
-import { UberMenuPublishService } from '../menu/uber-menu-publish.service';
+import { ConfirmUberMenuPublicationUseCase } from '../menu/confirm-uber-menu-publication.use-case';
+import { RecoverTimedOutMenuPublicationsUseCase } from '../menu/recover-timed-out-menu-publications.use-case';
 import { ExecuteUberOrderActionWorker } from '../orders/uber-order.use-cases';
 import { ProcessUberWebhookInboxUseCase } from '../orders/process-uber-webhook-inbox.use-case';
 
@@ -28,9 +29,14 @@ export class ClaimAndExecuteUberOrderActionsUseCase {
 
 @Injectable()
 export class ConfirmUberMenuPublicationsUseCase {
-  constructor(private readonly publications: UberMenuPublishService) {}
+  constructor(
+    private readonly confirmations: ConfirmUberMenuPublicationUseCase,
+    private readonly recovery: RecoverTimedOutMenuPublicationsUseCase,
+  ) {}
 
-  execute(timeoutMs?: number): Promise<number> {
-    return this.publications.recoverTimedOutPublications(timeoutMs);
+  async execute(limit = 20): Promise<number> {
+    const confirmed = await this.confirmations.execute(limit);
+    await this.recovery.execute(undefined, limit);
+    return confirmed;
   }
 }

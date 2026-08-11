@@ -212,7 +212,6 @@ export class UberMenuPublishConfirmationWorkerAdapter extends UberPollingWorkerA
     super(config, 'menuConfirmation');
   }
   protected dispatch(limit: number) {
-    void limit;
-    return this.useCase.execute();
+    return this.useCase.execute(limit);
   }
 }

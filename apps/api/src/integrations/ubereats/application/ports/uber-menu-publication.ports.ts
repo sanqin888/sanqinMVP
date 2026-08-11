@@ -101,9 +101,24 @@ export interface UberMenuPublicationRepositoryPort {
     input: {
       status: 'SUCCEEDED' | 'FAILED';
       uberRequestId: string | null;
+      uberResourceId: string | null;
       errorCode: string | null;
       errorMessage: string | null;
     },
+  ): Promise<boolean>;
+  rescheduleConfirmation(
+    attemptId: string,
+    leaseToken: string,
+    nextConfirmationAt: Date,
+  ): Promise<boolean>;
+  claimTimedOutConfirmations(
+    cutoff: Date,
+    limit: number,
+    lease: { owner: string; durationMs: number; now: Date },
+  ): Promise<UberMenuPublicationLease[]>;
+  markConfirmationTimedOut(
+    attemptId: string,
+    leaseToken: string,
   ): Promise<boolean>;
 }
 

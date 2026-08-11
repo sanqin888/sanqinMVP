@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 export interface UberMenuNotification {
   publishVersion?: string | null;
   resourceId?: string | null;
@@ -12,10 +12,16 @@ export interface MenuNotificationRepository {
   }): Promise<{ id: string } | null>;
   apply(id: string, event: UberMenuNotification): Promise<void>;
 }
+export const MENU_NOTIFICATION_REPOSITORY = Symbol(
+  'MENU_NOTIFICATION_REPOSITORY',
+);
 /** Correlates notifications by immutable publish version/resource id, never by store alone. */
 @Injectable()
 export class UberMenuNotificationHandler {
-  constructor(private readonly repository: MenuNotificationRepository) {}
+  constructor(
+    @Inject(MENU_NOTIFICATION_REPOSITORY)
+    private readonly repository: MenuNotificationRepository,
+  ) {}
   async handle(event: UberMenuNotification) {
     const publishVersion = event.publishVersion?.trim() || null;
     const resourceId = event.resourceId?.trim() || null;
