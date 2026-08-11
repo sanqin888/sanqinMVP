@@ -44,6 +44,11 @@ describe('CompleteUberOAuthUseCase OAuth 状态机', () => {
       connectedAt: null,
     };
     let recovery: UberOAuthIdentityTokens | null = null;
+    const failOAuthState = jest.fn((_nonce: string, category: string) => {
+      row.status = 'FAILED';
+      row.lastErrorCategory = category;
+      return Promise.resolve(true);
+    });
     const states: UberOAuthStatePort = {
       findOAuthState: jest.fn(() => Promise.resolve({ ...row })),
       claimOAuthState: jest.fn(() => {
@@ -57,11 +62,7 @@ describe('CompleteUberOAuthUseCase OAuth 状态机', () => {
         row.lastErrorCategory = category;
         return Promise.resolve(true);
       }),
-      failOAuthState: jest.fn((_nonce, category) => {
-        row.status = 'FAILED';
-        row.lastErrorCategory = category;
-        return Promise.resolve(true);
-      }),
+      failOAuthState,
       saveExchangedTokens: jest.fn((value) => {
         recovery = { ...value };
         row.status = 'EXCHANGED';
@@ -81,10 +82,11 @@ describe('CompleteUberOAuthUseCase OAuth 状态机', () => {
       saveOAuthState: jest.fn(() => Promise.resolve()),
     };
     const exchangeAuthorizationCode = jest.fn(() => Promise.resolve(token));
+    const verifyState = jest.fn(() => true);
     const tokens: UberOAuthTokenPort = {
       getRedirectUri: jest.fn(() => row.redirectUri),
       signState: jest.fn(() => 'signature'),
-      verifyState: jest.fn(() => true),
+      verifyState,
       buildAuthorizeUrl: jest.fn(() => 'https://example.com/authorize'),
       exchangeAuthorizationCode,
       refreshAccessToken: jest.fn(() => Promise.resolve(token)),
@@ -105,6 +107,8 @@ describe('CompleteUberOAuthUseCase OAuth 状态机', () => {
       tokens,
       connections,
       exchangeAuthorizationCode,
+      verifyState,
+      failOAuthState,
       upsertConnectionByUberUserId,
       useCase: new CompleteUberOAuthUseCase(tokens, states, connections),
     };
@@ -114,13 +118,11 @@ describe('CompleteUberOAuthUseCase OAuth 状态机', () => {
     const x = setup();
     const results = await Promise.all([
       x.useCase.exchangeAuthorizationCode(
-        'one-time-code',
-        stateValue,
+        { code: 'one-time-code', state: stateValue },
         'session-1',
       ),
       x.useCase.exchangeAuthorizationCode(
-        'one-time-code',
-        stateValue,
+        { code: 'one-time-code', state: stateValue },
         'session-1',
       ),
     ]);
@@ -142,7 +144,10 @@ describe('CompleteUberOAuthUseCase OAuth 状态机', () => {
       }),
     );
     await expect(
-      x.useCase.exchangeAuthorizationCode('code', stateValue, 'session-1'),
+      x.useCase.exchangeAuthorizationCode(
+        { code: 'code', state: stateValue },
+        'session-1',
+      ),
     ).resolves.toEqual({
       ok: false,
       error: { code: 'OAUTH_TEMPORARY_FAILURE' },
@@ -161,8 +166,7 @@ describe('CompleteUberOAuthUseCase OAuth 状态机', () => {
       .mockRejectedValueOnce(new Error('database unavailable'));
     expect(
       await x.useCase.exchangeAuthorizationCode(
-        'code',
-        stateValue,
+        { code: 'code', state: stateValue },
         'session-1',
       ),
     ).toEqual({
@@ -172,8 +176,7 @@ describe('CompleteUberOAuthUseCase OAuth 状态机', () => {
     expect(x.row.status).toBe('EXCHANGED');
     expect(
       await x.useCase.exchangeAuthorizationCode(
-        'code',
-        stateValue,
+        { code: 'code', state: stateValue },
         'session-1',
       ),
     ).toMatchObject({ ok: true });
@@ -184,19 +187,110 @@ describe('CompleteUberOAuthUseCase OAuth 状态机', () => {
     const x = setup();
     expect(
       await x.useCase.exchangeAuthorizationCode(
-        'code',
-        stateValue,
+        { code: 'code', state: stateValue },
         'session-1',
       ),
     ).toMatchObject({ ok: true });
     expect(
       await x.useCase.exchangeAuthorizationCode(
-        'code',
-        stateValue,
+        { code: 'code', state: stateValue },
         'session-1',
       ),
     ).toMatchObject({ ok: true, value: { uberUserId: token.uberUserId } });
     expect(x.exchangeAuthorizationCode).toHaveBeenCalledTimes(1);
     expect(x.upsertConnectionByUberUserId).toHaveBeenCalledTimes(1);
+  });
+
+  it('验证 state 后将用户拒绝终结为稳定错误，且不兑换 code', async () => {
+    const x = setup();
+    await expect(
+      x.useCase.exchangeAuthorizationCode(
+        { error: 'access_denied', state: stateValue },
+        'session-1',
+      ),
+    ).resolves.toEqual({ ok: false, error: { code: 'OAUTH_USER_DENIED' } });
+    expect(x.row).toMatchObject({
+      status: 'FAILED',
+      lastErrorCategory: 'authorization-denied',
+    });
+    expect(x.exchangeAuthorizationCode).not.toHaveBeenCalled();
+  });
+
+  it('临时上游授权错误保持 ISSUED，允许使用同一 callback 重试', async () => {
+    const x = setup();
+    await expect(
+      x.useCase.exchangeAuthorizationCode(
+        { error: 'temporarily_unavailable', state: stateValue },
+        'session-1',
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      error: { code: 'OAUTH_TEMPORARY_FAILURE' },
+    });
+    expect(x.row.status).toBe('ISSUED');
+  });
+
+  it('无效授权响应和缺少 code 映射为不同稳定错误', async () => {
+    const invalid = setup();
+    await expect(
+      invalid.useCase.exchangeAuthorizationCode(
+        { error: 'invalid_request', state: stateValue },
+        'session-1',
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      error: { code: 'OAUTH_AUTHORIZATION_INVALID' },
+    });
+    const missing = setup();
+    await expect(
+      missing.useCase.exchangeAuthorizationCode(
+        { state: stateValue },
+        'session-1',
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      error: { code: 'OAUTH_CODE_MISSING' },
+    });
+  });
+
+  it('篡改或过期 state 在处理 OAuth error 前即被拒绝', async () => {
+    const tampered = setup();
+    tampered.verifyState.mockReturnValue(false);
+    await expect(
+      tampered.useCase.exchangeAuthorizationCode(
+        { error: 'access_denied', state: stateValue },
+        'session-1',
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      error: { code: 'OAUTH_STATE_INVALID_OR_EXPIRED' },
+    });
+    expect(tampered.failOAuthState).not.toHaveBeenCalled();
+
+    const expired = setup();
+    expired.row.expiresAt = new Date(now - 1);
+    await expect(
+      expired.useCase.exchangeAuthorizationCode(
+        { error: 'access_denied', state: stateValue },
+        'session-1',
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      error: { code: 'OAUTH_STATE_INVALID_OR_EXPIRED' },
+    });
+  });
+
+  it('cookie 丢失时不允许仅凭 state 建立商户连接', async () => {
+    const x = setup();
+    await expect(
+      x.useCase.exchangeAuthorizationCode(
+        { code: 'code', state: stateValue },
+        undefined,
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      error: { code: 'OAUTH_SESSION_MISMATCH' },
+    });
+    expect(x.exchangeAuthorizationCode).not.toHaveBeenCalled();
   });
 });

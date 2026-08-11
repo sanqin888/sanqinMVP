@@ -105,6 +105,14 @@ export class OpsTicketListQuery extends StoreIdQuery {
 export class OAuthCallbackQuery {
   @IsOptional() @IsString() @MinLength(1) @MaxLength(2048) code?: string;
   @IsOptional() @IsString() @MinLength(1) @MaxLength(512) state?: string;
+  /** OAuth error values are accepted only as control data and must never be rendered/logged. */
+  @IsOptional() @IsString() @MinLength(1) @MaxLength(128) error?: string;
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(1024)
+  error_description?: string;
+  @IsOptional() @IsString() @MinLength(1) @MaxLength(2048) error_uri?: string;
 }
 
 export class SyncOrderStatusDto {
